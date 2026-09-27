@@ -16,6 +16,9 @@ public static class CalendarExternalSources
     public const string GoogleCalendar = "google_calendar";
     public const string OutlookCalendar = "outlook_calendar";
     public const string CountryHoliday = "country_holiday";
+    // Meeting-only connection (no calendar sync) — see CompleteCalendarConnectionCommandHandler,
+    // which sets SyncDirection = Disabled for this provider so CalendarSyncJob skips it.
+    public const string Zoom = "zoom";
 }
 
 public static class CalendarRecurrences

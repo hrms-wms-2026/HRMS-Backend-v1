@@ -11,7 +11,6 @@ using ONEVO.Application.Features.WorkManagement.Objectives.Services;
 using ONEVO.Application.Features.WorkManagement.Sprints.RepositoryInterfaces;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.WorkManagement.Objectives.Entities;
-using ONEVO.Domain.Features.WorkManagement.Sprints.Entities;
 using ONEVO.Domain.Lookups;
 using Xunit;
 
@@ -36,7 +35,7 @@ public class AchieveObjectiveCommandHandlerTests
 
     private (AchieveObjectiveCommandHandler Handler, Mock<IObjectiveRepository> Objectives, Mock<IObjectiveChangeRequestRepository> Requests, Mock<IMilestoneMembershipCoordinator> Membership) BuildHandler(
         Objective? objective, List<Objective>? unachievedChildren = null, bool hasPending = false, Guid? callerId = null,
-        IReadOnlyList<Sprint>? sprints = null, bool? callerIsEffectiveManager = null)
+        bool anyActiveContainingTasks = false, bool? callerIsEffectiveManager = null)
     {
         var resolvedCallerUserId = callerId ?? HeadUserId;
         var resolvedCallerEmployeeId = resolvedCallerUserId == OtherUserId ? OtherEmployeeId : HeadEmployeeId;
@@ -68,8 +67,8 @@ public class AchieveObjectiveCommandHandlerTests
             .ReturnsAsync(callerIsEffectiveManager ?? (objective is not null && objective.OwnerId == resolvedCallerEmployeeId));
 
         var sprintRepo = new Mock<ISprintRepository>();
-        sprintRepo.Setup(x => x.GetByObjectiveIdAsync(TenantId, ObjectiveId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(sprints ?? new List<Sprint>());
+        sprintRepo.Setup(x => x.AnyActiveContainingObjectiveTasksAsync(TenantId, ObjectiveId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(anyActiveContainingTasks);
 
         var unitOfWork = new Mock<IUnitOfWork>();
         unitOfWork.Setup(x => x.ExecuteInTransactionAsync(It.IsAny<Func<CancellationToken, Task<Result<ObjectiveChangeOutcomeResponse>>>>(), It.IsAny<CancellationToken>()))
@@ -80,13 +79,6 @@ public class AchieveObjectiveCommandHandlerTests
             currentUser.Object, identity.Object, objectives.Object, requests.Object, membership.Object, sprintRepo.Object, unitOfWork.Object);
         return (handler, objectives, requests, membership);
     }
-
-    private static Sprint SprintOnObjective(string status) => new()
-    {
-        Id = Guid.NewGuid(), TenantId = TenantId, ObjectiveId = ObjectiveId, Name = "S1",
-        StartDate = new DateOnly(2026, 9, 1), EndDate = new DateOnly(2026, 9, 14),
-        Status = status, CreatedAt = DateTimeOffset.UtcNow
-    };
 
     [Fact]
     public async Task Handle_CreatorHeadAchieves_AppliesImmediately()
@@ -202,54 +194,25 @@ public class AchieveObjectiveCommandHandlerTests
     }
 
     [Fact]
-    public async Task Handle_OnlyDraftSprints_Succeeds()
+    public async Task Handle_NoActiveSprintTasks_Succeeds()
     {
-        var (handler, objectives, _, _) = BuildHandler(SubObjective(createdById: HeadUserId),
-            sprints: new List<Sprint> { SprintOnObjective(SprintStatuses.Draft) });
+        var (handler, objectives, _, _) = BuildHandler(SubObjective(createdById: HeadUserId), anyActiveContainingTasks: false);
 
         var result = await handler.Handle(new AchieveObjectiveCommand(ObjectiveId), CancellationToken.None);
 
         Assert.True(result.IsSuccess);
+        objectives.Verify(x => x.Update(It.Is<Objective>(o => o.IsAchieved)), Times.Once);
     }
 
     [Fact]
-    public async Task Handle_SprintNeitherCompleteNorAchieved_ReturnsFailure()
+    public async Task Handle_ActiveSprintTasks_ReturnsFailure()
     {
         var (handler, objectives, _, _) = BuildHandler(
-            SubObjective(createdById: HeadUserId),
-            sprints: new List<Sprint> { SprintOnObjective(SprintStatuses.Active) });
+            SubObjective(createdById: HeadUserId), anyActiveContainingTasks: true);
 
         var result = await handler.Handle(new AchieveObjectiveCommand(ObjectiveId), CancellationToken.None);
 
         Assert.False(result.IsSuccess);
         objectives.Verify(x => x.Update(It.IsAny<Objective>()), Times.Never);
-    }
-
-    [Fact]
-    public async Task Handle_AllSprintsCompleteOrAchieved_Succeeds()
-    {
-        var (handler, objectives, _, _) = BuildHandler(
-            SubObjective(createdById: HeadUserId),
-            sprints: new List<Sprint>
-            {
-                SprintOnObjective(SprintStatuses.Complete),
-                SprintOnObjective(SprintStatuses.Achieved)
-            });
-
-        var result = await handler.Handle(new AchieveObjectiveCommand(ObjectiveId), CancellationToken.None);
-
-        Assert.True(result.IsSuccess);
-        objectives.Verify(x => x.Update(It.Is<Objective>(o => o.IsAchieved)), Times.Once);
-    }
-
-    [Fact]
-    public async Task Handle_ZeroSprints_Succeeds()
-    {
-        var (handler, objectives, _, _) = BuildHandler(SubObjective(createdById: HeadUserId), sprints: new List<Sprint>());
-
-        var result = await handler.Handle(new AchieveObjectiveCommand(ObjectiveId), CancellationToken.None);
-
-        Assert.True(result.IsSuccess);
-        objectives.Verify(x => x.Update(It.Is<Objective>(o => o.IsAchieved)), Times.Once);
     }
 }

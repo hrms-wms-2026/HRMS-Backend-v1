@@ -11,7 +11,7 @@ public static class SprintStatuses
 }
 
 /// <summary>
-/// A time-boxed iteration owned by one Objective. Achieved is a status value, not a use of
+/// A time-boxed, project-level bunch of tasks (spec 2026-09-23). Achieved is a status value, not a use of
 /// BaseEntity.IsDeleted - an Achieved sprint must stay visible to the owner's "all sprints" Backlog
 /// view and to the Objective-achieve gate check (see AchieveObjectiveCommandHandler), both of which
 /// would silently break under the standard !IsDeleted repository filter convention.
@@ -19,7 +19,6 @@ public static class SprintStatuses
 public class Sprint : BaseEntity
 {
     public Guid ProjectId { get; set; }
-    public Guid ObjectiveId { get; set; }
     public string Name { get; set; } = string.Empty;
     public string? Goal { get; set; }
 

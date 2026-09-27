@@ -10,7 +10,7 @@ public class SprintConfigurationTests
     {
         var sprint = new Sprint
         {
-            Id = Guid.NewGuid(), TenantId = Guid.NewGuid(), ProjectId = Guid.NewGuid(), ObjectiveId = Guid.NewGuid(),
+            Id = Guid.NewGuid(), TenantId = Guid.NewGuid(), ProjectId = Guid.NewGuid(),
             Name = "Sprint 1", StartDate = new DateOnly(2026, 9, 1), EndDate = new DateOnly(2026, 9, 14),
             CreatedAt = DateTimeOffset.UtcNow
         };

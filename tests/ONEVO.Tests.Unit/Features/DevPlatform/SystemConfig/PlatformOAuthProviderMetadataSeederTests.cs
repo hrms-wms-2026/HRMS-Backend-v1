@@ -133,4 +133,44 @@ public sealed class PlatformOAuthProviderMetadataSeederTests
         Assert.Equal(3, others.Count);
         Assert.All(others, a => Assert.Equal(string.Empty, a.ClientId));
     }
+
+    // Regression: an earlier version of this seeder skipped the entire sync block - including
+    // AuthorizationUrl/TokenUrl/DefaultScopes - for any row with a real clientId, contradicting
+    // this method's own doc comment ("Protocol metadata is backend-owned and always safe to keep
+    // in sync"). In practice: PlatformOAuthProviderCatalog's microsoft entry gained
+    // OnlineMeetings.ReadWrite, but an already-configured Microsoft app's stored DefaultScopes
+    // never picked it up on restart, so every Teams-meeting OAuth connect silently requested the
+    // stale scope list.
+    [Fact]
+    public async Task SeedAsync_RefreshesProtocolMetadataOnAnAlreadyConfiguredRow()
+    {
+        await using var db = BuildInMemoryDb();
+        var user = await SeedBootstrapUserAsync(db);
+
+        db.PlatformOAuthApps.Add(new PlatformOAuthApp
+        {
+            Id = Guid.NewGuid(),
+            Provider = "microsoft",
+            AppName = "Operator Configured Microsoft App",
+            ClientId = "operator-set-client-id",
+            AuthorizationUrl = "https://stale.example.com/authorize",
+            TokenUrl = "https://stale.example.com/token",
+            DefaultScopes = new[] { "openid" }, // stale - predates OnlineMeetings.ReadWrite
+            IsActive = true,
+            UpdatedById = user.Id,
+            UpdatedAt = DateTimeOffset.UtcNow.AddDays(-1)
+        });
+        await db.SaveChangesAsync();
+
+        await PlatformOAuthProviderMetadataSeeder.SeedAsync(db, CancellationToken.None);
+
+        var microsoft = await db.PlatformOAuthApps.SingleAsync(a => a.Provider == "microsoft");
+        // Operator-owned fields untouched.
+        Assert.Equal("Operator Configured Microsoft App", microsoft.AppName);
+        Assert.Equal("operator-set-client-id", microsoft.ClientId);
+        Assert.True(microsoft.IsActive);
+        // Backend-owned protocol metadata refreshed from the catalog.
+        Assert.Contains("OnlineMeetings.ReadWrite", microsoft.DefaultScopes);
+        Assert.DoesNotContain("https://stale.example.com/authorize", microsoft.AuthorizationUrl);
+    }
 }

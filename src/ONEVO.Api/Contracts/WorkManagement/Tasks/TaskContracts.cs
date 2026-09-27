@@ -29,6 +29,12 @@ public sealed record AssignTaskRequest(Guid EmployeeId);
 
 public sealed record CreateSubtaskRequest(string Title, string? Priority, DateOnly? DueDate, Guid? AssigneeEmployeeId);
 
+public sealed record DuplicateTaskRequest(
+    Guid DestinationObjectiveId, string Title,
+    bool CopyAttachments, bool CopyAssignees, bool CopyComments, bool CopyDueDate);
+
+public sealed record ConvertTaskToSubtaskRequest(Guid NewParentTaskId);
+
 public sealed record EditTaskStatusRequest(
     string Name, int DisplayOrder, bool RequiresApproval, Guid? ApproverId, string Visibility,
     string Category, string Color);
@@ -54,7 +60,11 @@ public sealed record TaskCategoryViewModel(Guid Id, string Name, int DisplayOrde
 
 public sealed record TaskAttachmentViewModel(Guid FileId, string FileName, long FileSizeBytes, string ContentType);
 
-public sealed record TaskAssigneeIdentityViewModel(Guid EmployeeId, string Name, string? AvatarUrl);
+public sealed record TaskAssigneeIdentityViewModel(
+    Guid EmployeeId,
+    string Name,
+    Guid? AvatarFileId,
+    string? AvatarUrl = null);
 
 public sealed record WorkTaskViewModel(
     Guid Id, Guid ObjectiveId, string ShortId, string Title, string? Description,
@@ -65,7 +75,7 @@ public sealed record WorkTaskViewModel(
     IReadOnlyList<TaskAttachmentViewModel> Attachments,
     IReadOnlyList<TaskAssigneeIdentityViewModel> Assignees,
     Guid? ParentTaskId, int SubtaskTotalCount, int SubtaskCompletedCount,
-    IReadOnlyList<Guid> SubtaskAssigneeEmployeeIds);
+    IReadOnlyList<Guid> SubtaskAssigneeEmployeeIds, DateTimeOffset CreatedAt);
 
 public sealed record TaskStatusViewModel(
     Guid Id, string Name, int DisplayOrder, bool RequiresApproval,

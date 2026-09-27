@@ -5,7 +5,8 @@ public record FaceQualityOutcome(
     bool FaceVisible,
     bool NoSunglassesOrMask,
     float? Brightness,
-    float? FaceConfidence);
+    float? FaceConfidence,
+    int FaceCount = 1);
 
 public interface IFaceQualityService
 {

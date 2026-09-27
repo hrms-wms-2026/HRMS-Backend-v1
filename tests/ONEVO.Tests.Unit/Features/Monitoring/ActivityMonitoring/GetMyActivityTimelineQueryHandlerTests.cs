@@ -4,6 +4,7 @@ using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.Queries.GetMyActivityTimeline;
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.RepositoryInterfaces;
+using ONEVO.Application.Features.Monitoring.Meetings.RepositoryInterfaces;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.Monitoring.ActivityMonitoring.Entities;
 using Xunit;
@@ -20,6 +21,7 @@ public sealed class GetMyActivityTimelineQueryHandlerTests
     private readonly Mock<IDateTimeProvider> _dateTime = new();
     private readonly Mock<IEmployeeRepository> _employees = new();
     private readonly Mock<IActivitySnapshotRepository> _snapshots = new();
+    private readonly Mock<IMeetingSignalRepository> _meetings = new();
 
     private GetMyActivityTimelineQueryHandler BuildSut()
     {
@@ -29,9 +31,11 @@ public sealed class GetMyActivityTimelineQueryHandlerTests
         _dateTime.SetupGet(x => x.UtcNow).Returns(new DateTimeOffset(2026, 8, 27, 12, 0, 0, TimeSpan.Zero));
         _employees.Setup(x => x.GetDefaultForUserAsync(TenantId, UserId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Employee { Id = EmployeeId, UserId = UserId, TenantId = TenantId });
+        _meetings.Setup(x => x.GetAllByEmployeeDateAsync(TenantId, EmployeeId, It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
 
         return new GetMyActivityTimelineQueryHandler(
-            _currentUser.Object, _dateTime.Object, _employees.Object, _snapshots.Object);
+            _currentUser.Object, _dateTime.Object, _employees.Object, _snapshots.Object, _meetings.Object);
     }
 
     [Fact]
@@ -39,7 +43,7 @@ public sealed class GetMyActivityTimelineQueryHandlerTests
     {
         _currentUser.SetupGet(x => x.IsAuthenticated).Returns(false);
         var sut = new GetMyActivityTimelineQueryHandler(
-            _currentUser.Object, _dateTime.Object, _employees.Object, _snapshots.Object);
+            _currentUser.Object, _dateTime.Object, _employees.Object, _snapshots.Object, _meetings.Object);
 
         var result = await sut.Handle(new GetMyActivityTimelineQuery(null), CancellationToken.None);
 
@@ -56,7 +60,7 @@ public sealed class GetMyActivityTimelineQueryHandlerTests
         _employees.Setup(x => x.GetDefaultForUserAsync(TenantId, UserId, It.IsAny<CancellationToken>()))
             .ReturnsAsync((Employee?)null);
         var sut = new GetMyActivityTimelineQueryHandler(
-            _currentUser.Object, _dateTime.Object, _employees.Object, _snapshots.Object);
+            _currentUser.Object, _dateTime.Object, _employees.Object, _snapshots.Object, _meetings.Object);
 
         var result = await sut.Handle(new GetMyActivityTimelineQuery(null), CancellationToken.None);
 

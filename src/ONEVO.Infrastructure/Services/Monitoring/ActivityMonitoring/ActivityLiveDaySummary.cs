@@ -19,11 +19,12 @@ public sealed class ActivityLiveDaySummary(
         CancellationToken ct)
     {
         var daySnapshots = await snapshots.GetAllByEmployeeDateAsync(tenantId, employeeId, date, ct);
-        if (daySnapshots.Count == 0)
-            return null;
-
         var dayAppUsage = await appUsage.GetAllByEmployeeDateAsync(tenantId, employeeId, date, ct);
         var dayMeetings = await meetings.GetAllByEmployeeDateAsync(tenantId, employeeId, date, ct);
+        // App-usage samples are enough for the attendance drawer's "Apps used" list.
+        // Activity snapshots are optional — a day can have foreground-app time with no keyboard/mouse rows.
+        if (daySnapshots.Count == 0 && dayAppUsage.Count == 0 && dayMeetings.Count == 0)
+            return null;
         var summary = ActivityDailySummaryAggregator.Aggregate(
             tenantId,
             employeeId,

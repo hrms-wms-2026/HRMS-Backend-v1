@@ -1,7 +1,6 @@
 using Moq;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Permission.ServiceInterfaces;
-using ONEVO.Application.Features.Storage.File.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
@@ -47,7 +46,7 @@ public sealed class GetSubtasksQueryHandlerTests
 
         var permissions = new Mock<IPermissionResolver>();
         permissions.Setup(x => x.ResolveAsync(UserId, TenantId, null, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(canRead ? new List<string> { "projects:read" } : new List<string>());
+            .ReturnsAsync(canRead ? new List<string> { "*" } : new List<string>());
 
         var members = new Mock<IProjectMemberRepository>();
         members.Setup(x => x.GetActiveObjectiveIdsForEmployeeInProjectAsync(TenantId, ProjectId, EmployeeId, It.IsAny<CancellationToken>()))
@@ -63,7 +62,7 @@ public sealed class GetSubtasksQueryHandlerTests
         sessions.Setup(x => x.GetTotalClosedSessionMinutesForTasksAsync(TenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(totalLoggedMinutes ?? new Dictionary<Guid, int>());
 
-        return new GetSubtasksQueryHandler(currentUser.Object, identity.Object, Mock.Of<IFileStorageService>(), tasks.Object,
+        return new GetSubtasksQueryHandler(currentUser.Object, identity.Object, tasks.Object,
             projects.Object, members.Object, permissions.Object, assignments.Object, sessions.Object);
     }
 

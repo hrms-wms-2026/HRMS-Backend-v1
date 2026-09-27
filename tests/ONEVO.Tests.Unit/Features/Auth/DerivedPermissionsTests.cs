@@ -15,7 +15,6 @@ public sealed class DerivedPermissionsTests
     [InlineData("performance:write")]
     [InlineData("performance:manage")]
     [InlineData("expense:approve")]
-    [InlineData("tasks:approve")]
     [InlineData("documents:approve")]
     [InlineData("grievance:manage")]
     [InlineData("monitoring:alerts:read")]
@@ -30,6 +29,7 @@ public sealed class DerivedPermissionsTests
     [InlineData("leave:read-own")]
     [InlineData("employees:read")]
     [InlineData("inbox:read")]
+    [InlineData("tasks:approve")]
     public void InboxTriggers_DoesNotContainBasicOrSelfServiceCodes(string code)
         => DerivedPermissions.InboxTriggers.Contains(code).Should().BeFalse();
 
@@ -41,7 +41,6 @@ public sealed class DerivedPermissionsTests
     [InlineData("payroll:approve")]
     [InlineData("performance:manage")]
     [InlineData("monitoring:alerts:read")]
-    [InlineData("tasks:approve")]
     public void NotificationTriggers_ContainsExpectedCode(string code)
         => DerivedPermissions.NotificationTriggers.Contains(code).Should().BeTrue();
 
@@ -49,6 +48,7 @@ public sealed class DerivedPermissionsTests
     [InlineData("employees:read-own")]
     [InlineData("notifications:read")]
     [InlineData("calendar:read")]
+    [InlineData("tasks:approve")]
     public void NotificationTriggers_DoesNotContainBasicCodes(string code)
         => DerivedPermissions.NotificationTriggers.Contains(code).Should().BeFalse();
 }

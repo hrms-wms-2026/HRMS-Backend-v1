@@ -29,8 +29,9 @@ public class RekognitionFaceQualityService : IFaceQualityService
         }, ct);
 
         var faces = response.FaceDetails ?? [];
+        // Zero and several faces are reported separately so the tray can say which one it was.
         if (faces.Count != 1)
-            return new FaceQualityOutcome(false, false, false, null, null);
+            return new FaceQualityOutcome(false, false, false, null, null, faces.Count);
 
         var face = faces[0];
         var brightness = face.Quality?.Brightness;

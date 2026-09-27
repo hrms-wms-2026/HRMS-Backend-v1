@@ -45,7 +45,7 @@ public sealed class TaskAccessResolver : ITaskAccessResolver
             return Result<TaskAccessContext>.NotFound("Task not found.");
 
         var permissions = await _permissionResolver.ResolveAsync(userId, tenantId, null, ct);
-        var hasReadPermission = permissions.Contains("projects:read") || permissions.Contains("*");
+        var hasReadPermission = permissions.Contains("*");
         if (!hasReadPermission)
         {
             var accessibleObjectiveIds =

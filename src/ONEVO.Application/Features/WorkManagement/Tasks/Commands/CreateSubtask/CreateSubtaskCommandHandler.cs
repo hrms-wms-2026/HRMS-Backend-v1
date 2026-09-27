@@ -116,7 +116,7 @@ public sealed class CreateSubtaskCommandHandler : IRequestHandler<CreateSubtaskC
                 subtask.CategoryId, subtask.StatusId, subtask.Priority, subtask.StoryPoints,
                 subtask.DueDate, subtask.EstimatedHours, subtask.CompletedHours, subtask.ProgressPercent, subtask.SprintId,
                 AssigneeEmployeeIds: assignee is not null ? new[] { assignee.Id } : Array.Empty<Guid>(),
-                ParentTaskId: subtask.ParentTaskId));
+                ParentTaskId: subtask.ParentTaskId, CreatedAt: subtask.CreatedAt));
         }, ct);
     }
 }

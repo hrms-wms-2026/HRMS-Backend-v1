@@ -65,7 +65,7 @@ public class GetProjectByIdQueryHandler : IRequestHandler<GetProjectByIdQuery, R
             return Result<ProjectDetailResponse>.NotFound("Project not found.");
 
         var permissions = await _permissionResolver.ResolveAsync(userId, tenantId, null, ct);
-        var hasReadPermission = permissions.Contains("projects:read") || permissions.Contains("*");
+        var hasReadPermission = permissions.Contains("*");
 
         if (!hasReadPermission)
         {

@@ -53,6 +53,11 @@ public sealed class GetCurrentSessionQueryHandler
             return Result<AuthSessionResponseDto>.Failure("Authentication required.", 401);
 
         var employee = await _employees.GetByUserIdAsync(_tenantContext.TenantId, _currentUser.UserId, ct);
+        var displayName = employee is null
+            ? null
+            : string.Join(' ', new[] { employee.FirstName, employee.LastName }
+                .Where(part => !string.IsNullOrWhiteSpace(part)))
+                .Trim();
 
         var response = new AuthSessionResponseDto(
             Authenticated: true,
@@ -60,7 +65,8 @@ public sealed class GetCurrentSessionQueryHandler
                 _currentUser.UserId,
                 _currentUser.TenantId,
                 _currentUser.Email,
-                employee?.Id),
+                employee?.Id,
+                string.IsNullOrWhiteSpace(displayName) ? null : displayName),
             Permissions: _currentUser.Permissions,
             ActiveModules: activeModules,
             MustChangePassword: false,

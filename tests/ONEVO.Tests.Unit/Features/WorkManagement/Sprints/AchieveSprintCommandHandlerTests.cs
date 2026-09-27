@@ -3,15 +3,14 @@ using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
-using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Objectives.Services;
-using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Sprints.Commands.AchieveSprint;
 using ONEVO.Application.Features.WorkManagement.Sprints.DTOs.Responses;
 using ONEVO.Application.Features.WorkManagement.Sprints.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Sprints.Services;
 using ONEVO.Domain.Features.CoreHr.Entities;
-using ONEVO.Domain.Features.WorkManagement.Objectives.Entities;
-using ONEVO.Domain.Features.WorkManagement.ProjectMembers.Entities;
+using ONEVO.Domain.Features.WorkManagement.Projects.Entities;
 using ONEVO.Domain.Features.WorkManagement.Sprints.Entities;
 using Xunit;
 
@@ -23,13 +22,13 @@ public class AchieveSprintCommandHandlerTests
     private static readonly Guid UserId = Guid.NewGuid();
     private static readonly Guid OwnerEmployeeId = Guid.NewGuid();
     private static readonly Guid OtherEmployeeId = Guid.NewGuid();
-    private static readonly Guid ObjectiveId = Guid.NewGuid();
+    private static readonly Guid ProjectId = Guid.NewGuid();
     private static readonly Guid SprintId = Guid.NewGuid();
     private static readonly Guid MemberEmployeeId = Guid.NewGuid();
     private static readonly Guid MemberUserId = Guid.NewGuid();
 
-    private (AchieveSprintCommandHandler Handler, Sprint Sprint, Mock<INotificationDispatcher> Notifications) Build(
-        string startingStatus, Guid? callerEmployeeId = null, bool? callerIsEffectiveManager = null)
+    private (AchieveSprintCommandHandler Handler, Sprint Sprint, Mock<INotificationDispatcher> Notifications, Mock<ISprintActivityLogRepository> Logs) Build(
+        string startingStatus, Guid? callerEmployeeId = null, bool? callerCanManage = null)
     {
         var resolvedCallerEmployeeId = callerEmployeeId ?? OwnerEmployeeId;
 
@@ -41,30 +40,25 @@ public class AchieveSprintCommandHandlerTests
         var identity = new Mock<ICallerIdentityResolver>();
         identity.Setup(x => x.ResolveCallerEmployeeIdAsync(TenantId, UserId, It.IsAny<CancellationToken>())).ReturnsAsync(resolvedCallerEmployeeId);
 
-        var sprint = new Sprint { Id = SprintId, TenantId = TenantId, ObjectiveId = ObjectiveId, Name = "S1", StartDate = new DateOnly(2026, 9, 1), EndDate = new DateOnly(2026, 9, 14), Status = startingStatus, CreatedAt = DateTimeOffset.UtcNow };
+        var sprint = new Sprint { Id = SprintId, TenantId = TenantId, ProjectId = ProjectId, Name = "S1", StartDate = new DateOnly(2026, 9, 1), EndDate = new DateOnly(2026, 9, 14), Status = startingStatus, CreatedAt = DateTimeOffset.UtcNow };
         var sprints = new Mock<ISprintRepository>();
         sprints.Setup(x => x.GetTrackedByIdForTenantAsync(TenantId, SprintId, It.IsAny<CancellationToken>())).ReturnsAsync(sprint);
 
-        var objective = new Objective { Id = ObjectiveId, TenantId = TenantId, OwnerId = OwnerEmployeeId, IsActive = true, Title = "Obj", CreatedAt = DateTimeOffset.UtcNow };
-        var objectives = new Mock<IObjectiveRepository>();
-        objectives.Setup(x => x.GetByIdForTenantAsync(TenantId, ObjectiveId, It.IsAny<CancellationToken>())).ReturnsAsync(objective);
+        var project = new Project { Id = ProjectId, TenantId = TenantId, Name = "Proj", IsActive = true, CreatedAt = DateTimeOffset.UtcNow };
+        var projects = new Mock<IProjectRepository>();
+        projects.Setup(x => x.GetByIdForTenantAsync(TenantId, ProjectId, It.IsAny<CancellationToken>())).ReturnsAsync(project);
 
-        var members = new Mock<IProjectMemberRepository>();
-        members.Setup(x => x.ListActiveForObjectiveAsync(TenantId, ObjectiveId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<ProjectMember>
-            {
-                new() { EmployeeId = MemberEmployeeId, ObjectiveId = ObjectiveId, IsActive = true }
-            });
+        var access = new Mock<ISprintAccessService>();
+        access.Setup(x => x.CanManageAsync(TenantId, sprint, UserId, resolvedCallerEmployeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(callerCanManage ?? (resolvedCallerEmployeeId == OwnerEmployeeId));
+        access.Setup(x => x.GetAudienceEmployeeIdsAsync(TenantId, SprintId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<Guid> { MemberEmployeeId });
+
+        var logs = new Mock<ISprintActivityLogRepository>();
 
         var membership = new Mock<IMilestoneMembershipCoordinator>();
         membership.Setup(x => x.GetActiveAssigneeAsync(TenantId, MemberEmployeeId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Employee { Id = MemberEmployeeId, TenantId = TenantId, UserId = MemberUserId });
-        // Mirrors direct-owner-only behavior by default so pre-existing tests keep passing
-        // unmodified; callerIsEffectiveManager lets a test override this to simulate an
-        // ancestor-cascade grant (the coordinator's own ancestor-walk logic is unit-tested
-        // separately in MilestoneMembershipCoordinatorTests).
-        membership.Setup(x => x.IsEffectiveManagerAsync(TenantId, ObjectiveId, resolvedCallerEmployeeId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(callerIsEffectiveManager ?? (objective.OwnerId == resolvedCallerEmployeeId));
 
         var notifications = new Mock<INotificationDispatcher>();
 
@@ -74,9 +68,9 @@ public class AchieveSprintCommandHandlerTests
         unitOfWork.Setup(x => x.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
 
         var handler = new AchieveSprintCommandHandler(
-            currentUser.Object, identity.Object, objectives.Object, sprints.Object,
-            members.Object, membership.Object, notifications.Object, unitOfWork.Object);
-        return (handler, sprint, notifications);
+            currentUser.Object, identity.Object, sprints.Object, projects.Object,
+            access.Object, logs.Object, membership.Object, notifications.Object, unitOfWork.Object);
+        return (handler, sprint, notifications, logs);
     }
 
     [Theory]
@@ -85,7 +79,7 @@ public class AchieveSprintCommandHandlerTests
     [InlineData(SprintStatuses.Complete)]
     public async Task Handle_AnyNonTerminalStatus_MovesToAchieved(string startingStatus)
     {
-        var (handler, sprint, _) = Build(startingStatus);
+        var (handler, sprint, _, _) = Build(startingStatus);
 
         var result = await handler.Handle(new AchieveSprintCommand(SprintId), CancellationToken.None);
 
@@ -95,9 +89,9 @@ public class AchieveSprintCommandHandlerTests
     }
 
     [Fact]
-    public async Task Handle_Achieve_NotifiesObjectiveMembers()
+    public async Task Handle_Achieve_NotifiesAudience()
     {
-        var (handler, _, notifications) = Build(SprintStatuses.Complete);
+        var (handler, _, notifications, _) = Build(SprintStatuses.Complete);
 
         var result = await handler.Handle(new AchieveSprintCommand(SprintId), CancellationToken.None);
 
@@ -105,15 +99,15 @@ public class AchieveSprintCommandHandlerTests
         notifications.Verify(
             x => x.SendTemplatedAsync(
                 TenantId, MemberUserId, "work_sprint_achieved",
-                It.Is<IReadOnlyDictionary<string, string>>(p => p["sprintName"] == "S1" && p["objectiveName"] == "Obj"),
+                It.Is<IReadOnlyDictionary<string, string>>(p => p["sprintName"] == "S1" && p["objectiveName"] == "Proj"),
                 "sprint", SprintId, It.IsAny<CancellationToken>()),
             Times.Once);
     }
 
     [Fact]
-    public async Task Handle_NotOwner_ReturnsForbidden()
+    public async Task Handle_CannotManage_ReturnsForbidden()
     {
-        var (handler, sprint, _) = Build(SprintStatuses.Active, callerEmployeeId: OtherEmployeeId);
+        var (handler, sprint, _, _) = Build(SprintStatuses.Active, callerEmployeeId: OtherEmployeeId, callerCanManage: false);
 
         var result = await handler.Handle(new AchieveSprintCommand(SprintId), CancellationToken.None);
 
@@ -123,17 +117,28 @@ public class AchieveSprintCommandHandlerTests
     }
 
     [Fact]
-    public async Task Handle_CallerIsEffectiveManagerViaCascade_AchievesSprint()
+    public async Task Handle_CallerCanManageViaTaskModuleOwnership_AchievesSprint()
     {
-        // Caller is not this objective's own OwnerId, but IsEffectiveManagerAsync reports them as
-        // an effective manager via an ancestor membership - the coordinator's own ancestor-walk
-        // logic is unit-tested separately in MilestoneMembershipCoordinatorTests, so this only
-        // proves the handler defers to its answer instead of the direct OwnerId check.
-        var (handler, sprint, _) = Build(SprintStatuses.Active, callerEmployeeId: OtherEmployeeId, callerIsEffectiveManager: true);
+        // Caller is not the sprint's creator, but CanManageAsync reports them able to manage via
+        // task-module ownership - the service's own logic is unit-tested separately, so this only
+        // proves the handler defers to its answer.
+        var (handler, sprint, _, _) = Build(SprintStatuses.Active, callerEmployeeId: OtherEmployeeId, callerCanManage: true);
 
         var result = await handler.Handle(new AchieveSprintCommand(SprintId), CancellationToken.None);
 
         Assert.True(result.IsSuccess);
         Assert.Equal(SprintStatuses.Achieved, sprint.Status);
+    }
+
+    [Fact]
+    public async Task Handle_Achieve_WritesAchievedLog()
+    {
+        var (handler, _, _, logs) = Build(SprintStatuses.Complete);
+
+        await handler.Handle(new AchieveSprintCommand(SprintId), CancellationToken.None);
+
+        logs.Verify(x => x.AddAsync(It.Is<SprintActivityLog>(l =>
+            l.Action == SprintActivityActions.Achieved && l.FromStatus == SprintStatuses.Complete && l.ToStatus == SprintStatuses.Achieved),
+            It.IsAny<CancellationToken>()), Times.Once);
     }
 }

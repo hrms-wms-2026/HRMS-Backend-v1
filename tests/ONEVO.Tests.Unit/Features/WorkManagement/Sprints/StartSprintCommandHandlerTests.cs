@@ -3,12 +3,10 @@ using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
-using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
-using ONEVO.Application.Features.WorkManagement.Objectives.Services;
 using ONEVO.Application.Features.WorkManagement.Sprints.Commands.StartSprint;
 using ONEVO.Application.Features.WorkManagement.Sprints.DTOs.Responses;
 using ONEVO.Application.Features.WorkManagement.Sprints.RepositoryInterfaces;
-using ONEVO.Domain.Features.WorkManagement.Objectives.Entities;
+using ONEVO.Application.Features.WorkManagement.Sprints.Services;
 using ONEVO.Domain.Features.WorkManagement.Sprints.Entities;
 using Xunit;
 
@@ -20,10 +18,11 @@ public class StartSprintCommandHandlerTests
     private static readonly Guid UserId = Guid.NewGuid();
     private static readonly Guid OwnerEmployeeId = Guid.NewGuid();
     private static readonly Guid OtherEmployeeId = Guid.NewGuid();
-    private static readonly Guid ObjectiveId = Guid.NewGuid();
+    private static readonly Guid ProjectId = Guid.NewGuid();
     private static readonly Guid SprintId = Guid.NewGuid();
 
-    private (StartSprintCommandHandler Handler, Sprint Sprint) Build(string startingStatus, Guid? callerEmployeeId = null)
+    private (StartSprintCommandHandler Handler, Sprint Sprint, Mock<ISprintActivityLogRepository> Logs) Build(
+        string startingStatus, Guid? callerEmployeeId = null, bool? callerCanManage = null)
     {
         var resolvedCallerEmployeeId = callerEmployeeId ?? OwnerEmployeeId;
 
@@ -38,33 +37,31 @@ public class StartSprintCommandHandlerTests
 
         var sprint = new Sprint
         {
-            Id = SprintId, TenantId = TenantId, ObjectiveId = ObjectiveId, Name = "S1", Goal = "Old goal",
+            Id = SprintId, TenantId = TenantId, ProjectId = ProjectId, Name = "S1", Goal = "Old goal",
             Status = startingStatus, CreatedAt = DateTimeOffset.UtcNow
         };
         var sprints = new Mock<ISprintRepository>();
         sprints.Setup(x => x.GetTrackedByIdForTenantAsync(TenantId, SprintId, It.IsAny<CancellationToken>())).ReturnsAsync(sprint);
 
-        var objective = new Objective { Id = ObjectiveId, TenantId = TenantId, OwnerId = OwnerEmployeeId, IsActive = true, Title = "Obj", CreatedAt = DateTimeOffset.UtcNow };
-        var objectives = new Mock<IObjectiveRepository>();
-        objectives.Setup(x => x.GetByIdForTenantAsync(TenantId, ObjectiveId, It.IsAny<CancellationToken>())).ReturnsAsync(objective);
+        var access = new Mock<ISprintAccessService>();
+        access.Setup(x => x.CanManageAsync(TenantId, sprint, UserId, resolvedCallerEmployeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(callerCanManage ?? (resolvedCallerEmployeeId == OwnerEmployeeId));
 
-        var membership = new Mock<IMilestoneMembershipCoordinator>();
-        membership.Setup(x => x.IsEffectiveManagerAsync(TenantId, ObjectiveId, resolvedCallerEmployeeId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(objective.OwnerId == resolvedCallerEmployeeId);
+        var logs = new Mock<ISprintActivityLogRepository>();
 
         var unitOfWork = new Mock<IUnitOfWork>();
         unitOfWork.Setup(x => x.ExecuteInTransactionAsync(It.IsAny<Func<CancellationToken, Task<Result<SprintResponse>>>>(), It.IsAny<CancellationToken>()))
             .Returns((Func<CancellationToken, Task<Result<SprintResponse>>> op, CancellationToken ct) => op(ct));
         unitOfWork.Setup(x => x.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
 
-        var handler = new StartSprintCommandHandler(currentUser.Object, identity.Object, objectives.Object, sprints.Object, unitOfWork.Object, membership.Object);
-        return (handler, sprint);
+        var handler = new StartSprintCommandHandler(currentUser.Object, identity.Object, sprints.Object, access.Object, logs.Object, unitOfWork.Object);
+        return (handler, sprint, logs);
     }
 
     [Fact]
     public async Task Handle_DraftSprint_BecomesActiveWithDates()
     {
-        var (handler, sprint) = Build(SprintStatuses.Draft);
+        var (handler, sprint, _) = Build(SprintStatuses.Draft);
         var command = new StartSprintCommand(SprintId, new DateOnly(2026, 9, 21), new DateOnly(2026, 10, 2), "New goal");
 
         var result = await handler.Handle(command, CancellationToken.None);
@@ -79,7 +76,7 @@ public class StartSprintCommandHandlerTests
     [Fact]
     public async Task Handle_NoGoalProvided_KeepsExistingGoal()
     {
-        var (handler, sprint) = Build(SprintStatuses.Draft);
+        var (handler, sprint, _) = Build(SprintStatuses.Draft);
         var command = new StartSprintCommand(SprintId, new DateOnly(2026, 9, 21), new DateOnly(2026, 10, 2), null);
 
         await handler.Handle(command, CancellationToken.None);
@@ -90,7 +87,7 @@ public class StartSprintCommandHandlerTests
     [Fact]
     public async Task Handle_EndDateBeforeStartDate_ReturnsFailure()
     {
-        var (handler, sprint) = Build(SprintStatuses.Draft);
+        var (handler, sprint, _) = Build(SprintStatuses.Draft);
         var command = new StartSprintCommand(SprintId, new DateOnly(2026, 10, 2), new DateOnly(2026, 9, 21), null);
 
         var result = await handler.Handle(command, CancellationToken.None);
@@ -102,7 +99,7 @@ public class StartSprintCommandHandlerTests
     [Fact]
     public async Task Handle_SprintNotDraft_ReturnsConflict()
     {
-        var (handler, sprint) = Build(SprintStatuses.Active);
+        var (handler, sprint, _) = Build(SprintStatuses.Active);
         var command = new StartSprintCommand(SprintId, new DateOnly(2026, 9, 21), new DateOnly(2026, 10, 2), null);
 
         var result = await handler.Handle(command, CancellationToken.None);
@@ -112,14 +109,24 @@ public class StartSprintCommandHandlerTests
     }
 
     [Fact]
-    public async Task Handle_NotOwner_ReturnsForbidden()
+    public async Task Handle_CannotManage_ReturnsForbidden()
     {
-        var (handler, sprint) = Build(SprintStatuses.Draft, callerEmployeeId: OtherEmployeeId);
+        var (handler, sprint, _) = Build(SprintStatuses.Draft, callerEmployeeId: OtherEmployeeId, callerCanManage: false);
         var command = new StartSprintCommand(SprintId, new DateOnly(2026, 9, 21), new DateOnly(2026, 10, 2), null);
 
         var result = await handler.Handle(command, CancellationToken.None);
 
         Assert.False(result.IsSuccess);
         Assert.Equal(403, result.StatusCode);
+    }
+
+    [Fact]
+    public async Task Handle_Start_WritesStartedLog()
+    {
+        var (handler, sprint, logs) = Build(SprintStatuses.Draft);
+        await handler.Handle(new StartSprintCommand(SprintId, new DateOnly(2026, 9, 21), new DateOnly(2026, 10, 2), null), CancellationToken.None);
+        logs.Verify(x => x.AddAsync(It.Is<SprintActivityLog>(l =>
+            l.Action == SprintActivityActions.Started && l.FromStatus == SprintStatuses.Draft && l.ToStatus == SprintStatuses.Active),
+            It.IsAny<CancellationToken>()), Times.Once);
     }
 }

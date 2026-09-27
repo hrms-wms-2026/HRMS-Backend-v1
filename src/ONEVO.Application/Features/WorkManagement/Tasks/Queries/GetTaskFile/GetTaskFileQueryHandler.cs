@@ -11,8 +11,8 @@ using ONEVO.Application.Features.WorkManagement.Tasks.Services;
 namespace ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetTaskFile;
 
 /// <summary>
-/// Mirrors GetTaskByIdQueryHandler's access rule exactly (projects:read/* OR
-/// active objective membership, via ITaskAccessResolver) for a file already
+/// Mirrors GetTaskByIdQueryHandler's relationship-based access rule exactly
+/// (active objective membership via ITaskAccessResolver) for a file already
 /// linked to a task or a comment, so a task's attachment/inline image, or a
 /// comment's, is never more visible than the task itself. A file that isn't
 /// linked to anything yet (a "pending upload") is visible only to whoever

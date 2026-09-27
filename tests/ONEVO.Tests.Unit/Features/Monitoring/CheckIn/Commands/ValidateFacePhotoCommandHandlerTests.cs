@@ -49,8 +49,8 @@ public class ValidateFacePhotoCommandHandlerTests
         _device.Object, _tenants.Object, _tenantSwitcher.Object,
         _fileStorage.Object, _profiles.Object, _quality.Object, _faceMatch.Object, _employeeIdentity.Object);
 
-    private static ValidateFacePhotoCommand Cmd() =>
-        new(new MemoryStream(new byte[] { 3 }), "image/jpeg", 3);
+    private static ValidateFacePhotoCommand Cmd(string? purpose = null) =>
+        new(new MemoryStream(new byte[] { 3 }), "image/jpeg", 3, purpose);
 
     private static FaceQualityOutcome PassQuality() => new(true, true, true, 70f, 99f);
 
@@ -84,6 +84,52 @@ public class ValidateFacePhotoCommandHandlerTests
     }
 
     [Fact]
+    public async Task NoFaceDetected_ReturnsNoFaceCode()
+    {
+        _quality.Setup(q => q.AnalyzeAsync(It.IsAny<Stream>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new FaceQualityOutcome(false, false, false, null, null, FaceCount: 0));
+
+        var result = await CreateSut().Handle(Cmd(), CancellationToken.None);
+
+        result.Value!.CanProceed.Should().BeFalse();
+        result.Value.FailureReason.Should().Be(ValidateFacePhotoCommandHandler.FailureNoFaceDetected);
+    }
+
+    [Fact]
+    public async Task MultipleFaces_ReturnsMultipleFacesCode()
+    {
+        _quality.Setup(q => q.AnalyzeAsync(It.IsAny<Stream>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new FaceQualityOutcome(false, false, false, null, null, FaceCount: 2));
+
+        var result = await CreateSut().Handle(Cmd(), CancellationToken.None);
+
+        result.Value!.CanProceed.Should().BeFalse();
+        result.Value.FailureReason.Should().Be(ValidateFacePhotoCommandHandler.FailureMultipleFaces);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData(FacePhotoValidationPurpose.ClockIn)]
+    [InlineData(FacePhotoValidationPurpose.ClockOut)]
+    public async Task NoReferencePhoto_OutsideEnrollment_BlocksAndNeverUploads(string? purpose)
+    {
+        _quality.Setup(q => q.AnalyzeAsync(It.IsAny<Stream>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(PassQuality());
+        _profiles.Setup(p => p.GetByEmployeeIdAsync(_tenantId, _employeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((BiometricProfile?)null);
+
+        var result = await CreateSut().Handle(Cmd(purpose), CancellationToken.None);
+
+        result.Value!.CanProceed.Should().BeFalse();
+        result.Value.IsMatch.Should().BeFalse();
+        result.Value.FailureReason.Should().Be(ValidateFacePhotoCommandHandler.FailureNoReferencePhoto);
+        _fileStorage.Verify(f => f.UploadAsync(
+            It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<string>(),
+            It.IsAny<string>(), It.IsAny<Stream>(), It.IsAny<CancellationToken>()), Times.Never);
+        _profiles.Verify(p => p.AddAsync(It.IsAny<BiometricProfile>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
     public async Task NoReferencePhoto_QualityPass_EnrollsCaptureAndCanProceed()
     {
         var uploadedId = Guid.NewGuid();
@@ -101,7 +147,7 @@ public class ValidateFacePhotoCommandHandlerTests
             .Returns(Task.CompletedTask);
         _profiles.Setup(p => p.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
 
-        var result = await CreateSut().Handle(Cmd(), CancellationToken.None);
+        var result = await CreateSut().Handle(Cmd(FacePhotoValidationPurpose.Enrollment), CancellationToken.None);
 
         result.Value!.CanProceed.Should().BeTrue();
         result.Value.IsMatch.Should().BeTrue();
@@ -122,7 +168,7 @@ public class ValidateFacePhotoCommandHandlerTests
                 UploadPurposeCatalog.BiometricReferencePhoto, It.IsAny<Stream>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result<FileRecordDto>.Failure("Cloudflare R2 is not configured.", 502));
 
-        var result = await CreateSut().Handle(Cmd(), CancellationToken.None);
+        var result = await CreateSut().Handle(Cmd(FacePhotoValidationPurpose.Enrollment), CancellationToken.None);
 
         result.Value!.CanProceed.Should().BeTrue();
         result.Value.LightingOk.Should().BeTrue();

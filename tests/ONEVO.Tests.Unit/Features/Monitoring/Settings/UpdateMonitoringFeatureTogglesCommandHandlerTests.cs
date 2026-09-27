@@ -3,6 +3,7 @@ using Moq;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Monitoring.Settings.Commands.UpdateMonitoringFeatureToggles;
 using ONEVO.Application.Features.Monitoring.Settings.RepositoryInterfaces;
+using ONEVO.Application.Features.Monitoring.Settings.ServiceInterfaces;
 using ONEVO.Domain.Features.Monitoring.Settings.Entities;
 using Xunit;
 
@@ -14,6 +15,7 @@ public class UpdateMonitoringFeatureTogglesCommandHandlerTests
     private readonly Mock<ICurrentUser> _currentUser = new();
     private readonly Mock<IDateTimeProvider> _dateTimeProvider = new();
     private readonly Mock<ICacheService> _cache = new();
+    private readonly Mock<ITrayPolicyRefreshNotifier> _policyRefresh = new();
 
     private static readonly Guid TenantId = Guid.Parse("11111111-1111-1111-1111-111111111111");
     private static readonly Guid LegalEntityId = Guid.Parse("22222222-2222-2222-2222-222222222222");
@@ -29,7 +31,7 @@ public class UpdateMonitoringFeatureTogglesCommandHandlerTests
         _currentUser.Setup(c => c.HasPermission("monitoring:configure")).Returns(hasPermission);
         _dateTimeProvider.SetupGet(d => d.UtcNow).Returns(FixedNow);
         return new UpdateMonitoringFeatureTogglesCommandHandler(
-            _toggles.Object, _currentUser.Object, _dateTimeProvider.Object, _cache.Object);
+            _toggles.Object, _currentUser.Object, _dateTimeProvider.Object, _cache.Object, _policyRefresh.Object);
     }
 
     private static UpdateMonitoringFeatureTogglesCommand ValidCommand(bool activityMonitoring = true) => new(
@@ -150,6 +152,7 @@ public class UpdateMonitoringFeatureTogglesCommandHandlerTests
 
         _cache.Verify(c => c.RemoveByPrefixAsync(
             $"tenant:{TenantId}:monitoring-toggle:", It.IsAny<CancellationToken>()), Times.Once);
+        _policyRefresh.Verify(n => n.NotifyTenantAsync(TenantId, It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -176,5 +179,6 @@ public class UpdateMonitoringFeatureTogglesCommandHandlerTests
         result.IsSuccess.Should().BeFalse();
         result.StatusCode.Should().Be(403);
         _toggles.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
+        _policyRefresh.Verify(n => n.NotifyTenantAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 }

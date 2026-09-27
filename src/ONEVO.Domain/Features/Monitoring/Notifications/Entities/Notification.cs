@@ -2,7 +2,7 @@ using ONEVO.Domain.Common;
 
 namespace ONEVO.Domain.Features.Monitoring.Notifications.Entities;
 
-public enum NotificationType { BreakReminder, LongIdleAlert, LowActivityAlert, FocusNudge, OutsideWorkLocationAlert }
+public enum NotificationType { BreakReminder, LongIdleAlert, LowActivityAlert, FocusNudge, OutsideWorkLocationAlert, BreakAllowanceExceeded }
 
 public class Notification : ITenantOwnedEntity
 {

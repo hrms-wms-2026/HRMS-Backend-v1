@@ -162,7 +162,14 @@ public sealed class GetProjectCalendarQueryHandlerTests
             _identity.Setup(x => x.ResolveCallerEmployeeIdAsync(TenantId, UserId, It.IsAny<CancellationToken>()))
                 .ReturnsAsync(CallerEmployeeId);
             _members.Setup(x => x.ListForEmployeeInProjectAsync(TenantId, ProjectId, CallerEmployeeId, It.IsAny<CancellationToken>()))
-                .ReturnsAsync(new List<ProjectMember>());
+                .ReturnsAsync(new List<ProjectMember>
+                {
+                    new()
+                    {
+                        Id = Guid.NewGuid(), TenantId = TenantId, ProjectId = ProjectId, ObjectiveId = RootId,
+                        EmployeeId = CallerEmployeeId, IsActive = true
+                    }
+                });
             _objectives.Setup(x => x.GetAllByProjectIdAsync(TenantId, ProjectId, It.IsAny<CancellationToken>()))
                 .ReturnsAsync(new List<Objective>());
             _tasks.Setup(x => x.GetByProjectAsync(TenantId, ProjectId, It.IsAny<CancellationToken>()))

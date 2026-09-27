@@ -13,7 +13,7 @@ using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfa
 
 namespace ONEVO.Application.Features.WorkManagement.Projects.Queries.GetProjectLogo;
 
-/// <summary>Mirrors GetProjectByIdQueryHandler's access rule exactly (projects:read/* permission OR active project membership) so a project's logo is never more visible than the project itself.</summary>
+/// <summary>Mirrors GetProjectByIdQueryHandler's access rule exactly (active project membership) so a project's logo is never more visible than the project itself.</summary>
 public class GetProjectLogoQueryHandler : IRequestHandler<GetProjectLogoQuery, Result<FileStreamDto>>
 {
     private readonly IProjectRepository _projects;
@@ -61,7 +61,7 @@ public class GetProjectLogoQueryHandler : IRequestHandler<GetProjectLogoQuery, R
             return Result<FileStreamDto>.NotFound("Project not found.");
 
         var permissions = await _permissionResolver.ResolveAsync(userId, tenantId, null, ct);
-        var hasReadPermission = permissions.Contains("projects:read") || permissions.Contains("*");
+        var hasReadPermission = permissions.Contains("*");
 
         if (!hasReadPermission)
         {

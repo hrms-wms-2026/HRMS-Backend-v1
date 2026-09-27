@@ -3,7 +3,9 @@ using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.Queries.ListMyObjectiveChangeRequests;
 using ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Domain.Features.WorkManagement.ObjectiveChangeRequests.Entities;
+using ONEVO.Domain.Features.WorkManagement.Objectives.Entities;
 using Xunit;
 
 namespace ONEVO.Tests.Unit.Features.WorkManagement;
@@ -25,20 +27,39 @@ public class ListMyObjectiveChangeRequestsQueryHandlerTests
         var identity = new Mock<ICallerIdentityResolver>();
         identity.Setup(x => x.ResolveCallerEmployeeIdAsync(TenantId, ManagerUserId, It.IsAny<CancellationToken>())).ReturnsAsync(ManagerId);
 
+        var requesterId = Guid.NewGuid();
+        var objectiveId = Guid.NewGuid();
+        var projectId = Guid.NewGuid();
         var pending = new List<ObjectiveChangeRequest>
         {
-            new() { Id = Guid.NewGuid(), TenantId = TenantId, ObjectiveId = Guid.NewGuid(), RequestType = "delete", ReportingManagerId = ManagerId, Status = "pending", CreatedAt = DateTimeOffset.UtcNow }
+            new() { Id = Guid.NewGuid(), TenantId = TenantId, ObjectiveId = objectiveId, RequestedById = requesterId, RequestType = "delete", ReportingManagerId = ManagerId, Status = "pending", CreatedAt = DateTimeOffset.UtcNow }
         };
 
         var requests = new Mock<IObjectiveChangeRequestRepository>();
         requests.Setup(x => x.ListPendingForApproverAsync(TenantId, ManagerId, It.IsAny<CancellationToken>())).ReturnsAsync(pending);
+        identity.Setup(x => x.ResolveDisplayNamesByEmployeeIdAsync(
+                TenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, string> { [requesterId] = "Alex Silva" });
+        var objectives = new Mock<IObjectiveRepository>();
+        objectives.Setup(x => x.GetByIdsForTenantAsync(
+                TenantId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([new Objective
+            {
+                Id = objectiveId, TenantId = TenantId, ProjectId = projectId,
+                Title = "Hardware integration", AllocatedHours = 40m
+            }]);
 
-        var handler = new ListMyObjectiveChangeRequestsQueryHandler(currentUser.Object, identity.Object, requests.Object);
+        var handler = new ListMyObjectiveChangeRequestsQueryHandler(
+            currentUser.Object, identity.Object, requests.Object, objectives.Object);
 
         var result = await handler.Handle(new ListMyObjectiveChangeRequestsQuery(), CancellationToken.None);
 
         Assert.True(result.IsSuccess);
         Assert.Single(result.Value!);
+        Assert.Equal("Alex Silva", result.Value![0].RequestedByName);
+        Assert.Equal("Hardware integration", result.Value[0].ObjectiveTitle);
+        Assert.Equal(projectId, result.Value[0].ProjectId);
+        Assert.Equal(40m, result.Value[0].CurrentAllocatedHours);
     }
 
     [Fact]
@@ -49,7 +70,9 @@ public class ListMyObjectiveChangeRequestsQueryHandlerTests
 
         var identity = new Mock<ICallerIdentityResolver>();
         var requests = new Mock<IObjectiveChangeRequestRepository>();
-        var handler = new ListMyObjectiveChangeRequestsQueryHandler(currentUser.Object, identity.Object, requests.Object);
+        var objectives = new Mock<IObjectiveRepository>();
+        var handler = new ListMyObjectiveChangeRequestsQueryHandler(
+            currentUser.Object, identity.Object, requests.Object, objectives.Object);
 
         var result = await handler.Handle(new ListMyObjectiveChangeRequestsQuery(), CancellationToken.None);
 

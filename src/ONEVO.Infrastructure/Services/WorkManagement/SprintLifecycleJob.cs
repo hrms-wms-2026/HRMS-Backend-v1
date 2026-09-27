@@ -3,10 +3,10 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
-using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Objectives.Services;
-using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Sprints.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Sprints.Services;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
 using ONEVO.Domain.Features.WorkManagement.Sprints.Entities;
 using ONEVO.Infrastructure.Persistence;
@@ -63,8 +63,8 @@ public sealed class SprintLifecycleJob : BackgroundService
         var tenantContext = scope.ServiceProvider.GetRequiredService<IWritableTenantContext>();
         var tenants = scope.ServiceProvider.GetRequiredService<ITenantRepository>();
         var tenantSwitcher = scope.ServiceProvider.GetRequiredService<ITenantContextSwitcher>();
-        var objectives = scope.ServiceProvider.GetRequiredService<IObjectiveRepository>();
-        var members = scope.ServiceProvider.GetRequiredService<IProjectMemberRepository>();
+        var access = scope.ServiceProvider.GetRequiredService<ISprintAccessService>();
+        var projects = scope.ServiceProvider.GetRequiredService<IProjectRepository>();
         var membership = scope.ServiceProvider.GetRequiredService<IMilestoneMembershipCoordinator>();
         var notifications = scope.ServiceProvider.GetRequiredService<INotificationDispatcher>();
 
@@ -111,18 +111,16 @@ public sealed class SprintLifecycleJob : BackgroundService
                 sprints.Update(sprint);
                 tenantNotified++;
 
-                var objective = await objectives.GetByIdForTenantAsync(sprint.TenantId, sprint.ObjectiveId, ct);
-                if (objective is null) continue;
-
-                var objectiveMembers = await members.ListActiveForObjectiveAsync(tenantId, objective.Id, ct);
-                foreach (var member in objectiveMembers)
+                var project = await projects.GetByIdForTenantAsync(sprint.TenantId, sprint.ProjectId, ct);
+                var audience = await access.GetAudienceEmployeeIdsAsync(tenantId, sprint.Id, ct);
+                foreach (var employeeId in audience)
                 {
-                    var assignee = await membership.GetActiveAssigneeAsync(tenantId, member.EmployeeId, ct);
+                    var assignee = await membership.GetActiveAssigneeAsync(tenantId, employeeId, ct);
                     if (assignee is null) continue;
 
                     await notifications.SendTemplatedAsync(
                         tenantId, assignee.UserId, "work_sprint_overdue",
-                        new Dictionary<string, string> { ["sprintName"] = sprint.Name, ["objectiveName"] = objective.Title },
+                        new Dictionary<string, string> { ["sprintName"] = sprint.Name, ["objectiveName"] = project?.Name ?? "the project" },
                         "sprint", sprint.Id, ct);
                 }
             }

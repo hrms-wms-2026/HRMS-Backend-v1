@@ -44,13 +44,15 @@ public class MonitoringCheckInController : ControllerBase
     /// <summary>
     /// Preview a clock-in/out selfie against AWS DetectFaces + CompareFaces without
     /// creating a check-in. The tray uses this to gate Clock In: pass → proceed, fail → retake.
-    /// Accepts multipart/form-data with a single "face_scan" file field.
+    /// Accepts multipart/form-data with a "face_scan" file field and an optional "purpose"
+    /// (enrollment | clock_in | clock_out). Only enrollment may save a first reference face.
     /// Authorization: Bearer {tray_access_token}
     /// </summary>
     [HttpPost("face-preview")]
     [RequestSizeLimit(6 * 1024 * 1024)]
     public async Task<IActionResult> ValidateFacePhoto(
         IFormFile face_scan,
+        [FromForm(Name = "purpose")] string? purpose,
         CancellationToken ct)
     {
         if (face_scan is null || face_scan.Length == 0)
@@ -60,7 +62,8 @@ public class MonitoringCheckInController : ControllerBase
         var result = await _mediator.Send(new ValidateFacePhotoCommand(
             stream,
             face_scan.ContentType,
-            face_scan.Length), ct);
+            face_scan.Length,
+            string.IsNullOrWhiteSpace(purpose) ? null : purpose.Trim()), ct);
 
         if (!result.IsSuccess)
             return Problem(result.Error, statusCode: result.StatusCode ?? 400);

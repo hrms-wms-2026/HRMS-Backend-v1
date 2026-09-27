@@ -6,6 +6,7 @@ using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.CheckIn.DTOs;
 using ONEVO.Application.Features.Monitoring.CheckIn.ServiceInterfaces;
+using ONEVO.Application.Features.Monitoring.Notifications.RepositoryInterfaces;
 using ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces;
 using ONEVO.Application.Features.TimeAttendance.Services;
 
@@ -14,7 +15,8 @@ public sealed class GetTrayAttendanceStatusQueryHandler(
     IAttendanceTodayStateService todayState,
     IAttendanceReadRepository attendance,
     ITenantRepository tenants,
-    ITenantContextSwitcher tenantSwitcher)
+    ITenantContextSwitcher tenantSwitcher,
+    INotificationRepository? notifications = null)
     : IRequestHandler<GetTrayAttendanceStatusQuery, Result<TrayAttendanceStatusDto>>
 {
     public async Task<Result<TrayAttendanceStatusDto>> Handle(
@@ -46,10 +48,15 @@ public sealed class GetTrayAttendanceStatusQueryHandler(
                 context.Employee.TenantId, context.Employee.Id, ct)
             : null;
 
+        var allowance = await new BreakAllowanceMonitor(attendance, notifications).ObserveAsync(context, ct);
+
         return Result<TrayAttendanceStatusDto>.Success(new TrayAttendanceStatusDto(
             IsClockedIn: isClockedIn,
             ClockedInAtUtc: isClockedIn ? record!.ActualStart : null,
             IsOnBreak: openBreak is not null,
-            BreakStartedAtUtc: openBreak?.BreakStart));
+            BreakStartedAtUtc: openBreak?.BreakStart,
+            CanStartBreak: allowance.CanStartBreak,
+            BreakAllowanceMinutes: allowance.AllowanceMinutes,
+            CompletedBreakMinutes: allowance.CompletedMinutes));
     }
 }

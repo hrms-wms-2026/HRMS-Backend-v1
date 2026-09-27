@@ -10,10 +10,11 @@ public sealed record CreateTaskCreationRequestRequest(
 public sealed record RejectTaskCreationRequestRequest(string Comment);
 
 public sealed record TaskCreationRequestViewModel(
-    Guid Id, Guid ObjectiveId, string Status, TaskCreationRequestPayload Payload, DateTimeOffset CreatedAt);
+    Guid Id, Guid ObjectiveId, string Status, TaskCreationRequestPayload Payload, DateTimeOffset CreatedAt,
+    string? RequestedByName);
 
 public static class TaskCreationRequestViewModelMapper
 {
     public static TaskCreationRequestViewModel ToViewModel(this TaskCreationRequestResponse dto) =>
-        new(dto.Id, dto.ObjectiveId, dto.Status, dto.Payload, dto.CreatedAt);
+        new(dto.Id, dto.ObjectiveId, dto.Status, dto.Payload, dto.CreatedAt, dto.RequestedByName);
 }

@@ -10,6 +10,8 @@ using PersonalCalendarEventParticipant = ONEVO.Domain.Features.Calendar.Entities
 using ExternalCalendarConnection = ONEVO.Domain.Features.Calendar.Entities.ExternalCalendarConnection;
 using ExternalCalendarEventLink = ONEVO.Domain.Features.Calendar.Entities.ExternalCalendarEventLink;
 using HolidayCalendarSettings = ONEVO.Domain.Features.Calendar.Entities.HolidayCalendarSettings;
+using CalendarEventMeeting = ONEVO.Domain.Features.Calendar.Entities.CalendarEventMeeting;
+using CalendarEventMeetingAttendance = ONEVO.Domain.Features.Calendar.Entities.CalendarEventMeetingAttendance;
 using TimeAttendanceWorkMode = ONEVO.Domain.Features.TimeAttendance.Entities.WorkMode;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.DevPlatform.Compliance.Entities;
@@ -306,11 +308,13 @@ public class ApplicationDbContext : DbContext
     public DbSet<TaskCategory> TaskCategories => Set<TaskCategory>();
     public DbSet<WorkTask> WorkTasks => Set<WorkTask>();
     public DbSet<Sprint> Sprints => Set<Sprint>();
+    public DbSet<SprintActivityLog> SprintActivityLogs => Set<SprintActivityLog>();
     public DbSet<TaskAssignment> TaskAssignments => Set<TaskAssignment>();
     public DbSet<TaskCreationRequest> TaskCreationRequests => Set<TaskCreationRequest>();
         public DbSet<TaskEditRequest> TaskEditRequests => Set<TaskEditRequest>();
     public DbSet<TaskEditLog> TaskEditLogs => Set<TaskEditLog>();
     public DbSet<TaskStatusChangeLog> TaskStatusChangeLogs => Set<TaskStatusChangeLog>();
+    public DbSet<TaskStatusChangeRequest> TaskStatusChangeRequests => Set<TaskStatusChangeRequest>();
     public DbSet<TaskClockingSession> TaskClockingSessions => Set<TaskClockingSession>();
     public DbSet<TaskPercentageLog> TaskPercentageLogs => Set<TaskPercentageLog>();
     public DbSet<TaskComment> TaskComments => Set<TaskComment>();
@@ -324,6 +328,8 @@ public class ApplicationDbContext : DbContext
     public DbSet<ExternalCalendarConnection> ExternalCalendarConnections => Set<ExternalCalendarConnection>();
     public DbSet<ExternalCalendarEventLink> ExternalCalendarEventLinks => Set<ExternalCalendarEventLink>();
     public DbSet<HolidayCalendarSettings> HolidayCalendarSettings => Set<HolidayCalendarSettings>();
+    public DbSet<CalendarEventMeeting> CalendarEventMeetings => Set<CalendarEventMeeting>();
+    public DbSet<CalendarEventMeetingAttendance> CalendarEventMeetingAttendances => Set<CalendarEventMeetingAttendance>();
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {

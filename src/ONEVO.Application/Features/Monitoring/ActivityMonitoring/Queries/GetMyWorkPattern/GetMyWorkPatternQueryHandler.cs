@@ -51,11 +51,11 @@ public sealed class GetMyWorkPatternQueryHandler(
             if (date == today && todayDto is not null)
                 days.Add(todayDto);
             else if (date > today)
-                days.Add(new WorkPatternDayDto(date, 0, 0, 0, 0));
+                days.Add(new WorkPatternDayDto(date, 0, 0, 0, 0, 0));
             else if (pastSummaries.TryGetValue(date, out var summary))
-                days.Add(ToDto(date, summary.FocusMinutes, summary.TotalMeetingMinutes, summary.TotalActiveMinutes, summary.TotalIdleMinutes));
+                days.Add(ToDto(date, summary.FocusMinutes, summary.TotalMeetingMinutes, summary.TotalActiveMinutes, summary.TotalIdleMinutes, summary.ProductiveAppMinutes));
             else
-                days.Add(new WorkPatternDayDto(date, 0, 0, 0, 0));
+                days.Add(new WorkPatternDayDto(date, 0, 0, 0, 0, 0));
         }
 
         return Result<WorkPatternResponse>.Success(new WorkPatternResponse(days));
@@ -65,24 +65,29 @@ public sealed class GetMyWorkPatternQueryHandler(
         Guid tenantId, Guid employeeId, DateOnly today, CancellationToken ct)
     {
         var snaps = await snapshots.GetAllByEmployeeDateAsync(tenantId, employeeId, today, ct);
-        var focusMinutes = ActivityTimelineBuilder.BuildSegments(snaps)
-            .Where(s => s.Type == ActivityTimelineBuilder.FocusType)
-            .Sum(s => (int)(s.EndedAt - s.StartedAt).TotalMinutes);
-        var activeMinutes = snaps.Sum(s => s.ActiveSeconds) / 60;
-        var idleMinutes = snaps.Sum(s => s.IdleSeconds) / 60;
-
         var meetingSignals = await meetings.GetAllByEmployeeDateAsync(tenantId, employeeId, today, ct);
-        var meetingMinutes = meetingSignals.Count(s => s.IsMeetingAppRunning) * MeetingMinutesPerSample;
 
-        return ToDto(today, focusMinutes, meetingMinutes, activeMinutes, idleMinutes);
+        var classified = WorkPatternWindowClassifier.Classify(snaps, meetingSignals);
+        var meetingHeadlineMinutes = meetingSignals.Count(s => s.IsMeetingAppRunning) * MeetingMinutesPerSample;
+        var productiveMinutes = classified.ProductiveFocusMinutes + classified.ProductiveOtherActiveMinutes
+            + classified.MeetingBarMinutes; // Productive credits the OBSERVED portion of meeting time (MeetingBar),
+                                             // not the headline off-device-inclusive number - see plan doc's
+                                             // "EngagedTime" derivation for why.
+
+        return new WorkPatternDayDto(
+            today, classified.FocusMinutes, meetingHeadlineMinutes, classified.OtherActiveMinutes,
+            classified.IdleMinutes, productiveMinutes);
     }
 
-    // Focus and meeting minutes are computed from independent signal streams and are not
-    // guaranteed disjoint (e.g. a focus streak spanning a meeting), so Admin can't go negative -
-    // clamp rather than model the true overlap, which would need redesigning the signal pipeline.
-    private static WorkPatternDayDto ToDto(DateOnly date, int focusMinutes, int meetingMinutes, int activeMinutes, int idleMinutes)
+    private static WorkPatternDayDto ToDto(
+        DateOnly date, int focusMinutes, int meetingMinutes, int activeMinutes, int idleMinutes, int productiveMinutes)
     {
-        var adminMinutes = Math.Max(0, activeMinutes - focusMinutes - meetingMinutes);
-        return new WorkPatternDayDto(date, focusMinutes, meetingMinutes, adminMinutes, idleMinutes);
+        // Past-day path: ActivityDailySummary.TotalActiveMinutes/FocusMinutes/TotalMeetingMinutes/
+        // ProductiveAppMinutes were already computed by the nightly job via the SAME
+        // WorkPatternWindowClassifier, so this is a straight passthrough/subtraction, not a second
+        // independent calculation - see WorkPatternLiveVsNightlyConsistencyTests for the proof that
+        // the live and nightly paths agree.
+        var otherActiveMinutes = Math.Max(0, activeMinutes - focusMinutes - meetingMinutes);
+        return new WorkPatternDayDto(date, focusMinutes, meetingMinutes, otherActiveMinutes, idleMinutes, productiveMinutes);
     }
 }
