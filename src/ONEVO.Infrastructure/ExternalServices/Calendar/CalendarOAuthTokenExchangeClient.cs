@@ -114,6 +114,13 @@ public sealed class CalendarOAuthTokenExchangeClient(HttpClient httpClient, ILog
         using var request = new HttpRequestMessage(HttpMethod.Get, "https://api.zoom.us/v2/users/me");
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
         using var response = await httpClient.SendAsync(request, ct);
+        if (!response.IsSuccessStatusCode)
+        {
+            var errorBody = await response.Content.ReadAsStringAsync(ct);
+            logger.LogWarning(
+                "Zoom GET /v2/users/me returned {StatusCode}: {ErrorBody}",
+                (int)response.StatusCode, errorBody);
+        }
         response.EnsureSuccessStatusCode();
         using var stream = await response.Content.ReadAsStreamAsync(ct);
         using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: ct);

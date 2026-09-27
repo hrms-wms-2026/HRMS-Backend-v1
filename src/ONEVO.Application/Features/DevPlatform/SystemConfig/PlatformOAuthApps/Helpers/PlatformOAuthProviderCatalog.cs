@@ -85,6 +85,13 @@ public static class PlatformOAuthProviderCatalog
                 TokenUrl: "https://zoom.us/oauth/token",
                 DefaultScopes: new[]
                 {
+                    // user:read:user is required separately from the meeting:* scopes below:
+                    // CalendarOAuthTokenExchangeClient.GetZoomAccountAsync calls GET
+                    // https://api.zoom.us/v2/users/me on the access token to resolve the
+                    // connected account's email (same reason Microsoft's entry above needs
+                    // User.Read alongside its calendar/meeting scopes) - omitting it makes that
+                    // call return 400 even though the token exchange itself succeeds.
+                    "user:read:user",
                     "meeting:write:meeting", "meeting:delete:meeting",
                     "meeting:read:meeting", "meeting:read:list_past_participants"
                 },
