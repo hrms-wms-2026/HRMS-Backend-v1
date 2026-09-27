@@ -5,9 +5,11 @@ using ONEVO.Api.Contracts.Calendar;
 using ONEVO.Api.Filters;
 using ONEVO.Application.Features.Calendar.Commands.CancelRecurringOccurrence;
 using ONEVO.Application.Features.Calendar.Commands.CreateCalendarEvent;
+using ONEVO.Application.Features.Calendar.Commands.CreateEventMeeting;
 using ONEVO.Application.Features.Calendar.Commands.DeleteCalendarEvent;
 using ONEVO.Application.Features.Calendar.Commands.DisconnectCalendarConnection;
 using ONEVO.Application.Features.Calendar.Commands.EditRecurringOccurrence;
+using ONEVO.Application.Features.Calendar.Commands.RemoveEventMeeting;
 using ONEVO.Application.Features.Calendar.Commands.RespondToCalendarEvent;
 using ONEVO.Application.Features.Calendar.Commands.StartCalendarConnection;
 using ONEVO.Application.Features.Calendar.Commands.SyncHolidayCalendar;
@@ -18,6 +20,7 @@ using ONEVO.Application.Features.Calendar.Commands.UpdateHolidayCalendarSettings
 using ONEVO.Application.Features.Calendar.Queries.CheckCalendarConflicts;
 using ONEVO.Application.Features.Calendar.Queries.GetCalendarEvents;
 using ONEVO.Application.Features.Calendar.Queries.GetEligibleNominees;
+using ONEVO.Application.Features.Calendar.Queries.GetEventMeetingAttendance;
 using ONEVO.Application.Features.Calendar.Queries.GetHolidayCalendarSettings;
 using ONEVO.Application.Features.Calendar.Queries.GetMyCalendarConnections;
 using ONEVO.Application.Features.Calendar.Queries.GetMyEffectiveTimezone;
@@ -103,6 +106,36 @@ public class CalendarController : ControllerBase
         var result = await _mediator.Send(new CancelRecurringOccurrenceCommand(id, originalStart), ct);
         return result.IsSuccess
             ? NoContent()
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    [HttpPost("{id:guid}/meeting")]
+    [RequirePermission("calendar:write")]
+    public async Task<IActionResult> CreateMeeting(Guid id, [FromBody] CreateEventMeetingRequestModel request, CancellationToken ct)
+    {
+        var result = await _mediator.Send(new CreateEventMeetingCommand(id, request.Provider), ct);
+        return result.IsSuccess
+            ? Ok(new CreateEventMeetingResponseModel(result.Value!.JoinUrl))
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    [HttpDelete("{id:guid}/meeting")]
+    [RequirePermission("calendar:write")]
+    public async Task<IActionResult> RemoveMeeting(Guid id, CancellationToken ct)
+    {
+        var result = await _mediator.Send(new RemoveEventMeetingCommand(id), ct);
+        return result.IsSuccess
+            ? NoContent()
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    [HttpGet("{id:guid}/meeting/attendance")]
+    [RequirePermission("calendar:read")]
+    public async Task<IActionResult> GetMeetingAttendance(Guid id, CancellationToken ct)
+    {
+        var result = await _mediator.Send(new GetEventMeetingAttendanceQuery(id), ct);
+        return result.IsSuccess
+            ? Ok(result.Value!.ToViewModel())
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 

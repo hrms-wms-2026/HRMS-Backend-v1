@@ -352,6 +352,8 @@ public static class DependencyInjection
             sp => sp.GetRequiredService<ONEVO.Infrastructure.Persistence.Repositories.Calendar.EfCalendarEventRepository>());
         services.AddScoped<IExternalCalendarConnectionRepository, EfExternalCalendarConnectionRepository>();
         services.AddScoped<IExternalCalendarEventLinkRepository, EfExternalCalendarEventLinkRepository>();
+        services.AddScoped<ICalendarEventMeetingRepository, EfCalendarEventMeetingRepository>();
+        services.AddScoped<ICalendarEventMeetingAttendanceRepository, EfCalendarEventMeetingAttendanceRepository>();
         services.AddScoped<ICalendarRecurrenceExpander, IcalNetRecurrenceExpander>();
         services.AddScoped<ICalendarNotificationSender, CalendarNotificationSender>();
         services.AddScoped<ICalendarTimezoneResolver, CalendarTimezoneResolver>();
@@ -512,6 +514,9 @@ public static class DependencyInjection
         });
         services.AddHttpClient<IGoogleCalendarClient, GoogleCalendarClient>(client => { client.Timeout = TimeSpan.FromSeconds(30); });
         services.AddHttpClient<IMicrosoftGraphCalendarClient, MicrosoftGraphCalendarClient>(client => { client.Timeout = TimeSpan.FromSeconds(30); });
+        services.AddHttpClient<ITeamsMeetingClient, MicrosoftGraphMeetingClient>(client => { client.Timeout = TimeSpan.FromSeconds(30); });
+        services.AddHttpClient<IZoomMeetingClient, ZoomMeetingClient>(client => { client.Timeout = TimeSpan.FromSeconds(30); });
+        services.AddScoped<ICalendarConnectionTokenProvider, CalendarConnectionTokenProvider>();
         services.AddScoped<ICalendarSyncService, CalendarSyncService>();
 
         // Tenant cache invalidation
@@ -625,6 +630,8 @@ public static class DependencyInjection
         services.AddHostedService<ONEVO.Infrastructure.Services.Monitoring.Screenshots.AgentCommandExpiryJob>();
         services.AddHostedService<Services.WorkManagement.SprintLifecycleJob>();
         services.AddHostedService<Services.Calendar.CalendarSyncJob>();
+        services.AddHostedService<Services.Calendar.TeamsAttendanceSyncJob>();
+        services.AddHostedService<Services.Calendar.ZoomAttendanceSyncJob>();
 
         // Auth services
         services.AddSingleton<IJwtTokenService, JwtTokenService>();

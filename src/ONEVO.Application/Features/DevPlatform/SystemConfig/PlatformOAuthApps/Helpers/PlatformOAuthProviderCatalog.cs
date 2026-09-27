@@ -15,6 +15,7 @@ public static class PlatformOAuthProviderCatalog
     public const string CapabilityAdminSso = "admin_sso";
     public const string CapabilityUserOAuth = "user_oauth";
     public const string CapabilityCalendar = "calendar";
+    public const string CapabilityMeetings = "meetings";
 
     private static readonly IReadOnlyDictionary<string, PlatformOAuthProviderDefinition> Definitions =
         new[]
@@ -62,18 +63,33 @@ public static class PlatformOAuthProviderCatalog
                 // ACCESS token to resolve the account's email - that Graph API call needs the
                 // User.Read delegated permission on the access token itself, which the OIDC scopes
                 // alone do not grant (confirmed: omitting it produces a 403 from Graph's /me endpoint).
-                DefaultScopes: new[] { "openid", "profile", "email", "offline_access", "User.Read", "Calendars.ReadWrite" },
+                // OnlineMeetings.ReadWrite lets MicrosoftGraphMeetingClient create/cancel a Teams
+                // meeting via POST/DELETE /me/onlineMeetings - a connection made before this scope
+                // was added won't carry it, which CreateEventMeetingCommandHandler treats the same
+                // as no connection at all (existing ExternalCalendarConnectionStatuses.ReauthRequired
+                // status already models "reconnect to pick up new scopes").
+                DefaultScopes: new[] { "openid", "profile", "email", "offline_access", "User.Read", "Calendars.ReadWrite", "OnlineMeetings.ReadWrite" },
                 ClientSecretRequired: true,
-                Capabilities: new[] { CapabilityUserOAuth, CapabilityCalendar }),
+                Capabilities: new[] { CapabilityUserOAuth, CapabilityCalendar, CapabilityMeetings }),
 
+            // Scopes verified live against a real Zoom Marketplace "General App" (User-managed)
+            // 2026-09-24 — see docs/superpowers/specs/2026-09-23-teams-zoom-meeting-integration-design.md.
+            // meeting:read:list_past_participants is deliberately chosen over the live
+            // meeting:read:participant scope: attendance is only ever synced after the event's end
+            // time has passed (ZoomAttendanceSyncJob mirrors TeamsAttendanceSyncJob's timing), so
+            // the live-participant scope would be requested and never used.
             new PlatformOAuthProviderDefinition(
                 Provider: "zoom",
                 DisplayName: "Zoom",
                 AuthorizationUrl: "https://zoom.us/oauth/authorize",
                 TokenUrl: "https://zoom.us/oauth/token",
-                DefaultScopes: new[] { "meeting:read" },
+                DefaultScopes: new[]
+                {
+                    "meeting:write:meeting", "meeting:delete:meeting",
+                    "meeting:read:meeting", "meeting:read:list_past_participants"
+                },
                 ClientSecretRequired: true,
-                Capabilities: new[] { CapabilityUserOAuth })
+                Capabilities: new[] { CapabilityUserOAuth, CapabilityMeetings })
         }.ToDictionary(d => d.Provider, StringComparer.Ordinal);
 
     /// <summary>Phase 2 providers that are deliberately not approved yet.</summary>

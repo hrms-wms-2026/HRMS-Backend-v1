@@ -1,5 +1,6 @@
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.Extensions.Logging;
@@ -18,32 +19,52 @@ public sealed class CalendarOAuthTokenExchangeClient(HttpClient httpClient, ILog
     {
         var form = new Dictionary<string, string>
         {
-            ["client_id"] = clientId,
-            ["client_secret"] = clientSecret,
             ["code"] = code,
             ["redirect_uri"] = redirectUri,
             ["grant_type"] = "authorization_code"
         };
-        return await PostTokenRequestAsync(tokenUrl, form, ct);
+        if (!IsZoomTokenUrl(tokenUrl))
+        {
+            form["client_id"] = clientId;
+            form["client_secret"] = clientSecret;
+        }
+        return await PostTokenRequestAsync(tokenUrl, form, clientId, clientSecret, ct);
     }
 
     public async Task<CalendarProviderTokens> RefreshTokenAsync(string tokenUrl, string clientId, string clientSecret, string refreshToken, CancellationToken ct)
     {
         var form = new Dictionary<string, string>
         {
-            ["client_id"] = clientId,
-            ["client_secret"] = clientSecret,
             ["refresh_token"] = refreshToken,
             ["grant_type"] = "refresh_token"
         };
-        var tokens = await PostTokenRequestAsync(tokenUrl, form, ct);
+        if (!IsZoomTokenUrl(tokenUrl))
+        {
+            form["client_id"] = clientId;
+            form["client_secret"] = clientSecret;
+        }
+        var tokens = await PostTokenRequestAsync(tokenUrl, form, clientId, clientSecret, ct);
         // Refresh responses often omit refresh_token (it doesn't rotate) - keep the caller's original.
         return tokens.RefreshToken is null ? tokens with { RefreshToken = refreshToken } : tokens;
     }
 
-    private async Task<CalendarProviderTokens> PostTokenRequestAsync(string tokenUrl, Dictionary<string, string> form, CancellationToken ct)
+    /// <summary>Zoom's docs mandate the client credentials come via HTTP Basic auth on the
+    /// token endpoint, not as body parameters - sending them in the body returns
+    /// "invalid_client" even with correct values (confirmed live against the real Zoom
+    /// OAuth token endpoint). Google and Microsoft both accept the body-parameter style
+    /// already in use, so this only changes behavior for Zoom's token URL.</summary>
+    private static bool IsZoomTokenUrl(string tokenUrl) => tokenUrl.Contains("zoom.us", StringComparison.OrdinalIgnoreCase);
+
+    private async Task<CalendarProviderTokens> PostTokenRequestAsync(string tokenUrl, Dictionary<string, string> form, string clientId, string clientSecret, CancellationToken ct)
     {
-        using var response = await httpClient.PostAsync(tokenUrl, new FormUrlEncodedContent(form), ct);
+        using var request = new HttpRequestMessage(HttpMethod.Post, tokenUrl) { Content = new FormUrlEncodedContent(form) };
+        if (IsZoomTokenUrl(tokenUrl))
+        {
+            var basicAuth = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{clientId}:{clientSecret}"));
+            request.Headers.Authorization = new AuthenticationHeaderValue("Basic", basicAuth);
+        }
+
+        using var response = await httpClient.SendAsync(request, ct);
         if (!response.IsSuccessStatusCode)
         {
             var errorBody = await response.Content.ReadAsStringAsync(ct);
@@ -60,9 +81,11 @@ public sealed class CalendarOAuthTokenExchangeClient(HttpClient httpClient, ILog
 
     public async Task<CalendarProviderAccount> GetAccountAsync(string provider, string accessToken, CancellationToken ct)
     {
-        return provider.Equals("google", StringComparison.OrdinalIgnoreCase)
-            ? await GetGoogleAccountAsync(accessToken, ct)
-            : await GetMicrosoftAccountAsync(accessToken, ct);
+        if (provider.Equals("google", StringComparison.OrdinalIgnoreCase))
+            return await GetGoogleAccountAsync(accessToken, ct);
+        if (provider.Equals("zoom", StringComparison.OrdinalIgnoreCase))
+            return await GetZoomAccountAsync(accessToken, ct);
+        return await GetMicrosoftAccountAsync(accessToken, ct);
     }
 
     private async Task<CalendarProviderAccount> GetGoogleAccountAsync(string accessToken, CancellationToken ct)
@@ -84,6 +107,20 @@ public sealed class CalendarOAuthTokenExchangeClient(HttpClient httpClient, ILog
             }
         }
         throw new InvalidOperationException("No primary Google calendar found for this account.");
+    }
+
+    private async Task<CalendarProviderAccount> GetZoomAccountAsync(string accessToken, CancellationToken ct)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, "https://api.zoom.us/v2/users/me");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+        using var response = await httpClient.SendAsync(request, ct);
+        response.EnsureSuccessStatusCode();
+        using var stream = await response.Content.ReadAsStreamAsync(ct);
+        using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: ct);
+        var email = doc.RootElement.GetProperty("email").GetString()!;
+        // Zoom has no calendar concept (unlike Google/Microsoft) — this connection is
+        // meeting-only, so there is no primary calendar id/name to report.
+        return new CalendarProviderAccount(email, null, null);
     }
 
     private async Task<CalendarProviderAccount> GetMicrosoftAccountAsync(string accessToken, CancellationToken ct)
