@@ -32,6 +32,9 @@ public sealed record EditRecurringOccurrenceRequest(
 
 public sealed record CalendarEventParticipantSummaryViewModel(Guid EmployeeId, string EmployeeName, string ResponseStatus);
 
+public sealed record AddCalendarEventParticipantsRequest(IReadOnlyList<Guid> EmployeeIds);
+public sealed record CalendarEventParticipantsViewModel(IReadOnlyList<CalendarEventParticipantSummaryViewModel> Participants);
+
 public sealed record CalendarEventViewModel(
     Guid Id, string Title, string? Description, DateTimeOffset StartDate, DateTimeOffset EndDate,
     string SourceType, string? Color, string Recurrence, bool IsAllDay, string? Timezone,
@@ -41,6 +44,12 @@ public sealed record CalendarEventViewModel(
     IReadOnlyList<CalendarEventParticipantSummaryViewModel>? Participants = null, bool HasConflict = false);
 
 public sealed record CalendarEventsViewModel(IReadOnlyList<CalendarEventViewModel> Events);
+
+public static class CalendarEventParticipantsViewModelMapper
+{
+    public static CalendarEventParticipantsViewModel ToViewModel(this ONEVO.Application.Features.Calendar.Commands.AddCalendarEventParticipants.CalendarEventParticipantsResult dto) =>
+        new(dto.Participants.Select(p => new CalendarEventParticipantSummaryViewModel(p.EmployeeId, p.EmployeeName, p.ResponseStatus)).ToList());
+}
 
 public static class CalendarEventViewModelMapper
 {

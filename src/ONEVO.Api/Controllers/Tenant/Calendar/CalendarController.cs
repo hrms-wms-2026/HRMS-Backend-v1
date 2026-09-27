@@ -3,12 +3,14 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ONEVO.Api.Contracts.Calendar;
 using ONEVO.Api.Filters;
+using ONEVO.Application.Features.Calendar.Commands.AddCalendarEventParticipants;
 using ONEVO.Application.Features.Calendar.Commands.CancelRecurringOccurrence;
 using ONEVO.Application.Features.Calendar.Commands.CreateCalendarEvent;
 using ONEVO.Application.Features.Calendar.Commands.CreateEventMeeting;
 using ONEVO.Application.Features.Calendar.Commands.DeleteCalendarEvent;
 using ONEVO.Application.Features.Calendar.Commands.DisconnectCalendarConnection;
 using ONEVO.Application.Features.Calendar.Commands.EditRecurringOccurrence;
+using ONEVO.Application.Features.Calendar.Commands.RemoveCalendarEventParticipant;
 using ONEVO.Application.Features.Calendar.Commands.RemoveEventMeeting;
 using ONEVO.Application.Features.Calendar.Commands.RespondToCalendarEvent;
 using ONEVO.Application.Features.Calendar.Commands.StartCalendarConnection;
@@ -144,6 +146,26 @@ public class CalendarController : ControllerBase
     public async Task<IActionResult> Respond(Guid id, [FromBody] RespondToCalendarEventRequest request, CancellationToken ct)
     {
         var result = await _mediator.Send(new RespondToCalendarEventCommand(id, request.ResponseStatus, request.Reason, request.NomineeEmployeeId), ct);
+        return result.IsSuccess
+            ? NoContent()
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    [HttpPost("{id:guid}/participants")]
+    [RequirePermission("calendar:write")]
+    public async Task<IActionResult> AddParticipants(Guid id, [FromBody] AddCalendarEventParticipantsRequest request, CancellationToken ct)
+    {
+        var result = await _mediator.Send(new AddCalendarEventParticipantsCommand(id, request.EmployeeIds), ct);
+        return result.IsSuccess
+            ? Ok(result.Value!.ToViewModel())
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    [HttpDelete("{id:guid}/participants/{employeeId:guid}")]
+    [RequirePermission("calendar:write")]
+    public async Task<IActionResult> RemoveParticipant(Guid id, Guid employeeId, CancellationToken ct)
+    {
+        var result = await _mediator.Send(new RemoveCalendarEventParticipantCommand(id, employeeId), ct);
         return result.IsSuccess
             ? NoContent()
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
