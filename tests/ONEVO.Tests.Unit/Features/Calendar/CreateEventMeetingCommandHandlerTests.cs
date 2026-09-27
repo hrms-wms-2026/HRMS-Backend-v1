@@ -5,7 +5,9 @@ using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Calendar.Commands.CreateEventMeeting;
 using ONEVO.Application.Features.Calendar.RepositoryInterfaces;
 using ONEVO.Application.Features.Calendar.ServiceInterfaces;
+using ONEVO.Application.Features.Calendar.Services;
 using ONEVO.Domain.Features.Calendar.Entities;
+using ONEVO.Domain.Features.CoreHr.Entities;
 using Xunit;
 
 namespace ONEVO.Tests.Unit.Features.Calendar;
@@ -15,6 +17,7 @@ public sealed class CreateEventMeetingCommandHandlerTests
     private static readonly Guid TenantId = Guid.NewGuid();
     private static readonly Guid UserId = Guid.NewGuid();
     private static readonly Guid EventId = Guid.NewGuid();
+    private static readonly Guid ParticipantEmployeeId = Guid.NewGuid();
 
     private readonly Mock<ICurrentUser> _currentUser = new();
     private readonly Mock<ICalendarEventRepository> _events = new();
@@ -24,6 +27,8 @@ public sealed class CreateEventMeetingCommandHandlerTests
     private readonly Mock<IZoomMeetingClient> _zoomClient = new();
     private readonly Mock<ICalendarEventMeetingRepository> _meetings = new();
     private readonly Mock<IUnitOfWork> _unitOfWork = new();
+    private readonly Mock<ICalendarNotificationSender> _notifications = new();
+    private readonly Mock<ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces.IEmployeeRepository> _employees = new();
 
     private CreateEventMeetingCommandHandler BuildSut()
     {
@@ -33,9 +38,17 @@ public sealed class CreateEventMeetingCommandHandlerTests
         _unitOfWork.Setup(u => u.ExecuteInTransactionAsync(
                 It.IsAny<Func<CancellationToken, Task<ONEVO.Application.Common.Models.Result<CreateEventMeetingResult>>>>(), It.IsAny<CancellationToken>()))
             .Returns<Func<CancellationToken, Task<ONEVO.Application.Common.Models.Result<CreateEventMeetingResult>>>, CancellationToken>((op, ct) => op(ct));
+        _events.Setup(e => e.GetParticipantsForEventsAsync(TenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, IReadOnlyList<CalendarEventParticipant>>
+            {
+                [EventId] = [new CalendarEventParticipant { EmployeeId = ParticipantEmployeeId, EventId = EventId }]
+            });
+        _employees.Setup(e => e.GetDefaultForUserAsync(TenantId, UserId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Employee { Id = Guid.NewGuid(), TenantId = TenantId, UserId = UserId, FirstName = "Ada", LastName = "Owner" });
         return new CreateEventMeetingCommandHandler(
             _currentUser.Object, _events.Object, _connections.Object, _tokenProvider.Object,
-            _teamsClient.Object, _zoomClient.Object, _meetings.Object, _unitOfWork.Object);
+            _teamsClient.Object, _zoomClient.Object, _meetings.Object, _unitOfWork.Object,
+            _notifications.Object, _employees.Object);
     }
 
     private static CalendarEvent MakeEvent() => new()
@@ -102,6 +115,10 @@ public sealed class CreateEventMeetingCommandHandlerTests
         _meetings.Verify(m => m.AddAsync(
             It.Is<CalendarEventMeeting>(cm => cm.ExternalMeetingId == "graph-meeting-1" && cm.CalendarEventId == EventId),
             It.IsAny<CancellationToken>()), Times.Once);
+        _notifications.Verify(n => n.NotifyMeetingLinkAddedAsync(
+            TenantId, evt.Title, evt.StartDate, null,
+            It.Is<IReadOnlyList<Guid>>(ids => ids.Contains(ParticipantEmployeeId)),
+            "Ada Owner", "https://teams.microsoft.com/l/meetup-join/abc", It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]

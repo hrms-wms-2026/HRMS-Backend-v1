@@ -10,7 +10,8 @@ public sealed record CalendarEventInviteEmailPayload(
     string EventTitle,
     DateTimeOffset StartDateUtc,
     string? Location,
-    string OrganizerName);
+    string OrganizerName,
+    string? MeetingLink = null);
 
 /// <summary>Sends the calendar-event-invite email from the outbox. Safe to retry: resending an
 /// invite email for the same event is harmless.</summary>
@@ -28,6 +29,6 @@ public sealed class CalendarEventInviteEmailOutboxHandler : IOutboxMessageHandle
             ?? throw new InvalidOperationException("calendar_event_invite_email payload is empty.");
 
         await _emailService.SendCalendarEventInviteAsync(
-            payload.ToEmail, payload.RecipientName, payload.EventTitle, payload.StartDateUtc, payload.Location, payload.OrganizerName, ct);
+            payload.ToEmail, payload.RecipientName, payload.EventTitle, payload.StartDateUtc, payload.Location, payload.OrganizerName, payload.MeetingLink, ct);
     }
 }

@@ -5,6 +5,7 @@ using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Calendar.RepositoryInterfaces;
 using ONEVO.Application.Features.Calendar.ServiceInterfaces;
+using ONEVO.Application.Features.Calendar.Services;
 using ONEVO.Domain.Features.Calendar.Entities;
 
 namespace ONEVO.Application.Features.Calendar.Commands.CreateEventMeeting;
@@ -17,7 +18,9 @@ public sealed class CreateEventMeetingCommandHandler(
     ITeamsMeetingClient teamsClient,
     IZoomMeetingClient zoomClient,
     ICalendarEventMeetingRepository meetings,
-    IUnitOfWork unitOfWork)
+    IUnitOfWork unitOfWork,
+    ICalendarNotificationSender notifications,
+    ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces.IEmployeeRepository employees)
     : IRequestHandler<CreateEventMeetingCommand, Result<CreateEventMeetingResult>>
 {
     public async Task<Result<CreateEventMeetingResult>> Handle(CreateEventMeetingCommand request, CancellationToken ct)
@@ -63,6 +66,11 @@ public sealed class CreateEventMeetingCommandHandler(
             (externalMeetingId, joinUrl, organizerJoinUrl, passcode) = (dto.ExternalMeetingId, dto.JoinUrl, dto.OrganizerJoinUrl, dto.PasscodeOrPin);
         }
 
+        var participantsByEvent = await events.GetParticipantsForEventsAsync(tenantId, [existing.Id], ct);
+        var participantEmployeeIds = participantsByEvent.TryGetValue(existing.Id, out var p) ? p.Select(x => x.EmployeeId).ToList() : [];
+        var organizerEmployee = await employees.GetDefaultForUserAsync(tenantId, currentUser.UserId, ct);
+        var organizerName = organizerEmployee is null ? "Someone" : $"{organizerEmployee.FirstName} {organizerEmployee.LastName}";
+
         return await unitOfWork.ExecuteInTransactionAsync(async innerCt =>
         {
             existing.MeetingLink = joinUrl;
@@ -76,6 +84,13 @@ public sealed class CreateEventMeetingCommandHandler(
                 OrganizerJoinUrl = organizerJoinUrl, PasscodeOrPin = passcode,
                 Status = CalendarEventMeetingStatuses.Active, CreatedAt = DateTimeOffset.UtcNow
             }, innerCt);
+
+            if (participantEmployeeIds.Count > 0)
+            {
+                await notifications.NotifyMeetingLinkAddedAsync(
+                    tenantId, existing.Title, existing.StartDate, existing.Location,
+                    participantEmployeeIds, organizerName, joinUrl, innerCt);
+            }
 
             await unitOfWork.SaveChangesAsync(innerCt);
             return Result<CreateEventMeetingResult>.Success(new CreateEventMeetingResult(joinUrl));

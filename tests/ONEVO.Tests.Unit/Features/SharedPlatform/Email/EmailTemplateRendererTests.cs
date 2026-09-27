@@ -348,4 +348,41 @@ public sealed class EmailTemplateRendererTests
         rendered.HtmlBody.Should().Contain("https://dapi.localhost:4200/people/approvals");
         rendered.TextBody.Should().Contain("https://dapi.localhost:4200/people/approvals");
     }
+
+    [Fact]
+    public void RenderCalendarEventInvite_WithMeetingLink_IncludesJoinUrlInBothBodies()
+    {
+        var renderer = new EmailTemplateRenderer(Options.Create(new EmailOptions()));
+
+        var rendered = renderer.Render("calendar_event_invite", new
+        {
+            recipientName = "Ada Lovelace",
+            eventTitle = "Deployment Meeting",
+            startDateUtc = "2026-09-29T14:45:00Z",
+            location = (string?)null,
+            organizerName = "Dapi Owner",
+            meetingLink = "https://us05web.zoom.us/j/123456789"
+        });
+
+        rendered.HtmlBody.Should().Contain("https://us05web.zoom.us/j/123456789");
+        rendered.TextBody.Should().Contain("https://us05web.zoom.us/j/123456789");
+    }
+
+    [Fact]
+    public void RenderCalendarEventInvite_WithoutMeetingLink_OmitsJoinLinkLine()
+    {
+        var renderer = new EmailTemplateRenderer(Options.Create(new EmailOptions()));
+
+        var rendered = renderer.Render("calendar_event_invite", new
+        {
+            recipientName = "Ada Lovelace",
+            eventTitle = "Deployment Meeting",
+            startDateUtc = "2026-09-29T14:45:00Z",
+            location = (string?)null,
+            organizerName = "Dapi Owner"
+        });
+
+        rendered.HtmlBody.Should().NotContain("Join meeting");
+        rendered.TextBody.Should().NotContain("Join:");
+    }
 }
