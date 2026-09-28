@@ -141,6 +141,15 @@ public class ValidateFacePhotoCommandHandler
         if (enrollment && !FacePhotoPoseRules.Matches(request.Pose, quality))
             return Done(Rejected(quality, FailureWrongPose));
 
+        // Face setup always takes three new photos that replace any enrolled face, so a step
+        // is not compared against the old one. Nothing is saved here — see EnrollFacePhotosCommand.
+        if (enrollment)
+        {
+            return Done(new FacePhotoValidationResponseDto(
+                quality.LightingOk, quality.FaceVisible, quality.NoSunglassesOrMask,
+                IsMatch: false, CanProceed: true, SimilarityScore: null, FailureReason: null));
+        }
+
         var profile = await _profiles.GetByEmployeeIdAsync(_device.TenantId, employeeId, cancellationToken);
 
         EnrolledFaceMatch match;

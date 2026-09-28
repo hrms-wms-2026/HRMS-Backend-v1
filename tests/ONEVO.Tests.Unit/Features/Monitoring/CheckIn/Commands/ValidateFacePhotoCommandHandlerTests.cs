@@ -257,34 +257,18 @@ public class ValidateFacePhotoCommandHandlerTests
     }
 
     [Fact]
-    public async Task Enrollment_AlreadyEnrolled_SameFace_ProceedsAsAlreadyEnrolled()
+    public async Task Enrollment_AlreadyEnrolled_StepPasses_WithoutComparingToOldFace()
     {
+        // Face setup always replaces the enrolled face, so steps are never matched against it.
         SetupQuality(PassQuality());
         SetupProfile(Guid.NewGuid());
-        _faceMatch.Setup(m => m.CompareAsync(It.IsAny<Stream>(), It.IsAny<Stream>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new FaceMatchOutcome(true, 96f));
 
         var result = await CreateSut().Handle(
             Cmd(FacePhotoValidationPurpose.Enrollment, FacePhotoPose.Front), CancellationToken.None);
 
         result.Value!.CanProceed.Should().BeTrue();
-        result.Value.FailureReason.Should().Be(ValidateFacePhotoCommandHandler.AlreadyEnrolled);
-        VerifyNothingSaved();
-    }
-
-    [Fact]
-    public async Task Enrollment_AlreadyEnrolled_DifferentFace_NotMatched()
-    {
-        SetupQuality(PassQuality());
-        SetupProfile(Guid.NewGuid());
-        _faceMatch.Setup(m => m.CompareAsync(It.IsAny<Stream>(), It.IsAny<Stream>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new FaceMatchOutcome(false, 10f));
-
-        var result = await CreateSut().Handle(
-            Cmd(FacePhotoValidationPurpose.Enrollment, FacePhotoPose.Front), CancellationToken.None);
-
-        result.Value!.CanProceed.Should().BeFalse();
-        result.Value.FailureReason.Should().Be(ValidateFacePhotoCommandHandler.FailureNotMatched);
+        result.Value.FailureReason.Should().BeNull();
+        _faceMatch.Verify(m => m.CompareAsync(It.IsAny<Stream>(), It.IsAny<Stream>(), It.IsAny<CancellationToken>()), Times.Never);
         VerifyNothingSaved();
     }
 
