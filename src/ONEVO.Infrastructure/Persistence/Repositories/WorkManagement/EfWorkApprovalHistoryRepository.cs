@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using ONEVO.Application.Features.WorkManagement.Approvals.RepositoryInterfaces;
+using ONEVO.Domain.Features.WorkManagement.Approvals.Entities;
 using ONEVO.Domain.Features.WorkManagement.ObjectiveChangeRequests.Entities;
 using ONEVO.Domain.Features.WorkManagement.ProjectInvitations.Entities;
 using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
@@ -19,52 +20,23 @@ public sealed class EfWorkApprovalHistoryRepository : IWorkApprovalHistoryReposi
         Guid employeeId,
         CancellationToken ct = default)
     {
-        var taskCreation = await (
-            from request in _db.TaskCreationRequests.AsNoTracking()
-            join objective in _db.Objectives.AsNoTracking() on request.ObjectiveId equals objective.Id
-            where request.TenantId == tenantId
-                  && objective.ProjectId == projectId
-                  && (request.RequestedByEmployeeId == employeeId
-                      || request.DecidedByEmployeeId == employeeId
-                      || (request.Status == TaskCreationRequestStatuses.Pending && objective.OwnerId == employeeId))
-            select new WorkApprovalHistoryRecord(
-                request.Id,
-                request.ObjectiveId,
-                "task_creation",
-                request.Status,
-                objective.Title,
-                request.PayloadJson,
-                request.RequestedByEmployeeId,
-                request.DecidedByEmployeeId ?? objective.OwnerId,
-                request.DecidedByEmployeeId,
-                request.DecisionComment,
-                request.CreatedAt,
-                request.DecidedAt)
-        ).ToListAsync(ct);
-
-        var taskEdits = await (
-            from request in _db.TaskEditRequests.AsNoTracking()
-            join task in _db.WorkTasks.AsNoTracking() on request.TaskId equals task.Id
-            join objective in _db.Objectives.AsNoTracking() on task.ObjectiveId equals objective.Id
-            where request.TenantId == tenantId
-                  && task.ProjectId == projectId
-                  && (request.RequestedByEmployeeId == employeeId
-                      || request.DecidedByEmployeeId == employeeId
-                      || (request.Status == TaskEditRequestStatuses.Pending && objective.OwnerId == employeeId))
-            select new WorkApprovalHistoryRecord(
-                request.Id,
-                task.ObjectiveId,
-                "task_edit",
-                request.Status,
-                task.Title,
-                request.PayloadJson,
-                request.RequestedByEmployeeId,
-                request.DecidedByEmployeeId ?? objective.OwnerId,
-                request.DecidedByEmployeeId,
-                request.DecisionComment,
-                request.CreatedAt,
-                request.DecidedAt)
-        ).ToListAsync(ct);
+        var engineRequests = await _db.WorkApprovalRequests.AsNoTracking()
+            .Where(r => r.TenantId == tenantId && r.ProjectId == projectId && r.ActionType.StartsWith("task.")
+                && (r.RequestedByEmployeeId == employeeId || r.DecidedByEmployeeId == employeeId
+                    || (r.Status == WorkApprovalRequestStatuses.Pending && r.ApproverEmployeeId == employeeId)))
+            .ToListAsync(ct);
+        var taskRecords = engineRequests.Select(r => new WorkApprovalHistoryRecord(
+            r.Id, r.PositionObjectiveId ?? Guid.Empty,
+            r.ActionType switch
+            {
+                WorkActionTypes.TaskCreate => "task_creation",
+                WorkActionTypes.TaskEdit => "task_edit",
+                WorkActionTypes.TaskDelete => "task_delete",
+                _ => r.ActionType
+            },
+            r.Status, r.TargetTitle, r.PayloadJson, r.RequestedByEmployeeId,
+            r.DecidedByEmployeeId ?? r.ApproverEmployeeId, r.DecidedByEmployeeId, r.DecisionComment,
+            r.CreatedAt, r.DecidedAt)).ToList();
 
         var objectiveChanges = await (
             from request in _db.ObjectiveChangeRequests.AsNoTracking()
@@ -168,8 +140,7 @@ public sealed class EfWorkApprovalHistoryRepository : IWorkApprovalHistoryReposi
             }).ToList();
         }
 
-        return taskCreation
-            .Concat(taskEdits)
+        return taskRecords
             .Concat(objectiveChanges)
             .Concat(statusChanges)
             .Concat(invitations)

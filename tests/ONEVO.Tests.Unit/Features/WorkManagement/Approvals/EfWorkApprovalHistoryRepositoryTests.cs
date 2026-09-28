@@ -2,6 +2,7 @@ using MediatR;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Domain.Features.WorkManagement.Approvals.Entities;
 using ONEVO.Domain.Features.WorkManagement.ObjectiveChangeRequests.Entities;
 using ONEVO.Domain.Features.WorkManagement.Objectives.Entities;
 using ONEVO.Domain.Features.WorkManagement.ProjectInvitations.Entities;
@@ -64,19 +65,22 @@ public sealed class EfWorkApprovalHistoryRepositoryTests : IDisposable
             Id = taskId, TenantId = TenantId, ProjectId = ProjectId, ObjectiveId = objectiveId,
             Title = "Audit events", ShortId = "PORTAL-1"
         });
-        db.TaskCreationRequests.Add(new TaskCreationRequest
-        {
-            Id = Guid.NewGuid(), TenantId = TenantId, ObjectiveId = objectiveId,
-            RequestedByEmployeeId = OtherEmployeeId, DecidedByEmployeeId = EmployeeId,
-            Status = TaskCreationRequestStatuses.Approved, PayloadJson = "{\"title\":\"Audit events\"}",
-            DecidedAt = now
-        });
-        db.TaskEditRequests.Add(new TaskEditRequest
-        {
-            Id = Guid.NewGuid(), TenantId = TenantId, TaskId = taskId,
-            RequestedByEmployeeId = EmployeeId, Status = TaskEditRequestStatuses.Pending,
-            PayloadJson = "{\"title\":\"Audit trail\"}"
-        });
+        // Decided by the employee.
+        db.WorkApprovalRequests.Add(TaskRequest(WorkActionTypes.TaskCreate, null, objectiveId,
+            requestedBy: OtherEmployeeId, approver: EmployeeId, status: WorkApprovalRequestStatuses.Approved,
+            decidedBy: EmployeeId, payload: "{\"title\":\"Audit events\"}", decidedAt: now));
+        // Requested by the employee.
+        db.WorkApprovalRequests.Add(TaskRequest(WorkActionTypes.TaskEdit, taskId, objectiveId,
+            requestedBy: EmployeeId, approver: OtherEmployeeId, status: WorkApprovalRequestStatuses.Pending,
+            decidedBy: null, payload: "{\"title\":\"Audit trail\"}"));
+        // Waiting on the employee as the stored approver.
+        db.WorkApprovalRequests.Add(TaskRequest(WorkActionTypes.TaskDelete, taskId, objectiveId,
+            requestedBy: OtherEmployeeId, approver: EmployeeId, status: WorkApprovalRequestStatuses.Pending,
+            decidedBy: null, payload: "{}"));
+        // The employee was the approver once, but someone else decided: not participated.
+        db.WorkApprovalRequests.Add(TaskRequest(WorkActionTypes.TaskDelete, taskId, objectiveId,
+            requestedBy: OtherEmployeeId, approver: EmployeeId, status: WorkApprovalRequestStatuses.Rejected,
+            decidedBy: OtherEmployeeId, payload: "{\"note\":\"Unrelated\"}"));
         db.ObjectiveChangeRequests.Add(new ObjectiveChangeRequest
         {
             Id = Guid.NewGuid(), TenantId = TenantId, ObjectiveId = objectiveId,
@@ -92,24 +96,33 @@ public sealed class EfWorkApprovalHistoryRepositoryTests : IDisposable
             InviteType = ProjectInvitationTypes.Member, Status = ProjectInvitationStatuses.Accepted,
             DecidedAt = now
         });
-        db.TaskCreationRequests.Add(new TaskCreationRequest
-        {
-            Id = Guid.NewGuid(), TenantId = TenantId, ObjectiveId = objectiveId,
-            RequestedByEmployeeId = Guid.NewGuid(), DecidedByEmployeeId = Guid.NewGuid(),
-            Status = TaskCreationRequestStatuses.Rejected, PayloadJson = "{\"title\":\"Unrelated\"}"
-        });
+        db.WorkApprovalRequests.Add(TaskRequest(WorkActionTypes.TaskCreate, null, objectiveId,
+            requestedBy: Guid.NewGuid(), approver: Guid.NewGuid(), status: WorkApprovalRequestStatuses.Rejected,
+            decidedBy: Guid.NewGuid(), payload: "{\"title\":\"Unrelated\"}"));
         await db.SaveChangesAsync();
 
         var repository = new EfWorkApprovalHistoryRepository(db);
         var items = await repository.ListForEmployeeAsync(TenantId, ProjectId, EmployeeId);
 
-        Assert.Equal(4, items.Count);
-        Assert.Contains(items, item => item.Kind == "task_creation" && item.DecidedById == EmployeeId);
+        Assert.Equal(5, items.Count);
+        Assert.Contains(items, item => item.Kind == "task_creation" && item.DecidedById == EmployeeId && item.SubjectTitle == "Audit events");
         Assert.Contains(items, item => item.Kind == "task_edit" && item.RequestedById == EmployeeId);
+        Assert.Contains(items, item => item.Kind == "task_delete" && item.Status == "pending" && item.ApproverId == EmployeeId);
         Assert.Contains(items, item => item.Kind == "allocation_extend" && item.Status == "pending");
         Assert.Contains(items, item => item.Kind == "objective_invitation" && item.PayloadJson!.Contains("member"));
         Assert.DoesNotContain(items, item => item.PayloadJson?.Contains("Unrelated") == true);
     }
+
+    private static WorkApprovalRequest TaskRequest(
+        string actionType, Guid? targetId, Guid positionId, Guid requestedBy, Guid approver, string status,
+        Guid? decidedBy, string payload, DateTimeOffset? decidedAt = null) => new()
+    {
+        Id = Guid.NewGuid(), TenantId = TenantId, ProjectId = ProjectId, ActionType = actionType,
+        TargetType = WorkTargetTypes.Task, TargetId = targetId, TargetTitle = "Audit events",
+        PositionObjectiveId = positionId, ApproverSource = WorkApprovalSources.Hierarchy,
+        ApproverEmployeeId = approver, RequestedByEmployeeId = requestedBy, PayloadJson = payload,
+        Status = status, DecidedByEmployeeId = decidedBy, DecidedAt = decidedAt
+    };
 
     private ApplicationDbContext CreateContext()
     {
