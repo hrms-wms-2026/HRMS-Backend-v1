@@ -2,9 +2,11 @@ using System.Text.Json.Serialization;
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using ONEVO.Application.Features.Monitoring.CheckIn.Commands.EnrollFacePhotos;
 using ONEVO.Application.Features.Monitoring.CheckIn.Commands.SubmitCheckIn;
 using ONEVO.Application.Features.Monitoring.CheckIn.Commands.UploadFaceScan;
 using ONEVO.Application.Features.Monitoring.CheckIn.Commands.ValidateFacePhoto;
+using ONEVO.Application.Features.Monitoring.CheckIn.Queries.GetFaceReferenceStatus;
 
 namespace ONEVO.Api.Controllers.Tenant.Monitoring.CheckIn;
 
@@ -44,8 +46,9 @@ public class MonitoringCheckInController : ControllerBase
     /// <summary>
     /// Preview a clock-in/out selfie against AWS DetectFaces + CompareFaces without
     /// creating a check-in. The tray uses this to gate Clock In: pass → proceed, fail → retake.
-    /// Accepts multipart/form-data with a "face_scan" file field and an optional "purpose"
-    /// (enrollment | clock_in | clock_out). Only enrollment may save a first reference face.
+    /// Accepts multipart/form-data with a "face_scan" file field, an optional "purpose"
+    /// (enrollment | clock_in | clock_out) and, for enrollment, the face setup "pose"
+    /// (front | left | right). Nothing is saved here — face setup saves via face-enroll.
     /// Authorization: Bearer {tray_access_token}
     /// </summary>
     [HttpPost("face-preview")]
@@ -53,6 +56,7 @@ public class MonitoringCheckInController : ControllerBase
     public async Task<IActionResult> ValidateFacePhoto(
         IFormFile face_scan,
         [FromForm(Name = "purpose")] string? purpose,
+        [FromForm(Name = "pose")] string? pose,
         CancellationToken ct)
     {
         if (face_scan is null || face_scan.Length == 0)
@@ -63,7 +67,55 @@ public class MonitoringCheckInController : ControllerBase
             stream,
             face_scan.ContentType,
             face_scan.Length,
-            string.IsNullOrWhiteSpace(purpose) ? null : purpose.Trim()), ct);
+            string.IsNullOrWhiteSpace(purpose) ? null : purpose.Trim(),
+            string.IsNullOrWhiteSpace(pose) ? null : pose.Trim()), ct);
+
+        if (!result.IsSuccess)
+            return Problem(result.Error, statusCode: result.StatusCode ?? 400);
+
+        return Ok(result.Value);
+    }
+
+    /// <summary>
+    /// Whether this device's employee already has an enrolled face. Tray device setup skips the
+    /// face setup screen when they do; clock-in still verifies against that face every time.
+    /// Authorization: Bearer {tray_access_token}
+    /// </summary>
+    [HttpGet("face-reference")]
+    public async Task<IActionResult> GetFaceReferenceStatus(CancellationToken ct)
+    {
+        var result = await _mediator.Send(new GetFaceReferenceStatusQuery(), ct);
+
+        if (!result.IsSuccess)
+            return Problem(result.Error, statusCode: result.StatusCode ?? 400);
+
+        return Ok(result.Value);
+    }
+
+    /// <summary>
+    /// Tray face setup: saves the look-straight, turned-left and turned-right photos together as
+    /// the employee's reference faces. Accepts multipart/form-data with "front", "left" and
+    /// "right" file fields. Refused ("already_enrolled") when a reference already exists.
+    /// Authorization: Bearer {tray_access_token}
+    /// </summary>
+    [HttpPost("face-enroll")]
+    [RequestSizeLimit(16 * 1024 * 1024)]
+    public async Task<IActionResult> EnrollFacePhotos(
+        IFormFile front,
+        IFormFile left,
+        IFormFile right,
+        CancellationToken ct)
+    {
+        if (front is null || front.Length == 0 || left is null || left.Length == 0 || right is null || right.Length == 0)
+            return Problem("front, left and right photos are required.", statusCode: 400);
+
+        await using var frontStream = front.OpenReadStream();
+        await using var leftStream = left.OpenReadStream();
+        await using var rightStream = right.OpenReadStream();
+        var result = await _mediator.Send(new EnrollFacePhotosCommand(
+            new FaceSetupPhoto(frontStream, front.ContentType, front.Length),
+            new FaceSetupPhoto(leftStream, left.ContentType, left.Length),
+            new FaceSetupPhoto(rightStream, right.ContentType, right.Length)), ct);
 
         if (!result.IsSuccess)
             return Problem(result.Error, statusCode: result.StatusCode ?? 400);

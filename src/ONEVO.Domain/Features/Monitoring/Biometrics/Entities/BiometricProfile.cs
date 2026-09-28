@@ -16,6 +16,12 @@ public class BiometricProfile : ITenantOwnedEntity
     /// <summary>file_records.Id of the reference photo captured at enrollment. Null for profiles enrolled before reference-photo capture was introduced, or when no reference image was stored.</summary>
     public Guid? ReferencePhotoFileId { get; set; }
 
+    /// <summary>file_records.Id of the head-turned-left reference captured at tray face setup. Null for single-photo profiles.</summary>
+    public Guid? LeftReferencePhotoFileId { get; set; }
+
+    /// <summary>file_records.Id of the head-turned-right reference captured at tray face setup. Null for single-photo profiles.</summary>
+    public Guid? RightReferencePhotoFileId { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
 }
