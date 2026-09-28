@@ -116,6 +116,24 @@ public class NotificationTemplateSeeder : IHostedService
             },
             new()
             {
+                Id = Guid.NewGuid(), Code = "work_activity_recorded",
+                InAppTitleTemplate = "Work update",
+                InAppBodyTemplate = "{{actorName}} {{actionLabel}} \"{{targetTitle}}\"."
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "work_approval_requested",
+                InAppTitleTemplate = "Approval needed",
+                InAppBodyTemplate = "{{actorName}} is waiting for your approval: {{actionLabel}} \"{{targetTitle}}\"."
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "work_approval_decided",
+                InAppTitleTemplate = "Request {{decision}}",
+                InAppBodyTemplate = "{{actorName}}'s request ({{actionLabel}} \"{{targetTitle}}\") was {{decision}}."
+            },
+            new()
+            {
                 Id = Guid.NewGuid(), Code = "leave_request_approved",
                 InAppTitleTemplate = "Leave approved",
                 InAppBodyTemplate = "{{leaveTypeName}} from {{startDate}} to {{endDate}} was approved."
