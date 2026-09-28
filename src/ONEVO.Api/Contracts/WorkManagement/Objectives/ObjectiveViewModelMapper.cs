@@ -20,7 +20,8 @@ public static class ObjectiveViewModelMapper
 
     public static ObjectiveChangeRequestViewModel ToViewModel(this ObjectiveChangeRequestResponse dto) => new(
         dto.Id, dto.ObjectiveId, dto.RequestType, dto.RequestedById, dto.ReportingManagerId,
-        dto.Status, dto.PayloadJson, dto.DecidedAt, dto.DecidedById, dto.CreatedAt);
+        dto.Status, dto.PayloadJson, dto.DecidedAt, dto.DecidedById, dto.CreatedAt,
+        dto.RequestedByName, dto.ObjectiveTitle, dto.ProjectId, dto.CurrentAllocatedHours);
 
     public static ObjectiveSubtreeViewModel ToViewModel(this ObjectiveSubtreeResponse dto) => new(
         dto.ParentObjective?.ToViewModel(), dto.Objective.ToViewModel());

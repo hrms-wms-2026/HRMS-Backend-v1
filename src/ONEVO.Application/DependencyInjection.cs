@@ -29,6 +29,7 @@ public static class DependencyInjection
         {
             cfg.RegisterServicesFromAssembly(assembly);
             cfg.AddBehavior(typeof(IPipelineBehavior<,>), typeof(UnhandledExceptionBehavior<,>));
+            cfg.AddBehavior(typeof(IPipelineBehavior<,>), typeof(AdminTenantContextBehavior<,>));
             cfg.AddBehavior(typeof(IPipelineBehavior<,>), typeof(ValidationBehavior<,>));
             cfg.AddBehavior(typeof(IPipelineBehavior<,>), typeof(LoggingBehavior<,>));
             cfg.AddBehavior(typeof(IPipelineBehavior<,>), typeof(PerformanceBehavior<,>));
@@ -39,6 +40,12 @@ public static class DependencyInjection
         services.AddScoped<
             ONEVO.Application.Features.Monitoring.TrayActivation.ServiceInterfaces.ITrayPresenceRequirementEvaluator,
             ONEVO.Application.Features.Monitoring.TrayActivation.Services.TrayPresenceRequirementEvaluator>();
+        services.AddScoped<
+            ONEVO.Application.Features.Monitoring.Biometrics.ServiceInterfaces.IEnrolledFaceMatcher,
+            ONEVO.Application.Features.Monitoring.Biometrics.Services.EnrolledFaceMatcher>();
+        services.AddScoped<
+            ONEVO.Application.Features.Monitoring.CheckIn.ServiceInterfaces.IFaceVerificationRetryPolicy,
+            ONEVO.Application.Features.Monitoring.CheckIn.Services.FaceVerificationRetryPolicy>();
         services.AddScoped<
             ONEVO.Application.Features.TimeAttendance.Services.IClockInPolicyScopeMembershipValidator,
             ONEVO.Application.Features.TimeAttendance.Services.ClockInPolicyScopeMembershipValidator>();

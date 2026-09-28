@@ -15,6 +15,7 @@ using ONEVO.Domain.Features.InfrastructureModule.Entities;
 using ONEVO.Domain.Features.Monitoring.Biometrics.Entities;
 using ONEVO.Domain.Features.Monitoring.CheckIn.Entities;
 using ONEVO.Tests.Unit.Fakes;
+using ONEVO.Application.Features.Monitoring.Biometrics.Services;
 using Xunit;
 
 namespace ONEVO.Tests.Unit.Features.Monitoring.CheckIn.Commands;
@@ -55,7 +56,8 @@ public class UploadFaceScanCommandHandlerTests
 
     private UploadFaceScanCommandHandler CreateSut() => new(
         _repository.Object, _device.Object, _tenants.Object, _tenantSwitcher.Object,
-        _fileStorage.Object, _profiles.Object, _faceMatch.Object, _employeeIdentity.Object, _clock, _unitOfWork.Object);
+        _fileStorage.Object, _profiles.Object,
+        new EnrolledFaceMatcher(_fileStorage.Object, _faceMatch.Object), _employeeIdentity.Object, _clock, _unitOfWork.Object);
 
     private (EmployeeCheckIn CheckIn, Guid UploadedFileId) SetupSuccessfulUploadPath()
     {

@@ -4,6 +4,7 @@ using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.Biometrics.RepositoryInterfaces;
+using ONEVO.Application.Features.Monitoring.Biometrics.ServiceInterfaces;
 using ONEVO.Application.Features.Monitoring.CheckIn.DTOs.Responses;
 using ONEVO.Application.Features.Monitoring.CheckIn.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.CheckIn.ServiceInterfaces;
@@ -22,7 +23,7 @@ public class UploadFaceScanCommandHandler
     private readonly ITenantContextSwitcher _tenantSwitcher;
     private readonly IFileStorageService _fileStorage;
     private readonly IBiometricProfileRepository _profiles;
-    private readonly IFaceMatchService _faceMatch;
+    private readonly IEnrolledFaceMatcher _matcher;
     private readonly ITrayEmployeeIdentityResolver _employeeIdentity;
     private readonly IDateTimeProvider _clock;
     private readonly IUnitOfWork _unitOfWork;
@@ -34,7 +35,7 @@ public class UploadFaceScanCommandHandler
         ITenantContextSwitcher tenantSwitcher,
         IFileStorageService fileStorage,
         IBiometricProfileRepository profiles,
-        IFaceMatchService faceMatch,
+        IEnrolledFaceMatcher matcher,
         ITrayEmployeeIdentityResolver employeeIdentity,
         IDateTimeProvider clock,
         IUnitOfWork unitOfWork)
@@ -45,7 +46,7 @@ public class UploadFaceScanCommandHandler
         _tenantSwitcher = tenantSwitcher;
         _fileStorage = fileStorage;
         _profiles = profiles;
-        _faceMatch = faceMatch;
+        _matcher = matcher;
         _employeeIdentity = employeeIdentity;
         _clock = clock;
         _unitOfWork = unitOfWork;
@@ -142,25 +143,30 @@ public class UploadFaceScanCommandHandler
         var employeeId = await _employeeIdentity.ResolveEmployeeIdAsync(
             _device.TenantId, _device.UserId, _device.LegalEntityId, ct);
         var profile = await _profiles.GetByEmployeeIdAsync(_device.TenantId, employeeId, ct);
-        if (profile?.ReferencePhotoFileId is null)
+        if (profile?.ReferencePhotoFileId is null
+            && profile?.LeftReferencePhotoFileId is null
+            && profile?.RightReferencePhotoFileId is null)
+        {
             return (MonitoringFaceScanStatus.NoReferencePhoto, null);
+        }
 
         try
         {
-            var referenceRead = await _fileStorage.OpenReadAsync(_device.TenantId, profile.ReferencePhotoFileId.Value, ct);
             var capturedRead = await _fileStorage.OpenReadAsync(_device.TenantId, capturedFileId, ct);
-
-            if (!referenceRead.IsSuccess || !capturedRead.IsSuccess)
+            if (!capturedRead.IsSuccess)
                 return (MonitoringFaceScanStatus.Failed, null);
 
-            await using var referenceStream = referenceRead.Value!.Content;
             await using var capturedStream = capturedRead.Value!.Content;
+            var match = await _matcher.MatchAsync(_device.TenantId, profile, capturedStream, ct);
 
-            var outcome = await _faceMatch.CompareAsync(referenceStream, capturedStream, ct);
+            if (!match.HasReference)
+                return (MonitoringFaceScanStatus.NoReferencePhoto, null);
+            if (match.Failed)
+                return (MonitoringFaceScanStatus.Failed, null);
 
-            return outcome.IsMatch
-                ? (MonitoringFaceScanStatus.Verified, outcome.Similarity)
-                : (MonitoringFaceScanStatus.NotMatched, outcome.Similarity);
+            return match.IsMatch
+                ? (MonitoringFaceScanStatus.Verified, match.Similarity)
+                : (MonitoringFaceScanStatus.NotMatched, match.Similarity);
         }
         catch (Exception)
         {

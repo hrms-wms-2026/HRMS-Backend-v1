@@ -58,7 +58,7 @@ public class GetObjectiveSprintsQueryHandler : IRequestHandler<GetObjectiveSprin
             return Result<IReadOnlyList<SprintResponse>>.NotFound("Objective not found.");
 
         var permissions = await _permissionResolver.ResolveAsync(userId, tenantId, null, ct);
-        var hasReadPermission = permissions.Contains("projects:read") || permissions.Contains("*");
+        var hasReadPermission = permissions.Contains("*");
 
         if (!hasReadPermission)
         {

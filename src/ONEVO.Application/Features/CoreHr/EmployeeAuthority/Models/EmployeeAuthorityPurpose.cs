@@ -18,4 +18,5 @@ public enum EmployeeAuthorityPurpose
     OffboardingApproval,
     EmployeeLifecycleApproval,
     DeviceChangeApproval,
+    FaceVerificationOverrideReview,
 }

@@ -56,7 +56,20 @@ public class PermissionSeederTests
             "time_off:manage",
             "calendar:read",
             "monitoring:read",
-            "monitoring:configure"
+            "monitoring:configure",
+            "monitoring:screenshots:request",
+            "projects:create"
+        ]);
+
+        codes.Should().NotContain([
+            "agent:command", "agent:manage", "agent:register", "agent:view-health",
+            "projects:access", "projects:read",
+            "tasks:read", "tasks:read-own", "tasks:write", "tasks:approve", "tasks:delete",
+            "time:read", "time:write", "time:approve",
+            "okr:read", "okr:write", "wiki:read", "wiki:write",
+            "sprints:read", "sprints:manage",
+            "workspaces:read", "workspaces:create", "workspaces:manage",
+            "resources:read", "resources:manage", "roadmaps:read", "roadmaps:write"
         ]);
 
         // Must NOT contain invalid monitoring keys

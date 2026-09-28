@@ -73,6 +73,8 @@ public class EfCalendarEventRepository : ICalendarEventRepository
         => await _db.CalendarEventParticipants.FirstOrDefaultAsync(
             p => p.TenantId == tenantId && p.EventId == eventId && p.EmployeeId == employeeId, ct);
 
+    public void RemoveParticipant(CalendarEventParticipant participant) => _db.CalendarEventParticipants.Remove(participant);
+
     public async Task<IReadOnlyList<CalendarEvent>> GetInDateRangeForEmployeeAsync(
         Guid tenantId, Guid employeeId, DateTimeOffset from, DateTimeOffset to, CancellationToken ct = default)
     {

@@ -220,6 +220,7 @@ public sealed class GetCurrentSessionQueryHandlerTests
 
         result.IsSuccess.Should().BeTrue();
         result.Value!.User!.EmployeeId.Should().Be(employeeId);
+        result.Value.User.DisplayName.Should().Be("Jane Doe");
     }
 
     [Fact]

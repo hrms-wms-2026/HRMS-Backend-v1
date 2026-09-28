@@ -78,22 +78,23 @@ public class ListProjectsQueryHandlerTests
     }
 
     [Fact]
-    public async Task Handle_ExplicitTargetEmployeeId_UsesItInsteadOfCaller()
+    public async Task Handle_ExplicitDifferentTargetEmployeeId_ReturnsForbidden()
     {
         var (handler, projects, _, _, _, _) = BuildHandler([MakeProject(OtherEmployeeId)], 1);
 
         var result = await handler.Handle(new ListProjectsQuery(OtherEmployeeId, new PagedRequest()), CancellationToken.None);
 
-        Assert.True(result.IsSuccess);
-        projects.Verify(x => x.ListForMemberAsync(TenantId, OtherEmployeeId, It.IsAny<int>(), It.IsAny<int>(), It.IsAny<string?>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
+        Assert.False(result.IsSuccess);
+        Assert.Equal(403, result.StatusCode);
+        projects.Verify(x => x.ListForMemberAsync(TenantId, It.IsAny<Guid>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<string?>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
-    public async Task Handle_IsLead_ComputedAgainstTargetEmployeeIdNotCaller()
+    public async Task Handle_IsLead_ComputedAgainstCallerEmployeeId()
     {
-        var (handler, _, _, _, _, _) = BuildHandler([MakeProject(OtherEmployeeId)], 1);
+        var (handler, _, _, _, _, _) = BuildHandler([MakeProject(EmployeeId)], 1);
 
-        var result = await handler.Handle(new ListProjectsQuery(OtherEmployeeId, new PagedRequest()), CancellationToken.None);
+        var result = await handler.Handle(new ListProjectsQuery(EmployeeId, new PagedRequest()), CancellationToken.None);
 
         Assert.True(result.Value!.Items.Single().IsLead);
     }

@@ -65,7 +65,7 @@ public class GetObjectiveSubtreeQueryHandlerTests
 
         var permissionResolver = new Mock<IPermissionResolver>();
         permissionResolver.Setup(x => x.ResolveAsync(It.IsAny<Guid>(), TenantId, It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(hasReadPermission ? new List<string> { "projects:read" } : new List<string>());
+            .ReturnsAsync(hasReadPermission ? new List<string> { "*" } : new List<string>());
 
         var handler = new GetObjectiveSubtreeQueryHandler(currentUser.Object, identity.Object, objectives.Object, members.Object, permissionResolver.Object);
         return (handler, objectives);

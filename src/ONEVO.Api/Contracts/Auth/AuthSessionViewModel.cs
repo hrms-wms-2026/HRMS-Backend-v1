@@ -3,7 +3,8 @@ using System.Text.Json.Serialization;
 namespace ONEVO.Api.Contracts.Auth;
 
 public record CurrentUserViewModel(
-    [property: JsonPropertyName("email")] string Email
+    [property: JsonPropertyName("email")] string Email,
+    [property: JsonPropertyName("display_name")] string? DisplayName = null
 );
 
 public record WorkspaceViewModel(

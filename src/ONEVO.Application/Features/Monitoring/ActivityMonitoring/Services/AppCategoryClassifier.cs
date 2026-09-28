@@ -1,4 +1,4 @@
-namespace ONEVO.Infrastructure.Services.Monitoring.ActivityMonitoring;
+namespace ONEVO.Application.Features.Monitoring.ActivityMonitoring.Services;
 
 public enum AppCategory { Productive, Personal, Unknown }
 

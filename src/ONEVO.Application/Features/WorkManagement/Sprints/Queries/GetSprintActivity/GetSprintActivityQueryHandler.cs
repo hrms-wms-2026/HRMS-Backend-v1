@@ -53,7 +53,7 @@ public sealed class GetSprintActivityQueryHandler : IRequestHandler<GetSprintAct
             return Result<IReadOnlyList<SprintActivityResponse>>.NotFound("Sprint not found.");
 
         var permissions = await _permissionResolver.ResolveAsync(userId, tenantId, null, ct);
-        var hasReadPermission = permissions.Contains("projects:read") || permissions.Contains("*");
+        var hasReadPermission = permissions.Contains("*");
         if (!hasReadPermission && !await _members.HasActiveMembershipAsync(tenantId, sprint.ProjectId, callerEmployeeId.Value, ct))
             return Result<IReadOnlyList<SprintActivityResponse>>.Forbidden("You do not have access to this project.");
 

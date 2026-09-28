@@ -110,7 +110,8 @@ public class CreateTaskCreationRequestCommandHandler : IRequestHandler<CreateTas
 
             await _unitOfWork.SaveChangesAsync(innerCt);
 
-            return Result<TaskCreationRequestResponse>.Success(new TaskCreationRequestResponse(entity.Id, entity.ObjectiveId, entity.Status, payload, entity.CreatedAt));
+            return Result<TaskCreationRequestResponse>.Success(new TaskCreationRequestResponse(
+                entity.Id, entity.ObjectiveId, entity.Status, payload, entity.CreatedAt, requesterDisplayName));
         }, ct);
     }
 }

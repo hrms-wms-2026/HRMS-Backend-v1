@@ -2,7 +2,6 @@ using MediatR;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Permission.ServiceInterfaces;
-using ONEVO.Application.Features.Storage.File.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.CalendarEvents.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
@@ -14,11 +13,8 @@ namespace ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetProjectTask
 
 public sealed class GetProjectTasksQueryHandler : IRequestHandler<GetProjectTasksQuery, Result<IReadOnlyList<WorkTaskResponse>>>
 {
-    private static readonly TimeSpan AvatarUrlExpiry = TimeSpan.FromMinutes(15);
-
     private readonly ICurrentUser _currentUser;
     private readonly ICallerIdentityResolver _identity;
-    private readonly IFileStorageService _fileStorage;
     private readonly IProjectRepository _projects;
     private readonly IProjectMemberRepository _members;
     private readonly IPermissionResolver _permissionResolver;
@@ -31,7 +27,6 @@ public sealed class GetProjectTasksQueryHandler : IRequestHandler<GetProjectTask
     public GetProjectTasksQueryHandler(
         ICurrentUser currentUser,
         ICallerIdentityResolver identity,
-        IFileStorageService fileStorage,
         IProjectRepository projects,
         IProjectMemberRepository members,
         IPermissionResolver permissionResolver,
@@ -43,7 +38,6 @@ public sealed class GetProjectTasksQueryHandler : IRequestHandler<GetProjectTask
     {
         _currentUser = currentUser;
         _identity = identity;
-        _fileStorage = fileStorage;
         _projects = projects;
         _members = members;
         _permissionResolver = permissionResolver;
@@ -73,7 +67,7 @@ public sealed class GetProjectTasksQueryHandler : IRequestHandler<GetProjectTask
             return Result<IReadOnlyList<WorkTaskResponse>>.NotFound("Project not found.");
 
         var permissions = await _permissionResolver.ResolveAsync(userId, tenantId, null, ct);
-        var hasReadPermission = permissions.Contains("projects:read") || permissions.Contains("*");
+        var hasReadPermission = permissions.Contains("*");
         var accessibleObjectiveIds = hasReadPermission
             ? null
             : (await _members.GetActiveObjectiveIdsForEmployeeInProjectAsync(tenantId, project.Id, callerEmployeeId.Value, ct)).ToHashSet();
@@ -114,8 +108,8 @@ public sealed class GetProjectTasksQueryHandler : IRequestHandler<GetProjectTask
         // Coverage-free identity resolution (same reasoning as GetObjectiveMembersQueryHandler:
         // management coverage is a People-module reporting-chain concept unrelated to WM task
         // assignment, so GET /employees/{id} 403ing for most assignees must not block the board
-        // from showing their name/avatar). Signed once per distinct assignee across the whole
-        // response rather than per task, since the same person is often assigned to several tasks.
+        // from showing their name/avatar). Return the immutable file id so every client surface
+        // builds the same authenticated /files/{id} URL and can reuse its browser cache.
         var distinctAssigneeIds = assigneesByTaskId.Values.SelectMany(ids => ids).Distinct().ToList();
         var identitiesByEmployeeId = await _identity.ResolveIdentitiesByEmployeeIdAsync(tenantId, distinctAssigneeIds, ct);
         var assigneeIdentityByEmployeeId = new Dictionary<Guid, TaskAssigneeIdentityDto>();
@@ -123,17 +117,13 @@ public sealed class GetProjectTasksQueryHandler : IRequestHandler<GetProjectTask
         {
             if (!identitiesByEmployeeId.TryGetValue(employeeId, out var identity))
             {
-                assigneeIdentityByEmployeeId[employeeId] = new TaskAssigneeIdentityDto(employeeId, "Unknown employee", null);
+                assigneeIdentityByEmployeeId[employeeId] = new TaskAssigneeIdentityDto(
+                    employeeId, "Unknown employee", null);
                 continue;
             }
 
-            string? avatarUrl = null;
-            if (identity.AvatarFileId is { } avatarFileId)
-            {
-                var urlResult = await _fileStorage.GetSignedUrlAsync(tenantId, avatarFileId, AvatarUrlExpiry, ct);
-                avatarUrl = urlResult.IsSuccess ? urlResult.Value : null;
-            }
-            assigneeIdentityByEmployeeId[employeeId] = new TaskAssigneeIdentityDto(employeeId, identity.Name, avatarUrl);
+            assigneeIdentityByEmployeeId[employeeId] = new TaskAssigneeIdentityDto(
+                employeeId, identity.Name, identity.AvatarFileId);
         }
 
         // People filter (spec §6.2): keep only tasks assigned to one of the requested employees.

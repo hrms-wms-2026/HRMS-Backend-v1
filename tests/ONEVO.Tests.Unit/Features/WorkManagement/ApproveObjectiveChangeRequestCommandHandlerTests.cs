@@ -134,7 +134,10 @@ public class ApproveObjectiveChangeRequestCommandHandlerTests
 
         Assert.True(result.IsSuccess);
         objectives.Verify(x => x.Update(It.Is<Objective>(o => !o.IsActive)), Times.Once);
-        requests.Verify(x => x.Update(It.Is<ObjectiveChangeRequest>(r => r.Status == ObjectiveChangeRequestStatuses.Approved)), Times.Once);
+        requests.Verify(x => x.Update(It.Is<ObjectiveChangeRequest>(r =>
+            r.Status == ObjectiveChangeRequestStatuses.Approved
+            && r.DecidedById == ManagerEmployeeId
+            && r.DecidedAt != null)), Times.Once);
     }
 
     [Fact]

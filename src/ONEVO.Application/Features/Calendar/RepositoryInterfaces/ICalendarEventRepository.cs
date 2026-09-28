@@ -43,6 +43,8 @@ public interface ICalendarEventRepository
     Task<CalendarEventParticipant?> GetTrackedParticipantAsync(
         Guid tenantId, Guid eventId, Guid employeeId, CancellationToken ct = default);
 
+    void RemoveParticipant(CalendarEventParticipant participant);
+
     /// <summary>Same shape as GetInDateRangeForCallerAsync, but scoped to one specific employee
     /// (as owner OR participant) rather than the current caller - used for conflict-checking a
     /// participant who is not the person making the request. "Owner" covers synced external

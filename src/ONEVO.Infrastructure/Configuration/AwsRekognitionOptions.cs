@@ -33,6 +33,15 @@ public class AwsRekognitionOptions
     /// <summary>Maximum absolute yaw/pitch in degrees before the face is treated as turned away.</summary>
     [Range(0, 90)] public float MaxHeadPoseDegrees { get; set; } = 35f;
 
+    /// <summary>Minimum DetectFaces confidence (0-100) that the eyes are closed before a photo fails as closed eyes / glasses glare.</summary>
+    [Range(0, 100)] public float MinEyesClosedConfidence { get; set; } = 90f;
+
+    /// <summary>Face setup "look straight" photo: maximum absolute yaw in degrees.</summary>
+    [Range(0, 90)] public float FrontMaxYawDegrees { get; set; } = 15f;
+
+    /// <summary>Face setup left/right photos: minimum absolute yaw in degrees (must be clearly turned).</summary>
+    [Range(0, 90)] public float SideMinYawDegrees { get; set; } = 12f;
+
     /// <summary>Minimum Sunglasses/FaceOccluded confidence (0-100) before treating the flag as set.</summary>
     [Range(0, 100)] public float AccessoryConfidenceThreshold { get; set; } = 80f;
 

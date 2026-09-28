@@ -3,53 +3,69 @@ using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.Biometrics.RepositoryInterfaces;
+using ONEVO.Application.Features.Monitoring.Biometrics.ServiceInterfaces;
 using ONEVO.Application.Features.Monitoring.CheckIn.DTOs.Responses;
+using ONEVO.Application.Features.Monitoring.CheckIn.Helpers;
 using ONEVO.Application.Features.Monitoring.CheckIn.ServiceInterfaces;
-using ONEVO.Application.Features.Storage.File.DTOs.Responses;
-using ONEVO.Application.Features.Storage.File.Helpers;
-using ONEVO.Application.Features.Storage.File.ServiceInterfaces;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
-using ONEVO.Domain.Features.Monitoring.Biometrics.Entities;
 
 namespace ONEVO.Application.Features.Monitoring.CheckIn.Commands.ValidateFacePhoto;
 
+/// <summary>
+/// Checks one selfie. Clock-in/out: quality + match against the enrolled face, then the retry
+/// rule (IFaceVerificationRetryPolicy) — the last allowed attempt lets the employee through and
+/// alerts their manager.
+/// Enrollment (tray face setup): quality + head pose for that step only — nothing is saved here;
+/// the three setup photos are saved together by EnrollFacePhotosCommand.
+/// </summary>
 public class ValidateFacePhotoCommandHandler
     : IRequestHandler<ValidateFacePhotoCommand, Result<FacePhotoValidationResponseDto>>
 {
     public const string FailurePoorLighting = "poor_lighting";
     public const string FailureFaceNotVisible = "face_not_visible";
+    public const string FailureNoFaceDetected = "no_face_detected";
+    public const string FailureMultipleFaces = "multiple_faces";
     public const string FailureSunglassesOrMask = "sunglasses_or_mask";
     public const string FailureNotMatched = "not_matched";
     public const string FailureNoReferencePhoto = "no_reference_photo";
     public const string FailureVerificationFailed = "verification_failed";
+    public const string FailureWrongPose = "wrong_pose";
+    public const string FailureGlassesGlare = "glasses_glare";
+    public const string FailureEyesClosed = "eyes_closed";
+
+    /// <summary>
+    /// Face setup found this employee already enrolled and the photo matched — CanProceed is true;
+    /// the tray skips the side photos. Not an error despite travelling in failure_reason.
+    /// </summary>
+    public const string AlreadyEnrolled = "already_enrolled";
 
     private readonly ITrayCurrentDevice _device;
     private readonly ITenantRepository _tenants;
     private readonly ITenantContextSwitcher _tenantSwitcher;
-    private readonly IFileStorageService _fileStorage;
     private readonly IBiometricProfileRepository _profiles;
     private readonly IFaceQualityService _faceQuality;
-    private readonly IFaceMatchService _faceMatch;
+    private readonly IEnrolledFaceMatcher _matcher;
     private readonly ITrayEmployeeIdentityResolver _employeeIdentity;
+    private readonly IFaceVerificationRetryPolicy _retryPolicy;
 
     public ValidateFacePhotoCommandHandler(
         ITrayCurrentDevice device,
         ITenantRepository tenants,
         ITenantContextSwitcher tenantSwitcher,
-        IFileStorageService fileStorage,
         IBiometricProfileRepository profiles,
         IFaceQualityService faceQuality,
-        IFaceMatchService faceMatch,
-        ITrayEmployeeIdentityResolver employeeIdentity)
+        IEnrolledFaceMatcher matcher,
+        ITrayEmployeeIdentityResolver employeeIdentity,
+        IFaceVerificationRetryPolicy retryPolicy)
     {
         _device = device;
         _tenants = tenants;
         _tenantSwitcher = tenantSwitcher;
-        _fileStorage = fileStorage;
         _profiles = profiles;
         _faceQuality = faceQuality;
-        _faceMatch = faceMatch;
+        _matcher = matcher;
         _employeeIdentity = employeeIdentity;
+        _retryPolicy = retryPolicy;
     }
 
     public async Task<Result<FacePhotoValidationResponseDto>> Handle(
@@ -76,6 +92,36 @@ public class ValidateFacePhotoCommandHandler
         await request.ImageStream.CopyToAsync(captured, cancellationToken);
         captured.Position = 0;
 
+        var enrollment = FacePhotoValidationPurpose.IsEnrollment(request.Purpose);
+        var employeeId = await _employeeIdentity.ResolveEmployeeIdAsync(
+            _device.TenantId, _device.UserId, _device.LegalEntityId, cancellationToken);
+
+        var result = await EvaluateAsync(request, captured, employeeId, enrollment, cancellationToken);
+
+        // Face setup steps never count toward the clock-in/out retry limit.
+        if (!enrollment)
+        {
+            var purpose = string.Equals(request.Purpose, FacePhotoValidationPurpose.ClockOut, StringComparison.OrdinalIgnoreCase)
+                ? FacePhotoValidationPurpose.ClockOut
+                : FacePhotoValidationPurpose.ClockIn;
+            result = await _retryPolicy.ApplyAsync(
+                new FaceCheckAttemptContext(_device.TenantId, _device.UserId, employeeId, _device.LegalEntityId, purpose),
+                result,
+                captured,
+                request.ContentType,
+                cancellationToken);
+        }
+
+        return Result<FacePhotoValidationResponseDto>.Success(result);
+    }
+
+    private async Task<FacePhotoValidationResponseDto> EvaluateAsync(
+        ValidateFacePhotoCommand request,
+        MemoryStream captured,
+        Guid employeeId,
+        bool enrollment,
+        CancellationToken cancellationToken)
+    {
         FaceQualityOutcome quality;
         try
         {
@@ -83,112 +129,76 @@ public class ValidateFacePhotoCommandHandler
         }
         catch (Exception)
         {
-            return Result<FacePhotoValidationResponseDto>.Success(FailedVerification());
+            return FailedVerification();
         }
+
+        // Every answer AWS produced carries what it saw, so a rejection can be diagnosed.
+        FacePhotoValidationResponseDto Done(FacePhotoValidationResponseDto dto) => WithDetectedFaces(dto, quality);
 
         if (!quality.LightingOk || !quality.FaceVisible || !quality.NoSunglassesOrMask)
-        {
-            return Result<FacePhotoValidationResponseDto>.Success(new FacePhotoValidationResponseDto(
-                quality.LightingOk,
-                quality.FaceVisible,
-                quality.NoSunglassesOrMask,
-                IsMatch: false,
-                CanProceed: false,
-                SimilarityScore: null,
-                FailureReason: FirstQualityFailure(quality)));
-        }
+            return Done(Rejected(quality, FirstQualityFailure(quality)));
 
-        captured.Position = 0;
+        if (enrollment && !FacePhotoPoseRules.Matches(request.Pose, quality))
+            return Done(Rejected(quality, FailureWrongPose));
 
-        var employeeId = await _employeeIdentity.ResolveEmployeeIdAsync(
-            _device.TenantId, _device.UserId, _device.LegalEntityId, cancellationToken);
         var profile = await _profiles.GetByEmployeeIdAsync(_device.TenantId, employeeId, cancellationToken);
-        if (profile?.ReferencePhotoFileId is null)
-        {
-            var enrolled = await EnrollReferenceFromCaptureAsync(
-                captured, request.ContentType, employeeId, profile, cancellationToken);
 
-            return Result<FacePhotoValidationResponseDto>.Success(new FacePhotoValidationResponseDto(
-                quality.LightingOk,
-                quality.FaceVisible,
-                quality.NoSunglassesOrMask,
-                IsMatch: true,
-                CanProceed: true,
-                SimilarityScore: enrolled ? 100f : null,
-                FailureReason: null));
-        }
-
+        EnrolledFaceMatch match;
         try
         {
-            var referenceRead = await _fileStorage.OpenReadAsync(
-                _device.TenantId, profile.ReferencePhotoFileId.Value, cancellationToken);
-            if (!referenceRead.IsSuccess)
-                return Result<FacePhotoValidationResponseDto>.Success(FailedVerification(quality));
-
-            await using var referenceStream = referenceRead.Value!.Content;
-            var outcome = await _faceMatch.CompareAsync(referenceStream, captured, cancellationToken);
-
-            return Result<FacePhotoValidationResponseDto>.Success(new FacePhotoValidationResponseDto(
-                quality.LightingOk,
-                quality.FaceVisible,
-                quality.NoSunglassesOrMask,
-                outcome.IsMatch,
-                CanProceed: outcome.IsMatch,
-                outcome.Similarity,
-                FailureReason: outcome.IsMatch ? null : FailureNotMatched));
+            match = await _matcher.MatchAsync(_device.TenantId, profile, captured, cancellationToken);
         }
         catch (Exception)
         {
-            return Result<FacePhotoValidationResponseDto>.Success(FailedVerification(quality));
+            return Done(FailedVerification(quality));
         }
+
+        if (!match.HasReference)
+        {
+            // Face setup: this step's photo is fine; the reference is saved only when all three
+            // setup photos are committed together. Clock-in/out must never create a reference —
+            // whoever sits at the laptop first would become the "enrolled" face.
+            return Done(enrollment
+                ? new FacePhotoValidationResponseDto(
+                    quality.LightingOk, quality.FaceVisible, quality.NoSunglassesOrMask,
+                    IsMatch: false, CanProceed: true, SimilarityScore: null, FailureReason: null)
+                : Rejected(quality, FailureNoReferencePhoto));
+        }
+
+        if (match.Failed)
+            return Done(FailedVerification(quality));
+
+        return Done(new FacePhotoValidationResponseDto(
+            quality.LightingOk,
+            quality.FaceVisible,
+            quality.NoSunglassesOrMask,
+            match.IsMatch,
+            CanProceed: match.IsMatch,
+            match.Similarity,
+            FailureReason: !match.IsMatch ? FailureNotMatched
+                : enrollment ? AlreadyEnrolled
+                : null));
     }
 
-    private async Task<bool> EnrollReferenceFromCaptureAsync(
-        MemoryStream captured,
-        string contentType,
-        Guid employeeId,
-        BiometricProfile? existing,
-        CancellationToken ct)
-    {
-        captured.Position = 0;
-        var upload = await _fileStorage.UploadAsync(
-            _device.TenantId,
-            _device.UserId,
-            "clock-in-reference.jpg",
-            string.IsNullOrWhiteSpace(contentType) ? "image/jpeg" : contentType,
-            UploadPurposeCatalog.BiometricReferencePhoto,
-            captured,
-            ct);
-        if (!upload.IsSuccess)
-            return false;
-
-        var now = DateTimeOffset.UtcNow;
-        if (existing is not null)
+    private static FacePhotoValidationResponseDto WithDetectedFaces(
+        FacePhotoValidationResponseDto dto, FaceQualityOutcome quality) =>
+        dto with
         {
-            existing.Status = BiometricProfileStatus.Enrolled;
-            existing.EnrolledAt = now;
-            existing.UpdatedAt = now;
-            existing.ReferencePhotoFileId = upload.Value!.Id;
-            _profiles.Update(existing);
-        }
-        else
-        {
-            await _profiles.AddAsync(new BiometricProfile
-            {
-                Id = Guid.NewGuid(),
-                TenantId = _device.TenantId,
-                EmployeeId = employeeId,
-                Status = BiometricProfileStatus.Enrolled,
-                EnrolledAt = now,
-                CreatedAt = now,
-                UpdatedAt = now,
-                ReferencePhotoFileId = upload.Value!.Id
-            }, ct);
-        }
+            FaceCount = quality.FaceCount,
+            Faces = quality.Faces?
+                .Select(f => new FaceBoxDto(f.Confidence, f.Left, f.Top, f.Width, f.Height))
+                .ToList()
+        };
 
-        await _profiles.SaveChangesAsync(ct);
-        return true;
-    }
+    private static FacePhotoValidationResponseDto Rejected(FaceQualityOutcome quality, string reason) =>
+        new(
+            quality.LightingOk,
+            quality.FaceVisible,
+            quality.NoSunglassesOrMask,
+            IsMatch: false,
+            CanProceed: false,
+            SimilarityScore: null,
+            FailureReason: reason);
 
     private static FacePhotoValidationResponseDto FailedVerification(FaceQualityOutcome? quality = null) =>
         new(
@@ -200,10 +210,14 @@ public class ValidateFacePhotoCommandHandler
             SimilarityScore: null,
             FailureReason: FailureVerificationFailed);
 
-    private static string FirstQualityFailure(FaceQualityOutcome quality)
+    internal static string FirstQualityFailure(FaceQualityOutcome quality)
     {
+        if (quality.FaceCount == 0) return FailureNoFaceDetected;
+        if (quality.FaceCount > 1) return FailureMultipleFaces;
+        if (quality.EyesClosed) return FailureEyesClosed;
         if (!quality.FaceVisible) return FailureFaceNotVisible;
         if (!quality.LightingOk) return FailurePoorLighting;
+        if (quality.GlassesGlare) return FailureGlassesGlare;
         return FailureSunglassesOrMask;
     }
 }

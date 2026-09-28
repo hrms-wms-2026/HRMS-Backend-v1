@@ -9,7 +9,8 @@ public sealed class CalendarNotificationSender(IOutboxWriter outboxWriter, IEmpl
 {
     public async Task NotifyParticipantsAddedAsync(
         Guid tenantId, string eventTitle, DateTimeOffset startDate, string? location,
-        IReadOnlyList<Guid> employeeIds, string organizerName, CancellationToken ct = default)
+        IReadOnlyList<Guid> employeeIds, string organizerName, CancellationToken ct = default,
+        string? meetingLink = null)
     {
         foreach (var employeeId in employeeIds)
         {
@@ -26,7 +27,23 @@ public sealed class CalendarNotificationSender(IOutboxWriter outboxWriter, IEmpl
 
             await outboxWriter.EnqueueAsync(
                 OutboxMessageTypes.CalendarEventInviteEmail,
-                new CalendarEventInviteEmailPayload(tenantId, employee.Email, $"{employee.FirstName} {employee.LastName}", eventTitle, startDate, location, organizerName),
+                new CalendarEventInviteEmailPayload(tenantId, employee.Email, $"{employee.FirstName} {employee.LastName}", eventTitle, startDate, location, organizerName, meetingLink),
+                tenantId, ct);
+        }
+    }
+
+    public async Task NotifyMeetingLinkAddedAsync(
+        Guid tenantId, string eventTitle, DateTimeOffset startDate, string? location,
+        IReadOnlyList<Guid> employeeIds, string organizerName, string meetingLink, CancellationToken ct = default)
+    {
+        foreach (var employeeId in employeeIds)
+        {
+            var employee = await employees.GetByIdAsync(tenantId, employeeId, ct);
+            if (employee is null) continue;
+
+            await outboxWriter.EnqueueAsync(
+                OutboxMessageTypes.CalendarEventInviteEmail,
+                new CalendarEventInviteEmailPayload(tenantId, employee.Email, $"{employee.FirstName} {employee.LastName}", eventTitle, startDate, location, organizerName, meetingLink),
                 tenantId, ct);
         }
     }

@@ -62,6 +62,18 @@ public class NotificationTemplateSeeder : IHostedService
             },
             new()
             {
+                Id = Guid.NewGuid(), Code = "work_task_status_change_request_created",
+                InAppTitleTemplate = "Task status change requested",
+                InAppBodyTemplate = "{{requesterName}} requested changes to the task statuses of {{projectName}}."
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "work_task_status_change_request_decided",
+                InAppTitleTemplate = "Task status change {{decision}}",
+                InAppBodyTemplate = "Your task status change request for {{projectName}} was {{decision}}."
+            },
+            new()
+            {
                 Id = Guid.NewGuid(), Code = "work_allocation_extend_request_created",
                 InAppTitleTemplate = "Allocation extension requested",
                 InAppBodyTemplate = "{{requesterName}} requested {{requestedHours}} more hours for {{objectiveName}}."
@@ -143,6 +155,12 @@ public class NotificationTemplateSeeder : IHostedService
                 Id = Guid.NewGuid(), Code = "leave_request_partially_cancelled",
                 InAppTitleTemplate = "Leave partially cancelled",
                 InAppBodyTemplate = "{{leaveTypeName}} from {{effectiveDate}} to {{endDate}} was cancelled. {{restoredDays}} days restored."
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "face_verification_override",
+                InAppTitleTemplate = "Face verification needs review",
+                InAppBodyTemplate = "{{employeeName}} could not pass face verification {{attempts}} times and was allowed to {{action}} at {{time}} UTC. Reasons: {{reasons}}. Please review the photo."
             },
             new()
             {

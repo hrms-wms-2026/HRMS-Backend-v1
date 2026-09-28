@@ -118,14 +118,13 @@ public static class DapiOrgStructureData
     [
         "org:read", "org:manage", "employees:read", "employees:read-team", "roles:read",
         "calendar:read", "leave:read", "leave:approve", "monitoring:read",
-        "projects:read", "projects:access", "tasks:read", "tasks:write", "tasks:approve",
-        "sprints:read", "roadmaps:read"
+        "projects:create"
     ];
 
     public static readonly IReadOnlyList<string> ManagerPermissionCodes =
     [
         "employees:read-team", "leave:approve", "calendar:read",
-        "projects:read", "projects:access", "tasks:read", "tasks:write", "tasks:approve"
+        "projects:create"
     ];
 
     /// <summary>Employee is the baseline organizational role: no explicit permissions. Universal

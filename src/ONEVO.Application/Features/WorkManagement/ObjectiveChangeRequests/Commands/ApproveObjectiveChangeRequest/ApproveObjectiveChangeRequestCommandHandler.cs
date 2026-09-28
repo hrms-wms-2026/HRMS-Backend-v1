@@ -203,7 +203,7 @@ public class ApproveObjectiveChangeRequestCommandHandler : IRequestHandler<Appro
 
             changeRequest.Status = ObjectiveChangeRequestStatuses.Approved;
             changeRequest.DecidedAt = now;
-            changeRequest.DecidedById = userId;
+            changeRequest.DecidedById = callerEmployeeId.Value;
             _changeRequests.Update(changeRequest);
 
             await _unitOfWork.SaveChangesAsync(innerCt);

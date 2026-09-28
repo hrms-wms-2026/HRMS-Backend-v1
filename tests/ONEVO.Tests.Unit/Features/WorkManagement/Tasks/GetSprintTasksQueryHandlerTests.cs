@@ -73,7 +73,7 @@ public class GetSprintTasksQueryHandlerTests
 
         var permissionResolver = new Mock<IPermissionResolver>();
         permissionResolver.Setup(x => x.ResolveAsync(UserId, TenantId, null, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(hasReadPermission ? new List<string> { "projects:read" } : new List<string>());
+            .ReturnsAsync(hasReadPermission ? new List<string> { "*" } : new List<string>());
 
         var thisSprintTask = TaskOn(SprintId, Guid.NewGuid(), "This sprint");
         var tasks = new Mock<IWorkTaskRepository>();

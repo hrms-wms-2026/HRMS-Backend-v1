@@ -60,7 +60,11 @@ public sealed record TaskCategoryViewModel(Guid Id, string Name, int DisplayOrde
 
 public sealed record TaskAttachmentViewModel(Guid FileId, string FileName, long FileSizeBytes, string ContentType);
 
-public sealed record TaskAssigneeIdentityViewModel(Guid EmployeeId, string Name, string? AvatarUrl);
+public sealed record TaskAssigneeIdentityViewModel(
+    Guid EmployeeId,
+    string Name,
+    Guid? AvatarFileId,
+    string? AvatarUrl = null);
 
 public sealed record WorkTaskViewModel(
     Guid Id, Guid ObjectiveId, string ShortId, string Title, string? Description,

@@ -6,7 +6,9 @@ using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Objectives.Services;
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Tasks.DTOs;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Tasks.Services;
 using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
 
 namespace ONEVO.Application.Features.WorkManagement.Tasks.Commands.DeleteTaskStatus;
@@ -21,11 +23,13 @@ public class DeleteTaskStatusCommandHandler : IRequestHandler<DeleteTaskStatusCo
     private readonly IWorkTaskRepository _tasks;
     private readonly IUnitOfWork _unitOfWork;
     private readonly IMilestoneMembershipCoordinator _membership;
+    private readonly ITaskStatusChangeRequestConflictSweeper _sweeper;
 
     public DeleteTaskStatusCommandHandler(
         ICurrentUser currentUser, ICallerIdentityResolver identity, IObjectiveRepository objectives,
         IProjectRepository projects, ITaskStatusRepository statuses, IWorkTaskRepository tasks,
-        IUnitOfWork unitOfWork, IMilestoneMembershipCoordinator membership)
+        IUnitOfWork unitOfWork, IMilestoneMembershipCoordinator membership,
+        ITaskStatusChangeRequestConflictSweeper sweeper)
     {
         _currentUser = currentUser;
         _identity = identity;
@@ -35,6 +39,7 @@ public class DeleteTaskStatusCommandHandler : IRequestHandler<DeleteTaskStatusCo
         _tasks = tasks;
         _unitOfWork = unitOfWork;
         _membership = membership;
+        _sweeper = sweeper;
     }
 
     public async Task<Result> Handle(DeleteTaskStatusCommand request, CancellationToken ct)
@@ -78,6 +83,9 @@ public class DeleteTaskStatusCommandHandler : IRequestHandler<DeleteTaskStatusCo
         return await _unitOfWork.ExecuteInTransactionAsync(async innerCt =>
         {
             _statuses.Remove(status);
+            await _sweeper.MarkConflictingOutdatedAsync(
+                tenantId, project.Id, project.Name,
+                new TaskStatusChangeFootprint(new HashSet<Guid> { status.Id }, ReordersExisting: false), null, innerCt);
             await _unitOfWork.SaveChangesAsync(innerCt);
             return Result.Success();
         }, ct);

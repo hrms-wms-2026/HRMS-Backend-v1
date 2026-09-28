@@ -74,7 +74,7 @@ public sealed class GetProjectSprintsQueryHandlerTests
         _sprints.Setup(x => x.GetByProjectAsync(TenantId, ProjectId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<Sprint> { mine, other });
         _permissions.Setup(x => x.ResolveAsync(UserId, TenantId, null, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<string> { "projects:read" });
+            .ReturnsAsync(new List<string> { "*" });
         _access.Setup(x => x.GetManageableSprintIdsAsync(TenantId, ProjectId, It.IsAny<IReadOnlyList<Sprint>>(), UserId, EmployeeId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new HashSet<Guid> { mine.Id });
 

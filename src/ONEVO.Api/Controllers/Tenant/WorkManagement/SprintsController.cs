@@ -20,6 +20,7 @@ namespace ONEVO.Api.Controllers.Tenant.WorkManagement;
 [ApiController]
 [Route("api/v1/work")]
 [Authorize(Policy = "TenantPolicy")]
+[RequireAnyModule("worksync_foundation", "projects", "objectives_milestones", "tasks", "boards", "planning_sprints")]
 public class SprintsController : ControllerBase
 {
     private readonly IMediator _mediator;
@@ -27,7 +28,6 @@ public class SprintsController : ControllerBase
     public SprintsController(IMediator mediator) => _mediator = mediator;
 
     [HttpPost("projects/{projectId:guid}/sprints")]
-    [RequirePermission("projects:access")]
     public async Task<IActionResult> Create(Guid projectId, [FromBody] CreateSprintRequest request, CancellationToken ct)
     {
         var result = await _mediator.Send(new CreateSprintCommand(projectId, request.Name, request.Goal, request.TaskIds ?? Array.Empty<Guid>()), ct);
@@ -38,7 +38,6 @@ public class SprintsController : ControllerBase
     }
 
     [HttpPatch("sprints/{id:guid}")]
-    [RequirePermission("projects:access")]
     public async Task<IActionResult> Edit(Guid id, [FromBody] EditSprintRequest request, CancellationToken ct)
     {
         var result = await _mediator.Send(new EditSprintCommand(id, request.Name, request.Goal, request.StartDate, request.EndDate), ct);
@@ -49,7 +48,6 @@ public class SprintsController : ControllerBase
     }
 
     [HttpPost("sprints/{id:guid}/start")]
-    [RequirePermission("projects:access")]
     public async Task<IActionResult> Start(Guid id, [FromBody] StartSprintRequest request, CancellationToken ct)
     {
         var result = await _mediator.Send(new StartSprintCommand(id, request.StartDate, request.EndDate, request.Goal), ct);
@@ -60,7 +58,6 @@ public class SprintsController : ControllerBase
     }
 
     [HttpPost("sprints/{id:guid}/complete")]
-    [RequirePermission("projects:access")]
     public async Task<IActionResult> Complete(Guid id, [FromBody] CompleteSprintRequest request, CancellationToken ct)
     {
         var result = await _mediator.Send(new CompleteSprintCommand(id, request.Disposition, request.TargetSprintId), ct);
@@ -71,7 +68,6 @@ public class SprintsController : ControllerBase
     }
 
     [HttpPost("sprints/{id:guid}/achieve")]
-    [RequirePermission("projects:access")]
     public async Task<IActionResult> Achieve(Guid id, CancellationToken ct)
     {
         var result = await _mediator.Send(new AchieveSprintCommand(id), ct);
@@ -82,7 +78,6 @@ public class SprintsController : ControllerBase
     }
 
     [HttpPut("sprints/{id:guid}/tasks")]
-    [RequirePermission("projects:access")]
     public async Task<IActionResult> SetTasks(Guid id, [FromBody] SetSprintTasksRequest request, CancellationToken ct)
     {
         var result = await _mediator.Send(new SetSprintTasksCommand(id, request.AddTaskIds ?? Array.Empty<Guid>(), request.RemoveTaskIds ?? Array.Empty<Guid>()), ct);
@@ -93,7 +88,6 @@ public class SprintsController : ControllerBase
     }
 
     [HttpGet("sprints/{id:guid}/tasks")]
-    [RequirePermission("projects:access")]
     public async Task<IActionResult> GetTasks(Guid id, CancellationToken ct)
     {
         var result = await _mediator.Send(new GetSprintTasksQuery(id), ct);
@@ -104,7 +98,6 @@ public class SprintsController : ControllerBase
     }
 
     [HttpGet("sprints/{id:guid}/activity")]
-    [RequirePermission("projects:access")]
     public async Task<IActionResult> GetActivity(Guid id, CancellationToken ct)
     {
         var result = await _mediator.Send(new GetSprintActivityQuery(id), ct);
@@ -125,7 +118,6 @@ public class SprintsController : ControllerBase
     }
 
     [HttpGet("objectives/{objectiveId:guid}/sprints")]
-    [RequirePermission("projects:access")]
     public async Task<IActionResult> GetByObjective(Guid objectiveId, [FromQuery] bool activeOnly, CancellationToken ct)
     {
         var result = await _mediator.Send(new GetObjectiveSprintsQuery(objectiveId, activeOnly), ct);
