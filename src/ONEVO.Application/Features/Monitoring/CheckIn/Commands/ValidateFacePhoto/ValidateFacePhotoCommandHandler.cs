@@ -15,6 +15,7 @@ namespace ONEVO.Application.Features.Monitoring.CheckIn.Commands.ValidateFacePho
 /// Checks one selfie. Clock-in/out: quality + match against the enrolled face, then the retry
 /// rule (IFaceVerificationRetryPolicy) — the last allowed attempt lets the employee through and
 /// alerts their manager.
+/// Checks one selfie. Clock-in/out: quality + match against the enrolled face.
 /// Enrollment (tray face setup): quality + head pose for that step only — nothing is saved here;
 /// the three setup photos are saved together by EnrollFacePhotosCommand.
 /// </summary>
@@ -57,6 +58,7 @@ public class ValidateFacePhotoCommandHandler
         IEnrolledFaceMatcher matcher,
         ITrayEmployeeIdentityResolver employeeIdentity,
         IFaceVerificationRetryPolicy retryPolicy)
+        ITrayEmployeeIdentityResolver employeeIdentity)
     {
         _device = device;
         _tenants = tenants;
@@ -134,10 +136,13 @@ public class ValidateFacePhotoCommandHandler
 
         // Every answer AWS produced carries what it saw, so a rejection can be diagnosed.
         FacePhotoValidationResponseDto Done(FacePhotoValidationResponseDto dto) => WithDetectedFaces(dto, quality);
+        Result<FacePhotoValidationResponseDto> Done(FacePhotoValidationResponseDto dto) =>
+            Result<FacePhotoValidationResponseDto>.Success(WithDetectedFaces(dto, quality));
 
         if (!quality.LightingOk || !quality.FaceVisible || !quality.NoSunglassesOrMask)
             return Done(Rejected(quality, FirstQualityFailure(quality)));
 
+        var enrollment = FacePhotoValidationPurpose.IsEnrollment(request.Purpose);
         if (enrollment && !FacePhotoPoseRules.Matches(request.Pose, quality))
             return Done(Rejected(quality, FailureWrongPose));
 
