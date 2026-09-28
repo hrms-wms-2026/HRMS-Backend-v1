@@ -3,6 +3,7 @@ using Moq;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.Auth.Permission.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.EmployeeAuthority.Models;
 using ONEVO.Application.Features.CoreHr.EmployeeAuthority.ServiceInterfaces;
 using ONEVO.Application.Features.Monitoring.CheckIn.DTOs.Responses;
@@ -26,6 +27,8 @@ public class FaceVerificationRetryPolicyTests
     private readonly Mock<IEmployeeAuthorityResolver> _authority = new();
     private readonly Mock<INotificationDispatcher> _notifications = new();
     private readonly Mock<IDateTimeProvider> _clock = new();
+    private readonly Mock<IPermissionRepository> _permissions = new();
+    private readonly Guid _hrUserId = Guid.NewGuid();
 
     private readonly Guid _tenantId = Guid.NewGuid();
     private readonly Guid _userId = Guid.NewGuid();
@@ -63,7 +66,18 @@ public class FaceVerificationRetryPolicyTests
 
     private FaceVerificationRetryPolicy CreateSut() => new(
         _attempts.Object, _fileStorage.Object, _employees.Object, _authority.Object,
-        _notifications.Object, _clock.Object);
+        _notifications.Object, _clock.Object, _permissions.Object);
+
+    private void SetupHrUsers(params Guid[] userIds) =>
+        _permissions.Setup(p => p.ListUserIdsWithPermissionCodeAsync(
+                _tenantId, FaceVerificationRetryPolicy.HrFallbackPermission, It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(userIds);
+
+    private void VerifyAlerted(Guid userId, Times times) =>
+        _notifications.Verify(n => n.SendTemplatedAsync(
+            _tenantId, userId, FaceVerificationRetryPolicy.NotificationTemplate,
+            It.IsAny<IReadOnlyDictionary<string, string>>(),
+            FaceVerificationRetryPolicy.RelatedEntityType, It.IsAny<Guid?>(), It.IsAny<CancellationToken>()), times);
 
     private FaceCheckAttemptContext Context(Guid? deviceLegalEntity = null) =>
         new(_tenantId, _userId, _employeeId, deviceLegalEntity, "clock_in");
@@ -167,18 +181,62 @@ public class FaceVerificationRetryPolicyTests
     }
 
     [Fact]
-    public async Task ThirdFailure_NoManager_StillLetsThrough_WithoutAlert()
+    public async Task ThirdFailure_WithManager_DoesNotAlsoAlertHr()
+    {
+        _earlierFailures = [EarlierFailure("x"), EarlierFailure("y")];
+        SetupHrUsers(_hrUserId);
+
+        await CreateSut().ApplyAsync(Context(), Failed("not_matched"), new MemoryStream([1]), "image/jpeg", CancellationToken.None);
+
+        VerifyAlerted(_managerUserId, Times.Once());
+        VerifyAlerted(_hrUserId, Times.Never());
+    }
+
+    [Fact]
+    public async Task ThirdFailure_NoManager_AlertsEveryHrUser_ButNotTheEmployee()
     {
         _earlierFailures = [EarlierFailure("x"), EarlierFailure("y")];
         _authority.Setup(a => a.ResolveApproverAsync(It.IsAny<EmployeeApprovalRouteRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result<EmployeeApprovalRoute>.Failure("No approver", 404));
+        var secondHr = Guid.NewGuid();
+        // The owner often holds HR permissions too — they must not be alerted about themselves.
+        SetupHrUsers(_hrUserId, secondHr, _userId);
 
         var result = await CreateSut().ApplyAsync(Context(), Failed("not_matched"), new MemoryStream([1]), "image/jpeg", CancellationToken.None);
 
         result.CanProceed.Should().BeTrue();
         result.FailureReason.Should().Be(FaceVerificationRetryPolicy.ManagerReview);
-        VerifyNoAlert();
+        VerifyAlerted(_hrUserId, Times.Once());
+        VerifyAlerted(secondHr, Times.Once());
+        VerifyAlerted(_userId, Times.Never());
         _added.Should().ContainSingle(a => a.Outcome == FaceVerificationAttempt.OutcomeOverridden);
+    }
+
+    [Fact]
+    public async Task ThirdFailure_NoManagerNoHr_StillLetsThrough_WithoutAlert()
+    {
+        _earlierFailures = [EarlierFailure("x"), EarlierFailure("y")];
+        _authority.Setup(a => a.ResolveApproverAsync(It.IsAny<EmployeeApprovalRouteRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<EmployeeApprovalRoute>.Failure("No approver", 404));
+        SetupHrUsers(_userId);
+
+        var result = await CreateSut().ApplyAsync(Context(), Failed("not_matched"), new MemoryStream([1]), "image/jpeg", CancellationToken.None);
+
+        result.CanProceed.Should().BeTrue();
+        VerifyNoAlert();
+    }
+
+    [Fact]
+    public async Task ThirdFailure_EmployeeRecordMissing_AlertsHr()
+    {
+        _earlierFailures = [EarlierFailure("x"), EarlierFailure("y")];
+        _employees.Setup(e => e.GetByIdAsync(_tenantId, _employeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Employee?)null);
+        SetupHrUsers(_hrUserId);
+
+        await CreateSut().ApplyAsync(Context(), Failed("not_matched"), new MemoryStream([1]), "image/jpeg", CancellationToken.None);
+
+        VerifyAlerted(_hrUserId, Times.Once());
     }
 
     [Fact]

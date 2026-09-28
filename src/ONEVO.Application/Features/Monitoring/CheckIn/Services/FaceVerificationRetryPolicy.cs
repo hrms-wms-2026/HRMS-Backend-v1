@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.Auth.Permission.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.EmployeeAuthority.Models;
 using ONEVO.Application.Features.CoreHr.EmployeeAuthority.ServiceInterfaces;
 using ONEVO.Application.Features.Monitoring.CheckIn.DTOs.Responses;
@@ -28,6 +29,12 @@ public class FaceVerificationRetryPolicy : IFaceVerificationRetryPolicy
     /// <summary>The employee's manager is whoever approves their attendance.</summary>
     public const string ReviewerPermission = "attendance:approve";
 
+    /// <summary>
+    /// With no manager above the employee (e.g. the owner), HR — whoever can edit employee
+    /// records — is alerted instead.
+    /// </summary>
+    public const string HrFallbackPermission = "employees:write";
+
     private const string NoReferencePhoto = "no_reference_photo";
 
     private readonly IFaceVerificationAttemptRepository _attempts;
@@ -36,6 +43,7 @@ public class FaceVerificationRetryPolicy : IFaceVerificationRetryPolicy
     private readonly IEmployeeAuthorityResolver _authority;
     private readonly INotificationDispatcher _notifications;
     private readonly IDateTimeProvider _clock;
+    private readonly IPermissionRepository _permissions;
     private readonly ILogger<FaceVerificationRetryPolicy> _logger;
 
     public FaceVerificationRetryPolicy(
@@ -45,6 +53,7 @@ public class FaceVerificationRetryPolicy : IFaceVerificationRetryPolicy
         IEmployeeAuthorityResolver authority,
         INotificationDispatcher notifications,
         IDateTimeProvider clock,
+        IPermissionRepository permissions,
         ILogger<FaceVerificationRetryPolicy>? logger = null)
     {
         _attempts = attempts;
@@ -53,6 +62,7 @@ public class FaceVerificationRetryPolicy : IFaceVerificationRetryPolicy
         _authority = authority;
         _notifications = notifications;
         _clock = clock;
+        _permissions = permissions;
         _logger = logger ?? NullLogger<FaceVerificationRetryPolicy>.Instance;
     }
 
@@ -160,42 +170,56 @@ public class FaceVerificationRetryPolicy : IFaceVerificationRetryPolicy
         FaceCheckAttemptContext context, FaceVerificationAttempt attempt, IReadOnlyList<string> reasons, CancellationToken ct)
     {
         var employee = await _employees.GetByIdAsync(context.TenantId, context.EmployeeId, ct);
+        var recipients = await ResolveReviewersAsync(context, employee, ct);
+        if (recipients.Count == 0)
+        {
+            _logger.LogWarning(
+                "Face verification override for employee {EmployeeId}: no manager with {Permission} and no HR user with {HrPermission} found, nobody alerted",
+                context.EmployeeId, ReviewerPermission, HrFallbackPermission);
+            return;
+        }
+
+        var name = employee is null ? "" : $"{employee.FirstName} {employee.LastName}".Trim();
+        var placeholders = new Dictionary<string, string>
+        {
+            ["employeeName"] = string.IsNullOrWhiteSpace(name) ? "An employee" : name,
+            ["attempts"] = MaxAttempts.ToString(),
+            ["action"] = context.Purpose == "clock_out" ? "clock out" : "clock in",
+            ["time"] = attempt.CreatedAt.ToString("yyyy-MM-dd HH:mm"),
+            ["reasons"] = reasons.Count == 0 ? "unknown" : string.Join(", ", reasons.Select(Describe))
+        };
+
+        foreach (var recipient in recipients)
+        {
+            await _notifications.SendTemplatedAsync(
+                context.TenantId, recipient, NotificationTemplate, placeholders, RelatedEntityType, attempt.Id, ct);
+        }
+    }
+
+    /// <summary>
+    /// The employee's manager (attendance approver on their reporting line) when there is one;
+    /// otherwise every HR user in the tenant. The employee is never alerted about themselves.
+    /// </summary>
+    private async Task<IReadOnlyList<Guid>> ResolveReviewersAsync(
+        FaceCheckAttemptContext context, ONEVO.Domain.Features.CoreHr.Entities.Employee? employee, CancellationToken ct)
+    {
         var legalEntityId = context.DeviceLegalEntityId ?? employee?.LegalEntityId;
-        if (employee is null || legalEntityId is null)
+        if (employee is not null && legalEntityId is not null)
         {
-            _logger.LogWarning(
-                "Face verification override for employee {EmployeeId}: employee or legal entity not found, no manager alerted",
-                context.EmployeeId);
-            return;
+            var route = await _authority.ResolveApproverAsync(new EmployeeApprovalRouteRequest(
+                employee.Id, legalEntityId.Value, ReviewerPermission,
+                EmployeeAuthorityPurpose.FaceVerificationOverrideReview), ct);
+            if (route.IsSuccess && route.Value is not null && route.Value.ApproverUserId != context.UserId)
+                return [route.Value.ApproverUserId];
         }
 
-        var route = await _authority.ResolveApproverAsync(new EmployeeApprovalRouteRequest(
-            employee.Id, legalEntityId.Value, ReviewerPermission,
-            EmployeeAuthorityPurpose.FaceVerificationOverrideReview), ct);
-        if (!route.IsSuccess || route.Value is null)
-        {
-            _logger.LogWarning(
-                "Face verification override for employee {EmployeeId}: no manager with {Permission} found, nobody alerted",
-                employee.Id, ReviewerPermission);
-            return;
-        }
+        _logger.LogInformation(
+            "Face verification override for employee {EmployeeId}: no manager with {Permission}, alerting HR ({HrPermission})",
+            context.EmployeeId, ReviewerPermission, HrFallbackPermission);
 
-        var name = $"{employee.FirstName} {employee.LastName}".Trim();
-        await _notifications.SendTemplatedAsync(
-            context.TenantId,
-            route.Value.ApproverUserId,
-            NotificationTemplate,
-            new Dictionary<string, string>
-            {
-                ["employeeName"] = string.IsNullOrWhiteSpace(name) ? "An employee" : name,
-                ["attempts"] = MaxAttempts.ToString(),
-                ["action"] = context.Purpose == "clock_out" ? "clock out" : "clock in",
-                ["time"] = attempt.CreatedAt.ToString("yyyy-MM-dd HH:mm"),
-                ["reasons"] = reasons.Count == 0 ? "unknown" : string.Join(", ", reasons.Select(Describe))
-            },
-            RelatedEntityType,
-            attempt.Id,
-            ct);
+        var hr = await _permissions.ListUserIdsWithPermissionCodeAsync(
+            context.TenantId, HrFallbackPermission, _clock.UtcNow, ct);
+        return hr.Where(id => id != context.UserId).Distinct().ToList();
     }
 
     private static string Describe(string reason) => reason switch
