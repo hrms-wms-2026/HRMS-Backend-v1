@@ -116,7 +116,7 @@ public class TaskAppliersTests
     [Fact]
     public async Task Create_ReadsLegacyPascalCasePayload()
     {
-        // Shape the data migration writes: the old TaskCreationRequestPayload plus ObjectiveId, PascalCase.
+        // Shape the data migration writes: the old task-creation payload plus ObjectiveId, PascalCase.
         var legacy = $"{{\"ObjectiveId\":\"{ObjectiveId}\",\"Title\":\"Legacy\",\"Description\":null,\"CategoryId\":\"{CategoryId}\"," +
                      "\"Priority\":\"high\",\"DueDate\":null,\"EstimatedHours\":4.5,\"StoryPoints\":3,\"SprintId\":null}";
         _writes.Setup(x => x.CreateAsync(TenantId, RequesterUserId, RequesterEmployeeId, It.IsAny<TaskCreateInput>(), ObjectiveId, It.IsAny<CancellationToken>()))

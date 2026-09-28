@@ -293,7 +293,7 @@ public sealed partial class WorkManagementDapiDemoSeeder
         DateTimeOffset now,
         CancellationToken ct)
     {
-        foreach (var spec in WorkManagementDapiDemoData.TaskCreationRequests)
+        foreach (var spec in WorkManagementDapiDemoData.TaskApprovalRequests)
         {
             var requestId = DeterministicGuid(
                 $"dapi-demo:task-creation-request:{spec.ProjectKey}:{spec.ObjectivePath}:{spec.Title}");

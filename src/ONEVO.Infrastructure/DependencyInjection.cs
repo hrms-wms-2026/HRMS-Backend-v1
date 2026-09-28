@@ -367,10 +367,6 @@ public static class DependencyInjection
         services.AddScoped<ISprintActivityLogRepository>(sp => sp.GetRequiredService<EfSprintActivityLogRepository>());
         services.AddScoped<EfTaskAssignmentRepository>();
         services.AddScoped<ITaskAssignmentRepository>(sp => sp.GetRequiredService<EfTaskAssignmentRepository>());
-        services.AddScoped<EfTaskCreationRequestRepository>();
-        services.AddScoped<ITaskCreationRequestRepository>(sp => sp.GetRequiredService<EfTaskCreationRequestRepository>());
-                services.AddScoped<EfTaskEditRequestRepository>();
-        services.AddScoped<ITaskEditRequestRepository>(sp => sp.GetRequiredService<EfTaskEditRequestRepository>());
         services.AddScoped<EfWorkApprovalRequestRepository>();
         services.AddScoped<IWorkApprovalRequestRepository>(sp => sp.GetRequiredService<EfWorkApprovalRequestRepository>());
         services.AddScoped<EfWorkNotificationLogRepository>();

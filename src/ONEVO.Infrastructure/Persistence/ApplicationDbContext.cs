@@ -312,8 +312,6 @@ public class ApplicationDbContext : DbContext
     public DbSet<Sprint> Sprints => Set<Sprint>();
     public DbSet<SprintActivityLog> SprintActivityLogs => Set<SprintActivityLog>();
     public DbSet<TaskAssignment> TaskAssignments => Set<TaskAssignment>();
-    public DbSet<TaskCreationRequest> TaskCreationRequests => Set<TaskCreationRequest>();
-        public DbSet<TaskEditRequest> TaskEditRequests => Set<TaskEditRequest>();
     public DbSet<WorkApprovalRequest> WorkApprovalRequests => Set<WorkApprovalRequest>();
     public DbSet<WorkNotificationLog> WorkNotificationLogs => Set<WorkNotificationLog>();
     public DbSet<TaskEditLog> TaskEditLogs => Set<TaskEditLog>();
