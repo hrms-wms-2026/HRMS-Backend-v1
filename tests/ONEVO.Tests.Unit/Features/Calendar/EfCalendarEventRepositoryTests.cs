@@ -278,6 +278,36 @@ public sealed class EfCalendarEventRepositoryTests
         Assert.Single(result[event2]);
     }
 
+    [Fact]
+    public async Task GetRemovedParticipantsAsync_ReturnsOnlyTheRemovedRowsOfThatEventForTheRequestedEmployees()
+    {
+        await using var db = BuildInMemoryDb(new Mock<ICurrentUser>().Object);
+        var eventId = Guid.NewGuid();
+        var otherEventId = Guid.NewGuid();
+        var removedEmployee = Guid.NewGuid();
+        var activeEmployee = Guid.NewGuid();
+        var removedFromOtherEventOnly = Guid.NewGuid();
+        var removed = new CalendarEventParticipant { Id = Guid.NewGuid(), TenantId = TenantId, EventId = eventId, EmployeeId = removedEmployee, CreatedAt = DateTimeOffset.UtcNow };
+        var otherEventRemoved = new CalendarEventParticipant { Id = Guid.NewGuid(), TenantId = TenantId, EventId = otherEventId, EmployeeId = removedFromOtherEventOnly, CreatedAt = DateTimeOffset.UtcNow };
+        db.CalendarEventParticipants.AddRange(
+            removed, otherEventRemoved,
+            new CalendarEventParticipant { Id = Guid.NewGuid(), TenantId = TenantId, EventId = eventId, EmployeeId = activeEmployee, CreatedAt = DateTimeOffset.UtcNow });
+        await db.SaveChangesAsync();
+        db.CalendarEventParticipants.Remove(removed);
+        db.CalendarEventParticipants.Remove(otherEventRemoved);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var repository = new EfCalendarEventRepository(db);
+        var result = await repository.GetRemovedParticipantsAsync(
+            TenantId, eventId, [removedEmployee, activeEmployee, removedFromOtherEventOnly], CancellationToken.None);
+
+        var row = Assert.Single(result);
+        Assert.Equal(removedEmployee, row.EmployeeId);
+        Assert.True(row.IsDeleted);
+        Assert.Equal(EntityState.Unchanged, db.Entry(row).State);
+    }
+
     private static CalendarEvent MakeEvent(DateTimeOffset startDate) => new()
     {
         Id = Guid.NewGuid(), TenantId = TenantId, Title = "Event", StartDate = startDate,

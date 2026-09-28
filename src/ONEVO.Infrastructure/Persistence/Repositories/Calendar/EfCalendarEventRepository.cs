@@ -75,6 +75,14 @@ public class EfCalendarEventRepository : ICalendarEventRepository
 
     public void RemoveParticipant(CalendarEventParticipant participant) => _db.CalendarEventParticipants.Remove(participant);
 
+    // IgnoreQueryFilters() drops the soft-delete half of the composed filter on purpose (we want the
+    // removed rows); tenant scoping is kept by the explicit TenantId predicate.
+    public async Task<IReadOnlyList<CalendarEventParticipant>> GetRemovedParticipantsAsync(
+        Guid tenantId, Guid eventId, IReadOnlyList<Guid> employeeIds, CancellationToken ct = default)
+        => await _db.CalendarEventParticipants.IgnoreQueryFilters()
+            .Where(p => p.TenantId == tenantId && p.EventId == eventId && p.IsDeleted && employeeIds.Contains(p.EmployeeId))
+            .ToListAsync(ct);
+
     public async Task<IReadOnlyList<CalendarEvent>> GetInDateRangeForEmployeeAsync(
         Guid tenantId, Guid employeeId, DateTimeOffset from, DateTimeOffset to, CancellationToken ct = default)
     {

@@ -45,6 +45,12 @@ public interface ICalendarEventRepository
 
     void RemoveParticipant(CalendarEventParticipant participant);
 
+    /// <summary>Tracked soft-deleted (removed) rows for these employees on the event. The unique
+    /// (tenant, event, employee) index still counts them, so re-adding someone must revive their
+    /// row rather than insert a second one.</summary>
+    Task<IReadOnlyList<CalendarEventParticipant>> GetRemovedParticipantsAsync(
+        Guid tenantId, Guid eventId, IReadOnlyList<Guid> employeeIds, CancellationToken ct = default);
+
     /// <summary>Same shape as GetInDateRangeForCallerAsync, but scoped to one specific employee
     /// (as owner OR participant) rather than the current caller - used for conflict-checking a
     /// participant who is not the person making the request. "Owner" covers synced external
