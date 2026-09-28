@@ -31,6 +31,7 @@ public class EfCheckInRepository : ICheckInRepository
         Guid tenantId, Guid userId, DateTimeOffset from, DateTimeOffset to, CancellationToken ct)
         => await _db.EmployeeCheckIns
             .AsNoTracking()
+            .Include(c => c.FaceScan)
             .Where(c => c.TenantId == tenantId
                 && c.UserId == userId
                 && c.CheckedInAt >= from

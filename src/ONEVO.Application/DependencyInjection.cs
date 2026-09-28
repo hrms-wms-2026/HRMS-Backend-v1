@@ -101,6 +101,16 @@ public static class DependencyInjection
             ONEVO.Application.Features.CoreHr.EmployeeAuthority.ServiceInterfaces.IEmployeeAuthorityResolver,
             ONEVO.Application.Features.CoreHr.EmployeeAuthority.Services.EmployeeAuthorityResolver>();
 
+        services.AddScoped<
+            ONEVO.Application.Features.Monitoring.Exceptions.ServiceInterfaces.IExceptionScopeResolver,
+            ONEVO.Application.Features.Monitoring.Exceptions.Services.ExceptionScopeResolver>();
+        services.AddScoped<
+            ONEVO.Application.Features.Monitoring.Exceptions.ServiceInterfaces.IExceptionAlertRouter,
+            ONEVO.Application.Features.Monitoring.Exceptions.Services.ExceptionAlertRouter>();
+        services.AddScoped<
+            ONEVO.Application.Features.Monitoring.Exceptions.ServiceInterfaces.IExceptionAlertRouterFactory,
+            ONEVO.Application.Features.Monitoring.Exceptions.Services.ExceptionAlertRouterFactory>();
+
         return services;
     }
 }
