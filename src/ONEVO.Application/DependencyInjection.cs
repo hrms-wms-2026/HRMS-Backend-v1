@@ -42,6 +42,9 @@ public static class DependencyInjection
             ONEVO.Application.Features.Monitoring.Biometrics.ServiceInterfaces.IEnrolledFaceMatcher,
             ONEVO.Application.Features.Monitoring.Biometrics.Services.EnrolledFaceMatcher>();
         services.AddScoped<
+            ONEVO.Application.Features.Monitoring.CheckIn.ServiceInterfaces.IFaceVerificationRetryPolicy,
+            ONEVO.Application.Features.Monitoring.CheckIn.Services.FaceVerificationRetryPolicy>();
+        services.AddScoped<
             ONEVO.Application.Features.TimeAttendance.Services.IClockInPolicyScopeMembershipValidator,
             ONEVO.Application.Features.TimeAttendance.Services.ClockInPolicyScopeMembershipValidator>();
         services.AddScoped<

@@ -158,6 +158,12 @@ public class NotificationTemplateSeeder : IHostedService
             },
             new()
             {
+                Id = Guid.NewGuid(), Code = "face_verification_override",
+                InAppTitleTemplate = "Face verification needs review",
+                InAppBodyTemplate = "{{employeeName}} could not pass face verification {{attempts}} times and was allowed to {{action}} at {{time}} UTC. Reasons: {{reasons}}. Please review the photo."
+            },
+            new()
+            {
                 Id = Guid.NewGuid(), Code = "attendance_correction_request_created",
                 InAppTitleTemplate = "Attendance correction request",
                 InAppBodyTemplate = "Attendance correction request from {{employeeName}}."
