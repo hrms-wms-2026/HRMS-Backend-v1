@@ -47,7 +47,8 @@ public class GetWorkNotificationNavigationQueryHandlerTests
             AuthUser().Object, new Mock<IWorkTaskRepository>().Object, requests.Object,
             new Mock<ITaskEditRequestRepository>().Object,
             new Mock<IObjectiveChangeRequestRepository>().Object, objectives.Object,
-            new Mock<IProjectMemberInvitationRepository>().Object);
+            new Mock<IProjectMemberInvitationRepository>().Object,
+            new Mock<ITaskStatusChangeRequestRepository>().Object);
 
         var result = await handler.Handle(
             new GetWorkNotificationNavigationQuery("task_creation_request", requestId), CancellationToken.None);
@@ -85,7 +86,8 @@ public class GetWorkNotificationNavigationQueryHandlerTests
         var handler = new GetWorkNotificationNavigationQueryHandler(
             AuthUser().Object, tasks.Object, new Mock<ITaskCreationRequestRepository>().Object,
             requests.Object, new Mock<IObjectiveChangeRequestRepository>().Object, objectives.Object,
-            new Mock<IProjectMemberInvitationRepository>().Object);
+            new Mock<IProjectMemberInvitationRepository>().Object,
+            new Mock<ITaskStatusChangeRequestRepository>().Object);
 
         var result = await handler.Handle(
             new GetWorkNotificationNavigationQuery("task_edit_request", requestId), CancellationToken.None);
@@ -115,7 +117,8 @@ public class GetWorkNotificationNavigationQueryHandlerTests
         var handler = new GetWorkNotificationNavigationQueryHandler(
             AuthUser().Object, new Mock<IWorkTaskRepository>().Object, new Mock<ITaskCreationRequestRepository>().Object,
             new Mock<ITaskEditRequestRepository>().Object, changes.Object, objectives.Object,
-            new Mock<IProjectMemberInvitationRepository>().Object);
+            new Mock<IProjectMemberInvitationRepository>().Object,
+            new Mock<ITaskStatusChangeRequestRepository>().Object);
 
         var result = await handler.Handle(
             new GetWorkNotificationNavigationQuery("allocation_extend", changeId), CancellationToken.None);
@@ -143,7 +146,7 @@ public class GetWorkNotificationNavigationQueryHandlerTests
         var handler = new GetWorkNotificationNavigationQueryHandler(
             AuthUser().Object, new Mock<IWorkTaskRepository>().Object, new Mock<ITaskCreationRequestRepository>().Object,
             new Mock<ITaskEditRequestRepository>().Object, new Mock<IObjectiveChangeRequestRepository>().Object,
-            objectives.Object, invitations.Object);
+            objectives.Object, invitations.Object, new Mock<ITaskStatusChangeRequestRepository>().Object);
 
         var result = await handler.Handle(
             new GetWorkNotificationNavigationQuery("project_member_invitation", invitationId), CancellationToken.None);

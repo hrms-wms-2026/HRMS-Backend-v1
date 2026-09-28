@@ -18,10 +18,8 @@ namespace ONEVO.Infrastructure.Persistence.Seeders;
 ///
 /// Must run after DevSmokeTestTenantSeeder (tenant/owner/legal entity) and
 /// WorkManagementDapiDemoSeeder (the 22 employees + the 5 projects/objectives/task
-/// categories/statuses this seeder attaches new rows to), and before ProjectsAccessBootstrapSeeder
-/// (its live Roles query grants "projects:access" to every role that exists in the dapi tenant at
-/// that point - see ProjectsAccessBootstrapSeeder.cs - so the new roles seeded here should exist
-/// first). All inserted rows use deterministic MD5-derived Guids so re-running on every dev boot is
+/// categories/statuses this seeder attaches new rows to). All inserted rows use deterministic
+/// MD5-derived Guids so re-running on every dev boot is
 /// a no-op. This does not create schema and must never be treated as production bootstrap.
 /// </summary>
 public sealed partial class DapiOrgStructureSeeder : IHostedService

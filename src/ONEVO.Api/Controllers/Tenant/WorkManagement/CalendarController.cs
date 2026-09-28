@@ -13,6 +13,7 @@ namespace ONEVO.Api.Controllers.Tenant.WorkManagement;
 [ApiController]
 [Route("api/v1/work")]
 [Authorize(Policy = "TenantPolicy")]
+[RequireAnyModule("worksync_foundation", "projects", "objectives_milestones", "tasks", "boards", "planning_sprints")]
 public sealed class CalendarController : ControllerBase
 {
     private readonly IMediator _mediator;
@@ -20,7 +21,6 @@ public sealed class CalendarController : ControllerBase
     public CalendarController(IMediator mediator) => _mediator = mediator;
 
     [HttpGet("projects/{projectId:guid}/calendar")]
-    [RequirePermission("projects:access")]
     public async Task<IActionResult> GetProjectCalendar(Guid projectId, CancellationToken ct)
     {
         var result = await _mediator.Send(new GetProjectCalendarQuery(projectId), ct);
@@ -30,7 +30,6 @@ public sealed class CalendarController : ControllerBase
     }
 
     [HttpPost("projects/{projectId:guid}/calendar-events")]
-    [RequirePermission("projects:access")]
     public async Task<IActionResult> CreateEvent(
         Guid projectId, [FromBody] CreateCalendarEventRequest request, CancellationToken ct)
     {
@@ -44,7 +43,6 @@ public sealed class CalendarController : ControllerBase
     }
 
     [HttpPatch("calendar-events/{id:guid}")]
-    [RequirePermission("projects:access")]
     public async Task<IActionResult> UpdateEvent(
         Guid id, [FromBody] UpdateCalendarEventRequest request, CancellationToken ct)
     {
@@ -58,7 +56,6 @@ public sealed class CalendarController : ControllerBase
     }
 
     [HttpPost("calendar-events/{id:guid}/close")]
-    [RequirePermission("projects:access")]
     public async Task<IActionResult> CloseEvent(Guid id, CancellationToken ct)
     {
         var result = await _mediator.Send(new CloseCalendarEventCommand(id), ct);

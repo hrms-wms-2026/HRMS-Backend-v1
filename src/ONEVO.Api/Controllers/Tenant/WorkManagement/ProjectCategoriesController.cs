@@ -11,6 +11,7 @@ namespace ONEVO.Api.Controllers.Tenant.WorkManagement;
 [ApiController]
 [Route("api/v1/work/project-categories")]
 [Authorize(Policy = "TenantPolicy")]
+[RequireAnyModule("worksync_foundation", "projects", "objectives_milestones", "tasks", "boards", "planning_sprints")]
 public class ProjectCategoriesController : ControllerBase
 {
     private readonly IMediator _mediator;
@@ -19,7 +20,6 @@ public class ProjectCategoriesController : ControllerBase
 
     /// <summary>Lists the tenant's Project Categories, active-only by default. Used to populate the category picker on Create/Edit Project and the Project list's category filter.</summary>
     [HttpGet]
-    [RequirePermission("projects:access")]
     public async Task<IActionResult> List([FromQuery] bool includeInactive, CancellationToken ct)
     {
         var result = await _mediator.Send(new ListProjectCategoriesQuery(includeInactive), ct);
@@ -31,7 +31,6 @@ public class ProjectCategoriesController : ControllerBase
 
     /// <summary>Creates a new Project Category for the tenant. Used by the "Add Category" action on the Create Project category picker.</summary>
     [HttpPost]
-    [RequirePermission("projects:access")]
     public async Task<IActionResult> Create([FromBody] CreateProjectCategoryRequest request, CancellationToken ct)
     {
         var result = await _mediator.Send(new CreateProjectCategoryCommand(request.Name), ct);

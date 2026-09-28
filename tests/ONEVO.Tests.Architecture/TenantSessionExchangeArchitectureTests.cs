@@ -113,7 +113,17 @@ public sealed class TenantSessionExchangeArchitectureTests
         var authExtensions = ReadSource("src", "ONEVO.Api", "Extensions", "AuthenticationExtensions.cs");
         var responseWriter = ReadSource("src", "ONEVO.Api", "Controllers", "Tenant", "Auth", "TenantAuthResponseWriter.cs");
 
-        authExtensions.Should().NotContain("Cookie.Domain",
+        // Scoped to the TenantScheme cookie block specifically, not the whole file - AdminScheme
+        // (a different cookie, admin_session/admin_csrf) legitimately carries an optional
+        // AdminCookieDomain, since the admin frontend always lives on a different subdomain than
+        // this shared API host. Only TenantScheme/onevo_session must stay host-scoped.
+        var tenantSchemeStart = authExtensions.IndexOf(".AddCookie(\"TenantScheme\"", StringComparison.Ordinal);
+        var tenantSchemeEnd = authExtensions.IndexOf(".AddCookie(\"AdminScheme\"", StringComparison.Ordinal);
+        tenantSchemeStart.Should().BeGreaterThan(-1, "TenantScheme cookie configuration must exist");
+        tenantSchemeEnd.Should().BeGreaterThan(tenantSchemeStart, "AdminScheme configuration must follow TenantScheme");
+        var tenantSchemeBlock = authExtensions[tenantSchemeStart..tenantSchemeEnd];
+
+        tenantSchemeBlock.Should().NotContain("Cookie.Domain",
             "onevo_session must stay host-scoped - no shared parent-domain cookie");
         responseWriter.Should().NotContain("Domain =",
             "no cookie written by the tenant controllers may carry a shared parent-domain Domain attribute");

@@ -1,5 +1,6 @@
 using System.Text.Json;
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.DTOs.Responses;
+using ONEVO.Application.Features.Monitoring.ActivityMonitoring.Services;
 using ONEVO.Domain.Features.Monitoring.ActivityMonitoring.Entities;
 using ONEVO.Domain.Features.Monitoring.AppUsage.Entities;
 using ONEVO.Domain.Features.Monitoring.Meetings.Entities;
@@ -14,9 +15,6 @@ public static class ActivityDailySummaryAggregator
 {
     /// <summary>Default expected work minutes for data-coverage (8h).</summary>
     public const int DefaultExpectedWorkMinutes = 480;
-
-    /// <summary>Minimum contiguous active minutes to count as focus.</summary>
-    public const int FocusThresholdMinutes = 30;
 
     /// <summary>Each AppUsageCollector sample represents this many minutes of foreground time (its fixed 60s sample interval).</summary>
     private const int AppUsageMinutesPerSample = 1;
@@ -59,13 +57,23 @@ public static class ActivityDailySummaryAggregator
             ? Math.Min(100m, Math.Round((decimal)coveredMinutes / expectedWorkMinutes * 100m, 2))
             : 0m;
 
-        var (focusMinutes, deepFocusSessions) = ComputeFocus(ordered);
+        // Repurposed 2026-09-25: FocusMinutes and ProductiveAppMinutes now come from the shared
+        // WorkPatternWindowClassifier (ActivitySnapshot-based), not this file's own retired
+        // ComputeFocus/AggregateAppUsage-derived productive count, so live "today" and nightly
+        // historical Work Pattern numbers can never drift - see
+        // WorkPatternLiveVsNightlyConsistencyTests. PersonalAppMinutes/UnknownAppMinutes/TopAppsJson
+        // still come from AggregateAppUsage's separate AppUsageSnapshot stream, unchanged - they
+        // feed the separate Productivity Report feature, which this change does not touch.
+        var classified = WorkPatternWindowClassifier.Classify(ordered, meetingSignals ?? []);
+        var focusMinutes = classified.FocusMinutes;
+        var deepFocusSessions = classified.FocusMinutes >= WorkPatternWindowClassifier.FocusThresholdMinutes ? 1 : 0;
+        var productiveMinutes = classified.ProductiveFocusMinutes + classified.ProductiveOtherActiveMinutes;
 
         var activityScore = Math.Round(
             activePercentage * (intensityAvg / 100m) * (dataCoverage / 100m),
             2);
 
-        var (productiveMinutes, personalMinutes, unknownMinutes, topAppsJson) =
+        var (_, personalMinutes, unknownMinutes, topAppsJson) =
             AggregateAppUsage(appUsageSnapshots ?? []);
 
         var totalMeetingMinutes = (meetingSignals ?? [])
@@ -156,65 +164,5 @@ public static class ActivityDailySummaryAggregator
             .ToList();
 
         return topApps.Count == 0 ? "[]" : JsonSerializer.Serialize(topApps);
-    }
-
-    /// <summary>
-    /// Contiguous active windows ≥ 30 min in the same foreground process.
-    /// Snapshots are treated as sequential intervals ordered by CapturedAt.
-    /// </summary>
-    public static (int FocusMinutes, int DeepFocusSessions) ComputeFocus(
-        IReadOnlyList<ActivitySnapshot> ordered)
-    {
-        if (ordered.Count == 0)
-            return (0, 0);
-
-        int focusMinutes = 0;
-        int sessions = 0;
-
-        string? currentProcess = null;
-        int streakActiveSeconds = 0;
-
-        void FlushStreak()
-        {
-            var minutes = streakActiveSeconds / 60;
-            if (minutes >= FocusThresholdMinutes)
-            {
-                focusMinutes += minutes;
-                sessions++;
-            }
-            streakActiveSeconds = 0;
-            currentProcess = null;
-        }
-
-        foreach (var snap in ordered)
-        {
-            var process = snap.ForegroundProcessName ?? string.Empty;
-            var isActive = snap.ActiveSeconds > 0;
-
-            if (!isActive)
-            {
-                FlushStreak();
-                continue;
-            }
-
-            if (currentProcess is null)
-            {
-                currentProcess = process;
-                streakActiveSeconds = snap.ActiveSeconds;
-            }
-            else if (string.Equals(currentProcess, process, StringComparison.OrdinalIgnoreCase))
-            {
-                streakActiveSeconds += snap.ActiveSeconds;
-            }
-            else
-            {
-                FlushStreak();
-                currentProcess = process;
-                streakActiveSeconds = snap.ActiveSeconds;
-            }
-        }
-
-        FlushStreak();
-        return (focusMinutes, sessions);
     }
 }

@@ -8,7 +8,7 @@ public static class DerivedPermissions
         "attendance:approve",
         "payroll:approve", "payroll:run",
         "performance:write", "performance:manage",
-        "expense:approve", "tasks:approve",
+        "expense:approve",
         "documents:approve", "grievance:manage",
         "monitoring:alerts:read", "monitoring:alerts:resolve",
         "verification:review", "workflows:execute"
@@ -19,6 +19,6 @@ public static class DerivedPermissions
         "leave:approve", "leave:manage",
         "attendance:approve", "employees:write",
         "payroll:approve", "performance:manage",
-        "monitoring:alerts:read", "tasks:approve"
+        "monitoring:alerts:read"
     };
 }

@@ -223,6 +223,12 @@ public sealed class CheckInTestFactory : WebApplicationFactory<Program>
             CancellationToken ct = default)
             => Task.FromResult(Result<FileStreamDto>.NotFound("File not found."));
 
+        public Task<Result<FileStreamDto>> OpenReadAsync(
+            Guid tenantId,
+            FileRecordDto fileRecord,
+            CancellationToken ct = default)
+            => Task.FromResult(Result<FileStreamDto>.NotFound("File not found."));
+
         public Task<Result<FileRecordDto>> GetRecordAsync(
             Guid tenantId,
             Guid fileRecordId,

@@ -225,15 +225,13 @@ public class TransferObjectiveHeadCommandHandlerTests
     }
 
     [Fact]
-    public async Task Handle_CreatorHeadTransfers_EnsuresProjectsAccessGrantedForNewHead()
+    public async Task Handle_CreatorHeadTransfers_DoesNotCreatePermissionOverrideForNewHead()
     {
         var (handler, _, _, autoGrant) = BuildHandlerWithMembership(SubObjective(createdById: HeadUserId));
 
         await handler.Handle(ValidCommand(), CancellationToken.None);
 
-        // Auto-grant stays UserId-keyed (out of Phase 2 scope) - it resolves the new head's login
-        // UserId off the Employee record returned by GetActiveAssigneeAsync, not the EmployeeId itself.
-        autoGrant.Verify(x => x.EnsureGrantedAsync(TenantId, NewHeadUserId, HeadUserId, "projects:access", It.IsAny<CancellationToken>()), Times.Once);
+        autoGrant.VerifyNoOtherCalls();
     }
 
     [Fact]

@@ -8,7 +8,8 @@ public record CurrentUserDto(
     [property: JsonIgnore] Guid UserId,
     [property: JsonIgnore] Guid TenantId,
     [property: JsonPropertyName("email")] string Email,
-    Guid? EmployeeId = null
+    Guid? EmployeeId = null,
+    [property: JsonPropertyName("display_name")] string? DisplayName = null
 );
 
 /// <summary>

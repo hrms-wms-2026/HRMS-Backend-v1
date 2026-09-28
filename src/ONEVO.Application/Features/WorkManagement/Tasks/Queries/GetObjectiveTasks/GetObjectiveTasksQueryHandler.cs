@@ -62,7 +62,7 @@ public class GetObjectiveTasksQueryHandler : IRequestHandler<GetObjectiveTasksQu
             return Result<IReadOnlyList<WorkTaskResponse>>.NotFound("Objective not found.");
 
         var permissions = await _permissionResolver.ResolveAsync(userId, tenantId, null, ct);
-        var hasReadPermission = permissions.Contains("projects:read") || permissions.Contains("*");
+        var hasReadPermission = permissions.Contains("*");
 
         if (!hasReadPermission)
         {

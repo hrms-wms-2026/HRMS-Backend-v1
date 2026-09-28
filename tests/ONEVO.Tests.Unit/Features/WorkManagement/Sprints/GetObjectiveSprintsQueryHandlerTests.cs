@@ -81,7 +81,7 @@ public class GetObjectiveSprintsQueryHandlerTests
 
         var permissionResolver = new Mock<IPermissionResolver>();
         permissionResolver.Setup(x => x.ResolveAsync(UserId, TenantId, null, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(hasReadPermission ? new List<string> { "projects:read" } : new List<string>());
+            .ReturnsAsync(hasReadPermission ? new List<string> { "*" } : new List<string>());
 
         var sprintList = new List<Sprint> { SprintOnObjective() };
         _sprints.Setup(x => x.GetContainingObjectiveTasksAsync(TenantId, ObjectiveId, It.IsAny<bool>(), It.IsAny<CancellationToken>()))

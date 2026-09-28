@@ -7,6 +7,7 @@ using ONEVO.Application.Features.WorkManagement.CalendarEvents.Commands.CreateCa
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.CalendarEvents.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
 using ONEVO.Domain.Features.WorkManagement.CalendarEvents.Entities;
 using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
@@ -18,6 +19,7 @@ public sealed class UpdateCalendarEventCommandHandler : IRequestHandler<UpdateCa
     private readonly ICurrentUser _currentUser;
     private readonly ICallerIdentityResolver _identity;
     private readonly IObjectiveRepository _objectives;
+    private readonly IProjectMemberRepository _members;
     private readonly IWorkTaskRepository _tasks;
     private readonly ICalendarEventRepository _calendarEvents;
     private readonly IUnitOfWork _unitOfWork;
@@ -25,6 +27,7 @@ public sealed class UpdateCalendarEventCommandHandler : IRequestHandler<UpdateCa
     public UpdateCalendarEventCommandHandler(
         ICurrentUser currentUser,
         ICallerIdentityResolver identity,
+        IProjectMemberRepository members,
         IObjectiveRepository objectives,
         IWorkTaskRepository tasks,
         ICalendarEventRepository calendarEvents,
@@ -32,6 +35,7 @@ public sealed class UpdateCalendarEventCommandHandler : IRequestHandler<UpdateCa
     {
         _currentUser = currentUser;
         _identity = identity;
+        _members = members;
         _objectives = objectives;
         _tasks = tasks;
         _calendarEvents = calendarEvents;
@@ -48,6 +52,8 @@ public sealed class UpdateCalendarEventCommandHandler : IRequestHandler<UpdateCa
         var calendarEvent = await _calendarEvents.GetByIdForTenantAsync(tenantId, request.Id, ct);
         if (calendarEvent is null)
             return Result<CalendarEventResponse>.NotFound("Calendar event not found.");
+        if (!await _members.HasActiveMembershipAsync(tenantId, calendarEvent.ProjectId, actorResult.EmployeeId, ct))
+            return Result<CalendarEventResponse>.Forbidden("You do not have access to this project.");
         if (calendarEvent.Status != CalendarEventStatuses.Active)
             return Result<CalendarEventResponse>.Failure("Archived calendar events cannot be edited.");
 

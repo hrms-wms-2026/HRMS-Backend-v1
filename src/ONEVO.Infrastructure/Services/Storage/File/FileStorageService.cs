@@ -5,6 +5,7 @@ using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Storage.File.DTOs.Responses;
+using ONEVO.Application.Features.Storage.File.Helpers;
 using ONEVO.Application.Features.Storage.File.RepositoryInterfaces;
 using ONEVO.Application.Features.Storage.File.ServiceInterfaces;
 using ONEVO.Domain.Features.Storage.File.Entities;
@@ -20,6 +21,7 @@ public sealed class FileStorageService : IFileStorageService
     private readonly IStorageQuotaService _quota;
     private readonly IObjectStorageAdapter _objectStorage;
     private readonly IUploadPurposePolicy _purposePolicy;
+    private readonly IAvatarImageProcessor _avatarImageProcessor;
     private readonly IUnitOfWork _unitOfWork;
     private readonly IDateTimeProvider _clock;
     private readonly FileStorageOptions _options;
@@ -31,6 +33,7 @@ public sealed class FileStorageService : IFileStorageService
         IStorageQuotaService quota,
         IObjectStorageAdapter objectStorage,
         IUploadPurposePolicy purposePolicy,
+        IAvatarImageProcessor avatarImageProcessor,
         IUnitOfWork unitOfWork,
         IDateTimeProvider clock,
         IOptions<FileStorageOptions> options,
@@ -41,6 +44,7 @@ public sealed class FileStorageService : IFileStorageService
         _quota = quota;
         _objectStorage = objectStorage;
         _purposePolicy = purposePolicy;
+        _avatarImageProcessor = avatarImageProcessor;
         _unitOfWork = unitOfWork;
         _clock = clock;
         _options = options.Value;
@@ -119,6 +123,27 @@ public sealed class FileStorageService : IFileStorageService
         string checksumSha256,
         CancellationToken ct = default)
     {
+        return await CompleteUploadCoreAsync(
+            tenantId,
+            reservationId,
+            purpose,
+            originalFileName,
+            originalFileName,
+            contentType,
+            checksumSha256,
+            ct);
+    }
+
+    private async Task<Result<FileRecordDto>> CompleteUploadCoreAsync(
+        Guid tenantId,
+        Guid reservationId,
+        string purpose,
+        string originalFileName,
+        string storageFileName,
+        string contentType,
+        string checksumSha256,
+        CancellationToken ct)
+    {
         // Step 1: load the reservation and confirm it is still active.
         var reservation = await _reservations.GetByIdAsync(tenantId, reservationId, ct);
         if (reservation is null)
@@ -139,7 +164,7 @@ public sealed class FileStorageService : IFileStorageService
         }
 
         var validation = _purposePolicy.ValidateUpload(
-            purpose, originalFileName, contentType, reservation.ReservedBytes);
+            purpose, storageFileName, contentType, reservation.ReservedBytes);
         if (!validation.IsSuccess)
         {
             return Result<FileRecordDto>.Failure(validation.Error!, validation.StatusCode ?? 400);
@@ -150,7 +175,7 @@ public sealed class FileStorageService : IFileStorageService
             return Result<FileRecordDto>.Failure("checksumSha256 must be a 64-character hexadecimal value.", 400);
         }
 
-        var safeFileName = _purposePolicy.SanitizeFileName(originalFileName);
+        var safeFileName = _purposePolicy.SanitizeFileName(storageFileName);
         var storageKey = _purposePolicy.GenerateStorageKey(
             tenantId, reservationId, purpose, safeFileName);
 
@@ -305,56 +330,102 @@ public sealed class FileStorageService : IFileStorageService
             return Result<FileRecordDto>.Failure("Upload content is empty.", 400);
         }
 
-        // Step 1: begin the reservation (validates purpose + reserves quota).
-        var beginResult = await BeginReservationAsync(
-            tenantId, userId, originalFileName, contentType, content.Length, purpose, ct);
+        Stream uploadContent = content;
+        Stream? processedContent = null;
+        var storageFileName = originalFileName;
+        var storedContentType = contentType;
 
-        if (!beginResult.IsSuccess)
+        if (purpose.Equals(UploadPurposeCatalog.EmployeeAvatar, StringComparison.Ordinal))
         {
-            return Result<FileRecordDto>.Failure(beginResult.Error!, beginResult.StatusCode ?? 400);
+            // Validate the caller-supplied size, extension, and MIME type before
+            // decoding. The normalized output is validated again below.
+            var sourceValidation = _purposePolicy.ValidateUpload(
+                purpose, originalFileName, contentType, content.Length);
+            if (!sourceValidation.IsSuccess)
+            {
+                return Result<FileRecordDto>.Failure(
+                    sourceValidation.Error!, sourceValidation.StatusCode ?? 400);
+            }
+
+            var processed = await _avatarImageProcessor.ProcessAsync(originalFileName, content, ct);
+            if (!processed.IsSuccess)
+            {
+                return Result<FileRecordDto>.Failure(processed.Error!, processed.StatusCode ?? 400);
+            }
+
+            processedContent = processed.Value!.Content;
+            uploadContent = processedContent;
+            storageFileName = processed.Value.StorageFileName;
+            storedContentType = processed.Value.ContentType;
         }
 
-        var reservation = beginResult.Value!;
-        var safeFileName = _purposePolicy.SanitizeFileName(originalFileName);
-        var storageKey = _purposePolicy.GenerateStorageKey(
-            tenantId, reservation.Id, purpose, safeFileName);
-
-        // Step 2: buffer the content once so we can both hash it and upload it
-        // without requiring the caller's stream to be re-readable.
-        using var buffer = new MemoryStream();
-        content.Position = 0;
-        await content.CopyToAsync(buffer, ct);
-        buffer.Position = 0;
-
-        string checksum;
-        using (var sha256 = SHA256.Create())
-        {
-            var hashBytes = await sha256.ComputeHashAsync(buffer, ct);
-            checksum = Convert.ToHexString(hashBytes).ToLowerInvariant();
-        }
-        buffer.Position = 0;
-
-        // Step 3: upload to R2. Any failure releases the reservation and
-        // returns without ever creating a file_records row.
         try
         {
-            await _objectStorage.PutObjectAsync(storageKey, buffer, contentType, ct);
-        }
-        catch (ObjectStorageException ex)
-        {
-            _logger.LogError(
-                ex,
-                "R2 upload failed for tenant {TenantId}, reservation {ReservationId}.",
+            // Step 1: begin the reservation (validates purpose + reserves actual stored bytes).
+            var beginResult = await BeginReservationAsync(
+                tenantId, userId, storageFileName, storedContentType, uploadContent.Length, purpose, ct);
+
+            if (!beginResult.IsSuccess)
+            {
+                return Result<FileRecordDto>.Failure(beginResult.Error!, beginResult.StatusCode ?? 400);
+            }
+
+            var reservation = beginResult.Value!;
+            var safeFileName = _purposePolicy.SanitizeFileName(storageFileName);
+            var storageKey = _purposePolicy.GenerateStorageKey(
+                tenantId, reservation.Id, purpose, safeFileName);
+
+            // Step 2: buffer the content once so we can both hash it and upload it
+            // without requiring the caller's stream to be re-readable.
+            using var buffer = new MemoryStream();
+            uploadContent.Position = 0;
+            await uploadContent.CopyToAsync(buffer, ct);
+            buffer.Position = 0;
+
+            string checksum;
+            using (var sha256 = SHA256.Create())
+            {
+                var hashBytes = await sha256.ComputeHashAsync(buffer, ct);
+                checksum = Convert.ToHexString(hashBytes).ToLowerInvariant();
+            }
+            buffer.Position = 0;
+
+            // Step 3: upload to R2. Any failure releases the reservation and
+            // returns without ever creating a file_records row.
+            try
+            {
+                await _objectStorage.PutObjectAsync(storageKey, buffer, storedContentType, ct);
+            }
+            catch (ObjectStorageException ex)
+            {
+                _logger.LogError(
+                    ex,
+                    "R2 upload failed for tenant {TenantId}, reservation {ReservationId}.",
+                    tenantId,
+                    reservation.Id);
+
+                await CancelReservationAsync(tenantId, reservation.Id, "object_storage_upload_failed", ct);
+                return Result<FileRecordDto>.Failure("file_upload_failed", 502);
+            }
+
+            // Step 4: complete the reservation now that the object is durably in R2.
+            return await CompleteUploadCoreAsync(
                 tenantId,
-                reservation.Id);
-
-            await CancelReservationAsync(tenantId, reservation.Id, "object_storage_upload_failed", ct);
-            return Result<FileRecordDto>.Failure("file_upload_failed", 502);
+                reservation.Id,
+                purpose,
+                originalFileName,
+                storageFileName,
+                storedContentType,
+                checksum,
+                ct);
         }
-
-        // Step 4: complete the reservation now that the object is durably in R2.
-        return await CompleteUploadAsync(
-            tenantId, reservation.Id, purpose, originalFileName, contentType, checksum, ct);
+        finally
+        {
+            if (processedContent is not null)
+            {
+                await processedContent.DisposeAsync();
+            }
+        }
     }
 
     public async Task<Result<FileStreamDto>> OpenReadAsync(
@@ -368,14 +439,43 @@ public sealed class FileStorageService : IFileStorageService
             return Result<FileStreamDto>.NotFound("File not found.");
         }
 
+        return await OpenReadAsync(tenantId, new FileRecordDto(
+            record.Id,
+            record.TenantId,
+            record.StorageKey,
+            record.OriginalFileName,
+            record.SafeFileName,
+            record.ContentType,
+            record.FileSizeBytes,
+            record.ChecksumSha256,
+            record.Status,
+            record.CreatedAt,
+            record.UploadedByUserId,
+            record.DeletedAt), ct);
+    }
+
+    public async Task<Result<FileStreamDto>> OpenReadAsync(
+        Guid tenantId,
+        FileRecordDto fileRecord,
+        CancellationToken ct = default)
+    {
+        if (fileRecord.TenantId != tenantId || fileRecord.DeletedAt is not null)
+        {
+            return Result<FileStreamDto>.NotFound("File not found.");
+        }
+
         try
         {
-            var stream = await _objectStorage.GetObjectAsync(record.StorageKey, ct);
-            return Result<FileStreamDto>.Success(new FileStreamDto(stream, record.ContentType));
+            var stream = await _objectStorage.GetObjectAsync(fileRecord.StorageKey, ct);
+            return Result<FileStreamDto>.Success(new FileStreamDto(stream, fileRecord.ContentType));
         }
         catch (ObjectStorageException ex)
         {
-            _logger.LogError(ex, "R2 read failed for tenant {TenantId}, file {FileId}.", tenantId, fileId);
+            _logger.LogError(
+                ex,
+                "R2 read failed for tenant {TenantId}, file {FileId}.",
+                tenantId,
+                fileRecord.Id);
             return Result<FileStreamDto>.Failure("file_read_failed", 502);
         }
     }

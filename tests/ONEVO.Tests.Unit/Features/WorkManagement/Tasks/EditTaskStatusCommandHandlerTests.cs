@@ -12,6 +12,7 @@ using ONEVO.Domain.Features.WorkManagement.Objectives.Entities;
 using ONEVO.Domain.Features.WorkManagement.Projects.Entities;
 using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
 using TaskStatusEntity = ONEVO.Domain.Features.WorkManagement.Tasks.Entities.TaskStatus;
+using ONEVO.Application.Features.WorkManagement.Tasks.Services;
 using Xunit;
 
 namespace ONEVO.Tests.Unit.Features.WorkManagement.Tasks;
@@ -71,7 +72,7 @@ public class EditTaskStatusCommandHandlerTests
             .ReturnsAsync(callerIsEffectiveManager ?? (resolvedCallerEmployeeId == OwnerEmployeeId));
 
         var handler = new EditTaskStatusCommandHandler(
-            currentUser.Object, identity.Object, statuses.Object, objectives.Object, projects.Object, unitOfWork.Object, membership.Object);
+            currentUser.Object, identity.Object, statuses.Object, objectives.Object, projects.Object, unitOfWork.Object, membership.Object, new Mock<ITaskStatusChangeRequestConflictSweeper>().Object);
         return (handler, statuses, status);
     }
 

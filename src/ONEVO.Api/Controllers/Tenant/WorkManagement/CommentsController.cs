@@ -15,6 +15,7 @@ namespace ONEVO.Api.Controllers.Tenant.WorkManagement;
 [ApiController]
 [Route("api/v1/work")]
 [Authorize(Policy = "TenantPolicy")]
+[RequireAnyModule("worksync_foundation", "projects", "objectives_milestones", "tasks", "boards", "planning_sprints")]
 public class CommentsController : ControllerBase
 {
     private readonly IMediator _mediator;
@@ -22,7 +23,6 @@ public class CommentsController : ControllerBase
     public CommentsController(IMediator mediator) => _mediator = mediator;
 
     [HttpGet("tasks/{taskId:guid}/comments")]
-    [RequirePermission("projects:access")]
     public async Task<IActionResult> GetComments(Guid taskId, CancellationToken ct)
     {
         var result = await _mediator.Send(new GetCommentsForTaskQuery(taskId), ct);
@@ -33,7 +33,6 @@ public class CommentsController : ControllerBase
     }
 
     [HttpPost("tasks/{taskId:guid}/comments")]
-    [RequirePermission("projects:access")]
     public async Task<IActionResult> PostComment(Guid taskId, [FromBody] CreateTaskCommentRequest request, CancellationToken ct)
     {
         var result = await _mediator.Send(
@@ -45,7 +44,6 @@ public class CommentsController : ControllerBase
     }
 
     [HttpPost("comments/{id:guid}/replies")]
-    [RequirePermission("projects:access")]
     public async Task<IActionResult> PostReply(Guid id, [FromBody] CreateTaskCommentRequest request, CancellationToken ct)
     {
         var result = await _mediator.Send(
@@ -57,7 +55,6 @@ public class CommentsController : ControllerBase
     }
 
     [HttpPatch("comments/{id:guid}")]
-    [RequirePermission("projects:access")]
     public async Task<IActionResult> EditComment(Guid id, [FromBody] EditTaskCommentRequest request, CancellationToken ct)
     {
         var result = await _mediator.Send(
@@ -69,7 +66,6 @@ public class CommentsController : ControllerBase
     }
 
     [HttpDelete("comments/{id:guid}")]
-    [RequirePermission("projects:access")]
     public async Task<IActionResult> DeleteComment(Guid id, CancellationToken ct)
     {
         var result = await _mediator.Send(new DeleteTaskCommentCommand(id), ct);
@@ -78,7 +74,6 @@ public class CommentsController : ControllerBase
     }
 
     [HttpPost("comments/{id:guid}/reactions")]
-    [RequirePermission("projects:access")]
     public async Task<IActionResult> AddReaction(Guid id, [FromBody] AddTaskCommentReactionRequest request, CancellationToken ct)
     {
         var result = await _mediator.Send(new AddTaskCommentReactionCommand(id, request.Emoji), ct);
@@ -87,7 +82,6 @@ public class CommentsController : ControllerBase
     }
 
     [HttpDelete("comments/{id:guid}/reactions/{emoji}")]
-    [RequirePermission("projects:access")]
     public async Task<IActionResult> RemoveReaction(Guid id, string emoji, CancellationToken ct)
     {
         var result = await _mediator.Send(new RemoveTaskCommentReactionCommand(id, emoji), ct);

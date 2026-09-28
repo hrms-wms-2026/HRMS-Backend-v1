@@ -262,7 +262,7 @@ public sealed class DevSmokeTestTenantSeederTests : IDisposable
         var codes = await RolePermissionCodesForAsync(verify, acmeTenant.Id, user.Id);
 
         codes.Should().BeEquivalentTo(
-            ["org:read", "employees:read", "projects:read", "tasks:read", "tasks:write"]);
+            ["org:read", "employees:read", "projects:create"]);
         codes.Should().NotContain("org:manage");
     }
 

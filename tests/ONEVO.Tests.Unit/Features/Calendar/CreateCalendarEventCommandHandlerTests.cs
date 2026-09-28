@@ -108,6 +108,37 @@ public sealed class CreateCalendarEventCommandHandlerTests
         Assert.Equal(400, result.StatusCode);
     }
 
+    [Theory]
+    [InlineData("not a url")]
+    [InlineData("ftp://files.example.com/meeting")]
+    [InlineData("javascript:alert(1)")]
+    public async Task Handle_InvalidMeetingLink_ReturnsFailure(string meetingLink)
+    {
+        var sut = BuildSut();
+
+        var result = await sut.Handle(
+            new CreateCalendarEventCommand("Title", null, Start, Start.AddHours(1), false, null, meetingLink, null, CalendarRecurrences.None, []),
+            CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(400, result.StatusCode);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("https://meet.example.com/room-1")]
+    [InlineData("http://meet.example.com/room-1")]
+    public async Task Handle_ValidOrAbsentMeetingLink_Succeeds(string? meetingLink)
+    {
+        var sut = BuildSut();
+
+        var result = await sut.Handle(
+            new CreateCalendarEventCommand("Title", null, Start, Start.AddHours(1), false, null, meetingLink, null, CalendarRecurrences.None, []),
+            CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+    }
+
     [Fact]
     public async Task Handle_RecurringWithoutRecurrenceRule_ReturnsFailure()
     {

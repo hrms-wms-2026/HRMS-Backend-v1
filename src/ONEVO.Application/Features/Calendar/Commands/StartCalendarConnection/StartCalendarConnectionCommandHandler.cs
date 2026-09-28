@@ -15,7 +15,7 @@ public sealed class StartCalendarConnectionCommandHandler(
     IConfiguration configuration)
     : IRequestHandler<StartCalendarConnectionCommand, Result<StartCalendarConnectionResponse>>
 {
-    private static readonly string[] SupportedProviders = ["google", "microsoft"];
+    private static readonly string[] SupportedProviders = ["google", "microsoft", "zoom"];
 
     public async Task<Result<StartCalendarConnectionResponse>> Handle(StartCalendarConnectionCommand request, CancellationToken ct)
     {

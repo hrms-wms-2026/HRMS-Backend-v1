@@ -257,4 +257,32 @@ public sealed class CompleteCalendarConnectionCommandHandlerTests
             c.TenantId == TenantId && c.UserId == UserId && c.ExternalAccountEmail == "me@acme.com"), It.IsAny<CancellationToken>()), Times.Once);
         _tenantSwitcher.Verify(x => x.SwitchToTenantAsync(It.Is<TenantRegistryEntry>(t => t.TenantId == TenantId && t.Slug == "acme"), It.IsAny<CancellationToken>()), Times.Once);
     }
+
+    [Fact]
+    public async Task Handle_ZoomHappyPath_CreatesZoomConnectionWithSyncDisabled()
+    {
+        var sut = BuildSut();
+        var state = new CalendarOAuthState("nonce", TenantId, UserId, "zoom", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(5));
+        _stateProtector.Setup(x => x.TryUnprotect("state", out state)).Returns(true);
+        var tenant = new Tenant { Id = TenantId, Slug = "acme", Status = TenantStatus.Active };
+        _tenants.Setup(x => x.GetByIdAsync(TenantId, It.IsAny<CancellationToken>())).ReturnsAsync(tenant);
+        _appResolver.Setup(x => x.GetActiveAppForProviderAsync("zoom", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ResolvedPlatformOAuthApp("zoom", "client", "https://zoom.us/oauth/authorize", "https://zoom.us/oauth/token", ["meeting:write:meeting"]));
+        _appResolver.Setup(x => x.GetActiveCredentialForProviderAsync("zoom", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ResolvedPlatformOAuthAppCredential("zoom", "client", "secret", null, 1));
+        _tokenClient.Setup(x => x.ExchangeCodeAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CalendarProviderTokens("at-1", "rt-1", DateTimeOffset.UtcNow.AddHours(1)));
+        _tokenClient.Setup(x => x.GetAccountAsync("zoom", "at-1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CalendarProviderAccount("me@acme.com", null, null));
+        _connections.Setup(x => x.GetByTenantUserProviderAsync(TenantId, UserId, CalendarExternalSources.Zoom, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ExternalCalendarConnection?)null);
+        _encryption.Setup(x => x.EncryptBytes(It.IsAny<string>())).Returns<string>(s => System.Text.Encoding.UTF8.GetBytes(s));
+
+        var result = await sut.Handle(new CompleteCalendarConnectionCommand("zoom", "code", "state"), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Contains("connected=zoom", result.Value);
+        _connections.Verify(x => x.AddAsync(It.Is<ExternalCalendarConnection>(c =>
+            c.Provider == CalendarExternalSources.Zoom && c.SyncDirection == CalendarSyncDirections.Disabled), It.IsAny<CancellationToken>()), Times.Once);
+    }
 }

@@ -96,9 +96,12 @@ public sealed class CompleteCalendarConnectionCommandHandler(
         var tokens = await tokenExchangeClient.ExchangeCodeAsync(app.TokenUrl, credential.ClientId, credential.ClientSecret, code, redirectUri, ct);
         var account = await tokenExchangeClient.GetAccountAsync(request.Provider, tokens.AccessToken, ct);
 
-        var externalSource = request.Provider.Equals("google", StringComparison.OrdinalIgnoreCase)
-            ? CalendarExternalSources.GoogleCalendar
-            : CalendarExternalSources.OutlookCalendar;
+        var externalSource = request.Provider switch
+        {
+            var p when p.Equals("google", StringComparison.OrdinalIgnoreCase) => CalendarExternalSources.GoogleCalendar,
+            var p when p.Equals("zoom", StringComparison.OrdinalIgnoreCase) => CalendarExternalSources.Zoom,
+            _ => CalendarExternalSources.OutlookCalendar
+        };
 
         return await unitOfWork.ExecuteInTransactionAsync(async innerCt =>
         {
@@ -142,7 +145,12 @@ public sealed class CompleteCalendarConnectionCommandHandler(
                     AccessTokenEncrypted = encryption.EncryptBytes(tokens.AccessToken),
                     RefreshTokenEncrypted = encryption.EncryptBytes(tokens.RefreshToken),
                     ScopesJson = JsonSerializer.Serialize(app.DefaultScopes),
-                    SyncDirection = CalendarSyncDirections.TwoWay,
+                    // Zoom connections are meeting-only — there is no calendar to sync, and
+                    // CalendarSyncService/CalendarSyncJob already skip any connection whose
+                    // SyncDirection is Disabled (see CalendarSyncService.SyncConnectionAsync).
+                    SyncDirection = externalSource == CalendarExternalSources.Zoom
+                        ? CalendarSyncDirections.Disabled
+                        : CalendarSyncDirections.TwoWay,
                     Status = ExternalCalendarConnectionStatuses.Active,
                     ExpiresAt = tokens.ExpiresAt,
                     CreatedAt = now

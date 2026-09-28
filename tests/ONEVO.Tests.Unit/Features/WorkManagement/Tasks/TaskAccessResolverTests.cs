@@ -59,7 +59,7 @@ public class TaskAccessResolverTests
         tasks.Setup(x => x.GetByIdForTenantAsync(TenantId, TaskId, It.IsAny<CancellationToken>())).ReturnsAsync(Task_(ObjectiveId));
         projects.Setup(x => x.GetByIdForTenantAsync(TenantId, ProjectId, It.IsAny<CancellationToken>())).ReturnsAsync(ActiveProject());
         permissions.Setup(x => x.ResolveAsync(UserId, TenantId, null, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<string> { "projects:read" });
+            .ReturnsAsync(new List<string> { "*" });
 
         var result = await resolver.ResolveViewableTaskAsync(TenantId, UserId, TaskId, CancellationToken.None);
 

@@ -231,6 +231,28 @@ public class PlatformOAuthAppsTests
         Assert.False(PlatformOAuthProviderCatalog.IsApproved("slack"));
     }
 
+    [Fact]
+    public void Catalog_Microsoft_RequestsOnlineMeetingsScopeAndAdvertisesMeetingsCapability()
+    {
+        PlatformOAuthProviderCatalog.TryGet("microsoft", out var microsoft);
+
+        Assert.Contains("OnlineMeetings.ReadWrite", microsoft.DefaultScopes);
+        Assert.Contains(PlatformOAuthProviderCatalog.CapabilityMeetings, microsoft.Capabilities);
+    }
+
+    [Fact]
+    public void Catalog_Zoom_RequestsMeetingScopesAndAdvertisesMeetingsCapability()
+    {
+        var found = PlatformOAuthProviderCatalog.TryGet("zoom", out var definition);
+
+        Assert.True(found);
+        Assert.Contains("meeting:write:meeting", definition.DefaultScopes);
+        Assert.Contains("meeting:delete:meeting", definition.DefaultScopes);
+        Assert.Contains("meeting:read:meeting", definition.DefaultScopes);
+        Assert.Contains("meeting:read:list_past_participants", definition.DefaultScopes);
+        Assert.Contains(PlatformOAuthProviderCatalog.CapabilityMeetings, definition.Capabilities);
+    }
+
     // -- 3. Configure (upsert) -----------------------------------------------------
 
     [Fact]

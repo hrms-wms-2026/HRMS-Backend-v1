@@ -57,7 +57,7 @@ public class CreateSprintCommandHandler : IRequestHandler<CreateSprintCommand, R
             return Result<SprintResponse>.NotFound("Project not found.");
 
         var permissions = await _permissionResolver.ResolveAsync(userId, tenantId, null, ct);
-        var hasReadPermission = permissions.Contains("projects:read") || permissions.Contains("*");
+        var hasReadPermission = permissions.Contains("*");
         if (!hasReadPermission && !await _members.HasActiveMembershipAsync(tenantId, project.Id, callerEmployeeId.Value, ct))
             return Result<SprintResponse>.Forbidden("Only project members can create sprints.");
 
