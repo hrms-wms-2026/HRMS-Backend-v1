@@ -167,9 +167,10 @@ public class TasksController : ControllerBase
             objectiveId, request.Title, request.Description, request.CategoryId, request.Priority,
             request.DueDate, request.EstimatedHours, request.StoryPoints, request.SprintId, request.AttachmentFileIds), ct);
 
-        return result.IsSuccess
-            ? StatusCode(201, result.Value!.ToViewModel())
-            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+        // 201 = created now; 202 = sent for approval (the approval engine decides, not the caller).
+        return !result.IsSuccess ? Problem(result.Error, statusCode: result.StatusCode ?? 400)
+            : result.Value!.Task is { } created ? StatusCode(201, created.ToViewModel())
+            : StatusCode(202, new { approvalRequestId = result.Value.ApprovalRequestId });
     }
 
     [HttpPost("tasks/{parentTaskId:guid}/subtasks")]
@@ -343,9 +344,10 @@ public class TasksController : ControllerBase
             request.EstimatedHours, request.StoryPoints, request.ProgressPercent, request.Reason,
             request.AttachmentFileIds, request.SprintId), ct);
 
-        return result.IsSuccess
-            ? Ok(result.Value!.ToViewModel())
-            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+        // 200 = edited now; 202 = sent for approval.
+        return !result.IsSuccess ? Problem(result.Error, statusCode: result.StatusCode ?? 400)
+            : result.Value!.Task is { } edited ? Ok(edited.ToViewModel())
+            : StatusCode(202, new { approvalRequestId = result.Value.ApprovalRequestId });
     }
 
         [HttpGet("tasks/{id:guid}/history")]
@@ -364,9 +366,10 @@ public class TasksController : ControllerBase
     {
         var result = await _mediator.Send(new DeleteTaskCommand(id), ct);
 
-        return result.IsSuccess
-            ? NoContent()
-            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+        // 204 = deleted now; 202 = sent for approval.
+        return !result.IsSuccess ? Problem(result.Error, statusCode: result.StatusCode ?? 400)
+            : result.Value!.ApprovalRequestId is { } requestId ? StatusCode(202, new { approvalRequestId = requestId })
+            : NoContent();
     }
 
     [HttpPost("tasks/{id:guid}/duplicate")]

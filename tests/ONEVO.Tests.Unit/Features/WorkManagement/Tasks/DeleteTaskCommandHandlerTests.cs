@@ -1,7 +1,13 @@
 using Moq;
+using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.WorkManagement.Approvals.Services;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
+using ONEVO.Application.Features.WorkManagement.Hierarchy;
+using ONEVO.Application.Features.WorkManagement.Notifications.Services;
+using ONEVO.Application.Features.WorkManagement.Tasks.DTOs;
+using ONEVO.Application.Features.WorkManagement.Tasks.Services;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Objectives.Services;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.DeleteTask;
@@ -20,6 +26,7 @@ public class DeleteTaskCommandHandlerTests
     private static readonly Guid ObjectiveId = Guid.NewGuid();
     private static readonly Guid TaskId = Guid.NewGuid();
     private static readonly Guid SprintId = Guid.NewGuid();
+    private static readonly Guid PendingRequestId = Guid.NewGuid();
 
     /// <summary>
     /// In-memory stand-in for the EF global query filter: Remove hides the row from GetBy*
@@ -33,7 +40,7 @@ public class DeleteTaskCommandHandlerTests
 
         public void Bind(Mock<IWorkTaskRepository> tasks)
         {
-            tasks.Setup(x => x.GetByIdForTenantAsync(TenantId, It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            tasks.Setup(x => x.GetTrackedByIdForTenantAsync(TenantId, It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync((Guid _, Guid id, CancellationToken _) => _visible.FirstOrDefault(t => t.Id == id));
             tasks.Setup(x => x.GetByObjectiveIdAsync(TenantId, ObjectiveId, It.IsAny<CancellationToken>()))
                 .ReturnsAsync(() => _visible.Where(t => t.ObjectiveId == ObjectiveId).ToList());
@@ -87,8 +94,30 @@ public class DeleteTaskCommandHandlerTests
         membership.Setup(x => x.IsEffectiveManagerAsync(TenantId, ObjectiveId, callerEmployeeId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(callerIsEffectiveManager ?? (callerEmployeeId == OwnerEmployeeId));
 
+        unitOfWork.Setup(x => x.ExecuteInTransactionAsync(It.IsAny<Func<CancellationToken, Task<Result<TaskWriteOutcome>>>>(), It.IsAny<CancellationToken>()))
+            .Returns((Func<CancellationToken, Task<Result<TaskWriteOutcome>>> op, CancellationToken ct) => op(ct));
+
+        var assignments = new Mock<ITaskAssignmentRepository>();
+        assignments.Setup(x => x.GetByTaskIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<TaskAssignment>());
+
+        var hierarchy = new Mock<IWorkHierarchyService>();
+        hierarchy.Setup(x => x.LoadTreeAsync(TenantId, It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ProjectModuleTree(new[] { objective }));
+
+        // Stand-in for the engine: the Module owner deletes now, anyone else files a request.
+        var approvals = new Mock<IWorkApprovalEngine>();
+        approvals.Setup(x => x.SubmitAsync(It.IsAny<WorkAction>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((WorkAction a, CancellationToken _) => a.ActorEmployeeId == OwnerEmployeeId
+                ? Result<ApprovalDecision>.Success(ApprovalDecision.Direct)
+                : Result<ApprovalDecision>.Success(ApprovalDecision.Pending(PendingRequestId, OwnerEmployeeId)));
+
+        var writes = new Mock<ITaskWriteService>();
+        writes.Setup(x => x.Delete(It.IsAny<WorkTask>())).Callback<WorkTask>(t => tasks.Object.Remove(t));
+
         var handler = new DeleteTaskCommandHandler(
-            currentUser.Object, identity.Object, tasks.Object, objectives.Object, unitOfWork.Object, membership.Object);
+            currentUser.Object, identity.Object, tasks.Object, objectives.Object, unitOfWork.Object, membership.Object,
+            assignments.Object, writes.Object, hierarchy.Object, approvals.Object, new Mock<IWorkNotificationEngine>().Object);
         return (handler, tasks, store);
     }
 
@@ -117,7 +146,7 @@ public class DeleteTaskCommandHandlerTests
     }
 
     [Fact]
-    public async Task Handle_CallerNotObjectiveOwner_ReturnsForbidden()
+    public async Task Handle_CallerNotModuleMember_ReturnsForbidden()
     {
         var (handler, tasks, _) = Build(SeedTask(), callerEmployeeId: Guid.NewGuid());
 
@@ -125,7 +154,7 @@ public class DeleteTaskCommandHandlerTests
 
         Assert.False(result.IsSuccess);
         Assert.Equal(403, result.StatusCode);
-        Assert.Equal("Only this milestone's owner can delete tasks.", result.Error);
+        Assert.Equal("Only members of this module can change its tasks.", result.Error);
         tasks.Verify(x => x.Remove(It.IsAny<WorkTask>()), Times.Never);
     }
 
@@ -155,18 +184,17 @@ public class DeleteTaskCommandHandlerTests
     }
 
     [Fact]
-    public async Task Handle_PlainMemberOfGrandparentObjective_RemovesTask()
+    public async Task Handle_PlainMemberOfGrandparentObjective_SentForApproval()
     {
-        // Caller is not this objective's own OwnerId, but IsEffectiveManagerAsync reports them as
-        // an effective manager via an ancestor (grandparent) membership - the coordinator's own
-        // ancestor-walk logic is unit-tested separately in MilestoneMembershipCoordinatorTests, so
-        // this only proves the handler defers to its answer instead of the direct OwnerId check.
+        // IsEffectiveManagerAsync lets any member through to the engine; the engine (not the
+        // handler) decides that a plain member needs approval, so nothing is removed yet.
         var grandparentMemberId = Guid.NewGuid();
         var (handler, tasks, _) = Build(SeedTask(), callerEmployeeId: grandparentMemberId, callerIsEffectiveManager: true);
 
         var result = await handler.Handle(new DeleteTaskCommand(TaskId), CancellationToken.None);
 
         Assert.True(result.IsSuccess);
-        tasks.Verify(x => x.Remove(It.Is<WorkTask>(t => t.Id == TaskId)), Times.Once);
+        Assert.Equal(PendingRequestId, result.Value!.ApprovalRequestId);
+        tasks.Verify(x => x.Remove(It.IsAny<WorkTask>()), Times.Never);
     }
 }
