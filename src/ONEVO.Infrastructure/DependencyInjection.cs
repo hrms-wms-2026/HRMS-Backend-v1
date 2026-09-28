@@ -436,6 +436,7 @@ public static class DependencyInjection
         services.AddScoped<IWorkHierarchyService, WorkHierarchyService>();
         services.AddScoped<IWorkNotificationEngine, WorkNotificationEngine>();
         services.AddScoped<IWorkApprovalEngine, WorkApprovalEngine>();
+        services.AddScoped<IApprovalActionApplierRegistry, ApprovalActionApplierRegistry>();
         services.AddScoped<ISprintAccessService, SprintAccessService>();
         services.AddScoped<ISprintTaskAssignmentService, SprintTaskAssignmentService>();
         services.AddScoped<IPermissionAutoGrantService, PermissionAutoGrantService>();
