@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans (inline) to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Route task create, edit and delete through `IWorkApprovalEngine`, which decides whether the change applies now or becomes an approval request. Apply the user's new task-status rule. Stamp `CreatorPositionObjectiveId` on new tasks. Move the three old task-request flows into `wm_approval_requests`, then delete them. Switch the frontend to "always call the normal endpoint; a 202 means it was sent for approval".
+**Goal:** Route task create, edit and delete through `IWorkApprovalEngine`, which decides whether the change applies now or becomes an approval request. Apply the user's new task-status rule. Stamp `CreatorPositionObjectiveId` on new tasks. Move the three old task-request flows into `wm_approval_requests`, then delete them. **Amendment (Task 6A / 9A):** move the project task-status template requests (`TaskStatusChangeRequest`) onto the engine as well. Switch the frontend to "always call the normal endpoint; a 202 means it was sent for approval".
 
 **Architecture:**
 - A new `ITaskWriteService` holds the task create/edit/delete **validation and mutation**. Today that logic is duplicated between `CreateTask`/`EditTask` and `ApproveTaskCreationRequest`/`ApproveTaskEditRequest`.
@@ -23,9 +23,14 @@
 ## Global Constraints
 
 - **WM only.** Never edit CoreHr, Leave, TimeAttendance, People, Calendar, or shared notification/outbox code. `IEmployeeAuthorityResolver` is untouched.
-- **Out of scope in this plan:**
-  - The teammate's **Task Status template** approval (`TaskStatusChangeRequest`, its controller, sweeper and panel). The user decided to leave it as is. Do not modify it, and do not remove it from `EfWorkApprovalHistoryRepository`.
-  - Module (Objective) change requests and Sprints. Those are Plan 3.
+- **Out of scope in this plan:** Module (Objective) change requests and Sprints. Those are Plan 3.
+- **Task Status template requests (amendment, user decision 2026-09-28; supersedes the earlier "leave it as is"):**
+  - `TaskStatusChangeRequest` (a request to add/rename/delete/reorder the **project's** task statuses) moves onto the engine in **Task 6A** (backend) and **Task 9A** (frontend).
+  - It is **not** `task.status_change`, which Task 3 uses for moving one task's status. The new action type is `project.status_template_change`, and the new target type is `project`.
+  - Approver = the **root (default) Module owner only**. Root Module *members* lose the right to approve. If the root owner is inactive, the engine's HR fallback applies.
+  - Consequence, applied on purpose so the rule is consistent: direct status-template edits (`CreateTaskStatus`, `EditTaskStatus`, `DeleteTaskStatus`, `ReorderTaskStatuses`) are also **root-owner only**. Root members now send a change request instead.
+  - The old `outdated` status becomes the engine's `stale`.
+  - Several pending template requests per project stay allowed (`TargetId = null`, so the one-pending-per-target index does not apply). The conflict sweeper keeps closing conflicting ones.
 - **Task status move rule (user decision, 2026-09-28):**
   - It never needs approval.
   - It is allowed for:
@@ -80,12 +85,21 @@
 | `src/ONEVO.Api/Controllers/Tenant/WorkManagement/TasksController.cs` | 201/202, 200/202, 204/202; delete the old request endpoints |
 | `src/ONEVO.Infrastructure/Migrations/<ts>_MoveTaskRequestsToWorkApprovals.cs` | copy rows, drop the FK and 2 tables |
 | **Deleted** | listed in Task 6 |
+| **Task 6A (amendment):** `Domain/.../Approvals/Entities/WorkApprovalRequest.cs` | add `WorkTargetTypes.Project`, `WorkActionTypes.ProjectStatusTemplateChange` |
+| `Tasks/DTOs/TaskStatusTemplateChangePayload.cs` | **new**: payload of `project.status_template_change` |
+| `Tasks/Appliers/TaskStatusTemplateChangeApplier.cs` | **new** |
+| `Tasks/Services/TaskStatusChangeAccessService.cs`, `TaskStatusChangeRequestConflictSweeper.cs` | root-owner-only; sweep `wm_approval_requests` |
+| `Tasks/Commands/CreateTaskStatusChangeRequest/*Handler.cs`, `Queries/GetProjectTaskStatusChangeRequests/*Handler.cs` | submit to / read from the engine |
+| `Tasks/Commands/{Create,Edit,Delete}TaskStatus/*Handler.cs`, `ReorderTaskStatuses/*Handler.cs` | root-owner-only gate; new sweeper signature |
+| `Approvals/RepositoryInterfaces/IWorkApprovalRequestRepository.cs` + EF impl | `ListTrackedPendingByActionAsync` |
+| `src/ONEVO.Infrastructure/Migrations/<ts>_MoveTaskStatusChangeRequestsToWorkApprovals.cs` | copy rows, drop `task_status_change_requests` |
 
 ### Frontend (`Hrms--Web-application---front-end---v1`, `src/app/modules/work`)
 
 | File | Change |
 |---|---|
 | `models/dto/work-approval.dto.ts` | **new**: `WorkApprovalRequestDto`, `PendingApprovalDto`, `isPendingApproval()` |
+| **Task 9A (amendment):** `data-access/task-status-change-request-api.service.ts`, `models/dto/task-status-change-request.dto.ts` | approve/reject/cancel use the generic `/work/approvals/{id}/...`; status `outdated` → `stale` |
 | `data-access/task-api.service.ts` | `createTask`/`editTask`/`deleteTask` may return `PendingApprovalDto`; old request methods removed |
 | `data-access/work-approvals-api.service.ts` | generic approvals methods; old task-request methods removed |
 | `ui/task-form-modal/task-form-modal.component.ts`, `feature/task-board/task-board.component.ts` | no client-side owner branching; handle 202 |
@@ -653,7 +667,7 @@ var taskRecords = engineRequests.Select(r => new WorkApprovalHistoryRecord(
     r.CreatedAt, r.DecidedAt)).ToList();
 ```
 
-Use `taskRecords` wherever `taskCreation`/`taskEdits` were concatenated. Leave the objective-change, **status-template** and invitation queries untouched.
+Use `taskRecords` wherever `taskCreation`/`taskEdits` were concatenated. Leave the objective-change, status-template and invitation queries untouched **in this task**. Task 6A moves the status-template query onto `wm_approval_requests`.
 
 > "Pending approver" uses the stored approver. After a transfer, the new holder sees the request in the inbox (`scope=inbox`), not in this legacy history view. That is accepted; Plan 4 replaces this view.
 
@@ -822,6 +836,524 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 ---
 
+### Task 6A (amendment): Task-status template requests onto the engine
+
+Rules: see **Global Constraints → Task Status template requests**. Do Task 6 first; this task reuses Task 4's `TaskPayload.Options` and Task 5's `IWorkApprovalRequestRepository` dependency in the navigation handler.
+
+**Files:**
+- Modify:
+  - `src/ONEVO.Domain/Features/WorkManagement/Approvals/Entities/WorkApprovalRequest.cs`
+  - `src/ONEVO.Application/Features/WorkManagement/Notifications/Services/WorkActionLabels.cs`
+  - `src/ONEVO.Application/Features/WorkManagement/Approvals/RepositoryInterfaces/IWorkApprovalRequestRepository.cs`
+  - `src/ONEVO.Infrastructure/Persistence/Repositories/WorkManagement/EfWorkApprovalRequestRepository.cs`
+  - `Tasks/Services/TaskStatusChangeAccessService.cs`
+  - `Tasks/Services/TaskStatusChangeRequestConflictSweeper.cs`
+  - `Tasks/Commands/CreateTaskStatusChangeRequest/CreateTaskStatusChangeRequestCommandHandler.cs`
+  - `Tasks/Queries/GetProjectTaskStatusChangeRequests/GetProjectTaskStatusChangeRequestsQueryHandler.cs`
+  - `Tasks/Commands/CreateTaskStatus/*Handler.cs`, `EditTaskStatus/*Handler.cs`, `DeleteTaskStatus/*Handler.cs`, `ReorderTaskStatuses/*Handler.cs`
+  - `Tasks/DTOs/Responses/TaskStatusChangeRequestResponses.cs`
+  - `Tasks/Queries/GetWorkNotificationNavigation/GetWorkNotificationNavigationQueryHandler.cs`
+  - `src/ONEVO.Infrastructure/Persistence/Repositories/WorkManagement/EfWorkApprovalHistoryRepository.cs`
+  - `src/ONEVO.Api/Controllers/Tenant/WorkManagement/TaskStatusChangeRequestsController.cs`
+  - `src/ONEVO.Api/Contracts/WorkManagement/Tasks/TaskStatusChangeRequestContracts.cs`
+  - `src/ONEVO.Infrastructure/DependencyInjection.cs`, `src/ONEVO.Infrastructure/Persistence/ApplicationDbContext.cs`
+- Create:
+  - `Tasks/DTOs/TaskStatusTemplateChangePayload.cs`
+  - `Tasks/Appliers/TaskStatusTemplateChangeApplier.cs`
+  - migration `MoveTaskStatusChangeRequestsToWorkApprovals`
+- Test:
+  - rewrite `tests/ONEVO.Tests.Unit/Features/WorkManagement/Tasks/TaskStatusChangeRequestHandlerTests.cs`
+  - update `EditTaskStatusCommandHandlerTests.cs`, `DeleteTaskStatusCommandHandlerTests.cs`, `ReorderTaskStatusesCommandHandlerTests.cs` (and `CreateTaskStatusCommandHandlerTests.cs` if it exists)
+  - update `GetWorkNotificationNavigationQueryHandlerTests.cs`, `EfWorkApprovalHistoryRepositoryTests.cs`, `EfWorkApprovalRequestRepositoryTests.cs`
+
+**Interfaces:**
+- Consumes (Plan 1): `IWorkApprovalEngine.SubmitAsync`, `WorkApprovalDecisionRules.CanDecide`, `IWorkHierarchyService.LoadTreeAsync`, `IWorkNotificationEngine.NotifyAsync`, `IApprovalActionApplier`, `ApplyOutcome`
+- Consumes (Task 4): `TaskPayload.Options` (case-insensitive JSON, `internal` in `Tasks.Appliers`)
+- Consumes (existing, unchanged): `TaskStatusChangeSet`, `TaskStatusChangeSet.Footprint()`, `TaskStatusChangeFootprint.ConflictsWith`, `TaskStatusChangeSetRules.Validate`, `TaskStatusChangeSetApplier.Apply(...)` with outcomes `Applied/Stale/Invalid`, `ITaskStatusRepository.GetProjectTemplateAsync/AddAsync/Update/Remove`, `IWorkTaskRepository.AnyActiveByStatusIdAsync`
+- Produces:
+  - `WorkTargetTypes.Project = "project"`, `WorkActionTypes.ProjectStatusTemplateChange = "project.status_template_change"`
+  - `TaskStatusTemplateChangePayload(TaskStatusChangeSet Changes, string? Note)`
+  - `IWorkApprovalRequestRepository.ListTrackedPendingByActionAsync(Guid tenantId, Guid projectId, string actionType, CancellationToken ct = default)` returning `Task<IReadOnlyList<WorkApprovalRequest>>`
+  - `ITaskStatusChangeRequestConflictSweeper.MarkConflictingStaleAsync(Guid tenantId, Guid projectId, Guid actorEmployeeId, TaskStatusChangeFootprint applied, Guid? excludingRequestId, CancellationToken ct = default)` returning `Task<int>`
+  - `ITaskStatusChangeAccessService.ResolveAsync` only (`ListApproverEmployeeIdsAsync` is removed)
+  - HTTP: `GET projects/{projectId}/task-status-change-requests` and `POST projects/{projectId}/task-status-change-requests` keep their routes and response shapes. Approve/reject/cancel move to the generic `POST approvals/{id}/approve|reject|cancel` (Plan 1).
+
+- [ ] **Step 1: Write the failing tests**
+
+Rewrite `TaskStatusChangeRequestHandlerTests.cs`. Keep its existing fixture helpers (project, root objective, statuses) where they still compile. Replace the 12 old cases with these; each asserts a status code, the exact `WorkAction`, or exact entity fields:
+
+```csharp
+// Create (handler + mocked IWorkApprovalEngine)
+[Fact] public async Task Create_by_submodule_member_submits_template_change_to_engine_with_root_position()
+    // engine receives ActionType "project.status_template_change", TargetType "project", TargetId null,
+    // TargetModuleId == PositionModuleId == root.Id; result.Value.Id == the engine's ApprovalRequestId; Status "pending"
+[Fact] public async Task Create_by_root_owner_is_refused_because_they_edit_directly()      // 400, engine never called
+[Fact] public async Task Create_by_root_member_who_is_not_owner_now_goes_to_the_engine()  // behaviour change pinned
+[Fact] public async Task Create_by_non_member_is_forbidden()                               // 403
+[Fact] public async Task Create_against_already_stale_snapshot_is_a_conflict()              // 409, engine never called
+[Fact] public async Task Create_engine_failure_passes_through()                             // engine 422 → 422
+
+// Applier
+[Fact] public async Task Applier_applies_changes_and_sweeps_conflicts_excluding_itself()
+[Fact] public async Task Applier_stale_snapshot_returns_Stale_without_touching_statuses()
+[Fact] public async Task Applier_delete_with_tasks_still_in_the_status_returns_Invalid_with_message()
+[Fact] public async Task Applier_reads_migrated_PascalCase_payload()  // {"Changes":{...},"Note":"x"}
+
+// Sweeper (mocked IWorkApprovalRequestRepository + IWorkNotificationEngine)
+[Fact] public async Task Sweeper_marks_only_conflicting_pending_requests_stale_and_notifies_their_requesters()
+
+// Access + decision rule
+[Fact] public async Task Access_direct_edit_is_root_owner_only_and_root_member_can_request()
+[Fact] public async Task Root_member_cannot_decide_a_template_request()
+    // WorkApprovalDecisionRules.CanDecide(tree, request{PositionObjectiveId = root, Hierarchy}, rootMember) == false; root owner == true
+```
+
+In `EditTaskStatusCommandHandlerTests` add `Root_module_member_who_is_not_owner_is_forbidden` (403). In the four direct status-handler test classes, change fixtures that granted access through `IsEffectiveManagerAsync` to make the caller the root owner (`defaultObjective.OwnerId = callerEmployeeId`). Update sweeper mock verifications to `MarkConflictingStaleAsync`.
+
+In `EfWorkApprovalRequestRepositoryTests` add `ListTrackedPendingByAction_ReturnsOnlyPendingOfThatActionInThatProject`.
+
+In `GetWorkNotificationNavigationQueryHandlerTests` change the `task_status_change_request` case to seed a `WorkApprovalRequest` (same id) instead of a `TaskStatusChangeRequest`; the expected result `(projectId, root.Id, null, "approvals")` is unchanged.
+
+In `EfWorkApprovalHistoryRepositoryTests` replace the `TaskStatusChangeRequests` seed row with a `WorkApprovalRequests` row (`ActionType = "project.status_template_change"`, `TargetType = "project"`) and assert kind `task_status_change` with title `Task statuses`.
+
+- [ ] **Step 2: Run them to verify they fail**
+
+Run: `dotnet test tests/ONEVO.Tests.Unit -c Release --filter "FullyQualifiedName~TaskStatusChangeRequestHandlerTests|FullyQualifiedName~TaskStatusCommandHandlerTests|FullyQualifiedName~ReorderTaskStatusesCommandHandlerTests|FullyQualifiedName~GetWorkNotificationNavigationQueryHandlerTests|FullyQualifiedName~EfWorkApprovalHistoryRepositoryTests|FullyQualifiedName~EfWorkApprovalRequestRepositoryTests"`
+Expected: build FAIL (new types and signatures missing).
+
+- [ ] **Step 3: Constants, label, payload, repository method**
+
+`WorkApprovalRequest.cs`:
+
+```csharp
+public static class WorkTargetTypes
+{
+    public const string Module = "module";
+    public const string Task = "task";
+    public const string Sprint = "sprint";
+    /// <summary>Project-wide settings with no single row as target, e.g. the task-status template.</summary>
+    public const string Project = "project";
+}
+```
+
+and, in `WorkActionTypes`, after `SprintDelete`:
+
+```csharp
+    /// <summary>Add/rename/delete/reorder the project's task statuses. Not task.status_change (one task's move).</summary>
+    public const string ProjectStatusTemplateChange = "project.status_template_change";
+```
+
+`WorkActionLabels.Labels`, new entry (the notification reads "Bala changed the task statuses of "Portal""):
+
+```csharp
+        [WorkActionTypes.ProjectStatusTemplateChange] = "changed the task statuses of",
+```
+
+`Tasks/DTOs/TaskStatusTemplateChangePayload.cs`:
+
+```csharp
+namespace ONEVO.Application.Features.WorkManagement.Tasks.DTOs;
+
+/// <summary>wm_approval_requests.payload_json for project.status_template_change.</summary>
+public sealed record TaskStatusTemplateChangePayload(TaskStatusChangeSet Changes, string? Note);
+```
+
+`IWorkApprovalRequestRepository`:
+
+```csharp
+    /// <summary>Tracked pending requests of one action type in a project - used by conflict sweeps.</summary>
+    Task<IReadOnlyList<WorkApprovalRequest>> ListTrackedPendingByActionAsync(
+        Guid tenantId, Guid projectId, string actionType, CancellationToken ct = default);
+```
+
+`EfWorkApprovalRequestRepository`:
+
+```csharp
+    public async Task<IReadOnlyList<WorkApprovalRequest>> ListTrackedPendingByActionAsync(
+        Guid tenantId, Guid projectId, string actionType, CancellationToken ct = default)
+        => await _db.WorkApprovalRequests
+            .Where(r => r.TenantId == tenantId && r.ProjectId == projectId
+                && r.ActionType == actionType && r.Status == WorkApprovalRequestStatuses.Pending)
+            .ToListAsync(ct);
+```
+
+- [ ] **Step 4: Access service: root owner only**
+
+In `TaskStatusChangeAccessService`:
+- Delete `ListApproverEmployeeIdsAsync` from the interface and the class (the engine notifies the approver now).
+- Replace the `IsEffectiveManagerAsync` line in `ResolveAsync` with:
+
+```csharp
+        // Root Module has no parent, so "at or above the root position" == "owns the root".
+        // Root members are not approvers any more (user decision 2026-09-28): they request.
+        if (root.OwnerId == employeeId)
+            return new TaskStatusChangeAccess(root, CanEditDirectly: true, CanRequest: false);
+```
+
+- Keep the `canRequest` logic. Remove the `IMilestoneMembershipCoordinator` constructor dependency if nothing else uses it.
+- Update the class doc comment: "Approver = root (default) module owner only; anyone else who owns or is an active member of any module in the project may file a change request."
+
+- [ ] **Step 5: Direct status handlers: root owner only**
+
+In `CreateTaskStatusCommandHandler`, `EditTaskStatusCommandHandler`, `DeleteTaskStatusCommandHandler` and `ReorderTaskStatusesCommandHandler`, replace the `if (!await _membership.IsEffectiveManagerAsync(tenantId, defaultObjective.Id, callerEmployeeId.Value, ct))` check with:
+
+```csharp
+        if (defaultObjective.OwnerId != callerEmployeeId.Value)
+            return <same Result type>.Forbidden(
+                "Only the project's top module owner can change task statuses directly. Others can send a change request.");
+```
+
+Remove `_membership` from a handler's constructor only if nothing else in it uses `_membership`.
+
+Change their sweeper calls to the new signature (Step 6):
+
+```csharp
+await _sweeper.MarkConflictingStaleAsync(tenantId, project.Id, callerEmployeeId.Value, footprint, null, innerCt);
+```
+
+(Use each handler's existing footprint variable/expression; the old `project.Name` argument is dropped.)
+
+- [ ] **Step 6: Sweeper over `wm_approval_requests`**
+
+Replace the body of `TaskStatusChangeRequestConflictSweeper.cs`:
+
+```csharp
+using System.Text.Json;
+using ONEVO.Application.Features.WorkManagement.Approvals.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Notifications.Services;
+using ONEVO.Application.Features.WorkManagement.Tasks.DTOs;
+using ONEVO.Domain.Features.WorkManagement.Approvals.Entities;
+using ONEVO.Domain.Features.WorkManagement.Notifications.Entities;
+
+namespace ONEVO.Application.Features.WorkManagement.Tasks.Services;
+
+public interface ITaskStatusChangeRequestConflictSweeper
+{
+    /// <summary>
+    /// Closes as stale every pending status-template request in the project whose footprint conflicts
+    /// with a change that was just applied, and notifies its requester. Never calls SaveChangesAsync -
+    /// run inside the caller's transaction. Returns how many were closed.
+    /// </summary>
+    Task<int> MarkConflictingStaleAsync(
+        Guid tenantId, Guid projectId, Guid actorEmployeeId, TaskStatusChangeFootprint applied,
+        Guid? excludingRequestId, CancellationToken ct = default);
+}
+
+public sealed class TaskStatusChangeRequestConflictSweeper : ITaskStatusChangeRequestConflictSweeper
+{
+    public const string OutdatedComment = "Another change to the same statuses was applied first. Resubmit against the current statuses.";
+    private static readonly JsonSerializerOptions PayloadOptions = new(JsonSerializerDefaults.Web);
+
+    private readonly IWorkApprovalRequestRepository _requests;
+    private readonly IWorkNotificationEngine _notifications;
+
+    public TaskStatusChangeRequestConflictSweeper(IWorkApprovalRequestRepository requests, IWorkNotificationEngine notifications)
+    {
+        _requests = requests;
+        _notifications = notifications;
+    }
+
+    public async Task<int> MarkConflictingStaleAsync(
+        Guid tenantId, Guid projectId, Guid actorEmployeeId, TaskStatusChangeFootprint applied,
+        Guid? excludingRequestId, CancellationToken ct = default)
+    {
+        if (applied.IsEmpty)
+            return 0;
+
+        var pending = await _requests.ListTrackedPendingByActionAsync(
+            tenantId, projectId, WorkActionTypes.ProjectStatusTemplateChange, ct);
+        var now = DateTimeOffset.UtcNow;
+        var closed = 0;
+
+        foreach (var request in pending)
+        {
+            if (request.Id == excludingRequestId)
+                continue;
+
+            var payload = JsonSerializer.Deserialize<TaskStatusTemplateChangePayload>(request.PayloadJson, PayloadOptions);
+            if (payload?.Changes is null || !payload.Changes.Footprint().ConflictsWith(applied))
+                continue;
+
+            request.Status = WorkApprovalRequestStatuses.Stale;
+            request.DecisionComment = OutdatedComment;
+            request.DecidedAt = now;
+            _requests.Update(request);
+            closed++;
+
+            await _notifications.NotifyAsync(new WorkNotificationEvent(
+                tenantId, projectId, actorEmployeeId, WorkNotificationKinds.Stale,
+                WorkActionTypes.ProjectStatusTemplateChange, WorkTargetTypes.Project, null,
+                request.TargetTitle, request.Id, [request.RequestedByEmployeeId]), ct);
+        }
+
+        return closed;
+    }
+}
+```
+
+- [ ] **Step 7: Create-request handler submits to the engine**
+
+In `CreateTaskStatusChangeRequestCommandHandler`:
+- Constructor: remove `ITaskStatusChangeRequestRepository`, `IMilestoneMembershipCoordinator`, `INotificationDispatcher`; add `IWorkApprovalEngine _approvals`.
+- Keep everything up to and including the dry-run checks and the `requesterDisplayName` lookup, unchanged. Delete the `approverIds` line.
+- Replace the transaction body with:
+
+```csharp
+        var payload = new TaskStatusTemplateChangePayload(
+            request.Changes, string.IsNullOrWhiteSpace(request.Note) ? null : request.Note.Trim());
+
+        return await _unitOfWork.ExecuteInTransactionAsync(async innerCt =>
+        {
+            var decision = await _approvals.SubmitAsync(new WorkAction(
+                tenantId, project.Id, callerEmployeeId.Value,
+                WorkActionTypes.ProjectStatusTemplateChange, WorkTargetTypes.Project,
+                TargetId: null, TargetTitle: project.Name,
+                TargetModuleId: access.RootObjective.Id, PositionModuleId: access.RootObjective.Id,
+                PayloadJson: JsonSerializer.Serialize(payload), TargetUpdatedAt: null), innerCt);
+            if (!decision.IsSuccess)
+                return Result<TaskStatusChangeRequestResponse>.Failure(decision.Error!, decision.StatusCode ?? 400);
+            if (decision.Value!.IsDirect) // cannot happen: access said the caller is not the root owner
+                return Result<TaskStatusChangeRequestResponse>.Failure(
+                    "You can edit task statuses directly - no request needed.", 400);
+
+            await _unitOfWork.SaveChangesAsync(innerCt);
+
+            return Result<TaskStatusChangeRequestResponse>.Success(new TaskStatusChangeRequestResponse(
+                decision.Value.ApprovalRequestId!.Value, project.Id, WorkApprovalRequestStatuses.Pending,
+                callerEmployeeId.Value, requesterDisplayName, payload.Note, payload.Changes,
+                DateTimeOffset.UtcNow, null, null, null, CanDecide: false, CanCancel: true));
+        }, ct);
+```
+
+- [ ] **Step 8: Response mapper and list query read `wm_approval_requests`**
+
+`TaskStatusChangeRequestResponses.cs`: replace `From(TaskStatusChangeRequest ...)` with:
+
+```csharp
+    private static readonly JsonSerializerOptions PayloadOptions = new(JsonSerializerDefaults.Web);
+
+    public static TaskStatusChangeRequestResponse From(
+        WorkApprovalRequest request, string requesterDisplayName, bool canDecide, bool canCancel)
+    {
+        var payload = JsonSerializer.Deserialize<TaskStatusTemplateChangePayload>(request.PayloadJson, PayloadOptions)!;
+        return new(
+            request.Id, request.ProjectId, request.Status, request.RequestedByEmployeeId, requesterDisplayName,
+            payload.Note, payload.Changes, request.CreatedAt, request.DecidedByEmployeeId, request.DecisionComment,
+            request.DecidedAt, canDecide, canCancel);
+    }
+```
+
+(The `static readonly` field goes inside the record body; swap the `Tasks.Entities` using for `ONEVO.Domain.Features.WorkManagement.Approvals.Entities`.)
+
+`GetProjectTaskStatusChangeRequestsQueryHandler`: swap `ITaskStatusChangeRequestRepository` for `IWorkApprovalRequestRepository` + `IWorkHierarchyService`, and replace everything from `var pending = ...` to the `visible` line with:
+
+```csharp
+        var pending = (await _requests.ListByProjectAsync(
+                tenantId, project.Id, null, WorkApprovalRequestStatuses.Pending, ct))
+            .Where(r => r.ActionType == WorkActionTypes.ProjectStatusTemplateChange)
+            .ToList();
+        var tree = await _hierarchy.LoadTreeAsync(tenantId, project.Id, ct);
+        var visible = pending
+            .Where(r => access.CanEditDirectly
+                || r.RequestedByEmployeeId == callerEmployeeId.Value
+                || WorkApprovalDecisionRules.CanDecide(tree, r, callerEmployeeId.Value))
+            .ToList();
+```
+
+and compute each row's `canDecide` as `WorkApprovalDecisionRules.CanDecide(tree, r, callerEmployeeId.Value)` instead of `access.CanEditDirectly`. That also covers an HR-fallback approver.
+
+- [ ] **Step 9: Applier**
+
+`Tasks/Appliers/TaskStatusTemplateChangeApplier.cs`:
+
+```csharp
+using System.Text.Json;
+using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.WorkManagement.Approvals.Services;
+using ONEVO.Application.Features.WorkManagement.Tasks.DTOs;
+using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Tasks.Services;
+using ONEVO.Domain.Features.WorkManagement.Approvals.Entities;
+
+namespace ONEVO.Application.Features.WorkManagement.Tasks.Appliers;
+
+/// <summary>Applies an approved project.status_template_change: the old ApproveTaskStatusChangeRequest body.</summary>
+public sealed class TaskStatusTemplateChangeApplier : IApprovalActionApplier
+{
+    private readonly ICurrentUser _currentUser;
+    private readonly ITaskStatusRepository _statuses;
+    private readonly IWorkTaskRepository _tasks;
+    private readonly ITaskStatusChangeRequestConflictSweeper _sweeper;
+
+    public TaskStatusTemplateChangeApplier(
+        ICurrentUser currentUser, ITaskStatusRepository statuses, IWorkTaskRepository tasks,
+        ITaskStatusChangeRequestConflictSweeper sweeper)
+    {
+        _currentUser = currentUser;
+        _statuses = statuses;
+        _tasks = tasks;
+        _sweeper = sweeper;
+    }
+
+    public string ActionType => WorkActionTypes.ProjectStatusTemplateChange;
+
+    public async Task<ApplyOutcome> ApplyAsync(ApprovalApplyContext context, CancellationToken ct)
+    {
+        var request = context.Request;
+        var payload = JsonSerializer.Deserialize<TaskStatusTemplateChangePayload>(context.PayloadJson, TaskPayload.Options);
+        if (payload?.Changes is null)
+            return ApplyOutcome.Invalid("The status change request has no changes.");
+
+        // Tasks still in a status to delete block approval but don't make the request stale:
+        // it stays pending so it can be approved once the tasks are moved, or rejected.
+        foreach (var delete in payload.Changes.Deletes)
+        {
+            if (await _tasks.AnyActiveByStatusIdAsync(request.TenantId, delete.StatusId, ct))
+                return ApplyOutcome.Invalid($"Move all tasks out of \"{delete.Name}\" before approving its deletion.");
+        }
+
+        var current = await _statuses.GetProjectTemplateAsync(request.TenantId, request.ProjectId, ct);
+        var applied = TaskStatusChangeSetApplier.Apply(
+            current, payload.Changes, request.TenantId, request.ProjectId, _currentUser.UserId, DateTimeOffset.UtcNow);
+
+        if (applied.Outcome == TaskStatusChangeApplyOutcome.Invalid)
+            return ApplyOutcome.Invalid(applied.Message!);
+        if (applied.Outcome == TaskStatusChangeApplyOutcome.Stale)
+            return ApplyOutcome.Stale;
+
+        foreach (var status in applied.Added)
+            await _statuses.AddAsync(status, ct);
+        foreach (var status in applied.Modified)
+            _statuses.Update(status);
+        foreach (var status in applied.Deleted)
+            _statuses.Remove(status);
+
+        await _sweeper.MarkConflictingStaleAsync(
+            request.TenantId, request.ProjectId, context.DeciderEmployeeId, payload.Changes.Footprint(), request.Id, ct);
+
+        return ApplyOutcome.Applied;
+    }
+}
+```
+
+> Copy the exact member names from the deleted `ApproveTaskStatusChangeRequestCommandHandler` if any differ (for example the `delete.Name` field or `applied.FinalOrder`). That is a mechanical fix; note it as a deviation.
+
+DI, WM block: `services.AddScoped<IApprovalActionApplier, TaskStatusTemplateChangeApplier>();`
+
+Behaviour differences to accept (the decide flow is Plan 1's): a stale approve now returns 200 with status `stale` (was 409 + `outdated`); an invalid apply now returns 422 and the request stays pending (was 409).
+
+- [ ] **Step 10: Navigation and history**
+
+`GetWorkNotificationNavigationQueryHandler.FromStatusChangeRequestAsync`: keep the `"task_status_change_request"` arm (old bell notifications carry those ids, which the migration preserves), but read `_workApprovals.GetTrackedByIdForTenantAsync(tenantId, requestId, ct)` (the dependency Task 5 added) and delete the `ITaskStatusChangeRequestRepository` dependency. The returned value is unchanged.
+
+`EfWorkApprovalHistoryRepository`: delete the `statusChanges` query and its `.Concat(statusChanges)`. Widen Task 5's `engineRequests` filter and mapping:
+
+```csharp
+    .Where(r => r.TenantId == tenantId && r.ProjectId == projectId
+        && (r.ActionType.StartsWith("task.") || r.ActionType == WorkActionTypes.ProjectStatusTemplateChange)
+        && (r.RequestedByEmployeeId == employeeId || r.DecidedByEmployeeId == employeeId
+            || (r.Status == WorkApprovalRequestStatuses.Pending && r.ApproverEmployeeId == employeeId)))
+```
+
+```csharp
+    r.ActionType switch
+    {
+        "task.create" => "task_creation", "task.edit" => "task_edit", "task.delete" => "task_delete",
+        WorkActionTypes.ProjectStatusTemplateChange => "task_status_change",
+        _ => r.ActionType
+    },
+    r.Status,
+    r.ActionType == WorkActionTypes.ProjectStatusTemplateChange ? "Task statuses" : r.TargetTitle,
+```
+
+(`WorkActionTypes.ProjectStatusTemplateChange` is a `const`, so it is valid as a switch pattern.)
+
+- [ ] **Step 11: Delete the old status-change request code**
+
+Grep first; each item must be referenced only by the others in this list or by its own test:
+- `Tasks/Commands/ApproveTaskStatusChangeRequest/`, `RejectTaskStatusChangeRequest/`, `CancelTaskStatusChangeRequest/` (whole folders)
+- `Tasks/RepositoryInterfaces/ITaskStatusChangeRequestRepository.cs`
+- `Domain/.../Tasks/Entities/TaskStatusChangeRequest.cs` (entity + `TaskStatusChangeRequestStatuses`)
+- `Configurations/WorkManagement/TaskStatusChangeRequestConfiguration.cs`, `Repositories/WorkManagement/EfTaskStatusChangeRequestRepository.cs`, their DI lines, and the `TaskStatusChangeRequests` DbSet
+- `TaskStatusChangeRequestsController`: the `approve`, `reject` and `cancel` actions and their `using`s (keep `List` and `Create`)
+- `TaskStatusChangeRequestContracts.cs`: `RejectTaskStatusChangeRequestRequest` (keep `CreateTaskStatusChangeRequestRequest`)
+- Keep the `work_task_status_change_request_*` templates in `NotificationTemplateSeeder` (unused now; Plan 4 removes them with the seeder test count).
+
+Then `dotnet build -c Release`. Expected: 0 errors.
+
+- [ ] **Step 12: Generate the migration and add the data copy**
+
+```bash
+dotnet ef migrations add MoveTaskStatusChangeRequestsToWorkApprovals --configuration Release --project src/ONEVO.Infrastructure/ONEVO.Infrastructure.csproj --startup-project src/ONEVO.Api/ONEVO.Api.csproj
+```
+
+Expected generated `Up`: only `DropTable("task_status_change_requests")`. Check the snapshot diff: only that removal.
+
+Insert at the **start** of `Up`, before the generated drop:
+
+```csharp
+            // Copy every status-template request (all statuses, ids preserved so old bell
+            // notifications still navigate) into wm_approval_requests. 'outdated' becomes 'stale'.
+            // Position/approver = the project's root (default) module and its owner.
+            migrationBuilder.Sql(@"
+                SET LOCAL app.tenant_context_mode = 'admin';
+
+                INSERT INTO wm_approval_requests (
+                    id, tenant_id, project_id, action_type, target_type, target_id, target_title,
+                    position_objective_id, approver_source, approver_employee_id, requested_by_employee_id,
+                    payload_json, status, decided_by_employee_id, decision_comment, target_updated_at_snapshot,
+                    decided_at, created_at, updated_at, created_by_id, is_deleted, deleted_at)
+                SELECT r.id, r.tenant_id, r.project_id, 'project.status_template_change', 'project', NULL,
+                       COALESCE(p.name, 'Task statuses'),
+                       root.id, 'hierarchy',
+                       COALESCE(r.decided_by_employee_id, root.owner_id, r.requested_by_employee_id),
+                       r.requested_by_employee_id,
+                       jsonb_build_object('Changes', r.changes_json, 'Note', r.note),
+                       CASE WHEN r.status = 'outdated' THEN 'stale' ELSE r.status END,
+                       r.decided_by_employee_id, r.decision_comment, NULL,
+                       r.decided_at, r.created_at, r.updated_at, r.created_by_id, r.is_deleted, r.deleted_at
+                FROM task_status_change_requests r
+                LEFT JOIN projects p ON p.id = r.project_id
+                LEFT JOIN LATERAL (
+                    SELECT o.id, o.owner_id FROM objectives o
+                    WHERE o.project_id = r.project_id AND o.is_default AND o.parent_objective_id IS NULL
+                    ORDER BY o.is_deleted, o.created_at
+                    LIMIT 1
+                ) root ON true;
+            ");
+```
+
+At the top of `Down`: `// Data is not restored: rows live on in wm_approval_requests.`
+
+The column list matches the Plan 1 migration (verified 2026-09-28: `is_deleted`/`deleted_at` exist). Still re-check the `task_status_change_requests` column names against its configuration and snapshot before committing.
+
+- [ ] **Step 13: SQL script and full gate**
+
+```bash
+dotnet ef migrations script MoveTaskRequestsToWorkApprovals MoveTaskStatusChangeRequestsToWorkApprovals --configuration Release --project src/ONEVO.Infrastructure/ONEVO.Infrastructure.csproj --startup-project src/ONEVO.Api/ONEVO.Api.csproj -o <scratchpad>/move_status_change_requests.sql
+dotnet build -c Release
+dotnet test tests/ONEVO.Tests.Unit -c Release
+dotnet test tests/ONEVO.Tests.Architecture -c Release
+```
+
+Expected: the script shows the INSERT before the DROP, and all suites are green. **Do not run `database update`.**
+
+- [ ] **Step 14: Commit, listing every deleted test and test case**
+
+```bash
+git add -A
+git commit -m "refactor(work-management): task-status template requests go through the approval engine
+
+Root module owner is now the only approver and the only direct editor of the status template;
+root members send a change request. 'outdated' becomes 'stale'. Migrates all rows (ids preserved)
+and drops task_status_change_requests.
+Removed tests (tested deleted code): <list the old TaskStatusChangeRequestHandlerTests cases replaced>
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+```
+
+---
+
 ## FRONTEND
 
 **Before you start:** the frontend repo's current branch (`feature/wm-tree-highlight-filter`) has **uncommitted user work**.
@@ -849,8 +1381,8 @@ export type WorkApprovalStatus = 'pending' | 'approved' | 'rejected' | 'cancelle
 export interface WorkApprovalRequestDto {
   id: string;
   projectId: string;
-  actionType: string;          // 'task.create' | 'task.edit' | 'task.delete' | ...
-  targetType: 'task' | 'module' | 'sprint';
+  actionType: string;          // 'task.create' | 'task.edit' | 'task.delete' | 'project.status_template_change' | ...
+  targetType: 'task' | 'module' | 'sprint' | 'project';
   targetId: string | null;
   targetTitle: string;
   status: WorkApprovalStatus;
@@ -1096,7 +1628,7 @@ const WORK_ACTION_LABELS: Record<string, string> = {
       description: '',
       requestedByName: request.requestedByName,
       targetTitle: request.targetTitle,
-      targetType: request.targetType === 'sprint' ? 'request' : request.targetType,
+      targetType: request.targetType === 'sprint' || request.targetType === 'project' ? 'request' : request.targetType,
       targetId: request.targetId,
       createdAt: request.createdAt,
       raw: request
@@ -1163,6 +1695,83 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 ---
 
+### Task 9A (amendment): Status-template panel decides through the generic approvals API
+
+Backend Task 6A keeps `GET`/`POST projects/{id}/task-status-change-requests` (same shapes, and the list now returns `wm_approval_requests` ids). It removes the old `task-status-change-requests/{id}/approve|reject|cancel` routes.
+
+**Files:**
+- Modify:
+  - `data-access/task-status-change-request-api.service.ts` (+ its `.spec.ts` if it exists)
+  - `models/dto/task-status-change-request.dto.ts`
+  - `state/work-approvals.store.ts` (Task 9's `workApprovals` load)
+- Test: `task-status-change-requests-panel.component.spec.ts`, `work-approvals.store.spec.ts`
+
+- [ ] **Step 1: Write the failing spec cases**
+
+- API service (create the spec if it doesn't exist):
+  - `approve POSTs /work/approvals/r1/approve`
+  - `reject POSTs /work/approvals/r1/reject with { comment }`
+  - `cancel POSTs /work/approvals/r1/cancel`
+- Store: `loadAll(projectId) leaves project.status_template_change items out of workApprovals` (the status panel on the same page already lists them, so they would show twice).
+
+- [ ] **Step 2: Implement**
+
+`task-status-change-request-api.service.ts`: keep the method names so the panel and `board-structure-editor` need no change. Only the three URLs and the doc comment change:
+
+```ts
+/** Requests from project members to change the project's task statuses. Listing and creating use
+ *  the status-template endpoints; deciding goes through the unified work approvals API, and only
+ *  the project's top (root) module owner can decide. */
+  approve(id: string): Observable<unknown> {
+    return this.http.post(`${this.baseUrl}/approvals/${id}/approve`, {});
+  }
+
+  reject(id: string, comment: string | null): Observable<unknown> {
+    return this.http.post(`${this.baseUrl}/approvals/${id}/reject`, { comment });
+  }
+
+  cancel(id: string): Observable<unknown> {
+    return this.http.post(`${this.baseUrl}/approvals/${id}/cancel`, {});
+  }
+```
+
+(If a caller relied on the old `Observable<void>` type, keep `void`/`unknown` whichever compiles; the body is ignored.)
+
+`task-status-change-request.dto.ts`:
+
+```ts
+export type TaskStatusChangeRequestStatus = 'pending' | 'approved' | 'rejected' | 'cancelled' | 'stale';
+```
+
+Grep `'outdated'` in `src/app/modules/work` and rename every use to `'stale'` (labels may keep the word "Outdated" for users).
+
+`work-approvals.store.ts` (Task 9's load):
+
+```ts
+workApprovals: items
+  .filter((i) => i.actionType !== 'project.status_template_change')
+  .map(toApprovalItem)
+```
+
+- [ ] **Step 3: Run the build and the full test suite**
+
+```bash
+npx ng build
+npx ng test --watch=false
+```
+
+Expected: green.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git commit -am "feat(work): status-template requests are decided through the unified approvals API
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+```
+
+---
+
 ## Final verification (both repos)
 
 ```bash
@@ -1171,12 +1780,13 @@ cd HRMS-Backend-v1
 dotnet build -c Release
 dotnet test tests/ONEVO.Tests.Unit -c Release
 dotnet test tests/ONEVO.Tests.Architecture -c Release
-git grep -n -E "TaskCreationRequest|TaskEditRequest" -- src tests   # expect: only migrations + the Designer/snapshot history
+git grep -n -E "TaskCreationRequest|TaskEditRequest|TaskStatusChangeRequest\b|ITaskStatusChangeRequestRepository" -- src tests   # expect: only migrations + the Designer/snapshot history
 # frontend
 cd ../Hrms--Web-application---front-end---v1
 npx ng build
 npx ng test --watch=false
 git grep -n -E "task-creation-requests|task-edit-requests|TaskCreationRequestDto|TaskEditRequestDto" -- src   # expect: none
+git grep -n -E "task-status-change-requests/\\$\\{id\\}|'outdated'" -- src/app/modules/work   # expect: none (Task 9A)
 ```
 
 Any test failure that also fails on `origin/development` predates this work. Prove it on a clean checkout and report it separately.
@@ -1189,5 +1799,5 @@ Any test failure that also fails on `origin/development` predates this work. Pro
   - navigation arms for `module`/`sprint` target types.
 - **Plan 4:**
   - replace the duplicated ancestor walks with `ProjectModuleTree`;
-  - dead-code and useless-test sweep;
+  - dead-code and useless-test sweep, including the now-unused `work_task_creation_request_*`, `work_task_edit_request_decided` and `work_task_status_change_request_*` templates (bump `NotificationTemplateSeederTests`);
   - Approvals page Requests + **History** tabs (backed by `work-notifications`), replacing the legacy approval-history modal and `EfWorkApprovalHistoryRepository`.
