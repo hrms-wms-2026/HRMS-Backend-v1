@@ -36,6 +36,7 @@ public class FaceVerificationRetryPolicy : IFaceVerificationRetryPolicy
     public const string HrFallbackPermission = "employees:write";
 
     private const string NoReferencePhoto = "no_reference_photo";
+    private const string VerificationFailed = "verification_failed";
 
     private readonly IFaceVerificationAttemptRepository _attempts;
     private readonly IFileStorageService _fileStorage;
@@ -73,8 +74,10 @@ public class FaceVerificationRetryPolicy : IFaceVerificationRetryPolicy
         string contentType,
         CancellationToken ct)
     {
-        // No enrolled face: nothing was compared, and retrying can't fix it — stays blocked.
-        if (result.FailureReason == NoReferencePhoto)
+        // Nothing was actually judged, so these never count toward the retry limit and never let
+        // the employee through: no enrolled face to compare with, or AWS gave no answer
+        // (unavailable / timed out). Only a face AWS looked at and rejected counts.
+        if (result.FailureReason is NoReferencePhoto or VerificationFailed)
             return result;
 
         var now = _clock.UtcNow;

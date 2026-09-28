@@ -255,6 +255,20 @@ public class FaceVerificationRetryPolicyTests
     }
 
     [Fact]
+    public async Task AwsNoAnswer_IsNotCounted_AndNeverLetsThrough()
+    {
+        // Two real rejections already — an AWS outage on the next try must still not let them in.
+        _earlierFailures = [EarlierFailure("not_matched"), EarlierFailure("face_not_visible")];
+
+        var result = await CreateSut().ApplyAsync(Context(), Failed("verification_failed"), new MemoryStream([1]), "image/jpeg", CancellationToken.None);
+
+        result.CanProceed.Should().BeFalse();
+        result.FailureReason.Should().Be("verification_failed");
+        _added.Should().BeEmpty();
+        VerifyNoAlert();
+    }
+
+    [Fact]
     public async Task NoReferencePhoto_IsNotCounted_AndStaysBlocked()
     {
         _earlierFailures = [EarlierFailure("x"), EarlierFailure("y")];
