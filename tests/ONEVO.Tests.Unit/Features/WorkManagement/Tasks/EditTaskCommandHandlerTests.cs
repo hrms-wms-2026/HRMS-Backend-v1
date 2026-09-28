@@ -117,11 +117,14 @@ public class EditTaskCommandHandlerTests
         assignments.Setup(x => x.GetByTaskIdAsync(TaskId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(Array.Empty<TaskAssignment>());
 
+        var writes = new TaskWriteService(
+            objectives.Object, new Mock<ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces.IProjectRepository>().Object,
+            tasks.Object, new Mock<ITaskStatusRepository>().Object, sprints.Object, new Mock<ITaskCategoryRepository>().Object,
+            slack, (calendarEvents ?? CalendarEventRepositoryMocks.Empty()).Object,
+            sprintLogRepository.Object, editLogRepository.Object, percentageLogRepository.Object);
         var handler = new EditTaskCommandHandler(
-            currentUser.Object, tasks.Object, objectives.Object, slack, unitOfWork.Object, sprints.Object,
-            identity.Object, sprintLogRepository.Object, editLogRepository.Object, percentageLogRepository.Object,
-            (calendarEvents ?? CalendarEventRepositoryMocks.Empty()).Object, membership.Object, assignments.Object,
-            (assetLinker ?? new Mock<ITaskAssetLinker>()).Object);
+            currentUser.Object, tasks.Object, objectives.Object, unitOfWork.Object, identity.Object,
+            membership.Object, assignments.Object, (assetLinker ?? new Mock<ITaskAssetLinker>()).Object, writes);
 
         return (handler, tasks, editLogs, callerEmployeeId, task, percentageLogs, sprintLogs);
     }

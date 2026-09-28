@@ -109,12 +109,13 @@ public class CreateTaskCommandHandlerTests
 
         var sprintLogs = new Mock<ISprintActivityLogRepository>();
 
+        var writes = new TaskWriteService(
+            objectives.Object, projects.Object, tasks.Object, statuses.Object, sprints.Object, categories.Object,
+            slackCalculator, (calendarEvents ?? CalendarEventRepositoryMocks.Empty()).Object,
+            sprintLogs.Object, new Mock<ITaskEditLogRepository>().Object, new Mock<ITaskPercentageLogRepository>().Object);
         var handler = new CreateTaskCommandHandler(
-            currentUser.Object, identity.Object, objectives.Object, projects.Object, tasks.Object,
-            statuses.Object, sprints.Object, categories.Object, slackCalculator, unitOfWork.Object, membership.Object,
-            (calendarEvents ?? CalendarEventRepositoryMocks.Empty()).Object,
-            (assetLinker ?? new Mock<ITaskAssetLinker>()).Object,
-            sprintLogs.Object);
+            currentUser.Object, identity.Object, objectives.Object, unitOfWork.Object, membership.Object,
+            (assetLinker ?? new Mock<ITaskAssetLinker>()).Object, writes);
         return (handler, tasks, sprints, sprintLogs);
     }
 
