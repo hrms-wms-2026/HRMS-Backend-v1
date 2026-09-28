@@ -19,6 +19,10 @@ public static class SprintStatuses
 public class Sprint : BaseEntity
 {
     public Guid ProjectId { get; set; }
+    /// <summary>The Module whose current owner is this object's creator position - the approver of
+    /// edits by anyone below it. Null means "use the default": Module → its parent, Task → its own
+    /// Module, Sprint → the project root Module.</summary>
+    public Guid? CreatorPositionObjectiveId { get; set; }
     public string Name { get; set; } = string.Empty;
     public string? Goal { get; set; }
 
