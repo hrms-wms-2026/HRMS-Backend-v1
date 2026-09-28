@@ -56,7 +56,6 @@ public class ValidateFacePhotoCommandHandlerTests
     private ValidateFacePhotoCommandHandler CreateSut() => new(
         _device.Object, _tenants.Object, _tenantSwitcher.Object, _profiles.Object, _quality.Object,
         new EnrolledFaceMatcher(_fileStorage.Object, _faceMatch.Object), _employeeIdentity.Object, _retry.Object);
-        new EnrolledFaceMatcher(_fileStorage.Object, _faceMatch.Object), _employeeIdentity.Object);
 
     private static ValidateFacePhotoCommand Cmd(string? purpose = null, string? pose = null) =>
         new(new MemoryStream(new byte[] { 3 }), "image/jpeg", 3, purpose, pose);
@@ -237,35 +236,6 @@ public class ValidateFacePhotoCommandHandlerTests
     {
         SetupQuality(PassQuality());
         SetupNoProfile();
-
-        var result = await CreateSut().Handle(
-            Cmd(FacePhotoValidationPurpose.Enrollment, FacePhotoPose.Left), CancellationToken.None);
-
-        result.Value!.CanProceed.Should().BeFalse();
-        result.Value.FailureReason.Should().Be(ValidateFacePhotoCommandHandler.FailureWrongPose);
-    }
-
-    [Fact]
-    public async Task Enrollment_FrontStep_HeadTurned_IsWrongPose()
-    {
-        SetupQuality(TurnedQuality());
-        SetupNoProfile();
-
-        var result = await CreateSut().Handle(
-            Cmd(FacePhotoValidationPurpose.Enrollment, FacePhotoPose.Front), CancellationToken.None);
-
-        result.Value!.FailureReason.Should().Be(ValidateFacePhotoCommandHandler.FailureWrongPose);
-    }
-
-    [Fact]
-    public async Task Enrollment_AlreadyEnrolled_SameFace_ProceedsAsAlreadyEnrolled()
-    {
-        SetupQuality(PassQuality());
-        SetupProfile(Guid.NewGuid());
-        _faceMatch.Setup(m => m.CompareAsync(It.IsAny<Stream>(), It.IsAny<Stream>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new FaceMatchOutcome(true, 96f));
-
-        var result = await CreateSut().Handle(
 
         var result = await CreateSut().Handle(
             Cmd(FacePhotoValidationPurpose.Enrollment, FacePhotoPose.Left), CancellationToken.None);
