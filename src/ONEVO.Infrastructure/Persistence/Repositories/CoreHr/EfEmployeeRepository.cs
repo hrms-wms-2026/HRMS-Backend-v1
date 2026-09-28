@@ -104,6 +104,8 @@ public class EfEmployeeRepository : IEmployeeRepository
             from empType in typeJoin.DefaultIfEmpty()
             join empStatus in _db.EmploymentStatuses.AsNoTracking() on e.EmploymentStatusId equals empStatus.Id into statusJoin
             from empStatus in statusJoin.DefaultIfEmpty()
+            join workMode in _db.TimeAttendanceWorkModes.AsNoTracking() on e.WorkModeId equals (Guid?)workMode.Id into workModeJoin
+            from workMode in workModeJoin.DefaultIfEmpty()
             join primaryAssignment in activePrimaryAssignments on e.Id equals primaryAssignment.EmployeeId into paJoin
             from primaryAssignment in paJoin.DefaultIfEmpty()
             join position in _db.Positions.AsNoTracking() on primaryAssignment!.PositionId equals position.Id into posJoin
@@ -112,7 +114,7 @@ public class EfEmployeeRepository : IEmployeeRepository
             from closure in closureJoin.DefaultIfEmpty()
             join manager in _db.Employees.AsNoTracking() on closure!.AncestorEmployeeId equals manager.Id into managerJoin
             from manager in managerJoin.DefaultIfEmpty()
-            select new { e, dept, legalEntity, empType, empStatus, position, manager };
+            select new { e, dept, legalEntity, empType, empStatus, workMode, position, manager };
 
         if (filter.RestrictToEmployeeIds is not null)
         {
@@ -156,7 +158,47 @@ public class EfEmployeeRepository : IEmployeeRepository
             joined = joined.Where(row => row.legalEntity != null && row.legalEntity.Id == filter.LegalEntityId.Value);
         }
 
+        if (filter.PositionId is not null)
+        {
+            joined = joined.Where(row => row.position != null && row.position.Id == filter.PositionId.Value);
+        }
+
+        if (filter.EmploymentTypeCodes is { Count: > 0 })
+        {
+            var employmentTypeCodes = filter.EmploymentTypeCodes.ToList();
+            joined = joined.Where(row => row.empType != null && employmentTypeCodes.Contains(row.empType.Code));
+        }
+
+        if (filter.ReportingManagerId is not null)
+        {
+            joined = joined.Where(row => row.manager != null && row.manager.Id == filter.ReportingManagerId.Value);
+        }
+
         var totalCount = await joined.CountAsync(ct);
+
+        var descending = filter.SortDescending;
+        joined = filter.SortBy switch
+        {
+            "name" => descending
+                ? joined.OrderByDescending(row => row.e.LastName).ThenByDescending(row => row.e.FirstName).ThenBy(row => row.e.Id)
+                : joined.OrderBy(row => row.e.LastName).ThenBy(row => row.e.FirstName).ThenBy(row => row.e.Id),
+            "employeeNumber" => descending
+                ? joined.OrderByDescending(row => row.e.EmployeeNumber).ThenBy(row => row.e.Id)
+                : joined.OrderBy(row => row.e.EmployeeNumber).ThenBy(row => row.e.Id),
+            "position" => descending
+                ? joined.OrderByDescending(row => row.position != null ? row.position.Name : null).ThenBy(row => row.e.LastName).ThenBy(row => row.e.Id)
+                : joined.OrderBy(row => row.position != null ? row.position.Name : null).ThenBy(row => row.e.LastName).ThenBy(row => row.e.Id),
+            "department" => descending
+                ? joined.OrderByDescending(row => row.dept != null ? row.dept.Name : null).ThenBy(row => row.e.LastName).ThenBy(row => row.e.Id)
+                : joined.OrderBy(row => row.dept != null ? row.dept.Name : null).ThenBy(row => row.e.LastName).ThenBy(row => row.e.Id),
+            "employmentType" => descending
+                ? joined.OrderByDescending(row => row.empType != null ? row.empType.Label : null).ThenBy(row => row.e.LastName).ThenBy(row => row.e.Id)
+                : joined.OrderBy(row => row.empType != null ? row.empType.Label : null).ThenBy(row => row.e.LastName).ThenBy(row => row.e.Id),
+            "manager" => descending
+                ? joined.OrderByDescending(row => row.manager != null ? row.manager.LastName : null).ThenBy(row => row.e.LastName).ThenBy(row => row.e.Id)
+                : joined.OrderBy(row => row.manager != null ? row.manager.LastName : null).ThenBy(row => row.e.LastName).ThenBy(row => row.e.Id),
+            _ => joined.OrderBy(row => row.e.LastName).ThenBy(row => row.e.Id),
+        };
 
         if (attendanceOptions is not null)
         {
@@ -229,7 +271,7 @@ public class EfEmployeeRepository : IEmployeeRepository
                 .GroupBy(record => record.EmployeeId)
                 .ToDictionary(group => group.Key, group => (IReadOnlyList<BreakRecord>)group.ToArray());
 
-            var pagedRows = rows
+            var projectedRows = rows
                 .Select(row =>
                 {
                     scheduleByEmployeeId.TryGetValue(row.e.Id, out var resolution);
@@ -292,13 +334,17 @@ public class EfEmployeeRepository : IEmployeeRepository
                         AttendanceSummary = attendanceSummary,
                         HasClockedInToday = hasClockedInToday,
                     };
-                })
-                .OrderByDescending(row => GetAttentionPriority(row.AttendanceSummary?.AttentionType))
-                .ThenBy(row => row.Row.e.LastName)
-                .ThenBy(row => row.Row.e.Id)
-                .Skip((page - 1) * pageSize)
-                .Take(pageSize)
-                .ToList();
+                });
+            // Attention-priority ordering applies only when no explicit sort was requested; an
+            // explicit sort keeps the database order already applied to rows above.
+            var orderedRows = filter.SortBy is null
+                ? projectedRows
+                    .OrderByDescending(row => GetAttentionPriority(row.AttendanceSummary?.AttentionType))
+                    .ThenBy(row => row.Row.e.LastName)
+                    .ThenBy(row => row.Row.e.Id)
+                    .AsEnumerable()
+                : projectedRows;
+            var pagedRows = orderedRows.Skip((page - 1) * pageSize).Take(pageSize).ToList();
 
             // Phase A monitoring warnings (idle-too-long, camera-verification-skipped): deliberately
             // scoped to just this page rather than the full filtered set above, to avoid an
@@ -315,7 +361,7 @@ public class EfEmployeeRepository : IEmployeeRepository
                 attendanceOptions.UtcNow,
                 ct);
 
-            var orderedRows = pagedRows
+            var responseRows = pagedRows
                 .Select(row => new EmployeeListItemResponse(
                     row.Row.e.Id,
                     row.Row.e.EmployeeNumber,
@@ -333,14 +379,14 @@ public class EfEmployeeRepository : IEmployeeRepository
                     row.Row.manager != null ? row.Row.manager.FirstName + " " + row.Row.manager.LastName : null,
                     null,
                     null,
-                    monitoringWarnings.TryGetValue(row.Row.e.Id, out var overridden) ? overridden : row.AttendanceSummary))
+                    monitoringWarnings.TryGetValue(row.Row.e.Id, out var overridden) ? overridden : row.AttendanceSummary,
+                    row.Row.workMode != null ? row.Row.workMode.Name : null))
                 .ToList();
 
-            return (orderedRows, totalCount);
+            return (responseRows, totalCount);
         }
 
         var items = await joined
-            .OrderBy(row => row.e.LastName).ThenBy(row => row.e.Id)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .Select(row => new EmployeeListItemResponse(
@@ -361,7 +407,7 @@ public class EfEmployeeRepository : IEmployeeRepository
                 null,
                 null,
                 null,
-                null))
+                row.workMode != null ? row.workMode.Name : null))
             .ToListAsync(ct);
 
                 return (items, totalCount);

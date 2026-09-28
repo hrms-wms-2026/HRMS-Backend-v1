@@ -125,6 +125,21 @@ public sealed class EmployeesControllerTests
         Assert.Equal(404, objectResult.StatusCode);
     }
 
+    [Fact]
+    public async Task List_MapsNewQueryParameters()
+    {
+        _mediator.Setup(m => m.Send(It.IsAny<ListEmployeesQuery>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<EmployeeListPageResponse>.Success(new EmployeeListPageResponse([], 0, 1, 25)));
+        var positionId = Guid.NewGuid(); var managerId = Guid.NewGuid();
+
+        await _sut.List(positionId: positionId, employmentTypes: new[] { "full_time", "intern" }, managerId: managerId,
+            sortBy: "manager", sortDir: "desc", ct: CancellationToken.None);
+
+        _mediator.Verify(m => m.Send(It.Is<ListEmployeesQuery>(q => q.PositionId == positionId
+            && q.EmploymentTypeCodes!.SequenceEqual(new[] { "full_time", "intern" }) && q.ReportingManagerId == managerId
+            && q.SortBy == "manager" && q.SortDescending), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
     private static string? PermissionOf(string actionName) =>
         typeof(EmployeesController).GetMethod(actionName)!
             .GetCustomAttributesData()

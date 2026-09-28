@@ -11,7 +11,10 @@ namespace ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
 /// unaffected). An empty (non-null) collection means "nothing visible".
 /// </summary>
 public sealed record EmployeeListFilter(
-    string? Search, Guid? DepartmentId, Guid? LegalEntityId, IReadOnlyCollection<Guid>? RestrictToEmployeeIds = null);
+    string? Search, Guid? DepartmentId, Guid? LegalEntityId,
+    IReadOnlyCollection<Guid>? RestrictToEmployeeIds = null, Guid? PositionId = null,
+    IReadOnlyCollection<string>? EmploymentTypeCodes = null, Guid? ReportingManagerId = null,
+    string? SortBy = null, bool SortDescending = false);
 
 /// <summary>
 /// Enables the employee-list repository to calculate attendance warnings in one batch query. A
