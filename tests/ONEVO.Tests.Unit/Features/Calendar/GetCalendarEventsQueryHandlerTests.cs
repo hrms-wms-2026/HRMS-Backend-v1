@@ -189,4 +189,100 @@ public sealed class GetCalendarEventsQueryHandlerTests
         Assert.True(result.IsSuccess);
         Assert.False(Assert.Single(result.Value!.Events).HasConflict);
     }
+
+    [Fact]
+    public async Task Handle_ResolvesOrganizerName_AndFlagsSomeoneElsesEventAsNotOwned()
+    {
+        var sut = BuildSut();
+        var organizerUserId = Guid.NewGuid();
+        _employees.Setup(x => x.GetDefaultForUserAsync(TenantId, organizerUserId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Employee { Id = Guid.NewGuid(), UserId = organizerUserId, TenantId = TenantId, FirstName = "Nadesh", LastName = "Coomaraswamy" });
+        _events.Setup(x => x.GetInDateRangeForCallerAsync(TenantId, UserId, EmployeeId, From, To, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([
+                new CalendarEvent
+                {
+                    Id = Guid.NewGuid(), TenantId = TenantId, Title = "Design review",
+                    StartDate = From.AddDays(2), EndDate = From.AddDays(2).AddHours(1),
+                    SourceType = CalendarEventSourceTypes.Manual, Recurrence = CalendarRecurrences.None,
+                    CreatedById = organizerUserId, CreatedAt = DateTimeOffset.UtcNow
+                }
+            ]);
+
+        var result = await sut.Handle(new GetCalendarEventsQuery(From, To), CancellationToken.None);
+
+        var item = Assert.Single(result.Value!.Events);
+        Assert.False(item.IsOrganizer);
+        Assert.Equal("Nadesh Coomaraswamy", item.OrganizerName);
+    }
+
+    [Fact]
+    public async Task Handle_FlagsTheCallersOwnEventAsOrganizer_WithTheirName()
+    {
+        var sut = BuildSut();
+        _employees.Setup(x => x.GetDefaultForUserAsync(TenantId, UserId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Employee { Id = EmployeeId, UserId = UserId, TenantId = TenantId, FirstName = "Dapi", LastName = "Owner" });
+        _events.Setup(x => x.GetInDateRangeForCallerAsync(TenantId, UserId, EmployeeId, From, To, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([
+                new CalendarEvent
+                {
+                    Id = Guid.NewGuid(), TenantId = TenantId, Title = "My event",
+                    StartDate = From.AddDays(2), EndDate = From.AddDays(2).AddHours(1),
+                    SourceType = CalendarEventSourceTypes.Manual, Recurrence = CalendarRecurrences.None,
+                    CreatedById = UserId, CreatedAt = DateTimeOffset.UtcNow
+                }
+            ]);
+
+        var result = await sut.Handle(new GetCalendarEventsQuery(From, To), CancellationToken.None);
+
+        var item = Assert.Single(result.Value!.Events);
+        Assert.True(item.IsOrganizer);
+        Assert.Equal("Dapi Owner", item.OrganizerName);
+    }
+
+    [Fact]
+    public async Task Handle_CreatorWithoutEmployeeRecord_LeavesOrganizerNameNull()
+    {
+        var sut = BuildSut();
+        var orphanUserId = Guid.NewGuid();
+        _employees.Setup(x => x.GetDefaultForUserAsync(TenantId, orphanUserId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Employee?)null);
+        _events.Setup(x => x.GetInDateRangeForCallerAsync(TenantId, UserId, EmployeeId, From, To, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([
+                new CalendarEvent
+                {
+                    Id = Guid.NewGuid(), TenantId = TenantId, Title = "Synced block",
+                    StartDate = From.AddDays(2), EndDate = From.AddDays(2).AddHours(1),
+                    SourceType = CalendarEventSourceTypes.Manual, Recurrence = CalendarRecurrences.None,
+                    CreatedById = orphanUserId, CreatedAt = DateTimeOffset.UtcNow
+                }
+            ]);
+
+        var result = await sut.Handle(new GetCalendarEventsQuery(From, To), CancellationToken.None);
+
+        var item = Assert.Single(result.Value!.Events);
+        Assert.False(item.IsOrganizer);
+        Assert.Null(item.OrganizerName);
+    }
+
+    [Fact]
+    public async Task Handle_LooksUpEachCreatorOnce_EvenWhenTheyOrganizeManyEvents()
+    {
+        var sut = BuildSut();
+        var organizerUserId = Guid.NewGuid();
+        _employees.Setup(x => x.GetDefaultForUserAsync(TenantId, organizerUserId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Employee { Id = Guid.NewGuid(), UserId = organizerUserId, TenantId = TenantId, FirstName = "Kiru", LastName = "B" });
+        CalendarEvent Make(int day) => new()
+        {
+            Id = Guid.NewGuid(), TenantId = TenantId, Title = $"Event {day}",
+            StartDate = From.AddDays(day), EndDate = From.AddDays(day).AddHours(1),
+            SourceType = CalendarEventSourceTypes.Manual, Recurrence = CalendarRecurrences.None,
+            CreatedById = organizerUserId, CreatedAt = DateTimeOffset.UtcNow
+        };
+        _events.Setup(x => x.GetInDateRangeForCallerAsync(TenantId, UserId, EmployeeId, From, To, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([Make(2), Make(4), Make(6)]);
+
+        await sut.Handle(new GetCalendarEventsQuery(From, To), CancellationToken.None);
+
+        _employees.Verify(x => x.GetDefaultForUserAsync(TenantId, organizerUserId, It.IsAny<CancellationToken>()), Times.Once);
+    }
 }

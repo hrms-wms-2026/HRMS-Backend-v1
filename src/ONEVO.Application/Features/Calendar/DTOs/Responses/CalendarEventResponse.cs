@@ -23,6 +23,8 @@ public sealed record CalendarEventItem(
     Guid? RecurrenceMasterId = null,
     DateTimeOffset? OriginalStart = null,
     IReadOnlyList<CalendarEventParticipantSummary>? Participants = null,
-    bool HasConflict = false);
+    bool HasConflict = false,
+    bool IsOrganizer = false,
+    string? OrganizerName = null);
 
 public sealed record CalendarEventsResponse(IReadOnlyList<CalendarEventItem> Events);

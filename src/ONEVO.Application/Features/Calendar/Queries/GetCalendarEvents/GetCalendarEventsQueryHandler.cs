@@ -74,9 +74,18 @@ public sealed class GetCalendarEventsQueryHandler(
             }
         }
 
+        var organizerNames = new Dictionary<Guid, string?>();
+        foreach (var creatorId in items.Select(i => i.CreatedById).Distinct())
+        {
+            var organizer = creatorId == currentUser.UserId ? employee : await employees.GetDefaultForUserAsync(tenantId, creatorId, ct);
+            organizerNames[creatorId] = organizer is null ? null : $"{organizer.FirstName} {organizer.LastName}";
+        }
+
         var withConflictFlags = items.Select(item => item with
         {
-            HasConflict = items.Any(other => other.Id != item.Id && other.StartDate < item.EndDate && item.StartDate < other.EndDate)
+            HasConflict = items.Any(other => other.Id != item.Id && other.StartDate < item.EndDate && item.StartDate < other.EndDate),
+            IsOrganizer = item.CreatedById == currentUser.UserId,
+            OrganizerName = organizerNames[item.CreatedById]
         }).ToList();
 
         return Result<CalendarEventsResponse>.Success(new CalendarEventsResponse(withConflictFlags.OrderBy(i => i.StartDate).ToList()));
