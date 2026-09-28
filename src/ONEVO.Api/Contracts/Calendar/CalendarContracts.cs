@@ -8,7 +8,8 @@ namespace ONEVO.Api.Contracts.Calendar;
 public sealed record CreateCalendarEventRequest(
     string Title, string? Description, DateTimeOffset StartDate, DateTimeOffset EndDate,
     bool IsAllDay, string? Location, string? MeetingLink, string? Color,
-    string Recurrence, IReadOnlyList<Guid> ParticipantEmployeeIds, string? RecurrenceRule = null);
+    string Recurrence, IReadOnlyList<Guid> ParticipantEmployeeIds, string? RecurrenceRule = null,
+    IReadOnlyList<string>? GuestEmails = null);
 
 public sealed record UpdateCalendarEventRequest(
     string Title, string? Description, DateTimeOffset StartDate, DateTimeOffset EndDate,
@@ -33,6 +34,10 @@ public sealed record EditRecurringOccurrenceRequest(
 public sealed record CalendarEventParticipantSummaryViewModel(Guid EmployeeId, string EmployeeName, string ResponseStatus);
 
 public sealed record AddCalendarEventParticipantsRequest(IReadOnlyList<Guid> EmployeeIds);
+
+public sealed record AddCalendarEventGuestsRequest(IReadOnlyList<string> Emails);
+public sealed record CalendarEventGuestViewModel(string Email);
+public sealed record CalendarEventGuestsViewModel(IReadOnlyList<CalendarEventGuestViewModel> Guests);
 public sealed record CalendarEventParticipantsViewModel(IReadOnlyList<CalendarEventParticipantSummaryViewModel> Participants);
 
 public sealed record CalendarEventViewModel(
@@ -42,7 +47,8 @@ public sealed record CalendarEventViewModel(
     string? ExternalSource, Guid CreatedById,
     bool IsRecurringOccurrence = false, Guid? RecurrenceMasterId = null, DateTimeOffset? OriginalStart = null,
     IReadOnlyList<CalendarEventParticipantSummaryViewModel>? Participants = null, bool HasConflict = false,
-    bool IsOrganizer = false, string? OrganizerName = null);
+    bool IsOrganizer = false, string? OrganizerName = null,
+    IReadOnlyList<CalendarEventGuestViewModel>? Guests = null);
 
 public sealed record CalendarEventsViewModel(IReadOnlyList<CalendarEventViewModel> Events);
 
@@ -60,7 +66,8 @@ public static class CalendarEventViewModelMapper
         dto.MeetingLink, dto.ExternalSource, dto.CreatedById,
         dto.IsRecurringOccurrence, dto.RecurrenceMasterId, dto.OriginalStart,
         dto.Participants?.Select(p => new CalendarEventParticipantSummaryViewModel(p.EmployeeId, p.EmployeeName, p.ResponseStatus)).ToList(),
-        dto.HasConflict, dto.IsOrganizer, dto.OrganizerName);
+        dto.HasConflict, dto.IsOrganizer, dto.OrganizerName,
+        dto.Guests?.Select(g => new CalendarEventGuestViewModel(g.Email)).ToList());
 
     public static CalendarEventsViewModel ToViewModel(this CalendarEventsResponse dto) =>
         new(dto.Events.Select(e => e.ToViewModel()).ToList());
@@ -118,4 +125,10 @@ public static class CalendarConnectionViewModelMapper
 
     public static CalendarConnectionsViewModel ToViewModel(this CalendarConnectionsResponse dto) =>
         new(dto.Connections.Select(c => c.ToViewModel()).ToList());
+}
+
+public static class CalendarEventGuestsViewModelMapper
+{
+    public static CalendarEventGuestsViewModel ToViewModel(this ONEVO.Application.Features.Calendar.Commands.AddCalendarEventGuests.CalendarEventGuestsResult dto) =>
+        new(dto.Guests.Select(g => new CalendarEventGuestViewModel(g.Email)).ToList());
 }

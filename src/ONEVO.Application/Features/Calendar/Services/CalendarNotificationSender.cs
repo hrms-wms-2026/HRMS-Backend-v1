@@ -48,6 +48,19 @@ public sealed class CalendarNotificationSender(IOutboxWriter outboxWriter, IEmpl
         }
     }
 
+    public async Task NotifyGuestsAsync(
+        Guid tenantId, string eventTitle, DateTimeOffset startDate, string? location,
+        IReadOnlyList<string> guestEmails, string organizerName, string? meetingLink, CancellationToken ct = default)
+    {
+        foreach (var email in guestEmails)
+        {
+            await outboxWriter.EnqueueAsync(
+                OutboxMessageTypes.CalendarEventInviteEmail,
+                new CalendarEventInviteEmailPayload(tenantId, email, email.Split('@')[0], eventTitle, startDate, location, organizerName, meetingLink),
+                tenantId, ct);
+        }
+    }
+
     public async Task NotifyEventUpdatedAsync(
         Guid tenantId, string eventTitle, IReadOnlyList<Guid> employeeIds, string organizerName, CancellationToken ct = default)
         => await NotifyInAppOnlyAsync(tenantId, "calendar_event_updated", eventTitle, employeeIds, organizerName, ct);

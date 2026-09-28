@@ -2,6 +2,8 @@ namespace ONEVO.Application.Features.Calendar.DTOs.Responses;
 
 public sealed record CalendarEventParticipantSummary(Guid EmployeeId, string EmployeeName, string ResponseStatus);
 
+public sealed record CalendarEventGuestSummary(string Email);
+
 public sealed record CalendarEventItem(
     Guid Id,
     string Title,
@@ -25,6 +27,7 @@ public sealed record CalendarEventItem(
     IReadOnlyList<CalendarEventParticipantSummary>? Participants = null,
     bool HasConflict = false,
     bool IsOrganizer = false,
-    string? OrganizerName = null);
+    string? OrganizerName = null,
+    IReadOnlyList<CalendarEventGuestSummary>? Guests = null);
 
 public sealed record CalendarEventsResponse(IReadOnlyList<CalendarEventItem> Events);

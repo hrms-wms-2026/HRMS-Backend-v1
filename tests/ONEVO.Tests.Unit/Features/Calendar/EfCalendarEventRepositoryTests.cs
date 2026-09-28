@@ -308,6 +308,52 @@ public sealed class EfCalendarEventRepositoryTests
         Assert.Equal(EntityState.Unchanged, db.Entry(row).State);
     }
 
+    [Fact]
+    public async Task GetGuestsForEventsAsync_ReturnsGuestsGroupedByEvent_ScopedToTheTenant()
+    {
+        await using var db = BuildInMemoryDb(new Mock<ICurrentUser>().Object);
+        var event1 = Guid.NewGuid();
+        var event2 = Guid.NewGuid();
+        db.CalendarEventGuests.AddRange(
+            new CalendarEventGuest { Id = Guid.NewGuid(), TenantId = TenantId, EventId = event1, Email = "a@x.co", CreatedAt = DateTimeOffset.UtcNow.AddMinutes(-2) },
+            new CalendarEventGuest { Id = Guid.NewGuid(), TenantId = TenantId, EventId = event1, Email = "b@x.co", CreatedAt = DateTimeOffset.UtcNow.AddMinutes(-1) },
+            new CalendarEventGuest { Id = Guid.NewGuid(), TenantId = TenantId, EventId = event2, Email = "c@x.co", CreatedAt = DateTimeOffset.UtcNow },
+            new CalendarEventGuest { Id = Guid.NewGuid(), TenantId = Guid.NewGuid(), EventId = event1, Email = "other-tenant@x.co", CreatedAt = DateTimeOffset.UtcNow });
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var repository = new EfCalendarEventRepository(db);
+        var result = await repository.GetGuestsForEventsAsync(TenantId, [event1, event2], CancellationToken.None);
+
+        Assert.Equal(["a@x.co", "b@x.co"], result[event1].Select(g => g.Email));
+        Assert.Equal(["c@x.co"], result[event2].Select(g => g.Email));
+    }
+
+    [Fact]
+    public async Task AddGuestsAsync_ThenRemoveGuest_HardDeletesSoTheSameEmailCanBeInvitedAgain()
+    {
+        await using var db = BuildInMemoryDb(new Mock<ICurrentUser>().Object);
+        var eventId = Guid.NewGuid();
+        var repository = new EfCalendarEventRepository(db);
+
+        await repository.AddGuestsAsync([new CalendarEventGuest { Id = Guid.NewGuid(), TenantId = TenantId, EventId = eventId, Email = "g@x.co" }], CancellationToken.None);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var tracked = await repository.GetTrackedGuestAsync(TenantId, eventId, "g@x.co", CancellationToken.None);
+        Assert.NotNull(tracked);
+        repository.RemoveGuest(tracked!);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        Assert.Null(await repository.GetTrackedGuestAsync(TenantId, eventId, "g@x.co", CancellationToken.None));
+        Assert.Equal(0, await db.CalendarEventGuests.IgnoreQueryFilters().CountAsync(g => g.EventId == eventId));
+
+        await repository.AddGuestsAsync([new CalendarEventGuest { Id = Guid.NewGuid(), TenantId = TenantId, EventId = eventId, Email = "g@x.co" }], CancellationToken.None);
+        await db.SaveChangesAsync();
+        Assert.Equal(1, await db.CalendarEventGuests.CountAsync(g => g.EventId == eventId));
+    }
+
     private static CalendarEvent MakeEvent(DateTimeOffset startDate) => new()
     {
         Id = Guid.NewGuid(), TenantId = TenantId, Title = "Event", StartDate = startDate,

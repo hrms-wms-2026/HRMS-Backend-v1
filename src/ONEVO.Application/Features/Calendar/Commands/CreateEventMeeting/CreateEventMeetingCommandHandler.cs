@@ -41,6 +41,10 @@ public sealed class CreateEventMeetingCommandHandler(
         var oauthProvider = isZoom ? "zoom" : "microsoft";
         var requiredScope = isZoom ? "meeting:write:meeting" : "OnlineMeetings.ReadWrite";
 
+        var existingMeeting = await meetings.GetTrackedByCalendarEventAsync(tenantId, existing.Id, ct);
+        if (existingMeeting is { Status: CalendarEventMeetingStatuses.Active })
+            return Result<CreateEventMeetingResult>.Conflict("meeting_already_exists");
+
         var connection = await connections.GetByTenantUserProviderAsync(tenantId, currentUser.UserId, externalSource, ct);
         if (connection is null
             || connection.Status != ExternalCalendarConnectionStatuses.Active
@@ -68,6 +72,8 @@ public sealed class CreateEventMeetingCommandHandler(
 
         var participantsByEvent = await events.GetParticipantsForEventsAsync(tenantId, [existing.Id], ct);
         var participantEmployeeIds = participantsByEvent.TryGetValue(existing.Id, out var p) ? p.Select(x => x.EmployeeId).ToList() : [];
+        var guestsByEvent = await events.GetGuestsForEventsAsync(tenantId, [existing.Id], ct);
+        var guestEmails = guestsByEvent.TryGetValue(existing.Id, out var g) ? g.Select(x => x.Email).ToList() : [];
         var organizerEmployee = await employees.GetDefaultForUserAsync(tenantId, currentUser.UserId, ct);
         var organizerName = organizerEmployee is null ? "Someone" : $"{organizerEmployee.FirstName} {organizerEmployee.LastName}";
 
@@ -76,20 +82,44 @@ public sealed class CreateEventMeetingCommandHandler(
             existing.MeetingLink = joinUrl;
             events.Update(existing);
 
-            await meetings.AddAsync(new CalendarEventMeeting
+            if (existingMeeting is not null)
             {
-                Id = Guid.NewGuid(), TenantId = tenantId, CalendarEventId = existing.Id,
-                ExternalCalendarConnectionId = connection.Id, Provider = request.Provider,
-                ExternalMeetingId = externalMeetingId, JoinUrl = joinUrl,
-                OrganizerJoinUrl = organizerJoinUrl, PasscodeOrPin = passcode,
-                Status = CalendarEventMeetingStatuses.Active, CreatedAt = DateTimeOffset.UtcNow
-            }, innerCt);
+                // One row per event (unique index): a previously removed (cancelled) meeting is reused.
+                existingMeeting.ExternalCalendarConnectionId = connection.Id;
+                existingMeeting.Provider = request.Provider;
+                existingMeeting.ExternalMeetingId = externalMeetingId;
+                existingMeeting.JoinUrl = joinUrl;
+                existingMeeting.OrganizerJoinUrl = organizerJoinUrl;
+                existingMeeting.PasscodeOrPin = passcode;
+                existingMeeting.Status = CalendarEventMeetingStatuses.Active;
+                existingMeeting.LastAttendanceSyncedAt = null;
+                existingMeeting.UpdatedAt = DateTimeOffset.UtcNow;
+                meetings.Update(existingMeeting);
+            }
+            else
+            {
+                await meetings.AddAsync(new CalendarEventMeeting
+                {
+                    Id = Guid.NewGuid(), TenantId = tenantId, CalendarEventId = existing.Id,
+                    ExternalCalendarConnectionId = connection.Id, Provider = request.Provider,
+                    ExternalMeetingId = externalMeetingId, JoinUrl = joinUrl,
+                    OrganizerJoinUrl = organizerJoinUrl, PasscodeOrPin = passcode,
+                    Status = CalendarEventMeetingStatuses.Active, CreatedAt = DateTimeOffset.UtcNow
+                }, innerCt);
+            }
 
             if (participantEmployeeIds.Count > 0)
             {
                 await notifications.NotifyMeetingLinkAddedAsync(
                     tenantId, existing.Title, existing.StartDate, existing.Location,
                     participantEmployeeIds, organizerName, joinUrl, innerCt);
+            }
+
+            if (guestEmails.Count > 0)
+            {
+                await notifications.NotifyGuestsAsync(
+                    tenantId, existing.Title, existing.StartDate, existing.Location,
+                    guestEmails, organizerName, joinUrl, innerCt);
             }
 
             await unitOfWork.SaveChangesAsync(innerCt);

@@ -83,6 +83,26 @@ public class EfCalendarEventRepository : ICalendarEventRepository
             .Where(p => p.TenantId == tenantId && p.EventId == eventId && p.IsDeleted && employeeIds.Contains(p.EmployeeId))
             .ToListAsync(ct);
 
+    public async Task AddGuestsAsync(IReadOnlyList<CalendarEventGuest> guests, CancellationToken ct = default)
+        => await _db.CalendarEventGuests.AddRangeAsync(guests, ct);
+
+    public async Task<IReadOnlyDictionary<Guid, IReadOnlyList<CalendarEventGuest>>> GetGuestsForEventsAsync(
+        Guid tenantId, IReadOnlyList<Guid> eventIds, CancellationToken ct = default)
+    {
+        var rows = await _db.CalendarEventGuests.AsNoTracking()
+            .Where(g => g.TenantId == tenantId && eventIds.Contains(g.EventId))
+            .OrderBy(g => g.CreatedAt)
+            .ToListAsync(ct);
+        return rows.GroupBy(g => g.EventId).ToDictionary(g => g.Key, g => (IReadOnlyList<CalendarEventGuest>)g.ToList());
+    }
+
+    public async Task<CalendarEventGuest?> GetTrackedGuestAsync(
+        Guid tenantId, Guid eventId, string email, CancellationToken ct = default)
+        => await _db.CalendarEventGuests.FirstOrDefaultAsync(
+            g => g.TenantId == tenantId && g.EventId == eventId && g.Email == email, ct);
+
+    public void RemoveGuest(CalendarEventGuest guest) => _db.CalendarEventGuests.Remove(guest);
+
     public async Task<IReadOnlyList<CalendarEvent>> GetInDateRangeForEmployeeAsync(
         Guid tenantId, Guid employeeId, DateTimeOffset from, DateTimeOffset to, CancellationToken ct = default)
     {

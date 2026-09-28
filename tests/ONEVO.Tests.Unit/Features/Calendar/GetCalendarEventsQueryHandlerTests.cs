@@ -32,6 +32,8 @@ public sealed class GetCalendarEventsQueryHandlerTests
             .ReturnsAsync(new Employee { Id = EmployeeId, UserId = UserId, TenantId = TenantId });
         _events.Setup(x => x.GetRecurringMastersForCallerAsync(TenantId, UserId, EmployeeId, To, It.IsAny<CancellationToken>()))
             .ReturnsAsync([]);
+        _events.Setup(x => x.GetGuestsForEventsAsync(TenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, IReadOnlyList<CalendarEventGuest>>());
         _events.Setup(x => x.GetParticipantsForEventsAsync(TenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Dictionary<Guid, IReadOnlyList<CalendarEventParticipant>>());
         return new GetCalendarEventsQueryHandler(_currentUser.Object, _employees.Object, _events.Object, _expander.Object);
@@ -138,6 +140,30 @@ public sealed class GetCalendarEventsQueryHandlerTests
         Assert.Single(item.Participants!);
         Assert.Equal("Ada Lovelace", item.Participants![0].EmployeeName);
         Assert.Equal(CalendarEventParticipantStatuses.Pending, item.Participants[0].ResponseStatus);
+    }
+
+    [Fact]
+    public async Task Handle_AttachesGuestEmailsToTheirEvent_AndEmptyListToOthers()
+    {
+        var sut = BuildSut();
+        var withGuests = Guid.NewGuid();
+        var withoutGuests = Guid.NewGuid();
+        _events.Setup(x => x.GetInDateRangeForCallerAsync(TenantId, UserId, EmployeeId, From, To, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([
+                new CalendarEvent { Id = withGuests, TenantId = TenantId, Title = "Vendor sync", StartDate = From, EndDate = From.AddHours(1), SourceType = CalendarEventSourceTypes.Manual, Recurrence = CalendarRecurrences.None, CreatedById = UserId, CreatedAt = DateTimeOffset.UtcNow },
+                new CalendarEvent { Id = withoutGuests, TenantId = TenantId, Title = "Standup", StartDate = From.AddDays(1), EndDate = From.AddDays(1).AddHours(1), SourceType = CalendarEventSourceTypes.Manual, Recurrence = CalendarRecurrences.None, CreatedById = UserId, CreatedAt = DateTimeOffset.UtcNow }
+            ]);
+        _events.Setup(x => x.GetGuestsForEventsAsync(TenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, IReadOnlyList<CalendarEventGuest>>
+            {
+                [withGuests] = [new CalendarEventGuest { Id = Guid.NewGuid(), TenantId = TenantId, EventId = withGuests, Email = "vendor@example.com" }]
+            });
+
+        var result = await sut.Handle(new GetCalendarEventsQuery(From, To), CancellationToken.None);
+
+        var events = result.Value!.Events;
+        Assert.Equal(["vendor@example.com"], events.Single(e => e.Id == withGuests).Guests!.Select(g => g.Email));
+        Assert.Empty(events.Single(e => e.Id == withoutGuests).Guests!);
     }
 
     [Fact]
