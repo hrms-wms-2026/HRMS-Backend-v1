@@ -15,6 +15,8 @@ public interface IProjectMemberRepository
 
     Task<bool> HasActiveMembershipForAnyObjectiveAsync(Guid tenantId, Guid projectId, Guid employeeId, IReadOnlyList<Guid> objectiveIds, CancellationToken ct = default);
 
+    /// <summary>Returns objectives with a direct active membership plus all active descendants,
+    /// matching Work Management's inherited objective-access rule.</summary>
     Task<IReadOnlyList<Guid>> GetActiveObjectiveIdsForEmployeeInProjectAsync(Guid tenantId, Guid projectId, Guid employeeId, CancellationToken ct = default);
 
     Task<IReadOnlyList<ProjectMember>> ListInactiveMembershipsForEmployeeAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default);
