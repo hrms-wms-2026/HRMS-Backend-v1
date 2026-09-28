@@ -64,6 +64,32 @@ public sealed class EfWorkApprovalRequestRepositoryTests : IDisposable
     }
 
     [Fact]
+    public async Task ListTrackedPendingByAction_ReturnsOnlyPendingOfThatActionInThatProject()
+    {
+        var match = NewRequest(null);
+        match.ActionType = WorkActionTypes.ProjectStatusTemplateChange;
+        match.TargetType = WorkTargetTypes.Project;
+        var decided = NewRequest(null, WorkApprovalRequestStatuses.Stale);
+        decided.ActionType = WorkActionTypes.ProjectStatusTemplateChange;
+        var otherAction = NewRequest(Guid.NewGuid());
+        var otherProject = NewRequest(null);
+        otherProject.ActionType = WorkActionTypes.ProjectStatusTemplateChange;
+        otherProject.ProjectId = Guid.NewGuid();
+        await using (var db = CreateContext())
+        {
+            db.WorkApprovalRequests.AddRange(match, decided, otherAction, otherProject);
+            await db.SaveChangesAsync();
+        }
+
+        await using var read = CreateContext();
+        var repo = new EfWorkApprovalRequestRepository(read);
+        var rows = await repo.ListTrackedPendingByActionAsync(TenantId, ProjectId, WorkActionTypes.ProjectStatusTemplateChange);
+
+        rows.Select(r => r.Id).Should().Equal(match.Id);
+        read.Entry(rows[0]).State.Should().Be(EntityState.Unchanged, "the sweeper updates these rows in place");
+    }
+
+    [Fact]
     public async Task ListByProject_FiltersByRequesterAndStatus_NewestFirst()
     {
         // AuditableEntityInterceptor stamps CreatedAt from the clock, so the clock is moved between saves.

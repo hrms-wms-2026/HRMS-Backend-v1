@@ -26,6 +26,8 @@ public static class WorkTargetTypes
     public const string Module = "module";
     public const string Task = "task";
     public const string Sprint = "sprint";
+    /// <summary>Project-wide settings with no single row as target, e.g. the task-status template.</summary>
+    public const string Project = "project";
 }
 
 public static class WorkActionTypes
@@ -43,6 +45,8 @@ public static class WorkActionTypes
     public const string SprintCreate = "sprint.create";
     public const string SprintEdit = "sprint.edit";
     public const string SprintDelete = "sprint.delete";
+    /// <summary>Add/rename/delete/reorder the project's task statuses. Not task.status_change (one task's move).</summary>
+    public const string ProjectStatusTemplateChange = "project.status_template_change";
 }
 
 /// <summary>

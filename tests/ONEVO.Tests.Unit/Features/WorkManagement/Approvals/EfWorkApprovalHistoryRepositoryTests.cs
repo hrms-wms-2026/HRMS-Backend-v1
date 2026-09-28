@@ -99,12 +99,20 @@ public sealed class EfWorkApprovalHistoryRepositoryTests : IDisposable
         db.WorkApprovalRequests.Add(TaskRequest(WorkActionTypes.TaskCreate, null, objectiveId,
             requestedBy: Guid.NewGuid(), approver: Guid.NewGuid(), status: WorkApprovalRequestStatuses.Rejected,
             decidedBy: Guid.NewGuid(), payload: "{\"title\":\"Unrelated\"}"));
+        // Status-template request the employee made (project target, no task).
+        var template = TaskRequest(WorkActionTypes.ProjectStatusTemplateChange, null, objectiveId,
+            requestedBy: EmployeeId, approver: OtherEmployeeId, status: WorkApprovalRequestStatuses.Pending,
+            decidedBy: null, payload: "{\"Changes\":{},\"Note\":null}");
+        template.TargetType = WorkTargetTypes.Project;
+        template.TargetTitle = "Portal";
+        db.WorkApprovalRequests.Add(template);
         await db.SaveChangesAsync();
 
         var repository = new EfWorkApprovalHistoryRepository(db);
         var items = await repository.ListForEmployeeAsync(TenantId, ProjectId, EmployeeId);
 
-        Assert.Equal(5, items.Count);
+        Assert.Equal(6, items.Count);
+        Assert.Contains(items, item => item.Kind == "task_status_change" && item.SubjectTitle == "Task statuses" && item.RequestedById == EmployeeId);
         Assert.Contains(items, item => item.Kind == "task_creation" && item.DecidedById == EmployeeId && item.SubjectTitle == "Audit events");
         Assert.Contains(items, item => item.Kind == "task_edit" && item.RequestedById == EmployeeId);
         Assert.Contains(items, item => item.Kind == "task_delete" && item.Status == "pending" && item.ApproverId == EmployeeId);

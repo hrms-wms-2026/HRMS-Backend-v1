@@ -25,7 +25,6 @@ public class GetWorkNotificationNavigationQueryHandlerTests
     private readonly Mock<IObjectiveChangeRequestRepository> _changes = new();
     private readonly Mock<IObjectiveRepository> _objectives = new();
     private readonly Mock<IProjectMemberInvitationRepository> _invitations = new();
-    private readonly Mock<ITaskStatusChangeRequestRepository> _statusChanges = new();
 
     public GetWorkNotificationNavigationQueryHandlerTests()
     {
@@ -40,13 +39,14 @@ public class GetWorkNotificationNavigationQueryHandlerTests
         currentUser.SetupGet(x => x.TenantId).Returns(TenantId);
         return new GetWorkNotificationNavigationQueryHandler(
             currentUser.Object, _tasks.Object, _workApprovals.Object, _changes.Object, _objectives.Object,
-            _invitations.Object, _statusChanges.Object);
+            _invitations.Object);
     }
 
     [Theory]
     [InlineData("work_approval_request")]
     [InlineData("task_creation_request")] // old bell notifications: ids survive the data migration
     [InlineData("task_edit_request")]
+    [InlineData("task_status_change_request")] // old status-template bell notifications, ids kept too
     public async Task Navigation_WorkApprovalRequest_OpensProjectApprovalsTab(string relatedEntityType)
     {
         var requestId = Guid.NewGuid();

@@ -19,7 +19,6 @@ public class GetWorkNotificationNavigationQueryHandler
     private readonly IObjectiveChangeRequestRepository _changeRequests;
     private readonly IObjectiveRepository _objectives;
     private readonly IProjectMemberInvitationRepository _invitations;
-    private readonly ITaskStatusChangeRequestRepository _statusChangeRequests;
 
     public GetWorkNotificationNavigationQueryHandler(
         ICurrentUser currentUser,
@@ -27,8 +26,7 @@ public class GetWorkNotificationNavigationQueryHandler
         IWorkApprovalRequestRepository workApprovals,
         IObjectiveChangeRequestRepository changeRequests,
         IObjectiveRepository objectives,
-        IProjectMemberInvitationRepository invitations,
-        ITaskStatusChangeRequestRepository statusChangeRequests)
+        IProjectMemberInvitationRepository invitations)
     {
         _currentUser = currentUser;
         _tasks = tasks;
@@ -36,7 +34,6 @@ public class GetWorkNotificationNavigationQueryHandler
         _changeRequests = changeRequests;
         _objectives = objectives;
         _invitations = invitations;
-        _statusChangeRequests = statusChangeRequests;
     }
 
     public async Task<Result<WorkNotificationNavigationResponse>> Handle(
@@ -83,7 +80,8 @@ public class GetWorkNotificationNavigationQueryHandler
     private async Task<Result<WorkNotificationNavigationResponse>> FromStatusChangeRequestAsync(
         Guid tenantId, Guid requestId, CancellationToken ct)
     {
-        var change = await _statusChangeRequests.GetByIdForTenantAsync(tenantId, requestId, ct);
+        // Old bell notifications carry task_status_change_request ids, which the data migration kept.
+        var change = await _workApprovals.GetTrackedByIdForTenantAsync(tenantId, requestId, ct);
         if (change is null)
             return Result<WorkNotificationNavigationResponse>.NotFound("Task status change request not found.");
 

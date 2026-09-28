@@ -37,5 +37,12 @@ public class EfWorkApprovalRequestRepository : IWorkApprovalRequestRepository
         return rows.OrderByDescending(r => r.CreatedAt).ToList();
     }
 
+    public async Task<IReadOnlyList<WorkApprovalRequest>> ListTrackedPendingByActionAsync(
+        Guid tenantId, Guid projectId, string actionType, CancellationToken ct = default)
+        => await _db.WorkApprovalRequests
+            .Where(r => r.TenantId == tenantId && r.ProjectId == projectId
+                && r.ActionType == actionType && r.Status == WorkApprovalRequestStatuses.Pending)
+            .ToListAsync(ct);
+
     public void Update(WorkApprovalRequest request) => _db.WorkApprovalRequests.Update(request);
 }

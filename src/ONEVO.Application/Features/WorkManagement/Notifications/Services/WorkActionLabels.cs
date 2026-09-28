@@ -20,6 +20,7 @@ public static class WorkActionLabels
         [WorkActionTypes.SprintCreate] = "created the sprint",
         [WorkActionTypes.SprintEdit] = "edited the sprint",
         [WorkActionTypes.SprintDelete] = "deleted the sprint",
+        [WorkActionTypes.ProjectStatusTemplateChange] = "changed the task statuses of",
     };
 
     public static string For(string actionType) => Labels.GetValueOrDefault(actionType, "changed");
