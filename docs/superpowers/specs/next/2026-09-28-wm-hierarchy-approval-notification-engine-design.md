@@ -146,7 +146,7 @@ It is called for:
 **Output**
 - One `wm_notification_log` row per recipient.
 - One `OutboxMessageTypes.WorkNotification` message per recipient, in the **same transaction** as the change. The existing `WorkNotificationOutboxHandler` pushes it through the shared `INotificationDispatcher` (in-app).
-- New template codes are seeded by a WM migration.
+- New template codes (`work_activity_recorded`, `work_approval_requested`, `work_approval_decided`) are added to the existing WM block of `NotificationTemplateSeeder`, where every other `work_*` template already lives.
 
 The shared dispatcher, bell and templating code are not modified.
 
@@ -162,7 +162,9 @@ The shared dispatcher, bell and templating code are not modified.
 | action_type | text |
 | target_type | text |
 | target_id | nullable |
-| position_objective_id | nullable |
+| position_objective_id | nullable (null only for HR approvals) |
+| approver_source | `hierarchy` or `hr`. Hierarchy approvals follow the position, so anyone at or above it may decide. HR approvals are fixed to the resolved HR approver. |
+| target_title | |
 | approver_employee_id | |
 | requested_by_employee_id | |
 | payload_json | jsonb |
@@ -192,7 +194,7 @@ Indexes:
 | target_id | |
 | target_title | |
 | approval_request_id | nullable |
-| was_direct | bool |
+| kind | `direct`, `requested`, `approved`, `rejected`, `cancelled`, `stale` |
 | created_at | |
 
 Index: (tenant, project, recipient, created_at desc).
