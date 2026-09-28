@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using ONEVO.Application.Common.RepositoryInterfaces;
+using ONEVO.Application.Common.Services;
 using ONEVO.Application.Features.CoreHr.Employee.DTOs.Responses;
 
 namespace ONEVO.Application.Features.CoreHr.Employee.Services;
@@ -24,37 +25,10 @@ public static class BulkEmployeeActionRunner
         ILogger logger,
         CancellationToken ct)
     {
-        var items = new List<BulkEmployeeActionItemResponse>();
-        foreach (var employeeId in employeeIds.Distinct())
-        {
-            ct.ThrowIfCancellationRequested();
-            try
-            {
-                var outcome = await processOne(employeeId, ct);
-                items.Add(outcome.Success
-                    ? new BulkEmployeeActionItemResponse(employeeId,
-                        outcome.PendingApproval ? BulkEmployeeActionOutcomes.PendingApproval : BulkEmployeeActionOutcomes.Succeeded,
-                        null)
-                    : new BulkEmployeeActionItemResponse(employeeId, BulkEmployeeActionOutcomes.Failed, outcome.Error));
-            }
-            catch (FluentValidation.ValidationException ex)
-            {
-                // ValidationBehavior throws (it does not return a failed Result) - surface the
-                // inner command's validation messages as this item's reason.
-                items.Add(new BulkEmployeeActionItemResponse(employeeId, BulkEmployeeActionOutcomes.Failed,
-                    string.Join(" ", ex.Errors.Select(e => e.ErrorMessage))));
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException)
-            {
-                logger.LogError(ex, "Bulk employee action failed for employee {EmployeeId}", employeeId);
-                items.Add(new BulkEmployeeActionItemResponse(employeeId, BulkEmployeeActionOutcomes.Failed, UnexpectedFailureReason));
-            }
-            finally
-            {
-                unitOfWork.ClearTracking();
-            }
-        }
-
-        return BulkEmployeeActionResponse.From(items);
+        var results = await BulkItemRunner.RunAsync(
+            employeeIds, processOne, unitOfWork, logger, UnexpectedFailureReason, ct);
+        return BulkEmployeeActionResponse.From(results
+            .Select(r => new BulkEmployeeActionItemResponse(r.Id, r.Outcome, r.Reason))
+            .ToList());
     }
 }
