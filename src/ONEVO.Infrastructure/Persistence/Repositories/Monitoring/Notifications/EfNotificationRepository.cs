@@ -24,7 +24,9 @@ public class EfNotificationRepository : INotificationRepository
             .AsNoTracking()
             .Where(n => n.TenantId == tenantId && n.EmployeeId == employeeId
                         && n.DeliveredToTrayAt == null
-                        && (n.Type == NotificationType.BreakReminder || n.Type == NotificationType.LongIdleAlert))
+                        && (n.Type == NotificationType.BreakReminder
+                            || n.Type == NotificationType.LongIdleAlert
+                            || n.Type == NotificationType.BreakAllowanceExceeded))
             .OrderBy(n => n.CreatedAt)
             .ToListAsync(ct);
 

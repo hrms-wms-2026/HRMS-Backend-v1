@@ -7,7 +7,6 @@ using ONEVO.Api.Controllers.Tenant.OrgStructure;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Features.OrgStructure.Commands.CreateLegalEntity;
 using ONEVO.Application.Features.OrgStructure.Commands.DeleteLegalEntity;
-using ONEVO.Application.Features.OrgStructure.Commands.RemoveLegalEntityLogo;
 using ONEVO.Application.Features.OrgStructure.Commands.UpdateLegalEntityGeneralSettings;
 using ONEVO.Application.Features.OrgStructure.DTOs.Responses;
 using ONEVO.Application.Features.OrgStructure.Queries.GetLegalEntityGeneralSettings;
@@ -171,18 +170,4 @@ public sealed class LegalEntitiesControllerTests
         problem.StatusCode.Should().Be(400);
     }
 
-    [Fact]
-    public async Task RemoveLogo_SendsCommand_AndReturnsNoContent()
-    {
-        var id = Guid.NewGuid();
-        _mediator.Setup(m => m.Send(It.IsAny<RemoveLegalEntityLogoCommand>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Result.Success());
-
-        var result = await _sut.RemoveLogo(id, CancellationToken.None);
-
-        _mediator.Verify(m => m.Send(
-            It.Is<RemoveLegalEntityLogoCommand>(c => c.LegalEntityId == id),
-            It.IsAny<CancellationToken>()), Times.Once);
-        result.Should().BeOfType<NoContentResult>();
-    }
 }

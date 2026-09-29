@@ -329,17 +329,22 @@ public class EmailTemplateRenderer : IEmailTemplateRenderer
         var startDateUtc = Get(f, "startDateUtc");
         var location = Get(f, "location");
         var organizerName = Get(f, "organizerName");
+        var meetingLink = Get(f, "meetingLink");
 
         var subject = $"You're invited: {eventTitle}";
         var locationLine = string.IsNullOrWhiteSpace(location) ? "" : $"<p>Location: {Escape(location)}</p>";
+        var meetingLinkLine = string.IsNullOrWhiteSpace(meetingLink)
+            ? ""
+            : $"""<p><a href="{Escape(meetingLink)}" style="display:inline-block; padding:10px 16px; background:#0f172a; color:#fff; text-decoration:none; border-radius:6px;">Join meeting</a></p>""";
         var html = $"""
             <!doctype html><html><body>
               <p>Hi {Escape(recipientName)},</p>
               <p>{Escape(organizerName)} added you to <strong>{Escape(eventTitle)}</strong>, starting {Escape(startDateUtc)}.</p>
               {locationLine}
+              {meetingLinkLine}
             </body></html>
             """;
-        var text = $"Hi {recipientName},\n{organizerName} added you to \"{eventTitle}\", starting {startDateUtc}.{(string.IsNullOrWhiteSpace(location) ? "" : $"\nLocation: {location}")}";
+        var text = $"Hi {recipientName},\n{organizerName} added you to \"{eventTitle}\", starting {startDateUtc}.{(string.IsNullOrWhiteSpace(location) ? "" : $"\nLocation: {location}")}{(string.IsNullOrWhiteSpace(meetingLink) ? "" : $"\nJoin: {meetingLink}")}";
         return new RenderedEmail(subject, html, text);
     }
 

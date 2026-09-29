@@ -13,11 +13,16 @@ public sealed class MonitoringPolicyConfigurationService : IMonitoringPolicyConf
 {
     private readonly ApplicationDbContext _db;
     private readonly ICacheService _cache;
+    private readonly ITrayPolicyRefreshNotifier? _policyRefresh;
 
-    public MonitoringPolicyConfigurationService(ApplicationDbContext db, ICacheService cache)
+    public MonitoringPolicyConfigurationService(
+        ApplicationDbContext db,
+        ICacheService cache,
+        ITrayPolicyRefreshNotifier? policyRefresh = null)
     {
         _db = db;
         _cache = cache;
+        _policyRefresh = policyRefresh;
     }
 
     public async Task<MonitoringPolicyConfigurationResponse> GetAsync(
@@ -110,6 +115,7 @@ public sealed class MonitoringPolicyConfigurationService : IMonitoringPolicyConf
 
         await _db.SaveChangesAsync(ct);
         await _cache.RemoveByPrefixAsync($"tenant:{tenantId}:monitoring-toggle:", ct);
+        await NotifyTraysAsync(tenantId, ct);
         return Result<MonitoringPolicyOverrideResponse>.Success(
             ToResponse(entity, await ResolveTargetNameAsync(entity.ScopeType, entity.ScopeId, ct)));
     }
@@ -132,7 +138,16 @@ public sealed class MonitoringPolicyConfigurationService : IMonitoringPolicyConf
         _db.MonitoringPolicyOverrides.Remove(entity);
         await _db.SaveChangesAsync(ct);
         await _cache.RemoveByPrefixAsync($"tenant:{tenantId}:monitoring-toggle:", ct);
+        await NotifyTraysAsync(tenantId, ct);
         return Result.Success();
+    }
+
+    private async Task NotifyTraysAsync(Guid tenantId, CancellationToken ct)
+    {
+        if (_policyRefresh is null)
+            return;
+
+        await _policyRefresh.NotifyTenantAsync(tenantId, ct);
     }
 
     // Department/position targets must also belong to the caller's current active legal entity

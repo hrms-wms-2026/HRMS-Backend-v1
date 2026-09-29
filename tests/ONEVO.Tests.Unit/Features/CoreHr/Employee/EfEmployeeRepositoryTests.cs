@@ -43,6 +43,48 @@ public sealed class EfEmployeeRepositoryTests
     }
 
     [Fact]
+    public async Task ListVisibleAsync_ActiveOnlyFalse_IncludesTerminatedEmployees_BackwardCompatible()
+    {
+        await using var db = BuildInMemoryDb();
+        var tenantId = Guid.NewGuid();
+        var active = NewEmployee(tenantId, "E-001");
+        var terminated = NewEmployee(tenantId, "E-002");
+        terminated.EmploymentStatusId = EmploymentStatusIds.Terminated;
+        db.Employees.AddRange(active, terminated);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var repo = new EfEmployeeRepository(db);
+        var (items, total) = await repo.ListVisibleAsync(
+            tenantId, EmployeeVisibilityScope.Unrestricted(), new EmployeeListFilter(null, null, null), 1, 25, CancellationToken.None);
+
+        Assert.Equal(2, total);
+        Assert.Contains(items, i => i.Id == terminated.Id);
+    }
+
+    [Fact]
+    public async Task ListVisibleAsync_ActiveOnlyTrue_ExcludesTerminatedAndResignedEmployees()
+    {
+        await using var db = BuildInMemoryDb();
+        var tenantId = Guid.NewGuid();
+        var active = NewEmployee(tenantId, "E-001");
+        var terminated = NewEmployee(tenantId, "E-002");
+        terminated.EmploymentStatusId = EmploymentStatusIds.Terminated;
+        var resigned = NewEmployee(tenantId, "E-003");
+        resigned.EmploymentStatusId = EmploymentStatusIds.Resigned;
+        db.Employees.AddRange(active, terminated, resigned);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var repo = new EfEmployeeRepository(db);
+        var (items, total) = await repo.ListVisibleAsync(
+            tenantId, EmployeeVisibilityScope.Unrestricted(), new EmployeeListFilter(null, null, null, ActiveOnly: true), 1, 25, CancellationToken.None);
+
+        Assert.Equal(1, total);
+        Assert.Equal(active.Id, items[0].Id);
+    }
+
+    [Fact]
     public async Task ListVisibleAsync_ExcludesEmployeesOutsideCoverage_WhenScopeIsRestrictedByDepartment()
     {
         await using var db = BuildInMemoryDb();

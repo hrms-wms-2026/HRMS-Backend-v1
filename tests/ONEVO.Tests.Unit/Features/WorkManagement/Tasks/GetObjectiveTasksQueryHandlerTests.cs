@@ -173,7 +173,7 @@ public class GetObjectiveTasksQueryHandlerTests
 
         var permissionResolver = new Mock<IPermissionResolver>();
         permissionResolver.Setup(x => x.ResolveAsync(UserId, TenantId, null, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(hasReadPermission ? new List<string> { "projects:read" } : new List<string>());
+            .ReturnsAsync(hasReadPermission ? new List<string> { "*" } : new List<string>());
 
         var tasks = new Mock<IWorkTaskRepository>();
         tasks.Setup(x => x.GetByObjectiveIdAsync(TenantId, ObjectiveId, It.IsAny<CancellationToken>()))

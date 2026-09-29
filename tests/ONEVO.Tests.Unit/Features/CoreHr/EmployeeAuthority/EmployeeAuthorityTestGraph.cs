@@ -341,7 +341,7 @@ internal sealed class EmployeeAuthorityTestGraph
                     && a.AssignmentKind == PositionAssignmentKind.PrimaryEmployment
                     && a.AssignmentStatus == PositionAssignmentStatus.Active)
                 .Join(_graph._employees, a => a.EmployeeId, e => e.Id,
-                    (a, e) => new PositionActiveHolder(e.Id, e.FirstName, e.LastName, e.Email, e.AvatarFileId))
+                    (a, e) => new PositionActiveHolder(e.Id, e.FirstName, e.LastName, e.Email, null))
                 .ToList();
             return Task.FromResult<IReadOnlyList<PositionActiveHolder>>(holders);
         }
@@ -367,7 +367,7 @@ internal sealed class EmployeeAuthorityTestGraph
                     && a.AssignmentKind == PositionAssignmentKind.PrimaryEmployment
                     && a.AssignmentStatus == PositionAssignmentStatus.Active)
                 .Join(_graph._employees, a => a.EmployeeId, e => e.Id,
-                    (a, e) => new { a.PositionId, Holder = new PositionActiveHolder(e.Id, e.FirstName, e.LastName, e.Email, e.AvatarFileId) })
+                    (a, e) => new { a.PositionId, Holder = new PositionActiveHolder(e.Id, e.FirstName, e.LastName, e.Email, null) })
                 .GroupBy(x => x.PositionId)
                 .ToDictionary(g => g.Key, g => (IReadOnlyList<PositionActiveHolder>)g.Select(x => x.Holder).ToList());
             return Task.FromResult<IReadOnlyDictionary<Guid, IReadOnlyList<PositionActiveHolder>>>(result);

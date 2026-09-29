@@ -2,7 +2,6 @@ using MediatR;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Permission.ServiceInterfaces;
-using ONEVO.Application.Features.Storage.File.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
@@ -13,29 +12,29 @@ namespace ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetSubtasks;
 
 public sealed class GetSubtasksQueryHandler : IRequestHandler<GetSubtasksQuery, Result<IReadOnlyList<WorkTaskResponse>>>
 {
-    private static readonly TimeSpan AvatarUrlExpiry = TimeSpan.FromMinutes(15);
     private readonly ICurrentUser _currentUser;
     private readonly ICallerIdentityResolver _identity;
-    private readonly IFileStorageService _fileStorage;
     private readonly IWorkTaskRepository _tasks;
     private readonly IProjectRepository _projects;
     private readonly IProjectMemberRepository _members;
     private readonly IPermissionResolver _permissionResolver;
     private readonly ITaskAssignmentRepository _assignments;
+    private readonly ITaskClockingSessionRepository _sessions;
 
     public GetSubtasksQueryHandler(
-        ICurrentUser currentUser, ICallerIdentityResolver identity, IFileStorageService fileStorage,
+        ICurrentUser currentUser, ICallerIdentityResolver identity,
         IWorkTaskRepository tasks, IProjectRepository projects, IProjectMemberRepository members,
-        IPermissionResolver permissionResolver, ITaskAssignmentRepository assignments)
+        IPermissionResolver permissionResolver, ITaskAssignmentRepository assignments,
+        ITaskClockingSessionRepository sessions)
     {
         _currentUser = currentUser;
         _identity = identity;
-        _fileStorage = fileStorage;
         _tasks = tasks;
         _projects = projects;
         _members = members;
         _permissionResolver = permissionResolver;
         _assignments = assignments;
+        _sessions = sessions;
     }
 
     public async Task<Result<IReadOnlyList<WorkTaskResponse>>> Handle(GetSubtasksQuery request, CancellationToken ct)
@@ -61,7 +60,7 @@ public sealed class GetSubtasksQueryHandler : IRequestHandler<GetSubtasksQuery, 
             return Result<IReadOnlyList<WorkTaskResponse>>.NotFound("Task not found.");
 
         var permissions = await _permissionResolver.ResolveAsync(userId, tenantId, null, ct);
-        if (!permissions.Contains("projects:read") && !permissions.Contains("*"))
+        if (!permissions.Contains("*"))
         {
             var accessibleObjectiveIds =
                 (await _members.GetActiveObjectiveIdsForEmployeeInProjectAsync(tenantId, project.Id, callerEmployeeId.Value, ct))
@@ -86,26 +85,29 @@ public sealed class GetSubtasksQueryHandler : IRequestHandler<GetSubtasksQuery, 
         {
             if (!identitiesByEmployeeId.TryGetValue(employeeId, out var employeeIdentity))
             {
-                assigneeIdentityByEmployeeId[employeeId] = new TaskAssigneeIdentityDto(employeeId, "Unknown employee", null);
+                assigneeIdentityByEmployeeId[employeeId] = new TaskAssigneeIdentityDto(
+                    employeeId, "Unknown employee", null);
                 continue;
             }
 
-            string? avatarUrl = null;
-            if (employeeIdentity.AvatarFileId is { } avatarFileId)
-            {
-                var urlResult = await _fileStorage.GetSignedUrlAsync(tenantId, avatarFileId, AvatarUrlExpiry, ct);
-                avatarUrl = urlResult.IsSuccess ? urlResult.Value : null;
-            }
-            assigneeIdentityByEmployeeId[employeeId] = new TaskAssigneeIdentityDto(employeeId, employeeIdentity.Name, avatarUrl);
+            assigneeIdentityByEmployeeId[employeeId] = new TaskAssigneeIdentityDto(
+                employeeId, employeeIdentity.Name, employeeIdentity.AvatarFileId);
         }
+
+        var childIds = children.Select(child => child.Id).ToList();
+        var openSessions = await _sessions.GetOpenSessionsForTasksAsync(tenantId, childIds, ct);
+        var totalLoggedMinutes = await _sessions.GetTotalClosedSessionMinutesForTasksAsync(tenantId, childIds, ct);
 
         var responses = children.Select(task => new WorkTaskResponse(
             task.Id, task.ObjectiveId, task.ShortId, task.Title, task.Description, task.CategoryId, task.StatusId,
             task.Priority, task.StoryPoints, task.DueDate, task.EstimatedHours, task.CompletedHours, task.ProgressPercent, task.SprintId,
             AssigneeEmployeeIds: assigneesByTaskId.GetValueOrDefault(task.Id, Array.Empty<Guid>()),
+            OpenClockSessionEmployeeId: openSessions.TryGetValue(task.Id, out var openSession) ? openSession.EmployeeId : (Guid?)null,
+            OpenClockSessionClockInAt: openSession?.ClockInAt,
+            TotalLoggedMinutes: totalLoggedMinutes.GetValueOrDefault(task.Id, 0),
             Assignees: assigneesByTaskId.GetValueOrDefault(task.Id, Array.Empty<Guid>())
                 .Select(employeeId => assigneeIdentityByEmployeeId[employeeId]).ToList(),
-            ParentTaskId: task.ParentTaskId)).ToList();
+            ParentTaskId: task.ParentTaskId, CreatedAt: task.CreatedAt)).ToList();
 
         return Result<IReadOnlyList<WorkTaskResponse>>.Success(responses);
     }

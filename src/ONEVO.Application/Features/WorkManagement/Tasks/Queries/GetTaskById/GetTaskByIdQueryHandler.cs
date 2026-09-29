@@ -74,7 +74,7 @@ public sealed class GetTaskByIdQueryHandler : IRequestHandler<GetTaskByIdQuery, 
             return Result<WorkTaskResponse>.NotFound("Task not found.");
 
         var permissions = await _permissionResolver.ResolveAsync(userId, tenantId, null, ct);
-        var hasReadPermission = permissions.Contains("projects:read") || permissions.Contains("*");
+        var hasReadPermission = permissions.Contains("*");
         if (!hasReadPermission)
         {
             var accessibleObjectiveIds =
@@ -108,7 +108,7 @@ public sealed class GetTaskByIdQueryHandler : IRequestHandler<GetTaskByIdQuery, 
             activeEventLink?.CalendarEventId,
             activeEventLink?.EventName,
             attachments,
-            ParentTaskId: task.ParentTaskId);
+            ParentTaskId: task.ParentTaskId, CreatedAt: task.CreatedAt);
 
         return Result<WorkTaskResponse>.Success(response);
     }

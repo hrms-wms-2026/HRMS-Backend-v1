@@ -44,6 +44,69 @@ public sealed class CalendarNotificationSenderTests
     }
 
     [Fact]
+    public async Task NotifyParticipantsAddedAsync_IncludesMeetingLinkInEmailPayloadWhenProvided()
+    {
+        var sut = BuildSut();
+        await sut.NotifyParticipantsAddedAsync(TenantId, "Standup", DateTimeOffset.UtcNow, "Room 4", [EmployeeId], "Ada Owner", CancellationToken.None, "https://zoom.us/j/123");
+
+        _outbox.Verify(x => x.EnqueueAsync(
+            OutboxMessageTypes.CalendarEventInviteEmail,
+            It.Is<CalendarEventInviteEmailPayload>(p => p.MeetingLink == "https://zoom.us/j/123"),
+            TenantId, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task NotifyMeetingLinkAddedAsync_EnqueuesInviteEmailWithLinkToEachParticipant()
+    {
+        var sut = BuildSut();
+        await sut.NotifyMeetingLinkAddedAsync(TenantId, "Standup", DateTimeOffset.UtcNow, "Room 4", [EmployeeId], "Ada Owner", "https://zoom.us/j/123", CancellationToken.None);
+
+        _outbox.Verify(x => x.EnqueueAsync(
+            OutboxMessageTypes.CalendarEventInviteEmail,
+            It.Is<CalendarEventInviteEmailPayload>(p => p.ToEmail == "ada@example.com" && p.MeetingLink == "https://zoom.us/j/123"),
+            TenantId, It.IsAny<CancellationToken>()), Times.Once);
+
+        _outbox.Verify(x => x.EnqueueAsync(
+            OutboxMessageTypes.WorkNotification,
+            It.IsAny<WorkNotificationPayload>(),
+            TenantId, It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task NotifyGuestsAsync_EnqueuesAnInviteEmailPerAddress_AndNoInAppNotification()
+    {
+        var sut = BuildSut();
+        var start = DateTimeOffset.UtcNow;
+
+        await sut.NotifyGuestsAsync(TenantId, "Vendor sync", start, "Room 4", ["vendor@example.com", "pm@example.com"], "Ada Owner", "https://zoom.us/j/9", CancellationToken.None);
+
+        _outbox.Verify(x => x.EnqueueAsync(
+            OutboxMessageTypes.CalendarEventInviteEmail,
+            It.Is<CalendarEventInviteEmailPayload>(p =>
+                p.ToEmail == "vendor@example.com" && p.RecipientName == "vendor" && p.EventTitle == "Vendor sync" &&
+                p.StartDateUtc == start && p.Location == "Room 4" && p.OrganizerName == "Ada Owner" && p.MeetingLink == "https://zoom.us/j/9"),
+            TenantId, It.IsAny<CancellationToken>()), Times.Once);
+        _outbox.Verify(x => x.EnqueueAsync(
+            OutboxMessageTypes.CalendarEventInviteEmail,
+            It.Is<CalendarEventInviteEmailPayload>(p => p.ToEmail == "pm@example.com"),
+            TenantId, It.IsAny<CancellationToken>()), Times.Once);
+        _outbox.Verify(x => x.EnqueueAsync(OutboxMessageTypes.WorkNotification, It.IsAny<WorkNotificationPayload>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task NotifyGuestsAsync_WithNoMeetingLink_SendsThePlainInvite()
+    {
+        var sut = BuildSut();
+
+        await sut.NotifyGuestsAsync(TenantId, "Vendor sync", DateTimeOffset.UtcNow, null, ["vendor@example.com"], "Ada Owner", null, CancellationToken.None);
+
+        _outbox.Verify(x => x.EnqueueAsync(
+            OutboxMessageTypes.CalendarEventInviteEmail,
+            It.Is<CalendarEventInviteEmailPayload>(p => p.MeetingLink == null),
+            TenantId, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
     public async Task NotifyEventUpdatedAsync_EnqueuesOnlyInAppNotification()
     {
         var sut = BuildSut();

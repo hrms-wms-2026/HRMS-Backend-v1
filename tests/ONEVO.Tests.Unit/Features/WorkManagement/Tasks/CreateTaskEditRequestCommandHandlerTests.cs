@@ -48,7 +48,7 @@ public class CreateTaskEditRequestCommandHandlerTests
         var objectives = new Mock<IObjectiveRepository>();
         objectives.Setup(x => x.GetByIdForTenantAsync(TenantId, ObjectiveId, It.IsAny<CancellationToken>())).ReturnsAsync(objective);
 
-        var sprint = new Sprint { Id = SprintId, TenantId = TenantId, ObjectiveId = ObjectiveId, Name = "S1", Status = sprintStatus, StartDate = new DateOnly(2026, 9, 1), EndDate = new DateOnly(2026, 9, 14), CreatedAt = DateTimeOffset.UtcNow };
+        var sprint = new Sprint { Id = SprintId, TenantId = TenantId, ProjectId = Guid.NewGuid(), Name = "S1", Status = sprintStatus, StartDate = new DateOnly(2026, 9, 1), EndDate = new DateOnly(2026, 9, 14), CreatedAt = DateTimeOffset.UtcNow };
         var sprints = new Mock<ISprintRepository>();
         sprints.Setup(x => x.GetByIdForTenantAsync(TenantId, SprintId, It.IsAny<CancellationToken>())).ReturnsAsync(sprint);
 

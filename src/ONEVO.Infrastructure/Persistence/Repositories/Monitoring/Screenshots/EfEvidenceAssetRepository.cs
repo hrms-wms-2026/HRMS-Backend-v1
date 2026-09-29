@@ -55,4 +55,26 @@ public class EfEvidenceAssetRepository : IEvidenceAssetRepository
 
         return (items, total);
     }
+
+    public async Task<List<MonitoringEvidenceAsset>> ListForOwnersInRangeAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Guid> ownerIds,
+        DateTimeOffset from,
+        DateTimeOffset to,
+        int take,
+        CancellationToken ct)
+    {
+        if (ownerIds.Count == 0 || take <= 0)
+            return [];
+
+        return await _db.MonitoringEvidenceAssets
+            .AsNoTracking()
+            .Where(a => a.TenantId == tenantId
+                && ownerIds.Contains(a.EmployeeId)
+                && a.CapturedAt >= from
+                && a.CapturedAt < to)
+            .OrderBy(a => a.CapturedAt)
+            .Take(take)
+            .ToListAsync(ct);
+    }
 }

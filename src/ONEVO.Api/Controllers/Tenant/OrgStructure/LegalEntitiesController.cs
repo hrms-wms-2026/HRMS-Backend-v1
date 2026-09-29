@@ -2,14 +2,14 @@ using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ONEVO.Api.Contracts.OrgStructure.LegalEntities;
+using ONEVO.Api.Contracts.Storage;
 using ONEVO.Api.Filters;
 using ONEVO.Application.Features.OrgStructure.Commands.CreateLegalEntity;
 using ONEVO.Application.Features.OrgStructure.Commands.DeleteLegalEntity;
-using ONEVO.Application.Features.OrgStructure.Commands.RemoveLegalEntityLogo;
-using ONEVO.Application.Features.OrgStructure.Commands.SetLegalEntityLogo;
+using ONEVO.Application.Features.OrgStructure.Commands.LinkLegalEntityLogo;
+using ONEVO.Application.Features.OrgStructure.Commands.RemoveLegalEntityLogoAsset;
 using ONEVO.Application.Features.OrgStructure.Commands.UpdateLegalEntityGeneralSettings;
 using ONEVO.Application.Features.OrgStructure.Queries.GetLegalEntityGeneralSettings;
-using ONEVO.Application.Features.OrgStructure.Queries.GetLegalEntityLogo;
 using ONEVO.Application.Features.OrgStructure.Queries.ListLegalEntities;
 
 namespace ONEVO.Api.Controllers.Tenant.OrgStructure;
@@ -108,6 +108,28 @@ public class LegalEntitiesController : ControllerBase
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
+    /// <summary>Links a pending company_logo upload as this company's current logo.</summary>
+    [HttpPut("{id:guid}/logo")]
+    [RequirePermission("legal_entity:update")]
+    public async Task<IActionResult> LinkLogo(Guid id, [FromBody] LinkFileRequest request, CancellationToken ct)
+    {
+        var result = await _mediator.Send(new LinkLegalEntityLogoCommand(id, request.FileId), ct);
+        return result.IsSuccess
+            ? Ok(result.Value)
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Unlinks and deletes this company's current logo.</summary>
+    [HttpDelete("{id:guid}/logo")]
+    [RequirePermission("legal_entity:update")]
+    public async Task<IActionResult> RemoveLogo(Guid id, CancellationToken ct)
+    {
+        var result = await _mediator.Send(new RemoveLegalEntityLogoAssetCommand(id), ct);
+        return result.IsSuccess
+            ? NoContent()
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
     /// <summary>Soft-deactivates a company. Requires exact confirmName match; never physically deletes the row.</summary>
     [HttpDelete("{id:guid}")]
     [RequirePermission("legal_entity:delete")]
@@ -119,44 +141,4 @@ public class LegalEntitiesController : ControllerBase
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
-    /// <summary>Clears the company's logo reference. Never touches the underlying file_records row.</summary>
-    [HttpDelete("{id:guid}/logo")]
-    [RequirePermission("legal_entity:update")]
-    public async Task<IActionResult> RemoveLogo(Guid id, CancellationToken ct)
-    {
-        var result = await _mediator.Send(new RemoveLegalEntityLogoCommand(id), ct);
-        return result.IsSuccess
-            ? NoContent()
-            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
-    }
-
-    /// <summary>Streams the company's logo image. 404 if no logo is set.</summary>
-    [HttpGet("{id:guid}/logo")]
-    [RequirePermission("legal_entity:update")]
-    public async Task<IActionResult> GetLogo(Guid id, CancellationToken ct)
-    {
-        var result = await _mediator.Send(new GetLegalEntityLogoQuery(id), ct);
-        if (!result.IsSuccess)
-            return Problem(result.Error, statusCode: result.StatusCode ?? 400);
-
-        return File(result.Value!.Content, result.Value!.ContentType);
-    }
-
-    /// <summary>Uploads/replaces the company's logo. Accepts multipart/form-data with a "logo" file field.</summary>
-    [HttpPut("{id:guid}/logo")]
-    [RequestSizeLimit(6 * 1024 * 1024)] // 6 MB limit (5 MB image + overhead)
-    [RequirePermission("legal_entity:update")]
-    public async Task<IActionResult> SetLogo(Guid id, IFormFile logo, CancellationToken ct)
-    {
-        if (logo is null || logo.Length == 0)
-            return Problem("logo file is required.", statusCode: 400);
-
-        await using var stream = logo.OpenReadStream();
-        var result = await _mediator.Send(
-            new SetLegalEntityLogoCommand(id, stream, logo.ContentType, logo.FileName), ct);
-
-        return result.IsSuccess
-            ? Ok(result.Value)
-            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
-    }
 }

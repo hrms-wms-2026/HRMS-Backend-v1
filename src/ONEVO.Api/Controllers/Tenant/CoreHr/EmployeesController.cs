@@ -3,15 +3,16 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using ONEVO.Api.Contracts.CoreHr.Employees;
+using ONEVO.Api.Contracts.Storage;
 using ONEVO.Api.Filters;
 using ONEVO.Application.Features.CoreHr.Employee.Commands.AddDependent;
 using ONEVO.Application.Features.CoreHr.Employee.Commands.ChangeEmployeePosition;
 using ONEVO.Application.Features.CoreHr.Employee.Commands.AddEmergencyContact;
 using ONEVO.Application.Features.CoreHr.Employee.Commands.DeleteDependent;
 using ONEVO.Application.Features.CoreHr.Employee.Commands.DeleteEmergencyContact;
+using ONEVO.Application.Features.CoreHr.Employee.Commands.LinkMyAvatar;
 using ONEVO.Application.Features.CoreHr.Employee.Commands.ResendEmployeeInvitation;
 using ONEVO.Application.Features.CoreHr.Employee.Commands.RevokeEmployeeInvitation;
-using ONEVO.Application.Features.CoreHr.Employee.Commands.SetMyAvatar;
 using ONEVO.Application.Features.CoreHr.Employee.Commands.UpdateBankDetails;
 using ONEVO.Application.Features.CoreHr.Employee.Commands.UpdateDependent;
 using ONEVO.Application.Features.CoreHr.Employee.Commands.UpdateEmergencyContact;
@@ -19,6 +20,7 @@ using ONEVO.Application.Features.CoreHr.Employee.Commands.UpdateEmployeeJobDetai
 using ONEVO.Application.Features.CoreHr.Employee.Commands.UpdatePersonalInformation;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployee;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployeeDetail;
+using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployeeIdentity;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployeePositionHistory;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetMyPayroll;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetMyProfile;
@@ -49,10 +51,11 @@ public class EmployeesController : ControllerBase
         [FromQuery] Guid? legalEntityId = null,
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 25,
+        [FromQuery] bool activeOnly = false,
         CancellationToken ct = default)
     {
         var result = await _mediator.Send(
-            new ListEmployeesQuery(search, departmentId, legalEntityId, page, pageSize), ct);
+            new ListEmployeesQuery(search, departmentId, legalEntityId, page, pageSize, activeOnly), ct);
 
         return result.IsSuccess
             ? Ok(result.Value)
@@ -66,6 +69,20 @@ public class EmployeesController : ControllerBase
     public async Task<IActionResult> GetById(Guid id, CancellationToken ct = default)
     {
         var result = await _mediator.Send(new GetEmployeeQuery(id), ct);
+
+        return result.IsSuccess
+            ? Ok(result.Value)
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Name and avatar only - universal display identity for any employee in this
+    /// tenant, deliberately gated on nothing beyond authentication (no employees:read, no
+    /// visibility-scope check). For showing "who owns/is assigned to this" elsewhere in the
+    /// app; the full HR record stays behind GetById/GetDetail above.</summary>
+    [HttpGet("{id:guid}/identity")]
+    public async Task<IActionResult> GetIdentity(Guid id, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new GetEmployeeIdentityQuery(id), ct);
 
         return result.IsSuccess
             ? Ok(result.Value)
@@ -166,6 +183,16 @@ public class EmployeesController : ControllerBase
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
+    /// <summary>Links a pending employee_avatar upload as the caller's current avatar.</summary>
+    [HttpPut("me/avatar")]
+    public async Task<IActionResult> LinkMyAvatar([FromBody] LinkFileRequest request, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new LinkMyAvatarCommand(request.FileId), ct);
+        return result.IsSuccess
+            ? Ok(new { avatarFileId = result.Value })
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
     /// <summary>Update the caller's own Personal Information. Optimistic concurrency: Version must
     /// match the xmin token returned by GetMyProfile, or this returns 409.</summary>
     [HttpPut("me/personal-information")]
@@ -182,19 +209,6 @@ public class EmployeesController : ControllerBase
 
         return result.IsSuccess
             ? NoContent()
-            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
-    }
-
-    /// <summary>Upload/replace the caller's own avatar photo.</summary>
-    [HttpPut("me/avatar")]
-    public async Task<IActionResult> SetMyAvatar(IFormFile file, CancellationToken ct = default)
-    {
-        await using var stream = file.OpenReadStream();
-        var result = await _mediator.Send(
-            new SetMyAvatarCommand(file.FileName, file.ContentType, stream), ct);
-
-        return result.IsSuccess
-            ? Ok(new { avatarFileId = result.Value })
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 

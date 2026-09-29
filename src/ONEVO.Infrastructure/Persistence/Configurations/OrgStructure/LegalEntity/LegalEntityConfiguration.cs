@@ -123,15 +123,7 @@ public class LegalEntityConfiguration : IEntityTypeConfiguration<LegalEntity>
             .HasForeignKey(l => l.ParentLegalEntityId)
             .OnDelete(DeleteBehavior.Restrict);
 
-        // Logo reference. Deliberate hardening beyond the fields the task
-        // literally mandated an FK for (only parent_legal_entity_id was
-        // required to be an FK): legal_entities had zero FKs before this
-        // migration, and file_records already models soft-deletion, so
-        // SetNull lets a file record be cleaned up independently without
-        // blocking or cascading into legal_entities.
-        builder.HasOne<FileRecord>()
-            .WithMany()
-            .HasForeignKey(l => l.LogoFileId)
-            .OnDelete(DeleteBehavior.SetNull);
+        // Logo reference migrated to entity_assets (owner_type "legal_entity") - see
+        // 2026-09-22-centralized-file-upload-phase1-backend.md Task 2. No FK here anymore.
     }
 }

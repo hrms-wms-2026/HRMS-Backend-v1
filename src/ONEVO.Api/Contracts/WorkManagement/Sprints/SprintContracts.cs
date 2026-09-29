@@ -1,6 +1,6 @@
 namespace ONEVO.Api.Contracts.WorkManagement.Sprints;
 
-public sealed record CreateSprintRequest(string Name, string? Goal);
+public sealed record CreateSprintRequest(string Name, string? Goal, IReadOnlyList<Guid>? TaskIds);
 public sealed record EditSprintRequest(string Name, string? Goal, DateOnly? StartDate, DateOnly? EndDate);
 
 // Added ahead of the tasks that wire them up (StartSprintCommand / CompleteSprintCommand rework) -
@@ -8,13 +8,23 @@ public sealed record EditSprintRequest(string Name, string? Goal, DateOnly? Star
 // actions that consume these are built in later tasks of this plan.
 public sealed record StartSprintRequest(DateOnly StartDate, DateOnly EndDate, string? Goal);
 public sealed record CompleteSprintRequest(string Disposition, Guid? TargetSprintId);
+public sealed record SetSprintTasksRequest(IReadOnlyList<Guid>? AddTaskIds, IReadOnlyList<Guid>? RemoveTaskIds);
 
 public sealed record SprintViewModel(
-    Guid Id, Guid ObjectiveId, string Name, string? Goal, DateOnly? StartDate, DateOnly? EndDate,
-    string Status, DateTimeOffset? CompletedAt, DateTimeOffset? AchievedAt);
+    Guid Id, Guid ProjectId, string Name, string? Goal, DateOnly? StartDate, DateOnly? EndDate,
+    string Status, DateTimeOffset? CompletedAt, DateTimeOffset? AchievedAt, bool CanManage);
 
 public static class SprintViewModelMapper
 {
     public static SprintViewModel ToViewModel(this Application.Features.WorkManagement.Sprints.DTOs.Responses.SprintResponse dto) =>
-        new(dto.Id, dto.ObjectiveId, dto.Name, dto.Goal, dto.StartDate, dto.EndDate, dto.Status, dto.CompletedAt, dto.AchievedAt);
+        new(dto.Id, dto.ProjectId, dto.Name, dto.Goal, dto.StartDate, dto.EndDate, dto.Status, dto.CompletedAt, dto.AchievedAt, dto.CanManage);
+}
+
+public sealed record SprintActivityViewModel(
+    Guid Id, Guid EmployeeId, string Action, string? FromStatus, string? ToStatus, string? DetailsJson, DateTimeOffset OccurredAt);
+
+public static class SprintActivityViewModelMapper
+{
+    public static SprintActivityViewModel ToViewModel(this Application.Features.WorkManagement.Sprints.DTOs.Responses.SprintActivityResponse dto) =>
+        new(dto.Id, dto.EmployeeId, dto.Action, dto.FromStatus, dto.ToStatus, dto.DetailsJson, dto.OccurredAt);
 }

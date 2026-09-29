@@ -82,7 +82,7 @@ public sealed class GetMyProjectTasksQueryHandler : IRequestHandler<GetMyProject
             assigneesByTaskId.GetValueOrDefault(task.Id, Array.Empty<Guid>()),
             openSessions.TryGetValue(task.Id, out var openSession) ? openSession.EmployeeId : (Guid?)null,
             openSession?.ClockInAt,
-            totalLoggedMinutes.GetValueOrDefault(task.Id, 0))).ToList();
+            totalLoggedMinutes.GetValueOrDefault(task.Id, 0), CreatedAt: task.CreatedAt)).ToList();
 
         return Result<IReadOnlyList<WorkTaskResponse>>.Success(responses);
     }

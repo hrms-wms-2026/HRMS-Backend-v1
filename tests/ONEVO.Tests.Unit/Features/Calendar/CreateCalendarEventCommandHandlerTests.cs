@@ -81,6 +81,73 @@ public sealed class CreateCalendarEventCommandHandlerTests
     }
 
     [Fact]
+    public async Task Handle_GuestEmails_AreStoredNormalizedAndInvited()
+    {
+        var sut = BuildSut();
+
+        var result = await sut.Handle(
+            new CreateCalendarEventCommand(
+                "Vendor sync", null, Start, Start.AddHours(1), false, "Room 4", "https://us05web.zoom.us/j/1",
+                null, CalendarRecurrences.None, [], null, ["  Vendor@Example.com ", "vendor@example.com", "pm@example.com"]),
+            CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        _events.Verify(x => x.AddGuestsAsync(
+            It.Is<IReadOnlyList<CalendarEventGuest>>(g => g.Count == 2 && g[0].Email == "vendor@example.com" && g[1].Email == "pm@example.com" && g.All(x => x.TenantId == TenantId)),
+            It.IsAny<CancellationToken>()), Times.Once);
+        _notifications.Verify(x => x.NotifyGuestsAsync(
+            TenantId, "Vendor sync", Start, "Room 4",
+            It.Is<IReadOnlyList<string>>(e => e.SequenceEqual(new[] { "vendor@example.com", "pm@example.com" })),
+            "Ada Owner", "https://us05web.zoom.us/j/1", It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_InvalidGuestEmail_Returns400_AndCreatesNothing()
+    {
+        var sut = BuildSut();
+
+        var result = await sut.Handle(
+            new CreateCalendarEventCommand(
+                "Vendor sync", null, Start, Start.AddHours(1), false, null, null, null, CalendarRecurrences.None, [], null, ["nope"]),
+            CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(400, result.StatusCode);
+        Assert.Contains("nope", result.Error);
+        _events.Verify(x => x.AddAsync(It.IsAny<CalendarEvent>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Handle_MoreThanTwentyGuests_Returns400()
+    {
+        var sut = BuildSut();
+        var guests = Enumerable.Range(0, 21).Select(i => $"g{i}@example.com").ToList();
+
+        var result = await sut.Handle(
+            new CreateCalendarEventCommand(
+                "Big event", null, Start, Start.AddHours(1), false, null, null, null, CalendarRecurrences.None, [], null, guests),
+            CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(400, result.StatusCode);
+        _events.Verify(x => x.AddAsync(It.IsAny<CalendarEvent>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Handle_NoGuestEmails_DoesNotInviteAnyone()
+    {
+        var sut = BuildSut();
+
+        await sut.Handle(
+            new CreateCalendarEventCommand("Solo block", null, Start, Start.AddHours(1), false, null, null, null, CalendarRecurrences.None, []),
+            CancellationToken.None);
+
+        _notifications.Verify(x => x.NotifyGuestsAsync(
+            It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<DateTimeOffset>(), It.IsAny<string?>(),
+            It.IsAny<IReadOnlyList<string>>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
     public async Task Handle_NoParticipants_DoesNotNotify()
     {
         var sut = BuildSut();
@@ -106,6 +173,37 @@ public sealed class CreateCalendarEventCommandHandlerTests
 
         Assert.False(result.IsSuccess);
         Assert.Equal(400, result.StatusCode);
+    }
+
+    [Theory]
+    [InlineData("not a url")]
+    [InlineData("ftp://files.example.com/meeting")]
+    [InlineData("javascript:alert(1)")]
+    public async Task Handle_InvalidMeetingLink_ReturnsFailure(string meetingLink)
+    {
+        var sut = BuildSut();
+
+        var result = await sut.Handle(
+            new CreateCalendarEventCommand("Title", null, Start, Start.AddHours(1), false, null, meetingLink, null, CalendarRecurrences.None, []),
+            CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(400, result.StatusCode);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("https://meet.example.com/room-1")]
+    [InlineData("http://meet.example.com/room-1")]
+    public async Task Handle_ValidOrAbsentMeetingLink_Succeeds(string? meetingLink)
+    {
+        var sut = BuildSut();
+
+        var result = await sut.Handle(
+            new CreateCalendarEventCommand("Title", null, Start, Start.AddHours(1), false, null, meetingLink, null, CalendarRecurrences.None, []),
+            CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
     }
 
     [Fact]

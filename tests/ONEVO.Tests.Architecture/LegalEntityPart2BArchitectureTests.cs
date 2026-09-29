@@ -2,8 +2,6 @@ using System.Reflection;
 using ONEVO.Api.Contracts.OrgStructure.LegalEntities;
 using ONEVO.Application.Features.OrgStructure.Commands.CreateLegalEntity;
 using ONEVO.Application.Features.OrgStructure.Commands.DeleteLegalEntity;
-using ONEVO.Application.Features.OrgStructure.Commands.RemoveLegalEntityLogo;
-using ONEVO.Application.Features.OrgStructure.Commands.SetLegalEntityLogo;
 using ONEVO.Application.Features.OrgStructure.Commands.UpdateLegalEntityGeneralSettings;
 using ONEVO.Application.Features.OrgStructure.Queries.GetLegalEntityGeneralSettings;
 using ONEVO.Application.Features.OrgStructure.Queries.ListLegalEntities;
@@ -23,8 +21,7 @@ public class LegalEntityPart2BArchitectureTests
     [
         typeof(CreateLegalEntityRequest),
         typeof(UpdateLegalEntityGeneralSettingsRequest),
-        typeof(DeleteLegalEntityRequest),
-        typeof(SetLegalEntityLogoRequest)
+        typeof(DeleteLegalEntityRequest)
     ];
 
     private static readonly Type[] CommandAndQueryTypes =
@@ -32,8 +29,6 @@ public class LegalEntityPart2BArchitectureTests
         typeof(CreateLegalEntityCommand),
         typeof(UpdateLegalEntityGeneralSettingsCommand),
         typeof(DeleteLegalEntityCommand),
-        typeof(SetLegalEntityLogoCommand),
-        typeof(RemoveLegalEntityLogoCommand),
         typeof(ListLegalEntitiesQuery),
         typeof(GetLegalEntityGeneralSettingsQuery)
     ];
@@ -126,10 +121,6 @@ public class LegalEntityPart2BArchitectureTests
     [InlineData("DeleteLegalEntity", "DeleteLegalEntityCommand.cs")]
     [InlineData("DeleteLegalEntity", "DeleteLegalEntityCommandHandler.cs")]
     [InlineData("DeleteLegalEntity", "DeleteLegalEntityCommandValidator.cs")]
-    [InlineData("SetLegalEntityLogo", "SetLegalEntityLogoCommand.cs")]
-    [InlineData("SetLegalEntityLogo", "SetLegalEntityLogoCommandHandler.cs")]
-    [InlineData("RemoveLegalEntityLogo", "RemoveLegalEntityLogoCommand.cs")]
-    [InlineData("RemoveLegalEntityLogo", "RemoveLegalEntityLogoCommandHandler.cs")]
     public void CommandFiles_LiveUnderOrgStructureLegalEntity_NotDevPlatformTenancy(string subfolder, string fileName)
     {
         var commandsRoot = FindDirectoryUnderRepoRoot(
@@ -169,8 +160,7 @@ public class LegalEntityPart2BArchitectureTests
         {
             "CreateLegalEntityRequest.cs",
             "UpdateLegalEntityGeneralSettingsRequest.cs",
-            "DeleteLegalEntityRequest.cs",
-            "SetLegalEntityLogoRequest.cs"
+            "DeleteLegalEntityRequest.cs"
         };
 
         foreach (var file in expectedFiles)

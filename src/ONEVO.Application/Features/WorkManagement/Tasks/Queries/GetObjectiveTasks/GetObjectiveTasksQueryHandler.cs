@@ -62,7 +62,7 @@ public class GetObjectiveTasksQueryHandler : IRequestHandler<GetObjectiveTasksQu
             return Result<IReadOnlyList<WorkTaskResponse>>.NotFound("Objective not found.");
 
         var permissions = await _permissionResolver.ResolveAsync(userId, tenantId, null, ct);
-        var hasReadPermission = permissions.Contains("projects:read") || permissions.Contains("*");
+        var hasReadPermission = permissions.Contains("*");
 
         if (!hasReadPermission)
         {
@@ -102,7 +102,7 @@ public class GetObjectiveTasksQueryHandler : IRequestHandler<GetObjectiveTasksQu
             assigneesByTaskId.GetValueOrDefault(t.Id, Array.Empty<Guid>()),
             openSessions.TryGetValue(t.Id, out var openSession) ? openSession.EmployeeId : (Guid?)null,
             openSession?.ClockInAt,
-            totalLoggedMinutes.GetValueOrDefault(t.Id, 0))).ToList();
+            totalLoggedMinutes.GetValueOrDefault(t.Id, 0), CreatedAt: t.CreatedAt)).ToList();
 
         return Result<IReadOnlyList<WorkTaskResponse>>.Success(responses);
     }

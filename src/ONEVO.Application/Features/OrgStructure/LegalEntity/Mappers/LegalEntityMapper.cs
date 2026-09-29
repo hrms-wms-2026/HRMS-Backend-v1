@@ -9,24 +9,26 @@ namespace ONEVO.Application.Features.OrgStructure.Mappers;
 
 public static class LegalEntityMapper
 {
-    public static LegalEntityListItemResponse ToListItemResponse(LegalEntity entity)
+    /// <summary>logoFileId is resolved by the caller via IEntityAssetRepository (entity_assets,
+    /// owner_type "legal_entity") - the entity itself no longer carries a denormalized column.</summary>
+    public static LegalEntityListItemResponse ToListItemResponse(LegalEntity entity, Guid? logoFileId)
     {
         return new LegalEntityListItemResponse(
             entity.Id,
             entity.Name,
             entity.CompanyCode,
-            entity.LogoFileId,
+            logoFileId,
             entity.IsActive,
             entity.IsPrimary);
     }
 
-    public static LegalEntityGeneralSettingsResponse ToGeneralSettingsResponse(LegalEntity entity)
+    public static LegalEntityGeneralSettingsResponse ToGeneralSettingsResponse(LegalEntity entity, Guid? logoFileId)
     {
         return new LegalEntityGeneralSettingsResponse(
             entity.Id,
             entity.Name,
             entity.CompanyCode,
-            entity.LogoFileId,
+            logoFileId,
             entity.RegistrationNumber,
             entity.TaxRegistrationNumber,
             entity.VatGstNumber,

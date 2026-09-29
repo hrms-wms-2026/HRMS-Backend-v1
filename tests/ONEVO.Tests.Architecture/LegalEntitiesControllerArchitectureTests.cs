@@ -90,20 +90,6 @@ public class LegalEntitiesControllerArchitectureTests
     }
 
     [Fact]
-    public void RemoveLogoAction_UsesLegalEntityUpdate()
-    {
-        var method = ControllerType.GetMethod(nameof(LegalEntitiesController.RemoveLogo));
-        GetPermission(method!).Should().Be("legal_entity:update");
-    }
-
-    [Fact]
-    public void GetLogoAction_UsesLegalEntityUpdate()
-    {
-        var method = ControllerType.GetMethod(nameof(LegalEntitiesController.GetLogo));
-        GetPermission(method!).Should().Be("legal_entity:update");
-    }
-
-    [Fact]
     public void NoAction_UsesOrgManage()
     {
         var offenders = ActionMethods()
@@ -161,33 +147,6 @@ public class LegalEntitiesControllerArchitectureTests
             .ToList();
 
         Assert.Empty(offenders);
-    }
-
-    [Fact]
-    public void PutLogoRoute_Exists_AndUsesPutVerb()
-    {
-        var setLogo = ControllerType.GetMethod(nameof(LegalEntitiesController.SetLogo));
-        var httpPut = setLogo!.GetCustomAttribute<HttpPutAttribute>();
-
-        Assert.NotNull(httpPut);
-        Assert.Contains("logo", httpPut!.Template ?? string.Empty, StringComparison.OrdinalIgnoreCase);
-    }
-
-    [Fact]
-    public void SetLogoAction_UsesLegalEntityUpdate()
-    {
-        var method = ControllerType.GetMethod(nameof(LegalEntitiesController.SetLogo));
-        GetPermission(method!).Should().Be("legal_entity:update");
-    }
-
-    [Fact]
-    public void DeleteLogoRoute_Exists_AndUsesDeleteVerb()
-    {
-        var removeLogo = ControllerType.GetMethod(nameof(LegalEntitiesController.RemoveLogo));
-        var httpDelete = removeLogo!.GetCustomAttribute<HttpDeleteAttribute>();
-
-        Assert.NotNull(httpDelete);
-        Assert.Contains("logo", httpDelete!.Template ?? string.Empty, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

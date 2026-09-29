@@ -1,6 +1,8 @@
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
+using ONEVO.Application.Common.Constants;
 using ONEVO.Application.Common.Exceptions;
+using ONEVO.Application.Features.Storage.File.Helpers;
 using ONEVO.Application.Features.TimeAttendance.DTOs.Responses;
 using ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces;
 using ONEVO.Domain.Features.CoreHr.Entities;
@@ -207,6 +209,11 @@ public sealed class EfAttendanceReadRepository(ApplicationDbContext db) : IAtten
             x.TenantId == tenantId
             && x.AssignmentKind == PositionAssignmentKind.PrimaryEmployment
             && x.AssignmentStatus == PositionAssignmentStatus.Active);
+        var avatarAssets = db.EntityAssets.AsNoTracking().Where(a =>
+            a.TenantId == tenantId
+            && a.OwnerType == EntityAssetOwnerTypes.Employee
+            && a.AssetPurpose == UploadPurposeCatalog.EmployeeAvatar
+            && a.IsPrimary);
 
         var rows = await (from employee in db.Employees.AsNoTracking()
                           where employee.TenantId == tenantId
@@ -221,13 +228,16 @@ public sealed class EfAttendanceReadRepository(ApplicationDbContext db) : IAtten
                           join position in db.Positions.AsNoTracking()
                               on assignment!.PositionId equals position.Id into positionJoin
                           from position in positionJoin.DefaultIfEmpty()
+                          join asset in avatarAssets
+                              on employee.Id equals asset.OwnerId into assetJoin
+                          from asset in assetJoin.DefaultIfEmpty()
                           select new AttendanceHistoryEmployee(
                               employee.Id,
                               employee.FirstName + " " + employee.LastName,
                               employee.EmployeeNumber,
                               position == null ? null : position.Name,
                               department == null ? null : department.Name,
-                              employee.AvatarFileId)).ToListAsync(ct);
+                              asset == null ? null : asset.FileRecordId)).ToListAsync(ct);
 
         return rows.GroupBy(x => x.EmployeeId).ToDictionary(x => x.Key, x => x.First());
     }

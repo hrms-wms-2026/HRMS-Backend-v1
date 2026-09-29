@@ -15,7 +15,6 @@ public class LegalEntity : ITenantOwnedEntity
     public bool IsPrimary { get; set; } = true;
 
     public string? CompanyCode { get; set; }
-    public Guid? LogoFileId { get; set; }
     public Guid? ParentLegalEntityId { get; set; }
     public string? TaxRegistrationNumber { get; set; }
     public string? VatGstNumber { get; set; }

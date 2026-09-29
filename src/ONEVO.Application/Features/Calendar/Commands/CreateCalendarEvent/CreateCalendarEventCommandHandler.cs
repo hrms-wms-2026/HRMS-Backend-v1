@@ -3,6 +3,7 @@ using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Calendar.DTOs.Responses;
+using ONEVO.Application.Features.Calendar.Helpers;
 using ONEVO.Application.Features.Calendar.RepositoryInterfaces;
 using ONEVO.Application.Features.Calendar.Services;
 using ONEVO.Domain.Features.Calendar.Entities;
@@ -31,6 +32,16 @@ public sealed class CreateCalendarEventCommandHandler(
 
         if (request.Recurrence != CalendarRecurrences.None && string.IsNullOrWhiteSpace(request.RecurrenceRule))
             return Result<CalendarEventItem>.Failure("RecurrenceRule is required when Recurrence is not 'none'.", 400);
+
+        if (!CalendarEventValidation.IsValidMeetingLink(request.MeetingLink))
+            return Result<CalendarEventItem>.Failure("Meeting link must be a valid http(s) URL.", 400);
+
+        var (guestEmails, invalidGuestEmail) = CalendarEventValidation.NormalizeGuestEmails(request.GuestEmails);
+        if (invalidGuestEmail is not null)
+            return Result<CalendarEventItem>.Failure($"'{invalidGuestEmail}' is not a valid email address.", 400);
+
+        if (guestEmails.Count > CalendarEventValidation.MaxGuestsPerEvent)
+            return Result<CalendarEventItem>.Failure($"An event can have at most {CalendarEventValidation.MaxGuestsPerEvent} guests.", 400);
 
         var tenantId = currentUser.TenantId;
 
@@ -61,6 +72,20 @@ public sealed class CreateCalendarEventCommandHandler(
                 await notifications.NotifyParticipantsAddedAsync(
                     tenantId, calendarEvent.Title, calendarEvent.StartDate, calendarEvent.Location,
                     request.ParticipantEmployeeIds, organizerName, innerCt);
+            }
+
+            if (guestEmails.Count > 0)
+            {
+                await events.AddGuestsAsync(guestEmails.Select(email => new CalendarEventGuest
+                {
+                    Id = Guid.NewGuid(), TenantId = tenantId, EventId = calendarEvent.Id, Email = email
+                }).ToList(), innerCt);
+
+                var organizer = await employees.GetDefaultForUserAsync(tenantId, currentUser.UserId, innerCt);
+                var guestOrganizerName = organizer is null ? "Someone" : $"{organizer.FirstName} {organizer.LastName}";
+                await notifications.NotifyGuestsAsync(
+                    tenantId, calendarEvent.Title, calendarEvent.StartDate, calendarEvent.Location,
+                    guestEmails, guestOrganizerName, calendarEvent.MeetingLink, innerCt);
             }
 
             await unitOfWork.SaveChangesAsync(innerCt);

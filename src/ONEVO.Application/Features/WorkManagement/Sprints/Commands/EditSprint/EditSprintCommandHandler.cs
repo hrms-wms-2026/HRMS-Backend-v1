@@ -3,10 +3,9 @@ using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
-using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
-using ONEVO.Application.Features.WorkManagement.Objectives.Services;
 using ONEVO.Application.Features.WorkManagement.Sprints.DTOs.Responses;
 using ONEVO.Application.Features.WorkManagement.Sprints.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Sprints.Services;
 using ONEVO.Domain.Features.WorkManagement.Sprints.Entities;
 
 namespace ONEVO.Application.Features.WorkManagement.Sprints.Commands.EditSprint;
@@ -15,21 +14,21 @@ public class EditSprintCommandHandler : IRequestHandler<EditSprintCommand, Resul
 {
     private readonly ICurrentUser _currentUser;
     private readonly ICallerIdentityResolver _identity;
-    private readonly IObjectiveRepository _objectives;
     private readonly ISprintRepository _sprints;
+    private readonly ISprintAccessService _access;
+    private readonly ISprintActivityLogRepository _logs;
     private readonly IUnitOfWork _unitOfWork;
-    private readonly IMilestoneMembershipCoordinator _membership;
 
     public EditSprintCommandHandler(
-        ICurrentUser currentUser, ICallerIdentityResolver identity, IObjectiveRepository objectives,
-        ISprintRepository sprints, IUnitOfWork unitOfWork, IMilestoneMembershipCoordinator membership)
+        ICurrentUser currentUser, ICallerIdentityResolver identity,
+        ISprintRepository sprints, ISprintAccessService access, ISprintActivityLogRepository logs, IUnitOfWork unitOfWork)
     {
         _currentUser = currentUser;
         _identity = identity;
-        _objectives = objectives;
         _sprints = sprints;
+        _access = access;
+        _logs = logs;
         _unitOfWork = unitOfWork;
-        _membership = membership;
     }
 
     public async Task<Result<SprintResponse>> Handle(EditSprintCommand request, CancellationToken ct)
@@ -46,12 +45,8 @@ public class EditSprintCommandHandler : IRequestHandler<EditSprintCommand, Resul
         if (sprint is null)
             return Result<SprintResponse>.NotFound("Sprint not found.");
 
-        var objective = await _objectives.GetByIdForTenantAsync(tenantId, sprint.ObjectiveId, ct);
-        if (objective is null)
-            return Result<SprintResponse>.NotFound("Objective not found.");
-
-        if (!await _membership.IsEffectiveManagerAsync(tenantId, objective.Id, callerEmployeeId.Value, ct))
-            return Result<SprintResponse>.Forbidden("Only this milestone's owner can edit sprints.");
+        if (!await _access.CanManageAsync(tenantId, sprint, _currentUser.UserId, callerEmployeeId.Value, ct))
+            return Result<SprintResponse>.Forbidden("Only the sprint's creator or an owner of one of its tasks' modules can edit this sprint.");
 
         if (sprint.Status is SprintStatuses.Complete or SprintStatuses.Achieved)
             return Result<SprintResponse>.Conflict("This sprint has already ended and can no longer be edited.");
@@ -74,11 +69,13 @@ public class EditSprintCommandHandler : IRequestHandler<EditSprintCommand, Resul
             }
             sprint.UpdatedAt = DateTimeOffset.UtcNow;
 
+            await _logs.AddAsync(SprintActivityLogFactory.Create(
+                tenantId, sprint.Id, callerEmployeeId.Value, SprintActivityActions.Edited,
+                details: new { name = sprint.Name, goal = sprint.Goal, startDate = sprint.StartDate, endDate = sprint.EndDate }), innerCt);
+
             await _unitOfWork.SaveChangesAsync(innerCt);
 
-            return Result<SprintResponse>.Success(new SprintResponse(
-                sprint.Id, sprint.ObjectiveId, sprint.Name, sprint.Goal, sprint.StartDate, sprint.EndDate, sprint.Status,
-                sprint.CompletedAt, sprint.AchievedAt));
+            return Result<SprintResponse>.Success(SprintResponse.From(sprint, canManage: true));
         }, ct);
     }
 }

@@ -7,6 +7,7 @@ using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.CalendarEvents.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
 using ONEVO.Domain.Features.WorkManagement.CalendarEvents.Entities;
 using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
@@ -18,6 +19,7 @@ public sealed class CreateCalendarEventCommandHandler : IRequestHandler<CreateCa
     private readonly ICurrentUser _currentUser;
     private readonly ICallerIdentityResolver _identity;
     private readonly IProjectRepository _projects;
+    private readonly IProjectMemberRepository _members;
     private readonly IObjectiveRepository _objectives;
     private readonly IWorkTaskRepository _tasks;
     private readonly ICalendarEventRepository _calendarEvents;
@@ -27,6 +29,7 @@ public sealed class CreateCalendarEventCommandHandler : IRequestHandler<CreateCa
         ICurrentUser currentUser,
         ICallerIdentityResolver identity,
         IProjectRepository projects,
+        IProjectMemberRepository members,
         IObjectiveRepository objectives,
         IWorkTaskRepository tasks,
         ICalendarEventRepository calendarEvents,
@@ -35,6 +38,7 @@ public sealed class CreateCalendarEventCommandHandler : IRequestHandler<CreateCa
         _currentUser = currentUser;
         _identity = identity;
         _projects = projects;
+        _members = members;
         _objectives = objectives;
         _tasks = tasks;
         _calendarEvents = calendarEvents;
@@ -51,6 +55,8 @@ public sealed class CreateCalendarEventCommandHandler : IRequestHandler<CreateCa
         var project = await _projects.GetByIdForTenantAsync(tenantId, request.ProjectId, ct);
         if (project is null)
             return Result<CalendarEventResponse>.NotFound("Project not found.");
+        if (!await _members.HasActiveMembershipAsync(tenantId, project.Id, actorResult.EmployeeId, ct))
+            return Result<CalendarEventResponse>.Forbidden("You do not have access to this project.");
 
         var objectiveIds = request.ObjectiveIds.Distinct().ToList();
         var objectives = await _objectives.GetAllByProjectIdAsync(tenantId, request.ProjectId, ct);

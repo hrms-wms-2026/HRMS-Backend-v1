@@ -57,6 +57,10 @@ public class ListProjectsQueryHandler : IRequestHandler<ListProjectsQuery, Resul
             return Result<PagedResult<ProjectListItemResponse>>.Forbidden("No employee record for the current user.");
 
         var targetEmployeeId = request.TargetEmployeeId ?? callerEmployeeId.Value;
+        if (targetEmployeeId != callerEmployeeId.Value)
+            return Result<PagedResult<ProjectListItemResponse>>.Forbidden(
+                "Work project visibility is relationship-based; you can only list your own projects.");
+
         var pageNumber = request.Paging.PageNumber < 1 ? 1 : request.Paging.PageNumber;
         var skip = (pageNumber - 1) * request.Paging.PageSize;
 
@@ -72,13 +76,14 @@ public class ListProjectsQueryHandler : IRequestHandler<ListProjectsQuery, Resul
         var memberEmployeeIdsByProject = await _members.ListDistinctActiveMemberEmployeeIdsAsync(tenantId, projectIds, MaxMembersPerProject, ct);
         var memberCounts = await _members.CountDistinctActiveMembersAsync(tenantId, projectIds, ct);
         var displayNames = await ProjectMemberAvatarResolver.ResolveDisplayNamesAsync(_identity, tenantId, memberEmployeeIdsByProject, ct);
+        var avatarFileIds = await ProjectMemberAvatarResolver.ResolveAvatarFileIdsAsync(_entityAssets, tenantId, memberEmployeeIdsByProject, ct);
 
         var dtoItems = items
             .Select(p => ProjectMapper.ToListItem(
                 p, p.LeadId == targetEmployeeId,
                 logos.TryGetValue(p.Id, out var fileId) ? fileId : null,
                 labels.TryGetValue(p.Id, out var projectLabels) ? projectLabels : null,
-                ProjectMemberAvatarResolver.BuildAvatars(p.Id, memberEmployeeIdsByProject, displayNames),
+                ProjectMemberAvatarResolver.BuildAvatars(p.Id, memberEmployeeIdsByProject, displayNames, avatarFileIds),
                 memberCounts.TryGetValue(p.Id, out var count) ? count : 0))
             .ToList();
 

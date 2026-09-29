@@ -128,11 +128,18 @@ public sealed class EfAttendanceReadRepositoryTests
     public async Task ListEmployeeIdentities_IsBatchedAndFiltersTenantAndLegalEntity()
     {
         await using var db = BuildInMemoryDb();
-        var requested = NewEmployee(TenantId, LegalEntityId, "EMP-001", "Jane", "Doe", Guid.NewGuid());
+        var avatarFileId = Guid.NewGuid();
+        var requested = NewEmployee(TenantId, LegalEntityId, "EMP-001", "Jane", "Doe", avatarFileId);
         var second = NewEmployee(TenantId, LegalEntityId, "EMP-002", "John", "Roe", null);
         var otherTenant = NewEmployee(OtherTenantId, LegalEntityId, "EMP-003", "Other", "Tenant", null);
         var otherEntity = NewEmployee(TenantId, OtherLegalEntityId, "EMP-004", "Other", "Entity", null);
         db.Employees.AddRange(requested, second, otherTenant, otherEntity);
+        db.EntityAssets.Add(new ONEVO.Domain.Features.Storage.EntityAssets.Entities.EntityAsset
+        {
+            Id = Guid.NewGuid(), TenantId = TenantId, OwnerType = "employee", OwnerId = requested.Id,
+            AssetPurpose = "employee_avatar", FileRecordId = avatarFileId, IsPrimary = true,
+            CreatedByType = "system", CreatedById = requested.Id
+        });
         await db.SaveChangesAsync();
 
         var result = await new EfAttendanceReadRepository(db).ListEmployeeIdentitiesAsync(
@@ -244,7 +251,6 @@ public sealed class EfAttendanceReadRepositoryTests
         FirstName = first,
         LastName = last,
         Email = $"{number}@example.test",
-        AvatarFileId = avatar,
         HireDate = new(2026, 1, 1)
     };
 

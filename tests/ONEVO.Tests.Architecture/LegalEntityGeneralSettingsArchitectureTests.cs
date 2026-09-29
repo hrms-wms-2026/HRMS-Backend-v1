@@ -55,7 +55,6 @@ public class LegalEntityGeneralSettingsArchitectureTests
             "Id",
             "IsActive",
             "IsPrimary",
-            "LogoFileId",
             "Name",
             "OfficeAddress",
             "OfficeLatitude",

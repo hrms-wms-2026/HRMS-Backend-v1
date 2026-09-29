@@ -1,7 +1,6 @@
 using Moq;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Permission.ServiceInterfaces;
-using ONEVO.Application.Features.Storage.File.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
@@ -22,7 +21,10 @@ public sealed class GetSubtasksQueryHandlerTests
     private static readonly Guid ObjectiveId = Guid.NewGuid();
     private static readonly Guid ParentTaskId = Guid.NewGuid();
 
-    private static GetSubtasksQueryHandler Build(WorkTask? parent, IReadOnlyList<WorkTask> children, bool canRead = true)
+    private static GetSubtasksQueryHandler Build(
+        WorkTask? parent, IReadOnlyList<WorkTask> children, bool canRead = true,
+        IReadOnlyDictionary<Guid, OpenTaskClockingSessionSummary>? openSessions = null,
+        IReadOnlyDictionary<Guid, int>? totalLoggedMinutes = null)
     {
         var currentUser = new Mock<ICurrentUser>();
         currentUser.SetupGet(x => x.IsAuthenticated).Returns(true);
@@ -44,7 +46,7 @@ public sealed class GetSubtasksQueryHandlerTests
 
         var permissions = new Mock<IPermissionResolver>();
         permissions.Setup(x => x.ResolveAsync(UserId, TenantId, null, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(canRead ? new List<string> { "projects:read" } : new List<string>());
+            .ReturnsAsync(canRead ? new List<string> { "*" } : new List<string>());
 
         var members = new Mock<IProjectMemberRepository>();
         members.Setup(x => x.GetActiveObjectiveIdsForEmployeeInProjectAsync(TenantId, ProjectId, EmployeeId, It.IsAny<CancellationToken>()))
@@ -54,8 +56,14 @@ public sealed class GetSubtasksQueryHandlerTests
         assignments.Setup(x => x.GetByTaskIdsAsync(It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Array.Empty<TaskAssignment>());
 
-        return new GetSubtasksQueryHandler(currentUser.Object, identity.Object, Mock.Of<IFileStorageService>(), tasks.Object,
-            projects.Object, members.Object, permissions.Object, assignments.Object);
+        var sessions = new Mock<ITaskClockingSessionRepository>();
+        sessions.Setup(x => x.GetOpenSessionsForTasksAsync(TenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(openSessions ?? new Dictionary<Guid, OpenTaskClockingSessionSummary>());
+        sessions.Setup(x => x.GetTotalClosedSessionMinutesForTasksAsync(TenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(totalLoggedMinutes ?? new Dictionary<Guid, int>());
+
+        return new GetSubtasksQueryHandler(currentUser.Object, identity.Object, tasks.Object,
+            projects.Object, members.Object, permissions.Object, assignments.Object, sessions.Object);
     }
 
     [Fact]
@@ -77,6 +85,30 @@ public sealed class GetSubtasksQueryHandlerTests
 
         Assert.False(result.IsSuccess);
         Assert.Equal(404, result.StatusCode);
+    }
+
+    [Fact]
+    public async Task Handle_PopulatesClockSessionFieldsOnSubtasks()
+    {
+        // Regression: a subtask must carry its own clock-session state through the API the same
+        // way a top-level task does, otherwise a Clock In button rendered on a subtask row can
+        // never reflect that a session is already running or show accumulated logged time.
+        var parent = Task(ParentTaskId, ObjectiveId, "Parent");
+        var child = Task(Guid.NewGuid(), ObjectiveId, "Child", ParentTaskId);
+        var clockInAt = DateTimeOffset.UtcNow.AddMinutes(-10);
+        var openSessions = new Dictionary<Guid, OpenTaskClockingSessionSummary>
+        {
+            [child.Id] = new OpenTaskClockingSessionSummary(EmployeeId, clockInAt)
+        };
+        var totalLoggedMinutes = new Dictionary<Guid, int> { [child.Id] = 45 };
+
+        var result = await Build(parent, new[] { child }, openSessions: openSessions, totalLoggedMinutes: totalLoggedMinutes)
+            .Handle(new GetSubtasksQuery(ParentTaskId), CancellationToken.None);
+
+        var response = Assert.Single(result.Value!);
+        Assert.Equal(EmployeeId, response.OpenClockSessionEmployeeId);
+        Assert.Equal(clockInAt, response.OpenClockSessionClockInAt);
+        Assert.Equal(45, response.TotalLoggedMinutes);
     }
 
     [Fact]

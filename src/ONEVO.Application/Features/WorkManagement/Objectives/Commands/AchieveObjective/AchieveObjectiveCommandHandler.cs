@@ -10,7 +10,6 @@ using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Objectives.Services;
 using ONEVO.Application.Features.WorkManagement.Sprints.RepositoryInterfaces;
 using ONEVO.Domain.Features.WorkManagement.ObjectiveChangeRequests.Entities;
-using ONEVO.Domain.Features.WorkManagement.Sprints.Entities;
 
 namespace ONEVO.Application.Features.WorkManagement.Objectives.Commands.AchieveObjective;
 
@@ -72,11 +71,9 @@ public class AchieveObjectiveCommandHandler : IRequestHandler<AchieveObjectiveCo
         if (directChildren.Any(c => !c.IsAchieved))
             return Result<ObjectiveChangeOutcomeResponse>.Failure("All sub-milestones must be achieved before this one can be.");
 
-        var sprints = await _sprints.GetByObjectiveIdAsync(tenantId, objective.Id, ct);
-        // A Draft sprint has no work committed yet and shouldn't permanently block achieving the
-        // Objective - only an Active sprint (real, committed, unfinished work) blocks it.
-        if (sprints.Any(s => s.Status is SprintStatuses.Active))
-            return Result<ObjectiveChangeOutcomeResponse>.Failure("All sprints on this milestone must be Complete or Achieved before it can be achieved.");
+        // A module is blocked while any of its tasks sits in an Active sprint (sprints are project-level now).
+        if (await _sprints.AnyActiveContainingObjectiveTasksAsync(tenantId, objective.Id, ct))
+            return Result<ObjectiveChangeOutcomeResponse>.Failure("Tasks of this milestone are still in an Active sprint - complete that sprint first.");
 
         if (objective.CreatedById == userId)
         {

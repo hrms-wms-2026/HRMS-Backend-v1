@@ -13,6 +13,7 @@ using ONEVO.Application.Features.TimeAttendance.Services;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.Monitoring.Notifications.Entities;
 using ONEVO.Domain.Features.TimeAttendance.Entities;
+using ONEVO.Domain.Lookups;
 using EmployeeEntity = ONEVO.Domain.Features.CoreHr.Entities.Employee;
 
 namespace ONEVO.Infrastructure.Persistence.Repositories.CoreHr;
@@ -154,6 +155,11 @@ public class EfEmployeeRepository : IEmployeeRepository
         if (filter.LegalEntityId is not null)
         {
             joined = joined.Where(row => row.legalEntity != null && row.legalEntity.Id == filter.LegalEntityId.Value);
+        }
+
+        if (filter.ActiveOnly)
+        {
+            joined = joined.Where(row => row.e.EmploymentStatusId == EmploymentStatusIds.Active);
         }
 
         var totalCount = await joined.CountAsync(ct);
@@ -357,7 +363,11 @@ public class EfEmployeeRepository : IEmployeeRepository
                 row.empType != null ? row.empType.Label : row.e.EmploymentTypeId.ToString(),
                 row.empStatus != null ? row.empStatus.Code : "active",
                 row.manager != null ? row.manager.Id : (Guid?)null,
-                row.manager != null ? row.manager.FirstName + " " + row.manager.LastName : null))
+                row.manager != null ? row.manager.FirstName + " " + row.manager.LastName : null,
+                null,
+                null,
+                null,
+                null))
             .ToListAsync(ct);
 
                 return (items, totalCount);
@@ -595,7 +605,9 @@ public class EfEmployeeRepository : IEmployeeRepository
                 null,
                 null,
                 row.Status,
-                row.ExpiresAt))
+                row.ExpiresAt,
+                null,
+                null))
             .ToListAsync(ct);
     }
 

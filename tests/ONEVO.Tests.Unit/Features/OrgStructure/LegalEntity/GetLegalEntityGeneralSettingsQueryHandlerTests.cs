@@ -1,5 +1,6 @@
 using FluentAssertions;
 using Moq;
+using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.OrgStructure.Queries.GetLegalEntityGeneralSettings;
 using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
@@ -11,6 +12,7 @@ namespace ONEVO.Tests.Unit.Features.OrgStructure.LegalEntity;
 public class GetLegalEntityGeneralSettingsQueryHandlerTests
 {
     private readonly Mock<ILegalEntityRepository> _legalEntities = new();
+    private readonly Mock<IEntityAssetRepository> _entityAssets = new();
     private readonly Mock<ICurrentUser> _currentUser = new();
 
     private static readonly Guid TenantId = Guid.Parse("11111111-1111-1111-1111-111111111111");
@@ -23,7 +25,11 @@ public class GetLegalEntityGeneralSettingsQueryHandlerTests
         _currentUser.SetupGet(c => c.UserId).Returns(UserId);
         _currentUser.Setup(c => c.HasPermission("legal_entity:update")).Returns(hasManagementAccess);
         _currentUser.Setup(c => c.HasPermission("legal_entity:delete")).Returns(false);
-        return new GetLegalEntityGeneralSettingsQueryHandler(_legalEntities.Object, _currentUser.Object);
+        _entityAssets.Setup(r => r.GetPrimaryFileIdsByOwnerAsync(
+                It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<IReadOnlyCollection<Guid>>(),
+                It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, Guid>());
+        return new GetLegalEntityGeneralSettingsQueryHandler(_legalEntities.Object, _entityAssets.Object, _currentUser.Object);
     }
 
     [Fact]

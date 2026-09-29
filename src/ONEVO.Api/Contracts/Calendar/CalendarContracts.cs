@@ -1,5 +1,6 @@
 using ONEVO.Application.Features.Calendar.DTOs.Responses;
 using ONEVO.Application.Features.Calendar.Queries.CheckCalendarConflicts;
+using ONEVO.Application.Features.Calendar.Queries.GetEventMeetingAttendance;
 using ONEVO.Application.Features.Calendar.Queries.GetHolidayCalendarSettings;
 
 namespace ONEVO.Api.Contracts.Calendar;
@@ -7,7 +8,8 @@ namespace ONEVO.Api.Contracts.Calendar;
 public sealed record CreateCalendarEventRequest(
     string Title, string? Description, DateTimeOffset StartDate, DateTimeOffset EndDate,
     bool IsAllDay, string? Location, string? MeetingLink, string? Color,
-    string Recurrence, IReadOnlyList<Guid> ParticipantEmployeeIds, string? RecurrenceRule = null);
+    string Recurrence, IReadOnlyList<Guid> ParticipantEmployeeIds, string? RecurrenceRule = null,
+    IReadOnlyList<string>? GuestEmails = null);
 
 public sealed record UpdateCalendarEventRequest(
     string Title, string? Description, DateTimeOffset StartDate, DateTimeOffset EndDate,
@@ -31,15 +33,30 @@ public sealed record EditRecurringOccurrenceRequest(
 
 public sealed record CalendarEventParticipantSummaryViewModel(Guid EmployeeId, string EmployeeName, string ResponseStatus);
 
+public sealed record AddCalendarEventParticipantsRequest(IReadOnlyList<Guid> EmployeeIds);
+
+public sealed record AddCalendarEventGuestsRequest(IReadOnlyList<string> Emails);
+public sealed record CalendarEventGuestViewModel(string Email);
+public sealed record CalendarEventGuestsViewModel(IReadOnlyList<CalendarEventGuestViewModel> Guests);
+public sealed record CalendarEventParticipantsViewModel(IReadOnlyList<CalendarEventParticipantSummaryViewModel> Participants);
+
 public sealed record CalendarEventViewModel(
     Guid Id, string Title, string? Description, DateTimeOffset StartDate, DateTimeOffset EndDate,
     string SourceType, string? Color, string Recurrence, bool IsAllDay, string? Timezone,
     string? EventStatus, bool IsPrivate, string? Location, string? MeetingLink,
     string? ExternalSource, Guid CreatedById,
     bool IsRecurringOccurrence = false, Guid? RecurrenceMasterId = null, DateTimeOffset? OriginalStart = null,
-    IReadOnlyList<CalendarEventParticipantSummaryViewModel>? Participants = null, bool HasConflict = false);
+    IReadOnlyList<CalendarEventParticipantSummaryViewModel>? Participants = null, bool HasConflict = false,
+    bool IsOrganizer = false, string? OrganizerName = null,
+    IReadOnlyList<CalendarEventGuestViewModel>? Guests = null);
 
 public sealed record CalendarEventsViewModel(IReadOnlyList<CalendarEventViewModel> Events);
+
+public static class CalendarEventParticipantsViewModelMapper
+{
+    public static CalendarEventParticipantsViewModel ToViewModel(this ONEVO.Application.Features.Calendar.Commands.AddCalendarEventParticipants.CalendarEventParticipantsResult dto) =>
+        new(dto.Participants.Select(p => new CalendarEventParticipantSummaryViewModel(p.EmployeeId, p.EmployeeName, p.ResponseStatus)).ToList());
+}
 
 public static class CalendarEventViewModelMapper
 {
@@ -49,7 +66,8 @@ public static class CalendarEventViewModelMapper
         dto.MeetingLink, dto.ExternalSource, dto.CreatedById,
         dto.IsRecurringOccurrence, dto.RecurrenceMasterId, dto.OriginalStart,
         dto.Participants?.Select(p => new CalendarEventParticipantSummaryViewModel(p.EmployeeId, p.EmployeeName, p.ResponseStatus)).ToList(),
-        dto.HasConflict);
+        dto.HasConflict, dto.IsOrganizer, dto.OrganizerName,
+        dto.Guests?.Select(g => new CalendarEventGuestViewModel(g.Email)).ToList());
 
     public static CalendarEventsViewModel ToViewModel(this CalendarEventsResponse dto) =>
         new(dto.Events.Select(e => e.ToViewModel()).ToList());
@@ -75,6 +93,19 @@ public static class HolidayCalendarSettingsViewModelMapper
         dto.HolidaySyncEnabled, dto.LastSyncedYear, dto.LastSyncedAt);
 }
 
+public sealed record CreateEventMeetingRequestModel(string Provider);
+
+public sealed record CreateEventMeetingResponseModel(string JoinUrl);
+
+public sealed record MeetingAttendeeViewModel(string? Name, string? Email, DateTimeOffset JoinedAt, DateTimeOffset? LeftAt, int? DurationSeconds);
+public sealed record MeetingAttendanceViewModel(bool Available, IReadOnlyList<MeetingAttendeeViewModel> Attendees);
+
+public static class MeetingAttendanceViewModelMapper
+{
+    public static MeetingAttendanceViewModel ToViewModel(this GetEventMeetingAttendanceResult dto) =>
+        new(dto.Available, dto.Attendees.Select(a => new MeetingAttendeeViewModel(a.Name, a.Email, a.JoinedAt, a.LeftAt, a.DurationSeconds)).ToList());
+}
+
 public sealed record StartCalendarConnectionRequest(); // provider comes from the route, body is empty
 
 public sealed record StartCalendarConnectionResponseModel(string AuthorizeUrl);
@@ -94,4 +125,10 @@ public static class CalendarConnectionViewModelMapper
 
     public static CalendarConnectionsViewModel ToViewModel(this CalendarConnectionsResponse dto) =>
         new(dto.Connections.Select(c => c.ToViewModel()).ToList());
+}
+
+public static class CalendarEventGuestsViewModelMapper
+{
+    public static CalendarEventGuestsViewModel ToViewModel(this ONEVO.Application.Features.Calendar.Commands.AddCalendarEventGuests.CalendarEventGuestsResult dto) =>
+        new(dto.Guests.Select(g => new CalendarEventGuestViewModel(g.Email)).ToList());
 }

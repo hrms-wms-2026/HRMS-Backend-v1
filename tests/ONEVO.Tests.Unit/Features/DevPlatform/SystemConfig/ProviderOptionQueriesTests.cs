@@ -86,7 +86,7 @@ public sealed class ProviderOptionQueriesTests
         Assert.Equal("live", options["resend"].VerificationMode);
 
         Assert.Equal(6, options["cloudflare_r2"].Fields.Count);
-        Assert.Equal("format-only", options["cloudflare_r2"].VerificationMode);
+        Assert.Equal("live", options["cloudflare_r2"].VerificationMode);
 
         var aws = options["aws_rekognition"];
         Assert.Equal(["accessKeyId", "secretAccessKey", "region", "livenessRoleArn"], aws.Fields.Select(f => f.Name));

@@ -91,6 +91,6 @@ public class CreateLegalEntityCommandHandler
 
         await _workModeSeeder.SeedDefaultsAsync(tenantId, entity.Id, ct);
 
-        return Result<LegalEntityGeneralSettingsResponse>.Success(LegalEntityMapper.ToGeneralSettingsResponse(entity));
+        return Result<LegalEntityGeneralSettingsResponse>.Success(LegalEntityMapper.ToGeneralSettingsResponse(entity, logoFileId: null));
     }
 }

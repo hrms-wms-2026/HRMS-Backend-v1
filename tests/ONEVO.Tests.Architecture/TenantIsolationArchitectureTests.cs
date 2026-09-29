@@ -380,6 +380,20 @@ public class TenantIsolationArchitectureTests
             // employee's number is still taken), while preserving tenant scoping with an explicit
             // TenantId predicate in EfEmployeeRepository.
             "EfEmployeeRepository.cs",
+            // Soft-delete-aware comment feed: GetForTaskAsync must see soft-deleted top-level
+            // comments too (a tombstone with surviving replies is rendered, not dropped), while
+            // preserving tenant scoping with an explicit TenantId predicate in
+            // EfTaskCommentRepository.
+            "EfTaskCommentRepository.cs",
+            // Development/test demo seeder idempotency checks must see soft-deleted deterministic
+            // tasks and requests to avoid duplicate primary keys. Every bypass retains an explicit
+            // TenantId == DapiTenantId predicate.
+            "WorkManagementDapiDemoSeeder.Tasks.cs",
+            // Removed-participant revive: GetRemovedParticipantsAsync must see the soft-deleted
+            // calendar_event_participants row (the unique tenant/event/employee index still counts
+            // it, so re-adding someone revives that row), while preserving tenant scoping with an
+            // explicit TenantId predicate in EfCalendarEventRepository.
+            "EfCalendarEventRepository.cs",
         };
 
         var srcDirectory = FindSrcDirectory();

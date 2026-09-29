@@ -123,7 +123,7 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
 
     private static readonly IReadOnlyList<string> WorkManagerPermissionCodes =
     [
-        "org:read", "employees:read", "projects:read", "tasks:read", "tasks:write"
+        "org:read", "employees:read", "projects:create"
     ];
 
     private readonly IServiceProvider _services;

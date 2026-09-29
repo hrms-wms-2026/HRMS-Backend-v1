@@ -71,10 +71,8 @@ public class CreateTaskCreationRequestCommandHandler : IRequestHandler<CreateTas
         if (request.SprintId is not null)
         {
             var sprint = await _sprints.GetByIdForTenantAsync(tenantId, request.SprintId.Value, ct);
-            if (sprint is null || sprint.ObjectiveId != objective.Id)
-                return Result<TaskCreationRequestResponse>.NotFound("Sprint not found.");
-            if (sprint.Status == SprintStatuses.Achieved)
-                return Result<TaskCreationRequestResponse>.Conflict("This sprint has been achieved and is frozen.");
+            if (sprint is null || sprint.ProjectId != objective.ProjectId || sprint.Status is not (SprintStatuses.Draft or SprintStatuses.Active))
+                return Result<TaskCreationRequestResponse>.NotFound("Target sprint must be a Draft or Active sprint in the same project.");
         }
 
         var payload = new TaskCreationRequestPayload(
@@ -112,7 +110,8 @@ public class CreateTaskCreationRequestCommandHandler : IRequestHandler<CreateTas
 
             await _unitOfWork.SaveChangesAsync(innerCt);
 
-            return Result<TaskCreationRequestResponse>.Success(new TaskCreationRequestResponse(entity.Id, entity.ObjectiveId, entity.Status, payload, entity.CreatedAt));
+            return Result<TaskCreationRequestResponse>.Success(new TaskCreationRequestResponse(
+                entity.Id, entity.ObjectiveId, entity.Status, payload, entity.CreatedAt, requesterDisplayName));
         }, ct);
     }
 }

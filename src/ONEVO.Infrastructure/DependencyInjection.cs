@@ -41,10 +41,12 @@ using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.Services;
 using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.ProjectInvitations.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Approvals.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Versions.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.ReleaseCalendar.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Labels.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Sprints.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Sprints.Services;
 using ONEVO.Infrastructure.Persistence.Repositories.WorkManagement;
 using ONEVO.Infrastructure.Persistence.Repositories;
 using ONEVO.Application.Features.Auth.Login.ServiceInterfaces;
@@ -350,11 +352,15 @@ public static class DependencyInjection
             sp => sp.GetRequiredService<ONEVO.Infrastructure.Persistence.Repositories.Calendar.EfCalendarEventRepository>());
         services.AddScoped<IExternalCalendarConnectionRepository, EfExternalCalendarConnectionRepository>();
         services.AddScoped<IExternalCalendarEventLinkRepository, EfExternalCalendarEventLinkRepository>();
+        services.AddScoped<ICalendarEventMeetingRepository, EfCalendarEventMeetingRepository>();
+        services.AddScoped<ICalendarEventMeetingAttendanceRepository, EfCalendarEventMeetingAttendanceRepository>();
         services.AddScoped<ICalendarRecurrenceExpander, IcalNetRecurrenceExpander>();
         services.AddScoped<ICalendarNotificationSender, CalendarNotificationSender>();
         services.AddScoped<ICalendarTimezoneResolver, CalendarTimezoneResolver>();
         services.AddScoped<EfSprintRepository>();
         services.AddScoped<ISprintRepository>(sp => sp.GetRequiredService<EfSprintRepository>());
+        services.AddScoped<EfSprintActivityLogRepository>();
+        services.AddScoped<ISprintActivityLogRepository>(sp => sp.GetRequiredService<EfSprintActivityLogRepository>());
         services.AddScoped<EfTaskAssignmentRepository>();
         services.AddScoped<ITaskAssignmentRepository>(sp => sp.GetRequiredService<EfTaskAssignmentRepository>());
         services.AddScoped<EfTaskCreationRequestRepository>();
@@ -365,10 +371,20 @@ public static class DependencyInjection
         services.AddScoped<ITaskEditLogRepository>(sp => sp.GetRequiredService<EfTaskEditLogRepository>());
         services.AddScoped<EfTaskStatusChangeLogRepository>();
         services.AddScoped<ITaskStatusChangeLogRepository>(sp => sp.GetRequiredService<EfTaskStatusChangeLogRepository>());
+        services.AddScoped<EfTaskStatusChangeRequestRepository>();
+        services.AddScoped<ITaskStatusChangeRequestRepository>(sp => sp.GetRequiredService<EfTaskStatusChangeRequestRepository>());
+        services.AddScoped<ITaskStatusChangeAccessService, TaskStatusChangeAccessService>();
+        services.AddScoped<ITaskStatusChangeRequestConflictSweeper, TaskStatusChangeRequestConflictSweeper>();
         services.AddScoped<EfTaskClockingSessionRepository>();
         services.AddScoped<ITaskClockingSessionRepository>(sp => sp.GetRequiredService<EfTaskClockingSessionRepository>());
         services.AddScoped<EfTaskPercentageLogRepository>();
         services.AddScoped<ITaskPercentageLogRepository>(sp => sp.GetRequiredService<EfTaskPercentageLogRepository>());
+        services.AddScoped<EfTaskCommentRepository>();
+        services.AddScoped<ITaskCommentRepository>(sp => sp.GetRequiredService<EfTaskCommentRepository>());
+        services.AddScoped<EfTaskCommentLogRepository>();
+        services.AddScoped<ITaskCommentLogRepository>(sp => sp.GetRequiredService<EfTaskCommentLogRepository>());
+        services.AddScoped<EfTaskCommentReactionRepository>();
+        services.AddScoped<ITaskCommentReactionRepository>(sp => sp.GetRequiredService<EfTaskCommentReactionRepository>());
 
         services.AddScoped<EfNotificationRepository>();
         services.AddScoped<INotificationRepository>(sp => sp.GetRequiredService<EfNotificationRepository>());
@@ -378,6 +394,7 @@ public static class DependencyInjection
         services.AddScoped<IProjectMemberRepository>(sp => sp.GetRequiredService<EfProjectMemberRepository>());
         services.AddScoped<EfProjectMemberInvitationRepository>();
         services.AddScoped<IProjectMemberInvitationRepository>(sp => sp.GetRequiredService<EfProjectMemberInvitationRepository>());
+        services.AddScoped<IWorkApprovalHistoryRepository, EfWorkApprovalHistoryRepository>();
         services.AddScoped<EfProjectVersionRepository>();
         services.AddScoped<IProjectVersionRepository>(sp => sp.GetRequiredService<EfProjectVersionRepository>());
         services.AddScoped<EfReleaseCalendarRepository>();
@@ -389,13 +406,32 @@ public static class DependencyInjection
         services.AddScoped<ONEVO.Infrastructure.Persistence.Repositories.EfEmployeeRepository>();
         services.AddScoped<ONEVO.Application.Common.RepositoryInterfaces.IEmployeeRepository>(
             sp => sp.GetRequiredService<ONEVO.Infrastructure.Persistence.Repositories.EfEmployeeRepository>());
+        services.AddScoped<ONEVO.Application.Features.Storage.EntityAssets.Services.EmployeeEntityAssetAccessPolicy>();
+        services.AddScoped<ONEVO.Application.Features.Storage.EntityAssets.Services.LegalEntityEntityAssetAccessPolicy>();
+        services.AddScoped<
+            ONEVO.Application.Features.Storage.EntityAssets.ServiceInterfaces.IPrimaryEntityAssetLinker,
+            ONEVO.Application.Features.Storage.EntityAssets.Services.PrimaryEntityAssetLinker>();
+        services.AddScoped<ONEVO.Application.Features.Storage.EntityAssets.ServiceInterfaces.IEntityAssetAccessPolicyResolver>(sp =>
+            new ONEVO.Application.Features.Storage.EntityAssets.Services.EntityAssetAccessPolicyResolver(
+                new Dictionary<string, ONEVO.Application.Features.Storage.EntityAssets.ServiceInterfaces.IEntityAssetAccessPolicy>
+                {
+                    [ONEVO.Application.Common.Constants.EntityAssetOwnerTypes.Employee] =
+                        sp.GetRequiredService<ONEVO.Application.Features.Storage.EntityAssets.Services.EmployeeEntityAssetAccessPolicy>(),
+                    [ONEVO.Application.Common.Constants.EntityAssetOwnerTypes.LegalEntity] =
+                        sp.GetRequiredService<ONEVO.Application.Features.Storage.EntityAssets.Services.LegalEntityEntityAssetAccessPolicy>()
+                    // Part 2 plan (Project/Objective/Task endpoint consolidation) adds the remaining
+                    // three owner types here when their controllers migrate to the generic resolve endpoint.
+                }));
 
         // Work Management - Milestone & Achievement services
         services.AddScoped<IMilestoneMembershipCoordinator, MilestoneMembershipCoordinator>();
+        services.AddScoped<ISprintAccessService, SprintAccessService>();
+        services.AddScoped<ISprintTaskAssignmentService, SprintTaskAssignmentService>();
         services.AddScoped<IPermissionAutoGrantService, PermissionAutoGrantService>();
         services.AddScoped<ICallerIdentityResolver, CallerIdentityResolver>();
         services.AddScoped<IObjectiveAllocationSlackCalculator, ObjectiveAllocationSlackCalculator>();
         services.AddScoped<ITaskAssetLinker, TaskAssetLinker>();
+        services.AddScoped<ITaskAccessResolver, TaskAccessResolver>();
 
         // Auth: global email directory
         services.AddScoped<IGlobalEmailDirectoryRepository, EfGlobalEmailDirectoryRepository>();
@@ -419,6 +455,9 @@ public static class DependencyInjection
             ONEVO.Application.Features.Storage.File.ServiceInterfaces.IUploadPurposePolicy,
             ONEVO.Infrastructure.Services.Storage.File.UploadPurposePolicy>();
         services.AddScoped<
+            ONEVO.Application.Features.Storage.File.ServiceInterfaces.IAvatarImageProcessor,
+            ONEVO.Infrastructure.Services.Storage.File.AvatarImageProcessor>();
+        services.AddScoped<
             ONEVO.Application.Features.Storage.File.ServiceInterfaces.IObjectStorageAdapter,
             ONEVO.Infrastructure.ExternalServices.Storage.CloudflareR2.CloudflareR2ObjectStorageAdapter>();
         services.AddScoped<
@@ -439,6 +478,9 @@ public static class DependencyInjection
         services.AddScoped<
             ONEVO.Infrastructure.Services.Monitoring.Biometrics.IAwsRekognitionConnectionProbe,
             ONEVO.Infrastructure.Services.Monitoring.Biometrics.AwsRekognitionConnectionProbe>();
+        services.AddScoped<
+            ONEVO.Infrastructure.ExternalServices.Storage.CloudflareR2.ICloudflareR2ConnectionProbe,
+            ONEVO.Infrastructure.ExternalServices.Storage.CloudflareR2.CloudflareR2ConnectionProbe>();
         services.AddScoped<IPlatformServiceKeyResolver, PlatformServiceKeyResolver>();
 
         // System Config - metadata-only provider catalog
@@ -472,6 +514,9 @@ public static class DependencyInjection
         });
         services.AddHttpClient<IGoogleCalendarClient, GoogleCalendarClient>(client => { client.Timeout = TimeSpan.FromSeconds(30); });
         services.AddHttpClient<IMicrosoftGraphCalendarClient, MicrosoftGraphCalendarClient>(client => { client.Timeout = TimeSpan.FromSeconds(30); });
+        services.AddHttpClient<ITeamsMeetingClient, MicrosoftGraphMeetingClient>(client => { client.Timeout = TimeSpan.FromSeconds(30); });
+        services.AddHttpClient<IZoomMeetingClient, ZoomMeetingClient>(client => { client.Timeout = TimeSpan.FromSeconds(30); });
+        services.AddScoped<ICalendarConnectionTokenProvider, CalendarConnectionTokenProvider>();
         services.AddScoped<ICalendarSyncService, CalendarSyncService>();
 
         // Tenant cache invalidation
@@ -516,6 +561,9 @@ public static class DependencyInjection
 
         // Monitoring - Check-In
         services.AddScoped<ICheckInRepository, EfCheckInRepository>();
+        services.AddScoped<
+            ONEVO.Application.Features.Monitoring.CheckIn.RepositoryInterfaces.IFaceVerificationAttemptRepository,
+            ONEVO.Infrastructure.Persistence.Repositories.Monitoring.CheckIn.EfFaceVerificationAttemptRepository>();
         services.AddScoped<ITrayCurrentDevice, TrayCurrentDeviceService>();
         services.AddScoped<ITrayEmployeeIdentityResolver, TrayEmployeeIdentityResolver>();
 
@@ -552,6 +600,7 @@ public static class DependencyInjection
             ONEVO.Application.Common.ServiceInterfaces.IFaceQualityService,
             ONEVO.Infrastructure.Services.Monitoring.Biometrics.RekognitionFaceQualityService>();
         services.AddScoped<IActivityDailySummaryRepository, EfActivityDailySummaryRepository>();
+        services.AddScoped<IActivityLiveDaySummary, ONEVO.Infrastructure.Services.Monitoring.ActivityMonitoring.ActivityLiveDaySummary>();
         services.AddScoped<
             ONEVO.Application.Features.Monitoring.Reports.RepositoryInterfaces.IProductivityReportRepository,
             ONEVO.Infrastructure.Persistence.Repositories.Monitoring.Reports.EfProductivityReportRepository>();
@@ -584,6 +633,8 @@ public static class DependencyInjection
         services.AddHostedService<ONEVO.Infrastructure.Services.Monitoring.Screenshots.AgentCommandExpiryJob>();
         services.AddHostedService<Services.WorkManagement.SprintLifecycleJob>();
         services.AddHostedService<Services.Calendar.CalendarSyncJob>();
+        services.AddHostedService<Services.Calendar.TeamsAttendanceSyncJob>();
+        services.AddHostedService<Services.Calendar.ZoomAttendanceSyncJob>();
 
         // Auth services
         services.AddSingleton<IJwtTokenService, JwtTokenService>();
@@ -671,7 +722,6 @@ public static class DependencyInjection
         services.AddHostedService<DapiOrgStructureSeeder>();
         services.AddHostedService<DapiLeaveSampleSeeder>();
         services.AddHostedService<PlatformOAuthProviderMetadataSeeder>();
-        services.AddHostedService<ProjectsAccessBootstrapSeeder>();
         services.AddHostedService<WorkManagementSampleDataSeeder>();
 
         // Boot-time configuration audit (warns about missing keys; never fatal).

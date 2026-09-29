@@ -17,4 +17,19 @@ public class EfInactivityCaptureAttemptRepository : IInactivityCaptureAttemptRep
         => _db.InactivityCaptureAttempts
             .AsNoTracking()
             .FirstOrDefaultAsync(a => a.TenantId == tenantId && a.Id == attemptId, ct);
+
+    public Task<List<InactivityCaptureAttempt>> ListForEmployeeInRangeAsync(
+        Guid tenantId,
+        Guid employeeId,
+        DateTimeOffset from,
+        DateTimeOffset to,
+        CancellationToken ct)
+        => _db.InactivityCaptureAttempts
+            .AsNoTracking()
+            .Where(a => a.TenantId == tenantId
+                && a.EmployeeId == employeeId
+                && a.PromptedAt >= from
+                && a.PromptedAt < to)
+            .OrderBy(a => a.PromptedAt)
+            .ToListAsync(ct);
 }

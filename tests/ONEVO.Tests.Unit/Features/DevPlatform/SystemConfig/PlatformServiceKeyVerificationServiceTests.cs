@@ -2,6 +2,7 @@ using System.Net;
 using Microsoft.Extensions.Logging;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformServiceKeys.Helpers;
 using ONEVO.Infrastructure.ExternalServices.Email;
+using ONEVO.Infrastructure.ExternalServices.Storage.CloudflareR2;
 using ONEVO.Infrastructure.Services.Monitoring.Biometrics;
 using ONEVO.Infrastructure.Services.SystemConfig;
 using Xunit;
@@ -79,11 +80,34 @@ public class PlatformServiceKeyVerificationServiceTests
         }
     }
 
+    private sealed class FakeR2Probe : ICloudflareR2ConnectionProbe
+    {
+        public CloudflareR2ProbeResult Result { get; set; } =
+            new(true, "Cloudflare R2 bucket verified.", "screenshots", "auto");
+
+        public string? LastBucket { get; private set; }
+        public string? LastEndpoint { get; private set; }
+
+        public Task<CloudflareR2ProbeResult> ProbeAsync(
+            string accessKeyId,
+            string secretAccessKey,
+            string bucketName,
+            string endpoint,
+            string region,
+            CancellationToken ct)
+        {
+            LastBucket = bucketName;
+            LastEndpoint = endpoint;
+            return Task.FromResult(Result);
+        }
+    }
+
     private static PlatformServiceKeyVerificationService BuildService(
         CapturingHandler resendHandler,
         CapturingHandler sendGridHandler,
         CapturingLogger? logger = null,
-        IAwsRekognitionConnectionProbe? rekognitionProbe = null)
+        IAwsRekognitionConnectionProbe? rekognitionProbe = null,
+        ICloudflareR2ConnectionProbe? r2Probe = null)
     {
         var factory = new NamedHttpClientFactory(new Dictionary<string, HttpMessageHandler>
         {
@@ -94,6 +118,7 @@ public class PlatformServiceKeyVerificationServiceTests
         return new PlatformServiceKeyVerificationService(
             factory,
             rekognitionProbe ?? new FakeRekognitionProbe(),
+            r2Probe ?? new FakeR2Probe(),
             logger ?? new CapturingLogger());
     }
 
@@ -186,16 +211,55 @@ public class PlatformServiceKeyVerificationServiceTests
 
         var cloudflare = await service.VerifyAsync(
             PlatformServiceKeyCatalog.Cloudflare, "cf_token_12345678", CancellationToken.None);
-        var r2 = await service.VerifyAsync(
-            PlatformServiceKeyCatalog.CloudflareR2,
-            "{\"accountId\":\"a\",\"bucketName\":\"b\",\"accessKeyId\":\"k\",\"secretAccessKey\":\"s\",\"endpoint\":\"https://a.r2.cloudflarestorage.com\"}",
-            CancellationToken.None);
 
         Assert.True(cloudflare.Success);
-        Assert.True(r2.Success);
         Assert.Contains("format-only", cloudflare.Message, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("format-only", r2.Message, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("not wired", cloudflare.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task CloudflareR2_ValidBundle_ProbesTheBucket()
+    {
+        var probe = new FakeR2Probe();
+        var service = BuildService(
+            new CapturingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)),
+            new CapturingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)),
+            r2Probe: probe);
+
+        var result = await service.VerifyAsync(
+            PlatformServiceKeyCatalog.CloudflareR2,
+            "{\"accountId\":\"acct\",\"bucketName\":\"screenshots\",\"accessKeyId\":\"r2-key\",\"secretAccessKey\":\"r2-secret\",\"endpoint\":\"https://acct.r2.cloudflarestorage.com\"}",
+            CancellationToken.None);
+
+        Assert.True(result.Success);
+        Assert.Equal("screenshots", probe.LastBucket);
+        Assert.Equal("https://acct.r2.cloudflarestorage.com", probe.LastEndpoint);
+        Assert.Equal("Cloudflare R2", result.Service);
+        Assert.Equal("screenshots", result.Identity);
+        Assert.DoesNotContain("r2-secret", result.Message);
+        Assert.DoesNotContain("r2-key", result.Message);
+    }
+
+    [Fact]
+    public async Task CloudflareR2_RejectedCredentials_FailWithoutSecrets()
+    {
+        var probe = new FakeR2Probe
+        {
+            Result = new CloudflareR2ProbeResult(false, "Cloudflare R2 rejected the credentials. Check the access key, secret, and bucket.", "screenshots", "auto")
+        };
+        var service = BuildService(
+            new CapturingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)),
+            new CapturingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)),
+            r2Probe: probe);
+
+        var result = await service.VerifyAsync(
+            PlatformServiceKeyCatalog.CloudflareR2,
+            "{\"accountId\":\"acct\",\"bucketName\":\"screenshots\",\"accessKeyId\":\"r2-key\",\"secretAccessKey\":\"r2-secret\",\"endpoint\":\"https://acct.r2.cloudflarestorage.com\"}",
+            CancellationToken.None);
+
+        Assert.False(result.Success);
+        Assert.Contains("rejected", result.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("r2-secret", result.Message);
     }
 
     [Fact]

@@ -66,9 +66,9 @@ public sealed class RoleTemplateSeeder : IHostedService
             {
                 Id = new Guid("f0000000-0000-4000-8000-000000000002"),
                 Name = "Workspace Member",
-                Description = "Work management: tasks, projects, and wiki (read-focused).",
-                ModuleKeysJson = """["work_management"]""",
-                PermissionCodesJson = """["projects:read","tasks:read","wiki:read"]""",
+                Description = "Work management member; access is resolved from project relationships.",
+                ModuleKeysJson = """["projects","objectives_milestones","tasks"]""",
+                PermissionCodesJson = "[]",
                 IsSystem = true,
                 Version = 1,
                 IsActive = true,
@@ -77,20 +77,36 @@ public sealed class RoleTemplateSeeder : IHostedService
         };
 
         var added = 0;
+        var updated = 0;
         foreach (var t in templates)
         {
-            var exists = await db.RoleTemplates.AnyAsync(x => x.Name == t.Name, ct);
-            if (exists)
+            var existing = await db.RoleTemplates.FirstOrDefaultAsync(x => x.Id == t.Id || x.Name == t.Name, ct);
+            if (existing is not null)
+            {
+                if (existing.Description != t.Description
+                    || existing.ModuleKeysJson != t.ModuleKeysJson
+                    || existing.PermissionCodesJson != t.PermissionCodesJson
+                    || existing.Version != t.Version
+                    || existing.IsActive != t.IsActive)
+                {
+                    existing.Description = t.Description;
+                    existing.ModuleKeysJson = t.ModuleKeysJson;
+                    existing.PermissionCodesJson = t.PermissionCodesJson;
+                    existing.Version = t.Version;
+                    existing.IsActive = t.IsActive;
+                    updated++;
+                }
                 continue;
+            }
 
             await db.RoleTemplates.AddAsync(t, ct);
             added++;
         }
 
-        if (added > 0)
+        if (added > 0 || updated > 0)
         {
             await db.SaveChangesAsync(ct);
-            logger.LogInformation("Seeded {Count} role template(s).", added);
+            logger.LogInformation("Seeded {AddedCount} and updated {UpdatedCount} role template(s).", added, updated);
         }
         else
             logger.LogInformation("Role templates already present — skipping seed.");

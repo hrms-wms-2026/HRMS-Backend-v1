@@ -241,7 +241,7 @@ public class ApproveTaskEditRequestCommandHandler
                 task.CompletedHours,
                 task.ProgressPercent,
                 task.SprintId,
-                assigneeIds));
+                assigneeIds, CreatedAt: task.CreatedAt));
         }, ct);
     }
 }

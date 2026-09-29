@@ -153,7 +153,6 @@ public class ApproveTaskEditRequestCommandHandlerTests
                 Id = SprintId,
                 TenantId = TenantId,
                 ProjectId = ProjectId,
-                ObjectiveId = ObjectiveId,
                 Name = "Sprint 1",
                 Status = sprintStatus,
                 StartDate = new DateOnly(2026, 9, 1),

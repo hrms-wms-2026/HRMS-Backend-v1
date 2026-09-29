@@ -27,7 +27,9 @@ public sealed class CreateTaskPendingUploadCommandHandler : IRequestHandler<Crea
         if (tenantId == Guid.Empty)
             return Result<FileRecordDto>.Forbidden("Tenant context missing.");
 
-        if (request.Purpose != UploadPurposeCatalog.TaskAttachment && request.Purpose != UploadPurposeCatalog.TaskDescriptionImage)
+        var isSupportedPurpose = request.Purpose is UploadPurposeCatalog.TaskAttachment or UploadPurposeCatalog.TaskDescriptionImage
+            or UploadPurposeCatalog.CommentAttachment or UploadPurposeCatalog.CommentDescriptionImage;
+        if (!isSupportedPurpose)
             return Result<FileRecordDto>.Failure("Unsupported upload purpose for a task file.", 400);
 
         return await _fileStorage.UploadAsync(

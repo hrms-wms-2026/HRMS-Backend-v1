@@ -66,7 +66,7 @@ public class GetObjectiveByIdQueryHandlerTests
     [Fact]
     public async Task Handle_HasReadPermission_SucceedsWithoutCheckingMembership()
     {
-        var (handler, members) = BuildHandler(Target(), ["projects:read"], hasAncestorOrSelfMembership: false);
+        var (handler, members) = BuildHandler(Target(), ["*"], hasAncestorOrSelfMembership: false);
 
         var result = await handler.Handle(new GetObjectiveByIdQuery(ObjectiveId), CancellationToken.None);
 
@@ -109,7 +109,7 @@ public class GetObjectiveByIdQueryHandlerTests
     [Fact]
     public async Task Handle_InactiveObjective_ReturnsNotFound()
     {
-        var (handler, _) = BuildHandler(Target(isActive: false), ["projects:read"], hasAncestorOrSelfMembership: false);
+        var (handler, _) = BuildHandler(Target(isActive: false), ["*"], hasAncestorOrSelfMembership: false);
 
         var result = await handler.Handle(new GetObjectiveByIdQuery(ObjectiveId), CancellationToken.None);
 
@@ -120,7 +120,7 @@ public class GetObjectiveByIdQueryHandlerTests
     [Fact]
     public async Task Handle_NotFound_ReturnsNotFound()
     {
-        var (handler, _) = BuildHandler(null, ["projects:read"], hasAncestorOrSelfMembership: false);
+        var (handler, _) = BuildHandler(null, ["*"], hasAncestorOrSelfMembership: false);
 
         var result = await handler.Handle(new GetObjectiveByIdQuery(ObjectiveId), CancellationToken.None);
 
@@ -144,7 +144,7 @@ public class GetObjectiveByIdQueryHandlerTests
             [ownerId] = "Jane Doe",
             [managerId] = "John Smith"
         };
-        var (handler, _) = BuildHandler(target, ["projects:read"], hasAncestorOrSelfMembership: false, names: names);
+        var (handler, _) = BuildHandler(target, ["*"], hasAncestorOrSelfMembership: false, names: names);
 
         var result = await handler.Handle(new GetObjectiveByIdQuery(ObjectiveId), CancellationToken.None);
 
@@ -157,7 +157,7 @@ public class GetObjectiveByIdQueryHandlerTests
     public async Task Handle_IsOwnerTrue_WhenCallerIsTheOwner()
     {
         var target = Target(ownerId: EmployeeId);
-        var (handler, _) = BuildHandler(target, ["projects:read"], hasAncestorOrSelfMembership: false);
+        var (handler, _) = BuildHandler(target, ["*"], hasAncestorOrSelfMembership: false);
 
         var result = await handler.Handle(new GetObjectiveByIdQuery(ObjectiveId), CancellationToken.None);
 
@@ -168,7 +168,7 @@ public class GetObjectiveByIdQueryHandlerTests
     public async Task Handle_IsOwnerFalse_WhenCallerIsNotTheOwner()
     {
         var target = Target();
-        var (handler, _) = BuildHandler(target, ["projects:read"], hasAncestorOrSelfMembership: false);
+        var (handler, _) = BuildHandler(target, ["*"], hasAncestorOrSelfMembership: false);
 
         var result = await handler.Handle(new GetObjectiveByIdQuery(ObjectiveId), CancellationToken.None);
 
