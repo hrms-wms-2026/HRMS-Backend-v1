@@ -9,18 +9,25 @@ using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
 
 namespace ONEVO.Application.Features.WorkManagement.Tasks.Appliers;
 
-/// <summary>Applies an approved task.edit, attributed to the requester. Stale if the task changed after the request was made.</summary>
+/// <summary>Applies an approved task.edit, attributed to the requester. Stale only if someone else changed
+/// a field this request also changes after it was made (TaskEditConflictDetector).</summary>
 public sealed class TaskEditApplier : IApprovalActionApplier
 {
     private readonly ITaskWriteService _writes;
     private readonly IObjectiveRepository _objectives;
     private readonly IWorkTaskRepository _tasks;
+    private readonly ITaskEditLogRepository _editLogs;
+    private readonly ITaskPercentageLogRepository _percentageLogs;
 
-    public TaskEditApplier(ITaskWriteService writes, IObjectiveRepository objectives, IWorkTaskRepository tasks)
+    public TaskEditApplier(
+        ITaskWriteService writes, IObjectiveRepository objectives, IWorkTaskRepository tasks,
+        ITaskEditLogRepository editLogs, ITaskPercentageLogRepository percentageLogs)
     {
         _writes = writes;
         _objectives = objectives;
         _tasks = tasks;
+        _editLogs = editLogs;
+        _percentageLogs = percentageLogs;
     }
 
     public string ActionType => WorkActionTypes.TaskEdit;
@@ -34,16 +41,22 @@ public sealed class TaskEditApplier : IApprovalActionApplier
         var task = await _tasks.GetTrackedByIdForTenantAsync(request.TenantId, request.TargetId.Value, ct);
         if (task is null)
             return ApplyOutcome.Stale;
-        if (request.TargetUpdatedAtSnapshot is { } snap && (task.UpdatedAt ?? task.CreatedAt) > snap)
-            return ApplyOutcome.Stale;
-
-        var objective = await _objectives.GetByIdForTenantAsync(request.TenantId, task.ObjectiveId, ct);
-        if (objective is null)
-            return ApplyOutcome.Stale;
 
         var input = JsonSerializer.Deserialize<TaskEditInput>(context.PayloadJson, TaskPayload.Options);
         if (input is null || string.IsNullOrWhiteSpace(input.Title))
             return ApplyOutcome.Invalid("The task edit request has no title.");
+
+        if (request.TargetUpdatedAtSnapshot is { } snap && (task.UpdatedAt ?? task.CreatedAt) > snap)
+        {
+            var laterEdits = (await _editLogs.GetForTaskAsync(request.TenantId, task.Id, ct)).Where(l => l.ChangedAt > snap).ToList();
+            var progressMoved = (await _percentageLogs.GetForTaskAsync(request.TenantId, task.Id, ct)).Any(l => l.ChangedAt > snap);
+            if (TaskEditConflictDetector.IsStale(task, input, laterEdits, progressMoved))
+                return ApplyOutcome.Stale;
+        }
+
+        var objective = await _objectives.GetByIdForTenantAsync(request.TenantId, task.ObjectiveId, ct);
+        if (objective is null)
+            return ApplyOutcome.Stale;
 
         var applied = await _writes.ApplyEditAsync(request.TenantId, request.RequestedByEmployeeId, task, objective, input,
             TaskEditLogSources.ApprovedRequest, request.Id, ct);

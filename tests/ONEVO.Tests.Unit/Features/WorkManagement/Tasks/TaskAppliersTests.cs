@@ -30,6 +30,8 @@ public class TaskAppliersTests
     private readonly Mock<IObjectiveRepository> _objectives = new();
     private readonly Mock<IMilestoneMembershipCoordinator> _membership = new();
     private readonly Mock<IWorkTaskRepository> _tasks = new();
+    private readonly Mock<ITaskEditLogRepository> _editLogs = new();
+    private readonly Mock<ITaskPercentageLogRepository> _percentageLogs = new();
     private readonly Objective _objective = new() { Id = ObjectiveId, TenantId = TenantId, ProjectId = ProjectId, IsActive = true };
     private readonly WorkTask _task = new()
     {
@@ -43,6 +45,8 @@ public class TaskAppliersTests
         _membership.Setup(x => x.GetActiveAssigneeAsync(TenantId, RequesterEmployeeId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Employee { Id = RequesterEmployeeId, TenantId = TenantId, UserId = RequesterUserId });
         _tasks.Setup(x => x.GetTrackedByIdForTenantAsync(TenantId, _task.Id, It.IsAny<CancellationToken>())).ReturnsAsync(_task);
+        _editLogs.Setup(x => x.GetForTaskAsync(TenantId, It.IsAny<Guid>(), It.IsAny<CancellationToken>())).ReturnsAsync(Array.Empty<TaskEditLog>());
+        _percentageLogs.Setup(x => x.GetForTaskAsync(TenantId, It.IsAny<Guid>(), It.IsAny<CancellationToken>())).ReturnsAsync(Array.Empty<TaskPercentageLog>());
     }
 
     private static WorkApprovalRequest Request(string actionType, Guid? targetId, string payload, DateTimeOffset? snapshot = null) => new()
@@ -58,7 +62,7 @@ public class TaskAppliersTests
         => JsonSerializer.Serialize(new TaskEditInput("Renamed", null, WorkTaskPriorities.High, null, null, null, null, "why", null));
 
     private TaskCreateApplier CreateApplier() => new(_writes.Object, _objectives.Object, _membership.Object);
-    private TaskEditApplier EditApplier() => new(_writes.Object, _objectives.Object, _tasks.Object);
+    private TaskEditApplier EditApplier() => new(_writes.Object, _objectives.Object, _tasks.Object, _editLogs.Object, _percentageLogs.Object);
     private TaskDeleteApplier DeleteApplier() => new(_writes.Object, _tasks.Object);
 
     private static Task<ApplyOutcome> Apply(IApprovalActionApplier applier, WorkApprovalRequest request)
@@ -131,15 +135,37 @@ public class TaskAppliersTests
     }
 
     [Fact]
-    public async Task Edit_TaskChangedAfterRequest_Stale()
+    public async Task Edit_SomeoneElseEditedTheSameFieldAfterRequest_Stale()
     {
-        var request = Request(WorkActionTypes.TaskEdit, _task.Id, EditPayload(), snapshot: _task.UpdatedAt!.Value.AddHours(-1));
+        var snapshot = _task.UpdatedAt!.Value.AddHours(-1);
+        _editLogs.Setup(x => x.GetForTaskAsync(TenantId, _task.Id, It.IsAny<CancellationToken>())).ReturnsAsync(new[]
+        {
+            new TaskEditLog
+            {
+                TaskId = _task.Id, ChangedAt = _task.UpdatedAt!.Value,
+                OldValuesJson = """{"title":"Original"}""", NewValuesJson = """{"title":"Old"}"""
+            }
+        });
+        var request = Request(WorkActionTypes.TaskEdit, _task.Id, EditPayload(), snapshot);
 
         var outcome = await Apply(EditApplier(), request);
 
         Assert.Equal(ApplyOutcomeKind.Stale, outcome.Kind);
         _writes.Verify(x => x.ApplyEditAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<WorkTask>(), It.IsAny<Objective>(),
             It.IsAny<TaskEditInput>(), It.IsAny<string>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Edit_TaskTouchedAfterRequestByStatusMoveOrClocking_StillApplies()
+    {
+        // UpdatedAt moved past the snapshot, but no edit or progress log exists - e.g. a status move or a push.
+        _writes.Setup(x => x.ApplyEditAsync(TenantId, RequesterEmployeeId, _task, _objective, It.IsAny<TaskEditInput>(),
+                TaskEditLogSources.ApprovedRequest, It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result.Success());
+
+        var outcome = await Apply(EditApplier(), Request(WorkActionTypes.TaskEdit, _task.Id, EditPayload(), _task.UpdatedAt!.Value.AddHours(-1)));
+
+        Assert.Equal(ApplyOutcomeKind.Applied, outcome.Kind);
     }
 
     [Fact]
