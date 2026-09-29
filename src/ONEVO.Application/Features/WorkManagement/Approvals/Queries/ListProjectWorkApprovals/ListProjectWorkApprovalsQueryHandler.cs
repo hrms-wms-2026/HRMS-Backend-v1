@@ -40,12 +40,12 @@ public sealed class ListProjectWorkApprovalsQueryHandler
             return Result<IReadOnlyList<WorkApprovalRequestResponse>>.Forbidden("No employee record for the current user.");
         var caller = callerEmployeeId.Value;
 
+        var tree = await _hierarchy.LoadTreeAsync(tenantId, query.ProjectId, ct);
         IReadOnlyList<WorkApprovalRequest> rows;
         switch (query.Scope)
         {
             case "inbox":
                 var pending = await _requests.ListByProjectAsync(tenantId, query.ProjectId, null, WorkApprovalRequestStatuses.Pending, ct);
-                var tree = await _hierarchy.LoadTreeAsync(tenantId, query.ProjectId, ct);
                 rows = pending.Where(r => WorkApprovalDecisionRules.CanDecide(tree, r, caller)).ToList();
                 break;
             case "mine":
@@ -58,6 +58,6 @@ public sealed class ListProjectWorkApprovalsQueryHandler
         var ids = rows.SelectMany(r => new[] { r.RequestedByEmployeeId, r.ApproverEmployeeId }).Distinct().ToList();
         var names = await _identity.ResolveDisplayNamesByEmployeeIdAsync(tenantId, ids, ct);
         return Result<IReadOnlyList<WorkApprovalRequestResponse>>.Success(
-            rows.Select(r => WorkApprovalRequestMapper.ToResponse(r, names)).ToList());
+            rows.Select(r => WorkApprovalRequestMapper.ToResponse(r, names, tree)).ToList());
     }
 }

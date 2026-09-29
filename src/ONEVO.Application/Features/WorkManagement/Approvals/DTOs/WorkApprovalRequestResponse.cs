@@ -15,4 +15,7 @@ public sealed record WorkApprovalRequestResponse(
     string PayloadJson,
     string? DecisionComment,
     DateTimeOffset CreatedAt,
-    DateTimeOffset? DecidedAt);
+    DateTimeOffset? DecidedAt,
+    /// <summary>The target Module's allocated hours right now - set only for module.allocation_extend rows, so the
+    /// approver sees "current -> requested".</summary>
+    decimal? CurrentAllocatedHours = null);

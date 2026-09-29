@@ -38,7 +38,7 @@ public class ListProjectWorkApprovalsQueryHandlerTests
             .ReturnsAsync(new ProjectModuleTree(new[]
             {
                 new Objective { Id = _root, OwnerId = Guid.NewGuid(), IsDefault = true },
-                new Objective { Id = _p, ParentObjectiveId = _root, OwnerId = A },
+                new Objective { Id = _p, ParentObjectiveId = _root, OwnerId = A, AllocatedHours = 120m },
                 new Objective { Id = _other, ParentObjectiveId = _root, OwnerId = Guid.NewGuid() },
             }));
     }
@@ -66,6 +66,24 @@ public class ListProjectWorkApprovalsQueryHandlerTests
 
         result.Value!.Select(r => r.Id).Should().Equal(mine.Id);
         result.Value![0].RequestedByName.Should().Be("Bala");
+    }
+
+    [Fact]
+    public async Task Rows_CarryTheModulesCurrentAllocatedHours_OnlyForAllocationRequests()
+    {
+        _identity.Setup(x => x.ResolveCallerEmployeeIdAsync(TenantId, UserId, It.IsAny<CancellationToken>())).ReturnsAsync(Requester);
+        var allocation = Pending(_p);
+        allocation.ActionType = WorkActionTypes.ModuleAllocationExtend;
+        allocation.TargetType = WorkTargetTypes.Module;
+        allocation.TargetId = _p;
+        var edit = Pending(_p);
+        _requests.Setup(x => x.ListByProjectAsync(TenantId, ProjectId, Requester, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<WorkApprovalRequest> { allocation, edit });
+
+        var result = await Build().Handle(new ListProjectWorkApprovalsQuery(ProjectId, "mine", null), default);
+
+        result.Value!.Single(r => r.Id == allocation.Id).CurrentAllocatedHours.Should().Be(120m);
+        result.Value!.Single(r => r.Id == edit.Id).CurrentAllocatedHours.Should().BeNull();
     }
 
     [Fact]
