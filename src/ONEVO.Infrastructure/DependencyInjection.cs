@@ -435,6 +435,12 @@ public static class DependencyInjection
         services.AddScoped<IApprovalActionApplier, ONEVO.Application.Features.WorkManagement.Tasks.Appliers.TaskEditApplier>();
         services.AddScoped<IApprovalActionApplier, ONEVO.Application.Features.WorkManagement.Tasks.Appliers.TaskDeleteApplier>();
         services.AddScoped<IApprovalActionApplier, ONEVO.Application.Features.WorkManagement.Tasks.Appliers.TaskStatusTemplateChangeApplier>();
+        services.AddScoped<IApprovalActionApplier, ONEVO.Application.Features.WorkManagement.Objectives.Appliers.ModuleAllocationExtendApplier>();
+        services.AddScoped<IApprovalActionApplier, ONEVO.Application.Features.WorkManagement.Objectives.Appliers.ModuleUnachieveApplier>();
+        services.AddScoped<IApprovalActionApplier, ONEVO.Application.Features.WorkManagement.Objectives.Appliers.ModuleAchieveApplier>();
+        services.AddScoped<IApprovalActionApplier, ONEVO.Application.Features.WorkManagement.Objectives.Appliers.ModuleTransferApplier>();
+        services.AddScoped<IApprovalActionApplier, ONEVO.Application.Features.WorkManagement.Objectives.Appliers.ModuleDeleteApplier>();
+        services.AddScoped<IApprovalActionApplier, ONEVO.Application.Features.WorkManagement.Objectives.Appliers.ModuleEditApplier>();
         services.AddScoped<ISprintAccessService, SprintAccessService>();
         services.AddScoped<ISprintTaskAssignmentService, SprintTaskAssignmentService>();
         services.AddScoped<IPermissionAutoGrantService, PermissionAutoGrantService>();
