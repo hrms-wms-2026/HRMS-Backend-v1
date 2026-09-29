@@ -3,6 +3,7 @@ using Npgsql;
 using ONEVO.Application.Common.Exceptions;
 using ONEVO.Application.Features.CoreHr.OnboardingDrafts.DTOs.Responses;
 using ONEVO.Application.Features.CoreHr.OnboardingDrafts.RepositoryInterfaces;
+using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
 using ONEVO.Domain.Features.OrgStructure.Entities;
 using OnboardingDraftEntity = ONEVO.Domain.Features.CoreHr.Entities.OnboardingDraft;
@@ -124,7 +125,7 @@ public class EfOnboardingDraftRepository : IOnboardingDraftRepository
     }
 
     public async Task<(IReadOnlyList<DraftListItemResponse> Items, int TotalCount)> ListWithNamesAsync(
-        Guid tenantId, Guid? startedById, int page, int pageSize, CancellationToken ct = default)
+        Guid tenantId, Guid? startedById, int page, int pageSize, CancellationToken ct = default, bool openOnly = false)
     {
         var joined =
             from d in _db.OnboardingDrafts.AsNoTracking()
@@ -140,6 +141,14 @@ public class EfOnboardingDraftRepository : IOnboardingDraftRepository
         if (startedById is not null)
         {
             joined = joined.Where(row => row.d.StartedById == startedById.Value);
+        }
+
+        if (openOnly)
+        {
+            joined = joined.Where(row =>
+                row.d.Status != OnboardingDraftStatus.Cancelled
+                && row.d.Status != OnboardingDraftStatus.Finalized
+                && (row.d.DraftReason == null || row.d.DraftReason != OnboardingDraftReason.InvitationSent));
         }
 
         var totalCount = await joined.CountAsync(ct);

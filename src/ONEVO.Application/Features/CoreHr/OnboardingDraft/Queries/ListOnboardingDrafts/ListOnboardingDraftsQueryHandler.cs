@@ -24,10 +24,10 @@ public class ListOnboardingDraftsQueryHandler : IRequestHandler<ListOnboardingDr
 
         // Per the documented rule, only the creator's own drafts are shown unless the caller
         // holds employees:write (which can see and Continue Draft on behalf of others).
-        var startedById = _currentUser.HasPermission("employees:write") ? (Guid?)null : _currentUser.UserId;
+        var startedById = request.Mine || !_currentUser.HasPermission("employees:write") ? _currentUser.UserId : (Guid?)null;
 
         var (items, totalCount) = await _draftRepository.ListWithNamesAsync(
-            _currentUser.TenantId, startedById, page, pageSize, ct);
+            _currentUser.TenantId, startedById, page, pageSize, ct, openOnly: request.Mine);
 
         return Result<DraftListPageResponse>.Success(new DraftListPageResponse(items, totalCount, page, pageSize));
     }
