@@ -8,7 +8,7 @@ using Xunit;
 
 namespace ONEVO.Tests.Unit.Features.WorkManagement.Sprints;
 
-/// <summary>Moved from the retired SprintAccessServiceTests - the audience query survived the retirement.</summary>
+/// <summary>The audience query survived the old sprint access service; its test moved here.</summary>
 public class SprintAudienceResolverTests
 {
     private static readonly Guid TenantId = Guid.NewGuid();

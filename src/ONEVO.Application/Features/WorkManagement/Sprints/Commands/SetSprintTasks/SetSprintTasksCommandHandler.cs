@@ -13,7 +13,7 @@ namespace ONEVO.Application.Features.WorkManagement.Sprints.Commands.SetSprintTa
 
 /// <summary>Spec D2: no CanManage gate here - the per-task module-ownership check inside
 /// ISprintTaskAssignmentService.PrepareAsync IS the gate (a module owner may put their tasks into
-/// anyone's sprint). CanManage on the response is computed with ISprintAccessService after the change.</summary>
+/// anyone's sprint). CanManage on the response = the caller is an active project member.</summary>
 public class SetSprintTasksCommandHandler : IRequestHandler<SetSprintTasksCommand, Result<SprintResponse>>
 {
     private readonly ICurrentUser _currentUser;

@@ -3,7 +3,7 @@ using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
 
 namespace ONEVO.Application.Features.WorkManagement.Sprints.Services;
 
-/// <summary>The audience query kept from the retired SprintAccessService.</summary>
+/// <summary>Distinct active members of the Modules of a sprint's tasks (the old sprint access service's audience query).</summary>
 public sealed class SprintAudienceResolver : ISprintAudienceResolver
 {
     private readonly IWorkTaskRepository _tasks;
