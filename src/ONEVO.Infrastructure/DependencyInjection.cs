@@ -454,7 +454,6 @@ public static class DependencyInjection
         services.AddScoped<IApprovalActionApplier, ONEVO.Application.Features.WorkManagement.Sprints.Appliers.SprintCreateApplier>();
         services.AddScoped<ISprintAudienceResolver, SprintAudienceResolver>();
         services.AddScoped<ISprintTaskAssignmentService, SprintTaskAssignmentService>();
-        services.AddScoped<IPermissionAutoGrantService, PermissionAutoGrantService>();
         services.AddScoped<ICallerIdentityResolver, CallerIdentityResolver>();
         services.AddScoped<IObjectiveAllocationSlackCalculator, ObjectiveAllocationSlackCalculator>();
         services.AddScoped<ITaskAssetLinker, TaskAssetLinker>();

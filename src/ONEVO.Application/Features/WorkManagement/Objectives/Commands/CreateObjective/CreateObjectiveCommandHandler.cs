@@ -22,12 +22,11 @@ public class CreateObjectiveCommandHandler : IRequestHandler<CreateObjectiveComm
     private readonly IObjectiveRepository _objectives;
     private readonly IUnitOfWork _unitOfWork;
     private readonly IMilestoneMembershipCoordinator _membership;
-    private readonly IPermissionAutoGrantService _autoGrant;
     private readonly IProjectMemberInvitationRepository _invitations;
 
     public CreateObjectiveCommandHandler(
         ICurrentUser currentUser, ICallerIdentityResolver identity, IObjectiveRepository objectives, IUnitOfWork unitOfWork,
-        IMilestoneMembershipCoordinator membership, IPermissionAutoGrantService autoGrant,
+        IMilestoneMembershipCoordinator membership,
         IProjectMemberInvitationRepository invitations)
     {
         _currentUser = currentUser;
@@ -35,7 +34,6 @@ public class CreateObjectiveCommandHandler : IRequestHandler<CreateObjectiveComm
         _objectives = objectives;
         _unitOfWork = unitOfWork;
         _membership = membership;
-        _autoGrant = autoGrant;
         _invitations = invitations;
     }
 

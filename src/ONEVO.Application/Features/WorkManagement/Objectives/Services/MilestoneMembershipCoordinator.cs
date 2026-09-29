@@ -78,12 +78,6 @@ public class MilestoneMembershipCoordinator : IMilestoneMembershipCoordinator
         return existing?.IsActive == true;
     }
 
-    public async Task<bool> IsActiveMemberAsync(Guid tenantId, Guid objectiveId, Guid employeeId, CancellationToken ct = default)
-    {
-        var members = await _members.ListActiveForObjectiveAsync(tenantId, objectiveId, ct);
-        return members.Any(m => m.EmployeeId == employeeId);
-    }
-
     public async Task<bool> IsEffectiveManagerAsync(Guid tenantId, Guid objectiveId, Guid employeeId, CancellationToken ct = default)
     {
         var chain = await SelfAndAncestorsAsync(tenantId, objectiveId, ct);
