@@ -81,6 +81,64 @@ public sealed class CreateCalendarEventCommandHandlerTests
     }
 
     [Fact]
+    public async Task Handle_PendingMeetingProvider_SkipsTheParticipantInviteEmail_ButStillAddsThemAndNotifiesInApp()
+    {
+        var sut = BuildSut();
+        var participantId = Guid.NewGuid();
+
+        var result = await sut.Handle(
+            new CreateCalendarEventCommand(
+                "Sprint Planning", null, Start, Start.AddHours(1), false, "Room 4", null, null,
+                CalendarRecurrences.None, [participantId], PendingMeetingProvider: "zoom"),
+            CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        _events.Verify(x => x.AddParticipantsAsync(
+            It.Is<IReadOnlyList<CalendarEventParticipant>>(p => p.Count == 1 && p[0].EmployeeId == participantId),
+            It.IsAny<CancellationToken>()), Times.Once);
+        _notifications.Verify(x => x.NotifyParticipantsAddedAsync(
+            TenantId, "Sprint Planning", Start, "Room 4",
+            It.Is<IReadOnlyList<Guid>>(ids => ids.Count == 1 && ids[0] == participantId),
+            "Ada Owner", It.IsAny<CancellationToken>(), null, false), Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_PendingMeetingProvider_DoesNotInviteGuestsYet_TheyGetTheirOneEmailWhenTheMeetingIsCreated()
+    {
+        var sut = BuildSut();
+
+        var result = await sut.Handle(
+            new CreateCalendarEventCommand(
+                "Vendor sync", null, Start, Start.AddHours(1), false, null, null, null,
+                CalendarRecurrences.None, [], PendingMeetingProvider: "microsoft_teams", GuestEmails: ["vendor@example.com"]),
+            CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        _events.Verify(x => x.AddGuestsAsync(It.IsAny<IReadOnlyList<CalendarEventGuest>>(), It.IsAny<CancellationToken>()), Times.Once);
+        _notifications.Verify(x => x.NotifyGuestsAsync(
+            It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<DateTimeOffset>(), It.IsAny<string?>(),
+            It.IsAny<IReadOnlyList<string>>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Handle_NoPendingMeetingProvider_SendsTheParticipantInviteEmailAsBefore()
+    {
+        var sut = BuildSut();
+        var participantId = Guid.NewGuid();
+
+        await sut.Handle(
+            new CreateCalendarEventCommand(
+                "Sprint Planning", null, Start, Start.AddHours(1), false, "Room 4", null, null,
+                CalendarRecurrences.None, [participantId]),
+            CancellationToken.None);
+
+        _notifications.Verify(x => x.NotifyParticipantsAddedAsync(
+            TenantId, "Sprint Planning", Start, "Room 4",
+            It.Is<IReadOnlyList<Guid>>(ids => ids.Count == 1 && ids[0] == participantId),
+            "Ada Owner", It.IsAny<CancellationToken>(), null, true), Times.Once);
+    }
+
+    [Fact]
     public async Task Handle_GuestEmails_AreStoredNormalizedAndInvited()
     {
         var sut = BuildSut();

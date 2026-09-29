@@ -9,7 +9,7 @@ public sealed record CreateCalendarEventRequest(
     string Title, string? Description, DateTimeOffset StartDate, DateTimeOffset EndDate,
     bool IsAllDay, string? Location, string? MeetingLink, string? Color,
     string Recurrence, IReadOnlyList<Guid> ParticipantEmployeeIds, string? RecurrenceRule = null,
-    IReadOnlyList<string>? GuestEmails = null);
+    IReadOnlyList<string>? GuestEmails = null, string? PendingMeetingProvider = null);
 
 public sealed record UpdateCalendarEventRequest(
     string Title, string? Description, DateTimeOffset StartDate, DateTimeOffset EndDate,

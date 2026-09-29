@@ -44,6 +44,7 @@ public sealed class CreateCalendarEventCommandHandler(
             return Result<CalendarEventItem>.Failure($"An event can have at most {CalendarEventValidation.MaxGuestsPerEvent} guests.", 400);
 
         var tenantId = currentUser.TenantId;
+        var hasPendingMeeting = !string.IsNullOrWhiteSpace(request.PendingMeetingProvider);
 
         return await unitOfWork.ExecuteInTransactionAsync(async innerCt =>
         {
@@ -71,7 +72,7 @@ public sealed class CreateCalendarEventCommandHandler(
                 var organizerName = callerEmployee is null ? "Someone" : $"{callerEmployee.FirstName} {callerEmployee.LastName}";
                 await notifications.NotifyParticipantsAddedAsync(
                     tenantId, calendarEvent.Title, calendarEvent.StartDate, calendarEvent.Location,
-                    request.ParticipantEmployeeIds, organizerName, innerCt);
+                    request.ParticipantEmployeeIds, organizerName, innerCt, sendInviteEmail: !hasPendingMeeting);
             }
 
             if (guestEmails.Count > 0)
@@ -81,11 +82,17 @@ public sealed class CreateCalendarEventCommandHandler(
                     Id = Guid.NewGuid(), TenantId = tenantId, EventId = calendarEvent.Id, Email = email
                 }).ToList(), innerCt);
 
-                var organizer = await employees.GetDefaultForUserAsync(tenantId, currentUser.UserId, innerCt);
-                var guestOrganizerName = organizer is null ? "Someone" : $"{organizer.FirstName} {organizer.LastName}";
-                await notifications.NotifyGuestsAsync(
-                    tenantId, calendarEvent.Title, calendarEvent.StartDate, calendarEvent.Location,
-                    guestEmails, guestOrganizerName, calendarEvent.MeetingLink, innerCt);
+                // Guests have no account, so there is no in-app fallback the way participants get one
+                // above - when a meeting is about to be attached, skip inviting them now entirely and
+                // let NotifyMeetingLinkAddedAsync send their one invite once the join link exists.
+                if (!hasPendingMeeting)
+                {
+                    var organizer = await employees.GetDefaultForUserAsync(tenantId, currentUser.UserId, innerCt);
+                    var guestOrganizerName = organizer is null ? "Someone" : $"{organizer.FirstName} {organizer.LastName}";
+                    await notifications.NotifyGuestsAsync(
+                        tenantId, calendarEvent.Title, calendarEvent.StartDate, calendarEvent.Location,
+                        guestEmails, guestOrganizerName, calendarEvent.MeetingLink, innerCt);
+                }
             }
 
             await unitOfWork.SaveChangesAsync(innerCt);

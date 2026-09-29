@@ -10,7 +10,7 @@ public sealed class CalendarNotificationSender(IOutboxWriter outboxWriter, IEmpl
     public async Task NotifyParticipantsAddedAsync(
         Guid tenantId, string eventTitle, DateTimeOffset startDate, string? location,
         IReadOnlyList<Guid> employeeIds, string organizerName, CancellationToken ct = default,
-        string? meetingLink = null)
+        string? meetingLink = null, bool sendInviteEmail = true)
     {
         foreach (var employeeId in employeeIds)
         {
@@ -24,6 +24,8 @@ public sealed class CalendarNotificationSender(IOutboxWriter outboxWriter, IEmpl
                     new Dictionary<string, string> { ["organizerName"] = organizerName, ["eventTitle"] = eventTitle, ["eventDate"] = startDate.ToString("u") },
                     "calendar_event", null),
                 tenantId, ct);
+
+            if (!sendInviteEmail) continue;
 
             await outboxWriter.EnqueueAsync(
                 OutboxMessageTypes.CalendarEventInviteEmail,
