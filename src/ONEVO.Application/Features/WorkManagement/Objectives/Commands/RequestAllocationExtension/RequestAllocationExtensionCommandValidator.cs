@@ -1,6 +1,6 @@
 using FluentValidation;
 
-namespace ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.Commands.RequestAllocationExtension;
+namespace ONEVO.Application.Features.WorkManagement.Objectives.Commands.RequestAllocationExtension;
 
 public class RequestAllocationExtensionCommandValidator : AbstractValidator<RequestAllocationExtensionCommand>
 {

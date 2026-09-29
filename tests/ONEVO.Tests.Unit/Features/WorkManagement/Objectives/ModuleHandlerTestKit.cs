@@ -5,7 +5,7 @@ using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Approvals.Services;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Notifications.Services;
-using ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.Commands.RequestAllocationExtension;
+using ONEVO.Application.Features.WorkManagement.Objectives.Commands.RequestAllocationExtension;
 using ONEVO.Application.Features.WorkManagement.Objectives.Commands.AchieveObjective;
 using ONEVO.Application.Features.WorkManagement.Objectives.Commands.DeleteObjective;
 using ONEVO.Application.Features.WorkManagement.Objectives.Commands.EditObjective;

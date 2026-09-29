@@ -1,5 +1,4 @@
 using ONEVO.Api.Contracts.WorkManagement.ProjectInvitations;
-using ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.DTOs.Responses;
 using ONEVO.Application.Features.WorkManagement.Objectives.DTOs.Responses;
 
 namespace ONEVO.Api.Contracts.WorkManagement.Objectives;
@@ -17,11 +16,6 @@ public static class ObjectiveViewModelMapper
         dto.Id, dto.ParentObjectiveId, dto.IsDefault, dto.Title, dto.OwnerId,
         dto.StartDate, dto.EndDate, dto.AllocatedHours, dto.CompletedHours, dto.IsActive, dto.IsAchieved,
         dto.Progress, dto.OwnerName, dto.IsOwner);
-
-    public static ObjectiveChangeRequestViewModel ToViewModel(this ObjectiveChangeRequestResponse dto) => new(
-        dto.Id, dto.ObjectiveId, dto.RequestType, dto.RequestedById, dto.ReportingManagerId,
-        dto.Status, dto.PayloadJson, dto.DecidedAt, dto.DecidedById, dto.CreatedAt,
-        dto.RequestedByName, dto.ObjectiveTitle, dto.ProjectId, dto.CurrentAllocatedHours);
 
     public static ObjectiveSubtreeViewModel ToViewModel(this ObjectiveSubtreeResponse dto) => new(
         dto.ParentObjective?.ToViewModel(), dto.Objective.ToViewModel());

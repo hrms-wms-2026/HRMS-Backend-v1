@@ -44,7 +44,6 @@ using ONEVO.Domain.Features.WorkManagement.Notifications.Entities;
 using ONEVO.Domain.Features.WorkManagement.CalendarEvents.Entities;
 using ONEVO.Domain.Features.WorkManagement.Labels.Entities;
 
-using ONEVO.Domain.Features.WorkManagement.ObjectiveChangeRequests.Entities;
 using ONEVO.Domain.Features.WorkManagement.Objectives.Entities;
 using ONEVO.Domain.Features.WorkManagement.ProjectInvitations.Entities;
 using ONEVO.Domain.Features.WorkManagement.ProjectMembers.Entities;
@@ -299,7 +298,6 @@ public class ApplicationDbContext : DbContext
     public DbSet<CalendarEventObjective> CalendarEventObjectives => Set<CalendarEventObjective>();
     public DbSet<CalendarEventTask> CalendarEventTasks => Set<CalendarEventTask>();
 
-    public DbSet<ObjectiveChangeRequest> ObjectiveChangeRequests => Set<ObjectiveChangeRequest>();
     public DbSet<ProjectMember> ProjectMembers => Set<ProjectMember>();
     public DbSet<ProjectMemberInvitation> ProjectMemberInvitations => Set<ProjectMemberInvitation>();
     public DbSet<VersionStatus> VersionStatuses => Set<VersionStatus>();

@@ -2,9 +2,9 @@ using MediatR;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Approvals.RepositoryInterfaces;
-using ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.ProjectInvitations.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Sprints.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.DTOs.Responses;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
 
@@ -16,24 +16,24 @@ public class GetWorkNotificationNavigationQueryHandler
     private readonly ICurrentUser _currentUser;
     private readonly IWorkTaskRepository _tasks;
     private readonly IWorkApprovalRequestRepository _workApprovals;
-    private readonly IObjectiveChangeRequestRepository _changeRequests;
     private readonly IObjectiveRepository _objectives;
     private readonly IProjectMemberInvitationRepository _invitations;
+    private readonly ISprintRepository _sprints;
 
     public GetWorkNotificationNavigationQueryHandler(
         ICurrentUser currentUser,
         IWorkTaskRepository tasks,
         IWorkApprovalRequestRepository workApprovals,
-        IObjectiveChangeRequestRepository changeRequests,
         IObjectiveRepository objectives,
-        IProjectMemberInvitationRepository invitations)
+        IProjectMemberInvitationRepository invitations,
+        ISprintRepository sprints)
     {
         _currentUser = currentUser;
         _tasks = tasks;
         _workApprovals = workApprovals;
-        _changeRequests = changeRequests;
         _objectives = objectives;
         _invitations = invitations;
+        _sprints = sprints;
     }
 
     public async Task<Result<WorkNotificationNavigationResponse>> Handle(
@@ -48,12 +48,14 @@ public class GetWorkNotificationNavigationQueryHandler
         return type switch
         {
             "task" => await FromTaskAsync(tenantId, request.RelatedEntityId, ct),
-            // Old task_creation/edit_request bell notifications carry ids the data migration kept,
-            // so they open the same Approvals tab as the engine's work_approval_request.
-            "work_approval_request" or "task_creation_request" or "task_edit_request" =>
+            // Old task_creation/edit_request and objective_change_request/allocation_extend bell
+            // notifications carry ids the data migrations kept, so they open the same Approvals tab as
+            // the engine's work_approval_request.
+            "work_approval_request" or "task_creation_request" or "task_edit_request"
+                or "objective_change_request" or "allocation_extend" =>
                 await FromWorkApprovalRequestAsync(tenantId, request.RelatedEntityId, ct),
-            "objective_change_request" or "allocation_extend" =>
-                await FromChangeRequestAsync(tenantId, request.RelatedEntityId, ct),
+            "module" => await FromModuleAsync(tenantId, request.RelatedEntityId, ct),
+            "sprint" => await FromSprintAsync(tenantId, request.RelatedEntityId, ct),
             "project_member_invitation" =>
                 await FromInvitationAsync(tenantId, request.RelatedEntityId, ct),
             "task_status_change_request" =>
@@ -123,18 +125,22 @@ public class GetWorkNotificationNavigationQueryHandler
             objective.ProjectId, objective.Id, task.Id, "board"));
     }
 
-    private async Task<Result<WorkNotificationNavigationResponse>> FromChangeRequestAsync(
-        Guid tenantId, Guid requestId, CancellationToken ct)
+    private async Task<Result<WorkNotificationNavigationResponse>> FromModuleAsync(Guid tenantId, Guid moduleId, CancellationToken ct)
     {
-        var change = await _changeRequests.GetByIdForTenantAsync(tenantId, requestId, ct);
-        if (change is null)
-            return Result<WorkNotificationNavigationResponse>.NotFound("Change request not found.");
+        var module = await _objectives.GetByIdForTenantAsync(tenantId, moduleId, ct);
+        return module is null
+            ? Result<WorkNotificationNavigationResponse>.NotFound("Objective not found.")
+            : Result<WorkNotificationNavigationResponse>.Success(new(module.ProjectId, module.Id, null, "tree"));
+    }
 
-        var objective = await _objectives.GetByIdForTenantAsync(tenantId, change.ObjectiveId, ct);
-        if (objective is null)
-            return Result<WorkNotificationNavigationResponse>.NotFound("Objective not found.");
-
-        return Result<WorkNotificationNavigationResponse>.Success(new(
-            objective.ProjectId, objective.Id, null, "approvals"));
+    private async Task<Result<WorkNotificationNavigationResponse>> FromSprintAsync(Guid tenantId, Guid sprintId, CancellationToken ct)
+    {
+        var sprint = await _sprints.GetByIdForTenantAsync(tenantId, sprintId, ct);
+        if (sprint is null)
+            return Result<WorkNotificationNavigationResponse>.NotFound("Sprint not found.");
+        var root = await _objectives.GetDefaultByProjectIdAsync(tenantId, sprint.ProjectId, ct);
+        return root is null
+            ? Result<WorkNotificationNavigationResponse>.NotFound("Objective not found.")
+            : Result<WorkNotificationNavigationResponse>.Success(new(sprint.ProjectId, root.Id, null, "tree"));
     }
 }

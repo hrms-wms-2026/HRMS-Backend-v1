@@ -4,11 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using ONEVO.Api.Contracts.WorkManagement.Objectives;
 using ONEVO.Api.Contracts.WorkManagement.ProjectInvitations;
 using ONEVO.Api.Filters;
-using ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.Commands.ApproveObjectiveChangeRequest;
-using ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.Commands.RejectObjectiveChangeRequest;
-using ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.Commands.RequestAllocationExtension;
-using ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.DTOs;
-using ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.Queries.ListMyObjectiveChangeRequests;
+using ONEVO.Application.Features.WorkManagement.Objectives.Commands.RequestAllocationExtension;
 using ONEVO.Application.Features.WorkManagement.Objectives.Commands.AchieveObjective;
 using ONEVO.Application.Features.WorkManagement.Objectives.Commands.AddObjectiveMember;
 using ONEVO.Application.Features.WorkManagement.Objectives.Commands.CreateObjective;
@@ -231,48 +227,6 @@ public class ObjectivesController : ControllerBase
         return result.Value!.Applied
             ? Ok()
             : StatusCode(202, new { approvalRequestId = result.Value.ApprovalRequestId });
-    }
-
-    /// <summary>Approves a pending change request. Caller must be the request's Reporting Manager.</summary>
-    [HttpPost("change-requests/{requestId:guid}/approve")]
-    public async Task<IActionResult> ApproveChangeRequest(
-        Guid requestId,
-        [FromBody] ApproveObjectiveChangeRequestRequest? request,
-        CancellationToken ct)
-    {
-        EditObjectiveRequestPayload? approvedEdit = request?.Title is not null
-            && request.StartDate is not null && request.EndDate is not null && request.AllocatedHours is not null
-            ? new EditObjectiveRequestPayload(request.Title, request.Description, request.StartDate.Value, request.EndDate.Value, request.AllocatedHours.Value)
-            : null;
-
-        var result = await _mediator.Send(
-            new ApproveObjectiveChangeRequestCommand(requestId, request?.ApprovedAdditionalHours, approvedEdit), ct);
-
-        return result.IsSuccess
-            ? NoContent()
-            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
-    }
-
-    /// <summary>Rejects a pending change request. Caller must be the request's Reporting Manager. The Objective is left unchanged.</summary>
-    [HttpPost("change-requests/{requestId:guid}/reject")]
-    public async Task<IActionResult> RejectChangeRequest(Guid requestId, CancellationToken ct)
-    {
-        var result = await _mediator.Send(new RejectObjectiveChangeRequestCommand(requestId), ct);
-
-        return result.IsSuccess
-            ? NoContent()
-            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
-    }
-
-    /// <summary>The caller's own approval queue - pending requests where they are the Reporting Manager.</summary>
-    [HttpGet("change-requests/mine")]
-    public async Task<IActionResult> ListMyChangeRequests(CancellationToken ct)
-    {
-        var result = await _mediator.Send(new ListMyObjectiveChangeRequestsQuery(), ct);
-
-        return result.IsSuccess
-            ? Ok(result.Value!.Select(r => r.ToViewModel()).ToList())
-            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
     /// <summary>Milestones the caller used to have active access to but no longer does (Transferred away, removed as a member, or Achieved with no other reason to stay in the project). Read-only.</summary>

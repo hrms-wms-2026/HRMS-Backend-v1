@@ -1,6 +1,6 @@
 using FluentAssertions;
 using Moq;
-using ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.Commands.RequestAllocationExtension;
+using ONEVO.Application.Features.WorkManagement.Objectives.Commands.RequestAllocationExtension;
 using ONEVO.Application.Features.WorkManagement.Objectives.Commands.AchieveObjective;
 using ONEVO.Application.Features.WorkManagement.Objectives.Commands.DeleteObjective;
 using ONEVO.Application.Features.WorkManagement.Objectives.Commands.EditObjective;

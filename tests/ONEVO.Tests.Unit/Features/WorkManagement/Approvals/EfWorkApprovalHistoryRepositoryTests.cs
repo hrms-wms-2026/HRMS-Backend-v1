@@ -3,7 +3,6 @@ using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Domain.Features.WorkManagement.Approvals.Entities;
-using ONEVO.Domain.Features.WorkManagement.ObjectiveChangeRequests.Entities;
 using ONEVO.Domain.Features.WorkManagement.Objectives.Entities;
 using ONEVO.Domain.Features.WorkManagement.ProjectInvitations.Entities;
 using ONEVO.Domain.Features.WorkManagement.Projects.Entities;
@@ -81,14 +80,18 @@ public sealed class EfWorkApprovalHistoryRepositoryTests : IDisposable
         db.WorkApprovalRequests.Add(TaskRequest(WorkActionTypes.TaskDelete, taskId, objectiveId,
             requestedBy: OtherEmployeeId, approver: EmployeeId, status: WorkApprovalRequestStatuses.Rejected,
             decidedBy: OtherEmployeeId, payload: "{\"note\":\"Unrelated\"}"));
-        db.ObjectiveChangeRequests.Add(new ObjectiveChangeRequest
-        {
-            Id = Guid.NewGuid(), TenantId = TenantId, ObjectiveId = objectiveId,
-            RequestedById = EmployeeId, ReportingManagerId = OtherEmployeeId,
-            RequestType = ObjectiveChangeRequestTypes.ExtendAllocation,
-            Status = ObjectiveChangeRequestStatuses.Pending,
-            PayloadJson = "{\"requestedAdditionalHours\":8,\"reason\":\"Finish integration\"}"
-        });
+        // Module and sprint requests the employee took part in (module rows point at the module itself).
+        db.WorkApprovalRequests.Add(ModuleRequest(WorkActionTypes.ModuleAllocationExtend, objectiveId, requestedBy: EmployeeId,
+            status: WorkApprovalRequestStatuses.Pending, decidedBy: null, payload: "{\"requestedAdditionalHours\":8,\"reason\":\"Finish integration\"}"));
+        db.WorkApprovalRequests.Add(ModuleRequest(WorkActionTypes.ModuleEdit, objectiveId, requestedBy: EmployeeId,
+            status: WorkApprovalRequestStatuses.Pending, decidedBy: null, payload: "{\"title\":\"Payments v2\"}"));
+        db.WorkApprovalRequests.Add(ModuleRequest(WorkActionTypes.ModuleAchieve, objectiveId, requestedBy: OtherEmployeeId,
+            status: WorkApprovalRequestStatuses.Approved, decidedBy: EmployeeId, payload: "{}"));
+        var sprintStart = ModuleRequest(WorkActionTypes.SprintStart, Guid.NewGuid(), requestedBy: EmployeeId,
+            status: WorkApprovalRequestStatuses.Pending, decidedBy: null, payload: "{}");
+        sprintStart.TargetType = WorkTargetTypes.Sprint;
+        sprintStart.TargetTitle = "Sprint 1";
+        db.WorkApprovalRequests.Add(sprintStart);
         db.ProjectMemberInvitations.Add(new ProjectMemberInvitation
         {
             Id = Guid.NewGuid(), TenantId = TenantId, ProjectId = ProjectId, ObjectiveId = objectiveId,
@@ -111,15 +114,28 @@ public sealed class EfWorkApprovalHistoryRepositoryTests : IDisposable
         var repository = new EfWorkApprovalHistoryRepository(db);
         var items = await repository.ListForEmployeeAsync(TenantId, ProjectId, EmployeeId);
 
-        Assert.Equal(6, items.Count);
+        Assert.Equal(9, items.Count);
         Assert.Contains(items, item => item.Kind == "task_status_change" && item.SubjectTitle == "Task statuses" && item.RequestedById == EmployeeId);
         Assert.Contains(items, item => item.Kind == "task_creation" && item.DecidedById == EmployeeId && item.SubjectTitle == "Audit events");
         Assert.Contains(items, item => item.Kind == "task_edit" && item.RequestedById == EmployeeId);
         Assert.Contains(items, item => item.Kind == "task_delete" && item.Status == "pending" && item.ApproverId == EmployeeId);
-        Assert.Contains(items, item => item.Kind == "allocation_extend" && item.Status == "pending");
+        Assert.Contains(items, item => item.Kind == "allocation_extend" && item.Status == "pending" && item.ObjectiveId == objectiveId);
+        Assert.Contains(items, item => item.Kind == "objective_edit" && item.SubjectTitle == "Payments");
+        Assert.Contains(items, item => item.Kind == "objective_change" && item.DecidedById == EmployeeId);
+        Assert.Contains(items, item => item.Kind == "sprint_change" && item.SubjectTitle == "Sprint 1");
         Assert.Contains(items, item => item.Kind == "objective_invitation" && item.PayloadJson!.Contains("member"));
         Assert.DoesNotContain(items, item => item.PayloadJson?.Contains("Unrelated") == true);
     }
+
+    private static WorkApprovalRequest ModuleRequest(string actionType, Guid targetId, Guid requestedBy, string status, Guid? decidedBy, string payload) => new()
+    {
+        Id = Guid.NewGuid(), TenantId = TenantId, ProjectId = ProjectId, ActionType = actionType,
+        TargetType = WorkTargetTypes.Module, TargetId = targetId, TargetTitle = "Payments",
+        PositionObjectiveId = Guid.NewGuid(), ApproverSource = WorkApprovalSources.Hierarchy,
+        ApproverEmployeeId = requestedBy == EmployeeId ? OtherEmployeeId : EmployeeId, RequestedByEmployeeId = requestedBy,
+        PayloadJson = payload, Status = status, DecidedByEmployeeId = decidedBy,
+        DecidedAt = decidedBy is null ? null : DateTimeOffset.UtcNow
+    };
 
     private static WorkApprovalRequest TaskRequest(
         string actionType, Guid? targetId, Guid positionId, Guid requestedBy, Guid approver, string status,

@@ -29,8 +29,8 @@ public interface IObjectiveRepository
     /// DbContext's change tracker instead of AsNoTracking. Use on write paths that later call
     /// <see cref="Update"/> or mutate the entity directly - tracking it from the start lets EF's
     /// identity map correctly deduplicate against any other tracked query that touches the same
-    /// row later in the same request (see ApproveObjectiveChangeRequestCommandHandler's
-    /// extend_allocation branch for why this matters - GetTrackedActiveDirectChildrenAsync can
+    /// row later in the same request (see ModuleWriteService.ApplyAllocationExtendAsync's
+    /// parent-slack check for why this matters - GetTrackedActiveDirectChildrenAsync can
     /// re-fetch this same row as part of a sibling-sum check).
     /// </summary>
     Task<Objective?> GetTrackedByIdForTenantAsync(Guid tenantId, Guid id, CancellationToken ct = default);

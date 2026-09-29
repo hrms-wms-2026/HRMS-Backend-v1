@@ -1,10 +1,10 @@
 using Moq;
-using ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.Commands.RequestAllocationExtension;
+using ONEVO.Application.Features.WorkManagement.Objectives.Commands.RequestAllocationExtension;
 using ONEVO.Domain.Features.WorkManagement.Approvals.Entities;
 using Xunit;
 using K = ONEVO.Tests.Unit.Features.WorkManagement.Objectives.ModuleHandlerTestKit;
 
-namespace ONEVO.Tests.Unit.Features.WorkManagement.ObjectiveChangeRequests;
+namespace ONEVO.Tests.Unit.Features.WorkManagement.Objectives;
 
 public class RequestAllocationExtensionCommandHandlerTests
 {

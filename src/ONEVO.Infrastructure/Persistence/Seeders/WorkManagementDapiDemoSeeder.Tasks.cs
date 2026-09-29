@@ -1,9 +1,8 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
-using ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.DTOs;
+using ONEVO.Application.Features.WorkManagement.Objectives.DTOs;
 using ONEVO.Application.Features.WorkManagement.Tasks.DTOs;
 using ONEVO.Domain.Features.WorkManagement.Approvals.Entities;
-using ONEVO.Domain.Features.WorkManagement.ObjectiveChangeRequests.Entities;
 using ONEVO.Domain.Features.WorkManagement.Objectives.Entities;
 using ONEVO.Domain.Features.WorkManagement.Projects.Entities;
 using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
@@ -346,8 +345,8 @@ public sealed partial class WorkManagementDapiDemoSeeder
             var requestId = DeterministicGuid($"dapi-demo:allocation-extend:{spec.ProjectKey}:{spec.ObjectivePath}");
             // IgnoreQueryFilters lets the idempotency check see soft-deleted demo requests. Retain
             // explicit tenant scoping because the bypass also removes the global tenant filter.
-            if (db.ObjectiveChangeRequests.Local.Any(r => r.TenantId == DapiTenantId && r.Id == requestId)
-                || await db.ObjectiveChangeRequests.IgnoreQueryFilters()
+            if (db.WorkApprovalRequests.Local.Any(r => r.TenantId == DapiTenantId && r.Id == requestId)
+                || await db.WorkApprovalRequests.IgnoreQueryFilters()
                     .AnyAsync(r => r.TenantId == DapiTenantId && r.Id == requestId, ct))
             {
                 continue;
@@ -356,7 +355,16 @@ public sealed partial class WorkManagementDapiDemoSeeder
             var objectiveId = DeterministicGuid($"dapi-demo:objective:{spec.ProjectKey}:{spec.ObjectivePath}");
             var objective = db.Objectives.Local.FirstOrDefault(o => o.Id == objectiveId)
                 ?? await db.Objectives.FirstOrDefaultAsync(o => o.Id == objectiveId, ct);
-            if (objective is null || objective.ReportingManagerId is null)
+            if (objective?.ParentObjectiveId is null)
+            {
+                continue;
+            }
+
+            // The parent module's owner decides (the request's creator position is the parent).
+            var parentId = objective.ParentObjectiveId.Value;
+            var parent = db.Objectives.Local.FirstOrDefault(o => o.Id == parentId)
+                ?? await db.Objectives.FirstOrDefaultAsync(o => o.Id == parentId, ct);
+            if (parent is null)
             {
                 continue;
             }
@@ -368,17 +376,21 @@ public sealed partial class WorkManagementDapiDemoSeeder
                 continue;
             }
 
-            var payload = new ExtendAllocationRequestPayload(spec.AdditionalHours, spec.Reason);
-            db.ObjectiveChangeRequests.Add(new ObjectiveChangeRequest
+            db.WorkApprovalRequests.Add(new WorkApprovalRequest
             {
                 Id = requestId,
                 TenantId = DapiTenantId,
-                ObjectiveId = objectiveId,
-                RequestType = ObjectiveChangeRequestTypes.ExtendAllocation,
-                RequestedById = employeeIdByPersonKey[ownerPersonKey],
-                ReportingManagerId = objective.ReportingManagerId.Value,
-                Status = ObjectiveChangeRequestStatuses.Pending,
-                PayloadJson = JsonSerializer.Serialize(payload),
+                ProjectId = objective.ProjectId,
+                ActionType = WorkActionTypes.ModuleAllocationExtend,
+                TargetType = WorkTargetTypes.Module,
+                TargetId = objectiveId,
+                TargetTitle = objective.Title,
+                PositionObjectiveId = parentId,
+                ApproverSource = WorkApprovalSources.Hierarchy,
+                ApproverEmployeeId = parent.OwnerId,
+                RequestedByEmployeeId = employeeIdByPersonKey[ownerPersonKey],
+                Status = WorkApprovalRequestStatuses.Pending,
+                PayloadJson = JsonSerializer.Serialize(new ModuleAllocationExtendInput(spec.AdditionalHours, spec.Reason), ModulePayloadJson.Options),
                 CreatedById = ResolveUserId(ownerPersonKey),
                 CreatedAt = now
             });

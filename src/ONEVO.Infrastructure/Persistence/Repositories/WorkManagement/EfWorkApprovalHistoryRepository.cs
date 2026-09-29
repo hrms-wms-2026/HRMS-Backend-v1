@@ -2,7 +2,6 @@ using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using ONEVO.Application.Features.WorkManagement.Approvals.RepositoryInterfaces;
 using ONEVO.Domain.Features.WorkManagement.Approvals.Entities;
-using ONEVO.Domain.Features.WorkManagement.ObjectiveChangeRequests.Entities;
 using ONEVO.Domain.Features.WorkManagement.ProjectInvitations.Entities;
 using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
 
@@ -22,18 +21,24 @@ public sealed class EfWorkApprovalHistoryRepository : IWorkApprovalHistoryReposi
     {
         var engineRequests = await _db.WorkApprovalRequests.AsNoTracking()
             .Where(r => r.TenantId == tenantId && r.ProjectId == projectId
-                && (r.ActionType.StartsWith("task.") || r.ActionType == WorkActionTypes.ProjectStatusTemplateChange)
+                && (r.ActionType.StartsWith("task.") || r.ActionType.StartsWith("module.") || r.ActionType.StartsWith("sprint.")
+                    || r.ActionType == WorkActionTypes.ProjectStatusTemplateChange)
                 && (r.RequestedByEmployeeId == employeeId || r.DecidedByEmployeeId == employeeId
                     || (r.Status == WorkApprovalRequestStatuses.Pending && r.ApproverEmployeeId == employeeId)))
             .ToListAsync(ct);
-        var taskRecords = engineRequests.Select(r => new WorkApprovalHistoryRecord(
-            r.Id, r.PositionObjectiveId ?? Guid.Empty,
+        var engineRecords = engineRequests.Select(r => new WorkApprovalHistoryRecord(
+            r.Id,
+            r.TargetType == WorkTargetTypes.Module ? r.TargetId ?? Guid.Empty : r.PositionObjectiveId ?? Guid.Empty,
             r.ActionType switch
             {
                 WorkActionTypes.TaskCreate => "task_creation",
                 WorkActionTypes.TaskEdit => "task_edit",
                 WorkActionTypes.TaskDelete => "task_delete",
                 WorkActionTypes.ProjectStatusTemplateChange => "task_status_change",
+                WorkActionTypes.ModuleEdit => "objective_edit",
+                WorkActionTypes.ModuleAllocationExtend => "allocation_extend",
+                var a when a.StartsWith("module.") => "objective_change",
+                var a when a.StartsWith("sprint.") => "sprint_change",
                 _ => r.ActionType
             },
             r.Status,
@@ -41,38 +46,6 @@ public sealed class EfWorkApprovalHistoryRepository : IWorkApprovalHistoryReposi
             r.PayloadJson, r.RequestedByEmployeeId,
             r.DecidedByEmployeeId ?? r.ApproverEmployeeId, r.DecidedByEmployeeId, r.DecisionComment,
             r.CreatedAt, r.DecidedAt)).ToList();
-
-        var objectiveChanges = await (
-            from request in _db.ObjectiveChangeRequests.AsNoTracking()
-            join objective in _db.Objectives.AsNoTracking() on request.ObjectiveId equals objective.Id
-            where request.TenantId == tenantId
-                  && objective.ProjectId == projectId
-                  && (request.RequestedById == employeeId
-                      || request.ReportingManagerId == employeeId)
-            select new WorkApprovalHistoryRecord(
-                request.Id,
-                request.ObjectiveId,
-                request.RequestType == ObjectiveChangeRequestTypes.ExtendAllocation
-                    ? "allocation_extend"
-                    : request.RequestType == ObjectiveChangeRequestTypes.Edit
-                        ? "objective_edit"
-                        : "objective_change",
-                request.Status,
-                objective.Title,
-                request.PayloadJson,
-                request.RequestedById,
-                request.ReportingManagerId,
-                // Objective-change commands historically persisted the authenticated UserId in
-                // DecidedById, while RequestedById/ReportingManagerId are EmployeeIds. The command
-                // authorizes only ReportingManagerId to act, so that employee snapshot is the
-                // reliable decision actor for both existing and new rows.
-                request.Status == ObjectiveChangeRequestStatuses.Pending
-                    ? null
-                    : request.ReportingManagerId,
-                null,
-                request.CreatedAt,
-                request.DecidedAt)
-        ).ToListAsync(ct);
 
         var invitations = await (
             from invitation in _db.ProjectMemberInvitations.AsNoTracking()
@@ -115,8 +88,7 @@ public sealed class EfWorkApprovalHistoryRepository : IWorkApprovalHistoryReposi
             }).ToList();
         }
 
-        return taskRecords
-            .Concat(objectiveChanges)
+        return engineRecords
             .Concat(invitations)
             .OrderByDescending(item => item.DecidedAt ?? item.CreatedAt)
             .ToList();

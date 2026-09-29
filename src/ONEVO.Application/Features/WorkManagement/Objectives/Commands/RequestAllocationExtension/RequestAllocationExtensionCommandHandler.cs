@@ -8,7 +8,7 @@ using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Objectives.Services;
 using ONEVO.Domain.Features.WorkManagement.Approvals.Entities;
 
-namespace ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.Commands.RequestAllocationExtension;
+namespace ONEVO.Application.Features.WorkManagement.Objectives.Commands.RequestAllocationExtension;
 
 /// <summary>
 /// More allocated hours for a milestone, through the approval engine: the parent's owner (or above)
