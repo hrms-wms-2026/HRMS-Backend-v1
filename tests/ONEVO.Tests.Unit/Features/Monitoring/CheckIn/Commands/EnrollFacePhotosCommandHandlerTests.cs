@@ -121,21 +121,26 @@ public class EnrollFacePhotosCommandHandlerTests
     }
 
     [Fact]
-    public async Task AlreadyEnrolled_RefusesAndSavesNothing()
+    public async Task AlreadyEnrolled_ReplacesAllThreeReferences()
     {
+        var oldFront = Guid.NewGuid();
+        var existing = new BiometricProfile
+        {
+            Id = Guid.NewGuid(), TenantId = _tenantId, EmployeeId = _employeeId,
+            Status = BiometricProfileStatus.Enrolled, ReferencePhotoFileId = oldFront
+        };
         _profiles.Setup(p => p.GetByEmployeeIdAsync(_tenantId, _employeeId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new BiometricProfile
-            {
-                Id = Guid.NewGuid(), TenantId = _tenantId, EmployeeId = _employeeId,
-                Status = BiometricProfileStatus.Enrolled, ReferencePhotoFileId = Guid.NewGuid()
-            });
+            .ReturnsAsync(existing);
 
         var result = await CreateSut().Handle(Cmd(), CancellationToken.None);
 
-        result.Value!.Enrolled.Should().BeFalse();
-        result.Value.FailureReason.Should().Be(ValidateFacePhotoCommandHandler.AlreadyEnrolled);
-        VerifyNothingSaved();
-        _quality.Verify(q => q.AnalyzeAsync(It.IsAny<Stream>(), It.IsAny<CancellationToken>()), Times.Never);
+        result.Value!.Enrolled.Should().BeTrue();
+        existing.ReferencePhotoFileId.Should().NotBe(oldFront);
+        existing.LeftReferencePhotoFileId.Should().NotBeNull();
+        existing.RightReferencePhotoFileId.Should().NotBeNull();
+        _profiles.Verify(p => p.Update(existing), Times.Once);
+        _profiles.Verify(p => p.AddAsync(It.IsAny<BiometricProfile>(), It.IsAny<CancellationToken>()), Times.Never);
+        _profiles.Verify(p => p.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
