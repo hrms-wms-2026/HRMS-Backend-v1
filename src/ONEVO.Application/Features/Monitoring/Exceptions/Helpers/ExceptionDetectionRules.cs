@@ -1,10 +1,12 @@
 using ONEVO.Domain.Features.Monitoring.ActivityMonitoring.Entities;
 
-namespace ONEVO.Infrastructure.Services.Monitoring.Exceptions;
+namespace ONEVO.Application.Features.Monitoring.Exceptions.Helpers;
 
 /// <summary>
 /// Pure pattern-detection predicates. Extracted for unit testing without hosting
 /// infrastructure, same pattern as ActivityDailySummaryAggregator/WellnessRuleEvaluator.
+/// Lives in Application so the evidence query can show reviewers the same thresholds the
+/// nightly ExceptionDetectionJob applied.
 /// </summary>
 public static class ExceptionDetectionRules
 {

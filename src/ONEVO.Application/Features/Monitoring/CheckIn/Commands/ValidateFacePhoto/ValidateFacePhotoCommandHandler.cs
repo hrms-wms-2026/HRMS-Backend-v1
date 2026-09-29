@@ -105,7 +105,8 @@ public class ValidateFacePhotoCommandHandler
                 ? FacePhotoValidationPurpose.ClockOut
                 : FacePhotoValidationPurpose.ClockIn;
             result = await _retryPolicy.ApplyAsync(
-                new FaceCheckAttemptContext(_device.TenantId, _device.UserId, employeeId, _device.LegalEntityId, purpose),
+                new FaceCheckAttemptContext(
+                    _device.TenantId, _device.UserId, employeeId, _device.LegalEntityId, purpose, _device.DeviceRegistrationId),
                 result,
                 captured,
                 request.ContentType,

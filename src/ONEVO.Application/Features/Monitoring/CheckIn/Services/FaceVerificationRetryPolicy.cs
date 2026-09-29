@@ -8,6 +8,11 @@ using ONEVO.Application.Features.CoreHr.EmployeeAuthority.ServiceInterfaces;
 using ONEVO.Application.Features.Monitoring.CheckIn.DTOs.Responses;
 using ONEVO.Application.Features.Monitoring.CheckIn.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.CheckIn.ServiceInterfaces;
+using ONEVO.Application.Features.Monitoring.Exceptions.RepositoryInterfaces;
+using ONEVO.Application.Features.Monitoring.Exceptions.Services;
+using ExceptionStatus = ONEVO.Domain.Features.Monitoring.Exceptions.Entities.ExceptionStatus;
+using ExceptionType = ONEVO.Domain.Features.Monitoring.Exceptions.Entities.ExceptionType;
+using MonitoringException = ONEVO.Domain.Features.Monitoring.Exceptions.Entities.Exception;
 using ONEVO.Application.Features.Storage.File.Helpers;
 using ONEVO.Application.Features.Storage.File.ServiceInterfaces;
 using ONEVO.Domain.Features.Monitoring.CheckIn.Entities;
@@ -45,6 +50,7 @@ public class FaceVerificationRetryPolicy : IFaceVerificationRetryPolicy
     private readonly INotificationDispatcher _notifications;
     private readonly IDateTimeProvider _clock;
     private readonly IPermissionRepository _permissions;
+    private readonly IExceptionRepository _exceptions;
     private readonly ILogger<FaceVerificationRetryPolicy> _logger;
 
     public FaceVerificationRetryPolicy(
@@ -55,8 +61,10 @@ public class FaceVerificationRetryPolicy : IFaceVerificationRetryPolicy
         INotificationDispatcher notifications,
         IDateTimeProvider clock,
         IPermissionRepository permissions,
+        IExceptionRepository exceptions,
         ILogger<FaceVerificationRetryPolicy>? logger = null)
     {
+        _exceptions = exceptions;
         _attempts = attempts;
         _fileStorage = fileStorage;
         _employees = employees;
@@ -112,33 +120,71 @@ public class FaceVerificationRetryPolicy : IFaceVerificationRetryPolicy
             return result with { FailedAttempts = failedSoFar, MaxAttempts = MaxAttempts };
         }
 
-        // Last attempt failed too: let the employee through, keep the photo, alert the manager.
+        // Last attempt failed too: let the employee through, keep the photo, open an identity case
+        // and alert the manager.
         attempt.Outcome = FaceVerificationAttempt.OutcomeOverridden;
         attempt.PhotoFileId = await KeepPhotoAsync(context, photo, contentType, ct);
         await _attempts.AddAsync(attempt, ct);
+        // The attempt commits on its own first: nothing below is allowed to lock the employee out.
+        await _attempts.SaveChangesAsync(ct);
 
         var reasons = earlier
             .Select(a => a.FailureReason)
             .Append(result.FailureReason)
             .Where(r => !string.IsNullOrWhiteSpace(r))
+            .Select(r => r!)
             .Distinct()
             .ToList();
-        await AlertManagerAsync(context, attempt, reasons!, ct);
 
-        await _attempts.SaveChangesAsync(ct);
+        // The case is saved on its own, so a failure working out who to alert can't lose it.
+        MonitoringException? identityCase = null;
+        if (context.EmployeeId != Guid.Empty)
+        {
+            try
+            {
+                var built = BuildIdentityCase(context, attempt, reasons);
+                await _exceptions.AddAsync(built, ct);
+                await _exceptions.SaveChangesAsync(ct);
+                identityCase = built;
+            }
+            catch (Exception ex) when (!ct.IsCancellationRequested)
+            {
+                // The failed row stays in the change tracker, so any further save here would fail
+                // the same way - stop; the employee is already let through.
+                _logger.LogWarning(ex,
+                    "Face verification override for employee {EmployeeId}: could not open the identity case; nobody was alerted",
+                    context.EmployeeId);
+                return OverrideResult(result, failedSoFar);
+            }
+        }
+
+        try
+        {
+            await AlertManagerAsync(context, attempt, reasons, identityCase, ct);
+            await _exceptions.SaveChangesAsync(ct);
+        }
+        catch (Exception ex) when (!ct.IsCancellationRequested)
+        {
+            _logger.LogWarning(ex,
+                "Face verification override for employee {EmployeeId}: identity case saved but the reviewer could not be alerted",
+                context.EmployeeId);
+        }
 
         _logger.LogWarning(
             "Face verification overridden after {Attempts} failed attempts for employee {EmployeeId} ({Purpose}); reasons {Reasons}",
             failedSoFar, context.EmployeeId, context.Purpose, string.Join(",", reasons));
 
-        return result with
+        return OverrideResult(result, failedSoFar);
+    }
+
+    private static FacePhotoValidationResponseDto OverrideResult(FacePhotoValidationResponseDto result, int failedSoFar) =>
+        result with
         {
             CanProceed = true,
             FailureReason = ManagerReview,
             FailedAttempts = failedSoFar,
             MaxAttempts = MaxAttempts
         };
-    }
 
     private async Task<Guid?> KeepPhotoAsync(
         FaceCheckAttemptContext context, Stream photo, string contentType, CancellationToken ct)
@@ -169,8 +215,39 @@ public class FaceVerificationRetryPolicy : IFaceVerificationRetryPolicy
         return null;
     }
 
+    private MonitoringException BuildIdentityCase(
+        FaceCheckAttemptContext context, FaceVerificationAttempt attempt, IReadOnlyList<string> reasons)
+    {
+        var action = context.Purpose == "clock_out" ? "clock-out" : "clock-in";
+        var described = reasons.Count == 0 ? "unknown reason" : string.Join(", ", reasons.Select(Describe));
+        return new MonitoringException
+        {
+            Id = Guid.NewGuid(),
+            TenantId = context.TenantId,
+            EmployeeId = context.EmployeeId,
+            Type = ExceptionType.IdentityAnomaly,
+            Status = ExceptionStatus.Open,
+            Title = "Identity check overridden",
+            // The real reasons, so poor lighting or a face-check outage doesn't read as impersonation.
+            Description = $"The face check failed {MaxAttempts} times at {action} ({described}). The employee was let through so the check can be reviewed.",
+            DetectedAt = attempt.CreatedAt,
+            MetadataJson = new ExceptionMetadata
+            {
+                Source = ExceptionMetadata.SourceFaceCheckOverride,
+                OccurredAt = attempt.CreatedAt,
+                FaceAttemptId = attempt.Id,
+                Purpose = context.Purpose,
+                SimilarityScore = attempt.SimilarityScore,
+                Reasons = reasons,
+                DeviceRegistrationId = context.DeviceRegistrationId,
+                PhotoFileId = attempt.PhotoFileId
+            }.ToJson()
+        };
+    }
+
     private async Task AlertManagerAsync(
-        FaceCheckAttemptContext context, FaceVerificationAttempt attempt, IReadOnlyList<string> reasons, CancellationToken ct)
+        FaceCheckAttemptContext context, FaceVerificationAttempt attempt, IReadOnlyList<string> reasons,
+        MonitoringException? identityCase, CancellationToken ct)
     {
         var employee = await _employees.GetByIdAsync(context.TenantId, context.EmployeeId, ct);
         var recipients = await ResolveReviewersAsync(context, employee, ct);
@@ -192,10 +269,15 @@ public class FaceVerificationRetryPolicy : IFaceVerificationRetryPolicy
             ["reasons"] = reasons.Count == 0 ? "unknown" : string.Join(", ", reasons.Select(Describe))
         };
 
+        // Points at the identity case when there is one, so the alert opens it on the Alerts page.
+        var (relatedType, relatedId) = identityCase is null
+            ? (RelatedEntityType, attempt.Id)
+            : (ExceptionPermissions.RelatedEntityType, identityCase.Id);
+
         foreach (var recipient in recipients)
         {
             await _notifications.SendTemplatedAsync(
-                context.TenantId, recipient, NotificationTemplate, placeholders, RelatedEntityType, attempt.Id, ct);
+                context.TenantId, recipient, NotificationTemplate, placeholders, relatedType, relatedId, ct);
         }
     }
 

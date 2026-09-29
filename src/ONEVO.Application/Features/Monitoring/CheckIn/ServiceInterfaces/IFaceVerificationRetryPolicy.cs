@@ -3,12 +3,14 @@ using ONEVO.Application.Features.Monitoring.CheckIn.DTOs.Responses;
 namespace ONEVO.Application.Features.Monitoring.CheckIn.ServiceInterfaces;
 
 /// <param name="Purpose">"clock_in" or "clock_out" — counted separately.</param>
+/// <param name="DeviceRegistrationId">The tray device the check came from, kept on the identity case as evidence.</param>
 public record FaceCheckAttemptContext(
     Guid TenantId,
     Guid UserId,
     Guid EmployeeId,
     Guid? DeviceLegalEntityId,
-    string Purpose);
+    string Purpose,
+    Guid? DeviceRegistrationId = null);
 
 public interface IFaceVerificationRetryPolicy
 {

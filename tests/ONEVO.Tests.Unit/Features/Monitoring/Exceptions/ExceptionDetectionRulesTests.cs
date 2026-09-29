@@ -1,6 +1,6 @@
 using FluentAssertions;
 using ONEVO.Domain.Features.Monitoring.ActivityMonitoring.Entities;
-using ONEVO.Infrastructure.Services.Monitoring.Exceptions;
+using ONEVO.Application.Features.Monitoring.Exceptions.Helpers;
 using Xunit;
 
 namespace ONEVO.Tests.Unit.Features.Monitoring.Exceptions;
