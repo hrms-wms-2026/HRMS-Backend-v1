@@ -660,7 +660,7 @@ public static class DependencyInjection
             ONEVO.Application.Features.Monitoring.Screenshots.RepositoryInterfaces.IInactivityCaptureAttemptRepository,
             ONEVO.Infrastructure.Persistence.Repositories.Monitoring.Screenshots.EfInactivityCaptureAttemptRepository>();
         services.AddHostedService<ONEVO.Infrastructure.Services.Monitoring.Screenshots.AgentCommandExpiryJob>();
-        services.AddHostedService<Services.WorkManagement.SprintLifecycleJob>();
+        services.AddHostedService<Services.WorkManagement.ProjectMonitorJob>();
         services.AddHostedService<Services.Calendar.CalendarSyncJob>();
         services.AddHostedService<Services.Calendar.TeamsAttendanceSyncJob>();
         services.AddHostedService<Services.Calendar.ZoomAttendanceSyncJob>();

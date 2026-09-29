@@ -34,8 +34,4 @@ public class Sprint : BaseEntity
     public string Status { get; set; } = SprintStatuses.Draft;
     public DateTimeOffset? CompletedAt { get; set; }
     public DateTimeOffset? AchievedAt { get; set; }
-
-    /// <summary>Set once by SprintLifecycleJob's overdue sweep so the notification fires exactly
-    /// once per sprint instead of every 5-minute tick. Never cleared.</summary>
-    public DateTimeOffset? OverdueNotifiedAt { get; set; }
 }

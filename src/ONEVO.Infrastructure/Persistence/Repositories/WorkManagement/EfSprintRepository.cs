@@ -40,9 +40,6 @@ public class EfSprintRepository : ISprintRepository
         => await _db.WorkTasks.AnyAsync(t => t.TenantId == tenantId && t.ObjectiveId == objectiveId && t.SprintId != null
                && _db.Sprints.Any(s => s.Id == t.SprintId && s.Status == SprintStatuses.Active), ct);
 
-    public async Task<IReadOnlyList<Sprint>> GetByStatusAsync(string status, CancellationToken ct = default)
-        => await _db.Sprints.Where(s => s.Status == status).ToListAsync(ct);
-
     public void Update(Sprint sprint) => _db.Sprints.Update(sprint);
 
     public void Remove(Sprint sprint) => _db.Sprints.Remove(sprint);

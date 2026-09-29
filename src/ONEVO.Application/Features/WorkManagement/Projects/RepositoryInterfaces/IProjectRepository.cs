@@ -41,4 +41,8 @@ public interface IProjectRepository
     /// task creates cannot collide.
     /// </summary>
     Task<long> IncrementAndGetNextTaskNumberAsync(Guid tenantId, Guid projectId, CancellationToken ct = default);
+
+    /// <summary>Tenant-unscoped (admin mode) - active, not-achieved projects of every tenant, for the
+    /// hourly ProjectMonitorJob sweep.</summary>
+    Task<IReadOnlyList<Project>> ListActiveAcrossTenantsAsync(CancellationToken ct = default);
 }
