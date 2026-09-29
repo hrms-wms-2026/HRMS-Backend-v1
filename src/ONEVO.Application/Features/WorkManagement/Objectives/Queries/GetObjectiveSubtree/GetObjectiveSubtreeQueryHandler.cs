@@ -6,7 +6,7 @@ using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Objectives.DTOs.Responses;
 using ONEVO.Application.Features.WorkManagement.Objectives.Mappers;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
-using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Hierarchy;
 
 namespace ONEVO.Application.Features.WorkManagement.Objectives.Queries.GetObjectiveSubtree;
 
@@ -15,17 +15,17 @@ public class GetObjectiveSubtreeQueryHandler : IRequestHandler<GetObjectiveSubtr
     private readonly ICurrentUser _currentUser;
     private readonly ICallerIdentityResolver _identity;
     private readonly IObjectiveRepository _objectives;
-    private readonly IProjectMemberRepository _members;
+    private readonly IModuleReadAccess _readAccess;
     private readonly IPermissionResolver _permissionResolver;
 
     public GetObjectiveSubtreeQueryHandler(
         ICurrentUser currentUser, ICallerIdentityResolver identity, IObjectiveRepository objectives,
-        IProjectMemberRepository members, IPermissionResolver permissionResolver)
+        IModuleReadAccess readAccess, IPermissionResolver permissionResolver)
     {
         _currentUser = currentUser;
         _identity = identity;
         _objectives = objectives;
-        _members = members;
+        _readAccess = readAccess;
         _permissionResolver = permissionResolver;
     }
 
@@ -52,19 +52,7 @@ public class GetObjectiveSubtreeQueryHandler : IRequestHandler<GetObjectiveSubtr
 
         if (!hasReadPermission)
         {
-            var selfAndAncestorIds = new List<Guid> { objective.Id };
-            var cursor = objective;
-            while (cursor.ParentObjectiveId is not null)
-            {
-                var ancestor = await _objectives.GetByIdForTenantAsync(tenantId, cursor.ParentObjectiveId.Value, ct);
-                if (ancestor is null)
-                    break;
-
-                selfAndAncestorIds.Add(ancestor.Id);
-                cursor = ancestor;
-            }
-
-            var hasAccess = await _members.HasActiveMembershipForAnyObjectiveAsync(tenantId, objective.ProjectId, callerEmployeeId.Value, selfAndAncestorIds, ct);
+            var hasAccess = await _readAccess.CanReadAsync(tenantId, objective, callerEmployeeId.Value, ct);
             if (!hasAccess)
                 return Result<ObjectiveSubtreeResponse>.Forbidden("You do not have access to this milestone.");
         }

@@ -1,7 +1,9 @@
 using ONEVO.Application.Common.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Hierarchy;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
 using ONEVO.Domain.Features.CoreHr.Entities;
+using ONEVO.Domain.Features.WorkManagement.Objectives.Entities;
 using ONEVO.Domain.Features.WorkManagement.ProjectMembers.Entities;
 using ONEVO.Domain.Lookups;
 
@@ -84,38 +86,28 @@ public class MilestoneMembershipCoordinator : IMilestoneMembershipCoordinator
 
     public async Task<bool> IsEffectiveManagerAsync(Guid tenantId, Guid objectiveId, Guid employeeId, CancellationToken ct = default)
     {
-        var cursor = await _objectives.GetByIdForTenantAsync(tenantId, objectiveId, ct);
+        var chain = await SelfAndAncestorsAsync(tenantId, objectiveId, ct);
+        if (chain.Count == 0)
+            return false;
+        if (chain.Any(o => o.OwnerId == employeeId))
+            return true;
 
-        while (cursor is not null)
-        {
-            if (cursor.OwnerId == employeeId)
-                return true;
-
-            if (await IsActiveMemberAsync(tenantId, cursor.Id, employeeId, ct))
-                return true;
-
-            cursor = cursor.ParentObjectiveId is null
-                ? null
-                : await _objectives.GetByIdForTenantAsync(tenantId, cursor.ParentObjectiveId.Value, ct);
-        }
-
-        return false;
+        return await _members.HasActiveMembershipForAnyObjectiveAsync(
+            tenantId, chain[0].ProjectId, employeeId, chain.Select(o => o.Id).ToList(), ct);
     }
 
     public async Task<bool> IsEffectiveOwnerAsync(Guid tenantId, Guid objectiveId, Guid employeeId, CancellationToken ct = default)
+        => (await SelfAndAncestorsAsync(tenantId, objectiveId, ct)).Any(o => o.OwnerId == employeeId);
+
+    /// <summary>Self first, root last - one query for the project tree instead of one per level.</summary>
+    private async Task<IReadOnlyList<Objective>> SelfAndAncestorsAsync(Guid tenantId, Guid objectiveId, CancellationToken ct)
     {
-        var cursor = await _objectives.GetByIdForTenantAsync(tenantId, objectiveId, ct);
+        var start = await _objectives.GetByIdForTenantAsync(tenantId, objectiveId, ct);
+        if (start is null)
+            return [];
 
-        while (cursor is not null)
-        {
-            if (cursor.OwnerId == employeeId)
-                return true;
-
-            cursor = cursor.ParentObjectiveId is null
-                ? null
-                : await _objectives.GetByIdForTenantAsync(tenantId, cursor.ParentObjectiveId.Value, ct);
-        }
-
-        return false;
+        var tree = new ProjectModuleTree(await _objectives.GetAllByProjectIdAsync(tenantId, start.ProjectId, ct));
+        var chain = tree.AncestorChain(start.Id);
+        return chain.Count > 0 ? chain : [start];
     }
 }

@@ -92,7 +92,7 @@ public class GetObjectiveSprintsQueryHandlerTests
 
         return new GetObjectiveSprintsQueryHandler(
             currentUser.Object, identity.Object, objectives.Object, _members.Object,
-            permissionResolver.Object, _sprints.Object);
+            permissionResolver.Object, _sprints.Object, WorkHierarchyServiceMocks.ReadAccess(_members, objective, parent));
     }
 
     [Fact]

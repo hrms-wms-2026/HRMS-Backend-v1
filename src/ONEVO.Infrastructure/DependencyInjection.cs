@@ -425,6 +425,7 @@ public static class DependencyInjection
         // Work Management - Milestone & Achievement services
         services.AddScoped<IMilestoneMembershipCoordinator, MilestoneMembershipCoordinator>();
         services.AddScoped<IWorkHierarchyService, WorkHierarchyService>();
+        services.AddScoped<IModuleReadAccess, ModuleReadAccess>();
         services.AddScoped<IWorkNotificationEngine, WorkNotificationEngine>();
         services.AddScoped<IWorkApprovalEngine, WorkApprovalEngine>();
         services.AddScoped<IApprovalActionApplierRegistry, ApprovalActionApplierRegistry>();
