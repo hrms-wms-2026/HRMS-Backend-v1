@@ -140,6 +140,24 @@ public sealed class OnboardingDraftsIntegrationTests : IAsyncLifetime
         secondResult.StatusCode.Should().Be(409);
     }
 
+    [Fact]
+    public async Task SavingWithOnlyCompanyAndStep_PersistsBlanksAndNullStartDate()
+    {
+        var partial = new SaveOnboardingDraftCommand(
+            null, null, null, null, _legalEntityId, null, null, null, null, null, null, null, null,
+            "employee_details", null, null);
+
+        await using var createDb = CreateContext(useRestrictedRole: true);
+        var result = await BuildHandler(createDb).Handle(partial, CancellationToken.None);
+        result.IsSuccess.Should().BeTrue();
+
+        await using var readDb = CreateContext(useRestrictedRole: true);
+        var stored = await readDb.OnboardingDrafts.AsNoTracking().SingleAsync(d => d.Id == result.Value!.Id);
+        stored.StartDate.Should().BeNull();
+        stored.FirstName.Should().BeEmpty();
+        stored.WorkEmail.Should().BeEmpty();
+    }
+
     private SaveOnboardingDraftCommandHandler BuildHandler(ApplicationDbContext db)
     {
         var draftRepository = new EfOnboardingDraftRepository(db);
