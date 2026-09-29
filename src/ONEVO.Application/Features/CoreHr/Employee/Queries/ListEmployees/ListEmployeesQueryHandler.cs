@@ -98,7 +98,7 @@ public class ListEmployeesQueryHandler : IRequestHandler<ListEmployeesQuery, Res
                 request.EmploymentTypeCodes is { Count: > 0 } codes ? codes : null,
                 request.ReportingManagerId,
                 sortBy,
-                request.SortDescending);
+                request.SortDescending,
                 request.ActiveOnly);
 
             (items, totalCount) = includeAttendanceWarnings

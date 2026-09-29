@@ -11,11 +11,10 @@ namespace ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
 /// unaffected). An empty (non-null) collection means "nothing visible".
 /// </summary>
 public sealed record EmployeeListFilter(
-
     string? Search, Guid? DepartmentId, Guid? LegalEntityId,
     IReadOnlyCollection<Guid>? RestrictToEmployeeIds = null, Guid? PositionId = null,
     IReadOnlyCollection<string>? EmploymentTypeCodes = null, Guid? ReportingManagerId = null,
-    string? SortBy = null, bool SortDescending = false);
+    string? SortBy = null, bool SortDescending = false,
     // Opt-in, not a default-on filter: this list is shared by HR-admin screens that need to find
     // an offboarded/terminated employee's record, as well as picker-style callers (e.g. calendar
     // participants) that should only ever offer someone who could actually attend. Same
