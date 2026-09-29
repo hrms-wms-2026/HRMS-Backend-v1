@@ -238,6 +238,21 @@ GET /api/v1/dashboard/team/capabilities        [Authorize(TenantPolicy)], no Req
 
 - **Query budget:** at most 10 DB round trips.
 - **Target latency:** p95 < 150 ms on the dev dataset.
+
+**What `canViewPeopleStatus` means: authority, not population.**
+- `HasAnyManagedCoverageAsync` proves only that the caller holds `attendance:read` and that their
+  active primary position owns at least one **active** `ManagementCoverageRecord` in the active
+  legal entity. That is, the caller has management-coverage **authority**.
+- It does **not** prove that expanding that coverage currently yields any active employee. Some
+  examples where it yields no one:
+  - a covered position is vacant;
+  - a covered department has no active members;
+  - the only covered person has left.
+- So `canViewPeopleStatus` can be `true` while `team/today` legitimately returns `total = 0`.
+  This is expected behavior, not an error. Team Status shows its empty state (§8.1.5).
+- **Do not** "fix" this by expanding scope inside the capabilities endpoint. Expansion is the
+  expensive part (§13.1), and the capability call runs on every My Day visit. The only place
+  the population is materialized is the Team Status request itself.
 - **Architecture constraint:** `HasAnyManagedCoverageAsync` receives the permission code as a
   parameter, per `EmployeeAuthorityResolverArchitectureTests.EmployeeAuthorityResolver_NeverHardcodesAPermissionCode`.
 
@@ -480,6 +495,28 @@ LedWorkProgressResponse {
 
 **Business question:** Of everything above, what should I act on first?
 
+**UX contract: an attention queue, not another inbox.**
+- Priority Actions is intentionally a **small, prioritized attention queue** built from data that
+  also appears in the source cards.
+- **The same actionable entity may appear twice**, once in Priority Actions and once in its
+  source section (Approvals & Exceptions, or Team Progress's overdue list). This is by design.
+- The two surfaces answer different questions:
+  - **Source cards** are summaries and navigation: how much is waiting in each area, with a
+    route to each area's list.
+  - **Priority Actions** answers "what should I look at first?".
+- **No second source of truth.**
+  - Every Priority Actions item is a direct projection of an item already present in the
+    `action-items` or `led-progress` response in memory.
+  - It has no state of its own: no read/dismissed flags, no persistence, no separate fetch.
+  - Acting on an item happens only at the owning feature via its deep link (§15). The next load
+    of both surfaces reflects the result.
+- **No cross-widget deduplication infrastructure.**
+  - Source cards do not hide items because Priority Actions shows them, and vice versa.
+  - No shared "seen" registry or coordination service is built.
+  - The only deduplication is *within* Priority Actions: an entity appears at most once, keyed by
+    `sourceKey + entityId`. This falls out of the input shape, since each source lists an entity
+    once.
+
 **Inputs** (no extra call):
 - `action-items.sources[*].topItems` (up to 5 per source, oldest first);
 - `led-progress.overdueTasks`.
@@ -623,7 +660,9 @@ endpoint. Today these endpoints check only `monitoring:read` (or
 - **Target rule:** the subject must be inside `ResolveVisibilityAsync(RequiredPermission:
   "monitoring:read", LegalEntityId: subject's, IncludeSelf: true)`. This is the pattern
   `GetAttendanceDayDetail` already uses.
-- **This spec does not implement it.**
+- **This spec does not implement it.** It is a parallel security remediation (§19.1):
+  - it does **not** block attendance-only V1;
+  - it **must** be merged before Phase 2 live activity can start or ship.
 - **This spec requires:**
   - `canViewLiveActivity` stays `false`;
   - no My Team endpoint returns activity, idle, meeting, presence or screenshot data;
@@ -668,8 +707,35 @@ The plan adds a test-only interceptor if none exists.
 |---|---|---|
 | `capabilities` | 10 | coverage size, project count |
 | `team/today` | 15 | population size |
-| `action-items` | 45 | covered population. The resolver expansion runs **once** per request. |
+| `action-items` | **Measured, not yet fixed** (see below) | covered population, number of pending items |
 | `led-progress` | 9 | projects, modules, tasks |
+
+**Budget for `action-items`: measure first, then fix a number.**
+
+It gets no numeric budget in this spec. It composes about 10 existing inbox predicates whose
+current query shapes have never been measured, so any number chosen now would be arbitrary.
+What **is** required now:
+1. **No population-size N+1.**
+   - Round trips must not grow with the size of the covered population, the number of pending
+     items, or the number of projects.
+   - Tests assert this by comparing two fixtures of different size (for example 5 vs 50 covered
+     employees, 2 vs 20 pending items per source): the command counts must be equal.
+2. **Reuse the existing predicates.** Every source's count and top N use the same predicate
+   builder as its existing list endpoint (§9.4). Rewriting a predicate to save queries is not
+   allowed.
+3. **One coverage expansion per request.** The resolver expansion runs once per request,
+   through the §13.1 memo, however many attendance or exception sources use it.
+4. **Record a baseline.**
+   - The implementation records, per source, the DB command count for a representative fixture,
+     and the total.
+   - The results go into the implementation PR, together with a list of consolidation
+     opportunities, for example:
+     - folding count and top N into one query per source;
+     - sharing the actor/employee lookups across sources;
+     - batching Work predicates by project.
+5. **Set the budget later.** After review, a justified budget is set in a follow-up change to
+   this spec and locked with a regression test. Until then the requirement-1 invariance test is
+   the guard.
 
 **Frontend call budget:**
 
@@ -760,8 +826,12 @@ The destination always re-authorizes. The dashboard never performs an action inl
 - **AC-10.** No My Team response contains activity, idle, meeting, presence or screenshot fields.
 - **AC-11.** All People data is limited to the active legal entity, and cards are labelled
   "in {legal entity}".
-- **AC-12.** The performance budgets in §13.2 are met. Resolver output is identical before and
-  after §13.1 on the existing resolver test suite.
+- **AC-12.** Performance:
+  - The numeric budgets in §13.2 are met (`capabilities`, `team/today`, `led-progress`).
+  - `action-items` shows no population-size N+1: command counts are equal across the small and
+    large fixtures.
+  - Its per-source baseline is recorded in the PR.
+  - Resolver output is identical before and after §13.1 on the existing resolver test suite.
 
 ## 18. Tests
 
@@ -811,6 +881,8 @@ The destination always re-authorizes. The dashboard never performs an action inl
 - `capabilities`: each flag true and false; module-inactive tenant → Work flags false.
 - Query budgets (§13.2) with the counting interceptor, using a fixture of 3 covered positions,
   2 departments with sub-departments, company coverage, and 5 projects × 20 modules.
+  - `action-items` is not held to a number. Its test asserts only that the command counts are
+    equal between the small and large fixtures, and prints a per-source baseline.
 - Resolver regression: the existing resolver tests pass unchanged. Batched and unbatched
   results are identical on a randomized fixture.
 
@@ -855,7 +927,6 @@ The destination always re-authorizes. The dashboard never performs an action inl
 Each step is independently mergeable and ends green (backend `dotnet test`, frontend unit
 tests + build).
 
-0. **SEC-MON-SCOPE.** Separate spec and PR, run in parallel. It blocks only Phase 2 (§8.1.4).
 1. **Resolver performance (§13.1).** Batching + memo + regression and budget tests. No behavior
    change.
 2. **Pure extractions.**
@@ -883,6 +954,19 @@ tests + build).
    - plain employee.
 
    Screenshot each, then run a final full test run in both repos.
+
+### 19.1 Parallel security remediation: SEC-MON-SCOPE (not part of the V1 sequence)
+
+SEC-MON-SCOPE (§12) is a **separate, high-priority security remediation**. It has its own spec,
+its own plan and its own PR, and runs in parallel with steps 1–9 above. It is not one of those
+steps.
+- It **does NOT block attendance-only My Team V1.** Steps 1–9 may start, merge and ship whatever
+  its status, because V1 returns no monitoring data (§12, AC-10).
+- It **MUST be merged to `development` before Phase 2** live Active / Idle / Meeting / Offline
+  (§8.1.4) can start implementation, and before it can ship.
+- Until then:
+  - `canViewLiveActivity` stays hard-wired to `false`;
+  - no `monitoring/team/presence` endpoint exists.
 
 ## 20. Existing behavior noted, not changed by this spec
 
