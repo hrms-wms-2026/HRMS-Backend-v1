@@ -442,6 +442,7 @@ public static class DependencyInjection
         services.AddScoped<IObjectiveAllocationSlackCalculator, ObjectiveAllocationSlackCalculator>();
         services.AddScoped<ITaskAssetLinker, TaskAssetLinker>();
         services.AddScoped<ITaskWriteService, TaskWriteService>();
+        services.AddScoped<IModuleWriteService, ModuleWriteService>();
         services.AddScoped<ITaskAccessResolver, TaskAccessResolver>();
 
         // Auth: global email directory
