@@ -63,7 +63,7 @@ public sealed class SprintLifecycleJob : BackgroundService
         var tenantContext = scope.ServiceProvider.GetRequiredService<IWritableTenantContext>();
         var tenants = scope.ServiceProvider.GetRequiredService<ITenantRepository>();
         var tenantSwitcher = scope.ServiceProvider.GetRequiredService<ITenantContextSwitcher>();
-        var access = scope.ServiceProvider.GetRequiredService<ISprintAccessService>();
+        var audienceResolver = scope.ServiceProvider.GetRequiredService<ISprintAudienceResolver>();
         var projects = scope.ServiceProvider.GetRequiredService<IProjectRepository>();
         var membership = scope.ServiceProvider.GetRequiredService<IMilestoneMembershipCoordinator>();
         var notifications = scope.ServiceProvider.GetRequiredService<INotificationDispatcher>();
@@ -112,7 +112,7 @@ public sealed class SprintLifecycleJob : BackgroundService
                 tenantNotified++;
 
                 var project = await projects.GetByIdForTenantAsync(sprint.TenantId, sprint.ProjectId, ct);
-                var audience = await access.GetAudienceEmployeeIdsAsync(tenantId, sprint.Id, ct);
+                var audience = await audienceResolver.GetAudienceEmployeeIdsAsync(tenantId, sprint.Id, ct);
                 foreach (var employeeId in audience)
                 {
                     var assignee = await membership.GetActiveAssigneeAsync(tenantId, employeeId, ct);

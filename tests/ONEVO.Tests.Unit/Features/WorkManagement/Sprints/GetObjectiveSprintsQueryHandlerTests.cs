@@ -49,14 +49,13 @@ public class GetObjectiveSprintsQueryHandlerTests
 
     private readonly Mock<IProjectMemberRepository> _members = new();
     private readonly Mock<ISprintRepository> _sprints = new();
-    private readonly Mock<ISprintAccessService> _access = new();
 
     private GetObjectiveSprintsQueryHandler BuildHandler(
         Objective? objective,
         Objective? parent = null,
         bool hasReadPermission = false,
         Func<IReadOnlyList<Guid>, bool>? membershipForIds = null,
-        IReadOnlySet<Guid>? manageableSprintIds = null)
+        bool isProjectMember = false)
     {
         var currentUser = new Mock<ICurrentUser>();
         currentUser.SetupGet(x => x.IsAuthenticated).Returns(true);
@@ -87,21 +86,22 @@ public class GetObjectiveSprintsQueryHandlerTests
         _sprints.Setup(x => x.GetContainingObjectiveTasksAsync(TenantId, ObjectiveId, It.IsAny<bool>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(sprintList);
 
-        _access.Setup(x => x.GetManageableSprintIdsAsync(TenantId, ProjectId, It.IsAny<IReadOnlyList<Sprint>>(), UserId, CallerEmployeeId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(manageableSprintIds ?? new HashSet<Guid>());
+        // CanManage = active project member (the approval engine decides direct vs request).
+        _members.Setup(x => x.HasActiveMembershipAsync(TenantId, ProjectId, CallerEmployeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(isProjectMember);
 
         return new GetObjectiveSprintsQueryHandler(
             currentUser.Object, identity.Object, objectives.Object, _members.Object,
-            permissionResolver.Object, _sprints.Object, _access.Object);
+            permissionResolver.Object, _sprints.Object);
     }
 
     [Fact]
-    public async Task Handle_ActiveMembershipOnObjective_ReturnsSprintsWithCanManage()
+    public async Task Handle_ActiveMembershipOnObjective_ProjectMember_ReturnsSprintsWithCanManage()
     {
         var handler = BuildHandler(
             Objective(ObjectiveId, parentId: null),
             membershipForIds: ids => ids.Contains(ObjectiveId),
-            manageableSprintIds: new HashSet<Guid> { SprintId });
+            isProjectMember: true);
 
         var result = await handler.Handle(new GetObjectiveSprintsQuery(ObjectiveId, ActiveOnly: false), CancellationToken.None);
 

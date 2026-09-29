@@ -7,7 +7,6 @@ using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Sprints.DTOs.Responses;
 using ONEVO.Application.Features.WorkManagement.Sprints.RepositoryInterfaces;
-using ONEVO.Application.Features.WorkManagement.Sprints.Services;
 
 namespace ONEVO.Application.Features.WorkManagement.Sprints.Queries.GetObjectiveSprints;
 
@@ -19,7 +18,6 @@ public class GetObjectiveSprintsQueryHandler : IRequestHandler<GetObjectiveSprin
     private readonly IProjectMemberRepository _members;
     private readonly IPermissionResolver _permissionResolver;
     private readonly ISprintRepository _sprints;
-    private readonly ISprintAccessService _access;
 
     public GetObjectiveSprintsQueryHandler(
         ICurrentUser currentUser,
@@ -27,8 +25,7 @@ public class GetObjectiveSprintsQueryHandler : IRequestHandler<GetObjectiveSprin
         IObjectiveRepository objectives,
         IProjectMemberRepository members,
         IPermissionResolver permissionResolver,
-        ISprintRepository sprints,
-        ISprintAccessService access)
+        ISprintRepository sprints)
     {
         _currentUser = currentUser;
         _identity = identity;
@@ -36,7 +33,6 @@ public class GetObjectiveSprintsQueryHandler : IRequestHandler<GetObjectiveSprin
         _members = members;
         _permissionResolver = permissionResolver;
         _sprints = sprints;
-        _access = access;
     }
 
     public async Task<Result<IReadOnlyList<SprintResponse>>> Handle(GetObjectiveSprintsQuery request, CancellationToken ct)
@@ -80,8 +76,9 @@ public class GetObjectiveSprintsQueryHandler : IRequestHandler<GetObjectiveSprin
         }
 
         var sprints = await _sprints.GetContainingObjectiveTasksAsync(tenantId, request.ObjectiveId, request.ActiveOnly, ct);
-        var manageable = await _access.GetManageableSprintIdsAsync(tenantId, objective.ProjectId, sprints, userId, callerEmployeeId.Value, ct);
+        // Any project member may act on a sprint - directly or by request; the approval engine decides which.
+        var isMember = await _members.HasActiveMembershipAsync(tenantId, objective.ProjectId, callerEmployeeId.Value, ct);
         return Result<IReadOnlyList<SprintResponse>>.Success(
-            sprints.Select(s => SprintResponse.From(s, manageable.Contains(s.Id))).ToList());
+            sprints.Select(s => SprintResponse.From(s, isMember)).ToList());
     }
 }

@@ -78,7 +78,7 @@ public sealed class SprintTestWiring
             .Callback<WorkAction, CancellationToken>((a, _) => Submitted.Add(a)).ReturnsAsync(result);
 
     public SprintWriteService Writes() => new(Projects.Object, Sprints.Object, Tasks.Object, Statuses.Object, Assignment.Object,
-        Logs.Object, Members.Object, Membership.Object, Notifications.Object);
+        Logs.Object, new SprintAudienceResolver(Tasks.Object, Members.Object), Membership.Object, Notifications.Object);
 
     public SprintActionSubmitter Submitter() => new(Hierarchy.Object, Members.Object, Identity.Object, UnitOfWork.Object,
         Approvals.Object, WorkNotifications.Object);

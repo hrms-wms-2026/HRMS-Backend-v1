@@ -83,7 +83,7 @@ public class SprintLifecycleJobTests
         projects.Setup(p => p.GetByIdForTenantAsync(tenantId, projectId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Project { Id = projectId, TenantId = tenantId, Name = "Project X" });
 
-        var access = new Mock<ISprintAccessService>();
+        var access = new Mock<ISprintAudienceResolver>();
         access.Setup(a => a.GetAudienceEmployeeIdsAsync(tenantId, sprintId, It.IsAny<CancellationToken>()))
             .ReturnsAsync([employee1, employee2]);
 

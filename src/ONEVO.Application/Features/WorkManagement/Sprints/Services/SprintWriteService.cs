@@ -1,7 +1,6 @@
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Objectives.Services;
-using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Sprints.DTOs;
 using ONEVO.Application.Features.WorkManagement.Sprints.RepositoryInterfaces;
@@ -18,13 +17,13 @@ public sealed class SprintWriteService : ISprintWriteService
     private readonly ITaskStatusRepository _statuses;
     private readonly ISprintTaskAssignmentService _assignment;
     private readonly ISprintActivityLogRepository _logs;
-    private readonly IProjectMemberRepository _members;
+    private readonly ISprintAudienceResolver _audience;
     private readonly IMilestoneMembershipCoordinator _membership;
     private readonly INotificationDispatcher _notifications;
 
     public SprintWriteService(
         IProjectRepository projects, ISprintRepository sprints, IWorkTaskRepository tasks, ITaskStatusRepository statuses,
-        ISprintTaskAssignmentService assignment, ISprintActivityLogRepository logs, IProjectMemberRepository members,
+        ISprintTaskAssignmentService assignment, ISprintActivityLogRepository logs, ISprintAudienceResolver audience,
         IMilestoneMembershipCoordinator membership, INotificationDispatcher notifications)
     {
         _projects = projects;
@@ -33,7 +32,7 @@ public sealed class SprintWriteService : ISprintWriteService
         _statuses = statuses;
         _assignment = assignment;
         _logs = logs;
-        _members = members;
+        _audience = audience;
         _membership = membership;
         _notifications = notifications;
     }
@@ -197,7 +196,7 @@ public sealed class SprintWriteService : ISprintWriteService
 
         var fromStatus = trackedSprint.Status;
         var tasks = await _tasks.GetBySprintIdAsync(tenantId, trackedSprint.Id, ct);
-        var audience = await GetAudienceEmployeeIdsAsync(tenantId, trackedSprint.Id, ct);
+        var audience = await _audience.GetAudienceEmployeeIdsAsync(tenantId, trackedSprint.Id, ct);
 
         var movedTaskIds = new List<Guid>();
         foreach (var task in tasks)
@@ -249,7 +248,7 @@ public sealed class SprintWriteService : ISprintWriteService
         await _logs.AddAsync(SprintActivityLogFactory.Create(
             tenantId, trackedSprint.Id, actorEmployeeId, SprintActivityActions.Achieved, fromStatus, SprintStatuses.Achieved), ct);
 
-        var audience = await GetAudienceEmployeeIdsAsync(tenantId, trackedSprint.Id, ct);
+        var audience = await _audience.GetAudienceEmployeeIdsAsync(tenantId, trackedSprint.Id, ct);
         await NotifyAudienceAsync(tenantId, trackedSprint, audience, "work_sprint_achieved", ct);
         return Result.Success();
     }
@@ -271,21 +270,6 @@ public sealed class SprintWriteService : ISprintWriteService
             tracked.UpdatedAt = DateTimeOffset.UtcNow;
         }
         _sprints.Remove(trackedSprint);
-    }
-
-    // ---- Sprint audience (moved here from the retired SprintAccessService) ----
-
-    /// <summary>Distinct active members of every Module that has a task in this sprint.</summary>
-    private async Task<IReadOnlyList<Guid>> GetAudienceEmployeeIdsAsync(Guid tenantId, Guid sprintId, CancellationToken ct)
-    {
-        var tasks = await _tasks.GetBySprintIdAsync(tenantId, sprintId, ct);
-        var audience = new HashSet<Guid>();
-        foreach (var objectiveId in tasks.Select(t => t.ObjectiveId).Distinct())
-        {
-            var members = await _members.ListActiveForObjectiveAsync(tenantId, objectiveId, ct);
-            foreach (var member in members) audience.Add(member.EmployeeId);
-        }
-        return audience.ToList();
     }
 
     private async Task NotifyAudienceAsync(Guid tenantId, Sprint sprint, IReadOnlyList<Guid> audience, string templateCode, CancellationToken ct)

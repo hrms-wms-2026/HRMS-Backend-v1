@@ -3,6 +3,7 @@ using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
+using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Sprints.DTOs.Responses;
 using ONEVO.Application.Features.WorkManagement.Sprints.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Sprints.Services;
@@ -19,19 +20,19 @@ public class SetSprintTasksCommandHandler : IRequestHandler<SetSprintTasksComman
     private readonly ICallerIdentityResolver _identity;
     private readonly ISprintRepository _sprints;
     private readonly ISprintTaskAssignmentService _assignment;
-    private readonly ISprintAccessService _access;
+    private readonly IProjectMemberRepository _members;
     private readonly ISprintActivityLogRepository _logs;
     private readonly IUnitOfWork _unitOfWork;
 
     public SetSprintTasksCommandHandler(
         ICurrentUser currentUser, ICallerIdentityResolver identity, ISprintRepository sprints,
-        ISprintTaskAssignmentService assignment, ISprintAccessService access, ISprintActivityLogRepository logs, IUnitOfWork unitOfWork)
+        ISprintTaskAssignmentService assignment, IProjectMemberRepository members, ISprintActivityLogRepository logs, IUnitOfWork unitOfWork)
     {
         _currentUser = currentUser;
         _identity = identity;
         _sprints = sprints;
         _assignment = assignment;
-        _access = access;
+        _members = members;
         _logs = logs;
         _unitOfWork = unitOfWork;
     }
@@ -58,7 +59,7 @@ public class SetSprintTasksCommandHandler : IRequestHandler<SetSprintTasksComman
 
         if (changes.IsEmpty)
         {
-            var canManageNoChange = await _access.CanManageAsync(tenantId, sprint, userId, callerEmployeeId.Value, ct);
+            var canManageNoChange = await _members.HasActiveMembershipAsync(tenantId, sprint.ProjectId, callerEmployeeId.Value, ct);
             return Result<SprintResponse>.Success(SprintResponse.From(sprint, canManageNoChange));
         }
 
@@ -88,7 +89,7 @@ public class SetSprintTasksCommandHandler : IRequestHandler<SetSprintTasksComman
 
             await _unitOfWork.SaveChangesAsync(innerCt);
 
-            var canManage = await _access.CanManageAsync(tenantId, sprint, userId, callerEmployeeId.Value, innerCt);
+            var canManage = await _members.HasActiveMembershipAsync(tenantId, sprint.ProjectId, callerEmployeeId.Value, innerCt);
             return Result<SprintResponse>.Success(SprintResponse.From(sprint, canManage));
         }, ct);
     }
