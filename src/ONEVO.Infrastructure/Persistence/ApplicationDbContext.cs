@@ -12,6 +12,7 @@ using ExternalCalendarEventLink = ONEVO.Domain.Features.Calendar.Entities.Extern
 using HolidayCalendarSettings = ONEVO.Domain.Features.Calendar.Entities.HolidayCalendarSettings;
 using CalendarEventMeeting = ONEVO.Domain.Features.Calendar.Entities.CalendarEventMeeting;
 using CalendarEventMeetingAttendance = ONEVO.Domain.Features.Calendar.Entities.CalendarEventMeetingAttendance;
+using CalendarEventGuest = ONEVO.Domain.Features.Calendar.Entities.CalendarEventGuest;
 using TimeAttendanceWorkMode = ONEVO.Domain.Features.TimeAttendance.Entities.WorkMode;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.DevPlatform.Compliance.Entities;
@@ -330,6 +331,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<ExternalCalendarConnection> ExternalCalendarConnections => Set<ExternalCalendarConnection>();
     public DbSet<ExternalCalendarEventLink> ExternalCalendarEventLinks => Set<ExternalCalendarEventLink>();
     public DbSet<HolidayCalendarSettings> HolidayCalendarSettings => Set<HolidayCalendarSettings>();
+    public DbSet<CalendarEventGuest> CalendarEventGuests => Set<CalendarEventGuest>();
     public DbSet<CalendarEventMeeting> CalendarEventMeetings => Set<CalendarEventMeeting>();
     public DbSet<CalendarEventMeetingAttendance> CalendarEventMeetingAttendances => Set<CalendarEventMeetingAttendance>();
 
