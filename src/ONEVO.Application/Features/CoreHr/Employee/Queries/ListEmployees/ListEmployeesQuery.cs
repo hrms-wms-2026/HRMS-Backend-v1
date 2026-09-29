@@ -14,5 +14,5 @@ public record ListEmployeesQuery(
     IReadOnlyList<string>? EmploymentTypeCodes = null,
     Guid? ReportingManagerId = null,
     string? SortBy = null,
-    bool SortDescending = false) : IRequest<Result<EmployeeListPageResponse>>;
+    bool SortDescending = false,
     bool ActiveOnly = false) : IRequest<Result<EmployeeListPageResponse>>;
