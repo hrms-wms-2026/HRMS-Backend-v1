@@ -3,17 +3,20 @@ using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
-using ONEVO.Application.Features.WorkManagement.Sprints.DTOs;
 using ONEVO.Application.Features.WorkManagement.Sprints.DTOs.Responses;
 using ONEVO.Application.Features.WorkManagement.Sprints.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Sprints.Services;
 using ONEVO.Domain.Features.WorkManagement.Approvals.Entities;
 using ONEVO.Domain.Features.WorkManagement.Sprints.Entities;
 
-namespace ONEVO.Application.Features.WorkManagement.Sprints.Commands.EditSprint;
+namespace ONEVO.Application.Features.WorkManagement.Sprints.Commands.DeleteSprint;
 
-/// <summary>Edits a sprint through the approval engine: at or above its creator position → now; other project members → sprint.edit request.</summary>
-public class EditSprintCommandHandler : IRequestHandler<EditSprintCommand, Result<SprintWriteOutcome>>
+/// <summary>
+/// Deletes a Complete or Achieved sprint (Draft/Active → 409). The sprint's creator, or anyone at
+/// or above its creator position, deletes it now; other project members file a sprint.delete
+/// request. Tasks still in the sprint go back to the backlog.
+/// </summary>
+public class DeleteSprintCommandHandler : IRequestHandler<DeleteSprintCommand, Result<SprintWriteOutcome>>
 {
     private readonly ICurrentUser _currentUser;
     private readonly ICallerIdentityResolver _identity;
@@ -22,7 +25,7 @@ public class EditSprintCommandHandler : IRequestHandler<EditSprintCommand, Resul
     private readonly ISprintWriteService _writes;
     private readonly ISprintActionSubmitter _submitter;
 
-    public EditSprintCommandHandler(
+    public DeleteSprintCommandHandler(
         ICurrentUser currentUser, ICallerIdentityResolver identity, ISprintRepository sprints, IProjectMemberRepository members,
         ISprintWriteService writes, ISprintActionSubmitter submitter)
     {
@@ -34,7 +37,7 @@ public class EditSprintCommandHandler : IRequestHandler<EditSprintCommand, Resul
         _submitter = submitter;
     }
 
-    public async Task<Result<SprintWriteOutcome>> Handle(EditSprintCommand request, CancellationToken ct)
+    public async Task<Result<SprintWriteOutcome>> Handle(DeleteSprintCommand request, CancellationToken ct)
     {
         if (!_currentUser.IsAuthenticated)
             return Result<SprintWriteOutcome>.Forbidden("Authentication required.");
@@ -51,17 +54,18 @@ public class EditSprintCommandHandler : IRequestHandler<EditSprintCommand, Resul
         if (!await _members.HasActiveMembershipAsync(tenantId, sprint.ProjectId, callerEmployeeId.Value, ct))
             return Result<SprintWriteOutcome>.Forbidden("Only project members can change sprints.");
 
-        var input = new SprintEditInput(request.Name.Trim(), request.Goal?.Trim(), request.StartDate, request.EndDate);
-        var validation = await _writes.ValidateEditAsync(sprint, input);
+        var validation = _writes.ValidateDelete(sprint);
         if (!validation.IsSuccess)
             return Result<SprintWriteOutcome>.Failure(validation.Error!, validation.StatusCode ?? 400);
 
         var outcome = await _submitter.SubmitAsync(
-            new SprintActionRequest(tenantId, callerEmployeeId.Value, sprint.ProjectId, sprint, WorkActionTypes.SprintEdit, sprint.Name, input),
+            new SprintActionRequest(tenantId, callerEmployeeId.Value, sprint.ProjectId, sprint, WorkActionTypes.SprintDelete, sprint.Name, null,
+                // The sprint's own creator deletes without asking (user decision 2026-09-28).
+                ForceDirect: sprint.CreatedById == _currentUser.UserId),
             async innerCt =>
             {
-                var applied = await _writes.ApplyEditAsync(tenantId, callerEmployeeId.Value, sprint, input, innerCt);
-                return applied.IsSuccess ? Result<Sprint?>.Success(sprint) : Result<Sprint?>.Failure(applied.Error!, applied.StatusCode ?? 400);
+                await _writes.ApplyDeleteAsync(tenantId, sprint, innerCt);
+                return Result<Sprint?>.Success(null);
             }, ct);
 
         return SprintOutcomes.ToWriteOutcome(outcome);

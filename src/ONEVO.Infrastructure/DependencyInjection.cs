@@ -450,6 +450,8 @@ public static class DependencyInjection
         services.AddScoped<ITaskWriteService, TaskWriteService>();
         services.AddScoped<IModuleWriteService, ModuleWriteService>();
         services.AddScoped<IModuleActionSubmitter, ModuleActionSubmitter>();
+        services.AddScoped<ISprintWriteService, SprintWriteService>();
+        services.AddScoped<ISprintActionSubmitter, SprintActionSubmitter>();
         services.AddScoped<ITaskAccessResolver, TaskAccessResolver>();
 
         // Auth: global email directory

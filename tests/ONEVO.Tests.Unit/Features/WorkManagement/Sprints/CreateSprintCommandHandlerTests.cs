@@ -30,6 +30,7 @@ public class CreateSprintCommandHandlerTests
     private Mock<ISprintRepository> _sprints = null!;
     private Mock<ISprintTaskAssignmentService> _assignment = null!;
     private Mock<ISprintActivityLogRepository> _logs = null!;
+    private SprintTestWiring Wiring = null!;
 
     private CreateSprintCommandHandler Build(
         bool isMember = true,
@@ -56,6 +57,8 @@ public class CreateSprintCommandHandlerTests
         _members = new Mock<IProjectMemberRepository>();
         _members.Setup(x => x.HasActiveMembershipAsync(TenantId, ProjectId, resolvedCallerEmployeeId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(isMember);
+        _members.Setup(x => x.GetActiveObjectiveIdsForEmployeeInProjectAsync(TenantId, ProjectId, It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<Guid>());
 
         _permissionResolver = new Mock<IPermissionResolver>();
         _permissionResolver.Setup(x => x.ResolveAsync(UserId, TenantId, null, It.IsAny<CancellationToken>()))
@@ -71,14 +74,16 @@ public class CreateSprintCommandHandlerTests
 
         _logs = new Mock<ISprintActivityLogRepository>();
 
-        var unitOfWork = new Mock<IUnitOfWork>();
-        unitOfWork.Setup(x => x.ExecuteInTransactionAsync(It.IsAny<Func<CancellationToken, Task<Result<SprintResponse>>>>(), It.IsAny<CancellationToken>()))
-            .Returns((Func<CancellationToken, Task<Result<SprintResponse>>> op, CancellationToken ct) => op(ct));
-        unitOfWork.Setup(x => x.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
+        var wiring = new SprintTestWiring(TenantId, ProjectId)
+        {
+            Projects = _projects, Members = _members, Sprints = _sprints, Assignment = _assignment, Logs = _logs, Identity = identity
+        };
+        // The caller owns the project root, so the engine (mocked Direct here) would apply directly.
+        Wiring = wiring;
 
         return new CreateSprintCommandHandler(
             currentUser.Object, identity.Object, _projects.Object, _members.Object, _permissionResolver.Object,
-            _sprints.Object, _assignment.Object, _logs.Object, unitOfWork.Object);
+            wiring.Writes(), wiring.Submitter());
     }
 
     [Fact]
@@ -89,8 +94,8 @@ public class CreateSprintCommandHandlerTests
         var result = await handler.Handle(new CreateSprintCommand(ProjectId, "Sprint 1", null, Array.Empty<Guid>()), CancellationToken.None);
 
         Assert.True(result.IsSuccess);
-        Assert.Equal(ProjectId, result.Value!.ProjectId);
-        Assert.Equal(SprintStatuses.Draft, result.Value!.Status);
+        Assert.Equal(ProjectId, result.Value!.Sprint!.ProjectId);
+        Assert.Equal(SprintStatuses.Draft, result.Value!.Sprint!.Status);
         _sprints.Verify(x => x.AddAsync(
             It.Is<Sprint>(s => s.ProjectId == ProjectId && s.CreatedById == UserId && s.Status == SprintStatuses.Draft),
             It.IsAny<CancellationToken>()), Times.Once);
@@ -98,7 +103,7 @@ public class CreateSprintCommandHandlerTests
             It.Is<SprintActivityLog>(l => l.Action == SprintActivityActions.Created), It.IsAny<CancellationToken>()), Times.Once);
         _assignment.Verify(x => x.PrepareAsync(
             TenantId, It.IsAny<Sprint>(), It.Is<IReadOnlyCollection<Guid>>(c => c.Count == 0), It.Is<IReadOnlyCollection<Guid>>(c => c.Count == 0),
-            EmployeeId, It.IsAny<CancellationToken>()), Times.Once);
+            EmployeeId, It.IsAny<CancellationToken>()), Times.Exactly(2)); // validation dry run + the real create
     }
 
     [Fact]
@@ -115,7 +120,7 @@ public class CreateSprintCommandHandlerTests
         var result = await handler.Handle(new CreateSprintCommand(ProjectId, "Sprint 1", null, taskIds), CancellationToken.None);
 
         Assert.True(result.IsSuccess);
-        _assignment.Verify(x => x.Apply(changes, result.Value!.Id), Times.Once);
+        _assignment.Verify(x => x.Apply(changes, result.Value!.Sprint!.Id), Times.Once);
         _logs.Verify(x => x.AddAsync(It.Is<SprintActivityLog>(l => l.Action == SprintActivityActions.TasksAdded && l.DetailsJson!.Contains(taskIds[0].ToString())), It.IsAny<CancellationToken>()), Times.Once);
     }
 
