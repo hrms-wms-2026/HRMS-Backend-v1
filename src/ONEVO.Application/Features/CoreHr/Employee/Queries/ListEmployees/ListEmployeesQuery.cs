@@ -15,3 +15,4 @@ public record ListEmployeesQuery(
     Guid? ReportingManagerId = null,
     string? SortBy = null,
     bool SortDescending = false) : IRequest<Result<EmployeeListPageResponse>>;
+    bool ActiveOnly = false) : IRequest<Result<EmployeeListPageResponse>>;

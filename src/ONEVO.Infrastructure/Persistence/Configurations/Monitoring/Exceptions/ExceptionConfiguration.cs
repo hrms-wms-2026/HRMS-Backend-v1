@@ -14,6 +14,7 @@ public class ExceptionConfiguration : IEntityTypeConfiguration<MonitoringExcepti
         builder.Property(e => e.Status).HasConversion<string>().HasMaxLength(20);
         builder.Property(e => e.Title).HasMaxLength(200);
         builder.Property(e => e.Description).HasMaxLength(2000);
+        builder.Property(e => e.ResolutionNote).HasMaxLength(1000);
         builder.Property(e => e.MetadataJson)
             .HasColumnType("jsonb")
             .HasDefaultValue("{}");

@@ -12,7 +12,9 @@ using ONEVO.Domain.Features.InfrastructureModule.Entities;
 namespace ONEVO.Application.Features.Monitoring.CheckIn.Commands.ValidateFacePhoto;
 
 /// <summary>
-/// Checks one selfie. Clock-in/out: quality + match against the enrolled face.
+/// Checks one selfie. Clock-in/out: quality + match against the enrolled face, then the retry
+/// rule (IFaceVerificationRetryPolicy) — the last allowed attempt lets the employee through and
+/// alerts their manager.
 /// Enrollment (tray face setup): quality + head pose for that step only — nothing is saved here;
 /// the three setup photos are saved together by EnrollFacePhotosCommand.
 /// </summary>
@@ -44,6 +46,7 @@ public class ValidateFacePhotoCommandHandler
     private readonly IFaceQualityService _faceQuality;
     private readonly IEnrolledFaceMatcher _matcher;
     private readonly ITrayEmployeeIdentityResolver _employeeIdentity;
+    private readonly IFaceVerificationRetryPolicy _retryPolicy;
 
     public ValidateFacePhotoCommandHandler(
         ITrayCurrentDevice device,
@@ -52,7 +55,8 @@ public class ValidateFacePhotoCommandHandler
         IBiometricProfileRepository profiles,
         IFaceQualityService faceQuality,
         IEnrolledFaceMatcher matcher,
-        ITrayEmployeeIdentityResolver employeeIdentity)
+        ITrayEmployeeIdentityResolver employeeIdentity,
+        IFaceVerificationRetryPolicy retryPolicy)
     {
         _device = device;
         _tenants = tenants;
@@ -61,6 +65,7 @@ public class ValidateFacePhotoCommandHandler
         _faceQuality = faceQuality;
         _matcher = matcher;
         _employeeIdentity = employeeIdentity;
+        _retryPolicy = retryPolicy;
     }
 
     public async Task<Result<FacePhotoValidationResponseDto>> Handle(
@@ -87,6 +92,37 @@ public class ValidateFacePhotoCommandHandler
         await request.ImageStream.CopyToAsync(captured, cancellationToken);
         captured.Position = 0;
 
+        var enrollment = FacePhotoValidationPurpose.IsEnrollment(request.Purpose);
+        var employeeId = await _employeeIdentity.ResolveEmployeeIdAsync(
+            _device.TenantId, _device.UserId, _device.LegalEntityId, cancellationToken);
+
+        var result = await EvaluateAsync(request, captured, employeeId, enrollment, cancellationToken);
+
+        // Face setup steps never count toward the clock-in/out retry limit.
+        if (!enrollment)
+        {
+            var purpose = string.Equals(request.Purpose, FacePhotoValidationPurpose.ClockOut, StringComparison.OrdinalIgnoreCase)
+                ? FacePhotoValidationPurpose.ClockOut
+                : FacePhotoValidationPurpose.ClockIn;
+            result = await _retryPolicy.ApplyAsync(
+                new FaceCheckAttemptContext(
+                    _device.TenantId, _device.UserId, employeeId, _device.LegalEntityId, purpose, _device.DeviceRegistrationId),
+                result,
+                captured,
+                request.ContentType,
+                cancellationToken);
+        }
+
+        return Result<FacePhotoValidationResponseDto>.Success(result);
+    }
+
+    private async Task<FacePhotoValidationResponseDto> EvaluateAsync(
+        ValidateFacePhotoCommand request,
+        MemoryStream captured,
+        Guid employeeId,
+        bool enrollment,
+        CancellationToken cancellationToken)
+    {
         FaceQualityOutcome quality;
         try
         {
@@ -94,22 +130,27 @@ public class ValidateFacePhotoCommandHandler
         }
         catch (Exception)
         {
-            return Result<FacePhotoValidationResponseDto>.Success(FailedVerification());
+            return FailedVerification();
         }
 
         // Every answer AWS produced carries what it saw, so a rejection can be diagnosed.
-        Result<FacePhotoValidationResponseDto> Done(FacePhotoValidationResponseDto dto) =>
-            Result<FacePhotoValidationResponseDto>.Success(WithDetectedFaces(dto, quality));
+        FacePhotoValidationResponseDto Done(FacePhotoValidationResponseDto dto) => WithDetectedFaces(dto, quality);
 
         if (!quality.LightingOk || !quality.FaceVisible || !quality.NoSunglassesOrMask)
             return Done(Rejected(quality, FirstQualityFailure(quality)));
 
-        var enrollment = FacePhotoValidationPurpose.IsEnrollment(request.Purpose);
         if (enrollment && !FacePhotoPoseRules.Matches(request.Pose, quality))
             return Done(Rejected(quality, FailureWrongPose));
 
-        var employeeId = await _employeeIdentity.ResolveEmployeeIdAsync(
-            _device.TenantId, _device.UserId, _device.LegalEntityId, cancellationToken);
+        // Face setup always takes three new photos that replace any enrolled face, so a step
+        // is not compared against the old one. Nothing is saved here — see EnrollFacePhotosCommand.
+        if (enrollment)
+        {
+            return Done(new FacePhotoValidationResponseDto(
+                quality.LightingOk, quality.FaceVisible, quality.NoSunglassesOrMask,
+                IsMatch: false, CanProceed: true, SimilarityScore: null, FailureReason: null));
+        }
+
         var profile = await _profiles.GetByEmployeeIdAsync(_device.TenantId, employeeId, cancellationToken);
 
         EnrolledFaceMatch match;

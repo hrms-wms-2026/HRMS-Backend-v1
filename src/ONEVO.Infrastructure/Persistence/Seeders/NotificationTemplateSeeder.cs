@@ -158,6 +158,24 @@ public class NotificationTemplateSeeder : IHostedService
             },
             new()
             {
+                Id = Guid.NewGuid(), Code = "face_verification_override",
+                InAppTitleTemplate = "Face verification needs review",
+                InAppBodyTemplate = "{{employeeName}} could not pass face verification {{attempts}} times and was allowed to {{action}} at {{time}} UTC. Reasons: {{reasons}}. Please review the photo."
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "exception_alert_detected",
+                InAppTitleTemplate = "{{title}}: {{employeeName}}",
+                InAppBodyTemplate = "{{description}} Please review and acknowledge, resolve or escalate to HR."
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "exception_alert_escalated",
+                InAppTitleTemplate = "Escalated to HR: {{title}} - {{employeeName}}",
+                InAppBodyTemplate = "{{description}} This case was escalated to HR for review."
+            },
+            new()
+            {
                 Id = Guid.NewGuid(), Code = "attendance_correction_request_created",
                 InAppTitleTemplate = "Attendance correction request",
                 InAppBodyTemplate = "Attendance correction request from {{employeeName}}."

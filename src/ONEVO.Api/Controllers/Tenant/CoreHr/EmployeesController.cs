@@ -59,12 +59,23 @@ public class EmployeesController : ControllerBase
         [FromQuery] Guid? managerId = null,
         [FromQuery] string? sortBy = null,
         [FromQuery] string? sortDir = null,
+        [FromQuery] bool activeOnly = false,
         CancellationToken ct = default)
     {
-        var result = await _mediator.Send(
-            new ListEmployeesQuery(search, departmentId, legalEntityId, page, pageSize,
-                positionId, employmentTypes, managerId, sortBy,
-                string.Equals(sortDir, "desc", StringComparison.OrdinalIgnoreCase)), ct);
+         var result = await _mediator.Send(
+            new ListEmployeesQuery(
+                search,
+                departmentId,
+                legalEntityId,
+                page,
+                pageSize,
+                positionId,
+                employmentTypes,
+                managerId,
+                sortBy,
+                string.Equals(sortDir, "desc", StringComparison.OrdinalIgnoreCase),
+                activeOnly), ct);
+
 
         return result.IsSuccess
             ? Ok(result.Value)

@@ -99,6 +99,7 @@ public class ListEmployeesQueryHandler : IRequestHandler<ListEmployeesQuery, Res
                 request.ReportingManagerId,
                 sortBy,
                 request.SortDescending);
+                request.ActiveOnly);
 
             (items, totalCount) = includeAttendanceWarnings
                 ? await _employeeRepository.ListVisibleAsync(

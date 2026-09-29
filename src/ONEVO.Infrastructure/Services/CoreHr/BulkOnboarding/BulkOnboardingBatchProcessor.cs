@@ -32,21 +32,32 @@ public sealed class BulkOnboardingBatchProcessor : BackgroundService
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         using var timer = new PeriodicTimer(PollInterval);
-        do
+        try
         {
-            try
+            do
             {
-                await ProcessOnceAsync(stoppingToken);
-            }
-            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
-            {
-                break;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Bulk onboarding batch processing iteration failed; will retry.");
-            }
-        } while (await timer.WaitForNextTickAsync(stoppingToken));
+                try
+                {
+                    await ProcessOnceAsync(stoppingToken);
+                }
+                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+                {
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Bulk onboarding batch processing iteration failed; will retry.");
+                }
+            } while (await timer.WaitForNextTickAsync(stoppingToken));
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
+            // PeriodicTimer.WaitForNextTickAsync throws when the token passed to it is
+            // cancelled (unlike disposing the timer itself, which returns false instead) -
+            // an ordinary host shutdown must not surface as an unhandled exception here,
+            // since HostOptions.BackgroundServiceExceptionBehavior = StopHost treats any
+            // unhandled exception from a BackgroundService as a crash.
+        }
     }
 
     /// <summary>Public so integration tests can drive one iteration synchronously without

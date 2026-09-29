@@ -111,6 +111,7 @@ public class ApplicationDbContext : DbContext
     // Monitoring - Employee Check-In
     public DbSet<EmployeeCheckIn> EmployeeCheckIns => Set<EmployeeCheckIn>();
     public DbSet<MonitoringFaceScan> MonitoringFaceScans => Set<MonitoringFaceScan>();
+    public DbSet<FaceVerificationAttempt> FaceVerificationAttempts => Set<FaceVerificationAttempt>();
 
     // Monitoring - Work Sessions (clock-in/break/clock-out)
     public DbSet<EmployeeWorkSession> EmployeeWorkSessions => Set<EmployeeWorkSession>();

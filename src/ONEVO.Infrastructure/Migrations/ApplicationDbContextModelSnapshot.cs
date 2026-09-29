@@ -6148,6 +6148,59 @@ namespace ONEVO.Infrastructure.Migrations
                     b.ToTable("employee_check_ins", (string)null);
                 });
 
+            modelBuilder.Entity("ONEVO.Domain.Features.Monitoring.CheckIn.Entities.FaceVerificationAttempt", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("EmployeeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("employee_id");
+
+                    b.Property<string>("FailureReason")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("failure_reason");
+
+                    b.Property<string>("Outcome")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("outcome");
+
+                    b.Property<Guid?>("PhotoFileId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("photo_file_id");
+
+                    b.Property<string>("Purpose")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("purpose");
+
+                    b.Property<float?>("SimilarityScore")
+                        .HasColumnType("real")
+                        .HasColumnName("similarity_score");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_face_verification_attempts");
+
+                    b.HasIndex("TenantId", "EmployeeId", "Purpose", "CreatedAt")
+                        .HasDatabaseName("ix_face_verification_attempts_tenant_employee_purpose_created");
+
+                    b.ToTable("face_verification_attempts", (string)null);
+                });
+
             modelBuilder.Entity("ONEVO.Domain.Features.Monitoring.CheckIn.Entities.MonitoringFaceScan", b =>
                 {
                     b.Property<Guid>("Id")
@@ -6304,12 +6357,21 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("escalated_at");
 
+                    b.Property<Guid?>("EscalatedById")
+                        .HasColumnType("uuid")
+                        .HasColumnName("escalated_by_id");
+
                     b.Property<string>("MetadataJson")
                         .IsRequired()
                         .ValueGeneratedOnAdd()
                         .HasColumnType("jsonb")
                         .HasDefaultValue("{}")
                         .HasColumnName("metadata_json");
+
+                    b.Property<string>("ResolutionNote")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("resolution_note");
 
                     b.Property<DateTimeOffset?>("ResolvedAt")
                         .HasColumnType("timestamp with time zone")

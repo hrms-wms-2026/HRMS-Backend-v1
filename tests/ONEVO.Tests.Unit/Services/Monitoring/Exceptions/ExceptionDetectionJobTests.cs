@@ -6,6 +6,10 @@ using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.Exceptions.RepositoryInterfaces;
+using ONEVO.Application.Features.Monitoring.Exceptions.ServiceInterfaces;
+using ONEVO.Application.Features.Monitoring.Exceptions.Services;
+using ONEVO.Domain.Features.Monitoring.ActivityMonitoring.Entities;
+using ONEVO.Domain.Features.Monitoring.Exceptions.Entities;
 using ONEVO.Application.Features.Monitoring.Reports.RepositoryInterfaces;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
@@ -40,6 +44,16 @@ public class ExceptionDetectionJobTests
     }
 
     private static readonly ProductivityAggregate ZeroAggregate = new(0, 0, 0, 0, 0, 0, 0m, 0, 0, 0);
+
+    private static IExceptionAlertRouterFactory QuietAlerts(Mock<IExceptionAlertRouter>? router = null, List<Guid>? tenantsAsked = null)
+    {
+        router ??= new Mock<IExceptionAlertRouter>();
+        var factory = new Mock<IExceptionAlertRouterFactory>();
+        factory.Setup(f => f.CreateForTenant(It.IsAny<Guid>()))
+            .Callback((Guid tenantId) => tenantsAsked?.Add(tenantId))
+            .Returns(router.Object);
+        return factory.Object;
+    }
 
     [Fact]
     public async Task RunDetectionAsync_EntersAdminModeThenSwitchesContextOncePerTenant()
@@ -86,6 +100,7 @@ public class ExceptionDetectionJobTests
         services.AddSingleton<IWritableTenantContext>(writableContext);
         services.AddSingleton(tenantSwitcher.Object);
         services.AddSingleton(AnyTenantRepository());
+        services.AddSingleton(QuietAlerts());
 
         var job = new ExceptionDetectionJob(services.BuildServiceProvider(), NullLogger<ExceptionDetectionJob>.Instance);
         await job.RunDetectionAsync(targetDate, CancellationToken.None);
@@ -137,6 +152,7 @@ public class ExceptionDetectionJobTests
         services.AddSingleton<IWritableTenantContext>(new TenantContextAccessor());
         services.AddSingleton(tenantSwitcher.Object);
         services.AddSingleton(AnyTenantRepository());
+        services.AddSingleton(QuietAlerts());
 
         var job = new ExceptionDetectionJob(services.BuildServiceProvider(), NullLogger<ExceptionDetectionJob>.Instance);
         await job.RunDetectionAsync(targetDate, CancellationToken.None);
@@ -151,5 +167,133 @@ public class ExceptionDetectionJobTests
             eventLog[i + 1].Should().Be($"staleQuery:{switchedTenant}",
                 "the escalation sweep for a tenant must run immediately after that tenant's own switch");
         }
+    }
+
+    [Fact]
+    public async Task RunDetectionAsync_NewCaseAlertsManager_StaleCaseAlertsHr_AllInTheTenantsOwnSave()
+    {
+        var tenantId = Guid.NewGuid();
+        var employeeId = Guid.NewGuid();
+        var targetDate = new DateOnly(2026, 9, 15);
+        var now = new DateTimeOffset(2026, 9, 16, 0, 0, 0, TimeSpan.Zero);
+        var stale = new MonitoringException
+        {
+            Id = Guid.NewGuid(), TenantId = tenantId, EmployeeId = Guid.NewGuid(),
+            Type = ExceptionType.UnusualActivityPattern, Status = ExceptionStatus.Open,
+            Title = "Unusual activity pattern", Description = "desc", DetectedAt = now.AddDays(-5)
+        };
+
+        var eventLog = new List<string>();
+        var exceptions = new Mock<IExceptionRepository>();
+        exceptions.Setup(e => e.GetActiveTenantEmployeeKeysAsync(It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([(tenantId, employeeId)]);
+        exceptions.Setup(e => e.HasUnresolvedAsync(tenantId, employeeId, It.IsAny<ExceptionType>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+        var added = new List<MonitoringException>();
+        exceptions.Setup(e => e.AddAsync(It.IsAny<MonitoringException>(), It.IsAny<CancellationToken>()))
+            .Callback((MonitoringException e, CancellationToken _) => { eventLog.Add($"add:{e.Type}"); added.Add(e); })
+            .Returns(Task.CompletedTask);
+        exceptions.Setup(e => e.GetStaleOpenAsync(tenantId, It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([stale]);
+        exceptions.Setup(e => e.SaveChangesAsync(It.IsAny<CancellationToken>()))
+            .Callback(() => eventLog.Add("save")).ReturnsAsync(1);
+
+        // Three low-activity days in a row -> one SustainedLowActivity case.
+        var summaries = new Mock<IActivityDailySummaryRepository>();
+        summaries.Setup(s => s.GetRangeAsync(tenantId, employeeId, It.IsAny<DateOnly>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Enumerable.Range(0, 3).Select(i => new ActivityDailySummary
+            {
+                TenantId = tenantId, EmployeeId = employeeId, Date = targetDate.AddDays(-i), ActivityScore = 10m
+            }).ToList());
+
+        var reports = new Mock<IProductivityReportRepository>();
+        reports.Setup(r => r.GetEmployeeAggregateAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<DateOnly>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ZeroAggregate);
+
+        var router = new Mock<IExceptionAlertRouter>();
+        router.Setup(r => r.NotifyDetectedAsync(It.IsAny<MonitoringException>(), It.IsAny<CancellationToken>()))
+            .Callback((MonitoringException e, CancellationToken _) => eventLog.Add($"detected:{e.Type}"))
+            .Returns(Task.CompletedTask);
+        router.Setup(r => r.NotifyEscalatedAsync(It.IsAny<MonitoringException>(), It.IsAny<CancellationToken>()))
+            .Callback((MonitoringException e, CancellationToken _) => eventLog.Add($"escalated:{e.Id}"))
+            .Returns(Task.CompletedTask);
+        var routerTenants = new List<Guid>();
+
+        var services = new ServiceCollection();
+        services.AddSingleton(exceptions.Object);
+        services.AddSingleton(summaries.Object);
+        services.AddSingleton(reports.Object);
+        services.AddSingleton<IDateTimeProvider>(new FakeDateTimeProvider { UtcNow = now });
+        services.AddSingleton<IWritableTenantContext>(new TenantContextAccessor());
+        services.AddSingleton(new Mock<ITenantContextSwitcher>().Object);
+        services.AddSingleton(AnyTenantRepository());
+        services.AddSingleton(QuietAlerts(router, routerTenants));
+
+        var job = new ExceptionDetectionJob(services.BuildServiceProvider(), NullLogger<ExceptionDetectionJob>.Instance);
+        await job.RunDetectionAsync(targetDate, CancellationToken.None);
+
+        routerTenants.Should().Equal(tenantId);
+        // The figures the rule compared are stored with the case, as flagged.
+        var meta = ExceptionMetadata.Parse(added.Single().MetadataJson);
+        meta.WorkDate.Should().Be(targetDate);
+        meta.Measures.Should().Contain(m => m.Label.StartsWith("Average score") && m.Value == 10m);
+        stale.Status.Should().Be(ExceptionStatus.Escalated);
+        stale.EscalatedAt.Should().Be(now);
+        eventLog.Should().Equal(
+            "add:SustainedLowActivity",
+            "detected:SustainedLowActivity",
+            $"escalated:{stale.Id}",
+            "save");
+    }
+
+    [Fact]
+    public async Task RunDetectionAsync_AlertRoutingFailure_StillSavesTheCases_AndSweepsTheNextTenant()
+    {
+        var tenantA = Guid.NewGuid();
+        var tenantB = Guid.NewGuid();
+        var targetDate = new DateOnly(2026, 9, 15);
+        var now = new DateTimeOffset(2026, 9, 16, 0, 0, 0, TimeSpan.Zero);
+        MonitoringException StaleFor(Guid tenantId) => new()
+        {
+            Id = Guid.NewGuid(), TenantId = tenantId, EmployeeId = Guid.NewGuid(),
+            Type = ExceptionType.UnusualActivityPattern, Status = ExceptionStatus.Open,
+            Title = "t", Description = "d", DetectedAt = now.AddDays(-5)
+        };
+        var staleA = StaleFor(tenantA);
+        var staleB = StaleFor(tenantB);
+
+        var exceptions = new Mock<IExceptionRepository>();
+        exceptions.Setup(e => e.GetActiveTenantEmployeeKeysAsync(It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([(tenantA, Guid.NewGuid()), (tenantB, Guid.NewGuid())]);
+        exceptions.Setup(e => e.GetStaleOpenAsync(tenantA, It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>())).ReturnsAsync([staleA]);
+        exceptions.Setup(e => e.GetStaleOpenAsync(tenantB, It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>())).ReturnsAsync([staleB]);
+
+        var summaries = new Mock<IActivityDailySummaryRepository>();
+        summaries.Setup(s => s.GetRangeAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<DateOnly>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+        var reports = new Mock<IProductivityReportRepository>();
+        reports.Setup(r => r.GetEmployeeAggregateAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<DateOnly>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ZeroAggregate);
+
+        var router = new Mock<IExceptionAlertRouter>();
+        router.Setup(r => r.NotifyEscalatedAsync(It.IsAny<MonitoringException>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("resolver blew up"));
+
+        var services = new ServiceCollection();
+        services.AddSingleton(exceptions.Object);
+        services.AddSingleton(summaries.Object);
+        services.AddSingleton(reports.Object);
+        services.AddSingleton<IDateTimeProvider>(new FakeDateTimeProvider { UtcNow = now });
+        services.AddSingleton<IWritableTenantContext>(new TenantContextAccessor());
+        services.AddSingleton(new Mock<ITenantContextSwitcher>().Object);
+        services.AddSingleton(AnyTenantRepository());
+        services.AddSingleton(QuietAlerts(router));
+
+        var job = new ExceptionDetectionJob(services.BuildServiceProvider(), NullLogger<ExceptionDetectionJob>.Instance);
+        await job.RunDetectionAsync(targetDate, CancellationToken.None);
+
+        staleA.Status.Should().Be(ExceptionStatus.Escalated);
+        staleB.Status.Should().Be(ExceptionStatus.Escalated);
+        exceptions.Verify(e => e.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Exactly(2));
     }
 }
