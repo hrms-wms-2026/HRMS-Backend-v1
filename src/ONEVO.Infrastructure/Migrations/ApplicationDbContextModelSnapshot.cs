@@ -11822,9 +11822,9 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasKey("Id")
                         .HasName("pk_task_assignments");
 
-                    b.HasIndex("TaskId", "UserId")
+                    b.HasIndex("TaskId")
                         .IsUnique()
-                        .HasDatabaseName("ix_task_assignments_one_per_task_user");
+                        .HasDatabaseName("ix_task_assignments_one_per_task");
 
                     b.ToTable("task_assignments", (string)null);
                 });

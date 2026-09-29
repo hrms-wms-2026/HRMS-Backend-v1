@@ -25,7 +25,8 @@ public class AssignTaskCommandHandlerTests
     private static readonly Guid AssigneeUserId = Guid.NewGuid();
 
     private (AssignTaskCommandHandler Handler, Mock<ITaskAssignmentRepository> Assignments) Build(
-        WorkTask? task, Employee? assignee, Guid callerEmployeeId, bool? callerIsEffectiveManager = null)
+        WorkTask? task, Employee? assignee, Guid callerEmployeeId, bool? callerIsEffectiveManager = null,
+        IReadOnlyList<TaskAssignment>? existingAssignments = null)
     {
         var currentUser = new Mock<ICurrentUser>();
         currentUser.SetupGet(x => x.IsAuthenticated).Returns(true);
@@ -62,6 +63,8 @@ public class AssignTaskCommandHandlerTests
             .ReturnsAsync(callerIsEffectiveManager ?? (objective.OwnerId == callerEmployeeId));
 
         var assignments = new Mock<ITaskAssignmentRepository>();
+        assignments.Setup(x => x.GetByTaskIdAsync(TaskId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(existingAssignments ?? Array.Empty<TaskAssignment>());
         assignments.Setup(x => x.GetByTaskAndEmployeeAsync(TaskId, EmployeeId, It.IsAny<CancellationToken>()))
             .ReturnsAsync((TaskAssignment?)null);
 
@@ -86,6 +89,46 @@ public class AssignTaskCommandHandlerTests
 
         Assert.True(result.IsSuccess);
         assignments.Verify(x => x.AddAsync(It.Is<TaskAssignment>(a => a.EmployeeId == EmployeeId && a.UserId == AssigneeUserId), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_TaskAlreadyAssigned_ReplacesExistingAssignee()
+    {
+        var previous = new TaskAssignment
+        {
+            Id = Guid.NewGuid(), TaskId = TaskId, EmployeeId = Guid.NewGuid(), UserId = Guid.NewGuid(),
+            AssignedById = OwnerEmployeeId, AssignedAt = DateTimeOffset.UtcNow.AddDays(-1)
+        };
+        var task = new WorkTask { Id = TaskId, TenantId = TenantId, ObjectiveId = ObjectiveId, Title = "A", ShortId = "T-1", CreatedAt = DateTimeOffset.UtcNow };
+        var assignee = new Employee { Id = EmployeeId, TenantId = TenantId, UserId = AssigneeUserId, EmployeeNumber = "E1", HireDate = new DateOnly(2020, 1, 1) };
+        var (handler, assignments) = Build(task, assignee, OwnerEmployeeId, existingAssignments: new[] { previous });
+
+        var result = await handler.Handle(new AssignTaskCommand(TaskId, EmployeeId), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        assignments.Verify(x => x.Remove(previous), Times.Once);
+        assignments.Verify(x => x.AddAsync(
+            It.Is<TaskAssignment>(a => a.EmployeeId == EmployeeId && a.UserId == AssigneeUserId),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_SameSoleAssignee_IsIdempotent()
+    {
+        var existing = new TaskAssignment
+        {
+            Id = Guid.NewGuid(), TaskId = TaskId, EmployeeId = EmployeeId, UserId = AssigneeUserId,
+            AssignedById = OwnerEmployeeId, AssignedAt = DateTimeOffset.UtcNow
+        };
+        var task = new WorkTask { Id = TaskId, TenantId = TenantId, ObjectiveId = ObjectiveId, Title = "A", ShortId = "T-1", CreatedAt = DateTimeOffset.UtcNow };
+        var assignee = new Employee { Id = EmployeeId, TenantId = TenantId, UserId = AssigneeUserId, EmployeeNumber = "E1", HireDate = new DateOnly(2020, 1, 1) };
+        var (handler, assignments) = Build(task, assignee, OwnerEmployeeId, existingAssignments: new[] { existing });
+
+        var result = await handler.Handle(new AssignTaskCommand(TaskId, EmployeeId), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        assignments.Verify(x => x.Remove(It.IsAny<TaskAssignment>()), Times.Never);
+        assignments.Verify(x => x.AddAsync(It.IsAny<TaskAssignment>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
