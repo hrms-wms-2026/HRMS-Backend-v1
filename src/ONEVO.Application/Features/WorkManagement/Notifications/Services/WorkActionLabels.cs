@@ -20,6 +20,9 @@ public static class WorkActionLabels
         [WorkActionTypes.SprintCreate] = "created the sprint",
         [WorkActionTypes.SprintEdit] = "edited the sprint",
         [WorkActionTypes.SprintDelete] = "deleted the sprint",
+        [WorkActionTypes.SprintStart] = "started the sprint",
+        [WorkActionTypes.SprintComplete] = "completed the sprint",
+        [WorkActionTypes.SprintAchieve] = "achieved the sprint",
         [WorkActionTypes.ProjectStatusTemplateChange] = "changed the task statuses of",
     };
 

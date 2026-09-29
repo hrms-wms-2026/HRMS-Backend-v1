@@ -45,6 +45,9 @@ public static class WorkActionTypes
     public const string SprintCreate = "sprint.create";
     public const string SprintEdit = "sprint.edit";
     public const string SprintDelete = "sprint.delete";
+    public const string SprintStart = "sprint.start";
+    public const string SprintComplete = "sprint.complete";
+    public const string SprintAchieve = "sprint.achieve";
     /// <summary>Add/rename/delete/reorder the project's task statuses. Not task.status_change (one task's move).</summary>
     public const string ProjectStatusTemplateChange = "project.status_template_change";
 }

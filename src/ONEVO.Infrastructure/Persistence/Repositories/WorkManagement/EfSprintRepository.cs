@@ -44,4 +44,6 @@ public class EfSprintRepository : ISprintRepository
         => await _db.Sprints.Where(s => s.Status == status).ToListAsync(ct);
 
     public void Update(Sprint sprint) => _db.Sprints.Update(sprint);
+
+    public void Remove(Sprint sprint) => _db.Sprints.Remove(sprint);
 }

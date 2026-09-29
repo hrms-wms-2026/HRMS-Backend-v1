@@ -20,4 +20,5 @@ public interface ISprintRepository
     Task<IReadOnlyList<Sprint>> GetByStatusAsync(string status, CancellationToken ct = default);
 
     void Update(Sprint sprint);
+    void Remove(Sprint sprint);
 }

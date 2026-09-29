@@ -103,4 +103,11 @@ public class WorkNotificationEngineTests
         _written.Should().BeEmpty();
         _identity.Verify(x => x.ResolveDisplayNamesByEmployeeIdAsync(It.IsAny<Guid>(), It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()), Times.Never);
     }
+
+    [Theory]
+    [InlineData("sprint.start", "started the sprint")]
+    [InlineData("sprint.complete", "completed the sprint")]
+    [InlineData("sprint.achieve", "achieved the sprint")]
+    public void Labels_cover_sprint_lifecycle(string actionType, string label)
+        => WorkActionLabels.For(actionType).Should().Be(label);
 }
