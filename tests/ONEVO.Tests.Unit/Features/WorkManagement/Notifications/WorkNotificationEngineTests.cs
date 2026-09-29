@@ -62,6 +62,21 @@ public class WorkNotificationEngineTests
     }
 
     [Fact]
+    public async Task Alert_FromTheSystem_UsesTheMonitorTemplate_AndLinksToTheTarget()
+    {
+        var targetId = Guid.NewGuid();
+        await Build().NotifyAsync(new WorkNotificationEvent(TenantId, ProjectId, Guid.Empty, WorkNotificationKinds.Alert,
+            "monitor.module_over_capacity", "module", targetId, "Payments", null, [Owner]));
+
+        _enqueued.Should().ContainSingle();
+        _enqueued[0].TemplateCode.Should().Be("work_monitor_alert");
+        _enqueued[0].Placeholders["actionLabel"].Should().Be("Module over capacity");
+        _enqueued[0].RelatedEntityType.Should().Be("module");
+        _enqueued[0].RelatedEntityId.Should().Be(targetId);
+        _identity.Verify(x => x.ResolveDisplayNamesByEmployeeIdAsync(It.IsAny<Guid>(), It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
     public async Task ActorAndDuplicatesAndInactiveRecipients_AreSkipped()
     {
         await Build().NotifyAsync(Event(WorkNotificationKinds.Direct, Actor, Owner, Owner, Inactive));

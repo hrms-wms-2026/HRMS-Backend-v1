@@ -134,6 +134,12 @@ public class NotificationTemplateSeeder : IHostedService
             },
             new()
             {
+                Id = Guid.NewGuid(), Code = "work_monitor_alert",
+                InAppTitleTemplate = "Project alert",
+                InAppBodyTemplate = "{{actionLabel}}: \"{{targetTitle}}\"."
+            },
+            new()
+            {
                 Id = Guid.NewGuid(), Code = "leave_request_approved",
                 InAppTitleTemplate = "Leave approved",
                 InAppBodyTemplate = "{{leaveTypeName}} from {{startDate}} to {{endDate}} was approved."

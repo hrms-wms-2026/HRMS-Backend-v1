@@ -24,6 +24,9 @@ public interface IProjectMemberRepository
     /// <summary>Every active project_members row scoped to this exact objective.</summary>
     Task<IReadOnlyList<ProjectMember>> ListActiveForObjectiveAsync(Guid tenantId, Guid objectiveId, CancellationToken ct = default);
 
+    /// <summary>Every active project_members row in the project (all Modules).</summary>
+    Task<IReadOnlyList<ProjectMember>> ListActiveForProjectAsync(Guid tenantId, Guid projectId, CancellationToken ct = default);
+
     void Update(ProjectMember member);
 
     /// <summary>Batched, per-project, deduplicated-by-employee list of active member employee ids, capped at takePerProject, earliest joiners first.</summary>

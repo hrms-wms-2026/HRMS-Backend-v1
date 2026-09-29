@@ -10,6 +10,8 @@ public static class WorkNotificationKinds
     public const string Rejected = "rejected";
     public const string Cancelled = "cancelled";
     public const string Stale = "stale";
+    /// <summary>A project monitor alert (no approval request; the actor is the system, Guid.Empty).</summary>
+    public const string Alert = "alert";
 }
 
 /// <summary>One recipient's copy of a Work Management activity - the project-scoped history shown

@@ -41,6 +41,7 @@ using ONEVO.Domain.Features.Storage.File.Entities;
 using ONEVO.Domain.Features.Storage.Quota.Entities;
 using ONEVO.Domain.Features.WorkManagement.Approvals.Entities;
 using ONEVO.Domain.Features.WorkManagement.Notifications.Entities;
+using ONEVO.Domain.Features.WorkManagement.Monitoring.Entities;
 using ONEVO.Domain.Features.WorkManagement.CalendarEvents.Entities;
 using ONEVO.Domain.Features.WorkManagement.Labels.Entities;
 
@@ -312,6 +313,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<TaskAssignment> TaskAssignments => Set<TaskAssignment>();
     public DbSet<WorkApprovalRequest> WorkApprovalRequests => Set<WorkApprovalRequest>();
     public DbSet<WorkNotificationLog> WorkNotificationLogs => Set<WorkNotificationLog>();
+    public DbSet<MonitorAlert> MonitorAlerts => Set<MonitorAlert>();
     public DbSet<TaskEditLog> TaskEditLogs => Set<TaskEditLog>();
     public DbSet<TaskStatusChangeLog> TaskStatusChangeLogs => Set<TaskStatusChangeLog>();
     public DbSet<TaskClockingSession> TaskClockingSessions => Set<TaskClockingSession>();

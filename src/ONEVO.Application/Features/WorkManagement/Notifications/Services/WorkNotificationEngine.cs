@@ -12,6 +12,7 @@ public sealed class WorkNotificationEngine : IWorkNotificationEngine
     public const string ActivityTemplate = "work_activity_recorded";
     public const string RequestedTemplate = "work_approval_requested";
     public const string DecidedTemplate = "work_approval_decided";
+    public const string MonitorAlertTemplate = "work_monitor_alert";
     public const string ApprovalRelatedEntityType = "work_approval_request";
 
     private readonly IWorkNotificationLogRepository _logs;
@@ -38,7 +39,10 @@ public sealed class WorkNotificationEngine : IWorkNotificationEngine
         if (recipients.Count == 0)
             return;
 
-        var names = await _identity.ResolveDisplayNamesByEmployeeIdAsync(e.TenantId, [e.ActorEmployeeId], ct);
+        // Monitor alerts come from the system (Guid.Empty), not from a person.
+        IReadOnlyDictionary<Guid, string> names = e.ActorEmployeeId == Guid.Empty
+            ? new Dictionary<Guid, string>()
+            : await _identity.ResolveDisplayNamesByEmployeeIdAsync(e.TenantId, [e.ActorEmployeeId], ct);
         var placeholders = new Dictionary<string, string>
         {
             ["actorName"] = names.GetValueOrDefault(e.ActorEmployeeId) ?? "A teammate",
@@ -49,6 +53,7 @@ public sealed class WorkNotificationEngine : IWorkNotificationEngine
         var template = e.Kind switch
         {
             WorkNotificationKinds.Direct => ActivityTemplate,
+            WorkNotificationKinds.Alert => MonitorAlertTemplate,
             WorkNotificationKinds.Requested => RequestedTemplate,
             _ => DecidedTemplate,
         };

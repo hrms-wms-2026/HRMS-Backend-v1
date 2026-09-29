@@ -44,6 +44,7 @@ using ONEVO.Application.Features.WorkManagement.Approvals.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Notifications.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Hierarchy;
 using ONEVO.Application.Features.WorkManagement.Monitoring.Services;
+using ONEVO.Application.Features.WorkManagement.Monitoring.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Notifications.Services;
 using ONEVO.Application.Features.WorkManagement.Approvals.Services;
 using ONEVO.Application.Features.WorkManagement.Versions.RepositoryInterfaces;
@@ -371,6 +372,7 @@ public static class DependencyInjection
         services.AddScoped<IWorkApprovalRequestRepository>(sp => sp.GetRequiredService<EfWorkApprovalRequestRepository>());
         services.AddScoped<EfWorkNotificationLogRepository>();
         services.AddScoped<IWorkNotificationLogRepository>(sp => sp.GetRequiredService<EfWorkNotificationLogRepository>());
+        services.AddScoped<IMonitorAlertRepository, EfMonitorAlertRepository>();
         services.AddScoped<EfTaskEditLogRepository>();
         services.AddScoped<ITaskEditLogRepository>(sp => sp.GetRequiredService<EfTaskEditLogRepository>());
         services.AddScoped<EfTaskStatusChangeLogRepository>();
@@ -428,6 +430,9 @@ public static class DependencyInjection
         services.AddScoped<IWorkHierarchyService, WorkHierarchyService>();
         services.AddScoped<IModuleReadAccess, ModuleReadAccess>();
         services.AddScoped<IWorkCalendarResolver, WorkCalendarResolver>();
+        services.AddScoped<IProjectMonitorSnapshotLoader, ProjectMonitorSnapshotLoader>();
+        services.AddScoped<IProjectMonitorCallerResolver, ProjectMonitorCallerResolver>();
+        services.AddScoped<IProjectMonitorService, ProjectMonitorService>();
         services.AddScoped<IWorkNotificationEngine, WorkNotificationEngine>();
         services.AddScoped<IWorkApprovalEngine, WorkApprovalEngine>();
         services.AddScoped<IApprovalActionApplierRegistry, ApprovalActionApplierRegistry>();
