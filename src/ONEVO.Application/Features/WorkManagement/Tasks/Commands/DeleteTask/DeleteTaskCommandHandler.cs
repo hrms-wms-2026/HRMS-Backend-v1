@@ -51,6 +51,10 @@ public class DeleteTaskCommandHandler : IRequestHandler<DeleteTaskCommand, Resul
         if (!await _membership.IsEffectiveManagerAsync(tenantId, objective.Id, callerEmployeeId.Value, ct))
             return Result.Forbidden("Only this milestone's owner can delete tasks.");
 
+        var children = await _tasks.GetTrackedByParentTaskIdAsync(tenantId, task.Id, ct);
+        if (children is { Count: > 0 })
+            return Result.Conflict("This task has subtasks. Delete or move its subtasks first.");
+
         _tasks.Remove(task);
         await _unitOfWork.SaveChangesAsync(ct);
         return Result.Success();
