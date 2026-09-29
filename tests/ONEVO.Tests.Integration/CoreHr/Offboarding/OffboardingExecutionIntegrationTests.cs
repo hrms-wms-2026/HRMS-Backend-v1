@@ -1,3 +1,4 @@
+using ONEVO.Tests.Integration.TestDoubles;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -255,7 +256,8 @@ public sealed class OffboardingExecutionIntegrationTests : IAsyncLifetime
             new OutboxWriter(db, _encryption, _clock),
             new EfUserRepository(db),
             new EfTenantRepository(db),
-            new EmployeeOffboardingLockGuard(employees)).Handle(
+            new EmployeeOffboardingLockGuard(employees),
+            new AllowAllManageScopeGuard()).Handle(
             new ChangeEmployeePositionCommand(employee.Id, Guid.NewGuid(), DateOnly.FromDateTime(DateTime.UtcNow), "LateralMove"),
             CancellationToken.None);
 

@@ -43,10 +43,39 @@ public class EfProjectMemberRepository : IProjectMemberRepository
 
     public async Task<IReadOnlyList<Guid>> GetActiveObjectiveIdsForEmployeeInProjectAsync(Guid tenantId, Guid projectId, Guid employeeId, CancellationToken ct = default)
     {
-        return await _db.ProjectMembers.AsNoTracking()
+        var accessibleObjectiveIds = (await _db.ProjectMembers.AsNoTracking()
             .Where(m => m.TenantId == tenantId && m.ProjectId == projectId && m.EmployeeId == employeeId && m.IsActive)
             .Select(m => m.ObjectiveId)
+            .ToListAsync(ct))
+            .ToHashSet();
+
+        if (accessibleObjectiveIds.Count == 0)
+            return Array.Empty<Guid>();
+
+        var objectiveTree = await _db.Objectives.AsNoTracking()
+            .Where(o => o.TenantId == tenantId && o.ProjectId == projectId && o.IsActive)
+            .Select(o => new { o.Id, o.ParentObjectiveId })
             .ToListAsync(ct);
+        var childrenByParentId = objectiveTree
+            .Where(o => o.ParentObjectiveId is not null)
+            .GroupBy(o => o.ParentObjectiveId!.Value)
+            .ToDictionary(group => group.Key, group => group.Select(o => o.Id).ToList());
+
+        var pending = new Queue<Guid>(accessibleObjectiveIds);
+        while (pending.Count > 0)
+        {
+            var objectiveId = pending.Dequeue();
+            if (!childrenByParentId.TryGetValue(objectiveId, out var childIds))
+                continue;
+
+            foreach (var childId in childIds)
+            {
+                if (accessibleObjectiveIds.Add(childId))
+                    pending.Enqueue(childId);
+            }
+        }
+
+        return accessibleObjectiveIds.ToList();
     }
 
     public async Task<IReadOnlyList<ProjectMember>> ListInactiveMembershipsForEmployeeAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default)

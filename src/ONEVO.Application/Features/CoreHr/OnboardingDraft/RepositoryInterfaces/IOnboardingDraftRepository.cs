@@ -15,7 +15,7 @@ public interface IOnboardingDraftRepository
 
     /// <summary>List view with resolved position/department/started-by names for display.</summary>
     Task<(IReadOnlyList<DraftListItemResponse> Items, int TotalCount)> ListWithNamesAsync(
-        Guid tenantId, Guid? startedById, int page, int pageSize, CancellationToken ct = default);
+        Guid tenantId, Guid? startedById, int page, int pageSize, CancellationToken ct = default, bool openOnly = false);
 
     Task AddAsync(ONEVO.Domain.Features.CoreHr.Entities.OnboardingDraft draft, CancellationToken ct = default);
 

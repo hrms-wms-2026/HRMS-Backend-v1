@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using MediatR;
 using Moq;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Domain.Features.WorkManagement.Objectives.Entities;
 using ONEVO.Domain.Features.WorkManagement.ProjectMembers.Entities;
 using ONEVO.Infrastructure.Persistence;
 using ONEVO.Infrastructure.Persistence.Interceptors;
@@ -22,6 +23,67 @@ public sealed class EfProjectMemberRepositoryMemberListTests
         ObjectiveId = objectiveId ?? Guid.NewGuid(), EmployeeId = employeeId,
         IsActive = isActive, JoinedAt = joinedAt ?? DateTimeOffset.UtcNow
     };
+
+    private static Objective MakeObjective(Guid projectId, Guid? parentObjectiveId = null, bool isActive = true) => new()
+    {
+        Id = Guid.NewGuid(), TenantId = TenantId, ProjectId = projectId,
+        ParentObjectiveId = parentObjectiveId, Title = "Module", IsActive = isActive,
+        CreatedAt = DateTimeOffset.UtcNow
+    };
+
+    [Fact]
+    public async Task GetActiveObjectiveIdsForEmployeeInProjectAsync_RootMembershipIncludesAllActiveDescendants()
+    {
+        await using var db = BuildInMemoryDb();
+        var projectId = Guid.NewGuid();
+        var employeeId = Guid.NewGuid();
+        var root = MakeObjective(projectId);
+        var child = MakeObjective(projectId, root.Id);
+        var grandchild = MakeObjective(projectId, child.Id);
+        var sibling = MakeObjective(projectId, root.Id);
+        db.Objectives.AddRange(root, child, grandchild, sibling);
+        db.ProjectMembers.Add(MakeMember(projectId, employeeId, root.Id));
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var repository = new EfProjectMemberRepository(db);
+
+        var result = await repository.GetActiveObjectiveIdsForEmployeeInProjectAsync(
+            TenantId, projectId, employeeId, CancellationToken.None);
+
+        Assert.Equal(4, result.Count);
+        Assert.Contains(root.Id, result);
+        Assert.Contains(child.Id, result);
+        Assert.Contains(grandchild.Id, result);
+        Assert.Contains(sibling.Id, result);
+    }
+
+    [Fact]
+    public async Task GetActiveObjectiveIdsForEmployeeInProjectAsync_ChildMembershipExcludesSiblingBranches()
+    {
+        await using var db = BuildInMemoryDb();
+        var projectId = Guid.NewGuid();
+        var employeeId = Guid.NewGuid();
+        var root = MakeObjective(projectId);
+        var child = MakeObjective(projectId, root.Id);
+        var grandchild = MakeObjective(projectId, child.Id);
+        var sibling = MakeObjective(projectId, root.Id);
+        db.Objectives.AddRange(root, child, grandchild, sibling);
+        db.ProjectMembers.Add(MakeMember(projectId, employeeId, child.Id));
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var repository = new EfProjectMemberRepository(db);
+
+        var result = await repository.GetActiveObjectiveIdsForEmployeeInProjectAsync(
+            TenantId, projectId, employeeId, CancellationToken.None);
+
+        Assert.Equal(2, result.Count);
+        Assert.Contains(child.Id, result);
+        Assert.Contains(grandchild.Id, result);
+        Assert.DoesNotContain(root.Id, result);
+        Assert.DoesNotContain(sibling.Id, result);
+    }
 
     [Fact]
     public async Task ListDistinctActiveMemberEmployeeIdsAsync_DeduplicatesAnEmployeeWithMultipleObjectiveMemberships()

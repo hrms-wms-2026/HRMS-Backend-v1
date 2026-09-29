@@ -452,6 +452,52 @@ public sealed class EmployeesListIntegrationTests : IClassFixture<EmployeesListI
     }
 
     [Fact]
+    public async Task List_SortByDepartmentDescending_OrdersByDepartmentName()
+    {
+        var handler = _fixture.BuildListHandler(_fixture.TenantAId, orgManage: true, callerOwnEmployeeId: _fixture.CallerAUserId);
+
+        var result = await handler.Handle(
+            new ListEmployeesQuery(null, null, null, 1, 100, SortBy: "department", SortDescending: true), CancellationToken.None);
+
+        var names = result.Value!.Items.Where(i => i.DepartmentName != null).Select(i => i.DepartmentName!).ToList();
+        names.Should().Equal(names.OrderByDescending(n => n, StringComparer.Ordinal).ToList());
+    }
+
+    [Fact]
+    public async Task List_FilterByEmploymentType_ReturnsOnlyMatchingRows()
+    {
+        // This fixture doesn't seed the employment_types lookup, so make sure the seeded employees'
+        // type has a row (and therefore a code) to filter on.
+        await using (var db = _fixture.CreateContext())
+        {
+            var typeId = await db.Employees.Where(e => e.TenantId == _fixture.TenantAId).Select(e => e.EmploymentTypeId).FirstAsync();
+            if (!await db.EmploymentTypes.AnyAsync(t => t.Id == typeId))
+            {
+                db.EmploymentTypes.Add(new EmploymentType { Id = typeId, Code = "list_filter_type", Label = "List Filter Type" });
+                await db.SaveChangesAsync();
+            }
+        }
+
+        string code, label;
+        await using (var db = _fixture.CreateContext())
+        {
+            var typeId = await db.Employees.Where(e => e.TenantId == _fixture.TenantAId).Select(e => e.EmploymentTypeId).FirstAsync();
+            var type = await db.EmploymentTypes.SingleAsync(t => t.Id == typeId);
+            (code, label) = (type.Code, type.Label);
+        }
+        var handler = _fixture.BuildListHandler(_fixture.TenantAId, orgManage: true, callerOwnEmployeeId: _fixture.CallerAUserId);
+
+        var filtered = await handler.Handle(
+            new ListEmployeesQuery(null, null, null, 1, 100, EmploymentTypeCodes: new[] { code }), CancellationToken.None);
+        var none = await handler.Handle(
+            new ListEmployeesQuery(null, null, null, 1, 100, EmploymentTypeCodes: new[] { "no_such_type" }), CancellationToken.None);
+
+        filtered.Value!.Items.Should().NotBeEmpty();
+        filtered.Value.Items.Should().OnlyContain(i => i.EmploymentTypeLabel == label);
+        none.Value!.Items.Should().BeEmpty();
+    }
+
+    [Fact]
     public async Task List_WithoutOrgManage_ReturnsOnlySelf_WhenCallerHasNoResolvableCoverage()
     {
         Guid selfEmployeeId;

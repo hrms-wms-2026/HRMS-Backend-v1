@@ -39,6 +39,9 @@ public class DeleteTaskCommandHandlerTests
                 .ReturnsAsync(() => _visible.Where(t => t.ObjectiveId == ObjectiveId).ToList());
             tasks.Setup(x => x.GetBySprintIdAsync(TenantId, SprintId, It.IsAny<CancellationToken>()))
                 .ReturnsAsync(() => _visible.Where(t => t.SprintId == SprintId).ToList());
+            tasks.Setup(x => x.GetTrackedByParentTaskIdAsync(TenantId, It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync((Guid _, Guid parentId, CancellationToken _) =>
+                    _visible.Where(t => t.ParentTaskId == parentId).ToList());
             tasks.Setup(x => x.Remove(It.IsAny<WorkTask>()))
                 .Callback<WorkTask>(t => _visible.RemoveAll(x => x.Id == t.Id));
         }
@@ -168,5 +171,36 @@ public class DeleteTaskCommandHandlerTests
 
         Assert.True(result.IsSuccess);
         tasks.Verify(x => x.Remove(It.Is<WorkTask>(t => t.Id == TaskId)), Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_TaskWithLiveSubtasks_ReturnsConflict_AndKeepsTask()
+    {
+        var parent = new WorkTask
+        {
+            Id = TaskId,
+            TenantId = TenantId,
+            ObjectiveId = ObjectiveId,
+            Title = "Parent",
+            ShortId = "T-1",
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+        var (handler, tasks, store) = Build(parent, OwnerEmployeeId);
+        store.Seed(new WorkTask
+        {
+            Id = Guid.NewGuid(),
+            TenantId = TenantId,
+            ObjectiveId = ObjectiveId,
+            ParentTaskId = TaskId,
+            Title = "Child",
+            ShortId = "T-2",
+            CreatedAt = DateTimeOffset.UtcNow
+        });
+
+        var result = await handler.Handle(new DeleteTaskCommand(TaskId), CancellationToken.None);
+
+        Assert.Equal(409, result.StatusCode);
+        Assert.Equal("This task has subtasks. Delete or move its subtasks first.", result.Error);
+        tasks.Verify(t => t.Remove(It.IsAny<WorkTask>()), Times.Never);
     }
 }

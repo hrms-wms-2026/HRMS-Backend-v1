@@ -1,3 +1,4 @@
+using ONEVO.Tests.Integration.TestDoubles;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using ONEVO.Application.Common.ServiceInterfaces;
@@ -202,7 +203,8 @@ public sealed class SensitivePositionChangeApprovalIntegrationTestsFixture : IAs
             new OutboxWriter(db, _encryption, _clock),
             new EfUserRepository(db),
             new EfTenantRepository(db),
-            new EmployeeOffboardingLockGuard(employees));
+            new EmployeeOffboardingLockGuard(employees),
+            new AllowAllManageScopeGuard());
     }
 
     public ApproveAccessGrantRequestCommandHandler BuildApproveHandler(Guid userId)

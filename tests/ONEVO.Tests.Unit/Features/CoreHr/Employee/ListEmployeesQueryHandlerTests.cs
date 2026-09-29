@@ -70,6 +70,33 @@ public sealed class ListEmployeesQueryHandlerTests
             .ReturnsAsync(new EmployeeAuthorityVisibilityScope(_userId, legalEntityId, includesSelf, employeeIds));
 
     [Fact]
+    public async Task Handle_PassesNewFiltersAndCanonicalSortToRepository()
+    {
+        SetupVisibility(_defaultLegalEntityId, true, Guid.NewGuid());
+        var positionId = Guid.NewGuid(); var managerId = Guid.NewGuid();
+
+        await CreateHandler().Handle(new ListEmployeesQuery(null, null, null, 1, 25,
+            positionId, new[] { "contract" }, managerId, "DEPARTMENT", true), CancellationToken.None);
+
+        _employeeRepository.Verify(r => r.ListVisibleAsync(It.IsAny<Guid>(), It.IsAny<EmployeeVisibilityScope>(),
+            It.Is<EmployeeListFilter>(f => f.PositionId == positionId && f.EmploymentTypeCodes!.Single() == "contract"
+                && f.ReportingManagerId == managerId && f.SortBy == "department" && f.SortDescending),
+            1, 25, It.IsAny<CancellationToken>(), It.IsAny<EmployeeListAttendanceOptions?>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_UnknownSortKey_IsIgnored()
+    {
+        SetupVisibility(_defaultLegalEntityId, true, Guid.NewGuid());
+
+        await CreateHandler().Handle(new ListEmployeesQuery(null, null, null, SortBy: "salary"), CancellationToken.None);
+
+        _employeeRepository.Verify(r => r.ListVisibleAsync(It.IsAny<Guid>(), It.IsAny<EmployeeVisibilityScope>(),
+            It.Is<EmployeeListFilter>(f => f.SortBy == null), It.IsAny<int>(), It.IsAny<int>(),
+            It.IsAny<CancellationToken>(), It.IsAny<EmployeeListAttendanceOptions?>()), Times.Once);
+    }
+
+    [Fact]
     public async Task Handle_ResolvesLegalEntityFromActorsDefaultEmployee_WhenQueryOmitsLegalEntityId()
     {
         await CreateHandler().Handle(new ListEmployeesQuery(null, null, null), CancellationToken.None);

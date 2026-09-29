@@ -15,6 +15,12 @@ public class ListEmployeesQueryHandler : IRequestHandler<ListEmployeesQuery, Res
 {
     private const string RequiredPermission = "employees:read";
     private const string AttendanceReadPermission = "attendance:read";
+
+    private static readonly HashSet<string> SortKeys = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "name", "employeeNumber", "position", "department", "employmentType", "manager"
+    };
+
     private readonly IEmployeeRepository _employeeRepository;
     private readonly IEmployeeAuthorityResolver _authorityResolver;
     private readonly Common.RepositoryInterfaces.IEntityAssetRepository _entityAssets;
@@ -82,11 +88,17 @@ public class ListEmployeesQueryHandler : IRequestHandler<ListEmployeesQuery, Res
             // than fail open (Unrestricted() would fall through to "every tenant employee").
             var noFallbackScope = new EmployeeVisibilityScope(
                 false, null, new HashSet<Guid>(), new HashSet<Guid>(), new HashSet<Guid>());
+            var sortBy = request.SortBy is not null && SortKeys.TryGetValue(request.SortBy, out var canonicalSort) ? canonicalSort : null;
             var filter = new EmployeeListFilter(
                 request.Search,
                 request.DepartmentId,
                 legalEntityId,
                 visibility.EmployeeIds.ToHashSet(),
+                request.PositionId,
+                request.EmploymentTypeCodes is { Count: > 0 } codes ? codes : null,
+                request.ReportingManagerId,
+                sortBy,
+                request.SortDescending,
                 request.ActiveOnly);
 
             (items, totalCount) = includeAttendanceWarnings

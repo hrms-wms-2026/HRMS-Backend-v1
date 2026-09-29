@@ -10,4 +10,9 @@ public record ListEmployeesQuery(
     Guid? LegalEntityId,
     int Page = 1,
     int PageSize = 25,
+    Guid? PositionId = null,
+    IReadOnlyList<string>? EmploymentTypeCodes = null,
+    Guid? ReportingManagerId = null,
+    string? SortBy = null,
+    bool SortDescending = false,
     bool ActiveOnly = false) : IRequest<Result<EmployeeListPageResponse>>;

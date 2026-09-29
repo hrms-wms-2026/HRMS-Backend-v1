@@ -2,6 +2,7 @@ using MediatR;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
+using ONEVO.Application.Features.CoreHr.Employee.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.Offboarding.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.OnboardingDraft.Services;
 using ONEVO.Application.Features.CoreHr.OnboardingDrafts.RepositoryInterfaces;
@@ -23,19 +24,22 @@ public sealed class UpdateEmployeeJobDetailsCommandHandler
     private readonly IEmploymentTypeRepository _employmentTypes;
     private readonly IWorkModeRepository _workModes;
     private readonly ICurrentUser _currentUser;
+    private readonly IEmployeeManageScopeGuard _manageScopeGuard;
 
     public UpdateEmployeeJobDetailsCommandHandler(
         IEmployeeRepository employeeRepository,
         IEmployeeOffboardingLockGuard offboardingLockGuard,
         IEmploymentTypeRepository employmentTypes,
         IWorkModeRepository workModes,
-        ICurrentUser currentUser)
+        ICurrentUser currentUser,
+        IEmployeeManageScopeGuard manageScopeGuard)
     {
         _employeeRepository = employeeRepository;
         _offboardingLockGuard = offboardingLockGuard;
         _employmentTypes = employmentTypes;
         _workModes = workModes;
         _currentUser = currentUser;
+        _manageScopeGuard = manageScopeGuard;
     }
 
     public async Task<Result<Unit>> Handle(UpdateEmployeeJobDetailsCommand request, CancellationToken ct)
@@ -45,6 +49,10 @@ public sealed class UpdateEmployeeJobDetailsCommandHandler
         var employee = await _employeeRepository.GetTrackedByIdAsync(tenantId, request.EmployeeId, ct);
         if (employee is null)
             return Result<Unit>.NotFound("The employee could not be found.");
+
+        var scopeResult = await _manageScopeGuard.EnsureCanManage(tenantId, employee.Id, ct);
+        if (scopeResult is not null)
+            return Result<Unit>.Forbidden(scopeResult.Error!);
 
         var lockResult = await _offboardingLockGuard.EnsureMutable(tenantId, employee.Id, ct);
         if (lockResult is not null)

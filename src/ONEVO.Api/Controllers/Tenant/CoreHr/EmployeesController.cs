@@ -6,6 +6,9 @@ using ONEVO.Api.Contracts.CoreHr.Employees;
 using ONEVO.Api.Contracts.Storage;
 using ONEVO.Api.Filters;
 using ONEVO.Application.Features.CoreHr.Employee.Commands.AddDependent;
+using ONEVO.Application.Features.CoreHr.Employee.Commands.BulkChangeEmployeePosition;
+using ONEVO.Application.Features.CoreHr.Employee.Commands.BulkChangeEmploymentType;
+using ONEVO.Application.Features.CoreHr.Offboarding.Commands.BulkStartOffboarding;
 using ONEVO.Application.Features.CoreHr.Employee.Commands.ChangeEmployeePosition;
 using ONEVO.Application.Features.CoreHr.Employee.Commands.AddEmergencyContact;
 using ONEVO.Application.Features.CoreHr.Employee.Commands.DeleteDependent;
@@ -51,11 +54,28 @@ public class EmployeesController : ControllerBase
         [FromQuery] Guid? legalEntityId = null,
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 25,
+        [FromQuery] Guid? positionId = null,
+        [FromQuery(Name = "employmentType")] string[]? employmentTypes = null,
+        [FromQuery] Guid? managerId = null,
+        [FromQuery] string? sortBy = null,
+        [FromQuery] string? sortDir = null,
         [FromQuery] bool activeOnly = false,
         CancellationToken ct = default)
     {
-        var result = await _mediator.Send(
-            new ListEmployeesQuery(search, departmentId, legalEntityId, page, pageSize, activeOnly), ct);
+         var result = await _mediator.Send(
+            new ListEmployeesQuery(
+                search,
+                departmentId,
+                legalEntityId,
+                page,
+                pageSize,
+                positionId,
+                employmentTypes,
+                managerId,
+                sortBy,
+                string.Equals(sortDir, "desc", StringComparison.OrdinalIgnoreCase),
+                activeOnly), ct);
+
 
         return result.IsSuccess
             ? Ok(result.Value)
@@ -141,6 +161,46 @@ public class EmployeesController : ControllerBase
 
         return result.IsSuccess
             ? NoContent()
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Promote/transfer many employees into one position. Each employee goes through the
+    /// single change-position rules; the response reports the outcome per employee.</summary>
+    [HttpPost("bulk/change-position")]
+    [RequirePermission("employees:write")]
+    public async Task<IActionResult> BulkChangePosition(
+        [FromBody] BulkChangePositionRequest request, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new BulkChangeEmployeePositionCommand(
+            request.EmployeeIds, request.PositionId, request.EffectiveFrom, request.ChangeReason, request.ReportsToEmployeeId), ct);
+
+        return result.IsSuccess
+            ? Ok(result.Value)
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    [HttpPost("bulk/employment-type")]
+    [RequirePermission("employees:write")]
+    public async Task<IActionResult> BulkChangeEmploymentType(
+        [FromBody] BulkChangeEmploymentTypeRequest request, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new BulkChangeEmploymentTypeCommand(request.EmployeeIds, request.EmploymentTypeCode), ct);
+
+        return result.IsSuccess
+            ? Ok(result.Value)
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    [HttpPost("bulk/offboarding/start")]
+    [RequirePermission("employees:offboard")]
+    public async Task<IActionResult> BulkStartOffboarding(
+        [FromBody] BulkStartOffboardingRequest request, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new BulkStartOffboardingCommand(
+            request.EmployeeIds, request.Reason, request.LastWorkingDate, request.KnowledgeRiskLevel, request.RehireEligibility, request.Notes), ct);
+
+        return result.IsSuccess
+            ? Ok(result.Value)
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 

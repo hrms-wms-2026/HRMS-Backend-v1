@@ -25,4 +25,6 @@ public sealed class UnitOfWork : IUnitOfWork
             return result;
         });
     }
+
+    public void ClearTracking() => _db.ChangeTracker.Clear();
 }

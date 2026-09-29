@@ -106,17 +106,9 @@ public class EditTaskCommandHandler : IRequestHandler<EditTaskCommand, Result<Wo
         if (request.DueDate != task.DueDate)
         {
             var windows = await _calendarEvents.ListActiveEventWindowsForTaskAsync(tenantId, task.Id, task.ObjectiveId, ct);
-            if (windows.Count > 0)
-            {
-                if (request.DueDate is null)
-                    return Result<WorkTaskResponse>.Conflict(
-                        $"This task is in active event(s) {string.Join(", ", windows.Select(w => w.Name))}; a due date is required.");
-                var bad = windows.Where(w => request.DueDate < w.StartDate || request.DueDate > w.EndDate).ToList();
-                if (bad.Count > 0)
-                    return Result<WorkTaskResponse>.Conflict(
-                        $"Due date {request.DueDate:yyyy-MM-dd} is outside event window(s): " +
-                        $"{string.Join(", ", bad.Select(w => $"{w.Name} {w.StartDate:yyyy-MM-dd}..{w.EndDate:yyyy-MM-dd}"))}. Widen the event first.");
-            }
+            var windowError = TaskDueDateEventWindowRule.Validate(windows, request.DueDate);
+            if (windowError is not null)
+                return Result<WorkTaskResponse>.Conflict(windowError);
         }
 
         if (request.EstimatedHours.HasValue && request.EstimatedHours.Value != task.EstimatedHours)

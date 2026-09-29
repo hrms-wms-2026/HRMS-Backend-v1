@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ONEVO.Api.Contracts.CoreHr.OnboardingDrafts;
 using ONEVO.Api.Filters;
+using ONEVO.Application.Features.CoreHr.OnboardingDrafts.Commands.CancelOnboardingDraft;
 using ONEVO.Application.Features.CoreHr.OnboardingDrafts.Commands.FinalizeOnboardingDraft;
 using ONEVO.Application.Features.CoreHr.OnboardingDrafts.Commands.SaveOnboardingDraft;
 using ONEVO.Application.Features.CoreHr.OnboardingDrafts.Queries.GetOnboardingDraft;
@@ -27,9 +28,9 @@ public class OnboardingDraftsController : ControllerBase
     [HttpGet]
     [RequirePermission("employees:read")]
     public async Task<IActionResult> List(
-        [FromQuery] int page = 1, [FromQuery] int pageSize = 25, CancellationToken ct = default)
+        [FromQuery] int page = 1, [FromQuery] int pageSize = 25, [FromQuery] bool mine = false, CancellationToken ct = default)
     {
-        var result = await _mediator.Send(new ListOnboardingDraftsQuery(page, pageSize), ct);
+        var result = await _mediator.Send(new ListOnboardingDraftsQuery(page, pageSize, mine), ct);
         return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
@@ -82,6 +83,16 @@ public class OnboardingDraftsController : ControllerBase
 
         var result = await _mediator.Send(command, ct);
         return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Discards a draft (soft state change to cancelled). Idempotent; a finalized draft
+    /// cannot be cancelled.</summary>
+    [HttpDelete("{id:guid}")]
+    [RequirePermission("employees:write")]
+    public async Task<IActionResult> Cancel(Guid id, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new CancelOnboardingDraftCommand(id), ct);
+        return result.IsSuccess ? NoContent() : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
     /// <summary>Converts a valid draft into a pending employee onboarding package: creates the

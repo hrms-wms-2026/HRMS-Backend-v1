@@ -7,20 +7,12 @@ public class SaveOnboardingDraftCommandValidator : AbstractValidator<SaveOnboard
 {
     public SaveOnboardingDraftCommandValidator()
     {
-        RuleFor(c => c.FirstName)
-            .Cascade(CascadeMode.Stop)
-            .NotEmpty()
-            .Must(name => !string.IsNullOrWhiteSpace(name))
-            .MaximumLength(100);
-        RuleFor(c => c.LastName)
-            .Cascade(CascadeMode.Stop)
-            .NotEmpty()
-            .Must(name => !string.IsNullOrWhiteSpace(name))
-            .MaximumLength(100);
-        RuleFor(c => c.WorkEmail).NotEmpty().EmailAddress().MaximumLength(320);
+        // Saving is deliberately lenient (company + step only); full validation runs at finalize.
+        RuleFor(c => c.FirstName).MaximumLength(100);
+        RuleFor(c => c.LastName).MaximumLength(100);
+        RuleFor(c => c.WorkEmail).EmailAddress().MaximumLength(320).When(c => !string.IsNullOrWhiteSpace(c.WorkEmail));
         RuleFor(c => c.LegalEntityId).NotEmpty();
-        RuleFor(c => c.EmploymentType).NotEmpty().MaximumLength(30);
-        RuleFor(c => c.StartDate).NotEqual(default(DateOnly));
+        RuleFor(c => c.EmploymentType).MaximumLength(30);
         RuleFor(c => c.LastSavedStep).NotEmpty().MaximumLength(50);
         RuleFor(c => c.EmployeeNumber)
             .MaximumLength(EmployeeNumberRules.MaxLength)

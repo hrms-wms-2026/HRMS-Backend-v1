@@ -25,7 +25,7 @@ public sealed record OnboardingAccessGrantRequestListItemResponse(
     string? RequestedRoleName,
     string DisplayName,
     string WorkEmail,
-    DateOnly StartDate,
+    DateOnly? StartDate,
     string DraftStatus,
     string? DraftReason,
     string LastSavedStep);

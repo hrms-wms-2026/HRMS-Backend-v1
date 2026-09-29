@@ -681,5 +681,7 @@ public sealed class ApproveAccessGrantRequestCommandHandlerTests
                 throw;
             }
         }
+
+        public void ClearTracking() { }
     }
 }

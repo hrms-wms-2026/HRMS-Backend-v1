@@ -312,6 +312,7 @@ public static class DependencyInjection
         services.AddScoped<IOffboardingTaskBypassRequestRepository, EfOffboardingTaskBypassRequestRepository>();
         services.AddScoped<IEmployeeOffboardingLockGuard, ONEVO.Infrastructure.Services.CoreHr.Offboarding.EmployeeOffboardingLockGuard>();
         services.AddScoped<IEmployeeOffboardingCoverageGuard, ONEVO.Infrastructure.Services.CoreHr.Offboarding.EmployeeOffboardingCoverageGuard>();
+        services.AddScoped<ONEVO.Application.Features.CoreHr.Employee.ServiceInterfaces.IEmployeeManageScopeGuard, ONEVO.Infrastructure.Services.CoreHr.EmployeeManageScopeGuard>();
         services.AddScoped<ONEVO.Application.Features.CoreHr.Onboarding.ServiceInterfaces.IChecklistTemplateAssigneeResolver, ONEVO.Infrastructure.Services.CoreHr.Onboarding.ChecklistTemplateAssigneeResolver>();
         services.AddScoped<ONEVO.Application.Features.CoreHr.Onboarding.Services.ChecklistTemplateTaskInputResolver>();
         services.AddScoped<IWorkModeRepository, EfWorkModeRepository>();
@@ -381,6 +382,8 @@ public static class DependencyInjection
         services.AddScoped<ITaskPercentageLogRepository>(sp => sp.GetRequiredService<EfTaskPercentageLogRepository>());
         services.AddScoped<EfTaskCommentRepository>();
         services.AddScoped<ITaskCommentRepository>(sp => sp.GetRequiredService<EfTaskCommentRepository>());
+        services.AddScoped<EfTaskDraftRepository>();
+        services.AddScoped<ITaskDraftRepository>(sp => sp.GetRequiredService<EfTaskDraftRepository>());
         services.AddScoped<EfTaskCommentLogRepository>();
         services.AddScoped<ITaskCommentLogRepository>(sp => sp.GetRequiredService<EfTaskCommentLogRepository>());
         services.AddScoped<EfTaskCommentReactionRepository>();

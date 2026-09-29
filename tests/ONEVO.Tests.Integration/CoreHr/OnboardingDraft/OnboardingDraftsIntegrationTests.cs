@@ -140,7 +140,65 @@ public sealed class OnboardingDraftsIntegrationTests : IAsyncLifetime
         secondResult.StatusCode.Should().Be(409);
     }
 
-    private SaveOnboardingDraftCommandHandler BuildHandler(ApplicationDbContext db)
+    [Fact]
+    public async Task SavingWithOnlyCompanyAndStep_PersistsBlanksAndNullStartDate()
+    {
+        var partial = new SaveOnboardingDraftCommand(
+            null, null, null, null, _legalEntityId, null, null, null, null, null, null, null, null,
+            "employee_details", null, null);
+
+        await using var createDb = CreateContext(useRestrictedRole: true);
+        var result = await BuildHandler(createDb).Handle(partial, CancellationToken.None);
+        result.IsSuccess.Should().BeTrue();
+
+        await using var readDb = CreateContext(useRestrictedRole: true);
+        var stored = await readDb.OnboardingDrafts.AsNoTracking().SingleAsync(d => d.Id == result.Value!.Id);
+        stored.StartDate.Should().BeNull();
+        stored.FirstName.Should().BeEmpty();
+        stored.WorkEmail.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task ListMine_ExcludesCancelledAndOtherUsersDrafts()
+    {
+        var otherUserId = Guid.NewGuid();
+        await using (var seed = CreateContext())
+        {
+            seed.Users.Add(new User { Id = otherUserId, TenantId = _tenantId, Email = $"{otherUserId:N}@onboarding-drafts-rls.onevo.dev", PasswordHash = "x", FirstName = "Other", LastName = "User", IsActive = true });
+            await seed.SaveChangesAsync();
+        }
+
+        Guid Mine1, Mine2, Theirs;
+        await using (var db = CreateContext(useRestrictedRole: true))
+        {
+            Mine1 = (await BuildHandler(db).Handle(NewCommand(), CancellationToken.None)).Value!.Id;
+        }
+        await using (var db = CreateContext(useRestrictedRole: true))
+        {
+            Mine2 = (await BuildHandler(db).Handle(NewCommand(), CancellationToken.None)).Value!.Id;
+        }
+        await using (var db = CreateContext(useRestrictedRole: true))
+        {
+            Theirs = (await BuildHandler(db, otherUserId).Handle(NewCommand(), CancellationToken.None)).Value!.Id;
+        }
+
+        await using (var db = CreateContext(useRestrictedRole: true))
+        {
+            var draft = await db.OnboardingDrafts.SingleAsync(d => d.Id == Mine2);
+            draft.Status = ONEVO.Domain.Features.CoreHr.Entities.OnboardingDraftStatus.Cancelled;
+            await db.SaveChangesAsync();
+        }
+
+        await using var readDb = CreateContext(useRestrictedRole: true);
+        var (items, total) = await new EfOnboardingDraftRepository(readDb)
+            .ListWithNamesAsync(_tenantId, _userId, 1, 25, CancellationToken.None, openOnly: true);
+
+        total.Should().Be(1);
+        items.Select(i => i.Id).Should().Equal(Mine1);
+        items.Select(i => i.Id).Should().NotContain(Theirs);
+    }
+
+    private SaveOnboardingDraftCommandHandler BuildHandler(ApplicationDbContext db, Guid? actingUserId = null)
     {
         var draftRepository = new EfOnboardingDraftRepository(db);
         var employeeRepository = new EfEmployeeRepository(db);
@@ -149,7 +207,7 @@ public sealed class OnboardingDraftsIntegrationTests : IAsyncLifetime
         var departmentRepository = new EfDepartmentRepository(db);
         var seatEntitlementService = new SeatEntitlementService(db);
         var workModeRepository = new EfWorkModeRepository(db);
-        var currentUser = new StubCurrentUser(_tenantId, _userId);
+        var currentUser = new StubCurrentUser(_tenantId, actingUserId ?? _userId);
         var writeService = new OnboardingDraftWriteService(
             draftRepository, employeeRepository,
             null!, null!,
