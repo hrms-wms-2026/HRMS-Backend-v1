@@ -39,6 +39,28 @@ public sealed class ProjectModuleTree
     public bool IsAtOrAbove(Guid employeeId, Guid positionModuleId)
         => AncestorChain(positionModuleId).Any(m => m.OwnerId == employeeId);
 
+    /// <summary>The given Modules plus every Module below them - what a member of those Modules can
+    /// see, since membership on a parent cascades to all its children. Ids missing from the tree are
+    /// kept as-is. Terminates on cycles in bad data.</summary>
+    public IReadOnlySet<Guid> AtOrBelow(IEnumerable<Guid> moduleIds)
+    {
+        var childrenByParent = _byId.Values
+            .Where(m => m.ParentObjectiveId is not null)
+            .GroupBy(m => m.ParentObjectiveId!.Value)
+            .ToDictionary(g => g.Key, g => g.Select(m => m.Id).ToList());
+
+        var result = new HashSet<Guid>();
+        var queue = new Queue<Guid>(moduleIds);
+        while (queue.Count > 0)
+        {
+            var current = queue.Dequeue();
+            if (result.Add(current) && childrenByParent.TryGetValue(current, out var children))
+                foreach (var child in children)
+                    queue.Enqueue(child);
+        }
+        return result;
+    }
+
     /// <summary>The Module owned by this employee that is closest to the root, or null.</summary>
     public Guid? HighestOwnedModuleId(Guid employeeId)
         => _byId.Values

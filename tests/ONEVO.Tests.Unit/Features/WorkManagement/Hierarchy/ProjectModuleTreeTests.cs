@@ -66,6 +66,34 @@ public class ProjectModuleTreeTests
     }
 
     [Fact]
+    public void AtOrBelow_MemberOfParent_SeesEveryDescendant_NotSiblingsOrAncestors()
+    {
+        var sibling = Guid.NewGuid();
+        var tree = new ProjectModuleTree(new[]
+        {
+            Module(_root, null, Lead, isDefault: true),
+            Module(_p, _root, A),
+            Module(_c, _p, Cc),
+            Module(sibling, _root, X),
+        });
+
+        tree.AtOrBelow(new[] { _root }).Should().BeEquivalentTo(new[] { _root, _p, _c, sibling });
+        tree.AtOrBelow(new[] { _p }).Should().BeEquivalentTo(new[] { _p, _c });
+        tree.AtOrBelow(new[] { _c }).Should().BeEquivalentTo(new[] { _c });
+    }
+
+    [Fact]
+    public void AtOrBelow_KeepsIdsMissingFromTheTree_AndTerminatesOnCycles()
+    {
+        var a = Guid.NewGuid();
+        var b = Guid.NewGuid();
+        var unknown = Guid.NewGuid();
+        var tree = new ProjectModuleTree(new[] { Module(a, b, A), Module(b, a, X) });
+
+        tree.AtOrBelow(new[] { a, unknown }).Should().BeEquivalentTo(new[] { a, b, unknown });
+    }
+
+    [Fact]
     public void Root_IsTheDefaultModule()
         => Tree(A).Root!.Id.Should().Be(_root);
 

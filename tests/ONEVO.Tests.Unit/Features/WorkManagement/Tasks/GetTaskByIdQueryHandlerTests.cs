@@ -40,7 +40,8 @@ public sealed class GetTaskByIdQueryHandlerTests
     private static GetTaskByIdQueryHandler BuildHandler(
         WorkTask? task, Project? project, bool hasReadPermission,
         IReadOnlyList<Guid>? accessibleObjectiveIds = null, bool authenticated = true, bool employeeExists = true,
-        Mock<IEntityAssetRepository>? entityAssets = null)
+        Mock<IEntityAssetRepository>? entityAssets = null,
+        ONEVO.Domain.Features.WorkManagement.Objectives.Entities.Objective[]? modules = null)
     {
         var currentUser = new Mock<ICurrentUser>();
         currentUser.SetupGet(x => x.IsAuthenticated).Returns(authenticated);
@@ -90,7 +91,8 @@ public sealed class GetTaskByIdQueryHandlerTests
         return new GetTaskByIdQueryHandler(
             currentUser.Object, identity.Object, tasks.Object, projects.Object,
             members.Object, permissions.Object, assignments.Object, sessions.Object,
-            CalendarEventRepositoryMocks.Empty().Object, assets.Object);
+            CalendarEventRepositoryMocks.Empty().Object, assets.Object,
+            WorkHierarchyServiceMocks.WithModules(modules ?? Array.Empty<ONEVO.Domain.Features.WorkManagement.Objectives.Entities.Objective>()).Object);
     }
 
     [Fact]
@@ -110,6 +112,21 @@ public sealed class GetTaskByIdQueryHandlerTests
         var result = await handler.Handle(new GetTaskByIdQuery(TaskId), CancellationToken.None);
         Assert.True(result.IsSuccess);
         Assert.Equal(TaskId, result.Value!.Id);
+    }
+
+    [Fact]
+    public async Task Handle_MemberOfAncestorModule_ReturnsTask()
+    {
+        var root = Guid.NewGuid();
+        var modules = new[]
+        {
+            WorkHierarchyServiceMocks.Module(root, null),
+            WorkHierarchyServiceMocks.Module(ObjectiveId, root),
+        };
+        var handler = BuildHandler(Task(), ActiveProject(), hasReadPermission: false,
+            accessibleObjectiveIds: new[] { root }, modules: modules);
+        var result = await handler.Handle(new GetTaskByIdQuery(TaskId), CancellationToken.None);
+        Assert.True(result.IsSuccess);
     }
 
     [Fact]
