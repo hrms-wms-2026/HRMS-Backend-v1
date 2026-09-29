@@ -43,6 +43,7 @@ using ONEVO.Application.Features.WorkManagement.ProjectInvitations.RepositoryInt
 using ONEVO.Application.Features.WorkManagement.Approvals.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Notifications.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Hierarchy;
+using ONEVO.Application.Features.WorkManagement.Monitoring.Services;
 using ONEVO.Application.Features.WorkManagement.Notifications.Services;
 using ONEVO.Application.Features.WorkManagement.Approvals.Services;
 using ONEVO.Application.Features.WorkManagement.Versions.RepositoryInterfaces;
@@ -426,6 +427,7 @@ public static class DependencyInjection
         services.AddScoped<IMilestoneMembershipCoordinator, MilestoneMembershipCoordinator>();
         services.AddScoped<IWorkHierarchyService, WorkHierarchyService>();
         services.AddScoped<IModuleReadAccess, ModuleReadAccess>();
+        services.AddScoped<IWorkCalendarResolver, WorkCalendarResolver>();
         services.AddScoped<IWorkNotificationEngine, WorkNotificationEngine>();
         services.AddScoped<IWorkApprovalEngine, WorkApprovalEngine>();
         services.AddScoped<IApprovalActionApplierRegistry, ApprovalActionApplierRegistry>();
