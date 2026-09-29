@@ -19,6 +19,12 @@ public interface ICalendarNotificationSender
         Guid tenantId, string eventTitle, DateTimeOffset startDate, string? location,
         IReadOnlyList<Guid> employeeIds, string organizerName, string meetingLink, CancellationToken ct = default);
 
+    /// <summary>Invite email (with the join link when there is one) to external guests identified only
+    /// by email - covers both first invite and a meeting link added later.</summary>
+    Task NotifyGuestsAsync(
+        Guid tenantId, string eventTitle, DateTimeOffset startDate, string? location,
+        IReadOnlyList<string> guestEmails, string organizerName, string? meetingLink, CancellationToken ct = default);
+
     /// <summary>In-app notification only (no email) to each participant that an event changed.</summary>
     Task NotifyEventUpdatedAsync(
         Guid tenantId, string eventTitle, IReadOnlyList<Guid> employeeIds, string organizerName, CancellationToken ct = default);

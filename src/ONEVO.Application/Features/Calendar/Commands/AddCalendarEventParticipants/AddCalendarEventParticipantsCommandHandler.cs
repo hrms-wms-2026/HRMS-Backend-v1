@@ -50,12 +50,24 @@ public sealed class AddCalendarEventParticipantsCommandHandler(
             var newEmployeeIds = request.EmployeeIds.Distinct().Where(id => !existingEmployeeIds.Contains(id)).ToList();
             if (newEmployeeIds.Count > 0)
             {
-                var newParticipants = newEmployeeIds.Select(employeeId => new CalendarEventParticipant
+                var removedRows = await events.GetRemovedParticipantsAsync(tenantId, existing.Id, newEmployeeIds, innerCt);
+                foreach (var row in removedRows)
+                {
+                    row.IsDeleted = false;
+                    row.DeletedAt = null;
+                    row.ResponseStatus = CalendarEventParticipantStatuses.Pending;
+                    row.ResponseReason = null;
+                }
+                currentParticipants.AddRange(removedRows);
+
+                var revivedEmployeeIds = removedRows.Select(r => r.EmployeeId).ToHashSet();
+                var newParticipants = newEmployeeIds.Where(id => !revivedEmployeeIds.Contains(id)).Select(employeeId => new CalendarEventParticipant
                 {
                     Id = Guid.NewGuid(), TenantId = tenantId, EventId = existing.Id, EmployeeId = employeeId,
                     ResponseStatus = CalendarEventParticipantStatuses.Pending
                 }).ToList();
-                await events.AddParticipantsAsync(newParticipants, innerCt);
+                if (newParticipants.Count > 0)
+                    await events.AddParticipantsAsync(newParticipants, innerCt);
                 currentParticipants.AddRange(newParticipants);
 
                 var callerEmployee = await employees.GetDefaultForUserAsync(tenantId, currentUser.UserId, innerCt);
