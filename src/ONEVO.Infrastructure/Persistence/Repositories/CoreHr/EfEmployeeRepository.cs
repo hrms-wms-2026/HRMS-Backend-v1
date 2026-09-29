@@ -173,6 +173,8 @@ public class EfEmployeeRepository : IEmployeeRepository
         if (filter.ReportingManagerId is not null)
         {
             joined = joined.Where(row => row.manager != null && row.manager.Id == filter.ReportingManagerId.Value);
+        }
+
         if (filter.ActiveOnly)
         {
             joined = joined.Where(row => row.e.EmploymentStatusId == EmploymentStatusIds.Active);
