@@ -443,6 +443,7 @@ public static class DependencyInjection
         services.AddScoped<ITaskAssetLinker, TaskAssetLinker>();
         services.AddScoped<ITaskWriteService, TaskWriteService>();
         services.AddScoped<IModuleWriteService, ModuleWriteService>();
+        services.AddScoped<IModuleActionSubmitter, ModuleActionSubmitter>();
         services.AddScoped<ITaskAccessResolver, TaskAccessResolver>();
 
         // Auth: global email directory

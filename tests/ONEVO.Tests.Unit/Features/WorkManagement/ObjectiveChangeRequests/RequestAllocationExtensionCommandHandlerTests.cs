@@ -1,129 +1,81 @@
 using Moq;
-using ONEVO.Application.Common.Models;
-using ONEVO.Application.Common.RepositoryInterfaces;
-using ONEVO.Application.Common.ServiceInterfaces;
-using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.Commands.RequestAllocationExtension;
-using ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.DTOs.Responses;
-using ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.RepositoryInterfaces;
-using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
-using ONEVO.Domain.Features.WorkManagement.ObjectiveChangeRequests.Entities;
-using ONEVO.Domain.Features.WorkManagement.Objectives.Entities;
+using ONEVO.Domain.Features.WorkManagement.Approvals.Entities;
 using Xunit;
+using K = ONEVO.Tests.Unit.Features.WorkManagement.Objectives.ModuleHandlerTestKit;
 
 namespace ONEVO.Tests.Unit.Features.WorkManagement.ObjectiveChangeRequests;
 
 public class RequestAllocationExtensionCommandHandlerTests
 {
-    private static readonly Guid TenantId = Guid.NewGuid();
-    private static readonly Guid UserId = Guid.NewGuid();
-    private static readonly Guid EmployeeId = Guid.NewGuid();
-    private static readonly Guid ReportingManagerId = Guid.NewGuid();
-    private static readonly Guid ObjectiveId = Guid.NewGuid();
-
-    private (RequestAllocationExtensionCommandHandler Handler, Mock<IObjectiveChangeRequestRepository> Requests, Mock<ONEVO.Application.Features.WorkManagement.Objectives.Services.IMilestoneMembershipCoordinator> Membership) Build(Guid? reportingManagerId, bool? callerIsEffectiveManager = null)
-    {
-        var currentUser = new Mock<ICurrentUser>();
-        currentUser.SetupGet(x => x.IsAuthenticated).Returns(true);
-        currentUser.SetupGet(x => x.TenantId).Returns(TenantId);
-        currentUser.SetupGet(x => x.UserId).Returns(UserId);
-
-        var identity = new Mock<ICallerIdentityResolver>();
-        identity.Setup(x => x.ResolveCallerEmployeeIdAsync(TenantId, UserId, It.IsAny<CancellationToken>())).ReturnsAsync(EmployeeId);
-        identity.Setup(x => x.ResolveDisplayNamesByEmployeeIdAsync(TenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new Dictionary<Guid, string> { [EmployeeId] = "Owner" });
-
-        var objective = new Objective
-        {
-            Id = ObjectiveId, TenantId = TenantId, OwnerId = EmployeeId, ReportingManagerId = reportingManagerId,
-            Title = "Child", IsActive = true, AllocatedHours = 60m, CreatedAt = DateTimeOffset.UtcNow
-        };
-        var objectives = new Mock<IObjectiveRepository>();
-        objectives.Setup(x => x.GetByIdForTenantAsync(TenantId, ObjectiveId, It.IsAny<CancellationToken>())).ReturnsAsync(objective);
-
-        var requests = new Mock<IObjectiveChangeRequestRepository>();
-        var membership = new Mock<ONEVO.Application.Features.WorkManagement.Objectives.Services.IMilestoneMembershipCoordinator>();
-        // Mirrors direct-owner-only behavior by default so pre-existing tests keep passing
-        // unmodified; callerIsEffectiveManager lets a test override this to simulate an
-        // ancestor-cascade grant (the coordinator's own ancestor-walk logic is unit-tested
-        // separately in MilestoneMembershipCoordinatorTests).
-        membership.Setup(x => x.IsEffectiveManagerAsync(TenantId, ObjectiveId, EmployeeId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(callerIsEffectiveManager ?? (objective.OwnerId == EmployeeId));
-        var notifications = new Mock<INotificationDispatcher>();
-
-        var unitOfWork = new Mock<IUnitOfWork>();
-        unitOfWork.Setup(x => x.ExecuteInTransactionAsync(It.IsAny<Func<CancellationToken, Task<Result<ObjectiveChangeRequestResponse>>>>(), It.IsAny<CancellationToken>()))
-            .Returns((Func<CancellationToken, Task<Result<ObjectiveChangeRequestResponse>>> op, CancellationToken ct) => op(ct));
-
-        var handler = new RequestAllocationExtensionCommandHandler(
-            currentUser.Object, identity.Object, objectives.Object, requests.Object,
-            membership.Object, notifications.Object, unitOfWork.Object);
-        return (handler, requests, membership);
-    }
+    private static RequestAllocationExtensionCommand Command() => new(K.ModuleId, 20m, "Need more hours for the new scope");
 
     [Fact]
-    public async Task Handle_HasReportingManager_CreatesPendingRequest()
+    public async Task Handle_HeadBelowPosition_EnginePending_CreatesRequestForTheParent()
     {
-        var (handler, requests, _) = Build(reportingManagerId: ReportingManagerId);
-        var command = new RequestAllocationExtensionCommand(ObjectiveId, 20m, "Need more hours for the new scope");
+        var kit = new K();
+        kit.EnginePending();
 
-        var result = await handler.Handle(command, CancellationToken.None);
+        var result = await kit.AllocationExtend().Handle(Command(), CancellationToken.None);
 
         Assert.True(result.IsSuccess);
-        requests.Verify(x => x.AddAsync(
-            It.Is<ObjectiveChangeRequest>(
-                r => r.RequestType == ObjectiveChangeRequestTypes.ExtendAllocation
-                     && r.ReportingManagerId == ReportingManagerId),
-            It.IsAny<CancellationToken>()), Times.Once);
+        Assert.False(result.Value!.Applied);
+        Assert.Equal(K.RequestId, result.Value.ApprovalRequestId);
+        kit.Approvals.Verify(x => x.SubmitAsync(It.Is<ONEVO.Application.Features.WorkManagement.Approvals.Services.WorkAction>(a =>
+            a.ActionType == WorkActionTypes.ModuleAllocationExtend && a.PositionModuleId == K.ParentId), It.IsAny<CancellationToken>()), Times.Once);
+        Assert.Equal(10m, kit.Module.AllocatedHours);
     }
 
     [Fact]
-    public async Task Handle_RootObjectiveNoReportingManager_ReturnsBadRequest()
+    public async Task Handle_ParentOwner_EngineDirect_AddsHours()
     {
-        var (handler, requests, _) = Build(reportingManagerId: null);
-        var command = new RequestAllocationExtensionCommand(ObjectiveId, 20m, "reason");
+        var kit = new K();
+        kit.CallAs(K.ParentOwnerUser);
 
-        var result = await handler.Handle(command, CancellationToken.None);
+        var result = await kit.AllocationExtend().Handle(Command(), CancellationToken.None);
 
-        Assert.False(result.IsSuccess);
+        Assert.True(result.Value!.Applied);
+        Assert.Equal(30m, kit.Module.AllocatedHours);
+    }
+
+    [Fact]
+    public async Task Handle_RootObjectiveNoParent_ReturnsBadRequest()
+    {
+        var module = K.NewModule();
+        module.ParentObjectiveId = null;
+        module.ReportingManagerId = null;
+        var kit = new K(module);
+
+        var result = await kit.AllocationExtend().Handle(Command(), CancellationToken.None);
+
         Assert.Equal(400, result.StatusCode);
-        requests.Verify(x => x.AddAsync(It.IsAny<ObjectiveChangeRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+        Assert.Equal("This milestone has no Reporting Manager to route to - it is a top-level milestone. Edit the Project directly instead.", result.Error);
+        kit.VerifyEngineNeverCalled();
     }
 
     [Fact]
-    public async Task Handle_CallerIsEffectiveManagerViaCascade_CreatesPendingRequest()
+    public async Task Handle_CallerIsEffectiveManagerViaCascade_SubmitsToTheEngine()
     {
-        // Caller is not this objective's own OwnerId, but IsEffectiveManagerAsync reports them as
-        // an effective manager via an ancestor (cascade) membership - the coordinator's own
-        // ancestor-walk logic is unit-tested separately in MilestoneMembershipCoordinatorTests, so
-        // this only proves the handler defers to its answer instead of the direct OwnerId check.
-        var (handler, requests, _) = Build(reportingManagerId: ReportingManagerId, callerIsEffectiveManager: true);
-        var command = new RequestAllocationExtensionCommand(ObjectiveId, 20m, "Need more hours for the new scope");
+        var kit = new K();
+        kit.CallAs(K.OtherUser);
 
-        var result = await handler.Handle(command, CancellationToken.None);
+        var result = await kit.AllocationExtend().Handle(Command(), CancellationToken.None);
 
         Assert.True(result.IsSuccess);
-        requests.Verify(x => x.AddAsync(
-            It.Is<ObjectiveChangeRequest>(
-                r => r.RequestType == ObjectiveChangeRequestTypes.ExtendAllocation
-                     && r.ReportingManagerId == ReportingManagerId),
-            It.IsAny<CancellationToken>()), Times.Once);
+        Assert.Equal(K.Other, kit.Submitted.Single().ActorEmployeeId);
     }
 
     [Fact]
     public async Task Handle_CallerNotEffectiveManager_ReturnsForbidden()
     {
-        // Caller is neither this objective's own OwnerId nor an effective manager via any cascade.
-        // Verifies that when IsEffectiveManagerAsync returns false, the handler correctly rejects
-        // the request with Forbidden.
-        var (handler, requests, _) = Build(reportingManagerId: ReportingManagerId, callerIsEffectiveManager: false);
-        var command = new RequestAllocationExtensionCommand(ObjectiveId, 20m, "Need more hours for the new scope");
+        var kit = new K { OtherIsMember = false };
+        kit.CallAs(K.OtherUser);
 
-        var result = await handler.Handle(command, CancellationToken.None);
+        var result = await kit.AllocationExtend().Handle(Command(), CancellationToken.None);
 
         Assert.False(result.IsSuccess);
         Assert.Equal(403, result.StatusCode);
         Assert.Equal("Only this milestone's owner can request an allocation extension.", result.Error);
-        requests.Verify(x => x.AddAsync(It.IsAny<ObjectiveChangeRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+        kit.VerifyEngineNeverCalled();
     }
 }

@@ -1,36 +1,34 @@
 using MediatR;
 using ONEVO.Application.Common.Models;
-using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
-using ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Objectives.DTOs.Responses;
-using ONEVO.Application.Features.WorkManagement.Objectives.Mappers;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Objectives.Services;
-using ONEVO.Domain.Features.WorkManagement.ObjectiveChangeRequests.Entities;
+using ONEVO.Domain.Features.WorkManagement.Approvals.Entities;
 
 namespace ONEVO.Application.Features.WorkManagement.Objectives.Commands.DeleteObjective;
 
+/// <summary>Soft-deletes a milestone through the approval engine (the parent's owner or above applies it now; others request).</summary>
 public class DeleteObjectiveCommandHandler : IRequestHandler<DeleteObjectiveCommand, Result<ObjectiveChangeOutcomeResponse>>
 {
     private readonly ICurrentUser _currentUser;
     private readonly ICallerIdentityResolver _identity;
     private readonly IObjectiveRepository _objectives;
-    private readonly IObjectiveChangeRequestRepository _changeRequests;
-    private readonly IUnitOfWork _unitOfWork;
     private readonly IMilestoneMembershipCoordinator _membership;
+    private readonly IModuleWriteService _modules;
+    private readonly IModuleActionSubmitter _submitter;
 
     public DeleteObjectiveCommandHandler(
         ICurrentUser currentUser, ICallerIdentityResolver identity, IObjectiveRepository objectives,
-        IObjectiveChangeRequestRepository changeRequests, IUnitOfWork unitOfWork, IMilestoneMembershipCoordinator membership)
+        IMilestoneMembershipCoordinator membership, IModuleWriteService modules, IModuleActionSubmitter submitter)
     {
         _currentUser = currentUser;
         _identity = identity;
         _objectives = objectives;
-        _changeRequests = changeRequests;
-        _unitOfWork = unitOfWork;
         _membership = membership;
+        _modules = modules;
+        _submitter = submitter;
     }
 
     public async Task<Result<ObjectiveChangeOutcomeResponse>> Handle(DeleteObjectiveCommand request, CancellationToken ct)
@@ -57,40 +55,15 @@ public class DeleteObjectiveCommandHandler : IRequestHandler<DeleteObjectiveComm
         if (!await _membership.IsEffectiveManagerAsync(tenantId, objective.Id, callerEmployeeId.Value, ct))
             return Result<ObjectiveChangeOutcomeResponse>.Forbidden("Only this milestone's head can delete it.");
 
-        if (!objective.IsActive)
-            return Result<ObjectiveChangeOutcomeResponse>.Conflict("Objective already deleted.");
+        var validation = await _modules.ValidateDeleteAsync(tenantId, objective, ct);
+        if (!validation.IsSuccess)
+            return Result<ObjectiveChangeOutcomeResponse>.Failure(validation.Error!, validation.StatusCode ?? 400);
 
-        if (objective.CreatedById == userId)
-        {
-            objective.IsActive = false;
-            objective.UpdatedAt = DateTimeOffset.UtcNow;
-            _objectives.Update(objective);
-            await _unitOfWork.SaveChangesAsync(ct);
+        var outcome = await _submitter.SubmitAsync(tenantId, callerEmployeeId.Value, objective, WorkActionTypes.ModuleDelete, null,
+            (tracked, innerCt) => _modules.ApplyDeleteAsync(tenantId, tracked, innerCt), ct: ct);
 
-            return Result<ObjectiveChangeOutcomeResponse>.Success(new ObjectiveChangeOutcomeResponse(Applied: true, PendingRequest: null));
-        }
-
-        if (await _changeRequests.HasPendingForObjectiveAsync(tenantId, objective.Id, ct))
-            return Result<ObjectiveChangeOutcomeResponse>.Conflict("A change request is already pending for this objective.");
-
-        var changeRequest = new ObjectiveChangeRequest
-        {
-            Id = Guid.NewGuid(),
-            TenantId = tenantId,
-            ObjectiveId = objective.Id,
-            RequestType = ObjectiveChangeRequestTypes.Delete,
-            RequestedById = callerEmployeeId.Value,
-            ReportingManagerId = objective.ReportingManagerId!.Value,
-            Status = ObjectiveChangeRequestStatuses.Pending,
-            PayloadJson = null,
-            CreatedById = userId,
-            CreatedAt = DateTimeOffset.UtcNow
-        };
-
-        await _changeRequests.AddAsync(changeRequest, ct);
-        await _unitOfWork.SaveChangesAsync(ct);
-
-        return Result<ObjectiveChangeOutcomeResponse>.Success(
-            new ObjectiveChangeOutcomeResponse(Applied: false, ObjectiveMapper.ToResponse(changeRequest)));
+        return outcome.IsSuccess
+            ? Result<ObjectiveChangeOutcomeResponse>.Success(new ObjectiveChangeOutcomeResponse(outcome.Value!.Applied, outcome.Value.ApprovalRequestId))
+            : Result<ObjectiveChangeOutcomeResponse>.Failure(outcome.Error!, outcome.StatusCode ?? 400);
     }
 }

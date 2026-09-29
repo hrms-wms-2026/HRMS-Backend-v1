@@ -55,7 +55,7 @@ public class ApproveObjectiveChangeRequestCommandHandlerTests
     {
         Id = RequestId, TenantId = TenantId, ObjectiveId = ObjectiveId, RequestType = ObjectiveChangeRequestTypes.Edit,
         ReportingManagerId = ManagerEmployeeId, Status = ObjectiveChangeRequestStatuses.Pending,
-        PayloadJson = JsonSerializer.Serialize(payload, EditObjectiveCommandHandler.PayloadJsonOptions), CreatedAt = DateTimeOffset.UtcNow
+        PayloadJson = JsonSerializer.Serialize(payload, ONEVO.Application.Features.WorkManagement.Objectives.DTOs.ModulePayloadJson.Options), CreatedAt = DateTimeOffset.UtcNow
     };
 
     private static ObjectiveChangeRequest DeleteRequest(string status = ObjectiveChangeRequestStatuses.Pending) => new()

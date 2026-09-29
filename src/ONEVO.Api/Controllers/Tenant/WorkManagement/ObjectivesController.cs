@@ -81,7 +81,7 @@ public class ObjectivesController : ControllerBase
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
-    /// <summary>Edits a milestone. Always creates a pending approval request routed to the milestone's Reporting Manager - the head can no longer apply their own edits directly. Frozen (400) once the milestone is Achieved.</summary>
+    /// <summary>Edits a milestone through the approval engine: 200 with the milestone when the caller is the parent's owner or above, otherwise 202 { approvalRequestId }. Frozen (400) once the milestone is Achieved.</summary>
     [HttpPut("{id:guid}")]
     public async Task<IActionResult> Edit(Guid id, [FromBody] EditObjectiveRequest request, CancellationToken ct)
     {
@@ -93,10 +93,10 @@ public class ObjectivesController : ControllerBase
 
         return result.Value!.Applied
             ? Ok(result.Value.Objective!.ToViewModel())
-            : Accepted(result.Value.PendingRequest!.ToViewModel());
+            : StatusCode(202, new { approvalRequestId = result.Value.ApprovalRequestId });
     }
 
-    /// <summary>Soft-deletes a milestone. Applies immediately if the caller created it; otherwise creates a pending approval request routed to the milestone's Reporting Manager.</summary>
+    /// <summary>Soft-deletes a milestone through the approval engine: 204 when the caller is the parent's owner or above, otherwise 202 { approvalRequestId }.</summary>
     [HttpDelete("{id:guid}")]
     public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
     {
@@ -107,10 +107,10 @@ public class ObjectivesController : ControllerBase
 
         return result.Value!.Applied
             ? NoContent()
-            : Accepted(result.Value.PendingRequest!.ToViewModel());
+            : StatusCode(202, new { approvalRequestId = result.Value.ApprovalRequestId });
     }
 
-    /// <summary>Reassigns a milestone's head (by employeeId). If the objective has a Reporting Manager, applies immediately for the creator or routes to that Reporting Manager for approval otherwise. If the objective has no Reporting Manager, skips approval and sends a leader invitation — the caller remains Head until accepted.</summary>
+    /// <summary>Reassigns a milestone's head (by employeeId). If the objective has a Reporting Manager, goes through the approval engine (204 applied / 202 with approvalRequestId). If the objective has no Reporting Manager, skips approval and sends a leader invitation — the caller remains Head until accepted.</summary>
     [HttpPost("{id:guid}/transfer")]
     public async Task<IActionResult> Transfer(Guid id, [FromBody] TransferObjectiveHeadRequest request, CancellationToken ct)
     {
@@ -191,7 +191,7 @@ public class ObjectivesController : ControllerBase
 
         return result.Value!.Applied
             ? NoContent()
-            : Accepted(result.Value.PendingRequest!.ToViewModel());
+            : StatusCode(202, new { approvalRequestId = result.Value.ApprovalRequestId });
     }
 
     /// <summary>Reverts an Achieved milestone back to active. Same immediate-vs-pending split as Delete.</summary>
@@ -205,7 +205,7 @@ public class ObjectivesController : ControllerBase
 
         return result.Value!.Applied
             ? NoContent()
-            : Accepted(result.Value.PendingRequest!.ToViewModel());
+            : StatusCode(202, new { approvalRequestId = result.Value.ApprovalRequestId });
     }
 
     /// <summary>An Objective's parent detail plus its full nested descendant subtree. Caller must be {id}'s current Head.</summary>
@@ -219,15 +219,18 @@ public class ObjectivesController : ControllerBase
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
-    /// <summary>Owner requests more allocated hours, routed to the Objective's Reporting Manager as an extend_allocation change request. Root (no reporting manager) returns 400 — edit the Project instead.</summary>
+    /// <summary>More allocated hours through the approval engine: 200 when the caller is the parent's owner or above, otherwise 202 { approvalRequestId }. Root (no reporting manager) returns 400 — edit the Project instead.</summary>
     [HttpPost("{id:guid}/allocation-requests")]
     public async Task<IActionResult> RequestAllocationExtension(Guid id, [FromBody] RequestAllocationExtensionRequest request, CancellationToken ct)
     {
         var result = await _mediator.Send(new RequestAllocationExtensionCommand(id, request.RequestedAdditionalHours, request.Reason), ct);
 
-        return result.IsSuccess
-            ? StatusCode(202, result.Value!.ToViewModel())
-            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+        if (!result.IsSuccess)
+            return Problem(result.Error, statusCode: result.StatusCode ?? 400);
+
+        return result.Value!.Applied
+            ? Ok()
+            : StatusCode(202, new { approvalRequestId = result.Value.ApprovalRequestId });
     }
 
     /// <summary>Approves a pending change request. Caller must be the request's Reporting Manager.</summary>

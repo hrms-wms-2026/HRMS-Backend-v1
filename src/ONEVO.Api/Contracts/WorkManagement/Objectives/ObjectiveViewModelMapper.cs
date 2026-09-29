@@ -62,7 +62,7 @@ public static class ObjectiveViewModelMapper
     public static TransferOutcomeViewModel ToViewModel(this TransferOutcomeResponse dto) => new()
     {
         Applied = dto.Applied,
-        PendingChangeRequest = dto.PendingChangeRequest?.ToViewModel(),
+        ApprovalRequestId = dto.ApprovalRequestId,
         PendingInvitation = dto.PendingInvitation?.ToViewModel()
     };
 }

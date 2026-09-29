@@ -110,6 +110,9 @@ public class CreateObjectiveCommandHandler : IRequestHandler<CreateObjectiveComm
                 Description = request.Description?.Trim(),
                 OwnerId = callerEmployeeId.Value,
                 ReportingManagerId = callerEmployeeId.Value,
+                // Spec §5.2: a Module's creator position is its parent - the parent's owner (or
+                // anyone above) acts on it directly, everyone else asks them.
+                CreatorPositionObjectiveId = parent.Id,
                 IsActive = true,
                 StartDate = request.StartDate,
                 EndDate = request.EndDate,

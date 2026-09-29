@@ -135,6 +135,17 @@ public class CreateObjectiveCommandHandlerTests
     }
 
     [Fact]
+    public async Task Create_StampsCreatorPositionAsParent()
+    {
+        var (handler, objectives) = BuildHandler(ParentObjective(ownerId: EmployeeId));
+
+        var result = await handler.Handle(ValidCommand(), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        objectives.Verify(x => x.AddAsync(It.Is<Objective>(o => o.CreatorPositionObjectiveId == ParentId), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
     public async Task Handle_HeadUserIdInRequestIsIgnored_OwnerAndReportingManagerAreAlwaysCaller()
     {
         // Creator always starts as owner (design amendment) - any HeadUserId on the request is
