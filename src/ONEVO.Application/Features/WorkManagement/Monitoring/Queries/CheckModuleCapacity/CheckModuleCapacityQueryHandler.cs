@@ -1,6 +1,7 @@
 using MediatR;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.WorkManagement.Hierarchy;
 using ONEVO.Application.Features.WorkManagement.Monitoring.DTOs;
 using ONEVO.Application.Features.WorkManagement.Monitoring.Services;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
@@ -34,7 +35,7 @@ public sealed class CheckModuleCapacityQueryHandler : IRequestHandler<CheckModul
             return Result<ModuleCapacityCheckResponse>.Failure(caller.Error!, caller.StatusCode ?? 403);
         var tenantId = caller.Value!.TenantId;
 
-        var people = new HashSet<Guid>(query.MemberEmployeeIds ?? []);
+        int manpower;
         var completedHours = 0m;
         var title = "This module";
         var existing = query.ModuleId is { } moduleId
@@ -42,20 +43,24 @@ public sealed class CheckModuleCapacityQueryHandler : IRequestHandler<CheckModul
             : null;
         if (existing is not null && existing.ProjectId == query.ProjectId)
         {
-            foreach (var member in await _members.ListActiveForObjectiveAsync(tenantId, existing.Id, ct))
-                people.Add(member.EmployeeId);
-            people.Add(existing.OwnerId);
+            // Editing: the allocation is split across the sub-Modules, so everyone at or below counts.
+            var tree = new ProjectModuleTree(await _objectives.GetAllByProjectIdAsync(tenantId, query.ProjectId, ct));
+            var membersByModule = (await _members.ListActiveForProjectAsync(tenantId, query.ProjectId, ct))
+                .GroupBy(m => m.ObjectiveId)
+                .ToDictionary(g => g.Key, g => (IReadOnlySet<Guid>)g.Select(m => m.EmployeeId).ToHashSet());
+            manpower = ModuleManpower.Count(tree, existing.Id, membersByModule, query.MemberEmployeeIds);
             completedHours = existing.CompletedHours;
             title = existing.Title;
         }
         else
         {
-            people.Add(caller.Value.EmployeeId);
+            // Creating: a new Module has no sub-Modules yet - the picked members plus the creator.
+            manpower = new HashSet<Guid>(query.MemberEmployeeIds ?? []) { caller.Value.EmployeeId }.Count;
         }
 
         var calendar = await _calendars.ForProjectAsync(tenantId, query.ProjectId, ct);
         var module = new MonitorModule(query.ModuleId ?? Guid.Empty, null, null, title, query.StartDate, query.EndDate,
-            query.AllocatedHours, completedHours, IsAchieved: false, people.Count);
+            query.AllocatedHours, completedHours, IsAchieved: false, manpower);
 
         var warnings = new[]
             {
@@ -68,7 +73,7 @@ public sealed class CheckModuleCapacityQueryHandler : IRequestHandler<CheckModul
             .ToList();
 
         return Result<ModuleCapacityCheckResponse>.Success(new ModuleCapacityCheckResponse(
-            calendar.DailyHours, calendar.WorkingDaysBetween(query.StartDate, query.EndDate), people.Count,
-            calendar.Capacity(people.Count, query.StartDate, query.EndDate), query.AllocatedHours, warnings));
+            calendar.DailyHours, calendar.WorkingDaysBetween(query.StartDate, query.EndDate), manpower,
+            calendar.Capacity(manpower, query.StartDate, query.EndDate), query.AllocatedHours, warnings));
     }
 }

@@ -75,7 +75,7 @@ The monitor predicts and detects exceptions on Modules, Sprints and Tasks, warns
 | `task_overdue` | task | DueDate < today, status not MarksTaskComplete |
 | `module_overdue` | module | not achieved, EndDate < today, has an unfinished task at or below it |
 
-- **Members** = distinct active ProjectMember employees on the module, plus its owner.
+- **Members (manpower)** = distinct active members and owners of the module AND all its sub-modules (a module's allocation is split across its sub-modules - user decision 2026-09-29). Shared helper ModuleManpower.
 - **Unfinished** = status is not `MarksTaskComplete`. Subtasks count as tasks.
 
 **Employee deadline-window check (EDF).** For an employee:

@@ -19,7 +19,8 @@ public static class MonitorTargetTypes
     public const string Task = "task";
 }
 
-/// <summary>A Module as the monitor sees it. MemberCount = distinct active members plus the owner.
+/// <summary>A Module as the monitor sees it. MemberCount = its manpower: distinct active members and owners of
+/// the Module and all its sub-Modules (see ModuleManpower).
 /// CompletedHours already includes child Modules (it is rolled up when tasks complete).</summary>
 public sealed record MonitorModule(
     Guid Id, Guid? ParentId, Guid? CreatorPositionModuleId, string Title, DateOnly StartDate, DateOnly EndDate,

@@ -72,19 +72,38 @@ public class MonitorCheckQueryHandlerTests
     }
 
     [Fact]
-    public async Task ModuleCheck_Edit_CountsExistingMembersAndOwner_NotTheCaller()
+    public async Task ModuleCheck_Edit_CountsMembersAndOwnersOfTheModuleAndAllItsSubModules_NotTheCaller()
     {
         var owner = Guid.NewGuid();
+        var member = Guid.NewGuid();
+        var childOwner = Guid.NewGuid();
+        var childMember = Guid.NewGuid();
+        var siblingMember = Guid.NewGuid();
         var moduleId = Guid.NewGuid();
-        _objectives.Setup(x => x.GetByIdForTenantAsync(TenantId, moduleId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new Objective { Id = moduleId, ProjectId = ProjectId, OwnerId = owner, Title = "Payments" });
-        _members.Setup(x => x.ListActiveForObjectiveAsync(TenantId, moduleId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync([new ProjectMember { EmployeeId = owner }, new ProjectMember { EmployeeId = Guid.NewGuid() }]);
+        var childId = Guid.NewGuid();
+        var siblingId = Guid.NewGuid();
+        var module = new Objective { Id = moduleId, ProjectId = ProjectId, OwnerId = owner, Title = "Payments" };
+        _objectives.Setup(x => x.GetByIdForTenantAsync(TenantId, moduleId, It.IsAny<CancellationToken>())).ReturnsAsync(module);
+        _objectives.Setup(x => x.GetAllByProjectIdAsync(TenantId, ProjectId, It.IsAny<CancellationToken>())).ReturnsAsync(
+        [
+            module,
+            new Objective { Id = childId, ParentObjectiveId = moduleId, ProjectId = ProjectId, OwnerId = childOwner },
+            new Objective { Id = siblingId, ProjectId = ProjectId, OwnerId = Guid.NewGuid() }
+        ]);
+        _members.Setup(x => x.ListActiveForProjectAsync(TenantId, ProjectId, It.IsAny<CancellationToken>())).ReturnsAsync(
+        [
+            new ProjectMember { ObjectiveId = moduleId, EmployeeId = owner },
+            new ProjectMember { ObjectiveId = moduleId, EmployeeId = member },
+            new ProjectMember { ObjectiveId = childId, EmployeeId = childMember },
+            new ProjectMember { ObjectiveId = childId, EmployeeId = member },
+            new ProjectMember { ObjectiveId = siblingId, EmployeeId = siblingMember }
+        ]);
 
         var result = await ModuleHandler().Handle(new CheckModuleCapacityQuery(ProjectId, moduleId, Mon5, Fri16, 100m, null), default);
 
-        Assert.Equal(2, result.Value!.MemberCount);
-        Assert.Equal(160m, result.Value.CapacityHours);
+        // owner, member, childOwner, childMember (member counted once; the sibling is not below).
+        Assert.Equal(4, result.Value!.MemberCount);
+        Assert.Equal(320m, result.Value.CapacityHours);
     }
 
     [Fact]

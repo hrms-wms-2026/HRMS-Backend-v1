@@ -1,3 +1,4 @@
+using ONEVO.Application.Features.WorkManagement.Hierarchy;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Sprints.RepositoryInterfaces;
@@ -47,14 +48,13 @@ public sealed class ProjectMonitorSnapshotLoader : IProjectMonitorSnapshotLoader
             .ToList();
         var memberIdsByModule = (await _members.ListActiveForProjectAsync(tenantId, projectId, ct))
             .GroupBy(m => m.ObjectiveId)
-            .ToDictionary(g => g.Key, g => g.Select(m => m.EmployeeId).ToHashSet());
-        var modules = objectives.Select(o =>
-        {
-            var people = memberIdsByModule.GetValueOrDefault(o.Id)?.ToHashSet() ?? [];
-            people.Add(o.OwnerId);
-            return new MonitorModule(o.Id, o.ParentObjectiveId, o.CreatorPositionObjectiveId, o.Title, o.StartDate, o.EndDate,
-                o.AllocatedHours, o.CompletedHours, o.IsAchieved, people.Count);
-        }).ToList();
+            .ToDictionary(g => g.Key, g => (IReadOnlySet<Guid>)g.Select(m => m.EmployeeId).ToHashSet());
+        // Manpower = everyone at or below the Module: its allocation is split across its sub-Modules.
+        var tree = new ProjectModuleTree(objectives);
+        var modules = objectives.Select(o => new MonitorModule(o.Id, o.ParentObjectiveId, o.CreatorPositionObjectiveId, o.Title, o.StartDate, o.EndDate,
+                o.AllocatedHours, o.CompletedHours, o.IsAchieved,
+                ModuleManpower.Count(tree, o.Id, memberIdsByModule)))
+            .ToList();
 
         var sprints = (await _sprints.GetByProjectAsync(tenantId, projectId, ct))
             .Where(s => !s.IsDeleted)
