@@ -35,6 +35,9 @@ using ONEVO.Application.Features.TimeAttendance.Queries.EmployeeOverview.GetEmpl
 using ONEVO.Application.Features.TimeAttendance.Queries.EmployeeOverview.GetEmployeeAttendanceOverview;
 using ONEVO.Application.Features.WorkManagement.EmployeeOverview.Queries.GetEmployeeDelivery;
 using ONEVO.Application.Features.WorkManagement.EmployeeOverview.Queries.GetEmployeeWorkOverview;
+using ONEVO.Application.Features.WorkManagement.EmployeeOverview.Queries.WorkActivity.GetEmployeeDeliveryTrend;
+using ONEVO.Application.Features.WorkManagement.EmployeeOverview.Queries.WorkActivity.GetEmployeeNeedsAttention;
+using ONEVO.Application.Features.WorkManagement.EmployeeOverview.Queries.WorkActivity.GetEmployeeRecentTasks;
 using ONEVO.Application.Features.WorkManagement.EmployeeWorkGraph.Queries.GetEmployeeWorkGraph;
 
 namespace ONEVO.Api.Controllers.Tenant.CoreHr;
@@ -232,6 +235,36 @@ public class EmployeesController : ControllerBase
         Guid id, [FromQuery] DateOnly? from = null, [FromQuery] DateOnly? to = null, CancellationToken ct = default)
     {
         var result = await _mediator.Send(new GetEmployeeApprovalActivityQuery(id, from, to), ct);
+        return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Work & Activity Needs attention card: open tasks overdue or due within 3 days (top 5 + total).</summary>
+    [HttpGet("{id:guid}/work-activity/needs-attention")]
+    [RequirePermission("employees:read")]
+    [RequireAnyModule("worksync_foundation", "projects", "objectives_milestones", "tasks", "boards", "planning_sprints")]
+    public async Task<IActionResult> GetWorkActivityNeedsAttention(Guid id, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new GetEmployeeNeedsAttentionQuery(id), ct);
+        return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Work & Activity Recent tasks card: the 5 most recently changed assigned tasks.</summary>
+    [HttpGet("{id:guid}/work-activity/recent-tasks")]
+    [RequirePermission("employees:read")]
+    [RequireAnyModule("worksync_foundation", "projects", "objectives_milestones", "tasks", "boards", "planning_sprints")]
+    public async Task<IActionResult> GetWorkActivityRecentTasks(Guid id, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new GetEmployeeRecentTasksQuery(id), ct);
+        return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Work & Activity delivery chart: completed tasks per month for the 6 months ending at `to`'s month.</summary>
+    [HttpGet("{id:guid}/work-activity/delivery-trend")]
+    [RequirePermission("employees:read")]
+    [RequireAnyModule("worksync_foundation", "projects", "objectives_milestones", "tasks", "boards", "planning_sprints")]
+    public async Task<IActionResult> GetWorkActivityDeliveryTrend(Guid id, [FromQuery] DateOnly? to = null, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new GetEmployeeDeliveryTrendQuery(id, to), ct);
         return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
