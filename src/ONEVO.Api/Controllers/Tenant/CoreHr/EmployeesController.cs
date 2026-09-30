@@ -22,6 +22,7 @@ using ONEVO.Application.Features.CoreHr.Employee.Commands.UpdateEmergencyContact
 using ONEVO.Application.Features.CoreHr.Employee.Commands.UpdateEmployeeJobDetails;
 using ONEVO.Application.Features.CoreHr.Employee.Commands.UpdatePersonalInformation;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployee;
+using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployeeApprovalActivity;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployeeDetail;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployeeIdentity;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployeePositionHistory;
@@ -219,6 +220,18 @@ public class EmployeesController : ControllerBase
         [FromQuery] string? compare = null, CancellationToken ct = default)
     {
         var result = await _mediator.Send(new GetEmployeeActivityOverviewQuery(id, from, to, compare), ct);
+        return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Overview approval activity: requests the employee made in from..to across leave,
+    /// attendance and Work Management (newest 10 plus pending/approved/rejected counts). Each source
+    /// is included only when the caller may read it or is viewing their own record.</summary>
+    [HttpGet("{id:guid}/overview/approvals")]
+    [RequirePermission("employees:read")]
+    public async Task<IActionResult> GetOverviewApprovals(
+        Guid id, [FromQuery] DateOnly? from = null, [FromQuery] DateOnly? to = null, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new GetEmployeeApprovalActivityQuery(id, from, to), ct);
         return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
