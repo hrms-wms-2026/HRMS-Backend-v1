@@ -28,6 +28,7 @@ using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployeePositionHist
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetMyPayroll;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetMyProfile;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.ListEmployees;
+using ONEVO.Application.Features.TimeAttendance.Queries.EmployeeOverview.GetEmployeeAttendanceOverview;
 using ONEVO.Application.Features.WorkManagement.EmployeeWorkGraph.Queries.GetEmployeeWorkGraph;
 
 namespace ONEVO.Api.Controllers.Tenant.CoreHr;
@@ -141,6 +142,17 @@ public class EmployeesController : ControllerBase
     public async Task<IActionResult> GetWorkGraph(Guid id, CancellationToken ct = default)
     {
         var result = await _mediator.Send(new GetEmployeeWorkGraphQuery(id), ct);
+        return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Overview attendance card: present/late/missing-clock-out/leave counts and the
+    /// per-day strip for one employee over from..to (default: current month).</summary>
+    [HttpGet("{id:guid}/overview/attendance")]
+    [RequirePermission("employees:read")]
+    public async Task<IActionResult> GetOverviewAttendance(
+        Guid id, [FromQuery] DateOnly? from = null, [FromQuery] DateOnly? to = null, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new GetEmployeeAttendanceOverviewQuery(id, from, to), ct);
         return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
