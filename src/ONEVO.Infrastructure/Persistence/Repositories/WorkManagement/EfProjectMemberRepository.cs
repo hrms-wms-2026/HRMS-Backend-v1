@@ -101,6 +101,13 @@ public class EfProjectMemberRepository : IProjectMemberRepository
             .ToListAsync(ct);
     }
 
+    public async Task<IReadOnlyList<ProjectMember>> ListActiveForEmployeeAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default)
+    {
+        return await _db.ProjectMembers.AsNoTracking()
+            .Where(m => m.TenantId == tenantId && m.EmployeeId == employeeId && m.IsActive)
+            .ToListAsync(ct);
+    }
+
     public void Update(ProjectMember member)
     {
         _db.ProjectMembers.Update(member);

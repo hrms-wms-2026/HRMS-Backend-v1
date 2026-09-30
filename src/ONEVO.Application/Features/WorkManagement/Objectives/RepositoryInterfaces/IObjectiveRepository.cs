@@ -55,5 +55,8 @@ public interface IObjectiveRepository
     /// my-deadlines endpoint (spec §7) - not used by any other query.</summary>
     Task<IReadOnlyList<Objective>> GetOwnedByEmployeeIdWithinRangeAsync(Guid tenantId, Guid employeeId, DateOnly from, DateOnly to, CancellationToken ct = default);
 
+    /// <summary>Active objectives owned by this employee, any project, no date window.</summary>
+    Task<IReadOnlyList<Objective>> ListActiveOwnedByEmployeeAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default);
+
     void Update(Objective objective);
 }
