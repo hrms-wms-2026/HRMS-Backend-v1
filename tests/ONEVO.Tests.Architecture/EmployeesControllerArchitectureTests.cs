@@ -80,6 +80,7 @@ public sealed class EmployeesControllerArchitectureTests
     [Theory]
     [InlineData("overview/attendance", "GetOverviewAttendance")]
     [InlineData("overview/attendance-discipline", "GetOverviewAttendanceDiscipline")]
+    [InlineData("overview/time-off", "GetOverviewTimeOff")]
     public void EmployeesController_OverviewWidgetActions_RequireEmployeesReadAndUseTheirRoute(string route, string action)
     {
         var path = FindRepositoryPath(
