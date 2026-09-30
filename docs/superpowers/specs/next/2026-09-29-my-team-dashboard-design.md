@@ -1,17 +1,20 @@
-# My Team Dashboard (`/dashboard/team`) — Design Spec
+# My Team Dashboard (merged into `/dashboard`) — Design Spec
 
-**Status:** Architecture approved 2026-09-29 (chat). This document is pending the user's review; no
-implementation plan exists yet.
+**Status:** Architecture approved 2026-09-29 (chat); route model revised 2026-09-30 (chat, merged
+single-page instead of a separate route - see §5). This document is pending the user's review; no
+implementation plan exists yet for the frontend (§7 onward); the backend (§6-§13) has a plan
+already in progress, unaffected by the 2026-09-30 revision.
 
 **Goal:** Give any user who manages people, approves requests, or leads Work Management modules a
-"My Team" view of the dashboard. My Team sits beside the existing personal "My Day" dashboard and
-answers four questions: who is in and who is out today, what is waiting for my decision, how the
-work I lead is progressing, and what I should act on first.
+"My Team" section of their dashboard. My Team renders below the existing personal "My Day" cards,
+on the same page, and answers four questions: who is in and who is out today, what is waiting for
+my decision, how the work I lead is progressing, and what I should act on first.
 
-**Architecture:** `/dashboard` (My Day, unchanged) + a lazy child route `/dashboard/team` (My
-Team), switched by a dashboard-level `My Day | My Team` control. My Team is not one population.
-Each section is computed by the backend domain that owns the data and is authorized by that
-domain's existing rules:
+**Architecture:** One page, `/dashboard`. It always renders the existing personal ("My Day")
+cards, and appends a "My Team" section - only the widgets each user's capabilities allow - below
+them. There is no separate route and no page-level guard for My Team (§5). My Team is not one
+population. Each section is computed by the backend domain that owns the data and is authorized by
+that domain's existing rules:
 - **People I Manage** follows the People/Attendance authority model.
 - **Work I Lead** follows Work Management project/module ownership.
 
@@ -58,7 +61,7 @@ file it came from.
 
 | # | Decision |
 |---|---|
-| D1 | Routes are `/dashboard` (My Day) and `/dashboard/team` (My Team). There is no top-level `/team`. |
+| D1 | **(Revised 2026-09-30)** One route, `/dashboard`. My Team is a capability-gated section appended to the same page, not a separate route reached by a toggle. There is no top-level `/team` and no `/dashboard/team`. |
 | D2 | My Team has two populations with separate authorization: **People I Manage** and **Work I Lead**. |
 | D3 | A Work Management lead with no organizational coverage may use My Team. Tab availability is capability-based, not role-based and not a flat frontend permission any-of. |
 | D4 | Team Progress = work inside modules the caller **effectively owns** (owner of the module or of any ancestor module), including sub-modules. Plain membership never qualifies. There is no "Blocked" metric. |
@@ -119,17 +122,21 @@ Frontend                                        Backend (owning domain)
 ────────────────────────────────────────────    ─────────────────────────────────────────────
 MyTeamCapabilitiesStore (root) ───────────────▶ GET /api/v1/dashboard/team/capabilities
                                                     (Dashboard composition → CoreHr probe + WM probe)
-/dashboard        DashboardHome (My Day, unchanged; + mode switch)
-/dashboard/team   TeamDashboard
-   ├─ TeamStatusCard ──────────────────────────▶ GET /api/v1/attendance/time-tracking/team/today
-   │                                                (TimeAttendance · People I Manage)
-   ├─ ApprovalsExceptionsCard ─┐
-   ├─ PriorityActionsCard ─────┼──────────────▶ GET /api/v1/dashboard/team/action-items
-   │                           │                    (Dashboard composition over domain-owned sources:
-   │                           │                     Leave, TimeAttendance, Monitoring.Exceptions, WM)
-   └─ TeamProgressCard ────────┴──────────────▶ GET /api/v1/work/led-progress
-                                                    (WorkManagement · Work I Lead)
+/dashboard   DashboardHome
+   ├─ ... existing My Day cards, unchanged ...
+   └─ "My Team" section (rendered only if capabilities.isAvailable; widget-level gated within it)
+      ├─ TeamStatusCard ────────────────────────▶ GET /api/v1/attendance/time-tracking/team/today
+      │                                              (TimeAttendance · People I Manage)
+      ├─ ApprovalsExceptionsCard ─┐
+      ├─ PriorityActionsCard ─────┼────────────▶ GET /api/v1/dashboard/team/action-items
+      │                           │                  (Dashboard composition over domain-owned sources:
+      │                           │                   Leave, TimeAttendance, Monitoring.Exceptions, WM)
+      └─ TeamProgressCard ────────┴────────────▶ GET /api/v1/work/led-progress
+                                                     (WorkManagement · Work I Lead)
 ```
+
+Backend route naming (`/api/v1/dashboard/team/...`) is unaffected by the 2026-09-30 frontend
+revision - it is an API namespace, not a page route, and stays as designed in §9.
 
 - **Domain-owned endpoints.** Team Status and Team Progress are ordinary queries in their own
   domains, under their own controllers and module gates, like every existing Home card.
@@ -142,31 +149,46 @@ MyTeamCapabilitiesStore (root) ───────────────▶ 
 - **Priority Actions makes no backend call of its own.** The frontend composes it from the
   `action-items` and `led-progress` responses it already holds (§8.4).
 
-## 5. Routes, navigation, and the mode switch
+## 5. Routes, navigation, and the merged dashboard
+
+**Revised 2026-09-30 (user decision, chat):** the earlier two-route "My Day | My Team" toggle
+design is replaced with a **single merged page**. There is no `/dashboard/team` route and no
+`myTeamGuard`. Every reference to a "switch", a "tab", or a route-level guard elsewhere in this
+document (§7.1, §14, §17, §19) means the corresponding section-level behavior below, not a
+separate page. **No backend endpoint, DTO, authorization rule, or query changes because of this
+revision** — §6 through §13 are unaffected; only the frontend's page composition changes.
 
 | Path | Component | Guard |
 |---|---|---|
-| `/dashboard` | `DashboardHomeComponent` (existing, unchanged except that it renders the switch) | `authGuard` (existing) |
-| `/dashboard/team` | `TeamDashboardComponent` (new, lazy `loadComponent`) | `authGuard` + new `myTeamGuard` |
+| `/dashboard` | `DashboardHomeComponent` (existing widgets, **plus** a conditionally-rendered "My Team" section appended below them) | `authGuard` (existing, unchanged) |
 | `/dashboard/insights`, `/dashboard/activity-timeline` | unchanged | unchanged |
 
-- **The switch.** `DashboardModeSwitchComponent` is two links, `My Day` → `/dashboard` and
-  `My Team` → `/dashboard/team`, marked up as `<nav aria-label="Dashboard view">` with
-  `aria-current="page"`.
-  - It is rendered at the top of both pages.
-  - It renders nothing when `capabilities.isAvailable !== true`, which includes while the
-    capabilities call is still loading on a cold cache. My Day never waits on it.
-- **`myTeamGuard`.**
-  - It awaits `MyTeamCapabilitiesStore.ensureLoaded()`.
-  - If `isAvailable` is false, it redirects to `/dashboard`.
-  - If the capabilities call fails, it lets navigation through; the page then shows the error
-    state (§16). A capability outage must not strand a user who deep-linked in.
-- **The sidebar is unchanged.** "Home" (`path: '/dashboard'`, no `exact`) stays highlighted on
-  `/dashboard/team` (`nav-items.config.ts` L4).
-- **No remembered mode in V1.** `/dashboard` always opens My Day.
+- **One page, sectioned.** `DashboardHomeComponent` renders its existing personal cards first,
+  then, only if `capabilities.isAvailable === true`, a "My Team" section heading followed by
+  whichever of the four My Team widgets (§8) their capability flags allow. A user with none of
+  the §7.3 flags sees only their personal cards - no heading, no empty section, nothing added to
+  the DOM for the team widgets.
+- **Capability check runs on every `/dashboard` load**, same call as before
+  (`GET /dashboard/team/capabilities`, §7), just no longer gated behind a route: it decides which
+  extra cards to render on this one page instead of deciding whether a second page is reachable.
+- **Widget-level, not page-level, visibility.** Each of the four widgets independently checks its
+  own capability flag (`canViewPeopleStatus`, `canReviewPeopleApprovals`/`canReviewExceptions`,
+  `leadsWork`/`hasWorkApprovals`, and Priority Actions whenever at least one of its inputs is
+  shown) - exactly the partial-permission matrix already defined in §14, now applied to sections
+  of one page rather than to a page reachable via a route.
+- **Customization within the allowed set (new, user request 2026-09-30):** among the widgets a
+  user's capabilities allow, they may show/hide/reorder freely. This is a per-viewer UI
+  preference (e.g. local storage now; a persisted setting is a later enhancement) layered on top
+  of the capability gate, never a replacement for it - a widget a user's capabilities forbid is
+  never offered in the customization picker, regardless of what they'd prefer to see. This keeps
+  the backend authorization boundary (Global Constraints) intact: the picker's available-item list
+  is itself capability-filtered, so no widget a user cannot use is ever discoverable, added, or
+  requested.
+- **No remembered "mode" is needed any more** - there is only one page and one URL,
+  `/dashboard`, for every user. The sidebar's existing "Home" entry needs no change.
 - **Copy.**
-  - Tab: "My Team". Never "Manager Dashboard".
-  - Section headings name their population: "People I manage", "Work I lead".
+  - Section heading: "My Team". Never "Manager Dashboard".
+  - Sub-headings name their population: "People I manage", "Work I lead".
   - There is no single team headcount anywhere on the page.
 
 ---
@@ -204,8 +226,8 @@ The user asked to extend an existing Home/bootstrap response if a suitable one e
   carry Work leadership, and it is absent when the time-attendance module is inactive.
 
 So My Team uses `GET /api/v1/dashboard/team/capabilities`.
-- It is called **only when `/dashboard` or `/dashboard/team` renders**, which is one extra
-  lightweight call per Home visit.
+- It is called **every time `/dashboard` renders** (there is only one dashboard page now - §5),
+  which is one extra lightweight call per Home visit.
 - The frontend keeps the last result in the root store for the session and renders from it
   immediately (stale-while-revalidate). Revisiting Home does not flash or block.
 
@@ -742,8 +764,7 @@ What **is** required now:
 | Scenario | Extra calls |
 |---|---|
 | Normal employee on `/dashboard` | +1 (`capabilities`) |
-| Team-capable user on `/dashboard` | +1 (`capabilities`) |
-| `/dashboard/team` | ≤ 3 parallel calls (`team/today`, `action-items`, `led-progress`), each only if its capability is true |
+| Team-capable user on `/dashboard` | +1 (`capabilities`) **plus** ≤3 more parallel calls (`team/today`, `action-items`, `led-progress`), each only if its own capability is true |
 
 ## 14. Loading, empty, partial-permission, and error states
 
@@ -800,10 +821,11 @@ The destination always re-authorizes. The dashboard never performs an action inl
 
 ## 17. Acceptance criteria
 
-- **AC-1.** A user with none of the §7.3 flags sees no switch. `/dashboard/team` redirects them
-  to `/dashboard`. My Day is unchanged, apart from one `capabilities` call.
-- **AC-2.** A module owner with **no** permissions and no coverage sees the switch.
-  - My Team shows Team Progress, and Work approvals if any.
+- **AC-1.** A user with none of the §7.3 flags sees no "My Team" section at all - no heading, no
+  empty-state card, nothing added to the DOM. `/dashboard` renders exactly their personal cards,
+  apart from the one `capabilities` call.
+- **AC-2.** A module owner with **no** permissions and no coverage sees the "My Team" section.
+  - It shows Team Progress, and Work approvals if any.
   - It shows no Team Status.
 - **AC-3.** A plain module member who is not an owner anywhere gets `leadsWork = false`, and no
   Team Progress for that project.
@@ -905,14 +927,16 @@ The destination always re-authorizes. The dashboard never performs an action inl
 
 ### 18.4 Frontend tests (Vitest/Jest spec files beside components)
 
-- `myTeamGuard`: redirects when unavailable; lets navigation through on capability error; awaits
-  `ensureLoaded`.
-- `DashboardModeSwitchComponent`: hidden while loading or unavailable; `aria-current` on the
-  active link; keyboard navigable.
-- `TeamDashboardComponent`:
-  - requests only the sections whose capability is true;
-  - one section's error leaves the others rendered;
-  - a 403 hides the section and triggers a capabilities refresh.
+- `MyTeamCapabilitiesStore`: caches per session; `ensureLoaded` awaited by the "My Team" section,
+  never by My Day's own cards.
+- `DashboardHomeComponent` "My Team" section:
+  - renders no heading and no team widgets when `isAvailable !== true`;
+  - requests only the widgets whose own capability is true;
+  - one widget's error leaves the others rendered;
+  - a 403 on a widget hides that widget and triggers a capabilities refresh.
+- Widget customization picker: offers only capability-allowed widgets; a forbidden widget is never
+  listed, added, or requested regardless of stored preference; show/hide/reorder preference
+  persists per viewer (local storage) and survives a reload.
 - Priority Actions composer (pure): group order, tie-breaks, 5-per-group cap, personal tasks never
   present, stable output for identical input.
 - Deep-link resolver: every `link.kind` → the route in §15; the `work.request` path calls
@@ -920,7 +944,7 @@ The destination always re-authorizes. The dashboard never performs an action inl
 - Team Status card: `leave: null` renders "Absent" with no leave text; the 60 s visibility-gated
   refresh starts and stops.
 - `pending-approvals.component`: opens detail when `?requestId=` is present.
-- Route config test: `/dashboard/team` is lazy and guarded; `/dashboard` is unchanged.
+- Route config test: `/dashboard` is the only dashboard route; no `/dashboard/team` route exists.
 
 ## 19. Implementation sequence
 
@@ -939,12 +963,12 @@ tests + build).
    /dashboard/team/action-items`** + tests.
 6. **`HasAnyManagedCoverageAsync` + `GET /dashboard/team/capabilities`** + architecture tests.
 7. **Frontend foundation.**
-   - `MyTeamCapabilitiesStore`, `DashboardModeSwitchComponent`, the `/dashboard/team` route and
-     `myTeamGuard`.
-   - Switch added to My Day.
+   - `MyTeamCapabilitiesStore` and the "My Team" section shell (heading + capability-gated widget
+     slots) appended to the existing `DashboardHomeComponent`. No new route, no new guard.
 8. **Frontend sections.**
    - Team Status, Approvals & Exceptions, Team Progress, Priority Actions composer, deep-link
      resolver.
+   - The show/hide/reorder customization picker, scoped to capability-allowed widgets only.
    - The `requestId` parameter on leave approvals.
 9. **End-to-end verification** in the browser with seeded users:
    - people-only manager;
