@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using Microsoft.Extensions.Logging.Abstractions;
+using ONEVO.Application.Features.Calendar.ServiceInterfaces;
 using ONEVO.Infrastructure.ExternalServices.Calendar;
 using Xunit;
 
@@ -89,6 +90,52 @@ public sealed class ZoomMeetingClientTests
         var client = new ZoomMeetingClient(new HttpClient(handler), NullLogger<ZoomMeetingClient>.Instance);
 
         await client.CancelMeetingAsync("access-token", "987654321", CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task CancelMeetingAsync_MeetingInProgress_ThrowsZoomMeetingInProgressException()
+    {
+        // Zoom rejects deleting a meeting that has already started (error code 3002) - this must
+        // surface as a typed exception the command handler can catch, not bubble up as a generic
+        // HttpRequestException that the API turns into an opaque 500.
+        var handler = new StubHandler(request => new HttpResponseMessage(HttpStatusCode.BadRequest)
+        {
+            Content = JsonContent.Create(new { code = 3002, message = "Meeting is in progress." })
+        });
+        var client = new ZoomMeetingClient(new HttpClient(handler), NullLogger<ZoomMeetingClient>.Instance);
+
+        await Assert.ThrowsAsync<ZoomMeetingInProgressException>(
+            () => client.CancelMeetingAsync("access-token", "987654321", CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task CancelMeetingAsync_OtherBadRequest_ThrowsGenericHttpRequestException()
+    {
+        var handler = new StubHandler(request => new HttpResponseMessage(HttpStatusCode.BadRequest)
+        {
+            Content = JsonContent.Create(new { code = 1001, message = "Meeting does not exist." })
+        });
+        var client = new ZoomMeetingClient(new HttpClient(handler), NullLogger<ZoomMeetingClient>.Instance);
+
+        var ex = await Record.ExceptionAsync(
+            () => client.CancelMeetingAsync("access-token", "987654321", CancellationToken.None));
+
+        Assert.IsType<HttpRequestException>(ex);
+    }
+
+    [Fact]
+    public async Task CancelMeetingAsync_NonJsonErrorBody_ThrowsGenericHttpRequestException()
+    {
+        var handler = new StubHandler(request => new HttpResponseMessage(HttpStatusCode.BadGateway)
+        {
+            Content = new StringContent("<html>upstream error</html>")
+        });
+        var client = new ZoomMeetingClient(new HttpClient(handler), NullLogger<ZoomMeetingClient>.Instance);
+
+        var ex = await Record.ExceptionAsync(
+            () => client.CancelMeetingAsync("access-token", "987654321", CancellationToken.None));
+
+        Assert.IsType<HttpRequestException>(ex);
     }
 
     [Fact]

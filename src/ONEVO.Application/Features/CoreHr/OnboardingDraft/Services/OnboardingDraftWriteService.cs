@@ -157,7 +157,8 @@ public class OnboardingDraftWriteService : IOnboardingDraftWriteService
             }
         }
 
-        if (await _employeeRepository.EmployeeExistsInLegalEntityAsync(tenantId, request.LegalEntityId, request.WorkEmail, excludeId: null, ct))
+        if (!string.IsNullOrWhiteSpace(request.WorkEmail)
+            && await _employeeRepository.EmployeeExistsInLegalEntityAsync(tenantId, request.LegalEntityId, request.WorkEmail.Trim(), excludeId: null, ct))
         {
             return Result<OnboardingDraftResponse>.Conflict("An employee with this work email already exists in this company.");
         }
@@ -204,6 +205,9 @@ public class OnboardingDraftWriteService : IOnboardingDraftWriteService
             {
                 return Result<OnboardingDraftResponse>.Forbidden();
             }
+
+            if (existing.Status is OnboardingDraftStatus.Cancelled or OnboardingDraftStatus.Finalized)
+                return Result<OnboardingDraftResponse>.Conflict("This draft is closed and can no longer be edited.");
 
             if (request.IfMatchVersion is not null)
             {
@@ -255,14 +259,14 @@ public class OnboardingDraftWriteService : IOnboardingDraftWriteService
             }
         }
 
-        draft.FirstName = request.FirstName.Trim();
-        draft.LastName = request.LastName.Trim();
-        draft.WorkEmail = request.WorkEmail.Trim();
+        draft.FirstName = request.FirstName?.Trim() ?? string.Empty;
+        draft.LastName = request.LastName?.Trim() ?? string.Empty;
+        draft.WorkEmail = request.WorkEmail?.Trim() ?? string.Empty;
         draft.LegalEntityId = request.LegalEntityId;
         draft.DepartmentId = request.DepartmentId;
         draft.PositionId = request.PositionId;
         draft.ReportsToEmployeeId = request.ReportsToEmployeeId;
-        draft.EmploymentType = request.EmploymentType;
+        draft.EmploymentType = request.EmploymentType?.Trim() ?? string.Empty;
         draft.StartDate = request.StartDate;
         draft.EmployeeNumber = string.IsNullOrEmpty(normalizedEmployeeNumber) ? null : normalizedEmployeeNumber;
         draft.WorkModeId = request.WorkModeId;
@@ -329,6 +333,8 @@ public class OnboardingDraftWriteService : IOnboardingDraftWriteService
             return Result<FinalizeOnboardingDraftResponse>.UnprocessableEntity("Last name is required.");
         if (string.IsNullOrWhiteSpace(draft.WorkEmail) || !IsValidEmail(draft.WorkEmail))
             return Result<FinalizeOnboardingDraftResponse>.UnprocessableEntity("A valid work email is required.");
+        if (draft.StartDate is null)
+            return Result<FinalizeOnboardingDraftResponse>.UnprocessableEntity("Start date is required.");
 
         var legalEntity = await _legalEntityRepository.GetByIdForTenantAsync(tenantId, draft.LegalEntityId, ct);
         if (legalEntity is null || !legalEntity.IsActive)
@@ -425,7 +431,7 @@ public class OnboardingDraftWriteService : IOnboardingDraftWriteService
                 ApprovalStatus = "Pending",
                 RequestedByUserId = actingUserId,
                 RequestedAt = _clock.UtcNow,
-                EffectiveFrom = ToUtcMidnight(draft.StartDate),
+                EffectiveFrom = ToUtcMidnight(draft.StartDate.Value),
                 EffectiveTo = null,
             };
             await _accessGrantRequestRepository.AddAsync(grantRequest, ct);
@@ -529,7 +535,7 @@ public class OnboardingDraftWriteService : IOnboardingDraftWriteService
         {
             try
             {
-                var tasks = await _checklistTaskRepository.InstantiateAsync(template, employeeId, user.Id, draft.EditedTasksJson, draft.StartDate, ct);
+                var tasks = await _checklistTaskRepository.InstantiateAsync(template, employeeId, user.Id, draft.EditedTasksJson, draft.StartDate.Value, ct);
                 tasksCreated = tasks.Count;
             }
             catch (ArgumentException)
@@ -557,7 +563,7 @@ public class OnboardingDraftWriteService : IOnboardingDraftWriteService
             EmploymentStatusId = 1,
             EmploymentTypeId = employmentTypeId,
             WorkModeId = draft.WorkModeId,
-            HireDate = draft.StartDate,
+            HireDate = draft.StartDate.Value,
             CreatedById = actingUserId,
         };
         await _employeeRepository.AddAsync(employee, ct);
@@ -581,7 +587,7 @@ public class OnboardingDraftWriteService : IOnboardingDraftWriteService
                 if (position is not null)
                 {
                     reservedAssignmentId = await _positionAssignmentRepository.TryReservePositionAssignmentAsync(
-                        draft.TenantId, employeeId, position.Id, draft.StartDate, actingUserId, draft.ReportsToEmployeeId, txnCt);
+                        draft.TenantId, employeeId, position.Id, draft.StartDate.Value, actingUserId, draft.ReportsToEmployeeId, txnCt);
                     if (reservedAssignmentId is null)
                         throw new PositionAtCapacityException();
                 }
@@ -605,7 +611,7 @@ public class OnboardingDraftWriteService : IOnboardingDraftWriteService
                         DecidedByUserId = actingUserId,
                         RequestedAt = _clock.UtcNow,
                         DecidedAt = _clock.UtcNow,
-                        EffectiveFrom = ToUtcMidnight(draft.StartDate),
+                        EffectiveFrom = ToUtcMidnight(draft.StartDate.Value),
                         ReservedPositionAssignmentId = reservedAssignmentId,
                         DecisionNote = "Self-authorized: requester holds roles:manage.",
                     };

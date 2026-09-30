@@ -59,6 +59,56 @@ public sealed class OnboardingDraftWriteServiceTests
                     OnboardingWizardStep.EmployeeDetails, Guid.Empty, "1", null, null, null));
     }
 
+    private OnboardingDraftWriteService CreateService(ICurrentUser? currentUser = null) => new(
+        _draftRepository.Object, _employeeRepository.Object,
+        Mock.Of<IUserRepository>(), Mock.Of<IUserRoleRepository>(),
+        _positionRepository.Object, Mock.Of<IPositionAssignmentRepository>(),
+        _legalEntityRepository.Object, _departmentRepository.Object,
+        Mock.Of<IEmploymentTypeRepository>(), _workModeRepository.Object,
+        _seatEntitlementService.Object, Mock.Of<IAccessGrantRequestRepository>(),
+        Mock.Of<IPermissionRepository>(), Mock.Of<IChecklistTemplateRepository>(),
+        Mock.Of<IEmployeeChecklistTaskRepository>(), Mock.Of<IInvitationTokenRepository>(),
+        Mock.Of<ITenantRepository>(), Mock.Of<IOutboxWriter>(),
+        Mock.Of<ISecureTokenGenerator>(), currentUser ?? Mock.Of<ICurrentUser>(), _clock.Object, Mock.Of<IUnitOfWork>());
+
+    private static SaveOnboardingDraftCommand PartialCommand(Guid? draftId = null) => new(
+        draftId, null, null, null, Guid.NewGuid(), null, null, null, null, null, null, null, null,
+        OnboardingWizardStep.EmployeeDetails, null, null);
+
+    [Fact]
+    public async Task SaveAsync_PartialDraft_PersistsBlanks_AndSkipsEmailUniquenessCheck()
+    {
+        OnboardingDraftEntity? added = null;
+        _draftRepository.Setup(r => r.AddAsync(It.IsAny<OnboardingDraftEntity>(), It.IsAny<CancellationToken>()))
+            .Callback<OnboardingDraftEntity, CancellationToken>((d, _) => added = d)
+            .Returns(Task.CompletedTask);
+
+        var result = await CreateService().SaveAsync(Guid.NewGuid(), Guid.NewGuid(), PartialCommand(), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        _employeeRepository.Verify(r => r.EmployeeExistsInLegalEntityAsync(
+            It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()), Times.Never);
+        Assert.NotNull(added);
+        Assert.Equal(("", "", "", ""), (added!.FirstName, added.LastName, added.WorkEmail, added.EmploymentType));
+        Assert.Null(added.StartDate);
+    }
+
+    [Theory]
+    [InlineData(OnboardingDraftStatus.Cancelled)]
+    [InlineData(OnboardingDraftStatus.Finalized)]
+    public async Task SaveAsync_ExistingClosedDraft_ReturnsConflict(string status)
+    {
+        var tenantId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+        var existing = new OnboardingDraftEntity { Id = Guid.NewGuid(), TenantId = tenantId, StartedById = userId, Status = status };
+        _draftRepository.Setup(r => r.GetTrackedAsync(tenantId, existing.Id, It.IsAny<CancellationToken>())).ReturnsAsync(existing);
+
+        var result = await CreateService().SaveAsync(tenantId, userId, PartialCommand(existing.Id), CancellationToken.None);
+
+        Assert.Equal(409, result.StatusCode);
+        Assert.Equal("This draft is closed and can no longer be edited.", result.Error);
+    }
+
     [Fact]
     public async Task SaveAsync_WithExplicitTenantAndUser_DoesNotReadICurrentUser()
     {

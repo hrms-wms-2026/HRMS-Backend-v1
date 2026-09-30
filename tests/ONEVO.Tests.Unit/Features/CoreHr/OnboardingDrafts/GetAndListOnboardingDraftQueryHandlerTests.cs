@@ -85,7 +85,7 @@ public sealed class ListOnboardingDraftsQueryHandlerTests
         _currentUser.SetupGet(u => u.TenantId).Returns(_tenantId);
         _currentUser.SetupGet(u => u.UserId).Returns(_userId);
         _draftRepository
-            .Setup(r => r.ListWithNamesAsync(It.IsAny<Guid>(), It.IsAny<Guid?>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .Setup(r => r.ListWithNamesAsync(It.IsAny<Guid>(), It.IsAny<Guid?>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>(), It.IsAny<bool>()))
             .ReturnsAsync((Array.Empty<DraftListItemResponse>(), 0));
     }
 
@@ -99,7 +99,7 @@ public sealed class ListOnboardingDraftsQueryHandlerTests
         await CreateHandler().Handle(new ListOnboardingDraftsQuery(), CancellationToken.None);
 
         _draftRepository.Verify(r => r.ListWithNamesAsync(
-            _tenantId, _userId, It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Once);
+            _tenantId, _userId, It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>(), false), Times.Once);
     }
 
     [Fact]
@@ -110,6 +110,18 @@ public sealed class ListOnboardingDraftsQueryHandlerTests
         await CreateHandler().Handle(new ListOnboardingDraftsQuery(), CancellationToken.None);
 
         _draftRepository.Verify(r => r.ListWithNamesAsync(
-            _tenantId, null, It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Once);
+            _tenantId, null, It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>(), false), Times.Once);
+    }
+
+    [Fact]
+    public async Task Mine_ForcesCallerAndOpenOnly_EvenForWriteHolders()
+    {
+        _currentUser.Setup(u => u.HasPermission("employees:write")).Returns(true);
+
+        var result = await CreateHandler().Handle(new ListOnboardingDraftsQuery(1, 25, Mine: true), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        _draftRepository.Verify(r => r.ListWithNamesAsync(
+            _tenantId, _userId, 1, 25, It.IsAny<CancellationToken>(), true), Times.Once);
     }
 }

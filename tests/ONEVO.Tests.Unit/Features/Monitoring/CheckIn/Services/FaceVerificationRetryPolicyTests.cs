@@ -10,6 +10,11 @@ using ONEVO.Application.Features.Monitoring.CheckIn.DTOs.Responses;
 using ONEVO.Application.Features.Monitoring.CheckIn.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.CheckIn.ServiceInterfaces;
 using ONEVO.Application.Features.Monitoring.CheckIn.Services;
+using ONEVO.Application.Features.Monitoring.Exceptions.RepositoryInterfaces;
+using ONEVO.Application.Features.Monitoring.Exceptions.Services;
+using ExceptionStatus = ONEVO.Domain.Features.Monitoring.Exceptions.Entities.ExceptionStatus;
+using ExceptionType = ONEVO.Domain.Features.Monitoring.Exceptions.Entities.ExceptionType;
+using MonitoringException = ONEVO.Domain.Features.Monitoring.Exceptions.Entities.Exception;
 using ONEVO.Application.Features.Storage.File.DTOs.Responses;
 using ONEVO.Application.Features.Storage.File.Helpers;
 using ONEVO.Application.Features.Storage.File.ServiceInterfaces;
@@ -28,7 +33,10 @@ public class FaceVerificationRetryPolicyTests
     private readonly Mock<INotificationDispatcher> _notifications = new();
     private readonly Mock<IDateTimeProvider> _clock = new();
     private readonly Mock<IPermissionRepository> _permissions = new();
+    private readonly Mock<IExceptionRepository> _exceptions = new();
+    private readonly List<MonitoringException> _cases = [];
     private readonly Guid _hrUserId = Guid.NewGuid();
+    private readonly Guid _deviceId = Guid.NewGuid();
 
     private readonly Guid _tenantId = Guid.NewGuid();
     private readonly Guid _userId = Guid.NewGuid();
@@ -62,11 +70,14 @@ public class FaceVerificationRetryPolicyTests
             .ReturnsAsync(Result<EmployeeApprovalRoute>.Success(new EmployeeApprovalRoute(
                 Guid.NewGuid(), _managerUserId, Guid.NewGuid(), FaceVerificationRetryPolicy.ReviewerPermission,
                 EmployeeAuthorityPurpose.FaceVerificationOverrideReview, EmployeeApprovalRouteSource.ReportingLine, null)));
+        _exceptions.Setup(e => e.AddAsync(It.IsAny<MonitoringException>(), It.IsAny<CancellationToken>()))
+            .Callback<MonitoringException, CancellationToken>((c, _) => _cases.Add(c))
+            .Returns(Task.CompletedTask);
     }
 
     private FaceVerificationRetryPolicy CreateSut() => new(
         _attempts.Object, _fileStorage.Object, _employees.Object, _authority.Object,
-        _notifications.Object, _clock.Object, _permissions.Object);
+        _notifications.Object, _clock.Object, _permissions.Object, _exceptions.Object);
 
     private void SetupHrUsers(params Guid[] userIds) =>
         _permissions.Setup(p => p.ListUserIdsWithPermissionCodeAsync(
@@ -77,10 +88,10 @@ public class FaceVerificationRetryPolicyTests
         _notifications.Verify(n => n.SendTemplatedAsync(
             _tenantId, userId, FaceVerificationRetryPolicy.NotificationTemplate,
             It.IsAny<IReadOnlyDictionary<string, string>>(),
-            FaceVerificationRetryPolicy.RelatedEntityType, It.IsAny<Guid?>(), It.IsAny<CancellationToken>()), times);
+            ExceptionPermissions.RelatedEntityType, It.IsAny<Guid?>(), It.IsAny<CancellationToken>()), times);
 
     private FaceCheckAttemptContext Context(Guid? deviceLegalEntity = null) =>
-        new(_tenantId, _userId, _employeeId, deviceLegalEntity, "clock_in");
+        new(_tenantId, _userId, _employeeId, deviceLegalEntity, "clock_in", _deviceId);
 
     private static FacePhotoValidationResponseDto Failed(string reason) =>
         new(true, true, true, IsMatch: false, CanProceed: false, SimilarityScore: 12f, FailureReason: reason);
@@ -164,8 +175,88 @@ public class FaceVerificationRetryPolicyTests
                 && p["action"] == "clock in"
                 && p["reasons"].Contains("face did not match")
                 && p["reasons"].Contains("face not fully visible")),
-            FaceVerificationRetryPolicy.RelatedEntityType, attempt.Id, It.IsAny<CancellationToken>()), Times.Once);
+            ExceptionPermissions.RelatedEntityType, _cases.Single().Id, It.IsAny<CancellationToken>()), Times.Once);
         _attempts.Verify(a => a.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
+        // Once for the case on its own, once for the alert.
+        _exceptions.Verify(e => e.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Exactly(2));
+    }
+
+    [Fact]
+    public async Task ThirdFailure_OpensOneIdentityCase_CarryingTheEvidence()
+    {
+        _earlierFailures = [EarlierFailure("poor_lighting"), EarlierFailure("not_matched")];
+
+        await CreateSut().ApplyAsync(Context(), Failed("not_matched"), new MemoryStream([1]), "image/jpeg", CancellationToken.None);
+
+        var attempt = _added.Single();
+        var identityCase = _cases.Should().ContainSingle().Subject;
+        identityCase.Type.Should().Be(ExceptionType.IdentityAnomaly);
+        identityCase.Status.Should().Be(ExceptionStatus.Open);
+        identityCase.EmployeeId.Should().Be(_employeeId);
+        // Real reasons, so a lighting problem doesn't read as impersonation.
+        identityCase.Description.Should().Contain("poor lighting").And.Contain("face did not match");
+
+        var meta = ExceptionMetadata.Parse(identityCase.MetadataJson);
+        meta.Source.Should().Be(ExceptionMetadata.SourceFaceCheckOverride);
+        meta.FaceAttemptId.Should().Be(attempt.Id);
+        meta.PhotoFileId.Should().Be(_photoFileId);
+        meta.DeviceRegistrationId.Should().Be(_deviceId);
+        meta.Purpose.Should().Be("clock_in");
+        meta.SimilarityScore.Should().Be(12f);
+    }
+
+    [Fact]
+    public async Task ThirdFailure_AlertFails_CaseIsStillSaved_AndEmployeeIsLetThrough()
+    {
+        _earlierFailures = [EarlierFailure("x"), EarlierFailure("y")];
+        var saves = 0;
+        _exceptions.Setup(e => e.SaveChangesAsync(It.IsAny<CancellationToken>()))
+            .Callback(() => saves++).ReturnsAsync(1);
+        _notifications.Setup(n => n.SendTemplatedAsync(
+                It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<IReadOnlyDictionary<string, string>>(),
+                It.IsAny<string?>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("resolver blew up"));
+
+        var result = await CreateSut().ApplyAsync(Context(), Failed("not_matched"), new MemoryStream([1]), "image/jpeg", CancellationToken.None);
+
+        result.CanProceed.Should().BeTrue();
+        _cases.Should().ContainSingle();
+        saves.Should().Be(1, "the case is saved before anyone is alerted");
+    }
+
+    [Fact]
+    public async Task ThirdFailure_CaseSaveFails_EmployeeIsStillLetThrough_AndNothingPointsAtTheMissingCase()
+    {
+        _earlierFailures = [EarlierFailure("x"), EarlierFailure("y")];
+        _exceptions.Setup(e => e.SaveChangesAsync(It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("db down"));
+
+        var result = await CreateSut().ApplyAsync(Context(), Failed("not_matched"), new MemoryStream([1]), "image/jpeg", CancellationToken.None);
+
+        result.CanProceed.Should().BeTrue();
+        result.FailureReason.Should().Be(FaceVerificationRetryPolicy.ManagerReview);
+        result.FailedAttempts.Should().Be(3);
+        _attempts.Verify(a => a.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
+        VerifyNoAlert();
+    }
+
+    [Fact]
+    public async Task ThirdFailure_WithoutAResolvedEmployee_OpensNoCase_AndAlertStillPointsAtTheAttempt()
+    {
+        _earlierFailures = [EarlierFailure("x"), EarlierFailure("y")];
+        var context = new FaceCheckAttemptContext(_tenantId, _userId, Guid.Empty, null, "clock_in");
+        _attempts.Setup(a => a.GetConsecutiveFailuresAsync(
+                _tenantId, Guid.Empty, "clock_in", It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(() => _earlierFailures);
+        SetupHrUsers(_hrUserId);
+
+        await CreateSut().ApplyAsync(context, Failed("not_matched"), new MemoryStream([1]), "image/jpeg", CancellationToken.None);
+
+        _cases.Should().BeEmpty();
+        _notifications.Verify(n => n.SendTemplatedAsync(
+            _tenantId, _hrUserId, FaceVerificationRetryPolicy.NotificationTemplate,
+            It.IsAny<IReadOnlyDictionary<string, string>>(),
+            FaceVerificationRetryPolicy.RelatedEntityType, It.IsAny<Guid?>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -252,6 +343,20 @@ public class FaceVerificationRetryPolicyTests
 
         result.CanProceed.Should().BeTrue();
         _added.Single().PhotoFileId.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task AwsNoAnswer_IsNotCounted_AndNeverLetsThrough()
+    {
+        // Two real rejections already — an AWS outage on the next try must still not let them in.
+        _earlierFailures = [EarlierFailure("not_matched"), EarlierFailure("face_not_visible")];
+
+        var result = await CreateSut().ApplyAsync(Context(), Failed("verification_failed"), new MemoryStream([1]), "image/jpeg", CancellationToken.None);
+
+        result.CanProceed.Should().BeFalse();
+        result.FailureReason.Should().Be("verification_failed");
+        _added.Should().BeEmpty();
+        VerifyNoAlert();
     }
 
     [Fact]

@@ -16,6 +16,8 @@ public interface IProjectMemberRepository
 
     Task<bool> HasActiveMembershipForAnyObjectiveAsync(Guid tenantId, Guid projectId, Guid employeeId, IReadOnlyList<Guid> objectiveIds, CancellationToken ct = default);
 
+    /// <summary>Returns objectives with a direct active membership plus all active descendants,
+    /// matching Work Management's inherited objective-access rule.</summary>
     Task<IReadOnlyList<Guid>> GetActiveObjectiveIdsForEmployeeInProjectAsync(Guid tenantId, Guid projectId, Guid employeeId, CancellationToken ct = default);
 
     /// <summary>Active projects <paramref name="employeeId"/> belongs to (active or removed), limited to
@@ -31,6 +33,9 @@ public interface IProjectMemberRepository
 
     /// <summary>Every active project_members row scoped to this exact objective.</summary>
     Task<IReadOnlyList<ProjectMember>> ListActiveForObjectiveAsync(Guid tenantId, Guid objectiveId, CancellationToken ct = default);
+
+    /// <summary>Every active project_members row for this employee across all projects/objectives.</summary>
+    Task<IReadOnlyList<ProjectMember>> ListActiveForEmployeeAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default);
 
     void Update(ProjectMember member);
 

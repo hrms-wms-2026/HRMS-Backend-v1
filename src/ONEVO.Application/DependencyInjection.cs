@@ -52,6 +52,9 @@ public static class DependencyInjection
         services.AddScoped<
             ONEVO.Application.Features.TimeAttendance.Services.IAttendanceTodayStateService,
             ONEVO.Application.Features.TimeAttendance.Services.AttendanceTodayStateService>();
+        services.AddScoped<
+            ONEVO.Application.Features.TimeAttendance.Services.IEmployeeAttendancePeriodReader,
+            ONEVO.Application.Features.TimeAttendance.Services.EmployeeAttendancePeriodReader>();
         // Registered as concrete types too: TrayClockInCommandHandler/TrayClockOutCommandHandler/
         // TrayStartBreakCommandHandler/TrayEndBreakCommandHandler inject these directly to reuse
         // their mutation logic without duplicating it.
@@ -114,6 +117,16 @@ public static class DependencyInjection
         services.AddScoped<
             ONEVO.Application.Features.CoreHr.EmployeeAuthority.ServiceInterfaces.IEmployeeAuthorityResolver,
             ONEVO.Application.Features.CoreHr.EmployeeAuthority.Services.EmployeeAuthorityResolver>();
+
+        services.AddScoped<
+            ONEVO.Application.Features.Monitoring.Exceptions.ServiceInterfaces.IExceptionScopeResolver,
+            ONEVO.Application.Features.Monitoring.Exceptions.Services.ExceptionScopeResolver>();
+        services.AddScoped<
+            ONEVO.Application.Features.Monitoring.Exceptions.ServiceInterfaces.IExceptionAlertRouter,
+            ONEVO.Application.Features.Monitoring.Exceptions.Services.ExceptionAlertRouter>();
+        services.AddScoped<
+            ONEVO.Application.Features.Monitoring.Exceptions.ServiceInterfaces.IExceptionAlertRouterFactory,
+            ONEVO.Application.Features.Monitoring.Exceptions.Services.ExceptionAlertRouterFactory>();
 
         return services;
     }

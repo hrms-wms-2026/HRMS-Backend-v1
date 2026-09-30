@@ -326,27 +326,58 @@ public class EmailTemplateRenderer : IEmailTemplateRenderer
     {
         var recipientName = Get(f, "recipientName");
         var eventTitle = Get(f, "eventTitle");
-        var startDateUtc = Get(f, "startDateUtc");
+        var startDateUtc = FormatCalendarEventStart(Get(f, "startDateUtc"));
         var location = Get(f, "location");
         var organizerName = Get(f, "organizerName");
         var meetingLink = Get(f, "meetingLink");
 
         var subject = $"You're invited: {eventTitle}";
-        var locationLine = string.IsNullOrWhiteSpace(location) ? "" : $"<p>Location: {Escape(location)}</p>";
+        var whenRow = $"""<tr><td style="padding:4px 8px 4px 0; color:#64748b;">When</td><td style="padding:4px 0;">{Escape(startDateUtc)}</td></tr>""";
+        var whereRow = string.IsNullOrWhiteSpace(location)
+            ? ""
+            : $"""<tr><td style="padding:4px 8px 4px 0; color:#64748b;">Where</td><td style="padding:4px 0;">{Escape(location)}</td></tr>""";
         var meetingLinkLine = string.IsNullOrWhiteSpace(meetingLink)
             ? ""
             : $"""<p><a href="{Escape(meetingLink)}" style="display:inline-block; padding:10px 16px; background:#0f172a; color:#fff; text-decoration:none; border-radius:6px;">Join meeting</a></p>""";
         var html = $"""
-            <!doctype html><html><body>
-              <p>Hi {Escape(recipientName)},</p>
-              <p>{Escape(organizerName)} added you to <strong>{Escape(eventTitle)}</strong>, starting {Escape(startDateUtc)}.</p>
-              {locationLine}
-              {meetingLinkLine}
-            </body></html>
+            <!doctype html>
+            <html>
+              <body style="font-family: -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; line-height:1.5; color:#0f172a;">
+                <h2 style="margin:0 0 12px;">Meeting invitation</h2>
+                <p>Hi {Escape(recipientName)},</p>
+                <p>{Escape(organizerName)} has invited you to the following event:</p>
+                <p style="font-size:16px; font-weight:600; margin:16px 0 8px;">{Escape(eventTitle)}</p>
+                <table style="border-collapse:collapse; margin:0 0 16px;">
+                  {whenRow}
+                  {whereRow}
+                </table>
+                {meetingLinkLine}
+                <hr style="border:none; border-top:1px solid #e2e8f0; margin:20px 0;" />
+                <p style="font-size:12px; color:#64748b;">If you weren't expecting this invitation, you can disregard this email.</p>
+              </body>
+            </html>
             """;
-        var text = $"Hi {recipientName},\n{organizerName} added you to \"{eventTitle}\", starting {startDateUtc}.{(string.IsNullOrWhiteSpace(location) ? "" : $"\nLocation: {location}")}{(string.IsNullOrWhiteSpace(meetingLink) ? "" : $"\nJoin: {meetingLink}")}";
+        var text = $"""
+            Hi {recipientName},
+
+            {organizerName} has invited you to "{eventTitle}".
+
+            When: {startDateUtc}
+            {(string.IsNullOrWhiteSpace(location) ? "" : $"Where: {location}\n")}{(string.IsNullOrWhiteSpace(meetingLink) ? "" : $"Join: {meetingLink}\n")}
+            If you weren't expecting this invitation, you can disregard this email.
+            """;
         return new RenderedEmail(subject, html, text);
     }
+
+    /// <summary>Renders a calendar event's start time as e.g. "Monday, October 5, 2026 at 9:30 AM UTC".
+    /// The value always arrives here as an ISO 8601 string (SendTemplateAsync's anonymous object is
+    /// JSON-round-tripped before Render() sees it, which turns a DateTimeOffset into its default JSON
+    /// string form before Get()'s DateTimeOffset-formatting branch ever gets a chance to run) - falls
+    /// back to the raw string only if it somehow isn't parseable, rather than showing nothing.</summary>
+    private static string FormatCalendarEventStart(string startDateUtc) =>
+        DateTimeOffset.TryParse(startDateUtc, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var parsed)
+            ? $"{parsed.UtcDateTime:dddd, MMMM d, yyyy} at {parsed.UtcDateTime:h:mm tt} UTC"
+            : startDateUtc;
 
     private static string Get(
         IReadOnlyDictionary<string, object?> fields,

@@ -64,6 +64,18 @@ public class EfDeviceStateSnapshotRepository : IDeviceStateSnapshotRepository
             .OrderBy(s => s.CapturedAt)
             .ToListAsync(ct);
 
+    public async Task<IReadOnlyList<DeviceStateSnapshot>> ListForEmployeeInRangeAsync(
+        Guid tenantId, Guid employeeId, DateTimeOffset from, DateTimeOffset to, int max, CancellationToken ct) =>
+        await _db.DeviceStateSnapshots
+            .AsNoTracking()
+            .Where(s => s.TenantId == tenantId
+                        && s.EmployeeId == employeeId
+                        && s.CapturedAt >= from
+                        && s.CapturedAt < to)
+            .OrderBy(s => s.CapturedAt)
+            .Take(max)
+            .ToListAsync(ct);
+
     private static (DateTimeOffset Start, DateTimeOffset End) UtcDayBounds(DateOnly date)
     {
         var start = new DateTimeOffset(date.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero);

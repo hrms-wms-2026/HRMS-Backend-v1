@@ -56,7 +56,35 @@ public sealed class ZoomMeetingClient(HttpClient httpClient, ILogger<ZoomMeeting
         using var request = new HttpRequestMessage(HttpMethod.Delete, $"https://api.zoom.us/v2/meetings/{externalMeetingId}");
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
         using var response = await httpClient.SendAsync(request, ct);
+
+        // Zoom error code 3002 ("Meeting is in progress. Meeting cannot be deleted."): distinguish
+        // this specific, user-recoverable case from every other cancel failure before the generic
+        // EnsureSuccessOrLogAsync throws an untyped HttpRequestException for it.
+        if (!response.IsSuccessStatusCode && await TryReadZoomErrorCodeAsync(response, ct) == 3002)
+        {
+            await EnsureSuccessOrLogAsync(response, "cancel meeting", ct, throwOnFailure: false);
+            throw new ZoomMeetingInProgressException();
+        }
+
         await EnsureSuccessOrLogAsync(response, "cancel meeting", ct);
+    }
+
+    /// <summary>Reads Zoom's numeric `code` field from an error response body, or null if the body
+    /// isn't the expected JSON shape - never throws on a malformed/non-JSON body.</summary>
+    private static async Task<int?> TryReadZoomErrorCodeAsync(HttpResponseMessage response, CancellationToken ct)
+    {
+        try
+        {
+            var body = await response.Content.ReadAsStringAsync(ct);
+            using var doc = JsonDocument.Parse(body);
+            return doc.RootElement.TryGetProperty("code", out var code) && code.ValueKind == JsonValueKind.Number
+                ? code.GetInt32()
+                : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
     }
 
     public async Task<IReadOnlyList<ZoomAttendanceRecordDto>> GetAttendanceAsync(
@@ -89,8 +117,11 @@ public sealed class ZoomMeetingClient(HttpClient httpClient, ILogger<ZoomMeeting
 
     /// <summary>Same reasoning as MicrosoftGraphMeetingClient.EnsureSuccessOrLogAsync — logs
     /// Zoom's actual error body (invalid field, missing scope, licensing issue) before throwing,
-    /// since EnsureSuccessStatusCode() alone discards it.</summary>
-    private async Task EnsureSuccessOrLogAsync(HttpResponseMessage response, string operation, CancellationToken ct)
+    /// since EnsureSuccessStatusCode() alone discards it. <paramref name="throwOnFailure"/> is false
+    /// only when the caller is about to throw its own typed exception instead (CancelMeetingAsync's
+    /// code-3002 case) - the body is still logged either way.</summary>
+    private async Task EnsureSuccessOrLogAsync(
+        HttpResponseMessage response, string operation, CancellationToken ct, bool throwOnFailure = true)
     {
         if (!response.IsSuccessStatusCode)
         {
@@ -99,6 +130,7 @@ public sealed class ZoomMeetingClient(HttpClient httpClient, ILogger<ZoomMeeting
                 "Zoom {Operation} returned {StatusCode}: {ErrorBody}",
                 operation, (int)response.StatusCode, errorBody);
         }
-        response.EnsureSuccessStatusCode();
+        if (throwOnFailure)
+            response.EnsureSuccessStatusCode();
     }
 }

@@ -105,7 +105,8 @@ public class ValidateFacePhotoCommandHandler
                 ? FacePhotoValidationPurpose.ClockOut
                 : FacePhotoValidationPurpose.ClockIn;
             result = await _retryPolicy.ApplyAsync(
-                new FaceCheckAttemptContext(_device.TenantId, _device.UserId, employeeId, _device.LegalEntityId, purpose),
+                new FaceCheckAttemptContext(
+                    _device.TenantId, _device.UserId, employeeId, _device.LegalEntityId, purpose, _device.DeviceRegistrationId),
                 result,
                 captured,
                 request.ContentType,
@@ -140,6 +141,15 @@ public class ValidateFacePhotoCommandHandler
 
         if (enrollment && !FacePhotoPoseRules.Matches(request.Pose, quality))
             return Done(Rejected(quality, FailureWrongPose));
+
+        // Face setup always takes three new photos that replace any enrolled face, so a step
+        // is not compared against the old one. Nothing is saved here — see EnrollFacePhotosCommand.
+        if (enrollment)
+        {
+            return Done(new FacePhotoValidationResponseDto(
+                quality.LightingOk, quality.FaceVisible, quality.NoSunglassesOrMask,
+                IsMatch: false, CanProceed: true, SimilarityScore: null, FailureReason: null));
+        }
 
         var profile = await _profiles.GetByEmployeeIdAsync(_device.TenantId, employeeId, cancellationToken);
 

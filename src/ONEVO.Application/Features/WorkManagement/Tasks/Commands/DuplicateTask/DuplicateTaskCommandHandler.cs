@@ -158,7 +158,7 @@ public class DuplicateTaskCommandHandler : IRequestHandler<DuplicateTaskCommand,
             if (request.CopyAssignees)
             {
                 var sourceAssignments = await _assignments.GetByTaskIdAsync(source.Id, innerCt);
-                foreach (var sourceAssignment in sourceAssignments)
+                foreach (var sourceAssignment in sourceAssignments.Take(1))
                 {
                     // Re-resolve through the coordinator rather than trusting the stored row: the
                     // employee may have gone inactive since, and UserId must come from the fresh

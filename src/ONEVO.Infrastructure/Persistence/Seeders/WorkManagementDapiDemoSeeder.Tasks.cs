@@ -237,19 +237,6 @@ public sealed partial class WorkManagementDapiDemoSeeder
                 now,
                 ct);
 
-            if (slot.AssignExtraMember && node.ExtraMemberKeys.Length > 0)
-            {
-                await SeedTaskAssignmentAsync(
-                    db,
-                    tree.ProjectKey,
-                    path,
-                    slotIndex,
-                    taskId,
-                    node.ExtraMemberKeys[0],
-                    employeeIdByPersonKey,
-                    now,
-                    ct);
-            }
         }
 
         return nextTaskNumber;

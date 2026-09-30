@@ -8,7 +8,7 @@ public record FaceSetupPhoto(Stream Content, string ContentType, long FileSizeBy
 
 /// <summary>
 /// Tray face setup: the employee's look-straight, turned-left and turned-right photos, saved
-/// together as their reference faces. Allowed only while the employee has no reference yet.
+/// together as their reference faces, replacing any previously enrolled face.
 /// </summary>
 public record EnrollFacePhotosCommand(
     FaceSetupPhoto Front,

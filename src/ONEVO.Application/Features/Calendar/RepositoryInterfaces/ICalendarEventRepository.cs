@@ -45,6 +45,24 @@ public interface ICalendarEventRepository
 
     void RemoveParticipant(CalendarEventParticipant participant);
 
+    /// <summary>Tracked soft-deleted (removed) rows for these employees on the event. The unique
+    /// (tenant, event, employee) index still counts them, so re-adding someone must revive their
+    /// row rather than insert a second one.</summary>
+    Task<IReadOnlyList<CalendarEventParticipant>> GetRemovedParticipantsAsync(
+        Guid tenantId, Guid eventId, IReadOnlyList<Guid> employeeIds, CancellationToken ct = default);
+
+    Task AddGuestsAsync(IReadOnlyList<CalendarEventGuest> guests, CancellationToken ct = default);
+
+    /// <summary>Every guest row for the given events, grouped by EventId.</summary>
+    Task<IReadOnlyDictionary<Guid, IReadOnlyList<CalendarEventGuest>>> GetGuestsForEventsAsync(
+        Guid tenantId, IReadOnlyList<Guid> eventIds, CancellationToken ct = default);
+
+    /// <summary>The tracked guest row for one (event, normalized email) pair, or null.</summary>
+    Task<CalendarEventGuest?> GetTrackedGuestAsync(
+        Guid tenantId, Guid eventId, string email, CancellationToken ct = default);
+
+    void RemoveGuest(CalendarEventGuest guest);
+
     /// <summary>Same shape as GetInDateRangeForCallerAsync, but scoped to one specific employee
     /// (as owner OR participant) rather than the current caller - used for conflict-checking a
     /// participant who is not the person making the request. "Owner" covers synced external

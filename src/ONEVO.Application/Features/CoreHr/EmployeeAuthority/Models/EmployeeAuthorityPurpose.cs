@@ -19,4 +19,5 @@ public enum EmployeeAuthorityPurpose
     EmployeeLifecycleApproval,
     DeviceChangeApproval,
     FaceVerificationOverrideReview,
+    ExceptionAlertReview,
 }

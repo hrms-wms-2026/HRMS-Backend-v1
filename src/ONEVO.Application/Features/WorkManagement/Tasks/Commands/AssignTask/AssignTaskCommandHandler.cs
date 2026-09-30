@@ -61,11 +61,15 @@ public class AssignTaskCommandHandler : IRequestHandler<AssignTaskCommand, Resul
         if (assignee is null)
             return Result.Failure("The assignee must be an active employee in this tenant.");
 
-        if (await _assignments.GetByTaskAndEmployeeAsync(request.TaskId, request.EmployeeId, ct) is not null)
-            return Result.Conflict("This employee is already assigned to the task.");
-
         return await _unitOfWork.ExecuteInTransactionAsync(async innerCt =>
         {
+            var existingAssignments = await _assignments.GetByTaskIdAsync(task.Id, innerCt);
+            if (existingAssignments.Count == 1 && existingAssignments[0].EmployeeId == assignee.Id)
+                return Result.Success();
+
+            foreach (var existingAssignment in existingAssignments)
+                _assignments.Remove(existingAssignment);
+
             await _assignments.AddAsync(new TaskAssignment
             {
                 Id = Guid.NewGuid(),

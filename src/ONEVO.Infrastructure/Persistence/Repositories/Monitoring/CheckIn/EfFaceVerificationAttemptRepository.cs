@@ -31,5 +31,17 @@ public class EfFaceVerificationAttemptRepository : IFaceVerificationAttemptRepos
             .ToList();
     }
 
+    public async Task<IReadOnlyList<FaceVerificationAttempt>> ListForEmployeeInRangeAsync(
+        Guid tenantId, Guid employeeId, DateTimeOffset from, DateTimeOffset to, CancellationToken ct) =>
+        await _db.FaceVerificationAttempts
+            .AsNoTracking()
+            .Where(a => a.TenantId == tenantId
+                && a.EmployeeId == employeeId
+                && a.CreatedAt >= from
+                && a.CreatedAt < to)
+            .OrderBy(a => a.CreatedAt)
+            .Take(200)
+            .ToListAsync(ct);
+
     public Task SaveChangesAsync(CancellationToken ct) => _db.SaveChangesAsync(ct);
 }

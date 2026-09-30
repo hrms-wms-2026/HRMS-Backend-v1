@@ -13,5 +13,10 @@ public interface IFaceVerificationAttemptRepository
     Task<IReadOnlyList<FaceVerificationAttempt>> GetConsecutiveFailuresAsync(
         Guid tenantId, Guid employeeId, string purpose, DateTimeOffset sinceUtc, CancellationToken ct);
 
+    /// <summary>Every clock-in/out face check of the employee in [from, to), oldest first - the
+    /// face-check evidence for an identity case.</summary>
+    Task<IReadOnlyList<FaceVerificationAttempt>> ListForEmployeeInRangeAsync(
+        Guid tenantId, Guid employeeId, DateTimeOffset from, DateTimeOffset to, CancellationToken ct);
+
     Task SaveChangesAsync(CancellationToken ct);
 }
