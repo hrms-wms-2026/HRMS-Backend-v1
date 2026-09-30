@@ -73,6 +73,21 @@ public sealed class EfAttendanceReadRepository(ApplicationDbContext db) : IAtten
         return (items, totalCount);
     }
 
+    public async Task<IReadOnlyList<AttendanceRecord>> ListRecordsForDateAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Guid> employeeIds,
+        DateOnly date,
+        CancellationToken ct = default)
+    {
+        if (employeeIds.Count == 0)
+            return Array.Empty<AttendanceRecord>();
+
+        return await db.AttendanceRecords
+            .AsNoTracking()
+            .Where(x => x.TenantId == tenantId && employeeIds.Contains(x.EmployeeId) && x.Date == date)
+            .ToListAsync(ct);
+    }
+
     public async Task<IReadOnlyList<BreakRecord>> ListBreaksAsync(
         Guid tenantId,
         Guid employeeId,

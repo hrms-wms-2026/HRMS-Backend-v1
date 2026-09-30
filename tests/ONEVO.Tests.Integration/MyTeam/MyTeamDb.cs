@@ -6,6 +6,7 @@ using ONEVO.Domain.Features.Leave.Common;
 using ONEVO.Domain.Features.Leave.Request.Entities;
 using ONEVO.Domain.Features.Leave.Type.Entities;
 using ONEVO.Domain.Features.OrgStructure.Entities;
+using ONEVO.Domain.Features.TimeAttendance.Entities;
 using ONEVO.Domain.Features.WorkManagement.Objectives.Entities;
 using ONEVO.Domain.Features.WorkManagement.ProjectMembers.Entities;
 using ONEVO.Domain.Features.WorkManagement.Projects.Entities;
@@ -196,6 +197,32 @@ public sealed class MyTeamDb
         };
         db.LeaveRequests.Add(request);
         return request;
+    }
+
+    public AttendanceRecord AddAttendanceRecord(
+        ApplicationDbContext db, Guid employeeId, DateOnly date,
+        DateTimeOffset? actualStart = null, DateTimeOffset? actualEnd = null,
+        string status = AttendanceRecord.StatusOnTime)
+    {
+        var record = new AttendanceRecord
+        {
+            Id = Guid.NewGuid(), TenantId = TenantId, EmployeeId = employeeId, Date = date,
+            ExpectedWorkingDay = true, ActualStart = actualStart, ActualEnd = actualEnd, Status = status,
+        };
+        db.AttendanceRecords.Add(record);
+        return record;
+    }
+
+    public Guid AddClockInPolicy(ApplicationDbContext db)
+    {
+        var policy = new ClockInPolicy
+        {
+            Id = Guid.NewGuid(), TenantId = TenantId, LegalEntityId = LegalEntityId,
+            Name = "Full Company", ScopeType = ClockInPolicy.ScopeFullCompany,
+            EffectiveFrom = DateOnly.FromDateTime(DateTime.UtcNow).AddYears(-1), IsActive = true,
+        };
+        db.ClockInPolicies.Add(policy);
+        return policy.Id;
     }
 
     public (Guid ProjectId, Guid RootObjectiveId) AddProject(ApplicationDbContext db, Guid leadEmployeeId, bool active = true, Guid? legalEntityId = null)
