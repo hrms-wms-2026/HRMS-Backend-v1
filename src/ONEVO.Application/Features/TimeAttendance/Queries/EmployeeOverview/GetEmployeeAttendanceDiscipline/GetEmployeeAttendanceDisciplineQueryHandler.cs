@@ -36,11 +36,40 @@ public sealed class GetEmployeeAttendanceDisciplineQueryHandler(
         if (!await EmployeeOverviewAccess.HasAccessAsync(currentUser, employees, tenantId, request.EmployeeId, ModulePermission, ct))
             return Result<EmployeeAttendanceDisciplineResponse>.Forbidden("You do not have access to this employee's attendance.");
 
+        var compare = EmployeeOverviewCompare.Parse(request.Compare);
+        if (!compare.IsSuccess)
+            return Result<EmployeeAttendanceDisciplineResponse>.Failure(compare.Error!, compare.StatusCode ?? 400);
+
         var period = EmployeePeriod.Resolve(request.From, request.To, clock.Today);
         if (!period.IsSuccess)
             return Result<EmployeeAttendanceDisciplineResponse>.Failure(period.Error!, period.StatusCode ?? 400);
 
-        var data = await reader.LoadAsync(tenantId, request.EmployeeId, access.Value!.LegalEntityId, period.Value!, ct);
+        var legalEntityId = access.Value!.LegalEntityId;
+        var trackingEnabled = await toggles.IsEnabledAsync(
+            tenantId, request.EmployeeId, MonitoringCapability.WorkLocationVerification, ct);
+
+        var current = await MeasureAsync(tenantId, request.EmployeeId, legalEntityId, period.Value!, trackingEnabled, ct);
+        EmployeeAttendanceDisciplineMetrics? previous = compare.Value
+            ? await MeasureAsync(tenantId, request.EmployeeId, legalEntityId, period.Value!.Previous(), trackingEnabled, ct)
+            : null;
+
+        return Result<EmployeeAttendanceDisciplineResponse>.Success(new EmployeeAttendanceDisciplineResponse(
+            period.Value!.From,
+            period.Value.To,
+            current.LateClockIns,
+            current.EarlyClockOuts,
+            current.MissingClockOuts,
+            current.OverBreakDays,
+            current.OverBreakMinutes,
+            trackingEnabled,
+            current.LocationViolations,
+            previous));
+    }
+
+    private async Task<EmployeeAttendanceDisciplineMetrics> MeasureAsync(
+        Guid tenantId, Guid employeeId, Guid? legalEntityId, EmployeePeriod period, bool trackingEnabled, CancellationToken ct)
+    {
+        var data = await reader.LoadAsync(tenantId, employeeId, legalEntityId, period, ct);
         var counts = AttendancePeriodCalculator.Count(data.Records, data.Timezone, data.Now);
 
         var overBreakDays = 0;
@@ -57,23 +86,14 @@ public sealed class GetEmployeeAttendanceDisciplineQueryHandler(
             }
         }
 
-        var trackingEnabled = await toggles.IsEnabledAsync(
-            tenantId, request.EmployeeId, MonitoringCapability.WorkLocationVerification, ct);
         int? locationViolations = trackingEnabled
             ? await notifications.CountByTypeAsync(
-                tenantId, request.EmployeeId, NotificationType.OutsideWorkLocationAlert,
+                tenantId, employeeId, NotificationType.OutsideWorkLocationAlert,
                 data.RangeStartUtc, data.RangeEndUtc, ct)
             : null;
 
-        return Result<EmployeeAttendanceDisciplineResponse>.Success(new EmployeeAttendanceDisciplineResponse(
-            period.Value!.From,
-            period.Value.To,
-            counts.LateArrivals,
-            counts.EarlyDepartures,
-            counts.MissingClockOuts,
-            overBreakDays,
-            overBreakMinutes,
-            trackingEnabled,
-            locationViolations));
+        return new EmployeeAttendanceDisciplineMetrics(
+            counts.LateArrivals, counts.EarlyDepartures, counts.MissingClockOuts,
+            overBreakDays, overBreakMinutes, locationViolations);
     }
 }

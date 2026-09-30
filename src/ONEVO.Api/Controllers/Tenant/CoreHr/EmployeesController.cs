@@ -166,9 +166,10 @@ public class EmployeesController : ControllerBase
     [HttpGet("{id:guid}/overview/attendance-discipline")]
     [RequirePermission("employees:read")]
     public async Task<IActionResult> GetOverviewAttendanceDiscipline(
-        Guid id, [FromQuery] DateOnly? from = null, [FromQuery] DateOnly? to = null, CancellationToken ct = default)
+        Guid id, [FromQuery] DateOnly? from = null, [FromQuery] DateOnly? to = null,
+        [FromQuery] string? compare = null, CancellationToken ct = default)
     {
-        var result = await _mediator.Send(new GetEmployeeAttendanceDisciplineQuery(id, from, to), ct);
+        var result = await _mediator.Send(new GetEmployeeAttendanceDisciplineQuery(id, from, to, compare), ct);
         return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
