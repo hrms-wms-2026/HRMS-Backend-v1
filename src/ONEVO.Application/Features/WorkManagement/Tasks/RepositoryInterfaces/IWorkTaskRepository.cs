@@ -14,6 +14,17 @@ public sealed record MyTaskRow(
     Guid ObjectiveId,
     string Priority);
 
+/// <summary>A not_started/active task assigned to an employee, for the employee work graph.</summary>
+public sealed record OpenAssignedTaskRow(
+    Guid Id,
+    string ShortId,
+    string Title,
+    Guid ProjectId,
+    Guid ObjectiveId,
+    string Category);
+
+public sealed record OpenAssignedTasksPage(IReadOnlyList<OpenAssignedTaskRow> Items, int TotalCount);
+
 /// <summary>The bare fields needed to bucket a caller's assigned task into the Task Progress
 /// donut widget's Completed/Overdue/In Progress/Not Started categories.</summary>
 public sealed record TaskProgressRow(
@@ -52,6 +63,10 @@ public interface IWorkTaskRepository
     /// <summary>Every not-soft-deleted task assigned to this employee, regardless of due date -
     /// for the Task Progress dashboard widget's overall completion breakdown.</summary>
     Task<IReadOnlyList<TaskProgressRow>> GetMyTaskProgressRowsAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default);
+
+    /// <summary>Tasks assigned to this employee whose status category is not_started or active,
+    /// active first then by ShortId, capped at take; TotalCount is the uncapped total.</summary>
+    Task<OpenAssignedTasksPage> ListOpenAssignedToEmployeeAsync(Guid tenantId, Guid employeeId, int take, CancellationToken ct = default);
 
     Task<IReadOnlyList<WorkTask>> GetBySprintIdAsync(Guid tenantId, Guid sprintId, CancellationToken ct = default);
 
