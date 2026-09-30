@@ -4,6 +4,7 @@ using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.DTOs.Responses;
 using ONEVO.Application.Features.CoreHr.Employee.ServiceInterfaces;
+using ONEVO.Application.Features.Monitoring.ActivityMonitoring.DTOs.Responses;
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.Queries.EmployeeOverview.GetEmployeeActivityOverview;
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.ServiceInterfaces;
@@ -15,6 +16,7 @@ public sealed class GetEmployeeActivityOverviewQueryHandlerTests
 {
     private readonly Mock<IEmployeeReadAccessGuard> _guard = new();
     private readonly Mock<IActivityDailySummaryRepository> _summaries = new();
+    private readonly Mock<IActivityLiveDaySummary> _live = new();
     private readonly Mock<IMonitoringToggleResolver> _toggles = new();
     private readonly Mock<ICurrentUser> _user = new();
     private readonly Mock<IDateTimeProvider> _clock = new();
@@ -40,7 +42,7 @@ public sealed class GetEmployeeActivityOverviewQueryHandlerTests
     }
 
     private GetEmployeeActivityOverviewQueryHandler CreateHandler() =>
-        new(_guard.Object, _summaries.Object, _toggles.Object, _user.Object, _clock.Object);
+        new(_guard.Object, _summaries.Object, _live.Object, _toggles.Object, _user.Object, _clock.Object);
 
     private ActivityDailySummary Day(int active, int idle, int meeting) => new()
     {
@@ -107,6 +109,32 @@ public sealed class GetEmployeeActivityOverviewQueryHandlerTests
         result.Value.Previous.IdleMinutes.Should().Be(50);
         result.Value.Previous.MeetingMinutes.Should().Be(20);
         result.Value.Previous.DaysWithData.Should().Be(2);
+    }
+
+    [Fact]
+    public async Task Handle_AddsTheLiveSummaryForToday_WhenNoPersistedRowExistsYet()
+    {
+        ArrangeSummaries(SepFrom, SepTo, Day(100, 20, 15));
+        _live.Setup(l => l.ComposeAsync(_tenantId, _employeeId, new DateOnly(2026, 9, 15), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ActivityDailySummaryDto { TotalActiveMinutes = 30, TotalIdleMinutes = 5, TotalMeetingMinutes = 10 });
+
+        var result = await CreateHandler().Handle(
+            new GetEmployeeActivityOverviewQuery(_employeeId, SepFrom, SepTo), CancellationToken.None);
+
+        result.Value!.ActiveMinutes.Should().Be(130);
+        result.Value.IdleMinutes.Should().Be(25);
+        result.Value.MeetingMinutes.Should().Be(25);
+        result.Value.DaysWithData.Should().Be(2);
+    }
+
+    [Fact]
+    public async Task Handle_DoesNotComposeToday_ForAPastPeriod()
+    {
+        ArrangeSummaries(AugFrom, AugTo, Day(100, 20, 15));
+
+        await CreateHandler().Handle(new GetEmployeeActivityOverviewQuery(_employeeId, AugFrom, AugTo), CancellationToken.None);
+
+        _live.VerifyNoOtherCalls();
     }
 
     [Fact]
