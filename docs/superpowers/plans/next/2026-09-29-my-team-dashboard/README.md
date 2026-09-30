@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Ship attendance-only "My Team" (`/dashboard/team`) V1: capability discovery, Team Status, Approvals & Exceptions, Team Progress, and Priority Actions, each authorized by its owning domain.
+**Goal:** Ship attendance-only "My Team" V1: capability discovery, Team Status, Approvals & Exceptions, Team Progress, and Priority Actions, each authorized by its owning domain.
 
-**Architecture:** Domain-owned endpoints (TimeAttendance `team/today`, WorkManagement `led-progress`) plus a thin `Features/Dashboard/Team` composition feature (`capabilities`, `action-items`) that only calls domain-declared interfaces. The frontend adds a lazy `/dashboard/team` route, a `My Day | My Team` switch, a root capabilities store, and four independent cards.
+**Architecture:** Domain-owned endpoints (TimeAttendance `team/today`, WorkManagement `led-progress`) plus a thin `Features/Dashboard/Team` composition feature (`capabilities`, `action-items`) that only calls domain-declared interfaces. **Frontend route model revised 2026-09-30** (spec §5): no separate `/dashboard/team` route or toggle. My Team is a capability-gated section appended below the existing personal cards on the single `/dashboard` page, plus a root capabilities store and four independent widgets, each individually capability-gated and user-customizable (show/hide/reorder) within its allowed set. This affects only Parts 7-8 (frontend, not yet started) - Parts 1-6 (backend) are unchanged.
 
 **Tech stack:**
 - Backend: .NET 10, EF Core 10 / Npgsql, MediatR, xUnit + Moq + FluentAssertions, Testcontainers PostgreSQL.
