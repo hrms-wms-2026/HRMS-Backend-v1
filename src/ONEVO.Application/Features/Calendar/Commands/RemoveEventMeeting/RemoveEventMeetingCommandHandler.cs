@@ -51,7 +51,16 @@ public sealed class RemoveEventMeetingCommandHandler(
             return Result.Success();
         }
 
-        await CancelRemoteMeetingAsync(tenantId, meeting, ct);
+        try
+        {
+            await CancelRemoteMeetingAsync(tenantId, meeting, ct);
+        }
+        catch (ZoomMeetingInProgressException ex)
+        {
+            // Leave the meeting row/link exactly as they were - there is nothing to clean up
+            // locally since Zoom itself refused the cancellation.
+            return Result.Conflict($"{ex.Message} Try again once the meeting has ended.");
+        }
 
         meeting.Status = CalendarEventMeetingStatuses.Cancelled;
         meetings.Update(meeting);

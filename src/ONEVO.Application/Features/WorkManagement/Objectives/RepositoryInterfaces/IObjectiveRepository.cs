@@ -19,6 +19,10 @@ public interface IObjectiveRepository
 
     Task<Objective?> GetByIdForTenantAsync(Guid tenantId, Guid id, CancellationToken ct = default);
 
+    /// <summary>Batch lookup of several Modules in one query (used by the employee work graph).</summary>
+    Task<IReadOnlyList<Objective>> GetByIdsForTenantAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> ids, CancellationToken ct = default);
+
     /// <summary>
     /// Same lookup as <see cref="GetByIdForTenantAsync"/>, but returns the entity tracked by the
     /// DbContext's change tracker instead of AsNoTracking. Use on write paths that later call
@@ -49,6 +53,9 @@ public interface IObjectiveRepository
     /// <summary>Active objectives owned by this employee with EndDate in [from, to]. For the
     /// my-deadlines endpoint (spec §7) - not used by any other query.</summary>
     Task<IReadOnlyList<Objective>> GetOwnedByEmployeeIdWithinRangeAsync(Guid tenantId, Guid employeeId, DateOnly from, DateOnly to, CancellationToken ct = default);
+
+    /// <summary>Active objectives owned by this employee, any project, no date window.</summary>
+    Task<IReadOnlyList<Objective>> ListActiveOwnedByEmployeeAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default);
 
     void Update(Objective objective);
 }

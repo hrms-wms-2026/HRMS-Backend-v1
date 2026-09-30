@@ -60,6 +60,43 @@ public sealed class EmployeesControllerArchitectureTests
         Assert.DoesNotContain("tenantId", signature, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public void EmployeesController_GetWorkGraph_RequiresEmployeesReadAndUsesTheWorkGraphRoute()
+    {
+        var path = FindRepositoryPath(
+            "src", "ONEVO.Api", "Controllers", "Tenant", "CoreHr", "EmployeesController.cs");
+        var source = File.ReadAllText(path);
+
+        var actionIndex = source.IndexOf("public async Task<IActionResult> GetWorkGraph(", StringComparison.Ordinal);
+        Assert.True(actionIndex > 0, "Could not locate the GetWorkGraph action.");
+
+        var preceding = source[..actionIndex];
+        var routeIndex = preceding.LastIndexOf("[HttpGet(\"{id:guid}/work-graph\")]", StringComparison.Ordinal);
+        var permissionIndex = preceding.LastIndexOf("[RequirePermission(\"employees:read\")]", StringComparison.Ordinal);
+        Assert.True(routeIndex > 0, "GetWorkGraph is missing [HttpGet(\"{id:guid}/work-graph\")].");
+        Assert.True(permissionIndex > routeIndex, "GetWorkGraph is missing [RequirePermission(\"employees:read\")] after its route attribute.");
+    }
+
+    [Theory]
+    [InlineData("overview/attendance", "GetOverviewAttendance")]
+    [InlineData("overview/attendance-discipline", "GetOverviewAttendanceDiscipline")]
+    [InlineData("overview/time-off", "GetOverviewTimeOff")]
+    public void EmployeesController_OverviewWidgetActions_RequireEmployeesReadAndUseTheirRoute(string route, string action)
+    {
+        var path = FindRepositoryPath(
+            "src", "ONEVO.Api", "Controllers", "Tenant", "CoreHr", "EmployeesController.cs");
+        var source = File.ReadAllText(path);
+
+        var actionIndex = source.IndexOf($"public async Task<IActionResult> {action}(", StringComparison.Ordinal);
+        Assert.True(actionIndex > 0, $"Could not locate the {action} action.");
+
+        var preceding = source[..actionIndex];
+        var routeIndex = preceding.LastIndexOf($"[HttpGet(\"{{id:guid}}/{route}\")]", StringComparison.Ordinal);
+        var permissionIndex = preceding.LastIndexOf("[RequirePermission(\"employees:read\")]", StringComparison.Ordinal);
+        Assert.True(routeIndex > 0, $"{action} is missing its [HttpGet] route for {route}.");
+        Assert.True(permissionIndex > routeIndex, $"{action} is missing [RequirePermission(\"employees:read\")] after its route attribute.");
+    }
+
     private static string FindRepositoryPath(params string[] segments)
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);

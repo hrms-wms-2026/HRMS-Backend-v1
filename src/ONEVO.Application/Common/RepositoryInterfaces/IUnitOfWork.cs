@@ -12,4 +12,10 @@ public interface IUnitOfWork
     Task<TResult> ExecuteInTransactionAsync<TResult>(
         Func<CancellationToken, Task<TResult>> operation,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Detaches every tracked entity. Bulk handlers call this between items so a failed item's
+    /// tracked-but-unsaved changes are never flushed by a later item's SaveChangesAsync.
+    /// </summary>
+    void ClearTracking();
 }

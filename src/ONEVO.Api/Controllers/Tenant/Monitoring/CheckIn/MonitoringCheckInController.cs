@@ -95,7 +95,7 @@ public class MonitoringCheckInController : ControllerBase
     /// <summary>
     /// Tray face setup: saves the look-straight, turned-left and turned-right photos together as
     /// the employee's reference faces. Accepts multipart/form-data with "front", "left" and
-    /// "right" file fields. Refused ("already_enrolled") when a reference already exists.
+    /// "right" file fields. Replaces any previously enrolled face.
     /// Authorization: Bearer {tray_access_token}
     /// </summary>
     [HttpPost("face-enroll")]

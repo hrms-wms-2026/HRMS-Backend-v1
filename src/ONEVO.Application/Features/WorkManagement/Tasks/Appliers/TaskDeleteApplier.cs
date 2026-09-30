@@ -29,6 +29,11 @@ public sealed class TaskDeleteApplier : IApprovalActionApplier
         if (task is null)
             return ApplyOutcome.Stale;
 
+        // Subtasks may have been added while the request waited for approval.
+        var children = await _tasks.GetTrackedByParentTaskIdAsync(request.TenantId, task.Id, ct);
+        if (children is { Count: > 0 })
+            return ApplyOutcome.Invalid("This task has subtasks. Delete or move its subtasks first.");
+
         _writes.Delete(task);
         return ApplyOutcome.Applied;
     }

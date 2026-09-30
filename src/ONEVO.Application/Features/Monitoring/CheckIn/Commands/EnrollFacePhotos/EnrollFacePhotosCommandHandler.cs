@@ -1,4 +1,6 @@
 using MediatR;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
@@ -15,7 +17,8 @@ using ONEVO.Domain.Features.Monitoring.Biometrics.Entities;
 namespace ONEVO.Application.Features.Monitoring.CheckIn.Commands.EnrollFacePhotos;
 
 /// <summary>
-/// Saves the three tray face setup photos as the employee's references. Every check the tray
+/// Saves the three tray face setup photos as the employee's references, replacing any
+/// previously enrolled face. Every check the tray
 /// already ran per step is repeated here — the per-step results are never trusted.
 /// </summary>
 public class EnrollFacePhotosCommandHandler
@@ -32,6 +35,7 @@ public class EnrollFacePhotosCommandHandler
     private readonly IFaceQualityService _faceQuality;
     private readonly IFaceMatchService _faceMatch;
     private readonly ITrayEmployeeIdentityResolver _employeeIdentity;
+    private readonly ILogger<EnrollFacePhotosCommandHandler> _logger;
 
     public EnrollFacePhotosCommandHandler(
         ITrayCurrentDevice device,
@@ -41,7 +45,8 @@ public class EnrollFacePhotosCommandHandler
         IBiometricProfileRepository profiles,
         IFaceQualityService faceQuality,
         IFaceMatchService faceMatch,
-        ITrayEmployeeIdentityResolver employeeIdentity)
+        ITrayEmployeeIdentityResolver employeeIdentity,
+        ILogger<EnrollFacePhotosCommandHandler>? logger = null)
     {
         _device = device;
         _tenants = tenants;
@@ -51,6 +56,7 @@ public class EnrollFacePhotosCommandHandler
         _faceQuality = faceQuality;
         _faceMatch = faceMatch;
         _employeeIdentity = employeeIdentity;
+        _logger = logger ?? NullLogger<EnrollFacePhotosCommandHandler>.Instance;
     }
 
     public async Task<Result<FaceEnrollmentResponseDto>> Handle(
@@ -76,10 +82,10 @@ public class EnrollFacePhotosCommandHandler
             _device.TenantId, _device.UserId, _device.LegalEntityId, cancellationToken);
         var profile = await _profiles.GetByEmployeeIdAsync(_device.TenantId, employeeId, cancellationToken);
 
-        // A new face may never replace an enrolled one from the tray — that would let whoever
-        // is at the laptop take over the employee's identity. Re-enrollment goes through HR.
-        if (profile?.ReferencePhotoFileId is not null)
-            return Fail(null, ValidateFacePhotoCommandHandler.AlreadyEnrolled);
+        // Tray face setup always replaces the enrolled face with these three photos (product
+        // decision: an employee re-running device setup re-enrols). Whoever completes setup on
+        // the device becomes the reference face, so the replacement is logged below.
+        var replacing = profile?.ReferencePhotoFileId is not null;
 
         var front = await ReadAsync(request.Front, cancellationToken);
         var left = await ReadAsync(request.Left, cancellationToken);
@@ -148,6 +154,12 @@ public class EnrollFacePhotosCommandHandler
             }
 
             await _profiles.SaveChangesAsync(cancellationToken);
+            if (replacing)
+            {
+                _logger.LogWarning(
+                    "Tray face setup replaced the enrolled face of employee {EmployeeId} (user {UserId}, device {DeviceId})",
+                    employeeId, _device.UserId, _device.DeviceRegistrationId);
+            }
             return Result<FaceEnrollmentResponseDto>.Success(new FaceEnrollmentResponseDto(true, null, null));
         }
         catch (Exception) when (!cancellationToken.IsCancellationRequested)

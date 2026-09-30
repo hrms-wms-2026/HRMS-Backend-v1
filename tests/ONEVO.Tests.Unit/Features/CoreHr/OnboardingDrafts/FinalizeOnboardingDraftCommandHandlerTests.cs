@@ -191,6 +191,19 @@ public sealed class FinalizeOnboardingDraftCommandHandlerTests
     }
 
     [Fact]
+    public async Task Handle_ReturnsUnprocessable_WhenStartDateMissing()
+    {
+        var draft = ValidDraft();
+        draft.StartDate = null;
+        SetupDraft(draft);
+
+        var result = await CreateHandler().Handle(new FinalizeOnboardingDraftCommand(draft.Id), CancellationToken.None);
+
+        Assert.Equal(422, result.StatusCode);
+        Assert.Equal("Start date is required.", result.Error);
+    }
+
+    [Fact]
     public async Task Handle_ReturnsConflict_WhenDraftIsWaitingForPositionApprovalAndRequestStillPending()
     {
         var draft = ValidDraft(status: OnboardingDraftStatus.WaitingForPositionApproval);
@@ -687,13 +700,13 @@ public sealed class FinalizeOnboardingDraftCommandHandlerTests
             .Setup(r => r.GetActiveOnboardingAsync(_tenantId, templateId, draft.LegalEntityId, draft.DepartmentId, draft.PositionId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(template);
         _checklistTaskRepository
-            .Setup(r => r.InstantiateAsync(template, It.IsAny<Guid>(), It.IsAny<Guid>(), null, draft.StartDate, It.IsAny<CancellationToken>()))
+            .Setup(r => r.InstantiateAsync(template, It.IsAny<Guid>(), It.IsAny<Guid>(), null, draft.StartDate!.Value, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<EmployeeChecklistTask> { new() { Id = Guid.NewGuid(), AssignedToId = Guid.NewGuid() } });
 
         var result = await CreateHandler().Handle(new FinalizeOnboardingDraftCommand(draft.Id), CancellationToken.None);
 
         Assert.True(result.IsSuccess);
-        _checklistTaskRepository.Verify(r => r.InstantiateAsync(template, It.IsAny<Guid>(), It.IsAny<Guid>(), null, draft.StartDate, It.IsAny<CancellationToken>()), Times.Once);
+        _checklistTaskRepository.Verify(r => r.InstantiateAsync(template, It.IsAny<Guid>(), It.IsAny<Guid>(), null, draft.StartDate!.Value, It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -849,7 +862,7 @@ public sealed class FinalizeOnboardingDraftCommandHandlerTests
         await CreateWriteService().FinalizeAsync(_tenantId, _userId, draft.Id, CancellationToken.None);
 
         _positionAssignmentRepository.Verify(a => a.TryReservePositionAssignmentAsync(
-            _tenantId, It.IsAny<Guid>(), positionId, draft.StartDate, _userId, chosenManagerId, It.IsAny<CancellationToken>()),
+            _tenantId, It.IsAny<Guid>(), positionId, draft.StartDate!.Value, _userId, chosenManagerId, It.IsAny<CancellationToken>()),
             Times.Once);
     }
 

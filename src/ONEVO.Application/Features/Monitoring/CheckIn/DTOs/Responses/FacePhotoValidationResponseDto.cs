@@ -11,7 +11,9 @@ public record FacePhotoValidationResponseDto(
     [property: JsonPropertyName("similarity_score")] float? SimilarityScore,
     [property: JsonPropertyName("failure_reason")] string? FailureReason,
     [property: JsonPropertyName("face_count")] int? FaceCount = null,
-    [property: JsonPropertyName("faces")] IReadOnlyList<FaceBoxDto>? Faces = null);
+    [property: JsonPropertyName("faces")] IReadOnlyList<FaceBoxDto>? Faces = null,
+    [property: JsonPropertyName("failed_attempts")] int? FailedAttempts = null,
+    [property: JsonPropertyName("max_attempts")] int? MaxAttempts = null);
 
 /// <summary>A face AWS saw in the photo; box values are fractions (0-1) of the image.</summary>
 public record FaceBoxDto(

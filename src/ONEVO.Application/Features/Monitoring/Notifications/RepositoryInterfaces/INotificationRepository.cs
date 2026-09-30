@@ -10,6 +10,12 @@ public interface INotificationRepository
     Task<bool> ExistsRecentAsync(
         Guid tenantId, Guid employeeId, NotificationType type, DateTimeOffset sinceUtc, CancellationToken ct);
 
+    /// <summary>How many notifications of this type this employee received with
+    /// <paramref name="fromUtc"/> &lt;= CreatedAt &lt; <paramref name="toUtcExclusive"/>.</summary>
+    Task<int> CountByTypeAsync(
+        Guid tenantId, Guid employeeId, NotificationType type,
+        DateTimeOffset fromUtc, DateTimeOffset toUtcExclusive, CancellationToken ct);
+
     Task<IReadOnlyList<Notification>> GetPendingForTrayAsync(Guid tenantId, Guid employeeId, CancellationToken ct);
 
     Task<Notification?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct);

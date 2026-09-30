@@ -18,4 +18,9 @@ public interface IDeviceStateSnapshotRepository
     /// <summary>Snapshots for one employee since sinceUtc, ordered oldest-first (enough history to detect a 120-min streak).</summary>
     Task<IReadOnlyList<DeviceStateSnapshot>> GetRecentAsync(
         Guid tenantId, Guid employeeId, DateTimeOffset sinceUtc, CancellationToken ct);
+
+    /// <summary>Snapshots for one employee in [from, to), oldest first, capped at <paramref name="max"/> -
+    /// a company-local day for the exception evidence timeline.</summary>
+    Task<IReadOnlyList<DeviceStateSnapshot>> ListForEmployeeInRangeAsync(
+        Guid tenantId, Guid employeeId, DateTimeOffset from, DateTimeOffset to, int max, CancellationToken ct);
 }

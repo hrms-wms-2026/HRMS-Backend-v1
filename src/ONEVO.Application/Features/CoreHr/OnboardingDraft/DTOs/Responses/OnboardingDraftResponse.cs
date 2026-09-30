@@ -11,7 +11,7 @@ public record OnboardingDraftResponse(
     Guid? PositionId,
     string? PositionName,
     string EmploymentType,
-    DateOnly StartDate,
+    DateOnly? StartDate,
     string? EmployeeNumber,
     Guid? WorkModeId,
     string? WorkModeLabel,

@@ -99,6 +99,27 @@ public class EfWorkTaskRepository : IWorkTaskRepository
         ).ToListAsync(ct);
     }
 
+    public async Task<OpenAssignedTasksPage> ListOpenAssignedToEmployeeAsync(Guid tenantId, Guid employeeId, int take, CancellationToken ct = default)
+    {
+        var query =
+            from t in _db.WorkTasks.AsNoTracking()
+            join s in _db.TaskStatuses.AsNoTracking() on t.StatusId equals s.Id
+            where t.TenantId == tenantId
+                  && (s.Category == TaskStatusCategories.NotStarted || s.Category == TaskStatusCategories.Active)
+                  && _db.TaskAssignments.Any(a => a.TaskId == t.Id && a.EmployeeId == employeeId)
+            select new { Task = t, s.Category };
+
+        var total = await query.CountAsync(ct);
+        var items = await query
+            .OrderBy(x => x.Category)
+            .ThenBy(x => x.Task.ShortId)
+            .Take(take)
+            .Select(x => new OpenAssignedTaskRow(x.Task.Id, x.Task.ShortId, x.Task.Title, x.Task.ProjectId, x.Task.ObjectiveId, x.Category))
+            .ToListAsync(ct);
+
+        return new OpenAssignedTasksPage(items, total);
+    }
+
     public async Task<IReadOnlyList<WorkTask>> GetBySprintIdAsync(Guid tenantId, Guid sprintId, CancellationToken ct = default)
         => await _db.WorkTasks.AsNoTracking().Where(t => t.TenantId == tenantId && t.SprintId == sprintId).ToListAsync(ct);
 

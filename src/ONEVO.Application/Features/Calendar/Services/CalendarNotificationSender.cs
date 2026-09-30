@@ -10,7 +10,7 @@ public sealed class CalendarNotificationSender(IOutboxWriter outboxWriter, IEmpl
     public async Task NotifyParticipantsAddedAsync(
         Guid tenantId, string eventTitle, DateTimeOffset startDate, string? location,
         IReadOnlyList<Guid> employeeIds, string organizerName, CancellationToken ct = default,
-        string? meetingLink = null)
+        string? meetingLink = null, bool sendInviteEmail = true)
     {
         foreach (var employeeId in employeeIds)
         {
@@ -24,6 +24,8 @@ public sealed class CalendarNotificationSender(IOutboxWriter outboxWriter, IEmpl
                     new Dictionary<string, string> { ["organizerName"] = organizerName, ["eventTitle"] = eventTitle, ["eventDate"] = startDate.ToString("u") },
                     "calendar_event", null),
                 tenantId, ct);
+
+            if (!sendInviteEmail) continue;
 
             await outboxWriter.EnqueueAsync(
                 OutboxMessageTypes.CalendarEventInviteEmail,
@@ -44,6 +46,19 @@ public sealed class CalendarNotificationSender(IOutboxWriter outboxWriter, IEmpl
             await outboxWriter.EnqueueAsync(
                 OutboxMessageTypes.CalendarEventInviteEmail,
                 new CalendarEventInviteEmailPayload(tenantId, employee.Email, $"{employee.FirstName} {employee.LastName}", eventTitle, startDate, location, organizerName, meetingLink),
+                tenantId, ct);
+        }
+    }
+
+    public async Task NotifyGuestsAsync(
+        Guid tenantId, string eventTitle, DateTimeOffset startDate, string? location,
+        IReadOnlyList<string> guestEmails, string organizerName, string? meetingLink, CancellationToken ct = default)
+    {
+        foreach (var email in guestEmails)
+        {
+            await outboxWriter.EnqueueAsync(
+                OutboxMessageTypes.CalendarEventInviteEmail,
+                new CalendarEventInviteEmailPayload(tenantId, email, email.Split('@')[0], eventTitle, startDate, location, organizerName, meetingLink),
                 tenantId, ct);
         }
     }

@@ -330,7 +330,7 @@ public class ApproveAccessGrantRequestCommandHandler
         {
             try
             {
-                var tasks = await _checklistTaskRepository.InstantiateAsync(template, employeeId, user.Id, draft.EditedTasksJson, draft.StartDate, ct);
+                var tasks = await _checklistTaskRepository.InstantiateAsync(template, employeeId, user.Id, draft.EditedTasksJson, draft.StartDate!.Value, ct);
                 tasksCreated = tasks.Count;
             }
             catch (ArgumentException)
@@ -354,13 +354,13 @@ public class ApproveAccessGrantRequestCommandHandler
             EmploymentStatusId = 1,
             EmploymentTypeId = employmentTypeId.Value,
             WorkModeId = draft.WorkModeId,
-            HireDate = draft.StartDate,
+            HireDate = draft.StartDate!.Value,
             CreatedById = _currentUser.UserId,
         };
         await _employeeRepository.AddAsync(employee, ct);
 
         var reservedAssignmentId = await _positionAssignmentRepository.TryReservePositionAssignmentAsync(
-            draft.TenantId, employeeId, position.Id, draft.StartDate, _currentUser.UserId, reportsToEmployeeId: null, ct);
+            draft.TenantId, employeeId, position.Id, draft.StartDate!.Value, _currentUser.UserId, reportsToEmployeeId: null, ct);
         if (reservedAssignmentId is null)
             return Result<ApproveAccessGrantRequestResponse>.Conflict("This position has reached its capacity.");
 

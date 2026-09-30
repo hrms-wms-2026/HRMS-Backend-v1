@@ -6,6 +6,7 @@ using ONEVO.Api.Filters;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.AddClockingSessionReason;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.AddPercentageLogReason;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.AssignTask;
+using ONEVO.Application.Features.WorkManagement.Tasks.Commands.BulkTaskActions;
 
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.ClockInTask;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.CreateTask;
@@ -360,6 +361,68 @@ public class TasksController : ControllerBase
         return !result.IsSuccess ? Problem(result.Error, statusCode: result.StatusCode ?? 400)
             : result.Value!.ApprovalRequestId is { } requestId ? StatusCode(202, new { approvalRequestId = requestId })
             : NoContent();
+    }
+
+    /// <summary>Bulk actions run the single-task command per task; the response reports each task's outcome.</summary>
+    [HttpPost("tasks/bulk/status")]
+    public async Task<IActionResult> BulkMoveStatus([FromBody] BulkMoveTaskStatusRequest request, CancellationToken ct)
+    {
+        var result = await _mediator.Send(
+            new BulkMoveTaskStatusCommand(request.TaskIds, request.NewStatusId), ct);
+        return result.IsSuccess
+            ? Ok(result.Value)
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    [HttpPost("tasks/bulk/assign")]
+    public async Task<IActionResult> BulkAssign([FromBody] BulkAssignTaskRequest request, CancellationToken ct)
+    {
+        var result = await _mediator.Send(
+            new BulkAssignTaskCommand(request.TaskIds, request.EmployeeId), ct);
+        return result.IsSuccess
+            ? Ok(result.Value)
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    [HttpPost("tasks/bulk/priority")]
+    public async Task<IActionResult> BulkSetPriority([FromBody] BulkSetTaskPriorityRequest request, CancellationToken ct)
+    {
+        var result = await _mediator.Send(
+            new BulkSetTaskPriorityCommand(request.TaskIds, request.Priority), ct);
+        return result.IsSuccess
+            ? Ok(result.Value)
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    [HttpPost("tasks/bulk/due-date")]
+    public async Task<IActionResult> BulkSetDueDate([FromBody] BulkSetTaskDueDateRequest request, CancellationToken ct)
+    {
+        var result = await _mediator.Send(
+            new BulkSetTaskDueDateCommand(request.TaskIds, request.DueDate), ct);
+        return result.IsSuccess
+            ? Ok(result.Value)
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    [HttpPost("tasks/bulk/convert-to-subtask")]
+    public async Task<IActionResult> BulkConvertToSubtask(
+        [FromBody] BulkConvertTasksToSubtasksRequest request,
+        CancellationToken ct)
+    {
+        var result = await _mediator.Send(
+            new BulkConvertTasksToSubtasksCommand(request.TaskIds, request.NewParentTaskId), ct);
+        return result.IsSuccess
+            ? Ok(result.Value)
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    [HttpPost("tasks/bulk/delete")]
+    public async Task<IActionResult> BulkDelete([FromBody] BulkDeleteTasksRequest request, CancellationToken ct)
+    {
+        var result = await _mediator.Send(new BulkDeleteTasksCommand(request.TaskIds), ct);
+        return result.IsSuccess
+            ? Ok(result.Value)
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
     [HttpPost("tasks/{id:guid}/duplicate")]

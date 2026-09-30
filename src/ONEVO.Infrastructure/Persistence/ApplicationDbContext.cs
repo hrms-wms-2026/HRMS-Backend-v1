@@ -12,6 +12,7 @@ using ExternalCalendarEventLink = ONEVO.Domain.Features.Calendar.Entities.Extern
 using HolidayCalendarSettings = ONEVO.Domain.Features.Calendar.Entities.HolidayCalendarSettings;
 using CalendarEventMeeting = ONEVO.Domain.Features.Calendar.Entities.CalendarEventMeeting;
 using CalendarEventMeetingAttendance = ONEVO.Domain.Features.Calendar.Entities.CalendarEventMeetingAttendance;
+using CalendarEventGuest = ONEVO.Domain.Features.Calendar.Entities.CalendarEventGuest;
 using TimeAttendanceWorkMode = ONEVO.Domain.Features.TimeAttendance.Entities.WorkMode;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.DevPlatform.Compliance.Entities;
@@ -113,6 +114,7 @@ public class ApplicationDbContext : DbContext
     // Monitoring - Employee Check-In
     public DbSet<EmployeeCheckIn> EmployeeCheckIns => Set<EmployeeCheckIn>();
     public DbSet<MonitoringFaceScan> MonitoringFaceScans => Set<MonitoringFaceScan>();
+    public DbSet<FaceVerificationAttempt> FaceVerificationAttempts => Set<FaceVerificationAttempt>();
 
     // Monitoring - Work Sessions (clock-in/break/clock-out)
     public DbSet<EmployeeWorkSession> EmployeeWorkSessions => Set<EmployeeWorkSession>();
@@ -319,6 +321,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<TaskClockingSession> TaskClockingSessions => Set<TaskClockingSession>();
     public DbSet<TaskPercentageLog> TaskPercentageLogs => Set<TaskPercentageLog>();
     public DbSet<TaskComment> TaskComments => Set<TaskComment>();
+    public DbSet<TaskDraft> TaskDrafts => Set<TaskDraft>();
     public DbSet<TaskCommentLog> TaskCommentLogs => Set<TaskCommentLog>();
     public DbSet<TaskCommentReaction> TaskCommentReactions => Set<TaskCommentReaction>();
 
@@ -329,6 +332,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<ExternalCalendarConnection> ExternalCalendarConnections => Set<ExternalCalendarConnection>();
     public DbSet<ExternalCalendarEventLink> ExternalCalendarEventLinks => Set<ExternalCalendarEventLink>();
     public DbSet<HolidayCalendarSettings> HolidayCalendarSettings => Set<HolidayCalendarSettings>();
+    public DbSet<CalendarEventGuest> CalendarEventGuests => Set<CalendarEventGuest>();
     public DbSet<CalendarEventMeeting> CalendarEventMeetings => Set<CalendarEventMeeting>();
     public DbSet<CalendarEventMeetingAttendance> CalendarEventMeetingAttendances => Set<CalendarEventMeetingAttendance>();
 

@@ -74,6 +74,10 @@ public class DeleteTaskCommandHandler : IRequestHandler<DeleteTaskCommand, Resul
         if (!await _membership.IsEffectiveManagerAsync(tenantId, objective.Id, callerEmployeeId.Value, ct))
             return Result<TaskWriteOutcome>.Forbidden("Only members of this module can change its tasks.");
 
+        var children = await _tasks.GetTrackedByParentTaskIdAsync(tenantId, task.Id, ct);
+        if (children is { Count: > 0 })
+            return Result<TaskWriteOutcome>.Conflict("This task has subtasks. Delete or move its subtasks first.");
+
         var tree = await _hierarchy.LoadTreeAsync(tenantId, objective.ProjectId, ct);
 
         return await _unitOfWork.ExecuteInTransactionAsync(async innerCt =>

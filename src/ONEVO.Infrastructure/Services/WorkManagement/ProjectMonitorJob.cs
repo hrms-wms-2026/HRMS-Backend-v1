@@ -41,22 +41,30 @@ public sealed class ProjectMonitorJob : BackgroundService
         }
 
         using var timer = new PeriodicTimer(CheckInterval);
-        do
+        try
         {
-            try
+            do
             {
-                await RunOnceAsync(stoppingToken);
+                try
+                {
+                    await RunOnceAsync(stoppingToken);
+                }
+                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+                {
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "ProjectMonitorJob encountered an error.");
+                }
             }
-            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
-            {
-                break;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "ProjectMonitorJob encountered an error.");
-            }
+            while (await timer.WaitForNextTickAsync(stoppingToken));
         }
-        while (await timer.WaitForNextTickAsync(stoppingToken));
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
+            // PeriodicTimer.WaitForNextTickAsync throws when its token is cancelled; an ordinary host
+            // shutdown must not surface as an unhandled exception (StopHost treats that as a crash).
+        }
     }
 
     public async Task RunOnceAsync(CancellationToken ct)

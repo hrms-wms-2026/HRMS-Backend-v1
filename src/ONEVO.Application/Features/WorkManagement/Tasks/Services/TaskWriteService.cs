@@ -159,17 +159,9 @@ public sealed class TaskWriteService : ITaskWriteService
         if (input.DueDate != task.DueDate)
         {
             var windows = await _calendarEvents.ListActiveEventWindowsForTaskAsync(tenantId, task.Id, task.ObjectiveId, ct);
-            if (windows.Count > 0)
-            {
-                if (input.DueDate is null)
-                    return Result.Conflict(
-                        $"This task is in active event(s) {string.Join(", ", windows.Select(w => w.Name))}; a due date is required.");
-                var bad = windows.Where(w => input.DueDate < w.StartDate || input.DueDate > w.EndDate).ToList();
-                if (bad.Count > 0)
-                    return Result.Conflict(
-                        $"Due date {input.DueDate:yyyy-MM-dd} is outside event window(s): " +
-                        $"{string.Join(", ", bad.Select(w => $"{w.Name} {w.StartDate:yyyy-MM-dd}..{w.EndDate:yyyy-MM-dd}"))}. Widen the event first.");
-            }
+            var windowError = TaskDueDateEventWindowRule.Validate(windows, input.DueDate);
+            if (windowError is not null)
+                return Result.Conflict(windowError);
         }
 
         if (input.EstimatedHours.HasValue && input.EstimatedHours.Value != task.EstimatedHours)

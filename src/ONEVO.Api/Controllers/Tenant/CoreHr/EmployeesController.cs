@@ -6,6 +6,9 @@ using ONEVO.Api.Contracts.CoreHr.Employees;
 using ONEVO.Api.Contracts.Storage;
 using ONEVO.Api.Filters;
 using ONEVO.Application.Features.CoreHr.Employee.Commands.AddDependent;
+using ONEVO.Application.Features.CoreHr.Employee.Commands.BulkChangeEmployeePosition;
+using ONEVO.Application.Features.CoreHr.Employee.Commands.BulkChangeEmploymentType;
+using ONEVO.Application.Features.CoreHr.Offboarding.Commands.BulkStartOffboarding;
 using ONEVO.Application.Features.CoreHr.Employee.Commands.ChangeEmployeePosition;
 using ONEVO.Application.Features.CoreHr.Employee.Commands.AddEmergencyContact;
 using ONEVO.Application.Features.CoreHr.Employee.Commands.DeleteDependent;
@@ -25,6 +28,10 @@ using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployeePositionHist
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetMyPayroll;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetMyProfile;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.ListEmployees;
+using ONEVO.Application.Features.Leave.Balance.Queries.GetEmployeeTimeOff;
+using ONEVO.Application.Features.TimeAttendance.Queries.EmployeeOverview.GetEmployeeAttendanceDiscipline;
+using ONEVO.Application.Features.TimeAttendance.Queries.EmployeeOverview.GetEmployeeAttendanceOverview;
+using ONEVO.Application.Features.WorkManagement.EmployeeWorkGraph.Queries.GetEmployeeWorkGraph;
 
 namespace ONEVO.Api.Controllers.Tenant.CoreHr;
 
@@ -51,10 +58,28 @@ public class EmployeesController : ControllerBase
         [FromQuery] Guid? legalEntityId = null,
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 25,
+        [FromQuery] Guid? positionId = null,
+        [FromQuery(Name = "employmentType")] string[]? employmentTypes = null,
+        [FromQuery] Guid? managerId = null,
+        [FromQuery] string? sortBy = null,
+        [FromQuery] string? sortDir = null,
+        [FromQuery] bool activeOnly = false,
         CancellationToken ct = default)
     {
-        var result = await _mediator.Send(
-            new ListEmployeesQuery(search, departmentId, legalEntityId, page, pageSize), ct);
+         var result = await _mediator.Send(
+            new ListEmployeesQuery(
+                search,
+                departmentId,
+                legalEntityId,
+                page,
+                pageSize,
+                positionId,
+                employmentTypes,
+                managerId,
+                sortBy,
+                string.Equals(sortDir, "desc", StringComparison.OrdinalIgnoreCase),
+                activeOnly), ct);
+
 
         return result.IsSuccess
             ? Ok(result.Value)
@@ -112,6 +137,49 @@ public class EmployeesController : ControllerBase
         return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
+    /// <summary>Work Network graph: the employee's projects, modules (objectives) and open tasks
+    /// as nodes/links. Coverage-scoped like the detail read; see GetEmployeeWorkGraphQueryHandler.</summary>
+    [HttpGet("{id:guid}/work-graph")]
+    [RequirePermission("employees:read")]
+    public async Task<IActionResult> GetWorkGraph(Guid id, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new GetEmployeeWorkGraphQuery(id), ct);
+        return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Overview attendance card: present/late/missing-clock-out/leave counts and the
+    /// per-day strip for one employee over from..to (default: current month).</summary>
+    [HttpGet("{id:guid}/overview/attendance")]
+    [RequirePermission("employees:read")]
+    public async Task<IActionResult> GetOverviewAttendance(
+        Guid id, [FromQuery] DateOnly? from = null, [FromQuery] DateOnly? to = null, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new GetEmployeeAttendanceOverviewQuery(id, from, to), ct);
+        return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Overview attendance-discipline card: late clock-ins, early clock-outs, missing
+    /// clock-outs, over-break days/minutes and (when location tracking is on) location alerts.</summary>
+    [HttpGet("{id:guid}/overview/attendance-discipline")]
+    [RequirePermission("employees:read")]
+    public async Task<IActionResult> GetOverviewAttendanceDiscipline(
+        Guid id, [FromQuery] DateOnly? from = null, [FromQuery] DateOnly? to = null, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new GetEmployeeAttendanceDisciplineQuery(id, from, to), ct);
+        return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Overview time-off card: this year's leave balances (hours) plus the next
+    /// approved leave. Year-based - it does not follow the month period.</summary>
+    [HttpGet("{id:guid}/overview/time-off")]
+    [RequirePermission("employees:read")]
+    public async Task<IActionResult> GetOverviewTimeOff(
+        Guid id, [FromQuery] int? year = null, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new GetEmployeeTimeOffQuery(id, year), ct);
+        return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
     /// <summary>Reassign an employee's primary position. Minimal capacity-checked reassignment -
     /// not an approval-routed workflow. See ChangeEmployeePositionCommandHandler.</summary>
     [HttpPost("{id:guid}/change-position")]
@@ -140,6 +208,46 @@ public class EmployeesController : ControllerBase
 
         return result.IsSuccess
             ? NoContent()
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Promote/transfer many employees into one position. Each employee goes through the
+    /// single change-position rules; the response reports the outcome per employee.</summary>
+    [HttpPost("bulk/change-position")]
+    [RequirePermission("employees:write")]
+    public async Task<IActionResult> BulkChangePosition(
+        [FromBody] BulkChangePositionRequest request, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new BulkChangeEmployeePositionCommand(
+            request.EmployeeIds, request.PositionId, request.EffectiveFrom, request.ChangeReason, request.ReportsToEmployeeId), ct);
+
+        return result.IsSuccess
+            ? Ok(result.Value)
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    [HttpPost("bulk/employment-type")]
+    [RequirePermission("employees:write")]
+    public async Task<IActionResult> BulkChangeEmploymentType(
+        [FromBody] BulkChangeEmploymentTypeRequest request, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new BulkChangeEmploymentTypeCommand(request.EmployeeIds, request.EmploymentTypeCode), ct);
+
+        return result.IsSuccess
+            ? Ok(result.Value)
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    [HttpPost("bulk/offboarding/start")]
+    [RequirePermission("employees:offboard")]
+    public async Task<IActionResult> BulkStartOffboarding(
+        [FromBody] BulkStartOffboardingRequest request, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new BulkStartOffboardingCommand(
+            request.EmployeeIds, request.Reason, request.LastWorkingDate, request.KnowledgeRiskLevel, request.RehireEligibility, request.Notes), ct);
+
+        return result.IsSuccess
+            ? Ok(result.Value)
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 

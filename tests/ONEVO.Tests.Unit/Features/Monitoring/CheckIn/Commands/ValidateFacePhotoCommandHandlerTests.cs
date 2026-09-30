@@ -6,6 +6,7 @@ using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.Biometrics.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.Biometrics.Services;
 using ONEVO.Application.Features.Monitoring.CheckIn.Commands.ValidateFacePhoto;
+using ONEVO.Application.Features.Monitoring.CheckIn.DTOs.Responses;
 using ONEVO.Application.Features.Monitoring.CheckIn.Helpers;
 using ONEVO.Application.Features.Monitoring.CheckIn.ServiceInterfaces;
 using ONEVO.Application.Features.Storage.File.DTOs.Responses;
@@ -26,6 +27,7 @@ public class ValidateFacePhotoCommandHandlerTests
     private readonly Mock<IFaceQualityService> _quality = new();
     private readonly Mock<IFaceMatchService> _faceMatch = new();
     private readonly Mock<ITrayEmployeeIdentityResolver> _employeeIdentity = new();
+    private readonly Mock<IFaceVerificationRetryPolicy> _retry = new();
 
     private readonly Guid _tenantId = Guid.NewGuid();
     private readonly Guid _userId = Guid.NewGuid();
@@ -44,11 +46,16 @@ public class ValidateFacePhotoCommandHandlerTests
         _employeeIdentity.Setup(r => r.ResolveEmployeeIdAsync(
                 _tenantId, _userId, It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(_employeeId);
+        // Pass-through: these tests cover the AWS evaluation; the retry rule has its own tests.
+        _retry.Setup(r => r.ApplyAsync(
+                It.IsAny<FaceCheckAttemptContext>(), It.IsAny<FacePhotoValidationResponseDto>(),
+                It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((FaceCheckAttemptContext _, FacePhotoValidationResponseDto dto, Stream _, string _, CancellationToken _) => dto);
     }
 
     private ValidateFacePhotoCommandHandler CreateSut() => new(
         _device.Object, _tenants.Object, _tenantSwitcher.Object, _profiles.Object, _quality.Object,
-        new EnrolledFaceMatcher(_fileStorage.Object, _faceMatch.Object), _employeeIdentity.Object);
+        new EnrolledFaceMatcher(_fileStorage.Object, _faceMatch.Object), _employeeIdentity.Object, _retry.Object);
 
     private static ValidateFacePhotoCommand Cmd(string? purpose = null, string? pose = null) =>
         new(new MemoryStream(new byte[] { 3 }), "image/jpeg", 3, purpose, pose);
@@ -250,34 +257,18 @@ public class ValidateFacePhotoCommandHandlerTests
     }
 
     [Fact]
-    public async Task Enrollment_AlreadyEnrolled_SameFace_ProceedsAsAlreadyEnrolled()
+    public async Task Enrollment_AlreadyEnrolled_StepPasses_WithoutComparingToOldFace()
     {
+        // Face setup always replaces the enrolled face, so steps are never matched against it.
         SetupQuality(PassQuality());
         SetupProfile(Guid.NewGuid());
-        _faceMatch.Setup(m => m.CompareAsync(It.IsAny<Stream>(), It.IsAny<Stream>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new FaceMatchOutcome(true, 96f));
 
         var result = await CreateSut().Handle(
             Cmd(FacePhotoValidationPurpose.Enrollment, FacePhotoPose.Front), CancellationToken.None);
 
         result.Value!.CanProceed.Should().BeTrue();
-        result.Value.FailureReason.Should().Be(ValidateFacePhotoCommandHandler.AlreadyEnrolled);
-        VerifyNothingSaved();
-    }
-
-    [Fact]
-    public async Task Enrollment_AlreadyEnrolled_DifferentFace_NotMatched()
-    {
-        SetupQuality(PassQuality());
-        SetupProfile(Guid.NewGuid());
-        _faceMatch.Setup(m => m.CompareAsync(It.IsAny<Stream>(), It.IsAny<Stream>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new FaceMatchOutcome(false, 10f));
-
-        var result = await CreateSut().Handle(
-            Cmd(FacePhotoValidationPurpose.Enrollment, FacePhotoPose.Front), CancellationToken.None);
-
-        result.Value!.CanProceed.Should().BeFalse();
-        result.Value.FailureReason.Should().Be(ValidateFacePhotoCommandHandler.FailureNotMatched);
+        result.Value.FailureReason.Should().BeNull();
+        _faceMatch.Verify(m => m.CompareAsync(It.IsAny<Stream>(), It.IsAny<Stream>(), It.IsAny<CancellationToken>()), Times.Never);
         VerifyNothingSaved();
     }
 
@@ -342,6 +333,51 @@ public class ValidateFacePhotoCommandHandlerTests
 
         result.Value!.CanProceed.Should().BeFalse();
         result.Value.FailureReason.Should().Be(ValidateFacePhotoCommandHandler.FailureVerificationFailed);
+    }
+
+    [Fact]
+    public async Task ClockOut_GoesThroughRetryPolicy_AsClockOut()
+    {
+        SetupQuality(PassQuality());
+        SetupNoProfile();
+
+        await CreateSut().Handle(Cmd(FacePhotoValidationPurpose.ClockOut), CancellationToken.None);
+
+        _retry.Verify(r => r.ApplyAsync(
+            It.Is<FaceCheckAttemptContext>(c => c.Purpose == FacePhotoValidationPurpose.ClockOut && c.EmployeeId == _employeeId),
+            It.IsAny<FacePhotoValidationResponseDto>(), It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task RetryPolicyOverride_IsReturnedToTray()
+    {
+        SetupQuality(new FaceQualityOutcome(true, true, true, 70f, 99f, FacingFront: true));
+        SetupProfile(Guid.NewGuid());
+        _faceMatch.Setup(m => m.CompareAsync(It.IsAny<Stream>(), It.IsAny<Stream>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new FaceMatchOutcome(false, 20f));
+        _retry.Setup(r => r.ApplyAsync(
+                It.IsAny<FaceCheckAttemptContext>(), It.IsAny<FacePhotoValidationResponseDto>(),
+                It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((FaceCheckAttemptContext _, FacePhotoValidationResponseDto dto, Stream _, string _, CancellationToken _) =>
+                dto with { CanProceed = true, FailureReason = "manager_review", FailedAttempts = 3, MaxAttempts = 3 });
+
+        var result = await CreateSut().Handle(Cmd(FacePhotoValidationPurpose.ClockIn), CancellationToken.None);
+
+        result.Value!.CanProceed.Should().BeTrue();
+        result.Value.FailureReason.Should().Be("manager_review");
+    }
+
+    [Fact]
+    public async Task FaceSetupStep_NeverCountsTowardRetryLimit()
+    {
+        SetupQuality(PassQuality());
+        SetupNoProfile();
+
+        await CreateSut().Handle(Cmd(FacePhotoValidationPurpose.Enrollment, FacePhotoPose.Front), CancellationToken.None);
+
+        _retry.Verify(r => r.ApplyAsync(
+            It.IsAny<FaceCheckAttemptContext>(), It.IsAny<FacePhotoValidationResponseDto>(),
+            It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]

@@ -43,12 +43,23 @@ public sealed class LocationRuleEvaluatorJob : BackgroundService
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         using var timer = new PeriodicTimer(EvaluationInterval);
-        do
+        try
         {
-            try { await RunOnceAsync(stoppingToken); }
-            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
-            catch (Exception ex) { _logger.LogWarning(ex, "Location rule evaluation iteration failed; will retry next cycle."); }
-        } while (await timer.WaitForNextTickAsync(stoppingToken));
+            do
+            {
+                try { await RunOnceAsync(stoppingToken); }
+                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
+                catch (Exception ex) { _logger.LogWarning(ex, "Location rule evaluation iteration failed; will retry next cycle."); }
+            } while (await timer.WaitForNextTickAsync(stoppingToken));
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
+            // PeriodicTimer.WaitForNextTickAsync throws when the token passed to it is
+            // cancelled (unlike disposing the timer itself, which returns false instead) -
+            // an ordinary host shutdown must not surface as an unhandled exception here,
+            // since HostOptions.BackgroundServiceExceptionBehavior = StopHost treats any
+            // unhandled exception from a BackgroundService as a crash.
+        }
     }
 
     public async Task RunOnceAsync(CancellationToken ct)

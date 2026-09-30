@@ -2,7 +2,9 @@ using ONEVO.Domain.Common;
 
 namespace ONEVO.Domain.Features.Monitoring.Exceptions.Entities;
 
-public enum ExceptionType { SustainedLowActivity, AttendanceIrregularity, UnusualActivityPattern }
+/// <summary>Stored by name (string column), so new values are appended without a migration.
+/// IdentityAnomaly is raised in real time from the tray face checks, not by the nightly job.</summary>
+public enum ExceptionType { SustainedLowActivity, AttendanceIrregularity, UnusualActivityPattern, IdentityAnomaly }
 public enum ExceptionStatus { Open, Acknowledged, Resolved, Escalated }
 
 /// <summary>
@@ -25,4 +27,8 @@ public class Exception : ITenantOwnedEntity
     public DateTimeOffset? ResolvedAt { get; set; }
     public Guid? ResolvedById { get; set; }
     public DateTimeOffset? EscalatedAt { get; set; }
+    /// <summary>Null when the nightly sweep escalated the case on its own.</summary>
+    public Guid? EscalatedById { get; set; }
+    /// <summary>What the reviewer found, written when they resolve or escalate the case.</summary>
+    public string? ResolutionNote { get; set; }
 }
