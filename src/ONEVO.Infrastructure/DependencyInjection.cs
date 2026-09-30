@@ -257,6 +257,8 @@ public static class DependencyInjection
             ONEVO.Infrastructure.Persistence.Repositories.Calendar.EfHolidayCalendarSettingsRepository>();
         services.AddScoped<ONEVO.Application.Features.Leave.Calendar.Services.ILeaveCalendarHolidayProvider,
             ONEVO.Infrastructure.Services.Calendar.NagerHolidaysProvider>();
+        services.AddScoped<ONEVO.Application.Features.Leave.Calendar.Services.ILeaveVisibilityScopeProvider,
+            ONEVO.Application.Features.Leave.Calendar.Services.LeaveVisibilityScopeProvider>();
         services.AddScoped<ONEVO.Application.Features.Leave.Request.Services.ILeaveRequestConflictProvider,
             ONEVO.Application.Features.Leave.Request.Services.NoOpLeaveRequestConflictProvider>();
         services.AddScoped<ONEVO.Application.Features.Leave.Request.Services.ILeaveApproverResolver,
