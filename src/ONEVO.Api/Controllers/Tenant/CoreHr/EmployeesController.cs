@@ -28,6 +28,7 @@ using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployeeDetail;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployeeHistory;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployeeIdentity;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployeePositionHistory;
+using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployeeRecentActivity;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployeeUpcoming;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetMyPayroll;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetMyProfile;
@@ -265,6 +266,18 @@ public class EmployeesController : ControllerBase
     public async Task<IActionResult> GetOverviewUpcoming(Guid id, [FromQuery] int days = 14, CancellationToken ct = default)
     {
         var result = await _mediator.Send(new GetEmployeeUpcomingQuery(id, days), ct);
+        return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Overview recent activity: what the employee did (attendance, leave, Work Management),
+    /// newest first; pass the previous response's nextBefore as `before` for older items. Partial by
+    /// design - see GetEmployeeRecentActivityQueryHandler.</summary>
+    [HttpGet("{id:guid}/overview/recent-activity")]
+    [RequirePermission("employees:read")]
+    public async Task<IActionResult> GetOverviewRecentActivity(
+        Guid id, [FromQuery] DateTimeOffset? before = null, [FromQuery] int limit = 20, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new GetEmployeeRecentActivityQuery(id, before, limit), ct);
         return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
