@@ -25,6 +25,14 @@ public sealed record OpenAssignedTaskRow(
 
 public sealed record OpenAssignedTasksPage(IReadOnlyList<OpenAssignedTaskRow> Items, int TotalCount);
 
+/// <summary>The fields needed to bucket one employee task for the Overview work/delivery cards.</summary>
+public sealed record EmployeeTaskPeriodRow(
+    DateOnly? DueDate,
+    DateTimeOffset? CompletedAt,
+    int ProgressPercent,
+    bool MarksTaskComplete,
+    int? StoryPoints);
+
 /// <summary>The bare fields needed to bucket a caller's assigned task into the Task Progress
 /// donut widget's Completed/Overdue/In Progress/Not Started categories.</summary>
 public sealed record TaskProgressRow(
@@ -67,6 +75,11 @@ public interface IWorkTaskRepository
     /// <summary>Tasks assigned to this employee whose status category is not_started or active,
     /// active first then by ShortId, capped at take; TotalCount is the uncapped total.</summary>
     Task<OpenAssignedTasksPage> ListOpenAssignedToEmployeeAsync(Guid tenantId, Guid employeeId, int take, CancellationToken ct = default);
+
+    /// <summary>Tasks assigned to this employee that belong to from..to: due date in the range, OR
+    /// CompletedAt in the range, OR the employee was assigned within the range (UTC day bounds).</summary>
+    Task<IReadOnlyList<EmployeeTaskPeriodRow>> ListForEmployeePeriodAsync(
+        Guid tenantId, Guid employeeId, DateOnly from, DateOnly to, CancellationToken ct = default);
 
     Task<IReadOnlyList<WorkTask>> GetBySprintIdAsync(Guid tenantId, Guid sprintId, CancellationToken ct = default);
 

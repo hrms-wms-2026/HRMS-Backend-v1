@@ -25,4 +25,13 @@ public sealed record EmployeeAttendanceDisciplineResponse(
     int OverBreakDays,
     int OverBreakMinutes,
     bool LocationTrackingEnabled,
+    int? LocationViolations,
+    EmployeeAttendanceDisciplineMetrics? Previous = null);
+
+public sealed record EmployeeAttendanceDisciplineMetrics(
+    int LateClockIns,
+    int EarlyClockOuts,
+    int MissingClockOuts,
+    int OverBreakDays,
+    int OverBreakMinutes,
     int? LocationViolations);

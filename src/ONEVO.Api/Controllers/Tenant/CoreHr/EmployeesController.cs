@@ -22,6 +22,7 @@ using ONEVO.Application.Features.CoreHr.Employee.Commands.UpdateEmergencyContact
 using ONEVO.Application.Features.CoreHr.Employee.Commands.UpdateEmployeeJobDetails;
 using ONEVO.Application.Features.CoreHr.Employee.Commands.UpdatePersonalInformation;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployee;
+using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployeeApprovalActivity;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployeeDetail;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployeeIdentity;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployeePositionHistory;
@@ -29,8 +30,11 @@ using ONEVO.Application.Features.CoreHr.Employee.Queries.GetMyPayroll;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetMyProfile;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.ListEmployees;
 using ONEVO.Application.Features.Leave.Balance.Queries.GetEmployeeTimeOff;
+using ONEVO.Application.Features.Monitoring.ActivityMonitoring.Queries.EmployeeOverview.GetEmployeeActivityOverview;
 using ONEVO.Application.Features.TimeAttendance.Queries.EmployeeOverview.GetEmployeeAttendanceDiscipline;
 using ONEVO.Application.Features.TimeAttendance.Queries.EmployeeOverview.GetEmployeeAttendanceOverview;
+using ONEVO.Application.Features.WorkManagement.EmployeeOverview.Queries.GetEmployeeDelivery;
+using ONEVO.Application.Features.WorkManagement.EmployeeOverview.Queries.GetEmployeeWorkOverview;
 using ONEVO.Application.Features.WorkManagement.EmployeeWorkGraph.Queries.GetEmployeeWorkGraph;
 
 namespace ONEVO.Api.Controllers.Tenant.CoreHr;
@@ -163,9 +167,10 @@ public class EmployeesController : ControllerBase
     [HttpGet("{id:guid}/overview/attendance-discipline")]
     [RequirePermission("employees:read")]
     public async Task<IActionResult> GetOverviewAttendanceDiscipline(
-        Guid id, [FromQuery] DateOnly? from = null, [FromQuery] DateOnly? to = null, CancellationToken ct = default)
+        Guid id, [FromQuery] DateOnly? from = null, [FromQuery] DateOnly? to = null,
+        [FromQuery] string? compare = null, CancellationToken ct = default)
     {
-        var result = await _mediator.Send(new GetEmployeeAttendanceDisciplineQuery(id, from, to), ct);
+        var result = await _mediator.Send(new GetEmployeeAttendanceDisciplineQuery(id, from, to, compare), ct);
         return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
@@ -177,6 +182,56 @@ public class EmployeesController : ControllerBase
         Guid id, [FromQuery] int? year = null, CancellationToken ct = default)
     {
         var result = await _mediator.Send(new GetEmployeeTimeOffQuery(id, year), ct);
+        return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Overview work card: assigned/completed/in-progress/overdue task counts and
+    /// completion + on-time rates for one employee over from..to (default: current month).</summary>
+    [HttpGet("{id:guid}/overview/work")]
+    [RequirePermission("employees:read")]
+    [RequireAnyModule("worksync_foundation", "projects", "objectives_milestones", "tasks", "boards", "planning_sprints")]
+    public async Task<IActionResult> GetOverviewWork(
+        Guid id, [FromQuery] DateOnly? from = null, [FromQuery] DateOnly? to = null, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new GetEmployeeWorkOverviewQuery(id, from, to), ct);
+        return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Overview delivery card: tasks completed, on-time completion and story points; with
+    /// compare=previous also the previous period's figures.</summary>
+    [HttpGet("{id:guid}/overview/delivery")]
+    [RequirePermission("employees:read")]
+    [RequireAnyModule("worksync_foundation", "projects", "objectives_milestones", "tasks", "boards", "planning_sprints")]
+    public async Task<IActionResult> GetOverviewDelivery(
+        Guid id, [FromQuery] DateOnly? from = null, [FromQuery] DateOnly? to = null,
+        [FromQuery] string? compare = null, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new GetEmployeeDeliveryQuery(id, from, to, compare), ct);
+        return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Overview activity panel: active / idle / meeting minutes summed from the persisted
+    /// daily summaries; with compare=previous also the previous period. Reports
+    /// activityMonitoringEnabled=false (and zeros) when monitoring is off for the employee.</summary>
+    [HttpGet("{id:guid}/overview/activity")]
+    [RequirePermission("employees:read")]
+    public async Task<IActionResult> GetOverviewActivity(
+        Guid id, [FromQuery] DateOnly? from = null, [FromQuery] DateOnly? to = null,
+        [FromQuery] string? compare = null, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new GetEmployeeActivityOverviewQuery(id, from, to, compare), ct);
+        return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Overview approval activity: requests the employee made in from..to across leave,
+    /// attendance and Work Management (newest 10 plus pending/approved/rejected counts). Each source
+    /// is included only when the caller may read it or is viewing their own record.</summary>
+    [HttpGet("{id:guid}/overview/approvals")]
+    [RequirePermission("employees:read")]
+    public async Task<IActionResult> GetOverviewApprovals(
+        Guid id, [FromQuery] DateOnly? from = null, [FromQuery] DateOnly? to = null, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new GetEmployeeApprovalActivityQuery(id, from, to), ct);
         return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
