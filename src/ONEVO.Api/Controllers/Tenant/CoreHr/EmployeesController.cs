@@ -28,6 +28,7 @@ using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployeePositionHist
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetMyPayroll;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetMyProfile;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.ListEmployees;
+using ONEVO.Application.Features.WorkManagement.EmployeeWorkGraph.Queries.GetEmployeeWorkGraph;
 
 namespace ONEVO.Api.Controllers.Tenant.CoreHr;
 
@@ -130,6 +131,16 @@ public class EmployeesController : ControllerBase
     public async Task<IActionResult> GetPositionHistory(Guid id, CancellationToken ct = default)
     {
         var result = await _mediator.Send(new GetEmployeePositionHistoryQuery(id), ct);
+        return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Work Network graph: the employee's projects, modules (objectives) and open tasks
+    /// as nodes/links. Coverage-scoped like the detail read; see GetEmployeeWorkGraphQueryHandler.</summary>
+    [HttpGet("{id:guid}/work-graph")]
+    [RequirePermission("employees:read")]
+    public async Task<IActionResult> GetWorkGraph(Guid id, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new GetEmployeeWorkGraphQuery(id), ct);
         return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 

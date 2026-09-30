@@ -60,6 +60,23 @@ public sealed class EmployeesControllerArchitectureTests
         Assert.DoesNotContain("tenantId", signature, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public void EmployeesController_GetWorkGraph_RequiresEmployeesReadAndUsesTheWorkGraphRoute()
+    {
+        var path = FindRepositoryPath(
+            "src", "ONEVO.Api", "Controllers", "Tenant", "CoreHr", "EmployeesController.cs");
+        var source = File.ReadAllText(path);
+
+        var actionIndex = source.IndexOf("public async Task<IActionResult> GetWorkGraph(", StringComparison.Ordinal);
+        Assert.True(actionIndex > 0, "Could not locate the GetWorkGraph action.");
+
+        var preceding = source[..actionIndex];
+        var routeIndex = preceding.LastIndexOf("[HttpGet(\"{id:guid}/work-graph\")]", StringComparison.Ordinal);
+        var permissionIndex = preceding.LastIndexOf("[RequirePermission(\"employees:read\")]", StringComparison.Ordinal);
+        Assert.True(routeIndex > 0, "GetWorkGraph is missing [HttpGet(\"{id:guid}/work-graph\")].");
+        Assert.True(permissionIndex > routeIndex, "GetWorkGraph is missing [RequirePermission(\"employees:read\")] after its route attribute.");
+    }
+
     private static string FindRepositoryPath(params string[] segments)
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
