@@ -19,8 +19,7 @@ public interface IObjectiveRepository
 
     Task<Objective?> GetByIdForTenantAsync(Guid tenantId, Guid id, CancellationToken ct = default);
 
-    /// <summary>Batch lookup used by approval lists to enrich requests with their target module
-    /// without issuing one query per request.</summary>
+    /// <summary>Batch lookup of several Modules in one query (used by the employee work graph).</summary>
     Task<IReadOnlyList<Objective>> GetByIdsForTenantAsync(
         Guid tenantId, IReadOnlyCollection<Guid> ids, CancellationToken ct = default);
 
@@ -29,8 +28,8 @@ public interface IObjectiveRepository
     /// DbContext's change tracker instead of AsNoTracking. Use on write paths that later call
     /// <see cref="Update"/> or mutate the entity directly - tracking it from the start lets EF's
     /// identity map correctly deduplicate against any other tracked query that touches the same
-    /// row later in the same request (see ApproveObjectiveChangeRequestCommandHandler's
-    /// extend_allocation branch for why this matters - GetTrackedActiveDirectChildrenAsync can
+    /// row later in the same request (see ModuleWriteService.ApplyAllocationExtendAsync's
+    /// parent-slack check for why this matters - GetTrackedActiveDirectChildrenAsync can
     /// re-fetch this same row as part of a sibling-sum check).
     /// </summary>
     Task<Objective?> GetTrackedByIdForTenantAsync(Guid tenantId, Guid id, CancellationToken ct = default);

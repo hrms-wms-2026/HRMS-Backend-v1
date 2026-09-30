@@ -9,6 +9,8 @@ using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
 
+using ONEVO.Application.Features.WorkManagement.Hierarchy;
+
 namespace ONEVO.Application.Features.WorkManagement.CalendarEvents.Queries.GetProjectCalendar;
 
 public sealed class GetProjectCalendarQueryHandler
@@ -64,21 +66,9 @@ public sealed class GetProjectCalendarQueryHandler
         var objectivesById = objectives.ToDictionary(o => o.Id);
         var activeMembershipObjectiveIds = memberships.Where(m => m.IsActive).Select(m => m.ObjectiveId).ToHashSet();
 
+        var tree = new ProjectModuleTree(objectives);
         bool IsEffectiveManager(Objective objective)
-        {
-            Objective? cursor = objective;
-            while (cursor is not null)
-            {
-                if (cursor.OwnerId == callerEmployeeId.Value || activeMembershipObjectiveIds.Contains(cursor.Id))
-                    return true;
-
-                cursor = cursor.ParentObjectiveId is { } parentId
-                    ? objectivesById.GetValueOrDefault(parentId)
-                    : null;
-            }
-
-            return false;
-        }
+            => tree.AncestorChain(objective.Id).Any(o => o.OwnerId == callerEmployeeId.Value || activeMembershipObjectiveIds.Contains(o.Id));
 
         var wholeLinks = await _calendarEvents.ListActiveMembershipsForProjectAsync(tenantId, request.ProjectId, ct);
         var taskLinks = await _calendarEvents.ListActiveTaskMembershipsForProjectAsync(tenantId, request.ProjectId, ct);

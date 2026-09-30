@@ -98,4 +98,9 @@ public class EfProjectRepository : IProjectRepository
 
         return values[0];
     }
+
+    public async Task<IReadOnlyList<Project>> ListActiveAcrossTenantsAsync(CancellationToken ct = default)
+        => await _db.Projects.AsNoTracking()
+            .Where(p => p.IsActive && !p.IsAchieved && !p.IsDeleted)
+            .ToListAsync(ct);
 }

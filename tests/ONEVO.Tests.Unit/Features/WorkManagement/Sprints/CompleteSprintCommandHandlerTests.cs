@@ -64,11 +64,14 @@ public class CompleteSprintCommandHandlerTests
         sprints.Setup(x => x.GetTrackedByIdForTenantAsync(TenantId, SprintId, It.IsAny<CancellationToken>())).ReturnsAsync(sprint);
         sprints.Setup(x => x.GetByIdForTenantAsync(TenantId, TargetSprintId, It.IsAny<CancellationToken>())).ReturnsAsync(targetSprint);
 
-        var access = new Mock<ISprintAccessService>();
-        access.Setup(x => x.CanManageAsync(TenantId, sprint, UserId, resolvedCallerEmployeeId, It.IsAny<CancellationToken>()))
+        var wiring = new SprintTestWiring(TenantId, ProjectId);
+        // "Can manage" is now "is a project member" - the engine decides direct vs request.
+        wiring.Members.Setup(x => x.HasActiveMembershipAsync(TenantId, ProjectId, resolvedCallerEmployeeId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(callerCanManage ?? (resolvedCallerEmployeeId == OwnerEmployeeId));
-        access.Setup(x => x.GetAudienceEmployeeIdsAsync(TenantId, SprintId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(includeAudienceMember ? new List<Guid> { MemberEmployeeId } : new List<Guid>());
+        wiring.Members.Setup(x => x.ListActiveForObjectiveAsync(TenantId, It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(includeAudienceMember
+                ? new List<ONEVO.Domain.Features.WorkManagement.ProjectMembers.Entities.ProjectMember> { new() { EmployeeId = MemberEmployeeId } }
+                : new List<ONEVO.Domain.Features.WorkManagement.ProjectMembers.Entities.ProjectMember>());
 
         var logs = new Mock<ISprintActivityLogRepository>();
 
@@ -95,14 +98,17 @@ public class CompleteSprintCommandHandlerTests
 
         var notifications = new Mock<INotificationDispatcher>();
 
-        var unitOfWork = new Mock<IUnitOfWork>();
-        unitOfWork.Setup(x => x.ExecuteInTransactionAsync(It.IsAny<Func<CancellationToken, Task<Result<SprintResponse>>>>(), It.IsAny<CancellationToken>()))
-            .Returns((Func<CancellationToken, Task<Result<SprintResponse>>> op, CancellationToken ct) => op(ct));
-        unitOfWork.Setup(x => x.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
+        wiring.Sprints = sprints;
+        wiring.Tasks = taskRepo;
+        wiring.Statuses = statuses;
+        wiring.Projects = projects;
+        wiring.Logs = logs;
+        wiring.Membership = membership;
+        wiring.Notifications = notifications;
+        wiring.Identity = identity;
 
         var handler = new CompleteSprintCommandHandler(
-            currentUser.Object, identity.Object, sprints.Object, taskRepo.Object, statuses.Object, projects.Object,
-            access.Object, logs.Object, membership.Object, notifications.Object, unitOfWork.Object);
+            currentUser.Object, identity.Object, sprints.Object, wiring.Members.Object, wiring.Writes(), wiring.Submitter());
 
         return (handler, sprint, targetSprint, tasks.ToList(), taskRepo, notifications, logs);
     }
@@ -163,7 +169,7 @@ public class CompleteSprintCommandHandlerTests
     }
 
     [Fact]
-    public async Task Handle_CannotManage_ReturnsForbidden()
+    public async Task Handle_NotProjectMember_ReturnsForbidden()
     {
         var (handler, sprint, _, _, _, _, _) = Build(new List<WorkTask> { MakeTask(DoneStatusId) }, callerEmployeeId: OtherEmployeeId, callerCanManage: false);
 
@@ -175,11 +181,10 @@ public class CompleteSprintCommandHandlerTests
     }
 
     [Fact]
-    public async Task Handle_CallerCanManageViaTaskModuleOwnership_CompletesSprint()
+    public async Task Handle_CallerIsProjectMember_CompletesSprint()
     {
-        // Caller is not the sprint's creator, but CanManageAsync reports them able to manage via
-        // task-module ownership - the service's own logic is unit-tested separately, so this only
-        // proves the handler defers to its answer.
+        // Caller is not the sprint's creator but is a project member; the engine (mocked Direct
+        // here) decides direct vs request, so the handler lets any project member through.
         var (handler, sprint, _, _, _, _, _) = Build(
             new List<WorkTask> { MakeTask(DoneStatusId) }, callerEmployeeId: OtherEmployeeId, callerCanManage: true);
 

@@ -138,6 +138,7 @@ public class DuplicateTaskCommandHandler : IRequestHandler<DuplicateTaskCommand,
             var copy = new WorkTask
             {
                 Id = Guid.NewGuid(), TenantId = tenantId, ProjectId = project.Id, ObjectiveId = destinationObjective.Id,
+                CreatorPositionObjectiveId = destinationObjective.Id,
                 ShortId = $"{project.Identifier}-{taskNumber}",
                 StatusId = defaultStatus.Id,
                 Title = request.Title.Trim(), Description = source.Description,

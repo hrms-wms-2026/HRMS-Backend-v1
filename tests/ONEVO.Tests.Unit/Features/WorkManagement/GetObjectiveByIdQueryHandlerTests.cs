@@ -59,7 +59,7 @@ public class GetObjectiveByIdQueryHandlerTests
         var permissionResolver = new Mock<IPermissionResolver>();
         permissionResolver.Setup(x => x.ResolveAsync(It.IsAny<Guid>(), TenantId, It.IsAny<Guid?>(), It.IsAny<CancellationToken>())).ReturnsAsync(permissions);
 
-        var handler = new GetObjectiveByIdQueryHandler(currentUser.Object, identity.Object, objectives.Object, members.Object, permissionResolver.Object);
+        var handler = new GetObjectiveByIdQueryHandler(currentUser.Object, identity.Object, objectives.Object, WorkHierarchyServiceMocks.ReadAccess(members, target, Parent()), permissionResolver.Object);
         return (handler, members);
     }
 

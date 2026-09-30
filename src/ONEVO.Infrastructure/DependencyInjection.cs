@@ -36,12 +36,17 @@ using ONEVO.Application.Features.WorkManagement.CalendarEvents.RepositoryInterfa
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
 
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
-using ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.Services;
 using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.ProjectInvitations.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Approvals.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Notifications.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Hierarchy;
+using ONEVO.Application.Features.WorkManagement.Monitoring.Services;
+using ONEVO.Application.Features.WorkManagement.Monitoring.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Notifications.Services;
+using ONEVO.Application.Features.WorkManagement.Approvals.Services;
 using ONEVO.Application.Features.WorkManagement.Versions.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.ReleaseCalendar.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Labels.RepositoryInterfaces;
@@ -365,16 +370,15 @@ public static class DependencyInjection
         services.AddScoped<ISprintActivityLogRepository>(sp => sp.GetRequiredService<EfSprintActivityLogRepository>());
         services.AddScoped<EfTaskAssignmentRepository>();
         services.AddScoped<ITaskAssignmentRepository>(sp => sp.GetRequiredService<EfTaskAssignmentRepository>());
-        services.AddScoped<EfTaskCreationRequestRepository>();
-        services.AddScoped<ITaskCreationRequestRepository>(sp => sp.GetRequiredService<EfTaskCreationRequestRepository>());
-                services.AddScoped<EfTaskEditRequestRepository>();
-        services.AddScoped<ITaskEditRequestRepository>(sp => sp.GetRequiredService<EfTaskEditRequestRepository>());
+        services.AddScoped<EfWorkApprovalRequestRepository>();
+        services.AddScoped<IWorkApprovalRequestRepository>(sp => sp.GetRequiredService<EfWorkApprovalRequestRepository>());
+        services.AddScoped<EfWorkNotificationLogRepository>();
+        services.AddScoped<IWorkNotificationLogRepository>(sp => sp.GetRequiredService<EfWorkNotificationLogRepository>());
+        services.AddScoped<IMonitorAlertRepository, EfMonitorAlertRepository>();
         services.AddScoped<EfTaskEditLogRepository>();
         services.AddScoped<ITaskEditLogRepository>(sp => sp.GetRequiredService<EfTaskEditLogRepository>());
         services.AddScoped<EfTaskStatusChangeLogRepository>();
         services.AddScoped<ITaskStatusChangeLogRepository>(sp => sp.GetRequiredService<EfTaskStatusChangeLogRepository>());
-        services.AddScoped<EfTaskStatusChangeRequestRepository>();
-        services.AddScoped<ITaskStatusChangeRequestRepository>(sp => sp.GetRequiredService<EfTaskStatusChangeRequestRepository>());
         services.AddScoped<ITaskStatusChangeAccessService, TaskStatusChangeAccessService>();
         services.AddScoped<ITaskStatusChangeRequestConflictSweeper, TaskStatusChangeRequestConflictSweeper>();
         services.AddScoped<EfTaskClockingSessionRepository>();
@@ -392,8 +396,6 @@ public static class DependencyInjection
 
         services.AddScoped<EfNotificationRepository>();
         services.AddScoped<INotificationRepository>(sp => sp.GetRequiredService<EfNotificationRepository>());
-        services.AddScoped<EfObjectiveChangeRequestRepository>();
-        services.AddScoped<IObjectiveChangeRequestRepository>(sp => sp.GetRequiredService<EfObjectiveChangeRequestRepository>());
         services.AddScoped<EfProjectMemberRepository>();
         services.AddScoped<IProjectMemberRepository>(sp => sp.GetRequiredService<EfProjectMemberRepository>());
         services.AddScoped<EfProjectMemberInvitationRepository>();
@@ -429,12 +431,41 @@ public static class DependencyInjection
 
         // Work Management - Milestone & Achievement services
         services.AddScoped<IMilestoneMembershipCoordinator, MilestoneMembershipCoordinator>();
-        services.AddScoped<ISprintAccessService, SprintAccessService>();
+        services.AddScoped<IWorkHierarchyService, WorkHierarchyService>();
+        services.AddScoped<IModuleReadAccess, ModuleReadAccess>();
+        services.AddScoped<IWorkCalendarResolver, WorkCalendarResolver>();
+        services.AddScoped<IProjectMonitorSnapshotLoader, ProjectMonitorSnapshotLoader>();
+        services.AddScoped<IProjectMonitorCallerResolver, ProjectMonitorCallerResolver>();
+        services.AddScoped<IProjectMonitorService, ProjectMonitorService>();
+        services.AddScoped<IWorkNotificationEngine, WorkNotificationEngine>();
+        services.AddScoped<IWorkApprovalEngine, WorkApprovalEngine>();
+        services.AddScoped<IApprovalActionApplierRegistry, ApprovalActionApplierRegistry>();
+        services.AddScoped<IApprovalActionApplier, ONEVO.Application.Features.WorkManagement.Tasks.Appliers.TaskCreateApplier>();
+        services.AddScoped<IApprovalActionApplier, ONEVO.Application.Features.WorkManagement.Tasks.Appliers.TaskEditApplier>();
+        services.AddScoped<IApprovalActionApplier, ONEVO.Application.Features.WorkManagement.Tasks.Appliers.TaskDeleteApplier>();
+        services.AddScoped<IApprovalActionApplier, ONEVO.Application.Features.WorkManagement.Tasks.Appliers.TaskStatusTemplateChangeApplier>();
+        services.AddScoped<IApprovalActionApplier, ONEVO.Application.Features.WorkManagement.Objectives.Appliers.ModuleAllocationExtendApplier>();
+        services.AddScoped<IApprovalActionApplier, ONEVO.Application.Features.WorkManagement.Objectives.Appliers.ModuleUnachieveApplier>();
+        services.AddScoped<IApprovalActionApplier, ONEVO.Application.Features.WorkManagement.Objectives.Appliers.ModuleAchieveApplier>();
+        services.AddScoped<IApprovalActionApplier, ONEVO.Application.Features.WorkManagement.Objectives.Appliers.ModuleTransferApplier>();
+        services.AddScoped<IApprovalActionApplier, ONEVO.Application.Features.WorkManagement.Objectives.Appliers.ModuleDeleteApplier>();
+        services.AddScoped<IApprovalActionApplier, ONEVO.Application.Features.WorkManagement.Objectives.Appliers.ModuleEditApplier>();
+        services.AddScoped<IApprovalActionApplier, ONEVO.Application.Features.WorkManagement.Sprints.Appliers.SprintDeleteApplier>();
+        services.AddScoped<IApprovalActionApplier, ONEVO.Application.Features.WorkManagement.Sprints.Appliers.SprintAchieveApplier>();
+        services.AddScoped<IApprovalActionApplier, ONEVO.Application.Features.WorkManagement.Sprints.Appliers.SprintCompleteApplier>();
+        services.AddScoped<IApprovalActionApplier, ONEVO.Application.Features.WorkManagement.Sprints.Appliers.SprintStartApplier>();
+        services.AddScoped<IApprovalActionApplier, ONEVO.Application.Features.WorkManagement.Sprints.Appliers.SprintEditApplier>();
+        services.AddScoped<IApprovalActionApplier, ONEVO.Application.Features.WorkManagement.Sprints.Appliers.SprintCreateApplier>();
+        services.AddScoped<ISprintAudienceResolver, SprintAudienceResolver>();
         services.AddScoped<ISprintTaskAssignmentService, SprintTaskAssignmentService>();
-        services.AddScoped<IPermissionAutoGrantService, PermissionAutoGrantService>();
         services.AddScoped<ICallerIdentityResolver, CallerIdentityResolver>();
         services.AddScoped<IObjectiveAllocationSlackCalculator, ObjectiveAllocationSlackCalculator>();
         services.AddScoped<ITaskAssetLinker, TaskAssetLinker>();
+        services.AddScoped<ITaskWriteService, TaskWriteService>();
+        services.AddScoped<IModuleWriteService, ModuleWriteService>();
+        services.AddScoped<IModuleActionSubmitter, ModuleActionSubmitter>();
+        services.AddScoped<ISprintWriteService, SprintWriteService>();
+        services.AddScoped<ISprintActionSubmitter, SprintActionSubmitter>();
         services.AddScoped<ITaskAccessResolver, TaskAccessResolver>();
 
         // Auth: global email directory
@@ -635,7 +666,7 @@ public static class DependencyInjection
             ONEVO.Application.Features.Monitoring.Screenshots.RepositoryInterfaces.IInactivityCaptureAttemptRepository,
             ONEVO.Infrastructure.Persistence.Repositories.Monitoring.Screenshots.EfInactivityCaptureAttemptRepository>();
         services.AddHostedService<ONEVO.Infrastructure.Services.Monitoring.Screenshots.AgentCommandExpiryJob>();
-        services.AddHostedService<Services.WorkManagement.SprintLifecycleJob>();
+        services.AddHostedService<Services.WorkManagement.ProjectMonitorJob>();
         services.AddHostedService<Services.Calendar.CalendarSyncJob>();
         services.AddHostedService<Services.Calendar.TeamsAttendanceSyncJob>();
         services.AddHostedService<Services.Calendar.ZoomAttendanceSyncJob>();

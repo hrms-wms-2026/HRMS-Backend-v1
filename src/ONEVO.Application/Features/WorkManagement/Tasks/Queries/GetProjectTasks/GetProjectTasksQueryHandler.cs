@@ -4,6 +4,7 @@ using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Permission.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.CalendarEvents.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
+using ONEVO.Application.Features.WorkManagement.Hierarchy;
 using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.DTOs.Responses;
@@ -17,6 +18,7 @@ public sealed class GetProjectTasksQueryHandler : IRequestHandler<GetProjectTask
     private readonly ICallerIdentityResolver _identity;
     private readonly IProjectRepository _projects;
     private readonly IProjectMemberRepository _members;
+    private readonly IWorkHierarchyService _hierarchy;
     private readonly IPermissionResolver _permissionResolver;
     private readonly IWorkTaskRepository _tasks;
     private readonly ITaskAssignmentRepository _assignments;
@@ -34,12 +36,14 @@ public sealed class GetProjectTasksQueryHandler : IRequestHandler<GetProjectTask
         ITaskAssignmentRepository assignments,
         ITaskClockingSessionRepository sessions,
         ICalendarEventRepository calendarEvents,
-        ITaskStatusRepository statuses)
+        ITaskStatusRepository statuses,
+        IWorkHierarchyService hierarchy)
     {
         _currentUser = currentUser;
         _identity = identity;
         _projects = projects;
         _members = members;
+        _hierarchy = hierarchy;
         _permissionResolver = permissionResolver;
         _tasks = tasks;
         _assignments = assignments;
@@ -70,7 +74,8 @@ public sealed class GetProjectTasksQueryHandler : IRequestHandler<GetProjectTask
         var hasReadPermission = permissions.Contains("*");
         var accessibleObjectiveIds = hasReadPermission
             ? null
-            : (await _members.GetActiveObjectiveIdsForEmployeeInProjectAsync(tenantId, project.Id, callerEmployeeId.Value, ct)).ToHashSet();
+            : (await _hierarchy.LoadTreeAsync(tenantId, project.Id, ct)).AtOrBelow(
+                await _members.GetActiveObjectiveIdsForEmployeeInProjectAsync(tenantId, project.Id, callerEmployeeId.Value, ct));
 
         var allItems = await _tasks.GetByProjectAsync(tenantId, project.Id, ct);
         if (accessibleObjectiveIds is not null)

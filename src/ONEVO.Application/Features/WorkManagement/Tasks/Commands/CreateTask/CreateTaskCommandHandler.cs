@@ -1,160 +1,122 @@
+using System.Text.Json;
 using MediatR;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
-using ONEVO.Application.Features.WorkManagement.CalendarEvents.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Approvals.Services;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
+using ONEVO.Application.Features.WorkManagement.Hierarchy;
+using ONEVO.Application.Features.WorkManagement.Notifications.Services;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Objectives.Services;
-using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
-using ONEVO.Application.Features.WorkManagement.Sprints.RepositoryInterfaces;
-using ONEVO.Application.Features.WorkManagement.Sprints.Services;
-using ONEVO.Application.Features.WorkManagement.Tasks.DTOs.Responses;
-using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Tasks.DTOs;
+using ONEVO.Application.Features.WorkManagement.Tasks.Mappers;
 using ONEVO.Application.Features.WorkManagement.Tasks.Services;
-using ONEVO.Domain.Features.WorkManagement.Sprints.Entities;
-using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
+using ONEVO.Domain.Features.WorkManagement.Approvals.Entities;
+using ONEVO.Domain.Features.WorkManagement.Notifications.Entities;
 
 namespace ONEVO.Application.Features.WorkManagement.Tasks.Commands.CreateTask;
 
-public class CreateTaskCommandHandler : IRequestHandler<CreateTaskCommand, Result<WorkTaskResponse>>
+/// <summary>
+/// Creates a task through the approval engine: a caller at or above the target Module creates it now
+/// (and the Module owner is notified); any other Module member files a task.create approval request.
+/// </summary>
+public class CreateTaskCommandHandler : IRequestHandler<CreateTaskCommand, Result<TaskWriteOutcome>>
 {
     private readonly ICurrentUser _currentUser;
     private readonly ICallerIdentityResolver _identity;
     private readonly IObjectiveRepository _objectives;
-    private readonly IProjectRepository _projects;
-    private readonly IWorkTaskRepository _tasks;
-    private readonly ITaskStatusRepository _statuses;
-    private readonly ISprintRepository _sprints;
-    private readonly ITaskCategoryRepository _categories;
-    private readonly IObjectiveAllocationSlackCalculator _slack;
     private readonly IUnitOfWork _unitOfWork;
     private readonly IMilestoneMembershipCoordinator _membership;
-    private readonly ICalendarEventRepository _calendarEvents;
     private readonly ITaskAssetLinker _assetLinker;
-    private readonly ISprintActivityLogRepository _sprintLogs;
+    private readonly ITaskWriteService _writes;
+    private readonly IWorkHierarchyService _hierarchy;
+    private readonly IWorkApprovalEngine _approvals;
+    private readonly IWorkNotificationEngine _notifications;
 
     public CreateTaskCommandHandler(
         ICurrentUser currentUser, ICallerIdentityResolver identity, IObjectiveRepository objectives,
-        IProjectRepository projects, IWorkTaskRepository tasks, ITaskStatusRepository statuses,
-        ISprintRepository sprints, ITaskCategoryRepository categories, IObjectiveAllocationSlackCalculator slack, IUnitOfWork unitOfWork,
-        IMilestoneMembershipCoordinator membership,
-        ICalendarEventRepository calendarEvents,
-        ITaskAssetLinker assetLinker,
-        ISprintActivityLogRepository sprintLogs)
+        IUnitOfWork unitOfWork, IMilestoneMembershipCoordinator membership, ITaskAssetLinker assetLinker,
+        ITaskWriteService writes, IWorkHierarchyService hierarchy, IWorkApprovalEngine approvals,
+        IWorkNotificationEngine notifications)
     {
         _currentUser = currentUser;
         _identity = identity;
         _objectives = objectives;
-        _projects = projects;
-        _tasks = tasks;
-        _statuses = statuses;
-        _sprints = sprints;
-        _categories = categories;
-        _slack = slack;
         _unitOfWork = unitOfWork;
         _membership = membership;
-        _calendarEvents = calendarEvents;
         _assetLinker = assetLinker;
-        _sprintLogs = sprintLogs;
+        _writes = writes;
+        _hierarchy = hierarchy;
+        _approvals = approvals;
+        _notifications = notifications;
     }
 
-    public async Task<Result<WorkTaskResponse>> Handle(CreateTaskCommand request, CancellationToken ct)
+    public async Task<Result<TaskWriteOutcome>> Handle(CreateTaskCommand request, CancellationToken ct)
     {
         if (!_currentUser.IsAuthenticated)
-            return Result<WorkTaskResponse>.Forbidden("Authentication required.");
+            return Result<TaskWriteOutcome>.Forbidden("Authentication required.");
 
         var tenantId = _currentUser.TenantId;
         var userId = _currentUser.UserId;
 
         var callerEmployeeId = await _identity.ResolveCallerEmployeeIdAsync(tenantId, userId, ct);
         if (callerEmployeeId is null)
-            return Result<WorkTaskResponse>.Forbidden("No employee record for the current user.");
+            return Result<TaskWriteOutcome>.Forbidden("No employee record for the current user.");
 
         var objective = await _objectives.GetByIdForTenantAsync(tenantId, request.ObjectiveId, ct);
         if (objective is null || !objective.IsActive)
-            return Result<WorkTaskResponse>.NotFound("Objective not found.");
+            return Result<TaskWriteOutcome>.NotFound("Objective not found.");
 
         if (!await _membership.IsEffectiveManagerAsync(tenantId, objective.Id, callerEmployeeId.Value, ct))
-            return Result<WorkTaskResponse>.Forbidden("Only this milestone's owner can create tasks directly. Non-owner members must submit a task creation request.");
+            return Result<TaskWriteOutcome>.Forbidden("Only members of this module can change its tasks.");
 
-        var project = await _projects.GetByIdForTenantAsync(tenantId, objective.ProjectId, ct);
-        if (project is null || !project.IsActive)
-            return Result<WorkTaskResponse>.NotFound("Project not found.");
+        var input = new TaskCreateInput(objective.Id, request.Title.Trim(), request.Description?.Trim(), request.CategoryId,
+            request.Priority, request.DueDate, request.EstimatedHours, request.StoryPoints, request.SprintId);
 
-        // D-B: a task created in a module that a whole-module event covers must have a due date
-        // inside every such event's window (spec §5.7).
-        var eventWindows = await _calendarEvents.ListActiveEventWindowsForObjectiveAsync(tenantId, objective.Id, ct);
-        if (eventWindows.Count > 0)
-        {
-            if (request.DueDate is null)
-                return Result<WorkTaskResponse>.Conflict(
-                    $"This module is in active event(s) {string.Join(", ", eventWindows.Select(w => w.Name))}; a due date is required.");
-            var bad = eventWindows.Where(w => request.DueDate < w.StartDate || request.DueDate > w.EndDate).ToList();
-            if (bad.Count > 0)
-                return Result<WorkTaskResponse>.Conflict(
-                    $"Due date {request.DueDate:yyyy-MM-dd} is outside event window(s): " +
-                    $"{string.Join(", ", bad.Select(w => $"{w.Name} {w.StartDate:yyyy-MM-dd}..{w.EndDate:yyyy-MM-dd}"))}. Widen the event first.");
-        }
+        var validation = await _writes.ValidateCreateAsync(tenantId, input, ct);
+        if (!validation.IsSuccess)
+            return Result<TaskWriteOutcome>.Failure(validation.Error!, validation.StatusCode ?? 400);
 
-        var statuses = await _statuses.GetProjectTemplateAsync(tenantId, project.Id, ct);
-        var defaultStatus = statuses.Where(s => s.Category == TaskStatusCategories.NotStarted).OrderBy(s => s.DisplayOrder).FirstOrDefault()
-            ?? statuses.Where(s => s.Category == TaskStatusCategories.Active).OrderBy(s => s.DisplayOrder).FirstOrDefault();
-        if (defaultStatus is null)
-            return Result<WorkTaskResponse>.Failure("No task statuses configured for this milestone yet.", 422);
-
-        var category = await _categories.GetByIdForTenantAsync(tenantId, request.CategoryId, ct);
-        if (category is null || category.ProjectId != project.Id)
-            return Result<WorkTaskResponse>.NotFound("Category not found.");
-
-        if (request.SprintId is not null)
-        {
-            var sprint = await _sprints.GetByIdForTenantAsync(tenantId, request.SprintId.Value, ct);
-            if (sprint is null || sprint.ProjectId != objective.ProjectId || sprint.Status is not (SprintStatuses.Draft or SprintStatuses.Active))
-                return Result<WorkTaskResponse>.NotFound("Target sprint must be a Draft or Active sprint in the same project.");
-        }
-
-        if (request.EstimatedHours.HasValue)
-        {
-            var slack = await _slack.CalculateAsync(tenantId, objective, ct: ct);
-            if (request.EstimatedHours.Value > slack)
-                return Result<WorkTaskResponse>.Conflict(
-                    InsufficientAllocationResponseJson.Serialize(new InsufficientAllocationResponse(slack)));
-        }
+        var tree = await _hierarchy.LoadTreeAsync(tenantId, objective.ProjectId, ct);
 
         return await _unitOfWork.ExecuteInTransactionAsync(async innerCt =>
         {
-            var taskNumber = await _projects.IncrementAndGetNextTaskNumberAsync(tenantId, objective.ProjectId, innerCt);
-            var now = DateTimeOffset.UtcNow;
-            var task = new WorkTask
+            var decision = await _approvals.SubmitAsync(new WorkAction(
+                tenantId, objective.ProjectId, callerEmployeeId.Value,
+                WorkActionTypes.TaskCreate, WorkTargetTypes.Task,
+                TargetId: null, TargetTitle: input.Title,
+                TargetModuleId: objective.Id, PositionModuleId: objective.Id,
+                PayloadJson: JsonSerializer.Serialize(input), TargetUpdatedAt: null), innerCt);
+            if (!decision.IsSuccess)
+                return Result<TaskWriteOutcome>.Failure(decision.Error!, decision.StatusCode ?? 400);
+
+            if (!decision.Value!.IsDirect)
             {
-                Id = Guid.NewGuid(), TenantId = tenantId, ProjectId = objective.ProjectId, ObjectiveId = objective.Id,
-                ShortId = $"{project.Identifier}-{taskNumber}",
-                StatusId = defaultStatus.Id,
-                Title = request.Title.Trim(), Description = request.Description?.Trim(),
-                CategoryId = request.CategoryId, Priority = request.Priority, DueDate = request.DueDate,
-                EstimatedHours = request.EstimatedHours, StoryPoints = request.StoryPoints,
-                SprintId = request.SprintId,
-                CompletedHours = 0m, ProgressPercent = 0, CreatedById = userId, CreatedAt = now
-            };
+                await _unitOfWork.SaveChangesAsync(innerCt);
+                return Result<TaskWriteOutcome>.Success(new TaskWriteOutcome(null, decision.Value.ApprovalRequestId));
+            }
 
-            await _tasks.AddAsync(task, innerCt);
+            // AncestorChain goes self -> root, so LastOrDefault is the owned Module closest to the root.
+            var position = tree.AncestorChain(objective.Id).LastOrDefault(m => m.OwnerId == callerEmployeeId.Value)?.Id
+                ?? objective.Id;
 
-            if (task.SprintId is not null)
-                await _sprintLogs.AddAsync(SprintActivityLogFactory.Create(
-                    tenantId, task.SprintId.Value, callerEmployeeId.Value, SprintActivityActions.TasksAdded,
-                    details: new { taskIds = new[] { task.Id } }), innerCt);
+            var created = await _writes.CreateAsync(tenantId, userId, callerEmployeeId.Value, input, position, innerCt);
+            if (!created.IsSuccess)
+                return Result<TaskWriteOutcome>.Failure(created.Error!, created.StatusCode ?? 400);
+            var task = created.Value!;
+
+            await _notifications.NotifyAsync(new WorkNotificationEvent(
+                tenantId, objective.ProjectId, callerEmployeeId.Value, WorkNotificationKinds.Direct,
+                WorkActionTypes.TaskCreate, WorkTargetTypes.Task, task.Id, task.Title, null,
+                [objective.OwnerId]), innerCt);
 
             await _unitOfWork.SaveChangesAsync(innerCt);
 
             await _assetLinker.SyncAttachmentsAsync(tenantId, userId, task.Id, request.AttachmentFileIds ?? Array.Empty<Guid>(), innerCt);
             await _assetLinker.SyncDescriptionImagesAsync(tenantId, userId, task.Id, task.Description, innerCt);
 
-            return Result<WorkTaskResponse>.Success(new WorkTaskResponse(
-                task.Id, task.ObjectiveId, task.ShortId, task.Title, task.Description,
-                task.CategoryId, task.StatusId, task.Priority, task.StoryPoints,
-                task.DueDate, task.EstimatedHours, task.CompletedHours, task.ProgressPercent, task.SprintId,
-                CreatedAt: task.CreatedAt));
+            return Result<TaskWriteOutcome>.Success(new TaskWriteOutcome(WorkTaskResponseMapper.ToResponse(task), null));
         }, ct);
     }
 }

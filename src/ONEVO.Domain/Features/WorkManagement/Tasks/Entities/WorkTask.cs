@@ -19,6 +19,10 @@ public class WorkTask : BaseEntity
     public Guid ProjectId { get; set; }
     public Guid? ParentTaskId { get; set; }
     public Guid ObjectiveId { get; set; }
+    /// <summary>The Module whose current owner is this object's creator position - the approver of
+    /// edits by anyone below it. Null means "use the default": Module → its parent, Task → its own
+    /// Module, Sprint → the project root Module.</summary>
+    public Guid? CreatorPositionObjectiveId { get; set; }
     public Guid? SprintId { get; set; }
     public string ShortId { get; set; } = string.Empty;
     public string Title { get; set; } = string.Empty;

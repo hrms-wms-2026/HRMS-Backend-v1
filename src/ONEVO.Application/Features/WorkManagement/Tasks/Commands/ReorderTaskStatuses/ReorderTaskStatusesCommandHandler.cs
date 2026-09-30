@@ -4,7 +4,6 @@ using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
-using ONEVO.Application.Features.WorkManagement.Objectives.Services;
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.DTOs.Responses;
 using ONEVO.Application.Features.WorkManagement.Tasks.DTOs;
@@ -22,13 +21,12 @@ public class ReorderTaskStatusesCommandHandler : IRequestHandler<ReorderTaskStat
     private readonly IProjectRepository _projects;
     private readonly ITaskStatusRepository _statuses;
     private readonly IUnitOfWork _unitOfWork;
-    private readonly IMilestoneMembershipCoordinator _membership;
     private readonly ITaskStatusChangeRequestConflictSweeper _sweeper;
 
     public ReorderTaskStatusesCommandHandler(
         ICurrentUser currentUser, ICallerIdentityResolver identity, IObjectiveRepository objectives,
         IProjectRepository projects, ITaskStatusRepository statuses, IUnitOfWork unitOfWork,
-        IMilestoneMembershipCoordinator membership, ITaskStatusChangeRequestConflictSweeper sweeper)
+        ITaskStatusChangeRequestConflictSweeper sweeper)
     {
         _currentUser = currentUser;
         _identity = identity;
@@ -36,7 +34,6 @@ public class ReorderTaskStatusesCommandHandler : IRequestHandler<ReorderTaskStat
         _projects = projects;
         _statuses = statuses;
         _unitOfWork = unitOfWork;
-        _membership = membership;
         _sweeper = sweeper;
     }
 
@@ -58,8 +55,8 @@ public class ReorderTaskStatusesCommandHandler : IRequestHandler<ReorderTaskStat
         if (defaultObjective is null)
             return Result<IReadOnlyList<TaskStatusResponse>>.NotFound("Project has no default milestone.");
 
-        if (!await _membership.IsEffectiveManagerAsync(tenantId, defaultObjective.Id, callerEmployeeId.Value, ct))
-            return Result<IReadOnlyList<TaskStatusResponse>>.Forbidden("Only an owner or member of this project can restructure the board.");
+        if (defaultObjective.OwnerId != callerEmployeeId.Value)
+            return Result<IReadOnlyList<TaskStatusResponse>>.Forbidden("Only the project's top module owner can change task statuses directly. Others can send a change request.");
 
         // Defense in depth beyond the validator (which runs in the MediatR pipeline in production,
         // but not when a test calls Handle directly).
@@ -116,7 +113,7 @@ public class ReorderTaskStatusesCommandHandler : IRequestHandler<ReorderTaskStat
                 _statuses.Update(status);
             }
 
-            await _sweeper.MarkConflictingOutdatedAsync(tenantId, project.Id, project.Name, footprint, null, innerCt);
+            await _sweeper.MarkConflictingStaleAsync(tenantId, project.Id, callerEmployeeId.Value, footprint, null, innerCt);
             await _unitOfWork.SaveChangesAsync(innerCt);
 
             return Result<IReadOnlyList<TaskStatusResponse>>.Success(

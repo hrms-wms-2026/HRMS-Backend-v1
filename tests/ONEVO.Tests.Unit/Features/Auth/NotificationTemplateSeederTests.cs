@@ -78,9 +78,13 @@ public sealed class NotificationTemplateSeederTests : IDisposable
         Assert.Contains("face_verification_override", codes);
         Assert.Contains("work_task_status_change_request_created", codes);
         Assert.Contains("work_task_status_change_request_decided", codes);
+        Assert.Contains("work_activity_recorded", codes);
+        Assert.Contains("work_approval_requested", codes);
+        Assert.Contains("work_approval_decided", codes);
+        Assert.Contains("work_monitor_alert", codes);
         Assert.Contains("exception_alert_detected", codes);
         Assert.Contains("exception_alert_escalated", codes);
-        Assert.Equal(36, codes.Count);
+        Assert.Equal(40, codes.Count);
         var expectedCodes = new[]
         {
             "work_task_creation_request_created",
@@ -95,6 +99,10 @@ public sealed class NotificationTemplateSeederTests : IDisposable
             "work_sprint_completed",
             "work_sprint_incomplete",
             "work_sprint_achieved",
+            "work_activity_recorded",
+            "work_approval_requested",
+            "work_approval_decided",
+            "work_monitor_alert",
             "leave_request_approved",
             "leave_request_rejected",
             "leave_request_information_requested",

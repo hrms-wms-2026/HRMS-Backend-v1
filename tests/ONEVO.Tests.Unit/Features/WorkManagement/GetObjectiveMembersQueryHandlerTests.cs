@@ -77,7 +77,8 @@ public class GetObjectiveMembersQueryHandlerTests
             .ReturnsAsync(permissions ?? ["*"]);
 
         return new GetObjectiveMembersQueryHandler(
-            currentUser.Object, identity.Object, objectives.Object, members.Object, invitations.Object, permissionResolver.Object);
+            currentUser.Object, identity.Object, objectives.Object, members.Object, invitations.Object, permissionResolver.Object,
+            WorkHierarchyServiceMocks.ReadAccess(members, objective));
     }
 
     [Fact]

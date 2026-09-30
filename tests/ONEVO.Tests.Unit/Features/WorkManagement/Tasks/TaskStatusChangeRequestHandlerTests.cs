@@ -3,23 +3,23 @@ using Moq;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.WorkManagement.Approvals.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Approvals.Services;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
+using ONEVO.Application.Features.WorkManagement.Hierarchy;
+using ONEVO.Application.Features.WorkManagement.Notifications.Services;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
-using ONEVO.Application.Features.WorkManagement.Objectives.Services;
 using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
-using ONEVO.Application.Features.WorkManagement.Tasks.Commands.ApproveTaskStatusChangeRequest;
-using ONEVO.Application.Features.WorkManagement.Tasks.Commands.CancelTaskStatusChangeRequest;
+using ONEVO.Application.Features.WorkManagement.Tasks.Appliers;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.CreateTaskStatusChangeRequest;
-using ONEVO.Application.Features.WorkManagement.Tasks.Commands.RejectTaskStatusChangeRequest;
 using ONEVO.Application.Features.WorkManagement.Tasks.DTOs;
 using ONEVO.Application.Features.WorkManagement.Tasks.DTOs.Responses;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.Services;
-using ONEVO.Domain.Features.CoreHr.Entities;
-using ONEVO.Domain.Lookups;
+using ONEVO.Domain.Features.WorkManagement.Approvals.Entities;
+using ONEVO.Domain.Features.WorkManagement.Notifications.Entities;
 using ONEVO.Domain.Features.WorkManagement.Objectives.Entities;
-using ONEVO.Domain.Features.WorkManagement.ProjectMembers.Entities;
 using ONEVO.Domain.Features.WorkManagement.Projects.Entities;
 using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
 using TaskStatusEntity = ONEVO.Domain.Features.WorkManagement.Tasks.Entities.TaskStatus;
@@ -27,6 +27,7 @@ using Xunit;
 
 namespace ONEVO.Tests.Unit.Features.WorkManagement.Tasks;
 
+/// <summary>Project task-status template change requests, now a project.status_template_change on the approval engine.</summary>
 public class TaskStatusChangeRequestHandlerTests
 {
     private static readonly Guid TenantId = Guid.NewGuid();
@@ -36,7 +37,6 @@ public class TaskStatusChangeRequestHandlerTests
     private static readonly Guid RootOwnerId = Guid.NewGuid();
     private static readonly Guid RootMemberId = Guid.NewGuid();
     private static readonly Guid RequesterId = Guid.NewGuid();
-    private static readonly Guid RequesterUserId = Guid.NewGuid();
     private static readonly Guid ToDo = Guid.NewGuid();
     private static readonly Guid Active = Guid.NewGuid();
     private static readonly Guid Done = Guid.NewGuid();
@@ -46,11 +46,9 @@ public class TaskStatusChangeRequestHandlerTests
     private readonly Mock<IProjectRepository> _projects = new();
     private readonly Mock<ITaskStatusRepository> _statuses = new();
     private readonly Mock<IWorkTaskRepository> _tasks = new();
-    private readonly Mock<ITaskStatusChangeRequestRepository> _requests = new();
     private readonly Mock<ITaskStatusChangeAccessService> _access = new();
     private readonly Mock<ITaskStatusChangeRequestConflictSweeper> _sweeper = new();
-    private readonly Mock<IMilestoneMembershipCoordinator> _membership = new();
-    private readonly Mock<INotificationDispatcher> _notifications = new();
+    private readonly Mock<IWorkApprovalEngine> _approvals = new();
     private readonly Mock<IUnitOfWork> _unitOfWork = new();
     private readonly Objective _root = new()
     {
@@ -68,14 +66,6 @@ public class TaskStatusChangeRequestHandlerTests
             .ReturnsAsync(new Project { Id = ProjectId, TenantId = TenantId, IsActive = true, Name = "Portal", Identifier = "PRT", CreatedAt = DateTimeOffset.UtcNow });
         _identity.Setup(x => x.ResolveDisplayNamesByEmployeeIdAsync(TenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Dictionary<Guid, string> { [RequesterId] = "Req Uester" });
-        _membership.Setup(x => x.GetActiveAssigneeAsync(TenantId, It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((Guid _, Guid employeeId, CancellationToken _) => new Employee
-            {
-                Id = employeeId, TenantId = TenantId, UserId = employeeId == RequesterId ? RequesterUserId : Guid.NewGuid(),
-                EmploymentStatusId = EmploymentStatusIds.Active
-            });
-        _access.Setup(x => x.ListApproverEmployeeIdsAsync(TenantId, _root, It.IsAny<CancellationToken>()))
-            .ReturnsAsync([RootOwnerId, RootMemberId]);
 
         _live =
         [
@@ -85,12 +75,8 @@ public class TaskStatusChangeRequestHandlerTests
         ];
         _statuses.Setup(x => x.GetProjectTemplateAsync(TenantId, ProjectId, It.IsAny<CancellationToken>())).ReturnsAsync(() => _live);
 
-        _unitOfWork.Setup(x => x.ExecuteInTransactionAsync(It.IsAny<Func<CancellationToken, Task<Result>>>(), It.IsAny<CancellationToken>()))
-            .Returns((Func<CancellationToken, Task<Result>> op, CancellationToken ct) => op(ct));
         _unitOfWork.Setup(x => x.ExecuteInTransactionAsync(It.IsAny<Func<CancellationToken, Task<Result<TaskStatusChangeRequestResponse>>>>(), It.IsAny<CancellationToken>()))
             .Returns((Func<CancellationToken, Task<Result<TaskStatusChangeRequestResponse>>> op, CancellationToken ct) => op(ct));
-        _unitOfWork.Setup(x => x.ExecuteInTransactionAsync(It.IsAny<Func<CancellationToken, Task<Result<IReadOnlyList<TaskStatusResponse>>>>>(), It.IsAny<CancellationToken>()))
-            .Returns((Func<CancellationToken, Task<Result<IReadOnlyList<TaskStatusResponse>>>> op, CancellationToken ct) => op(ct));
         _unitOfWork.Setup(x => x.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
     }
 
@@ -110,51 +96,71 @@ public class TaskStatusChangeRequestHandlerTests
         [ToDo.ToString(), Active.ToString(), Done.ToString()]);
 
     private CreateTaskStatusChangeRequestCommandHandler CreateHandler() => new(
-        _currentUser.Object, _identity.Object, _projects.Object, _statuses.Object, _requests.Object,
-        _access.Object, _membership.Object, _notifications.Object, _unitOfWork.Object);
+        _currentUser.Object, _identity.Object, _projects.Object, _statuses.Object, _access.Object,
+        _approvals.Object, _unitOfWork.Object);
 
-    private ApproveTaskStatusChangeRequestCommandHandler ApproveHandler() => new(
-        _currentUser.Object, _identity.Object, _projects.Object, _statuses.Object, _tasks.Object, _requests.Object,
-        _access.Object, _sweeper.Object, _membership.Object, _notifications.Object, _unitOfWork.Object);
+    private TaskStatusTemplateChangeApplier Applier() => new(_currentUser.Object, _statuses.Object, _tasks.Object, _sweeper.Object);
 
-    private TaskStatusChangeRequest PendingRequest(TaskStatusChangeSet changes)
+    private static WorkApprovalRequest TemplateRequest(TaskStatusChangeSet changes, Guid? requestedBy = null) => new()
     {
-        var entity = new TaskStatusChangeRequest
-        {
-            Id = Guid.NewGuid(), TenantId = TenantId, ProjectId = ProjectId, RequestedByEmployeeId = RequesterId,
-            ChangesJson = JsonSerializer.Serialize(changes), Status = TaskStatusChangeRequestStatuses.Pending,
-            CreatedAt = DateTimeOffset.UtcNow
-        };
-        _requests.Setup(x => x.GetTrackedByIdForTenantAsync(TenantId, entity.Id, It.IsAny<CancellationToken>())).ReturnsAsync(entity);
-        return entity;
-    }
+        Id = Guid.NewGuid(), TenantId = TenantId, ProjectId = ProjectId,
+        ActionType = WorkActionTypes.ProjectStatusTemplateChange, TargetType = WorkTargetTypes.Project,
+        TargetTitle = "Portal", PositionObjectiveId = RootObjectiveId, ApproverSource = WorkApprovalSources.Hierarchy,
+        ApproverEmployeeId = RootOwnerId, RequestedByEmployeeId = requestedBy ?? RequesterId,
+        PayloadJson = JsonSerializer.Serialize(new TaskStatusTemplateChangePayload(changes, "please")),
+        Status = WorkApprovalRequestStatuses.Pending
+    };
+
+    private Task<ApplyOutcome> Apply(WorkApprovalRequest request)
+        => Applier().ApplyAsync(new ApprovalApplyContext(request, request.PayloadJson, RootOwnerId), CancellationToken.None);
+
+    // ---- Create ----
 
     [Fact]
-    public async Task Create_by_submodule_member_queues_request_and_notifies_every_root_approver()
+    public async Task Create_by_submodule_member_submits_template_change_to_engine_with_root_position()
     {
         CallerIs(RequesterId, canEditDirectly: false, canRequest: true);
-        TaskStatusChangeRequest? saved = null;
-        _requests.Setup(x => x.AddAsync(It.IsAny<TaskStatusChangeRequest>(), It.IsAny<CancellationToken>()))
-            .Callback<TaskStatusChangeRequest, CancellationToken>((r, _) => saved = r);
+        var requestId = Guid.NewGuid();
+        _approvals.Setup(x => x.SubmitAsync(It.IsAny<WorkAction>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<ApprovalDecision>.Success(ApprovalDecision.Pending(requestId, RootOwnerId)));
 
-        var result = await CreateHandler().Handle(new CreateTaskStatusChangeRequestCommand(ProjectId, "please", RenameActive()), default);
+        var result = await CreateHandler().Handle(new CreateTaskStatusChangeRequestCommand(ProjectId, " please ", RenameActive()), default);
 
         Assert.True(result.IsSuccess, result.Error);
-        Assert.NotNull(saved);
-        Assert.Equal(TaskStatusChangeRequestStatuses.Pending, saved!.Status);
+        Assert.Equal(requestId, result.Value!.Id);
+        Assert.Equal("pending", result.Value.Status);
+        Assert.Equal("please", result.Value.Note);
         Assert.Equal("In Process", _live.Single(s => s.Id == Active).Name);
-        _notifications.Verify(x => x.SendTemplatedAsync(TenantId, It.IsAny<Guid>(), "work_task_status_change_request_created",
-            It.IsAny<IReadOnlyDictionary<string, string>>(), "task_status_change_request", saved.Id, It.IsAny<CancellationToken>()), Times.Exactly(2));
+        _approvals.Verify(x => x.SubmitAsync(It.Is<WorkAction>(a =>
+            a.ActionType == "project.status_template_change" && a.TargetType == "project" && a.TargetId == null &&
+            a.TargetModuleId == RootObjectiveId && a.PositionModuleId == RootObjectiveId && a.ActorEmployeeId == RequesterId &&
+            a.TargetTitle == "Portal" && a.PayloadJson.Contains("\"Changes\"")), It.IsAny<CancellationToken>()), Times.Once);
+        _unitOfWork.Verify(x => x.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
-    public async Task Create_by_root_approver_is_refused_because_they_edit_directly()
+    public async Task Create_by_root_owner_is_refused_because_they_edit_directly()
     {
-        CallerIs(RootMemberId, canEditDirectly: true, canRequest: false);
+        CallerIs(RootOwnerId, canEditDirectly: true, canRequest: false);
 
         var result = await CreateHandler().Handle(new CreateTaskStatusChangeRequestCommand(ProjectId, null, RenameActive()), default);
 
         Assert.Equal(400, result.StatusCode);
+        _approvals.Verify(x => x.SubmitAsync(It.IsAny<WorkAction>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Create_by_root_member_who_is_not_owner_now_goes_to_the_engine()
+    {
+        // Behaviour change (2026-09-28): root members used to edit directly; now they request.
+        CallerIs(RootMemberId, canEditDirectly: false, canRequest: true);
+        _approvals.Setup(x => x.SubmitAsync(It.IsAny<WorkAction>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<ApprovalDecision>.Success(ApprovalDecision.Pending(Guid.NewGuid(), RootOwnerId)));
+
+        var result = await CreateHandler().Handle(new CreateTaskStatusChangeRequestCommand(ProjectId, null, RenameActive()), default);
+
+        Assert.True(result.IsSuccess, result.Error);
+        _approvals.Verify(x => x.SubmitAsync(It.Is<WorkAction>(a => a.ActorEmployeeId == RootMemberId), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -165,7 +171,7 @@ public class TaskStatusChangeRequestHandlerTests
         var result = await CreateHandler().Handle(new CreateTaskStatusChangeRequestCommand(ProjectId, null, RenameActive()), default);
 
         Assert.Equal(403, result.StatusCode);
-        _requests.Verify(x => x.AddAsync(It.IsAny<TaskStatusChangeRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+        _approvals.Verify(x => x.SubmitAsync(It.IsAny<WorkAction>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -177,133 +183,115 @@ public class TaskStatusChangeRequestHandlerTests
             new CreateTaskStatusChangeRequestCommand(ProjectId, null, RenameActive(from: "Old Name")), default);
 
         Assert.Equal(409, result.StatusCode);
+        _approvals.Verify(x => x.SubmitAsync(It.IsAny<WorkAction>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
-    public async Task Approve_by_root_member_applies_changes_marks_approved_and_sweeps_conflicts()
-    {
-        CallerIs(RootMemberId, canEditDirectly: true, canRequest: false);
-        var pending = PendingRequest(RenameActive());
-
-        var result = await ApproveHandler().Handle(new ApproveTaskStatusChangeRequestCommand(pending.Id), default);
-
-        Assert.True(result.IsSuccess, result.Error);
-        Assert.Equal("Doing", result.Value!.Single(s => s.Id == Active).Name);
-        Assert.Equal(TaskStatusChangeRequestStatuses.Approved, pending.Status);
-        Assert.Equal(RootMemberId, pending.DecidedByEmployeeId);
-        _statuses.Verify(x => x.Update(It.Is<TaskStatusEntity>(s => s.Id == Active && s.Name == "Doing")), Times.Once);
-        _sweeper.Verify(x => x.MarkConflictingOutdatedAsync(TenantId, ProjectId, "Portal",
-            It.Is<TaskStatusChangeFootprint>(f => f.TouchedStatusIds.Contains(Active)), pending.Id, It.IsAny<CancellationToken>()), Times.Once);
-    }
-
-    [Fact]
-    public async Task Approve_by_submodule_member_is_forbidden()
+    public async Task Create_engine_failure_passes_through()
     {
         CallerIs(RequesterId, canEditDirectly: false, canRequest: true);
-        var pending = PendingRequest(RenameActive());
+        _approvals.Setup(x => x.SubmitAsync(It.IsAny<WorkAction>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<ApprovalDecision>.UnprocessableEntity("No active approver."));
 
-        var result = await ApproveHandler().Handle(new ApproveTaskStatusChangeRequestCommand(pending.Id), default);
+        var result = await CreateHandler().Handle(new CreateTaskStatusChangeRequestCommand(ProjectId, null, RenameActive()), default);
 
-        Assert.Equal(403, result.StatusCode);
-        Assert.Equal(TaskStatusChangeRequestStatuses.Pending, pending.Status);
+        Assert.Equal(422, result.StatusCode);
+        Assert.Equal("No active approver.", result.Error);
+        _unitOfWork.Verify(x => x.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    // ---- Applier ----
+
+    [Fact]
+    public async Task Applier_applies_changes_and_sweeps_conflicts_excluding_itself()
+    {
+        var request = TemplateRequest(RenameActive());
+
+        var outcome = await Apply(request);
+
+        Assert.Equal(ApplyOutcomeKind.Applied, outcome.Kind);
+        _statuses.Verify(x => x.Update(It.Is<TaskStatusEntity>(s => s.Id == Active && s.Name == "Doing")), Times.Once);
+        _sweeper.Verify(x => x.MarkConflictingStaleAsync(TenantId, ProjectId, RootOwnerId,
+            It.Is<TaskStatusChangeFootprint>(f => f.TouchedStatusIds.Contains(Active)), request.Id, It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
-    public async Task Approve_of_stale_request_closes_it_as_outdated_without_touching_statuses()
+    public async Task Applier_stale_snapshot_returns_Stale_without_touching_statuses()
     {
-        CallerIs(RootOwnerId, canEditDirectly: true, canRequest: false);
-        var pending = PendingRequest(RenameActive());
+        var request = TemplateRequest(RenameActive());
         _live.Single(s => s.Id == Active).Name = "Renamed By Someone Else";
 
-        var result = await ApproveHandler().Handle(new ApproveTaskStatusChangeRequestCommand(pending.Id), default);
+        var outcome = await Apply(request);
 
-        Assert.Equal(409, result.StatusCode);
-        Assert.Equal(TaskStatusChangeRequestStatuses.Outdated, pending.Status);
+        Assert.Equal(ApplyOutcomeKind.Stale, outcome.Kind);
         _statuses.Verify(x => x.Update(It.IsAny<TaskStatusEntity>()), Times.Never);
+        _sweeper.Verify(x => x.MarkConflictingStaleAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<Guid>(),
+            It.IsAny<TaskStatusChangeFootprint>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
-    public async Task Approve_of_delete_with_tasks_still_in_the_status_stays_pending()
+    public async Task Applier_delete_with_tasks_still_in_the_status_returns_Invalid_with_message()
     {
-        CallerIs(RootOwnerId, canEditDirectly: true, canRequest: false);
         var extra = Guid.NewGuid();
         _live.Add(new TaskStatusEntity { Id = extra, TenantId = TenantId, ProjectId = ProjectId, Name = "Blocked", DisplayOrder = 3, Category = TaskStatusCategories.Active, Color = "#DC2626", Visibility = "public" });
         _tasks.Setup(x => x.AnyActiveByStatusIdAsync(TenantId, extra, It.IsAny<CancellationToken>())).ReturnsAsync(true);
-        var pending = PendingRequest(new TaskStatusChangeSet([], [], [new TaskStatusDeleteChange(extra, "Blocked")],
+        var request = TemplateRequest(new TaskStatusChangeSet([], [], [new TaskStatusDeleteChange(extra, "Blocked")],
             [ToDo, Active, Done, extra], [ToDo.ToString(), Active.ToString(), Done.ToString()]));
 
-        var result = await ApproveHandler().Handle(new ApproveTaskStatusChangeRequestCommand(pending.Id), default);
+        var outcome = await Apply(request);
 
-        Assert.Equal(409, result.StatusCode);
-        Assert.Equal(TaskStatusChangeRequestStatuses.Pending, pending.Status);
+        Assert.Equal(ApplyOutcomeKind.Invalid, outcome.Kind);
+        Assert.Equal("Move all tasks out of \"Blocked\" before approving its deletion.", outcome.Error);
         _statuses.Verify(x => x.Remove(It.IsAny<TaskStatusEntity>()), Times.Never);
     }
 
     [Fact]
-    public async Task Reject_by_root_approver_records_decision()
+    public async Task Applier_reads_migrated_PascalCase_payload()
     {
-        CallerIs(RootOwnerId, canEditDirectly: true, canRequest: false);
-        var pending = PendingRequest(RenameActive());
-        var handler = new RejectTaskStatusChangeRequestCommandHandler(
-            _currentUser.Object, _identity.Object, _projects.Object, _requests.Object, _access.Object,
-            _membership.Object, _notifications.Object, _unitOfWork.Object);
+        // Shape the data migration writes: jsonb_build_object('Changes', changes_json, 'Note', note).
+        var request = TemplateRequest(RenameActive());
+        request.PayloadJson = $"{{\"Changes\":{JsonSerializer.Serialize(RenameActive())},\"Note\":\"x\"}}";
 
-        var result = await handler.Handle(new RejectTaskStatusChangeRequestCommand(pending.Id, "not now"), default);
+        var outcome = await Apply(request);
 
-        Assert.True(result.IsSuccess, result.Error);
-        Assert.Equal(TaskStatusChangeRequestStatuses.Rejected, pending.Status);
-        Assert.Equal("not now", pending.DecisionComment);
+        Assert.Equal(ApplyOutcomeKind.Applied, outcome.Kind);
+        _statuses.Verify(x => x.Update(It.Is<TaskStatusEntity>(s => s.Id == Active && s.Name == "Doing")), Times.Once);
     }
 
-    [Fact]
-    public async Task Cancel_is_only_allowed_for_the_requester()
-    {
-        var pending = PendingRequest(RenameActive());
-        var handler = new CancelTaskStatusChangeRequestCommandHandler(
-            _currentUser.Object, _identity.Object, _requests.Object, _unitOfWork.Object);
-
-        CallerIs(RootOwnerId, canEditDirectly: true, canRequest: false);
-        Assert.Equal(403, (await handler.Handle(new CancelTaskStatusChangeRequestCommand(pending.Id), default)).StatusCode);
-
-        CallerIs(RequesterId, canEditDirectly: false, canRequest: true);
-        Assert.True((await handler.Handle(new CancelTaskStatusChangeRequestCommand(pending.Id), default)).IsSuccess);
-        Assert.Equal(TaskStatusChangeRequestStatuses.Cancelled, pending.Status);
-    }
+    // ---- Sweeper ----
 
     [Fact]
-    public async Task Sweeper_outdates_only_conflicting_pending_requests_and_notifies_their_requesters()
+    public async Task Sweeper_marks_only_conflicting_pending_requests_stale_and_notifies_their_requesters()
     {
-        var conflicting = new TaskStatusChangeRequest
-        {
-            Id = Guid.NewGuid(), TenantId = TenantId, ProjectId = ProjectId, RequestedByEmployeeId = RequesterId,
-            ChangesJson = JsonSerializer.Serialize(RenameActive()), Status = TaskStatusChangeRequestStatuses.Pending
-        };
-        var unrelated = new TaskStatusChangeRequest
-        {
-            Id = Guid.NewGuid(), TenantId = TenantId, ProjectId = ProjectId, RequestedByEmployeeId = RequesterId,
-            ChangesJson = JsonSerializer.Serialize(new TaskStatusChangeSet([],
-                [new TaskStatusUpdateChange(ToDo, new TaskStatusSnapshot("To Do", "not_started", "#94A3B8", "public"),
-                    new TaskStatusSnapshot("Backlog", "not_started", "#94A3B8", "public"))],
-                [], [ToDo, Active, Done], [ToDo.ToString(), Active.ToString(), Done.ToString()])),
-            Status = TaskStatusChangeRequestStatuses.Pending
-        };
-        _requests.Setup(x => x.ListTrackedPendingForProjectAsync(TenantId, ProjectId, It.IsAny<CancellationToken>()))
+        var conflicting = TemplateRequest(RenameActive());
+        var unrelated = TemplateRequest(new TaskStatusChangeSet([],
+            [new TaskStatusUpdateChange(ToDo, new TaskStatusSnapshot("To Do", "not_started", "#94A3B8", "public"),
+                new TaskStatusSnapshot("Backlog", "not_started", "#94A3B8", "public"))],
+            [], [ToDo, Active, Done], [ToDo.ToString(), Active.ToString(), Done.ToString()]));
+        var requests = new Mock<IWorkApprovalRequestRepository>();
+        requests.Setup(x => x.ListTrackedPendingByActionAsync(TenantId, ProjectId, WorkActionTypes.ProjectStatusTemplateChange, It.IsAny<CancellationToken>()))
             .ReturnsAsync([conflicting, unrelated]);
-        var sweeper = new TaskStatusChangeRequestConflictSweeper(_requests.Object, _membership.Object, _notifications.Object);
+        var notifications = new Mock<IWorkNotificationEngine>();
+        var sweeper = new TaskStatusChangeRequestConflictSweeper(requests.Object, notifications.Object);
 
-        var count = await sweeper.MarkConflictingOutdatedAsync(
-            TenantId, ProjectId, "Portal", new TaskStatusChangeFootprint(new HashSet<Guid> { Active }, false), null);
+        var count = await sweeper.MarkConflictingStaleAsync(
+            TenantId, ProjectId, RootOwnerId, new TaskStatusChangeFootprint(new HashSet<Guid> { Active }, false), null);
 
         Assert.Equal(1, count);
-        Assert.Equal(TaskStatusChangeRequestStatuses.Outdated, conflicting.Status);
-        Assert.Equal(TaskStatusChangeRequestStatuses.Pending, unrelated.Status);
-        _notifications.Verify(x => x.SendTemplatedAsync(TenantId, RequesterUserId, "work_task_status_change_request_decided",
-            It.Is<IReadOnlyDictionary<string, string>>(p => p["decision"] == "outdated"),
-            "task_status_change_request", conflicting.Id, It.IsAny<CancellationToken>()), Times.Once);
+        Assert.Equal(WorkApprovalRequestStatuses.Stale, conflicting.Status);
+        Assert.Equal(TaskStatusChangeRequestConflictSweeper.OutdatedComment, conflicting.DecisionComment);
+        Assert.Equal(WorkApprovalRequestStatuses.Pending, unrelated.Status);
+        requests.Verify(x => x.Update(conflicting), Times.Once);
+        notifications.Verify(x => x.NotifyAsync(It.Is<WorkNotificationEvent>(e =>
+            e.Kind == WorkNotificationKinds.Stale && e.ActionType == WorkActionTypes.ProjectStatusTemplateChange &&
+            e.ApprovalRequestId == conflicting.Id && e.RecipientEmployeeIds.SequenceEqual(new[] { RequesterId })),
+            It.IsAny<CancellationToken>()), Times.Once);
     }
 
+    // ---- Access + decision rule ----
+
     [Fact]
-    public async Task Access_service_grants_direct_edit_to_root_managers_and_requests_to_submodule_owners()
+    public async Task Access_direct_edit_is_root_owner_only_and_root_member_can_request()
     {
         var objectives = new Mock<IObjectiveRepository>();
         objectives.Setup(x => x.GetDefaultByProjectIdAsync(TenantId, ProjectId, It.IsAny<CancellationToken>())).ReturnsAsync(_root);
@@ -314,20 +302,29 @@ public class TaskStatusChangeRequestHandlerTests
             new Objective { Id = Guid.NewGuid(), TenantId = TenantId, ProjectId = ProjectId, ParentObjectiveId = RootObjectiveId, OwnerId = subOwner, IsActive = true, Title = "Sub" }
         ]);
         var members = new Mock<IProjectMemberRepository>();
-        members.Setup(x => x.ListActiveForObjectiveAsync(TenantId, RootObjectiveId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync([new ProjectMember { EmployeeId = RootMemberId }]);
-        _membership.Setup(x => x.IsEffectiveManagerAsync(TenantId, RootObjectiveId, RootMemberId, It.IsAny<CancellationToken>())).ReturnsAsync(true);
-        var service = new TaskStatusChangeAccessService(objectives.Object, members.Object, _membership.Object);
+        members.Setup(x => x.HasActiveMembershipAsync(TenantId, ProjectId, RootMemberId, It.IsAny<CancellationToken>())).ReturnsAsync(true);
+        var service = new TaskStatusChangeAccessService(objectives.Object, members.Object);
 
+        var rootOwner = await service.ResolveAsync(TenantId, ProjectId, RootOwnerId);
         var rootMember = await service.ResolveAsync(TenantId, ProjectId, RootMemberId);
-        var owner = await service.ResolveAsync(TenantId, ProjectId, subOwner);
+        var subModuleOwner = await service.ResolveAsync(TenantId, ProjectId, subOwner);
         var outsider = await service.ResolveAsync(TenantId, ProjectId, Guid.NewGuid());
-        var approvers = await service.ListApproverEmployeeIdsAsync(TenantId, _root);
 
-        Assert.True(rootMember!.CanEditDirectly);
-        Assert.False(owner!.CanEditDirectly);
-        Assert.True(owner.CanRequest);
+        Assert.True(rootOwner!.CanEditDirectly);
+        Assert.False(rootMember!.CanEditDirectly);
+        Assert.True(rootMember.CanRequest);
+        Assert.False(subModuleOwner!.CanEditDirectly);
+        Assert.True(subModuleOwner.CanRequest);
         Assert.False(outsider!.CanRequest);
-        Assert.Equal([RootOwnerId, RootMemberId], approvers);
+    }
+
+    [Fact]
+    public void Root_member_cannot_decide_a_template_request()
+    {
+        var tree = new ProjectModuleTree([_root]);
+        var request = TemplateRequest(RenameActive());
+
+        Assert.False(WorkApprovalDecisionRules.CanDecide(tree, request, RootMemberId));
+        Assert.True(WorkApprovalDecisionRules.CanDecide(tree, request, RootOwnerId));
     }
 }
