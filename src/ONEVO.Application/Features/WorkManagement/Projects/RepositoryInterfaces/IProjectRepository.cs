@@ -41,4 +41,6 @@ public interface IProjectRepository
     /// task creates cannot collide.
     /// </summary>
     Task<long> IncrementAndGetNextTaskNumberAsync(Guid tenantId, Guid projectId, CancellationToken ct = default);
+
+    Task<IReadOnlyList<Project>> ListByIdsAsync(Guid tenantId, IReadOnlyCollection<Guid> projectIds, CancellationToken ct = default);
 }

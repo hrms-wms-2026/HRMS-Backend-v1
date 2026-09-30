@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using ONEVO.Application.Features.WorkManagement.Leadership.Services;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Domain.Features.WorkManagement.Objectives.Entities;
 
@@ -82,6 +83,32 @@ public class EfObjectiveRepository : IObjectiveRepository
         => await _db.Objectives.AsNoTracking()
             .Where(o => o.TenantId == tenantId && o.OwnerId == employeeId && o.IsActive && o.EndDate >= from && o.EndDate <= to)
             .ToListAsync(ct);
+
+    public async Task<bool> AnyActiveOwnedAsync(Guid tenantId, Guid ownerEmployeeId, Guid legalEntityId, CancellationToken ct = default)
+        => await OwnedActive(tenantId, ownerEmployeeId, legalEntityId).AnyAsync(ct);
+
+    public async Task<IReadOnlyList<(Guid ObjectiveId, Guid ProjectId)>> ListActiveOwnedIdsAsync(Guid tenantId, Guid ownerEmployeeId, Guid legalEntityId, CancellationToken ct = default)
+        => (await OwnedActive(tenantId, ownerEmployeeId, legalEntityId).Select(o => new { o.Id, o.ProjectId }).ToListAsync(ct))
+            .Select(x => (x.Id, x.ProjectId)).ToList();
+
+    private IQueryable<Objective> OwnedActive(Guid tenantId, Guid ownerEmployeeId, Guid legalEntityId) =>
+        from o in _db.Objectives.AsNoTracking()
+        join p in _db.Projects.AsNoTracking() on o.ProjectId equals p.Id
+        where o.TenantId == tenantId && p.TenantId == tenantId
+            && o.OwnerId == ownerEmployeeId && o.IsActive && !o.IsAchieved
+            && p.IsActive && p.OwningLegalEntityId == legalEntityId
+        select o;
+
+    public async Task<IReadOnlyList<LedObjectiveRow>> ListActiveTreeForProjectsAsync(Guid tenantId, IReadOnlyCollection<Guid> projectIds, CancellationToken ct = default)
+    {
+        if (projectIds.Count == 0)
+            return Array.Empty<LedObjectiveRow>();
+        var ids = projectIds.ToList();
+        return await _db.Objectives.AsNoTracking()
+            .Where(o => o.TenantId == tenantId && ids.Contains(o.ProjectId) && o.IsActive)
+            .Select(o => new LedObjectiveRow(o.Id, o.ProjectId, o.ParentObjectiveId, o.Title, o.IsDefault, o.EndDate))
+            .ToListAsync(ct);
+    }
 
     public void Update(Objective objective)
     {

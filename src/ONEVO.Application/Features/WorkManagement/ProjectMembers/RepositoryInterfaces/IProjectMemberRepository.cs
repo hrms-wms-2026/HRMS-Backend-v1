@@ -35,4 +35,9 @@ public interface IProjectMemberRepository
     /// <summary>Batched, per-project count of distinct active member employees.</summary>
     Task<IReadOnlyDictionary<Guid, int>> CountDistinctActiveMembersAsync(
         Guid tenantId, IReadOnlyCollection<Guid> projectIds, CancellationToken ct = default);
+
+    /// <summary>Objective ids the employee holds an ACTIVE membership row on, across the given
+    /// projects, in one query - the no-leak intersection input for Work I Lead (My Team spec
+    /// §8.3.2 step 7).</summary>
+    Task<IReadOnlyList<Guid>> ListActiveMembershipObjectiveIdsAsync(Guid tenantId, Guid employeeId, IReadOnlyCollection<Guid> projectIds, CancellationToken ct = default);
 }

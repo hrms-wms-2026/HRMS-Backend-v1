@@ -88,4 +88,12 @@ public class EfProjectRepository : IProjectRepository
 
         return values[0];
     }
+
+    public async Task<IReadOnlyList<Project>> ListByIdsAsync(Guid tenantId, IReadOnlyCollection<Guid> projectIds, CancellationToken ct = default)
+    {
+        if (projectIds.Count == 0)
+            return Array.Empty<Project>();
+        var ids = projectIds.ToList();
+        return await _db.Projects.AsNoTracking().Where(p => p.TenantId == tenantId && ids.Contains(p.Id)).ToListAsync(ct);
+    }
 }

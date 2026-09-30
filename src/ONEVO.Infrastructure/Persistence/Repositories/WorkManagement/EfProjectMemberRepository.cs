@@ -62,6 +62,18 @@ public class EfProjectMemberRepository : IProjectMemberRepository
         return ObjectiveTreeExpander.ExpandWithDescendants(membershipObjectiveIds, objectiveTree).ToList();
     }
 
+    public async Task<IReadOnlyList<Guid>> ListActiveMembershipObjectiveIdsAsync(Guid tenantId, Guid employeeId, IReadOnlyCollection<Guid> projectIds, CancellationToken ct = default)
+    {
+        if (projectIds.Count == 0)
+            return Array.Empty<Guid>();
+        var ids = projectIds.ToList();
+        return await _db.ProjectMembers.AsNoTracking()
+            .Where(m => m.TenantId == tenantId && m.EmployeeId == employeeId && m.IsActive && ids.Contains(m.ProjectId))
+            .Select(m => m.ObjectiveId)
+            .Distinct()
+            .ToListAsync(ct);
+    }
+
     public async Task<IReadOnlyList<ProjectMember>> ListInactiveMembershipsForEmployeeAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default)
     {
         return await _db.ProjectMembers.AsNoTracking()
