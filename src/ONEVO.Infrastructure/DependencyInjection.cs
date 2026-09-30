@@ -375,6 +375,8 @@ public static class DependencyInjection
         services.AddScoped<EfTaskStatusChangeRequestRepository>();
         services.AddScoped<ITaskStatusChangeRequestRepository>(sp => sp.GetRequiredService<EfTaskStatusChangeRequestRepository>());
         services.AddScoped<ITaskStatusChangeAccessService, TaskStatusChangeAccessService>();
+        services.AddScoped<ONEVO.Application.Features.WorkManagement.Leadership.Services.IWorkLeadershipService,
+            ONEVO.Application.Features.WorkManagement.Leadership.Services.WorkLeadershipService>();
         services.AddScoped<ITaskStatusChangeRequestConflictSweeper, TaskStatusChangeRequestConflictSweeper>();
         services.AddScoped<EfTaskClockingSessionRepository>();
         services.AddScoped<ITaskClockingSessionRepository>(sp => sp.GetRequiredService<EfTaskClockingSessionRepository>());
