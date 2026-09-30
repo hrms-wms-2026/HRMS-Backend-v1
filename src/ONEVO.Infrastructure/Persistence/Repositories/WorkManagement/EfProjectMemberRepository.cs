@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using ONEVO.Application.Features.WorkManagement.ProjectMembers.Models;
 using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
 using ONEVO.Domain.Features.WorkManagement.ProjectMembers.Entities;
 
@@ -47,6 +48,31 @@ public class EfProjectMemberRepository : IProjectMemberRepository
             .Where(m => m.TenantId == tenantId && m.ProjectId == projectId && m.EmployeeId == employeeId && m.IsActive)
             .Select(m => m.ObjectiveId)
             .ToListAsync(ct);
+    }
+
+    public async Task<IReadOnlyList<EmployeeProjectMembershipSummary>> ListSharedProjectMembershipsAsync(
+        Guid tenantId, Guid employeeId, Guid viewerEmployeeId, CancellationToken ct = default)
+    {
+        var viewerProjectIds = _db.ProjectMembers
+            .Where(v => v.TenantId == tenantId && v.EmployeeId == viewerEmployeeId && v.IsActive)
+            .Select(v => v.ProjectId);
+
+        var rows = await (
+            from m in _db.ProjectMembers.AsNoTracking()
+            join p in _db.Projects.AsNoTracking() on m.ProjectId equals p.Id
+            where m.TenantId == tenantId && p.TenantId == tenantId
+                  && m.EmployeeId == employeeId && p.IsActive
+                  && (employeeId == viewerEmployeeId || viewerProjectIds.Contains(m.ProjectId))
+            select new { m.ProjectId, p.Name, m.JoinedAt, m.IsActive })
+            .ToListAsync(ct);
+
+        return rows
+            .GroupBy(r => new { r.ProjectId, r.Name })
+            .Select(g => new EmployeeProjectMembershipSummary(
+                g.Key.ProjectId, g.Key.Name, g.Min(r => r.JoinedAt), g.Any(r => r.IsActive)))
+            .OrderByDescending(s => s.IsActive)
+            .ThenBy(s => s.MemberSince)
+            .ToList();
     }
 
     public async Task<IReadOnlyList<ProjectMember>> ListInactiveMembershipsForEmployeeAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default)

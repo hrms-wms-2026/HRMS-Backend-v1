@@ -7,6 +7,10 @@ using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployeeDetail;
 using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.OnboardingDrafts.RepositoryInterfaces;
+using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.ProjectMembers.Models;
+using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
+using ONEVO.Domain.Features.OrgStructure.Entities;
 using ONEVO.Domain.Features.Auth.Entities;
 using ONEVO.Domain.Features.CoreHr.Entities;
 
@@ -22,6 +26,10 @@ public sealed class GetEmployeeDetailQueryHandlerTests
     private readonly Mock<ICurrentUser> _currentUser = new();
     private readonly Mock<IDateTimeProvider> _clock = new();
     private readonly Mock<IEmploymentTypeRepository> _employmentTypes = new();
+    private readonly Mock<ILegalEntityRepository> _legalEntities = new();
+    private readonly Mock<IProjectMemberRepository> _projectMembers = new();
+    private readonly Guid _userId = Guid.NewGuid();
+    private readonly Guid _viewerEmployeeId = Guid.NewGuid();
     private readonly Guid _tenantId = Guid.NewGuid();
     private readonly Guid _employeeId = Guid.NewGuid();
     private readonly Guid _workModeId = Guid.NewGuid();
@@ -30,7 +38,7 @@ public sealed class GetEmployeeDetailQueryHandlerTests
     public GetEmployeeDetailQueryHandlerTests()
     {
         _currentUser.SetupGet(u => u.TenantId).Returns(_tenantId);
-        _currentUser.SetupGet(u => u.UserId).Returns(Guid.NewGuid());
+        _currentUser.SetupGet(u => u.UserId).Returns(_userId);
         _clock.Setup(c => c.UtcNow).Returns(_now);
         _invitationTokenRepository
             .Setup(r => r.GetLatestByEmployeeIdAsync(_tenantId, _employeeId, It.IsAny<CancellationToken>()))
@@ -52,7 +60,9 @@ public sealed class GetEmployeeDetailQueryHandlerTests
             _encryption.Object,
             _currentUser.Object,
             _clock.Object,
-            _employmentTypes.Object);
+            _employmentTypes.Object,
+            _legalEntities.Object,
+            _projectMembers.Object);
 
     private void ArrangeVisibleEmployee()
     {
@@ -247,5 +257,93 @@ public sealed class GetEmployeeDetailQueryHandlerTests
 
         Assert.False(result.IsSuccess);
         Assert.Equal(404, result.StatusCode);
+    }
+
+    private ONEVO.Domain.Features.CoreHr.Entities.Employee ArrangeViewer()
+    {
+        var viewer = new ONEVO.Domain.Features.CoreHr.Entities.Employee { Id = _viewerEmployeeId, TenantId = _tenantId };
+        _employeeRepository
+            .Setup(r => r.GetDefaultForUserAsync(_tenantId, _userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(viewer);
+        return viewer;
+    }
+
+    [Fact]
+    public async Task Handle_UsesEmployeeDisplayTimezoneWhenSet()
+    {
+        ArrangeVisibleEmployee();
+        var employee = await _employeeRepository.Object.GetByIdAsync(_tenantId, _employeeId);
+        employee!.DisplayTimezone = "Asia/Colombo";
+        _employeeRepository
+            .Setup(r => r.GetByIdAsync(_tenantId, _employeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(employee);
+
+        var result = await CreateHandler().Handle(new GetEmployeeDetailQuery(_employeeId), CancellationToken.None);
+
+        Assert.Equal("Asia/Colombo", result.Value!.JobInformation.Timezone);
+        _legalEntities.Verify(
+            r => r.GetByIdForTenantAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Handle_FallsBackToLegalEntityTimezone()
+    {
+        ArrangeVisibleEmployee();
+        var legalEntityId = Guid.NewGuid();
+        var employee = await _employeeRepository.Object.GetByIdAsync(_tenantId, _employeeId);
+        employee!.LegalEntityId = legalEntityId;
+        _employeeRepository
+            .Setup(r => r.GetByIdAsync(_tenantId, _employeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(employee);
+        _legalEntities
+            .Setup(r => r.GetByIdForTenantAsync(_tenantId, legalEntityId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new LegalEntity { Id = legalEntityId, TenantId = _tenantId, Timezone = "Europe/London" });
+
+        var result = await CreateHandler().Handle(new GetEmployeeDetailQuery(_employeeId), CancellationToken.None);
+
+        Assert.Equal("Europe/London", result.Value!.JobInformation.Timezone);
+    }
+
+    [Fact]
+    public async Task Handle_ReturnsNullTimezoneWhenNeitherEmployeeNorLegalEntityHasOne()
+    {
+        ArrangeVisibleEmployee();
+
+        var result = await CreateHandler().Handle(new GetEmployeeDetailQuery(_employeeId), CancellationToken.None);
+
+        Assert.Null(result.Value!.JobInformation.Timezone);
+    }
+
+    [Fact]
+    public async Task Handle_ReturnsProjectMembershipsSharedWithTheViewer()
+    {
+        ArrangeVisibleEmployee();
+        ArrangeViewer();
+        var projectId = Guid.NewGuid();
+        var since = DateTimeOffset.Parse("2025-08-15T00:00:00Z");
+        _projectMembers
+            .Setup(r => r.ListSharedProjectMembershipsAsync(_tenantId, _employeeId, _viewerEmployeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([new EmployeeProjectMembershipSummary(projectId, "Watercraft Platform", since, true)]);
+
+        var result = await CreateHandler().Handle(new GetEmployeeDetailQuery(_employeeId), CancellationToken.None);
+
+        var membership = Assert.Single(result.Value!.ProjectMemberships!);
+        Assert.Equal(new EmployeeDetailProjectMembership(projectId, "Watercraft Platform", since, true), membership);
+    }
+
+    [Fact]
+    public async Task Handle_ReturnsNoProjectMembershipsWhenViewerHasNoEmployeeRecord()
+    {
+        ArrangeVisibleEmployee();
+        _employeeRepository
+            .Setup(r => r.GetDefaultForUserAsync(_tenantId, _userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ONEVO.Domain.Features.CoreHr.Entities.Employee?)null);
+
+        var result = await CreateHandler().Handle(new GetEmployeeDetailQuery(_employeeId), CancellationToken.None);
+
+        Assert.Empty(result.Value!.ProjectMemberships!);
+        _projectMembers.Verify(
+            r => r.ListSharedProjectMembershipsAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()),
+            Times.Never);
     }
 }
