@@ -31,4 +31,24 @@ public sealed record EmployeePeriod(DateOnly From, DateOnly To)
 
         return Result<EmployeePeriod>.Success(new EmployeePeriod(from.Value, to.Value));
     }
+
+    /// <summary>The comparison window: the previous whole calendar month when this period is exactly
+    /// one whole month, otherwise the same number of days ending the day before <see cref="From"/>.</summary>
+    public EmployeePeriod Previous()
+    {
+        var isWholeMonth = From.Day == 1
+            && From.Year == To.Year
+            && From.Month == To.Month
+            && To.Day == DateTime.DaysInMonth(To.Year, To.Month);
+
+        if (isWholeMonth)
+        {
+            var first = From.AddMonths(-1);
+            return new EmployeePeriod(first, new DateOnly(first.Year, first.Month, DateTime.DaysInMonth(first.Year, first.Month)));
+        }
+
+        var length = To.DayNumber - From.DayNumber + 1;
+        var previousTo = From.AddDays(-1);
+        return new EmployeePeriod(previousTo.AddDays(-(length - 1)), previousTo);
+    }
 }

@@ -120,6 +120,28 @@ public class EfWorkTaskRepository : IWorkTaskRepository
         return new OpenAssignedTasksPage(items, total);
     }
 
+    public async Task<IReadOnlyList<EmployeeTaskPeriodRow>> ListForEmployeePeriodAsync(
+        Guid tenantId, Guid employeeId, DateOnly from, DateOnly to, CancellationToken ct = default)
+    {
+        var fromUtc = new DateTimeOffset(from.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc));
+        var toUtcExclusive = new DateTimeOffset(to.AddDays(1).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc));
+        // `from` is a query keyword inside the query expression below, so capture the bounds under other names.
+        var fromDate = from;
+        var toDate = to;
+
+        return await (
+            from t in _db.WorkTasks.AsNoTracking()
+            join s in _db.TaskStatuses.AsNoTracking() on t.StatusId equals s.Id
+            where t.TenantId == tenantId
+                  && _db.TaskAssignments.Any(a => a.TaskId == t.Id && a.EmployeeId == employeeId)
+                  && ((t.DueDate != null && t.DueDate >= fromDate && t.DueDate <= toDate)
+                      || (t.CompletedAt != null && t.CompletedAt >= fromUtc && t.CompletedAt < toUtcExclusive)
+                      || _db.TaskAssignments.Any(a => a.TaskId == t.Id && a.EmployeeId == employeeId
+                                                      && a.AssignedAt >= fromUtc && a.AssignedAt < toUtcExclusive))
+            select new EmployeeTaskPeriodRow(t.DueDate, t.CompletedAt, t.ProgressPercent, s.MarksTaskComplete, t.StoryPoints)
+        ).ToListAsync(ct);
+    }
+
     public async Task<IReadOnlyList<WorkTask>> GetBySprintIdAsync(Guid tenantId, Guid sprintId, CancellationToken ct = default)
         => await _db.WorkTasks.AsNoTracking().Where(t => t.TenantId == tenantId && t.SprintId == sprintId).ToListAsync(ct);
 

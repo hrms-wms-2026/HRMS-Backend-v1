@@ -21,4 +21,14 @@ public interface IWorkApprovalHistoryRepository
         Guid projectId,
         Guid employeeId,
         CancellationToken ct = default);
+
+    /// <summary>Cross-project: requests this employee made (task creation/edit, objective changes,
+    /// task status changes) plus project invitations sent to them, created in
+    /// fromUtc &lt;= CreatedAt &lt; toUtcExclusive, newest first. For the employee Overview.</summary>
+    Task<IReadOnlyList<WorkApprovalHistoryRecord>> ListRequestedByEmployeeAsync(
+        Guid tenantId,
+        Guid employeeId,
+        DateTimeOffset fromUtc,
+        DateTimeOffset toUtcExclusive,
+        CancellationToken ct = default);
 }
