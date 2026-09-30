@@ -87,6 +87,7 @@ public sealed class EmployeesControllerArchitectureTests
     [InlineData("overview/approvals", "GetOverviewApprovals")]
     [InlineData("overview/checklists", "GetOverviewChecklists")]
     [InlineData("overview/history", "GetOverviewHistory")]
+    [InlineData("overview/upcoming", "GetOverviewUpcoming")]
     public void EmployeesController_OverviewWidgetActions_RequireEmployeesReadAndUseTheirRoute(string route, string action)
     {
         var path = FindRepositoryPath(

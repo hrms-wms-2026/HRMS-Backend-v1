@@ -28,6 +28,7 @@ using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployeeDetail;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployeeHistory;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployeeIdentity;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployeePositionHistory;
+using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployeeUpcoming;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetMyPayroll;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetMyProfile;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.ListEmployees;
@@ -85,6 +86,7 @@ public class EmployeesController : ControllerBase
                 sortBy,
                 string.Equals(sortDir, "desc", StringComparison.OrdinalIgnoreCase),
                 activeOnly), ct);
+
 
         return result.IsSuccess
             ? Ok(result.Value)
@@ -253,6 +255,16 @@ public class EmployeesController : ControllerBase
     public async Task<IActionResult> GetOverviewHistory(Guid id, [FromQuery] int limit = 20, CancellationToken ct = default)
     {
         var result = await _mediator.Send(new GetEmployeeHistoryQuery(id, limit), ct);
+        return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Overview upcoming items: calendar events (private ones excluded), approved leave and
+    /// release reminders in the next N days (default 14, max 60). Not period-aware.</summary>
+    [HttpGet("{id:guid}/overview/upcoming")]
+    [RequirePermission("employees:read")]
+    public async Task<IActionResult> GetOverviewUpcoming(Guid id, [FromQuery] int days = 14, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new GetEmployeeUpcomingQuery(id, days), ct);
         return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
