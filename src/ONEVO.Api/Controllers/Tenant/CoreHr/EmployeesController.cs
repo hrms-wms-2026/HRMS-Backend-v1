@@ -31,6 +31,8 @@ using ONEVO.Application.Features.CoreHr.Employee.Queries.ListEmployees;
 using ONEVO.Application.Features.Leave.Balance.Queries.GetEmployeeTimeOff;
 using ONEVO.Application.Features.TimeAttendance.Queries.EmployeeOverview.GetEmployeeAttendanceDiscipline;
 using ONEVO.Application.Features.TimeAttendance.Queries.EmployeeOverview.GetEmployeeAttendanceOverview;
+using ONEVO.Application.Features.WorkManagement.EmployeeOverview.Queries.GetEmployeeDelivery;
+using ONEVO.Application.Features.WorkManagement.EmployeeOverview.Queries.GetEmployeeWorkOverview;
 using ONEVO.Application.Features.WorkManagement.EmployeeWorkGraph.Queries.GetEmployeeWorkGraph;
 
 namespace ONEVO.Api.Controllers.Tenant.CoreHr;
@@ -177,6 +179,31 @@ public class EmployeesController : ControllerBase
         Guid id, [FromQuery] int? year = null, CancellationToken ct = default)
     {
         var result = await _mediator.Send(new GetEmployeeTimeOffQuery(id, year), ct);
+        return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Overview work card: assigned/completed/in-progress/overdue task counts and
+    /// completion + on-time rates for one employee over from..to (default: current month).</summary>
+    [HttpGet("{id:guid}/overview/work")]
+    [RequirePermission("employees:read")]
+    [RequireAnyModule("worksync_foundation", "projects", "objectives_milestones", "tasks", "boards", "planning_sprints")]
+    public async Task<IActionResult> GetOverviewWork(
+        Guid id, [FromQuery] DateOnly? from = null, [FromQuery] DateOnly? to = null, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new GetEmployeeWorkOverviewQuery(id, from, to), ct);
+        return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Overview delivery card: tasks completed, on-time completion and story points; with
+    /// compare=previous also the previous period's figures.</summary>
+    [HttpGet("{id:guid}/overview/delivery")]
+    [RequirePermission("employees:read")]
+    [RequireAnyModule("worksync_foundation", "projects", "objectives_milestones", "tasks", "boards", "planning_sprints")]
+    public async Task<IActionResult> GetOverviewDelivery(
+        Guid id, [FromQuery] DateOnly? from = null, [FromQuery] DateOnly? to = null,
+        [FromQuery] string? compare = null, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new GetEmployeeDeliveryQuery(id, from, to, compare), ct);
         return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
