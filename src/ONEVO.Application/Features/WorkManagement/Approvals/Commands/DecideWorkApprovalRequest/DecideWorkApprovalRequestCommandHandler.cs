@@ -92,8 +92,8 @@ public sealed class DecideWorkApprovalRequestCommandHandler
                     (status, kind) = outcome.Kind == ApplyOutcomeKind.Applied
                         ? (WorkApprovalRequestStatuses.Approved, WorkNotificationKinds.Approved)
                         : (WorkApprovalRequestStatuses.Stale, WorkNotificationKinds.Stale);
-                    if (outcome.Kind == ApplyOutcomeKind.Applied)
-                        request.PayloadJson = payload;
+                    if (outcome.Kind == ApplyOutcomeKind.Applied && payload != request.PayloadJson)
+                        request.AppliedPayloadJson = payload;
                     break;
                 case WorkApprovalDecision.Reject:
                     (status, kind) = (WorkApprovalRequestStatuses.Rejected, WorkNotificationKinds.Rejected);

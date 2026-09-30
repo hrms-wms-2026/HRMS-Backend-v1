@@ -128,7 +128,7 @@ public sealed class EfWorkApprovalHistoryRepository : IWorkApprovalHistoryReposi
         },
         r.Status,
         r.ActionType == WorkActionTypes.ProjectStatusTemplateChange ? "Task statuses" : r.TargetTitle,
-        r.PayloadJson, r.RequestedByEmployeeId,
+        r.AppliedPayloadJson ?? r.PayloadJson, r.RequestedByEmployeeId,
         r.DecidedByEmployeeId ?? r.ApproverEmployeeId, r.DecidedByEmployeeId, r.DecisionComment,
         r.CreatedAt, r.DecidedAt);
 }
