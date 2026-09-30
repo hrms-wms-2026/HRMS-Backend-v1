@@ -25,6 +25,7 @@ using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployee;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployeeApprovalActivity;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployeeChecklistOverview;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployeeDetail;
+using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployeeHistory;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployeeIdentity;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployeePositionHistory;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetMyPayroll;
@@ -242,6 +243,16 @@ public class EmployeesController : ControllerBase
     public async Task<IActionResult> GetOverviewChecklists(Guid id, CancellationToken ct = default)
     {
         var result = await _mediator.Send(new GetEmployeeChecklistOverviewQuery(id), ct);
+        return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Overview employee history: joined, probation, position and reporting-manager changes,
+    /// approved leave, completed checklist tasks and termination - newest first. Lifetime view.</summary>
+    [HttpGet("{id:guid}/overview/history")]
+    [RequirePermission("employees:read")]
+    public async Task<IActionResult> GetOverviewHistory(Guid id, [FromQuery] int limit = 20, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new GetEmployeeHistoryQuery(id, limit), ct);
         return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
