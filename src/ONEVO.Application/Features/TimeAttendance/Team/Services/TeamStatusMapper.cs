@@ -3,15 +3,16 @@ using ONEVO.Domain.Features.TimeAttendance.Entities;
 
 namespace ONEVO.Application.Features.TimeAttendance.Team.Services;
 
-/// <summary>My Team's Team Status vocabulary (My Team spec §8.1.2, §8.1.6): "working",
-/// "on_break", "clocked_out", "late" (overlay), "absent", "not_started", "on_leave",
-/// "not_scheduled". Pure: maps the existing AttendanceDayStatusResolver output plus the record's
-/// persisted arrival punctuality (AttendanceRecord.Status == "late", set once at clock-in - a
-/// distinct concept from the resolver's own live day-state "Status") into that vocabulary,
-/// applying leave masking (spec D6, review clarification: for a subject the caller is not
-/// Leave-authorized for, EVERY absent row - whether the true cause is a no-show or a masked
-/// approved-leave day - carries NO attention fields, so the two causes are indistinguishable to
-/// an attendance-only viewer).</summary>
+/// <summary>My Team's Team Status vocabulary (spec §8.1.2, §8.1.6): "working", "on_break",
+/// "clocked_out", "late" (overlay), "absent", "not_started", "on_leave", "not_scheduled". Pure:
+/// maps the existing AttendanceDayStatusResolver output plus the record's persisted arrival
+/// punctuality (AttendanceRecord.Status == "late", set once at clock-in - a distinct concept from
+/// the resolver's own live day-state "Status") into that vocabulary, applying leave masking (spec
+/// §8.1.2 rule 5 / D6): for a subject the caller is not Leave-authorized for, an `on_time_off` day
+/// masks to "absent" with no attention fields (indistinguishable from a real no-show), AND a
+/// `worked_during_time_off` day keeps its "working" status but has its attention fields stripped -
+/// the leave fact behind the attention is masked even though the underlying clock-in activity
+/// itself is not a leave-gated fact.</summary>
 public static class TeamStatusMapper
 {
     public static TeamStatusResult Map(
@@ -34,9 +35,13 @@ public static class TeamStatusMapper
             _ => ("not_scheduled", false),
         };
 
-        // Masking (spec D6 / review clarification): an unauthorized viewer's "absent" row - no-show
-        // or masked leave alike - carries no attention fields, so the two causes are indistinguishable.
-        var maskAttention = teamStatus == "absent" && !leaveAuthorizedForSubject && resolution.Status == AttendanceRecord.StatusOnTimeOff;
+        // Masking (spec §8.1.2 rule 5): an unauthorized viewer's "absent" row - no-show or masked
+        // leave alike - carries no attention fields, so the two causes are indistinguishable; and
+        // a "worked during time off" row keeps its working status but loses the attention fields
+        // that would otherwise reveal the leave behind it.
+        var maskAttention = !leaveAuthorizedForSubject
+            && (resolution.Status == AttendanceRecord.StatusOnTimeOff
+                || resolution.Status == AttendanceRecord.StatusWorkedDuringTimeOff);
         var isLate = arrivedLate && teamStatus is "working" or "on_break";
 
         return new TeamStatusResult(

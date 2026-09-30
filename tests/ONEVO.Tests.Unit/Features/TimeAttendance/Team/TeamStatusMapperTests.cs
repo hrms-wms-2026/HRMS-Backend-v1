@@ -72,6 +72,32 @@ public sealed class TeamStatusMapperTests
     }
 
     [Fact]
+    public void WorkedDuringTimeOff_keeps_working_status_but_strips_attention_when_not_leave_authorized()
+    {
+        var result = TeamStatusMapper.Map(
+            Resolution(AttendanceRecord.StatusWorkedDuringTimeOff, attentionType: "worked_during_time_off",
+                attentionLabel: "Worked during approved time off", attentionSeverity: "warning"),
+            arrivedLate: false, leaveAuthorizedForSubject: false);
+
+        Assert.Equal("working", result.TeamStatus);
+        Assert.Null(result.AttentionType);
+        Assert.Null(result.AttentionLabel);
+        Assert.Null(result.AttentionSeverity);
+    }
+
+    [Fact]
+    public void WorkedDuringTimeOff_keeps_both_working_status_and_attention_when_leave_authorized()
+    {
+        var result = TeamStatusMapper.Map(
+            Resolution(AttendanceRecord.StatusWorkedDuringTimeOff, attentionType: "worked_during_time_off",
+                attentionLabel: "Worked during approved time off", attentionSeverity: "warning"),
+            arrivedLate: false, leaveAuthorizedForSubject: true);
+
+        Assert.Equal("working", result.TeamStatus);
+        Assert.Equal("worked_during_time_off", result.AttentionType);
+    }
+
+    [Fact]
     public void SECURITY_masked_absent_row_carries_no_attention_fields_indistinguishable_from_a_real_no_show()
     {
         var maskedLeave = TeamStatusMapper.Map(
