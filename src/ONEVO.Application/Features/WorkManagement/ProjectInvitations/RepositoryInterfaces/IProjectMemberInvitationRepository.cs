@@ -23,5 +23,8 @@ public interface IProjectMemberInvitationRepository
     /// <summary>Every pending invitation addressed to this employee, across all objectives — backs My Objective Invitations.</summary>
     Task<IReadOnlyList<ProjectMemberInvitation>> ListPendingForEmployeeAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default);
 
+    /// <summary>Every invitation in the project (any status) where the employee is the invitee or the inviter, newest first — backs the Approvals feed.</summary>
+    Task<IReadOnlyList<ProjectMemberInvitation>> ListForProjectAndEmployeeAsync(Guid tenantId, Guid projectId, Guid employeeId, CancellationToken ct = default);
+
     void Update(ProjectMemberInvitation invitation);
 }
