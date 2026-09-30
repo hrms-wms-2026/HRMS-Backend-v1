@@ -120,7 +120,9 @@ public class EditTaskCommandHandler : IRequestHandler<EditTaskCommand, Result<Ta
 
             await _unitOfWork.SaveChangesAsync(innerCt);
 
-            await _assetLinker.SyncAttachmentsAsync(tenantId, userId, task.Id, request.AttachmentFileIds ?? Array.Empty<Guid>(), innerCt);
+            // No list = leave attachments as they are (bulk priority/due-date edits send none).
+            if (request.AttachmentFileIds is not null)
+                await _assetLinker.SyncAttachmentsAsync(tenantId, userId, task.Id, request.AttachmentFileIds, innerCt);
             await _assetLinker.SyncDescriptionImagesAsync(tenantId, userId, task.Id, task.Description, innerCt);
 
             return Result<TaskWriteOutcome>.Success(new TaskWriteOutcome(WorkTaskResponseMapper.ToResponse(task, assigneeIds), null));

@@ -410,6 +410,21 @@ public class EditTaskCommandHandlerTests
     }
 
     [Fact]
+    public async Task Handle_WithoutAttachmentList_LeavesAttachmentsUntouched()
+    {
+        // Bulk priority/due-date edits send no attachment list - that must not wipe the task's files.
+        var assetLinker = new Mock<ITaskAssetLinker>();
+        var (handler, _, _, _, _, _, _) = Build(allocatedHours: 100m, existingSumExcludingThisTask: 40m, assetLinker: assetLinker);
+        var command = new EditTaskCommand(TaskId, "Updated", null, "high", null, null, null, null, null, AttachmentFileIds: null);
+
+        var result = await handler.Handle(command, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        assetLinker.Verify(x => x.SyncAttachmentsAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<Guid>(),
+            It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
     public async Task Handle_SprintIdOmitted_LeavesTaskSprintUnchanged()
     {
         var currentSprint = new Sprint { Id = Guid.NewGuid(), TenantId = TenantId, ProjectId = ProjectId, Name = "S1", Status = SprintStatuses.Active, CreatedAt = DateTimeOffset.UtcNow };
