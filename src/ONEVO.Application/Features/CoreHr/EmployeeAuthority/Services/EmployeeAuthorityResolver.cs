@@ -53,14 +53,63 @@ public sealed class EmployeeAuthorityResolver : IEmployeeAuthorityResolver
         _permissionRepository = permissionRepository;
     }
 
+    // Request-scoped memo of the permission-INDEPENDENT half of visibility resolution: the actor's
+    // employee record in a legal entity and the expanded management-coverage candidate set. This
+    // resolver is registered AddScoped, so the memo lives exactly one HTTP request / one DI scope
+    // and never crosses users or requests (spec 2026-09-29-my-team-dashboard-design.md §13.1). The
+    // permission check is deliberately NEVER memoized: every call re-checks its own
+    // RequiredPermission, so the memo can never grant coverage for a permission the actor lacks.
+    //
+    // Safety precondition (clarification 2, 2026-09-30 review): nothing in this DI scope may
+    // mutate ManagementCoverageRecords and then call ResolveVisibilityAsync again expecting fresh
+    // data - MyTeamBoundaryArchitectureTests.NoHandler_MutatesCoverageAndAlsoResolvesVisibility_
+    // InTheSameFile guards this by scanning for a single class doing both. If a future command
+    // ever legitimately needs both in one scope, add an explicit InvalidateCoverageMemo() call
+    // after the mutation - do not silently rely on cache staleness being harmless.
+    private readonly Dictionary<(Guid TenantId, Guid ActorUserId, Guid LegalEntityId), ActorCoverage> _coverageMemo = new();
+
+    private sealed class ActorCoverage
+    {
+        public ActorCoverage(ONEVO.Domain.Features.CoreHr.Entities.Employee? actor) => Actor = actor;
+
+        public ONEVO.Domain.Features.CoreHr.Entities.Employee? Actor { get; }
+
+        /// <summary>Null until first expanded; expansion only happens once a caller has passed the
+        /// permission check.</summary>
+        public IReadOnlySet<Guid>? ManagedCandidateIds { get; set; }
+    }
+
+    private async Task<ActorCoverage> GetActorCoverageAsync(
+        Guid tenantId, Guid actorUserId, Guid legalEntityId, CancellationToken ct)
+    {
+        var key = (tenantId, actorUserId, legalEntityId);
+        if (_coverageMemo.TryGetValue(key, out var cached))
+            return cached;
+
+        var actor = await _employeeRepository.GetByUserAndLegalEntityAsync(tenantId, actorUserId, legalEntityId, ct);
+        var entry = new ActorCoverage(actor);
+        _coverageMemo[key] = entry;
+        return entry;
+    }
+
+    private async Task<IReadOnlySet<Guid>> ExpandManagedVisibilityAsync(
+        Guid tenantId, Guid legalEntityId, Guid actorEmployeeId, CancellationToken ct)
+    {
+        var managed = new HashSet<Guid>();
+        var actorAssignment = await _positionAssignmentRepository.GetActivePrimaryAsync(tenantId, actorEmployeeId, ct);
+        if (actorAssignment is not null)
+            await AddManagedVisibilityAsync(tenantId, legalEntityId, actorAssignment.PositionId, managed, ct);
+        return managed;
+    }
+
     public async Task<EmployeeAuthorityVisibilityScope> ResolveVisibilityAsync(
         EmployeeAuthorityVisibilityRequest request, CancellationToken cancellationToken = default)
     {
         var tenantId = _currentUser.TenantId;
         var now = _clock.UtcNow;
 
-        var actorEmployee = await _employeeRepository.GetByUserAndLegalEntityAsync(
-            tenantId, request.ActorUserId, request.LegalEntityId, cancellationToken);
+        var coverage = await GetActorCoverageAsync(tenantId, request.ActorUserId, request.LegalEntityId, cancellationToken);
+        var actorEmployee = coverage.Actor;
 
         var candidateIds = new HashSet<Guid>();
         var includesSelf = false;
@@ -76,14 +125,9 @@ public sealed class EmployeeAuthorityResolver : IEmployeeAuthorityResolver
 
         if (hasPermission && actorEmployee is not null)
         {
-            var actorAssignment = await _positionAssignmentRepository.GetActivePrimaryAsync(
-                tenantId, actorEmployee.Id, cancellationToken);
-
-            if (actorAssignment is not null)
-            {
-                await AddManagedVisibilityAsync(
-                    tenantId, request.LegalEntityId, actorAssignment.PositionId, candidateIds, cancellationToken);
-            }
+            coverage.ManagedCandidateIds ??= await ExpandManagedVisibilityAsync(
+                tenantId, request.LegalEntityId, actorEmployee.Id, cancellationToken);
+            candidateIds.UnionWith(coverage.ManagedCandidateIds);
         }
 
         if (candidateIds.Count == 0)

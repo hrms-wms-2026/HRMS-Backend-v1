@@ -250,9 +250,12 @@ internal sealed class EmployeeAuthorityTestGraph
 
         public Task<DomainEmployee?> GetByUserAndLegalEntityAsync(
             Guid tenantId, Guid userId, Guid legalEntityId, CancellationToken ct = default)
-            => Task.FromResult(_graph._employees.FirstOrDefault(e =>
+        {
+            _graph.RecordCall("Employee.GetByUserAndLegalEntityAsync");
+            return Task.FromResult(_graph._employees.FirstOrDefault(e =>
                 e.TenantId == tenantId && e.UserId == userId && e.LegalEntityId == legalEntityId
                 && e.EmploymentStatusId == 1));
+        }
 
         public Task<IReadOnlyList<Guid>> ListActiveEmployeeIdsAsync(
             Guid tenantId, Guid legalEntityId, IReadOnlyCollection<Guid>? departmentIds, CancellationToken ct = default)
@@ -419,6 +422,7 @@ internal sealed class EmployeeAuthorityTestGraph
         public Task<IReadOnlyList<ManagementCoverageRecord>> ListCoverageByOwnerPositionAsync(
             Guid tenantId, Guid legalEntityId, Guid ownerPositionId, CancellationToken ct = default)
         {
+            _graph.RecordCall("Position.ListCoverageByOwnerPositionAsync");
             var rows = _graph._coverage
                 .Where(c => c.TenantId == tenantId && c.LegalEntityId == legalEntityId
                     && c.OwnerPositionId == ownerPositionId)
@@ -637,7 +641,10 @@ internal sealed class EmployeeAuthorityTestGraph
 
         public Task<bool> UserHasPermissionCodeAsync(
             Guid userId, string permissionCode, DateTimeOffset now, CancellationToken ct = default)
-            => Task.FromResult(_graph._permissions.Contains((userId, permissionCode)));
+        {
+            _graph.RecordCall("Permission.UserHasPermissionCodeAsync");
+            return Task.FromResult(_graph._permissions.Contains((userId, permissionCode)));
+        }
 
         public Task<IReadOnlySet<Guid>> ListUserIdsHoldingPermissionAsync(
             IReadOnlyCollection<Guid> userIds, string permissionCode, DateTimeOffset now, CancellationToken ct = default)
