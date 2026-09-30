@@ -49,7 +49,8 @@ public sealed record LeaveApprovalListFilter(
     Guid? DepartmentId,
     Guid? LeaveTypeId,
     DateOnly? FromDate,
-    DateOnly? ToDate);
+    DateOnly? ToDate,
+    Guid? LegalEntityId = null);
 
 public sealed record LeaveRequestAllListFilter(
     string? Search,

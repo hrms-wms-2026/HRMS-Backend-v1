@@ -716,6 +716,14 @@ public static class DependencyInjection
 
         services.AddScoped<IEncryptionService, AesEncryptionService>();
 
+        // -- My Team dashboard: Approvals & Exceptions action sources (spec §8.2/§9.4) --
+        // One AddScoped<ITeamActionSource, ...> per source key, same pattern as
+        // IEmailProviderAdapter above - GetTeamActionItemsQueryHandler resolves all of them via
+        // IEnumerable<ITeamActionSource>.
+        services.AddScoped<
+            ONEVO.Application.Features.Dashboard.Team.Abstractions.ITeamActionSource,
+            ONEVO.Application.Features.Dashboard.Team.Sources.LeaveApprovalTeamActionSource>();
+
         // Background seeder
         services.AddHostedService<PermissionSeeder>();
         services.AddHostedService<RoleTemplateSeeder>();
