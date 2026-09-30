@@ -2,6 +2,7 @@ using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ONEVO.Api.Filters;
+using ONEVO.Application.Features.WorkManagement.Monitoring.Commands.RefreshProjectMonitor;
 using ONEVO.Application.Features.WorkManagement.Monitoring.Queries.CheckModuleCapacity;
 using ONEVO.Application.Features.WorkManagement.Monitoring.Queries.CheckTaskLoad;
 using ONEVO.Application.Features.WorkManagement.Monitoring.Queries.ListProjectMonitorAlerts;
@@ -39,6 +40,17 @@ public class ProjectMonitorController : ControllerBase
     [HttpGet("projects/{projectId:guid}/monitor/alerts")]
     public async Task<IActionResult> Alerts(Guid projectId, CancellationToken ct)
         => ToResult(await _mediator.Send(new ListProjectMonitorAlertsQuery(projectId), ct));
+
+    /// <summary>Re-checks the project now (instead of waiting for the hourly job) and returns the
+    /// caller's open alerts - what the Tree calls when it loads, including right after a save.</summary>
+    [HttpPost("projects/{projectId:guid}/monitor/refresh")]
+    public async Task<IActionResult> Refresh(Guid projectId, CancellationToken ct)
+    {
+        var refreshed = await _mediator.Send(new RefreshProjectMonitorCommand(projectId), ct);
+        if (!refreshed.IsSuccess)
+            return Problem(refreshed.Error, statusCode: refreshed.StatusCode ?? 400);
+        return ToResult(await _mediator.Send(new ListProjectMonitorAlertsQuery(projectId), ct));
+    }
 
     private IActionResult ToResult<T>(ONEVO.Application.Common.Models.Result<T> result)
         => result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
