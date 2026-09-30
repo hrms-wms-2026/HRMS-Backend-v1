@@ -9,6 +9,7 @@ using ONEVO.Application.Features.WorkManagement.Hierarchy;
 using ONEVO.Application.Features.WorkManagement.ProjectInvitations.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
+using ONEVO.Domain.Features.WorkManagement.Approvals.Entities;
 
 namespace ONEVO.Application.Features.WorkManagement.Approvals.Queries.GetProjectApprovalFeed;
 
@@ -22,11 +23,13 @@ public sealed class GetProjectApprovalFeedQueryHandler
     private readonly IProjectMemberInvitationRepository _invitations;
     private readonly IWorkTaskRepository _tasks;
     private readonly IProjectRepository _projects;
+    private readonly IWorkApprovalCommentRepository _comments;
 
     public GetProjectApprovalFeedQueryHandler(
         ICurrentUser currentUser, ICallerIdentityResolver identity, IWorkApprovalRequestRepository requests,
         IWorkHierarchyService hierarchy, IProjectMemberInvitationRepository invitations,
-        IWorkTaskRepository tasks, IProjectRepository projects)
+        IWorkTaskRepository tasks, IProjectRepository projects,
+        IWorkApprovalCommentRepository comments)
     {
         _currentUser = currentUser;
         _identity = identity;
@@ -35,6 +38,7 @@ public sealed class GetProjectApprovalFeedQueryHandler
         _invitations = invitations;
         _tasks = tasks;
         _projects = projects;
+        _comments = comments;
     }
 
     public async Task<Result<IReadOnlyList<ApprovalFeedItemResponse>>> Handle(GetProjectApprovalFeedQuery query, CancellationToken ct)
@@ -67,8 +71,13 @@ public sealed class GetProjectApprovalFeedQueryHandler
             .Distinct().ToList();
         var names = await _identity.ResolveDisplayNamesByEmployeeIdAsync(tenantId, employeeIds, ct);
 
-        // Comment counts are wired in with the comments feature.
-        var lookup = new ApprovalFeedLookup(tree, project.Name, names, taskModules, new Dictionary<Guid, int>());
+        var approvalCounts = await _comments.CountBySubjectsAsync(
+            tenantId, WorkApprovalCommentSubjects.Approval, requests.Select(r => r.Id).ToList(), ct);
+        var invitationCounts = await _comments.CountBySubjectsAsync(
+            tenantId, WorkApprovalCommentSubjects.Invitation, invitations.Select(i => i.Id).ToList(), ct);
+        var commentCounts = approvalCounts.Concat(invitationCounts).ToDictionary(kv => kv.Key, kv => kv.Value);
+
+        var lookup = new ApprovalFeedLookup(tree, project.Name, names, taskModules, commentCounts);
 
         var items = requests.Select(r => ApprovalFeedItemFactory.FromRequest(r, caller, lookup))
             .Concat(invitations.Select(i => ApprovalFeedItemFactory.FromInvitation(i, caller, lookup)));

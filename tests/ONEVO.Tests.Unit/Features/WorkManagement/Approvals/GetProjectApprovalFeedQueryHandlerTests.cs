@@ -38,6 +38,7 @@ public class GetProjectApprovalFeedQueryHandlerTests
     private readonly Mock<IProjectRepository> _projects = new();
     private readonly List<WorkApprovalRequest> _rows = new();
     private readonly List<ProjectMemberInvitation> _invites = new();
+    private readonly ApprovalCommentHandlersTests.InMemoryApprovalCommentRepository _comments = new();
 
     public GetProjectApprovalFeedQueryHandlerTests()
     {
@@ -79,7 +80,7 @@ public class GetProjectApprovalFeedQueryHandlerTests
 
     private GetProjectApprovalFeedQueryHandler Build() => new(
         _currentUser.Object, _identity.Object, _requests.Object, _hierarchy.Object,
-        _invitations.Object, _tasks.Object, _projects.Object);
+        _invitations.Object, _tasks.Object, _projects.Object, _comments);
 
     private async Task<IReadOnlyList<ApprovalFeedItemResponse>> Run()
     {
@@ -241,6 +242,26 @@ public class GetProjectApprovalFeedQueryHandlerTests
         r.PayloadJson = """{"requestedAdditionalHours":35,"reason":"scope grew"}""";
 
         (await Run()).Single().Summary.Should().Be("+35h - scope grew");
+    }
+
+    [Fact]
+    public async Task Comment_count_reflects_saved_comments_per_subject()
+    {
+        Caller(Requester);
+        var r = Add(_p);
+        var invitation = new ProjectMemberInvitation
+        {
+            Id = Guid.NewGuid(), TenantId = TenantId, ProjectId = ProjectId, ObjectiveId = _p, InvitedEmployeeId = Requester,
+            InvitedById = Owner, Status = ProjectInvitationStatuses.Pending, CreatedAt = DateTimeOffset.UtcNow
+        };
+        _invites.Add(invitation);
+        foreach (var (type, id) in new[] { ("approval", r.Id), ("approval", r.Id), ("invitation", invitation.Id) })
+            await _comments.AddAsync(new WorkApprovalComment { Id = Guid.NewGuid(), TenantId = TenantId, SubjectType = type, SubjectId = id });
+
+        var items = await Run();
+
+        items.Single(i => i.Id == r.Id).CommentCount.Should().Be(2);
+        items.Single(i => i.Id == invitation.Id).CommentCount.Should().Be(1);
     }
 
     [Fact]
