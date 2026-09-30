@@ -29,6 +29,7 @@ using ONEVO.Application.Features.CoreHr.Employee.Queries.GetMyPayroll;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetMyProfile;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.ListEmployees;
 using ONEVO.Application.Features.Leave.Balance.Queries.GetEmployeeTimeOff;
+using ONEVO.Application.Features.Monitoring.ActivityMonitoring.Queries.EmployeeOverview.GetEmployeeActivityOverview;
 using ONEVO.Application.Features.TimeAttendance.Queries.EmployeeOverview.GetEmployeeAttendanceDiscipline;
 using ONEVO.Application.Features.TimeAttendance.Queries.EmployeeOverview.GetEmployeeAttendanceOverview;
 using ONEVO.Application.Features.WorkManagement.EmployeeOverview.Queries.GetEmployeeDelivery;
@@ -204,6 +205,19 @@ public class EmployeesController : ControllerBase
         [FromQuery] string? compare = null, CancellationToken ct = default)
     {
         var result = await _mediator.Send(new GetEmployeeDeliveryQuery(id, from, to, compare), ct);
+        return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Overview activity panel: active / idle / meeting minutes summed from the persisted
+    /// daily summaries; with compare=previous also the previous period. Reports
+    /// activityMonitoringEnabled=false (and zeros) when monitoring is off for the employee.</summary>
+    [HttpGet("{id:guid}/overview/activity")]
+    [RequirePermission("employees:read")]
+    public async Task<IActionResult> GetOverviewActivity(
+        Guid id, [FromQuery] DateOnly? from = null, [FromQuery] DateOnly? to = null,
+        [FromQuery] string? compare = null, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new GetEmployeeActivityOverviewQuery(id, from, to, compare), ct);
         return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
