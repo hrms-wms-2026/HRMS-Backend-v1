@@ -4,20 +4,17 @@ using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.DTOs.Responses;
 using ONEVO.Application.Features.CoreHr.Employee.Helpers;
-using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.ServiceInterfaces;
 using ONEVO.Application.Features.TimeAttendance.Queries.EmployeeOverview.GetEmployeeAttendanceOverview;
 using ONEVO.Application.Features.TimeAttendance.Services;
 using ONEVO.Domain.Features.Leave.Request.Entities;
 using ONEVO.Domain.Features.TimeAttendance.Entities;
-using EmployeeEntity = ONEVO.Domain.Features.CoreHr.Entities.Employee;
 
 namespace ONEVO.Tests.Unit.Features.TimeAttendance;
 
 public sealed class GetEmployeeAttendanceOverviewQueryHandlerTests
 {
     private readonly Mock<IEmployeeReadAccessGuard> _guard = new();
-    private readonly Mock<IEmployeeRepository> _employees = new();
     private readonly Mock<IEmployeeAttendancePeriodReader> _reader = new();
     private readonly Mock<ICurrentUser> _user = new();
     private readonly Mock<IDateTimeProvider> _clock = new();
@@ -40,7 +37,7 @@ public sealed class GetEmployeeAttendanceOverviewQueryHandlerTests
     }
 
     private GetEmployeeAttendanceOverviewQueryHandler CreateHandler() =>
-        new(_guard.Object, _employees.Object, _reader.Object, _user.Object, _clock.Object);
+        new(_guard.Object, _reader.Object, _user.Object, _clock.Object);
 
     private AttendanceRecord Rec(DateOnly d, string? start = null, string? end = null) => new()
     {
@@ -69,24 +66,9 @@ public sealed class GetEmployeeAttendanceOverviewQueryHandlerTests
     }
 
     [Fact]
-    public async Task Handle_Forbidden_WhenCallerLacksAttendanceReadAndIsNotViewingSelf()
+    public async Task Handle_DoesNotRequireAnyModulePermission()
     {
         _user.Setup(u => u.HasPermission("attendance:read")).Returns(false);
-        _employees.Setup(e => e.GetDefaultForUserAsync(_tenantId, _userId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new EmployeeEntity { Id = Guid.NewGuid(), TenantId = _tenantId });
-
-        var result = await CreateHandler().Handle(new GetEmployeeAttendanceOverviewQuery(_employeeId, null, null), CancellationToken.None);
-
-        result.IsSuccess.Should().BeFalse();
-        result.StatusCode.Should().Be(403);
-    }
-
-    [Fact]
-    public async Task Handle_AllowsSelfWithoutAttendanceRead()
-    {
-        _user.Setup(u => u.HasPermission("attendance:read")).Returns(false);
-        _employees.Setup(e => e.GetDefaultForUserAsync(_tenantId, _userId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new EmployeeEntity { Id = _employeeId, TenantId = _tenantId });
         ArrangeData(Array.Empty<AttendanceRecord>());
 
         var result = await CreateHandler().Handle(new GetEmployeeAttendanceOverviewQuery(_employeeId, null, null), CancellationToken.None);

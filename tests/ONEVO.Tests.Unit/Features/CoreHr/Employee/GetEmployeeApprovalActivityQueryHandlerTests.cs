@@ -4,7 +4,6 @@ using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.DTOs.Responses;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployeeApprovalActivity;
-using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.ServiceInterfaces;
 using ONEVO.Application.Features.Leave.Request.RepositoryInterfaces;
 using ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces;
@@ -12,14 +11,12 @@ using ONEVO.Application.Features.WorkManagement.Approvals.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Domain.Features.Leave.Request.Entities;
 using ONEVO.Domain.Features.TimeAttendance.Entities;
-using EmployeeEntity = ONEVO.Domain.Features.CoreHr.Entities.Employee;
 
 namespace ONEVO.Tests.Unit.Features.CoreHr.Employee;
 
 public sealed class GetEmployeeApprovalActivityQueryHandlerTests
 {
     private readonly Mock<IEmployeeReadAccessGuard> _guard = new();
-    private readonly Mock<IEmployeeRepository> _employees = new();
     private readonly Mock<ILeaveRequestRepository> _leave = new();
     private readonly Mock<IAttendanceCorrectionRepository> _corrections = new();
     private readonly Mock<IWorkAreaChangeRequestRepository> _workAreas = new();
@@ -43,8 +40,6 @@ public sealed class GetEmployeeApprovalActivityQueryHandlerTests
         _guard.Setup(g => g.EnsureCanRead(_tenantId, _employeeId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result<EmployeeListItemResponse>.Success(new EmployeeListItemResponse(
                 _employeeId, "E-001", "Ada", "ada@test.dev", null, null, null, null, null, null, "full_time", "active", null, null)));
-        _employees.Setup(e => e.GetDefaultForUserAsync(_tenantId, _userId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new EmployeeEntity { Id = Guid.NewGuid(), TenantId = _tenantId });
 
         _leave.Setup(l => l.ListOwnAsync(_tenantId, _employeeId, It.IsAny<LeaveRequestListFilter>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Array.Empty<LeaveRequestListRow>());
@@ -58,7 +53,7 @@ public sealed class GetEmployeeApprovalActivityQueryHandlerTests
     }
 
     private GetEmployeeApprovalActivityQueryHandler CreateHandler() =>
-        new(_guard.Object, _employees.Object, _leave.Object, _corrections.Object, _workAreas.Object,
+        new(_guard.Object, _leave.Object, _corrections.Object, _workAreas.Object,
             _locations.Object, _workApprovals.Object, _identity.Object, _user.Object, _clock.Object);
 
     private void ArrangeCorrections(params AttendanceCorrection[] items) =>
@@ -110,37 +105,11 @@ public sealed class GetEmployeeApprovalActivityQueryHandlerTests
     }
 
     [Fact]
-    public async Task Handle_Forbidden_WhenCallerMaySeeNoSourceAndIsNotViewingSelf()
+    public async Task Handle_DoesNotRequireAnyModulePermission()
     {
         _user.Setup(u => u.HasPermission(It.IsAny<string>())).Returns(false);
 
         var result = await CreateHandler().Handle(new GetEmployeeApprovalActivityQuery(_employeeId, null, null), CancellationToken.None);
-
-        result.StatusCode.Should().Be(403);
-    }
-
-    [Fact]
-    public async Task Handle_OnlyReadsTheSourcesTheCallerMaySee()
-    {
-        _user.Setup(u => u.HasPermission(It.IsAny<string>())).Returns(false);
-        _user.Setup(u => u.HasPermission("attendance:read")).Returns(true);
-        ArrangeCorrections(Correction("pending", "2026-09-05T08:00:00+00:00"));
-
-        var result = await CreateHandler().Handle(new GetEmployeeApprovalActivityQuery(_employeeId, From, To), CancellationToken.None);
-
-        result.Value!.Items.Should().ContainSingle(i => i.Kind == "attendance_correction");
-        _leave.Verify(l => l.ListOwnAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<LeaveRequestListFilter>(), It.IsAny<CancellationToken>()), Times.Never);
-        _workApprovals.Verify(w => w.ListRequestedByEmployeeAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<DateTimeOffset>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()), Times.Never);
-    }
-
-    [Fact]
-    public async Task Handle_AllowsSelfWithoutAnyModulePermission()
-    {
-        _user.Setup(u => u.HasPermission(It.IsAny<string>())).Returns(false);
-        _employees.Setup(e => e.GetDefaultForUserAsync(_tenantId, _userId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new EmployeeEntity { Id = _employeeId, TenantId = _tenantId });
-
-        var result = await CreateHandler().Handle(new GetEmployeeApprovalActivityQuery(_employeeId, From, To), CancellationToken.None);
 
         result.IsSuccess.Should().BeTrue();
     }

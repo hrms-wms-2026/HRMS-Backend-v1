@@ -2,7 +2,6 @@ using MediatR;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.Helpers;
-using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.ServiceInterfaces;
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.ServiceInterfaces;
 using ONEVO.Application.Features.Monitoring.Notifications.RepositoryInterfaces;
@@ -14,7 +13,6 @@ namespace ONEVO.Application.Features.TimeAttendance.Queries.EmployeeOverview.Get
 
 public sealed class GetEmployeeAttendanceDisciplineQueryHandler(
     IEmployeeReadAccessGuard guard,
-    IEmployeeRepository employees,
     IEmployeeAttendancePeriodReader reader,
     IMonitoringToggleResolver toggles,
     INotificationRepository notifications,
@@ -22,8 +20,6 @@ public sealed class GetEmployeeAttendanceDisciplineQueryHandler(
     IDateTimeProvider clock)
     : IRequestHandler<GetEmployeeAttendanceDisciplineQuery, Result<EmployeeAttendanceDisciplineResponse>>
 {
-    public const string ModulePermission = "attendance:read";
-
     public async Task<Result<EmployeeAttendanceDisciplineResponse>> Handle(
         GetEmployeeAttendanceDisciplineQuery request, CancellationToken ct)
     {
@@ -32,9 +28,6 @@ public sealed class GetEmployeeAttendanceDisciplineQueryHandler(
         var access = await guard.EnsureCanRead(tenantId, request.EmployeeId, ct);
         if (!access.IsSuccess)
             return Result<EmployeeAttendanceDisciplineResponse>.Failure(access.Error!, access.StatusCode ?? 400);
-
-        if (!await EmployeeOverviewAccess.HasAccessAsync(currentUser, employees, tenantId, request.EmployeeId, ModulePermission, ct))
-            return Result<EmployeeAttendanceDisciplineResponse>.Forbidden("You do not have access to this employee's attendance.");
 
         var compare = EmployeeOverviewCompare.Parse(request.Compare);
         if (!compare.IsSuccess)
