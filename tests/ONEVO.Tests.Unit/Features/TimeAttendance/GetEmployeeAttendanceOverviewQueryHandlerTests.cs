@@ -51,7 +51,8 @@ public sealed class GetEmployeeAttendanceOverviewQueryHandlerTests
             .ReturnsAsync(new AttendancePeriodData(
                 records, Colombo, DateTimeOffset.Parse("2026-08-21T00:00:00+00:00"), Today, 60,
                 new Dictionary<DateOnly, int>(), leaves ?? Array.Empty<LeaveRequest>(),
-                DateTimeOffset.MinValue, DateTimeOffset.MaxValue));
+                DateTimeOffset.MinValue, DateTimeOffset.MaxValue,
+                Weekdays(new DateOnly(2026, 8, 1), new DateOnly(2026, 8, 31), Today)));
 
     [Fact]
     public async Task Handle_PassesThroughGuardFailure_WithoutReadingData()
@@ -128,4 +129,7 @@ public sealed class GetEmployeeAttendanceOverviewQueryHandlerTests
         v.Days.Select(d => d.Status).Should().Equal("present", "late", "missing_clock_out", "leave", "absent");
         v.Days.Select(d => d.Date).Should().BeInAscendingOrder();
     }
+
+    private static ExpectedWorkdays Weekdays(DateOnly from, DateOnly to, DateOnly today) =>
+        ExpectedWorkdayCalendar.Build(new HashSet<int> { 1, 2, 3, 4, 5 }, new HashSet<DateOnly>(), from, to, new DateOnly(2020, 1, 1), null, today);
 }

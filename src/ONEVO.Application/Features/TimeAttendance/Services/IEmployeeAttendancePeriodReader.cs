@@ -14,7 +14,8 @@ public sealed record AttendancePeriodData(
     IReadOnlyDictionary<DateOnly, int> BreakMinutesByDate,
     IReadOnlyList<LeaveRequest> ApprovedLeaves,
     DateTimeOffset RangeStartUtc,
-    DateTimeOffset RangeEndUtc);
+    DateTimeOffset RangeEndUtc,
+    ExpectedWorkdays Workdays);
 
 public interface IEmployeeAttendancePeriodReader
 {

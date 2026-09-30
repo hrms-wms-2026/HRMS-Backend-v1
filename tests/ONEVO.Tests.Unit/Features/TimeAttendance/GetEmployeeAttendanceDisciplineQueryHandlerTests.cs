@@ -59,7 +59,8 @@ public sealed class GetEmployeeAttendanceDisciplineQueryHandlerTests
         _reader.Setup(r => r.LoadAsync(_tenantId, _employeeId, It.IsAny<Guid?>(), It.IsAny<EmployeePeriod>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new AttendancePeriodData(
                 records, Colombo, DateTimeOffset.Parse("2026-08-21T00:00:00+00:00"), Today, allowance, breaks,
-                Array.Empty<LeaveRequest>(), RangeStart, RangeEnd));
+                Array.Empty<LeaveRequest>(), RangeStart, RangeEnd,
+                Weekdays(new DateOnly(2026, 8, 1), new DateOnly(2026, 8, 31), Today)));
 
     private static readonly DateOnly D3 = new(2026, 8, 3);
     private static readonly DateOnly D4 = new(2026, 8, 4);
@@ -135,4 +136,7 @@ public sealed class GetEmployeeAttendanceDisciplineQueryHandlerTests
 
         result.StatusCode.Should().Be(400);
     }
+
+    private static ExpectedWorkdays Weekdays(DateOnly from, DateOnly to, DateOnly today) =>
+        ExpectedWorkdayCalendar.Build(new HashSet<int> { 1, 2, 3, 4, 5 }, new HashSet<DateOnly>(), from, to, new DateOnly(2020, 1, 1), null, today);
 }
