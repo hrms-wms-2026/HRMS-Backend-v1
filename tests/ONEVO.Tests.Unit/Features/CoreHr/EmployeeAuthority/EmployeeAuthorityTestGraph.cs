@@ -336,6 +336,7 @@ internal sealed class EmployeeAuthorityTestGraph
         public Task<IReadOnlyList<PositionActiveHolder>> GetActiveHoldersAsync(
             Guid tenantId, Guid positionId, CancellationToken ct = default)
         {
+            _graph.RecordCall("PositionAssignment.GetActiveHoldersAsync");
             var holders = _graph._assignments
                 .Where(a => a.TenantId == tenantId && a.PositionId == positionId
                     && a.AssignmentKind == PositionAssignmentKind.PrimaryEmployment

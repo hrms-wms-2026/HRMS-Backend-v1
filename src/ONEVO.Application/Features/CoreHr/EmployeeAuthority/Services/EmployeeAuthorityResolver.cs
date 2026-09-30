@@ -125,14 +125,18 @@ public sealed class EmployeeAuthorityResolver : IEmployeeAuthorityResolver
 
         var hasCompanyWideCoverage = coverageRows.Any(c => c.CoveredTargetType == ManagementCoverageRecord.TargetCompany);
 
-        // Position coverage: direct holder(s) of each covered position, plus their full
-        // reporting-line subtree (transitive downward visibility).
+        // Position coverage: direct holder(s) of each covered position (one batched lookup for
+        // every covered position), plus their full reporting-line subtree.
         var positionHolderIds = new HashSet<Guid>();
-        foreach (var positionId in coveredPositionIds)
+        if (coveredPositionIds.Count > 0)
         {
-            var holders = await _positionAssignmentRepository.GetActiveHoldersAsync(tenantId, positionId, ct);
-            foreach (var holder in holders)
-                positionHolderIds.Add(holder.EmployeeId);
+            var holdersByPosition = await _positionAssignmentRepository.GetActiveHoldersByPositionIdsAsync(
+                tenantId, coveredPositionIds, ct);
+            foreach (var holders in holdersByPosition.Values)
+            {
+                foreach (var holder in holders)
+                    positionHolderIds.Add(holder.EmployeeId);
+            }
         }
 
         if (positionHolderIds.Count > 0)
