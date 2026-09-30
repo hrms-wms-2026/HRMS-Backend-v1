@@ -23,10 +23,14 @@ using ONEVO.Application.Features.CoreHr.Employee.Commands.UpdateEmployeeJobDetai
 using ONEVO.Application.Features.CoreHr.Employee.Commands.UpdatePersonalInformation;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployee;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployeeApprovalActivity;
+using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployeeChecklistOverview;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployeeDetail;
+using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployeeHistory;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployeeIdentity;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployeeOverviewSignals;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployeePositionHistory;
+using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployeeRecentActivity;
+using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployeeUpcoming;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetMyPayroll;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetMyProfile;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.ListEmployees;
@@ -245,6 +249,48 @@ public class EmployeesController : ControllerBase
         Guid id, [FromQuery] DateOnly? from = null, [FromQuery] DateOnly? to = null, CancellationToken ct = default)
     {
         var result = await _mediator.Send(new GetEmployeeOverviewSignalsQuery(id, from, to), ct);
+        return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Overview checklists card: onboarding/offboarding task progress grouped by category.
+    /// Lifetime view (not period-aware).</summary>
+    [HttpGet("{id:guid}/overview/checklists")]
+    [RequirePermission("employees:read")]
+    public async Task<IActionResult> GetOverviewChecklists(Guid id, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new GetEmployeeChecklistOverviewQuery(id), ct);
+        return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Overview employee history: joined, probation, position and reporting-manager changes,
+    /// approved leave, completed checklist tasks and termination - newest first. Lifetime view.</summary>
+    [HttpGet("{id:guid}/overview/history")]
+    [RequirePermission("employees:read")]
+    public async Task<IActionResult> GetOverviewHistory(Guid id, [FromQuery] int limit = 20, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new GetEmployeeHistoryQuery(id, limit), ct);
+        return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Overview upcoming items: calendar events (private ones excluded), approved leave and
+    /// release reminders in the next N days (default 14, max 60). Not period-aware.</summary>
+    [HttpGet("{id:guid}/overview/upcoming")]
+    [RequirePermission("employees:read")]
+    public async Task<IActionResult> GetOverviewUpcoming(Guid id, [FromQuery] int days = 14, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new GetEmployeeUpcomingQuery(id, days), ct);
+        return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Overview recent activity: what the employee did (attendance, leave, Work Management),
+    /// newest first; pass the previous response's nextBefore as `before` for older items. Partial by
+    /// design - see GetEmployeeRecentActivityQueryHandler.</summary>
+    [HttpGet("{id:guid}/overview/recent-activity")]
+    [RequirePermission("employees:read")]
+    public async Task<IActionResult> GetOverviewRecentActivity(
+        Guid id, [FromQuery] DateTimeOffset? before = null, [FromQuery] int limit = 20, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new GetEmployeeRecentActivityQuery(id, before, limit), ct);
         return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
