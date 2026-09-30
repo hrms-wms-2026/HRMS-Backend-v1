@@ -146,6 +146,31 @@ public sealed class EmployeeAuthorityResolver : IEmployeeAuthorityResolver
         return new EmployeeAuthorityVisibilityScope(request.ActorUserId, request.LegalEntityId, includesSelf, finalIds);
     }
 
+    public async Task<bool> HasAnyManagedCoverageAsync(
+        EmployeeAuthorityVisibilityRequest request, CancellationToken cancellationToken = default)
+    {
+        var tenantId = _currentUser.TenantId;
+        var now = _clock.UtcNow;
+
+        var hasPermission = await _permissionRepository.UserHasPermissionCodeAsync(
+            request.ActorUserId, request.RequiredPermission, now, cancellationToken);
+        if (!hasPermission)
+            return false;
+
+        var coverage = await GetActorCoverageAsync(tenantId, request.ActorUserId, request.LegalEntityId, cancellationToken);
+        if (coverage.Actor is null)
+            return false;
+
+        var actorAssignment = await _positionAssignmentRepository.GetActivePrimaryAsync(
+            tenantId, coverage.Actor.Id, cancellationToken);
+        if (actorAssignment is null)
+            return false;
+
+        var coverageRows = await _positionRepository.ListCoverageByOwnerPositionAsync(
+            tenantId, request.LegalEntityId, actorAssignment.PositionId, cancellationToken);
+        return coverageRows.Any(c => c.Status == ManagementCoverageRecord.StatusActive);
+    }
+
     private async Task AddManagedVisibilityAsync(
         Guid tenantId, Guid legalEntityId, Guid ownerPositionId, HashSet<Guid> candidateIds, CancellationToken ct)
     {
