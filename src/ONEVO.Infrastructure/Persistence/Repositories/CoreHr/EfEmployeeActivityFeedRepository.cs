@@ -17,6 +17,7 @@ public sealed class EfEmployeeActivityFeedRepository(ApplicationDbContext db) : 
         var rows = new List<EmployeeActivityRow>();
 
         rows.AddRange(await AttendanceAndLeaveAsync(tenantId, employeeId, cutoff, take, ct));
+        rows.AddRange(await WorkAsync(tenantId, employeeId, userId, cutoff, take, ct));
 
         return rows
             .OrderByDescending(r => r.At)
@@ -69,6 +70,91 @@ public sealed class EfEmployeeActivityFeedRepository(ApplicationDbContext db) : 
             .OrderByDescending(l => l.RequestedAt).Take(take)
             .Select(l => new EmployeeActivityRow("location_change_requested", l.Id, l.RequestedAt, null, null))
             .ToListAsync(ct));
+
+        return rows;
+    }
+
+    private async Task<List<EmployeeActivityRow>> WorkAsync(
+        Guid tenantId, Guid employeeId, Guid userId, DateTimeOffset cutoff, int take, CancellationToken ct)
+    {
+        var rows = new List<EmployeeActivityRow>();
+        static string Label(string shortId, string title) => $"{shortId} {title}";
+
+        var created = await db.WorkTasks.AsNoTracking()
+            .Where(t => t.TenantId == tenantId && t.CreatedById == userId && t.CreatedAt < cutoff)
+            .OrderByDescending(t => t.CreatedAt).Take(take)
+            .Select(t => new { t.Id, t.CreatedAt, t.ShortId, t.Title })
+            .ToListAsync(ct);
+        rows.AddRange(created.Select(t => new EmployeeActivityRow("task_created", t.Id, t.CreatedAt, Label(t.ShortId, t.Title), null)));
+
+        var statusChanges = await (
+            from l in db.TaskStatusChangeLogs.AsNoTracking()
+            join t in db.WorkTasks.AsNoTracking() on l.TaskId equals t.Id
+            join s in db.TaskStatuses.AsNoTracking() on l.ToStatusId equals s.Id
+            where l.TenantId == tenantId && l.EmployeeId == employeeId && l.ChangedAt < cutoff
+            orderby l.ChangedAt descending
+            select new { l.Id, l.ChangedAt, t.ShortId, t.Title, ToStatus = s.Name }
+        ).Take(take).ToListAsync(ct);
+        rows.AddRange(statusChanges.Select(x => new EmployeeActivityRow(
+            "task_status_changed", x.Id, x.ChangedAt, Label(x.ShortId, x.Title), $"→ {x.ToStatus}")));
+
+        var edits = await (
+            from l in db.TaskEditLogs.AsNoTracking()
+            join t in db.WorkTasks.AsNoTracking() on l.TaskId equals t.Id
+            where l.TenantId == tenantId && l.EmployeeId == employeeId && l.ChangedAt < cutoff
+            orderby l.ChangedAt descending
+            select new { l.Id, l.ChangedAt, t.ShortId, t.Title }
+        ).Take(take).ToListAsync(ct);
+        rows.AddRange(edits.Select(x => new EmployeeActivityRow("task_edited", x.Id, x.ChangedAt, Label(x.ShortId, x.Title), null)));
+
+        var progress = await (
+            from l in db.TaskPercentageLogs.AsNoTracking()
+            join t in db.WorkTasks.AsNoTracking() on l.TaskId equals t.Id
+            where l.TenantId == tenantId && l.EmployeeId == employeeId && l.ChangedAt < cutoff
+            orderby l.ChangedAt descending
+            select new { l.Id, l.ChangedAt, t.ShortId, t.Title, l.PreviousPercent, l.NewPercent }
+        ).Take(take).ToListAsync(ct);
+        rows.AddRange(progress.Select(x => new EmployeeActivityRow(
+            "task_progress_changed", x.Id, x.ChangedAt, Label(x.ShortId, x.Title), $"{x.PreviousPercent}% → {x.NewPercent}%")));
+
+        // Comment text is deliberately never selected.
+        var comments = await (
+            from c in db.TaskComments.AsNoTracking()
+            join t in db.WorkTasks.AsNoTracking() on c.TaskId equals t.Id
+            where c.TenantId == tenantId && c.EmployeeId == employeeId && c.CreatedAt < cutoff
+            orderby c.CreatedAt descending
+            select new { c.Id, c.CreatedAt, t.ShortId, t.Title }
+        ).Take(take).ToListAsync(ct);
+        rows.AddRange(comments.Select(x => new EmployeeActivityRow("task_commented", x.Id, x.CreatedAt, Label(x.ShortId, x.Title), null)));
+
+        var clockIns = await (
+            from s in db.TaskClockingSessions.AsNoTracking()
+            join t in db.WorkTasks.AsNoTracking() on s.TaskId equals t.Id
+            where s.TenantId == tenantId && s.EmployeeId == employeeId && s.ClockInAt < cutoff
+            orderby s.ClockInAt descending
+            select new { s.Id, At = s.ClockInAt, t.ShortId, t.Title }
+        ).Take(take).ToListAsync(ct);
+        rows.AddRange(clockIns.Select(x => new EmployeeActivityRow("task_clocked_in", x.Id, x.At, Label(x.ShortId, x.Title), null)));
+
+        var clockOuts = await (
+            from s in db.TaskClockingSessions.AsNoTracking()
+            join t in db.WorkTasks.AsNoTracking() on s.TaskId equals t.Id
+            where s.TenantId == tenantId && s.EmployeeId == employeeId && s.ClockOutAt != null && s.ClockOutAt < cutoff
+            orderby s.ClockOutAt descending
+            select new { s.Id, At = s.ClockOutAt!.Value, t.ShortId, t.Title }
+        ).Take(take).ToListAsync(ct);
+        rows.AddRange(clockOuts.Select(x => new EmployeeActivityRow("task_clocked_out", x.Id, x.At, Label(x.ShortId, x.Title), null)));
+
+        var joins = await (
+            from m in db.ProjectMembers.AsNoTracking()
+            join o in db.Objectives.AsNoTracking() on m.ObjectiveId equals o.Id
+            join p in db.Projects.AsNoTracking() on m.ProjectId equals p.Id
+            where m.TenantId == tenantId && m.EmployeeId == employeeId && m.JoinedAt < cutoff
+            orderby m.JoinedAt descending
+            select new { m.Id, m.JoinedAt, o.IsDefault, ObjectiveTitle = o.Title, ProjectName = p.Name }
+        ).Take(take).ToListAsync(ct);
+        rows.AddRange(joins.Select(x => new EmployeeActivityRow(
+            "module_joined", x.Id, x.JoinedAt, x.IsDefault ? x.ProjectName : x.ObjectiveTitle, null)));
 
         return rows;
     }
