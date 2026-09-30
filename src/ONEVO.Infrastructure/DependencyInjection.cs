@@ -314,6 +314,7 @@ public static class DependencyInjection
         services.AddScoped<IEmployeeOffboardingCoverageGuard, ONEVO.Infrastructure.Services.CoreHr.Offboarding.EmployeeOffboardingCoverageGuard>();
         services.AddScoped<ONEVO.Application.Features.CoreHr.Employee.ServiceInterfaces.IEmployeeManageScopeGuard, ONEVO.Infrastructure.Services.CoreHr.EmployeeManageScopeGuard>();
         services.AddScoped<ONEVO.Application.Features.CoreHr.Employee.ServiceInterfaces.IEmployeeReadAccessGuard, ONEVO.Infrastructure.Services.CoreHr.EmployeeReadAccessGuard>();
+        services.AddScoped<ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces.IEmployeeActivityFeedRepository, ONEVO.Infrastructure.Persistence.Repositories.CoreHr.EfEmployeeActivityFeedRepository>();
         services.AddScoped<ONEVO.Application.Features.CoreHr.Onboarding.ServiceInterfaces.IChecklistTemplateAssigneeResolver, ONEVO.Infrastructure.Services.CoreHr.Onboarding.ChecklistTemplateAssigneeResolver>();
         services.AddScoped<ONEVO.Application.Features.CoreHr.Onboarding.Services.ChecklistTemplateTaskInputResolver>();
         services.AddScoped<IWorkModeRepository, EfWorkModeRepository>();
