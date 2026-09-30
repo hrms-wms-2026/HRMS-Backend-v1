@@ -27,6 +27,7 @@ Observed on dev tenant `dapi`, September 2026:
 New pure static helper `ExpectedWorkdayCalendar.Build(workingWeekdays, holidayDates, from, to, hireDate, terminationDate, today)`; `EmployeeAttendancePeriodReader` loads its inputs (employee row, tenant holiday events via new `ICalendarEventRepository.ListHolidayDatesAsync`) and exposes the result as `AttendancePeriodData.Workdays`. Holiday events are tenant-wide (that is how `SyncHolidayCalendarCommandHandler` stores them).
 
 - Effective range = `[max(from, employee.HireDate), min(to, employee.TerminationDate ?? to, todayInEntityTz)]`. Empty if inverted.
+- If the employee has no legal entity, or the entity's schedule is not configured (same `IsScheduleConfigured` rule clock-in uses: timezone + start < end), **no** date is expected — matching clock-in, and preventing a flood of false absences.
 - A date is expected iff its weekday ∈ `LegalEntity.StandardWorkingDays` (same parsing as `AttendanceScheduleResolver.ParseWorkingDays`) AND it is not a synced holiday calendar event for that legal entity.
 - Returns the ordered set of expected dates plus the set of holiday dates in range (with names).
 

@@ -160,9 +160,31 @@ public static class ExpectedWorkdayCalendar
 }
 ```
 
-In `AttendanceScheduleResolver.cs` change `private static HashSet<int> ParseWorkingDays(string? json)` to `public static HashSet<int> ParseWorkingDays(string? json)` (body unchanged).
+In `AttendanceScheduleResolver.cs` change `private static HashSet<int> ParseWorkingDays(string? json)` to `public static HashSet<int> ParseWorkingDays(string? json)` (body unchanged), and extract the existing `scheduleConfigured` expression from `ResolveForDate` into a public helper that `ResolveForDate` then calls:
 
-- [ ] **Step 4: Run tests** — same command → 6 passed.
+```csharp
+    /// <summary>Same rule clock-in uses: timezone set and resolvable, start and end set, start &lt; end.
+    /// When false, clock-in treats every day as a non-working day - the Overview must too.</summary>
+    public static bool IsScheduleConfigured(LegalEntity legalEntity) =>
+        !string.IsNullOrWhiteSpace(legalEntity.Timezone)
+        && TryFindTimezone(legalEntity.Timezone!, out _)
+        && legalEntity.WorkStartTime is not null
+        && legalEntity.WorkEndTime is not null
+        && legalEntity.WorkStartTime.Value < legalEntity.WorkEndTime.Value;
+```
+
+Add to `ExpectedWorkdayCalendarTests`:
+```csharp
+    [Fact]
+    public void NoWorkingWeekdays_MeansNoExpectedDays() // unconfigured schedule -> reader passes an empty set
+    {
+        var r = ExpectedWorkdayCalendar.Build(new HashSet<int>(), NoHolidays, Sep1, Sep30, new DateOnly(2020, 1, 1), null, Sep30);
+        r.Count.Should().Be(0);
+    }
+```
+and to the existing resolver tests (grep `AttendanceScheduleResolver` under `tests/ONEVO.Tests.Unit`): `IsScheduleConfigured` is false for a null/blank timezone, for a missing start or end, and for start ≥ end; true for `Asia/Colombo` 09:00–17:00.
+
+- [ ] **Step 4: Run tests** — same command → 7 passed, plus the new resolver cases.
 - [ ] **Step 5: Commit** — `git add` the three files; `git commit -m "feat(attendance): expected-workday calendar from legal entity week, holidays, hire/termination"`.
 
 ---
@@ -211,7 +233,11 @@ Append `ExpectedWorkdays Workdays` as the last parameter of `AttendancePeriodDat
 ```csharp
         var employee = await employees.GetByIdAsync(tenantId, employeeId, ct);
         var holidays = (await calendarEvents.ListHolidayDatesAsync(tenantId, period.From, period.To, ct)).ToHashSet();
-        var weekdays = AttendanceScheduleResolver.ParseWorkingDays(legalEntity?.StandardWorkingDays);
+        // No legal entity, or General settings without working hours/timezone: clock-in treats every
+        // day as non-working, so nothing is "expected" - otherwise every such employee floods with absences.
+        IReadOnlySet<int> weekdays = legalEntity is not null && AttendanceScheduleResolver.IsScheduleConfigured(legalEntity)
+            ? AttendanceScheduleResolver.ParseWorkingDays(legalEntity.StandardWorkingDays)
+            : new HashSet<int>();
         var workdays = ExpectedWorkdayCalendar.Build(
             weekdays, holidays, period.From, period.To,
             employee?.HireDate ?? period.From, employee?.TerminationDate, clock.Today);
