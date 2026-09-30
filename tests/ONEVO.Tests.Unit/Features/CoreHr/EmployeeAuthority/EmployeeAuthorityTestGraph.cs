@@ -578,9 +578,17 @@ internal sealed class EmployeeAuthorityTestGraph
         public FakeDepartmentRepository(EmployeeAuthorityTestGraph graph) => _graph = graph;
 
         public Task<IReadOnlyList<Guid>> GetDescendantDepartmentIdsAsync(
-            Guid tenantId, Guid legalEntityId, Guid departmentId, CancellationToken ct = default)
-            => Task.FromResult(_graph.DescendantDepartmentsOf(departmentId)
-                .Where(id => id != departmentId).ToList() as IReadOnlyList<Guid>);
+            Guid tenantId, Guid legalEntityId, IReadOnlyCollection<Guid> departmentIds, CancellationToken ct = default)
+        {
+            _graph.RecordCall("Department.GetDescendantDepartmentIdsAsync");
+            var roots = departmentIds.ToHashSet();
+            var result = departmentIds
+                .SelectMany(id => _graph.DescendantDepartmentsOf(id))
+                .Where(id => !roots.Contains(id))
+                .Distinct()
+                .ToList();
+            return Task.FromResult<IReadOnlyList<Guid>>(result);
+        }
 
         public Task<IReadOnlyList<ONEVO.Domain.Features.OrgStructure.Entities.Department>> ListByLegalEntityAsync(
             Guid tenantId, Guid legalEntityId, bool includeInactive, CancellationToken ct = default)

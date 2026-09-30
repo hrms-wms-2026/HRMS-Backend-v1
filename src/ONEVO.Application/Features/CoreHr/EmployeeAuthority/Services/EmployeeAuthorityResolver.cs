@@ -145,10 +145,10 @@ public sealed class EmployeeAuthorityResolver : IEmployeeAuthorityResolver
         // Department coverage: employees directly in each covered department or any of its
         // descendant departments.
         var expandedDepartmentIds = new HashSet<Guid>(coveredDepartmentIds);
-        foreach (var departmentId in coveredDepartmentIds)
+        if (coveredDepartmentIds.Count > 0)
         {
             var descendantDeptIds = await _departmentRepository.GetDescendantDepartmentIdsAsync(
-                tenantId, legalEntityId, departmentId, ct);
+                tenantId, legalEntityId, coveredDepartmentIds, ct);
             expandedDepartmentIds.UnionWith(descendantDeptIds);
         }
 
