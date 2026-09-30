@@ -23,6 +23,7 @@ using ONEVO.Application.Features.CoreHr.Employee.Commands.UpdateEmployeeJobDetai
 using ONEVO.Application.Features.CoreHr.Employee.Commands.UpdatePersonalInformation;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployee;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployeeApprovalActivity;
+using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployeeChecklistOverview;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployeeDetail;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployeeIdentity;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployeePositionHistory;
@@ -83,7 +84,6 @@ public class EmployeesController : ControllerBase
                 sortBy,
                 string.Equals(sortDir, "desc", StringComparison.OrdinalIgnoreCase),
                 activeOnly), ct);
-
 
         return result.IsSuccess
             ? Ok(result.Value)
@@ -232,6 +232,16 @@ public class EmployeesController : ControllerBase
         Guid id, [FromQuery] DateOnly? from = null, [FromQuery] DateOnly? to = null, CancellationToken ct = default)
     {
         var result = await _mediator.Send(new GetEmployeeApprovalActivityQuery(id, from, to), ct);
+        return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Overview checklists card: onboarding/offboarding task progress grouped by category.
+    /// Lifetime view (not period-aware).</summary>
+    [HttpGet("{id:guid}/overview/checklists")]
+    [RequirePermission("employees:read")]
+    public async Task<IActionResult> GetOverviewChecklists(Guid id, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new GetEmployeeChecklistOverviewQuery(id), ct);
         return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
