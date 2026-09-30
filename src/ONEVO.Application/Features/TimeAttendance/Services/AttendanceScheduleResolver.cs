@@ -58,17 +58,12 @@ public static class AttendanceScheduleResolver
     {
         var configuredTimezone = !string.IsNullOrWhiteSpace(legalEntity.Timezone);
         var timezone = configuredTimezone ? legalEntity.Timezone! : "UTC";
-        var timezoneResolved = TryFindTimezone(timezone, out var zone);
+        TryFindTimezone(timezone, out var zone);
         var localNow = TimeZoneInfo.ConvertTime(utcNow, zone);
         var configuredStart = legalEntity.WorkStartTime;
         var configuredEnd = legalEntity.WorkEndTime;
-        var scheduleConfigured = configuredTimezone
-            && timezoneResolved
-            && configuredStart is not null
-            && configuredEnd is not null
-            && configuredStart.Value < configuredEnd.Value;
 
-        var schedule = !scheduleConfigured
+        var schedule = !IsScheduleConfigured(legalEntity)
             ? new AttendanceSchedule("not_configured", false, null, null, null)
             : new AttendanceSchedule(
                 "configured",
@@ -94,6 +89,15 @@ public static class AttendanceScheduleResolver
             && actualStart is null;
     }
 
+    /// <summary>Same rule clock-in uses: timezone set and resolvable, start and end set, start &lt; end.
+    /// When false, clock-in treats every day as a non-working day - the Overview must too.</summary>
+    public static bool IsScheduleConfigured(LegalEntity legalEntity) =>
+        !string.IsNullOrWhiteSpace(legalEntity.Timezone)
+        && TryFindTimezone(legalEntity.Timezone!, out _)
+        && legalEntity.WorkStartTime is not null
+        && legalEntity.WorkEndTime is not null
+        && legalEntity.WorkStartTime.Value < legalEntity.WorkEndTime.Value;
+
     private static bool TryFindTimezone(string timezone, out TimeZoneInfo zone)
     {
         try
@@ -110,7 +114,7 @@ public static class AttendanceScheduleResolver
         }
     }
 
-    private static HashSet<int> ParseWorkingDays(string? json)
+    public static HashSet<int> ParseWorkingDays(string? json)
     {
         try
         {
