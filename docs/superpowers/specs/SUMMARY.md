@@ -29,6 +29,7 @@ Every file here says `**Status:** Approved...` at the top — that field is the 
 | `finished/2026-09-21/2026-09-21-task-subtasks-design.md` | backend finished | `plans/finished/2026-09-21/2026-09-21-task-subtasks-backend.md` (6/6 tasks, executed 2026-09-21) |
 | `next/2026-08-16-employee-detail-screen-backend-design.md` | pending | `plans/next/2026-08-16-employee-detail-screen-backend.md` (plan written, not yet implemented) |
 | `next/2026-09-22-centralized-file-upload-design.md` | pending | none written yet — approved 2026-09-22, companion to the frontend repo's same-named design doc |
+| `next/2026-09-30-employee-overview-signals-and-period-correctness-design.md` | pending | `plans/next/2026-09-30-employee-overview-signals-backend/` (2 parts) + frontend repo `plans/next/2026-09-30-employee-overview-signals-frontend/` (3 parts), written 2026-09-30 |
 
 ## Open items
 
