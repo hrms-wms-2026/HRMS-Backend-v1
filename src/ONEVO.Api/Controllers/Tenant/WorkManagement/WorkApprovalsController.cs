@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ONEVO.Api.Filters;
 using ONEVO.Application.Features.WorkManagement.Approvals.Commands.DecideWorkApprovalRequest;
+using ONEVO.Application.Features.WorkManagement.Approvals.Queries.GetProjectApprovalFeed;
 using ONEVO.Application.Features.WorkManagement.Approvals.Queries.ListProjectWorkApprovals;
 using ONEVO.Application.Features.WorkManagement.Notifications.Queries.ListProjectWorkNotifications;
 
@@ -26,6 +27,11 @@ public class WorkApprovalsController : ControllerBase
     [HttpGet("projects/{projectId:guid}/approvals")]
     public async Task<IActionResult> List(Guid projectId, [FromQuery] string scope = "inbox", [FromQuery] string? status = null, CancellationToken ct = default)
         => ToResult(await _mediator.Send(new ListProjectWorkApprovalsQuery(projectId, scope, status), ct));
+
+    /// <summary>Every request the caller sent or received in this project (engine requests + module invitations), pending first.</summary>
+    [HttpGet("projects/{projectId:guid}/approval-feed")]
+    public async Task<IActionResult> Feed(Guid projectId, CancellationToken ct)
+        => ToResult(await _mediator.Send(new GetProjectApprovalFeedQuery(projectId), ct));
 
     [HttpPost("approvals/{id:guid}/approve")]
     public async Task<IActionResult> Approve(Guid id, [FromBody] ApproveWorkApprovalRequestRequest? body, CancellationToken ct)
