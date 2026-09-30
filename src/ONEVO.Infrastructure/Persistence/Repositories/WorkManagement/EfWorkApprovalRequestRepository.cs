@@ -13,6 +13,9 @@ public class EfWorkApprovalRequestRepository : IWorkApprovalRequestRepository
     public async Task AddAsync(WorkApprovalRequest request, CancellationToken ct = default)
         => await _db.WorkApprovalRequests.AddAsync(request, ct);
 
+    public async Task<WorkApprovalRequest?> GetByIdForTenantAsync(Guid tenantId, Guid id, CancellationToken ct = default)
+        => await _db.WorkApprovalRequests.AsNoTracking().FirstOrDefaultAsync(r => r.TenantId == tenantId && r.Id == id, ct);
+
     public async Task<WorkApprovalRequest?> GetTrackedByIdForTenantAsync(Guid tenantId, Guid id, CancellationToken ct = default)
         => await _db.WorkApprovalRequests.FirstOrDefaultAsync(r => r.TenantId == tenantId && r.Id == id, ct);
 

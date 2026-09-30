@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ONEVO.Api.Filters;
 using ONEVO.Application.Features.WorkManagement.Approvals.Commands.DecideWorkApprovalRequest;
+using ONEVO.Application.Features.WorkManagement.Approvals.Queries.GetApprovalDetail;
 using ONEVO.Application.Features.WorkManagement.Approvals.Queries.GetProjectApprovalFeed;
 using ONEVO.Application.Features.WorkManagement.Approvals.Queries.ListProjectWorkApprovals;
 using ONEVO.Application.Features.WorkManagement.Notifications.Queries.ListProjectWorkNotifications;
@@ -32,6 +33,11 @@ public class WorkApprovalsController : ControllerBase
     [HttpGet("projects/{projectId:guid}/approval-feed")]
     public async Task<IActionResult> Feed(Guid projectId, CancellationToken ct)
         => ToResult(await _mediator.Send(new GetProjectApprovalFeedQuery(projectId), ct));
+
+    /// <summary>The explanation card of one row: field diff (current / requested / applied), invitation detail, permissions.</summary>
+    [HttpGet("approvals/{id:guid}")]
+    public async Task<IActionResult> Detail(Guid id, [FromQuery] string source = "engine", CancellationToken ct = default)
+        => ToResult(await _mediator.Send(new GetApprovalDetailQuery(id, source), ct));
 
     [HttpPost("approvals/{id:guid}/approve")]
     public async Task<IActionResult> Approve(Guid id, [FromBody] ApproveWorkApprovalRequestRequest? body, CancellationToken ct)
