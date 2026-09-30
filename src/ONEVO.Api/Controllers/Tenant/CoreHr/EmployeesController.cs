@@ -35,6 +35,9 @@ using ONEVO.Application.Features.TimeAttendance.Queries.EmployeeOverview.GetEmpl
 using ONEVO.Application.Features.TimeAttendance.Queries.EmployeeOverview.GetEmployeeAttendanceOverview;
 using ONEVO.Application.Features.WorkManagement.EmployeeOverview.Queries.GetEmployeeDelivery;
 using ONEVO.Application.Features.WorkManagement.EmployeeOverview.Queries.GetEmployeeWorkOverview;
+using ONEVO.Application.Features.Monitoring.ActivityMonitoring.Queries.EmployeeWorkActivity.GetEmployeeActivityByHour;
+using ONEVO.Application.Features.Monitoring.ActivityMonitoring.Queries.EmployeeWorkActivity.GetEmployeeAppUsage;
+using ONEVO.Application.Features.Monitoring.ActivityMonitoring.Queries.EmployeeWorkActivity.GetEmployeeWorkPattern;
 using ONEVO.Application.Features.WorkManagement.EmployeeOverview.Queries.WorkActivity.GetEmployeeDeliveryTrend;
 using ONEVO.Application.Features.WorkManagement.EmployeeOverview.Queries.WorkActivity.GetEmployeeNeedsAttention;
 using ONEVO.Application.Features.WorkManagement.EmployeeOverview.Queries.WorkActivity.GetEmployeeRecentTasks;
@@ -265,6 +268,36 @@ public class EmployeesController : ControllerBase
     public async Task<IActionResult> GetWorkActivityDeliveryTrend(Guid id, [FromQuery] DateOnly? to = null, CancellationToken ct = default)
     {
         var result = await _mediator.Send(new GetEmployeeDeliveryTrendQuery(id, to), ct);
+        return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Work & Activity hourly chart: active minutes per local hour of day over the period (max 31 days).</summary>
+    [HttpGet("{id:guid}/work-activity/activity-by-hour")]
+    [RequirePermission("employees:read")]
+    public async Task<IActionResult> GetWorkActivityByHour(
+        Guid id, [FromQuery] DateOnly? from = null, [FromQuery] DateOnly? to = null, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new GetEmployeeActivityByHourQuery(id, from, to), ct);
+        return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Work & Activity Application usage card: top 5 apps with minutes, sessions and last use (max 31 days).</summary>
+    [HttpGet("{id:guid}/work-activity/app-usage")]
+    [RequirePermission("employees:read")]
+    public async Task<IActionResult> GetWorkActivityAppUsage(
+        Guid id, [FromQuery] DateOnly? from = null, [FromQuery] DateOnly? to = null, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new GetEmployeeAppUsageQuery(id, from, to), ct);
+        return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Work & Activity Work pattern card: focus blocks, top app and longest idle period (max 31 days).</summary>
+    [HttpGet("{id:guid}/work-activity/work-pattern")]
+    [RequirePermission("employees:read")]
+    public async Task<IActionResult> GetWorkActivityWorkPattern(
+        Guid id, [FromQuery] DateOnly? from = null, [FromQuery] DateOnly? to = null, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new GetEmployeeWorkPatternQuery(id, from, to), ct);
         return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
