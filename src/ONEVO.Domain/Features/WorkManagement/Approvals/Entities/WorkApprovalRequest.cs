@@ -72,6 +72,9 @@ public class WorkApprovalRequest : BaseEntity
     public Guid ApproverEmployeeId { get; set; }
     public Guid RequestedByEmployeeId { get; set; }
     public string PayloadJson { get; set; } = "{}";
+    /// <summary>The payload actually applied, set only when the approver changed the requested values
+    /// before approving. PayloadJson always keeps what was requested.</summary>
+    public string? AppliedPayloadJson { get; set; }
     public string Status { get; set; } = WorkApprovalRequestStatuses.Pending;
     public Guid? DecidedByEmployeeId { get; set; }
     public string? DecisionComment { get; set; }
