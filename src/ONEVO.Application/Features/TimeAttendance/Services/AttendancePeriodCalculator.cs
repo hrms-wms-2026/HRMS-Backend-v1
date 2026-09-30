@@ -1,3 +1,4 @@
+using ONEVO.Application.Features.TimeAttendance.DTOs.Responses;
 using ONEVO.Domain.Features.Leave.Request.Entities;
 using ONEVO.Domain.Features.TimeAttendance.Entities;
 
@@ -9,6 +10,11 @@ public sealed record AttendancePeriodCounts(
     int LateArrivals,
     int EarlyDepartures,
     int MissingClockOuts);
+
+public sealed record AttendancePeriodClassification(
+    int WorkingDays, int Attended, int Late, int EarlyDepartures, int MissingClockOuts,
+    int Absent, int Leave, int ShortHours, int WorkedOnNonWorkingDay, int WorkedDuringTimeOff,
+    IReadOnlyList<EmployeeAttendanceDay> Days);
 
 /// <summary>
 /// The late / early-departure / missing-clock-out rules behind every attendance summary. Moved
@@ -59,6 +65,49 @@ public static class AttendancePeriodCalculator
         }
 
         return new AttendancePeriodCounts(workingDays, daysPresent, late, early, missing);
+    }
+
+    /// <summary>Classifies every date of the period against the expected-workday calendar. The
+    /// single source for WorkingDays/Absent - never derive those from which records exist.
+    /// Late and missing-clock-out are counted independently (as Count does); the day status
+    /// shows missing_clock_out first.</summary>
+    public static AttendancePeriodClassification Classify(AttendancePeriodData data)
+    {
+        var w = data.Workdays;
+        var byDate = data.Records.GroupBy(r => r.Date).ToDictionary(g => g.Key, g => g.First());
+        int attended = 0, late = 0, early = 0, missing = 0, absent = 0, leave = 0, shortHours = 0, offDayWork = 0, leaveWork = 0;
+        var days = new List<EmployeeAttendanceDay>();
+
+        for (var d = w.PeriodFrom; d <= w.PeriodTo; d = d.AddDays(1))
+        {
+            if (!w.InEffectiveRange(d)) { days.Add(new(d, "none")); continue; }
+
+            var expected = w.ExpectedDates.Contains(d);
+            var onLeave = data.ApprovedLeaves.Any(l => CoversDate(l, d));
+            byDate.TryGetValue(d, out var record);
+
+            if (record?.ActualStart is not null)
+            {
+                attended++;
+                var isMissing = IsMissingClockOut(record, data.Now);
+                var isLate = IsLate(record, data.Timezone);
+                if (isMissing) missing++;
+                if (isLate) late++;
+                if (IsEarlyDeparture(record, data.Timezone)) early++;
+                if (!expected) offDayWork++;
+                else if (onLeave) leaveWork++;
+                if (expected && record.ActualEnd is not null && record.RequiredWorkMinutes is int req && record.WorkedMinutes < req)
+                    shortHours++;
+                days.Add(new(d, isMissing ? "missing_clock_out" : isLate ? "late" : "present"));
+            }
+            else if (!expected) days.Add(new(d, "off"));
+            else if (onLeave) { leave++; days.Add(new(d, "leave")); }
+            else if (d < data.Today) { absent++; days.Add(new(d, "absent")); }
+            else days.Add(new(d, "none"));
+        }
+
+        return new AttendancePeriodClassification(
+            w.Count, attended, late, early, missing, absent, leave, shortHours, offDayWork, leaveWork, days);
     }
 
     public static string DayStatus(

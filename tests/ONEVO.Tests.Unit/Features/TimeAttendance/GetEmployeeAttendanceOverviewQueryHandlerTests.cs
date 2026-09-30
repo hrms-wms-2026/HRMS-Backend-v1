@@ -121,12 +121,21 @@ public sealed class GetEmployeeAttendanceOverviewQueryHandlerTests
             new GetEmployeeAttendanceOverviewQuery(_employeeId, new DateOnly(2026, 8, 1), new DateOnly(2026, 8, 31)), CancellationToken.None);
 
         var v = result.Value!;
-        v.WorkingDays.Should().Be(5);
+        // Working days come from the calendar (Mon-Fri, Aug 1..Today=Aug 21 -> 15), not the 5 rows.
+        v.WorkingDays.Should().Be(15);
         v.Present.Should().Be(3);
         v.Late.Should().Be(1);
         v.MissingClockOuts.Should().Be(1);
         v.LeaveDays.Should().Be(1);
-        v.Days.Select(d => d.Status).Should().Equal("present", "late", "missing_clock_out", "leave", "absent");
+        // 14 past weekdays - 3 attended - 1 leave; today (Aug 21) is not yet absent.
+        v.Absent.Should().Be(10);
+        v.Days.Should().HaveCount(31);
+        string StatusOn(int day) => v.Days.Single(d => d.Date == new DateOnly(2026, 8, day)).Status;
+        new[] { StatusOn(3), StatusOn(4), StatusOn(6), StatusOn(7), StatusOn(10) }
+            .Should().Equal("present", "late", "missing_clock_out", "leave", "absent");
+        StatusOn(1).Should().Be("off");   // Saturday
+        StatusOn(21).Should().Be("none"); // today, not clocked in
+        StatusOn(24).Should().Be("none"); // future
         v.Days.Select(d => d.Date).Should().BeInAscendingOrder();
     }
 
