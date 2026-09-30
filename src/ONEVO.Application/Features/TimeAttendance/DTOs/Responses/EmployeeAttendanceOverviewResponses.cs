@@ -12,3 +12,17 @@ public sealed record EmployeeAttendanceOverviewResponse(
     int MissingClockOuts,
     int LeaveDays,
     IReadOnlyList<EmployeeAttendanceDay> Days);
+
+/// <summary>LocationViolations is null (and LocationTrackingEnabled false) when work-location
+/// verification is not enabled for this employee. It counts OutsideWorkLocationAlert
+/// notifications, i.e. alert events (6-hour cooldown), not GPS samples.</summary>
+public sealed record EmployeeAttendanceDisciplineResponse(
+    DateOnly From,
+    DateOnly To,
+    int LateClockIns,
+    int EarlyClockOuts,
+    int MissingClockOuts,
+    int OverBreakDays,
+    int OverBreakMinutes,
+    bool LocationTrackingEnabled,
+    int? LocationViolations);

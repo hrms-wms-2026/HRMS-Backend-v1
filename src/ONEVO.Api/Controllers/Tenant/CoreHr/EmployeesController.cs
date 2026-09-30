@@ -28,6 +28,7 @@ using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployeePositionHist
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetMyPayroll;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetMyProfile;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.ListEmployees;
+using ONEVO.Application.Features.TimeAttendance.Queries.EmployeeOverview.GetEmployeeAttendanceDiscipline;
 using ONEVO.Application.Features.TimeAttendance.Queries.EmployeeOverview.GetEmployeeAttendanceOverview;
 using ONEVO.Application.Features.WorkManagement.EmployeeWorkGraph.Queries.GetEmployeeWorkGraph;
 
@@ -153,6 +154,17 @@ public class EmployeesController : ControllerBase
         Guid id, [FromQuery] DateOnly? from = null, [FromQuery] DateOnly? to = null, CancellationToken ct = default)
     {
         var result = await _mediator.Send(new GetEmployeeAttendanceOverviewQuery(id, from, to), ct);
+        return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Overview attendance-discipline card: late clock-ins, early clock-outs, missing
+    /// clock-outs, over-break days/minutes and (when location tracking is on) location alerts.</summary>
+    [HttpGet("{id:guid}/overview/attendance-discipline")]
+    [RequirePermission("employees:read")]
+    public async Task<IActionResult> GetOverviewAttendanceDiscipline(
+        Guid id, [FromQuery] DateOnly? from = null, [FromQuery] DateOnly? to = null, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new GetEmployeeAttendanceDisciplineQuery(id, from, to), ct);
         return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
