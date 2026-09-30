@@ -4,18 +4,15 @@ using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.DTOs.Responses;
 using ONEVO.Application.Features.CoreHr.Employee.Helpers;
-using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.EmployeeOverview.Queries.GetEmployeeDelivery;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
-using EmployeeEntity = ONEVO.Domain.Features.CoreHr.Entities.Employee;
 
 namespace ONEVO.Tests.Unit.Features.WorkManagement;
 
 public sealed class GetEmployeeDeliveryQueryHandlerTests
 {
     private readonly Mock<IEmployeeReadAccessGuard> _guard = new();
-    private readonly Mock<IEmployeeRepository> _employees = new();
     private readonly Mock<IWorkTaskRepository> _tasks = new();
     private readonly Mock<ICurrentUser> _user = new();
     private readonly Mock<IDateTimeProvider> _clock = new();
@@ -38,7 +35,7 @@ public sealed class GetEmployeeDeliveryQueryHandlerTests
     }
 
     private GetEmployeeDeliveryQueryHandler CreateHandler() =>
-        new(_guard.Object, _employees.Object, _tasks.Object, _user.Object, _clock.Object);
+        new(_guard.Object, _tasks.Object, _user.Object, _clock.Object);
 
     private void ArrangeRows(DateOnly from, DateOnly to, params EmployeeTaskPeriodRow[] rows) =>
         _tasks.Setup(t => t.ListForEmployeePeriodAsync(_tenantId, _employeeId, from, to, It.IsAny<CancellationToken>()))
@@ -48,15 +45,14 @@ public sealed class GetEmployeeDeliveryQueryHandlerTests
         new(DateOnly.Parse(due), DateTimeOffset.Parse(completed), 100, true, points);
 
     [Fact]
-    public async Task Handle_Forbidden_WhenCallerLacksTasksReadAndIsNotViewingSelf()
+    public async Task Handle_DoesNotRequireAnyModulePermission()
     {
         _user.Setup(u => u.HasPermission("tasks:read")).Returns(false);
-        _employees.Setup(e => e.GetDefaultForUserAsync(_tenantId, It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new EmployeeEntity { Id = Guid.NewGuid(), TenantId = _tenantId });
+        ArrangeRows(SepFrom, SepTo);
 
-        var result = await CreateHandler().Handle(new GetEmployeeDeliveryQuery(_employeeId, null, null), CancellationToken.None);
+        var result = await CreateHandler().Handle(new GetEmployeeDeliveryQuery(_employeeId, SepFrom, SepTo), CancellationToken.None);
 
-        result.StatusCode.Should().Be(403);
+        result.IsSuccess.Should().BeTrue();
     }
 
     [Fact]

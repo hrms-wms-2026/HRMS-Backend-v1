@@ -4,7 +4,6 @@ using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.DTOs.Responses;
 using ONEVO.Application.Features.CoreHr.Employee.Helpers;
-using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.ServiceInterfaces;
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.ServiceInterfaces;
 using ONEVO.Application.Features.Monitoring.Notifications.RepositoryInterfaces;
@@ -19,7 +18,6 @@ namespace ONEVO.Tests.Unit.Features.TimeAttendance;
 public sealed class GetEmployeeAttendanceDisciplineCompareTests
 {
     private readonly Mock<IEmployeeReadAccessGuard> _guard = new();
-    private readonly Mock<IEmployeeRepository> _employees = new();
     private readonly Mock<IEmployeeAttendancePeriodReader> _reader = new();
     private readonly Mock<IMonitoringToggleResolver> _toggles = new();
     private readonly Mock<INotificationRepository> _notifications = new();
@@ -49,7 +47,7 @@ public sealed class GetEmployeeAttendanceDisciplineCompareTests
     }
 
     private GetEmployeeAttendanceDisciplineQueryHandler CreateHandler() =>
-        new(_guard.Object, _employees.Object, _reader.Object, _toggles.Object, _notifications.Object, _user.Object, _clock.Object);
+        new(_guard.Object, _reader.Object, _toggles.Object, _notifications.Object, _user.Object, _clock.Object);
 
     private AttendanceRecord Late(DateOnly d) => new()
     {

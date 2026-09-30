@@ -2,7 +2,6 @@ using MediatR;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.Helpers;
-using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.ServiceInterfaces;
 using ONEVO.Application.Features.TimeAttendance.DTOs.Responses;
 using ONEVO.Application.Features.TimeAttendance.Services;
@@ -11,14 +10,11 @@ namespace ONEVO.Application.Features.TimeAttendance.Queries.EmployeeOverview.Get
 
 public sealed class GetEmployeeAttendanceOverviewQueryHandler(
     IEmployeeReadAccessGuard guard,
-    IEmployeeRepository employees,
     IEmployeeAttendancePeriodReader reader,
     ICurrentUser currentUser,
     IDateTimeProvider clock)
     : IRequestHandler<GetEmployeeAttendanceOverviewQuery, Result<EmployeeAttendanceOverviewResponse>>
 {
-    public const string ModulePermission = "attendance:read";
-
     public async Task<Result<EmployeeAttendanceOverviewResponse>> Handle(
         GetEmployeeAttendanceOverviewQuery request, CancellationToken ct)
     {
@@ -27,9 +23,6 @@ public sealed class GetEmployeeAttendanceOverviewQueryHandler(
         var access = await guard.EnsureCanRead(tenantId, request.EmployeeId, ct);
         if (!access.IsSuccess)
             return Result<EmployeeAttendanceOverviewResponse>.Failure(access.Error!, access.StatusCode ?? 400);
-
-        if (!await EmployeeOverviewAccess.HasAccessAsync(currentUser, employees, tenantId, request.EmployeeId, ModulePermission, ct))
-            return Result<EmployeeAttendanceOverviewResponse>.Forbidden("You do not have access to this employee's attendance.");
 
         var period = EmployeePeriod.Resolve(request.From, request.To, clock.Today);
         if (!period.IsSuccess)

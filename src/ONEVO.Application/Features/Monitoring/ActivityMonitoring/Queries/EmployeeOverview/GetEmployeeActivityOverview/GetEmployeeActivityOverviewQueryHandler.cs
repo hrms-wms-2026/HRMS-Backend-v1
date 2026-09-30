@@ -2,7 +2,6 @@ using MediatR;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.Helpers;
-using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.ServiceInterfaces;
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.DTOs.Responses;
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.RepositoryInterfaces;
@@ -12,15 +11,12 @@ namespace ONEVO.Application.Features.Monitoring.ActivityMonitoring.Queries.Emplo
 
 public sealed class GetEmployeeActivityOverviewQueryHandler(
     IEmployeeReadAccessGuard guard,
-    IEmployeeRepository employees,
     IActivityDailySummaryRepository summaries,
     IMonitoringToggleResolver toggles,
     ICurrentUser currentUser,
     IDateTimeProvider clock)
     : IRequestHandler<GetEmployeeActivityOverviewQuery, Result<EmployeeActivityOverviewResponse>>
 {
-    public const string ModulePermission = "monitoring:read";
-
     public async Task<Result<EmployeeActivityOverviewResponse>> Handle(
         GetEmployeeActivityOverviewQuery request, CancellationToken ct)
     {
@@ -29,9 +25,6 @@ public sealed class GetEmployeeActivityOverviewQueryHandler(
         var access = await guard.EnsureCanRead(tenantId, request.EmployeeId, ct);
         if (!access.IsSuccess)
             return Result<EmployeeActivityOverviewResponse>.Failure(access.Error!, access.StatusCode ?? 400);
-
-        if (!await EmployeeOverviewAccess.HasAccessAsync(currentUser, employees, tenantId, request.EmployeeId, ModulePermission, ct))
-            return Result<EmployeeActivityOverviewResponse>.Forbidden("You do not have access to this employee's activity.");
 
         var compare = EmployeeOverviewCompare.Parse(request.Compare);
         if (!compare.IsSuccess)

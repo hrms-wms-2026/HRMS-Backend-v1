@@ -3,18 +3,15 @@ using Moq;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.DTOs.Responses;
-using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.EmployeeOverview.Queries.GetEmployeeWorkOverview;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
-using EmployeeEntity = ONEVO.Domain.Features.CoreHr.Entities.Employee;
 
 namespace ONEVO.Tests.Unit.Features.WorkManagement;
 
 public sealed class GetEmployeeWorkOverviewQueryHandlerTests
 {
     private readonly Mock<IEmployeeReadAccessGuard> _guard = new();
-    private readonly Mock<IEmployeeRepository> _employees = new();
     private readonly Mock<IWorkTaskRepository> _tasks = new();
     private readonly Mock<ICurrentUser> _user = new();
     private readonly Mock<IDateTimeProvider> _clock = new();
@@ -34,7 +31,7 @@ public sealed class GetEmployeeWorkOverviewQueryHandlerTests
     }
 
     private GetEmployeeWorkOverviewQueryHandler CreateHandler() =>
-        new(_guard.Object, _employees.Object, _tasks.Object, _user.Object, _clock.Object);
+        new(_guard.Object, _tasks.Object, _user.Object, _clock.Object);
 
     private void ArrangeRows(params EmployeeTaskPeriodRow[] rows) =>
         _tasks.Setup(t => t.ListForEmployeePeriodAsync(_tenantId, _employeeId, It.IsAny<DateOnly>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
@@ -55,15 +52,14 @@ public sealed class GetEmployeeWorkOverviewQueryHandlerTests
     }
 
     [Fact]
-    public async Task Handle_Forbidden_WhenCallerLacksTasksReadAndIsNotViewingSelf()
+    public async Task Handle_DoesNotRequireAnyModulePermission()
     {
         _user.Setup(u => u.HasPermission("tasks:read")).Returns(false);
-        _employees.Setup(e => e.GetDefaultForUserAsync(_tenantId, _userId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new EmployeeEntity { Id = Guid.NewGuid(), TenantId = _tenantId });
+        ArrangeRows();
 
         var result = await CreateHandler().Handle(new GetEmployeeWorkOverviewQuery(_employeeId, null, null), CancellationToken.None);
 
-        result.StatusCode.Should().Be(403);
+        result.IsSuccess.Should().BeTrue();
     }
 
     [Fact]

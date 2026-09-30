@@ -3,20 +3,17 @@ using Moq;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.DTOs.Responses;
-using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.ServiceInterfaces;
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.Queries.EmployeeOverview.GetEmployeeActivityOverview;
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.ServiceInterfaces;
 using ONEVO.Domain.Features.Monitoring.ActivityMonitoring.Entities;
-using EmployeeEntity = ONEVO.Domain.Features.CoreHr.Entities.Employee;
 
 namespace ONEVO.Tests.Unit.Features.Monitoring;
 
 public sealed class GetEmployeeActivityOverviewQueryHandlerTests
 {
     private readonly Mock<IEmployeeReadAccessGuard> _guard = new();
-    private readonly Mock<IEmployeeRepository> _employees = new();
     private readonly Mock<IActivityDailySummaryRepository> _summaries = new();
     private readonly Mock<IMonitoringToggleResolver> _toggles = new();
     private readonly Mock<ICurrentUser> _user = new();
@@ -43,7 +40,7 @@ public sealed class GetEmployeeActivityOverviewQueryHandlerTests
     }
 
     private GetEmployeeActivityOverviewQueryHandler CreateHandler() =>
-        new(_guard.Object, _employees.Object, _summaries.Object, _toggles.Object, _user.Object, _clock.Object);
+        new(_guard.Object, _summaries.Object, _toggles.Object, _user.Object, _clock.Object);
 
     private ActivityDailySummary Day(int active, int idle, int meeting) => new()
     {
@@ -56,23 +53,9 @@ public sealed class GetEmployeeActivityOverviewQueryHandlerTests
             .ReturnsAsync(rows);
 
     [Fact]
-    public async Task Handle_Forbidden_WhenCallerLacksMonitoringReadAndIsNotViewingSelf()
+    public async Task Handle_DoesNotRequireAnyModulePermission()
     {
         _user.Setup(u => u.HasPermission("monitoring:read")).Returns(false);
-        _employees.Setup(e => e.GetDefaultForUserAsync(_tenantId, _userId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new EmployeeEntity { Id = Guid.NewGuid(), TenantId = _tenantId });
-
-        var result = await CreateHandler().Handle(new GetEmployeeActivityOverviewQuery(_employeeId, null, null), CancellationToken.None);
-
-        result.StatusCode.Should().Be(403);
-    }
-
-    [Fact]
-    public async Task Handle_AllowsSelfWithoutMonitoringRead()
-    {
-        _user.Setup(u => u.HasPermission("monitoring:read")).Returns(false);
-        _employees.Setup(e => e.GetDefaultForUserAsync(_tenantId, _userId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new EmployeeEntity { Id = _employeeId, TenantId = _tenantId });
         ArrangeSummaries(SepFrom, SepTo);
 
         var result = await CreateHandler().Handle(new GetEmployeeActivityOverviewQuery(_employeeId, SepFrom, SepTo), CancellationToken.None);
