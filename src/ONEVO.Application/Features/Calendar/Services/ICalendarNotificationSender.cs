@@ -4,11 +4,15 @@ public interface ICalendarNotificationSender
 {
     /// <summary>In-app notification + invite email to each newly-added participant. Pass
     /// <paramref name="meetingLink"/> when the event already has an auto-generated Teams/Zoom
-    /// join link at invite time so the email includes it.</summary>
+    /// join link at invite time so the email includes it. Pass <paramref name="sendInviteEmail"/>
+    /// = false when the caller knows a Teams/Zoom meeting is about to be attached in the same
+    /// one-click create flow (CreateCalendarEventCommand.PendingMeetingProvider) - the in-app
+    /// notification still fires immediately, but the email is deferred to
+    /// NotifyMeetingLinkAddedAsync so the recipient gets one invite (with the link) instead of two.</summary>
     Task NotifyParticipantsAddedAsync(
         Guid tenantId, string eventTitle, DateTimeOffset startDate, string? location,
         IReadOnlyList<Guid> employeeIds, string organizerName, CancellationToken ct = default,
-        string? meetingLink = null);
+        string? meetingLink = null, bool sendInviteEmail = true);
 
     /// <summary>Invite email (with the join link) to each existing participant, for when a
     /// Teams/Zoom meeting is added to an event after participants were already invited -

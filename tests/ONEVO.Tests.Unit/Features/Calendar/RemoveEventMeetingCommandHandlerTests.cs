@@ -104,6 +104,38 @@ public sealed class RemoveEventMeetingCommandHandlerTests
     }
 
     [Fact]
+    public async Task Handle_ZoomMeetingInProgress_ReturnsConflictWithFriendlyMessage_AndLeavesTheMeetingIntact()
+    {
+        var evt = new CalendarEvent
+        {
+            Id = EventId, TenantId = TenantId, CreatedById = UserId, MeetingLink = "https://us05web.zoom.us/j/111222333"
+        };
+        var connection = new ExternalCalendarConnection { Id = Guid.NewGuid() };
+        var meeting = new CalendarEventMeeting
+        {
+            Id = Guid.NewGuid(), TenantId = TenantId, CalendarEventId = EventId,
+            ExternalCalendarConnectionId = connection.Id, ExternalMeetingId = "111222333",
+            Provider = CalendarEventMeetingProviders.Zoom, Status = CalendarEventMeetingStatuses.Active
+        };
+        _events.Setup(e => e.GetTrackedByIdForTenantAsync(TenantId, EventId, It.IsAny<CancellationToken>())).ReturnsAsync(evt);
+        _meetings.Setup(m => m.GetTrackedByCalendarEventAsync(TenantId, EventId, It.IsAny<CancellationToken>())).ReturnsAsync(meeting);
+        _connections.Setup(c => c.GetByIdForTenantAsync(TenantId, connection.Id, It.IsAny<CancellationToken>())).ReturnsAsync(connection);
+        _tokenProvider.Setup(t => t.GetFreshAccessTokenAsync(connection, "zoom", It.IsAny<CancellationToken>())).ReturnsAsync("access-token");
+        _zoomClient.Setup(z => z.CancelMeetingAsync("access-token", "111222333", It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new ZoomMeetingInProgressException());
+
+        var result = await BuildSut().Handle(new RemoveEventMeetingCommand(EventId), CancellationToken.None);
+
+        result.IsSuccess.Should().BeFalse();
+        result.StatusCode.Should().Be(409);
+        result.Error.Should().Contain("in progress");
+        evt.MeetingLink.Should().Be("https://us05web.zoom.us/j/111222333");
+        meeting.Status.Should().Be(CalendarEventMeetingStatuses.Active);
+        _meetings.Verify(m => m.Update(It.IsAny<CalendarEventMeeting>()), Times.Never);
+        _unitOfWork.Verify(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
     public async Task Handle_NotOrganizer_ReturnsForbidden()
     {
         var evt = new CalendarEvent { Id = EventId, TenantId = TenantId, CreatedById = Guid.NewGuid() };

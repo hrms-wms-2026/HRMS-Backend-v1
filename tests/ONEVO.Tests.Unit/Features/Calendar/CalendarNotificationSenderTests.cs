@@ -44,6 +44,24 @@ public sealed class CalendarNotificationSenderTests
     }
 
     [Fact]
+    public async Task NotifyParticipantsAddedAsync_SendInviteEmailFalse_SkipsTheEmailButStillNotifiesInApp()
+    {
+        var sut = BuildSut();
+        await sut.NotifyParticipantsAddedAsync(
+            TenantId, "Standup", DateTimeOffset.UtcNow, "Room 4", [EmployeeId], "Ada Owner", CancellationToken.None,
+            sendInviteEmail: false);
+
+        _outbox.Verify(x => x.EnqueueAsync(
+            OutboxMessageTypes.WorkNotification,
+            It.Is<WorkNotificationPayload>(p => p.RecipientUserId == UserId),
+            TenantId, It.IsAny<CancellationToken>()), Times.Once);
+        _outbox.Verify(x => x.EnqueueAsync(
+            OutboxMessageTypes.CalendarEventInviteEmail,
+            It.IsAny<CalendarEventInviteEmailPayload>(),
+            It.IsAny<Guid?>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
     public async Task NotifyParticipantsAddedAsync_IncludesMeetingLinkInEmailPayloadWhenProvided()
     {
         var sut = BuildSut();
