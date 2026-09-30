@@ -9,6 +9,8 @@ public sealed record ModuleCapacityCheckResponse(
 
 public sealed record TaskLoadCheckResponse(IReadOnlyList<MonitorWarning> Warnings);
 
+/// <summary>InAchievedModule: the target is an achieved Module or sits under one - shown for
+/// information only (faded, not counted, never notified).</summary>
 public sealed record MonitorAlertResponse(
     Guid Id, string TargetType, Guid TargetId, string TargetTitle, string RuleCode, Guid? SubjectEmployeeId,
-    string Message, DateTimeOffset FirstDetectedAt);
+    string Message, DateTimeOffset FirstDetectedAt, bool InAchievedModule = false);

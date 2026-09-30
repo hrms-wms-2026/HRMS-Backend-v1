@@ -79,11 +79,41 @@ public sealed class ProjectMonitorService : IProjectMonitorService
             if (!seen.Contains(key))
                 alert.ResolvedAt = now;
 
-        if (opened.Count > 0)
-            await NotifyAsync(tenantId, projectId, snapshot, opened, now, ct);
+        // An achieved Module's alerts (and those of everything under it) are kept for display only -
+        // nobody is asked to act on finished work, so they are never notified.
+        var achievedScope = AchievedModuleScope(snapshot);
+        var actionable = opened.Where(o => !InAchievedScope(o.Finding, snapshot, achievedScope)).ToList();
+        if (actionable.Count > 0)
+            await NotifyAsync(tenantId, projectId, snapshot, actionable, now, ct);
 
         return opened.Count;
     }
+
+    /// <summary>Ids of every achieved Module and all Modules below one.</summary>
+    private static HashSet<Guid> AchievedModuleScope(ProjectMonitorSnapshot snapshot)
+    {
+        var childrenByParent = snapshot.Modules.Where(m => m.ParentId is not null).ToLookup(m => m.ParentId!.Value);
+        var scope = new HashSet<Guid>();
+        var queue = new Queue<Guid>(snapshot.Modules.Where(m => m.IsAchieved).Select(m => m.Id));
+        while (queue.Count > 0)
+        {
+            var current = queue.Dequeue();
+            if (!scope.Add(current))
+                continue;
+            foreach (var child in childrenByParent[current])
+                queue.Enqueue(child.Id);
+        }
+        return scope;
+    }
+
+    private static bool InAchievedScope(MonitorFinding finding, ProjectMonitorSnapshot snapshot, HashSet<Guid> achievedScope)
+        => finding.TargetType switch
+        {
+            MonitorTargetTypes.Module => achievedScope.Contains(finding.TargetId),
+            MonitorTargetTypes.Task => snapshot.Tasks.FirstOrDefault(t => t.Id == finding.TargetId) is { } task
+                && achievedScope.Contains(task.ModuleId),
+            _ => false,
+        };
 
     private async Task NotifyAsync(Guid tenantId, Guid projectId, ProjectMonitorSnapshot snapshot,
         IReadOnlyList<(MonitorAlert Alert, MonitorFinding Finding)> opened, DateTimeOffset now, CancellationToken ct)

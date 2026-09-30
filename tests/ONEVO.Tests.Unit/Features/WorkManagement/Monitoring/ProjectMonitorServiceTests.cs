@@ -84,6 +84,39 @@ public class ProjectMonitorServiceTests
     }
 
     [Fact]
+    public async Task AchievedModule_StillOpensTheAlert_ButNotifiesNobody()
+    {
+        _snapshots.Setup(x => x.LoadAsync(TenantId, ProjectId, It.IsAny<CancellationToken>())).ReturnsAsync(new ProjectMonitorSnapshot(
+            ProjectId, WorkCalendar.Default,
+            [new MonitorModule(ModuleId, RootId, null, "Payments", Mon5, new DateOnly(2026, 10, 16), 500m, 0m, true, 5)], [], []));
+
+        var opened = await Service().EvaluateProjectAsync(TenantId, ProjectId, Mon5);
+
+        Assert.Equal(1, opened);
+        var alert = Assert.Single(_added);
+        Assert.Null(alert.NotifiedAt);
+        _notifications.Verify(x => x.NotifyAsync(It.IsAny<WorkNotificationEvent>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task TaskUnderAnAchievedModule_NotifiesNobody()
+    {
+        var childId = Guid.NewGuid();
+        _snapshots.Setup(x => x.LoadAsync(TenantId, ProjectId, It.IsAny<CancellationToken>())).ReturnsAsync(new ProjectMonitorSnapshot(
+            ProjectId, WorkCalendar.Default,
+            [
+                new MonitorModule(ModuleId, RootId, null, "Payments", Mon5, new DateOnly(2026, 10, 16), 10m, 10m, true, 5),
+                new MonitorModule(childId, ModuleId, null, "Refunds", Mon5, new DateOnly(2026, 10, 16), 10m, 10m, false, 5)
+            ], [],
+            [new MonitorTask(Guid.NewGuid(), childId, RootId, null, "Late task", new DateOnly(2026, 10, 1), null, 0m, false, 0m, [])]));
+
+        var opened = await Service().EvaluateProjectAsync(TenantId, ProjectId, Mon5);
+
+        Assert.True(opened > 0);
+        _notifications.Verify(x => x.NotifyAsync(It.IsAny<WorkNotificationEvent>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
     public async Task ProblemStillThere_UpdatesTheOpenAlert_WithoutNotifyingAgain()
     {
         OverCapacityModule();

@@ -87,4 +87,22 @@ public class ListProjectMonitorAlertsQueryHandlerTests
 
         Assert.Equal(5, result.Value!.Count);
     }
+
+    [Fact]
+    public async Task AlertsOnOrUnderAnAchievedModule_AreFlagged()
+    {
+        _hierarchy.Setup(x => x.LoadTreeAsync(TenantId, ProjectId, It.IsAny<CancellationToken>())).ReturnsAsync(new ProjectModuleTree(
+        [
+            new Objective { Id = RootId, OwnerId = Guid.NewGuid(), IsDefault = true },
+            new Objective { Id = MineId, ParentObjectiveId = RootId, OwnerId = Guid.NewGuid(), IsAchieved = true },
+            new Objective { Id = MyChildId, ParentObjectiveId = MineId, OwnerId = Guid.NewGuid() },
+            new Objective { Id = SiblingId, ParentObjectiveId = RootId, OwnerId = Guid.NewGuid() },
+        ]));
+        CallerIs(leadId: Caller);
+
+        var result = await Handler().Handle(new ListProjectMonitorAlertsQuery(ProjectId), default);
+
+        var flagged = result.Value!.Where(a => a.InAchievedModule).Select(a => a.Id).Order();
+        Assert.Equal(new[] { _onMyChild.Id, _taskInChild.Id }.Order(), flagged);
+    }
 }

@@ -43,6 +43,20 @@ public sealed class ListProjectMonitorAlertsQueryHandler
         var tree = await _hierarchy.LoadTreeAsync(tenantId, query.ProjectId, ct);
         var seesAll = project.LeadId == employeeId || tree.Root?.OwnerId == employeeId;
 
+        var taskIds = alerts.Where(a => a.TargetType == MonitorTargetTypes.Task).Select(a => a.TargetId).Distinct().ToList();
+        var moduleByTask = taskIds.Count == 0
+            ? new Dictionary<Guid, Guid>()
+            : await _tasks.GetObjectiveIdsByTaskIdsAsync(tenantId, taskIds, ct);
+
+        var allModules = tree.Root is { } root ? tree.AtOrBelow([root.Id]) : new HashSet<Guid>();
+        var achievedScope = tree.AtOrBelow(allModules.Where(id => tree.Get(id)?.IsAchieved == true));
+        bool InAchievedModule(Domain.Features.WorkManagement.Monitoring.Entities.MonitorAlert a) => a.TargetType switch
+        {
+            MonitorTargetTypes.Module => achievedScope.Contains(a.TargetId),
+            MonitorTargetTypes.Task => moduleByTask.TryGetValue(a.TargetId, out var moduleId) && achievedScope.Contains(moduleId),
+            _ => false,
+        };
+
         IEnumerable<Domain.Features.WorkManagement.Monitoring.Entities.MonitorAlert> visible = alerts;
         if (!seesAll)
         {
@@ -51,11 +65,6 @@ public sealed class ListProjectMonitorAlertsQueryHandler
             var owned = alerts.Where(a => a.TargetType == MonitorTargetTypes.Module && tree.Get(a.TargetId)?.OwnerId == employeeId)
                 .Select(a => a.TargetId);
             var visibleModules = tree.AtOrBelow(direct.Concat(owned));
-
-            var taskIds = alerts.Where(a => a.TargetType == MonitorTargetTypes.Task).Select(a => a.TargetId).Distinct().ToList();
-            var moduleByTask = taskIds.Count == 0
-                ? new Dictionary<Guid, Guid>()
-                : await _tasks.GetObjectiveIdsByTaskIdsAsync(tenantId, taskIds, ct);
 
             visible = alerts.Where(a => a.TargetType switch
             {
@@ -67,7 +76,7 @@ public sealed class ListProjectMonitorAlertsQueryHandler
 
         return Result<IReadOnlyList<MonitorAlertResponse>>.Success(visible
             .Select(a => new MonitorAlertResponse(a.Id, a.TargetType, a.TargetId, a.TargetTitle, a.RuleCode,
-                a.SubjectEmployeeId, a.Message, a.FirstDetectedAt))
+                a.SubjectEmployeeId, a.Message, a.FirstDetectedAt, InAchievedModule(a)))
             .ToList());
     }
 }
