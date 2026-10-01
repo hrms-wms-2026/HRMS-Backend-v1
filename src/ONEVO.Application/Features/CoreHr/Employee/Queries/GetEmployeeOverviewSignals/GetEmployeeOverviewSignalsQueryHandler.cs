@@ -38,9 +38,6 @@ public sealed class GetEmployeeOverviewSignalsQueryHandler(
     ILogger<GetEmployeeOverviewSignalsQueryHandler> logger)
     : IRequestHandler<GetEmployeeOverviewSignalsQuery, Result<EmployeeOverviewSignalsResponse>>
 {
-    private static readonly string[] WorkModules =
-        ["worksync_foundation", "projects", "objectives_milestones", "tasks", "boards", "planning_sprints"];
-
     public async Task<Result<EmployeeOverviewSignalsResponse>> Handle(GetEmployeeOverviewSignalsQuery request, CancellationToken ct)
     {
         var tenantId = currentUser.TenantId;
@@ -57,7 +54,7 @@ public sealed class GetEmployeeOverviewSignalsQueryHandler(
 
         var attendance = await Safe("attendance", () => sender.Send(new GetEmployeeAttendanceOverviewQuery(employeeId, from, to), ct));
         var discipline = await Safe("discipline", () => sender.Send(new GetEmployeeAttendanceDisciplineQuery(employeeId, from, to), ct));
-        var work = await SafeValue("work", async () => await WorkEnabled(tenantId, ct)
+        var work = await SafeValue("work", async () => await EmployeeOverviewWorkModules.IsEnabledAsync(modules, tenantId, ct)
             ? await Safe("work", () => sender.Send(new GetEmployeeWorkOverviewQuery(employeeId, from, to), ct))
             : null);
         var approvals = await Safe("approvals", () => sender.Send(new GetEmployeeApprovalActivityQuery(employeeId, from, to), ct));
@@ -65,14 +62,6 @@ public sealed class GetEmployeeOverviewSignalsQueryHandler(
 
         var signals = EmployeeSignalCatalogue.Build(new EmployeeSignalInputs(attendance, discipline, work, approvals, monitoring));
         return Result<EmployeeOverviewSignalsResponse>.Success(new EmployeeOverviewSignalsResponse(from, to, signals));
-    }
-
-    private async Task<bool> WorkEnabled(Guid tenantId, CancellationToken ct)
-    {
-        foreach (var key in WorkModules)
-            if (await modules.IsModuleEnabledAsync(tenantId, key, ct))
-                return true;
-        return false;
     }
 
     private async Task<EmployeeMonitoringSignalCounts?> MonitoringAsync(
