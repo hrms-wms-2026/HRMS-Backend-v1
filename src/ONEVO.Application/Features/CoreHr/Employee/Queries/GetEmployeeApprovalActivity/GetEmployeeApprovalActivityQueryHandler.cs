@@ -117,7 +117,7 @@ public sealed class GetEmployeeApprovalActivityQueryHandler(
             ordered.Count(i => i.Status == "approved"),
             ordered.Count(i => i.Status == "rejected"),
             ordered.Count,
-            ordered.Take(MaxItems).ToList()));
+            (request.AllItems ? ordered : ordered.Take(MaxItems)).ToList()));
     }
 
     private static string NormalizeStatus(string raw) => raw.Trim().ToLowerInvariant() switch
