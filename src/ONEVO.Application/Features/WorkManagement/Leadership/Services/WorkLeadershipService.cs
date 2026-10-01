@@ -1,16 +1,48 @@
 using Microsoft.Extensions.Logging;
+using ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Tasks.Services;
 
 namespace ONEVO.Application.Features.WorkManagement.Leadership.Services;
 
 public sealed class WorkLeadershipService(
     IObjectiveRepository objectives,
     IProjectMemberRepository members,
+    ITaskCreationRequestRepository taskCreationRequests,
+    ITaskEditRequestRepository taskEditRequests,
+    IObjectiveChangeRequestRepository objectiveChangeRequests,
+    ITaskStatusChangeRequestRepository statusChangeRequests,
+    ITaskStatusChangeAccessService statusChangeAccess,
     ILogger<WorkLeadershipService> logger) : IWorkLeadershipService
 {
     public Task<bool> LeadsAnyWorkAsync(Guid tenantId, Guid employeeId, Guid legalEntityId, CancellationToken ct = default)
         => objectives.AnyActiveOwnedAsync(tenantId, employeeId, legalEntityId, ct);
+
+    public async Task<bool> HasPendingWorkApprovalsAsync(
+        Guid tenantId, Guid employeeId, Guid legalEntityId, CancellationToken ct = default)
+    {
+        if (await taskCreationRequests.HasPendingForOwnerEmployeeIdAsync(tenantId, employeeId, ct))
+            return true;
+        if (await taskEditRequests.HasPendingForOwnerEmployeeIdAsync(tenantId, employeeId, ct))
+            return true;
+        if (await objectiveChangeRequests.HasPendingForApproverAsync(tenantId, employeeId, ct))
+            return true;
+
+        // No tenant-wide EXISTS is possible for status-template changes without also knowing which
+        // projects the caller can decide for, so this checks the (typically small) set of distinct
+        // projects with a pending request and stops at the first one resolving CanEditDirectly.
+        var pending = await statusChangeRequests.ListAllPendingAsync(tenantId, ct);
+        foreach (var projectId in pending.Select(r => r.ProjectId).Distinct())
+        {
+            var access = await statusChangeAccess.ResolveAsync(tenantId, projectId, employeeId, ct);
+            if (access is { CanEditDirectly: true })
+                return true;
+        }
+
+        return false;
+    }
 
     public async Task<LedWorkScope> ResolveLedScopeAsync(Guid tenantId, Guid employeeId, Guid legalEntityId, CancellationToken ct = default)
     {

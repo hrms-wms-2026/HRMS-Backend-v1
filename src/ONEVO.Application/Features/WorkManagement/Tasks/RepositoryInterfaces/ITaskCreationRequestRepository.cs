@@ -13,5 +13,10 @@ public interface ITaskCreationRequestRepository
     /// owner column of its own (the owner is looked up live via the Objective, not snapshotted).</summary>
     Task<IReadOnlyList<TaskCreationRequest>> GetPendingForOwnerEmployeeIdAsync(Guid tenantId, Guid ownerEmployeeId, CancellationToken ct = default);
 
+    /// <summary>Cheap existence check mirroring GetPendingForOwnerEmployeeIdAsync's exact
+    /// predicate - used by IWorkLeadershipService.HasPendingWorkApprovalsAsync (My Team spec §7.3),
+    /// which must not materialize full pending lists just to answer a boolean capability flag.</summary>
+    Task<bool> HasPendingForOwnerEmployeeIdAsync(Guid tenantId, Guid ownerEmployeeId, CancellationToken ct = default);
+
     void Update(TaskCreationRequest request);
 }

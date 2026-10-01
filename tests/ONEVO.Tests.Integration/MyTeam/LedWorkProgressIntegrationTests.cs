@@ -4,12 +4,18 @@ using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Leadership.DTOs;
 using ONEVO.Application.Features.WorkManagement.Leadership.Queries.GetLedWorkProgress;
 using ONEVO.Application.Features.WorkManagement.Leadership.Services;
+using ONEVO.Application.Features.WorkManagement.Objectives.Services;
+using ONEVO.Application.Features.WorkManagement.Tasks.Services;
 using ONEVO.Infrastructure.Identity.Time;
 using ONEVO.Infrastructure.Persistence;
 using ONEVO.Infrastructure.Persistence.Repositories.CoreHr;
 using ONEVO.Infrastructure.Persistence.Repositories.WorkManagement;
 using ONEVO.Tests.Integration.Support;
 using Xunit;
+// Distinct from ONEVO.Infrastructure.Persistence.Repositories.CoreHr.EfEmployeeRepository (used
+// above) - this one implements the separate Common.RepositoryInterfaces IEmployeeRepository that
+// MilestoneMembershipCoordinator depends on.
+using CommonEfEmployeeRepository = ONEVO.Infrastructure.Persistence.Repositories.EfEmployeeRepository;
 
 namespace ONEVO.Tests.Integration.MyTeam;
 
@@ -26,11 +32,23 @@ public sealed class LedWorkProgressIntegrationTests
         public bool IsAuthenticated => true;
     }
 
+    private static WorkLeadershipService WorkLeadership(ApplicationDbContext db) => new(
+        new EfObjectiveRepository(db),
+        new EfProjectMemberRepository(db),
+        new EfTaskCreationRequestRepository(db),
+        new EfTaskEditRequestRepository(db),
+        new EfObjectiveChangeRequestRepository(db),
+        new EfTaskStatusChangeRequestRepository(db),
+        new TaskStatusChangeAccessService(
+            new EfObjectiveRepository(db), new EfProjectMemberRepository(db),
+            new MilestoneMembershipCoordinator(new CommonEfEmployeeRepository(db), new EfProjectMemberRepository(db), new EfObjectiveRepository(db))),
+        NullLogger<WorkLeadershipService>.Instance);
+
     private static GetLedWorkProgressQueryHandler Handler(ApplicationDbContext db, Guid tenantId, Guid userId) => new(
         new StubUser(tenantId, userId),
         new SystemDateTimeProvider(),
         new EfEmployeeRepository(db),
-        new WorkLeadershipService(new EfObjectiveRepository(db), new EfProjectMemberRepository(db), NullLogger<WorkLeadershipService>.Instance),
+        WorkLeadership(db),
         new EfWorkTaskRepository(db),
         new EfProjectRepository(db));
 

@@ -12,5 +12,9 @@ public interface IObjectiveChangeRequestRepository
 
     Task<IReadOnlyList<ObjectiveChangeRequest>> ListPendingForApproverAsync(Guid tenantId, Guid reportingManagerId, CancellationToken ct = default);
 
+    /// <summary>Cheap existence check mirroring ListPendingForApproverAsync's exact predicate -
+    /// used by IWorkLeadershipService.HasPendingWorkApprovalsAsync (My Team spec §7.3).</summary>
+    Task<bool> HasPendingForApproverAsync(Guid tenantId, Guid reportingManagerId, CancellationToken ct = default);
+
     void Update(ObjectiveChangeRequest request);
 }

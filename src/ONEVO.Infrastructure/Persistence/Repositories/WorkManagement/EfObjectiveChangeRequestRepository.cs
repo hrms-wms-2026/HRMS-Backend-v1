@@ -38,6 +38,13 @@ public class EfObjectiveChangeRequestRepository : IObjectiveChangeRequestReposit
             .ToListAsync(ct);
     }
 
+    public async Task<bool> HasPendingForApproverAsync(Guid tenantId, Guid reportingManagerId, CancellationToken ct = default)
+    {
+        return await _db.ObjectiveChangeRequests
+            .AsNoTracking()
+            .AnyAsync(r => r.TenantId == tenantId && r.ReportingManagerId == reportingManagerId && r.Status == ObjectiveChangeRequestStatuses.Pending, ct);
+    }
+
     public void Update(ObjectiveChangeRequest request)
     {
         _db.ObjectiveChangeRequests.Update(request);

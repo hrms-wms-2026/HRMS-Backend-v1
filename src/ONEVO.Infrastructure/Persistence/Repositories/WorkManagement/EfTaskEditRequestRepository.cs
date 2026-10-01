@@ -28,5 +28,14 @@ public class EfTaskEditRequestRepository : ITaskEditRequestRepository
             select r
         ).ToListAsync(ct);
 
+    public async Task<bool> HasPendingForOwnerEmployeeIdAsync(Guid tenantId, Guid ownerEmployeeId, CancellationToken ct = default)
+        => await (
+            from r in _db.TaskEditRequests.AsNoTracking()
+            join t in _db.WorkTasks.AsNoTracking() on r.TaskId equals t.Id
+            join o in _db.Objectives.AsNoTracking() on t.ObjectiveId equals o.Id
+            where r.TenantId == tenantId && r.Status == TaskEditRequestStatuses.Pending && o.OwnerId == ownerEmployeeId
+            select r
+        ).AnyAsync(ct);
+
     public void Update(TaskEditRequest request) => _db.TaskEditRequests.Update(request);
 }

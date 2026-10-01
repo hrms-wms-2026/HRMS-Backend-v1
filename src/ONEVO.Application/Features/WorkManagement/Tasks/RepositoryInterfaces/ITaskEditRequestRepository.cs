@@ -13,5 +13,9 @@ public interface ITaskEditRequestRepository
     /// TaskEditRequest has no owner or Objective column of its own.</summary>
     Task<IReadOnlyList<TaskEditRequest>> GetPendingForOwnerEmployeeIdAsync(Guid tenantId, Guid ownerEmployeeId, CancellationToken ct = default);
 
+    /// <summary>Cheap existence check mirroring GetPendingForOwnerEmployeeIdAsync's exact
+    /// predicate - used by IWorkLeadershipService.HasPendingWorkApprovalsAsync (My Team spec §7.3).</summary>
+    Task<bool> HasPendingForOwnerEmployeeIdAsync(Guid tenantId, Guid ownerEmployeeId, CancellationToken ct = default);
+
     void Update(TaskEditRequest request);
 }
