@@ -1,9 +1,11 @@
 using FluentAssertions;
 using Moq;
+using ONEVO.Application.Common.Models;
 using ONEVO.Application.Features.WorkManagement.Approvals.Services;
 using ONEVO.Application.Features.WorkManagement.Objectives.Appliers;
 using ONEVO.Domain.Features.WorkManagement.Approvals.Entities;
 using ONEVO.Domain.Features.WorkManagement.Objectives.Entities;
+using ONEVO.Domain.Features.WorkManagement.ProjectInvitations.Entities;
 using Xunit;
 using K = ONEVO.Tests.Unit.Features.WorkManagement.Objectives.ModuleHandlerTestKit;
 
@@ -30,6 +32,9 @@ public class ModuleAppliersTests
         => applier.ApplyAsync(new ApprovalApplyContext(request, editedPayload ?? request.PayloadJson, K.ParentOwner), CancellationToken.None);
 
     private ModuleEditApplier Edit() => new(_kit.Objectives.Object, _kit.Writes());
+
+    private ModuleMemberAddApplier MemberAdd() => new(_kit.Objectives.Object, _kit.Writes(), _kit.Membership.Object);
+    private ModuleMemberRemoveApplier MemberRemove() => new(_kit.Objectives.Object, _kit.Writes(), _kit.Membership.Object);
 
     [Fact]
     public async Task Edit_UsesApproverEditedPayload()
@@ -128,5 +133,73 @@ public class ModuleAppliersTests
         outcome.Kind.Should().Be(ApplyOutcomeKind.Invalid);
         outcome.Error.Should().StartWith("You don't have enough allocation yourself to approve this.");
         _kit.Module.AllocatedHours.Should().Be(10m);
+    }
+
+    [Fact]
+    public async Task MemberAdd_Success_Applied()
+    {
+        var employeeId = Guid.NewGuid();
+        _kit.Membership.Setup(x => x.ApplyMemberAddAsync(K.TenantId, _kit.Module, K.Head, employeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<ProjectMemberInvitation>.Success(new ProjectMemberInvitation { Id = Guid.NewGuid(), InvitedEmployeeId = employeeId }));
+        var request = Request(WorkActionTypes.ModuleMemberAdd,
+            "{\"employeeId\":\"" + employeeId + "\",\"requestedByEmployeeId\":\"" + K.Head + "\"}");
+
+        var outcome = await Apply(MemberAdd(), request);
+
+        outcome.Kind.Should().Be(ApplyOutcomeKind.Applied);
+    }
+
+    [Fact]
+    public async Task MemberAdd_CoordinatorRejects_Invalid()
+    {
+        var employeeId = Guid.NewGuid();
+        _kit.Membership.Setup(x => x.ApplyMemberAddAsync(K.TenantId, _kit.Module, K.Head, employeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<ProjectMemberInvitation>.Conflict("This employee is already a member."));
+        var request = Request(WorkActionTypes.ModuleMemberAdd,
+            "{\"employeeId\":\"" + employeeId + "\",\"requestedByEmployeeId\":\"" + K.Head + "\"}");
+
+        var outcome = await Apply(MemberAdd(), request);
+
+        outcome.Kind.Should().Be(ApplyOutcomeKind.Invalid);
+        outcome.Error.Should().Be("This employee is already a member.");
+    }
+
+    [Fact]
+    public async Task MemberAdd_ModuleAchieved_Stale()
+    {
+        _kit.Module.IsAchieved = true;
+        var employeeId = Guid.NewGuid();
+        var request = Request(WorkActionTypes.ModuleMemberAdd,
+            "{\"employeeId\":\"" + employeeId + "\",\"requestedByEmployeeId\":\"" + K.Head + "\"}");
+
+        var outcome = await Apply(MemberAdd(), request);
+
+        outcome.Kind.Should().Be(ApplyOutcomeKind.Stale);
+    }
+
+    [Fact]
+    public async Task MemberRemove_Success_Applied()
+    {
+        var employeeId = Guid.NewGuid();
+        _kit.Membership.Setup(x => x.ApplyMemberRemoveAsync(K.TenantId, _kit.Module, employeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result.Success());
+        var request = Request(WorkActionTypes.ModuleMemberRemove, "{\"employeeId\":\"" + employeeId + "\"}");
+
+        var outcome = await Apply(MemberRemove(), request);
+
+        outcome.Kind.Should().Be(ApplyOutcomeKind.Applied);
+    }
+
+    [Fact]
+    public async Task MemberRemove_CoordinatorRejects_Invalid()
+    {
+        var employeeId = Guid.NewGuid();
+        _kit.Membership.Setup(x => x.ApplyMemberRemoveAsync(K.TenantId, _kit.Module, employeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result.NotFound("This employee has no active membership or pending invitation on this milestone."));
+        var request = Request(WorkActionTypes.ModuleMemberRemove, "{\"employeeId\":\"" + employeeId + "\"}");
+
+        var outcome = await Apply(MemberRemove(), request);
+
+        outcome.Kind.Should().Be(ApplyOutcomeKind.Invalid);
     }
 }

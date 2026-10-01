@@ -449,6 +449,8 @@ public static class DependencyInjection
         services.AddScoped<IApprovalActionApplier, ONEVO.Application.Features.WorkManagement.Tasks.Appliers.TaskDeleteApplier>();
         services.AddScoped<IApprovalActionApplier, ONEVO.Application.Features.WorkManagement.Tasks.Appliers.TaskStatusTemplateChangeApplier>();
         services.AddScoped<IApprovalActionApplier, ONEVO.Application.Features.WorkManagement.Objectives.Appliers.ModuleAllocationExtendApplier>();
+        services.AddScoped<IApprovalActionApplier, ONEVO.Application.Features.WorkManagement.Objectives.Appliers.ModuleMemberAddApplier>();
+        services.AddScoped<IApprovalActionApplier, ONEVO.Application.Features.WorkManagement.Objectives.Appliers.ModuleMemberRemoveApplier>();
         services.AddScoped<IApprovalActionApplier, ONEVO.Application.Features.WorkManagement.Objectives.Appliers.ModuleUnachieveApplier>();
         services.AddScoped<IApprovalActionApplier, ONEVO.Application.Features.WorkManagement.Objectives.Appliers.ModuleAchieveApplier>();
         services.AddScoped<IApprovalActionApplier, ONEVO.Application.Features.WorkManagement.Objectives.Appliers.ModuleTransferApplier>();
