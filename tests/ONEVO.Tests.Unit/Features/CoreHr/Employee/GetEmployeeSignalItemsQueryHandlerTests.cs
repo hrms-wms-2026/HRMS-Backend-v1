@@ -80,6 +80,14 @@ public sealed class GetEmployeeSignalItemsQueryHandlerTests
     private static readonly DateOnly D3 = new(2026, 8, 3);
     private static readonly DateOnly D4 = new(2026, 8, 4);
     private static readonly DateOnly D5 = new(2026, 8, 5);
+    private static readonly DateTimeOffset UtcStart = new(2026, 8, 1, 0, 0, 0, TimeSpan.Zero);
+    private static readonly DateTimeOffset UtcEnd = new(2026, 9, 1, 0, 0, 0, TimeSpan.Zero);
+
+    private Notification Alert(NotificationType type, string at) => new()
+    {
+        Id = Guid.NewGuid(), TenantId = _tenantId, EmployeeId = _employeeId, Type = type,
+        Title = "Low activity", Message = "No input for 30 min", CreatedAt = DateTimeOffset.Parse(at)
+    };
 
     [Fact]
     public async Task UnknownKey_Returns404()
@@ -158,5 +166,68 @@ public sealed class GetEmployeeSignalItemsQueryHandlerTests
 
         r.Total.Should().Be(expected);
         r.Items.Should().HaveCount(Math.Min(expected, GetEmployeeSignalItemsQueryHandler.MaxItems));
+    }
+
+    [Fact]
+    public async Task IdleAlerts_ListsBothAlertTypes_WithTotalFromTheCounts()
+    {
+        var alerts = new[] { Alert(NotificationType.LongIdleAlert, "2026-08-04T06:00:00+00:00"), Alert(NotificationType.LowActivityAlert, "2026-08-05T07:30:00+00:00") };
+        _notifications.Setup(n => n.ListByTypesAsync(_tenantId, _employeeId,
+                It.Is<IReadOnlyCollection<NotificationType>>(t => t.Count == 2 && t.Contains(NotificationType.LongIdleAlert) && t.Contains(NotificationType.LowActivityAlert)),
+                UtcStart, UtcEnd, GetEmployeeSignalItemsQueryHandler.MaxItems, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(alerts.OrderByDescending(a => a.CreatedAt).ToList());
+        _notifications.Setup(n => n.CountByTypeAsync(_tenantId, _employeeId, NotificationType.LongIdleAlert, UtcStart, UtcEnd, It.IsAny<CancellationToken>())).ReturnsAsync(1);
+        _notifications.Setup(n => n.CountByTypeAsync(_tenantId, _employeeId, NotificationType.LowActivityAlert, UtcStart, UtcEnd, It.IsAny<CancellationToken>())).ReturnsAsync(1);
+
+        var r = (await Run("idle_activity_alerts")).Value!;
+
+        r.Total.Should().Be(2);
+        r.Items.Should().OnlyContain(i => i.Kind == "monitoring_alert");
+        r.Items[0].Date.Should().Be(new DateOnly(2026, 8, 5));
+        r.Items[0].OccurredAt.Should().Be(DateTimeOffset.Parse("2026-08-05T07:30:00+00:00"));
+        r.Items[0].Title.Should().Be("Low activity");
+    }
+
+    [Fact]
+    public async Task IdleAlerts_Returns403_WhenActivityMonitoringIsOff()
+    {
+        _toggles.Setup(t => t.IsEnabledAsync(_tenantId, _employeeId, MonitoringCapability.ActivityMonitoring, It.IsAny<CancellationToken>())).ReturnsAsync(false);
+        (await Run("idle_activity_alerts")).StatusCode.Should().Be(403);
+    }
+
+    [Fact]
+    public async Task LocationViolations_UseTheAttendanceRange_And403WhenVerificationIsOff()
+    {
+        var rangeStart = DateTimeOffset.Parse("2026-07-31T18:30:00+00:00");
+        var rangeEnd = DateTimeOffset.Parse("2026-08-31T18:30:00+00:00");
+        _notifications.Setup(n => n.ListByTypesAsync(_tenantId, _employeeId,
+                It.Is<IReadOnlyCollection<NotificationType>>(t => t.Single() == NotificationType.OutsideWorkLocationAlert),
+                rangeStart, rangeEnd, GetEmployeeSignalItemsQueryHandler.MaxItems, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[] { Alert(NotificationType.OutsideWorkLocationAlert, "2026-08-04T05:00:00+00:00") });
+        _notifications.Setup(n => n.CountByTypeAsync(_tenantId, _employeeId, NotificationType.OutsideWorkLocationAlert, rangeStart, rangeEnd, It.IsAny<CancellationToken>())).ReturnsAsync(1);
+
+        (await Run("location_violations")).Value!.Total.Should().Be(1);
+
+        _toggles.Setup(t => t.IsEnabledAsync(_tenantId, _employeeId, MonitoringCapability.WorkLocationVerification, It.IsAny<CancellationToken>())).ReturnsAsync(false);
+        (await Run("location_violations")).StatusCode.Should().Be(403);
+    }
+
+    [Fact]
+    public async Task MonitoringExceptions_ListCases_And403OutsideTheExceptionScope()
+    {
+        var c = new ONEVO.Domain.Features.Monitoring.Exceptions.Entities.Exception
+        {
+            Id = Guid.NewGuid(), TenantId = _tenantId, EmployeeId = _employeeId, Title = "Sustained low activity",
+            Description = "3 days below threshold", DetectedAt = DateTimeOffset.Parse("2026-08-06T04:00:00+00:00")
+        };
+        _exceptions.Setup(e => e.ListDetectedInRangeAsync(_tenantId, _employeeId, UtcStart, UtcEnd, GetEmployeeSignalItemsQueryHandler.MaxItems, It.IsAny<CancellationToken>())).ReturnsAsync(new[] { c });
+        _exceptions.Setup(e => e.CountDetectedInRangeAsync(_tenantId, _employeeId, UtcStart, UtcEnd, It.IsAny<CancellationToken>())).ReturnsAsync(1);
+
+        var r = (await Run("monitoring_exceptions")).Value!;
+        r.Items.Single().Should().Match<EmployeeSignalItem>(i => i.Kind == "exception_case" && i.Id == c.Id.ToString() && i.Title == "Sustained low activity");
+
+        _exceptionScope.Setup(s => s.ResolveAsync(false, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ExceptionScope(false, Guid.NewGuid(), Array.Empty<Guid>()));
+        (await Run("monitoring_exceptions")).StatusCode.Should().Be(403);
     }
 }

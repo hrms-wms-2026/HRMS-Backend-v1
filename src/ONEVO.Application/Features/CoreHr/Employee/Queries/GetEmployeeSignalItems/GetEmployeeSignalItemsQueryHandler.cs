@@ -11,6 +11,7 @@ using ONEVO.Application.Features.Monitoring.Exceptions.ServiceInterfaces;
 using ONEVO.Application.Features.Monitoring.Notifications.RepositoryInterfaces;
 using ONEVO.Application.Features.TimeAttendance.Services;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
+using ONEVO.Domain.Features.Monitoring.Notifications.Entities;
 
 namespace ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployeeSignalItems;
 
@@ -56,8 +57,63 @@ public sealed class GetEmployeeSignalItemsQueryHandler(
             return Result<EmployeeSignalItemsResponse>.Success(AttendanceItems(request.Key, data));
         }
 
+        var legalEntityId = access.Value!.LegalEntityId;
+        var (from, to) = (period.Value!.From, period.Value.To);
+        var utcStart = new DateTimeOffset(from.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero);
+        var utcEnd = new DateTimeOffset(to.AddDays(1).ToDateTime(TimeOnly.MinValue), TimeSpan.Zero);
+
+        switch (request.Key)
+        {
+            case "location_violations":
+            {
+                if (!await toggles.IsEnabledAsync(tenantId, request.EmployeeId, MonitoringCapability.WorkLocationVerification, ct))
+                    return Hidden();
+                var data = await reader.LoadAsync(tenantId, request.EmployeeId, legalEntityId, period.Value, ct);
+                return await AlertsAsync(tenantId, request, data.Timezone, [NotificationType.OutsideWorkLocationAlert], data.RangeStartUtc, data.RangeEndUtc, ct);
+            }
+            case "idle_activity_alerts":
+            {
+                if (!await toggles.IsEnabledAsync(tenantId, request.EmployeeId, MonitoringCapability.ActivityMonitoring, ct))
+                    return Hidden();
+                var data = await reader.LoadAsync(tenantId, request.EmployeeId, legalEntityId, period.Value, ct);
+                return await AlertsAsync(tenantId, request, data.Timezone, [NotificationType.LongIdleAlert, NotificationType.LowActivityAlert], utcStart, utcEnd, ct);
+            }
+            case "monitoring_exceptions":
+            {
+                if (!await toggles.IsEnabledAsync(tenantId, request.EmployeeId, MonitoringCapability.ActivityMonitoring, ct))
+                    return Hidden();
+                var scope = await exceptionScope.ResolveAsync(forAction: false, [request.EmployeeId], ct);
+                if (scope?.CanSee(request.EmployeeId) != true)
+                    return Hidden();
+                var data = await reader.LoadAsync(tenantId, request.EmployeeId, legalEntityId, period.Value, ct);
+                var total = await exceptions.CountDetectedInRangeAsync(tenantId, request.EmployeeId, utcStart, utcEnd, ct);
+                var cases = await exceptions.ListDetectedInRangeAsync(tenantId, request.EmployeeId, utcStart, utcEnd, MaxItems, ct);
+                var items = cases.Select(c => new EmployeeSignalItem(
+                    "exception_case", c.Id.ToString(), LocalDate(c.DetectedAt, data.Timezone), c.Title, c.Description,
+                    OccurredAt: c.DetectedAt)).ToList();
+                return Result<EmployeeSignalItemsResponse>.Success(new(request.Key, total, data.Timezone.Id, items));
+            }
+        }
+
         return NotFound(request.Key);
     }
+
+    private async Task<Result<EmployeeSignalItemsResponse>> AlertsAsync(
+        Guid tenantId, GetEmployeeSignalItemsQuery request, TimeZoneInfo timezone, NotificationType[] types,
+        DateTimeOffset fromUtc, DateTimeOffset toUtcExclusive, CancellationToken ct)
+    {
+        var total = 0;
+        foreach (var type in types)
+            total += await notifications.CountByTypeAsync(tenantId, request.EmployeeId, type, fromUtc, toUtcExclusive, ct);
+        var rows = await notifications.ListByTypesAsync(tenantId, request.EmployeeId, types, fromUtc, toUtcExclusive, MaxItems, ct);
+        var items = rows.Select(n => new EmployeeSignalItem(
+            "monitoring_alert", n.Id.ToString(), LocalDate(n.CreatedAt, timezone), n.Title, n.Message,
+            OccurredAt: n.CreatedAt)).ToList();
+        return Result<EmployeeSignalItemsResponse>.Success(new(request.Key, total, timezone.Id, items));
+    }
+
+    private static DateOnly LocalDate(DateTimeOffset at, TimeZoneInfo timezone) =>
+        DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(at, timezone).DateTime);
 
     private static EmployeeSignalItemsResponse AttendanceItems(string key, AttendancePeriodData data)
     {
