@@ -54,6 +54,7 @@
 | `2026-08-27-attendance-history-redesign-backend.md` (2 tasks) | `finished/2026-08-27/` | finished (2/2 tasks; 3390/3390 unit tests; API build clean) |
 | `2026-09-21-task-subtasks-backend.md` (6 tasks) | `finished/2026-09-21/` | finished (6/6 tasks; 4070/4070 unit tests; 703/703 architecture tests; HTTP integration test green) |
 | `2026-09-22-centralized-file-upload-phase0-avatar-fix-backend.md` (3 tasks) | `next/` | implemented (3/3 tasks; 6/6 new+updated unit tests green); manual dev-API check skipped by user decision |
+| `2026-09-30-employee-overview-signals-backend/` (part-1 expected working days, 4 tasks; part-2 signals endpoint, 3 tasks) | `next/` | pending — spec `specs/next/2026-09-30-employee-overview-signals-and-period-correctness-design.md` |
 
 See `finished/SUMMARY.md` for the full file-by-file list, grouped by date folder, of all files in that folder (kept short here to avoid duplicating the same list twice).
 

@@ -63,7 +63,7 @@ public sealed class GetEmployeeAttendanceDisciplineQueryHandler(
         Guid tenantId, Guid employeeId, Guid? legalEntityId, EmployeePeriod period, bool trackingEnabled, CancellationToken ct)
     {
         var data = await reader.LoadAsync(tenantId, employeeId, legalEntityId, period, ct);
-        var counts = AttendancePeriodCalculator.Count(data.Records, data.Timezone, data.Now);
+        var counts = AttendancePeriodCalculator.Classify(data);
 
         var overBreakDays = 0;
         var overBreakMinutes = 0;
@@ -86,7 +86,7 @@ public sealed class GetEmployeeAttendanceDisciplineQueryHandler(
             : null;
 
         return new EmployeeAttendanceDisciplineMetrics(
-            counts.LateArrivals, counts.EarlyDepartures, counts.MissingClockOuts,
+            counts.Late, counts.EarlyDepartures, counts.MissingClockOuts,
             overBreakDays, overBreakMinutes, locationViolations);
     }
 }
