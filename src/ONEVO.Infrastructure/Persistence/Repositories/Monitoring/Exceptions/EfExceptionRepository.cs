@@ -48,6 +48,12 @@ public class EfExceptionRepository : IExceptionRepository
     public async Task<MonitoringException?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct) =>
         await _db.Exceptions.FirstOrDefaultAsync(e => e.TenantId == tenantId && e.Id == id, ct);
 
+    public Task<int> CountDetectedInRangeAsync(
+        Guid tenantId, Guid employeeId, DateTimeOffset fromUtc, DateTimeOffset toUtcExclusive, CancellationToken ct) =>
+        _db.Exceptions.AsNoTracking().CountAsync(
+            e => e.TenantId == tenantId && e.EmployeeId == employeeId
+                 && e.DetectedAt >= fromUtc && e.DetectedAt < toUtcExclusive, ct);
+
     public async Task<IReadOnlyList<Guid>> ListEmployeeIdsWithExceptionsAsync(Guid tenantId, CancellationToken ct) =>
         await _db.Exceptions.AsNoTracking()
             .Where(e => e.TenantId == tenantId)

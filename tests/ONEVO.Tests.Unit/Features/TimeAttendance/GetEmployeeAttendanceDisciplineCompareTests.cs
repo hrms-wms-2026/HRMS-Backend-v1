@@ -61,7 +61,8 @@ public sealed class GetEmployeeAttendanceDisciplineCompareTests
         _reader.Setup(r => r.LoadAsync(_tenantId, _employeeId, It.IsAny<Guid?>(), It.Is<EmployeePeriod>(p => p.From == from && p.To == to), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new AttendancePeriodData(
                 records, Colombo, DateTimeOffset.Parse("2026-09-21T00:00:00+00:00"), new DateOnly(2026, 9, 21), 60,
-                new Dictionary<DateOnly, int>(), Array.Empty<LeaveRequest>(), DateTimeOffset.MinValue, DateTimeOffset.MaxValue));
+                new Dictionary<DateOnly, int>(), Array.Empty<LeaveRequest>(), DateTimeOffset.MinValue, DateTimeOffset.MaxValue,
+                Weekdays(from, to, new DateOnly(2026, 9, 21))));
 
     [Fact]
     public async Task Handle_WithoutCompare_HasNoPrevious_AndLoadsOnlyTheCurrentPeriod()
@@ -112,4 +113,7 @@ public sealed class GetEmployeeAttendanceDisciplineCompareTests
 
         result.StatusCode.Should().Be(400);
     }
+
+    private static ExpectedWorkdays Weekdays(DateOnly from, DateOnly to, DateOnly today) =>
+        ExpectedWorkdayCalendar.Build(new HashSet<int> { 1, 2, 3, 4, 5 }, new HashSet<DateOnly>(), from, to, new DateOnly(2020, 1, 1), null, today);
 }

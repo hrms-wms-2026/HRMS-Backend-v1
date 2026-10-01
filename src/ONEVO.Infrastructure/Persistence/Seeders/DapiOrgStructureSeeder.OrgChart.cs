@@ -163,7 +163,12 @@ public sealed partial class DapiOrgStructureSeeder
         });
     }
 
-    private static async Task SeedPositionAssignmentAsync(
+    /// <summary>
+    /// Creates the employee's initial seeded assignment without overwriting later Core HR changes.
+    /// Returns true only when the seeded assignment is the employee's current active assignment,
+    /// which allows callers to keep the denormalized Employee.DepartmentId in sync with it.
+    /// </summary>
+    private static async Task<bool> SeedPositionAssignmentAsync(
         ApplicationDbContext db,
         string assignmentKey,
         Guid employeeId,
@@ -172,12 +177,23 @@ public sealed partial class DapiOrgStructureSeeder
         CancellationToken ct)
     {
         var id = DeterministicGuid($"dapi-org:assignment:{assignmentKey}");
-        var existing = await db.PositionAssignments.FirstOrDefaultAsync(a => a.Id == id, ct);
-        if (existing is not null)
+
+        var activeAssignment = await db.PositionAssignments.FirstOrDefaultAsync(
+            a => a.TenantId == DapiTenantId
+                && a.EmployeeId == employeeId
+                && a.AssignmentKind == PositionAssignmentKind.PrimaryEmployment
+                && a.AssignmentStatus == PositionAssignmentStatus.Active,
+            ct);
+        if (activeAssignment is not null)
         {
-            existing.PositionId = positionId;
-            existing.AssignmentStatus = PositionAssignmentStatus.Active;
-            return;
+            return activeAssignment.Id == id && activeAssignment.PositionId == positionId;
+        }
+
+        // A prior seeded assignment can legitimately be ended by Transfer / Promote. It is
+        // historical data and must not be reactivated on the next application start.
+        if (await db.PositionAssignments.AnyAsync(a => a.Id == id, ct))
+        {
+            return false;
         }
 
         db.PositionAssignments.Add(new PositionAssignment
@@ -192,5 +208,7 @@ public sealed partial class DapiOrgStructureSeeder
             CreatedAt = DateTimeOffset.UtcNow,
             CreatedById = DapiOwnerUserId
         });
+
+        return true;
     }
 }

@@ -84,18 +84,22 @@ public sealed partial class DapiOrgStructureSeeder
                 employee.Phone = hire.Phone;
                 employee.DateOfBirth = hire.DateOfBirth;
                 employee.Gender = hire.Gender;
-                employee.DepartmentId = departmentId;
                 employee.LegalEntityId = DapiLegalEntityId;
                 employee.UpdatedAt = now;
+            }
+
+            var positionId = positionIdByCode[hire.PositionCode];
+            var usesSeededPlacement = await SeedPositionAssignmentAsync(
+                db, $"newhire:{hire.Key}", employeeId, positionId, hire.HireDate, ct);
+            if (usesSeededPlacement)
+            {
+                employee.DepartmentId = departmentId;
             }
 
             await SeedEmployeeAddressAsync(db, hire.Key, employeeId, hire.AddressLine, hire.City, now, ct);
             await SeedEmergencyContactAsync(
                 db, hire.Key, employeeId, hire.EmergencyContactName,
                 hire.EmergencyContactRelationship, hire.EmergencyContactPhone, ct);
-
-            var positionId = positionIdByCode[hire.PositionCode];
-            await SeedPositionAssignmentAsync(db, $"newhire:{hire.Key}", employeeId, positionId, hire.HireDate, ct);
 
             await AssignRoleAsync(db, userId, roleIdByName[hire.RoleName], ct);
             await AssignRoleAsync(db, userId, roleIdByName[DapiOrgStructureData.RoleEmployee], ct);
@@ -115,7 +119,6 @@ public sealed partial class DapiOrgStructureSeeder
             return;
         }
 
-        owner.DepartmentId = departmentIdByCode[DapiOrgStructureData.ExecDept];
         owner.Phone ??= "+94771234001";
         owner.DateOfBirth ??= new DateOnly(1980, 6, 15);
         owner.Gender ??= "Male";
@@ -126,9 +129,13 @@ public sealed partial class DapiOrgStructureSeeder
         await SeedEmergencyContactAsync(
             db, "owner", owner.Id, "Anusha Dapi", "Spouse", "+94771234090", ct);
 
-        await SeedPositionAssignmentAsync(
+        var usesSeededPlacement = await SeedPositionAssignmentAsync(
             db, "owner", owner.Id, positionIdByCode[DapiOrgStructureData.CeoPosition],
             new DateOnly(2023, 1, 1), ct);
+        if (usesSeededPlacement)
+        {
+            owner.DepartmentId = departmentIdByCode[DapiOrgStructureData.ExecDept];
+        }
         // Owner keeps the existing "Tenant Owner" role (full access) seeded by
         // DevSmokeTestTenantSeeder - no additional role assignment needed here.
     }
@@ -183,11 +190,13 @@ public sealed partial class DapiOrgStructureSeeder
             return;
         }
 
-        employee.DepartmentId = departmentId;
-        employee.UpdatedAt = now;
-
-        await SeedPositionAssignmentAsync(
+        var usesSeededPlacement = await SeedPositionAssignmentAsync(
             db, $"existing:{personKey}", employeeId, positionId, employee.HireDate, ct);
+        if (usesSeededPlacement)
+        {
+            employee.DepartmentId = departmentId;
+            employee.UpdatedAt = now;
+        }
     }
 
     private static async Task SeedEmployeeAddressAsync(

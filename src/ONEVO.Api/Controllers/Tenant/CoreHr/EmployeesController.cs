@@ -27,6 +27,7 @@ using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployeeChecklistOve
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployeeDetail;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployeeHistory;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployeeIdentity;
+using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployeeOverviewSignals;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployeePositionHistory;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployeeRecentActivity;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployeeUpcoming;
@@ -302,6 +303,15 @@ public class EmployeesController : ControllerBase
         Guid id, [FromQuery] DateOnly? from = null, [FromQuery] DateOnly? to = null, CancellationToken ct = default)
     {
         var result = await _mediator.Send(new GetEmployeeWorkPatternQuery(id, from, to), ct);
+    /// <summary>Overview signals: every active violation for the employee in from..to, ordered by
+    /// importance rank. Drives the KPI strip and Needs Attention card. Module-gated or
+    /// out-of-scope sources are omitted inside the handler, not rejected here.</summary>
+    [HttpGet("{id:guid}/overview/signals")]
+    [RequirePermission("employees:read")]
+    public async Task<IActionResult> GetOverviewSignals(
+        Guid id, [FromQuery] DateOnly? from = null, [FromQuery] DateOnly? to = null, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new GetEmployeeOverviewSignalsQuery(id, from, to), ct);
         return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 

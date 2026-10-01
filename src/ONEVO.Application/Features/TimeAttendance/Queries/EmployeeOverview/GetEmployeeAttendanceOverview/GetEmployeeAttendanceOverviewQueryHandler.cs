@@ -29,26 +29,9 @@ public sealed class GetEmployeeAttendanceOverviewQueryHandler(
             return Result<EmployeeAttendanceOverviewResponse>.Failure(period.Error!, period.StatusCode ?? 400);
 
         var data = await reader.LoadAsync(tenantId, request.EmployeeId, access.Value!.LegalEntityId, period.Value!, ct);
-        var counts = AttendancePeriodCalculator.Count(data.Records, data.Timezone, data.Now);
-
-        var days = data.Records
-            .OrderBy(r => r.Date)
-            .Select(r =>
-            {
-                var hasLeave = data.ApprovedLeaves.Any(l => AttendancePeriodCalculator.CoversDate(l, r.Date));
-                return new EmployeeAttendanceDay(
-                    r.Date, AttendancePeriodCalculator.DayStatus(r, data.Timezone, data.Now, data.Today, hasLeave));
-            })
-            .ToList();
-
+        var c = AttendancePeriodCalculator.Classify(data);
         return Result<EmployeeAttendanceOverviewResponse>.Success(new EmployeeAttendanceOverviewResponse(
-            period.Value!.From,
-            period.Value.To,
-            counts.WorkingDays,
-            counts.DaysPresent,
-            counts.LateArrivals,
-            counts.MissingClockOuts,
-            days.Count(d => d.Status == "leave"),
-            days));
+            period.Value!.From, period.Value.To, c.WorkingDays, c.Attended, c.Late, c.MissingClockOuts, c.Leave,
+            c.Days, c.Absent, c.ShortHours, c.WorkedOnNonWorkingDay, c.WorkedDuringTimeOff));
     }
 }

@@ -1,5 +1,7 @@
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.Calendar.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.Helpers;
+using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
 using ONEVO.Application.Features.Leave.Request.RepositoryInterfaces;
 using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
 using ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces;
@@ -10,7 +12,9 @@ public sealed class EmployeeAttendancePeriodReader(
     IAttendanceReadRepository attendance,
     ILeaveRequestReadRepository leaveRequests,
     ILegalEntityRepository legalEntities,
-    IDateTimeProvider clock) : IEmployeeAttendancePeriodReader
+    IDateTimeProvider clock,
+    IEmployeeRepository employees,
+    ICalendarEventRepository calendarEvents) : IEmployeeAttendancePeriodReader
 {
     // A 366-day period has at most 366 attendance rows.
     private const int MaxRecords = 400;
@@ -45,8 +49,19 @@ public sealed class EmployeeAttendancePeriodReader(
 
         var leaves = await leaveRequests.ListApprovedCoveringAsync(tenantId, [employeeId], period.From, period.To, ct);
 
+        var employee = await employees.GetByIdAsync(tenantId, employeeId, ct);
+        var holidays = (await calendarEvents.ListHolidayDatesAsync(tenantId, period.From, period.To, ct)).ToHashSet();
+        // No legal entity, or General settings without working hours/timezone: clock-in treats every
+        // day as non-working, so nothing is "expected" - otherwise every such employee floods with absences.
+        IReadOnlySet<int> weekdays = legalEntity is not null && AttendanceScheduleResolver.IsScheduleConfigured(legalEntity)
+            ? AttendanceScheduleResolver.ParseWorkingDays(legalEntity.StandardWorkingDays)
+            : new HashSet<int>();
+        var workdays = ExpectedWorkdayCalendar.Build(
+            weekdays, holidays, period.From, period.To,
+            employee?.HireDate ?? period.From, employee?.TerminationDate, clock.Today);
+
         return new AttendancePeriodData(
             records, timezone, now, clock.Today, legalEntity?.BreakDurationMinutes,
-            breakMinutesByDate, leaves, rangeStart, rangeEnd);
+            breakMinutesByDate, leaves, rangeStart, rangeEnd, workdays);
     }
 }
