@@ -303,6 +303,9 @@ public class EmployeesController : ControllerBase
         Guid id, [FromQuery] DateOnly? from = null, [FromQuery] DateOnly? to = null, CancellationToken ct = default)
     {
         var result = await _mediator.Send(new GetEmployeeWorkPatternQuery(id, from, to), ct);
+        return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
     /// <summary>Overview signals: every active violation for the employee in from..to, ordered by
     /// importance rank. Drives the KPI strip and Needs Attention card. Module-gated or
     /// out-of-scope sources are omitted inside the handler, not rejected here.</summary>
