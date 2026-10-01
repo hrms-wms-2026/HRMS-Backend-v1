@@ -49,6 +49,8 @@ public sealed class GetEmployeeUpcomingQueryHandlerTests
             .ReturnsAsync(Array.Empty<LeaveRequestListRow>());
         _releases.Setup(r => r.ListForRecipientAsync(_tenantId, _employeeUserId, It.IsAny<DateOnly>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Array.Empty<UpcomingReleaseRow>());
+        _events.Setup(e => e.GetParticipantsForEventsAsync(_tenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, IReadOnlyList<CalendarEventParticipant>>());
     }
 
     private GetEmployeeUpcomingQueryHandler CreateHandler() =>
@@ -166,6 +168,80 @@ public sealed class GetEmployeeUpcomingQueryHandlerTests
         result.Value!.Items.Should().HaveCount(10);
         result.Value.Items.Select(i => i.Title).First().Should().Be("Event 1");
         result.Value.Items.Select(i => i.Start).Should().BeInAscendingOrder();
+    }
+
+    [Fact]
+    public async Task Handle_CarriesCalendarDetailsAndParticipantNames_ForThePopup()
+    {
+        var meeting = Event("Demo", "2026-10-02T09:00:00+00:00", "2026-10-02T10:00:00+00:00", location: "Teams");
+        meeting.Description = "Sprint demo";
+        meeting.MeetingLink = "https://teams.example/meet";
+        meeting.OrganizerName = "Grace Hopper";
+        meeting.Timezone = "Asia/Colombo";
+        ArrangeEvents(meeting);
+        var aliceId = Guid.NewGuid();
+        _events.Setup(e => e.GetParticipantsForEventsAsync(_tenantId, It.Is<IReadOnlyList<Guid>>(ids => ids.SequenceEqual(new[] { meeting.Id })), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, IReadOnlyList<CalendarEventParticipant>>
+            {
+                [meeting.Id] = new[] { new CalendarEventParticipant { EventId = meeting.Id, EmployeeId = aliceId } }
+            });
+        _employees.Setup(e => e.GetByIdAsync(_tenantId, aliceId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new EmployeeEntity { Id = aliceId, TenantId = _tenantId, FirstName = "Alice", LastName = "Smith" });
+
+        var result = await CreateHandler().Handle(new GetEmployeeUpcomingQuery(_employeeId), CancellationToken.None);
+
+        var item = result.Value!.Items.Should().ContainSingle().Subject;
+        item.Description.Should().Be("Sprint demo");
+        item.MeetingLink.Should().Be("https://teams.example/meet");
+        item.OrganizerName.Should().Be("Grace Hopper");
+        item.Timezone.Should().Be("Asia/Colombo");
+        item.Participants.Should().Equal("Alice Smith");
+    }
+
+    [Fact]
+    public async Task Handle_CarriesLeaveHours_AndSkipsParticipantLookupWithoutEvents()
+    {
+        _leave.Setup(l => l.ListOwnAsync(_tenantId, _employeeId, It.IsAny<LeaveRequestListFilter>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[]
+            {
+                new LeaveRequestListRow(new LeaveRequest
+                {
+                    Id = Guid.NewGuid(), Status = "approved", TotalHours = 16,
+                    StartAt = DateTimeOffset.Parse("2026-10-06T00:00:00+00:00"), EndAt = DateTimeOffset.Parse("2026-10-07T23:59:59+00:00")
+                }, "Annual leave", "AL")
+            });
+
+        var result = await CreateHandler().Handle(new GetEmployeeUpcomingQuery(_employeeId), CancellationToken.None);
+
+        var item = result.Value!.Items.Should().ContainSingle().Subject;
+        item.Hours.Should().Be(16);
+        item.Participants.Should().BeNull();
+        _events.Verify(e => e.GetParticipantsForEventsAsync(It.IsAny<Guid>(), It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Handle_ReturnsOnlyTheEarliestLimitItems_ButCountsTheWholeWindow()
+    {
+        ArrangeEvents(Enumerable.Range(1, 5)
+            .Select(i => Event($"Event {i}", $"2026-10-{i:00}T09:00:00+00:00", $"2026-10-{i:00}T10:00:00+00:00"))
+            .ToArray());
+
+        var result = await CreateHandler().Handle(new GetEmployeeUpcomingQuery(_employeeId, 14, 3), CancellationToken.None);
+
+        result.Value!.Items.Select(i => i.Title).Should().Equal("Event 1", "Event 2", "Event 3");
+        result.Value.Total.Should().Be(5);
+        _events.Verify(e => e.GetParticipantsForEventsAsync(_tenantId,
+            It.Is<IReadOnlyList<Guid>>(ids => ids.Count == 3), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(51)]
+    public async Task Handle_RejectsAnOutOfRangeLimit(int limit)
+    {
+        var result = await CreateHandler().Handle(new GetEmployeeUpcomingQuery(_employeeId, 14, limit), CancellationToken.None);
+
+        result.IsSuccess.Should().BeFalse();
     }
 
     [Fact]

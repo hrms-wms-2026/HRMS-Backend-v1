@@ -77,6 +77,20 @@ public sealed class GetEmployeeDeliveryQueryHandlerTests
     }
 
     [Fact]
+    public async Task Handle_CountsACarriedOverTaskOnlyOnceItIsCompletedWithinThePeriod()
+    {
+        ArrangeRows(SepFrom, SepTo,
+            new EmployeeTaskPeriodRow(new DateOnly(2026, 8, 20), null, 0, false, 5, IsCarriedOver: true),
+            Done("2026-08-20", "2026-09-05T10:00:00+00:00", 3) with { IsCarriedOver = true });
+
+        var v = (await CreateHandler().Handle(new GetEmployeeDeliveryQuery(_employeeId, SepFrom, SepTo), CancellationToken.None)).Value!;
+
+        v.TasksAssigned.Should().Be(1);
+        v.TasksCompleted.Should().Be(1);
+        v.StoryPointsAssigned.Should().Be(3);
+    }
+
+    [Fact]
     public async Task Handle_WithComparePrevious_AddsThePreviousMonthsMetrics()
     {
         ArrangeRows(SepFrom, SepTo, Done("2026-09-10", "2026-09-09T10:00:00+00:00", 5));

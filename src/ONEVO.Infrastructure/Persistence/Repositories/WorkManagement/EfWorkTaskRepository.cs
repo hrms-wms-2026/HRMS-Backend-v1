@@ -133,15 +133,26 @@ public class EfWorkTaskRepository : IWorkTaskRepository
             from t in _db.WorkTasks.AsNoTracking()
             join s in _db.TaskStatuses.AsNoTracking() on t.StatusId equals s.Id
             join p in _db.Projects.AsNoTracking() on t.ProjectId equals p.Id
+            // Left join: the module name is display-only and must never change which tasks are counted.
+            join o in _db.Objectives.AsNoTracking() on t.ObjectiveId equals o.Id into objectives
+            from o in objectives.DefaultIfEmpty()
             where t.TenantId == tenantId
                   && _db.TaskAssignments.Any(a => a.TaskId == t.Id && a.EmployeeId == employeeId)
                   && ((t.DueDate != null && t.DueDate >= fromDate && t.DueDate <= toDate)
                       || (t.CompletedAt != null && t.CompletedAt >= fromUtc && t.CompletedAt < toUtcExclusive)
                       || _db.TaskAssignments.Any(a => a.TaskId == t.Id && a.EmployeeId == employeeId
-                                                      && a.AssignedAt >= fromUtc && a.AssignedAt < toUtcExclusive))
+                                                      && a.AssignedAt >= fromUtc && a.AssignedAt < toUtcExclusive)
+                      // Carried over: due before the period and not finished before it began. "Open" is
+                      // judged by status/progress, not CompletedAt == null - tasks closed by status can lack
+                      // a CompletedAt and must not resurface in every later period.
+                      || (t.DueDate != null && t.DueDate < fromDate
+                          && ((!s.MarksTaskComplete && t.ProgressPercent < 100)
+                              || (t.CompletedAt != null && t.CompletedAt >= fromUtc))))
             select new EmployeeTaskPeriodRow(
                 t.DueDate, t.CompletedAt, t.ProgressPercent, s.MarksTaskComplete, t.StoryPoints,
-                t.Id, t.Title, t.ProjectId, p.Name)
+                t.Id, t.Title, t.ProjectId, p.Name,
+                t.DueDate != null && t.DueDate < fromDate,
+                t.ShortId, t.Priority, s.Name, s.Color, t.ObjectiveId, o != null ? o.Title : "")
         ).ToListAsync(ct);
     }
 

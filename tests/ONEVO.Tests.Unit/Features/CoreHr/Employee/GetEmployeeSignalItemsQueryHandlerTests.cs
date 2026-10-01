@@ -247,7 +247,22 @@ public sealed class GetEmployeeSignalItemsQueryHandlerTests
         r.Timezone.Should().BeNull();
         r.Items.Single().Should().Match<EmployeeSignalItem>(i =>
             i.Kind == "task" && i.Id == overdue.TaskId.ToString() && i.Title == "Write API docs"
-            && i.ProjectId == project && i.ProjectName == "Apollo" && i.DueDate == new DateOnly(2026, 8, 10));
+            && i.ProjectId == project && i.ProjectName == "Apollo" && i.DueDate == new DateOnly(2026, 8, 10)
+            && i.CarriedOver == false && i.DaysOverdue == 11);
+    }
+
+    [Fact]
+    public async Task OverdueTasks_IncludeCarriedOverRows_FlaggedWithDaysOverdue()
+    {
+        var project = Guid.NewGuid();
+        var carried = new EmployeeTaskPeriodRow(new DateOnly(2026, 7, 25), null, 0, false, null, Guid.NewGuid(), "Migrate DB", project, "Apollo", IsCarriedOver: true);
+        _tasks.Setup(t => t.ListForEmployeePeriodAsync(_tenantId, _employeeId, From, To, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[] { carried });
+
+        var r = (await Run("overdue_tasks")).Value!;
+
+        r.Total.Should().Be(1);
+        r.Items.Single().Should().Match<EmployeeSignalItem>(i => i.CarriedOver == true && i.DaysOverdue == 27);
     }
 
     [Fact]

@@ -31,15 +31,18 @@ public sealed class EmployeeTaskPeriodRepositoryReadsTests
         var dueInPeriod = Task(projectId, status.Id, "DUE", dueDate: new DateOnly(2026, 9, 10));
         var completedInPeriod = Task(projectId, done.Id, "DONE", completedAt: DateTimeOffset.Parse("2026-09-05T10:00:00+00:00"));
         var assignedInPeriod = Task(projectId, status.Id, "ASSIGNED");
-        var outsideEverything = Task(projectId, status.Id, "OLD", dueDate: new DateOnly(2026, 7, 1));
+        var finishedBeforePeriod = Task(projectId, done.Id, "FINISHED", dueDate: new DateOnly(2026, 7, 1),
+            completedAt: DateTimeOffset.Parse("2026-08-10T10:00:00+00:00"));
+        var closedByStatusNoTimestamp = Task(projectId, done.Id, "CLOSED", dueDate: new DateOnly(2026, 7, 1));
         var otherEmployees = Task(projectId, status.Id, "OTHER", dueDate: new DateOnly(2026, 9, 10));
-        db.WorkTasks.AddRange(dueInPeriod, completedInPeriod, assignedInPeriod, outsideEverything, otherEmployees);
+        db.WorkTasks.AddRange(dueInPeriod, completedInPeriod, assignedInPeriod, finishedBeforePeriod, closedByStatusNoTimestamp, otherEmployees);
 
         db.TaskAssignments.AddRange(
             Assign(dueInPeriod.Id, _employeeId, "2026-06-01T00:00:00+00:00"),
             Assign(completedInPeriod.Id, _employeeId, "2026-06-01T00:00:00+00:00"),
             Assign(assignedInPeriod.Id, _employeeId, "2026-09-03T00:00:00+00:00"),
-            Assign(outsideEverything.Id, _employeeId, "2026-06-01T00:00:00+00:00"),
+            Assign(finishedBeforePeriod.Id, _employeeId, "2026-06-01T00:00:00+00:00"),
+            Assign(closedByStatusNoTimestamp.Id, _employeeId, "2026-06-01T00:00:00+00:00"),
             Assign(otherEmployees.Id, _otherEmployeeId, "2026-09-03T00:00:00+00:00"));
         await db.SaveChangesAsync();
         db.ChangeTracker.Clear();
@@ -50,6 +53,36 @@ public sealed class EmployeeTaskPeriodRepositoryReadsTests
         Assert.Contains(rows, r => r.DueDate == new DateOnly(2026, 9, 10));
         Assert.Contains(rows, r => r.MarksTaskComplete && r.CompletedAt is not null);
         Assert.Contains(rows, r => r.DueDate is null && !r.MarksTaskComplete);
+        Assert.All(rows, r => Assert.False(r.IsCarriedOver));
+    }
+
+    [Fact]
+    public async Task ListForEmployeePeriod_CarriesOverTasksDueEarlierThatWereStillUnfinishedWhenThePeriodBegan()
+    {
+        await using var db = BuildInMemoryDb();
+        var projectId = Guid.NewGuid();
+        db.Projects.Add(Project(projectId));
+        var status = new WmTaskStatus { Id = Guid.NewGuid(), TenantId = _tenantId, ProjectId = projectId, Name = "s", Category = "active", MarksTaskComplete = false };
+        var done = new WmTaskStatus { Id = Guid.NewGuid(), TenantId = _tenantId, ProjectId = projectId, Name = "d", Category = "done", MarksTaskComplete = true };
+        db.TaskStatuses.AddRange(status, done);
+
+        var stillOpen = Task(projectId, status.Id, "OPEN", dueDate: new DateOnly(2026, 8, 20), progress: 30);
+        // Finished after the period: when viewing a past month it was still open during it.
+        var finishedLater = Task(projectId, done.Id, "LATER", dueDate: new DateOnly(2026, 7, 1),
+            completedAt: DateTimeOffset.Parse("2026-10-05T10:00:00+00:00"));
+        db.WorkTasks.AddRange(stillOpen, finishedLater);
+        db.TaskAssignments.AddRange(
+            Assign(stillOpen.Id, _employeeId, "2026-06-01T00:00:00+00:00"),
+            Assign(finishedLater.Id, _employeeId, "2026-06-01T00:00:00+00:00"));
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var rows = await new EfWorkTaskRepository(db).ListForEmployeePeriodAsync(_tenantId, _employeeId, From, To);
+
+        Assert.Equal(2, rows.Count);
+        Assert.All(rows, r => Assert.True(r.IsCarriedOver));
+        Assert.Contains(rows, r => r.Title == "OPEN");
+        Assert.Contains(rows, r => r.Title == "LATER");
     }
 
     [Fact]

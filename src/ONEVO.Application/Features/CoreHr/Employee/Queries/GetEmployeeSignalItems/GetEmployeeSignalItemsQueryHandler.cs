@@ -105,7 +105,8 @@ public sealed class GetEmployeeSignalItemsQueryHandler(
                     .Where(r => EmployeeTaskPeriodCalculator.IsOverdue(r, asOf))
                     .Select(r => new EmployeeSignalItem(
                         "task", r.TaskId.ToString(), r.DueDate!.Value, r.Title, r.ProjectName,
-                        ProjectId: r.ProjectId, ProjectName: r.ProjectName, DueDate: r.DueDate))
+                        ProjectId: r.ProjectId, ProjectName: r.ProjectName, DueDate: r.DueDate,
+                        CarriedOver: r.IsCarriedOver, DaysOverdue: EmployeeTaskPeriodCalculator.DaysOverdue(r, asOf)))
                     .ToList();
                 return Result<EmployeeSignalItemsResponse>.Success(Page(request.Key, null, items));
             }

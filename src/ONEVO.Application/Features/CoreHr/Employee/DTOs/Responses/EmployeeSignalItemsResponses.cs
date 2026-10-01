@@ -15,7 +15,9 @@ public sealed record EmployeeSignalItem(
     DateOnly? DueDate = null,
     string? ApprovalKind = null,
     DateTimeOffset? RequestedAt = null,
-    string? ApproverName = null);
+    string? ApproverName = null,
+    bool? CarriedOver = null,
+    int? DaysOverdue = null);
 
 /// <summary>Total is the full count (equals the signal's Value); Items holds at most 50, newest
 /// first. Timezone is the employee's attendance timezone for attendance and alert keys.</summary>

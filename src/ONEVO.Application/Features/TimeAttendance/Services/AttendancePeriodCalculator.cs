@@ -131,6 +131,68 @@ public static class AttendancePeriodCalculator
             new AttendanceViolationDates(absent, late, early, missing, shortHours, offDayWork, leaveWork));
     }
 
+    /// <summary>
+    /// The Attendance card's per-day list: Classify's status for every day up to today (newest first),
+    /// joined with that day's record for clock times, hours, breaks and late/early minutes. Days
+    /// outside the employment range or still ahead are left out.
+    /// </summary>
+    public static IReadOnlyList<EmployeeAttendanceDayDetail> DayDetails(AttendancePeriodData data)
+    {
+        var classification = Classify(data);
+        var byDate = data.Records.GroupBy(r => r.Date).ToDictionary(g => g.Key, g => g.First());
+        var overBreak = OverBreakDays(data).ToDictionary(o => o.Date, o => o.MinutesOver);
+
+        return classification.Days
+            .Where(day => day.Status != "none" && day.Date <= data.Today)
+            .OrderByDescending(day => day.Date)
+            .Select(day =>
+            {
+                byDate.TryGetValue(day.Date, out var record);
+                var expected = data.Workdays.ExpectedDates.Contains(day.Date);
+                var clockIn = record?.ActualStart;
+                var clockOut = record?.ActualEnd;
+                var breakMinutes = data.BreakMinutesByDate.TryGetValue(day.Date, out var used) ? used : record?.BreakMinutes ?? 0;
+                var shortHours = expected && record is { ActualStart: not null, ActualEnd: not null, RequiredWorkMinutes: int req }
+                                 && record.WorkedMinutes < req;
+                return new EmployeeAttendanceDayDetail(
+                    day.Date,
+                    day.Status,
+                    expected,
+                    record?.IsHoliday == true ? record.HolidayName : null,
+                    record?.ScheduledStart?.ToString("HH:mm"),
+                    record?.ScheduledEnd?.ToString("HH:mm"),
+                    clockIn,
+                    clockOut,
+                    clockIn is { } i ? TimeZoneInfo.ConvertTime(i, data.Timezone).ToString("HH:mm") : null,
+                    clockOut is { } o ? TimeZoneInfo.ConvertTime(o, data.Timezone).ToString("HH:mm") : null,
+                    record?.WorkedMinutes ?? 0,
+                    record?.RequiredWorkMinutes,
+                    breakMinutes,
+                    record is null ? 0 : LateMinutes(record, data.Timezone),
+                    record is null ? 0 : EarlyLeaveMinutes(record, data.Timezone),
+                    shortHours,
+                    overBreak.TryGetValue(day.Date, out var over) ? over : 0,
+                    record?.ExpectedWorkModeName);
+            })
+            .ToList();
+    }
+
+    /// <summary>Whole minutes after the scheduled start (the IsLate rule); 0 when on time or unscheduled.</summary>
+    private static int LateMinutes(AttendanceRecord record, TimeZoneInfo timezone)
+    {
+        if (!IsLate(record, timezone)) return 0;
+        var localStart = TimeZoneInfo.ConvertTime(record.ActualStart!.Value, timezone).TimeOfDay;
+        return (int)Math.Floor((localStart - record.ScheduledStart!.Value.ToTimeSpan()).TotalMinutes);
+    }
+
+    /// <summary>Whole minutes before the scheduled end (the IsEarlyDeparture rule); 0 otherwise.</summary>
+    private static int EarlyLeaveMinutes(AttendanceRecord record, TimeZoneInfo timezone)
+    {
+        if (!IsEarlyDeparture(record, timezone)) return 0;
+        var localEnd = TimeZoneInfo.ConvertTime(record.ActualEnd!.Value, timezone).TimeOfDay;
+        return (int)Math.Floor((record.ScheduledEnd!.Value.ToTimeSpan() - localEnd).TotalMinutes);
+    }
+
     /// <summary>Days whose total break exceeded the configured allowance, with the minutes over.
     /// The single over-break rule: the discipline counts and the drill-down list both use it.</summary>
     public static IReadOnlyList<OverBreakDay> OverBreakDays(AttendancePeriodData data)

@@ -46,10 +46,17 @@ public sealed class GetEmployeeDeliveryQueryHandler(
     private async Task<EmployeeDeliveryMetrics> MeasureAsync(
         Guid tenantId, Guid employeeId, EmployeePeriod period, CancellationToken ct)
     {
-        var rows = await tasks.ListForEmployeePeriodAsync(tenantId, employeeId, period.From, period.To, ct);
+        var all = await tasks.ListForEmployeePeriodAsync(tenantId, employeeId, period.From, period.To, ct);
+        // Delivery measures what was due or delivered in this period: a carried-over task only counts
+        // here once it is completed within it, so its story points aren't re-counted every month it slips.
+        var rows = all.Where(r => !r.IsCarriedOver || CompletedWithin(r, period)).ToList();
         var asOf = period.To < clock.Today ? period.To : clock.Today;
         var s = EmployeeTaskPeriodCalculator.Compute(rows, asOf);
         return new EmployeeDeliveryMetrics(
             s.Assigned, s.Completed, s.OnTimeCompleted, s.CompletedWithDueDate, s.StoryPointsAssigned, s.StoryPointsCompleted);
     }
+
+    private static bool CompletedWithin(EmployeeTaskPeriodRow row, EmployeePeriod period) =>
+        row.CompletedAt is { } at && DateOnly.FromDateTime(at.UtcDateTime) is var day
+        && day >= period.From && day <= period.To;
 }

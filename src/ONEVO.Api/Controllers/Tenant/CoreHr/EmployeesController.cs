@@ -39,8 +39,10 @@ using ONEVO.Application.Features.Leave.Balance.Queries.GetEmployeeTimeOff;
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.Queries.EmployeeOverview.GetEmployeeActivityOverview;
 using ONEVO.Application.Features.TimeAttendance.Queries.EmployeeOverview.GetEmployeeAttendanceDiscipline;
 using ONEVO.Application.Features.TimeAttendance.Queries.EmployeeOverview.GetEmployeeAttendanceOverview;
+using ONEVO.Application.Features.TimeAttendance.Queries.EmployeeOverview.GetEmployeeAttendanceDays;
 using ONEVO.Application.Features.WorkManagement.EmployeeOverview.Queries.GetEmployeeDelivery;
 using ONEVO.Application.Features.WorkManagement.EmployeeOverview.Queries.GetEmployeeWorkOverview;
+using ONEVO.Application.Features.WorkManagement.EmployeeOverview.Queries.GetEmployeeWorkTasks;
 using ONEVO.Application.Features.WorkManagement.EmployeeWorkGraph.Queries.GetEmployeeWorkGraph;
 
 namespace ONEVO.Api.Controllers.Tenant.CoreHr;
@@ -168,6 +170,17 @@ public class EmployeesController : ControllerBase
         return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
+    /// <summary>Overview attendance card day list: every day of from..to up to today (newest first) with
+    /// status, clock-in/out, worked and break minutes, late/early minutes. Fetched only when the card is opened.</summary>
+    [HttpGet("{id:guid}/overview/attendance/days")]
+    [RequirePermission("employees:read")]
+    public async Task<IActionResult> GetOverviewAttendanceDays(
+        Guid id, [FromQuery] DateOnly? from = null, [FromQuery] DateOnly? to = null, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new GetEmployeeAttendanceDaysQuery(id, from, to), ct);
+        return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
     /// <summary>Overview attendance-discipline card: late clock-ins, early clock-outs, missing
     /// clock-outs, over-break days/minutes and (when location tracking is on) location alerts.</summary>
     [HttpGet("{id:guid}/overview/attendance-discipline")]
@@ -200,6 +213,19 @@ public class EmployeesController : ControllerBase
         Guid id, [FromQuery] DateOnly? from = null, [FromQuery] DateOnly? to = null, CancellationToken ct = default)
     {
         var result = await _mediator.Send(new GetEmployeeWorkOverviewQuery(id, from, to), ct);
+        return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Overview work card task list: every task behind the card's counts for from..to (default:
+    /// current month) with status, priority, project and module, grouped overdue / not started /
+    /// in progress / completed and ordered by priority. Fetched only when the card is opened.</summary>
+    [HttpGet("{id:guid}/overview/work/tasks")]
+    [RequirePermission("employees:read")]
+    [RequireAnyModule("worksync_foundation", "projects", "objectives_milestones", "tasks", "boards", "planning_sprints")]
+    public async Task<IActionResult> GetOverviewWorkTasks(
+        Guid id, [FromQuery] DateOnly? from = null, [FromQuery] DateOnly? to = null, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new GetEmployeeWorkTasksQuery(id, from, to), ct);
         return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
@@ -286,12 +312,13 @@ public class EmployeesController : ControllerBase
     }
 
     /// <summary>Overview upcoming items: calendar events (private ones excluded), approved leave and
-    /// release reminders in the next N days (default 14, max 60). Not period-aware.</summary>
+    /// release reminders in the next N days (default 14, max 60), earliest first. `limit` (default 10, max 50)
+    /// caps the items returned; `total` in the response counts the whole window. Not period-aware.</summary>
     [HttpGet("{id:guid}/overview/upcoming")]
     [RequirePermission("employees:read")]
-    public async Task<IActionResult> GetOverviewUpcoming(Guid id, [FromQuery] int days = 14, CancellationToken ct = default)
+    public async Task<IActionResult> GetOverviewUpcoming(Guid id, [FromQuery] int days = 14, [FromQuery] int limit = 10, CancellationToken ct = default)
     {
-        var result = await _mediator.Send(new GetEmployeeUpcomingQuery(id, days), ct);
+        var result = await _mediator.Send(new GetEmployeeUpcomingQuery(id, days, limit), ct);
         return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
