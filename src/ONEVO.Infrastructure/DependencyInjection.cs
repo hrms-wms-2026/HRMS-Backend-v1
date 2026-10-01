@@ -726,6 +726,15 @@ public static class DependencyInjection
         services.AddScoped<
             ONEVO.Application.Features.Dashboard.Team.Abstractions.ITeamActionSource,
             ONEVO.Application.Features.Dashboard.Team.Sources.AttendanceCorrectionTeamActionSource>();
+        services.AddScoped<
+            ONEVO.Application.Features.Dashboard.Team.Abstractions.ITeamActionSource,
+            ONEVO.Application.Features.Dashboard.Team.Sources.AttendanceWorkAreaChangeTeamActionSource>();
+        services.AddScoped<
+            ONEVO.Application.Features.Dashboard.Team.Abstractions.ITeamActionSource,
+            ONEVO.Application.Features.Dashboard.Team.Sources.AttendanceLocationChangeTeamActionSource>();
+        services.AddScoped<
+            ONEVO.Application.Features.Dashboard.Team.Abstractions.ITeamActionSource,
+            ONEVO.Application.Features.Dashboard.Team.Sources.AttendanceDeviceChangeTeamActionSource>();
 
         // Background seeder
         services.AddHostedService<PermissionSeeder>();
