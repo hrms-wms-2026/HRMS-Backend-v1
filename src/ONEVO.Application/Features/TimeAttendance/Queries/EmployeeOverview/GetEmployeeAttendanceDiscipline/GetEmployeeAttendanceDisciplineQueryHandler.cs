@@ -65,19 +65,9 @@ public sealed class GetEmployeeAttendanceDisciplineQueryHandler(
         var data = await reader.LoadAsync(tenantId, employeeId, legalEntityId, period, ct);
         var counts = AttendancePeriodCalculator.Classify(data);
 
-        var overBreakDays = 0;
-        var overBreakMinutes = 0;
-        if (data.BreakAllowanceMinutes is int allowance)
-        {
-            foreach (var record in data.Records)
-            {
-                if (data.BreakMinutesByDate.TryGetValue(record.Date, out var used) && used > allowance)
-                {
-                    overBreakDays += 1;
-                    overBreakMinutes += used - allowance;
-                }
-            }
-        }
+        var overBreak = AttendancePeriodCalculator.OverBreakDays(data);
+        var overBreakDays = overBreak.Count;
+        var overBreakMinutes = overBreak.Sum(o => o.MinutesOver);
 
         int? locationViolations = trackingEnabled
             ? await notifications.CountByTypeAsync(

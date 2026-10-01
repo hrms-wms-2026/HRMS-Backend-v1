@@ -11,10 +11,22 @@ public sealed record AttendancePeriodCounts(
     int EarlyDepartures,
     int MissingClockOuts);
 
+public sealed record AttendanceViolationDates(
+    IReadOnlyList<DateOnly> Absent,
+    IReadOnlyList<DateOnly> Late,
+    IReadOnlyList<DateOnly> EarlyDepartures,
+    IReadOnlyList<DateOnly> MissingClockOuts,
+    IReadOnlyList<DateOnly> ShortHours,
+    IReadOnlyList<DateOnly> WorkedOnNonWorkingDay,
+    IReadOnlyList<DateOnly> WorkedDuringTimeOff);
+
 public sealed record AttendancePeriodClassification(
     int WorkingDays, int Attended, int Late, int EarlyDepartures, int MissingClockOuts,
     int Absent, int Leave, int ShortHours, int WorkedOnNonWorkingDay, int WorkedDuringTimeOff,
-    IReadOnlyList<EmployeeAttendanceDay> Days);
+    IReadOnlyList<EmployeeAttendanceDay> Days,
+    AttendanceViolationDates Dates);
+
+public sealed record OverBreakDay(DateOnly Date, int MinutesOver);
 
 /// <summary>
 /// The late / early-departure / missing-clock-out rules behind every attendance summary. Moved
@@ -75,7 +87,14 @@ public static class AttendancePeriodCalculator
     {
         var w = data.Workdays;
         var byDate = data.Records.GroupBy(r => r.Date).ToDictionary(g => g.Key, g => g.First());
-        int attended = 0, late = 0, early = 0, missing = 0, absent = 0, leave = 0, shortHours = 0, offDayWork = 0, leaveWork = 0;
+        int attended = 0, leave = 0;
+        var absent = new List<DateOnly>();
+        var late = new List<DateOnly>();
+        var early = new List<DateOnly>();
+        var missing = new List<DateOnly>();
+        var shortHours = new List<DateOnly>();
+        var offDayWork = new List<DateOnly>();
+        var leaveWork = new List<DateOnly>();
         var days = new List<EmployeeAttendanceDay>();
 
         for (var d = w.PeriodFrom; d <= w.PeriodTo; d = d.AddDays(1))
@@ -91,23 +110,39 @@ public static class AttendancePeriodCalculator
                 attended++;
                 var isMissing = IsMissingClockOut(record, data.Now);
                 var isLate = IsLate(record, data.Timezone);
-                if (isMissing) missing++;
-                if (isLate) late++;
-                if (IsEarlyDeparture(record, data.Timezone)) early++;
-                if (!expected) offDayWork++;
-                else if (onLeave) leaveWork++;
+                if (isMissing) missing.Add(d);
+                if (isLate) late.Add(d);
+                if (IsEarlyDeparture(record, data.Timezone)) early.Add(d);
+                if (!expected) offDayWork.Add(d);
+                else if (onLeave) leaveWork.Add(d);
                 if (expected && record.ActualEnd is not null && record.RequiredWorkMinutes is int req && record.WorkedMinutes < req)
-                    shortHours++;
+                    shortHours.Add(d);
                 days.Add(new(d, isMissing ? "missing_clock_out" : isLate ? "late" : "present"));
             }
             else if (!expected) days.Add(new(d, "off"));
             else if (onLeave) { leave++; days.Add(new(d, "leave")); }
-            else if (d < data.Today) { absent++; days.Add(new(d, "absent")); }
+            else if (d < data.Today) { absent.Add(d); days.Add(new(d, "absent")); }
             else days.Add(new(d, "none"));
         }
 
         return new AttendancePeriodClassification(
-            w.Count, attended, late, early, missing, absent, leave, shortHours, offDayWork, leaveWork, days);
+            w.Count, attended, late.Count, early.Count, missing.Count, absent.Count, leave,
+            shortHours.Count, offDayWork.Count, leaveWork.Count, days,
+            new AttendanceViolationDates(absent, late, early, missing, shortHours, offDayWork, leaveWork));
+    }
+
+    /// <summary>Days whose total break exceeded the configured allowance, with the minutes over.
+    /// The single over-break rule: the discipline counts and the drill-down list both use it.</summary>
+    public static IReadOnlyList<OverBreakDay> OverBreakDays(AttendancePeriodData data)
+    {
+        if (data.BreakAllowanceMinutes is not int allowance)
+            return Array.Empty<OverBreakDay>();
+
+        return data.Records
+            .Where(r => data.BreakMinutesByDate.TryGetValue(r.Date, out var used) && used > allowance)
+            .Select(r => new OverBreakDay(r.Date, data.BreakMinutesByDate[r.Date] - allowance))
+            .OrderBy(o => o.Date)
+            .ToList();
     }
 
     public static string DayStatus(
