@@ -85,7 +85,7 @@ public class GetObjectiveTasksQueryHandlerTests
 
         var (identity, objectives, members, permissions) = MembershipOnObjectiveItself();
         var handler = new GetObjectiveTasksQueryHandler(
-            currentUser.Object, identity.Object, objectives.Object, members.Object, permissions.Object,
+            currentUser.Object, identity.Object, objectives.Object, WorkHierarchyServiceMocks.ReadAccess(members), permissions.Object,
             tasks.Object, assignments.Object, sessions.Object);
 
         var result = await handler.Handle(new GetObjectiveTasksQuery(ObjectiveId), CancellationToken.None);
@@ -131,7 +131,7 @@ public class GetObjectiveTasksQueryHandlerTests
 
         var (identity, objectives, members, permissions) = MembershipOnObjectiveItself();
         var handler = new GetObjectiveTasksQueryHandler(
-            currentUser.Object, identity.Object, objectives.Object, members.Object, permissions.Object,
+            currentUser.Object, identity.Object, objectives.Object, WorkHierarchyServiceMocks.ReadAccess(members), permissions.Object,
             tasks.Object, assignments.Object, sessions.Object);
 
         var result = await handler.Handle(new GetObjectiveTasksQuery(ObjectiveId), CancellationToken.None);
@@ -194,7 +194,7 @@ public class GetObjectiveTasksQueryHandlerTests
             .ReturnsAsync(new Dictionary<Guid, int>());
 
         return new GetObjectiveTasksQueryHandler(
-            currentUser.Object, identity.Object, objectives.Object, members.Object, permissionResolver.Object,
+            currentUser.Object, identity.Object, objectives.Object, WorkHierarchyServiceMocks.ReadAccess(members, objective, parent), permissionResolver.Object,
             tasks.Object, assignments.Object, sessions.Object);
 
     }

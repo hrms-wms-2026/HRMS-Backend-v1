@@ -28,9 +28,6 @@ public interface IMilestoneMembershipCoordinator
     /// <summary>True if the employee has an active membership row scoped to exactly this objective.</summary>
     Task<bool> HasActiveMembershipAsync(Guid tenantId, Guid projectId, Guid objectiveId, Guid employeeId, CancellationToken ct = default);
 
-    /// <summary>True if the employee has an active membership on this objective (looks up by objective id only).</summary>
-    Task<bool> IsActiveMemberAsync(Guid tenantId, Guid objectiveId, Guid employeeId, CancellationToken ct = default);
-
     /// <summary>
     /// True if the employee is the owner of, or an active member of, this Objective or any of its
     /// ancestors (walking up via ParentObjectiveId). Returns false if the Objective doesn't exist.

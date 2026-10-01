@@ -1,5 +1,4 @@
-using ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.DTOs.Responses;
-
 namespace ONEVO.Application.Features.WorkManagement.Objectives.DTOs.Responses;
 
-public sealed record ObjectiveChangeOutcomeResponse(bool Applied, ObjectiveChangeRequestResponse? PendingRequest);
+/// <summary>Applied, or sent for approval (ApprovalRequestId is the wm_approval_requests row).</summary>
+public sealed record ObjectiveChangeOutcomeResponse(bool Applied, Guid? ApprovalRequestId);

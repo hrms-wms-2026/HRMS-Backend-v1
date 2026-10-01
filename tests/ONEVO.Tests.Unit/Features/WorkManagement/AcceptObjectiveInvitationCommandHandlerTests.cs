@@ -93,7 +93,6 @@ public class AcceptObjectiveInvitationCommandHandlerTests
                 ? new Employee { Id = InviterEmployeeId, TenantId = TenantId, UserId = InviterUserId, EmploymentStatusId = EmploymentStatusIds.Active }
                 : null);
 
-        var autoGrant = new Mock<IPermissionAutoGrantService>();
         var unitOfWork = new Mock<IUnitOfWork>();
         unitOfWork.Setup(x => x.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
         unitOfWork.Setup(x => x.ExecuteInTransactionAsync(It.IsAny<Func<CancellationToken, Task<Result>>>(), It.IsAny<CancellationToken>()))
@@ -101,7 +100,7 @@ public class AcceptObjectiveInvitationCommandHandlerTests
 
         var outbox = new Mock<IOutboxWriter>();
         var handler = new AcceptObjectiveInvitationCommandHandler(
-            currentUser.Object, identity.Object, invitations.Object, objectives.Object, membership.Object, autoGrant.Object,
+            currentUser.Object, identity.Object, invitations.Object, objectives.Object, membership.Object,
             unitOfWork.Object, projects.Object, outbox.Object);
         return (handler, invitations, membership, objectives, outbox);
     }

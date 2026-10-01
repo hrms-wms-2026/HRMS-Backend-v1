@@ -45,18 +45,17 @@ public class EditSprintCommandHandlerTests
         var sprints = new Mock<ISprintRepository>();
         sprints.Setup(x => x.GetTrackedByIdForTenantAsync(TenantId, SprintId, It.IsAny<CancellationToken>())).ReturnsAsync(sprint);
 
-        var access = new Mock<ISprintAccessService>();
-        access.Setup(x => x.CanManageAsync(TenantId, sprint, UserId, resolvedCallerEmployeeId, It.IsAny<CancellationToken>()))
+        var wiring = new SprintTestWiring(TenantId, ProjectId);
+        // "Can manage" is now "is a project member" - the engine decides direct vs request.
+        wiring.Members.Setup(x => x.HasActiveMembershipAsync(TenantId, ProjectId, resolvedCallerEmployeeId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(callerCanManage ?? (resolvedCallerEmployeeId == OwnerEmployeeId));
-
         var logs = new Mock<ISprintActivityLogRepository>();
 
-        var unitOfWork = new Mock<IUnitOfWork>();
-        unitOfWork.Setup(x => x.ExecuteInTransactionAsync(It.IsAny<Func<CancellationToken, Task<Result<SprintResponse>>>>(), It.IsAny<CancellationToken>()))
-            .Returns((Func<CancellationToken, Task<Result<SprintResponse>>> op, CancellationToken ct) => op(ct));
-        unitOfWork.Setup(x => x.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
+        wiring.Sprints = sprints;
+        wiring.Logs = logs;
+        wiring.Identity = identity;
 
-        var handler = new EditSprintCommandHandler(currentUser.Object, identity.Object, sprints.Object, access.Object, logs.Object, unitOfWork.Object);
+        var handler = new EditSprintCommandHandler(currentUser.Object, identity.Object, sprints.Object, wiring.Members.Object, wiring.Writes(), wiring.Submitter());
         return (handler, sprint, logs);
     }
 
@@ -89,7 +88,7 @@ public class EditSprintCommandHandlerTests
     }
 
     [Fact]
-    public async Task Handle_CannotManage_ReturnsForbidden()
+    public async Task Handle_NotProjectMember_ReturnsForbidden()
     {
         var (handler, sprint, _) = Build(SprintStatuses.Active, callerEmployeeId: OtherEmployeeId, callerCanManage: false);
         var command = new EditSprintCommand(SprintId, "New Name", "Goal", sprint.StartDate!.Value, sprint.EndDate!.Value);
@@ -102,11 +101,10 @@ public class EditSprintCommandHandlerTests
     }
 
     [Fact]
-    public async Task Handle_CallerCanManageViaTaskModuleOwnership_EditsSprint()
+    public async Task Handle_CallerIsProjectMember_EditsSprint()
     {
-        // Caller is not the sprint's creator, but CanManageAsync reports them able to manage via
-        // task-module ownership - the service's own logic is unit-tested separately, so this only
-        // proves the handler defers to its answer.
+        // Caller is not the sprint's creator but is a project member; the engine (mocked Direct
+        // here) decides direct vs request, so the handler lets any project member through.
         var (handler, sprint, _) = Build(SprintStatuses.Active, callerEmployeeId: OtherEmployeeId, callerCanManage: true);
         var command = new EditSprintCommand(SprintId, "New Name", "Goal", new DateOnly(2026, 9, 2), new DateOnly(2026, 9, 16));
 

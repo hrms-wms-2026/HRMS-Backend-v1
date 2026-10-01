@@ -2,7 +2,11 @@ using Moq;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.WorkManagement.Approvals.Services;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
+using ONEVO.Application.Features.WorkManagement.Hierarchy;
+using ONEVO.Application.Features.WorkManagement.Notifications.Services;
+using ONEVO.Application.Features.WorkManagement.Tasks.DTOs;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Objectives.Services;
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
@@ -96,8 +100,8 @@ public class CreateTaskCommandHandlerTests
         var slackCalculator = new ObjectiveAllocationSlackCalculator(objectives.Object, tasks.Object);
 
         var unitOfWork = new Mock<IUnitOfWork>();
-        unitOfWork.Setup(x => x.ExecuteInTransactionAsync(It.IsAny<Func<CancellationToken, Task<Result<WorkTaskResponse>>>>(), It.IsAny<CancellationToken>()))
-            .Returns((Func<CancellationToken, Task<Result<WorkTaskResponse>>> op, CancellationToken ct) => op(ct));
+        unitOfWork.Setup(x => x.ExecuteInTransactionAsync(It.IsAny<Func<CancellationToken, Task<Result<TaskWriteOutcome>>>>(), It.IsAny<CancellationToken>()))
+            .Returns((Func<CancellationToken, Task<Result<TaskWriteOutcome>>> op, CancellationToken ct) => op(ct));
 
         var membership = new Mock<IMilestoneMembershipCoordinator>();
         // Mirrors direct-owner-only behavior by default so pre-existing tests keep passing
@@ -109,12 +113,23 @@ public class CreateTaskCommandHandlerTests
 
         var sprintLogs = new Mock<ISprintActivityLogRepository>();
 
+        var writes = new TaskWriteService(
+            objectives.Object, projects.Object, tasks.Object, statuses.Object, sprints.Object, categories.Object,
+            slackCalculator, (calendarEvents ?? CalendarEventRepositoryMocks.Empty()).Object,
+            sprintLogs.Object, new Mock<ITaskEditLogRepository>().Object, new Mock<ITaskPercentageLogRepository>().Object);
+        // Engine defaults to "apply now" so these tests keep exercising the direct-create path;
+        // TaskActionsThroughEngineTests covers the pending branch.
+        var hierarchy = new Mock<IWorkHierarchyService>();
+        hierarchy.Setup(x => x.LoadTreeAsync(TenantId, ProjectId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ProjectModuleTree(new[] { objective }));
+        var approvals = new Mock<IWorkApprovalEngine>();
+        approvals.Setup(x => x.SubmitAsync(It.IsAny<WorkAction>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<ApprovalDecision>.Success(ApprovalDecision.Direct));
+
         var handler = new CreateTaskCommandHandler(
-            currentUser.Object, identity.Object, objectives.Object, projects.Object, tasks.Object,
-            statuses.Object, sprints.Object, categories.Object, slackCalculator, unitOfWork.Object, membership.Object,
-            (calendarEvents ?? CalendarEventRepositoryMocks.Empty()).Object,
-            (assetLinker ?? new Mock<ITaskAssetLinker>()).Object,
-            sprintLogs.Object);
+            currentUser.Object, identity.Object, objectives.Object, unitOfWork.Object, membership.Object,
+            (assetLinker ?? new Mock<ITaskAssetLinker>()).Object, writes, hierarchy.Object, approvals.Object,
+            new Mock<IWorkNotificationEngine>().Object);
         return (handler, tasks, sprints, sprintLogs);
     }
 
@@ -130,7 +145,7 @@ public class CreateTaskCommandHandlerTests
         });
         var result = await handler.Handle(new CreateTaskCommand(ObjectiveId, "Task", null, CategoryId, "medium", null, null, null, null), CancellationToken.None);
         Assert.True(result.IsSuccess);
-        Assert.Equal(first, result.Value!.StatusId);
+        Assert.Equal(first, result.Value!.Task!.StatusId);
     }
 
     [Fact]
@@ -145,7 +160,7 @@ public class CreateTaskCommandHandlerTests
         });
         var result = await handler.Handle(new CreateTaskCommand(ObjectiveId, "Task", null, CategoryId, "medium", null, null, null, null), CancellationToken.None);
         Assert.True(result.IsSuccess);
-        Assert.Equal(first, result.Value!.StatusId);
+        Assert.Equal(first, result.Value!.Task!.StatusId);
     }
 
     [Fact]
@@ -195,8 +210,8 @@ public class CreateTaskCommandHandlerTests
             CancellationToken.None);
 
         Assert.True(result.IsSuccess);
-        Assert.Equal("WEB-7", result.Value!.ShortId);
-        Assert.Equal(DefaultStatusId, result.Value.StatusId);
+        Assert.Equal("WEB-7", result.Value!.Task!.ShortId);
+        Assert.Equal(DefaultStatusId, result.Value!.Task!.StatusId);
     }
 
     [Fact]
@@ -220,7 +235,7 @@ public class CreateTaskCommandHandlerTests
         var result = await handler.Handle(command, CancellationToken.None);
 
         Assert.True(result.IsSuccess);
-        Assert.Null(result.Value!.SprintId);
+        Assert.Null(result.Value!.Task!.SprintId);
         tasks.Verify(x => x.AddAsync(It.Is<Domain.Features.WorkManagement.Tasks.Entities.WorkTask>(t => t.SprintId == null), It.IsAny<CancellationToken>()), Times.Once);
         sprints.Verify(x => x.GetByIdForTenantAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
         sprintLogs.Verify(x => x.AddAsync(It.IsAny<SprintActivityLog>(), It.IsAny<CancellationToken>()), Times.Never);
@@ -237,7 +252,7 @@ public class CreateTaskCommandHandlerTests
         Assert.True(result.IsSuccess);
         sprintLogs.Verify(x => x.AddAsync(It.Is<SprintActivityLog>(l =>
                 l.SprintId == SprintId && l.Action == SprintActivityActions.TasksAdded &&
-                l.DetailsJson!.Contains(result.Value!.Id.ToString())),
+                l.DetailsJson!.Contains(result.Value!.Task!.Id.ToString())),
             It.IsAny<CancellationToken>()), Times.Once);
     }
 
@@ -421,8 +436,8 @@ public class CreateTaskCommandHandlerTests
         var result = await handler.Handle(command, CancellationToken.None);
 
         Assert.True(result.IsSuccess);
-        assetLinker.Verify(x => x.SyncAttachmentsAsync(TenantId, UserId, result.Value!.Id, new[] { fileId }, It.IsAny<CancellationToken>()), Times.Once);
-        assetLinker.Verify(x => x.SyncDescriptionImagesAsync(TenantId, UserId, result.Value!.Id, "<p>desc</p>", It.IsAny<CancellationToken>()), Times.Once);
+        assetLinker.Verify(x => x.SyncAttachmentsAsync(TenantId, UserId, result.Value!.Task!.Id, new[] { fileId }, It.IsAny<CancellationToken>()), Times.Once);
+        assetLinker.Verify(x => x.SyncDescriptionImagesAsync(TenantId, UserId, result.Value!.Task!.Id, "<p>desc</p>", It.IsAny<CancellationToken>()), Times.Once);
     }
 }
 
