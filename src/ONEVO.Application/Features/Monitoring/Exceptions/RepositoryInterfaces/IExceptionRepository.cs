@@ -10,7 +10,8 @@ public sealed record ExceptionListFilter(
     ExceptionStatus? Status,
     ExceptionType? Type,
     IReadOnlyCollection<Guid>? EmployeeIds,
-    Guid? ExcludeEmployeeId);
+    Guid? ExcludeEmployeeId,
+    IReadOnlyCollection<ExceptionStatus>? Statuses = null);
 
 public interface IExceptionRepository
 {

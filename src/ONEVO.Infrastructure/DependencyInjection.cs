@@ -735,6 +735,9 @@ public static class DependencyInjection
         services.AddScoped<
             ONEVO.Application.Features.Dashboard.Team.Abstractions.ITeamActionSource,
             ONEVO.Application.Features.Dashboard.Team.Sources.AttendanceDeviceChangeTeamActionSource>();
+        services.AddScoped<
+            ONEVO.Application.Features.Dashboard.Team.Abstractions.ITeamActionSource,
+            ONEVO.Application.Features.Dashboard.Team.Sources.MonitoringExceptionTeamActionSource>();
 
         // Background seeder
         services.AddHostedService<PermissionSeeder>();

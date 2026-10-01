@@ -70,6 +70,7 @@ public class EfExceptionRepository : IExceptionRepository
     {
         var query = _db.Exceptions.AsNoTracking().Where(e => e.TenantId == tenantId);
         if (filter.Status.HasValue) query = query.Where(e => e.Status == filter.Status.Value);
+        if (filter.Statuses is { Count: > 0 } statuses) query = query.Where(e => statuses.Contains(e.Status));
         if (filter.Type.HasValue) query = query.Where(e => e.Type == filter.Type.Value);
         if (filter.EmployeeIds is not null)
         {
