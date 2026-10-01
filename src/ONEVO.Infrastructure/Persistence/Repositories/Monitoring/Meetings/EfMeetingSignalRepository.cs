@@ -55,6 +55,13 @@ public class EfMeetingSignalRepository : IMeetingSignalRepository
             .ToListAsync(ct);
     }
 
+    public async Task<IReadOnlyList<MeetingSignal>> GetByEmployeeRangeAsync(
+        Guid tenantId, Guid employeeId, DateTimeOffset fromUtc, DateTimeOffset toUtcExclusive, CancellationToken ct)
+        => await _db.MeetingSignals.AsNoTracking()
+            .Where(s => s.TenantId == tenantId && s.EmployeeId == employeeId
+                        && s.CapturedAt >= fromUtc && s.CapturedAt < toUtcExclusive)
+            .ToListAsync(ct);
+
     private static (DateTimeOffset Start, DateTimeOffset End) UtcDayBounds(DateOnly date)
     {
         var start = new DateTimeOffset(date.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero);

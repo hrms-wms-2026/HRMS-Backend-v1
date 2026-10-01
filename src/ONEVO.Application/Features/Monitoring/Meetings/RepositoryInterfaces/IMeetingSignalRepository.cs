@@ -13,4 +13,7 @@ public interface IMeetingSignalRepository
 
     Task<IReadOnlyList<MeetingSignal>> GetAllByEmployeeDateAsync(
         Guid tenantId, Guid employeeId, DateOnly date, CancellationToken ct);
+
+    Task<IReadOnlyList<MeetingSignal>> GetByEmployeeRangeAsync(
+        Guid tenantId, Guid employeeId, DateTimeOffset fromUtc, DateTimeOffset toUtcExclusive, CancellationToken ct);
 }
