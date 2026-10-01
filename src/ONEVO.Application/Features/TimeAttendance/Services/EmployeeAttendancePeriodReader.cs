@@ -47,6 +47,7 @@ public sealed class EmployeeAttendancePeriodReader(
 
         return new AttendancePeriodData(
             records, timezone, now, clock.Today, legalEntity?.BreakDurationMinutes,
-            breakMinutesByDate, leaves, rangeStart, rangeEnd);
+            breakMinutesByDate, leaves, rangeStart, rangeEnd,
+            AttendanceScheduleResolver.WorkingWeekdays(legalEntity));
     }
 }

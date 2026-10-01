@@ -10,12 +10,16 @@ using ONEVO.Application.Features.Monitoring.ActivityMonitoring.Queries.GetActivi
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.ServiceInterfaces;
 using ONEVO.Application.Features.Monitoring.CheckIn.RepositoryInterfaces;
+using ONEVO.Application.Features.Monitoring.Exceptions.RepositoryInterfaces;
+using ONEVO.Application.Features.Monitoring.Exceptions.Services;
 using ONEVO.Application.Features.Monitoring.Screenshots.RepositoryInterfaces;
 using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
 using ONEVO.Application.Features.Storage.File.ServiceInterfaces;
 using ONEVO.Application.Features.TimeAttendance.DTOs.Responses;
 using ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces;
 using ONEVO.Application.Features.TimeAttendance.Services;
+using ONEVO.Domain.Features.Monitoring.CheckIn.Entities;
+using ONEVO.Domain.Features.Monitoring.Exceptions.Entities;
 using ONEVO.Domain.Features.TimeAttendance.Entities;
 
 namespace ONEVO.Application.Features.TimeAttendance.Queries;
@@ -34,7 +38,9 @@ public sealed class AttendanceReadHandler(
     IEvidenceAssetRepository? evidenceAssets = null,
     IFileStorageService? fileStorage = null,
     IActivityLiveDaySummary? liveActivity = null,
-    IInactivityCaptureAttemptRepository? activityChecks = null)
+    IInactivityCaptureAttemptRepository? activityChecks = null,
+    IFaceVerificationAttemptRepository? faceChecks = null,
+    IExceptionRepository? exceptionCases = null)
     : IRequestHandler<GetAttendanceTodayQuery, Result<AttendanceTodayResponse>>,
       IRequestHandler<GetMyAttendanceHistoryQuery, Result<PagedResult<AttendanceHistoryRow>>>,
       IRequestHandler<GetCoveredAttendanceHistoryQuery, Result<PagedResult<AttendanceHistoryRow>>>,
@@ -291,8 +297,51 @@ public sealed class AttendanceReadHandler(
                 .ToList();
         }
 
+        // The employee's own face checks and the photos kept for failed ones; reviewers see these on
+        // the identity alert, which has its own visibility rules.
+        IReadOnlyList<AttendanceFaceCheckDto>? faceCheckRows = null;
+        if (isSelf && faceChecks is not null)
+        {
+            var attempts = await faceChecks.ListForEmployeeInRangeAsync(
+                currentUser.TenantId, query.EmployeeId, dayWindow.Start, dayWindow.End, ct);
+            var rowsWithPhotos = new List<AttendanceFaceCheckDto>(attempts.Count);
+            foreach (var attempt in attempts.OrderBy(a => a.CreatedAt))
+            {
+                rowsWithPhotos.Add(new AttendanceFaceCheckDto(
+                    attempt.Id, attempt.CreatedAt, attempt.Purpose, attempt.Outcome, attempt.FailureReason,
+                    await SignFaceCheckPhotoAsync(attempt.PhotoFileId, ct)));
+            }
+            faceCheckRows = rowsWithPhotos;
+        }
+
+        IReadOnlyList<AttendanceFaceCheckAlertDto>? faceCheckAlerts = null;
+        if (isSelf && exceptionCases is not null)
+        {
+            faceCheckAlerts = (await exceptionCases.ListForEmployeeInRangeAsync(
+                    currentUser.TenantId, query.EmployeeId, ExceptionType.IdentityAnomaly, dayWindow.Start, dayWindow.End, ct))
+                .Select(alert => new AttendanceFaceCheckAlertDto(
+                    alert.Id, alert.DetectedAt, ExceptionMetadata.Parse(alert.MetadataJson).Purpose,
+                    alert.Status.ToString(), alert.ResolvedAt))
+                .ToList();
+        }
+
         return Result<AttendanceDayDetailResponse>.Success(
-            new AttendanceDayDetailResponse(summary, timelineEvents, dailyActivity, checkInLocations, screenshots, checks));
+            new AttendanceDayDetailResponse(summary, timelineEvents, dailyActivity, checkInLocations, screenshots, checks, faceCheckRows, faceCheckAlerts));
+    }
+
+    private async Task<string?> SignFaceCheckPhotoAsync(Guid? photoFileId, CancellationToken ct)
+    {
+        if (photoFileId is not Guid fileId || fileStorage is null)
+            return null;
+        try
+        {
+            var signed = await fileStorage.GetSignedUrlAsync(currentUser.TenantId, fileId, ScreenshotUrlExpiry, ct);
+            return signed.IsSuccess ? signed.Value : null;
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     private async Task<IReadOnlyList<AttendanceHistoryRow>> BuildRowsAsync(
@@ -341,6 +390,39 @@ public sealed class AttendanceReadHandler(
         var breaksByEmployee = breakRecords
             .GroupBy(record => record.EmployeeId)
             .ToDictionary(group => group.Key, group => (IReadOnlyList<BreakRecord>)group.ToArray());
+
+        // Own rows only: failed face checks per local day, so the employee sees which days raised
+        // a face-check alert. Team rows leave this to the Alerts page and its visibility rules.
+        var faceChecksByDate = new Dictionary<DateOnly, (int Failed, bool LetThrough)>();
+        if (!includeEmployee && faceChecks is not null && employeeIds.Length == 1)
+        {
+            var attempts = await faceChecks.ListForEmployeeInRangeAsync(
+                currentUser.TenantId, employeeIds[0],
+                localWindows.Min(window => window.Start), localWindows.Max(window => window.End), ct);
+            foreach (var attempt in attempts.Where(a => a.Outcome != FaceVerificationAttempt.OutcomePassed))
+            {
+                var date = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(attempt.CreatedAt, timezone).DateTime);
+                faceChecksByDate.TryGetValue(date, out var day);
+                faceChecksByDate[date] = (day.Failed + 1,
+                    day.LetThrough || attempt.Outcome == FaceVerificationAttempt.OutcomeOverridden);
+            }
+        }
+
+        // Own rows only: where the day's face-check alert stands. With more than one alert on a day,
+        // the one still needing the most attention wins.
+        var alertStatusByDate = new Dictionary<DateOnly, ExceptionStatus>();
+        if (!includeEmployee && exceptionCases is not null && employeeIds.Length == 1)
+        {
+            var alerts = await exceptionCases.ListForEmployeeInRangeAsync(
+                currentUser.TenantId, employeeIds[0], ExceptionType.IdentityAnomaly,
+                localWindows.Min(window => window.Start), localWindows.Max(window => window.End), ct);
+            foreach (var alert in alerts)
+            {
+                var date = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(alert.DetectedAt, timezone).DateTime);
+                if (!alertStatusByDate.TryGetValue(date, out var current) || AlertUrgency(alert.Status) > AlertUrgency(current))
+                    alertStatusByDate[date] = alert.Status;
+            }
+        }
 
         return records.Select(record =>
         {
@@ -401,9 +483,20 @@ public sealed class AttendanceReadHandler(
                 status.IsOverBreakAllowance,
                 schedule.Start?.ToString("HH:mm"),
                 schedule.End?.ToString("HH:mm"),
-                schedule.RequiredWorkMinutes);
+                schedule.RequiredWorkMinutes,
+                faceChecksByDate.TryGetValue(record.Date, out var faceDay) ? faceDay.Failed : 0,
+                faceDay.LetThrough,
+                alertStatusByDate.TryGetValue(record.Date, out var alertStatus) ? alertStatus.ToString() : null);
         }).ToList();
     }
+
+    private static int AlertUrgency(ExceptionStatus status) => status switch
+    {
+        ExceptionStatus.Open => 3,
+        ExceptionStatus.Escalated => 2,
+        ExceptionStatus.Acknowledged => 1,
+        _ => 0
+    };
 
     private static TimeZoneInfo TryFindTimezone(string? timezone)
     {

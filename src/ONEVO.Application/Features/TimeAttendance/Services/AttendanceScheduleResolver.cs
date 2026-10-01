@@ -110,6 +110,12 @@ public static class AttendanceScheduleResolver
         }
     }
 
+    /// <summary>ISO weekdays (1 = Monday … 7 = Sunday) the legal entity works; Mon–Fri when unknown.</summary>
+    public static IReadOnlySet<int> WorkingWeekdays(LegalEntity? legalEntity) =>
+        ParseWorkingDays(legalEntity?.StandardWorkingDays);
+
+    public static int ToIsoDay(DateOnly date) => ToIsoDay(date.DayOfWeek);
+
     private static HashSet<int> ParseWorkingDays(string? json)
     {
         try

@@ -3,6 +3,7 @@ using MediatR;
 using Microsoft.EntityFrameworkCore;
 using Moq;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.Monitoring.Exceptions.RepositoryInterfaces;
 using ONEVO.Domain.Features.Monitoring.Exceptions.Entities;
 using ONEVO.Infrastructure.Persistence;
 using ONEVO.Infrastructure.Persistence.Interceptors;
@@ -71,6 +72,36 @@ public sealed class EfExceptionRepositoryTests
             tenantId, employeeId, ExceptionType.IdentityAnomaly, DayStart, CancellationToken.None);
 
         result.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task GetListAsync_ActiveOnly_LeavesOutResolvedCases_UnlessAStatusIsAskedFor()
+    {
+        await using var db = BuildInMemoryDb();
+        var tenantId = Guid.NewGuid();
+        foreach (var status in Enum.GetValues<ExceptionStatus>())
+        {
+            db.Exceptions.Add(new DomainException
+            {
+                Id = Guid.NewGuid(), TenantId = tenantId, EmployeeId = Guid.NewGuid(),
+                Type = ExceptionType.IdentityAnomaly, Status = status, Title = "t", Description = "d", DetectedAt = DayStart
+            });
+        }
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+        var repository = new EfExceptionRepository(db);
+
+        var active = await repository.GetListAsync(
+            tenantId, new ExceptionListFilter(null, null, null, null, ActiveOnly: true), 1, 20, CancellationToken.None);
+        var resolved = await repository.GetListAsync(
+            tenantId, new ExceptionListFilter(ExceptionStatus.Resolved, null, null, null, ActiveOnly: true), 1, 20, CancellationToken.None);
+
+        active.Should().NotBeEmpty().And.OnlyContain(e => e.Status != ExceptionStatus.Resolved);
+        active.Should().HaveCount(Enum.GetValues<ExceptionStatus>().Length - 1);
+        (await repository.GetListTotalCountAsync(
+            tenantId, new ExceptionListFilter(null, null, null, null, ActiveOnly: true), CancellationToken.None))
+            .Should().Be(active.Count);
+        resolved.Should().ContainSingle(e => e.Status == ExceptionStatus.Resolved);
     }
 
     private static ApplicationDbContext BuildInMemoryDb()

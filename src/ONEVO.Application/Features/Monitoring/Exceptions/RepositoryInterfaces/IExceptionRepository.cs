@@ -10,7 +10,8 @@ public sealed record ExceptionListFilter(
     ExceptionStatus? Status,
     ExceptionType? Type,
     IReadOnlyCollection<Guid>? EmployeeIds,
-    Guid? ExcludeEmployeeId);
+    Guid? ExcludeEmployeeId,
+    bool ActiveOnly = false);
 
 public interface IExceptionRepository
 {
@@ -37,6 +38,10 @@ public interface IExceptionRepository
         DateTimeOffset sinceUtc, CancellationToken ct);
 
     Task<MonitoringException?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct);
+
+    /// <summary>One employee's cases of a type detected in [from, to), oldest first.</summary>
+    Task<IReadOnlyList<MonitoringException>> ListForEmployeeInRangeAsync(
+        Guid tenantId, Guid employeeId, ExceptionType type, DateTimeOffset from, DateTimeOffset to, CancellationToken ct);
 
     /// <summary>Distinct employees who have any exception case in the tenant - the candidate set a
     /// manager's approver scope is resolved over before listing.</summary>

@@ -138,12 +138,53 @@ public sealed class GetEmployeeAttendanceOverviewQueryHandlerTests
             new GetEmployeeAttendanceOverviewQuery(_employeeId, new DateOnly(2026, 8, 1), new DateOnly(2026, 8, 31)), CancellationToken.None);
 
         var v = result.Value!;
-        v.WorkingDays.Should().Be(5);
+        v.WorkingDays.Should().Be(15); // Mon–Fri from Aug 3 up to today (Aug 21)
         v.Present.Should().Be(3);
         v.Late.Should().Be(1);
         v.MissingClockOuts.Should().Be(1);
         v.LeaveDays.Should().Be(1);
-        v.Days.Select(d => d.Status).Should().Equal("present", "late", "missing_clock_out", "leave", "absent");
+        v.Days.Should().HaveCount(31);
         v.Days.Select(d => d.Date).Should().BeInAscendingOrder();
+        v.Days.Take(10).Select(d => d.Status).Should().Equal(
+            "off", "off",                                                 // Sat 1, Sun 2
+            "present", "late", "absent", "missing_clock_out", "leave",    // Mon 3 – Fri 7 (5th has no row)
+            "off", "off",                                                 // Sat 8, Sun 9
+            "absent");                                                    // Mon 10
+    }
+
+    [Fact]
+    public async Task Handle_FillsEveryCalendarDay_WhenOnlyOneRecordExists()
+    {
+        ArrangeData(new[] { Rec(new(2026, 8, 4), "2026-08-04T04:15:00+00:00", "2026-08-04T12:00:00+00:00") });
+
+        var result = await CreateHandler().Handle(
+            new GetEmployeeAttendanceOverviewQuery(_employeeId, new DateOnly(2026, 8, 1), new DateOnly(2026, 8, 31)), CancellationToken.None);
+
+        var v = result.Value!;
+        v.WorkingDays.Should().Be(15);
+        v.Present.Should().Be(1);
+        v.Days.Should().HaveCount(31);
+        v.Days.Single(d => d.Date == new DateOnly(2026, 8, 4)).Status.Should().Be("late");
+        v.Days.Single(d => d.Date == new DateOnly(2026, 8, 3)).Status.Should().Be("absent");
+        v.Days.Single(d => d.Date == new DateOnly(2026, 8, 21)).Status.Should().Be("none"); // today, not clocked in yet
+        v.Days.Single(d => d.Date == new DateOnly(2026, 8, 24)).Status.Should().Be("none"); // future
+        v.Days.Single(d => d.Date == new DateOnly(2026, 8, 29)).Status.Should().Be("off");  // Saturday
+    }
+
+    [Fact]
+    public async Task Handle_UsesTheLegalEntityWorkingWeek_ForDaysWithoutRecords()
+    {
+        _reader.Setup(r => r.LoadAsync(_tenantId, _employeeId, _legalEntityId, It.IsAny<EmployeePeriod>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AttendancePeriodData(
+                Array.Empty<AttendanceRecord>(), Colombo, DateTimeOffset.Parse("2026-08-21T00:00:00+00:00"), Today, 60,
+                new Dictionary<DateOnly, int>(), Array.Empty<LeaveRequest>(),
+                DateTimeOffset.MinValue, DateTimeOffset.MaxValue,
+                new HashSet<int> { 1, 2, 3, 4, 5, 6 })); // Mon–Sat
+
+        var result = await CreateHandler().Handle(
+            new GetEmployeeAttendanceOverviewQuery(_employeeId, new DateOnly(2026, 8, 1), new DateOnly(2026, 8, 31)), CancellationToken.None);
+
+        result.Value!.Days.Single(d => d.Date == new DateOnly(2026, 8, 1)).Status.Should().Be("absent"); // Saturday
+        result.Value.Days.Single(d => d.Date == new DateOnly(2026, 8, 2)).Status.Should().Be("off");     // Sunday
     }
 }

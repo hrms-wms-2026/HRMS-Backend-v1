@@ -41,7 +41,8 @@ public class GetExceptionsQueryHandler : IRequestHandler<GetExceptionsQuery, Res
         var filter = new ExceptionListFilter(
             request.Status, request.Type,
             scope.IsHr ? null : scope.EmployeeIds,
-            scope.ActorEmployeeId);
+            scope.ActorEmployeeId,
+            request.ActiveOnly);
 
         var total = await _exceptions.GetListTotalCountAsync(tenantId, filter, ct);
         var items = await _exceptions.GetListAsync(tenantId, filter, page, pageSize, ct);

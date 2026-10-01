@@ -76,6 +76,15 @@ public static class AttendancePeriodCalculator
         return record.Date < today ? "absent" : "none";
     }
 
+    /// <summary>Status for a calendar day with no attendance row (nobody clocked in, nothing was seeded).</summary>
+    public static string DayStatusWithoutRecord(
+        DateOnly date, bool isWorkingDay, DateOnly today, bool hasApprovedLeave)
+    {
+        if (!isWorkingDay) return "off";
+        if (hasApprovedLeave) return "leave";
+        return date < today ? "absent" : "none";
+    }
+
     public static bool CoversDate(LeaveRequest leave, DateOnly date) =>
         DateOnly.FromDateTime(leave.StartAt.UtcDateTime) <= date
         && DateOnly.FromDateTime(leave.EndAt.UtcDateTime) >= date;

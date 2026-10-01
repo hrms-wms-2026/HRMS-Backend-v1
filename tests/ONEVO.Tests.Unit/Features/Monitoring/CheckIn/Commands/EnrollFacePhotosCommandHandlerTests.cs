@@ -121,6 +121,25 @@ public class EnrollFacePhotosCommandHandlerTests
     }
 
     [Fact]
+    public async Task FrontPhotoOnly_SavesFrontReferenceWithoutSides()
+    {
+        var cmd = new EnrollFacePhotosCommand(new FaceSetupPhoto(new MemoryStream([FrontByte]), "image/jpeg", 1));
+
+        var result = await CreateSut().Handle(cmd, CancellationToken.None);
+
+        result.Value!.Enrolled.Should().BeTrue();
+        _fileStorage.Verify(f => f.UploadAsync(
+            _tenantId, _userId, It.IsAny<string>(), It.IsAny<string>(),
+            UploadPurposeCatalog.BiometricReferencePhoto, It.IsAny<Stream>(), It.IsAny<CancellationToken>()), Times.Once);
+        _profiles.Verify(p => p.AddAsync(It.Is<BiometricProfile>(x =>
+            x.EmployeeId == _employeeId
+            && x.ReferencePhotoFileId != null
+            && x.LeftReferencePhotoFileId == null
+            && x.RightReferencePhotoFileId == null), It.IsAny<CancellationToken>()), Times.Once);
+        _faceMatch.Verify(m => m.CompareAsync(It.IsAny<Stream>(), It.IsAny<Stream>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
     public async Task AlreadyEnrolled_ReplacesAllThreeReferences()
     {
         var oldFront = Guid.NewGuid();

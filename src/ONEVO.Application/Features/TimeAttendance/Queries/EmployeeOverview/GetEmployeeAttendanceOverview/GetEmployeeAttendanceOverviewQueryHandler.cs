@@ -38,20 +38,35 @@ public sealed class GetEmployeeAttendanceOverviewQueryHandler(
         var data = await reader.LoadAsync(tenantId, request.EmployeeId, access.Value!.LegalEntityId, period.Value!, ct);
         var counts = AttendancePeriodCalculator.Count(data.Records, data.Timezone, data.Now);
 
-        var days = data.Records
-            .OrderBy(r => r.Date)
-            .Select(r =>
-            {
-                var hasLeave = data.ApprovedLeaves.Any(l => AttendancePeriodCalculator.CoversDate(l, r.Date));
-                return new EmployeeAttendanceDay(
-                    r.Date, AttendancePeriodCalculator.DayStatus(r, data.Timezone, data.Now, data.Today, hasLeave));
-            })
-            .ToList();
+        // One entry per calendar day in the period, not per stored row: days nobody clocked in on
+        // have no attendance_record, and must still show as absent / off / upcoming.
+        var recordsByDate = data.Records.GroupBy(r => r.Date).ToDictionary(g => g.Key, g => g.First());
+        var workingWeekdays = data.WorkingWeekdays ?? AttendanceScheduleResolver.WorkingWeekdays(null);
+        var days = new List<EmployeeAttendanceDay>();
+        var workingDays = 0;
+
+        for (var date = period.Value!.From; date <= period.Value.To; date = date.AddDays(1))
+        {
+            var hasLeave = data.ApprovedLeaves.Any(l => AttendancePeriodCalculator.CoversDate(l, date));
+            recordsByDate.TryGetValue(date, out var record);
+            var isWorkingDay = record is not null
+                ? record.ExpectedWorkingDay && !record.IsHoliday
+                : workingWeekdays.Contains(AttendanceScheduleResolver.ToIsoDay(date));
+
+            // "X of Y working days attended" only counts days that have already started.
+            if (isWorkingDay && date <= data.Today)
+                workingDays += 1;
+
+            var status = record is not null
+                ? AttendancePeriodCalculator.DayStatus(record, data.Timezone, data.Now, data.Today, hasLeave)
+                : AttendancePeriodCalculator.DayStatusWithoutRecord(date, isWorkingDay, data.Today, hasLeave);
+            days.Add(new EmployeeAttendanceDay(date, status));
+        }
 
         return Result<EmployeeAttendanceOverviewResponse>.Success(new EmployeeAttendanceOverviewResponse(
-            period.Value!.From,
+            period.Value.From,
             period.Value.To,
-            counts.WorkingDays,
+            workingDays,
             counts.DaysPresent,
             counts.LateArrivals,
             counts.MissingClockOuts,

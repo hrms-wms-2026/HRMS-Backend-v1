@@ -112,6 +112,9 @@ public class FaceVerificationRetryPolicy : IFaceVerificationRetryPolicy
             context.TenantId, context.EmployeeId, context.Purpose, now - Window, ct);
         var failedSoFar = earlier.Count + 1;
 
+        // Every failed photo is kept, so the reviewer sees each attempt and what went wrong with it.
+        attempt.PhotoFileId = await KeepPhotoAsync(context, photo, contentType, ct);
+
         if (failedSoFar < MaxAttempts)
         {
             attempt.Outcome = FaceVerificationAttempt.OutcomeFailed;
@@ -123,7 +126,6 @@ public class FaceVerificationRetryPolicy : IFaceVerificationRetryPolicy
         // Last attempt failed too: let the employee through, keep the photo, open an identity case
         // and alert the manager.
         attempt.Outcome = FaceVerificationAttempt.OutcomeOverridden;
-        attempt.PhotoFileId = await KeepPhotoAsync(context, photo, contentType, ct);
         await _attempts.AddAsync(attempt, ct);
         // The attempt commits on its own first: nothing below is allowed to lock the employee out.
         await _attempts.SaveChangesAsync(ct);
@@ -196,7 +198,7 @@ public class FaceVerificationRetryPolicy : IFaceVerificationRetryPolicy
             var upload = await _fileStorage.UploadAsync(
                 context.TenantId,
                 context.UserId,
-                $"face-check-override-{context.Purpose}.jpg",
+                $"face-check-failed-{context.Purpose}.jpg",
                 string.IsNullOrWhiteSpace(contentType) ? "image/jpeg" : contentType,
                 UploadPurposeCatalog.MonitoringFaceScan,
                 photo,
@@ -204,11 +206,11 @@ public class FaceVerificationRetryPolicy : IFaceVerificationRetryPolicy
             if (upload.IsSuccess)
                 return upload.Value!.Id;
 
-            _logger.LogWarning("Could not keep the overridden face check photo: {Error}", upload.Error);
+            _logger.LogWarning("Could not keep the failed face check photo: {Error}", upload.Error);
         }
         catch (Exception ex) when (!ct.IsCancellationRequested)
         {
-            _logger.LogWarning(ex, "Could not keep the overridden face check photo");
+            _logger.LogWarning(ex, "Could not keep the failed face check photo");
         }
 
         // The employee is still let through: losing the photo must not lock them out of work.

@@ -10,8 +10,11 @@ public class EnrollFacePhotosCommandValidator : AbstractValidator<EnrollFacePhot
     public EnrollFacePhotosCommandValidator()
     {
         RuleFor(x => x.Front).NotNull().Must(BeValidPhoto).WithMessage(Message("front"));
-        RuleFor(x => x.Left).NotNull().Must(BeValidPhoto).WithMessage(Message("left"));
-        RuleFor(x => x.Right).NotNull().Must(BeValidPhoto).WithMessage(Message("right"));
+        RuleFor(x => x.Left).Must(BeValidPhoto).WithMessage(Message("left")).When(x => x.Left is not null);
+        RuleFor(x => x.Right).Must(BeValidPhoto).WithMessage(Message("right")).When(x => x.Right is not null);
+        RuleFor(x => x)
+            .Must(x => (x.Left is null) == (x.Right is null))
+            .WithMessage("The left and right photos must be sent together.");
     }
 
     private static bool BeValidPhoto(FaceSetupPhoto? photo) =>
