@@ -91,6 +91,10 @@ public sealed class EmployeesControllerArchitectureTests
     [InlineData("work-activity/activity-by-hour", "GetWorkActivityByHour")]
     [InlineData("work-activity/app-usage", "GetWorkActivityAppUsage")]
     [InlineData("work-activity/work-pattern", "GetWorkActivityWorkPattern")]
+    [InlineData("overview/checklists", "GetOverviewChecklists")]
+    [InlineData("overview/history", "GetOverviewHistory")]
+    [InlineData("overview/upcoming", "GetOverviewUpcoming")]
+    [InlineData("overview/recent-activity", "GetOverviewRecentActivity")]
     public void EmployeesController_OverviewWidgetActions_RequireEmployeesReadAndUseTheirRoute(string route, string action)
     {
         var path = FindRepositoryPath(
