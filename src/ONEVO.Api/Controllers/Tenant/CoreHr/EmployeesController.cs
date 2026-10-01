@@ -28,6 +28,7 @@ using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployeeDetail;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployeeHistory;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployeeIdentity;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployeeOverviewSignals;
+using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployeeSignalItems;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployeePositionHistory;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployeeRecentActivity;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployeeUpcoming;
@@ -249,6 +250,18 @@ public class EmployeesController : ControllerBase
         Guid id, [FromQuery] DateOnly? from = null, [FromQuery] DateOnly? to = null, CancellationToken ct = default)
     {
         var result = await _mediator.Send(new GetEmployeeOverviewSignalsQuery(id, from, to), ct);
+        return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Needs Attention drill-down: the days / alerts / cases / tasks / approvals behind one
+    /// overview signal (at most 50, newest first; total is the full count). 404 for an unknown key,
+    /// 403 when that signal's source is hidden from the caller.</summary>
+    [HttpGet("{id:guid}/overview/signals/{key}/items")]
+    [RequirePermission("employees:read")]
+    public async Task<IActionResult> GetOverviewSignalItems(
+        Guid id, string key, [FromQuery] DateOnly? from = null, [FromQuery] DateOnly? to = null, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new GetEmployeeSignalItemsQuery(id, key, from, to), ct);
         return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
