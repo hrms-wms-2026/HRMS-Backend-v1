@@ -29,7 +29,7 @@ public static class EmployeeTaskPeriodCalculator
             var points = row.StoryPoints ?? 0;
             pointsAssigned += points;
 
-            if (row.MarksTaskComplete || row.ProgressPercent >= 100)
+            if (IsComplete(row))
             {
                 completed++;
                 pointsCompleted += points;
@@ -40,7 +40,7 @@ public static class EmployeeTaskPeriodCalculator
                         onTime++;
                 }
             }
-            else if (row.DueDate is { } dueDate && dueDate < asOf)
+            else if (IsOverdue(row, asOf))
                 overdue++;
             else if (row.ProgressPercent > 0)
                 inProgress++;
@@ -51,6 +51,13 @@ public static class EmployeeTaskPeriodCalculator
         return new TaskPeriodStats(
             rows.Count, completed, inProgress, overdue, notStarted, onTime, withDue, pointsAssigned, pointsCompleted);
     }
+
+    /// <summary>The overdue rule shared by the Overview counts and the drill-down list.</summary>
+    public static bool IsOverdue(EmployeeTaskPeriodRow row, DateOnly asOf) =>
+        !IsComplete(row) && row.DueDate is { } due && due < asOf;
+
+    private static bool IsComplete(EmployeeTaskPeriodRow row) =>
+        row.MarksTaskComplete || row.ProgressPercent >= 100;
 
     /// <summary>Rounded whole percentage; 0 when the whole is 0.</summary>
     public static int Percent(int part, int whole) =>

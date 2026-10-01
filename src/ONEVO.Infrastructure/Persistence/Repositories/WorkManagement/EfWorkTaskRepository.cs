@@ -132,13 +132,16 @@ public class EfWorkTaskRepository : IWorkTaskRepository
         return await (
             from t in _db.WorkTasks.AsNoTracking()
             join s in _db.TaskStatuses.AsNoTracking() on t.StatusId equals s.Id
+            join p in _db.Projects.AsNoTracking() on t.ProjectId equals p.Id
             where t.TenantId == tenantId
                   && _db.TaskAssignments.Any(a => a.TaskId == t.Id && a.EmployeeId == employeeId)
                   && ((t.DueDate != null && t.DueDate >= fromDate && t.DueDate <= toDate)
                       || (t.CompletedAt != null && t.CompletedAt >= fromUtc && t.CompletedAt < toUtcExclusive)
                       || _db.TaskAssignments.Any(a => a.TaskId == t.Id && a.EmployeeId == employeeId
                                                       && a.AssignedAt >= fromUtc && a.AssignedAt < toUtcExclusive))
-            select new EmployeeTaskPeriodRow(t.DueDate, t.CompletedAt, t.ProgressPercent, s.MarksTaskComplete, t.StoryPoints)
+            select new EmployeeTaskPeriodRow(
+                t.DueDate, t.CompletedAt, t.ProgressPercent, s.MarksTaskComplete, t.StoryPoints,
+                t.Id, t.Title, t.ProjectId, p.Name)
         ).ToListAsync(ct);
     }
 

@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Moq;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Domain.Features.WorkManagement.Projects.Entities;
 using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
 using ONEVO.Infrastructure.Persistence;
 using ONEVO.Infrastructure.Persistence.Interceptors;
@@ -22,6 +23,7 @@ public sealed class EmployeeTaskPeriodRepositoryReadsTests
     {
         await using var db = BuildInMemoryDb();
         var projectId = Guid.NewGuid();
+        db.Projects.Add(Project(projectId));
         var status = new WmTaskStatus { Id = Guid.NewGuid(), TenantId = _tenantId, ProjectId = projectId, Name = "s", Category = "active", MarksTaskComplete = false };
         var done = new WmTaskStatus { Id = Guid.NewGuid(), TenantId = _tenantId, ProjectId = projectId, Name = "d", Category = "done", MarksTaskComplete = true };
         db.TaskStatuses.AddRange(status, done);
@@ -55,6 +57,7 @@ public sealed class EmployeeTaskPeriodRepositoryReadsTests
     {
         await using var db = BuildInMemoryDb();
         var projectId = Guid.NewGuid();
+        db.Projects.Add(Project(projectId));
         var status = new WmTaskStatus { Id = Guid.NewGuid(), TenantId = _tenantId, ProjectId = projectId, Name = "s", Category = "active" };
         db.TaskStatuses.Add(status);
         var task = Task(projectId, status.Id, "P", dueDate: new DateOnly(2026, 9, 10), points: 5, progress: 40);
@@ -67,7 +70,18 @@ public sealed class EmployeeTaskPeriodRepositoryReadsTests
 
         Assert.Equal(5, row.StoryPoints);
         Assert.Equal(40, row.ProgressPercent);
+        Assert.Equal(task.Id, row.TaskId);
+        Assert.Equal("P", row.Title);
+        Assert.Equal(projectId, row.ProjectId);
+        Assert.Equal("Apollo", row.ProjectName);
     }
+
+    private Project Project(Guid id) => new()
+    {
+        Id = id, TenantId = _tenantId, Name = "Apollo", Identifier = "APOLLO",
+        CategoryId = Guid.NewGuid(), OwningLegalEntityId = Guid.NewGuid(), LeadId = Guid.NewGuid(),
+        StartDate = From, TargetDate = To
+    };
 
     private WorkTask Task(Guid projectId, Guid statusId, string shortId, DateOnly? dueDate = null,
         DateTimeOffset? completedAt = null, int? points = null, int progress = 0) =>

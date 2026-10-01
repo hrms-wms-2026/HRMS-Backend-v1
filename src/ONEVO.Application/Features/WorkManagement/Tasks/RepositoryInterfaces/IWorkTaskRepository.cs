@@ -31,7 +31,11 @@ public sealed record EmployeeTaskPeriodRow(
     DateTimeOffset? CompletedAt,
     int ProgressPercent,
     bool MarksTaskComplete,
-    int? StoryPoints);
+    int? StoryPoints,
+    Guid TaskId = default,
+    string Title = "",
+    Guid ProjectId = default,
+    string ProjectName = "");
 
 /// <summary>The bare fields needed to bucket a caller's assigned task into the Task Progress
 /// donut widget's Completed/Overdue/In Progress/Not Started categories.</summary>
