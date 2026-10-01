@@ -302,6 +302,9 @@ public class EmployeesController : ControllerBase
         Guid id, [FromQuery] DateOnly? from = null, [FromQuery] DateOnly? to = null, CancellationToken ct = default)
     {
         var result = await _mediator.Send(new GetEmployeeWorkPatternQuery(id, from, to), ct);
+        return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
     /// <summary>Overview checklists card: onboarding/offboarding task progress grouped by category.
     /// Lifetime view (not period-aware).</summary>
     [HttpGet("{id:guid}/overview/checklists")]
