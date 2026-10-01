@@ -42,6 +42,8 @@ public static class WorkActionTypes
     public const string ModuleAchieve = "module.achieve";
     public const string ModuleUnachieve = "module.unachieve";
     public const string ModuleAllocationExtend = "module.allocation_extend";
+    public const string ModuleMemberAdd = "module.member_add";
+    public const string ModuleMemberRemove = "module.member_remove";
     public const string SprintCreate = "sprint.create";
     public const string SprintEdit = "sprint.edit";
     public const string SprintDelete = "sprint.delete";
