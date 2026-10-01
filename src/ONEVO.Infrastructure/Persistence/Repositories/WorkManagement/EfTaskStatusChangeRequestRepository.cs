@@ -25,6 +25,12 @@ public class EfTaskStatusChangeRequestRepository : ITaskStatusChangeRequestRepos
             .OrderBy(r => r.CreatedAt)
             .ToListAsync(ct);
 
+    public async Task<IReadOnlyList<TaskStatusChangeRequest>> ListAllPendingAsync(Guid tenantId, CancellationToken ct = default)
+        => await _db.TaskStatusChangeRequests.AsNoTracking()
+            .Where(r => r.TenantId == tenantId && r.Status == TaskStatusChangeRequestStatuses.Pending)
+            .OrderBy(r => r.CreatedAt)
+            .ToListAsync(ct);
+
     public async Task<IReadOnlyList<TaskStatusChangeRequest>> ListTrackedPendingForProjectAsync(Guid tenantId, Guid projectId, CancellationToken ct = default)
         => await _db.TaskStatusChangeRequests
             .Where(r => r.TenantId == tenantId && r.ProjectId == projectId && r.Status == TaskStatusChangeRequestStatuses.Pending)

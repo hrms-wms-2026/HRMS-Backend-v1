@@ -11,6 +11,11 @@ public interface ITaskStatusChangeRequestRepository
     /// <summary>All pending requests for a project, oldest first.</summary>
     Task<IReadOnlyList<TaskStatusChangeRequest>> ListPendingForProjectAsync(Guid tenantId, Guid projectId, CancellationToken ct = default);
 
+    /// <summary>All pending requests across every project in the tenant, oldest first. Used by the
+    /// My Team "Approvals &amp; Exceptions" action-item source, which has no single project in
+    /// context and must filter down to the caller's approver projects itself.</summary>
+    Task<IReadOnlyList<TaskStatusChangeRequest>> ListAllPendingAsync(Guid tenantId, CancellationToken ct = default);
+
     /// <summary>Tracked pending requests for a project, for the conflict sweep to mark Outdated.</summary>
     Task<IReadOnlyList<TaskStatusChangeRequest>> ListTrackedPendingForProjectAsync(Guid tenantId, Guid projectId, CancellationToken ct = default);
 
