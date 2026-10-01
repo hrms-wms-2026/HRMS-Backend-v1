@@ -4,12 +4,14 @@ using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.DTOs.Responses;
 using ONEVO.Application.Features.CoreHr.Employee.Helpers;
+using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployeeApprovalActivity;
 using ONEVO.Application.Features.CoreHr.Employee.ServiceInterfaces;
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.ServiceInterfaces;
 using ONEVO.Application.Features.Monitoring.Exceptions.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.Exceptions.ServiceInterfaces;
 using ONEVO.Application.Features.Monitoring.Notifications.RepositoryInterfaces;
 using ONEVO.Application.Features.TimeAttendance.Services;
+using ONEVO.Application.Features.WorkManagement.EmployeeOverview.Services;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
 using ONEVO.Domain.Features.Monitoring.Notifications.Entities;
 
@@ -92,6 +94,33 @@ public sealed class GetEmployeeSignalItemsQueryHandler(
                     "exception_case", c.Id.ToString(), LocalDate(c.DetectedAt, data.Timezone), c.Title, c.Description,
                     OccurredAt: c.DetectedAt)).ToList();
                 return Result<EmployeeSignalItemsResponse>.Success(new(request.Key, total, data.Timezone.Id, items));
+            }
+            case "overdue_tasks":
+            {
+                if (!await EmployeeOverviewWorkModules.IsEnabledAsync(modules, tenantId, ct))
+                    return Hidden();
+                var rows = await tasks.ListForEmployeePeriodAsync(tenantId, request.EmployeeId, from, to, ct);
+                var asOf = to < clock.Today ? to : clock.Today;
+                var items = rows
+                    .Where(r => EmployeeTaskPeriodCalculator.IsOverdue(r, asOf))
+                    .Select(r => new EmployeeSignalItem(
+                        "task", r.TaskId.ToString(), r.DueDate!.Value, r.Title, r.ProjectName,
+                        ProjectId: r.ProjectId, ProjectName: r.ProjectName, DueDate: r.DueDate))
+                    .ToList();
+                return Result<EmployeeSignalItemsResponse>.Success(Page(request.Key, null, items));
+            }
+            case "pending_approvals":
+            {
+                var activity = await sender.Send(new GetEmployeeApprovalActivityQuery(request.EmployeeId, from, to, AllItems: true), ct);
+                if (!activity.IsSuccess)
+                    return Result<EmployeeSignalItemsResponse>.Failure(activity.Error!, activity.StatusCode ?? 400);
+                var items = activity.Value!.Items
+                    .Where(i => i.Status == "pending")
+                    .Select(i => new EmployeeSignalItem(
+                        "approval", i.Id, DateOnly.FromDateTime(i.RequestedAt.UtcDateTime), i.Label, i.Detail,
+                        ApprovalKind: i.Kind, RequestedAt: i.RequestedAt, ApproverName: i.ApproverName))
+                    .ToList();
+                return Result<EmployeeSignalItemsResponse>.Success(Page(request.Key, null, items));
             }
         }
 

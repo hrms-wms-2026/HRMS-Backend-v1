@@ -230,4 +230,46 @@ public sealed class GetEmployeeSignalItemsQueryHandlerTests
             .ReturnsAsync(new ExceptionScope(false, Guid.NewGuid(), Array.Empty<Guid>()));
         (await Run("monitoring_exceptions")).StatusCode.Should().Be(403);
     }
+
+    [Fact]
+    public async Task OverdueTasks_ListOnlyOverdueRows_WithProjectIdentity()
+    {
+        var project = Guid.NewGuid();
+        var overdue = new EmployeeTaskPeriodRow(new DateOnly(2026, 8, 10), null, 20, false, null, Guid.NewGuid(), "Write API docs", project, "Apollo");
+        var done = new EmployeeTaskPeriodRow(new DateOnly(2026, 8, 10), null, 100, false, null, Guid.NewGuid(), "Done", project, "Apollo");
+        var future = new EmployeeTaskPeriodRow(new DateOnly(2026, 8, 25), null, 0, false, null, Guid.NewGuid(), "Later", project, "Apollo");
+        _tasks.Setup(t => t.ListForEmployeePeriodAsync(_tenantId, _employeeId, From, To, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[] { overdue, done, future });
+
+        var r = (await Run("overdue_tasks")).Value!;
+
+        r.Total.Should().Be(1);
+        r.Timezone.Should().BeNull();
+        r.Items.Single().Should().Match<EmployeeSignalItem>(i =>
+            i.Kind == "task" && i.Id == overdue.TaskId.ToString() && i.Title == "Write API docs"
+            && i.ProjectId == project && i.ProjectName == "Apollo" && i.DueDate == new DateOnly(2026, 8, 10));
+    }
+
+    [Fact]
+    public async Task OverdueTasks_Returns403_WhenNoWorkModuleIsEnabled()
+    {
+        _modules.Setup(m => m.IsModuleEnabledAsync(_tenantId, It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync(false);
+        (await Run("overdue_tasks")).StatusCode.Should().Be(403);
+    }
+
+    [Fact]
+    public async Task PendingApprovals_ListOnlyPendingItems_FromTheUncappedQuery()
+    {
+        var pending = new EmployeeApprovalItem("a1", "leave", "Leave request", "Annual · 2026-10-03 → 2026-10-05", "pending", DateTimeOffset.Parse("2026-08-28T05:00:00+00:00"), null, null);
+        var approved = pending with { Id = "a2", Status = "approved" };
+        _sender.Setup(s => s.Send(It.Is<GetEmployeeApprovalActivityQuery>(q => q.AllItems && q.EmployeeId == _employeeId), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<EmployeeApprovalActivityResponse>.Success(new(From, To, 1, 1, 0, 2, new[] { pending, approved })));
+
+        var r = (await Run("pending_approvals")).Value!;
+
+        r.Total.Should().Be(1);
+        r.Items.Single().Should().Match<EmployeeSignalItem>(i =>
+            i.Kind == "approval" && i.Id == "a1" && i.ApprovalKind == "leave" && i.Title == "Leave request"
+            && i.Subtitle == "Annual · 2026-10-03 → 2026-10-05" && i.RequestedAt == pending.RequestedAt);
+    }
 }
