@@ -127,13 +127,18 @@ MyTeamCapabilitiesStore (root) ───────────────▶ 
    └─ "My Team" section (rendered only if capabilities.isAvailable; widget-level gated within it)
       ├─ TeamStatusCard ────────────────────────▶ GET /api/v1/attendance/time-tracking/team/today
       │                                              (TimeAttendance · People I Manage)
-      ├─ ApprovalsExceptionsCard ─┐
-      ├─ PriorityActionsCard ─────┼────────────▶ GET /api/v1/dashboard/team/action-items
-      │                           │                  (Dashboard composition over domain-owned sources:
-      │                           │                   Leave, TimeAttendance, Monitoring.Exceptions, WM)
+      ├─ ActionCenterCard ────────┬────────────▶ GET /api/v1/dashboard/team/action-items
+      │  (rail + priority queue,  │                  (Dashboard composition over domain-owned sources:
+      │   revised 2026-10-01,     │                   Leave, TimeAttendance, Monitoring.Exceptions, WM)
+      │   was ApprovalsExceptions │
+      │   Card + PriorityActions  │
+      │   Card)                  │
       └─ TeamProgressCard ────────┴────────────▶ GET /api/v1/work/led-progress
                                                      (WorkManagement · Work I Lead)
 ```
+`ActionCenterCard` also reads `GET /api/v1/work/led-progress`'s response (read-only, via the same
+in-memory store `TeamProgressCard` already fetches/polls — no extra call), for its queue's
+overdue-work group, exactly as `PriorityActionsCard` did before the merge.
 
 Backend route naming (`/api/v1/dashboard/team/...`) is unaffected by the 2026-09-30 frontend
 revision - it is an API namespace, not a page route, and stays as designed in §9.
@@ -200,10 +205,13 @@ revision** — §6 through §13 are unaffected; only the frontend's page composi
 | Team Status | `canViewPeopleStatus` | **People I Manage**: `ResolveVisibilityAsync(attendance:read, IncludeSelf:false)` in the active legal entity, self removed | `[RequirePermission("attendance:read")]` + resolver scope in the handler | `AttendanceRecord` (today), approved leave overlap, `AttendanceScheduleResolver`, clock-in policy, breaks → `AttendanceDayStatusResolver` |
 | Team Status — leave detail | none of its own (per-subject check) | Subjects inside the Leave visibility scope | Leave scope provider (§9.3): `leave:read` / `leave:manage` unrestricted; `leave:read-team` raw coverage; otherwise none | `LeaveRequest` (approved, covering today) |
 | Team Status — live activity (Phase 2, **blocked**) | `canViewLiveActivity` (false in V1) | People I Manage ∩ monitoring scope | `monitoring:read` + `ResolveVisibilityAsync(monitoring:read)`, after §12 | `ActivitySnapshot`, `MeetingSignal`, `TrayDeviceRegistration.LastSeenAt` |
-| Approvals & Exceptions — people sources | `canReviewPeopleApprovals`, `canReviewExceptions` | Each source's **existing** routing (not one shared list) | Leave: `leave:approve` + stored approver rows. Attendance corrections / work-area / location / device: `attendance:approve` + the same resolver inbox predicate as the list endpoints. Exceptions: `ExceptionScopeResolver.ResolveAsync(forAction:false)` | Existing inbox repositories (count + top N, §9.4) |
-| Approvals & Exceptions — work sources | `hasWorkApprovals` | **Work I Lead** routing | Work module gate + relationship: module owner (task creation/edit), `ReportingManagerId` (objective change / allocation), `TaskStatusChangeAccess.CanEditDirectly` (status-template change) | Existing Work request repositories |
 | Team Progress | `leadsWork` | **Work I Lead**: modules the caller effectively owns + all their sub-modules, in active projects of the active legal entity | Work module gate (`RequireAnyModule`, same list as `TasksController`); relationship computed in the handler; **no coverage** | `Objective`, `WorkTask`, `TaskStatus`, `TaskAssignment` |
-| Priority Actions | shown when at least one of its inputs is shown | Union of the two items above, each item keeping its own source | Inherited from the source responses; nothing new is exposed | `action-items` top items + `led-progress` overdue tasks (frontend composition) |
+| Action Center — rail, people categories | `canReviewPeopleApprovals`, `canReviewExceptions` | Each category's **existing** routing (not one shared list) | Leave: `leave:approve` + stored approver rows. Attendance corrections / work-area / location / device: `attendance:approve` + the same resolver inbox predicate as the list endpoints. Exceptions: `ExceptionScopeResolver.ResolveAsync(forAction:false)` | Existing inbox repositories (count + top N, §9.4) |
+| Action Center — rail, work categories | `hasWorkApprovals` | **Work I Lead** routing | Work module gate + relationship: module owner (task creation/edit), `ReportingManagerId` (objective change / allocation), `TaskStatusChangeAccess.CanEditDirectly` (status-template change) | Existing Work request repositories |
+| Action Center — rail, visibility as a whole | `canReviewPeopleApprovals \|\| canReviewExceptions \|\| hasWorkApprovals` | The rail renders only when at least one rail category above is gated in; otherwise it is omitted entirely (not an empty placeholder) | Inherited from the two rows above | — |
+| Action Center — priority queue | shown when at least one of its inputs is shown (`canReviewPeopleApprovals \|\| canReviewExceptions \|\| hasWorkApprovals \|\| leadsWork`) | Union of the rail's inputs and Team Progress's, each item keeping its own source | Inherited from the source responses; nothing new is exposed | `action-items` top items + `led-progress` overdue tasks (frontend composition) |
+
+*(Revised 2026-10-01: "Approvals & Exceptions" and "Priority Actions" are merged into one **Action Center** widget — see `MY_TEAM_ACTION_CENTER_CONSOLIDATION_DESIGN_PROPOSAL.md`. The gate formulas and backend authorization are unchanged from the pre-merge rows; only the frontend's widget boundary changed.)*
 
 **Capability → section rule:**
 - A section renders **only** when its capability is true.
@@ -388,14 +396,23 @@ monitoring.
   - Subjects outside the active legal entity never appear, because the resolver works on one
     legal entity.
 
-### 8.2 Approvals & Exceptions
+### 8.2 Action Center — category rail
+
+*(Revised 2026-10-01: this section was "Approvals & Exceptions," a standalone card. It is now the
+**rail** half of one merged **Action Center** card, whose other half is the priority queue, §8.4.
+The backend data, gate, routing, and every rule below are unchanged by the merge — only the
+frontend widget boundary moved. See `MY_TEAM_ACTION_CENTER_CONSOLIDATION_DESIGN_PROPOSAL.md` for
+the rail's presentation (domain-grouped chips, a collapsed "+N all clear" summary for categories
+that are both `status: "ok"` and `pendingCount: 0`, loading-safe so no category is ever claimed
+"all clear" before its data has actually arrived) and for when the rail is omitted entirely
+(§8.4a).*
 
 **Business question:** What is waiting for my decision, in the people I manage and the work I
 lead?
 
-**Data:** `GET /api/v1/dashboard/team/action-items` (§9.4). The card shows one row per returned
-source: label, `pendingCount`, "oldest waiting X", and a link to the source's list. Sources are
-grouped under two headings, "People I manage" and "Work I lead".
+**Data:** `GET /api/v1/dashboard/team/action-items` (§9.4). The rail shows one chip per returned
+category: label, `pendingCount`, "oldest waiting X", and a link to the category's list. Categories
+are grouped under two headings, "People I manage" and "Work I lead".
 
 | Source key | Gate (existing) | Routing / predicate (existing) | Oldest-first by |
 |---|---|---|---|
@@ -423,7 +440,11 @@ grouped under two headings, "People I manage" and "Work I lead".
     legal entity, the card subtitle reads "in {legal entity name}", and the acceptance criteria
     record this as expected (§17, AC-11).
 
-**Empty state:** "Nothing is waiting for you".
+**Empty state:** *(revised 2026-10-01)* the rail itself has no standalone empty state any more —
+when every gated-in category is `status: "ok"` and `pendingCount: 0`, they collapse into a single
+"+N all clear" summary chip per domain heading (not a "Nothing is waiting for you" placeholder,
+which was this card's empty state when it stood alone). The merged Action Center card's own empty
+state — nothing in the rail *and* nothing in the queue — is covered in §8.4a.
 
 ### 8.3 Team Progress (Work I Lead)
 
@@ -513,29 +534,36 @@ LedWorkProgressResponse {
 - **Privacy.** Every returned task is one the caller can already open through Work Management;
   step 7 guarantees this, and §18 tests it against `TaskAccessResolver`.
 
-### 8.4 Priority Actions (presentation layer only)
+### 8.4 Action Center — priority queue (presentation layer only)
+
+*(Revised 2026-10-01: this section was "Priority Actions," a standalone card. It is now the
+**queue** half of the merged Action Center card, §8.4a. The composer, ordering, inputs,
+within-queue dedup, and every rule below are byte-for-byte unchanged by the merge — only the
+frontend widget boundary moved, from a second full-width card to a section within one card.)*
 
 **Business question:** Of everything above, what should I act on first?
 
 **UX contract: an attention queue, not another inbox.**
-- Priority Actions is intentionally a **small, prioritized attention queue** built from data that
-  also appears in the source cards.
-- **The same actionable entity may appear twice**, once in Priority Actions and once in its
-  source section (Approvals & Exceptions, or Team Progress's overdue list). This is by design.
-- The two surfaces answer different questions:
-  - **Source cards** are summaries and navigation: how much is waiting in each area, with a
+- The queue is intentionally a **small, prioritized attention queue** built from data that
+  also appears in the rail (§8.2).
+- **The same actionable entity may appear twice**, once in the queue and once as part of a rail
+  category's total (§8.2), or once in Team Progress's overdue list. This is by design, and is now
+  visible within one card rather than requiring the viewer to compare two cards.
+- The two sections answer different questions:
+  - **The rail** is a summary and navigation: how much is waiting in each area, with a
     route to each area's list.
-  - **Priority Actions** answers "what should I look at first?".
+  - **The queue** answers "what should I look at first?".
 - **No second source of truth.**
-  - Every Priority Actions item is a direct projection of an item already present in the
+  - Every queue item is a direct projection of an item already present in the
     `action-items` or `led-progress` response in memory.
   - It has no state of its own: no read/dismissed flags, no persistence, no separate fetch.
   - Acting on an item happens only at the owning feature via its deep link (§15). The next load
-    of both surfaces reflects the result.
-- **No cross-widget deduplication infrastructure.**
-  - Source cards do not hide items because Priority Actions shows them, and vice versa.
+    of both the rail and the queue reflects the result.
+- **No cross-section deduplication infrastructure.**
+  - The rail does not hide a category's total because the queue shows one of its items, and
+    vice versa.
   - No shared "seen" registry or coordination service is built.
-  - The only deduplication is *within* Priority Actions: an entity appears at most once, keyed by
+  - The only deduplication is *within* the queue: an entity appears at most once, keyed by
     `sourceKey + entityId`. This falls out of the input shape, since each source lists an entity
     once.
 
@@ -543,8 +571,8 @@ LedWorkProgressResponse {
 - `action-items.sources[*].topItems` (up to 5 per source, oldest first);
 - `led-progress.overdueTasks`.
 
-**Deterministic V1 ordering.** Items are grouped, not scored. Groups render in this order, up to
-5 items each:
+**Deterministic V1 ordering.** Items are grouped, not scored. Groups are computed in this order,
+up to 5 items each (unchanged from the original Priority Actions composer):
 1. **Escalated exceptions**, oldest `EscalatedAt` first.
 2. **Open exceptions**, oldest `DetectedAt` first.
 3. **Pending approvals.** The items of every approval source are merged, oldest `createdAt`
@@ -559,7 +587,36 @@ exact. No item is derived or invented.
   name, age or overdue days, and `link` (§15).
 - **Excluded:** the caller's own unrelated overdue tasks (D7). Self-submitted requests are
   already excluded by every source's routing.
-- **Empty state:** "You're all caught up".
+- **Empty state:** "You're all caught up" (shown only when the rail is also empty/absent — see
+  §8.4a for the merged card's combined empty-state rule).
+
+### 8.4a Action Center — merged card presentation (added 2026-10-01)
+
+This section is new; it did not exist before the consolidation and has no pre-merge equivalent to
+revise. See `MY_TEAM_ACTION_CENTER_CONSOLIDATION_DESIGN_PROPOSAL.md` for the full design; summary:
+
+- **Card visibility gate:** `canReviewPeopleApprovals || canReviewExceptions || hasWorkApprovals || leadsWork`
+  (unchanged — this is exactly the pre-merge Priority Actions gate, §6).
+- **Rail visibility:** the rail renders only when
+  `canReviewPeopleApprovals || canReviewExceptions || hasWorkApprovals` is true. For a
+  `leadsWork`-only viewer (no approval/exception capability at all), the rail is omitted entirely
+  — not rendered as empty — and the card shows only the queue's overdue-work items. In that case
+  `action-items` is not even fetched, since it cannot contain anything relevant to that viewer.
+- **Rail collapsing:** a category counts toward a domain's "+N all clear" summary chip only when
+  it has actually resolved (`status: "ok"`) **and** `pendingCount: 0`. While the card's
+  `action-items` fetch is in flight, the rail shows its loading skeleton, never a premature "all
+  clear" claim. A `status: "unavailable"` category is never folded into "all clear," regardless of
+  its (placeholder) zero `pendingCount`.
+- **Queue cap in the dashboard card:** the queue shows at most the first 5 items of the composer's
+  output (unchanged ordering, §8.4). A "Show N more priority items" control reveals the rest of
+  the already-fetched list (up to the existing 20 = 4 groups × 5) in place — no new route, no new
+  fetch. The label names what it reveals precisely (more *priority items* already loaded) and does
+  not claim to load or reveal every pending request system-wide, which the 5-per-group cap means
+  it never has.
+- **Default state:** both the rail's "+N all clear" summaries and the queue's 5-row cap start
+  collapsed on every load; neither expanded state persists across a reload.
+- **Independent card height:** the Action Center card's height follows its own content, like every
+  other My Team widget; the three widgets in a row are never forced to equal heights.
 
 ---
 
@@ -774,21 +831,40 @@ What **is** required now:
 - **Initial render.** The page shell and the mode switch render immediately. There is no
   page-level spinner.
 - **Partial permission.** Only sections whose capability is true are requested and rendered.
-  - Layout: a two-column grid on `xl`, one column below; Priority Actions spans the full width at
-    the top when present.
-  - **People only:** Team Status, Approvals (people) and Priority Actions.
-  - **Work only:** Team Progress, Approvals (work) and Priority Actions.
+  - Layout: a two-column grid on `xl`, one column below. **Revised 2026-10-01 (Action Center
+    consolidation):** Approvals & Exceptions and Priority Actions are merged into one **Action
+    Center** card, which now renders in a normal grid cell like Team Status and Team Progress —
+    the previous full-width span for Priority Actions no longer applies, since there is no longer
+    a separate Priority Actions card. See `MY_TEAM_ACTION_CENTER_CONSOLIDATION_DESIGN_PROPOSAL.md`
+    for the merged card's internal layout (a category rail plus a priority queue in one card).
+  - **People only:** Team Status, Action Center (rail shows people categories only).
+  - **Work only:** Team Progress, Action Center (rail shows work categories only; if the viewer
+    has `leadsWork` but none of `canReviewPeopleApprovals`/`canReviewExceptions`/`hasWorkApprovals`,
+    the rail does not render at all and the card shows only the overdue-work queue items).
 - **403 from a section.** The capability is stale. Hide the section and call
   `capabilitiesStore.refresh()`. If `isAvailable` becomes false, navigate to `/dashboard`.
+  **KNOWN GAP (tracked separately, not resolved by this spec or by the Action Center
+  consolidation):** `MyTeamCapabilitiesStore.refresh()` exists but is not currently called from
+  any card component on a 403. This is a pre-existing implementation gap discovered during the
+  Action Center consolidation's spec reconciliation (2026-10-01) and is intentionally left
+  unresolved here — see `MY_TEAM_ACTION_CENTER_CONSOLIDATION_DESIGN_PROPOSAL.md §9.2(ii)`. Do not
+  treat this bullet as describing shipped behavior until that gap is closed as its own task.
 - **Other errors** (5xx / network). Show an inline error in that card with **Retry**. Other cards
   are unaffected.
-- **Source unavailable.** Within Approvals & Exceptions, a source with `status: "unavailable"`
-  renders as "Couldn't load {source}" with a retry that re-requests `action-items`.
+- **Source unavailable.** Within the Action Center rail (was "Approvals & Exceptions," revised
+  2026-10-01), a category with `status: "unavailable"` renders as "Couldn't load {category}" with
+  a retry that re-requests `action-items`, and is never folded into the "+N all clear" summary
+  regardless of its placeholder zero `pendingCount` (§8.4a).
 - **Refresh.**
   - Team Status refetches every 60 s while `document.visibilityState === 'visible'`. It pauses
     when the tab is hidden and refetches immediately when the tab becomes visible, reusing the
     work-pattern card's visibility pattern.
-  - Other cards load on entry and have a manual refresh control.
+  - Approvals & Exceptions (now Action Center, §8.4-revised) and Team Progress refetch on the same
+    60 s visibility-gated cadence as Team Status, not a manual refresh control — updated 2026-10-01
+    to match the implementation actually shipped (there is no manual refresh button anywhere in
+    this feature). Priority Actions' captions (now the Action Center queue) additionally tick
+    forward on their own 60 s visibility-gated clock signal, independent of when the underlying
+    data itself last refetched, so relative-age text stays accurate between data refreshes.
 
 ## 15. Deep links
 
@@ -843,8 +919,9 @@ The destination always re-authorizes. The dashboard never performs an action inl
   endpoint for the same user, legal entity and data.
 - **AC-8.** A failing source returns `unavailable` without failing the response. A failing
   section endpoint does not affect other cards.
-- **AC-9.** Priority Actions order is identical across reloads for identical data, and follows
-  §8.4.
+- **AC-9.** The Action Center queue's order is identical across reloads for identical data, and
+  follows §8.4 (revised 2026-10-01 — was "Priority Actions order"; the composer and ordering rule
+  this AC checks are unchanged, only the containing widget's name changed).
 - **AC-10.** No My Team response contains activity, idle, meeting, presence or screenshot fields.
 - **AC-11.** All People data is limited to the active legal entity, and cards are labelled
   "in {legal entity}".
@@ -870,7 +947,8 @@ The destination always re-authorizes. The dashboard never performs an action inl
 - `EmployeeVisibilityScopeMatcher`: each branch (unrestricted, own, position, department,
   company legal entity, none).
 - Team status mapping table (§8.1.2), including every masking row.
-- Priority Actions ordering: pure function tests live in the frontend (§18.4).
+- Action Center queue ordering (was "Priority Actions ordering"; the composer is unchanged by the
+  2026-10-01 merge): pure function tests live in the frontend (§18.4).
 - `GetTeamActionItemsQueryHandler`:
   - gated-out source omitted;
   - throwing source → `unavailable`;
@@ -933,12 +1011,18 @@ The destination always re-authorizes. The dashboard never performs an action inl
   - renders no heading and no team widgets when `isAvailable !== true`;
   - requests only the widgets whose own capability is true;
   - one widget's error leaves the others rendered;
-  - a 403 on a widget hides that widget and triggers a capabilities refresh.
+  - a 403 on a widget hides that widget and triggers a capabilities refresh. **NOT CURRENTLY
+    IMPLEMENTED OR TESTED** — confirmed during the 2026-10-01 Action Center spec reconciliation
+    that no card component calls `capabilitiesStore.refresh()` anywhere; tracked as its own
+    separate task, intentionally not resolved by the Action Center consolidation (§14).
 - Widget customization picker: offers only capability-allowed widgets; a forbidden widget is never
   listed, added, or requested regardless of stored preference; show/hide/reorder preference
-  persists per viewer (local storage) and survives a reload.
-- Priority Actions composer (pure): group order, tie-breaks, 5-per-group cap, personal tasks never
-  present, stable output for identical input.
+  persists per viewer (local storage) and survives a reload. **Revised 2026-10-01:** also covers
+  the legacy-key migration (`priorityActions`/`approvalsExceptions` → `actionCenter`) — see
+  `MY_TEAM_ACTION_CENTER_CONSOLIDATION_DESIGN_PROPOSAL.md §D`.
+- Action Center queue composer (pure, was "Priority Actions composer," unchanged by the merge):
+  group order, tie-breaks, 5-per-group cap, personal tasks never present, stable output for
+  identical input.
 - Deep-link resolver: every `link.kind` → the route in §15; the `work.request` path calls
   `notification-navigation`.
 - Team Status card: `leave: null` renders "Absent" with no leave text; the 60 s visibility-gated
