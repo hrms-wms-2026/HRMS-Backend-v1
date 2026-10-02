@@ -16,7 +16,7 @@ public static class WorkTaskViewModelMapper
             .Select(a => new TaskAssigneeIdentityViewModel(
                 a.EmployeeId, a.Name, a.AvatarFileId, a.AvatarUrl)).ToList(),
         dto.ParentTaskId, dto.SubtaskTotalCount, dto.SubtaskCompletedCount,
-        dto.SubtaskAssigneeEmployeeIds ?? Array.Empty<Guid>(), dto.CreatedAt);
+        dto.SubtaskAssigneeEmployeeIds ?? Array.Empty<Guid>(), dto.CreatedAt, dto.HasPendingApproval);
 
     public static TaskStatusViewModel ToViewModel(this TaskStatusResponse dto) => new(
         dto.Id, dto.Name, dto.DisplayOrder, dto.RequiresApproval,

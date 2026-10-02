@@ -5,6 +5,7 @@ using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Permission.ServiceInterfaces;
 using ONEVO.Application.Features.Storage.File.Helpers;
+using ONEVO.Application.Features.WorkManagement.Approvals.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.CalendarEvents.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Hierarchy;
@@ -12,6 +13,7 @@ using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfa
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.DTOs.Responses;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
+using ONEVO.Domain.Features.WorkManagement.Approvals.Entities;
 
 namespace ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetTaskById;
 
@@ -28,6 +30,7 @@ public sealed class GetTaskByIdQueryHandler : IRequestHandler<GetTaskByIdQuery, 
     private readonly ITaskClockingSessionRepository _sessions;
     private readonly ICalendarEventRepository _calendarEvents;
     private readonly IEntityAssetRepository _entityAssets;
+    private readonly IWorkApprovalRequestRepository _approvalRequests;
 
     public GetTaskByIdQueryHandler(
         ICurrentUser currentUser,
@@ -40,7 +43,8 @@ public sealed class GetTaskByIdQueryHandler : IRequestHandler<GetTaskByIdQuery, 
         ITaskClockingSessionRepository sessions,
         ICalendarEventRepository calendarEvents,
         IEntityAssetRepository entityAssets,
-        IWorkHierarchyService hierarchy)
+        IWorkHierarchyService hierarchy,
+        IWorkApprovalRequestRepository approvalRequests)
     {
         _currentUser = currentUser;
         _identity = identity;
@@ -53,6 +57,7 @@ public sealed class GetTaskByIdQueryHandler : IRequestHandler<GetTaskByIdQuery, 
         _sessions = sessions;
         _calendarEvents = calendarEvents;
         _entityAssets = entityAssets;
+        _approvalRequests = approvalRequests;
     }
 
     public async Task<Result<WorkTaskResponse>> Handle(GetTaskByIdQuery request, CancellationToken ct)
@@ -102,6 +107,9 @@ public sealed class GetTaskByIdQueryHandler : IRequestHandler<GetTaskByIdQuery, 
             .Select(a => new TaskAttachmentDto(a.FileRecordId, a.OriginalFileName, a.FileSizeBytes, a.ContentType))
             .ToList();
 
+        var pendingTaskIds = await _approvalRequests.GetPendingTargetIdsAsync(
+            tenantId, WorkTargetTypes.Task, new[] { task.Id }, ct) ?? new HashSet<Guid>();
+
         var response = new WorkTaskResponse(
             task.Id, task.ObjectiveId, task.ShortId, task.Title, task.Description, task.CategoryId, task.StatusId,
             task.Priority, task.StoryPoints, task.DueDate, task.EstimatedHours, task.CompletedHours, task.ProgressPercent, task.SprintId,
@@ -112,7 +120,8 @@ public sealed class GetTaskByIdQueryHandler : IRequestHandler<GetTaskByIdQuery, 
             activeEventLink?.CalendarEventId,
             activeEventLink?.EventName,
             attachments,
-            ParentTaskId: task.ParentTaskId, CreatedAt: task.CreatedAt);
+            ParentTaskId: task.ParentTaskId, CreatedAt: task.CreatedAt,
+            HasPendingApproval: pendingTaskIds.Contains(task.Id));
 
         return Result<WorkTaskResponse>.Success(response);
     }

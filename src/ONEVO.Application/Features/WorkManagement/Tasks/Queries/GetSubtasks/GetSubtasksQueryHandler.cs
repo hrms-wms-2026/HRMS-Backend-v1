@@ -2,12 +2,14 @@ using MediatR;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Permission.ServiceInterfaces;
+using ONEVO.Application.Features.WorkManagement.Approvals.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Hierarchy;
 using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.DTOs.Responses;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
+using ONEVO.Domain.Features.WorkManagement.Approvals.Entities;
 
 namespace ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetSubtasks;
 
@@ -22,13 +24,15 @@ public sealed class GetSubtasksQueryHandler : IRequestHandler<GetSubtasksQuery, 
     private readonly IPermissionResolver _permissionResolver;
     private readonly ITaskAssignmentRepository _assignments;
     private readonly ITaskClockingSessionRepository _sessions;
+    private readonly IWorkApprovalRequestRepository _approvalRequests;
 
     public GetSubtasksQueryHandler(
         ICurrentUser currentUser, ICallerIdentityResolver identity,
         IWorkTaskRepository tasks, IProjectRepository projects, IProjectMemberRepository members,
         IPermissionResolver permissionResolver, ITaskAssignmentRepository assignments,
         ITaskClockingSessionRepository sessions,
-        IWorkHierarchyService hierarchy)
+        IWorkHierarchyService hierarchy,
+        IWorkApprovalRequestRepository approvalRequests)
     {
         _currentUser = currentUser;
         _identity = identity;
@@ -39,6 +43,7 @@ public sealed class GetSubtasksQueryHandler : IRequestHandler<GetSubtasksQuery, 
         _permissionResolver = permissionResolver;
         _assignments = assignments;
         _sessions = sessions;
+        _approvalRequests = approvalRequests;
     }
 
     public async Task<Result<IReadOnlyList<WorkTaskResponse>>> Handle(GetSubtasksQuery request, CancellationToken ct)
@@ -102,6 +107,9 @@ public sealed class GetSubtasksQueryHandler : IRequestHandler<GetSubtasksQuery, 
         var openSessions = await _sessions.GetOpenSessionsForTasksAsync(tenantId, childIds, ct);
         var totalLoggedMinutes = await _sessions.GetTotalClosedSessionMinutesForTasksAsync(tenantId, childIds, ct);
 
+        var pendingTaskIds = await _approvalRequests.GetPendingTargetIdsAsync(
+            tenantId, WorkTargetTypes.Task, childIds, ct) ?? new HashSet<Guid>();
+
         var responses = children.Select(task => new WorkTaskResponse(
             task.Id, task.ObjectiveId, task.ShortId, task.Title, task.Description, task.CategoryId, task.StatusId,
             task.Priority, task.StoryPoints, task.DueDate, task.EstimatedHours, task.CompletedHours, task.ProgressPercent, task.SprintId,
@@ -111,7 +119,8 @@ public sealed class GetSubtasksQueryHandler : IRequestHandler<GetSubtasksQuery, 
             TotalLoggedMinutes: totalLoggedMinutes.GetValueOrDefault(task.Id, 0),
             Assignees: assigneesByTaskId.GetValueOrDefault(task.Id, Array.Empty<Guid>())
                 .Select(employeeId => assigneeIdentityByEmployeeId[employeeId]).ToList(),
-            ParentTaskId: task.ParentTaskId, CreatedAt: task.CreatedAt)).ToList();
+            ParentTaskId: task.ParentTaskId, CreatedAt: task.CreatedAt,
+            HasPendingApproval: pendingTaskIds.Contains(task.Id))).ToList();
 
         return Result<IReadOnlyList<WorkTaskResponse>>.Success(responses);
     }

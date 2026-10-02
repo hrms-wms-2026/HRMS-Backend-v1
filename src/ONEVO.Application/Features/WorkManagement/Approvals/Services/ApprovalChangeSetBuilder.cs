@@ -81,7 +81,7 @@ public static class ApprovalChangeSetBuilder
 
             return new ApprovalFieldResponse(
                 key, spec.Label, spec.Kind, currentText, requestedText, appliedText, changed,
-                actionEditable && spec.Kind != "longtext");
+                actionEditable);
         }).ToList();
     }
 

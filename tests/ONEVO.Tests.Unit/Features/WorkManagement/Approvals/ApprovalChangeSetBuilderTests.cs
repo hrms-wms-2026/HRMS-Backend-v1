@@ -25,7 +25,7 @@ public class ApprovalChangeSetBuilderTests
         title.Editable.Should().BeTrue();
         fields.Single(f => f.Label == "Priority").Changed.Should().BeFalse();
         fields.Single(f => f.Label == "Due date").Requested.Should().Be("2026-10-05");
-        fields.Single(f => f.Label == "Description").Editable.Should().BeFalse("long text is shown but not editable in v1");
+        fields.Single(f => f.Label == "Description").Editable.Should().BeTrue("long text fields are editable like any other field on an editable action");
         fields.Should().Contain(f => f.Label == "Progress %");
     }
 

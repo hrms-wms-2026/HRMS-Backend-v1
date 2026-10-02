@@ -69,7 +69,8 @@ public sealed record WorkTaskViewModel(
     IReadOnlyList<TaskAttachmentViewModel> Attachments,
     IReadOnlyList<TaskAssigneeIdentityViewModel> Assignees,
     Guid? ParentTaskId, int SubtaskTotalCount, int SubtaskCompletedCount,
-    IReadOnlyList<Guid> SubtaskAssigneeEmployeeIds, DateTimeOffset CreatedAt);
+    IReadOnlyList<Guid> SubtaskAssigneeEmployeeIds, DateTimeOffset CreatedAt,
+    bool HasPendingApproval = false);
 
 public sealed record TaskStatusViewModel(
     Guid Id, string Name, int DisplayOrder, bool RequiresApproval,

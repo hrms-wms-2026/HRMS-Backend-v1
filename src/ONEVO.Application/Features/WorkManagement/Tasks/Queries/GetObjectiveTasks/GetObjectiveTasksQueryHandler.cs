@@ -2,11 +2,13 @@ using MediatR;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Permission.ServiceInterfaces;
+using ONEVO.Application.Features.WorkManagement.Approvals.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Hierarchy;
 using ONEVO.Application.Features.WorkManagement.Tasks.DTOs.Responses;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
+using ONEVO.Domain.Features.WorkManagement.Approvals.Entities;
 
 namespace ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetObjectiveTasks;
 
@@ -20,6 +22,7 @@ public class GetObjectiveTasksQueryHandler : IRequestHandler<GetObjectiveTasksQu
     private readonly IWorkTaskRepository _tasks;
     private readonly ITaskAssignmentRepository _assignments;
     private readonly ITaskClockingSessionRepository _sessions;
+    private readonly IWorkApprovalRequestRepository _approvalRequests;
 
     public GetObjectiveTasksQueryHandler(
         ICurrentUser currentUser,
@@ -29,7 +32,8 @@ public class GetObjectiveTasksQueryHandler : IRequestHandler<GetObjectiveTasksQu
                 IPermissionResolver permissionResolver,
         IWorkTaskRepository tasks,
         ITaskAssignmentRepository assignments,
-        ITaskClockingSessionRepository sessions)
+        ITaskClockingSessionRepository sessions,
+        IWorkApprovalRequestRepository approvalRequests)
 
     {
         _currentUser = currentUser;
@@ -40,6 +44,7 @@ public class GetObjectiveTasksQueryHandler : IRequestHandler<GetObjectiveTasksQu
                 _tasks = tasks;
         _assignments = assignments;
         _sessions = sessions;
+        _approvalRequests = approvalRequests;
 
     }
 
@@ -83,6 +88,9 @@ public class GetObjectiveTasksQueryHandler : IRequestHandler<GetObjectiveTasksQu
         var totalLoggedMinutes = await _sessions.GetTotalClosedSessionMinutesForTasksAsync(
             tenantId, items.Select(task => task.Id).ToList(), ct);
 
+        var pendingTaskIds = await _approvalRequests.GetPendingTargetIdsAsync(
+            tenantId, WorkTargetTypes.Task, items.Select(task => task.Id).ToList(), ct) ?? new HashSet<Guid>();
+
         var responses = items.Select(t => new WorkTaskResponse(
 
             t.Id, t.ObjectiveId, t.ShortId, t.Title, t.Description, t.CategoryId, t.StatusId,
@@ -90,7 +98,8 @@ public class GetObjectiveTasksQueryHandler : IRequestHandler<GetObjectiveTasksQu
             assigneesByTaskId.GetValueOrDefault(t.Id, Array.Empty<Guid>()),
             openSessions.TryGetValue(t.Id, out var openSession) ? openSession.EmployeeId : (Guid?)null,
             openSession?.ClockInAt,
-            totalLoggedMinutes.GetValueOrDefault(t.Id, 0), CreatedAt: t.CreatedAt)).ToList();
+            totalLoggedMinutes.GetValueOrDefault(t.Id, 0), CreatedAt: t.CreatedAt,
+            HasPendingApproval: pendingTaskIds.Contains(t.Id))).ToList();
 
         return Result<IReadOnlyList<WorkTaskResponse>>.Success(responses);
     }
