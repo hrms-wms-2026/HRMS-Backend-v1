@@ -67,6 +67,16 @@ public sealed record CalendarEventDetailViewModel(
     IReadOnlyList<Guid> ObjectiveIds, IReadOnlyList<Guid> TaskIds,
     DateTimeOffset CreatedAt, Guid? ArchivedById, DateTimeOffset? ArchivedAt);
 
+public sealed record CalendarEventTaskSummaryViewModel(
+    Guid Id, string ShortId, string Title, Guid StatusId, bool MarksTaskComplete, string StatusCategory,
+    int ProgressPercent, Guid ObjectiveId, string ObjectiveTitle);
+
+public static class CalendarEventTaskSummaryViewModelMapper
+{
+    public static CalendarEventTaskSummaryViewModel ToViewModel(this CalendarEventTaskSummaryResponse r)
+        => new(r.Id, r.ShortId, r.Title, r.StatusId, r.MarksTaskComplete, r.StatusCategory, r.ProgressPercent, r.ObjectiveId, r.ObjectiveTitle);
+}
+
 public static class CalendarViewModelMapper
 {
     public static ProjectCalendarViewModel ToViewModel(this ProjectCalendarResponse response)
