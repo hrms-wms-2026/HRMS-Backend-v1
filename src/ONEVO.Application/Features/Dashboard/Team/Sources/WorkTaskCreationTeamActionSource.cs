@@ -1,33 +1,36 @@
-using System.Text.Json;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Dashboard.Team.Abstractions;
 using ONEVO.Application.Features.Dashboard.Team.DTOs;
+using ONEVO.Application.Features.WorkManagement.Approvals.Services;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
-using ONEVO.Application.Features.WorkManagement.Tasks.DTOs;
-using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Leadership.Services;
+using ONEVO.Domain.Features.WorkManagement.Approvals.Entities;
 
 namespace ONEVO.Application.Features.Dashboard.Team.Sources;
 
 /// <summary>Approvals &amp; Exceptions source: task-creation requests pending the caller's
-/// decision as the objective owner (My Team spec §8.2). Reuses
-/// ITaskCreationRequestRepository.GetPendingForOwnerEmployeeIdAsync verbatim - the exact method
-/// GetMyTaskCreationRequestsQueryHandler already calls - so the count/top-N here can never drift
-/// from that screen.
+/// decision (My Team spec §8.2). Ported onto the unified Work Approvals model (backend merge plan
+/// §3/§7): queries IWorkApprovalEligibility.ListDecidableAcrossLedProjectsAsync filtered to
+/// WorkActionTypes.TaskCreate - the same shared eligibility call the capability gate
+/// (WorkLeadershipService.HasPendingWorkApprovalsAsync) makes, so this source's content and that
+/// gate can never disagree about what counts. Reads the new task's title straight from
+/// WorkApprovalRequest.TargetTitle (CreateTaskCommandHandler stamps it at submit time) instead of
+/// deserializing PayloadJson - a simplification the old per-type payload DTO no longer needs.
 ///
-/// V1 single-legal-entity assumption (clarification 5, same stance as
-/// WorkLeadershipService/GetLedWorkProgressQueryHandler): the caller's owned objectives are not
-/// re-filtered by OwningLegalEntityId here because a tenant has exactly one legal entity in V1, so
-/// every objective the caller owns already belongs to the active one. Revisit when multi-legal-
-/// entity tenants ship.</summary>
+/// Eligibility is now CanDecide (own-or-ancestor of the request's PositionObjectiveId), a wider,
+/// always-live-re-checked set than the old flat "I am the objective's current owner" check - an
+/// intentional, already-shipped property of the new Work Approvals engine, not a porting
+/// regression (backend merge plan §3).</summary>
 public sealed class WorkTaskCreationTeamActionSource(
     ICurrentUser currentUser,
     IModuleEntitlementService modules,
     ICallerIdentityResolver identity,
-    ITaskCreationRequestRepository requests)
+    IWorkApprovalEligibility eligibility)
     : ITeamActionSource
 {
     private static readonly string[] WorkModuleKeys =
         ["worksync_foundation", "projects", "objectives_milestones", "tasks", "boards", "planning_sprints"];
+    private static readonly IReadOnlySet<string> ActionTypes = new HashSet<string> { WorkActionTypes.TaskCreate };
 
     public string Key => "work.task_creation";
     public string Domain => ActionSourceSummary.DomainWork;
@@ -44,7 +47,8 @@ public sealed class WorkTaskCreationTeamActionSource(
         if (callerEmployeeId is null)
             return new ActionSourceSummary(Key, Domain, ActionSourceSummary.StatusOk, 0, null, null, []);
 
-        var pending = await requests.GetPendingForOwnerEmployeeIdAsync(currentUser.TenantId, callerEmployeeId.Value, ct);
+        var pending = await eligibility.ListDecidableAcrossLedProjectsAsync(
+            currentUser.TenantId, callerEmployeeId.Value, legalEntityId, ActionTypes, ct);
         if (pending.Count == 0)
             return new ActionSourceSummary(Key, Domain, ActionSourceSummary.StatusOk, 0, null, null, []);
 
@@ -56,36 +60,24 @@ public sealed class WorkTaskCreationTeamActionSource(
 
         var topItems = ordered.Take(top).Select(r =>
         {
-            var title = TryGetTitle(r.PayloadJson);
             var requesterName = names.GetValueOrDefault(r.RequestedByEmployeeId);
+            var title = string.IsNullOrWhiteSpace(r.TargetTitle) ? "New task request" : $"New task - {r.TargetTitle}";
             return new ActionItem(
                 Key,
                 r.Id,
-                title is null ? "New task request" : $"New task - {title}",
+                title,
                 r.RequestedByEmployeeId,
                 requesterName,
                 r.CreatedAt,
                 null,
                 new ActionItemLink(ActionItemLink.KindWorkRequest, new Dictionary<string, string>
                 {
-                    ["relatedEntityType"] = "task_creation_request",
+                    ["relatedEntityType"] = "work_approval_request",
                     ["relatedEntityId"] = r.Id.ToString(),
                 }));
         }).ToList();
 
         return new ActionSourceSummary(
             Key, Domain, ActionSourceSummary.StatusOk, ordered.Count, null, oldest, topItems);
-    }
-
-    private static string? TryGetTitle(string payloadJson)
-    {
-        try
-        {
-            return JsonSerializer.Deserialize<TaskCreationRequestPayload>(payloadJson)?.Title;
-        }
-        catch (JsonException)
-        {
-            return null;
-        }
     }
 }

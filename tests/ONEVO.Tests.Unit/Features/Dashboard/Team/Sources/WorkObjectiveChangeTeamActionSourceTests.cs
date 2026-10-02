@@ -2,11 +2,10 @@ using Moq;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Dashboard.Team.DTOs;
 using ONEVO.Application.Features.Dashboard.Team.Sources;
+using ONEVO.Application.Features.WorkManagement.Approvals.Services;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
-using ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.RepositoryInterfaces;
-using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
-using ONEVO.Domain.Features.WorkManagement.ObjectiveChangeRequests.Entities;
-using ONEVO.Domain.Features.WorkManagement.Objectives.Entities;
+using ONEVO.Application.Features.WorkManagement.Leadership.Services;
+using ONEVO.Domain.Features.WorkManagement.Approvals.Entities;
 using Xunit;
 
 namespace ONEVO.Tests.Unit.Features.Dashboard.Team.Sources;
@@ -18,12 +17,13 @@ public sealed class WorkObjectiveChangeTeamActionSourceTests
     private static readonly Guid CallerEmployeeId = Guid.Parse("cccccccc-cccc-cccc-cccc-cccccccccccc");
     private static readonly Guid LegalEntityId = Guid.Parse("dddddddd-dddd-dddd-dddd-dddddddddddd");
 
-    private static ObjectiveChangeRequest Request(
-        Guid objectiveId, Guid requestedById, string requestType, DateTimeOffset createdAt) => new()
+    private static WorkApprovalRequest Request(
+        Guid objectiveId, Guid requestedById, string actionType, string title, DateTimeOffset createdAt) => new()
     {
-        Id = Guid.NewGuid(), TenantId = TenantId, ObjectiveId = objectiveId, RequestType = requestType,
-        RequestedById = requestedById, ReportingManagerId = CallerEmployeeId,
-        Status = ObjectiveChangeRequestStatuses.Pending, CreatedAt = createdAt,
+        Id = Guid.NewGuid(), TenantId = TenantId, ProjectId = Guid.NewGuid(), ActionType = actionType,
+        TargetType = WorkTargetTypes.Module, TargetId = objectiveId, TargetTitle = title,
+        ApproverSource = WorkApprovalSources.Hierarchy, ApproverEmployeeId = CallerEmployeeId,
+        RequestedByEmployeeId = requestedById, Status = WorkApprovalRequestStatuses.Pending, CreatedAt = createdAt,
     };
 
     [Fact]
@@ -33,12 +33,30 @@ public sealed class WorkObjectiveChangeTeamActionSourceTests
         var identity = new Mock<ICallerIdentityResolver>();
         identity.Setup(x => x.ResolveCallerEmployeeIdAsync(TenantId, UserId, It.IsAny<CancellationToken>())).ReturnsAsync((Guid?)null);
         var source = new WorkObjectiveChangeTeamActionSource(
-            currentUser, Mock.Of<IModuleEntitlementService>(), identity.Object,
-            Mock.Of<IObjectiveChangeRequestRepository>(), Mock.Of<IObjectiveRepository>());
+            currentUser, Mock.Of<IModuleEntitlementService>(), identity.Object, Mock.Of<IWorkApprovalEligibility>(MockBehavior.Strict));
 
         var summary = await source.GetSummaryAsync(LegalEntityId, 5, CancellationToken.None);
 
         Assert.Equal(0, summary.PendingCount);
+    }
+
+    [Fact]
+    public async Task Queries_eligibility_filtered_to_the_six_module_action_types()
+    {
+        var currentUser = CurrentUser();
+        var identity = new Mock<ICallerIdentityResolver>();
+        identity.Setup(x => x.ResolveCallerEmployeeIdAsync(TenantId, UserId, It.IsAny<CancellationToken>())).ReturnsAsync(CallerEmployeeId);
+        var eligibility = new Mock<IWorkApprovalEligibility>();
+        eligibility.Setup(x => x.ListDecidableAcrossLedProjectsAsync(
+                TenantId, CallerEmployeeId, LegalEntityId,
+                It.Is<IReadOnlySet<string>>(s => s.SetEquals(MyTeamApprovalActionTypes.ObjectiveChange)),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<WorkApprovalRequest>());
+
+        var source = new WorkObjectiveChangeTeamActionSource(currentUser, Mock.Of<IModuleEntitlementService>(), identity.Object, eligibility.Object);
+        await source.GetSummaryAsync(LegalEntityId, 5, CancellationToken.None);
+
+        eligibility.VerifyAll();
     }
 
     [Fact]
@@ -50,22 +68,18 @@ public sealed class WorkObjectiveChangeTeamActionSourceTests
         var requesterId = Guid.NewGuid();
         var objectiveId = Guid.NewGuid();
 
-        var editReq = Request(objectiveId, requesterId, ObjectiveChangeRequestTypes.Edit, DateTimeOffset.Parse("2026-09-01T00:00:00Z"));
-        var extendReq = Request(objectiveId, requesterId, ObjectiveChangeRequestTypes.ExtendAllocation, DateTimeOffset.Parse("2026-08-01T00:00:00Z"));
+        var editReq = Request(objectiveId, requesterId, WorkActionTypes.ModuleEdit, "Q4 Launch", DateTimeOffset.Parse("2026-09-01T00:00:00Z"));
+        var extendReq = Request(objectiveId, requesterId, WorkActionTypes.ModuleAllocationExtend, "Q4 Launch", DateTimeOffset.Parse("2026-08-01T00:00:00Z"));
 
-        var changeRequests = new Mock<IObjectiveChangeRequestRepository>();
-        changeRequests.Setup(x => x.ListPendingForApproverAsync(TenantId, CallerEmployeeId, It.IsAny<CancellationToken>()))
+        var eligibility = new Mock<IWorkApprovalEligibility>();
+        eligibility.Setup(x => x.ListDecidableAcrossLedProjectsAsync(TenantId, CallerEmployeeId, LegalEntityId, It.IsAny<IReadOnlySet<string>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync([editReq, extendReq]);
 
         identity.Setup(x => x.ResolveDisplayNamesByEmployeeIdAsync(TenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Dictionary<Guid, string> { [requesterId] = "Arjun M" });
 
-        var objectives = new Mock<IObjectiveRepository>();
-        objectives.Setup(x => x.GetByIdsForTenantAsync(TenantId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync([new Objective { Id = objectiveId, TenantId = TenantId, Title = "Q4 Launch" }]);
-
         var source = new WorkObjectiveChangeTeamActionSource(
-            currentUser, Mock.Of<IModuleEntitlementService>(), identity.Object, changeRequests.Object, objectives.Object);
+            currentUser, Mock.Of<IModuleEntitlementService>(), identity.Object, eligibility.Object);
         var summary = await source.GetSummaryAsync(LegalEntityId, 5, CancellationToken.None);
 
         Assert.Equal(2, summary.PendingCount);
@@ -75,7 +89,7 @@ public sealed class WorkObjectiveChangeTeamActionSourceTests
         Assert.Contains("Q4 Launch", summary.TopItems[0].Title);
         Assert.Equal("Edit request - Q4 Launch", summary.TopItems[1].Title);
         Assert.Equal(ActionItemLink.KindWorkRequest, summary.TopItems[0].Link.Kind);
-        Assert.Equal("objective_change_request", summary.TopItems[0].Link.Params["relatedEntityType"]);
+        Assert.Equal("work_approval_request", summary.TopItems[0].Link.Params["relatedEntityType"]);
     }
 
     private static ICurrentUser CurrentUser()

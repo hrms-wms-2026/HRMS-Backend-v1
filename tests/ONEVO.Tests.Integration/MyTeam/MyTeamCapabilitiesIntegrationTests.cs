@@ -4,14 +4,17 @@ using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.EmployeeAuthority.Services;
 using ONEVO.Application.Features.Dashboard.Team.Queries;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
+using ONEVO.Application.Features.WorkManagement.Hierarchy;
 using ONEVO.Application.Features.WorkManagement.Leadership.Services;
 using ONEVO.Application.Features.WorkManagement.Objectives.Services;
-using ONEVO.Application.Features.WorkManagement.Tasks.Services;
+using ONEVO.Infrastructure.Identity.Time;
 using ONEVO.Infrastructure.Persistence;
 using ONEVO.Infrastructure.Persistence.Repositories.Auth.Login;
 using ONEVO.Infrastructure.Persistence.Repositories.CoreHr;
 using ONEVO.Infrastructure.Persistence.Repositories.OrgStructure;
 using ONEVO.Infrastructure.Persistence.Repositories.WorkManagement;
+using ONEVO.Infrastructure.Security;
+using ONEVO.Infrastructure.Services.SharedPlatform.Outbox;
 using ONEVO.Tests.Integration.Support;
 using Xunit;
 using ManagementCoverageRecord = ONEVO.Domain.Features.OrgStructure.Entities.ManagementCoverageRecord;
@@ -67,16 +70,21 @@ public sealed class MyTeamCapabilitiesIntegrationTests
             PositionAssignmentRepositoryTestSupport.CreateClosureRepository(db),
             new EfDepartmentRepository(db),
             new EfPermissionRepository(db));
+        var eligibility = new WorkApprovalEligibility(
+            new EfWorkApprovalRequestRepository(db),
+            new WorkHierarchyService(
+                new EfObjectiveRepository(db),
+                new MilestoneMembershipCoordinator(
+                    new CommonEfEmployeeRepository(db), new EfProjectMemberRepository(db), new EfObjectiveRepository(db),
+                    new EfProjectMemberInvitationRepository(db),
+                    new CallerIdentityResolver(new CommonEfEmployeeRepository(db), new ONEVO.Infrastructure.Persistence.Repositories.EfEntityAssetRepository(db)),
+                    new OutboxWriter(db, new NoOpEncryptionService(), new SystemDateTimeProvider()))),
+            new EfObjectiveRepository(db));
         var workLeadership = new WorkLeadershipService(
             new EfObjectiveRepository(db),
             new EfProjectMemberRepository(db),
-            new EfTaskCreationRequestRepository(db),
-            new EfTaskEditRequestRepository(db),
-            new EfObjectiveChangeRequestRepository(db),
-            new EfTaskStatusChangeRequestRepository(db),
-            new TaskStatusChangeAccessService(
-                new EfObjectiveRepository(db), new EfProjectMemberRepository(db),
-                new MilestoneMembershipCoordinator(new CommonEfEmployeeRepository(db), new EfProjectMemberRepository(db), new EfObjectiveRepository(db))),
+            new EfWorkApprovalRequestRepository(db),
+            eligibility,
             NullLogger<WorkLeadershipService>.Instance);
 
         return new GetMyTeamCapabilitiesQueryHandler(

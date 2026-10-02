@@ -1,28 +1,27 @@
-using System.Text.Json;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Dashboard.Team.Abstractions;
 using ONEVO.Application.Features.Dashboard.Team.DTOs;
+using ONEVO.Application.Features.WorkManagement.Approvals.Services;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
-using ONEVO.Application.Features.WorkManagement.Tasks.DTOs;
-using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Leadership.Services;
+using ONEVO.Domain.Features.WorkManagement.Approvals.Entities;
 
 namespace ONEVO.Application.Features.Dashboard.Team.Sources;
 
 /// <summary>Approvals &amp; Exceptions source: task-edit requests pending the caller's decision
-/// as the objective owner (My Team spec §8.2). Reuses
-/// ITaskEditRequestRepository.GetPendingForOwnerEmployeeIdAsync verbatim - the exact method
-/// GetMyTaskEditRequestsQueryHandler already calls.
-///
-/// V1 single-legal-entity assumption (clarification 5, same stance as WorkTaskCreationTeamActionSource).</summary>
+/// (My Team spec §8.2). Ported onto the unified Work Approvals model (backend merge plan §3/§7) -
+/// see WorkTaskCreationTeamActionSource for the shared-eligibility and TargetTitle rationale
+/// (EditTaskCommandHandler stamps TargetTitle = task.Title at submit time).</summary>
 public sealed class WorkTaskEditTeamActionSource(
     ICurrentUser currentUser,
     IModuleEntitlementService modules,
     ICallerIdentityResolver identity,
-    ITaskEditRequestRepository requests)
+    IWorkApprovalEligibility eligibility)
     : ITeamActionSource
 {
     private static readonly string[] WorkModuleKeys =
         ["worksync_foundation", "projects", "objectives_milestones", "tasks", "boards", "planning_sprints"];
+    private static readonly IReadOnlySet<string> ActionTypes = new HashSet<string> { WorkActionTypes.TaskEdit };
 
     public string Key => "work.task_edit";
     public string Domain => ActionSourceSummary.DomainWork;
@@ -39,7 +38,8 @@ public sealed class WorkTaskEditTeamActionSource(
         if (callerEmployeeId is null)
             return new ActionSourceSummary(Key, Domain, ActionSourceSummary.StatusOk, 0, null, null, []);
 
-        var pending = await requests.GetPendingForOwnerEmployeeIdAsync(currentUser.TenantId, callerEmployeeId.Value, ct);
+        var pending = await eligibility.ListDecidableAcrossLedProjectsAsync(
+            currentUser.TenantId, callerEmployeeId.Value, legalEntityId, ActionTypes, ct);
         if (pending.Count == 0)
             return new ActionSourceSummary(Key, Domain, ActionSourceSummary.StatusOk, 0, null, null, []);
 
@@ -51,36 +51,24 @@ public sealed class WorkTaskEditTeamActionSource(
 
         var topItems = ordered.Take(top).Select(r =>
         {
-            var title = TryGetTitle(r.PayloadJson);
             var requesterName = names.GetValueOrDefault(r.RequestedByEmployeeId);
+            var title = string.IsNullOrWhiteSpace(r.TargetTitle) ? "Task edit request" : $"Task edit - {r.TargetTitle}";
             return new ActionItem(
                 Key,
                 r.Id,
-                title is null ? "Task edit request" : $"Task edit - {title}",
+                title,
                 r.RequestedByEmployeeId,
                 requesterName,
                 r.CreatedAt,
                 null,
                 new ActionItemLink(ActionItemLink.KindWorkRequest, new Dictionary<string, string>
                 {
-                    ["relatedEntityType"] = "task_edit_request",
+                    ["relatedEntityType"] = "work_approval_request",
                     ["relatedEntityId"] = r.Id.ToString(),
                 }));
         }).ToList();
 
         return new ActionSourceSummary(
             Key, Domain, ActionSourceSummary.StatusOk, ordered.Count, null, oldest, topItems);
-    }
-
-    private static string? TryGetTitle(string payloadJson)
-    {
-        try
-        {
-            return JsonSerializer.Deserialize<TaskEditRequestPayload>(payloadJson)?.Title;
-        }
-        catch (JsonException)
-        {
-            return null;
-        }
     }
 }

@@ -1,13 +1,11 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
+using ONEVO.Application.Features.WorkManagement.Approvals.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Approvals.Services;
 using ONEVO.Application.Features.WorkManagement.Leadership.Services;
-using ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
-using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
-using ONEVO.Application.Features.WorkManagement.Tasks.Services;
-using ONEVO.Domain.Features.WorkManagement.Objectives.Entities;
-using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
+using ONEVO.Domain.Features.WorkManagement.Approvals.Entities;
 using Xunit;
 
 namespace ONEVO.Tests.Unit.Features.WorkManagement.Leadership;
@@ -19,26 +17,19 @@ public sealed class WorkLeadershipServiceTests
     private static WorkLeadershipService Build(
         Mock<IObjectiveRepository> objectives,
         Mock<IProjectMemberRepository>? members = null,
-        Mock<ITaskCreationRequestRepository>? taskCreation = null,
-        Mock<ITaskEditRequestRepository>? taskEdit = null,
-        Mock<IObjectiveChangeRequestRepository>? objectiveChange = null,
-        Mock<ITaskStatusChangeRequestRepository>? statusChangeRequests = null,
-        Mock<ITaskStatusChangeAccessService>? statusChangeAccess = null)
+        Mock<IWorkApprovalRequestRepository>? approvalRequests = null,
+        Mock<IWorkApprovalEligibility>? eligibility = null)
     {
         members ??= new Mock<IProjectMemberRepository>(MockBehavior.Strict);
-        taskCreation ??= Default(new Mock<ITaskCreationRequestRepository>(), m =>
-            m.Setup(x => x.HasPendingForOwnerEmployeeIdAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>())).ReturnsAsync(false));
-        taskEdit ??= Default(new Mock<ITaskEditRequestRepository>(), m =>
-            m.Setup(x => x.HasPendingForOwnerEmployeeIdAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>())).ReturnsAsync(false));
-        objectiveChange ??= Default(new Mock<IObjectiveChangeRequestRepository>(), m =>
-            m.Setup(x => x.HasPendingForApproverAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>())).ReturnsAsync(false));
-        statusChangeRequests ??= Default(new Mock<ITaskStatusChangeRequestRepository>(), m =>
-            m.Setup(x => x.ListAllPendingAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>())).ReturnsAsync(Array.Empty<TaskStatusChangeRequest>()));
-        statusChangeAccess ??= new Mock<ITaskStatusChangeAccessService>(MockBehavior.Strict);
+        approvalRequests ??= Default(new Mock<IWorkApprovalRequestRepository>(), m =>
+            m.Setup(x => x.HasPendingForHrApproverAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<IReadOnlySet<string>>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(false));
+        eligibility ??= Default(new Mock<IWorkApprovalEligibility>(), m =>
+            m.Setup(x => x.ListDecidableAcrossLedProjectsAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<IReadOnlySet<string>>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(Array.Empty<WorkApprovalRequest>()));
 
         return new WorkLeadershipService(
-            objectives.Object, members.Object, taskCreation.Object, taskEdit.Object,
-            objectiveChange.Object, statusChangeRequests.Object, statusChangeAccess.Object,
+            objectives.Object, members.Object, approvalRequests.Object, eligibility.Object,
             NullLogger<WorkLeadershipService>.Instance);
     }
 
@@ -97,7 +88,7 @@ public sealed class WorkLeadershipServiceTests
     }
 
     [Fact]
-    public async Task HasPendingWorkApprovalsAsync_false_when_all_four_predicates_are_empty()
+    public async Task HasPendingWorkApprovalsAsync_false_when_hr_check_false_and_eligibility_empty()
     {
         var sut = Build(new Mock<IObjectiveRepository>(MockBehavior.Strict));
 
@@ -105,43 +96,41 @@ public sealed class WorkLeadershipServiceTests
     }
 
     [Fact]
-    public async Task HasPendingWorkApprovalsAsync_true_from_task_creation_short_circuits_the_rest()
+    public async Task HasPendingWorkApprovalsAsync_true_from_hr_check_short_circuits_before_eligibility_is_called()
     {
-        var taskCreation = new Mock<ITaskCreationRequestRepository>();
-        taskCreation.Setup(x => x.HasPendingForOwnerEmployeeIdAsync(Tenant, Me, It.IsAny<CancellationToken>())).ReturnsAsync(true);
-        var taskEdit = new Mock<ITaskEditRequestRepository>(MockBehavior.Strict);
-        var objectiveChange = new Mock<IObjectiveChangeRequestRepository>(MockBehavior.Strict);
-        var statusRequests = new Mock<ITaskStatusChangeRequestRepository>(MockBehavior.Strict);
-        var sut = Build(new Mock<IObjectiveRepository>(MockBehavior.Strict), taskCreation: taskCreation, taskEdit: taskEdit,
-            objectiveChange: objectiveChange, statusChangeRequests: statusRequests);
+        var approvalRequests = new Mock<IWorkApprovalRequestRepository>();
+        approvalRequests.Setup(x => x.HasPendingForHrApproverAsync(Tenant, Me, MyTeamApprovalActionTypes.All, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+        var eligibility = new Mock<IWorkApprovalEligibility>(MockBehavior.Strict);
+        var sut = Build(new Mock<IObjectiveRepository>(MockBehavior.Strict), approvalRequests: approvalRequests, eligibility: eligibility);
 
         Assert.True(await sut.HasPendingWorkApprovalsAsync(Tenant, Me, Le));
-        taskEdit.VerifyNoOtherCalls();
-        objectiveChange.VerifyNoOtherCalls();
-        statusRequests.VerifyNoOtherCalls();
+        eligibility.VerifyNoOtherCalls();
     }
 
     [Fact]
-    public async Task HasPendingWorkApprovalsAsync_checks_status_template_change_by_distinct_project_not_per_row()
+    public async Task HasPendingWorkApprovalsAsync_hr_check_is_filtered_to_my_team_scope_not_unfiltered()
     {
-        var approverProject = Guid.NewGuid();
-        var otherProject = Guid.NewGuid();
-        var statusRequests = new Mock<ITaskStatusChangeRequestRepository>();
-        statusRequests.Setup(x => x.ListAllPendingAsync(Tenant, It.IsAny<CancellationToken>())).ReturnsAsync(new[]
-        {
-            new TaskStatusChangeRequest { Id = Guid.NewGuid(), TenantId = Tenant, ProjectId = otherProject, RequestedByEmployeeId = Guid.NewGuid() },
-            new TaskStatusChangeRequest { Id = Guid.NewGuid(), TenantId = Tenant, ProjectId = otherProject, RequestedByEmployeeId = Guid.NewGuid() },
-            new TaskStatusChangeRequest { Id = Guid.NewGuid(), TenantId = Tenant, ProjectId = approverProject, RequestedByEmployeeId = Guid.NewGuid() },
-        });
-        var access = new Mock<ITaskStatusChangeAccessService>();
-        access.Setup(x => x.ResolveAsync(Tenant, otherProject, Me, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new TaskStatusChangeAccess(new Objective { Id = Guid.NewGuid(), TenantId = Tenant, Title = "Root" }, false, true));
-        access.Setup(x => x.ResolveAsync(Tenant, approverProject, Me, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new TaskStatusChangeAccess(new Objective { Id = Guid.NewGuid(), TenantId = Tenant, Title = "Root" }, true, false));
+        // Guards against the gate/content mismatch found in the backend merge plan's verification
+        // round: an HR-sourced request of an out-of-scope ActionType (e.g. Sprint.*) must never
+        // flip this gate to true, since no Action Source would ever show it.
+        var approvalRequests = new Mock<IWorkApprovalRequestRepository>();
+        approvalRequests.Setup(x => x.HasPendingForHrApproverAsync(Tenant, Me, It.Is<IReadOnlySet<string>>(s => s.SetEquals(MyTeamApprovalActionTypes.All)), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+        var sut = Build(new Mock<IObjectiveRepository>(MockBehavior.Strict), approvalRequests: approvalRequests);
 
-        var sut = Build(new Mock<IObjectiveRepository>(MockBehavior.Strict), statusChangeRequests: statusRequests, statusChangeAccess: access);
+        Assert.False(await sut.HasPendingWorkApprovalsAsync(Tenant, Me, Le));
+        approvalRequests.VerifyAll();
+    }
+
+    [Fact]
+    public async Task HasPendingWorkApprovalsAsync_true_when_eligibility_finds_a_decidable_request()
+    {
+        var eligibility = new Mock<IWorkApprovalEligibility>();
+        eligibility.Setup(x => x.ListDecidableAcrossLedProjectsAsync(Tenant, Me, Le, MyTeamApprovalActionTypes.All, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<WorkApprovalRequest> { new() });
+        var sut = Build(new Mock<IObjectiveRepository>(MockBehavior.Strict), eligibility: eligibility);
 
         Assert.True(await sut.HasPendingWorkApprovalsAsync(Tenant, Me, Le));
-        access.Verify(x => x.ResolveAsync(Tenant, otherProject, Me, It.IsAny<CancellationToken>()), Times.Once);
     }
 }

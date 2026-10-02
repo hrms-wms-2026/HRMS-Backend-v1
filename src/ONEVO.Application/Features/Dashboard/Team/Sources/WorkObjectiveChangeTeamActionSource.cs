@@ -1,28 +1,28 @@
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Dashboard.Team.Abstractions;
 using ONEVO.Application.Features.Dashboard.Team.DTOs;
+using ONEVO.Application.Features.WorkManagement.Approvals.Services;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
-using ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.RepositoryInterfaces;
-using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
-using ONEVO.Domain.Features.WorkManagement.ObjectiveChangeRequests.Entities;
+using ONEVO.Application.Features.WorkManagement.Leadership.Services;
+using ONEVO.Domain.Features.WorkManagement.Approvals.Entities;
 
 namespace ONEVO.Application.Features.Dashboard.Team.Sources;
 
-/// <summary>Approvals &amp; Exceptions source: objective change requests (delete/edit/transfer/
-/// achieve/unachieve/allocation-extension) pending the caller's decision as reporting manager (My
-/// Team spec §8.2). Reuses IObjectiveChangeRequestRepository.ListPendingForApproverAsync verbatim
-/// - the exact method ListMyObjectiveChangeRequestsQueryHandler already calls, which already
-/// covers every ObjectiveChangeRequestTypes value including ExtendAllocation ("including
-/// allocation extension" per spec) since they are all just rows of the one entity, not a separate
-/// predicate branch.
+/// <summary>Approvals &amp; Exceptions source: module (objective) change requests - delete/edit/
+/// transfer/achieve/unachieve/allocation-extension - pending the caller's decision (My Team spec
+/// §8.2). Ported onto the unified Work Approvals model (backend merge plan §3/§7): the 6 legacy
+/// ObjectiveChangeRequestTypes values map 1:1 onto MyTeamApprovalActionTypes.ObjectiveChange (the
+/// 6 WorkActionTypes.Module* values), kept as one merged source/widget key for continuity. Reads
+/// TargetTitle directly (ModuleActionSubmitter stamps it as module.Title at submit time) instead
+/// of the old IObjectiveRepository.GetByIdsForTenantAsync enrichment join - a simplification, not
+/// a behavior change.
 ///
 /// V1 single-legal-entity assumption (clarification 5, same stance as the other work.* sources).</summary>
 public sealed class WorkObjectiveChangeTeamActionSource(
     ICurrentUser currentUser,
     IModuleEntitlementService modules,
     ICallerIdentityResolver identity,
-    IObjectiveChangeRequestRepository changeRequests,
-    IObjectiveRepository objectives)
+    IWorkApprovalEligibility eligibility)
     : ITeamActionSource
 {
     private static readonly string[] WorkModuleKeys =
@@ -43,37 +43,34 @@ public sealed class WorkObjectiveChangeTeamActionSource(
         if (callerEmployeeId is null)
             return new ActionSourceSummary(Key, Domain, ActionSourceSummary.StatusOk, 0, null, null, []);
 
-        var pending = await changeRequests.ListPendingForApproverAsync(currentUser.TenantId, callerEmployeeId.Value, ct);
+        var pending = await eligibility.ListDecidableAcrossLedProjectsAsync(
+            currentUser.TenantId, callerEmployeeId.Value, legalEntityId, MyTeamApprovalActionTypes.ObjectiveChange, ct);
         if (pending.Count == 0)
             return new ActionSourceSummary(Key, Domain, ActionSourceSummary.StatusOk, 0, null, null, []);
 
         var names = await identity.ResolveDisplayNamesByEmployeeIdAsync(
-            currentUser.TenantId, pending.Select(r => r.RequestedById).Distinct().ToList(), ct);
-        var objectivesById = (await objectives.GetByIdsForTenantAsync(
-                currentUser.TenantId, pending.Select(r => r.ObjectiveId).Distinct().ToList(), ct))
-            .ToDictionary(o => o.Id);
+            currentUser.TenantId, pending.Select(r => r.RequestedByEmployeeId).Distinct().ToList(), ct);
 
         var ordered = pending.OrderBy(r => r.CreatedAt).ToList();
         var oldest = ordered[0].CreatedAt;
 
         var topItems = ordered.Take(top).Select(r =>
         {
-            objectivesById.TryGetValue(r.ObjectiveId, out var objective);
-            var requesterName = names.GetValueOrDefault(r.RequestedById);
-            var title = objective is null
-                ? DescribeRequestType(r.RequestType)
-                : $"{DescribeRequestType(r.RequestType)} - {objective.Title}";
+            var requesterName = names.GetValueOrDefault(r.RequestedByEmployeeId);
+            var title = string.IsNullOrWhiteSpace(r.TargetTitle)
+                ? DescribeActionType(r.ActionType)
+                : $"{DescribeActionType(r.ActionType)} - {r.TargetTitle}";
             return new ActionItem(
                 Key,
                 r.Id,
                 title,
-                r.RequestedById,
+                r.RequestedByEmployeeId,
                 requesterName,
                 r.CreatedAt,
                 null,
                 new ActionItemLink(ActionItemLink.KindWorkRequest, new Dictionary<string, string>
                 {
-                    ["relatedEntityType"] = "objective_change_request",
+                    ["relatedEntityType"] = "work_approval_request",
                     ["relatedEntityId"] = r.Id.ToString(),
                 }));
         }).ToList();
@@ -82,14 +79,14 @@ public sealed class WorkObjectiveChangeTeamActionSource(
             Key, Domain, ActionSourceSummary.StatusOk, ordered.Count, null, oldest, topItems);
     }
 
-    private static string DescribeRequestType(string requestType) => requestType switch
+    private static string DescribeActionType(string actionType) => actionType switch
     {
-        ObjectiveChangeRequestTypes.Delete => "Delete request",
-        ObjectiveChangeRequestTypes.Edit => "Edit request",
-        ObjectiveChangeRequestTypes.Transfer => "Transfer request",
-        ObjectiveChangeRequestTypes.Achieve => "Mark achieved",
-        ObjectiveChangeRequestTypes.Unachieve => "Mark not achieved",
-        ObjectiveChangeRequestTypes.ExtendAllocation => "Allocation extension",
+        WorkActionTypes.ModuleDelete => "Delete request",
+        WorkActionTypes.ModuleEdit => "Edit request",
+        WorkActionTypes.ModuleTransfer => "Transfer request",
+        WorkActionTypes.ModuleAchieve => "Mark achieved",
+        WorkActionTypes.ModuleUnachieve => "Mark not achieved",
+        WorkActionTypes.ModuleAllocationExtend => "Allocation extension",
         _ => "Objective change",
     };
 }

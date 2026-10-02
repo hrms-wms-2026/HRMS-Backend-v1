@@ -1,12 +1,10 @@
-using System.Text.Json;
 using Moq;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Dashboard.Team.DTOs;
 using ONEVO.Application.Features.Dashboard.Team.Sources;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
-using ONEVO.Application.Features.WorkManagement.Tasks.DTOs;
-using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
-using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
+using ONEVO.Application.Features.WorkManagement.Leadership.Services;
+using ONEVO.Domain.Features.WorkManagement.Approvals.Entities;
 using Xunit;
 
 namespace ONEVO.Tests.Unit.Features.Dashboard.Team.Sources;
@@ -18,11 +16,12 @@ public sealed class WorkTaskEditTeamActionSourceTests
     private static readonly Guid CallerEmployeeId = Guid.Parse("cccccccc-cccc-cccc-cccc-cccccccccccc");
     private static readonly Guid LegalEntityId = Guid.Parse("dddddddd-dddd-dddd-dddd-dddddddddddd");
 
-    private static TaskEditRequest EditRequest(Guid requestedBy, DateTimeOffset createdAt, string title) => new()
+    private static WorkApprovalRequest EditRequest(Guid requestedBy, DateTimeOffset createdAt, string title) => new()
     {
-        Id = Guid.NewGuid(), TenantId = TenantId, TaskId = Guid.NewGuid(), RequestedByEmployeeId = requestedBy,
-        PayloadJson = JsonSerializer.Serialize(new TaskEditRequestPayload(title, null, "medium", null, null, null, null)),
-        Status = TaskEditRequestStatuses.Pending, CreatedAt = createdAt,
+        Id = Guid.NewGuid(), TenantId = TenantId, ProjectId = Guid.NewGuid(), ActionType = WorkActionTypes.TaskEdit,
+        TargetType = WorkTargetTypes.Task, TargetTitle = title, ApproverSource = WorkApprovalSources.Hierarchy,
+        ApproverEmployeeId = CallerEmployeeId, RequestedByEmployeeId = requestedBy,
+        Status = WorkApprovalRequestStatuses.Pending, CreatedAt = createdAt,
     };
 
     [Theory]
@@ -34,7 +33,7 @@ public sealed class WorkTaskEditTeamActionSourceTests
         var modules = new Mock<IModuleEntitlementService>();
         modules.Setup(x => x.GetActiveModuleKeysForTenantAsync(TenantId, It.IsAny<CancellationToken>())).ReturnsAsync(activeModules);
         var source = new WorkTaskEditTeamActionSource(
-            currentUser, modules.Object, Mock.Of<ICallerIdentityResolver>(), Mock.Of<ITaskEditRequestRepository>());
+            currentUser, modules.Object, Mock.Of<ICallerIdentityResolver>(), Mock.Of<IWorkApprovalEligibility>());
 
         Assert.Equal(expected, await source.IsGatedAsync(CancellationToken.None));
     }
@@ -46,11 +45,30 @@ public sealed class WorkTaskEditTeamActionSourceTests
         var identity = new Mock<ICallerIdentityResolver>();
         identity.Setup(x => x.ResolveCallerEmployeeIdAsync(TenantId, UserId, It.IsAny<CancellationToken>())).ReturnsAsync((Guid?)null);
         var source = new WorkTaskEditTeamActionSource(
-            currentUser, Mock.Of<IModuleEntitlementService>(), identity.Object, Mock.Of<ITaskEditRequestRepository>());
+            currentUser, Mock.Of<IModuleEntitlementService>(), identity.Object, Mock.Of<IWorkApprovalEligibility>(MockBehavior.Strict));
 
         var summary = await source.GetSummaryAsync(LegalEntityId, 5, CancellationToken.None);
 
         Assert.Equal(0, summary.PendingCount);
+    }
+
+    [Fact]
+    public async Task Queries_eligibility_filtered_to_task_edit_only()
+    {
+        var currentUser = CurrentUser();
+        var identity = new Mock<ICallerIdentityResolver>();
+        identity.Setup(x => x.ResolveCallerEmployeeIdAsync(TenantId, UserId, It.IsAny<CancellationToken>())).ReturnsAsync(CallerEmployeeId);
+        var eligibility = new Mock<IWorkApprovalEligibility>();
+        eligibility.Setup(x => x.ListDecidableAcrossLedProjectsAsync(
+                TenantId, CallerEmployeeId, LegalEntityId,
+                It.Is<IReadOnlySet<string>>(s => s.Count == 1 && s.Contains(WorkActionTypes.TaskEdit)),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<WorkApprovalRequest>());
+
+        var source = new WorkTaskEditTeamActionSource(currentUser, Mock.Of<IModuleEntitlementService>(), identity.Object, eligibility.Object);
+        await source.GetSummaryAsync(LegalEntityId, 5, CancellationToken.None);
+
+        eligibility.VerifyAll();
     }
 
     [Fact]
@@ -62,14 +80,14 @@ public sealed class WorkTaskEditTeamActionSourceTests
         var requesterId = Guid.NewGuid();
         var older = EditRequest(requesterId, DateTimeOffset.Parse("2026-08-01T00:00:00Z"), "Rename field");
         var newer = EditRequest(requesterId, DateTimeOffset.Parse("2026-09-01T00:00:00Z"), "Bump priority");
-        var requests = new Mock<ITaskEditRequestRepository>();
-        requests.Setup(x => x.GetPendingForOwnerEmployeeIdAsync(TenantId, CallerEmployeeId, It.IsAny<CancellationToken>()))
+        var eligibility = new Mock<IWorkApprovalEligibility>();
+        eligibility.Setup(x => x.ListDecidableAcrossLedProjectsAsync(TenantId, CallerEmployeeId, LegalEntityId, It.IsAny<IReadOnlySet<string>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync([newer, older]);
         identity.Setup(x => x.ResolveDisplayNamesByEmployeeIdAsync(TenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Dictionary<Guid, string> { [requesterId] = "Arjun M" });
 
         var source = new WorkTaskEditTeamActionSource(
-            currentUser, Mock.Of<IModuleEntitlementService>(), identity.Object, requests.Object);
+            currentUser, Mock.Of<IModuleEntitlementService>(), identity.Object, eligibility.Object);
         var summary = await source.GetSummaryAsync(LegalEntityId, 5, CancellationToken.None);
 
         Assert.Equal(2, summary.PendingCount);
@@ -77,7 +95,7 @@ public sealed class WorkTaskEditTeamActionSourceTests
         Assert.Equal(older.Id, summary.TopItems[0].EntityId);
         Assert.Contains("Rename field", summary.TopItems[0].Title);
         Assert.Equal(ActionItemLink.KindWorkRequest, summary.TopItems[0].Link.Kind);
-        Assert.Equal("task_edit_request", summary.TopItems[0].Link.Params["relatedEntityType"]);
+        Assert.Equal("work_approval_request", summary.TopItems[0].Link.Params["relatedEntityType"]);
     }
 
     private static ICurrentUser CurrentUser()

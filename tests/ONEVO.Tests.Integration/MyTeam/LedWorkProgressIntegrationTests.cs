@@ -1,15 +1,18 @@
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.WorkManagement.Common.Services;
+using ONEVO.Application.Features.WorkManagement.Hierarchy;
 using ONEVO.Application.Features.WorkManagement.Leadership.DTOs;
 using ONEVO.Application.Features.WorkManagement.Leadership.Queries.GetLedWorkProgress;
 using ONEVO.Application.Features.WorkManagement.Leadership.Services;
 using ONEVO.Application.Features.WorkManagement.Objectives.Services;
-using ONEVO.Application.Features.WorkManagement.Tasks.Services;
 using ONEVO.Infrastructure.Identity.Time;
 using ONEVO.Infrastructure.Persistence;
 using ONEVO.Infrastructure.Persistence.Repositories.CoreHr;
 using ONEVO.Infrastructure.Persistence.Repositories.WorkManagement;
+using ONEVO.Infrastructure.Security;
+using ONEVO.Infrastructure.Services.SharedPlatform.Outbox;
 using ONEVO.Tests.Integration.Support;
 using Xunit;
 // Distinct from ONEVO.Infrastructure.Persistence.Repositories.CoreHr.EfEmployeeRepository (used
@@ -32,16 +35,22 @@ public sealed class LedWorkProgressIntegrationTests
         public bool IsAuthenticated => true;
     }
 
+    private static WorkApprovalEligibility Eligibility(ApplicationDbContext db) => new(
+        new EfWorkApprovalRequestRepository(db),
+        new WorkHierarchyService(
+            new EfObjectiveRepository(db),
+            new MilestoneMembershipCoordinator(
+                new CommonEfEmployeeRepository(db), new EfProjectMemberRepository(db), new EfObjectiveRepository(db),
+                new EfProjectMemberInvitationRepository(db),
+                new CallerIdentityResolver(new CommonEfEmployeeRepository(db), new ONEVO.Infrastructure.Persistence.Repositories.EfEntityAssetRepository(db)),
+                new OutboxWriter(db, new NoOpEncryptionService(), new SystemDateTimeProvider()))),
+        new EfObjectiveRepository(db));
+
     private static WorkLeadershipService WorkLeadership(ApplicationDbContext db) => new(
         new EfObjectiveRepository(db),
         new EfProjectMemberRepository(db),
-        new EfTaskCreationRequestRepository(db),
-        new EfTaskEditRequestRepository(db),
-        new EfObjectiveChangeRequestRepository(db),
-        new EfTaskStatusChangeRequestRepository(db),
-        new TaskStatusChangeAccessService(
-            new EfObjectiveRepository(db), new EfProjectMemberRepository(db),
-            new MilestoneMembershipCoordinator(new CommonEfEmployeeRepository(db), new EfProjectMemberRepository(db), new EfObjectiveRepository(db))),
+        new EfWorkApprovalRequestRepository(db),
+        Eligibility(db),
         NullLogger<WorkLeadershipService>.Instance);
 
     private static GetLedWorkProgressQueryHandler Handler(ApplicationDbContext db, Guid tenantId, Guid userId) => new(

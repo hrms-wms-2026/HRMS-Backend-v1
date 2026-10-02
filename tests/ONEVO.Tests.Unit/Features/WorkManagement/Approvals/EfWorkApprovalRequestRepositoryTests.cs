@@ -152,6 +152,77 @@ public sealed class EfWorkApprovalRequestRepositoryTests : IDisposable
         all.Should().HaveCount(4);
     }
 
+    [Fact]
+    public async Task HasPendingForHrApprover_TrueOnlyForHrSourcedPendingInActionTypes()
+    {
+        var hrMatch = NewRequest(null);
+        hrMatch.ApproverSource = WorkApprovalSources.Hr;
+        var hierarchySame = NewRequest(null);
+        hierarchySame.ApproverSource = WorkApprovalSources.Hierarchy;
+        var hrDecided = NewRequest(null, WorkApprovalRequestStatuses.Approved);
+        hrDecided.ApproverSource = WorkApprovalSources.Hr;
+        var hrOutOfScope = NewRequest(null);
+        hrOutOfScope.ApproverSource = WorkApprovalSources.Hr;
+        hrOutOfScope.ActionType = WorkActionTypes.SprintCreate;
+        await using (var db = CreateContext())
+        {
+            db.WorkApprovalRequests.AddRange(hrMatch, hierarchySame, hrDecided, hrOutOfScope);
+            await db.SaveChangesAsync();
+        }
+
+        await using var read = CreateContext();
+        var repo = new EfWorkApprovalRequestRepository(read);
+        var inScope = new HashSet<string> { WorkActionTypes.TaskEdit };
+
+        (await repo.HasPendingForHrApproverAsync(TenantId, Approver, inScope)).Should().BeTrue(
+            "hrMatch is HR-sourced, pending, for Approver, and its ActionType (TaskEdit) is in the given set");
+        (await repo.HasPendingForHrApproverAsync(TenantId, Approver, new HashSet<string> { WorkActionTypes.ModuleEdit })).Should().BeFalse(
+            "none of the seeded rows are ModuleEdit - the pending TaskEdit/SprintCreate rows must not leak into an unrelated filter");
+        (await repo.HasPendingForHrApproverAsync(Guid.NewGuid(), Approver, inScope)).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task ListProjectsWithPending_ReturnsOnlyProjectsWithAMatchingPendingRow()
+    {
+        var projectWithMatch = Guid.NewGuid();
+        var projectWithWrongActionType = Guid.NewGuid();
+        var projectWithDecidedOnly = Guid.NewGuid();
+        var projectWithNothing = Guid.NewGuid();
+
+        var match = NewRequest(null);
+        match.ProjectId = projectWithMatch;
+        var wrongActionType = NewRequest(null);
+        wrongActionType.ProjectId = projectWithWrongActionType;
+        wrongActionType.ActionType = WorkActionTypes.SprintCreate;
+        var decided = NewRequest(null, WorkApprovalRequestStatuses.Approved);
+        decided.ProjectId = projectWithDecidedOnly;
+
+        await using (var db = CreateContext())
+        {
+            db.WorkApprovalRequests.AddRange(match, wrongActionType, decided);
+            await db.SaveChangesAsync();
+        }
+
+        await using var read = CreateContext();
+        var repo = new EfWorkApprovalRequestRepository(read);
+        var inScope = new HashSet<string> { WorkActionTypes.TaskEdit };
+        var candidates = new[] { projectWithMatch, projectWithWrongActionType, projectWithDecidedOnly, projectWithNothing };
+
+        var result = await repo.ListProjectsWithPendingAsync(TenantId, candidates, inScope);
+
+        result.Should().BeEquivalentTo(new[] { projectWithMatch });
+    }
+
+    [Fact]
+    public async Task ListProjectsWithPending_EmptyProjectList_ReturnsEmptyWithoutQuerying()
+    {
+        await using var read = CreateContext();
+        var repo = new EfWorkApprovalRequestRepository(read);
+        var result = await repo.ListProjectsWithPendingAsync(TenantId, Array.Empty<Guid>(), new HashSet<string> { WorkActionTypes.TaskEdit });
+
+        result.Should().BeEmpty();
+    }
+
     private ApplicationDbContext CreateContext()
     {
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
