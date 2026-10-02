@@ -22,6 +22,7 @@ public sealed class UpdateCalendarEventCommandHandler : IRequestHandler<UpdateCa
     private readonly IProjectMemberRepository _members;
     private readonly IWorkTaskRepository _tasks;
     private readonly ICalendarEventRepository _calendarEvents;
+    private readonly ICalendarEventActivityLogRepository _activityLogs;
     private readonly IUnitOfWork _unitOfWork;
 
     public UpdateCalendarEventCommandHandler(
@@ -31,6 +32,7 @@ public sealed class UpdateCalendarEventCommandHandler : IRequestHandler<UpdateCa
         IObjectiveRepository objectives,
         IWorkTaskRepository tasks,
         ICalendarEventRepository calendarEvents,
+        ICalendarEventActivityLogRepository activityLogs,
         IUnitOfWork unitOfWork)
     {
         _currentUser = currentUser;
@@ -39,6 +41,7 @@ public sealed class UpdateCalendarEventCommandHandler : IRequestHandler<UpdateCa
         _objectives = objectives;
         _tasks = tasks;
         _calendarEvents = calendarEvents;
+        _activityLogs = activityLogs;
         _unitOfWork = unitOfWork;
     }
 
@@ -150,6 +153,12 @@ public sealed class UpdateCalendarEventCommandHandler : IRequestHandler<UpdateCa
             await _calendarEvents.AddMembershipsAsync(membershipsToAdd, innerCt);
             _calendarEvents.RemoveTaskMemberships(taskLinksToRemove);
             await _calendarEvents.AddTaskMembershipsAsync(taskLinksToAdd, innerCt);
+            await _activityLogs.AddAsync(new CalendarEventActivityLog
+            {
+                Id = Guid.NewGuid(), TenantId = tenantId, CalendarEventId = calendarEvent.Id,
+                Action = CalendarEventActivityActions.Updated, PerformedById = actorResult.EmployeeId,
+                PerformedAt = now, DetailsJson = $"{{\"name\":{System.Text.Json.JsonSerializer.Serialize(calendarEvent.Name)}}}"
+            }, innerCt);
             await _unitOfWork.SaveChangesAsync(innerCt);
             return true;
         }, ct);

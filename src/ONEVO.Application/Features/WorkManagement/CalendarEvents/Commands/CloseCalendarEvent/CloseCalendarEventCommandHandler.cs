@@ -17,6 +17,7 @@ public sealed class CloseCalendarEventCommandHandler : IRequestHandler<CloseCale
     private readonly ICallerIdentityResolver _identity;
     private readonly ICalendarEventRepository _calendarEvents;
     private readonly IProjectMemberRepository _members;
+    private readonly ICalendarEventActivityLogRepository _activityLogs;
     private readonly IUnitOfWork _unitOfWork;
 
     public CloseCalendarEventCommandHandler(
@@ -24,12 +25,14 @@ public sealed class CloseCalendarEventCommandHandler : IRequestHandler<CloseCale
         ICallerIdentityResolver identity,
         ICalendarEventRepository calendarEvents,
         IProjectMemberRepository members,
+        ICalendarEventActivityLogRepository activityLogs,
         IUnitOfWork unitOfWork)
     {
         _currentUser = currentUser;
         _identity = identity;
         _calendarEvents = calendarEvents;
         _members = members;
+        _activityLogs = activityLogs;
         _unitOfWork = unitOfWork;
     }
 
@@ -70,6 +73,12 @@ public sealed class CloseCalendarEventCommandHandler : IRequestHandler<CloseCale
         await _unitOfWork.ExecuteInTransactionAsync(async innerCt =>
         {
             _calendarEvents.Update(calendarEvent);
+            await _activityLogs.AddAsync(new CalendarEventActivityLog
+            {
+                Id = Guid.NewGuid(), TenantId = _currentUser.TenantId, CalendarEventId = calendarEvent.Id,
+                Action = CalendarEventActivityActions.Closed, PerformedById = employeeId.Value,
+                PerformedAt = calendarEvent.ArchivedAt!.Value, DetailsJson = "{}"
+            }, innerCt);
             await _unitOfWork.SaveChangesAsync(innerCt);
             return true;
         }, ct);

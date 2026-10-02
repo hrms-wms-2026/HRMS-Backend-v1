@@ -23,6 +23,7 @@ public sealed class CreateCalendarEventCommandHandler : IRequestHandler<CreateCa
     private readonly IObjectiveRepository _objectives;
     private readonly IWorkTaskRepository _tasks;
     private readonly ICalendarEventRepository _calendarEvents;
+    private readonly ICalendarEventActivityLogRepository _activityLogs;
     private readonly IUnitOfWork _unitOfWork;
 
     public CreateCalendarEventCommandHandler(
@@ -33,6 +34,7 @@ public sealed class CreateCalendarEventCommandHandler : IRequestHandler<CreateCa
         IObjectiveRepository objectives,
         IWorkTaskRepository tasks,
         ICalendarEventRepository calendarEvents,
+        ICalendarEventActivityLogRepository activityLogs,
         IUnitOfWork unitOfWork)
     {
         _currentUser = currentUser;
@@ -42,6 +44,7 @@ public sealed class CreateCalendarEventCommandHandler : IRequestHandler<CreateCa
         _objectives = objectives;
         _tasks = tasks;
         _calendarEvents = calendarEvents;
+        _activityLogs = activityLogs;
         _unitOfWork = unitOfWork;
     }
 
@@ -135,6 +138,12 @@ public sealed class CreateCalendarEventCommandHandler : IRequestHandler<CreateCa
             await _calendarEvents.AddAsync(calendarEvent, innerCt);
             await _calendarEvents.AddMembershipsAsync(memberships, innerCt);
             await _calendarEvents.AddTaskMembershipsAsync(taskMemberships, innerCt);
+            await _activityLogs.AddAsync(new CalendarEventActivityLog
+            {
+                Id = Guid.NewGuid(), TenantId = tenantId, CalendarEventId = calendarEvent.Id,
+                Action = CalendarEventActivityActions.Created, PerformedById = actorResult.EmployeeId,
+                PerformedAt = now, DetailsJson = $"{{\"name\":{System.Text.Json.JsonSerializer.Serialize(calendarEvent.Name)}}}"
+            }, innerCt);
             await _unitOfWork.SaveChangesAsync(innerCt);
             return true;
         }, ct);
