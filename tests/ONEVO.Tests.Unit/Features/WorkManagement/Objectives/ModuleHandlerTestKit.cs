@@ -7,6 +7,8 @@ using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Notifications.Services;
 using ONEVO.Application.Features.WorkManagement.Objectives.Commands.RequestAllocationExtension;
 using ONEVO.Application.Features.WorkManagement.Objectives.Commands.AchieveObjective;
+using ONEVO.Application.Features.WorkManagement.Objectives.Commands.AddObjectiveMember;
+using ONEVO.Application.Features.WorkManagement.Objectives.Commands.RemoveObjectiveMember;
 using ONEVO.Application.Features.WorkManagement.Objectives.Commands.DeleteObjective;
 using ONEVO.Application.Features.WorkManagement.Objectives.Commands.EditObjective;
 using ONEVO.Application.Features.WorkManagement.Objectives.Commands.TransferObjectiveHead;
@@ -90,6 +92,18 @@ public sealed class ModuleHandlerTestKit
             .ReturnsAsync(new Employee { Id = Head, UserId = HeadUser });
         Membership.Setup(x => x.GetActiveAssigneeAsync(TenantId, NewHead, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Employee { Id = NewHead, UserId = NewHeadUser });
+        Membership.Setup(x => x.HasActiveMembershipAsync(TenantId, ProjectId, ModuleId, It.IsAny<Guid>(), It.IsAny<CancellationToken>())).ReturnsAsync(false);
+        Membership.Setup(x => x.ApplyMemberAddAsync(TenantId, It.IsAny<Objective>(), It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<ProjectMemberInvitation>.Success(new ProjectMemberInvitation
+            {
+                Id = Guid.NewGuid(), TenantId = TenantId, ProjectId = ProjectId, ObjectiveId = ModuleId,
+                InvitedEmployeeId = NewHead, InviteType = ProjectInvitationTypes.Member, Status = ProjectInvitationStatuses.Pending
+            }));
+        Membership.Setup(x => x.ApplyMemberRemoveAsync(TenantId, It.IsAny<Objective>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result.Success());
+
+        Invitations.Setup(x => x.GetPendingForObjectiveAndEmployeeAsync(TenantId, ModuleId, It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ProjectMemberInvitation?)null);
 
         Slack.Setup(x => x.CalculateAsync(TenantId, Parent, null, It.IsAny<CancellationToken>())).ReturnsAsync(50m);
 
@@ -150,6 +164,12 @@ public sealed class ModuleHandlerTestKit
 
     public RequestAllocationExtensionCommandHandler AllocationExtend()
         => new(CurrentUser.Object, Identity.Object, Objectives.Object, Membership.Object, Writes(), Submitter());
+
+    public AddObjectiveMemberCommandHandler AddMember()
+        => new(CurrentUser.Object, Identity.Object, Objectives.Object, Membership.Object, Invitations.Object, Submitter());
+
+    public RemoveObjectiveMemberCommandHandler RemoveMember()
+        => new(CurrentUser.Object, Identity.Object, Objectives.Object, Membership.Object, Submitter());
 
     public void VerifyEngineNeverCalled()
         => Approvals.Verify(x => x.SubmitAsync(It.IsAny<WorkAction>(), It.IsAny<CancellationToken>()), Times.Never);

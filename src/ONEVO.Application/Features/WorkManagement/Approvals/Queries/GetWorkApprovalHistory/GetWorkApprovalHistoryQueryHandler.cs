@@ -4,6 +4,7 @@ using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Approvals.DTOs;
 using ONEVO.Application.Features.WorkManagement.Approvals.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Approvals.Services;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 
 namespace ONEVO.Application.Features.WorkManagement.Approvals.Queries.GetWorkApprovalHistory;
@@ -112,7 +113,7 @@ public sealed class GetWorkApprovalHistoryQueryHandler
             }
 
             if (kind == "task_status_change")
-                return DescribeStatusChanges(root);
+                return ApprovalSummaries.DescribeStatusChanges(root);
 
             if (kind == "objective_invitation")
             {
@@ -129,23 +130,6 @@ public sealed class GetWorkApprovalHistoryQueryHandler
         }
 
         return null;
-    }
-
-    // Stored with default (PascalCase) System.Text.Json naming - see TaskStatusChangeSet.
-    private static string? DescribeStatusChanges(JsonElement root)
-    {
-        int Count(string name) => root.TryGetProperty(name, out var list) && list.ValueKind == JsonValueKind.Array
-            ? list.GetArrayLength()
-            : 0;
-
-        var parts = new List<string>();
-        var added = Count("Adds");
-        var edited = Count("Updates");
-        var deleted = Count("Deletes");
-        if (added > 0) parts.Add($"{added} added");
-        if (edited > 0) parts.Add($"{edited} edited");
-        if (deleted > 0) parts.Add($"{deleted} deleted");
-        return parts.Count == 0 ? "Reordered statuses" : string.Join(", ", parts);
     }
 
     private static string? TryGetString(JsonElement root, string propertyName)

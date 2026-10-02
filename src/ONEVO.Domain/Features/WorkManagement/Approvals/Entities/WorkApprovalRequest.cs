@@ -42,6 +42,8 @@ public static class WorkActionTypes
     public const string ModuleAchieve = "module.achieve";
     public const string ModuleUnachieve = "module.unachieve";
     public const string ModuleAllocationExtend = "module.allocation_extend";
+    public const string ModuleMemberAdd = "module.member_add";
+    public const string ModuleMemberRemove = "module.member_remove";
     public const string SprintCreate = "sprint.create";
     public const string SprintEdit = "sprint.edit";
     public const string SprintDelete = "sprint.delete";
@@ -72,6 +74,9 @@ public class WorkApprovalRequest : BaseEntity
     public Guid ApproverEmployeeId { get; set; }
     public Guid RequestedByEmployeeId { get; set; }
     public string PayloadJson { get; set; } = "{}";
+    /// <summary>The payload actually applied, set only when the approver changed the requested values
+    /// before approving. PayloadJson always keeps what was requested.</summary>
+    public string? AppliedPayloadJson { get; set; }
     public string Status { get; set; } = WorkApprovalRequestStatuses.Pending;
     public Guid? DecidedByEmployeeId { get; set; }
     public string? DecisionComment { get; set; }

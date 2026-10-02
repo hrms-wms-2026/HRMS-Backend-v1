@@ -64,6 +64,39 @@ public sealed class EfWorkApprovalRequestRepositoryTests : IDisposable
     }
 
     [Fact]
+    public async Task GetPendingTargetIds_ReturnsOnlyPendingTargetsAmongTheGivenIds()
+    {
+        var pendingTarget = Guid.NewGuid();
+        var decidedTarget = Guid.NewGuid();
+        var untouchedTarget = Guid.NewGuid();
+        await using (var db = CreateContext())
+        {
+            db.WorkApprovalRequests.Add(NewRequest(pendingTarget));
+            db.WorkApprovalRequests.Add(NewRequest(decidedTarget, WorkApprovalRequestStatuses.Approved));
+            // A pending request for a target NOT in the queried id list must not leak in.
+            db.WorkApprovalRequests.Add(NewRequest(Guid.NewGuid()));
+            await db.SaveChangesAsync();
+        }
+
+        await using var read = CreateContext();
+        var repo = new EfWorkApprovalRequestRepository(read);
+        var ids = await repo.GetPendingTargetIdsAsync(
+            TenantId, WorkTargetTypes.Task, new[] { pendingTarget, decidedTarget, untouchedTarget });
+
+        ids.Should().BeEquivalentTo(new[] { pendingTarget });
+    }
+
+    [Fact]
+    public async Task GetPendingTargetIds_EmptyIdList_ReturnsEmptyWithoutQuerying()
+    {
+        await using var read = CreateContext();
+        var repo = new EfWorkApprovalRequestRepository(read);
+        var ids = await repo.GetPendingTargetIdsAsync(TenantId, WorkTargetTypes.Task, Array.Empty<Guid>());
+
+        ids.Should().BeEmpty();
+    }
+
+    [Fact]
     public async Task ListTrackedPendingByAction_ReturnsOnlyPendingOfThatActionInThatProject()
     {
         var match = NewRequest(null);

@@ -59,6 +59,16 @@ public class EfProjectMemberInvitationRepository : IProjectMemberInvitationRepos
             .ToListAsync(ct);
     }
 
+    public async Task<IReadOnlyList<ProjectMemberInvitation>> ListForProjectAndEmployeeAsync(Guid tenantId, Guid projectId, Guid employeeId, CancellationToken ct = default)
+    {
+        return await _db.ProjectMemberInvitations
+            .AsNoTracking()
+            .Where(i => i.TenantId == tenantId && i.ProjectId == projectId
+                && (i.InvitedEmployeeId == employeeId || i.InvitedById == employeeId))
+            .OrderByDescending(i => i.CreatedAt)
+            .ToListAsync(ct);
+    }
+
     public void Update(ProjectMemberInvitation invitation)
     {
         _db.ProjectMemberInvitations.Update(invitation);

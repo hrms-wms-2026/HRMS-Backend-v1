@@ -1,6 +1,7 @@
 using Moq;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Permission.ServiceInterfaces;
+using ONEVO.Application.Features.WorkManagement.Approvals.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
@@ -14,6 +15,15 @@ namespace ONEVO.Tests.Unit.Features.WorkManagement.Tasks;
 
 public class GetObjectiveTasksQueryHandlerTests
 {
+    private static Mock<IWorkApprovalRequestRepository> EmptyApprovalRequests()
+    {
+        var mock = new Mock<IWorkApprovalRequestRepository>();
+        mock.Setup(x => x.GetPendingTargetIdsAsync(
+                It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new HashSet<Guid>());
+        return mock;
+    }
+
     private static readonly Guid TenantId = Guid.NewGuid();
     private static readonly Guid UserId = Guid.NewGuid();
     private static readonly Guid CallerEmployeeId = Guid.NewGuid();
@@ -86,7 +96,7 @@ public class GetObjectiveTasksQueryHandlerTests
         var (identity, objectives, members, permissions) = MembershipOnObjectiveItself();
         var handler = new GetObjectiveTasksQueryHandler(
             currentUser.Object, identity.Object, objectives.Object, WorkHierarchyServiceMocks.ReadAccess(members), permissions.Object,
-            tasks.Object, assignments.Object, sessions.Object);
+            tasks.Object, assignments.Object, sessions.Object, EmptyApprovalRequests().Object);
 
         var result = await handler.Handle(new GetObjectiveTasksQuery(ObjectiveId), CancellationToken.None);
 
@@ -132,7 +142,7 @@ public class GetObjectiveTasksQueryHandlerTests
         var (identity, objectives, members, permissions) = MembershipOnObjectiveItself();
         var handler = new GetObjectiveTasksQueryHandler(
             currentUser.Object, identity.Object, objectives.Object, WorkHierarchyServiceMocks.ReadAccess(members), permissions.Object,
-            tasks.Object, assignments.Object, sessions.Object);
+            tasks.Object, assignments.Object, sessions.Object, EmptyApprovalRequests().Object);
 
         var result = await handler.Handle(new GetObjectiveTasksQuery(ObjectiveId), CancellationToken.None);
 
@@ -195,7 +205,7 @@ public class GetObjectiveTasksQueryHandlerTests
 
         return new GetObjectiveTasksQueryHandler(
             currentUser.Object, identity.Object, objectives.Object, WorkHierarchyServiceMocks.ReadAccess(members, objective, parent), permissionResolver.Object,
-            tasks.Object, assignments.Object, sessions.Object);
+            tasks.Object, assignments.Object, sessions.Object, EmptyApprovalRequests().Object);
 
     }
 
@@ -260,6 +270,46 @@ public class GetObjectiveTasksQueryHandlerTests
 
         Assert.False(result.IsSuccess);
         Assert.Equal(403, result.StatusCode);
+    }
+
+    [Fact]
+    public async Task Handle_FlagsTheTaskWithAPendingApprovalRequest()
+    {
+        var currentUser = new Mock<ICurrentUser>();
+        currentUser.SetupGet(x => x.IsAuthenticated).Returns(true);
+        currentUser.SetupGet(x => x.TenantId).Returns(TenantId);
+        currentUser.SetupGet(x => x.UserId).Returns(UserId);
+
+        var taskId = Guid.NewGuid();
+        var tasks = new Mock<IWorkTaskRepository>();
+        tasks.Setup(x => x.GetByObjectiveIdAsync(TenantId, ObjectiveId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<WorkTask>
+            {
+                new() { Id = taskId, TenantId = TenantId, ObjectiveId = ObjectiveId, Title = "A", ShortId = "T-1", CreatedAt = DateTimeOffset.UtcNow }
+            });
+
+        var assignments = new Mock<ITaskAssignmentRepository>();
+        assignments.Setup(x => x.GetByTaskIdsAsync(It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<TaskAssignment>());
+        var sessions = new Mock<ITaskClockingSessionRepository>();
+        sessions.Setup(x => x.GetOpenSessionsForTasksAsync(TenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, OpenTaskClockingSessionSummary>());
+        sessions.Setup(x => x.GetTotalClosedSessionMinutesForTasksAsync(TenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, int>());
+
+        var approvalRequests = new Mock<IWorkApprovalRequestRepository>();
+        approvalRequests.Setup(x => x.GetPendingTargetIdsAsync(
+                TenantId, It.IsAny<string>(), It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new HashSet<Guid> { taskId });
+
+        var (identity, objectives, members, permissions) = MembershipOnObjectiveItself();
+        var handler = new GetObjectiveTasksQueryHandler(
+            currentUser.Object, identity.Object, objectives.Object, WorkHierarchyServiceMocks.ReadAccess(members), permissions.Object,
+            tasks.Object, assignments.Object, sessions.Object, approvalRequests.Object);
+
+        var result = await handler.Handle(new GetObjectiveTasksQuery(ObjectiveId), CancellationToken.None);
+
+        Assert.True(result.Value!.Single().HasPendingApproval);
     }
 
     [Fact]

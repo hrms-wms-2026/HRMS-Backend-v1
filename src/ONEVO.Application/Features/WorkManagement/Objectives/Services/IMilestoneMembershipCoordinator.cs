@@ -1,4 +1,7 @@
+using ONEVO.Application.Common.Models;
 using ONEVO.Domain.Features.CoreHr.Entities;
+using ONEVO.Domain.Features.WorkManagement.Objectives.Entities;
+using ONEVO.Domain.Features.WorkManagement.ProjectInvitations.Entities;
 
 namespace ONEVO.Application.Features.WorkManagement.Objectives.Services;
 
@@ -42,4 +45,13 @@ public interface IMilestoneMembershipCoordinator
     /// filing a request). Returns false if the Objective doesn't exist.
     /// </summary>
     Task<bool> IsEffectiveOwnerAsync(Guid tenantId, Guid objectiveId, Guid employeeId, CancellationToken ct = default);
+
+    /// <summary>The module.member_add mutation: re-validates (active employee, not already a member, no
+    /// pending invite) and creates the invitation, notifying the invitee. Used by both the direct-apply
+    /// path and the approved-request applier, so it must be safe to call long after any earlier check.</summary>
+    Task<Result<ProjectMemberInvitation>> ApplyMemberAddAsync(Guid tenantId, Objective module, Guid requestedByEmployeeId, Guid employeeId, CancellationToken ct = default);
+
+    /// <summary>The module.member_remove mutation: deactivates the active membership, or cancels the
+    /// pending invite if there's no active membership. Fails if there's neither.</summary>
+    Task<Result> ApplyMemberRemoveAsync(Guid tenantId, Objective module, Guid employeeId, CancellationToken ct = default);
 }

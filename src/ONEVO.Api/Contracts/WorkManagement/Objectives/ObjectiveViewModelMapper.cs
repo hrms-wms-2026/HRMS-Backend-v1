@@ -40,8 +40,16 @@ public static class ObjectiveViewModelMapper
 
     public static AddObjectiveMemberOutcomeViewModel ToViewModel(this AddObjectiveMemberOutcomeResponse dto) => new()
     {
+        Applied = dto.Applied,
         AlreadyMember = dto.AlreadyMember,
+        ApprovalRequestId = dto.ApprovalRequestId,
         Invitation = dto.Invitation?.ToViewModel()
+    };
+
+    public static RemoveObjectiveMemberOutcomeViewModel ToViewModel(this RemoveObjectiveMemberOutcomeResponse dto) => new()
+    {
+        Applied = dto.Applied,
+        ApprovalRequestId = dto.ApprovalRequestId
     };
 
     public static ObjectiveMemberListViewModel ToViewModel(this ObjectiveMemberListResponse response) => new()

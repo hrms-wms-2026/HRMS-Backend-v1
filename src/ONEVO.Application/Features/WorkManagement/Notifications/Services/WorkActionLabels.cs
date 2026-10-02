@@ -26,6 +26,7 @@ public static class WorkActionLabels
         [WorkActionTypes.SprintComplete] = "completed the sprint",
         [WorkActionTypes.SprintAchieve] = "achieved the sprint",
         [WorkActionTypes.ProjectStatusTemplateChange] = "changed the task statuses of",
+        ["module.invitation"] = "module invitation",
 
         // Project monitor alerts (ActionType = MonitorPrefix + rule code). Used as "{{actionLabel}}: \"{{targetTitle}}\"".
         [MonitorPrefix + "module_over_capacity"] = "Module over capacity",

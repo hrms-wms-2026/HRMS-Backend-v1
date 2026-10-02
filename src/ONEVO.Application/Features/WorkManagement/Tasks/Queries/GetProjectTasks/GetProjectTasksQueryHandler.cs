@@ -7,8 +7,10 @@ using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Hierarchy;
 using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Approvals.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.DTOs.Responses;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
+using ONEVO.Domain.Features.WorkManagement.Approvals.Entities;
 
 namespace ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetProjectTasks;
 
@@ -25,6 +27,7 @@ public sealed class GetProjectTasksQueryHandler : IRequestHandler<GetProjectTask
     private readonly ITaskClockingSessionRepository _sessions;
     private readonly ICalendarEventRepository _calendarEvents;
     private readonly ITaskStatusRepository _statuses;
+    private readonly IWorkApprovalRequestRepository _approvalRequests;
 
     public GetProjectTasksQueryHandler(
         ICurrentUser currentUser,
@@ -37,7 +40,8 @@ public sealed class GetProjectTasksQueryHandler : IRequestHandler<GetProjectTask
         ITaskClockingSessionRepository sessions,
         ICalendarEventRepository calendarEvents,
         ITaskStatusRepository statuses,
-        IWorkHierarchyService hierarchy)
+        IWorkHierarchyService hierarchy,
+        IWorkApprovalRequestRepository approvalRequests)
     {
         _currentUser = currentUser;
         _identity = identity;
@@ -50,6 +54,7 @@ public sealed class GetProjectTasksQueryHandler : IRequestHandler<GetProjectTask
         _sessions = sessions;
         _calendarEvents = calendarEvents;
         _statuses = statuses;
+        _approvalRequests = approvalRequests;
     }
 
     public async Task<Result<IReadOnlyList<WorkTaskResponse>>> Handle(GetProjectTasksQuery request, CancellationToken ct)
@@ -155,6 +160,9 @@ public sealed class GetProjectTasksQueryHandler : IRequestHandler<GetProjectTask
             .GroupBy(l => l.TaskId)
             .ToDictionary(g => g.Key, g => g.First());
 
+        var pendingTaskIds = await _approvalRequests.GetPendingTargetIdsAsync(
+            tenantId, WorkTargetTypes.Task, items.Select(task => task.Id).ToList(), ct) ?? new HashSet<Guid>();
+
         var responses = items.Select(t => new WorkTaskResponse(
             t.Id, t.ObjectiveId, t.ShortId, t.Title, t.Description, t.CategoryId, t.StatusId,
             t.Priority, t.StoryPoints, t.DueDate, t.EstimatedHours, t.CompletedHours, t.ProgressPercent, t.SprintId,
@@ -171,7 +179,8 @@ public sealed class GetProjectTasksQueryHandler : IRequestHandler<GetProjectTask
             SubtaskTotalCount: subtasksByParentId.GetValueOrDefault(t.Id)?.Count ?? 0,
             SubtaskCompletedCount: subtasksByParentId.GetValueOrDefault(t.Id)?.Count(subtask => completingStatusIds.Contains(subtask.StatusId)) ?? 0,
             SubtaskAssigneeEmployeeIds: subtaskAssigneesByParentId.GetValueOrDefault(t.Id, Array.Empty<Guid>()),
-            CreatedAt: t.CreatedAt)).ToList();
+            CreatedAt: t.CreatedAt,
+            HasPendingApproval: pendingTaskIds.Contains(t.Id))).ToList();
 
         return Result<IReadOnlyList<WorkTaskResponse>>.Success(responses);
     }

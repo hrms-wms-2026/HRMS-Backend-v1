@@ -1,10 +1,12 @@
 using MediatR;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.WorkManagement.Approvals.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.DTOs.Responses;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
+using ONEVO.Domain.Features.WorkManagement.Approvals.Entities;
 using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
 
 namespace ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetMyProjectTasks;
@@ -25,10 +27,12 @@ public sealed class GetMyProjectTasksQueryHandler : IRequestHandler<GetMyProject
     private readonly IWorkTaskRepository _tasks;
     private readonly ITaskAssignmentRepository _assignments;
     private readonly ITaskClockingSessionRepository _sessions;
+    private readonly IWorkApprovalRequestRepository _approvalRequests;
 
     public GetMyProjectTasksQueryHandler(
         ICurrentUser currentUser, ICallerIdentityResolver identity, IProjectRepository projects,
-        IWorkTaskRepository tasks, ITaskAssignmentRepository assignments, ITaskClockingSessionRepository sessions)
+        IWorkTaskRepository tasks, ITaskAssignmentRepository assignments, ITaskClockingSessionRepository sessions,
+        IWorkApprovalRequestRepository approvalRequests)
     {
         _currentUser = currentUser;
         _identity = identity;
@@ -36,6 +40,7 @@ public sealed class GetMyProjectTasksQueryHandler : IRequestHandler<GetMyProject
         _tasks = tasks;
         _assignments = assignments;
         _sessions = sessions;
+        _approvalRequests = approvalRequests;
     }
 
     public async Task<Result<IReadOnlyList<WorkTaskResponse>>> Handle(GetMyProjectTasksQuery request, CancellationToken ct)
@@ -76,13 +81,17 @@ public sealed class GetMyProjectTasksQueryHandler : IRequestHandler<GetMyProject
             .ThenByDescending(task => PriorityRank.GetValueOrDefault(task.Priority, 0))
             .ToList();
 
+        var pendingTaskIds = await _approvalRequests.GetPendingTargetIdsAsync(
+            tenantId, WorkTargetTypes.Task, sorted.Select(task => task.Id).ToList(), ct) ?? new HashSet<Guid>();
+
         var responses = sorted.Select(task => new WorkTaskResponse(
             task.Id, task.ObjectiveId, task.ShortId, task.Title, task.Description, task.CategoryId, task.StatusId,
             task.Priority, task.StoryPoints, task.DueDate, task.EstimatedHours, task.CompletedHours, task.ProgressPercent, task.SprintId,
             assigneesByTaskId.GetValueOrDefault(task.Id, Array.Empty<Guid>()),
             openSessions.TryGetValue(task.Id, out var openSession) ? openSession.EmployeeId : (Guid?)null,
             openSession?.ClockInAt,
-            totalLoggedMinutes.GetValueOrDefault(task.Id, 0), CreatedAt: task.CreatedAt)).ToList();
+            totalLoggedMinutes.GetValueOrDefault(task.Id, 0), CreatedAt: task.CreatedAt,
+            HasPendingApproval: pendingTaskIds.Contains(task.Id))).ToList();
 
         return Result<IReadOnlyList<WorkTaskResponse>>.Success(responses);
     }
