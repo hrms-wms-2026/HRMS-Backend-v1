@@ -184,10 +184,8 @@ public class MilestoneMembershipCoordinatorTests
         objectives.Setup(x => x.GetByIdForTenantAsync(TenantId, ChildId, It.IsAny<CancellationToken>())).ReturnsAsync(child);
         objectives.Setup(x => x.GetByIdForTenantAsync(TenantId, GrandchildId, It.IsAny<CancellationToken>())).ReturnsAsync(grandchild);
         objectives.Setup(x => x.GetByIdForTenantAsync(TenantId, SiblingId, It.IsAny<CancellationToken>())).ReturnsAsync(sibling);
-
-        foreach (var id in new[] { RootId, ChildId, GrandchildId, SiblingId })
-            members.Setup(x => x.ListActiveForObjectiveAsync(TenantId, id, It.IsAny<CancellationToken>()))
-                .ReturnsAsync(Array.Empty<ProjectMember>());
+        objectives.Setup(x => x.GetAllByProjectIdAsync(TenantId, ProjectId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[] { root, child, grandchild, sibling });
 
         return (coordinator, members);
     }
@@ -214,8 +212,8 @@ public class MilestoneMembershipCoordinatorTests
         var grandchild = MakeObjective(GrandchildId, ChildId, OtherEmployeeId);
         var sibling = MakeObjective(SiblingId, null, OtherEmployeeId);
         var (coordinator, members) = BuildTreeCoordinator(root, child, grandchild, sibling);
-        members.Setup(x => x.ListActiveForObjectiveAsync(TenantId, GrandchildId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new[] { new ProjectMember { Id = Guid.NewGuid(), TenantId = TenantId, ProjectId = ProjectId, ObjectiveId = GrandchildId, EmployeeId = EmployeeId, IsActive = true } });
+        members.Setup(x => x.HasActiveMembershipForAnyObjectiveAsync(TenantId, ProjectId, EmployeeId, It.Is<IReadOnlyList<Guid>>(ids => ids.Contains(GrandchildId)), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
 
         var result = await coordinator.IsEffectiveManagerAsync(TenantId, GrandchildId, EmployeeId, CancellationToken.None);
 
@@ -244,8 +242,8 @@ public class MilestoneMembershipCoordinatorTests
         var grandchild = MakeObjective(GrandchildId, ChildId, OtherEmployeeId);
         var sibling = MakeObjective(SiblingId, null, OtherEmployeeId);
         var (coordinator, members) = BuildTreeCoordinator(root, child, grandchild, sibling);
-        members.Setup(x => x.ListActiveForObjectiveAsync(TenantId, RootId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new[] { new ProjectMember { Id = Guid.NewGuid(), TenantId = TenantId, ProjectId = ProjectId, ObjectiveId = RootId, EmployeeId = EmployeeId, IsActive = true } });
+        members.Setup(x => x.HasActiveMembershipForAnyObjectiveAsync(TenantId, ProjectId, EmployeeId, It.Is<IReadOnlyList<Guid>>(ids => ids.Contains(RootId)), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
 
         var result = await coordinator.IsEffectiveManagerAsync(TenantId, GrandchildId, EmployeeId, CancellationToken.None);
 
@@ -305,8 +303,8 @@ public class MilestoneMembershipCoordinatorTests
         var grandchild = MakeObjective(GrandchildId, ChildId, OtherEmployeeId);
         var sibling = MakeObjective(SiblingId, null, OtherEmployeeId);
         var (coordinator, members) = BuildTreeCoordinator(root, child, grandchild, sibling);
-        members.Setup(x => x.ListActiveForObjectiveAsync(TenantId, GrandchildId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new[] { new ProjectMember { Id = Guid.NewGuid(), TenantId = TenantId, ProjectId = ProjectId, ObjectiveId = GrandchildId, EmployeeId = EmployeeId, IsActive = true } });
+        members.Setup(x => x.HasActiveMembershipForAnyObjectiveAsync(TenantId, ProjectId, EmployeeId, It.Is<IReadOnlyList<Guid>>(ids => ids.Contains(GrandchildId)), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
 
         var result = await coordinator.IsEffectiveOwnerAsync(TenantId, GrandchildId, EmployeeId, CancellationToken.None);
 
@@ -335,8 +333,8 @@ public class MilestoneMembershipCoordinatorTests
         var grandchild = MakeObjective(GrandchildId, ChildId, OtherEmployeeId);
         var sibling = MakeObjective(SiblingId, null, OtherEmployeeId);
         var (coordinator, members) = BuildTreeCoordinator(root, child, grandchild, sibling);
-        members.Setup(x => x.ListActiveForObjectiveAsync(TenantId, RootId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new[] { new ProjectMember { Id = Guid.NewGuid(), TenantId = TenantId, ProjectId = ProjectId, ObjectiveId = RootId, EmployeeId = EmployeeId, IsActive = true } });
+        members.Setup(x => x.HasActiveMembershipForAnyObjectiveAsync(TenantId, ProjectId, EmployeeId, It.Is<IReadOnlyList<Guid>>(ids => ids.Contains(RootId)), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
 
         var result = await coordinator.IsEffectiveOwnerAsync(TenantId, GrandchildId, EmployeeId, CancellationToken.None);
 

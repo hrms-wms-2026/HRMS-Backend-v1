@@ -23,7 +23,8 @@ public class TaskAccessResolverTests
     private static readonly Guid ObjectiveId = Guid.NewGuid();
 
     private (TaskAccessResolver Resolver, Mock<IWorkTaskRepository> Tasks, Mock<IProjectRepository> Projects,
-        Mock<IProjectMemberRepository> Members, Mock<IPermissionResolver> Permissions) Build()
+        Mock<IProjectMemberRepository> Members, Mock<IPermissionResolver> Permissions) Build(
+        params ONEVO.Domain.Features.WorkManagement.Objectives.Entities.Objective[] modules)
     {
         var tasks = new Mock<IWorkTaskRepository>();
         var projects = new Mock<IProjectRepository>();
@@ -33,7 +34,8 @@ public class TaskAccessResolverTests
         identity.Setup(x => x.ResolveCallerEmployeeIdAsync(TenantId, UserId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(EmployeeId);
 
-        var resolver = new TaskAccessResolver(identity.Object, tasks.Object, projects.Object, members.Object, permissions.Object);
+        var resolver = new TaskAccessResolver(identity.Object, tasks.Object, projects.Object, members.Object, permissions.Object,
+            WorkHierarchyServiceMocks.WithModules(modules).Object);
         return (resolver, tasks, projects, members, permissions);
     }
 
@@ -94,6 +96,26 @@ public class TaskAccessResolverTests
             .ReturnsAsync(new List<string>());
         members.Setup(x => x.GetActiveObjectiveIdsForEmployeeInProjectAsync(TenantId, ProjectId, EmployeeId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<Guid> { ObjectiveId });
+
+        var result = await resolver.ResolveViewableTaskAsync(TenantId, UserId, TaskId, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+    }
+
+    [Fact]
+    public async Task ResolveViewableTaskAsync_MemberOfAncestorModule_Succeeds()
+    {
+        // Comments, reactions and attachments go through this resolver: a parent-module member
+        // (e.g. the tenant owner on the root module) must reach tasks in child modules.
+        var root = Guid.NewGuid();
+        var (resolver, tasks, projects, members, permissions) = Build(
+            WorkHierarchyServiceMocks.Module(root, null), WorkHierarchyServiceMocks.Module(ObjectiveId, root));
+        tasks.Setup(x => x.GetByIdForTenantAsync(TenantId, TaskId, It.IsAny<CancellationToken>())).ReturnsAsync(Task_(ObjectiveId));
+        projects.Setup(x => x.GetByIdForTenantAsync(TenantId, ProjectId, It.IsAny<CancellationToken>())).ReturnsAsync(ActiveProject());
+        permissions.Setup(x => x.ResolveAsync(UserId, TenantId, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<string>());
+        members.Setup(x => x.GetActiveObjectiveIdsForEmployeeInProjectAsync(TenantId, ProjectId, EmployeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<Guid> { root });
 
         var result = await resolver.ResolveViewableTaskAsync(TenantId, UserId, TaskId, CancellationToken.None);
 

@@ -201,6 +201,55 @@ public class EfWorkTaskRepository : IWorkTaskRepository
         ).ToListAsync(ct);
     }
 
+    public async Task<IReadOnlyList<EmployeeWorkTaskRow>> ListOpenDueByAsync(Guid tenantId, Guid employeeId, DateOnly dueOnOrBefore, CancellationToken ct = default)
+    {
+        return await (
+            from t in _db.WorkTasks.AsNoTracking()
+            join s in _db.TaskStatuses.AsNoTracking() on t.StatusId equals s.Id
+            join p in _db.Projects.AsNoTracking() on t.ProjectId equals p.Id
+            where t.TenantId == tenantId
+                  && t.DueDate.HasValue
+                  && t.DueDate <= dueOnOrBefore
+                  && !s.MarksTaskComplete
+                  && t.ProgressPercent < 100
+                  && _db.TaskAssignments.Any(a => a.TaskId == t.Id && a.EmployeeId == employeeId)
+            orderby t.DueDate
+            select new EmployeeWorkTaskRow(
+                t.Id, t.ShortId, t.Title, t.ProjectId, p.Name, s.Name, s.Color, s.MarksTaskComplete,
+                t.Priority, t.StoryPoints, t.DueDate, t.ProgressPercent, t.UpdatedAt ?? t.CreatedAt)
+        ).ToListAsync(ct);
+    }
+
+    public async Task<IReadOnlyList<EmployeeWorkTaskRow>> ListRecentlyChangedAssignedAsync(Guid tenantId, Guid employeeId, int take, CancellationToken ct = default)
+    {
+        return await (
+            from t in _db.WorkTasks.AsNoTracking()
+            join s in _db.TaskStatuses.AsNoTracking() on t.StatusId equals s.Id
+            join p in _db.Projects.AsNoTracking() on t.ProjectId equals p.Id
+            where t.TenantId == tenantId
+                  && _db.TaskAssignments.Any(a => a.TaskId == t.Id && a.EmployeeId == employeeId)
+            orderby (t.UpdatedAt ?? t.CreatedAt) descending
+            select new EmployeeWorkTaskRow(
+                t.Id, t.ShortId, t.Title, t.ProjectId, p.Name, s.Name, s.Color, s.MarksTaskComplete,
+                t.Priority, t.StoryPoints, t.DueDate, t.ProgressPercent, t.UpdatedAt ?? t.CreatedAt)
+        ).Take(take).ToListAsync(ct);
+    }
+
+    public async Task<IReadOnlyList<DateTimeOffset>> ListCompletedAtForEmployeeAsync(Guid tenantId, Guid employeeId, DateTimeOffset fromUtc, DateTimeOffset toUtcExclusive, CancellationToken ct = default)
+    {
+        return await (
+            from t in _db.WorkTasks.AsNoTracking()
+            join s in _db.TaskStatuses.AsNoTracking() on t.StatusId equals s.Id
+            where t.TenantId == tenantId
+                  && t.CompletedAt.HasValue
+                  && t.CompletedAt >= fromUtc
+                  && t.CompletedAt < toUtcExclusive
+                  && (s.MarksTaskComplete || t.ProgressPercent >= 100)
+                  && _db.TaskAssignments.Any(a => a.TaskId == t.Id && a.EmployeeId == employeeId)
+            select t.CompletedAt!.Value
+        ).ToListAsync(ct);
+    }
+
     public async Task<IReadOnlyList<WorkTask>> GetBySprintIdAsync(Guid tenantId, Guid sprintId, CancellationToken ct = default)
         => await _db.WorkTasks.AsNoTracking().Where(t => t.TenantId == tenantId && t.SprintId == sprintId).ToListAsync(ct);
 

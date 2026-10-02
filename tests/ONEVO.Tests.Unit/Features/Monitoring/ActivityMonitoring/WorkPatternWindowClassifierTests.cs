@@ -217,4 +217,18 @@ public sealed class WorkPatternWindowClassifierTests
         // Invariant checks
         Assert.Equal(370, result.FocusMinutes + result.OtherActiveMinutes + result.IdleMinutes + result.MeetingBarMinutes); // Observed
     }
+
+    [Fact]
+    public void Classify_CountsEachThirtyMinuteSameProcessStreakAsOneFocusBlock()
+    {
+        var t = new DateTimeOffset(2026, 9, 25, 9, 0, 0, TimeSpan.Zero);
+        var snaps = new List<ActivitySnapshot>();
+        for (var i = 1; i <= 31; i++) snaps.Add(Snap(t.AddMinutes(i), 60, 0, "code.exe"));        // block 1 (31 min)
+        for (var i = 32; i <= 41; i++) snaps.Add(Snap(t.AddMinutes(i), 60, 0, "chrome.exe"));     // 10 min, not a block
+        for (var i = 42; i <= 73; i++) snaps.Add(Snap(t.AddMinutes(i), 60, 0, "code.exe"));       // block 2 (32 min)
+
+        var result = WorkPatternWindowClassifier.Classify(snaps, []);
+
+        Assert.Equal(2, result.FocusBlocks);
+    }
 }

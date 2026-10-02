@@ -1,5 +1,5 @@
 using System.Text.Json;
-using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
+using ONEVO.Domain.Features.WorkManagement.Approvals.Entities;
 
 namespace ONEVO.Application.Features.WorkManagement.Tasks.DTOs.Responses;
 
@@ -18,13 +18,19 @@ public sealed record TaskStatusChangeRequestResponse(
     bool CanDecide,
     bool CanCancel)
 {
+    // Case-insensitive: rows migrated from task_status_change_requests were serialised PascalCase.
+    private static readonly JsonSerializerOptions PayloadOptions = new(JsonSerializerDefaults.Web);
+
+    /// <summary>Maps a project.status_template_change row of wm_approval_requests.</summary>
     public static TaskStatusChangeRequestResponse From(
-        TaskStatusChangeRequest entity, string requesterDisplayName, bool canDecide, bool canCancel)
-        => new(
-            entity.Id, entity.ProjectId, entity.Status, entity.RequestedByEmployeeId, requesterDisplayName,
-            entity.Note, JsonSerializer.Deserialize<TaskStatusChangeSet>(entity.ChangesJson)!,
-            entity.CreatedAt, entity.DecidedByEmployeeId, entity.DecisionComment, entity.DecidedAt,
-            canDecide, canCancel);
+        WorkApprovalRequest request, string requesterDisplayName, bool canDecide, bool canCancel)
+    {
+        var payload = JsonSerializer.Deserialize<TaskStatusTemplateChangePayload>(request.PayloadJson, PayloadOptions)!;
+        return new(
+            request.Id, request.ProjectId, request.Status, request.RequestedByEmployeeId, requesterDisplayName,
+            payload.Note, payload.Changes, request.CreatedAt, request.DecidedByEmployeeId, request.DecisionComment,
+            request.DecidedAt, canDecide, canCancel);
+    }
 }
 
 /// <summary>The caller's standing over a project's status template, plus the pending requests they

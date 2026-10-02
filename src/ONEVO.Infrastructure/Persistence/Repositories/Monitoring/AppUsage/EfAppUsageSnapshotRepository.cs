@@ -55,6 +55,26 @@ public class EfAppUsageSnapshotRepository : IAppUsageSnapshotRepository
             .ToListAsync(ct);
     }
 
+    public async Task<IReadOnlyList<AppProcessMinutesRow>> GetMinutesByProcessAsync(
+        Guid tenantId, Guid employeeId, DateTimeOffset fromUtc, DateTimeOffset toUtcExclusive, CancellationToken ct)
+        => await _db.AppUsageSnapshots.AsNoTracking()
+            .Where(s => s.TenantId == tenantId && s.EmployeeId == employeeId && s.ProcessName != null
+                        && s.CapturedAt >= fromUtc && s.CapturedAt < toUtcExclusive)
+            .GroupBy(s => s.ProcessName!)
+            .Select(g => new AppProcessMinutesRow(g.Key, g.Count(), g.Max(s => s.CapturedAt)))
+            .ToListAsync(ct);
+
+    public async Task<IReadOnlyList<AppProcessSampleRow>> GetSamplesForProcessesAsync(
+        Guid tenantId, Guid employeeId, DateTimeOffset fromUtc, DateTimeOffset toUtcExclusive,
+        IReadOnlyCollection<string> processNames, CancellationToken ct)
+        => await _db.AppUsageSnapshots.AsNoTracking()
+            .Where(s => s.TenantId == tenantId && s.EmployeeId == employeeId && s.ProcessName != null
+                        && processNames.Contains(s.ProcessName)
+                        && s.CapturedAt >= fromUtc && s.CapturedAt < toUtcExclusive)
+            .OrderBy(s => s.CapturedAt)
+            .Select(s => new AppProcessSampleRow(s.ProcessName!, s.CapturedAt))
+            .ToListAsync(ct);
+
     private static (DateTimeOffset Start, DateTimeOffset End) UtcDayBounds(DateOnly date)
     {
         var start = new DateTimeOffset(date.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero);

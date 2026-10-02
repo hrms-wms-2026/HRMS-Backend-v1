@@ -7,6 +7,7 @@ using ONEVO.Application.Features.Auth.Permission.ServiceInterfaces;
 using ONEVO.Application.Features.Storage.File.Helpers;
 using ONEVO.Application.Features.WorkManagement.CalendarEvents.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
+using ONEVO.Application.Features.WorkManagement.Hierarchy;
 using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.DTOs.Responses;
@@ -21,6 +22,7 @@ public sealed class GetTaskByIdQueryHandler : IRequestHandler<GetTaskByIdQuery, 
     private readonly IWorkTaskRepository _tasks;
     private readonly IProjectRepository _projects;
     private readonly IProjectMemberRepository _members;
+    private readonly IWorkHierarchyService _hierarchy;
     private readonly IPermissionResolver _permissionResolver;
     private readonly ITaskAssignmentRepository _assignments;
     private readonly ITaskClockingSessionRepository _sessions;
@@ -37,13 +39,15 @@ public sealed class GetTaskByIdQueryHandler : IRequestHandler<GetTaskByIdQuery, 
         ITaskAssignmentRepository assignments,
         ITaskClockingSessionRepository sessions,
         ICalendarEventRepository calendarEvents,
-        IEntityAssetRepository entityAssets)
+        IEntityAssetRepository entityAssets,
+        IWorkHierarchyService hierarchy)
     {
         _currentUser = currentUser;
         _identity = identity;
         _tasks = tasks;
         _projects = projects;
         _members = members;
+        _hierarchy = hierarchy;
         _permissionResolver = permissionResolver;
         _assignments = assignments;
         _sessions = sessions;
@@ -78,8 +82,8 @@ public sealed class GetTaskByIdQueryHandler : IRequestHandler<GetTaskByIdQuery, 
         if (!hasReadPermission)
         {
             var accessibleObjectiveIds =
-                (await _members.GetActiveObjectiveIdsForEmployeeInProjectAsync(tenantId, project.Id, callerEmployeeId.Value, ct))
-                .ToHashSet();
+                (await _hierarchy.LoadTreeAsync(tenantId, project.Id, ct)).AtOrBelow(
+                    await _members.GetActiveObjectiveIdsForEmployeeInProjectAsync(tenantId, project.Id, callerEmployeeId.Value, ct));
             if (!accessibleObjectiveIds.Contains(task.ObjectiveId))
                 return Result<WorkTaskResponse>.NotFound("Task not found.");
         }

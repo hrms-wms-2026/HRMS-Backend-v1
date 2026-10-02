@@ -604,20 +604,12 @@ public sealed class WorkManagementDapiDemoSeederTests : IDisposable
 
         foreach (var project in projects)
         {
-            var objectiveIds = await verify.Objectives
-                .Where(o => o.ProjectId == project.Id)
-                .Select(o => o.Id)
-                .ToListAsync();
-
-            var pendingCreates = await verify.TaskCreationRequests
-                .CountAsync(r => objectiveIds.Contains(r.ObjectiveId) && r.Status == "pending");
+            var pendingCreates = await verify.WorkApprovalRequests
+                .CountAsync(r => r.ProjectId == project.Id && r.ActionType == "task.create" && r.Status == "pending");
             pendingCreates.Should().BeGreaterThanOrEqualTo(3, because: $"{project.Identifier} needs ≥3 pending task creation requests");
 
-            var pendingExtends = await verify.ObjectiveChangeRequests
-                .CountAsync(r =>
-                    objectiveIds.Contains(r.ObjectiveId)
-                    && r.RequestType == "extend_allocation"
-                    && r.Status == "pending");
+            var pendingExtends = await verify.WorkApprovalRequests
+                .CountAsync(r => r.ProjectId == project.Id && r.ActionType == "module.allocation_extend" && r.Status == "pending");
             pendingExtends.Should().BeGreaterThanOrEqualTo(1, because: $"{project.Identifier} needs ≥1 pending extend_allocation");
         }
     }
@@ -636,9 +628,8 @@ public sealed class WorkManagementDapiDemoSeederTests : IDisposable
         {
             taskCount = await afterFirst.WorkTasks.CountAsync(t => t.TenantId == DapiTenantId);
             statusCount = await afterFirst.TaskStatuses.CountAsync(s => s.TenantId == DapiTenantId);
-            createCount = await afterFirst.TaskCreationRequests.CountAsync(r => r.TenantId == DapiTenantId);
-            extendCount = await afterFirst.ObjectiveChangeRequests
-                .CountAsync(r => r.TenantId == DapiTenantId && r.RequestType == "extend_allocation");
+            createCount = await afterFirst.WorkApprovalRequests.CountAsync(r => r.TenantId == DapiTenantId && r.ActionType == "task.create");
+            extendCount = await afterFirst.WorkApprovalRequests.CountAsync(r => r.TenantId == DapiTenantId && r.ActionType == "module.allocation_extend");
         }
 
         using (var second = CreateContext())
@@ -650,10 +641,8 @@ public sealed class WorkManagementDapiDemoSeederTests : IDisposable
         using var verify = CreateContext();
         (await verify.WorkTasks.CountAsync(t => t.TenantId == DapiTenantId)).Should().Be(taskCount);
         (await verify.TaskStatuses.CountAsync(s => s.TenantId == DapiTenantId)).Should().Be(statusCount);
-        (await verify.TaskCreationRequests.CountAsync(r => r.TenantId == DapiTenantId)).Should().Be(createCount);
-        (await verify.ObjectiveChangeRequests
-            .CountAsync(r => r.TenantId == DapiTenantId && r.RequestType == "extend_allocation"))
-            .Should().Be(extendCount);
+        (await verify.WorkApprovalRequests.CountAsync(r => r.TenantId == DapiTenantId && r.ActionType == "task.create")).Should().Be(createCount);
+        (await verify.WorkApprovalRequests.CountAsync(r => r.TenantId == DapiTenantId && r.ActionType == "module.allocation_extend")).Should().Be(extendCount);
     }
 
     /// <summary>
@@ -699,7 +688,7 @@ public sealed class WorkManagementDapiDemoSeederTests : IDisposable
         allEposCategories.Should().HaveCount(4);
         allEposCategories.Select(c => c.Name).Should().BeEquivalentTo(["task", "bug", "story", "feature"]);
 
-        // Every seeded WorkTask/TaskCreationRequest under EPOS that uses the "task" category must
+        // Every seeded WorkTask/task.create request under EPOS that uses the "task" category must
         // resolve to the pre-existing (reused) id, not a freshly-minted duplicate.
         var eposWorkTasksWithTaskCategory = await verify.WorkTasks
             .Where(t => t.ProjectId == eposProjectId && t.CategoryId == preexistingId)

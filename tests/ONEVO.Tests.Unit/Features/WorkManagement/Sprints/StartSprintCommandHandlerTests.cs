@@ -43,18 +43,17 @@ public class StartSprintCommandHandlerTests
         var sprints = new Mock<ISprintRepository>();
         sprints.Setup(x => x.GetTrackedByIdForTenantAsync(TenantId, SprintId, It.IsAny<CancellationToken>())).ReturnsAsync(sprint);
 
-        var access = new Mock<ISprintAccessService>();
-        access.Setup(x => x.CanManageAsync(TenantId, sprint, UserId, resolvedCallerEmployeeId, It.IsAny<CancellationToken>()))
+        var wiring = new SprintTestWiring(TenantId, ProjectId);
+        // "Can manage" is now "is a project member" - the engine decides direct vs request.
+        wiring.Members.Setup(x => x.HasActiveMembershipAsync(TenantId, ProjectId, resolvedCallerEmployeeId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(callerCanManage ?? (resolvedCallerEmployeeId == OwnerEmployeeId));
-
         var logs = new Mock<ISprintActivityLogRepository>();
 
-        var unitOfWork = new Mock<IUnitOfWork>();
-        unitOfWork.Setup(x => x.ExecuteInTransactionAsync(It.IsAny<Func<CancellationToken, Task<Result<SprintResponse>>>>(), It.IsAny<CancellationToken>()))
-            .Returns((Func<CancellationToken, Task<Result<SprintResponse>>> op, CancellationToken ct) => op(ct));
-        unitOfWork.Setup(x => x.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
+        wiring.Sprints = sprints;
+        wiring.Logs = logs;
+        wiring.Identity = identity;
 
-        var handler = new StartSprintCommandHandler(currentUser.Object, identity.Object, sprints.Object, access.Object, logs.Object, unitOfWork.Object);
+        var handler = new StartSprintCommandHandler(currentUser.Object, identity.Object, sprints.Object, wiring.Members.Object, wiring.Writes(), wiring.Submitter());
         return (handler, sprint, logs);
     }
 
@@ -109,7 +108,7 @@ public class StartSprintCommandHandlerTests
     }
 
     [Fact]
-    public async Task Handle_CannotManage_ReturnsForbidden()
+    public async Task Handle_NotProjectMember_ReturnsForbidden()
     {
         var (handler, sprint, _) = Build(SprintStatuses.Draft, callerEmployeeId: OtherEmployeeId, callerCanManage: false);
         var command = new StartSprintCommand(SprintId, new DateOnly(2026, 9, 21), new DateOnly(2026, 10, 2), null);

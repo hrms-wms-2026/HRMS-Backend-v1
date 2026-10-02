@@ -4,7 +4,6 @@ using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
-using ONEVO.Application.Features.WorkManagement.Objectives.Services;
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.ReorderTaskStatuses;
 using ONEVO.Application.Features.WorkManagement.Tasks.DTOs.Responses;
@@ -31,7 +30,7 @@ public class ReorderTaskStatusesCommandHandlerTests
     private static readonly Guid Status3 = Guid.NewGuid();
 
     private (ReorderTaskStatusesCommandHandler Handler, List<TaskStatusEntity> Statuses) Build(
-        Guid callerEmployeeId, bool? callerIsEffectiveManager = null)
+        Guid callerEmployeeId)
     {
         var currentUser = new Mock<ICurrentUser>();
         currentUser.SetupGet(x => x.IsAuthenticated).Returns(true);
@@ -69,11 +68,8 @@ public class ReorderTaskStatusesCommandHandlerTests
             .Returns((Func<CancellationToken, Task<Result<IReadOnlyList<TaskStatusResponse>>>> op, CancellationToken ct) => op(ct));
         unitOfWork.Setup(x => x.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
 
-        var membership = new Mock<IMilestoneMembershipCoordinator>();
-        membership.Setup(x => x.IsEffectiveManagerAsync(TenantId, ObjectiveId, callerEmployeeId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(callerIsEffectiveManager ?? (callerEmployeeId == OwnerEmployeeId));
 
-        var handler = new ReorderTaskStatusesCommandHandler(currentUser.Object, identity.Object, objectives.Object, projects.Object, statuses.Object, unitOfWork.Object, membership.Object, new Mock<ITaskStatusChangeRequestConflictSweeper>().Object);
+        var handler = new ReorderTaskStatusesCommandHandler(currentUser.Object, identity.Object, objectives.Object, projects.Object, statuses.Object, unitOfWork.Object, new Mock<ITaskStatusChangeRequestConflictSweeper>().Object);
         return (handler, statusList);
     }
 
@@ -237,9 +233,11 @@ public class ReorderTaskStatusesCommandHandlerTests
     }
 
     [Fact]
-    public async Task Handle_CallerIsEffectiveManagerViaAncestor_AppliesAllUpdates()
+    public async Task Root_module_member_who_is_not_owner_is_forbidden()
     {
-        var (handler, statuses) = Build(OtherEmployeeId, callerIsEffectiveManager: true);
+        // Only the root owner restructures the board directly now; members send a change request.
+        var (handler, statuses) = Build(OtherEmployeeId);
+        var before = statuses.Single(s => s.Id == Status1).DisplayOrder;
         var command = new ReorderTaskStatusesCommand(ProjectId, new List<TaskStatusOrderUpdate>
         {
             new(Status1, 1, TaskStatusVisibilities.Public, TaskStatusCategories.NotStarted, "#94A3B8"),
@@ -248,8 +246,8 @@ public class ReorderTaskStatusesCommandHandlerTests
 
         var result = await handler.Handle(command, CancellationToken.None);
 
-        Assert.True(result.IsSuccess);
-        Assert.Equal(1, statuses.Single(s => s.Id == Status1).DisplayOrder);
+        Assert.Equal(403, result.StatusCode);
+        Assert.Equal(before, statuses.Single(s => s.Id == Status1).DisplayOrder);
     }
 }
 

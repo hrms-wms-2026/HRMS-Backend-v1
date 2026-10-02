@@ -185,6 +185,18 @@ public class DuplicateTaskCommandHandlerTests
     }
 
     [Fact]
+    public async Task DuplicateTask_PositionIsDestinationModule()
+    {
+        var (handler, tasks, _, _, _, _) = BuildHandler(SourceTask(), Owned(OtherObjectiveId));
+
+        var result = await handler.Handle(Command(OtherObjectiveId), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        tasks.Verify(x => x.AddAsync(It.Is<WorkTask>(t => t.Id != SourceTaskId && t.CreatorPositionObjectiveId == OtherObjectiveId),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
     public async Task Handle_DifferentModuleInSameProject_DropsSprintId()
     {
         var destination = Owned(OtherObjectiveId);

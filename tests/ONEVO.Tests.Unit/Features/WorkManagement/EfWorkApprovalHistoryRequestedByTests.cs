@@ -1,10 +1,9 @@
 using Microsoft.EntityFrameworkCore;
 using Moq;
 using ONEVO.Application.Common.ServiceInterfaces;
-using ONEVO.Domain.Features.WorkManagement.ObjectiveChangeRequests.Entities;
+using ONEVO.Domain.Features.WorkManagement.Approvals.Entities;
 using ONEVO.Domain.Features.WorkManagement.Objectives.Entities;
 using ONEVO.Domain.Features.WorkManagement.ProjectInvitations.Entities;
-using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
 using ONEVO.Infrastructure.Persistence;
 using ONEVO.Infrastructure.Persistence.Interceptors;
 using ONEVO.Infrastructure.Persistence.Repositories.WorkManagement;
@@ -23,40 +22,38 @@ public sealed class EfWorkApprovalHistoryRequestedByTests
     private static readonly DateTimeOffset From = DateTimeOffset.Parse("2026-09-01T00:00:00+00:00");
     private static readonly DateTimeOffset ToExclusive = DateTimeOffset.Parse("2026-10-01T00:00:00+00:00");
 
-    private Objective Obj(bool isDefault = false) => new()
+    private Objective Obj() => new()
     {
-        Id = Guid.NewGuid(), TenantId = _tenantId, ProjectId = _projectId, Title = isDefault ? "Root" : "Checkout",
-        OwnerId = Guid.NewGuid(), IsDefault = isDefault, IsActive = true
+        Id = Guid.NewGuid(), TenantId = _tenantId, ProjectId = _projectId, Title = "Checkout",
+        OwnerId = Guid.NewGuid(), IsActive = true
+    };
+
+    private WorkApprovalRequest Request(string actionType, Guid requestedBy, Guid? approver = null, Guid? projectId = null) => new()
+    {
+        Id = Guid.NewGuid(), TenantId = _tenantId, ProjectId = projectId ?? _projectId, ActionType = actionType,
+        TargetType = actionType.StartsWith("module.") ? WorkTargetTypes.Module
+            : actionType.StartsWith("sprint.") ? WorkTargetTypes.Sprint
+            : actionType.StartsWith("project.") ? WorkTargetTypes.Project : WorkTargetTypes.Task,
+        TargetId = Guid.NewGuid(), TargetTitle = "Target", ApproverEmployeeId = approver ?? Guid.NewGuid(),
+        RequestedByEmployeeId = requestedBy
     };
 
     [Fact]
-    public async Task ListRequestedBy_ReturnsEachKindTheEmployeeRequested_AndNothingElse()
+    public async Task ListRequestedBy_ReturnsEachKindTheEmployeeRequested_AcrossProjects_AndNothingElse()
     {
         await using var db = BuildInMemoryDb();
         var objective = Obj();
-        var root = Obj(isDefault: true);
-        var task = new WorkTask
-        {
-            Id = Guid.NewGuid(), TenantId = _tenantId, ProjectId = _projectId, ObjectiveId = objective.Id,
-            StatusId = Guid.NewGuid(), CategoryId = Guid.NewGuid(), ShortId = "WEB-1", Title = "Fix cart"
-        };
-        db.Objectives.AddRange(objective, root);
-        db.WorkTasks.Add(task);
+        db.Objectives.Add(objective);
 
         _clock.SetupGet(c => c.UtcNow).Returns(InWindow);
-        db.TaskCreationRequests.AddRange(
-            new TaskCreationRequest { Id = Guid.NewGuid(), TenantId = _tenantId, ObjectiveId = objective.Id, RequestedByEmployeeId = _employeeId },
-            new TaskCreationRequest { Id = Guid.NewGuid(), TenantId = _tenantId, ObjectiveId = objective.Id, RequestedByEmployeeId = _otherEmployeeId });
-        db.TaskEditRequests.Add(new TaskEditRequest { Id = Guid.NewGuid(), TenantId = _tenantId, TaskId = task.Id, RequestedByEmployeeId = _employeeId });
-        db.ObjectiveChangeRequests.Add(new ObjectiveChangeRequest
-        {
-            Id = Guid.NewGuid(), TenantId = _tenantId, ObjectiveId = objective.Id, RequestType = ObjectiveChangeRequestTypes.Edit,
-            RequestedById = _employeeId, ReportingManagerId = Guid.NewGuid()
-        });
-        db.TaskStatusChangeRequests.Add(new TaskStatusChangeRequest
-        {
-            Id = Guid.NewGuid(), TenantId = _tenantId, ProjectId = _projectId, RequestedByEmployeeId = _employeeId
-        });
+        db.WorkApprovalRequests.AddRange(
+            Request(WorkActionTypes.TaskCreate, _employeeId),
+            Request(WorkActionTypes.TaskCreate, _otherEmployeeId),
+            Request(WorkActionTypes.TaskEdit, _employeeId, projectId: Guid.NewGuid()),
+            Request(WorkActionTypes.TaskDelete, _employeeId),
+            Request(WorkActionTypes.ModuleEdit, _employeeId),
+            Request(WorkActionTypes.SprintStart, _employeeId),
+            Request(WorkActionTypes.ProjectStatusTemplateChange, _employeeId));
         db.ProjectMemberInvitations.AddRange(
             new ProjectMemberInvitation { Id = Guid.NewGuid(), TenantId = _tenantId, ProjectId = _projectId, ObjectiveId = objective.Id, InvitedEmployeeId = _employeeId, InvitedById = _otherEmployeeId },
             new ProjectMemberInvitation { Id = Guid.NewGuid(), TenantId = _tenantId, ProjectId = _projectId, ObjectiveId = objective.Id, InvitedEmployeeId = _otherEmployeeId, InvitedById = _employeeId });
@@ -67,25 +64,24 @@ public sealed class EfWorkApprovalHistoryRequestedByTests
             .ListRequestedByEmployeeAsync(_tenantId, _employeeId, From, ToExclusive);
 
         Assert.Equal(
-            new[] { "objective_edit", "objective_invitation", "task_creation", "task_edit", "task_status_change" },
+            new[] { "objective_edit", "objective_invitation", "sprint_change", "task_creation", "task_delete", "task_edit", "task_status_change" },
             records.Select(r => r.Kind).OrderBy(k => k).ToArray());
         Assert.All(records, r => Assert.Equal("pending", r.Status));
+        Assert.Equal("Task statuses", Assert.Single(records, r => r.Kind == "task_status_change").SubjectTitle);
     }
 
     [Fact]
     public async Task ListRequestedBy_ExcludesRequestsCreatedOutsideTheWindow()
     {
         await using var db = BuildInMemoryDb();
-        var objective = Obj();
-        db.Objectives.Add(objective);
 
         _clock.SetupGet(c => c.UtcNow).Returns(InWindow);
-        var inside = new TaskCreationRequest { Id = Guid.NewGuid(), TenantId = _tenantId, ObjectiveId = objective.Id, RequestedByEmployeeId = _employeeId };
-        db.TaskCreationRequests.Add(inside);
+        var inside = Request(WorkActionTypes.TaskCreate, _employeeId);
+        db.WorkApprovalRequests.Add(inside);
         await db.SaveChangesAsync();
 
         _clock.SetupGet(c => c.UtcNow).Returns(BeforeWindow);
-        db.TaskCreationRequests.Add(new TaskCreationRequest { Id = Guid.NewGuid(), TenantId = _tenantId, ObjectiveId = objective.Id, RequestedByEmployeeId = _employeeId });
+        db.WorkApprovalRequests.Add(Request(WorkActionTypes.TaskCreate, _employeeId));
         await db.SaveChangesAsync();
         db.ChangeTracker.Clear();
 
@@ -96,27 +92,27 @@ public sealed class EfWorkApprovalHistoryRequestedByTests
     }
 
     [Fact]
-    public async Task ListRequestedBy_MapsObjectiveChangeTypesToTheirKinds_AndFillsApproverAndDecision()
+    public async Task ListRequestedBy_MapsModuleActionsToTheirKinds_AndFillsApproverAndDecision()
     {
         await using var db = BuildInMemoryDb();
-        var objective = Obj();
         var manager = Guid.NewGuid();
-        db.Objectives.Add(objective);
         _clock.SetupGet(c => c.UtcNow).Returns(InWindow);
-        db.ObjectiveChangeRequests.AddRange(
-            new ObjectiveChangeRequest { Id = Guid.NewGuid(), TenantId = _tenantId, ObjectiveId = objective.Id, RequestType = ObjectiveChangeRequestTypes.ExtendAllocation, RequestedById = _employeeId, ReportingManagerId = manager, Status = ObjectiveChangeRequestStatuses.Approved },
-            new ObjectiveChangeRequest { Id = Guid.NewGuid(), TenantId = _tenantId, ObjectiveId = objective.Id, RequestType = ObjectiveChangeRequestTypes.Transfer, RequestedById = _employeeId, ReportingManagerId = manager });
+        var extend = Request(WorkActionTypes.ModuleAllocationExtend, _employeeId, manager);
+        extend.Status = WorkApprovalRequestStatuses.Approved;
+        extend.DecidedByEmployeeId = manager;
+        db.WorkApprovalRequests.AddRange(extend, Request(WorkActionTypes.ModuleTransfer, _employeeId, manager));
         await db.SaveChangesAsync();
         db.ChangeTracker.Clear();
 
         var records = await new EfWorkApprovalHistoryRepository(db)
             .ListRequestedByEmployeeAsync(_tenantId, _employeeId, From, ToExclusive);
 
-        var extend = Assert.Single(records, r => r.Kind == "allocation_extend");
-        Assert.Equal("approved", extend.Status);
-        Assert.Equal(manager, extend.ApproverId);
-        Assert.Equal(manager, extend.DecidedById);
+        var extendRecord = Assert.Single(records, r => r.Kind == "allocation_extend");
+        Assert.Equal("approved", extendRecord.Status);
+        Assert.Equal(manager, extendRecord.ApproverId);
+        Assert.Equal(manager, extendRecord.DecidedById);
         var transfer = Assert.Single(records, r => r.Kind == "objective_change");
+        Assert.Equal(manager, transfer.ApproverId);
         Assert.Null(transfer.DecidedById);
     }
 

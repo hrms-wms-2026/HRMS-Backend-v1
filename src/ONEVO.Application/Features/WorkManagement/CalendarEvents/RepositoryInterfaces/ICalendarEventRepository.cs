@@ -29,7 +29,6 @@ public interface ICalendarEventRepository
     Task<IReadOnlyList<ActiveCalendarEventMembership>> ListActiveMembershipsForProjectAsync(Guid tenantId, Guid projectId, CancellationToken ct = default);
     Task<IReadOnlyList<ActiveEventHeader>> ListActiveEventHeadersForProjectAsync(Guid tenantId, Guid projectId, CancellationToken ct = default);
     Task<IReadOnlyList<ActiveEventTaskMembership>> ListActiveTaskMembershipsForProjectAsync(Guid tenantId, Guid projectId, CancellationToken ct = default);
-    Task<IReadOnlyList<ActiveCalendarEventMembership>> ListActiveMembershipsForObjectivesAsync(Guid tenantId, IReadOnlyCollection<Guid> objectiveIds, CancellationToken ct = default);
     Task<IReadOnlyList<ActiveCalendarEventTaskLink>> ListActiveTaskLinksForTasksAsync(Guid tenantId, IReadOnlyCollection<Guid> taskIds, CancellationToken ct = default);
     Task<IReadOnlyList<ActiveEventWindow>> ListActiveEventWindowsForTaskAsync(Guid tenantId, Guid taskId, Guid objectiveId, CancellationToken ct = default);
     Task<IReadOnlyList<ActiveEventWindow>> ListActiveEventWindowsForObjectiveAsync(Guid tenantId, Guid objectiveId, CancellationToken ct = default);

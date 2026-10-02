@@ -12,6 +12,7 @@ namespace ONEVO.Application.Features.Monitoring.ActivityMonitoring.Queries.Emplo
 public sealed class GetEmployeeActivityOverviewQueryHandler(
     IEmployeeReadAccessGuard guard,
     IActivityDailySummaryRepository summaries,
+    IActivityLiveDaySummary live,
     IMonitoringToggleResolver toggles,
     ICurrentUser currentUser,
     IDateTimeProvider clock)
@@ -54,11 +55,24 @@ public sealed class GetEmployeeActivityOverviewQueryHandler(
     private async Task<EmployeeActivityMetrics> MeasureAsync(
         Guid tenantId, Guid employeeId, EmployeePeriod period, CancellationToken ct)
     {
-        var rows = await summaries.GetRangeAsync(tenantId, employeeId, period.From, period.To, ct);
+        var rows = (await summaries.GetRangeAsync(tenantId, employeeId, period.From, period.To, ct))
+            .Select(r => (r.Date, Active: r.TotalActiveMinutes, Idle: r.TotalIdleMinutes, Meeting: r.TotalMeetingMinutes))
+            .ToList();
+
+        // Today has no persisted summary until the nightly job runs; compose it live (same source the
+        // attendance day-detail uses) so this card agrees with the hourly chart and app usage.
+        var today = clock.Today;
+        if (period.From <= today && today <= period.To && rows.All(r => r.Date != today))
+        {
+            var liveDay = await live.ComposeAsync(tenantId, employeeId, today, ct);
+            if (liveDay is not null)
+                rows.Add((today, liveDay.TotalActiveMinutes, liveDay.TotalIdleMinutes, liveDay.TotalMeetingMinutes));
+        }
+
         return new EmployeeActivityMetrics(
-            rows.Sum(r => r.TotalActiveMinutes),
-            rows.Sum(r => r.TotalIdleMinutes),
-            rows.Sum(r => r.TotalMeetingMinutes),
-            rows.Count(r => r.TotalActiveMinutes + r.TotalIdleMinutes + r.TotalMeetingMinutes > 0));
+            rows.Sum(r => r.Active),
+            rows.Sum(r => r.Idle),
+            rows.Sum(r => r.Meeting),
+            rows.Count(r => r.Active + r.Idle + r.Meeting > 0));
     }
 }

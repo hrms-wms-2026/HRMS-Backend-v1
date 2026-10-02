@@ -24,7 +24,9 @@ public sealed class GetSubtasksQueryHandlerTests
     private static GetSubtasksQueryHandler Build(
         WorkTask? parent, IReadOnlyList<WorkTask> children, bool canRead = true,
         IReadOnlyDictionary<Guid, OpenTaskClockingSessionSummary>? openSessions = null,
-        IReadOnlyDictionary<Guid, int>? totalLoggedMinutes = null)
+        IReadOnlyDictionary<Guid, int>? totalLoggedMinutes = null,
+        IReadOnlyList<Guid>? memberObjectiveIds = null,
+        ONEVO.Domain.Features.WorkManagement.Objectives.Entities.Objective[]? modules = null)
     {
         var currentUser = new Mock<ICurrentUser>();
         currentUser.SetupGet(x => x.IsAuthenticated).Returns(true);
@@ -50,7 +52,7 @@ public sealed class GetSubtasksQueryHandlerTests
 
         var members = new Mock<IProjectMemberRepository>();
         members.Setup(x => x.GetActiveObjectiveIdsForEmployeeInProjectAsync(TenantId, ProjectId, EmployeeId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<Guid> { ObjectiveId });
+            .ReturnsAsync(memberObjectiveIds ?? new List<Guid> { ObjectiveId });
 
         var assignments = new Mock<ITaskAssignmentRepository>();
         assignments.Setup(x => x.GetByTaskIdsAsync(It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
@@ -63,7 +65,8 @@ public sealed class GetSubtasksQueryHandlerTests
             .ReturnsAsync(totalLoggedMinutes ?? new Dictionary<Guid, int>());
 
         return new GetSubtasksQueryHandler(currentUser.Object, identity.Object, tasks.Object,
-            projects.Object, members.Object, permissions.Object, assignments.Object, sessions.Object);
+            projects.Object, members.Object, permissions.Object, assignments.Object, sessions.Object,
+            WorkHierarchyServiceMocks.WithModules(modules ?? Array.Empty<ONEVO.Domain.Features.WorkManagement.Objectives.Entities.Objective>()).Object);
     }
 
     [Fact]
@@ -109,6 +112,22 @@ public sealed class GetSubtasksQueryHandlerTests
         Assert.Equal(EmployeeId, response.OpenClockSessionEmployeeId);
         Assert.Equal(clockInAt, response.OpenClockSessionClockInAt);
         Assert.Equal(45, response.TotalLoggedMinutes);
+    }
+
+    [Fact]
+    public async Task Handle_MemberOfAncestorModule_ReturnsSubtasks()
+    {
+        var root = Guid.NewGuid();
+        var parent = Task(ParentTaskId, ObjectiveId, "Parent");
+        var child = Task(Guid.NewGuid(), ObjectiveId, "Child", ParentTaskId);
+
+        var result = await Build(parent, new[] { child }, canRead: false,
+                memberObjectiveIds: new[] { root },
+                modules: new[] { WorkHierarchyServiceMocks.Module(root, null), WorkHierarchyServiceMocks.Module(ObjectiveId, root) })
+            .Handle(new GetSubtasksQuery(ParentTaskId), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Single(result.Value!);
     }
 
     [Fact]
