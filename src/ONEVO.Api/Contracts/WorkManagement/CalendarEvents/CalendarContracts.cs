@@ -4,11 +4,11 @@ namespace ONEVO.Api.Contracts.WorkManagement.CalendarEvents;
 
 public sealed record CreateCalendarEventRequest(
     string Name, string Color, DateOnly StartDate, DateOnly EndDate,
-    List<Guid> ObjectiveIds, List<Guid> TaskIds);
+    List<Guid> ObjectiveIds, List<Guid> TaskIds, string? Description = null);
 
 public sealed record UpdateCalendarEventRequest(
     string? Name, string? Color, DateOnly? StartDate, DateOnly? EndDate,
-    List<Guid>? ObjectiveIds, List<Guid>? TaskIds);
+    List<Guid>? ObjectiveIds, List<Guid>? TaskIds, string? Description = null);
 
 public sealed record ProjectCalendarEventLinkViewModel(
     Guid EventId,
@@ -53,11 +53,19 @@ public sealed record CalendarEventViewModel(
     string Status,
     DateOnly StartDate,
     DateOnly EndDate,
+    string? Description,
     IReadOnlyList<Guid> ObjectiveIds,
     IReadOnlyList<Guid> TaskIds,
     DateTimeOffset CreatedAt,
     Guid? ArchivedById,
     DateTimeOffset? ArchivedAt);
+
+public sealed record CalendarEventDetailViewModel(
+    Guid Id, Guid ProjectId, string Name, string Color, string Status,
+    DateOnly StartDate, DateOnly EndDate, string? Description,
+    Guid CreatedById, string? CreatedByName,
+    IReadOnlyList<Guid> ObjectiveIds, IReadOnlyList<Guid> TaskIds,
+    DateTimeOffset CreatedAt, Guid? ArchivedById, DateTimeOffset? ArchivedAt);
 
 public static class CalendarViewModelMapper
 {
@@ -75,6 +83,11 @@ public static class CalendarViewModelMapper
 
     public static CalendarEventViewModel ToViewModel(this CalendarEventResponse response)
         => new(response.Id, response.ProjectId, response.Name, response.Color, response.Status,
-            response.StartDate, response.EndDate, response.ObjectiveIds, response.TaskIds,
+            response.StartDate, response.EndDate, response.Description, response.ObjectiveIds, response.TaskIds,
             response.CreatedAt, response.ArchivedById, response.ArchivedAt);
+
+    public static CalendarEventDetailViewModel ToViewModel(this CalendarEventDetailResponse response)
+        => new(response.Id, response.ProjectId, response.Name, response.Color, response.Status,
+            response.StartDate, response.EndDate, response.Description, response.CreatedById, response.CreatedByName,
+            response.ObjectiveIds, response.TaskIds, response.CreatedAt, response.ArchivedById, response.ArchivedAt);
 }

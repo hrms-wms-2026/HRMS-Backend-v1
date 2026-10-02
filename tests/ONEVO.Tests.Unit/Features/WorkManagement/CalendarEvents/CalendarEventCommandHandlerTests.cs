@@ -148,6 +148,18 @@ public sealed class CalendarEventCommandHandlerTests
         Assert.Equal(404, result.StatusCode);
     }
 
+    [Fact]
+    public async Task Create_PersistsDescription()
+    {
+        var h = new CreateHarness();
+        h.WithObjectives(Objective());
+
+        var result = await h.Handle(NewCreate(description: "Covers the Q3 release scope."));
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("Covers the Q3 release scope.", result.Value!.Description);
+    }
+
     // ----- Update -----
 
     [Fact]
@@ -269,9 +281,9 @@ public sealed class CalendarEventCommandHandlerTests
     // ================= helpers =================
 
     private static CreateCalendarEventCommand NewCreate(
-        IReadOnlyList<Guid>? objectiveIds = null, IReadOnlyList<Guid>? taskIds = null)
+        IReadOnlyList<Guid>? objectiveIds = null, IReadOnlyList<Guid>? taskIds = null, string? description = null)
         => new(ProjectId, "Launch", "#ABCDEF", WindowStart, WindowEnd,
-            objectiveIds ?? Array.Empty<Guid>(), taskIds ?? Array.Empty<Guid>());
+            objectiveIds ?? Array.Empty<Guid>(), taskIds ?? Array.Empty<Guid>(), description);
 
     private static (Mock<ICurrentUser> CurrentUser, Mock<ICallerIdentityResolver> Identity) UserContext()
     {

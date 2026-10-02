@@ -108,6 +108,7 @@ public sealed class CreateCalendarEventCommandHandler : IRequestHandler<CreateCa
             ProjectId = request.ProjectId,
             Name = request.Name.Trim(),
             Color = request.Color.Trim(),
+            Description = request.Description?.Trim(),
             StartDate = startDate,
             EndDate = endDate,
             Status = CalendarEventStatuses.Active,
@@ -158,8 +159,8 @@ public sealed class CreateCalendarEventCommandHandler : IRequestHandler<CreateCa
     internal static CalendarEventResponse ToResponse(
         CalendarEvent calendarEvent, IReadOnlyList<Guid> objectiveIds, IReadOnlyList<Guid> taskIds)
         => new(calendarEvent.Id, calendarEvent.ProjectId, calendarEvent.Name, calendarEvent.Color,
-            calendarEvent.Status, calendarEvent.StartDate, calendarEvent.EndDate, objectiveIds, taskIds,
-            calendarEvent.CreatedAt, calendarEvent.ArchivedById, calendarEvent.ArchivedAt);
+            calendarEvent.Status, calendarEvent.StartDate, calendarEvent.EndDate, calendarEvent.Description,
+            objectiveIds, taskIds, calendarEvent.CreatedAt, calendarEvent.ArchivedById, calendarEvent.ArchivedAt);
 
     private sealed record ActorResult(bool IsSuccess, Guid EmployeeId, string? Error, int? StatusCode)
     {

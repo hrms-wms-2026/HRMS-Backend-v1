@@ -139,6 +139,7 @@ public sealed class UpdateCalendarEventCommandHandler : IRequestHandler<UpdateCa
 
         calendarEvent.Name = request.Name is null ? calendarEvent.Name : request.Name.Trim();
         calendarEvent.Color = request.Color is null ? calendarEvent.Color : request.Color.Trim();
+        calendarEvent.Description = request.Description is null ? calendarEvent.Description : request.Description.Trim();
         calendarEvent.StartDate = startDate;
         calendarEvent.EndDate = endDate;
 
