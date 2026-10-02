@@ -28,7 +28,8 @@ public sealed record ProjectCalendarItemResponse(
     bool IsActive,
     bool IsAchieved,
     bool CanEdit,
-    IReadOnlyList<ProjectCalendarEventLink> Events);
+    IReadOnlyList<ProjectCalendarEventLink> Events,
+    int? ProgressPercent);
 
 /// <summary>One translucent band drawn across its date span on the project calendar.</summary>
 public sealed record ProjectCalendarEventBand(

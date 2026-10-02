@@ -30,7 +30,8 @@ public sealed record ProjectCalendarModuleViewModel(
     bool IsActive,
     bool IsAchieved,
     bool CanEdit,
-    IReadOnlyList<ProjectCalendarEventLinkViewModel> Events);
+    IReadOnlyList<ProjectCalendarEventLinkViewModel> Events,
+    int? ProgressPercent);
 
 public sealed record ProjectCalendarEventBandViewModel(
     Guid EventId,
@@ -67,7 +68,8 @@ public static class CalendarViewModelMapper
                 m.StartDate, m.EndDate, m.IsActive, m.IsAchieved, m.CanEdit,
                 m.Events.Select(e => new ProjectCalendarEventLinkViewModel(
                     e.EventId, e.EventName, e.EventColor, e.EventStartDate, e.EventEndDate,
-                    e.Membership, e.TasksInEventCount, e.TaskTotalCount)).ToList())).ToList(),
+                    e.Membership, e.TasksInEventCount, e.TaskTotalCount)).ToList(),
+                m.ProgressPercent)).ToList(),
             response.Bands.Select(b => new ProjectCalendarEventBandViewModel(
                 b.EventId, b.Name, b.Color, b.StartDate, b.EndDate, b.CanEdit)).ToList());
 
