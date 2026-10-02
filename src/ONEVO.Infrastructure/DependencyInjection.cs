@@ -386,6 +386,8 @@ public static class DependencyInjection
         services.AddScoped<EfTaskStatusChangeLogRepository>();
         services.AddScoped<ITaskStatusChangeLogRepository>(sp => sp.GetRequiredService<EfTaskStatusChangeLogRepository>());
         services.AddScoped<ITaskStatusChangeAccessService, TaskStatusChangeAccessService>();
+        services.AddScoped<ONEVO.Application.Features.WorkManagement.Leadership.Services.IWorkApprovalEligibility,
+            ONEVO.Application.Features.WorkManagement.Leadership.Services.WorkApprovalEligibility>();
         services.AddScoped<ONEVO.Application.Features.WorkManagement.Leadership.Services.IWorkLeadershipService,
             ONEVO.Application.Features.WorkManagement.Leadership.Services.WorkLeadershipService>();
         services.AddScoped<ITaskStatusChangeRequestConflictSweeper, TaskStatusChangeRequestConflictSweeper>();
