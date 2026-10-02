@@ -1,6 +1,7 @@
 using Moq;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Permission.ServiceInterfaces;
+using ONEVO.Application.Features.WorkManagement.Approvals.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
@@ -24,7 +25,10 @@ public sealed class GetSubtasksQueryHandlerTests
     private static GetSubtasksQueryHandler Build(
         WorkTask? parent, IReadOnlyList<WorkTask> children, bool canRead = true,
         IReadOnlyDictionary<Guid, OpenTaskClockingSessionSummary>? openSessions = null,
-        IReadOnlyDictionary<Guid, int>? totalLoggedMinutes = null)
+        IReadOnlyDictionary<Guid, int>? totalLoggedMinutes = null,
+        IReadOnlyList<Guid>? memberObjectiveIds = null,
+        ONEVO.Domain.Features.WorkManagement.Objectives.Entities.Objective[]? modules = null,
+        IReadOnlySet<Guid>? pendingTaskIds = null)
     {
         var currentUser = new Mock<ICurrentUser>();
         currentUser.SetupGet(x => x.IsAuthenticated).Returns(true);
@@ -50,7 +54,7 @@ public sealed class GetSubtasksQueryHandlerTests
 
         var members = new Mock<IProjectMemberRepository>();
         members.Setup(x => x.GetActiveObjectiveIdsForEmployeeInProjectAsync(TenantId, ProjectId, EmployeeId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<Guid> { ObjectiveId });
+            .ReturnsAsync(memberObjectiveIds ?? new List<Guid> { ObjectiveId });
 
         var assignments = new Mock<ITaskAssignmentRepository>();
         assignments.Setup(x => x.GetByTaskIdsAsync(It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
@@ -62,8 +66,15 @@ public sealed class GetSubtasksQueryHandlerTests
         sessions.Setup(x => x.GetTotalClosedSessionMinutesForTasksAsync(TenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(totalLoggedMinutes ?? new Dictionary<Guid, int>());
 
+        var approvalRequests = new Mock<IWorkApprovalRequestRepository>();
+        approvalRequests.Setup(x => x.GetPendingTargetIdsAsync(
+                TenantId, It.IsAny<string>(), It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(pendingTaskIds ?? new HashSet<Guid>());
+
         return new GetSubtasksQueryHandler(currentUser.Object, identity.Object, tasks.Object,
-            projects.Object, members.Object, permissions.Object, assignments.Object, sessions.Object);
+            projects.Object, members.Object, permissions.Object, assignments.Object, sessions.Object,
+            WorkHierarchyServiceMocks.WithModules(modules ?? Array.Empty<ONEVO.Domain.Features.WorkManagement.Objectives.Entities.Objective>()).Object,
+            approvalRequests.Object);
     }
 
     [Fact]
@@ -109,6 +120,34 @@ public sealed class GetSubtasksQueryHandlerTests
         Assert.Equal(EmployeeId, response.OpenClockSessionEmployeeId);
         Assert.Equal(clockInAt, response.OpenClockSessionClockInAt);
         Assert.Equal(45, response.TotalLoggedMinutes);
+    }
+
+    [Fact]
+    public async Task Handle_MemberOfAncestorModule_ReturnsSubtasks()
+    {
+        var root = Guid.NewGuid();
+        var parent = Task(ParentTaskId, ObjectiveId, "Parent");
+        var child = Task(Guid.NewGuid(), ObjectiveId, "Child", ParentTaskId);
+
+        var result = await Build(parent, new[] { child }, canRead: false,
+                memberObjectiveIds: new[] { root },
+                modules: new[] { WorkHierarchyServiceMocks.Module(root, null), WorkHierarchyServiceMocks.Module(ObjectiveId, root) })
+            .Handle(new GetSubtasksQuery(ParentTaskId), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Single(result.Value!);
+    }
+
+    [Fact]
+    public async Task Handle_FlagsTheChildWithAPendingApprovalRequest()
+    {
+        var parent = Task(ParentTaskId, ObjectiveId, "Parent");
+        var child = Task(Guid.NewGuid(), ObjectiveId, "Child", ParentTaskId);
+
+        var result = await Build(parent, new[] { child }, pendingTaskIds: new HashSet<Guid> { child.Id })
+            .Handle(new GetSubtasksQuery(ParentTaskId), CancellationToken.None);
+
+        Assert.True(Assert.Single(result.Value!).HasPendingApproval);
     }
 
     [Fact]

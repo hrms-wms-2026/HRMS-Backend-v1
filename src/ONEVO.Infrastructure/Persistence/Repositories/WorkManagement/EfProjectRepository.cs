@@ -37,6 +37,16 @@ public class EfProjectRepository : IProjectRepository
             .FirstOrDefaultAsync(p => p.TenantId == tenantId && p.Id == id, ct);
     }
 
+    public async Task<IReadOnlyList<Project>> GetActiveByIdsForTenantAsync(Guid tenantId, IReadOnlyCollection<Guid> ids, CancellationToken ct = default)
+    {
+        if (ids.Count == 0)
+            return Array.Empty<Project>();
+
+        return await _db.Projects.AsNoTracking()
+            .Where(p => p.TenantId == tenantId && p.IsActive && ids.Contains(p.Id))
+            .ToListAsync(ct);
+    }
+
     public void Update(Project project)
     {
         _db.Projects.Update(project);
@@ -96,4 +106,9 @@ public class EfProjectRepository : IProjectRepository
         var ids = projectIds.ToList();
         return await _db.Projects.AsNoTracking().Where(p => p.TenantId == tenantId && ids.Contains(p.Id)).ToListAsync(ct);
     }
+
+    public async Task<IReadOnlyList<Project>> ListActiveAcrossTenantsAsync(CancellationToken ct = default)
+        => await _db.Projects.AsNoTracking()
+            .Where(p => p.IsActive && !p.IsAchieved && !p.IsDeleted)
+            .ToListAsync(ct);
 }

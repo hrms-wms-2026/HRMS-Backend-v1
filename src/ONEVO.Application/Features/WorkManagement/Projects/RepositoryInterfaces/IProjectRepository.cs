@@ -22,6 +22,9 @@ public interface IProjectRepository
     /// </summary>
     Task<Project?> GetTrackedByIdForTenantAsync(Guid tenantId, Guid id, CancellationToken ct = default);
 
+    /// <summary>Active (IsActive) projects among the given ids, not-soft-deleted, tenant-scoped.</summary>
+    Task<IReadOnlyList<Project>> GetActiveByIdsForTenantAsync(Guid tenantId, IReadOnlyCollection<Guid> ids, CancellationToken ct = default);
+
     void Update(Project project);
 
     /// <summary>
@@ -43,4 +46,8 @@ public interface IProjectRepository
     Task<long> IncrementAndGetNextTaskNumberAsync(Guid tenantId, Guid projectId, CancellationToken ct = default);
 
     Task<IReadOnlyList<Project>> ListByIdsAsync(Guid tenantId, IReadOnlyCollection<Guid> projectIds, CancellationToken ct = default);
+
+    /// <summary>Tenant-unscoped (admin mode) - active, not-achieved projects of every tenant, for the
+    /// hourly ProjectMonitorJob sweep.</summary>
+    Task<IReadOnlyList<Project>> ListActiveAcrossTenantsAsync(CancellationToken ct = default);
 }

@@ -19,6 +19,5 @@ public class TaskEditLogConfiguration : IEntityTypeConfiguration<TaskEditLog>
             .HasDatabaseName("ix_task_edit_logs_tenant_id_task_id_changed_at");
 
         builder.HasOne<WorkTask>().WithMany().HasForeignKey(log => log.TaskId).OnDelete(DeleteBehavior.Restrict);
-        builder.HasOne<TaskEditRequest>().WithMany().HasForeignKey(log => log.EditRequestId).OnDelete(DeleteBehavior.Restrict);
     }
 }

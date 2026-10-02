@@ -3,16 +3,21 @@ using MediatR;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.WorkManagement.Approvals.Services;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
-using ONEVO.Application.Features.WorkManagement.Objectives.Services;
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Tasks.DTOs;
 using ONEVO.Application.Features.WorkManagement.Tasks.DTOs.Responses;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.Services;
-using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
+using ONEVO.Domain.Features.WorkManagement.Approvals.Entities;
 
 namespace ONEVO.Application.Features.WorkManagement.Tasks.Commands.CreateTaskStatusChangeRequest;
 
+/// <summary>
+/// Files a project.status_template_change approval request. The root (default) module owner is the
+/// only approver and edits statuses directly instead, so this is for everyone else in the project.
+/// </summary>
 public class CreateTaskStatusChangeRequestCommandHandler
     : IRequestHandler<CreateTaskStatusChangeRequestCommand, Result<TaskStatusChangeRequestResponse>>
 {
@@ -20,26 +25,21 @@ public class CreateTaskStatusChangeRequestCommandHandler
     private readonly ICallerIdentityResolver _identity;
     private readonly IProjectRepository _projects;
     private readonly ITaskStatusRepository _statuses;
-    private readonly ITaskStatusChangeRequestRepository _requests;
     private readonly ITaskStatusChangeAccessService _access;
-    private readonly IMilestoneMembershipCoordinator _membership;
-    private readonly INotificationDispatcher _notifications;
+    private readonly IWorkApprovalEngine _approvals;
     private readonly IUnitOfWork _unitOfWork;
 
     public CreateTaskStatusChangeRequestCommandHandler(
         ICurrentUser currentUser, ICallerIdentityResolver identity, IProjectRepository projects,
-        ITaskStatusRepository statuses, ITaskStatusChangeRequestRepository requests,
-        ITaskStatusChangeAccessService access, IMilestoneMembershipCoordinator membership,
-        INotificationDispatcher notifications, IUnitOfWork unitOfWork)
+        ITaskStatusRepository statuses, ITaskStatusChangeAccessService access, IWorkApprovalEngine approvals,
+        IUnitOfWork unitOfWork)
     {
         _currentUser = currentUser;
         _identity = identity;
         _projects = projects;
         _statuses = statuses;
-        _requests = requests;
         _access = access;
-        _membership = membership;
-        _notifications = notifications;
+        _approvals = approvals;
         _unitOfWork = unitOfWork;
     }
 
@@ -85,41 +85,29 @@ public class CreateTaskStatusChangeRequestCommandHandler
 
         var names = await _identity.ResolveDisplayNamesByEmployeeIdAsync(tenantId, [callerEmployeeId.Value], ct);
         var requesterDisplayName = names.GetValueOrDefault(callerEmployeeId.Value) ?? "A teammate";
-        var approverIds = await _access.ListApproverEmployeeIdsAsync(tenantId, access.RootObjective, ct);
+        var payload = new TaskStatusTemplateChangePayload(
+            request.Changes, string.IsNullOrWhiteSpace(request.Note) ? null : request.Note.Trim());
 
         return await _unitOfWork.ExecuteInTransactionAsync(async innerCt =>
         {
-            var now = DateTimeOffset.UtcNow;
-            var entity = new TaskStatusChangeRequest
-            {
-                Id = Guid.NewGuid(), TenantId = tenantId, ProjectId = project.Id,
-                RequestedByEmployeeId = callerEmployeeId.Value,
-                ChangesJson = JsonSerializer.Serialize(request.Changes),
-                Note = string.IsNullOrWhiteSpace(request.Note) ? null : request.Note.Trim(),
-                Status = TaskStatusChangeRequestStatuses.Pending,
-                CreatedById = _currentUser.UserId, CreatedAt = now
-            };
-
-            await _requests.AddAsync(entity, innerCt);
-
-            foreach (var approverId in approverIds)
-            {
-                var approver = await _membership.GetActiveAssigneeAsync(tenantId, approverId, innerCt);
-                if (approver is null) continue;
-                await _notifications.SendTemplatedAsync(
-                    tenantId, approver.UserId, "work_task_status_change_request_created",
-                    new Dictionary<string, string>
-                    {
-                        ["requesterName"] = requesterDisplayName,
-                        ["projectName"] = project.Name
-                    },
-                    "task_status_change_request", entity.Id, innerCt);
-            }
+            var decision = await _approvals.SubmitAsync(new WorkAction(
+                tenantId, project.Id, callerEmployeeId.Value,
+                WorkActionTypes.ProjectStatusTemplateChange, WorkTargetTypes.Project,
+                TargetId: null, TargetTitle: project.Name,
+                TargetModuleId: access.RootObjective.Id, PositionModuleId: access.RootObjective.Id,
+                PayloadJson: JsonSerializer.Serialize(payload), TargetUpdatedAt: null), innerCt);
+            if (!decision.IsSuccess)
+                return Result<TaskStatusChangeRequestResponse>.Failure(decision.Error!, decision.StatusCode ?? 400);
+            if (decision.Value!.IsDirect) // cannot happen: access said the caller is not the root owner
+                return Result<TaskStatusChangeRequestResponse>.Failure(
+                    "You can edit task statuses directly - no request needed.", 400);
 
             await _unitOfWork.SaveChangesAsync(innerCt);
 
-            return Result<TaskStatusChangeRequestResponse>.Success(
-                TaskStatusChangeRequestResponse.From(entity, requesterDisplayName, canDecide: false, canCancel: true));
+            return Result<TaskStatusChangeRequestResponse>.Success(new TaskStatusChangeRequestResponse(
+                decision.Value.ApprovalRequestId!.Value, project.Id, WorkApprovalRequestStatuses.Pending,
+                callerEmployeeId.Value, requesterDisplayName, payload.Note, payload.Changes,
+                DateTimeOffset.UtcNow, null, null, null, CanDecide: false, CanCancel: true));
         }, ct);
     }
 }

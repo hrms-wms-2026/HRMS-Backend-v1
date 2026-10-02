@@ -39,6 +39,14 @@ public interface IExceptionRepository
 
     Task<MonitoringException?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct);
 
+    /// <summary>Exception cases for this employee with fromUtc &lt;= DetectedAt &lt; toUtcExclusive, any status.</summary>
+    Task<int> CountDetectedInRangeAsync(
+        Guid tenantId, Guid employeeId, DateTimeOffset fromUtc, DateTimeOffset toUtcExclusive, CancellationToken ct);
+
+    /// <summary>The cases <see cref="CountDetectedInRangeAsync"/> counts, newest first, at most <paramref name="take"/>.</summary>
+    Task<IReadOnlyList<MonitoringException>> ListDetectedInRangeAsync(
+        Guid tenantId, Guid employeeId, DateTimeOffset fromUtc, DateTimeOffset toUtcExclusive, int take, CancellationToken ct);
+
     /// <summary>Distinct employees who have any exception case in the tenant - the candidate set a
     /// manager's approver scope is resolved over before listing.</summary>
     Task<IReadOnlyList<Guid>> ListEmployeeIdsWithExceptionsAsync(Guid tenantId, CancellationToken ct);

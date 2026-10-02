@@ -1,6 +1,7 @@
 using MediatR;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.CoreHr.Employee.Helpers;
 using ONEVO.Application.Features.CoreHr.Employee.Models;
 using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.EmployeeAuthority.Models;
@@ -44,7 +45,8 @@ public sealed class AttendanceReadHandler(
     IClockInPolicyRepository? policies = null,
     IPositionAssignmentRepository? positionAssignments = null,
     ILeaveTypeRepository? leaveTypes = null,
-    ILeaveVisibilityScopeProvider? leaveVisibilityScope = null)
+    ILeaveVisibilityScopeProvider? leaveVisibilityScope = null,
+    IEmployeeAttendancePeriodReader? periodReader = null)
     : IRequestHandler<GetAttendanceTodayQuery, Result<AttendanceTodayResponse>>,
       IRequestHandler<GetMyAttendanceHistoryQuery, Result<PagedResult<AttendanceHistoryRow>>>,
       IRequestHandler<GetCoveredAttendanceHistoryQuery, Result<PagedResult<AttendanceHistoryRow>>>,
@@ -55,11 +57,6 @@ public sealed class AttendanceReadHandler(
     private const string AttendanceReadPermission = "attendance:read";
     private static readonly TimeSpan ScreenshotUrlExpiry = TimeSpan.FromMinutes(15);
     private const int MaxScreenshotsPerDay = 100;
-
-    // Kept as a plain code constant (not a configurable policy field) because this is a
-    // display-only summary, not the payroll-affecting ClockInPolicy.LateArrivalMinute tiers -
-    // coupling this count to that graduated deduction schedule would be the wrong dependency.
-    private static readonly TimeSpan LateOrEarlyGrace = TimeSpan.Zero;
 
     public Task<Result<AttendanceTodayResponse>> Handle(GetAttendanceTodayQuery _, CancellationToken ct)
         => todayState.GetTodayAsync(ct);
@@ -97,6 +94,17 @@ public sealed class AttendanceReadHandler(
         if (employee is null)
             return Result<AttendanceMonthlySummaryResponse>.NotFound("Current employee record was not found.");
 
+        // Working days come from the expected-workday calendar (legal entity week, holidays,
+        // hire/termination), the same source as the employee Overview - not from which rows exist.
+        if (periodReader is not null)
+        {
+            var data = await periodReader.LoadAsync(currentUser.TenantId, employee.Id, employee.LegalEntityId,
+                new EmployeePeriod(query.From, query.To), ct);
+            var c = AttendancePeriodCalculator.Classify(data);
+            return Result<AttendanceMonthlySummaryResponse>.Success(new AttendanceMonthlySummaryResponse(
+                c.WorkingDays, c.Attended, c.Late, c.EarlyDepartures, c.MissingClockOuts));
+        }
+
         var (records, _) = await attendance.ListRecordsAsync(
             currentUser.TenantId, [employee.Id], query.From, query.To, 0, 62, ct);
 
@@ -106,43 +114,11 @@ public sealed class AttendanceReadHandler(
         var timezone = TryFindTimezone(legalEntity?.Timezone ?? records.FirstOrDefault()?.ScheduleTimezone);
         var now = dateTimeProvider?.UtcNow ?? DateTimeOffset.UtcNow;
 
-        var workingDays = 0;
-        var daysPresent = 0;
-        var lateArrivals = 0;
-        var earlyDepartures = 0;
-        var missingClockOuts = 0;
-
-        foreach (var record in records)
-        {
-            if (record.ExpectedWorkingDay)
-                workingDays += 1;
-
-            if (record.ActualStart is null)
-                continue;
-
-            daysPresent += 1;
-
-            if (record.ScheduledStart is TimeOnly scheduledStart)
-            {
-                var localStart = TimeZoneInfo.ConvertTime(record.ActualStart.Value, timezone).TimeOfDay;
-                if (localStart - scheduledStart.ToTimeSpan() > LateOrEarlyGrace)
-                    lateArrivals += 1;
-            }
-
-            if (record.ActualEnd is DateTimeOffset actualEnd && record.ScheduledEnd is TimeOnly scheduledEnd)
-            {
-                var localEnd = TimeZoneInfo.ConvertTime(actualEnd, timezone).TimeOfDay;
-                if (scheduledEnd.ToTimeSpan() - localEnd > LateOrEarlyGrace)
-                    earlyDepartures += 1;
-            }
-
-            if (record.ActualEnd is null
-                && now - record.ActualStart.Value >= AttendanceDayStatusResolver.MissingClockOutThreshold)
-                missingClockOuts += 1;
-        }
+        var counts = AttendancePeriodCalculator.Count(records, timezone, now);
 
         return Result<AttendanceMonthlySummaryResponse>.Success(
-            new AttendanceMonthlySummaryResponse(workingDays, daysPresent, lateArrivals, earlyDepartures, missingClockOuts));
+            new AttendanceMonthlySummaryResponse(
+                counts.WorkingDays, counts.DaysPresent, counts.LateArrivals, counts.EarlyDepartures, counts.MissingClockOuts));
     }
 
     public async Task<Result<PagedResult<AttendanceHistoryRow>>> Handle(

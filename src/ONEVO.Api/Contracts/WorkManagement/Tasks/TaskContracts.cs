@@ -13,12 +13,6 @@ public sealed record EditTaskRequest(
     DateOnly? DueDate, decimal? EstimatedHours, int? StoryPoints, int? ProgressPercent, string? Reason,
     IReadOnlyList<Guid>? AttachmentFileIds = null, Guid? SprintId = null);
 
-public sealed record CreateTaskEditRequestRequest(
-    string Title, string? Description, string Priority,
-    DateOnly? DueDate, decimal? EstimatedHours, int? StoryPoints, int? ProgressPercent, string? Reason);
-
-public sealed record RejectTaskEditRequestRequest(string Comment);
-
 public sealed record MoveTaskStatusRequest(Guid NewStatusId);
 
 public sealed record PushTaskRequest(int Percent, string? Reason);
@@ -75,7 +69,8 @@ public sealed record WorkTaskViewModel(
     IReadOnlyList<TaskAttachmentViewModel> Attachments,
     IReadOnlyList<TaskAssigneeIdentityViewModel> Assignees,
     Guid? ParentTaskId, int SubtaskTotalCount, int SubtaskCompletedCount,
-    IReadOnlyList<Guid> SubtaskAssigneeEmployeeIds, DateTimeOffset CreatedAt);
+    IReadOnlyList<Guid> SubtaskAssigneeEmployeeIds, DateTimeOffset CreatedAt,
+    bool HasPendingApproval = false);
 
 public sealed record TaskStatusViewModel(
     Guid Id, string Name, int DisplayOrder, bool RequiresApproval,
@@ -85,16 +80,6 @@ public sealed record TaskStatusViewModel(
 public sealed record TaskStatusMoveInfoViewModel(Guid Id, string Name, string Color);
 
 public sealed record ClockInTaskViewModel(TaskStatusMoveInfoViewModel? MovedToStatus);
-
-public sealed record TaskEditRequestViewModel(
-    Guid Id, Guid TaskId, string Status, TaskEditRequestPayload Payload,
-    string RequestedByName, DateTimeOffset CreatedAt);
-
-public static class TaskEditRequestViewModelMapper
-{
-    public static TaskEditRequestViewModel ToViewModel(this TaskEditRequestResponse dto) =>
-        new(dto.Id, dto.TaskId, dto.Status, dto.Payload, dto.RequestedByName, dto.CreatedAt);
-}
 
 public sealed record ObjectiveDeadlineViewModel(Guid ObjectiveId, string Title, DateOnly EndDate);
 

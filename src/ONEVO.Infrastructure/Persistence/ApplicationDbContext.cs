@@ -40,10 +40,12 @@ using ONEVO.Domain.Features.Monitoring.WorkSessions.Entities;
 using ONEVO.Domain.Features.Storage.EntityAssets.Entities;
 using ONEVO.Domain.Features.Storage.File.Entities;
 using ONEVO.Domain.Features.Storage.Quota.Entities;
+using ONEVO.Domain.Features.WorkManagement.Approvals.Entities;
+using ONEVO.Domain.Features.WorkManagement.Notifications.Entities;
+using ONEVO.Domain.Features.WorkManagement.Monitoring.Entities;
 using ONEVO.Domain.Features.WorkManagement.CalendarEvents.Entities;
 using ONEVO.Domain.Features.WorkManagement.Labels.Entities;
 
-using ONEVO.Domain.Features.WorkManagement.ObjectiveChangeRequests.Entities;
 using ONEVO.Domain.Features.WorkManagement.Objectives.Entities;
 using ONEVO.Domain.Features.WorkManagement.ProjectInvitations.Entities;
 using ONEVO.Domain.Features.WorkManagement.ProjectMembers.Entities;
@@ -299,7 +301,6 @@ public class ApplicationDbContext : DbContext
     public DbSet<CalendarEventObjective> CalendarEventObjectives => Set<CalendarEventObjective>();
     public DbSet<CalendarEventTask> CalendarEventTasks => Set<CalendarEventTask>();
 
-    public DbSet<ObjectiveChangeRequest> ObjectiveChangeRequests => Set<ObjectiveChangeRequest>();
     public DbSet<ProjectMember> ProjectMembers => Set<ProjectMember>();
     public DbSet<ProjectMemberInvitation> ProjectMemberInvitations => Set<ProjectMemberInvitation>();
     public DbSet<VersionStatus> VersionStatuses => Set<VersionStatus>();
@@ -312,11 +313,12 @@ public class ApplicationDbContext : DbContext
     public DbSet<Sprint> Sprints => Set<Sprint>();
     public DbSet<SprintActivityLog> SprintActivityLogs => Set<SprintActivityLog>();
     public DbSet<TaskAssignment> TaskAssignments => Set<TaskAssignment>();
-    public DbSet<TaskCreationRequest> TaskCreationRequests => Set<TaskCreationRequest>();
-        public DbSet<TaskEditRequest> TaskEditRequests => Set<TaskEditRequest>();
+    public DbSet<WorkApprovalRequest> WorkApprovalRequests => Set<WorkApprovalRequest>();
+    public DbSet<WorkApprovalComment> WorkApprovalComments => Set<WorkApprovalComment>();
+    public DbSet<WorkNotificationLog> WorkNotificationLogs => Set<WorkNotificationLog>();
+    public DbSet<MonitorAlert> MonitorAlerts => Set<MonitorAlert>();
     public DbSet<TaskEditLog> TaskEditLogs => Set<TaskEditLog>();
     public DbSet<TaskStatusChangeLog> TaskStatusChangeLogs => Set<TaskStatusChangeLog>();
-    public DbSet<TaskStatusChangeRequest> TaskStatusChangeRequests => Set<TaskStatusChangeRequest>();
     public DbSet<TaskClockingSession> TaskClockingSessions => Set<TaskClockingSession>();
     public DbSet<TaskPercentageLog> TaskPercentageLogs => Set<TaskPercentageLog>();
     public DbSet<TaskComment> TaskComments => Set<TaskComment>();

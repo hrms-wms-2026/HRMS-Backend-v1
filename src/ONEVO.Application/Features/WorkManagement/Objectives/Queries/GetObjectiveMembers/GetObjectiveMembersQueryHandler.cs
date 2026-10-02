@@ -8,6 +8,8 @@ using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.ProjectInvitations.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
 
+using ONEVO.Application.Features.WorkManagement.Hierarchy;
+
 namespace ONEVO.Application.Features.WorkManagement.Objectives.Queries.GetObjectiveMembers;
 
 public class GetObjectiveMembersQueryHandler : IRequestHandler<GetObjectiveMembersQuery, Result<ObjectiveMemberListResponse>>
@@ -18,10 +20,11 @@ public class GetObjectiveMembersQueryHandler : IRequestHandler<GetObjectiveMembe
     private readonly IProjectMemberRepository _members;
     private readonly IProjectMemberInvitationRepository _invitations;
     private readonly IPermissionResolver _permissionResolver;
+    private readonly IModuleReadAccess _readAccess;
 
     public GetObjectiveMembersQueryHandler(
         ICurrentUser currentUser, ICallerIdentityResolver identity, IObjectiveRepository objectives,
-        IProjectMemberRepository members, IProjectMemberInvitationRepository invitations, IPermissionResolver permissionResolver)
+        IProjectMemberRepository members, IProjectMemberInvitationRepository invitations, IPermissionResolver permissionResolver, IModuleReadAccess readAccess)
     {
         _currentUser = currentUser;
         _identity = identity;
@@ -29,6 +32,7 @@ public class GetObjectiveMembersQueryHandler : IRequestHandler<GetObjectiveMembe
         _members = members;
         _invitations = invitations;
         _permissionResolver = permissionResolver;
+        _readAccess = readAccess;
     }
 
     public async Task<Result<ObjectiveMemberListResponse>> Handle(GetObjectiveMembersQuery request, CancellationToken ct)
@@ -54,19 +58,7 @@ public class GetObjectiveMembersQueryHandler : IRequestHandler<GetObjectiveMembe
 
         if (!hasReadPermission)
         {
-            var selfAndAncestorIds = new List<Guid> { objective.Id };
-            var cursor = objective;
-            while (cursor.ParentObjectiveId is not null)
-            {
-                var parent = await _objectives.GetByIdForTenantAsync(tenantId, cursor.ParentObjectiveId.Value, ct);
-                if (parent is null)
-                    break;
-
-                selfAndAncestorIds.Add(parent.Id);
-                cursor = parent;
-            }
-
-            var hasAccess = await _members.HasActiveMembershipForAnyObjectiveAsync(tenantId, objective.ProjectId, callerEmployeeId.Value, selfAndAncestorIds, ct);
+            var hasAccess = await _readAccess.CanReadAsync(tenantId, objective, callerEmployeeId.Value, ct);
             if (!hasAccess)
                 return Result<ObjectiveMemberListResponse>.Forbidden("You do not have access to this milestone's members.");
         }

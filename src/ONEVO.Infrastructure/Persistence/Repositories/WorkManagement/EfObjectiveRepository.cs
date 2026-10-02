@@ -110,6 +110,11 @@ public class EfObjectiveRepository : IObjectiveRepository
             .ToListAsync(ct);
     }
 
+    public async Task<IReadOnlyList<Objective>> ListActiveOwnedByEmployeeAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default)
+        => await _db.Objectives.AsNoTracking()
+            .Where(o => o.TenantId == tenantId && o.OwnerId == employeeId && o.IsActive)
+            .ToListAsync(ct);
+
     public void Update(Objective objective)
     {
         _db.Objectives.Update(objective);

@@ -22,12 +22,11 @@ public class CreateObjectiveCommandHandler : IRequestHandler<CreateObjectiveComm
     private readonly IObjectiveRepository _objectives;
     private readonly IUnitOfWork _unitOfWork;
     private readonly IMilestoneMembershipCoordinator _membership;
-    private readonly IPermissionAutoGrantService _autoGrant;
     private readonly IProjectMemberInvitationRepository _invitations;
 
     public CreateObjectiveCommandHandler(
         ICurrentUser currentUser, ICallerIdentityResolver identity, IObjectiveRepository objectives, IUnitOfWork unitOfWork,
-        IMilestoneMembershipCoordinator membership, IPermissionAutoGrantService autoGrant,
+        IMilestoneMembershipCoordinator membership,
         IProjectMemberInvitationRepository invitations)
     {
         _currentUser = currentUser;
@@ -35,7 +34,6 @@ public class CreateObjectiveCommandHandler : IRequestHandler<CreateObjectiveComm
         _objectives = objectives;
         _unitOfWork = unitOfWork;
         _membership = membership;
-        _autoGrant = autoGrant;
         _invitations = invitations;
     }
 
@@ -110,6 +108,9 @@ public class CreateObjectiveCommandHandler : IRequestHandler<CreateObjectiveComm
                 Description = request.Description?.Trim(),
                 OwnerId = callerEmployeeId.Value,
                 ReportingManagerId = callerEmployeeId.Value,
+                // Spec §5.2: a Module's creator position is its parent - the parent's owner (or
+                // anyone above) acts on it directly, everyone else asks them.
+                CreatorPositionObjectiveId = parent.Id,
                 IsActive = true,
                 StartDate = request.StartDate,
                 EndDate = request.EndDate,

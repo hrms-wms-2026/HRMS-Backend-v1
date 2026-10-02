@@ -69,7 +69,6 @@ public class CreateObjectiveCommandHandlerTests
         membership.Setup(x => x.IsEffectiveManagerAsync(TenantId, ParentId, EmployeeId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(parent is not null && parent.OwnerId == EmployeeId);
 
-        var autoGrant = new Mock<IPermissionAutoGrantService>();
         var invitations = new Mock<IProjectMemberInvitationRepository>();
 
         var unitOfWork = new Mock<IUnitOfWork>();
@@ -77,13 +76,13 @@ public class CreateObjectiveCommandHandlerTests
         unitOfWork.Setup(x => x.ExecuteInTransactionAsync(It.IsAny<Func<CancellationToken, Task<Result<ObjectiveDetailResponse>>>>(), It.IsAny<CancellationToken>()))
             .Returns((Func<CancellationToken, Task<Result<ObjectiveDetailResponse>>> op, CancellationToken ct) => op(ct));
 
-        var handler = new CreateObjectiveCommandHandler(currentUser.Object, identity.Object, objectives.Object, unitOfWork.Object, membership.Object, autoGrant.Object, invitations.Object);
+        var handler = new CreateObjectiveCommandHandler(currentUser.Object, identity.Object, objectives.Object, unitOfWork.Object, membership.Object, invitations.Object);
         return (handler, objectives);
     }
 
     // Overload without `assignee`: defaults to "resolved head is a valid active employee" so
     // callers that don't care about employee-validity behavior (most tests) get the happy path.
-    private (CreateObjectiveCommandHandler Handler, Mock<IObjectiveRepository> Objectives, Mock<IMilestoneMembershipCoordinator> Membership, Mock<IPermissionAutoGrantService> AutoGrant) BuildHandlerWithMembership(
+    private (CreateObjectiveCommandHandler Handler, Mock<IObjectiveRepository> Objectives, Mock<IMilestoneMembershipCoordinator> Membership) BuildHandlerWithMembership(
         Objective? parent)
         => BuildHandlerWithMembership(parent, new Employee { Id = EmployeeId, TenantId = TenantId, UserId = UserId, EmploymentStatusId = EmploymentStatusIds.Active });
 
@@ -91,7 +90,7 @@ public class CreateObjectiveCommandHandlerTests
     // "no active employee found" (see Handle_AssignedHeadNotActiveEmployee_ReturnsBadRequest below).
     // Note: a single method with `Employee? assignee = null` can't distinguish "omitted" from
     // "explicitly null" in C#, which would make that test unwritable - hence the two overloads.
-    private (CreateObjectiveCommandHandler Handler, Mock<IObjectiveRepository> Objectives, Mock<IMilestoneMembershipCoordinator> Membership, Mock<IPermissionAutoGrantService> AutoGrant) BuildHandlerWithMembership(
+    private (CreateObjectiveCommandHandler Handler, Mock<IObjectiveRepository> Objectives, Mock<IMilestoneMembershipCoordinator> Membership) BuildHandlerWithMembership(
         Objective? parent, Employee? assignee)
     {
         var currentUser = new Mock<ICurrentUser>();
@@ -110,15 +109,14 @@ public class CreateObjectiveCommandHandlerTests
         membership.Setup(x => x.IsEffectiveManagerAsync(TenantId, ParentId, EmployeeId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(parent is not null && parent.OwnerId == EmployeeId);
 
-        var autoGrant = new Mock<IPermissionAutoGrantService>();
         var invitations = new Mock<IProjectMemberInvitationRepository>();
 
         var unitOfWork = new Mock<IUnitOfWork>();
         unitOfWork.Setup(x => x.ExecuteInTransactionAsync(It.IsAny<Func<CancellationToken, Task<Result<ObjectiveDetailResponse>>>>(), It.IsAny<CancellationToken>()))
             .Returns((Func<CancellationToken, Task<Result<ObjectiveDetailResponse>>> op, CancellationToken ct) => op(ct));
 
-        var handler = new CreateObjectiveCommandHandler(currentUser.Object, identity.Object, objectives.Object, unitOfWork.Object, membership.Object, autoGrant.Object, invitations.Object);
-        return (handler, objectives, membership, autoGrant);
+        var handler = new CreateObjectiveCommandHandler(currentUser.Object, identity.Object, objectives.Object, unitOfWork.Object, membership.Object, invitations.Object);
+        return (handler, objectives, membership);
     }
 
     [Fact]
@@ -132,6 +130,17 @@ public class CreateObjectiveCommandHandlerTests
         Assert.Equal(EmployeeId, result.Value!.OwnerId);
         Assert.Equal(EmployeeId, result.Value.ReportingManagerId);
         objectives.Verify(x => x.AddAsync(It.Is<Objective>(o => o.OwnerId == EmployeeId && o.ReportingManagerId == EmployeeId && o.ParentObjectiveId == ParentId), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Create_StampsCreatorPositionAsParent()
+    {
+        var (handler, objectives) = BuildHandler(ParentObjective(ownerId: EmployeeId));
+
+        var result = await handler.Handle(ValidCommand(), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        objectives.Verify(x => x.AddAsync(It.Is<Objective>(o => o.CreatorPositionObjectiveId == ParentId), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -185,14 +194,13 @@ public class CreateObjectiveCommandHandlerTests
         membership.Setup(x => x.IsEffectiveManagerAsync(TenantId, ParentId, EmployeeId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
 
-        var autoGrant = new Mock<IPermissionAutoGrantService>();
         var invitations = new Mock<IProjectMemberInvitationRepository>();
         var unitOfWork = new Mock<IUnitOfWork>();
         unitOfWork.Setup(x => x.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
         unitOfWork.Setup(x => x.ExecuteInTransactionAsync(It.IsAny<Func<CancellationToken, Task<Result<ObjectiveDetailResponse>>>>(), It.IsAny<CancellationToken>()))
             .Returns((Func<CancellationToken, Task<Result<ObjectiveDetailResponse>>> op, CancellationToken ct) => op(ct));
 
-        var handler = new CreateObjectiveCommandHandler(currentUser.Object, identity.Object, objectives.Object, unitOfWork.Object, membership.Object, autoGrant.Object, invitations.Object);
+        var handler = new CreateObjectiveCommandHandler(currentUser.Object, identity.Object, objectives.Object, unitOfWork.Object, membership.Object, invitations.Object);
 
         var result = await handler.Handle(ValidCommand(), CancellationToken.None);
 
@@ -249,7 +257,7 @@ public class CreateObjectiveCommandHandlerTests
     [Fact]
     public async Task Handle_ValidCreate_UpsertsMembershipForCaller()
     {
-        var (handler, _, membership, _) = BuildHandlerWithMembership(ParentObjective(ownerId: EmployeeId));
+        var (handler, _, membership) = BuildHandlerWithMembership(ParentObjective(ownerId: EmployeeId));
 
         var result = await handler.Handle(ValidCommand(), CancellationToken.None);
 
@@ -260,7 +268,7 @@ public class CreateObjectiveCommandHandlerTests
     [Fact]
     public async Task Handle_HeadUserIdInRequestIsIgnored_UpsertsMembershipForCallerNotRequestedHead()
     {
-        var (handler, _, membership, _) = BuildHandlerWithMembership(ParentObjective(ownerId: EmployeeId));
+        var (handler, _, membership) = BuildHandlerWithMembership(ParentObjective(ownerId: EmployeeId));
 
         var result = await handler.Handle(ValidCommand(headEmployeeId: OtherEmployeeId), CancellationToken.None);
 
@@ -271,22 +279,12 @@ public class CreateObjectiveCommandHandlerTests
     [Fact]
     public async Task Handle_AssignedHeadNotActiveEmployee_ReturnsBadRequest()
     {
-        var (handler, _, _, _) = BuildHandlerWithMembership(ParentObjective(ownerId: EmployeeId), assignee: null);
+        var (handler, _, _) = BuildHandlerWithMembership(ParentObjective(ownerId: EmployeeId), assignee: null);
 
         var result = await handler.Handle(ValidCommand(), CancellationToken.None);
 
         Assert.False(result.IsSuccess);
         Assert.Equal(400, result.StatusCode);
-    }
-
-    [Fact]
-    public async Task Handle_ValidCreate_DoesNotCreatePermissionOverrideForCaller()
-    {
-        var (handler, _, _, autoGrant) = BuildHandlerWithMembership(ParentObjective(ownerId: EmployeeId));
-
-        await handler.Handle(ValidCommand(), CancellationToken.None);
-
-        autoGrant.VerifyNoOtherCalls();
     }
 
     [Fact]
@@ -303,11 +301,10 @@ public class CreateObjectiveCommandHandlerTests
 
         var objectives = new Mock<IObjectiveRepository>();
         var membership = new Mock<IMilestoneMembershipCoordinator>();
-        var autoGrant = new Mock<IPermissionAutoGrantService>();
         var invitations = new Mock<IProjectMemberInvitationRepository>();
         var unitOfWork = new Mock<IUnitOfWork>();
 
-        var handler = new CreateObjectiveCommandHandler(currentUser.Object, identity.Object, objectives.Object, unitOfWork.Object, membership.Object, autoGrant.Object, invitations.Object);
+        var handler = new CreateObjectiveCommandHandler(currentUser.Object, identity.Object, objectives.Object, unitOfWork.Object, membership.Object, invitations.Object);
 
         var result = await handler.Handle(ValidCommand(), CancellationToken.None);
 
@@ -337,12 +334,11 @@ public class CreateObjectiveCommandHandlerTests
             .ReturnsAsync(true);
 
         var invitations = new Mock<IProjectMemberInvitationRepository>();
-        var autoGrant = new Mock<IPermissionAutoGrantService>();
         var unitOfWork = new Mock<IUnitOfWork>();
         unitOfWork.Setup(x => x.ExecuteInTransactionAsync(It.IsAny<Func<CancellationToken, Task<Result<ObjectiveDetailResponse>>>>(), It.IsAny<CancellationToken>()))
             .Returns((Func<CancellationToken, Task<Result<ObjectiveDetailResponse>>> op, CancellationToken ct) => op(ct));
 
-        var handler = new CreateObjectiveCommandHandler(currentUser.Object, identity.Object, objectives.Object, unitOfWork.Object, membership.Object, autoGrant.Object, invitations.Object);
+        var handler = new CreateObjectiveCommandHandler(currentUser.Object, identity.Object, objectives.Object, unitOfWork.Object, membership.Object, invitations.Object);
 
         var result = await handler.Handle(ValidCommand(headEmployeeId: OtherEmployeeId), CancellationToken.None);
 
@@ -375,12 +371,11 @@ public class CreateObjectiveCommandHandlerTests
             .ReturnsAsync(true);
 
         var invitations = new Mock<IProjectMemberInvitationRepository>();
-        var autoGrant = new Mock<IPermissionAutoGrantService>();
         var unitOfWork = new Mock<IUnitOfWork>();
         unitOfWork.Setup(x => x.ExecuteInTransactionAsync(It.IsAny<Func<CancellationToken, Task<Result<ObjectiveDetailResponse>>>>(), It.IsAny<CancellationToken>()))
             .Returns((Func<CancellationToken, Task<Result<ObjectiveDetailResponse>>> op, CancellationToken ct) => op(ct));
 
-        var handler = new CreateObjectiveCommandHandler(currentUser.Object, identity.Object, objectives.Object, unitOfWork.Object, membership.Object, autoGrant.Object, invitations.Object);
+        var handler = new CreateObjectiveCommandHandler(currentUser.Object, identity.Object, objectives.Object, unitOfWork.Object, membership.Object, invitations.Object);
 
         var result = await handler.Handle(ValidCommand(memberInvitations: new List<(Guid, string)>
         {

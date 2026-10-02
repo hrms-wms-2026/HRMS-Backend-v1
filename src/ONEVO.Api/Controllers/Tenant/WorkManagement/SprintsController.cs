@@ -1,4 +1,5 @@
 using MediatR;
+using ONEVO.Application.Common.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ONEVO.Api.Contracts.WorkManagement.Sprints;
@@ -7,9 +8,11 @@ using ONEVO.Api.Filters;
 using ONEVO.Application.Features.WorkManagement.Sprints.Commands.AchieveSprint;
 using ONEVO.Application.Features.WorkManagement.Sprints.Commands.CompleteSprint;
 using ONEVO.Application.Features.WorkManagement.Sprints.Commands.CreateSprint;
+using ONEVO.Application.Features.WorkManagement.Sprints.Commands.DeleteSprint;
 using ONEVO.Application.Features.WorkManagement.Sprints.Commands.EditSprint;
 using ONEVO.Application.Features.WorkManagement.Sprints.Commands.SetSprintTasks;
 using ONEVO.Application.Features.WorkManagement.Sprints.Commands.StartSprint;
+using ONEVO.Application.Features.WorkManagement.Sprints.DTOs.Responses;
 using ONEVO.Application.Features.WorkManagement.Sprints.Queries.GetObjectiveSprints;
 using ONEVO.Application.Features.WorkManagement.Sprints.Queries.GetProjectSprints;
 using ONEVO.Application.Features.WorkManagement.Sprints.Queries.GetSprintActivity;
@@ -27,55 +30,38 @@ public class SprintsController : ControllerBase
 
     public SprintsController(IMediator mediator) => _mediator = mediator;
 
+    /// <summary>201 with the sprint when the caller is at or above their creator position, otherwise 202 { approvalRequestId }.</summary>
     [HttpPost("projects/{projectId:guid}/sprints")]
     public async Task<IActionResult> Create(Guid projectId, [FromBody] CreateSprintRequest request, CancellationToken ct)
-    {
-        var result = await _mediator.Send(new CreateSprintCommand(projectId, request.Name, request.Goal, request.TaskIds ?? Array.Empty<Guid>()), ct);
-
-        return result.IsSuccess
-            ? StatusCode(201, result.Value!.ToViewModel())
-            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
-    }
+        => ToResult(await _mediator.Send(new CreateSprintCommand(projectId, request.Name, request.Goal, request.TaskIds ?? Array.Empty<Guid>()), ct), appliedStatus: 201);
 
     [HttpPatch("sprints/{id:guid}")]
     public async Task<IActionResult> Edit(Guid id, [FromBody] EditSprintRequest request, CancellationToken ct)
-    {
-        var result = await _mediator.Send(new EditSprintCommand(id, request.Name, request.Goal, request.StartDate, request.EndDate), ct);
-
-        return result.IsSuccess
-            ? Ok(result.Value!.ToViewModel())
-            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
-    }
+        => ToResult(await _mediator.Send(new EditSprintCommand(id, request.Name, request.Goal, request.StartDate, request.EndDate), ct));
 
     [HttpPost("sprints/{id:guid}/start")]
     public async Task<IActionResult> Start(Guid id, [FromBody] StartSprintRequest request, CancellationToken ct)
-    {
-        var result = await _mediator.Send(new StartSprintCommand(id, request.StartDate, request.EndDate, request.Goal), ct);
-
-        return result.IsSuccess
-            ? Ok(result.Value!.ToViewModel())
-            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
-    }
+        => ToResult(await _mediator.Send(new StartSprintCommand(id, request.StartDate, request.EndDate, request.Goal), ct));
 
     [HttpPost("sprints/{id:guid}/complete")]
     public async Task<IActionResult> Complete(Guid id, [FromBody] CompleteSprintRequest request, CancellationToken ct)
-    {
-        var result = await _mediator.Send(new CompleteSprintCommand(id, request.Disposition, request.TargetSprintId), ct);
-
-        return result.IsSuccess
-            ? Ok(result.Value!.ToViewModel())
-            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
-    }
+        => ToResult(await _mediator.Send(new CompleteSprintCommand(id, request.Disposition, request.TargetSprintId), ct));
 
     [HttpPost("sprints/{id:guid}/achieve")]
     public async Task<IActionResult> Achieve(Guid id, CancellationToken ct)
-    {
-        var result = await _mediator.Send(new AchieveSprintCommand(id), ct);
+        => ToResult(await _mediator.Send(new AchieveSprintCommand(id), ct));
 
-        return result.IsSuccess
-            ? Ok(result.Value!.ToViewModel())
-            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
-    }
+    /// <summary>Only a Complete or Achieved sprint (else 409). 204 when deleted, 202 { approvalRequestId } when sent for approval.</summary>
+    [HttpDelete("sprints/{id:guid}")]
+    public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
+        => ToResult(await _mediator.Send(new DeleteSprintCommand(id), ct));
+
+    /// <summary>Applied → the sprint (or 204 after a delete); pending → 202 { approvalRequestId }.</summary>
+    private IActionResult ToResult(Result<SprintWriteOutcome> result, int appliedStatus = 200)
+        => !result.IsSuccess ? Problem(result.Error, statusCode: result.StatusCode ?? 400)
+         : result.Value!.ApprovalRequestId is { } id ? StatusCode(202, new { approvalRequestId = id })
+         : result.Value.Sprint is { } s ? StatusCode(appliedStatus, s.ToViewModel())
+         : NoContent();
 
     [HttpPut("sprints/{id:guid}/tasks")]
     public async Task<IActionResult> SetTasks(Guid id, [FromBody] SetSprintTasksRequest request, CancellationToken ct)

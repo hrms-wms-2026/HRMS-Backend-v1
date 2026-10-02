@@ -7,6 +7,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Login.ServiceInterfaces;
+using ONEVO.Application.Features.CoreHr.EmployeeHierarchyClosure.RepositoryInterfaces;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.SharedPlatform.Entities;
 using ONEVO.Domain.Features.WorkManagement.Projects.Entities;
@@ -173,6 +174,22 @@ public sealed class WorkManagementDapiDemoSeederTests : IDisposable
         await db.SaveChangesAsync();
     }
 
+    private static async Task RunOrgStructureSeederAsync(ApplicationDbContext db)
+    {
+        var tenantContext = new TenantContextAccessor();
+        var closures = new Mock<IEmployeeHierarchyClosureRepository>();
+        closures
+            .Setup(c => c.RebuildAsync(DapiTenantId, It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        await DapiOrgStructureSeeder.SeedAsync(
+            db,
+            tenantContext,
+            CreatePasswordHasher().Object,
+            closures.Object,
+            CancellationToken.None);
+    }
+
     [Fact]
     public async Task SeedAsync_Creates22NewUsersAndEmployeesUnderDapiTenant()
     {
@@ -234,6 +251,61 @@ public sealed class WorkManagementDapiDemoSeederTests : IDisposable
 
         secondUserCount.Should().Be(firstUserCount);
         secondRolePermissionCount.Should().Be(firstRolePermissionCount);
+    }
+
+    [Fact]
+    public async Task OrgStructureSeedAsync_AfterEmployeeTransfer_PreservesCurrentAssignmentAndDepartment()
+    {
+        using var db = CreateContext();
+        await RunDevSmokeSeederAsync(db);
+        await RunDemoSeederAsync(db);
+        await RunOrgStructureSeederAsync(db);
+
+        var owner = await db.Employees.SingleAsync(e => e.UserId == DapiOwnerUserId);
+        var seededAssignment = await db.PositionAssignments.SingleAsync(
+            a => a.EmployeeId == owner.Id
+                && a.AssignmentKind == PositionAssignmentKind.PrimaryEmployment
+                && a.AssignmentStatus == PositionAssignmentStatus.Active);
+        var transferPosition = await db.Positions.FirstAsync(
+            p => p.IsActive && p.DepartmentId != owner.DepartmentId);
+        var transferDepartmentId = transferPosition.DepartmentId;
+        var transferAssignmentId = Guid.NewGuid();
+        var transferDate = new DateOnly(2026, 9, 30);
+
+        seededAssignment.AssignmentStatus = PositionAssignmentStatus.Ended;
+        seededAssignment.EffectiveTo = transferDate.AddDays(-1);
+        owner.DepartmentId = transferDepartmentId;
+        db.PositionAssignments.Add(new PositionAssignment
+        {
+            Id = transferAssignmentId,
+            TenantId = DapiTenantId,
+            EmployeeId = owner.Id,
+            PositionId = transferPosition.Id,
+            AssignmentKind = PositionAssignmentKind.PrimaryEmployment,
+            AssignmentStatus = PositionAssignmentStatus.Active,
+            EffectiveFrom = transferDate,
+            CreatedAt = DateTimeOffset.UtcNow,
+            CreatedById = DapiOwnerUserId
+        });
+        await db.SaveChangesAsync();
+
+        var rerun = async () => await RunOrgStructureSeederAsync(db);
+        await rerun.Should().NotThrowAsync();
+
+        db.ChangeTracker.Clear();
+        var activeAssignments = await db.PositionAssignments
+            .Where(a => a.EmployeeId == owner.Id
+                && a.AssignmentKind == PositionAssignmentKind.PrimaryEmployment
+                && a.AssignmentStatus == PositionAssignmentStatus.Active)
+            .ToListAsync();
+        var preservedOwner = await db.Employees.SingleAsync(e => e.Id == owner.Id);
+        var preservedSeededAssignment = await db.PositionAssignments
+            .SingleAsync(a => a.Id == seededAssignment.Id);
+
+        activeAssignments.Should().ContainSingle()
+            .Which.Id.Should().Be(transferAssignmentId);
+        preservedSeededAssignment.AssignmentStatus.Should().Be(PositionAssignmentStatus.Ended);
+        preservedOwner.DepartmentId.Should().Be(transferDepartmentId);
     }
 
     [Fact]
@@ -532,20 +604,12 @@ public sealed class WorkManagementDapiDemoSeederTests : IDisposable
 
         foreach (var project in projects)
         {
-            var objectiveIds = await verify.Objectives
-                .Where(o => o.ProjectId == project.Id)
-                .Select(o => o.Id)
-                .ToListAsync();
-
-            var pendingCreates = await verify.TaskCreationRequests
-                .CountAsync(r => objectiveIds.Contains(r.ObjectiveId) && r.Status == "pending");
+            var pendingCreates = await verify.WorkApprovalRequests
+                .CountAsync(r => r.ProjectId == project.Id && r.ActionType == "task.create" && r.Status == "pending");
             pendingCreates.Should().BeGreaterThanOrEqualTo(3, because: $"{project.Identifier} needs ≥3 pending task creation requests");
 
-            var pendingExtends = await verify.ObjectiveChangeRequests
-                .CountAsync(r =>
-                    objectiveIds.Contains(r.ObjectiveId)
-                    && r.RequestType == "extend_allocation"
-                    && r.Status == "pending");
+            var pendingExtends = await verify.WorkApprovalRequests
+                .CountAsync(r => r.ProjectId == project.Id && r.ActionType == "module.allocation_extend" && r.Status == "pending");
             pendingExtends.Should().BeGreaterThanOrEqualTo(1, because: $"{project.Identifier} needs ≥1 pending extend_allocation");
         }
     }
@@ -564,9 +628,8 @@ public sealed class WorkManagementDapiDemoSeederTests : IDisposable
         {
             taskCount = await afterFirst.WorkTasks.CountAsync(t => t.TenantId == DapiTenantId);
             statusCount = await afterFirst.TaskStatuses.CountAsync(s => s.TenantId == DapiTenantId);
-            createCount = await afterFirst.TaskCreationRequests.CountAsync(r => r.TenantId == DapiTenantId);
-            extendCount = await afterFirst.ObjectiveChangeRequests
-                .CountAsync(r => r.TenantId == DapiTenantId && r.RequestType == "extend_allocation");
+            createCount = await afterFirst.WorkApprovalRequests.CountAsync(r => r.TenantId == DapiTenantId && r.ActionType == "task.create");
+            extendCount = await afterFirst.WorkApprovalRequests.CountAsync(r => r.TenantId == DapiTenantId && r.ActionType == "module.allocation_extend");
         }
 
         using (var second = CreateContext())
@@ -578,10 +641,8 @@ public sealed class WorkManagementDapiDemoSeederTests : IDisposable
         using var verify = CreateContext();
         (await verify.WorkTasks.CountAsync(t => t.TenantId == DapiTenantId)).Should().Be(taskCount);
         (await verify.TaskStatuses.CountAsync(s => s.TenantId == DapiTenantId)).Should().Be(statusCount);
-        (await verify.TaskCreationRequests.CountAsync(r => r.TenantId == DapiTenantId)).Should().Be(createCount);
-        (await verify.ObjectiveChangeRequests
-            .CountAsync(r => r.TenantId == DapiTenantId && r.RequestType == "extend_allocation"))
-            .Should().Be(extendCount);
+        (await verify.WorkApprovalRequests.CountAsync(r => r.TenantId == DapiTenantId && r.ActionType == "task.create")).Should().Be(createCount);
+        (await verify.WorkApprovalRequests.CountAsync(r => r.TenantId == DapiTenantId && r.ActionType == "module.allocation_extend")).Should().Be(extendCount);
     }
 
     /// <summary>
@@ -627,7 +688,7 @@ public sealed class WorkManagementDapiDemoSeederTests : IDisposable
         allEposCategories.Should().HaveCount(4);
         allEposCategories.Select(c => c.Name).Should().BeEquivalentTo(["task", "bug", "story", "feature"]);
 
-        // Every seeded WorkTask/TaskCreationRequest under EPOS that uses the "task" category must
+        // Every seeded WorkTask/task.create request under EPOS that uses the "task" category must
         // resolve to the pre-existing (reused) id, not a freshly-minted duplicate.
         var eposWorkTasksWithTaskCategory = await verify.WorkTasks
             .Where(t => t.ProjectId == eposProjectId && t.CategoryId == preexistingId)

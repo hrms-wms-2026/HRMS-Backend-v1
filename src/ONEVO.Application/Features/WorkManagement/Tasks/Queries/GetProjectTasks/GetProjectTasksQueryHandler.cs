@@ -4,10 +4,13 @@ using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Permission.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.CalendarEvents.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
+using ONEVO.Application.Features.WorkManagement.Hierarchy;
 using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Approvals.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.DTOs.Responses;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
+using ONEVO.Domain.Features.WorkManagement.Approvals.Entities;
 
 namespace ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetProjectTasks;
 
@@ -17,12 +20,14 @@ public sealed class GetProjectTasksQueryHandler : IRequestHandler<GetProjectTask
     private readonly ICallerIdentityResolver _identity;
     private readonly IProjectRepository _projects;
     private readonly IProjectMemberRepository _members;
+    private readonly IWorkHierarchyService _hierarchy;
     private readonly IPermissionResolver _permissionResolver;
     private readonly IWorkTaskRepository _tasks;
     private readonly ITaskAssignmentRepository _assignments;
     private readonly ITaskClockingSessionRepository _sessions;
     private readonly ICalendarEventRepository _calendarEvents;
     private readonly ITaskStatusRepository _statuses;
+    private readonly IWorkApprovalRequestRepository _approvalRequests;
 
     public GetProjectTasksQueryHandler(
         ICurrentUser currentUser,
@@ -34,18 +39,22 @@ public sealed class GetProjectTasksQueryHandler : IRequestHandler<GetProjectTask
         ITaskAssignmentRepository assignments,
         ITaskClockingSessionRepository sessions,
         ICalendarEventRepository calendarEvents,
-        ITaskStatusRepository statuses)
+        ITaskStatusRepository statuses,
+        IWorkHierarchyService hierarchy,
+        IWorkApprovalRequestRepository approvalRequests)
     {
         _currentUser = currentUser;
         _identity = identity;
         _projects = projects;
         _members = members;
+        _hierarchy = hierarchy;
         _permissionResolver = permissionResolver;
         _tasks = tasks;
         _assignments = assignments;
         _sessions = sessions;
         _calendarEvents = calendarEvents;
         _statuses = statuses;
+        _approvalRequests = approvalRequests;
     }
 
     public async Task<Result<IReadOnlyList<WorkTaskResponse>>> Handle(GetProjectTasksQuery request, CancellationToken ct)
@@ -70,7 +79,8 @@ public sealed class GetProjectTasksQueryHandler : IRequestHandler<GetProjectTask
         var hasReadPermission = permissions.Contains("*");
         var accessibleObjectiveIds = hasReadPermission
             ? null
-            : (await _members.GetActiveObjectiveIdsForEmployeeInProjectAsync(tenantId, project.Id, callerEmployeeId.Value, ct)).ToHashSet();
+            : (await _hierarchy.LoadTreeAsync(tenantId, project.Id, ct)).AtOrBelow(
+                await _members.GetActiveObjectiveIdsForEmployeeInProjectAsync(tenantId, project.Id, callerEmployeeId.Value, ct));
 
         var allItems = await _tasks.GetByProjectAsync(tenantId, project.Id, ct);
         if (accessibleObjectiveIds is not null)
@@ -150,6 +160,9 @@ public sealed class GetProjectTasksQueryHandler : IRequestHandler<GetProjectTask
             .GroupBy(l => l.TaskId)
             .ToDictionary(g => g.Key, g => g.First());
 
+        var pendingTaskIds = await _approvalRequests.GetPendingTargetIdsAsync(
+            tenantId, WorkTargetTypes.Task, items.Select(task => task.Id).ToList(), ct) ?? new HashSet<Guid>();
+
         var responses = items.Select(t => new WorkTaskResponse(
             t.Id, t.ObjectiveId, t.ShortId, t.Title, t.Description, t.CategoryId, t.StatusId,
             t.Priority, t.StoryPoints, t.DueDate, t.EstimatedHours, t.CompletedHours, t.ProgressPercent, t.SprintId,
@@ -166,7 +179,8 @@ public sealed class GetProjectTasksQueryHandler : IRequestHandler<GetProjectTask
             SubtaskTotalCount: subtasksByParentId.GetValueOrDefault(t.Id)?.Count ?? 0,
             SubtaskCompletedCount: subtasksByParentId.GetValueOrDefault(t.Id)?.Count(subtask => completingStatusIds.Contains(subtask.StatusId)) ?? 0,
             SubtaskAssigneeEmployeeIds: subtaskAssigneesByParentId.GetValueOrDefault(t.Id, Array.Empty<Guid>()),
-            CreatedAt: t.CreatedAt)).ToList();
+            CreatedAt: t.CreatedAt,
+            HasPendingApproval: pendingTaskIds.Contains(t.Id))).ToList();
 
         return Result<IReadOnlyList<WorkTaskResponse>>.Success(responses);
     }

@@ -26,7 +26,6 @@ public sealed class GetProjectSprintsQueryHandlerTests
     private readonly Mock<IProjectMemberRepository> _members = new();
     private readonly Mock<IPermissionResolver> _permissions = new();
     private readonly Mock<ISprintRepository> _sprints = new();
-    private readonly Mock<ISprintAccessService> _access = new();
 
     public GetProjectSprintsQueryHandlerTests()
     {
@@ -62,10 +61,10 @@ public sealed class GetProjectSprintsQueryHandlerTests
 
     private GetProjectSprintsQueryHandler Build() => new(
         _currentUser.Object, _identity.Object, _projects.Object, _members.Object,
-        _permissions.Object, _sprints.Object, _access.Object);
+        _permissions.Object, _sprints.Object);
 
     [Fact]
-    public async Task ReadPermissionCaller_SeesAllProjectSprints_WithCanManageFlags()
+    public async Task NonMember_WithReadPermission_SeesAllSprints_CanManageFalse()
     {
         var mine = Sprint("A");
         var other = Sprint("B");
@@ -75,20 +74,17 @@ public sealed class GetProjectSprintsQueryHandlerTests
             .ReturnsAsync(new List<Sprint> { mine, other });
         _permissions.Setup(x => x.ResolveAsync(UserId, TenantId, null, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<string> { "*" });
-        _access.Setup(x => x.GetManageableSprintIdsAsync(TenantId, ProjectId, It.IsAny<IReadOnlyList<Sprint>>(), UserId, EmployeeId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new HashSet<Guid> { mine.Id });
+        _members.Setup(x => x.HasActiveMembershipAsync(TenantId, ProjectId, EmployeeId, It.IsAny<CancellationToken>())).ReturnsAsync(false);
 
         var result = await Build().Handle(new GetProjectSprintsQuery(ProjectId), CancellationToken.None);
 
         Assert.True(result.IsSuccess);
         Assert.Equal(2, result.Value!.Count);
-        Assert.True(result.Value.Single(s => s.Id == mine.Id).CanManage);
-        Assert.False(result.Value.Single(s => s.Id == other.Id).CanManage);
-        _members.Verify(x => x.HasActiveMembershipAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+        Assert.All(result.Value, s => Assert.False(s.CanManage));
     }
 
     [Fact]
-    public async Task Member_SeesAllProjectSprints_WithCanManageFlags()
+    public async Task ProjectMember_SeesCanManageTrue_ForEverySprint()
     {
         var mine = new Sprint { Id = Guid.NewGuid(), TenantId = TenantId, ProjectId = ProjectId, Name = "A", Status = SprintStatuses.Draft };
         var other = new Sprint { Id = Guid.NewGuid(), TenantId = TenantId, ProjectId = ProjectId, Name = "B", Status = SprintStatuses.Active };
@@ -97,15 +93,11 @@ public sealed class GetProjectSprintsQueryHandlerTests
         _sprints.Setup(x => x.GetByProjectAsync(TenantId, ProjectId, It.IsAny<CancellationToken>())).ReturnsAsync(new List<Sprint> { mine, other });
         _permissions.Setup(x => x.ResolveAsync(UserId, TenantId, null, It.IsAny<CancellationToken>())).ReturnsAsync(new List<string>());
         _members.Setup(x => x.HasActiveMembershipAsync(TenantId, ProjectId, EmployeeId, It.IsAny<CancellationToken>())).ReturnsAsync(true);
-        _access.Setup(x => x.GetManageableSprintIdsAsync(TenantId, ProjectId, It.IsAny<IReadOnlyList<Sprint>>(), UserId, EmployeeId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new HashSet<Guid> { mine.Id });
-
         var result = await Build().Handle(new GetProjectSprintsQuery(ProjectId), CancellationToken.None);
 
         Assert.True(result.IsSuccess);
         Assert.Equal(2, result.Value!.Count);
-        Assert.True(result.Value.Single(s => s.Id == mine.Id).CanManage);
-        Assert.False(result.Value.Single(s => s.Id == other.Id).CanManage);
+        Assert.All(result.Value, s => Assert.True(s.CanManage));
     }
 
     [Fact]

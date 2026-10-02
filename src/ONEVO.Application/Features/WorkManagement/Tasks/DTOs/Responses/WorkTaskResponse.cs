@@ -24,14 +24,8 @@ public sealed record WorkTaskResponse(
     IReadOnlyList<TaskAssigneeIdentityDto>? Assignees = null,
     Guid? ParentTaskId = null, int SubtaskTotalCount = 0, int SubtaskCompletedCount = 0,
     IReadOnlyList<Guid>? SubtaskAssigneeEmployeeIds = null,
-    DateTimeOffset CreatedAt = default);
-
-public sealed record TaskCreationRequestResponse(
-    Guid Id, Guid ObjectiveId, string Status, TaskCreationRequestPayload Payload, DateTimeOffset CreatedAt,
-    string? RequestedByName = null);
-
-public sealed record TaskEditRequestResponse(
-    Guid Id, Guid TaskId, Guid ObjectiveId, string Status, TaskEditRequestPayload Payload, string RequestedByName, DateTimeOffset CreatedAt);
+    DateTimeOffset CreatedAt = default,
+    bool HasPendingApproval = false);
 
 /// <summary>Returned alongside a 409 slack-conflict so the frontend can offer the extend-allocation flow (spec §3.2).</summary>
 public sealed record InsufficientAllocationResponse(decimal AvailableSlackHours, string SuggestedAction = "extend_allocation");

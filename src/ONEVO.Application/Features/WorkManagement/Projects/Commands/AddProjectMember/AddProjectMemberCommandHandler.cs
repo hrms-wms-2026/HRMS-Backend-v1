@@ -78,7 +78,7 @@ public class AddProjectMemberCommandHandler : IRequestHandler<AddProjectMemberCo
             return Result<AddObjectiveMemberOutcomeResponse>.Failure("The member must be an active employee in this tenant.");
 
         if (await _membership.HasActiveMembershipAsync(tenantId, defaultObjective.ProjectId, defaultObjective.Id, assignee.Id, ct))
-            return Result<AddObjectiveMemberOutcomeResponse>.Success(new AddObjectiveMemberOutcomeResponse(AlreadyMember: true, Invitation: null));
+            return Result<AddObjectiveMemberOutcomeResponse>.Success(new AddObjectiveMemberOutcomeResponse(Applied: true, AlreadyMember: true, ApprovalRequestId: null, Invitation: null));
 
         if (await _invitations.GetPendingForObjectiveAndEmployeeAsync(tenantId, defaultObjective.Id, assignee.Id, ct) is not null)
             return Result<AddObjectiveMemberOutcomeResponse>.Conflict("An invitation is already pending for this employee on this milestone.");
@@ -120,6 +120,6 @@ public class AddProjectMemberCommandHandler : IRequestHandler<AddProjectMemberCo
         await _unitOfWork.SaveChangesAsync(ct);
 
         return Result<AddObjectiveMemberOutcomeResponse>.Success(
-            new AddObjectiveMemberOutcomeResponse(AlreadyMember: false, ProjectMemberInvitationMapper.ToResponse(invitation)));
+            new AddObjectiveMemberOutcomeResponse(Applied: true, AlreadyMember: false, ApprovalRequestId: null, Invitation: ProjectMemberInvitationMapper.ToResponse(invitation)));
     }
 }

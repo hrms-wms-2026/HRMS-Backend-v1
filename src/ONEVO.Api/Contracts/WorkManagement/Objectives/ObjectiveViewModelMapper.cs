@@ -1,5 +1,4 @@
 using ONEVO.Api.Contracts.WorkManagement.ProjectInvitations;
-using ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.DTOs.Responses;
 using ONEVO.Application.Features.WorkManagement.Objectives.DTOs.Responses;
 
 namespace ONEVO.Api.Contracts.WorkManagement.Objectives;
@@ -17,11 +16,6 @@ public static class ObjectiveViewModelMapper
         dto.Id, dto.ParentObjectiveId, dto.IsDefault, dto.Title, dto.OwnerId,
         dto.StartDate, dto.EndDate, dto.AllocatedHours, dto.CompletedHours, dto.IsActive, dto.IsAchieved,
         dto.Progress, dto.OwnerName, dto.IsOwner);
-
-    public static ObjectiveChangeRequestViewModel ToViewModel(this ObjectiveChangeRequestResponse dto) => new(
-        dto.Id, dto.ObjectiveId, dto.RequestType, dto.RequestedById, dto.ReportingManagerId,
-        dto.Status, dto.PayloadJson, dto.DecidedAt, dto.DecidedById, dto.CreatedAt,
-        dto.RequestedByName, dto.ObjectiveTitle, dto.ProjectId, dto.CurrentAllocatedHours);
 
     public static ObjectiveSubtreeViewModel ToViewModel(this ObjectiveSubtreeResponse dto) => new(
         dto.ParentObjective?.ToViewModel(), dto.Objective.ToViewModel());
@@ -46,8 +40,16 @@ public static class ObjectiveViewModelMapper
 
     public static AddObjectiveMemberOutcomeViewModel ToViewModel(this AddObjectiveMemberOutcomeResponse dto) => new()
     {
+        Applied = dto.Applied,
         AlreadyMember = dto.AlreadyMember,
+        ApprovalRequestId = dto.ApprovalRequestId,
         Invitation = dto.Invitation?.ToViewModel()
+    };
+
+    public static RemoveObjectiveMemberOutcomeViewModel ToViewModel(this RemoveObjectiveMemberOutcomeResponse dto) => new()
+    {
+        Applied = dto.Applied,
+        ApprovalRequestId = dto.ApprovalRequestId
     };
 
     public static ObjectiveMemberListViewModel ToViewModel(this ObjectiveMemberListResponse response) => new()
@@ -62,7 +64,7 @@ public static class ObjectiveViewModelMapper
     public static TransferOutcomeViewModel ToViewModel(this TransferOutcomeResponse dto) => new()
     {
         Applied = dto.Applied,
-        PendingChangeRequest = dto.PendingChangeRequest?.ToViewModel(),
+        ApprovalRequestId = dto.ApprovalRequestId,
         PendingInvitation = dto.PendingInvitation?.ToViewModel()
     };
 }

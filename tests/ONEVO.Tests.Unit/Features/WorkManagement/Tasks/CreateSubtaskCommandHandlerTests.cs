@@ -96,6 +96,20 @@ public class CreateSubtaskCommandHandlerTests
     }
 
     [Fact]
+    public async Task CreateSubtask_InheritsParentCreatorPosition()
+    {
+        var position = Guid.NewGuid();
+        var parent = new WorkTask { Id = ParentTaskId, TenantId = TenantId, ProjectId = ProjectId, ObjectiveId = ObjectiveId, CategoryId = CategoryId, Title = "Parent", ShortId = "PRJ-1", CreatorPositionObjectiveId = position, CreatedAt = DateTimeOffset.UtcNow };
+        var (handler, tasks, _) = Build(parent, null);
+
+        var result = await handler.Handle(new CreateSubtaskCommand(ParentTaskId, "Sub", null, null, null), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        tasks.Verify(x => x.AddAsync(It.Is<WorkTask>(t => t.ParentTaskId == ParentTaskId && t.CreatorPositionObjectiveId == position),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
     public async Task Handle_ParentNotFound_ReturnsNotFound()
     {
         var (handler, tasks, _) = Build(parent: null, assignee: null);

@@ -350,6 +350,29 @@ public sealed class EmailTemplateRendererTests
     }
 
     [Fact]
+    public void RenderCalendarEventInvite_FormatsTheStartTimeAsAReadableDate_NotRawIso()
+    {
+        // startDateUtc always arrives as an ISO 8601 string here (SendTemplateAsync round-trips its
+        // anonymous object through JSON before Render() ever sees it), so the raw "2026-10-05T09:30:00+00:00"
+        // that reached real recipients' inboxes must be parsed and reformatted, not passed through as-is.
+        var renderer = new EmailTemplateRenderer(Options.Create(new EmailOptions()));
+
+        var rendered = renderer.Render("calendar_event_invite", new
+        {
+            recipientName = "Dapi Owner",
+            eventTitle = "test 404",
+            startDateUtc = "2026-10-05T09:30:00+00:00",
+            location = (string?)null,
+            organizerName = "Dapi Owner"
+        });
+
+        rendered.HtmlBody.Should().NotContain("2026-10-05T09:30:00");
+        rendered.TextBody.Should().NotContain("2026-10-05T09:30:00");
+        rendered.HtmlBody.Should().Contain("Monday, October 5, 2026 at 9:30 AM UTC");
+        rendered.TextBody.Should().Contain("Monday, October 5, 2026 at 9:30 AM UTC");
+    }
+
+    [Fact]
     public void RenderCalendarEventInvite_WithMeetingLink_IncludesJoinUrlInBothBodies()
     {
         var renderer = new EmailTemplateRenderer(Options.Create(new EmailOptions()));

@@ -18,6 +18,23 @@ public class EfNotificationRepository : INotificationRepository
         await _db.MonitoringNotifications.AsNoTracking().AnyAsync(
             n => n.TenantId == tenantId && n.EmployeeId == employeeId && n.Type == type && n.CreatedAt >= sinceUtc, ct);
 
+    public async Task<int> CountByTypeAsync(
+        Guid tenantId, Guid employeeId, NotificationType type,
+        DateTimeOffset fromUtc, DateTimeOffset toUtcExclusive, CancellationToken ct) =>
+        await _db.MonitoringNotifications.AsNoTracking().CountAsync(
+            n => n.TenantId == tenantId && n.EmployeeId == employeeId && n.Type == type
+                 && n.CreatedAt >= fromUtc && n.CreatedAt < toUtcExclusive, ct);
+
+    public async Task<IReadOnlyList<Notification>> ListByTypesAsync(
+        Guid tenantId, Guid employeeId, IReadOnlyCollection<NotificationType> types,
+        DateTimeOffset fromUtc, DateTimeOffset toUtcExclusive, int take, CancellationToken ct) =>
+        await _db.MonitoringNotifications.AsNoTracking()
+            .Where(n => n.TenantId == tenantId && n.EmployeeId == employeeId && types.Contains(n.Type)
+                        && n.CreatedAt >= fromUtc && n.CreatedAt < toUtcExclusive)
+            .OrderByDescending(n => n.CreatedAt)
+            .Take(take)
+            .ToListAsync(ct);
+
     public async Task<IReadOnlyList<Notification>> GetPendingForTrayAsync(
         Guid tenantId, Guid employeeId, CancellationToken ct) =>
         await _db.MonitoringNotifications

@@ -166,4 +166,17 @@ public class EfCalendarEventRepository : ICalendarEventRepository
                         && e.ExternalSource == CalendarExternalSources.CountryHoliday
                         && e.StartDate.Year == year)
             .ExecuteDeleteAsync(ct);
+
+    public async Task<IReadOnlyList<DateOnly>> ListHolidayDatesAsync(Guid tenantId, DateOnly from, DateOnly to, CancellationToken ct = default)
+    {
+        var start = new DateTimeOffset(from.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero);
+        var end = new DateTimeOffset(to.AddDays(1).ToDateTime(TimeOnly.MinValue), TimeSpan.Zero);
+        var starts = await _db.PersonalCalendarEvents.AsNoTracking()
+            .Where(e => e.TenantId == tenantId
+                        && e.SourceType == CalendarEventSourceTypes.Holiday
+                        && e.StartDate >= start && e.StartDate < end)
+            .Select(e => e.StartDate)
+            .ToListAsync(ct);
+        return starts.Select(s => DateOnly.FromDateTime(s.UtcDateTime)).Distinct().ToList();
+    }
 }
