@@ -77,6 +77,15 @@ public static class CalendarEventTaskSummaryViewModelMapper
         => new(r.Id, r.ShortId, r.Title, r.StatusId, r.MarksTaskComplete, r.StatusCategory, r.ProgressPercent, r.ObjectiveId, r.ObjectiveTitle);
 }
 
+public sealed record CalendarEventActivityEntryViewModel(
+    Guid Id, string Action, Guid PerformedById, string? PerformedByName, DateTimeOffset PerformedAt, string DetailsJson);
+
+public static class CalendarEventActivityEntryViewModelMapper
+{
+    public static CalendarEventActivityEntryViewModel ToViewModel(this CalendarEventActivityEntryResponse r)
+        => new(r.Id, r.Action, r.PerformedById, r.PerformedByName, r.PerformedAt, r.DetailsJson);
+}
+
 public static class CalendarViewModelMapper
 {
     public static ProjectCalendarViewModel ToViewModel(this ProjectCalendarResponse response)

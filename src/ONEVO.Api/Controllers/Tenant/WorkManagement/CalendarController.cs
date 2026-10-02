@@ -6,6 +6,7 @@ using ONEVO.Api.Filters;
 using ONEVO.Application.Features.WorkManagement.CalendarEvents.Commands.CloseCalendarEvent;
 using ONEVO.Application.Features.WorkManagement.CalendarEvents.Commands.CreateCalendarEvent;
 using ONEVO.Application.Features.WorkManagement.CalendarEvents.Commands.UpdateCalendarEvent;
+using ONEVO.Application.Features.WorkManagement.CalendarEvents.Queries.GetCalendarEventActivity;
 using ONEVO.Application.Features.WorkManagement.CalendarEvents.Queries.GetCalendarEventById;
 using ONEVO.Application.Features.WorkManagement.CalendarEvents.Queries.GetCalendarEventTasks;
 using ONEVO.Application.Features.WorkManagement.CalendarEvents.Queries.GetProjectCalendar;
@@ -46,6 +47,15 @@ public sealed class CalendarController : ControllerBase
         var result = await _mediator.Send(new GetCalendarEventTasksQuery(id), ct);
         return result.IsSuccess
             ? Ok(result.Value!.Select(t => t.ToViewModel()).ToList())
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    [HttpGet("calendar-events/{id:guid}/activity")]
+    public async Task<IActionResult> GetEventActivity(Guid id, CancellationToken ct)
+    {
+        var result = await _mediator.Send(new GetCalendarEventActivityQuery(id), ct);
+        return result.IsSuccess
+            ? Ok(result.Value!.Select(e => e.ToViewModel()).ToList())
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
