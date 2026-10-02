@@ -33,7 +33,7 @@ public static class WorkActivityTaskRules
         return new EmployeeNeedsAttentionResponse(asOf, openDueRows.Count(r => r.DueDate.HasValue), items);
     }
 
-    public static EmployeeWorkTaskItem ToItem(EmployeeWorkTaskRow r) => new(
+    public static EmployeeRecentTaskItem ToItem(EmployeeWorkTaskRow r) => new(
         r.Id, r.ShortId, r.Title, r.ProjectId, r.ProjectName, r.StatusName, r.StatusColor,
         r.Priority, r.StoryPoints, r.DueDate, r.ProgressPercent);
 

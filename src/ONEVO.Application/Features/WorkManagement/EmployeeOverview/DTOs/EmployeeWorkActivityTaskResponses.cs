@@ -1,7 +1,7 @@
 namespace ONEVO.Application.Features.WorkManagement.EmployeeOverview.DTOs;
 
 /// <summary>One task row on the Work & Activity Needs attention / Recent tasks cards.</summary>
-public sealed record EmployeeWorkTaskItem(
+public sealed record EmployeeRecentTaskItem(
     Guid TaskId,
     string ShortId,
     string Title,
@@ -31,7 +31,7 @@ public sealed record EmployeeAttentionItem(
 
 public sealed record EmployeeNeedsAttentionResponse(DateOnly AsOf, int TotalCount, IReadOnlyList<EmployeeAttentionItem> Items);
 
-public sealed record EmployeeRecentTasksResponse(IReadOnlyList<EmployeeWorkTaskItem> Items);
+public sealed record EmployeeRecentTasksResponse(IReadOnlyList<EmployeeRecentTaskItem> Items);
 
 /// <summary>Month is "YYYY-MM"; Completed counts tasks whose CompletedAt falls in that UTC month.</summary>
 public sealed record EmployeeDeliveryTrendMonth(string Month, int Completed);

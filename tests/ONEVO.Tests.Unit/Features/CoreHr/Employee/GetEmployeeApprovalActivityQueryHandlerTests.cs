@@ -213,6 +213,20 @@ public sealed class GetEmployeeApprovalActivityQueryHandlerTests
     }
 
     [Fact]
+    public async Task Handle_ReturnsEveryItem_WhenAllItemsIsRequested()
+    {
+        ArrangeWork(Enumerable.Range(1, 12)
+            .Select(i => Work("task_edit", i % 2 == 0 ? "approved" : "pending", Guid.NewGuid(), $"2026-09-{i:00}T08:00:00+00:00"))
+            .ToArray());
+
+        var result = await CreateHandler().Handle(
+            new GetEmployeeApprovalActivityQuery(_employeeId, From, To, AllItems: true), CancellationToken.None);
+
+        result.Value!.Items.Should().HaveCount(12);
+        result.Value.Total.Should().Be(12);
+    }
+
+    [Fact]
     public async Task Handle_Returns400_ForAnInvalidPeriod()
     {
         var result = await CreateHandler().Handle(new GetEmployeeApprovalActivityQuery(_employeeId, To, From), CancellationToken.None);

@@ -25,13 +25,25 @@ public sealed record OpenAssignedTaskRow(
 
 public sealed record OpenAssignedTasksPage(IReadOnlyList<OpenAssignedTaskRow> Items, int TotalCount);
 
-/// <summary>The fields needed to bucket one employee task for the Overview work/delivery cards.</summary>
+/// <summary>The fields needed to bucket one employee task for the Overview work/delivery cards.
+/// IsCarriedOver: due before the period started (still unfinished when the period began).</summary>
 public sealed record EmployeeTaskPeriodRow(
     DateOnly? DueDate,
     DateTimeOffset? CompletedAt,
     int ProgressPercent,
     bool MarksTaskComplete,
-    int? StoryPoints);
+    int? StoryPoints,
+    Guid TaskId = default,
+    string Title = "",
+    Guid ProjectId = default,
+    string ProjectName = "",
+    bool IsCarriedOver = false,
+    string ShortId = "",
+    string Priority = "",
+    string StatusName = "",
+    string StatusColor = "",
+    Guid ObjectiveId = default,
+    string ObjectiveTitle = "");
 
 /// <summary>The bare fields needed to bucket a caller's assigned task into the Task Progress
 /// donut widget's Completed/Overdue/In Progress/Not Started categories.</summary>
@@ -94,7 +106,9 @@ public interface IWorkTaskRepository
     Task<OpenAssignedTasksPage> ListOpenAssignedToEmployeeAsync(Guid tenantId, Guid employeeId, int take, CancellationToken ct = default);
 
     /// <summary>Tasks assigned to this employee that belong to from..to: due date in the range, OR
-    /// CompletedAt in the range, OR the employee was assigned within the range (UTC day bounds).</summary>
+    /// CompletedAt in the range, OR the employee was assigned within the range (UTC day bounds), OR
+    /// carried over - due before the range and still unfinished when it began (open, or completed
+    /// on/after its start), so old overdue work never silently drops out of later periods.</summary>
     Task<IReadOnlyList<EmployeeTaskPeriodRow>> ListForEmployeePeriodAsync(
         Guid tenantId, Guid employeeId, DateOnly from, DateOnly to, CancellationToken ct = default);
 
