@@ -35,6 +35,10 @@ public interface IProjectMemberRepository
     Task<IReadOnlyDictionary<Guid, IReadOnlyList<Guid>>> ListDistinctActiveMemberEmployeeIdsAsync(
         Guid tenantId, IReadOnlyCollection<Guid> projectIds, int takePerProject, CancellationToken ct = default);
 
+    /// <summary>Batched, per-objective, deduplicated list of active member employee ids (earliest joiners first).</summary>
+    Task<IReadOnlyDictionary<Guid, IReadOnlyList<Guid>>> ListActiveMemberEmployeeIdsByObjectivesAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> objectiveIds, CancellationToken ct = default);
+
     /// <summary>Batched, per-project count of distinct active member employees.</summary>
     Task<IReadOnlyDictionary<Guid, int>> CountDistinctActiveMembersAsync(
         Guid tenantId, IReadOnlyCollection<Guid> projectIds, CancellationToken ct = default);

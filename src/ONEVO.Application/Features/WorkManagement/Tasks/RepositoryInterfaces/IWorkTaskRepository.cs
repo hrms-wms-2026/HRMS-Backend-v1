@@ -21,7 +21,14 @@ public sealed record OpenAssignedTaskRow(
     string Title,
     Guid ProjectId,
     Guid ObjectiveId,
-    string Category);
+    string Category,
+    DateOnly? DueDate = null,
+    string? StatusName = null,
+    string? Priority = null);
+
+/// <summary>Top-level task counts by status category for one module or project (work graph).
+/// Overdue: not done and due before today.</summary>
+public sealed record WorkTaskCounts(int Total, int NotStarted, int Active, int Done, int Overdue);
 
 public sealed record OpenAssignedTasksPage(IReadOnlyList<OpenAssignedTaskRow> Items, int TotalCount);
 
@@ -87,6 +94,14 @@ public interface IWorkTaskRepository
     /// <summary>Tasks assigned to this employee whose status category is not_started or active,
     /// active first then by ShortId, capped at take; TotalCount is the uncapped total.</summary>
     Task<OpenAssignedTasksPage> ListOpenAssignedToEmployeeAsync(Guid tenantId, Guid employeeId, int take, CancellationToken ct = default);
+
+    /// <summary>Top-level (non-subtask) task counts per objective, for the work graph's module stats.</summary>
+    Task<IReadOnlyDictionary<Guid, WorkTaskCounts>> CountByObjectivesAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> objectiveIds, DateOnly today, CancellationToken ct = default);
+
+    /// <summary>Top-level (non-subtask) task counts per project, for the work graph's project stats.</summary>
+    Task<IReadOnlyDictionary<Guid, WorkTaskCounts>> CountByProjectsAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> projectIds, DateOnly today, CancellationToken ct = default);
 
     /// <summary>Tasks assigned to this employee that belong to from..to: due date in the range, OR
     /// CompletedAt in the range, OR the employee was assigned within the range (UTC day bounds), OR

@@ -1,7 +1,11 @@
 using MediatR;
+using ONEVO.Application.Common.Constants;
 using ONEVO.Application.Common.Models;
+using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.ServiceInterfaces;
+using ONEVO.Application.Features.Storage.File.Helpers;
+using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.EmployeeWorkGraph.DTOs.Responses;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
@@ -19,6 +23,8 @@ namespace ONEVO.Application.Features.WorkManagement.EmployeeWorkGraph.Queries.Ge
 public class GetEmployeeWorkGraphQueryHandler : IRequestHandler<GetEmployeeWorkGraphQuery, Result<EmployeeWorkGraphResponse>>
 {
     public const int MaxTaskNodes = 60;
+    /// <summary>Members listed per module (with avatars); the full count is sent separately.</summary>
+    public const int MaxModuleMembers = 8;
 
     private readonly IEmployeeReadAccessGuard _guard;
     private readonly IProjectMemberRepository _members;
@@ -26,6 +32,9 @@ public class GetEmployeeWorkGraphQueryHandler : IRequestHandler<GetEmployeeWorkG
     private readonly IProjectRepository _projects;
     private readonly IWorkTaskRepository _tasks;
     private readonly ICurrentUser _currentUser;
+    private readonly ICallerIdentityResolver _identity;
+    private readonly IDateTimeProvider _clock;
+    private readonly IEntityAssetRepository _entityAssets;
 
     public GetEmployeeWorkGraphQueryHandler(
         IEmployeeReadAccessGuard guard,
@@ -33,8 +42,14 @@ public class GetEmployeeWorkGraphQueryHandler : IRequestHandler<GetEmployeeWorkG
         IObjectiveRepository objectives,
         IProjectRepository projects,
         IWorkTaskRepository tasks,
-        ICurrentUser currentUser)
+        ICurrentUser currentUser,
+        ICallerIdentityResolver identity,
+        IDateTimeProvider clock,
+        IEntityAssetRepository entityAssets)
     {
+        _entityAssets = entityAssets;
+        _identity = identity;
+        _clock = clock;
         _guard = guard;
         _members = members;
         _objectives = objectives;
@@ -73,6 +88,30 @@ public class GetEmployeeWorkGraphQueryHandler : IRequestHandler<GetEmployeeWorkG
         var projectsById = (await _projects.GetActiveByIdsForTenantAsync(tenantId, projectIds, ct))
             .ToDictionary(p => p.Id);
 
+        var today = _clock.Today;
+        var moduleObjectiveList = objectivesById.Values
+            .Where(o => !o.IsDefault && projectsById.ContainsKey(o.ProjectId))
+            .ToList();
+        var moduleObjectiveIds = moduleObjectiveList.Select(o => o.Id).ToList();
+        var moduleCounts = await _tasks.CountByObjectivesAsync(tenantId, moduleObjectiveIds, today, ct);
+        var projectCounts = await _tasks.CountByProjectsAsync(tenantId, projectsById.Keys.ToList(), today, ct);
+        var moduleMembers = await _members.ListActiveMemberEmployeeIdsByObjectivesAsync(tenantId, moduleObjectiveIds, ct);
+        var projectLogos = projectsById.Count == 0
+            ? new Dictionary<Guid, Guid>()
+            : await _entityAssets.GetPrimaryFileIdsByOwnerAsync(
+                tenantId, EntityAssetOwnerTypes.Project, projectsById.Keys.ToList(), UploadPurposeCatalog.ProjectCover, ct);
+        var peopleIds = moduleObjectiveList.Select(o => o.OwnerId)
+            .Concat(moduleMembers.Values.SelectMany(ids => ids.Take(MaxModuleMembers)))
+            .Distinct()
+            .ToList();
+        var people = peopleIds.Count == 0
+            ? new Dictionary<Guid, EmployeeIdentityDto>()
+            : await _identity.ResolveIdentitiesByEmployeeIdAsync(tenantId, peopleIds, ct);
+        WorkGraphPerson? Person(Guid id) =>
+            people.TryGetValue(id, out var p) ? new WorkGraphPerson(id, p.Name, p.AvatarFileId) : null;
+        static WorkGraphStats StatsOf(WorkTaskCounts? c, decimal allocated, decimal completed) =>
+            new(c?.Total ?? 0, c?.NotStarted ?? 0, c?.Active ?? 0, c?.Done ?? 0, c?.Overdue ?? 0, allocated, completed);
+
         var memberObjectiveIds = memberships.Select(m => m.ObjectiveId).ToHashSet();
         var employeeNodeId = $"employee:{employeeId}";
         var nodes = new List<WorkGraphNode>
@@ -84,14 +123,13 @@ public class GetEmployeeWorkGraphQueryHandler : IRequestHandler<GetEmployeeWorkG
         foreach (var project in projectsById.Values.OrderBy(p => p.Name))
         {
             var projectNodeId = $"project:{project.Id}";
-            nodes.Add(new WorkGraphNode(projectNodeId, WorkGraphNodeKinds.Project, project.Name, project.Identifier, ProjectId: project.Id));
+            nodes.Add(new WorkGraphNode(projectNodeId, WorkGraphNodeKinds.Project, project.Name, project.Identifier, ProjectId: project.Id,
+                Stats: StatsOf(projectCounts.GetValueOrDefault(project.Id), project.AllocatedHours, project.CompletedHours),
+                LogoFileId: projectLogos.TryGetValue(project.Id, out var logo) ? logo : null));
             links.Add(new WorkGraphLink(employeeNodeId, projectNodeId, WorkGraphLinkKinds.WorksOn));
         }
 
-        var moduleObjectives = objectivesById.Values
-            .Where(o => !o.IsDefault && projectsById.ContainsKey(o.ProjectId))
-            .OrderBy(o => o.Title)
-            .ToList();
+        var moduleObjectives = moduleObjectiveList.OrderBy(o => o.Title).ToList();
 
         foreach (var objective in moduleObjectives)
         {
@@ -102,8 +140,15 @@ public class GetEmployeeWorkGraphQueryHandler : IRequestHandler<GetEmployeeWorkG
                 : isMember ? WorkGraphModuleRoles.Member
                 : WorkGraphModuleRoles.Contributor;
 
+            var memberIds = moduleMembers.GetValueOrDefault(objective.Id) ?? Array.Empty<Guid>();
+            var details = new WorkGraphModuleDetails(
+                Person(objective.OwnerId), objective.StartDate, objective.EndDate,
+                memberIds.Take(MaxModuleMembers).Select(Person).OfType<WorkGraphPerson>().ToList(),
+                memberIds.Count);
             nodes.Add(new WorkGraphNode(moduleNodeId, WorkGraphNodeKinds.Module, objective.Title,
-                Role: role, ProjectId: objective.ProjectId, ObjectiveId: objective.Id));
+                Role: role, ProjectId: objective.ProjectId, ObjectiveId: objective.Id,
+                Stats: StatsOf(moduleCounts.GetValueOrDefault(objective.Id), objective.AllocatedHours, objective.CompletedHours),
+                Module: details));
             links.Add(new WorkGraphLink($"project:{objective.ProjectId}", moduleNodeId, WorkGraphLinkKinds.Contains));
             if (isOwner)
                 links.Add(new WorkGraphLink(employeeNodeId, moduleNodeId, WorkGraphLinkKinds.Owns));
@@ -120,7 +165,9 @@ public class GetEmployeeWorkGraphQueryHandler : IRequestHandler<GetEmployeeWorkG
 
             var taskNodeId = $"task:{task.Id}";
             nodes.Add(new WorkGraphNode(taskNodeId, WorkGraphNodeKinds.Task, task.Title, task.ShortId,
-                Status: task.Category, ProjectId: task.ProjectId, ObjectiveId: task.ObjectiveId, TaskId: task.Id));
+                Status: task.Category, ProjectId: task.ProjectId, ObjectiveId: task.ObjectiveId, TaskId: task.Id,
+                Task: new WorkGraphTaskDetails(task.DueDate, task.StatusName, task.Priority,
+                    task.DueDate is { } due && due < today)));
             var parent = moduleIds.Contains(task.ObjectiveId) ? $"module:{task.ObjectiveId}" : $"project:{task.ProjectId}";
             links.Add(new WorkGraphLink(parent, taskNodeId, WorkGraphLinkKinds.HasTask));
             renderedTasks++;
