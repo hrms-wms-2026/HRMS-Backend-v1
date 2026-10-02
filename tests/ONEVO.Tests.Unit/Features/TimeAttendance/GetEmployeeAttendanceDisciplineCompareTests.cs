@@ -4,7 +4,6 @@ using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.DTOs.Responses;
 using ONEVO.Application.Features.CoreHr.Employee.Helpers;
-using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.ServiceInterfaces;
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.ServiceInterfaces;
 using ONEVO.Application.Features.Monitoring.Notifications.RepositoryInterfaces;
@@ -19,7 +18,6 @@ namespace ONEVO.Tests.Unit.Features.TimeAttendance;
 public sealed class GetEmployeeAttendanceDisciplineCompareTests
 {
     private readonly Mock<IEmployeeReadAccessGuard> _guard = new();
-    private readonly Mock<IEmployeeRepository> _employees = new();
     private readonly Mock<IEmployeeAttendancePeriodReader> _reader = new();
     private readonly Mock<IMonitoringToggleResolver> _toggles = new();
     private readonly Mock<INotificationRepository> _notifications = new();
@@ -49,7 +47,7 @@ public sealed class GetEmployeeAttendanceDisciplineCompareTests
     }
 
     private GetEmployeeAttendanceDisciplineQueryHandler CreateHandler() =>
-        new(_guard.Object, _employees.Object, _reader.Object, _toggles.Object, _notifications.Object, _user.Object, _clock.Object);
+        new(_guard.Object, _reader.Object, _toggles.Object, _notifications.Object, _user.Object, _clock.Object);
 
     private AttendanceRecord Late(DateOnly d) => new()
     {
@@ -63,7 +61,8 @@ public sealed class GetEmployeeAttendanceDisciplineCompareTests
         _reader.Setup(r => r.LoadAsync(_tenantId, _employeeId, It.IsAny<Guid?>(), It.Is<EmployeePeriod>(p => p.From == from && p.To == to), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new AttendancePeriodData(
                 records, Colombo, DateTimeOffset.Parse("2026-09-21T00:00:00+00:00"), new DateOnly(2026, 9, 21), 60,
-                new Dictionary<DateOnly, int>(), Array.Empty<LeaveRequest>(), DateTimeOffset.MinValue, DateTimeOffset.MaxValue));
+                new Dictionary<DateOnly, int>(), Array.Empty<LeaveRequest>(), DateTimeOffset.MinValue, DateTimeOffset.MaxValue,
+                Weekdays(from, to, new DateOnly(2026, 9, 21))));
 
     [Fact]
     public async Task Handle_WithoutCompare_HasNoPrevious_AndLoadsOnlyTheCurrentPeriod()
@@ -114,4 +113,7 @@ public sealed class GetEmployeeAttendanceDisciplineCompareTests
 
         result.StatusCode.Should().Be(400);
     }
+
+    private static ExpectedWorkdays Weekdays(DateOnly from, DateOnly to, DateOnly today) =>
+        ExpectedWorkdayCalendar.Build(new HashSet<int> { 1, 2, 3, 4, 5 }, new HashSet<DateOnly>(), from, to, new DateOnly(2020, 1, 1), null, today);
 }

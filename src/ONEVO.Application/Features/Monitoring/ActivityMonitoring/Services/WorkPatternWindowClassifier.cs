@@ -5,7 +5,7 @@ namespace ONEVO.Application.Features.Monitoring.ActivityMonitoring.Services;
 
 public sealed record WorkPatternTotals(
     int FocusMinutes, int OtherActiveMinutes, int IdleMinutes, int MeetingBarMinutes,
-    int ProductiveFocusMinutes, int ProductiveOtherActiveMinutes);
+    int ProductiveFocusMinutes, int ProductiveOtherActiveMinutes, int FocusBlocks = 0);
 
 /// <summary>
 /// Single source of truth for turning a day's raw ActivitySnapshot/MeetingSignal rows into
@@ -48,6 +48,7 @@ public static class WorkPatternWindowClassifier
 
         long meetingBarSeconds = 0, idleSeconds = 0, focusSeconds = 0, otherActiveSeconds = 0;
         long productiveFocusSeconds = 0, productiveOtherActiveSeconds = 0;
+        var focusBlocks = 0;
 
         // Windows NOT overlapping a meeting, in order - the population the focus-streak walk runs over.
         var nonMeetingWindows = new List<ActivitySnapshot>();
@@ -82,6 +83,7 @@ public static class WorkPatternWindowClassifier
             var minutes = streakActiveSeconds / 60;
             if (minutes >= FocusThresholdMinutes)
             {
+                focusBlocks++;
                 focusSeconds += streakActiveSeconds;
                 foreach (var w in streakWindows)
                 {
@@ -133,6 +135,7 @@ public static class WorkPatternWindowClassifier
             IdleMinutes: (int)(idleSeconds / 60),
             MeetingBarMinutes: (int)(meetingBarSeconds / 60),
             ProductiveFocusMinutes: (int)(productiveFocusSeconds / 60),
-            ProductiveOtherActiveMinutes: (int)(productiveOtherActiveSeconds / 60));
+            ProductiveOtherActiveMinutes: (int)(productiveOtherActiveSeconds / 60),
+            FocusBlocks: focusBlocks);
     }
 }

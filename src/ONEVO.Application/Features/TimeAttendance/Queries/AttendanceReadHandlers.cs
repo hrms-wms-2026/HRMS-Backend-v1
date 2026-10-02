@@ -1,6 +1,7 @@
 using MediatR;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.CoreHr.Employee.Helpers;
 using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.EmployeeAuthority.Models;
 using ONEVO.Application.Features.CoreHr.EmployeeAuthority.ServiceInterfaces;
@@ -34,7 +35,8 @@ public sealed class AttendanceReadHandler(
     IEvidenceAssetRepository? evidenceAssets = null,
     IFileStorageService? fileStorage = null,
     IActivityLiveDaySummary? liveActivity = null,
-    IInactivityCaptureAttemptRepository? activityChecks = null)
+    IInactivityCaptureAttemptRepository? activityChecks = null,
+    IEmployeeAttendancePeriodReader? periodReader = null)
     : IRequestHandler<GetAttendanceTodayQuery, Result<AttendanceTodayResponse>>,
       IRequestHandler<GetMyAttendanceHistoryQuery, Result<PagedResult<AttendanceHistoryRow>>>,
       IRequestHandler<GetCoveredAttendanceHistoryQuery, Result<PagedResult<AttendanceHistoryRow>>>,
@@ -80,6 +82,17 @@ public sealed class AttendanceReadHandler(
         var employee = await employees.GetDefaultForUserAsync(currentUser.TenantId, currentUser.UserId, ct);
         if (employee is null)
             return Result<AttendanceMonthlySummaryResponse>.NotFound("Current employee record was not found.");
+
+        // Working days come from the expected-workday calendar (legal entity week, holidays,
+        // hire/termination), the same source as the employee Overview - not from which rows exist.
+        if (periodReader is not null)
+        {
+            var data = await periodReader.LoadAsync(currentUser.TenantId, employee.Id, employee.LegalEntityId,
+                new EmployeePeriod(query.From, query.To), ct);
+            var c = AttendancePeriodCalculator.Classify(data);
+            return Result<AttendanceMonthlySummaryResponse>.Success(new AttendanceMonthlySummaryResponse(
+                c.WorkingDays, c.Attended, c.Late, c.EarlyDepartures, c.MissingClockOuts));
+        }
 
         var (records, _) = await attendance.ListRecordsAsync(
             currentUser.TenantId, [employee.Id], query.From, query.To, 0, 62, ct);

@@ -105,6 +105,44 @@ public class EfActivitySnapshotRepository : IActivitySnapshotRepository
         return rows.Select(r => (r.TenantId, r.EmployeeId)).ToList();
     }
 
+    public async Task<IReadOnlyList<ActivitySlotRow>> GetActiveSecondsByHalfHourAsync(
+        Guid tenantId, Guid employeeId, DateTimeOffset fromUtc, DateTimeOffset toUtcExclusive, CancellationToken ct)
+    {
+        // Grouped in SQL (at most 48 slots/day) - never loads the raw rows.
+        var slots = await _db.ActivitySnapshots.AsNoTracking()
+            .Where(s => s.TenantId == tenantId && s.EmployeeId == employeeId
+                        && s.CapturedAt >= fromUtc && s.CapturedAt < toUtcExclusive)
+            .GroupBy(s => new { s.CapturedAt.Year, s.CapturedAt.Month, s.CapturedAt.Day, s.CapturedAt.Hour, Half = s.CapturedAt.Minute / 30 })
+            .Select(g => new { g.Key.Year, g.Key.Month, g.Key.Day, g.Key.Hour, g.Key.Half, Active = g.Sum(s => s.ActiveSeconds) })
+            .ToListAsync(ct);
+
+        return slots
+            .Select(s => new ActivitySlotRow(new DateTimeOffset(s.Year, s.Month, s.Day, s.Hour, s.Half * 30, 0, TimeSpan.Zero), s.Active))
+            .ToList();
+    }
+
+    public async Task<DateTimeOffset?> GetLastActiveAtAsync(
+        Guid tenantId, Guid employeeId, DateTimeOffset fromUtc, DateTimeOffset toUtcExclusive, CancellationToken ct)
+        => await _db.ActivitySnapshots.AsNoTracking()
+            .Where(s => s.TenantId == tenantId && s.EmployeeId == employeeId && s.ActiveSeconds > 0
+                        && s.CapturedAt >= fromUtc && s.CapturedAt < toUtcExclusive)
+            .OrderByDescending(s => s.CapturedAt)
+            .Select(s => (DateTimeOffset?)s.CapturedAt)
+            .FirstOrDefaultAsync(ct);
+
+    public async Task<IReadOnlyList<ActivitySnapshot>> GetWindowsByEmployeeRangeAsync(
+        Guid tenantId, Guid employeeId, DateTimeOffset fromUtc, DateTimeOffset toUtcExclusive, CancellationToken ct)
+        => await _db.ActivitySnapshots.AsNoTracking()
+            .Where(s => s.TenantId == tenantId && s.EmployeeId == employeeId
+                        && s.CapturedAt >= fromUtc && s.CapturedAt < toUtcExclusive)
+            .OrderBy(s => s.CapturedAt)
+            .Select(s => new ActivitySnapshot
+            {
+                TenantId = s.TenantId, EmployeeId = s.EmployeeId, CapturedAt = s.CapturedAt,
+                ActiveSeconds = s.ActiveSeconds, IdleSeconds = s.IdleSeconds, ForegroundProcessName = s.ForegroundProcessName
+            })
+            .ToListAsync(ct);
+
     private static (DateTimeOffset Start, DateTimeOffset End) UtcDayBounds(DateOnly date)
     {
         var start = new DateTimeOffset(date.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero);

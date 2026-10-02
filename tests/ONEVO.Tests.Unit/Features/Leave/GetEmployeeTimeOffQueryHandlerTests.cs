@@ -3,21 +3,18 @@ using Moq;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.DTOs.Responses;
-using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.ServiceInterfaces;
 using ONEVO.Application.Features.Leave.Balance.Queries.GetEmployeeTimeOff;
 using ONEVO.Application.Features.Leave.Entitlement.RepositoryInterfaces;
 using ONEVO.Application.Features.Leave.Policy.RepositoryInterfaces;
 using ONEVO.Application.Features.Leave.Request.RepositoryInterfaces;
 using ONEVO.Domain.Features.Leave.Request.Entities;
-using EmployeeEntity = ONEVO.Domain.Features.CoreHr.Entities.Employee;
 
 namespace ONEVO.Tests.Unit.Features.Leave;
 
 public sealed class GetEmployeeTimeOffQueryHandlerTests
 {
     private readonly Mock<IEmployeeReadAccessGuard> _guard = new();
-    private readonly Mock<IEmployeeRepository> _employees = new();
     private readonly Mock<ILeaveEntitlementRepository> _entitlements = new();
     private readonly Mock<ILeavePolicyRepository> _policies = new();
     private readonly Mock<ILeaveRequestReadRepository> _leaveRequests = new();
@@ -45,7 +42,7 @@ public sealed class GetEmployeeTimeOffQueryHandlerTests
     }
 
     private GetEmployeeTimeOffQueryHandler CreateHandler() =>
-        new(_guard.Object, _employees.Object, _entitlements.Object, _policies.Object, _leaveRequests.Object, _user.Object, _clock.Object);
+        new(_guard.Object, _entitlements.Object, _policies.Object, _leaveRequests.Object, _user.Object, _clock.Object);
 
     private LeaveRequest Leave(string startUtc, string endUtc, decimal hours, Guid? typeId = null) => new()
     {
@@ -65,15 +62,13 @@ public sealed class GetEmployeeTimeOffQueryHandlerTests
     }
 
     [Fact]
-    public async Task Handle_Forbidden_WhenCallerLacksLeaveReadAndIsNotViewingSelf()
+    public async Task Handle_DoesNotRequireAnyModulePermission()
     {
         _user.Setup(u => u.HasPermission("leave:read")).Returns(false);
-        _employees.Setup(e => e.GetDefaultForUserAsync(_tenantId, It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new EmployeeEntity { Id = Guid.NewGuid(), TenantId = _tenantId });
 
         var result = await CreateHandler().Handle(new GetEmployeeTimeOffQuery(_employeeId, null), CancellationToken.None);
 
-        result.StatusCode.Should().Be(403);
+        result.IsSuccess.Should().BeTrue();
     }
 
     [Theory]
