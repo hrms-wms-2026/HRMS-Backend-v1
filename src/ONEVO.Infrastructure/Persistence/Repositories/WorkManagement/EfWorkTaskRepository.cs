@@ -107,17 +107,62 @@ public class EfWorkTaskRepository : IWorkTaskRepository
             where t.TenantId == tenantId
                   && (s.Category == TaskStatusCategories.NotStarted || s.Category == TaskStatusCategories.Active)
                   && _db.TaskAssignments.Any(a => a.TaskId == t.Id && a.EmployeeId == employeeId)
-            select new { Task = t, s.Category };
+            select new { Task = t, s.Category, StatusName = s.Name };
 
         var total = await query.CountAsync(ct);
         var items = await query
             .OrderBy(x => x.Category)
             .ThenBy(x => x.Task.ShortId)
             .Take(take)
-            .Select(x => new OpenAssignedTaskRow(x.Task.Id, x.Task.ShortId, x.Task.Title, x.Task.ProjectId, x.Task.ObjectiveId, x.Category))
+            .Select(x => new OpenAssignedTaskRow(x.Task.Id, x.Task.ShortId, x.Task.Title, x.Task.ProjectId, x.Task.ObjectiveId, x.Category,
+                x.Task.DueDate, x.StatusName, x.Task.Priority))
             .ToListAsync(ct);
 
         return new OpenAssignedTasksPage(items, total);
+    }
+
+    public async Task<IReadOnlyDictionary<Guid, WorkTaskCounts>> CountByObjectivesAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> objectiveIds, DateOnly today, CancellationToken ct = default)
+    {
+        if (objectiveIds.Count == 0)
+            return new Dictionary<Guid, WorkTaskCounts>();
+        var rows = await (
+            from t in _db.WorkTasks.AsNoTracking()
+            join s in _db.TaskStatuses.AsNoTracking() on t.StatusId equals s.Id
+            where t.TenantId == tenantId && t.ParentTaskId == null && objectiveIds.Contains(t.ObjectiveId)
+            group new { s.Category, t.DueDate } by t.ObjectiveId into g
+            select new
+            {
+                g.Key,
+                Total = g.Count(),
+                NotStarted = g.Count(x => x.Category == TaskStatusCategories.NotStarted),
+                Active = g.Count(x => x.Category == TaskStatusCategories.Active),
+                Done = g.Count(x => x.Category == TaskStatusCategories.Done),
+                Overdue = g.Count(x => x.Category != TaskStatusCategories.Done && x.DueDate != null && x.DueDate < today)
+            }).ToListAsync(ct);
+        return rows.ToDictionary(r => r.Key, r => new WorkTaskCounts(r.Total, r.NotStarted, r.Active, r.Done, r.Overdue));
+    }
+
+    public async Task<IReadOnlyDictionary<Guid, WorkTaskCounts>> CountByProjectsAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> projectIds, DateOnly today, CancellationToken ct = default)
+    {
+        if (projectIds.Count == 0)
+            return new Dictionary<Guid, WorkTaskCounts>();
+        var rows = await (
+            from t in _db.WorkTasks.AsNoTracking()
+            join s in _db.TaskStatuses.AsNoTracking() on t.StatusId equals s.Id
+            where t.TenantId == tenantId && t.ParentTaskId == null && projectIds.Contains(t.ProjectId)
+            group new { s.Category, t.DueDate } by t.ProjectId into g
+            select new
+            {
+                g.Key,
+                Total = g.Count(),
+                NotStarted = g.Count(x => x.Category == TaskStatusCategories.NotStarted),
+                Active = g.Count(x => x.Category == TaskStatusCategories.Active),
+                Done = g.Count(x => x.Category == TaskStatusCategories.Done),
+                Overdue = g.Count(x => x.Category != TaskStatusCategories.Done && x.DueDate != null && x.DueDate < today)
+            }).ToListAsync(ct);
+        return rows.ToDictionary(r => r.Key, r => new WorkTaskCounts(r.Total, r.NotStarted, r.Active, r.Done, r.Overdue));
     }
 
     public async Task<IReadOnlyList<EmployeeTaskPeriodRow>> ListForEmployeePeriodAsync(
