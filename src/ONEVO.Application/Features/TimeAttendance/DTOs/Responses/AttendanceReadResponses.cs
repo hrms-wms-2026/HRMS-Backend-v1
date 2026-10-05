@@ -87,7 +87,10 @@ public sealed record AttendanceHistoryRow(
     bool IsOverBreakAllowance = false,
     string? ScheduledStartTime = null,
     string? ScheduledEndTime = null,
-    int? RequiredWorkMinutes = null);
+    int? RequiredWorkMinutes = null,
+    int FailedFaceChecks = 0,
+    bool FaceCheckLetThrough = false,
+    string? FaceCheckAlertStatus = null);
 
 public sealed record AttendanceMonthlySummaryResponse(
     int WorkingDays,
@@ -126,10 +129,33 @@ public sealed record AttendanceActivityCheckDto(
     string Outcome,
     string? Url);
 
+/// <summary>One clock-in/out face check on the day. Only returned for the employee's own day.</summary>
+/// <param name="Outcome">"passed", "failed" or "overridden" (failed on the last try, let through for review).</param>
+/// <param name="PhotoUrl">Short-lived signed URL of the photo kept for a failed check; null when none was kept.</param>
+public sealed record AttendanceFaceCheckDto(
+    Guid Id,
+    DateTimeOffset At,
+    string Purpose,
+    string Outcome,
+    string? FailureReason,
+    string? PhotoUrl);
+
+/// <summary>A face-check alert (identity case) raised on the employee's own day. The reviewer's
+/// note is left out - this is the employee's view.</summary>
+/// <param name="Status">"Open", "Acknowledged", "Escalated" or "Resolved".</param>
+public sealed record AttendanceFaceCheckAlertDto(
+    Guid Id,
+    DateTimeOffset DetectedAt,
+    string? Purpose,
+    string Status,
+    DateTimeOffset? ResolvedAt);
+
 public sealed record AttendanceDayDetailResponse(
     AttendanceHistoryRow Summary,
     IReadOnlyList<TimelineEvent> TimelineEvents,
     ActivityDailySummaryDto? DailyActivity,
     IReadOnlyList<CheckInLocationDto> CheckIns,
     IReadOnlyList<AttendanceDayScreenshotDto>? Screenshots = null,
-    IReadOnlyList<AttendanceActivityCheckDto>? ActivityChecks = null);
+    IReadOnlyList<AttendanceActivityCheckDto>? ActivityChecks = null,
+    IReadOnlyList<AttendanceFaceCheckDto>? FaceChecks = null,
+    IReadOnlyList<AttendanceFaceCheckAlertDto>? FaceCheckAlerts = null);

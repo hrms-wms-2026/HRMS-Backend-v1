@@ -28,7 +28,7 @@ public class FaceVerificationAttempt : ITenantOwnedEntity
 
     public float? SimilarityScore { get; set; }
 
-    /// <summary>file_records.Id of the photo kept for the manager's review (overridden attempts only).</summary>
+    /// <summary>file_records.Id of the photo kept for the manager's review (failed and overridden attempts).</summary>
     public Guid? PhotoFileId { get; set; }
 
     public DateTimeOffset CreatedAt { get; set; }

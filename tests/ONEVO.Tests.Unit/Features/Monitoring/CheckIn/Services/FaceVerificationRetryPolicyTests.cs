@@ -130,8 +130,20 @@ public class FaceVerificationRetryPolicyTests
         result.FailureReason.Should().Be("not_matched");
         result.FailedAttempts.Should().Be(1);
         result.MaxAttempts.Should().Be(3);
-        _added.Should().ContainSingle(a => a.Outcome == FaceVerificationAttempt.OutcomeFailed && a.FailureReason == "not_matched");
+        _added.Should().ContainSingle(a => a.Outcome == FaceVerificationAttempt.OutcomeFailed
+            && a.FailureReason == "not_matched" && a.PhotoFileId == _photoFileId);
         VerifyNoAlert();
+    }
+
+    [Fact]
+    public async Task Pass_DoesNotKeepThePhoto()
+    {
+        await CreateSut().ApplyAsync(Context(), Passed(), new MemoryStream([1]), "image/jpeg", CancellationToken.None);
+
+        _added.Single().PhotoFileId.Should().BeNull();
+        _fileStorage.Verify(f => f.UploadAsync(
+            It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<string>(),
+            It.IsAny<string>(), It.IsAny<Stream>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
