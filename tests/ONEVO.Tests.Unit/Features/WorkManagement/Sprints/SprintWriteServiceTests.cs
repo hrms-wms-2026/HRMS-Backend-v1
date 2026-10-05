@@ -3,7 +3,9 @@ using Moq;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Features.WorkManagement.Sprints.DTOs;
 using ONEVO.Application.Features.WorkManagement.Sprints.Services;
+using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.WorkManagement.Projects.Entities;
+using ONEVO.Domain.Features.WorkManagement.ProjectMembers.Entities;
 using ONEVO.Domain.Features.WorkManagement.Sprints.Entities;
 using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
 using Xunit;
@@ -140,6 +142,62 @@ public class SprintWriteServiceTests
 
         sprint.Status.Should().Be(SprintStatuses.Complete);
         task.SprintId.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task ApplyComplete_UnfinishedTasksMovedToBacklog_NotifiesIncomplete()
+    {
+        var sprint = Sprint(SprintStatuses.Active);
+        var objectiveId = Guid.NewGuid();
+        var todo = Guid.NewGuid();
+        var task = new WorkTask { Id = Guid.NewGuid(), SprintId = sprint.Id, StatusId = todo, ObjectiveId = objectiveId };
+        _w.Tasks.Setup(x => x.GetBySprintIdAsync(TenantId, sprint.Id, It.IsAny<CancellationToken>())).ReturnsAsync(new List<WorkTask> { task });
+        _w.Statuses.Setup(x => x.GetByIdForTenantAsync(TenantId, todo, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new TaskStatus { Id = todo, MarksTaskComplete = false });
+
+        var employeeId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+        _w.Members.Setup(x => x.ListActiveForObjectiveAsync(TenantId, objectiveId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<ProjectMember> { new() { EmployeeId = employeeId, ObjectiveId = objectiveId, ProjectId = ProjectId } });
+        _w.Membership.Setup(x => x.GetActiveAssigneeAsync(TenantId, employeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Employee { Id = employeeId, UserId = userId });
+
+        await _w.Writes().ApplyCompleteAsync(TenantId, Actor, sprint, new SprintCompleteInput("backlog", null));
+
+        _w.Notifications.Verify(x => x.SendTemplatedAsync(
+            TenantId, userId, "work_sprint_incomplete",
+            It.IsAny<IReadOnlyDictionary<string, string>>(), "sprint", sprint.Id, It.IsAny<CancellationToken>()), Times.Once);
+        _w.Notifications.Verify(x => x.SendTemplatedAsync(
+            It.IsAny<Guid>(), It.IsAny<Guid>(), "work_sprint_completed",
+            It.IsAny<IReadOnlyDictionary<string, string>>(), It.IsAny<string>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ApplyComplete_AllTasksAlreadyComplete_NotifiesCompleted()
+    {
+        var sprint = Sprint(SprintStatuses.Active);
+        var objectiveId = Guid.NewGuid();
+        var done = Guid.NewGuid();
+        var task = new WorkTask { Id = Guid.NewGuid(), SprintId = sprint.Id, StatusId = done, ObjectiveId = objectiveId };
+        _w.Tasks.Setup(x => x.GetBySprintIdAsync(TenantId, sprint.Id, It.IsAny<CancellationToken>())).ReturnsAsync(new List<WorkTask> { task });
+        _w.Statuses.Setup(x => x.GetByIdForTenantAsync(TenantId, done, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new TaskStatus { Id = done, MarksTaskComplete = true });
+
+        var employeeId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+        _w.Members.Setup(x => x.ListActiveForObjectiveAsync(TenantId, objectiveId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<ProjectMember> { new() { EmployeeId = employeeId, ObjectiveId = objectiveId, ProjectId = ProjectId } });
+        _w.Membership.Setup(x => x.GetActiveAssigneeAsync(TenantId, employeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Employee { Id = employeeId, UserId = userId });
+
+        await _w.Writes().ApplyCompleteAsync(TenantId, Actor, sprint, new SprintCompleteInput("backlog", null));
+
+        _w.Notifications.Verify(x => x.SendTemplatedAsync(
+            TenantId, userId, "work_sprint_completed",
+            It.IsAny<IReadOnlyDictionary<string, string>>(), "sprint", sprint.Id, It.IsAny<CancellationToken>()), Times.Once);
+        _w.Notifications.Verify(x => x.SendTemplatedAsync(
+            It.IsAny<Guid>(), It.IsAny<Guid>(), "work_sprint_incomplete",
+            It.IsAny<IReadOnlyDictionary<string, string>>(), It.IsAny<string>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]

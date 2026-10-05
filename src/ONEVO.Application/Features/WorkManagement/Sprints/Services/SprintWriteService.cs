@@ -223,7 +223,8 @@ public sealed class SprintWriteService : ISprintWriteService
                 tenantId, input.TargetSprintId!.Value, actorEmployeeId, SprintActivityActions.TasksAdded,
                 details: new { taskIds = movedTaskIds }), ct);
 
-        await NotifyAudienceAsync(tenantId, trackedSprint, audience, "work_sprint_completed", ct);
+        var completionTemplateCode = movedTaskIds.Count > 0 ? "work_sprint_incomplete" : "work_sprint_completed";
+        await NotifyAudienceAsync(tenantId, trackedSprint, audience, completionTemplateCode, ct);
         return Result.Success();
     }
 
