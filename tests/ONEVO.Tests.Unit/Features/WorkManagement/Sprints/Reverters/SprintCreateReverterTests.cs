@@ -43,4 +43,21 @@ public class SprintCreateReverterTests
 
         outcome.Kind.Should().Be(RevertOutcomeKind.Stale);
     }
+
+    [Theory]
+    [InlineData(SprintStatuses.Complete)]
+    [InlineData(SprintStatuses.Achieved)]
+    public async Task RevertAsync_SprintAlreadyCompletedOrAchieved_ReturnsConflict_WithoutDeleting(string status)
+    {
+        var sprintId = Guid.NewGuid();
+        var sprint = new Sprint { Id = sprintId, TenantId = TenantId, Status = status };
+        var request = new WorkApprovalRequest { Id = Guid.NewGuid(), TenantId = TenantId, TargetId = sprintId, ActionType = WorkActionTypes.SprintCreate };
+        _sprints.Setup(x => x.GetTrackedByIdForTenantAsync(TenantId, sprintId, It.IsAny<CancellationToken>())).ReturnsAsync(sprint);
+
+        var outcome = await Build().RevertAsync(new ApprovalRevertContext(request, Guid.NewGuid()), CancellationToken.None);
+
+        outcome.Kind.Should().Be(RevertOutcomeKind.Conflict);
+        _writes.Verify(x => x.ApplyDeleteAsync(It.IsAny<Guid>(), It.IsAny<Sprint>(), It.IsAny<CancellationToken>()), Times.Never);
+        request.TargetId.Should().Be(sprintId);
+    }
 }
