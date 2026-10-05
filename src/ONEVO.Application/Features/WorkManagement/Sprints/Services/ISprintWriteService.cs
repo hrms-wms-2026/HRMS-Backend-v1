@@ -22,7 +22,7 @@ public interface ISprintWriteService
     Task<Result> ApplyStartAsync(Guid tenantId, Guid actorEmployeeId, Sprint trackedSprint, SprintStartInput input, CancellationToken ct = default);
 
     Task<Result> ValidateCompleteAsync(Guid tenantId, Sprint sprint, SprintCompleteInput input, CancellationToken ct = default);
-    Task<Result> ApplyCompleteAsync(Guid tenantId, Guid actorEmployeeId, Sprint trackedSprint, SprintCompleteInput input, CancellationToken ct = default);
+    Task<Result<IReadOnlyList<Guid>>> ApplyCompleteAsync(Guid tenantId, Guid actorEmployeeId, Sprint trackedSprint, SprintCompleteInput input, CancellationToken ct = default);
 
     Task<Result> ValidateAchieveAsync(Guid tenantId, Sprint sprint, CancellationToken ct = default);
     Task<Result> ApplyAchieveAsync(Guid tenantId, Guid actorEmployeeId, Sprint trackedSprint, CancellationToken ct = default);

@@ -24,6 +24,9 @@ public sealed record SprintAchieveUndoSnapshot(string PreviousStatus);
 /// <summary>UndoStateJson for sprint.delete - the tasks ApplyDeleteAsync detached, to reattach on revert.</summary>
 public sealed record SprintDeleteUndoSnapshot(IReadOnlyList<Guid> TaskIds);
 
+/// <summary>UndoStateJson for sprint.complete - the tasks ApplyCompleteAsync moved out, to move back on revert.</summary>
+public sealed record SprintCompleteUndoSnapshot(IReadOnlyList<Guid> MovedTaskIds);
+
 public static class SprintPayloadJson
 {
     /// <summary>Writes camelCase; reads case-insensitively.</summary>

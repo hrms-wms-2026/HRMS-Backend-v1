@@ -43,12 +43,21 @@ public abstract class SprintApplierBase : IApprovalActionApplier
 
         var undoJson = CaptureUndoJson(sprint);
         var result = await ApplyAsync(request.TenantId, request.RequestedByEmployeeId, sprint, context.PayloadJson, ct);
-        return result.IsSuccess ? ApplyOutcome.Applied(undoJson) : ApplyOutcome.Invalid(result.Error ?? "The sprint change could not be applied.");
+        if (!result.IsSuccess)
+            return ApplyOutcome.Invalid(result.Error ?? "The sprint change could not be applied.");
+        // Most types snapshot before mutating (CaptureUndoJson); sprint.complete only knows which
+        // tasks moved after ApplyCompleteAsync runs, so it snapshots via CaptureUndoJsonAfterApply
+        // instead. At most one of the two is ever non-null for a given applier.
+        return ApplyOutcome.Applied(undoJson ?? CaptureUndoJsonAfterApply(sprint));
     }
 
     /// <summary>Pre-mutation snapshot for a reverter to undo this apply. Null for types with nothing to
-    /// undo.</summary>
+    /// undo, or whose snapshot can only be taken after the mutation (see CaptureUndoJsonAfterApply).</summary>
     protected virtual string? CaptureUndoJson(Sprint sprint) => null;
+
+    /// <summary>Post-mutation snapshot, for a type whose undo data (e.g. which tasks moved) only exists
+    /// once ApplyAsync has already run. Null for every type that uses CaptureUndoJson instead.</summary>
+    protected virtual string? CaptureUndoJsonAfterApply(Sprint sprint) => null;
 
     protected static T? Read<T>(string payloadJson) where T : class
     {

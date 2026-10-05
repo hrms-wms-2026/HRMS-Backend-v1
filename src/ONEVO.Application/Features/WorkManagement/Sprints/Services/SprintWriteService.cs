@@ -188,11 +188,11 @@ public sealed class SprintWriteService : ISprintWriteService
         return Result.Success();
     }
 
-    public async Task<Result> ApplyCompleteAsync(Guid tenantId, Guid actorEmployeeId, Sprint trackedSprint, SprintCompleteInput input, CancellationToken ct = default)
+    public async Task<Result<IReadOnlyList<Guid>>> ApplyCompleteAsync(Guid tenantId, Guid actorEmployeeId, Sprint trackedSprint, SprintCompleteInput input, CancellationToken ct = default)
     {
         var validation = await ValidateCompleteAsync(tenantId, trackedSprint, input, ct);
         if (!validation.IsSuccess)
-            return validation;
+            return Result<IReadOnlyList<Guid>>.Failure(validation.Error!, validation.StatusCode ?? 400);
 
         var fromStatus = trackedSprint.Status;
         var tasks = await _tasks.GetBySprintIdAsync(tenantId, trackedSprint.Id, ct);
@@ -225,7 +225,7 @@ public sealed class SprintWriteService : ISprintWriteService
 
         var completionTemplateCode = movedTaskIds.Count > 0 ? "work_sprint_incomplete" : "work_sprint_completed";
         await NotifyAudienceAsync(tenantId, trackedSprint, audience, completionTemplateCode, ct);
-        return Result.Success();
+        return Result<IReadOnlyList<Guid>>.Success(movedTaskIds);
     }
 
     // ---- Achieve ----
