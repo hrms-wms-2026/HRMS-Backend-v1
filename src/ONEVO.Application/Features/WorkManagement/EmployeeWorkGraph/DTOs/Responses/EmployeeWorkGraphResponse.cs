@@ -33,7 +33,28 @@ public sealed record WorkGraphNode(
     string? Status = null,
     Guid? ProjectId = null,
     Guid? ObjectiveId = null,
-    Guid? TaskId = null);
+    Guid? TaskId = null,
+    WorkGraphStats? Stats = null,
+    WorkGraphModuleDetails? Module = null,
+    WorkGraphTaskDetails? Task = null,
+    // Projects: the cover image's file id (streamed by GET /projects/{id}/logo).
+    Guid? LogoFileId = null);
+
+/// <summary>Whole-module / whole-project numbers (every top-level task, not just this employee's).
+/// Progress matches Work Management: CompletedHours / AllocatedHours.</summary>
+public sealed record WorkGraphStats(
+    int TotalTasks, int NotStarted, int InProgress, int Completed, int Overdue,
+    decimal AllocatedHours, decimal CompletedHours);
+
+public sealed record WorkGraphPerson(Guid EmployeeId, string Name, Guid? AvatarFileId);
+
+/// <summary>Members is capped (earliest joiners first); MemberCount is the full count.</summary>
+public sealed record WorkGraphModuleDetails(
+    WorkGraphPerson? Owner, DateOnly StartDate, DateOnly EndDate,
+    IReadOnlyList<WorkGraphPerson> Members, int MemberCount);
+
+/// <summary>One of this employee's open tasks. Overdue: due before today.</summary>
+public sealed record WorkGraphTaskDetails(DateOnly? DueDate, string? StatusName, string? Priority, bool IsOverdue);
 
 public sealed record WorkGraphLink(string Source, string Target, string Kind);
 

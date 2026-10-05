@@ -119,6 +119,23 @@ public class EfProjectMemberRepository : IProjectMemberRepository
         _db.ProjectMembers.Update(member);
     }
 
+    public async Task<IReadOnlyDictionary<Guid, IReadOnlyList<Guid>>> ListActiveMemberEmployeeIdsByObjectivesAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> objectiveIds, CancellationToken ct = default)
+    {
+        if (objectiveIds.Count == 0)
+            return new Dictionary<Guid, IReadOnlyList<Guid>>();
+
+        var rows = await _db.ProjectMembers.AsNoTracking()
+            .Where(m => m.TenantId == tenantId && objectiveIds.Contains(m.ObjectiveId) && m.IsActive)
+            .OrderBy(m => m.JoinedAt)
+            .Select(m => new { m.ObjectiveId, m.EmployeeId })
+            .ToListAsync(ct);
+
+        return rows
+            .GroupBy(r => r.ObjectiveId)
+            .ToDictionary(g => g.Key, g => (IReadOnlyList<Guid>)g.Select(r => r.EmployeeId).Distinct().ToList());
+    }
+
     public async Task<IReadOnlyDictionary<Guid, IReadOnlyList<Guid>>> ListDistinctActiveMemberEmployeeIdsAsync(
         Guid tenantId, IReadOnlyCollection<Guid> projectIds, int takePerProject, CancellationToken ct = default)
     {
