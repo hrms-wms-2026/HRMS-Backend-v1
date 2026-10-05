@@ -4,7 +4,6 @@ using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.DTOs.Responses;
 using ONEVO.Application.Features.CoreHr.Employee.Helpers;
-using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.ServiceInterfaces;
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.ServiceInterfaces;
 using ONEVO.Application.Features.Monitoring.Notifications.RepositoryInterfaces;
@@ -13,14 +12,12 @@ using ONEVO.Application.Features.TimeAttendance.Services;
 using ONEVO.Domain.Features.Leave.Request.Entities;
 using ONEVO.Domain.Features.Monitoring.Notifications.Entities;
 using ONEVO.Domain.Features.TimeAttendance.Entities;
-using EmployeeEntity = ONEVO.Domain.Features.CoreHr.Entities.Employee;
 
 namespace ONEVO.Tests.Unit.Features.TimeAttendance;
 
 public sealed class GetEmployeeAttendanceDisciplineQueryHandlerTests
 {
     private readonly Mock<IEmployeeReadAccessGuard> _guard = new();
-    private readonly Mock<IEmployeeRepository> _employees = new();
     private readonly Mock<IEmployeeAttendancePeriodReader> _reader = new();
     private readonly Mock<IMonitoringToggleResolver> _toggles = new();
     private readonly Mock<INotificationRepository> _notifications = new();
@@ -49,7 +46,7 @@ public sealed class GetEmployeeAttendanceDisciplineQueryHandlerTests
     }
 
     private GetEmployeeAttendanceDisciplineQueryHandler CreateHandler() =>
-        new(_guard.Object, _employees.Object, _reader.Object, _toggles.Object, _notifications.Object, _user.Object, _clock.Object);
+        new(_guard.Object, _reader.Object, _toggles.Object, _notifications.Object, _user.Object, _clock.Object);
 
     private AttendanceRecord Rec(DateOnly d, string? start = null, string? end = null) => new()
     {
@@ -62,7 +59,8 @@ public sealed class GetEmployeeAttendanceDisciplineQueryHandlerTests
         _reader.Setup(r => r.LoadAsync(_tenantId, _employeeId, It.IsAny<Guid?>(), It.IsAny<EmployeePeriod>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new AttendancePeriodData(
                 records, Colombo, DateTimeOffset.Parse("2026-08-21T00:00:00+00:00"), Today, allowance, breaks,
-                Array.Empty<LeaveRequest>(), RangeStart, RangeEnd));
+                Array.Empty<LeaveRequest>(), RangeStart, RangeEnd,
+                Weekdays(new DateOnly(2026, 8, 1), new DateOnly(2026, 8, 31), Today)));
 
     private static readonly DateOnly D3 = new(2026, 8, 3);
     private static readonly DateOnly D4 = new(2026, 8, 4);
@@ -78,15 +76,14 @@ public sealed class GetEmployeeAttendanceDisciplineQueryHandlerTests
     };
 
     [Fact]
-    public async Task Handle_Forbidden_WhenCallerLacksAttendanceReadAndIsNotViewingSelf()
+    public async Task Handle_DoesNotRequireAnyModulePermission()
     {
         _user.Setup(u => u.HasPermission("attendance:read")).Returns(false);
-        _employees.Setup(e => e.GetDefaultForUserAsync(_tenantId, It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new EmployeeEntity { Id = Guid.NewGuid(), TenantId = _tenantId });
+        ArrangeData(null, new Dictionary<DateOnly, int>());
 
         var result = await CreateHandler().Handle(new GetEmployeeAttendanceDisciplineQuery(_employeeId, null, null), CancellationToken.None);
 
-        result.StatusCode.Should().Be(403);
+        result.IsSuccess.Should().BeTrue();
     }
 
     [Fact]
@@ -139,4 +136,7 @@ public sealed class GetEmployeeAttendanceDisciplineQueryHandlerTests
 
         result.StatusCode.Should().Be(400);
     }
+
+    private static ExpectedWorkdays Weekdays(DateOnly from, DateOnly to, DateOnly today) =>
+        ExpectedWorkdayCalendar.Build(new HashSet<int> { 1, 2, 3, 4, 5 }, new HashSet<DateOnly>(), from, to, new DateOnly(2020, 1, 1), null, today);
 }

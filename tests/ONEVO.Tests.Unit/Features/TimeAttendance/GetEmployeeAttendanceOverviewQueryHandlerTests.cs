@@ -4,20 +4,17 @@ using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.DTOs.Responses;
 using ONEVO.Application.Features.CoreHr.Employee.Helpers;
-using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.ServiceInterfaces;
 using ONEVO.Application.Features.TimeAttendance.Queries.EmployeeOverview.GetEmployeeAttendanceOverview;
 using ONEVO.Application.Features.TimeAttendance.Services;
 using ONEVO.Domain.Features.Leave.Request.Entities;
 using ONEVO.Domain.Features.TimeAttendance.Entities;
-using EmployeeEntity = ONEVO.Domain.Features.CoreHr.Entities.Employee;
 
 namespace ONEVO.Tests.Unit.Features.TimeAttendance;
 
 public sealed class GetEmployeeAttendanceOverviewQueryHandlerTests
 {
     private readonly Mock<IEmployeeReadAccessGuard> _guard = new();
-    private readonly Mock<IEmployeeRepository> _employees = new();
     private readonly Mock<IEmployeeAttendancePeriodReader> _reader = new();
     private readonly Mock<ICurrentUser> _user = new();
     private readonly Mock<IDateTimeProvider> _clock = new();
@@ -40,7 +37,7 @@ public sealed class GetEmployeeAttendanceOverviewQueryHandlerTests
     }
 
     private GetEmployeeAttendanceOverviewQueryHandler CreateHandler() =>
-        new(_guard.Object, _employees.Object, _reader.Object, _user.Object, _clock.Object);
+        new(_guard.Object, _reader.Object, _user.Object, _clock.Object);
 
     private AttendanceRecord Rec(DateOnly d, string? start = null, string? end = null) => new()
     {
@@ -54,7 +51,8 @@ public sealed class GetEmployeeAttendanceOverviewQueryHandlerTests
             .ReturnsAsync(new AttendancePeriodData(
                 records, Colombo, DateTimeOffset.Parse("2026-08-21T00:00:00+00:00"), Today, 60,
                 new Dictionary<DateOnly, int>(), leaves ?? Array.Empty<LeaveRequest>(),
-                DateTimeOffset.MinValue, DateTimeOffset.MaxValue));
+                DateTimeOffset.MinValue, DateTimeOffset.MaxValue,
+                Weekdays(new DateOnly(2026, 8, 1), new DateOnly(2026, 8, 31), Today)));
 
     [Fact]
     public async Task Handle_PassesThroughGuardFailure_WithoutReadingData()
@@ -69,24 +67,9 @@ public sealed class GetEmployeeAttendanceOverviewQueryHandlerTests
     }
 
     [Fact]
-    public async Task Handle_Forbidden_WhenCallerLacksAttendanceReadAndIsNotViewingSelf()
+    public async Task Handle_DoesNotRequireAnyModulePermission()
     {
         _user.Setup(u => u.HasPermission("attendance:read")).Returns(false);
-        _employees.Setup(e => e.GetDefaultForUserAsync(_tenantId, _userId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new EmployeeEntity { Id = Guid.NewGuid(), TenantId = _tenantId });
-
-        var result = await CreateHandler().Handle(new GetEmployeeAttendanceOverviewQuery(_employeeId, null, null), CancellationToken.None);
-
-        result.IsSuccess.Should().BeFalse();
-        result.StatusCode.Should().Be(403);
-    }
-
-    [Fact]
-    public async Task Handle_AllowsSelfWithoutAttendanceRead()
-    {
-        _user.Setup(u => u.HasPermission("attendance:read")).Returns(false);
-        _employees.Setup(e => e.GetDefaultForUserAsync(_tenantId, _userId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new EmployeeEntity { Id = _employeeId, TenantId = _tenantId });
         ArrangeData(Array.Empty<AttendanceRecord>());
 
         var result = await CreateHandler().Handle(new GetEmployeeAttendanceOverviewQuery(_employeeId, null, null), CancellationToken.None);
@@ -138,12 +121,21 @@ public sealed class GetEmployeeAttendanceOverviewQueryHandlerTests
             new GetEmployeeAttendanceOverviewQuery(_employeeId, new DateOnly(2026, 8, 1), new DateOnly(2026, 8, 31)), CancellationToken.None);
 
         var v = result.Value!;
-        v.WorkingDays.Should().Be(15); // Mon–Fri from Aug 3 up to today (Aug 21)
+        // Working days come from the calendar (Mon-Fri, Aug 1..Today=Aug 21 -> 15), not the 5 rows.
+        v.WorkingDays.Should().Be(15);
         v.Present.Should().Be(3);
         v.Late.Should().Be(1);
         v.MissingClockOuts.Should().Be(1);
         v.LeaveDays.Should().Be(1);
+        // 14 past weekdays - 3 attended - 1 leave; today (Aug 21) is not yet absent.
+        v.Absent.Should().Be(10);
         v.Days.Should().HaveCount(31);
+        string StatusOn(int day) => v.Days.Single(d => d.Date == new DateOnly(2026, 8, day)).Status;
+        new[] { StatusOn(3), StatusOn(4), StatusOn(6), StatusOn(7), StatusOn(10) }
+            .Should().Equal("present", "late", "missing_clock_out", "leave", "absent");
+        StatusOn(1).Should().Be("off");   // Saturday
+        StatusOn(21).Should().Be("none"); // today, not clocked in
+        StatusOn(24).Should().Be("none"); // future
         v.Days.Select(d => d.Date).Should().BeInAscendingOrder();
         v.Days.Take(10).Select(d => d.Status).Should().Equal(
             "off", "off",                                                 // Sat 1, Sun 2
@@ -168,7 +160,7 @@ public sealed class GetEmployeeAttendanceOverviewQueryHandlerTests
         v.Days.Single(d => d.Date == new DateOnly(2026, 8, 3)).Status.Should().Be("absent");
         v.Days.Single(d => d.Date == new DateOnly(2026, 8, 21)).Status.Should().Be("none"); // today, not clocked in yet
         v.Days.Single(d => d.Date == new DateOnly(2026, 8, 24)).Status.Should().Be("none"); // future
-        v.Days.Single(d => d.Date == new DateOnly(2026, 8, 29)).Status.Should().Be("off");  // Saturday
+        v.Days.Single(d => d.Date == new DateOnly(2026, 8, 15)).Status.Should().Be("off");  // past Saturday
     }
 
     [Fact]
@@ -179,7 +171,9 @@ public sealed class GetEmployeeAttendanceOverviewQueryHandlerTests
                 Array.Empty<AttendanceRecord>(), Colombo, DateTimeOffset.Parse("2026-08-21T00:00:00+00:00"), Today, 60,
                 new Dictionary<DateOnly, int>(), Array.Empty<LeaveRequest>(),
                 DateTimeOffset.MinValue, DateTimeOffset.MaxValue,
-                new HashSet<int> { 1, 2, 3, 4, 5, 6 })); // Mon–Sat
+                ExpectedWorkdayCalendar.Build(
+                    new HashSet<int> { 1, 2, 3, 4, 5, 6 }, new HashSet<DateOnly>(), // Mon–Sat
+                    new DateOnly(2026, 8, 1), new DateOnly(2026, 8, 31), new DateOnly(2020, 1, 1), null, Today)));
 
         var result = await CreateHandler().Handle(
             new GetEmployeeAttendanceOverviewQuery(_employeeId, new DateOnly(2026, 8, 1), new DateOnly(2026, 8, 31)), CancellationToken.None);
@@ -187,4 +181,7 @@ public sealed class GetEmployeeAttendanceOverviewQueryHandlerTests
         result.Value!.Days.Single(d => d.Date == new DateOnly(2026, 8, 1)).Status.Should().Be("absent"); // Saturday
         result.Value.Days.Single(d => d.Date == new DateOnly(2026, 8, 2)).Status.Should().Be("off");     // Sunday
     }
+
+    private static ExpectedWorkdays Weekdays(DateOnly from, DateOnly to, DateOnly today) =>
+        ExpectedWorkdayCalendar.Build(new HashSet<int> { 1, 2, 3, 4, 5 }, new HashSet<DateOnly>(), from, to, new DateOnly(2020, 1, 1), null, today);
 }

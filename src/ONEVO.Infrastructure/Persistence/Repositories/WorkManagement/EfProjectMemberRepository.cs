@@ -127,6 +127,12 @@ public class EfProjectMemberRepository : IProjectMemberRepository
             .ToListAsync(ct);
     }
 
+    public async Task<IReadOnlyList<ProjectMember>> ListActiveForProjectAsync(Guid tenantId, Guid projectId, CancellationToken ct = default)
+        => await _db.ProjectMembers
+            .AsNoTracking()
+            .Where(m => m.TenantId == tenantId && m.ProjectId == projectId && m.IsActive)
+            .ToListAsync(ct);
+
     public async Task<IReadOnlyList<ProjectMember>> ListActiveForEmployeeAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default)
     {
         return await _db.ProjectMembers.AsNoTracking()
@@ -137,6 +143,23 @@ public class EfProjectMemberRepository : IProjectMemberRepository
     public void Update(ProjectMember member)
     {
         _db.ProjectMembers.Update(member);
+    }
+
+    public async Task<IReadOnlyDictionary<Guid, IReadOnlyList<Guid>>> ListActiveMemberEmployeeIdsByObjectivesAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> objectiveIds, CancellationToken ct = default)
+    {
+        if (objectiveIds.Count == 0)
+            return new Dictionary<Guid, IReadOnlyList<Guid>>();
+
+        var rows = await _db.ProjectMembers.AsNoTracking()
+            .Where(m => m.TenantId == tenantId && objectiveIds.Contains(m.ObjectiveId) && m.IsActive)
+            .OrderBy(m => m.JoinedAt)
+            .Select(m => new { m.ObjectiveId, m.EmployeeId })
+            .ToListAsync(ct);
+
+        return rows
+            .GroupBy(r => r.ObjectiveId)
+            .ToDictionary(g => g.Key, g => (IReadOnlyList<Guid>)g.Select(r => r.EmployeeId).Distinct().ToList());
     }
 
     public async Task<IReadOnlyDictionary<Guid, IReadOnlyList<Guid>>> ListDistinctActiveMemberEmployeeIdsAsync(

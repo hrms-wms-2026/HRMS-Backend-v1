@@ -21,9 +21,36 @@ public sealed record OpenAssignedTaskRow(
     string Title,
     Guid ProjectId,
     Guid ObjectiveId,
-    string Category);
+    string Category,
+    DateOnly? DueDate = null,
+    string? StatusName = null,
+    string? Priority = null);
+
+/// <summary>Top-level task counts by status category for one module or project (work graph).
+/// Overdue: not done and due before today.</summary>
+public sealed record WorkTaskCounts(int Total, int NotStarted, int Active, int Done, int Overdue);
 
 public sealed record OpenAssignedTasksPage(IReadOnlyList<OpenAssignedTaskRow> Items, int TotalCount);
+
+/// <summary>The fields needed to bucket one employee task for the Overview work/delivery cards.
+/// IsCarriedOver: due before the period started (still unfinished when the period began).</summary>
+public sealed record EmployeeTaskPeriodRow(
+    DateOnly? DueDate,
+    DateTimeOffset? CompletedAt,
+    int ProgressPercent,
+    bool MarksTaskComplete,
+    int? StoryPoints,
+    Guid TaskId = default,
+    string Title = "",
+    Guid ProjectId = default,
+    string ProjectName = "",
+    bool IsCarriedOver = false,
+    string ShortId = "",
+    string Priority = "",
+    string StatusName = "",
+    string StatusColor = "",
+    Guid ObjectiveId = default,
+    string ObjectiveTitle = "");
 
 /// <summary>The bare fields needed to bucket a caller's assigned task into the Task Progress
 /// donut widget's Completed/Overdue/In Progress/Not Started categories.</summary>
@@ -31,6 +58,23 @@ public sealed record TaskProgressRow(
     bool MarksTaskComplete,
     DateOnly? DueDate,
     int ProgressPercent);
+
+/// <summary>An employee's assigned task with its project and status, for the Work & Activity
+/// Needs attention and Recent tasks cards.</summary>
+public sealed record EmployeeWorkTaskRow(
+    Guid Id,
+    string ShortId,
+    string Title,
+    Guid ProjectId,
+    string ProjectName,
+    string StatusName,
+    string StatusColor,
+    bool MarksTaskComplete,
+    string Priority,
+    int? StoryPoints,
+    DateOnly? DueDate,
+    int ProgressPercent,
+    DateTimeOffset LastChangedAt);
 
 public interface IWorkTaskRepository
 {
@@ -67,6 +111,32 @@ public interface IWorkTaskRepository
     /// <summary>Tasks assigned to this employee whose status category is not_started or active,
     /// active first then by ShortId, capped at take; TotalCount is the uncapped total.</summary>
     Task<OpenAssignedTasksPage> ListOpenAssignedToEmployeeAsync(Guid tenantId, Guid employeeId, int take, CancellationToken ct = default);
+
+    /// <summary>Top-level (non-subtask) task counts per objective, for the work graph's module stats.</summary>
+    Task<IReadOnlyDictionary<Guid, WorkTaskCounts>> CountByObjectivesAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> objectiveIds, DateOnly today, CancellationToken ct = default);
+
+    /// <summary>Top-level (non-subtask) task counts per project, for the work graph's project stats.</summary>
+    Task<IReadOnlyDictionary<Guid, WorkTaskCounts>> CountByProjectsAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> projectIds, DateOnly today, CancellationToken ct = default);
+
+    /// <summary>Tasks assigned to this employee that belong to from..to: due date in the range, OR
+    /// CompletedAt in the range, OR the employee was assigned within the range (UTC day bounds), OR
+    /// carried over - due before the range and still unfinished when it began (open, or completed
+    /// on/after its start), so old overdue work never silently drops out of later periods.</summary>
+    Task<IReadOnlyList<EmployeeTaskPeriodRow>> ListForEmployeePeriodAsync(
+        Guid tenantId, Guid employeeId, DateOnly from, DateOnly to, CancellationToken ct = default);
+
+    /// <summary>Assigned, not-completed (status does not mark complete and progress below 100)
+    /// tasks with a due date on or before dueOnOrBefore - every overdue task plus the upcoming window.</summary>
+    Task<IReadOnlyList<EmployeeWorkTaskRow>> ListOpenDueByAsync(Guid tenantId, Guid employeeId, DateOnly dueOnOrBefore, CancellationToken ct = default);
+
+    /// <summary>The employee's assigned tasks ordered by UpdatedAt ?? CreatedAt descending, capped at take.</summary>
+    Task<IReadOnlyList<EmployeeWorkTaskRow>> ListRecentlyChangedAssignedAsync(Guid tenantId, Guid employeeId, int take, CancellationToken ct = default);
+
+    /// <summary>CompletedAt of every completed (status marks complete or progress 100) assigned task
+    /// whose CompletedAt is in [fromUtc, toUtcExclusive).</summary>
+    Task<IReadOnlyList<DateTimeOffset>> ListCompletedAtForEmployeeAsync(Guid tenantId, Guid employeeId, DateTimeOffset fromUtc, DateTimeOffset toUtcExclusive, CancellationToken ct = default);
 
     Task<IReadOnlyList<WorkTask>> GetBySprintIdAsync(Guid tenantId, Guid sprintId, CancellationToken ct = default);
 

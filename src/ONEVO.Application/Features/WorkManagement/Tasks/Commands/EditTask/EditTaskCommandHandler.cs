@@ -3,201 +3,129 @@ using MediatR;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
-using ONEVO.Application.Features.WorkManagement.CalendarEvents.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Approvals.Services;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
+using ONEVO.Application.Features.WorkManagement.Hierarchy;
+using ONEVO.Application.Features.WorkManagement.Notifications.Services;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Objectives.Services;
-using ONEVO.Application.Features.WorkManagement.Sprints.RepositoryInterfaces;
-using ONEVO.Application.Features.WorkManagement.Sprints.Services;
-using ONEVO.Application.Features.WorkManagement.Tasks.DTOs.Responses;
+using ONEVO.Application.Features.WorkManagement.Tasks.DTOs;
+using ONEVO.Application.Features.WorkManagement.Tasks.Mappers;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.Services;
-using ONEVO.Domain.Features.WorkManagement.Sprints.Entities;
+using ONEVO.Domain.Features.WorkManagement.Approvals.Entities;
+using ONEVO.Domain.Features.WorkManagement.Notifications.Entities;
 using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
 
 namespace ONEVO.Application.Features.WorkManagement.Tasks.Commands.EditTask;
 
-public class EditTaskCommandHandler : IRequestHandler<EditTaskCommand, Result<WorkTaskResponse>>
+/// <summary>
+/// Edits a task through the approval engine: a caller at or above the task's creator position edits
+/// it now; any other Module member files a task.edit approval request.
+/// </summary>
+public class EditTaskCommandHandler : IRequestHandler<EditTaskCommand, Result<TaskWriteOutcome>>
 {
     private readonly ICurrentUser _currentUser;
     private readonly IWorkTaskRepository _tasks;
     private readonly IObjectiveRepository _objectives;
-    private readonly IObjectiveAllocationSlackCalculator _slack;
-    private readonly ISprintRepository _sprints;
     private readonly IUnitOfWork _unitOfWork;
     private readonly ICallerIdentityResolver _identity;
-    private readonly ISprintActivityLogRepository _sprintLogs;
-    private readonly ITaskEditLogRepository _editLogs;
-    private readonly ITaskPercentageLogRepository _percentageLogs;
-    private readonly ICalendarEventRepository _calendarEvents;
     private readonly IMilestoneMembershipCoordinator _membership;
     private readonly ITaskAssignmentRepository _assignments;
     private readonly ITaskAssetLinker _assetLinker;
+    private readonly ITaskWriteService _writes;
+    private readonly IWorkHierarchyService _hierarchy;
+    private readonly IWorkApprovalEngine _approvals;
+    private readonly IWorkNotificationEngine _notifications;
 
     public EditTaskCommandHandler(
         ICurrentUser currentUser, IWorkTaskRepository tasks, IObjectiveRepository objectives,
-        IObjectiveAllocationSlackCalculator slack, IUnitOfWork unitOfWork, ISprintRepository sprints,
-        ICallerIdentityResolver identity, ISprintActivityLogRepository sprintLogs, ITaskEditLogRepository editLogs, ITaskPercentageLogRepository percentageLogs,
-        ICalendarEventRepository calendarEvents, IMilestoneMembershipCoordinator membership,
-        ITaskAssignmentRepository assignments, ITaskAssetLinker assetLinker)
+        IUnitOfWork unitOfWork, ICallerIdentityResolver identity, IMilestoneMembershipCoordinator membership,
+        ITaskAssignmentRepository assignments, ITaskAssetLinker assetLinker, ITaskWriteService writes,
+        IWorkHierarchyService hierarchy, IWorkApprovalEngine approvals, IWorkNotificationEngine notifications)
     {
         _currentUser = currentUser;
         _tasks = tasks;
         _objectives = objectives;
-        _slack = slack;
         _unitOfWork = unitOfWork;
-        _sprints = sprints;
         _identity = identity;
-        _sprintLogs = sprintLogs;
-        _editLogs = editLogs;
-        _percentageLogs = percentageLogs;
-        _calendarEvents = calendarEvents;
         _membership = membership;
         _assignments = assignments;
         _assetLinker = assetLinker;
+        _writes = writes;
+        _hierarchy = hierarchy;
+        _approvals = approvals;
+        _notifications = notifications;
     }
 
-    public async Task<Result<WorkTaskResponse>> Handle(EditTaskCommand request, CancellationToken ct)
+    public async Task<Result<TaskWriteOutcome>> Handle(EditTaskCommand request, CancellationToken ct)
     {
         if (!_currentUser.IsAuthenticated)
-            return Result<WorkTaskResponse>.Forbidden("Authentication required.");
+            return Result<TaskWriteOutcome>.Forbidden("Authentication required.");
 
         var tenantId = _currentUser.TenantId;
         var userId = _currentUser.UserId;
         var callerEmployeeId = await _identity.ResolveCallerEmployeeIdAsync(tenantId, userId, ct);
         if (callerEmployeeId is null)
-            return Result<WorkTaskResponse>.Forbidden("No employee record for the current user.");
+            return Result<TaskWriteOutcome>.Forbidden("No employee record for the current user.");
 
         var task = await _tasks.GetTrackedByIdForTenantAsync(tenantId, request.TaskId, ct);
         if (task is null)
-            return Result<WorkTaskResponse>.NotFound("Task not found.");
+            return Result<TaskWriteOutcome>.NotFound("Task not found.");
 
         var objective = await _objectives.GetByIdForTenantAsync(tenantId, task.ObjectiveId, ct);
         if (objective is null)
-            return Result<WorkTaskResponse>.NotFound("Objective not found.");
+            return Result<TaskWriteOutcome>.NotFound("Objective not found.");
 
-        if (!await _membership.IsEffectiveOwnerAsync(tenantId, objective.Id, callerEmployeeId.Value, ct))
-            return Result<WorkTaskResponse>.Forbidden(
-                "Only this milestone's owner can edit tasks directly. Non-owner members must submit a task edit request.");
+        if (!await _membership.IsEffectiveManagerAsync(tenantId, objective.Id, callerEmployeeId.Value, ct))
+            return Result<TaskWriteOutcome>.Forbidden("Only members of this module can change its tasks.");
 
-        if (task.SprintId.HasValue)
-        {
-            var sprint = await _sprints.GetByIdForTenantAsync(tenantId, task.SprintId.Value, ct);
-            if (sprint is not null && sprint.Status == SprintStatuses.Achieved)
-                return Result<WorkTaskResponse>.Forbidden("This task's sprint has been achieved and is now frozen.");
-        }
+        var input = new TaskEditInput(request.Title.Trim(), request.Description?.Trim(), request.Priority, request.DueDate,
+            request.EstimatedHours, request.StoryPoints, request.ProgressPercent, request.Reason?.Trim(), request.SprintId);
 
-        // Omitted (null) means "leave the current sprint assignment alone" - existing callers of this
-        // endpoint (e.g. the task edit form) never send SprintId at all, so treating null as "clear the
-        // sprint" here would silently kick every edited task out of its sprint. Only an explicit value
-        // moves the task; there is no way to unassign back to the backlog through this field yet.
-        Sprint? targetSprint = null;
-        var previousSprintId = task.SprintId;
-        if (request.SprintId.HasValue && request.SprintId.Value != task.SprintId)
-        {
-            targetSprint = await _sprints.GetByIdForTenantAsync(tenantId, request.SprintId.Value, ct);
-            if (targetSprint is null || targetSprint.ProjectId != objective.ProjectId)
-                return Result<WorkTaskResponse>.Conflict("Target sprint must belong to the same project.");
-            if (targetSprint.Status is not (SprintStatuses.Draft or SprintStatuses.Active))
-                return Result<WorkTaskResponse>.Forbidden("Tasks can only be moved into a Draft or Active sprint.");
-        }
+        var validation = await _writes.ValidateEditAsync(tenantId, task, objective, input, ct);
+        if (!validation.IsSuccess)
+            return Result<TaskWriteOutcome>.Failure(validation.Error!, validation.StatusCode ?? 400);
 
-        // R3: a member of an active event cannot have its due date moved outside that event's window.
-        if (request.DueDate != task.DueDate)
-        {
-            var windows = await _calendarEvents.ListActiveEventWindowsForTaskAsync(tenantId, task.Id, task.ObjectiveId, ct);
-            var windowError = TaskDueDateEventWindowRule.Validate(windows, request.DueDate);
-            if (windowError is not null)
-                return Result<WorkTaskResponse>.Conflict(windowError);
-        }
-
-        if (request.EstimatedHours.HasValue && request.EstimatedHours.Value != task.EstimatedHours)
-        {
-            var slack = await _slack.CalculateAsync(tenantId, objective, excludingTaskId: task.Id, ct: ct);
-            if (request.EstimatedHours.Value > slack)
-                return Result<WorkTaskResponse>.Conflict(
-                    InsufficientAllocationResponseJson.Serialize(new InsufficientAllocationResponse(slack)));
-        }
-
-        var oldValues = new Dictionary<string, object?>();
-        var newValues = new Dictionary<string, object?>();
-        void TrackChange(string field, object? oldValue, object? newValue)
-        {
-            if (Equals(oldValue, newValue)) return;
-            oldValues[field] = oldValue;
-            newValues[field] = newValue;
-        }
-
-        TrackChange("title", task.Title, request.Title.Trim());
-        TrackChange("description", task.Description, request.Description?.Trim());
-        TrackChange("priority", task.Priority, request.Priority);
-        TrackChange("dueDate", task.DueDate, request.DueDate);
-        TrackChange("estimatedHours", task.EstimatedHours, request.EstimatedHours);
-        TrackChange("storyPoints", task.StoryPoints, request.StoryPoints);
-        if (request.ProgressPercent.HasValue)
-            TrackChange("progressPercent", task.ProgressPercent, request.ProgressPercent.Value);
-        if (targetSprint is not null)
-            TrackChange("sprintId", task.SprintId, targetSprint.Id);
+        var tree = await _hierarchy.LoadTreeAsync(tenantId, objective.ProjectId, ct);
 
         return await _unitOfWork.ExecuteInTransactionAsync(async innerCt =>
         {
-            var now = DateTimeOffset.UtcNow;
-            task.Title = request.Title.Trim();
-            task.Description = request.Description?.Trim();
-            task.Priority = request.Priority;
-            task.DueDate = request.DueDate;
-            task.EstimatedHours = request.EstimatedHours;
-            task.StoryPoints = request.StoryPoints;
-            if (targetSprint is not null)
+            var decision = await _approvals.SubmitAsync(new WorkAction(
+                tenantId, objective.ProjectId, callerEmployeeId.Value,
+                WorkActionTypes.TaskEdit, WorkTargetTypes.Task,
+                TargetId: task.Id, TargetTitle: task.Title,
+                TargetModuleId: objective.Id, PositionModuleId: task.CreatorPositionObjectiveId,
+                PayloadJson: JsonSerializer.Serialize(input), TargetUpdatedAt: task.UpdatedAt ?? task.CreatedAt), innerCt);
+            if (!decision.IsSuccess)
+                return Result<TaskWriteOutcome>.Failure(decision.Error!, decision.StatusCode ?? 400);
+
+            if (!decision.Value!.IsDirect)
             {
-                task.SprintId = targetSprint.Id;
-                await _sprintLogs.AddAsync(SprintActivityLogFactory.Create(tenantId, targetSprint.Id, callerEmployeeId.Value,
-                    SprintActivityActions.TasksAdded, details: new { taskIds = new[] { task.Id } }), innerCt);
-                if (previousSprintId is not null)
-                    await _sprintLogs.AddAsync(SprintActivityLogFactory.Create(tenantId, previousSprintId.Value, callerEmployeeId.Value,
-                        SprintActivityActions.TasksRemoved, details: new { taskIds = new[] { task.Id } }), innerCt);
+                await _unitOfWork.SaveChangesAsync(innerCt);
+                return Result<TaskWriteOutcome>.Success(new TaskWriteOutcome(null, decision.Value.ApprovalRequestId));
             }
 
-            if (request.ProgressPercent.HasValue && request.ProgressPercent.Value != task.ProgressPercent)
-            {
-                var previousPercent = task.ProgressPercent;
-                task.ProgressPercent = request.ProgressPercent.Value;
-                await _percentageLogs.AddAsync(new TaskPercentageLog
-                {
-                    Id = Guid.NewGuid(), TenantId = tenantId, TaskId = task.Id,
-                    EmployeeId = callerEmployeeId.Value, PreviousPercent = previousPercent,
-                    NewPercent = task.ProgressPercent, Source = TaskPercentageLogSources.ManualEdit,
-                    ClockingSessionId = null, Reason = request.Reason?.Trim(), ChangedAt = now
-                }, innerCt);
-            }
+            var applied = await _writes.ApplyEditAsync(tenantId, callerEmployeeId.Value, task, objective, input,
+                TaskEditLogSources.Direct, null, innerCt);
+            if (!applied.IsSuccess)
+                return Result<TaskWriteOutcome>.Failure(applied.Error!, applied.StatusCode ?? 400);
 
-            task.UpdatedAt = now;
+            var assigneeIds = (await _assignments.GetByTaskIdAsync(task.Id, innerCt)).Select(a => a.EmployeeId).ToList();
 
-            if (newValues.Count > 0)
-            {
-                await _editLogs.AddAsync(new TaskEditLog
-                {
-                    Id = Guid.NewGuid(), TenantId = tenantId, TaskId = task.Id,
-                    EmployeeId = callerEmployeeId.Value, Source = TaskEditLogSources.Direct,
-                    OldValuesJson = JsonSerializer.Serialize(oldValues),
-                    NewValuesJson = JsonSerializer.Serialize(newValues),
-                    Reason = request.Reason?.Trim(), ChangedAt = now
-                }, innerCt);
-            }
+            await _notifications.NotifyAsync(new WorkNotificationEvent(
+                tenantId, objective.ProjectId, callerEmployeeId.Value, WorkNotificationKinds.Direct,
+                WorkActionTypes.TaskEdit, WorkTargetTypes.Task, task.Id, task.Title, null,
+                TaskChangeRecipients.For(tree, task, objective, assigneeIds)), innerCt);
 
             await _unitOfWork.SaveChangesAsync(innerCt);
 
-            var assignments = await _assignments.GetByTaskIdAsync(task.Id, innerCt);
-            var assigneeIds = assignments.Select(a => a.EmployeeId).ToList();
-
-            await _assetLinker.SyncAttachmentsAsync(tenantId, userId, task.Id, request.AttachmentFileIds ?? Array.Empty<Guid>(), innerCt);
+            // No list = leave attachments as they are (bulk priority/due-date edits send none).
+            if (request.AttachmentFileIds is not null)
+                await _assetLinker.SyncAttachmentsAsync(tenantId, userId, task.Id, request.AttachmentFileIds, innerCt);
             await _assetLinker.SyncDescriptionImagesAsync(tenantId, userId, task.Id, task.Description, innerCt);
 
-            return Result<WorkTaskResponse>.Success(new WorkTaskResponse(
-                task.Id, task.ObjectiveId, task.ShortId, task.Title, task.Description,
-                task.CategoryId, task.StatusId, task.Priority, task.StoryPoints,
-                task.DueDate, task.EstimatedHours, task.CompletedHours, task.ProgressPercent, task.SprintId,
-                assigneeIds, CreatedAt: task.CreatedAt));
+            return Result<TaskWriteOutcome>.Success(new TaskWriteOutcome(WorkTaskResponseMapper.ToResponse(task, assigneeIds), null));
         }, ct);
     }
 }

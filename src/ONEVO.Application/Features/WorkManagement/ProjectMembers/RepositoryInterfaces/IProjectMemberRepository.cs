@@ -34,6 +34,9 @@ public interface IProjectMemberRepository
     /// <summary>Every active project_members row scoped to this exact objective.</summary>
     Task<IReadOnlyList<ProjectMember>> ListActiveForObjectiveAsync(Guid tenantId, Guid objectiveId, CancellationToken ct = default);
 
+    /// <summary>Every active project_members row in the project (all Modules).</summary>
+    Task<IReadOnlyList<ProjectMember>> ListActiveForProjectAsync(Guid tenantId, Guid projectId, CancellationToken ct = default);
+
     /// <summary>Every active project_members row for this employee across all projects/objectives.</summary>
     Task<IReadOnlyList<ProjectMember>> ListActiveForEmployeeAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default);
 
@@ -42,6 +45,10 @@ public interface IProjectMemberRepository
     /// <summary>Batched, per-project, deduplicated-by-employee list of active member employee ids, capped at takePerProject, earliest joiners first.</summary>
     Task<IReadOnlyDictionary<Guid, IReadOnlyList<Guid>>> ListDistinctActiveMemberEmployeeIdsAsync(
         Guid tenantId, IReadOnlyCollection<Guid> projectIds, int takePerProject, CancellationToken ct = default);
+
+    /// <summary>Batched, per-objective, deduplicated list of active member employee ids (earliest joiners first).</summary>
+    Task<IReadOnlyDictionary<Guid, IReadOnlyList<Guid>>> ListActiveMemberEmployeeIdsByObjectivesAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> objectiveIds, CancellationToken ct = default);
 
     /// <summary>Batched, per-project count of distinct active member employees.</summary>
     Task<IReadOnlyDictionary<Guid, int>> CountDistinctActiveMembersAsync(

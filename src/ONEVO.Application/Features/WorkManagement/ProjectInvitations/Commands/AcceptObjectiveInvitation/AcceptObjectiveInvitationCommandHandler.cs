@@ -19,14 +19,13 @@ public class AcceptObjectiveInvitationCommandHandler : IRequestHandler<AcceptObj
     private readonly IProjectMemberInvitationRepository _invitations;
     private readonly IObjectiveRepository _objectives;
     private readonly IMilestoneMembershipCoordinator _membership;
-    private readonly IPermissionAutoGrantService _autoGrant;
     private readonly IUnitOfWork _unitOfWork;
     private readonly IProjectRepository _projects;
     private readonly IOutboxWriter _outboxWriter;
 
     public AcceptObjectiveInvitationCommandHandler(
         ICurrentUser currentUser, ICallerIdentityResolver identity, IProjectMemberInvitationRepository invitations,
-        IObjectiveRepository objectives, IMilestoneMembershipCoordinator membership, IPermissionAutoGrantService autoGrant,
+        IObjectiveRepository objectives, IMilestoneMembershipCoordinator membership,
         IUnitOfWork unitOfWork, IProjectRepository projects, IOutboxWriter outboxWriter)
     {
         _currentUser = currentUser;
@@ -34,7 +33,6 @@ public class AcceptObjectiveInvitationCommandHandler : IRequestHandler<AcceptObj
         _invitations = invitations;
         _objectives = objectives;
         _membership = membership;
-        _autoGrant = autoGrant;
         _unitOfWork = unitOfWork;
         _projects = projects;
         _outboxWriter = outboxWriter;

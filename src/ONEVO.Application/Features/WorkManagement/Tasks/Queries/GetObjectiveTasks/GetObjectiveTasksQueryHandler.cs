@@ -2,11 +2,13 @@ using MediatR;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Permission.ServiceInterfaces;
+using ONEVO.Application.Features.WorkManagement.Approvals.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
-using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Hierarchy;
 using ONEVO.Application.Features.WorkManagement.Tasks.DTOs.Responses;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
+using ONEVO.Domain.Features.WorkManagement.Approvals.Entities;
 
 namespace ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetObjectiveTasks;
 
@@ -15,31 +17,34 @@ public class GetObjectiveTasksQueryHandler : IRequestHandler<GetObjectiveTasksQu
     private readonly ICurrentUser _currentUser;
     private readonly ICallerIdentityResolver _identity;
     private readonly IObjectiveRepository _objectives;
-    private readonly IProjectMemberRepository _members;
+    private readonly IModuleReadAccess _readAccess;
     private readonly IPermissionResolver _permissionResolver;
     private readonly IWorkTaskRepository _tasks;
     private readonly ITaskAssignmentRepository _assignments;
     private readonly ITaskClockingSessionRepository _sessions;
+    private readonly IWorkApprovalRequestRepository _approvalRequests;
 
     public GetObjectiveTasksQueryHandler(
         ICurrentUser currentUser,
         ICallerIdentityResolver identity,
         IObjectiveRepository objectives,
-        IProjectMemberRepository members,
+        IModuleReadAccess readAccess,
                 IPermissionResolver permissionResolver,
         IWorkTaskRepository tasks,
         ITaskAssignmentRepository assignments,
-        ITaskClockingSessionRepository sessions)
+        ITaskClockingSessionRepository sessions,
+        IWorkApprovalRequestRepository approvalRequests)
 
     {
         _currentUser = currentUser;
         _identity = identity;
         _objectives = objectives;
-        _members = members;
+        _readAccess = readAccess;
         _permissionResolver = permissionResolver;
                 _tasks = tasks;
         _assignments = assignments;
         _sessions = sessions;
+        _approvalRequests = approvalRequests;
 
     }
 
@@ -66,19 +71,7 @@ public class GetObjectiveTasksQueryHandler : IRequestHandler<GetObjectiveTasksQu
 
         if (!hasReadPermission)
         {
-            var selfAndAncestorIds = new List<Guid> { objective.Id };
-            var cursor = objective;
-            while (cursor.ParentObjectiveId is not null)
-            {
-                var ancestor = await _objectives.GetByIdForTenantAsync(tenantId, cursor.ParentObjectiveId.Value, ct);
-                if (ancestor is null)
-                    break;
-
-                selfAndAncestorIds.Add(ancestor.Id);
-                cursor = ancestor;
-            }
-
-            var hasAccess = await _members.HasActiveMembershipForAnyObjectiveAsync(tenantId, objective.ProjectId, callerEmployeeId.Value, selfAndAncestorIds, ct);
+            var hasAccess = await _readAccess.CanReadAsync(tenantId, objective, callerEmployeeId.Value, ct);
             if (!hasAccess)
                 return Result<IReadOnlyList<WorkTaskResponse>>.Forbidden("You do not have access to this milestone.");
         }
@@ -95,6 +88,9 @@ public class GetObjectiveTasksQueryHandler : IRequestHandler<GetObjectiveTasksQu
         var totalLoggedMinutes = await _sessions.GetTotalClosedSessionMinutesForTasksAsync(
             tenantId, items.Select(task => task.Id).ToList(), ct);
 
+        var pendingTaskIds = await _approvalRequests.GetPendingTargetIdsAsync(
+            tenantId, WorkTargetTypes.Task, items.Select(task => task.Id).ToList(), ct) ?? new HashSet<Guid>();
+
         var responses = items.Select(t => new WorkTaskResponse(
 
             t.Id, t.ObjectiveId, t.ShortId, t.Title, t.Description, t.CategoryId, t.StatusId,
@@ -102,7 +98,8 @@ public class GetObjectiveTasksQueryHandler : IRequestHandler<GetObjectiveTasksQu
             assigneesByTaskId.GetValueOrDefault(t.Id, Array.Empty<Guid>()),
             openSessions.TryGetValue(t.Id, out var openSession) ? openSession.EmployeeId : (Guid?)null,
             openSession?.ClockInAt,
-            totalLoggedMinutes.GetValueOrDefault(t.Id, 0), CreatedAt: t.CreatedAt)).ToList();
+            totalLoggedMinutes.GetValueOrDefault(t.Id, 0), CreatedAt: t.CreatedAt,
+            HasPendingApproval: pendingTaskIds.Contains(t.Id))).ToList();
 
         return Result<IReadOnlyList<WorkTaskResponse>>.Success(responses);
     }

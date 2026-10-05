@@ -1,0 +1,290 @@
+using FluentAssertions;
+using MediatR;
+using Moq;
+using ONEVO.Application.Common.Models;
+using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.CoreHr.Employee.DTOs.Responses;
+using ONEVO.Application.Features.CoreHr.Employee.Helpers;
+using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployeeApprovalActivity;
+using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployeeSignalItems;
+using ONEVO.Application.Features.CoreHr.Employee.ServiceInterfaces;
+using ONEVO.Application.Features.Monitoring.ActivityMonitoring.ServiceInterfaces;
+using ONEVO.Application.Features.Monitoring.Exceptions.RepositoryInterfaces;
+using ONEVO.Application.Features.Monitoring.Exceptions.ServiceInterfaces;
+using ONEVO.Application.Features.Monitoring.Notifications.RepositoryInterfaces;
+using ONEVO.Application.Features.TimeAttendance.Services;
+using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
+using ONEVO.Domain.Features.Leave.Request.Entities;
+using ONEVO.Domain.Features.Monitoring.Notifications.Entities;
+using ONEVO.Domain.Features.TimeAttendance.Entities;
+using Xunit;
+
+namespace ONEVO.Tests.Unit.Features.CoreHr.Employee;
+
+public sealed class GetEmployeeSignalItemsQueryHandlerTests
+{
+    private readonly Mock<IEmployeeReadAccessGuard> _guard = new();
+    private readonly Mock<IEmployeeAttendancePeriodReader> _reader = new();
+    private readonly Mock<IWorkTaskRepository> _tasks = new();
+    private readonly Mock<ISender> _sender = new();
+    private readonly Mock<IModuleEntitlementService> _modules = new();
+    private readonly Mock<IMonitoringToggleResolver> _toggles = new();
+    private readonly Mock<INotificationRepository> _notifications = new();
+    private readonly Mock<IExceptionRepository> _exceptions = new();
+    private readonly Mock<IExceptionScopeResolver> _exceptionScope = new();
+    private readonly Mock<ICurrentUser> _user = new();
+    private readonly Mock<IDateTimeProvider> _clock = new();
+    private readonly Guid _tenantId = Guid.NewGuid();
+    private readonly Guid _employeeId = Guid.NewGuid();
+    private static readonly TimeZoneInfo Colombo = TimeZoneInfo.CreateCustomTimeZone("Asia/Colombo", TimeSpan.FromHours(5.5), "c", "c");
+    private static readonly DateOnly Today = new(2026, 8, 21);
+    private static readonly DateOnly From = new(2026, 8, 1);
+    private static readonly DateOnly To = new(2026, 8, 31);
+
+    public GetEmployeeSignalItemsQueryHandlerTests()
+    {
+        _user.SetupGet(u => u.TenantId).Returns(_tenantId);
+        _clock.SetupGet(c => c.Today).Returns(Today);
+        _guard.Setup(g => g.EnsureCanRead(_tenantId, _employeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<EmployeeListItemResponse>.Success(new EmployeeListItemResponse(
+                _employeeId, "E-001", "Ada", "ada@test.dev", null, null, null, null, null, null, "full_time", "active", null, null)));
+        _modules.Setup(m => m.IsModuleEnabledAsync(_tenantId, It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync(true);
+        _toggles.Setup(t => t.IsEnabledAsync(_tenantId, _employeeId, It.IsAny<MonitoringCapability>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+        _exceptionScope.Setup(s => s.ResolveAsync(false, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ExceptionScope(true, Guid.NewGuid(), Array.Empty<Guid>()));
+        ArrangeAttendance(null, new Dictionary<DateOnly, int>());
+    }
+
+    private GetEmployeeSignalItemsQueryHandler CreateHandler() =>
+        new(_guard.Object, _reader.Object, _tasks.Object, _sender.Object, _modules.Object, _toggles.Object,
+            _notifications.Object, _exceptions.Object, _exceptionScope.Object, _user.Object, _clock.Object);
+
+    private Task<Result<EmployeeSignalItemsResponse>> Run(string key) =>
+        CreateHandler().Handle(new GetEmployeeSignalItemsQuery(_employeeId, key, From, To), CancellationToken.None);
+
+    private AttendanceRecord Rec(DateOnly d, string start, string? end) => new()
+    {
+        Id = Guid.NewGuid(), TenantId = _tenantId, EmployeeId = _employeeId, Date = d, ExpectedWorkingDay = true,
+        ScheduledStart = new TimeOnly(9, 0), ScheduledEnd = new TimeOnly(17, 30),
+        ActualStart = DateTimeOffset.Parse(start), ActualEnd = end is null ? null : DateTimeOffset.Parse(end)
+    };
+
+    private void ArrangeAttendance(int? allowance, Dictionary<DateOnly, int> breaks, params AttendanceRecord[] records) =>
+        _reader.Setup(r => r.LoadAsync(_tenantId, _employeeId, It.IsAny<Guid?>(), It.IsAny<EmployeePeriod>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AttendancePeriodData(
+                records, Colombo, DateTimeOffset.Parse("2026-08-21T00:00:00+00:00"), Today, allowance, breaks,
+                Array.Empty<LeaveRequest>(), DateTimeOffset.Parse("2026-07-31T18:30:00+00:00"), DateTimeOffset.Parse("2026-08-31T18:30:00+00:00"),
+                ExpectedWorkdayCalendar.Build(new HashSet<int> { 1, 2, 3, 4, 5 }, new HashSet<DateOnly>(), From, To, new DateOnly(2020, 1, 1), null, Today)));
+
+    private static readonly DateOnly D3 = new(2026, 8, 3);
+    private static readonly DateOnly D4 = new(2026, 8, 4);
+    private static readonly DateOnly D5 = new(2026, 8, 5);
+    private static readonly DateTimeOffset UtcStart = new(2026, 8, 1, 0, 0, 0, TimeSpan.Zero);
+    private static readonly DateTimeOffset UtcEnd = new(2026, 9, 1, 0, 0, 0, TimeSpan.Zero);
+
+    private Notification Alert(NotificationType type, string at) => new()
+    {
+        Id = Guid.NewGuid(), TenantId = _tenantId, EmployeeId = _employeeId, Type = type,
+        Title = "Low activity", Message = "No input for 30 min", CreatedAt = DateTimeOffset.Parse(at)
+    };
+
+    [Fact]
+    public async Task UnknownKey_Returns404()
+    {
+        var result = await Run("not_a_signal");
+        result.IsSuccess.Should().BeFalse();
+        result.StatusCode.Should().Be(404);
+    }
+
+    [Fact]
+    public async Task AccessDenied_PassesThroughTheGuardStatus()
+    {
+        _guard.Setup(g => g.EnsureCanRead(_tenantId, _employeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<EmployeeListItemResponse>.Failure("nope", 403));
+        (await Run("late_clock_ins")).StatusCode.Should().Be(403);
+    }
+
+    [Fact]
+    public async Task LateClockIns_ListsTheLateDays_NewestFirst_WithTheEmployeeTimezone()
+    {
+        ArrangeAttendance(null, new(),
+            Rec(D3, "2026-08-03T04:15:00+00:00", "2026-08-03T12:00:00+00:00"),
+            Rec(D4, "2026-08-04T03:30:00+00:00", "2026-08-04T12:00:00+00:00"),
+            Rec(D5, "2026-08-05T04:00:00+00:00", "2026-08-05T12:00:00+00:00"));
+
+        var r = (await Run("late_clock_ins")).Value!;
+
+        r.Key.Should().Be("late_clock_ins");
+        r.Timezone.Should().Be("Asia/Colombo");
+        r.Total.Should().Be(2);
+        r.Items.Select(i => i.Date).Should().Equal(D5, D3);
+        r.Items.Should().OnlyContain(i => i.Kind == "attendance_day" && i.Id == i.Date.ToString("yyyy-MM-dd"));
+        r.Items[0].Title.Should().Be("Wed 5 Aug");
+    }
+
+    [Fact]
+    public async Task OverBreak_ListsDaysWithMinutesOver()
+    {
+        ArrangeAttendance(60, new() { [D3] = 60, [D4] = 95 },
+            Rec(D3, "2026-08-03T03:30:00+00:00", "2026-08-03T12:00:00+00:00"),
+            Rec(D4, "2026-08-04T03:30:00+00:00", "2026-08-04T12:00:00+00:00"));
+
+        var r = (await Run("over_break")).Value!;
+
+        r.Total.Should().Be(1);
+        r.Items.Single().Date.Should().Be(D4);
+        r.Items.Single().Subtitle.Should().Be("35 min over allowance");
+    }
+
+    [Theory]
+    [InlineData("absent_days")]
+    [InlineData("missing_clock_outs")]
+    [InlineData("late_clock_ins")]
+    [InlineData("early_clock_outs")]
+    [InlineData("short_hours_days")]
+    [InlineData("off_schedule_work")]
+    public async Task AttendanceKeys_TotalEqualsTheClassifierCountBehindTheSignal(string key)
+    {
+        var records = new[]
+        {
+            Rec(D3, "2026-08-03T04:15:00+00:00", "2026-08-03T05:00:00+00:00"),
+            Rec(D4, "2026-08-04T03:30:00+00:00", null),
+            Rec(new DateOnly(2026, 8, 8), "2026-08-08T03:30:00+00:00", "2026-08-08T08:00:00+00:00")
+        };
+        ArrangeAttendance(null, new(), records);
+        var data = await _reader.Object.LoadAsync(_tenantId, _employeeId, null, EmployeePeriod.Resolve(From, To, Today).Value!);
+        var c = AttendancePeriodCalculator.Classify(data);
+        var expected = key switch
+        {
+            "absent_days" => c.Absent, "missing_clock_outs" => c.MissingClockOuts, "late_clock_ins" => c.Late,
+            "early_clock_outs" => c.EarlyDepartures, "short_hours_days" => c.ShortHours,
+            _ => c.WorkedOnNonWorkingDay + c.WorkedDuringTimeOff
+        };
+
+        var r = (await Run(key)).Value!;
+
+        r.Total.Should().Be(expected);
+        r.Items.Should().HaveCount(Math.Min(expected, GetEmployeeSignalItemsQueryHandler.MaxItems));
+    }
+
+    [Fact]
+    public async Task IdleAlerts_ListsBothAlertTypes_WithTotalFromTheCounts()
+    {
+        var alerts = new[] { Alert(NotificationType.LongIdleAlert, "2026-08-04T06:00:00+00:00"), Alert(NotificationType.LowActivityAlert, "2026-08-05T07:30:00+00:00") };
+        _notifications.Setup(n => n.ListByTypesAsync(_tenantId, _employeeId,
+                It.Is<IReadOnlyCollection<NotificationType>>(t => t.Count == 2 && t.Contains(NotificationType.LongIdleAlert) && t.Contains(NotificationType.LowActivityAlert)),
+                UtcStart, UtcEnd, GetEmployeeSignalItemsQueryHandler.MaxItems, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(alerts.OrderByDescending(a => a.CreatedAt).ToList());
+        _notifications.Setup(n => n.CountByTypeAsync(_tenantId, _employeeId, NotificationType.LongIdleAlert, UtcStart, UtcEnd, It.IsAny<CancellationToken>())).ReturnsAsync(1);
+        _notifications.Setup(n => n.CountByTypeAsync(_tenantId, _employeeId, NotificationType.LowActivityAlert, UtcStart, UtcEnd, It.IsAny<CancellationToken>())).ReturnsAsync(1);
+
+        var r = (await Run("idle_activity_alerts")).Value!;
+
+        r.Total.Should().Be(2);
+        r.Items.Should().OnlyContain(i => i.Kind == "monitoring_alert");
+        r.Items[0].Date.Should().Be(new DateOnly(2026, 8, 5));
+        r.Items[0].OccurredAt.Should().Be(DateTimeOffset.Parse("2026-08-05T07:30:00+00:00"));
+        r.Items[0].Title.Should().Be("Low activity");
+    }
+
+    [Fact]
+    public async Task IdleAlerts_Returns403_WhenActivityMonitoringIsOff()
+    {
+        _toggles.Setup(t => t.IsEnabledAsync(_tenantId, _employeeId, MonitoringCapability.ActivityMonitoring, It.IsAny<CancellationToken>())).ReturnsAsync(false);
+        (await Run("idle_activity_alerts")).StatusCode.Should().Be(403);
+    }
+
+    [Fact]
+    public async Task LocationViolations_UseTheAttendanceRange_And403WhenVerificationIsOff()
+    {
+        var rangeStart = DateTimeOffset.Parse("2026-07-31T18:30:00+00:00");
+        var rangeEnd = DateTimeOffset.Parse("2026-08-31T18:30:00+00:00");
+        _notifications.Setup(n => n.ListByTypesAsync(_tenantId, _employeeId,
+                It.Is<IReadOnlyCollection<NotificationType>>(t => t.Single() == NotificationType.OutsideWorkLocationAlert),
+                rangeStart, rangeEnd, GetEmployeeSignalItemsQueryHandler.MaxItems, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[] { Alert(NotificationType.OutsideWorkLocationAlert, "2026-08-04T05:00:00+00:00") });
+        _notifications.Setup(n => n.CountByTypeAsync(_tenantId, _employeeId, NotificationType.OutsideWorkLocationAlert, rangeStart, rangeEnd, It.IsAny<CancellationToken>())).ReturnsAsync(1);
+
+        (await Run("location_violations")).Value!.Total.Should().Be(1);
+
+        _toggles.Setup(t => t.IsEnabledAsync(_tenantId, _employeeId, MonitoringCapability.WorkLocationVerification, It.IsAny<CancellationToken>())).ReturnsAsync(false);
+        (await Run("location_violations")).StatusCode.Should().Be(403);
+    }
+
+    [Fact]
+    public async Task MonitoringExceptions_ListCases_And403OutsideTheExceptionScope()
+    {
+        var c = new ONEVO.Domain.Features.Monitoring.Exceptions.Entities.Exception
+        {
+            Id = Guid.NewGuid(), TenantId = _tenantId, EmployeeId = _employeeId, Title = "Sustained low activity",
+            Description = "3 days below threshold", DetectedAt = DateTimeOffset.Parse("2026-08-06T04:00:00+00:00")
+        };
+        _exceptions.Setup(e => e.ListDetectedInRangeAsync(_tenantId, _employeeId, UtcStart, UtcEnd, GetEmployeeSignalItemsQueryHandler.MaxItems, It.IsAny<CancellationToken>())).ReturnsAsync(new[] { c });
+        _exceptions.Setup(e => e.CountDetectedInRangeAsync(_tenantId, _employeeId, UtcStart, UtcEnd, It.IsAny<CancellationToken>())).ReturnsAsync(1);
+
+        var r = (await Run("monitoring_exceptions")).Value!;
+        r.Items.Single().Should().Match<EmployeeSignalItem>(i => i.Kind == "exception_case" && i.Id == c.Id.ToString() && i.Title == "Sustained low activity");
+
+        _exceptionScope.Setup(s => s.ResolveAsync(false, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ExceptionScope(false, Guid.NewGuid(), Array.Empty<Guid>()));
+        (await Run("monitoring_exceptions")).StatusCode.Should().Be(403);
+    }
+
+    [Fact]
+    public async Task OverdueTasks_ListOnlyOverdueRows_WithProjectIdentity()
+    {
+        var project = Guid.NewGuid();
+        var overdue = new EmployeeTaskPeriodRow(new DateOnly(2026, 8, 10), null, 20, false, null, Guid.NewGuid(), "Write API docs", project, "Apollo");
+        var done = new EmployeeTaskPeriodRow(new DateOnly(2026, 8, 10), null, 100, false, null, Guid.NewGuid(), "Done", project, "Apollo");
+        var future = new EmployeeTaskPeriodRow(new DateOnly(2026, 8, 25), null, 0, false, null, Guid.NewGuid(), "Later", project, "Apollo");
+        _tasks.Setup(t => t.ListForEmployeePeriodAsync(_tenantId, _employeeId, From, To, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[] { overdue, done, future });
+
+        var r = (await Run("overdue_tasks")).Value!;
+
+        r.Total.Should().Be(1);
+        r.Timezone.Should().BeNull();
+        r.Items.Single().Should().Match<EmployeeSignalItem>(i =>
+            i.Kind == "task" && i.Id == overdue.TaskId.ToString() && i.Title == "Write API docs"
+            && i.ProjectId == project && i.ProjectName == "Apollo" && i.DueDate == new DateOnly(2026, 8, 10)
+            && i.CarriedOver == false && i.DaysOverdue == 11);
+    }
+
+    [Fact]
+    public async Task OverdueTasks_IncludeCarriedOverRows_FlaggedWithDaysOverdue()
+    {
+        var project = Guid.NewGuid();
+        var carried = new EmployeeTaskPeriodRow(new DateOnly(2026, 7, 25), null, 0, false, null, Guid.NewGuid(), "Migrate DB", project, "Apollo", IsCarriedOver: true);
+        _tasks.Setup(t => t.ListForEmployeePeriodAsync(_tenantId, _employeeId, From, To, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[] { carried });
+
+        var r = (await Run("overdue_tasks")).Value!;
+
+        r.Total.Should().Be(1);
+        r.Items.Single().Should().Match<EmployeeSignalItem>(i => i.CarriedOver == true && i.DaysOverdue == 27);
+    }
+
+    [Fact]
+    public async Task OverdueTasks_Returns403_WhenNoWorkModuleIsEnabled()
+    {
+        _modules.Setup(m => m.IsModuleEnabledAsync(_tenantId, It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync(false);
+        (await Run("overdue_tasks")).StatusCode.Should().Be(403);
+    }
+
+    [Fact]
+    public async Task PendingApprovals_ListOnlyPendingItems_FromTheUncappedQuery()
+    {
+        var pending = new EmployeeApprovalItem("a1", "leave", "Leave request", "Annual · 2026-10-03 → 2026-10-05", "pending", DateTimeOffset.Parse("2026-08-28T05:00:00+00:00"), null, null);
+        var approved = pending with { Id = "a2", Status = "approved" };
+        _sender.Setup(s => s.Send(It.Is<GetEmployeeApprovalActivityQuery>(q => q.AllItems && q.EmployeeId == _employeeId), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<EmployeeApprovalActivityResponse>.Success(new(From, To, 1, 1, 0, 2, new[] { pending, approved })));
+
+        var r = (await Run("pending_approvals")).Value!;
+
+        r.Total.Should().Be(1);
+        r.Items.Single().Should().Match<EmployeeSignalItem>(i =>
+            i.Kind == "approval" && i.Id == "a1" && i.ApprovalKind == "leave" && i.Title == "Leave request"
+            && i.Subtitle == "Annual · 2026-10-03 → 2026-10-05" && i.RequestedAt == pending.RequestedAt);
+    }
+}

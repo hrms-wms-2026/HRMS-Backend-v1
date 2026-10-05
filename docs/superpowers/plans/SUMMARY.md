@@ -57,6 +57,7 @@
 | `2026-09-30-employee-detail-phase2-backend.md` (3 tasks) | `next/` | implemented 2/3 (4759/4759 unit, 695/695 architecture); repository integration test pending (Docker) |
 | `2026-09-30-employee-work-activity-tasks-backend.md` (Plan 4A, 4 tasks) | `next/` | pending (not started). Work & Activity task cards: `work-activity/needs-attention`, `recent-tasks`, `delivery-trend`. Requires Plan 3A |
 | `2026-09-30-employee-work-activity-monitoring-backend.md` (Plan 4B, 6 tasks) | `next/` | pending (not started). Work & Activity agent cards: `work-activity/activity-by-hour`, `app-usage`, `work-pattern`; classifier focus-block count; `overview/activity` includes today. Requires Plan 3B |
+| `2026-09-30-employee-overview-signals-backend/` (part-1 expected working days, 4 tasks; part-2 signals endpoint, 3 tasks) | `next/` | pending — spec `specs/next/2026-09-30-employee-overview-signals-and-period-correctness-design.md` |
 
 See `finished/SUMMARY.md` for the full file-by-file list, grouped by date folder, of all files in that folder (kept short here to avoid duplicating the same list twice).
 

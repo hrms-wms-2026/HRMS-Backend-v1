@@ -533,6 +533,27 @@ public sealed class AttendanceReadHandlerTests
     }
 
     [Fact]
+    public async Task MonthlySummary_WithPeriodReader_UsesExpectedWorkdaysNotRows()
+    {
+        var from = new DateOnly(2026, 9, 1);
+        var to = new DateOnly(2026, 9, 30);
+        var reader = new Mock<IEmployeeAttendancePeriodReader>();
+        reader.Setup(r => r.LoadAsync(TenantId, EmployeeId, It.IsAny<Guid?>(), It.Is<ONEVO.Application.Features.CoreHr.Employee.Helpers.EmployeePeriod>(p => p.From == from && p.To == to), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AttendancePeriodData(
+                Array.Empty<AttendanceRecord>(), TimeZoneInfo.Utc, DateTimeOffset.Parse("2026-09-30T12:00:00+00:00"), to, 60,
+                new Dictionary<DateOnly, int>(), Array.Empty<ONEVO.Domain.Features.Leave.Request.Entities.LeaveRequest>(),
+                DateTimeOffset.MinValue, DateTimeOffset.MaxValue,
+                ExpectedWorkdayCalendar.Build(new HashSet<int> { 1, 2, 3, 4, 5 }, new HashSet<DateOnly>(), from, to, new DateOnly(2020, 1, 1), null, to)));
+        var fixture = CreateFixture(periodReader: reader.Object);
+
+        var result = await fixture.Handler.Handle(new GetMyAttendanceMonthlySummaryQuery(from, to), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.WorkingDays.Should().Be(22);
+        result.Value.DaysPresent.Should().Be(0);
+    }
+
+    [Fact]
     public async Task MonthlySummary_RangeOverAMonthIsRejected()
     {
         var fixture = CreateFixture();
@@ -847,7 +868,7 @@ public sealed class AttendanceReadHandlerTests
         shot.Url.Should().Be("https://r2.example/shot.jpg");
     }
 
-    private static Fixture CreateFixture(string localTimeUtc = "2026-08-21T10:00:00+00:00", string workModeCode = "remote", int employmentTypeId = 1, bool hasMonitoringRead = false, IActivityLiveDaySummary? liveActivity = null, IInactivityCaptureAttemptRepository? activityCheckRepo = null, IFaceVerificationAttemptRepository? faceCheckRepo = null, IExceptionRepository? exceptionRepo = null)
+    private static Fixture CreateFixture(string localTimeUtc = "2026-08-21T10:00:00+00:00", string workModeCode = "remote", int employmentTypeId = 1, bool hasMonitoringRead = false, IActivityLiveDaySummary? liveActivity = null, IInactivityCaptureAttemptRepository? activityCheckRepo = null, IFaceVerificationAttemptRepository? faceCheckRepo = null, IExceptionRepository? exceptionRepo = null, IEmployeeAttendancePeriodReader? periodReader = null)
     {
         var currentUser = new Mock<ICurrentUser>();
         currentUser.SetupGet(x => x.IsAuthenticated).Returns(true);
@@ -921,7 +942,8 @@ public sealed class AttendanceReadHandlerTests
                 liveActivity: liveActivity,
                 activityChecks: activityCheckRepo,
                 faceChecks: faceCheckRepo,
-                exceptionCases: exceptionRepo),
+                exceptionCases: exceptionRepo,
+                periodReader: periodReader),
             attendance,
             policies,
             authority,

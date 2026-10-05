@@ -4,6 +4,7 @@ using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Permission.ServiceInterfaces;
 using ONEVO.Application.Features.Storage.File.Helpers;
+using ONEVO.Application.Features.WorkManagement.Approvals.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
@@ -40,7 +41,9 @@ public sealed class GetTaskByIdQueryHandlerTests
     private static GetTaskByIdQueryHandler BuildHandler(
         WorkTask? task, Project? project, bool hasReadPermission,
         IReadOnlyList<Guid>? accessibleObjectiveIds = null, bool authenticated = true, bool employeeExists = true,
-        Mock<IEntityAssetRepository>? entityAssets = null)
+        Mock<IEntityAssetRepository>? entityAssets = null,
+        ONEVO.Domain.Features.WorkManagement.Objectives.Entities.Objective[]? modules = null,
+        bool pendingApproval = false)
     {
         var currentUser = new Mock<ICurrentUser>();
         currentUser.SetupGet(x => x.IsAuthenticated).Returns(authenticated);
@@ -87,10 +90,17 @@ public sealed class GetTaskByIdQueryHandlerTests
             assets = entityAssets;
         }
 
+        var approvalRequests = new Mock<IWorkApprovalRequestRepository>();
+        approvalRequests.Setup(x => x.GetPendingTargetIdsAsync(
+                TenantId, It.IsAny<string>(), It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(pendingApproval ? new HashSet<Guid> { TaskId } : new HashSet<Guid>());
+
         return new GetTaskByIdQueryHandler(
             currentUser.Object, identity.Object, tasks.Object, projects.Object,
             members.Object, permissions.Object, assignments.Object, sessions.Object,
-            CalendarEventRepositoryMocks.Empty().Object, assets.Object);
+            CalendarEventRepositoryMocks.Empty().Object, assets.Object,
+            WorkHierarchyServiceMocks.WithModules(modules ?? Array.Empty<ONEVO.Domain.Features.WorkManagement.Objectives.Entities.Objective>()).Object,
+            approvalRequests.Object);
     }
 
     [Fact]
@@ -110,6 +120,21 @@ public sealed class GetTaskByIdQueryHandlerTests
         var result = await handler.Handle(new GetTaskByIdQuery(TaskId), CancellationToken.None);
         Assert.True(result.IsSuccess);
         Assert.Equal(TaskId, result.Value!.Id);
+    }
+
+    [Fact]
+    public async Task Handle_MemberOfAncestorModule_ReturnsTask()
+    {
+        var root = Guid.NewGuid();
+        var modules = new[]
+        {
+            WorkHierarchyServiceMocks.Module(root, null),
+            WorkHierarchyServiceMocks.Module(ObjectiveId, root),
+        };
+        var handler = BuildHandler(Task(), ActiveProject(), hasReadPermission: false,
+            accessibleObjectiveIds: new[] { root }, modules: modules);
+        var result = await handler.Handle(new GetTaskByIdQuery(TaskId), CancellationToken.None);
+        Assert.True(result.IsSuccess);
     }
 
     [Fact]
@@ -137,6 +162,15 @@ public sealed class GetTaskByIdQueryHandlerTests
         var result = await handler.Handle(new GetTaskByIdQuery(TaskId), CancellationToken.None);
         Assert.False(result.IsSuccess);
         Assert.Equal(403, result.StatusCode);
+    }
+
+    [Fact]
+    public async Task Handle_FlagsAPendingApprovalRequest()
+    {
+        var handler = BuildHandler(Task(), ActiveProject(), hasReadPermission: true, pendingApproval: true);
+        var result = await handler.Handle(new GetTaskByIdQuery(TaskId), CancellationToken.None);
+        Assert.True(result.IsSuccess);
+        Assert.True(result.Value!.HasPendingApproval);
     }
 
     [Fact]

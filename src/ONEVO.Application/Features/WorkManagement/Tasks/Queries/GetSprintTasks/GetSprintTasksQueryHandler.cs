@@ -2,11 +2,13 @@ using MediatR;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Permission.ServiceInterfaces;
+using ONEVO.Application.Features.WorkManagement.Approvals.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Sprints.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.DTOs.Responses;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
+using ONEVO.Domain.Features.WorkManagement.Approvals.Entities;
 
 namespace ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetSprintTasks;
 
@@ -19,6 +21,7 @@ public class GetSprintTasksQueryHandler : IRequestHandler<GetSprintTasksQuery, R
     private readonly IPermissionResolver _permissionResolver;
     private readonly IWorkTaskRepository _tasks;
     private readonly ITaskAssignmentRepository _assignments;
+    private readonly IWorkApprovalRequestRepository _approvalRequests;
 
     public GetSprintTasksQueryHandler(
         ICurrentUser currentUser,
@@ -27,7 +30,8 @@ public class GetSprintTasksQueryHandler : IRequestHandler<GetSprintTasksQuery, R
         IProjectMemberRepository members,
         IPermissionResolver permissionResolver,
         IWorkTaskRepository tasks,
-        ITaskAssignmentRepository assignments)
+        ITaskAssignmentRepository assignments,
+        IWorkApprovalRequestRepository approvalRequests)
     {
         _currentUser = currentUser;
         _identity = identity;
@@ -36,6 +40,7 @@ public class GetSprintTasksQueryHandler : IRequestHandler<GetSprintTasksQuery, R
         _permissionResolver = permissionResolver;
         _tasks = tasks;
         _assignments = assignments;
+        _approvalRequests = approvalRequests;
     }
 
     public async Task<Result<IReadOnlyList<WorkTaskResponse>>> Handle(GetSprintTasksQuery request, CancellationToken ct)
@@ -68,10 +73,14 @@ public class GetSprintTasksQueryHandler : IRequestHandler<GetSprintTasksQuery, R
             .GroupBy(a => a.TaskId)
             .ToDictionary(g => g.Key, g => (IReadOnlyList<Guid>)g.Select(a => a.EmployeeId).ToList());
 
+        var pendingTaskIds = await _approvalRequests.GetPendingTargetIdsAsync(
+            tenantId, WorkTargetTypes.Task, items.Select(task => task.Id).ToList(), ct) ?? new HashSet<Guid>();
+
         var responses = items.Select(t => new WorkTaskResponse(
             t.Id, t.ObjectiveId, t.ShortId, t.Title, t.Description, t.CategoryId, t.StatusId,
             t.Priority, t.StoryPoints, t.DueDate, t.EstimatedHours, t.CompletedHours, t.ProgressPercent, t.SprintId,
-            assigneesByTaskId.GetValueOrDefault(t.Id, Array.Empty<Guid>()), CreatedAt: t.CreatedAt)).ToList();
+            assigneesByTaskId.GetValueOrDefault(t.Id, Array.Empty<Guid>()), CreatedAt: t.CreatedAt,
+            HasPendingApproval: pendingTaskIds.Contains(t.Id))).ToList();
 
         return Result<IReadOnlyList<WorkTaskResponse>>.Success(responses);
     }

@@ -108,20 +108,5 @@ public sealed class EmployeeWorkGraphRepositoryReadsTests
     private TaskAssignment Assign(Guid taskId) =>
         new() { Id = Guid.NewGuid(), TaskId = taskId, UserId = Guid.NewGuid(), EmployeeId = _employeeId, AssignedById = Guid.NewGuid() };
 
-    private static ApplicationDbContext BuildInMemoryDb()
-    {
-        var options = new DbContextOptionsBuilder<ApplicationDbContext>()
-            .UseInMemoryDatabase(Guid.NewGuid().ToString())
-            .Options;
-        var currentUser = new Mock<ICurrentUser>();
-        var clock = new Mock<IDateTimeProvider>();
-        var publisher = new Mock<MediatR.IPublisher>();
-        var tenantContext = new Mock<ITenantContext>();
-        return new ApplicationDbContext(
-            options,
-            new AuditableEntityInterceptor(currentUser.Object, clock.Object),
-            new SoftDeleteInterceptor(clock.Object),
-            new DomainEventDispatchInterceptor(publisher.Object),
-            tenantContext.Object);
-    }
+    private static ApplicationDbContext BuildInMemoryDb() => EmployeeWorkGraphRepositoryReadsTestsDb.Build();
 }

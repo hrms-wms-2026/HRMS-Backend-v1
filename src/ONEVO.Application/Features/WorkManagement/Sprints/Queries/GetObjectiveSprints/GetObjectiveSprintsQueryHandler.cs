@@ -7,7 +7,8 @@ using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Sprints.DTOs.Responses;
 using ONEVO.Application.Features.WorkManagement.Sprints.RepositoryInterfaces;
-using ONEVO.Application.Features.WorkManagement.Sprints.Services;
+
+using ONEVO.Application.Features.WorkManagement.Hierarchy;
 
 namespace ONEVO.Application.Features.WorkManagement.Sprints.Queries.GetObjectiveSprints;
 
@@ -19,7 +20,7 @@ public class GetObjectiveSprintsQueryHandler : IRequestHandler<GetObjectiveSprin
     private readonly IProjectMemberRepository _members;
     private readonly IPermissionResolver _permissionResolver;
     private readonly ISprintRepository _sprints;
-    private readonly ISprintAccessService _access;
+    private readonly IModuleReadAccess _readAccess;
 
     public GetObjectiveSprintsQueryHandler(
         ICurrentUser currentUser,
@@ -28,7 +29,7 @@ public class GetObjectiveSprintsQueryHandler : IRequestHandler<GetObjectiveSprin
         IProjectMemberRepository members,
         IPermissionResolver permissionResolver,
         ISprintRepository sprints,
-        ISprintAccessService access)
+        IModuleReadAccess readAccess)
     {
         _currentUser = currentUser;
         _identity = identity;
@@ -36,7 +37,7 @@ public class GetObjectiveSprintsQueryHandler : IRequestHandler<GetObjectiveSprin
         _members = members;
         _permissionResolver = permissionResolver;
         _sprints = sprints;
-        _access = access;
+        _readAccess = readAccess;
     }
 
     public async Task<Result<IReadOnlyList<SprintResponse>>> Handle(GetObjectiveSprintsQuery request, CancellationToken ct)
@@ -62,26 +63,15 @@ public class GetObjectiveSprintsQueryHandler : IRequestHandler<GetObjectiveSprin
 
         if (!hasReadPermission)
         {
-            var selfAndAncestorIds = new List<Guid> { objective.Id };
-            var cursor = objective;
-            while (cursor.ParentObjectiveId is not null)
-            {
-                var ancestor = await _objectives.GetByIdForTenantAsync(tenantId, cursor.ParentObjectiveId.Value, ct);
-                if (ancestor is null)
-                    break;
-
-                selfAndAncestorIds.Add(ancestor.Id);
-                cursor = ancestor;
-            }
-
-            var hasAccess = await _members.HasActiveMembershipForAnyObjectiveAsync(tenantId, objective.ProjectId, callerEmployeeId.Value, selfAndAncestorIds, ct);
+            var hasAccess = await _readAccess.CanReadAsync(tenantId, objective, callerEmployeeId.Value, ct);
             if (!hasAccess)
                 return Result<IReadOnlyList<SprintResponse>>.Forbidden("You do not have access to this milestone.");
         }
 
         var sprints = await _sprints.GetContainingObjectiveTasksAsync(tenantId, request.ObjectiveId, request.ActiveOnly, ct);
-        var manageable = await _access.GetManageableSprintIdsAsync(tenantId, objective.ProjectId, sprints, userId, callerEmployeeId.Value, ct);
+        // Any project member may act on a sprint - directly or by request; the approval engine decides which.
+        var isMember = await _members.HasActiveMembershipAsync(tenantId, objective.ProjectId, callerEmployeeId.Value, ct);
         return Result<IReadOnlyList<SprintResponse>>.Success(
-            sprints.Select(s => SprintResponse.From(s, manageable.Contains(s.Id))).ToList());
+            sprints.Select(s => SprintResponse.From(s, isMember)).ToList());
     }
 }

@@ -1,10 +1,16 @@
 using Moq;
+using ONEVO.Application.Common.Models;
+using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Permission.RepositoryInterfaces;
 using ONEVO.Application.Features.Auth.Permission.ServiceInterfaces;
+using ONEVO.Application.Features.WorkManagement.Common.OutboxHandlers;
+using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Objectives.Services;
+using ONEVO.Application.Features.WorkManagement.ProjectInvitations.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
 using ONEVO.Domain.Features.WorkManagement.Objectives.Entities;
+using ONEVO.Domain.Features.WorkManagement.ProjectInvitations.Entities;
 using ONEVO.Domain.Features.WorkManagement.ProjectMembers.Entities;
 using ONEVO.Domain.Lookups;
 using ONEVO.Domain.Features.CoreHr.Entities;
@@ -20,31 +26,37 @@ public class MilestoneMembershipCoordinatorTests
     private static readonly Guid ObjectiveId = Guid.NewGuid();
     private static readonly Guid UserId = Guid.NewGuid();
     private static readonly Guid EmployeeId = Guid.NewGuid();
+    private static readonly Guid RequestedById = Guid.NewGuid();
 
     private static Employee ActiveEmployee() => new() { Id = EmployeeId, TenantId = TenantId, UserId = UserId, EmploymentStatusId = EmploymentStatusIds.Active };
     private static Employee InactiveEmployee() => new() { Id = EmployeeId, TenantId = TenantId, UserId = UserId, EmploymentStatusId = 4 };
 
-    private (MilestoneMembershipCoordinator Coordinator, Mock<IProjectMemberRepository> Members) BuildCoordinator(Employee? employee)
+    private (MilestoneMembershipCoordinator Coordinator, Mock<IProjectMemberRepository> Members, Mock<IProjectMemberInvitationRepository> Invitations, Mock<IOutboxWriter> Outbox) BuildCoordinator(Employee? employee)
     {
-        var (coordinator, members, _) = BuildCoordinator(employee, new Mock<IObjectiveRepository>());
-        return (coordinator, members);
+        var (coordinator, members, invitations, outbox, _) = BuildCoordinator(employee, new Mock<IObjectiveRepository>());
+        return (coordinator, members, invitations, outbox);
     }
 
-    private (MilestoneMembershipCoordinator Coordinator, Mock<IProjectMemberRepository> Members, Mock<IObjectiveRepository> Objectives) BuildCoordinator(Employee? employee, Mock<IObjectiveRepository> objectives)
+    private (MilestoneMembershipCoordinator Coordinator, Mock<IProjectMemberRepository> Members, Mock<IProjectMemberInvitationRepository> Invitations, Mock<IOutboxWriter> Outbox, Mock<IObjectiveRepository> Objectives) BuildCoordinator(Employee? employee, Mock<IObjectiveRepository> objectives)
     {
         var employees = new Mock<IEmployeeRepository>();
         employees.Setup(x => x.GetByIdAsync(TenantId, EmployeeId, It.IsAny<CancellationToken>())).ReturnsAsync(employee);
 
         var members = new Mock<IProjectMemberRepository>();
+        var invitations = new Mock<IProjectMemberInvitationRepository>();
+        var identity = new Mock<ICallerIdentityResolver>();
+        identity.Setup(x => x.ResolveDisplayNamesByEmployeeIdAsync(TenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, string> { [RequestedById] = "Inviter" });
+        var outbox = new Mock<IOutboxWriter>();
 
-        var coordinator = new MilestoneMembershipCoordinator(employees.Object, members.Object, objectives.Object);
-        return (coordinator, members, objectives);
+        var coordinator = new MilestoneMembershipCoordinator(employees.Object, members.Object, objectives.Object, invitations.Object, identity.Object, outbox.Object);
+        return (coordinator, members, invitations, outbox, objectives);
     }
 
     [Fact]
     public async Task GetActiveAssigneeAsync_ActiveEmployee_ReturnsIt()
     {
-        var (coordinator, _) = BuildCoordinator(ActiveEmployee());
+        var (coordinator, _, _, _) = BuildCoordinator(ActiveEmployee());
 
         var result = await coordinator.GetActiveAssigneeAsync(TenantId, EmployeeId, CancellationToken.None);
 
@@ -55,7 +67,7 @@ public class MilestoneMembershipCoordinatorTests
     [Fact]
     public async Task GetActiveAssigneeAsync_NoEmployeeRecord_ReturnsNull()
     {
-        var (coordinator, _) = BuildCoordinator(null);
+        var (coordinator, _, _, _) = BuildCoordinator(null);
 
         var result = await coordinator.GetActiveAssigneeAsync(TenantId, EmployeeId, CancellationToken.None);
 
@@ -65,7 +77,7 @@ public class MilestoneMembershipCoordinatorTests
     [Fact]
     public async Task GetActiveAssigneeAsync_InactiveEmployee_ReturnsNull()
     {
-        var (coordinator, _) = BuildCoordinator(InactiveEmployee());
+        var (coordinator, _, _, _) = BuildCoordinator(InactiveEmployee());
 
         var result = await coordinator.GetActiveAssigneeAsync(TenantId, EmployeeId, CancellationToken.None);
 
@@ -75,7 +87,7 @@ public class MilestoneMembershipCoordinatorTests
     [Fact]
     public async Task UpsertMembershipAsync_NoExistingRow_AddsNew()
     {
-        var (coordinator, members) = BuildCoordinator(ActiveEmployee());
+        var (coordinator, members, _, _) = BuildCoordinator(ActiveEmployee());
         members.Setup(x => x.GetTrackedForObjectiveAsync(TenantId, ProjectId, ObjectiveId, EmployeeId, It.IsAny<CancellationToken>()))
             .ReturnsAsync((ProjectMember?)null);
 
@@ -92,7 +104,7 @@ public class MilestoneMembershipCoordinatorTests
     public async Task UpsertMembershipAsync_ExistingInactiveRow_Reactivates()
     {
         var existing = new ProjectMember { Id = Guid.NewGuid(), TenantId = TenantId, ProjectId = ProjectId, ObjectiveId = ObjectiveId, EmployeeId = EmployeeId, IsActive = false, RemovedAt = DateTimeOffset.UtcNow };
-        var (coordinator, members) = BuildCoordinator(ActiveEmployee());
+        var (coordinator, members, _, _) = BuildCoordinator(ActiveEmployee());
         members.Setup(x => x.GetTrackedForObjectiveAsync(TenantId, ProjectId, ObjectiveId, EmployeeId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(existing);
 
@@ -108,7 +120,7 @@ public class MilestoneMembershipCoordinatorTests
     public async Task UpsertMembershipAsync_ExistingActiveRow_NoOp()
     {
         var existing = new ProjectMember { Id = Guid.NewGuid(), TenantId = TenantId, ProjectId = ProjectId, ObjectiveId = ObjectiveId, EmployeeId = EmployeeId, IsActive = true };
-        var (coordinator, members) = BuildCoordinator(ActiveEmployee());
+        var (coordinator, members, _, _) = BuildCoordinator(ActiveEmployee());
         members.Setup(x => x.GetTrackedForObjectiveAsync(TenantId, ProjectId, ObjectiveId, EmployeeId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(existing);
 
@@ -122,7 +134,7 @@ public class MilestoneMembershipCoordinatorTests
     public async Task DeactivateMembershipAsync_ExistingActiveRow_Deactivates()
     {
         var existing = new ProjectMember { Id = Guid.NewGuid(), TenantId = TenantId, ProjectId = ProjectId, ObjectiveId = ObjectiveId, EmployeeId = EmployeeId, IsActive = true };
-        var (coordinator, members) = BuildCoordinator(ActiveEmployee());
+        var (coordinator, members, _, _) = BuildCoordinator(ActiveEmployee());
         members.Setup(x => x.GetTrackedForObjectiveAsync(TenantId, ProjectId, ObjectiveId, EmployeeId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(existing);
 
@@ -136,7 +148,7 @@ public class MilestoneMembershipCoordinatorTests
     [Fact]
     public async Task DeactivateMembershipAsync_NoExistingRow_NoOp()
     {
-        var (coordinator, members) = BuildCoordinator(ActiveEmployee());
+        var (coordinator, members, _, _) = BuildCoordinator(ActiveEmployee());
         members.Setup(x => x.GetTrackedForObjectiveAsync(TenantId, ProjectId, ObjectiveId, EmployeeId, It.IsAny<CancellationToken>()))
             .ReturnsAsync((ProjectMember?)null);
 
@@ -148,7 +160,7 @@ public class MilestoneMembershipCoordinatorTests
     [Fact]
     public async Task HasOtherActiveAccessAsync_DelegatesToRepository()
     {
-        var (coordinator, members) = BuildCoordinator(ActiveEmployee());
+        var (coordinator, members, _, _) = BuildCoordinator(ActiveEmployee());
         members.Setup(x => x.HasActiveMembershipExcludingObjectiveAsync(TenantId, ProjectId, EmployeeId, ObjectiveId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
 
@@ -178,16 +190,14 @@ public class MilestoneMembershipCoordinatorTests
     private (MilestoneMembershipCoordinator Coordinator, Mock<IProjectMemberRepository> Members) BuildTreeCoordinator(
         Objective root, Objective child, Objective grandchild, Objective sibling)
     {
-        var (coordinator, members, objectives) = BuildCoordinator(ActiveEmployee(), new Mock<IObjectiveRepository>());
+        var (coordinator, members, _, _, objectives) = BuildCoordinator(ActiveEmployee(), new Mock<IObjectiveRepository>());
 
         objectives.Setup(x => x.GetByIdForTenantAsync(TenantId, RootId, It.IsAny<CancellationToken>())).ReturnsAsync(root);
         objectives.Setup(x => x.GetByIdForTenantAsync(TenantId, ChildId, It.IsAny<CancellationToken>())).ReturnsAsync(child);
         objectives.Setup(x => x.GetByIdForTenantAsync(TenantId, GrandchildId, It.IsAny<CancellationToken>())).ReturnsAsync(grandchild);
         objectives.Setup(x => x.GetByIdForTenantAsync(TenantId, SiblingId, It.IsAny<CancellationToken>())).ReturnsAsync(sibling);
-
-        foreach (var id in new[] { RootId, ChildId, GrandchildId, SiblingId })
-            members.Setup(x => x.ListActiveForObjectiveAsync(TenantId, id, It.IsAny<CancellationToken>()))
-                .ReturnsAsync(Array.Empty<ProjectMember>());
+        objectives.Setup(x => x.GetAllByProjectIdAsync(TenantId, ProjectId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[] { root, child, grandchild, sibling });
 
         return (coordinator, members);
     }
@@ -214,8 +224,8 @@ public class MilestoneMembershipCoordinatorTests
         var grandchild = MakeObjective(GrandchildId, ChildId, OtherEmployeeId);
         var sibling = MakeObjective(SiblingId, null, OtherEmployeeId);
         var (coordinator, members) = BuildTreeCoordinator(root, child, grandchild, sibling);
-        members.Setup(x => x.ListActiveForObjectiveAsync(TenantId, GrandchildId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new[] { new ProjectMember { Id = Guid.NewGuid(), TenantId = TenantId, ProjectId = ProjectId, ObjectiveId = GrandchildId, EmployeeId = EmployeeId, IsActive = true } });
+        members.Setup(x => x.HasActiveMembershipForAnyObjectiveAsync(TenantId, ProjectId, EmployeeId, It.Is<IReadOnlyList<Guid>>(ids => ids.Contains(GrandchildId)), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
 
         var result = await coordinator.IsEffectiveManagerAsync(TenantId, GrandchildId, EmployeeId, CancellationToken.None);
 
@@ -244,8 +254,8 @@ public class MilestoneMembershipCoordinatorTests
         var grandchild = MakeObjective(GrandchildId, ChildId, OtherEmployeeId);
         var sibling = MakeObjective(SiblingId, null, OtherEmployeeId);
         var (coordinator, members) = BuildTreeCoordinator(root, child, grandchild, sibling);
-        members.Setup(x => x.ListActiveForObjectiveAsync(TenantId, RootId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new[] { new ProjectMember { Id = Guid.NewGuid(), TenantId = TenantId, ProjectId = ProjectId, ObjectiveId = RootId, EmployeeId = EmployeeId, IsActive = true } });
+        members.Setup(x => x.HasActiveMembershipForAnyObjectiveAsync(TenantId, ProjectId, EmployeeId, It.Is<IReadOnlyList<Guid>>(ids => ids.Contains(RootId)), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
 
         var result = await coordinator.IsEffectiveManagerAsync(TenantId, GrandchildId, EmployeeId, CancellationToken.None);
 
@@ -305,8 +315,8 @@ public class MilestoneMembershipCoordinatorTests
         var grandchild = MakeObjective(GrandchildId, ChildId, OtherEmployeeId);
         var sibling = MakeObjective(SiblingId, null, OtherEmployeeId);
         var (coordinator, members) = BuildTreeCoordinator(root, child, grandchild, sibling);
-        members.Setup(x => x.ListActiveForObjectiveAsync(TenantId, GrandchildId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new[] { new ProjectMember { Id = Guid.NewGuid(), TenantId = TenantId, ProjectId = ProjectId, ObjectiveId = GrandchildId, EmployeeId = EmployeeId, IsActive = true } });
+        members.Setup(x => x.HasActiveMembershipForAnyObjectiveAsync(TenantId, ProjectId, EmployeeId, It.Is<IReadOnlyList<Guid>>(ids => ids.Contains(GrandchildId)), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
 
         var result = await coordinator.IsEffectiveOwnerAsync(TenantId, GrandchildId, EmployeeId, CancellationToken.None);
 
@@ -335,8 +345,8 @@ public class MilestoneMembershipCoordinatorTests
         var grandchild = MakeObjective(GrandchildId, ChildId, OtherEmployeeId);
         var sibling = MakeObjective(SiblingId, null, OtherEmployeeId);
         var (coordinator, members) = BuildTreeCoordinator(root, child, grandchild, sibling);
-        members.Setup(x => x.ListActiveForObjectiveAsync(TenantId, RootId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new[] { new ProjectMember { Id = Guid.NewGuid(), TenantId = TenantId, ProjectId = ProjectId, ObjectiveId = RootId, EmployeeId = EmployeeId, IsActive = true } });
+        members.Setup(x => x.HasActiveMembershipForAnyObjectiveAsync(TenantId, ProjectId, EmployeeId, It.Is<IReadOnlyList<Guid>>(ids => ids.Contains(RootId)), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
 
         var result = await coordinator.IsEffectiveOwnerAsync(TenantId, GrandchildId, EmployeeId, CancellationToken.None);
 
@@ -369,5 +379,114 @@ public class MilestoneMembershipCoordinatorTests
         var result = await coordinator.IsEffectiveOwnerAsync(TenantId, GrandchildId, EmployeeId, CancellationToken.None);
 
         Assert.False(result);
+    }
+
+    private static Objective Module() => new()
+    {
+        Id = ObjectiveId, TenantId = TenantId, ProjectId = ProjectId, Title = "Sub", OwnerId = Guid.NewGuid(),
+        IsActive = true, StartDate = new DateOnly(2026, 1, 1), EndDate = new DateOnly(2026, 3, 1)
+    };
+
+    [Fact]
+    public async Task ApplyMemberAddAsync_ActiveEmployeeNotAlreadyMember_CreatesInvitationAndNotifies()
+    {
+        var (coordinator, members, invitations, outbox) = BuildCoordinator(ActiveEmployee());
+        members.Setup(x => x.GetTrackedForObjectiveAsync(TenantId, ProjectId, ObjectiveId, EmployeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ProjectMember?)null);
+        invitations.Setup(x => x.GetPendingForObjectiveAndEmployeeAsync(TenantId, ObjectiveId, EmployeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ProjectMemberInvitation?)null);
+
+        var result = await coordinator.ApplyMemberAddAsync(TenantId, Module(), RequestedById, EmployeeId, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(EmployeeId, result.Value!.InvitedEmployeeId);
+        Assert.Equal(RequestedById, result.Value.InvitedById);
+        Assert.Equal(ProjectInvitationStatuses.Pending, result.Value.Status);
+        invitations.Verify(x => x.AddAsync(It.IsAny<ProjectMemberInvitation>(), It.IsAny<CancellationToken>()), Times.Once);
+        outbox.Verify(x => x.EnqueueAsync(
+            OutboxMessageTypes.WorkNotification,
+            It.Is<WorkNotificationPayload>(p => p.TemplateCode == "work_objective_invitation_created" && p.RecipientUserId == UserId),
+            TenantId, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task ApplyMemberAddAsync_EmployeeNotActive_Fails()
+    {
+        var (coordinator, _, _, _) = BuildCoordinator(InactiveEmployee());
+
+        var result = await coordinator.ApplyMemberAddAsync(TenantId, Module(), RequestedById, EmployeeId, CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+    }
+
+    [Fact]
+    public async Task ApplyMemberAddAsync_AlreadyActiveMember_Fails()
+    {
+        var (coordinator, members, _, _) = BuildCoordinator(ActiveEmployee());
+        members.Setup(x => x.GetTrackedForObjectiveAsync(TenantId, ProjectId, ObjectiveId, EmployeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ProjectMember { Id = Guid.NewGuid(), TenantId = TenantId, ProjectId = ProjectId, ObjectiveId = ObjectiveId, EmployeeId = EmployeeId, IsActive = true });
+
+        var result = await coordinator.ApplyMemberAddAsync(TenantId, Module(), RequestedById, EmployeeId, CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+    }
+
+    [Fact]
+    public async Task ApplyMemberAddAsync_PendingInviteAlreadyExists_Fails()
+    {
+        var (coordinator, members, invitations, _) = BuildCoordinator(ActiveEmployee());
+        members.Setup(x => x.GetTrackedForObjectiveAsync(TenantId, ProjectId, ObjectiveId, EmployeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ProjectMember?)null);
+        invitations.Setup(x => x.GetPendingForObjectiveAndEmployeeAsync(TenantId, ObjectiveId, EmployeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ProjectMemberInvitation { Id = Guid.NewGuid(), TenantId = TenantId, ObjectiveId = ObjectiveId, InvitedEmployeeId = EmployeeId });
+
+        var result = await coordinator.ApplyMemberAddAsync(TenantId, Module(), RequestedById, EmployeeId, CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+    }
+
+    [Fact]
+    public async Task ApplyMemberRemoveAsync_ActiveMembership_Deactivates()
+    {
+        var (coordinator, members, _, _) = BuildCoordinator(ActiveEmployee());
+        var membership = new ProjectMember { Id = Guid.NewGuid(), TenantId = TenantId, ProjectId = ProjectId, ObjectiveId = ObjectiveId, EmployeeId = EmployeeId, IsActive = true };
+        members.Setup(x => x.GetTrackedForObjectiveAsync(TenantId, ProjectId, ObjectiveId, EmployeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(membership);
+
+        var result = await coordinator.ApplyMemberRemoveAsync(TenantId, Module(), EmployeeId, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.False(membership.IsActive);
+    }
+
+    [Fact]
+    public async Task ApplyMemberRemoveAsync_OnlyPendingInvite_CancelsIt()
+    {
+        var (coordinator, members, invitations, _) = BuildCoordinator(ActiveEmployee());
+        members.Setup(x => x.GetTrackedForObjectiveAsync(TenantId, ProjectId, ObjectiveId, EmployeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ProjectMember?)null);
+        var pending = new ProjectMemberInvitation { Id = Guid.NewGuid(), TenantId = TenantId, ObjectiveId = ObjectiveId, InvitedEmployeeId = EmployeeId, Status = ProjectInvitationStatuses.Pending };
+        invitations.Setup(x => x.GetTrackedPendingForObjectiveAndEmployeeAsync(TenantId, ObjectiveId, EmployeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(pending);
+
+        var result = await coordinator.ApplyMemberRemoveAsync(TenantId, Module(), EmployeeId, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(ProjectInvitationStatuses.Cancelled, pending.Status);
+        invitations.Verify(x => x.Update(pending), Times.Once);
+    }
+
+    [Fact]
+    public async Task ApplyMemberRemoveAsync_NeitherMembershipNorInvite_Fails()
+    {
+        var (coordinator, members, invitations, _) = BuildCoordinator(ActiveEmployee());
+        members.Setup(x => x.GetTrackedForObjectiveAsync(TenantId, ProjectId, ObjectiveId, EmployeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ProjectMember?)null);
+        invitations.Setup(x => x.GetTrackedPendingForObjectiveAndEmployeeAsync(TenantId, ObjectiveId, EmployeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ProjectMemberInvitation?)null);
+
+        var result = await coordinator.ApplyMemberRemoveAsync(TenantId, Module(), EmployeeId, CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
     }
 }

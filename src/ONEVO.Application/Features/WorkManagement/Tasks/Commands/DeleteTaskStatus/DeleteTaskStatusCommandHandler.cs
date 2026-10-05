@@ -4,7 +4,6 @@ using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
-using ONEVO.Application.Features.WorkManagement.Objectives.Services;
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.DTOs;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
@@ -22,13 +21,12 @@ public class DeleteTaskStatusCommandHandler : IRequestHandler<DeleteTaskStatusCo
     private readonly ITaskStatusRepository _statuses;
     private readonly IWorkTaskRepository _tasks;
     private readonly IUnitOfWork _unitOfWork;
-    private readonly IMilestoneMembershipCoordinator _membership;
     private readonly ITaskStatusChangeRequestConflictSweeper _sweeper;
 
     public DeleteTaskStatusCommandHandler(
         ICurrentUser currentUser, ICallerIdentityResolver identity, IObjectiveRepository objectives,
         IProjectRepository projects, ITaskStatusRepository statuses, IWorkTaskRepository tasks,
-        IUnitOfWork unitOfWork, IMilestoneMembershipCoordinator membership,
+        IUnitOfWork unitOfWork,
         ITaskStatusChangeRequestConflictSweeper sweeper)
     {
         _currentUser = currentUser;
@@ -38,7 +36,6 @@ public class DeleteTaskStatusCommandHandler : IRequestHandler<DeleteTaskStatusCo
         _statuses = statuses;
         _tasks = tasks;
         _unitOfWork = unitOfWork;
-        _membership = membership;
         _sweeper = sweeper;
     }
 
@@ -64,8 +61,8 @@ public class DeleteTaskStatusCommandHandler : IRequestHandler<DeleteTaskStatusCo
         if (defaultObjective is null)
             return Result.NotFound("Project has no default milestone.");
 
-        if (!await _membership.IsEffectiveManagerAsync(tenantId, defaultObjective.Id, callerEmployeeId.Value, ct))
-            return Result.Forbidden("Only an owner or member of this project can delete task statuses.");
+        if (defaultObjective.OwnerId != callerEmployeeId.Value)
+            return Result.Forbidden("Only the project's top module owner can change task statuses directly. Others can send a change request.");
 
         if (status.Category == TaskStatusCategories.Done)
             return Result.Conflict("A project must always have exactly one Done status; edit it instead of deleting it.");
@@ -83,8 +80,8 @@ public class DeleteTaskStatusCommandHandler : IRequestHandler<DeleteTaskStatusCo
         return await _unitOfWork.ExecuteInTransactionAsync(async innerCt =>
         {
             _statuses.Remove(status);
-            await _sweeper.MarkConflictingOutdatedAsync(
-                tenantId, project.Id, project.Name,
+            await _sweeper.MarkConflictingStaleAsync(
+                tenantId, project.Id, callerEmployeeId.Value,
                 new TaskStatusChangeFootprint(new HashSet<Guid> { status.Id }, ReordersExisting: false), null, innerCt);
             await _unitOfWork.SaveChangesAsync(innerCt);
             return Result.Success();

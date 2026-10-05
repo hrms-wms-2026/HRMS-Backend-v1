@@ -4,7 +4,6 @@ using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
-using ONEVO.Application.Features.WorkManagement.Objectives.Services;
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.EditTaskStatus;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
@@ -28,7 +27,7 @@ public class EditTaskStatusCommandHandlerTests
     private static readonly Guid StatusId = Guid.NewGuid();
 
     private (EditTaskStatusCommandHandler Handler, Mock<ITaskStatusRepository> Statuses, TaskStatusEntity Status) Build(
-        string statusCategory, Guid? callerEmployeeId = null, bool? callerIsEffectiveManager = null,
+        string statusCategory, Guid? callerEmployeeId = null,
         Guid? statusObjectiveId = null, List<TaskStatusEntity>? siblings = null)
     {
         var resolvedCallerEmployeeId = callerEmployeeId ?? OwnerEmployeeId;
@@ -67,12 +66,9 @@ public class EditTaskStatusCommandHandlerTests
             .Returns((Func<CancellationToken, Task<Result>> op, CancellationToken ct) => op(ct));
         unitOfWork.Setup(x => x.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
 
-        var membership = new Mock<IMilestoneMembershipCoordinator>();
-        membership.Setup(x => x.IsEffectiveManagerAsync(TenantId, ObjectiveId, resolvedCallerEmployeeId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(callerIsEffectiveManager ?? (resolvedCallerEmployeeId == OwnerEmployeeId));
 
         var handler = new EditTaskStatusCommandHandler(
-            currentUser.Object, identity.Object, statuses.Object, objectives.Object, projects.Object, unitOfWork.Object, membership.Object, new Mock<ITaskStatusChangeRequestConflictSweeper>().Object);
+            currentUser.Object, identity.Object, statuses.Object, objectives.Object, projects.Object, unitOfWork.Object, new Mock<ITaskStatusChangeRequestConflictSweeper>().Object);
         return (handler, statuses, status);
     }
 
@@ -152,6 +148,21 @@ public class EditTaskStatusCommandHandlerTests
 
         Assert.False(result.IsSuccess);
         Assert.Equal(403, result.StatusCode);
+        statuses.Verify(x => x.Update(It.IsAny<TaskStatusEntity>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Root_module_member_who_is_not_owner_is_forbidden()
+    {
+        // A root member (not its owner) used to be let through by IsEffectiveManagerAsync; the gate is
+        // now owner-only, so any non-owner - root member included - gets 403 with the request hint.
+        var (handler, statuses, _) = Build(TaskStatusCategories.Active, callerEmployeeId: Guid.NewGuid());
+        var command = new EditTaskStatusCommand(StatusId, "Review", 2, false, null, TaskStatusVisibilities.Public, TaskStatusCategories.Active, "#7C3AED");
+
+        var result = await handler.Handle(command, CancellationToken.None);
+
+        Assert.Equal(403, result.StatusCode);
+        Assert.Contains("change request", result.Error);
         statuses.Verify(x => x.Update(It.IsAny<TaskStatusEntity>()), Times.Never);
     }
 

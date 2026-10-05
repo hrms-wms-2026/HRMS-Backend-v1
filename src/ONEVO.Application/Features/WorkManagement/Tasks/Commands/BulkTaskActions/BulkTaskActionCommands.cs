@@ -9,7 +9,9 @@ using ONEVO.Application.Features.WorkManagement.Tasks.Commands.AssignTask;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.ConvertTaskToSubtask;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.DeleteTask;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.MoveTaskStatus;
-using ONEVO.Application.Features.WorkManagement.Tasks.Commands.SetTaskAttributes;
+using ONEVO.Application.Features.WorkManagement.Tasks.Commands.EditTask;
+using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
+using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.DTOs.Responses;
 using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
 
@@ -32,11 +34,50 @@ public static class BulkTaskActions
         ILogger logger,
         CancellationToken ct)
     {
-        var results = await BulkItemRunner.RunAsync(taskIds, async (id, token) =>
+        return await RunWithOutcomeAsync(taskIds, async (id, token) =>
         {
             var result = await sendOne(id, token);
             return new BulkItemOutcome(result.IsSuccess, false, result.Error);
-        }, unitOfWork, logger, UnexpectedFailureReason, ct);
+        }, unitOfWork, logger, ct);
+    }
+
+    /// <summary>
+    /// One bulk field change sent through the normal task edit, so the approval engine and
+    /// notifications apply exactly as for a single edit: a caller at or above the task's creator
+    /// position edits now, anyone else files a task.edit approval request. buildEdit returns null
+    /// when the task already has the value (nothing to do, counted as succeeded).
+    /// </summary>
+    internal static async Task<BulkItemOutcome> EditOneAsync(
+        IMediator mediator, ICurrentUser currentUser, IWorkTaskRepository tasks, Guid taskId,
+        Func<WorkTask, EditTaskCommand?> buildEdit, CancellationToken ct)
+    {
+        var task = await tasks.GetByIdForTenantAsync(currentUser.TenantId, taskId, ct);
+        if (task is null)
+            return new BulkItemOutcome(false, false, "Task not found.");
+
+        var edit = buildEdit(task);
+        if (edit is null)
+            return new BulkItemOutcome(true, false, null);
+
+        var result = await mediator.Send(edit, ct);
+        return new BulkItemOutcome(result.IsSuccess, result.Value?.ApprovalRequestId is not null, result.Error);
+    }
+
+    /// <summary>An edit that keeps every field as it is except priority and due date. Attachments
+    /// and sprint are left untouched (null = no change).</summary>
+    internal static EditTaskCommand EditOf(WorkTask task, string priority, DateOnly? dueDate) => new(
+        task.Id, task.Title, task.Description, priority, dueDate, task.EstimatedHours, task.StoryPoints,
+        ProgressPercent: null, Reason: null, AttachmentFileIds: null, SprintId: null);
+
+    /// <summary>Like RunAsync, for actions that can also end as "sent for approval".</summary>
+    internal static async Task<Result<BulkTaskActionResponse>> RunWithOutcomeAsync(
+        IReadOnlyList<Guid> taskIds,
+        Func<Guid, CancellationToken, Task<BulkItemOutcome>> processOne,
+        IUnitOfWork unitOfWork,
+        ILogger logger,
+        CancellationToken ct)
+    {
+        var results = await BulkItemRunner.RunAsync(taskIds, processOne, unitOfWork, logger, UnexpectedFailureReason, ct);
         return Result<BulkTaskActionResponse>.Success(BulkTaskActionResponse.From(results));
     }
 }
@@ -116,13 +157,16 @@ public sealed class BulkSetTaskPriorityCommandValidator : AbstractValidator<Bulk
 
 public sealed class BulkSetTaskPriorityCommandHandler(
     IMediator mediator,
+    ICurrentUser currentUser,
+    IWorkTaskRepository tasks,
     IUnitOfWork unitOfWork,
     ILogger<BulkSetTaskPriorityCommandHandler> logger)
     : IRequestHandler<BulkSetTaskPriorityCommand, Result<BulkTaskActionResponse>>
 {
     public Task<Result<BulkTaskActionResponse>> Handle(BulkSetTaskPriorityCommand command, CancellationToken ct) =>
-        BulkTaskActions.RunAsync(command.TaskIds,
-            (id, token) => mediator.Send(new SetTaskAttributesCommand(id, command.Priority, false, null), token),
+        BulkTaskActions.RunWithOutcomeAsync(command.TaskIds,
+            (id, token) => BulkTaskActions.EditOneAsync(mediator, currentUser, tasks, id,
+                task => task.Priority == command.Priority ? null : BulkTaskActions.EditOf(task, command.Priority, task.DueDate), token),
             unitOfWork, logger, ct);
 }
 
@@ -137,13 +181,16 @@ public sealed class BulkSetTaskDueDateCommandValidator : AbstractValidator<BulkS
 
 public sealed class BulkSetTaskDueDateCommandHandler(
     IMediator mediator,
+    ICurrentUser currentUser,
+    IWorkTaskRepository tasks,
     IUnitOfWork unitOfWork,
     ILogger<BulkSetTaskDueDateCommandHandler> logger)
     : IRequestHandler<BulkSetTaskDueDateCommand, Result<BulkTaskActionResponse>>
 {
     public Task<Result<BulkTaskActionResponse>> Handle(BulkSetTaskDueDateCommand command, CancellationToken ct) =>
-        BulkTaskActions.RunAsync(command.TaskIds,
-            (id, token) => mediator.Send(new SetTaskAttributesCommand(id, null, true, command.DueDate), token),
+        BulkTaskActions.RunWithOutcomeAsync(command.TaskIds,
+            (id, token) => BulkTaskActions.EditOneAsync(mediator, currentUser, tasks, id,
+                task => task.DueDate == command.DueDate ? null : BulkTaskActions.EditOf(task, task.Priority, command.DueDate), token),
             unitOfWork, logger, ct);
 }
 
@@ -194,7 +241,10 @@ public sealed class BulkDeleteTasksCommandHandler(
     : IRequestHandler<BulkDeleteTasksCommand, Result<BulkTaskActionResponse>>
 {
     public Task<Result<BulkTaskActionResponse>> Handle(BulkDeleteTasksCommand command, CancellationToken ct) =>
-        BulkTaskActions.RunAsync(command.TaskIds,
-            (id, token) => mediator.Send(new DeleteTaskCommand(id), token),
-            unitOfWork, logger, ct);
+        BulkTaskActions.RunWithOutcomeAsync(command.TaskIds, async (id, token) =>
+        {
+            // Delete goes through the approval engine: a request id means it was sent for approval, not deleted.
+            var result = await mediator.Send(new DeleteTaskCommand(id), token);
+            return new BulkItemOutcome(result.IsSuccess, result.Value?.ApprovalRequestId is not null, result.Error);
+        }, unitOfWork, logger, ct);
 }

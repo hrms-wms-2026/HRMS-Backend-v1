@@ -1,6 +1,7 @@
 using Moq;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Permission.ServiceInterfaces;
+using ONEVO.Application.Features.WorkManagement.Approvals.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Sprints.RepositoryInterfaces;
@@ -51,7 +52,8 @@ public class GetSprintTasksQueryHandlerTests
         bool hasReadPermission = false,
         bool hasActiveMembership = false,
         IReadOnlyList<WorkTask>? sprintTasks = null,
-        IReadOnlyList<TaskAssignment>? assignments = null)
+        IReadOnlyList<TaskAssignment>? assignments = null,
+        IReadOnlySet<Guid>? pendingTaskIds = null)
     {
         var currentUser = new Mock<ICurrentUser>();
         currentUser.SetupGet(x => x.IsAuthenticated).Returns(true);
@@ -84,9 +86,14 @@ public class GetSprintTasksQueryHandlerTests
         assignmentRepo.Setup(x => x.GetByTaskIdsAsync(It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(assignments ?? new List<TaskAssignment>());
 
+        var approvalRequests = new Mock<IWorkApprovalRequestRepository>();
+        approvalRequests.Setup(x => x.GetPendingTargetIdsAsync(
+                TenantId, It.IsAny<string>(), It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(pendingTaskIds ?? new HashSet<Guid>());
+
         var handler = new GetSprintTasksQueryHandler(
             currentUser.Object, identity.Object, sprints.Object, members.Object,
-            permissionResolver.Object, tasks.Object, assignmentRepo.Object);
+            permissionResolver.Object, tasks.Object, assignmentRepo.Object, approvalRequests.Object);
 
         return (handler, tasks, members);
     }
@@ -133,6 +140,19 @@ public class GetSprintTasksQueryHandlerTests
         Assert.False(result.IsSuccess);
         Assert.Equal(403, result.StatusCode);
         tasks.Verify(x => x.GetBySprintIdAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Handle_FlagsTasksWithAPendingApprovalRequest()
+    {
+        var task = TaskOn(SprintId, Guid.NewGuid(), "Edited, awaiting approval");
+        var (handler, _, _) = BuildHandler(
+            SprintOf(ProjectId), hasActiveMembership: true,
+            sprintTasks: new List<WorkTask> { task }, pendingTaskIds: new HashSet<Guid> { task.Id });
+
+        var result = await handler.Handle(new GetSprintTasksQuery(SprintId), CancellationToken.None);
+
+        Assert.True(result.Value!.Single().HasPendingApproval);
     }
 
     [Fact]

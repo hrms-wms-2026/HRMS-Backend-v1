@@ -2,7 +2,6 @@ using MediatR;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.Helpers;
-using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.ServiceInterfaces;
 using ONEVO.Application.Features.Leave.Balance.DTOs.Responses;
 using ONEVO.Application.Features.Leave.Balance.Helpers;
@@ -14,7 +13,6 @@ namespace ONEVO.Application.Features.Leave.Balance.Queries.GetEmployeeTimeOff;
 
 public sealed class GetEmployeeTimeOffQueryHandler(
     IEmployeeReadAccessGuard guard,
-    IEmployeeRepository employees,
     ILeaveEntitlementRepository entitlements,
     ILeavePolicyRepository policies,
     ILeaveRequestReadRepository leaveRequests,
@@ -22,7 +20,6 @@ public sealed class GetEmployeeTimeOffQueryHandler(
     IDateTimeProvider clock)
     : IRequestHandler<GetEmployeeTimeOffQuery, Result<EmployeeTimeOffResponse>>
 {
-    public const string ModulePermission = "leave:read";
     private const int UpcomingWindowDays = 90;
 
     public async Task<Result<EmployeeTimeOffResponse>> Handle(GetEmployeeTimeOffQuery request, CancellationToken ct)
@@ -32,9 +29,6 @@ public sealed class GetEmployeeTimeOffQueryHandler(
         var access = await guard.EnsureCanRead(tenantId, request.EmployeeId, ct);
         if (!access.IsSuccess)
             return Result<EmployeeTimeOffResponse>.Failure(access.Error!, access.StatusCode ?? 400);
-
-        if (!await EmployeeOverviewAccess.HasAccessAsync(currentUser, employees, tenantId, request.EmployeeId, ModulePermission, ct))
-            return Result<EmployeeTimeOffResponse>.Forbidden("You do not have access to this employee's time off.");
 
         var today = clock.Today;
         var year = request.Year ?? today.Year;

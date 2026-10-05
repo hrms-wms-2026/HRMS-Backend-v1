@@ -7,7 +7,11 @@ using ONEVO.Application.Features.WorkManagement.Tasks.Commands.BulkTaskActions;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.ConvertTaskToSubtask;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.DeleteTask;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.MoveTaskStatus;
-using ONEVO.Application.Features.WorkManagement.Tasks.Commands.SetTaskAttributes;
+using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.WorkManagement.Tasks.Commands.EditTask;
+using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
+using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
+using ONEVO.Application.Features.WorkManagement.Tasks.DTOs;
 using ONEVO.Application.Features.WorkManagement.Tasks.DTOs.Responses;
 using ONEVO.Tests.Unit.Fakes;
 
@@ -60,23 +64,74 @@ public class BulkTaskActionCommandsTests
             It.IsAny<CancellationToken>()), Times.Once);
     }
 
-    [Fact]
-    public async Task BulkPriority_And_BulkDueDate_UseSetTaskAttributes()
+    private static readonly Guid TenantId = Guid.NewGuid();
+    private readonly Mock<ICurrentUser> _currentUser = new();
+    private readonly Mock<IWorkTaskRepository> _tasks = new();
+
+    private WorkTask StoredTask(Guid id, string priority, DateOnly? dueDate)
     {
-        _mediator.Setup(m => m.Send(It.IsAny<SetTaskAttributesCommand>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Result.Success());
+        var task = new WorkTask
+        {
+            Id = id, TenantId = TenantId, Title = "Keep title", Description = "<p>keep</p>", Priority = priority,
+            DueDate = dueDate, EstimatedHours = 6m, StoryPoints = 3, SprintId = Guid.NewGuid()
+        };
+        _currentUser.SetupGet(x => x.TenantId).Returns(TenantId);
+        _tasks.Setup(x => x.GetByIdForTenantAsync(TenantId, id, It.IsAny<CancellationToken>())).ReturnsAsync(task);
+        return task;
+    }
 
-        await new BulkSetTaskPriorityCommandHandler(
-                _mediator.Object, _uow, NullLogger<BulkSetTaskPriorityCommandHandler>.Instance)
+    private void EditReturns(Guid id, Result<TaskWriteOutcome> result) =>
+        _mediator.Setup(m => m.Send(It.Is<EditTaskCommand>(c => c.TaskId == id), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(result);
+
+    [Fact]
+    public async Task BulkPriority_GoesThroughTaskEdit_KeepingEveryOtherField_AndCountsApprovals()
+    {
+        var due = new DateOnly(2026, 10, 20);
+        StoredTask(_a, "low", due);
+        StoredTask(_b, "low", null);
+        EditReturns(_a, Result<TaskWriteOutcome>.Success(new TaskWriteOutcome(null, null)));            // owner: applied
+        EditReturns(_b, Result<TaskWriteOutcome>.Success(new TaskWriteOutcome(null, Guid.NewGuid())));  // member: sent for approval
+
+        var result = await new BulkSetTaskPriorityCommandHandler(
+                _mediator.Object, _currentUser.Object, _tasks.Object, _uow, NullLogger<BulkSetTaskPriorityCommandHandler>.Instance)
+            .Handle(new BulkSetTaskPriorityCommand(new[] { _a, _b }, "high"), CancellationToken.None);
+
+        Assert.Equal((1, 1, 0), (result.Value!.Succeeded, result.Value.PendingApproval, result.Value.Failed));
+        // Only priority changes; attachments and sprint are left alone (null = unchanged).
+        _mediator.Verify(m => m.Send(It.Is<EditTaskCommand>(c =>
+            c.TaskId == _a && c.Priority == "high" && c.DueDate == due && c.Title == "Keep title"
+            && c.Description == "<p>keep</p>" && c.EstimatedHours == 6m && c.StoryPoints == 3
+            && c.AttachmentFileIds == null && c.SprintId == null), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task BulkDueDate_GoesThroughTaskEdit_AndReportsRefusals()
+    {
+        StoredTask(_a, "medium", new DateOnly(2026, 10, 1));
+        EditReturns(_a, Result<TaskWriteOutcome>.Conflict("Due date is outside event window(s)."));
+
+        var result = await new BulkSetTaskDueDateCommandHandler(
+                _mediator.Object, _currentUser.Object, _tasks.Object, _uow, NullLogger<BulkSetTaskDueDateCommandHandler>.Instance)
+            .Handle(new BulkSetTaskDueDateCommand(new[] { _a }, null), CancellationToken.None);
+
+        Assert.Equal("failed", result.Value!.Items[0].Outcome);
+        Assert.Equal("Due date is outside event window(s).", result.Value.Items[0].Reason);
+        _mediator.Verify(m => m.Send(It.Is<EditTaskCommand>(c =>
+            c.TaskId == _a && c.DueDate == null && c.Priority == "medium"), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task BulkPriority_SkipsTasksThatAlreadyHaveTheValue_WithoutFilingAnEdit()
+    {
+        StoredTask(_a, "high", null);
+
+        var result = await new BulkSetTaskPriorityCommandHandler(
+                _mediator.Object, _currentUser.Object, _tasks.Object, _uow, NullLogger<BulkSetTaskPriorityCommandHandler>.Instance)
             .Handle(new BulkSetTaskPriorityCommand(new[] { _a }, "high"), CancellationToken.None);
-        await new BulkSetTaskDueDateCommandHandler(
-                _mediator.Object, _uow, NullLogger<BulkSetTaskDueDateCommandHandler>.Instance)
-            .Handle(new BulkSetTaskDueDateCommand(new[] { _b }, null), CancellationToken.None);
 
-        _mediator.Verify(m => m.Send(It.Is<SetTaskAttributesCommand>(c =>
-            c.TaskId == _a && c.Priority == "high" && !c.SetDueDate), It.IsAny<CancellationToken>()), Times.Once);
-        _mediator.Verify(m => m.Send(It.Is<SetTaskAttributesCommand>(c =>
-            c.TaskId == _b && c.Priority == null && c.SetDueDate && c.DueDate == null), It.IsAny<CancellationToken>()), Times.Once);
+        Assert.Equal("succeeded", result.Value!.Items[0].Outcome);
+        _mediator.Verify(m => m.Send(It.IsAny<EditTaskCommand>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -96,17 +151,24 @@ public class BulkTaskActionCommandsTests
     }
 
     [Fact]
-    public async Task BulkDelete_DispatchesPerTask()
+    public async Task BulkDelete_DispatchesPerTask_AndReportsApprovalsSeparately()
     {
-        Returns<DeleteTaskCommand>(_a, Result.Success());
-        Returns<DeleteTaskCommand>(_b, Result.Conflict("This task has subtasks. Delete or move its subtasks first."));
+        var c = Guid.NewGuid();
+        // Delete goes through the approval engine: deleted now, sent for approval (request id), or refused.
+        _mediator.Setup(m => m.Send(It.Is<DeleteTaskCommand>(x => x.TaskId == _a), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<TaskWriteOutcome>.Success(new TaskWriteOutcome(null, null)));
+        _mediator.Setup(m => m.Send(It.Is<DeleteTaskCommand>(x => x.TaskId == _b), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<TaskWriteOutcome>.Success(new TaskWriteOutcome(null, Guid.NewGuid())));
+        _mediator.Setup(m => m.Send(It.Is<DeleteTaskCommand>(x => x.TaskId == c), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<TaskWriteOutcome>.Conflict("This task has subtasks. Delete or move its subtasks first."));
 
         var result = await new BulkDeleteTasksCommandHandler(
                 _mediator.Object, _uow, NullLogger<BulkDeleteTasksCommandHandler>.Instance)
-            .Handle(new BulkDeleteTasksCommand(new[] { _a, _b }), CancellationToken.None);
+            .Handle(new BulkDeleteTasksCommand(new[] { _a, _b, c }), CancellationToken.None);
 
-        Assert.Equal(new[] { "succeeded", "failed" }, result.Value!.Items.Select(i => i.Outcome));
-        Assert.Equal(2, _uow.ClearTrackingCallCount);
+        Assert.Equal(new[] { "succeeded", "pendingApproval", "failed" }, result.Value!.Items.Select(i => i.Outcome));
+        Assert.Equal((1, 1, 1), (result.Value.Succeeded, result.Value.PendingApproval, result.Value.Failed));
+        Assert.Equal(3, _uow.ClearTrackingCallCount);
     }
 
     [Fact]

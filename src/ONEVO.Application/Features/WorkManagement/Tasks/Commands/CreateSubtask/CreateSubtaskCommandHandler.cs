@@ -92,7 +92,8 @@ public sealed class CreateSubtaskCommandHandler : IRequestHandler<CreateSubtaskC
             var subtask = new WorkTask
             {
                 Id = Guid.NewGuid(), TenantId = tenantId, ProjectId = parent.ProjectId, ParentTaskId = parent.Id,
-                ObjectiveId = parent.ObjectiveId, ShortId = $"{project.Identifier}-{taskNumber}",
+                ObjectiveId = parent.ObjectiveId, CreatorPositionObjectiveId = parent.CreatorPositionObjectiveId ?? parent.ObjectiveId,
+                ShortId = $"{project.Identifier}-{taskNumber}",
                 StatusId = defaultStatus.Id, Title = request.Title.Trim(), CategoryId = parent.CategoryId,
                 Priority = request.Priority ?? WorkTaskPriorities.Medium, DueDate = request.DueDate,
                 CompletedHours = 0m, ProgressPercent = 0, CreatedById = userId, CreatedAt = now

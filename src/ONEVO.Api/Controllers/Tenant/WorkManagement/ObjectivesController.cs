@@ -4,11 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using ONEVO.Api.Contracts.WorkManagement.Objectives;
 using ONEVO.Api.Contracts.WorkManagement.ProjectInvitations;
 using ONEVO.Api.Filters;
-using ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.Commands.ApproveObjectiveChangeRequest;
-using ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.Commands.RejectObjectiveChangeRequest;
-using ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.Commands.RequestAllocationExtension;
-using ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.DTOs;
-using ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.Queries.ListMyObjectiveChangeRequests;
+using ONEVO.Application.Features.WorkManagement.Objectives.Commands.RequestAllocationExtension;
 using ONEVO.Application.Features.WorkManagement.Objectives.Commands.AchieveObjective;
 using ONEVO.Application.Features.WorkManagement.Objectives.Commands.AddObjectiveMember;
 using ONEVO.Application.Features.WorkManagement.Objectives.Commands.CreateObjective;
@@ -81,7 +77,7 @@ public class ObjectivesController : ControllerBase
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
-    /// <summary>Edits a milestone. Always creates a pending approval request routed to the milestone's Reporting Manager - the head can no longer apply their own edits directly. Frozen (400) once the milestone is Achieved.</summary>
+    /// <summary>Edits a milestone through the approval engine: 200 with the milestone when the caller is the parent's owner or above, otherwise 202 { approvalRequestId }. Frozen (400) once the milestone is Achieved.</summary>
     [HttpPut("{id:guid}")]
     public async Task<IActionResult> Edit(Guid id, [FromBody] EditObjectiveRequest request, CancellationToken ct)
     {
@@ -93,10 +89,10 @@ public class ObjectivesController : ControllerBase
 
         return result.Value!.Applied
             ? Ok(result.Value.Objective!.ToViewModel())
-            : Accepted(result.Value.PendingRequest!.ToViewModel());
+            : StatusCode(202, new { approvalRequestId = result.Value.ApprovalRequestId });
     }
 
-    /// <summary>Soft-deletes a milestone. Applies immediately if the caller created it; otherwise creates a pending approval request routed to the milestone's Reporting Manager.</summary>
+    /// <summary>Soft-deletes a milestone through the approval engine: 204 when the caller is the parent's owner or above, otherwise 202 { approvalRequestId }.</summary>
     [HttpDelete("{id:guid}")]
     public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
     {
@@ -107,10 +103,10 @@ public class ObjectivesController : ControllerBase
 
         return result.Value!.Applied
             ? NoContent()
-            : Accepted(result.Value.PendingRequest!.ToViewModel());
+            : StatusCode(202, new { approvalRequestId = result.Value.ApprovalRequestId });
     }
 
-    /// <summary>Reassigns a milestone's head (by employeeId). If the objective has a Reporting Manager, applies immediately for the creator or routes to that Reporting Manager for approval otherwise. If the objective has no Reporting Manager, skips approval and sends a leader invitation — the caller remains Head until accepted.</summary>
+    /// <summary>Reassigns a milestone's head (by employeeId). If the objective has a Reporting Manager, goes through the approval engine (204 applied / 202 with approvalRequestId). If the objective has no Reporting Manager, skips approval and sends a leader invitation — the caller remains Head until accepted.</summary>
     [HttpPost("{id:guid}/transfer")]
     public async Task<IActionResult> Transfer(Guid id, [FromBody] TransferObjectiveHeadRequest request, CancellationToken ct)
     {
@@ -124,7 +120,7 @@ public class ObjectivesController : ControllerBase
             : StatusCode(202, result.Value.ToViewModel());
     }
 
-    /// <summary>Invites an employee to this milestone. Head-only. Immediate no-op (204) if already an active member; otherwise creates a pending invitation (202) the invited employee must accept.</summary>
+    /// <summary>Adds a member through the approval engine: 204 if already a member, 202 with the invitation if the caller is the parent's owner or above, otherwise 202 with { approvalRequestId }.</summary>
     [HttpPost("{id:guid}/members")]
     public async Task<IActionResult> AddMember(Guid id, [FromBody] AddObjectiveMemberRequest request, CancellationToken ct)
     {
@@ -133,20 +129,27 @@ public class ObjectivesController : ControllerBase
         if (!result.IsSuccess)
             return Problem(result.Error, statusCode: result.StatusCode ?? 400);
 
-        return result.Value!.AlreadyMember
-            ? StatusCode(204, result.Value.ToViewModel())
-            : StatusCode(202, result.Value.ToViewModel());
+        var outcome = result.Value!;
+        if (outcome.AlreadyMember)
+            return StatusCode(204, outcome.ToViewModel());
+
+        return outcome.Applied
+            ? StatusCode(202, outcome.ToViewModel())
+            : StatusCode(202, new { approvalRequestId = outcome.ApprovalRequestId });
     }
 
-    /// <summary>Removes a member from this milestone. Head-only. Rejects removing the current head - use Transfer instead.</summary>
+    /// <summary>Removes a member through the approval engine: 204 when the caller is the parent's owner or above, otherwise 202 { approvalRequestId }. Rejects removing the current head - use Transfer instead.</summary>
     [HttpDelete("{id:guid}/members/{employeeId:guid}")]
     public async Task<IActionResult> RemoveMember(Guid id, Guid employeeId, CancellationToken ct)
     {
         var result = await _mediator.Send(new RemoveObjectiveMemberCommand(id, employeeId), ct);
 
-        return result.IsSuccess
+        if (!result.IsSuccess)
+            return Problem(result.Error, statusCode: result.StatusCode ?? 400);
+
+        return result.Value!.Applied
             ? NoContent()
-            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+            : StatusCode(202, new { approvalRequestId = result.Value.ApprovalRequestId });
     }
 
     /// <summary>Accepts a pending invitation. Caller must be the invited employee. Member invites create membership; leader invites reassign the milestone's head.</summary>
@@ -191,7 +194,7 @@ public class ObjectivesController : ControllerBase
 
         return result.Value!.Applied
             ? NoContent()
-            : Accepted(result.Value.PendingRequest!.ToViewModel());
+            : StatusCode(202, new { approvalRequestId = result.Value.ApprovalRequestId });
     }
 
     /// <summary>Reverts an Achieved milestone back to active. Same immediate-vs-pending split as Delete.</summary>
@@ -205,7 +208,7 @@ public class ObjectivesController : ControllerBase
 
         return result.Value!.Applied
             ? NoContent()
-            : Accepted(result.Value.PendingRequest!.ToViewModel());
+            : StatusCode(202, new { approvalRequestId = result.Value.ApprovalRequestId });
     }
 
     /// <summary>An Objective's parent detail plus its full nested descendant subtree. Caller must be {id}'s current Head.</summary>
@@ -219,57 +222,18 @@ public class ObjectivesController : ControllerBase
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
-    /// <summary>Owner requests more allocated hours, routed to the Objective's Reporting Manager as an extend_allocation change request. Root (no reporting manager) returns 400 — edit the Project instead.</summary>
+    /// <summary>More allocated hours through the approval engine: 200 when the caller is the parent's owner or above, otherwise 202 { approvalRequestId }. Root (no reporting manager) returns 400 — edit the Project instead.</summary>
     [HttpPost("{id:guid}/allocation-requests")]
     public async Task<IActionResult> RequestAllocationExtension(Guid id, [FromBody] RequestAllocationExtensionRequest request, CancellationToken ct)
     {
         var result = await _mediator.Send(new RequestAllocationExtensionCommand(id, request.RequestedAdditionalHours, request.Reason), ct);
 
-        return result.IsSuccess
-            ? StatusCode(202, result.Value!.ToViewModel())
-            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
-    }
+        if (!result.IsSuccess)
+            return Problem(result.Error, statusCode: result.StatusCode ?? 400);
 
-    /// <summary>Approves a pending change request. Caller must be the request's Reporting Manager.</summary>
-    [HttpPost("change-requests/{requestId:guid}/approve")]
-    public async Task<IActionResult> ApproveChangeRequest(
-        Guid requestId,
-        [FromBody] ApproveObjectiveChangeRequestRequest? request,
-        CancellationToken ct)
-    {
-        EditObjectiveRequestPayload? approvedEdit = request?.Title is not null
-            && request.StartDate is not null && request.EndDate is not null && request.AllocatedHours is not null
-            ? new EditObjectiveRequestPayload(request.Title, request.Description, request.StartDate.Value, request.EndDate.Value, request.AllocatedHours.Value)
-            : null;
-
-        var result = await _mediator.Send(
-            new ApproveObjectiveChangeRequestCommand(requestId, request?.ApprovedAdditionalHours, approvedEdit), ct);
-
-        return result.IsSuccess
-            ? NoContent()
-            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
-    }
-
-    /// <summary>Rejects a pending change request. Caller must be the request's Reporting Manager. The Objective is left unchanged.</summary>
-    [HttpPost("change-requests/{requestId:guid}/reject")]
-    public async Task<IActionResult> RejectChangeRequest(Guid requestId, CancellationToken ct)
-    {
-        var result = await _mediator.Send(new RejectObjectiveChangeRequestCommand(requestId), ct);
-
-        return result.IsSuccess
-            ? NoContent()
-            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
-    }
-
-    /// <summary>The caller's own approval queue - pending requests where they are the Reporting Manager.</summary>
-    [HttpGet("change-requests/mine")]
-    public async Task<IActionResult> ListMyChangeRequests(CancellationToken ct)
-    {
-        var result = await _mediator.Send(new ListMyObjectiveChangeRequestsQuery(), ct);
-
-        return result.IsSuccess
-            ? Ok(result.Value!.Select(r => r.ToViewModel()).ToList())
-            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+        return result.Value!.Applied
+            ? Ok()
+            : StatusCode(202, new { approvalRequestId = result.Value.ApprovalRequestId });
     }
 
     /// <summary>Milestones the caller used to have active access to but no longer does (Transferred away, removed as a member, or Achieved with no other reason to stay in the project). Read-only.</summary>

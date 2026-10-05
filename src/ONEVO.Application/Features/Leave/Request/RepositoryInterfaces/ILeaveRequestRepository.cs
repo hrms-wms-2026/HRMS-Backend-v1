@@ -69,8 +69,8 @@ public sealed record LeaveRequestListRow(
     LeaveRequest Request,
     string LeaveTypeName,
     string LeaveTypeCode,
-    string? ApprovedByName,
-    string? InfoQuestion);
+    string? ApprovedByName = null,
+    string? InfoQuestion = null);
 
 public sealed record LeaveApprovalDelegateRow(
     Guid ApproverEmployeeId,

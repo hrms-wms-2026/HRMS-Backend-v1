@@ -15,7 +15,7 @@ public sealed record AttendancePeriodData(
     IReadOnlyList<LeaveRequest> ApprovedLeaves,
     DateTimeOffset RangeStartUtc,
     DateTimeOffset RangeEndUtc,
-    IReadOnlySet<int>? WorkingWeekdays = null);
+    ExpectedWorkdays Workdays);
 
 public interface IEmployeeAttendancePeriodReader
 {

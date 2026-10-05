@@ -57,7 +57,7 @@ public sealed record DemoLeafTaskSlot(
     bool AssignExtraMember,
     bool MarkComplete);
 
-public sealed record DemoTaskCreationRequestSpec(
+public sealed record DemoTaskApprovalRequestSpec(
     string ProjectKey,
     string ObjectivePath,
     string RequesterKey,
@@ -292,7 +292,7 @@ public static class WorkManagementDapiDemoData
         new("Handoff", "bug", "low", "Review", 0.10m, false, false),
     ];
 
-    public static readonly IReadOnlyList<DemoTaskCreationRequestSpec> TaskCreationRequests =
+    public static readonly IReadOnlyList<DemoTaskApprovalRequestSpec> TaskApprovalRequests =
     [
         new("epos", "E-pos_System/Testing and deployment", "mathusanth", "Add regression suite task", null, "task", "medium", 8m),
         new("epos", "E-pos_System/Hardware Integration", "kiru", "Device firmware smoke checklist", null, "task", "high", 6m),

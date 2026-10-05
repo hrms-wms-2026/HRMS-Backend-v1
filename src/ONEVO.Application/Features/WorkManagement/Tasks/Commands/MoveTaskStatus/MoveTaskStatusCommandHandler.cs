@@ -4,10 +4,13 @@ using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
-using ONEVO.Application.Features.WorkManagement.Objectives.Services;
+using ONEVO.Application.Features.WorkManagement.Hierarchy;
+using ONEVO.Application.Features.WorkManagement.Notifications.Services;
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Sprints.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
+using ONEVO.Domain.Features.WorkManagement.Approvals.Entities;
+using ONEVO.Domain.Features.WorkManagement.Notifications.Entities;
 using ONEVO.Domain.Features.WorkManagement.Objectives.Entities;
 using ONEVO.Domain.Features.WorkManagement.Sprints.Entities;
 using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
@@ -21,7 +24,9 @@ public class MoveTaskStatusCommandHandler : IRequestHandler<MoveTaskStatusComman
     private readonly IWorkTaskRepository _tasks;
     private readonly ITaskStatusRepository _statuses;
     private readonly IObjectiveRepository _objectives;
-    private readonly IMilestoneMembershipCoordinator _membership;
+    private readonly IWorkHierarchyService _hierarchy;
+    private readonly ITaskAssignmentRepository _assignments;
+    private readonly IWorkNotificationEngine _notifications;
     private readonly ISprintRepository _sprints;
     private readonly IUnitOfWork _unitOfWork;
     private readonly ITaskStatusChangeLogRepository _statusChangeLogs;
@@ -35,8 +40,10 @@ public class MoveTaskStatusCommandHandler : IRequestHandler<MoveTaskStatusComman
         IWorkTaskRepository tasks,
         ITaskStatusRepository statuses,
         IObjectiveRepository objectives,
-        IMilestoneMembershipCoordinator membership,
-                IUnitOfWork unitOfWork,
+        IWorkHierarchyService hierarchy,
+        ITaskAssignmentRepository assignments,
+        IWorkNotificationEngine notifications,
+        IUnitOfWork unitOfWork,
         ISprintRepository sprints,
         ITaskStatusChangeLogRepository statusChangeLogs,
         ITaskPercentageLogRepository percentageLogs,
@@ -49,8 +56,10 @@ public class MoveTaskStatusCommandHandler : IRequestHandler<MoveTaskStatusComman
         _tasks = tasks;
         _statuses = statuses;
         _objectives = objectives;
-        _membership = membership;
-                _unitOfWork = unitOfWork;
+        _hierarchy = hierarchy;
+        _assignments = assignments;
+        _notifications = notifications;
+        _unitOfWork = unitOfWork;
         _sprints = sprints;
         _statusChangeLogs = statusChangeLogs;
         _percentageLogs = percentageLogs;
@@ -84,18 +93,18 @@ public class MoveTaskStatusCommandHandler : IRequestHandler<MoveTaskStatusComman
         if (objective is null)
             return Result.NotFound("Objective not found.");
 
-        if (!await _membership.IsEffectiveManagerAsync(tenantId, objective.Id, callerEmployeeId.Value, ct))
-        {
-            var isMember = await _membership.IsActiveMemberAsync(
-                tenantId,
-                objective.Id,
-                callerEmployeeId.Value,
-                ct);
-            if (!isMember)
-                return Result.Forbidden("Only active milestone members can move tasks.");
-            if (newStatus.Visibility == TaskStatusVisibilities.Private)
-                return Result.Forbidden("Only the milestone owner can move a task into this status.");
-        }
+        var tree = await _hierarchy.LoadTreeAsync(tenantId, task.ProjectId, ct);
+        var isParent = tree.IsAtOrAbove(callerEmployeeId.Value, task.CreatorPositionObjectiveId ?? task.ObjectiveId);
+        var isAssignee = await _assignments.GetByTaskAndEmployeeAsync(task.Id, callerEmployeeId.Value, ct) is not null;
+        var isCreator = task.CreatedById == _currentUser.UserId;
+
+        // Moving a task's status never needs approval (user decision 2026-09-28), but only the task's
+        // creator, its assignees, or a module owner at or above its creator position may do it.
+        // Private statuses stay parent-only.
+        if (!isParent && !isAssignee && !isCreator)
+            return Result.Forbidden("Only the task's creator, its assignees, or a module owner above it can change its status.");
+        if (newStatus.Visibility == TaskStatusVisibilities.Private && !isParent)
+            return Result.Forbidden("Only the module owner can move a task into this status.");
 
         if (task.SprintId.HasValue)
         {
@@ -176,6 +185,12 @@ public class MoveTaskStatusCommandHandler : IRequestHandler<MoveTaskStatusComman
 
             task.UpdatedAt = now;
             objective.UpdatedAt = now;
+
+            var creatorEmployeeId = await _identity.ResolveCallerEmployeeIdAsync(tenantId, task.CreatedById, innerCt);
+            await _notifications.NotifyAsync(new WorkNotificationEvent(
+                tenantId, task.ProjectId, callerEmployeeId.Value, WorkNotificationKinds.Direct,
+                WorkActionTypes.TaskStatusChange, WorkTargetTypes.Task, task.Id, task.Title, null,
+                creatorEmployeeId is { } c ? [objective.OwnerId, c] : [objective.OwnerId]), innerCt);
 
             await _unitOfWork.SaveChangesAsync(innerCt);
 

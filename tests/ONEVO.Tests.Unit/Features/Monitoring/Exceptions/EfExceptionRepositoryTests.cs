@@ -104,6 +104,33 @@ public sealed class EfExceptionRepositoryTests
         resolved.Should().ContainSingle(e => e.Status == ExceptionStatus.Resolved);
     }
 
+    [Fact]
+    public async Task CountDetectedInRangeAsync_CountsOnlyThisEmployeeInsideTheRange()
+    {
+        await using var db = BuildInMemoryDb();
+        var tenantId = Guid.NewGuid();
+        var employeeId = Guid.NewGuid();
+        DomainException Case(Guid employee, DateTimeOffset detectedAt, ExceptionStatus status = ExceptionStatus.Open) => new()
+        {
+            Id = Guid.NewGuid(), TenantId = tenantId, EmployeeId = employee,
+            Type = ExceptionType.IdentityAnomaly, Status = status, Title = "t", Description = "d",
+            DetectedAt = detectedAt
+        };
+        db.Exceptions.AddRange(
+            Case(employeeId, DayStart.AddHours(-1)),
+            Case(employeeId, DayStart),
+            Case(employeeId, DayStart.AddDays(1).AddHours(-1), ExceptionStatus.Resolved),
+            Case(employeeId, DayStart.AddDays(1)),
+            Case(Guid.NewGuid(), DayStart.AddHours(3)));
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var count = await new EfExceptionRepository(db).CountDetectedInRangeAsync(
+            tenantId, employeeId, DayStart, DayStart.AddDays(1), CancellationToken.None);
+
+        count.Should().Be(2);
+    }
+
     private static ApplicationDbContext BuildInMemoryDb()
     {
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()

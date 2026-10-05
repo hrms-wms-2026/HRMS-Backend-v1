@@ -81,6 +81,20 @@ public sealed class EmployeesControllerArchitectureTests
     [InlineData("overview/attendance", "GetOverviewAttendance")]
     [InlineData("overview/attendance-discipline", "GetOverviewAttendanceDiscipline")]
     [InlineData("overview/time-off", "GetOverviewTimeOff")]
+    [InlineData("overview/work", "GetOverviewWork")]
+    [InlineData("overview/delivery", "GetOverviewDelivery")]
+    [InlineData("overview/activity", "GetOverviewActivity")]
+    [InlineData("overview/approvals", "GetOverviewApprovals")]
+    [InlineData("work-activity/needs-attention", "GetWorkActivityNeedsAttention")]
+    [InlineData("work-activity/recent-tasks", "GetWorkActivityRecentTasks")]
+    [InlineData("work-activity/delivery-trend", "GetWorkActivityDeliveryTrend")]
+    [InlineData("work-activity/activity-by-hour", "GetWorkActivityByHour")]
+    [InlineData("work-activity/app-usage", "GetWorkActivityAppUsage")]
+    [InlineData("work-activity/work-pattern", "GetWorkActivityWorkPattern")]
+    [InlineData("overview/checklists", "GetOverviewChecklists")]
+    [InlineData("overview/history", "GetOverviewHistory")]
+    [InlineData("overview/upcoming", "GetOverviewUpcoming")]
+    [InlineData("overview/recent-activity", "GetOverviewRecentActivity")]
     public void EmployeesController_OverviewWidgetActions_RequireEmployeesReadAndUseTheirRoute(string route, string action)
     {
         var path = FindRepositoryPath(

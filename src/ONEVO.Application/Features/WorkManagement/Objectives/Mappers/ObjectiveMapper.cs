@@ -1,6 +1,4 @@
-using ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.DTOs.Responses;
 using ONEVO.Application.Features.WorkManagement.Objectives.DTOs.Responses;
-using ONEVO.Domain.Features.WorkManagement.ObjectiveChangeRequests.Entities;
 using ONEVO.Domain.Features.WorkManagement.Objectives.Entities;
 
 namespace ONEVO.Application.Features.WorkManagement.Objectives.Mappers;
@@ -35,12 +33,4 @@ public static class ObjectiveMapper
         callerEmployeeId.HasValue && objective.OwnerId == callerEmployeeId.Value,
         objective.IsAchieved, objective.AchievedAt,
         childrenByParent[objective.Id].Select(c => ToSubtreeNode(c, childrenByParent, namesByEmployeeId, callerEmployeeId)).ToList());
-
-    public static ObjectiveChangeRequestResponse ToResponse(
-        ObjectiveChangeRequest request,
-        string? requestedByName = null,
-        Objective? objective = null) => new(
-        request.Id, request.ObjectiveId, request.RequestType, request.RequestedById, request.ReportingManagerId,
-        request.Status, request.PayloadJson, request.DecidedAt, request.DecidedById, request.CreatedAt,
-        requestedByName, objective?.Title, objective?.ProjectId, objective?.AllocatedHours);
 }
