@@ -31,6 +31,11 @@ public class EfTaskStatusRepository : ITaskStatusRepository
     public async Task<TaskStatusEntity?> GetByIdForTenantAsync(Guid tenantId, Guid id, CancellationToken ct = default)
         => await _db.TaskStatuses.FirstOrDefaultAsync(s => s.TenantId == tenantId && s.Id == id, ct);
 
+    public async Task<IReadOnlyList<TaskStatusEntity>> GetByIdsForTenantAsync(Guid tenantId, IReadOnlyCollection<Guid> ids, CancellationToken ct = default)
+        => await _db.TaskStatuses.AsNoTracking()
+            .Where(s => s.TenantId == tenantId && ids.Contains(s.Id))
+            .ToListAsync(ct);
+
     public void Update(TaskStatusEntity status) => _db.TaskStatuses.Update(status);
     public void Remove(TaskStatusEntity status) => _db.TaskStatuses.Remove(status);
 }

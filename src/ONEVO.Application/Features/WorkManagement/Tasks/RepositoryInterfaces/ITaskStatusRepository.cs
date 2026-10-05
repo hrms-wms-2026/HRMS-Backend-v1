@@ -16,6 +16,11 @@ public interface ITaskStatusRepository
 
     Task<TaskStatusEntity?> GetByIdForTenantAsync(Guid tenantId, Guid id, CancellationToken ct = default);
 
+    /// <summary>Bulk fetch of specific status rows by id, for computing a done/total rollup across
+    /// many tasks' StatusIds in one query - no existing method returns every status used by a
+    /// whole project's tasks in one call.</summary>
+    Task<IReadOnlyList<TaskStatusEntity>> GetByIdsForTenantAsync(Guid tenantId, IReadOnlyCollection<Guid> ids, CancellationToken ct = default);
+
     void Update(TaskStatusEntity status);
     void Remove(TaskStatusEntity status);
 }
