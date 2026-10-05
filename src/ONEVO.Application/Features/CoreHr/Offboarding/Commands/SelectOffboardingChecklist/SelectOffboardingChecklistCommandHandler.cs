@@ -4,6 +4,7 @@ using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.Offboarding.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.Offboarding.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.Onboarding.RepositoryInterfaces;
+using ONEVO.Application.Features.CoreHr.Onboarding.Services;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using IEmployeeRepository = ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces.IEmployeeRepository;
 
@@ -16,7 +17,8 @@ public class SelectOffboardingChecklistCommandHandler(
     IEmployeeRepository employeeRepository,
     IEmployeeOffboardingCoverageGuard coverageGuard,
     ICurrentUser currentUser,
-    IDateTimeProvider clock)
+    IDateTimeProvider clock,
+    IEmployeeChecklistWorkTaskProvisioner? workTaskProvisioner = null)
     : IRequestHandler<SelectOffboardingChecklistCommand, Result>
 {
     public async Task<Result> Handle(SelectOffboardingChecklistCommand request, CancellationToken ct)
@@ -40,6 +42,8 @@ public class SelectOffboardingChecklistCommandHandler(
         var employee = await employeeRepository.GetByIdAsync(tenantId, request.EmployeeId, ct);
         if (employee is null)
             return Result.NotFound("The employee could not be found.");
+        if (employee.LegalEntityId is null)
+            return Result.UnprocessableEntity("The employee must belong to a company before an offboarding checklist can be selected.");
         if (template.LegalEntityId != employee.LegalEntityId)
             return Result.UnprocessableEntity("This template does not belong to the employee's company.");
 
@@ -47,6 +51,20 @@ public class SelectOffboardingChecklistCommandHandler(
             template, employee.Id, employee.UserId, editedTasksJson: null, anchorDate: record.LastWorkingDate, ct);
         foreach (var task in tasks)
             task.OffboardingRecordId = record.Id;
+
+        if (workTaskProvisioner is not null && tasks.Count > 0)
+        {
+            var officeResult = await workTaskProvisioner.EnsureOfficeProjectAsync(
+                tenantId, employee.LegalEntityId!.Value, currentUser.UserId,
+                tasks.Max(task => task.DueDate), ct);
+            if (!officeResult.IsSuccess)
+                return Result.Failure(officeResult.Error!, officeResult.StatusCode ?? 400);
+
+            var provisionResult = await workTaskProvisioner.ProvisionAsync(
+                officeResult.Value!, employee, tasks, currentUser.UserId, ct);
+            if (!provisionResult.IsSuccess)
+                return Result.Failure(provisionResult.Error!, provisionResult.StatusCode ?? 400);
+        }
 
         record.ChecklistTemplateId = template.Id;
         record.Status = OffboardingRecordStatuses.InProgress;

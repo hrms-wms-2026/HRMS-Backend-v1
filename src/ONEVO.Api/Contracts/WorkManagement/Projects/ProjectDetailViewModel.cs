@@ -6,4 +6,5 @@ public sealed record ProjectDetailViewModel(
     decimal? ActualHours, decimal AllocatedHours, decimal CompletedHours,
     bool IsActive, bool IsAchieved, DateTimeOffset? AchievedAt,
     DateTimeOffset CreatedAt, DateTimeOffset? UpdatedAt, bool IsLead, Guid? LogoFileId,
-    IReadOnlyList<LabelViewModel> Labels, IReadOnlyList<ProjectMemberAvatarViewModel> Members, int MemberCount);
+    IReadOnlyList<LabelViewModel> Labels, IReadOnlyList<ProjectMemberAvatarViewModel> Members, int MemberCount,
+    string? SystemPurpose = null);

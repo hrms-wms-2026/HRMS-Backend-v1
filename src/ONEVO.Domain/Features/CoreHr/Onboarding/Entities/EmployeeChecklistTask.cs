@@ -33,6 +33,7 @@ public class EmployeeChecklistTask : ITenantOwnedEntity
     public string? BypassPenaltyDescription { get; set; }
     public string? Category { get; set; }
     public Guid? OffboardingRecordId { get; set; }
+    public Guid? WorkTaskId { get; set; }
     public string Status { get; set; } = EmployeeChecklistTaskStatuses.Pending;
     public DateTimeOffset? CompletedAt { get; set; }
 }

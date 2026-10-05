@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using ONEVO.Infrastructure.Persistence;
@@ -11,9 +12,11 @@ using ONEVO.Infrastructure.Persistence;
 namespace ONEVO.Infrastructure.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20261002180123_AddEmployeeChecklistWorkTasks")]
+    partial class AddEmployeeChecklistWorkTasks
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -11125,10 +11128,6 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("created_by_id");
 
-                    b.Property<string>("Description")
-                        .HasColumnType("text")
-                        .HasColumnName("description");
-
                     b.Property<DateOnly>("EndDate")
                         .HasColumnType("date")
                         .HasColumnName("end_date");
@@ -11167,52 +11166,6 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasDatabaseName("ix_calendar_events_tenant_project_status");
 
                     b.ToTable("calendar_events", (string)null);
-                });
-
-            modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.CalendarEvents.Entities.CalendarEventActivityLog", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("id");
-
-                    b.Property<string>("Action")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
-                        .HasColumnName("action");
-
-                    b.Property<Guid>("CalendarEventId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("calendar_event_id");
-
-                    b.Property<string>("DetailsJson")
-                        .IsRequired()
-                        .HasColumnType("jsonb")
-                        .HasColumnName("details_json");
-
-                    b.Property<DateTimeOffset>("PerformedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("performed_at");
-
-                    b.Property<Guid>("PerformedById")
-                        .HasColumnType("uuid")
-                        .HasColumnName("performed_by_id");
-
-                    b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("tenant_id");
-
-                    b.HasKey("Id")
-                        .HasName("pk_calendar_event_activity_logs");
-
-                    b.HasIndex("CalendarEventId")
-                        .HasDatabaseName("ix_calendar_event_activity_logs_calendar_event_id");
-
-                    b.HasIndex("TenantId", "CalendarEventId", "PerformedAt")
-                        .HasDatabaseName("ix_calendar_event_activity_logs_tenant_event_performed_at");
-
-                    b.ToTable("calendar_event_activity_logs", (string)null);
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.CalendarEvents.Entities.CalendarEventObjective", b =>
@@ -14830,16 +14783,6 @@ namespace ONEVO.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_calendar_events_projects_project_id");
-                });
-
-            modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.CalendarEvents.Entities.CalendarEventActivityLog", b =>
-                {
-                    b.HasOne("ONEVO.Domain.Features.WorkManagement.CalendarEvents.Entities.CalendarEvent", null)
-                        .WithMany()
-                        .HasForeignKey("CalendarEventId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired()
-                        .HasConstraintName("fk_calendar_event_activity_logs_calendar_events_calendar_event");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.CalendarEvents.Entities.CalendarEventObjective", b =>

@@ -9,6 +9,7 @@ using ONEVO.Application.Features.WorkManagement.Tasks.DTOs;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.Services;
 using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
+using ONEVO.Domain.Features.WorkManagement.Projects.Entities;
 
 namespace ONEVO.Application.Features.WorkManagement.Tasks.Commands.DeleteTaskStatus;
 
@@ -56,6 +57,8 @@ public class DeleteTaskStatusCommandHandler : IRequestHandler<DeleteTaskStatusCo
         var project = await _projects.GetByIdForTenantAsync(tenantId, status.ProjectId, ct);
         if (project is null || !project.IsActive)
             return Result.NotFound("Project not found.");
+        if (project.SystemPurpose == ProjectSystemPurposes.Office)
+            return Result.Conflict("The Office project workflow is system-managed.");
 
         var defaultObjective = await _objectives.GetDefaultByProjectIdAsync(tenantId, project.Id, ct);
         if (defaultObjective is null)

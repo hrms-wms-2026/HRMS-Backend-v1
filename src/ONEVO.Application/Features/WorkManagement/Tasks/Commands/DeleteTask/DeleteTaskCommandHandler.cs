@@ -13,6 +13,7 @@ using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.Services;
 using ONEVO.Domain.Features.WorkManagement.Approvals.Entities;
 using ONEVO.Domain.Features.WorkManagement.Notifications.Entities;
+using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
 
 namespace ONEVO.Application.Features.WorkManagement.Tasks.Commands.DeleteTask;
 
@@ -66,6 +67,8 @@ public class DeleteTaskCommandHandler : IRequestHandler<DeleteTaskCommand, Resul
         var task = await _tasks.GetTrackedByIdForTenantAsync(tenantId, request.TaskId, ct);
         if (task is null)
             return Result<TaskWriteOutcome>.NotFound("Task not found.");
+        if (task.TaskKind == WorkTaskKinds.EmployeeChecklist)
+            return Result<TaskWriteOutcome>.Conflict("Checklist tasks cannot be deleted. Update the linked employee checklist instead.");
 
         var objective = await _objectives.GetByIdForTenantAsync(tenantId, task.ObjectiveId, ct);
         if (objective is null)

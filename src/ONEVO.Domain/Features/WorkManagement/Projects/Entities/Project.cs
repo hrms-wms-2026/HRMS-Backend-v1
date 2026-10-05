@@ -2,8 +2,14 @@ using ONEVO.Domain.Common;
 
 namespace ONEVO.Domain.Features.WorkManagement.Projects.Entities;
 
+public static class ProjectSystemPurposes
+{
+    public const string Office = "office";
+}
+
 public class Project : BaseEntity
 {
+    public string? SystemPurpose { get; set; }
     public Guid OwningLegalEntityId { get; set; }
     public Guid CategoryId { get; set; }
     public string Name { get; set; } = string.Empty;

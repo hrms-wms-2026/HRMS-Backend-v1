@@ -28,5 +28,13 @@ public record EmployeeDetailEmergencyContact(Guid Id, string Name, string Relati
 
 public record EmployeeDetailPayroll(bool HasBankDetailsOnFile, string? BankName, string? MaskedAccountNumber, string? AccountType);
 
+public sealed record EmployeeBankDetailsRevealResponse(
+    string BankName,
+    string BranchName,
+    string AccountHolderName,
+    string AccountNumber,
+    string AccountType,
+    string? RoutingNumber);
+
 /// <summary>A project the employee belongs to that the viewer shares (see IProjectMemberRepository.ListSharedProjectMembershipsAsync).</summary>
 public record EmployeeDetailProjectMembership(Guid ProjectId, string ProjectName, DateTimeOffset MemberSince, bool IsActive);

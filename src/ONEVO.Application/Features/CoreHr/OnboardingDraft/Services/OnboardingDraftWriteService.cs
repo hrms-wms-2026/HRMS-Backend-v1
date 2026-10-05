@@ -14,6 +14,7 @@ using ONEVO.Application.Features.CoreHr.OnboardingDraft.OutboxHandlers;
 using ONEVO.Application.Features.CoreHr.OnboardingDrafts.DTOs.Responses;
 using ONEVO.Application.Features.CoreHr.OnboardingDrafts.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.Onboarding.RepositoryInterfaces;
+using ONEVO.Application.Features.CoreHr.Onboarding.Services;
 using ONEVO.Application.Features.CoreHr.PositionAssignment.RepositoryInterfaces;
 using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
 using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
@@ -65,6 +66,7 @@ public class OnboardingDraftWriteService : IOnboardingDraftWriteService
     private readonly ICurrentUser _currentUser;
     private readonly IDateTimeProvider _clock;
     private readonly IUnitOfWork _unitOfWork;
+    private readonly IEmployeeChecklistWorkTaskProvisioner? _workTaskProvisioner;
 
     public OnboardingDraftWriteService(
         IOnboardingDraftRepository draftRepository,
@@ -88,7 +90,8 @@ public class OnboardingDraftWriteService : IOnboardingDraftWriteService
         ISecureTokenGenerator tokenGenerator,
         ICurrentUser currentUser,
         IDateTimeProvider clock,
-        IUnitOfWork unitOfWork)
+        IUnitOfWork unitOfWork,
+        IEmployeeChecklistWorkTaskProvisioner? workTaskProvisioner = null)
     {
         _draftRepository = draftRepository;
         _employeeRepository = employeeRepository;
@@ -112,6 +115,7 @@ public class OnboardingDraftWriteService : IOnboardingDraftWriteService
         _currentUser = currentUser;
         _clock = clock;
         _unitOfWork = unitOfWork;
+        _workTaskProvisioner = workTaskProvisioner;
     }
 
     public async Task<Result<OnboardingDraftResponse>> SaveAsync(
@@ -531,12 +535,13 @@ public class OnboardingDraftWriteService : IOnboardingDraftWriteService
 
         var employeeId = Guid.NewGuid();
         var tasksCreated = 0;
+        IReadOnlyList<EmployeeChecklistTask> checklistTasks = Array.Empty<EmployeeChecklistTask>();
         if (template is not null)
         {
             try
             {
-                var tasks = await _checklistTaskRepository.InstantiateAsync(template, employeeId, user.Id, draft.EditedTasksJson, draft.StartDate.Value, ct);
-                tasksCreated = tasks.Count;
+                checklistTasks = await _checklistTaskRepository.InstantiateAsync(template, employeeId, user.Id, draft.EditedTasksJson, draft.StartDate.Value, ct);
+                tasksCreated = checklistTasks.Count;
             }
             catch (ArgumentException)
             {
@@ -568,6 +573,18 @@ public class OnboardingDraftWriteService : IOnboardingDraftWriteService
         };
         await _employeeRepository.AddAsync(employee, ct);
 
+        OfficeProjectContext? officeProject = null;
+        if (_workTaskProvisioner is not null && checklistTasks.Count > 0)
+        {
+            var targetDate = checklistTasks.Max(task => task.DueDate);
+            var officeResult = await _workTaskProvisioner.EnsureOfficeProjectAsync(
+                draft.TenantId, draft.LegalEntityId, actingUserId, targetDate, ct);
+            if (!officeResult.IsSuccess)
+                return Result<FinalizeOnboardingDraftResponse>.Failure(
+                    officeResult.Error!, officeResult.StatusCode ?? 400);
+            officeProject = officeResult.Value;
+        }
+
         Guid? reservedAssignmentId = null;
 
         // The employee row above is only tracked in memory so far - nothing is in the database
@@ -590,6 +607,15 @@ public class OnboardingDraftWriteService : IOnboardingDraftWriteService
                         draft.TenantId, employeeId, position.Id, draft.StartDate.Value, actingUserId, draft.ReportsToEmployeeId, txnCt);
                     if (reservedAssignmentId is null)
                         throw new PositionAtCapacityException();
+                }
+
+                if (officeProject is not null)
+                {
+                    var provisionResult = await _workTaskProvisioner!.ProvisionAsync(
+                        officeProject, employee, checklistTasks, actingUserId, txnCt);
+                    if (!provisionResult.IsSuccess)
+                        throw new ChecklistWorkTaskProvisioningException(
+                            provisionResult.Error!, provisionResult.StatusCode ?? 400);
                 }
 
                 if (selfAuthorizedBypass)
@@ -685,6 +711,10 @@ public class OnboardingDraftWriteService : IOnboardingDraftWriteService
         {
             return Result<FinalizeOnboardingDraftResponse>.Conflict("This position has reached its capacity.");
         }
+        catch (ChecklistWorkTaskProvisioningException ex)
+        {
+            return Result<FinalizeOnboardingDraftResponse>.Failure(ex.Message, ex.StatusCode);
+        }
         catch (ConcurrencyConflictException)
         {
             return Result<FinalizeOnboardingDraftResponse>.Conflict(
@@ -706,6 +736,11 @@ public class OnboardingDraftWriteService : IOnboardingDraftWriteService
     /// whole transaction (including the already-flushed employee/user) rolls back when the
     /// position has no free capacity.</summary>
     private sealed class PositionAtCapacityException : Exception;
+
+    private sealed class ChecklistWorkTaskProvisioningException(string message, int statusCode) : Exception(message)
+    {
+        public int StatusCode { get; } = statusCode;
+    }
 
     /// <summary>Saves all changes staged on the shared DbContext in one transaction. Returns
     /// null on success, or a Result to return immediately on a concurrency/uniqueness

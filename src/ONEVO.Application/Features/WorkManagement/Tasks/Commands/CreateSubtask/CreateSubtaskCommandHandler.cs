@@ -57,6 +57,8 @@ public sealed class CreateSubtaskCommandHandler : IRequestHandler<CreateSubtaskC
         var parent = await _tasks.GetByIdForTenantAsync(tenantId, request.ParentTaskId, ct);
         if (parent is null)
             return Result<WorkTaskResponse>.NotFound("Parent task not found.");
+        if (parent.TaskKind == WorkTaskKinds.EmployeeChecklist)
+            return Result<WorkTaskResponse>.Conflict("Checklist tasks cannot contain subtasks.");
         if (parent.ParentTaskId is not null)
             return Result<WorkTaskResponse>.Conflict("A subtask cannot itself have subtasks.");
 

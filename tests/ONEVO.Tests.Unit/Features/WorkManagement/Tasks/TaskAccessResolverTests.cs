@@ -121,4 +121,44 @@ public class TaskAccessResolverTests
 
         Assert.True(result.IsSuccess);
     }
+
+    [Fact]
+    public async Task ResolveViewableTaskAsync_AssigneePrivateTask_AssigneeSucceeds()
+    {
+        var (resolver, tasks, projects, _, permissions) = Build();
+        var task = Task_(ObjectiveId);
+        task.TaskKind = WorkTaskKinds.EmployeeChecklist;
+        task.VisibilityScope = WorkTaskVisibilityScopes.Assignees;
+        tasks.Setup(x => x.GetByIdForTenantAsync(TenantId, TaskId, It.IsAny<CancellationToken>())).ReturnsAsync(task);
+        tasks.Setup(x => x.IsAssignedToEmployeeAsync(TaskId, EmployeeId, It.IsAny<CancellationToken>())).ReturnsAsync(true);
+        projects.Setup(x => x.GetByIdForTenantAsync(TenantId, ProjectId, It.IsAny<CancellationToken>())).ReturnsAsync(ActiveProject());
+        permissions.Setup(x => x.ResolveAsync(UserId, TenantId, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<string>());
+
+        var result = await resolver.ResolveViewableTaskAsync(TenantId, UserId, TaskId, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+    }
+
+    [Fact]
+    public async Task ResolveViewableTaskAsync_AssigneePrivateTask_UnrelatedMemberGetsNotFound()
+    {
+        var (resolver, tasks, projects, members, permissions) = Build();
+        var task = Task_(ObjectiveId);
+        task.TaskKind = WorkTaskKinds.EmployeeChecklist;
+        task.VisibilityScope = WorkTaskVisibilityScopes.Assignees;
+        tasks.Setup(x => x.GetByIdForTenantAsync(TenantId, TaskId, It.IsAny<CancellationToken>())).ReturnsAsync(task);
+        tasks.Setup(x => x.IsAssignedToEmployeeAsync(TaskId, EmployeeId, It.IsAny<CancellationToken>())).ReturnsAsync(false);
+        projects.Setup(x => x.GetByIdForTenantAsync(TenantId, ProjectId, It.IsAny<CancellationToken>())).ReturnsAsync(ActiveProject());
+        permissions.Setup(x => x.ResolveAsync(UserId, TenantId, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<string>());
+        members.Setup(x => x.GetActiveObjectiveIdsForEmployeeInProjectAsync(
+            TenantId, ProjectId, EmployeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<Guid> { ObjectiveId });
+
+        var result = await resolver.ResolveViewableTaskAsync(TenantId, UserId, TaskId, CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(404, result.StatusCode);
+    }
 }

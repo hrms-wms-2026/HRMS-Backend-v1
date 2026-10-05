@@ -7,6 +7,7 @@ using ONEVO.Application.Features.WorkManagement.ProjectInvitations.RepositoryInt
 using ONEVO.Application.Features.WorkManagement.Sprints.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.DTOs.Responses;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Tasks.Services;
 
 namespace ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetWorkNotificationNavigation;
 
@@ -19,6 +20,7 @@ public class GetWorkNotificationNavigationQueryHandler
     private readonly IObjectiveRepository _objectives;
     private readonly IProjectMemberInvitationRepository _invitations;
     private readonly ISprintRepository _sprints;
+    private readonly ITaskAccessResolver? _taskAccess;
 
     public GetWorkNotificationNavigationQueryHandler(
         ICurrentUser currentUser,
@@ -26,7 +28,8 @@ public class GetWorkNotificationNavigationQueryHandler
         IWorkApprovalRequestRepository workApprovals,
         IObjectiveRepository objectives,
         IProjectMemberInvitationRepository invitations,
-        ISprintRepository sprints)
+        ISprintRepository sprints,
+        ITaskAccessResolver? taskAccess = null)
     {
         _currentUser = currentUser;
         _tasks = tasks;
@@ -34,6 +37,7 @@ public class GetWorkNotificationNavigationQueryHandler
         _objectives = objectives;
         _invitations = invitations;
         _sprints = sprints;
+        _taskAccess = taskAccess;
     }
 
     public async Task<Result<WorkNotificationNavigationResponse>> Handle(
@@ -113,6 +117,14 @@ public class GetWorkNotificationNavigationQueryHandler
     private async Task<Result<WorkNotificationNavigationResponse>> FromTaskAsync(
         Guid tenantId, Guid taskId, CancellationToken ct)
     {
+        if (_taskAccess is not null)
+        {
+            var access = await _taskAccess.ResolveViewableTaskAsync(
+                tenantId, _currentUser.UserId, taskId, ct);
+            if (!access.IsSuccess)
+                return Result<WorkNotificationNavigationResponse>.Failure(
+                    access.Error!, access.StatusCode ?? 404);
+        }
         var task = await _tasks.GetByIdForTenantAsync(tenantId, taskId, ct);
         if (task is null)
             return Result<WorkNotificationNavigationResponse>.NotFound("Task not found.");

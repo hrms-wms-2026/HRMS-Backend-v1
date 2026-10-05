@@ -6,6 +6,7 @@ using ONEVO.Application.Features.WorkManagement.Sprints.DTOs;
 using ONEVO.Application.Features.WorkManagement.Sprints.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
 using ONEVO.Domain.Features.WorkManagement.Sprints.Entities;
+using ONEVO.Domain.Features.WorkManagement.Projects.Entities;
 
 namespace ONEVO.Application.Features.WorkManagement.Sprints.Services;
 
@@ -44,6 +45,8 @@ public sealed class SprintWriteService : ISprintWriteService
         var project = await _projects.GetByIdForTenantAsync(tenantId, input.ProjectId, ct);
         if (project is null || !project.IsActive)
             return Result.NotFound("Project not found.");
+        if (project.SystemPurpose == ProjectSystemPurposes.Office)
+            return Result.Conflict("Sprints cannot be created in the system-managed Office project.");
 
         // Dry run of the task moves on a throwaway Draft sprint - PrepareAsync never mutates.
         var probe = new Sprint { Id = Guid.NewGuid(), TenantId = tenantId, ProjectId = project.Id, Status = SprintStatuses.Draft };
