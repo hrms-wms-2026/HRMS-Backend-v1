@@ -81,6 +81,10 @@ public interface IWorkTaskRepository
     Task AddAsync(WorkTask task, CancellationToken ct = default);
     Task<WorkTask?> GetByIdForTenantAsync(Guid tenantId, Guid id, CancellationToken ct = default);
     Task<WorkTask?> GetTrackedByIdForTenantAsync(Guid tenantId, Guid id, CancellationToken ct = default);
+
+    /// <summary>Same as <see cref="GetTrackedByIdForTenantAsync"/> but bypasses the soft-delete query
+    /// filter - for reverting a task.delete, where the task we need to find IS the soft-deleted one.</summary>
+    Task<WorkTask?> GetTrackedByIdForTenantIncludingDeletedAsync(Guid tenantId, Guid id, CancellationToken ct = default);
     Task<IReadOnlyList<WorkTask>> GetByObjectiveIdAsync(Guid tenantId, Guid objectiveId, CancellationToken ct = default);
     Task<IReadOnlyList<WorkTask>> GetByParentTaskIdAsync(Guid tenantId, Guid parentTaskId, CancellationToken ct = default);
 
