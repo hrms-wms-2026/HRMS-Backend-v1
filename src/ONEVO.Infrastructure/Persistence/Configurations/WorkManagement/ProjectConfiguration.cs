@@ -13,6 +13,7 @@ public class ProjectConfiguration : IEntityTypeConfiguration<Project>
         builder.HasKey(p => p.Id);
         builder.Property(p => p.Name).HasMaxLength(200).IsRequired();
         builder.Property(p => p.Identifier).HasMaxLength(20).IsRequired();
+        builder.Property(p => p.SystemPurpose).HasMaxLength(50);
         builder.Property(p => p.Color).HasMaxLength(20);
         builder.Property(p => p.ActualHours).HasColumnType("numeric(18,2)");
         builder.Property(p => p.AllocatedHours).HasColumnType("numeric(18,2)").HasDefaultValue(0m);
@@ -22,6 +23,10 @@ public class ProjectConfiguration : IEntityTypeConfiguration<Project>
         builder.HasIndex(p => new { p.TenantId, p.Identifier })
             .IsUnique()
             .HasDatabaseName("ix_projects_tenant_id_identifier");
+        builder.HasIndex(p => new { p.TenantId, p.SystemPurpose })
+            .IsUnique()
+            .HasFilter("system_purpose IS NOT NULL")
+            .HasDatabaseName("ix_projects_tenant_id_system_purpose");
         builder.HasIndex(p => new { p.TenantId, p.OwningLegalEntityId, p.UpdatedAt })
             .HasDatabaseName("ix_projects_tenant_id_owning_legal_entity_id_updated_at");
         builder.HasIndex(p => new { p.TenantId, p.CategoryId, p.IsActive })

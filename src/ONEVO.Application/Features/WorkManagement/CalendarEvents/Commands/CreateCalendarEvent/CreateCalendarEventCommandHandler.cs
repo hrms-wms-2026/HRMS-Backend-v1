@@ -84,6 +84,8 @@ public sealed class CreateCalendarEventCommandHandler : IRequestHandler<CreateCa
         var memberTasks = moduleTasks
             .Concat(directTaskIds.Select(id => projectTaskById[id]))
             .GroupBy(t => t.Id).Select(g => g.First()).ToList();
+        if (memberTasks.Any(task => task.TaskKind == WorkTaskKinds.EmployeeChecklist))
+            return Result<CalendarEventResponse>.Conflict("Employee checklist tasks cannot be added to calendar events.");
 
         // R2: every member task has a DueDate inside [startDate, endDate].
         var outOfWindow = memberTasks

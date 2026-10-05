@@ -1,4 +1,5 @@
 using ONEVO.Application.Features.WorkManagement.Tasks.DTOs;
+using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
 
 namespace ONEVO.Application.Features.WorkManagement.Tasks.DTOs.Responses;
 
@@ -25,7 +26,9 @@ public sealed record WorkTaskResponse(
     Guid? ParentTaskId = null, int SubtaskTotalCount = 0, int SubtaskCompletedCount = 0,
     IReadOnlyList<Guid>? SubtaskAssigneeEmployeeIds = null,
     DateTimeOffset CreatedAt = default,
-    bool HasPendingApproval = false);
+    bool HasPendingApproval = false,
+    string TaskKind = WorkTaskKinds.Standard,
+    string VisibilityScope = WorkTaskVisibilityScopes.Module);
 
 /// <summary>Returned alongside a 409 slack-conflict so the frontend can offer the extend-allocation flow (spec §3.2).</summary>
 public sealed record InsufficientAllocationResponse(decimal AvailableSlackHours, string SuggestedAction = "extend_allocation");

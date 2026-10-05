@@ -71,6 +71,8 @@ public class DuplicateTaskCommandHandler : IRequestHandler<DuplicateTaskCommand,
         var source = await _tasks.GetByIdForTenantAsync(tenantId, request.TaskId, ct);
         if (source is null)
             return Result<WorkTaskResponse>.NotFound("Task not found.");
+        if (source.TaskKind == WorkTaskKinds.EmployeeChecklist)
+            return Result<WorkTaskResponse>.Conflict("Checklist tasks cannot be duplicated.");
 
         var destinationObjective = await _objectives.GetByIdForTenantAsync(tenantId, request.DestinationObjectiveId, ct);
         if (destinationObjective is null || !destinationObjective.IsActive)

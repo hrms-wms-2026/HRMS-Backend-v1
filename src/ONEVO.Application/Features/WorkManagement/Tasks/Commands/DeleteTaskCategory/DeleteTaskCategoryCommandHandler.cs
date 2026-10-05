@@ -7,6 +7,7 @@ using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Objectives.Services;
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
+using ONEVO.Domain.Features.WorkManagement.Projects.Entities;
 
 namespace ONEVO.Application.Features.WorkManagement.Tasks.Commands.DeleteTaskCategory;
 
@@ -53,6 +54,8 @@ public class DeleteTaskCategoryCommandHandler : IRequestHandler<DeleteTaskCatego
         var project = await _projects.GetByIdForTenantAsync(tenantId, category.ProjectId, ct);
         if (project is null || !project.IsActive)
             return Result.NotFound("Project not found.");
+        if (project.SystemPurpose == ProjectSystemPurposes.Office)
+            return Result.Conflict("The Office project categories are system-managed.");
 
         var defaultObjective = await _objectives.GetDefaultByProjectIdAsync(tenantId, project.Id, ct);
         if (defaultObjective is null)

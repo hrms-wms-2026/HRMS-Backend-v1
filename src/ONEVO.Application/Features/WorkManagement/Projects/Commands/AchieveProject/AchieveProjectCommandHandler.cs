@@ -5,6 +5,7 @@ using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
+using ONEVO.Domain.Features.WorkManagement.Projects.Entities;
 
 namespace ONEVO.Application.Features.WorkManagement.Projects.Commands.AchieveProject;
 
@@ -44,6 +45,8 @@ public class AchieveProjectCommandHandler : IRequestHandler<AchieveProjectComman
         var project = await _projects.GetByIdForTenantAsync(tenantId, request.ProjectId, ct);
         if (project is null)
             return Result.NotFound("Project not found.");
+        if (project.SystemPurpose == ProjectSystemPurposes.Office)
+            return Result.Conflict("The system-managed Office project cannot be achieved.");
 
         if (project.LeadId != callerEmployeeId.Value)
             return Result.Forbidden("Only the project lead can achieve this project.");

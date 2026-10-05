@@ -8,6 +8,7 @@ using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Hierarchy;
 using ONEVO.Application.Features.WorkManagement.Tasks.DTOs.Responses;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Tasks.Services;
 using ONEVO.Domain.Features.WorkManagement.Approvals.Entities;
 
 namespace ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetObjectiveTasks;
@@ -23,6 +24,7 @@ public class GetObjectiveTasksQueryHandler : IRequestHandler<GetObjectiveTasksQu
     private readonly ITaskAssignmentRepository _assignments;
     private readonly ITaskClockingSessionRepository _sessions;
     private readonly IWorkApprovalRequestRepository _approvalRequests;
+    private readonly ITaskAccessResolver? _taskAccess;
 
     public GetObjectiveTasksQueryHandler(
         ICurrentUser currentUser,
@@ -33,7 +35,8 @@ public class GetObjectiveTasksQueryHandler : IRequestHandler<GetObjectiveTasksQu
         IWorkTaskRepository tasks,
         ITaskAssignmentRepository assignments,
         ITaskClockingSessionRepository sessions,
-        IWorkApprovalRequestRepository approvalRequests)
+        IWorkApprovalRequestRepository approvalRequests,
+        ITaskAccessResolver? taskAccess = null)
 
     {
         _currentUser = currentUser;
@@ -45,6 +48,7 @@ public class GetObjectiveTasksQueryHandler : IRequestHandler<GetObjectiveTasksQu
         _assignments = assignments;
         _sessions = sessions;
         _approvalRequests = approvalRequests;
+        _taskAccess = taskAccess;
 
     }
 
@@ -77,6 +81,9 @@ public class GetObjectiveTasksQueryHandler : IRequestHandler<GetObjectiveTasksQu
         }
 
         var items = await _tasks.GetByObjectiveIdAsync(tenantId, request.ObjectiveId, ct);
+        if (_taskAccess is not null)
+            items = await _taskAccess.FilterViewableTasksAsync(
+                tenantId, userId, callerEmployeeId.Value, items, ct);
 
         var assignments = await _assignments.GetByTaskIdsAsync(items.Select(t => t.Id).ToList(), ct);
         var assigneesByTaskId = assignments
@@ -99,7 +106,8 @@ public class GetObjectiveTasksQueryHandler : IRequestHandler<GetObjectiveTasksQu
             openSessions.TryGetValue(t.Id, out var openSession) ? openSession.EmployeeId : (Guid?)null,
             openSession?.ClockInAt,
             totalLoggedMinutes.GetValueOrDefault(t.Id, 0), CreatedAt: t.CreatedAt,
-            HasPendingApproval: pendingTaskIds.Contains(t.Id))).ToList();
+            HasPendingApproval: pendingTaskIds.Contains(t.Id),
+            TaskKind: t.TaskKind, VisibilityScope: t.VisibilityScope)).ToList();
 
         return Result<IReadOnlyList<WorkTaskResponse>>.Success(responses);
     }

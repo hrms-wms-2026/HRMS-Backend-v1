@@ -25,3 +25,11 @@ public record EmployeeDetailAddress(Guid Id, string AddressType, string AddressJ
 public record EmployeeDetailEmergencyContact(Guid Id, string Name, string Relationship, string Phone, string? Email, bool IsPrimary);
 
 public record EmployeeDetailPayroll(bool HasBankDetailsOnFile, string? BankName, string? MaskedAccountNumber, string? AccountType);
+
+public sealed record EmployeeBankDetailsRevealResponse(
+    string BankName,
+    string BranchName,
+    string AccountHolderName,
+    string AccountNumber,
+    string AccountType,
+    string? RoutingNumber);

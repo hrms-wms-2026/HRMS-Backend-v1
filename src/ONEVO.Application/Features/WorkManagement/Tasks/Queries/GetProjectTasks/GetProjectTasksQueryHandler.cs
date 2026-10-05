@@ -10,6 +10,7 @@ using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Approvals.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.DTOs.Responses;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Tasks.Services;
 using ONEVO.Domain.Features.WorkManagement.Approvals.Entities;
 
 namespace ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetProjectTasks;
@@ -28,6 +29,7 @@ public sealed class GetProjectTasksQueryHandler : IRequestHandler<GetProjectTask
     private readonly ICalendarEventRepository _calendarEvents;
     private readonly ITaskStatusRepository _statuses;
     private readonly IWorkApprovalRequestRepository _approvalRequests;
+    private readonly ITaskAccessResolver? _taskAccess;
 
     public GetProjectTasksQueryHandler(
         ICurrentUser currentUser,
@@ -41,7 +43,8 @@ public sealed class GetProjectTasksQueryHandler : IRequestHandler<GetProjectTask
         ICalendarEventRepository calendarEvents,
         ITaskStatusRepository statuses,
         IWorkHierarchyService hierarchy,
-        IWorkApprovalRequestRepository approvalRequests)
+        IWorkApprovalRequestRepository approvalRequests,
+        ITaskAccessResolver? taskAccess = null)
     {
         _currentUser = currentUser;
         _identity = identity;
@@ -55,6 +58,7 @@ public sealed class GetProjectTasksQueryHandler : IRequestHandler<GetProjectTask
         _calendarEvents = calendarEvents;
         _statuses = statuses;
         _approvalRequests = approvalRequests;
+        _taskAccess = taskAccess;
     }
 
     public async Task<Result<IReadOnlyList<WorkTaskResponse>>> Handle(GetProjectTasksQuery request, CancellationToken ct)
@@ -85,6 +89,9 @@ public sealed class GetProjectTasksQueryHandler : IRequestHandler<GetProjectTask
         var allItems = await _tasks.GetByProjectAsync(tenantId, project.Id, ct);
         if (accessibleObjectiveIds is not null)
             allItems = allItems.Where(t => accessibleObjectiveIds.Contains(t.ObjectiveId)).ToList();
+        if (_taskAccess is not null)
+            allItems = (await _taskAccess.FilterViewableTasksAsync(
+                tenantId, userId, callerEmployeeId.Value, allItems, ct)).ToList();
 
         var statuses = await _statuses.GetProjectTemplateAsync(tenantId, project.Id, ct);
         var completingStatusIds = statuses.Where(status => status.MarksTaskComplete).Select(status => status.Id).ToHashSet();
@@ -180,7 +187,8 @@ public sealed class GetProjectTasksQueryHandler : IRequestHandler<GetProjectTask
             SubtaskCompletedCount: subtasksByParentId.GetValueOrDefault(t.Id)?.Count(subtask => completingStatusIds.Contains(subtask.StatusId)) ?? 0,
             SubtaskAssigneeEmployeeIds: subtaskAssigneesByParentId.GetValueOrDefault(t.Id, Array.Empty<Guid>()),
             CreatedAt: t.CreatedAt,
-            HasPendingApproval: pendingTaskIds.Contains(t.Id))).ToList();
+            HasPendingApproval: pendingTaskIds.Contains(t.Id),
+            TaskKind: t.TaskKind, VisibilityScope: t.VisibilityScope)).ToList();
 
         return Result<IReadOnlyList<WorkTaskResponse>>.Success(responses);
     }

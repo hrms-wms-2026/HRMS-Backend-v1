@@ -15,6 +15,8 @@ public class WorkTaskConfiguration : IEntityTypeConfiguration<WorkTask>
         builder.Property(t => t.ShortId).HasMaxLength(50).IsRequired();
         builder.Property(t => t.Title).HasMaxLength(500).IsRequired();
         builder.Property(t => t.Priority).HasMaxLength(20).IsRequired();
+        builder.Property(t => t.TaskKind).HasMaxLength(40).HasDefaultValue(WorkTaskKinds.Standard).IsRequired();
+        builder.Property(t => t.VisibilityScope).HasMaxLength(20).HasDefaultValue(WorkTaskVisibilityScopes.Module).IsRequired();
         builder.Property(t => t.EstimatedHours).HasColumnType("numeric(18,2)");
         builder.Property(t => t.CompletedHours).HasColumnType("numeric(18,2)");
 
@@ -27,6 +29,8 @@ public class WorkTaskConfiguration : IEntityTypeConfiguration<WorkTask>
             .HasDatabaseName("ix_tasks_tenant_id_project_id_category_id");
         builder.HasIndex(t => new { t.TenantId, t.ParentTaskId })
             .HasDatabaseName("ix_tasks_tenant_id_parent_task_id");
+        builder.HasIndex(t => new { t.TenantId, t.ProjectId, t.VisibilityScope })
+            .HasDatabaseName("ix_tasks_tenant_id_project_id_visibility_scope");
 
         builder.HasOne<TaskStatusEntity>().WithMany().HasForeignKey(t => t.StatusId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne<Sprint>().WithMany().HasForeignKey(t => t.SprintId).OnDelete(DeleteBehavior.Restrict);

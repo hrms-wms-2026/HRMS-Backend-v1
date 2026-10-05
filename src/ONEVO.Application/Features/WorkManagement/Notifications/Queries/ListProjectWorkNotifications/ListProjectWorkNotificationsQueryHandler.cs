@@ -5,6 +5,8 @@ using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Notifications.DTOs;
 using ONEVO.Application.Features.WorkManagement.Notifications.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Notifications.Services;
+using ONEVO.Application.Features.WorkManagement.Tasks.Services;
+using ONEVO.Domain.Features.WorkManagement.Approvals.Entities;
 
 namespace ONEVO.Application.Features.WorkManagement.Notifications.Queries.ListProjectWorkNotifications;
 
@@ -16,13 +18,16 @@ public sealed class ListProjectWorkNotificationsQueryHandler
     private readonly ICurrentUser _currentUser;
     private readonly ICallerIdentityResolver _identity;
     private readonly IWorkNotificationLogRepository _logs;
+    private readonly ITaskAccessResolver? _taskAccess;
 
     public ListProjectWorkNotificationsQueryHandler(
-        ICurrentUser currentUser, ICallerIdentityResolver identity, IWorkNotificationLogRepository logs)
+        ICurrentUser currentUser, ICallerIdentityResolver identity, IWorkNotificationLogRepository logs,
+        ITaskAccessResolver? taskAccess = null)
     {
         _currentUser = currentUser;
         _identity = identity;
         _logs = logs;
+        _taskAccess = taskAccess;
     }
 
     public async Task<Result<IReadOnlyList<WorkNotificationLogResponse>>> Handle(ListProjectWorkNotificationsQuery query, CancellationToken ct)
@@ -37,6 +42,17 @@ public sealed class ListProjectWorkNotificationsQueryHandler
 
         var page = Math.Max(1, query.Page);
         var rows = await _logs.ListForRecipientAsync(tenantId, query.ProjectId, callerEmployeeId.Value, (page - 1) * PageSize, PageSize, ct);
+        if (_taskAccess is not null)
+        {
+            var visibleRows = new List<ONEVO.Domain.Features.WorkManagement.Notifications.Entities.WorkNotificationLog>(rows.Count);
+            foreach (var row in rows)
+            {
+                if (row.TargetType != WorkTargetTypes.Task || row.TargetId is null
+                    || (await _taskAccess.ResolveViewableTaskAsync(tenantId, _currentUser.UserId, row.TargetId.Value, ct)).IsSuccess)
+                    visibleRows.Add(row);
+            }
+            rows = visibleRows;
+        }
         var names = await _identity.ResolveDisplayNamesByEmployeeIdAsync(
             tenantId, rows.Select(r => r.ActorEmployeeId).Distinct().ToList(), ct);
 

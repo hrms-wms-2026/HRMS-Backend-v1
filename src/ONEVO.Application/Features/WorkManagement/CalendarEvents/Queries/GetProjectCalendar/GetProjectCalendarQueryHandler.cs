@@ -8,6 +8,7 @@ using ONEVO.Domain.Features.WorkManagement.Objectives.Entities;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Tasks.Services;
 
 using ONEVO.Application.Features.WorkManagement.Hierarchy;
 
@@ -22,6 +23,7 @@ public sealed class GetProjectCalendarQueryHandler
     private readonly IObjectiveRepository _objectives;
     private readonly IWorkTaskRepository _tasks;
     private readonly ICalendarEventRepository _calendarEvents;
+    private readonly ITaskAccessResolver? _taskAccess;
 
     public GetProjectCalendarQueryHandler(
         ICurrentUser currentUser,
@@ -29,7 +31,8 @@ public sealed class GetProjectCalendarQueryHandler
         IProjectMemberRepository members,
         IObjectiveRepository objectives,
         IWorkTaskRepository tasks,
-        ICalendarEventRepository calendarEvents)
+        ICalendarEventRepository calendarEvents,
+        ITaskAccessResolver? taskAccess = null)
     {
         _currentUser = currentUser;
         _identity = identity;
@@ -37,6 +40,7 @@ public sealed class GetProjectCalendarQueryHandler
         _objectives = objectives;
         _tasks = tasks;
         _calendarEvents = calendarEvents;
+        _taskAccess = taskAccess;
     }
 
     public async Task<Result<ProjectCalendarResponse>> Handle(
@@ -76,6 +80,13 @@ public sealed class GetProjectCalendarQueryHandler
         var headerById = eventHeaders.ToDictionary(h => h.EventId);
 
         var allTasks = await _tasks.GetByProjectAsync(tenantId, request.ProjectId, ct);
+        if (_taskAccess is not null)
+        {
+            allTasks = await _taskAccess.FilterViewableTasksAsync(
+                tenantId, userId, callerEmployeeId.Value, allTasks, ct);
+            var visibleTaskIds = allTasks.Select(task => task.Id).ToHashSet();
+            taskLinks = taskLinks.Where(link => visibleTaskIds.Contains(link.TaskId)).ToList();
+        }
         var taskCountByObjective = allTasks.GroupBy(t => t.ObjectiveId).ToDictionary(g => g.Key, g => g.Count());
 
         var wholeEventsByObjective = wholeLinks

@@ -15,6 +15,7 @@ using ONEVO.Application.Features.CoreHr.Employee.Commands.DeleteDependent;
 using ONEVO.Application.Features.CoreHr.Employee.Commands.DeleteEmergencyContact;
 using ONEVO.Application.Features.CoreHr.Employee.Commands.LinkMyAvatar;
 using ONEVO.Application.Features.CoreHr.Employee.Commands.ResendEmployeeInvitation;
+using ONEVO.Application.Features.CoreHr.Employee.Commands.RevealEmployeeBankDetails;
 using ONEVO.Application.Features.CoreHr.Employee.Commands.RevokeEmployeeInvitation;
 using ONEVO.Application.Features.CoreHr.Employee.Commands.UpdateBankDetails;
 using ONEVO.Application.Features.CoreHr.Employee.Commands.UpdateDependent;
@@ -139,6 +140,24 @@ public class EmployeesController : ControllerBase
     {
         var result = await _mediator.Send(new GetEmployeeDetailQuery(id), ct);
 
+        return result.IsSuccess
+            ? Ok(result.Value)
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Reveal an employee's complete primary bank details. The normal detail response
+    /// remains masked; every successful reveal is recorded in the append-only audit log.</summary>
+    [HttpPost("{id:guid}/bank-details/reveal")]
+    [RequirePermission("employees:read:sensitive")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> RevealBankDetails(Guid id, CancellationToken ct = default)
+    {
+        Response.Headers.CacheControl = "no-store";
+        Response.Headers.Pragma = "no-cache";
+
+        var result = await _mediator.Send(new RevealEmployeeBankDetailsCommand(id), ct);
         return result.IsSuccess
             ? Ok(result.Value)
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);

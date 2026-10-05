@@ -14,6 +14,8 @@ public class UpdateEmployeeChecklistTaskCommandHandler(IEmployeeChecklistTaskRep
         var task = await repository.GetTrackedByIdAsync(currentUser.TenantId, request.TaskId, ct);
         if (task is null || task.EmployeeId != request.EmployeeId)
             return Result.NotFound("The checklist task could not be found for this employee.");
+        if (task.WorkTaskId is not null)
+            return Result.Conflict("Update this checklist item through its linked Work task.");
         if (task.Status is EmployeeChecklistTaskStatuses.Completed or EmployeeChecklistTaskStatuses.Bypassed)
             return Result.Conflict("A completed or bypassed task cannot be edited.");
 

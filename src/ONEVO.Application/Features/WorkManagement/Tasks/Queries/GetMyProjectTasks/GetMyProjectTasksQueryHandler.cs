@@ -91,7 +91,8 @@ public sealed class GetMyProjectTasksQueryHandler : IRequestHandler<GetMyProject
             openSessions.TryGetValue(task.Id, out var openSession) ? openSession.EmployeeId : (Guid?)null,
             openSession?.ClockInAt,
             totalLoggedMinutes.GetValueOrDefault(task.Id, 0), CreatedAt: task.CreatedAt,
-            HasPendingApproval: pendingTaskIds.Contains(task.Id))).ToList();
+            HasPendingApproval: pendingTaskIds.Contains(task.Id),
+            TaskKind: task.TaskKind, VisibilityScope: task.VisibilityScope)).ToList();
 
         return Result<IReadOnlyList<WorkTaskResponse>>.Success(responses);
     }
