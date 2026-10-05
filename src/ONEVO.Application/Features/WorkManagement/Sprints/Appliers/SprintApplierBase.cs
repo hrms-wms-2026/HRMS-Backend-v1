@@ -41,9 +41,14 @@ public abstract class SprintApplierBase : IApprovalActionApplier
         if (request.TargetUpdatedAtSnapshot is { } snap && (sprint.UpdatedAt ?? sprint.CreatedAt) > snap)
             return ApplyOutcome.Stale;
 
+        var undoJson = CaptureUndoJson(sprint);
         var result = await ApplyAsync(request.TenantId, request.RequestedByEmployeeId, sprint, context.PayloadJson, ct);
-        return result.IsSuccess ? ApplyOutcome.Applied() : ApplyOutcome.Invalid(result.Error ?? "The sprint change could not be applied.");
+        return result.IsSuccess ? ApplyOutcome.Applied(undoJson) : ApplyOutcome.Invalid(result.Error ?? "The sprint change could not be applied.");
     }
+
+    /// <summary>Pre-mutation snapshot for a reverter to undo this apply. Null for types with nothing to
+    /// undo.</summary>
+    protected virtual string? CaptureUndoJson(Sprint sprint) => null;
 
     protected static T? Read<T>(string payloadJson) where T : class
     {

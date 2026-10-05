@@ -21,4 +21,7 @@ public sealed class ModuleTransferApplier : ModuleApplierBase
             return Result.Failure("The transfer request has no new head.");
         return await Modules.ApplyTransferAsync(tenantId, module, input, ct);
     }
+
+    protected override string? CaptureUndoJson(Objective module)
+        => System.Text.Json.JsonSerializer.Serialize(new ModuleTransferInput(module.OwnerId), ModulePayloadJson.Options);
 }

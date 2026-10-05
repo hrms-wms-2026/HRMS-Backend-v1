@@ -21,4 +21,7 @@ public sealed class SprintStartApplier : SprintApplierBase
             return Result.Failure("The sprint start request has no dates.");
         return await Writes.ApplyStartAsync(tenantId, actorEmployeeId, sprint, input, ct);
     }
+
+    protected override string? CaptureUndoJson(Sprint sprint)
+        => sprint.Goal is { } goal ? System.Text.Json.JsonSerializer.Serialize(new SprintStartUndoSnapshot(goal), SprintPayloadJson.Options) : null;
 }

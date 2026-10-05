@@ -46,9 +46,14 @@ public abstract class ModuleApplierBase : IApprovalActionApplier
         if (ChecksSnapshot && request.TargetUpdatedAtSnapshot is { } snap && (module.UpdatedAt ?? module.CreatedAt) > snap)
             return ApplyOutcome.Stale;
 
+        var undoJson = CaptureUndoJson(module);
         var result = await ApplyAsync(request.TenantId, module, context.PayloadJson, ct);
-        return result.IsSuccess ? ApplyOutcome.Applied() : ApplyOutcome.Invalid(result.Error ?? "The change could not be applied.");
+        return result.IsSuccess ? ApplyOutcome.Applied(undoJson) : ApplyOutcome.Invalid(result.Error ?? "The change could not be applied.");
     }
+
+    /// <summary>Pre-mutation snapshot for a reverter to undo this apply. Null for types with nothing to
+    /// undo (a flag-flip reverter in Task 5 derives everything from current state instead).</summary>
+    protected virtual string? CaptureUndoJson(Objective module) => null;
 
     protected static T? Read<T>(string payloadJson) where T : class
     {

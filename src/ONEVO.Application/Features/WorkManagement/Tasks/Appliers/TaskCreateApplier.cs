@@ -8,7 +8,7 @@ using ONEVO.Domain.Features.WorkManagement.Approvals.Entities;
 
 namespace ONEVO.Application.Features.WorkManagement.Tasks.Appliers;
 
-internal static class TaskPayload
+public static class TaskPayload
 {
     // Case-insensitive: rows migrated from the old request tables were serialised PascalCase.
     public static readonly JsonSerializerOptions Options = new(JsonSerializerDefaults.Web);

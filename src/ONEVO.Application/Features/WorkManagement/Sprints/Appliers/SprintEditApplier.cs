@@ -21,4 +21,9 @@ public sealed class SprintEditApplier : SprintApplierBase
             return Result.Failure("The sprint edit request has no name.");
         return await Writes.ApplyEditAsync(tenantId, actorEmployeeId, sprint, input, ct);
     }
+
+    protected override string? CaptureUndoJson(Sprint sprint)
+        => System.Text.Json.JsonSerializer.Serialize(
+            new SprintEditInput(sprint.Name, sprint.Goal, sprint.StartDate, sprint.EndDate),
+            SprintPayloadJson.Options);
 }
