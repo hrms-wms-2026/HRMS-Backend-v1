@@ -1,5 +1,6 @@
 using FluentAssertions;
 using Moq;
+using ONEVO.Application.Common.Exceptions;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Approvals.Commands.RevertWorkApprovalRequest;
 using ONEVO.Application.Features.WorkManagement.Approvals.RepositoryInterfaces;
@@ -141,5 +142,18 @@ public class RevertWorkApprovalRequestCommandHandlerTests
         request.UndoStateJson.Should().BeNull();
         request.AppliedPayloadJson.Should().BeNull();
         _uow.SaveCallCount.Should().Be(2);
+    }
+
+    [Fact]
+    public async Task Handle_UniqueConstraintRace_ReturnsConflictInsteadOfThrowing()
+    {
+        var request = RejectedRequest(decidedBy: Caller, decidedAt: DateTimeOffset.UtcNow.AddMinutes(-5));
+        _requests.Setup(x => x.GetTrackedByIdForTenantAsync(TenantId, request.Id, It.IsAny<CancellationToken>())).ReturnsAsync(request);
+        _requests.Setup(x => x.Update(request)).Throws(new UniqueConstraintConflictException(new Exception("duplicate key value violates unique constraint")));
+
+        var result = await Handler().Handle(new RevertWorkApprovalRequestCommand(request.Id), CancellationToken.None);
+
+        result.IsSuccess.Should().BeFalse();
+        result.StatusCode.Should().Be(409);
     }
 }
