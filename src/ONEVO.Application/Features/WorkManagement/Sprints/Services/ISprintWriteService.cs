@@ -31,4 +31,18 @@ public interface ISprintWriteService
     Result ValidateDelete(Sprint sprint);
     /// <summary>Its tasks go back to the backlog; the sprint row is soft-deleted.</summary>
     Task ApplyDeleteAsync(Guid tenantId, Sprint trackedSprint, CancellationToken ct = default);
+
+    /// <summary>Undoes ApplyDeleteAsync: clears the soft-delete flags and reattaches the given tasks to
+    /// this sprint (the ones ApplyDeleteAsync detached). Conflict (nothing applied) if any of those
+    /// tasks has since been attached to a different sprint.</summary>
+    Task<Result> Restore(Guid tenantId, Sprint trackedSprint, IReadOnlyCollection<Guid> taskIdsToReattach, CancellationToken ct = default);
+
+    /// <summary>Undoes ApplyCompleteAsync: Active status, clears CompletedAt, and moves movedTaskIds back
+    /// onto this sprint. Conflict (nothing applied) if a moved task is no longer where Complete left it
+    /// (targetSprintId if Disposition was "sprint", else unassigned) - something else touched it since.</summary>
+    Task<Result> ApplyUncompleteAsync(Guid tenantId, Guid actorEmployeeId, Sprint trackedSprint, IReadOnlyCollection<Guid> movedTaskIds, Guid? targetSprintId, CancellationToken ct = default);
+
+    /// <summary>Undoes ApplyAchieveAsync: restores the status the sprint had right before it was
+    /// achieved (Draft, Active or Complete - Achieve is allowed from any of those) and clears AchievedAt.</summary>
+    Task<Result> ApplyUnachieveAsync(Guid tenantId, Guid actorEmployeeId, Sprint trackedSprint, string previousStatus, CancellationToken ct = default);
 }

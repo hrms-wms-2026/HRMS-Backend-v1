@@ -244,4 +244,79 @@ public class SprintWriteServiceTests
         tracked.SprintId.Should().BeNull();
         _w.Sprints.Verify(x => x.Remove(sprint), Times.Once);
     }
+
+    [Fact]
+    public async Task Restore_UndeletesSprintAndReattachesGivenTasks()
+    {
+        var sprint = Sprint(SprintStatuses.Complete);
+        sprint.IsDeleted = true;
+        sprint.DeletedAt = DateTimeOffset.UtcNow;
+        var task = new WorkTask { Id = Guid.NewGuid(), TenantId = TenantId, SprintId = null };
+        _w.Tasks.Setup(x => x.GetTrackedByIdForTenantAsync(TenantId, task.Id, It.IsAny<CancellationToken>())).ReturnsAsync(task);
+
+        var result = await _w.Writes().Restore(TenantId, sprint, new[] { task.Id }, CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        sprint.IsDeleted.Should().BeFalse();
+        sprint.DeletedAt.Should().BeNull();
+        task.SprintId.Should().Be(sprint.Id);
+    }
+
+    [Fact]
+    public async Task Restore_TaskAlreadyInAnotherSprint_ReturnsConflict()
+    {
+        var sprint = Sprint(SprintStatuses.Complete);
+        sprint.IsDeleted = true;
+        var elsewhere = Guid.NewGuid();
+        var task = new WorkTask { Id = Guid.NewGuid(), TenantId = TenantId, SprintId = elsewhere };
+        _w.Tasks.Setup(x => x.GetTrackedByIdForTenantAsync(TenantId, task.Id, It.IsAny<CancellationToken>())).ReturnsAsync(task);
+
+        var result = await _w.Writes().Restore(TenantId, sprint, new[] { task.Id }, CancellationToken.None);
+
+        result.IsSuccess.Should().BeFalse();
+        sprint.IsDeleted.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task ApplyUncompleteAsync_RestoresActiveStatusAndMovedTasks()
+    {
+        var sprint = Sprint(SprintStatuses.Complete);
+        sprint.CompletedAt = DateTimeOffset.UtcNow;
+        var movedTask = new WorkTask { Id = Guid.NewGuid(), TenantId = TenantId, SprintId = null };
+        _w.Tasks.Setup(x => x.GetTrackedByIdForTenantAsync(TenantId, movedTask.Id, It.IsAny<CancellationToken>())).ReturnsAsync(movedTask);
+
+        var result = await _w.Writes().ApplyUncompleteAsync(TenantId, Actor, sprint, new[] { movedTask.Id }, null, CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        sprint.Status.Should().Be(SprintStatuses.Active);
+        sprint.CompletedAt.Should().BeNull();
+        movedTask.SprintId.Should().Be(sprint.Id);
+    }
+
+    [Fact]
+    public async Task ApplyUncompleteAsync_MovedTaskNoLongerWhereCompleteLeftIt_ReturnsConflict()
+    {
+        var sprint = Sprint(SprintStatuses.Complete);
+        var elsewhere = Guid.NewGuid();
+        var movedTask = new WorkTask { Id = Guid.NewGuid(), TenantId = TenantId, SprintId = elsewhere };
+        _w.Tasks.Setup(x => x.GetTrackedByIdForTenantAsync(TenantId, movedTask.Id, It.IsAny<CancellationToken>())).ReturnsAsync(movedTask);
+
+        var result = await _w.Writes().ApplyUncompleteAsync(TenantId, Actor, sprint, new[] { movedTask.Id }, null, CancellationToken.None);
+
+        result.IsSuccess.Should().BeFalse();
+        sprint.Status.Should().Be(SprintStatuses.Complete);
+    }
+
+    [Fact]
+    public async Task ApplyUnachieveAsync_RestoresPreviousStatusAndClearsAchievedAt()
+    {
+        var sprint = Sprint(SprintStatuses.Achieved);
+        sprint.AchievedAt = DateTimeOffset.UtcNow;
+
+        var result = await _w.Writes().ApplyUnachieveAsync(TenantId, Actor, sprint, SprintStatuses.Active, CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        sprint.Status.Should().Be(SprintStatuses.Active);
+        sprint.AchievedAt.Should().BeNull();
+    }
 }

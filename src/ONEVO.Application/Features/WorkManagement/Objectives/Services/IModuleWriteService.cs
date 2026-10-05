@@ -17,6 +17,9 @@ public interface IModuleWriteService
     Task<Result> ValidateDeleteAsync(Guid tenantId, Objective module, CancellationToken ct = default);
     Task<Result> ApplyDeleteAsync(Guid tenantId, Objective trackedModule, CancellationToken ct = default);
 
+    /// <summary>Undoes ApplyDeleteAsync: Objective "delete" is the IsActive flag, not BaseEntity.IsDeleted.</summary>
+    void Restore(Objective trackedModule);
+
     Task<Result> ValidateTransferAsync(Guid tenantId, Objective module, ModuleTransferInput input, CancellationToken ct = default);
     Task<Result> ApplyTransferAsync(Guid tenantId, Objective trackedModule, ModuleTransferInput input, CancellationToken ct = default);
 
