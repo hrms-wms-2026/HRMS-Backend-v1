@@ -16,6 +16,7 @@ public sealed class CalendarEventConfiguration : IEntityTypeConfiguration<Calend
         builder.Property(e => e.StartDate).HasColumnName("start_date").IsRequired();
         builder.Property(e => e.EndDate).HasColumnName("end_date").IsRequired();
         builder.Property(e => e.Status).HasMaxLength(20).IsRequired();
+        builder.Property(e => e.Description).HasColumnType("text");
 
         builder.HasIndex(e => new { e.TenantId, e.ProjectId, e.Status })
             .HasDatabaseName("ix_calendar_events_tenant_project_status");

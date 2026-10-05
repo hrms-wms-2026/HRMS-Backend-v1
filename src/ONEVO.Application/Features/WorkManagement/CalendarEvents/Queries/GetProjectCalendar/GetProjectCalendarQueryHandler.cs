@@ -9,6 +9,7 @@ using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.Services;
+using ONEVO.Application.Features.WorkManagement.CalendarEvents.Services;
 
 using ONEVO.Application.Features.WorkManagement.Hierarchy;
 
@@ -23,6 +24,7 @@ public sealed class GetProjectCalendarQueryHandler
     private readonly IObjectiveRepository _objectives;
     private readonly IWorkTaskRepository _tasks;
     private readonly ICalendarEventRepository _calendarEvents;
+    private readonly ITaskStatusRepository _taskStatuses;
     private readonly ITaskAccessResolver? _taskAccess;
 
     public GetProjectCalendarQueryHandler(
@@ -32,6 +34,7 @@ public sealed class GetProjectCalendarQueryHandler
         IObjectiveRepository objectives,
         IWorkTaskRepository tasks,
         ICalendarEventRepository calendarEvents,
+        ITaskStatusRepository taskStatuses,
         ITaskAccessResolver? taskAccess = null)
     {
         _currentUser = currentUser;
@@ -40,6 +43,7 @@ public sealed class GetProjectCalendarQueryHandler
         _objectives = objectives;
         _tasks = tasks;
         _calendarEvents = calendarEvents;
+        _taskStatuses = taskStatuses;
         _taskAccess = taskAccess;
     }
 
@@ -89,6 +93,11 @@ public sealed class GetProjectCalendarQueryHandler
         }
         var taskCountByObjective = allTasks.GroupBy(t => t.ObjectiveId).ToDictionary(g => g.Key, g => g.Count());
 
+        var statusIds = allTasks.Select(t => t.StatusId).Distinct().ToList();
+        var statuses = await _taskStatuses.GetByIdsForTenantAsync(tenantId, statusIds, ct);
+        var doneStatusIds = statuses.Where(s => s.MarksTaskComplete).Select(s => s.Id).ToHashSet();
+        var tasksByObjective = allTasks.ToLookup(t => t.ObjectiveId);
+
         var wholeEventsByObjective = wholeLinks
             .GroupBy(l => l.ObjectiveId)
             .ToDictionary(g => g.Key, g => g.Select(x => x.CalendarEventId).ToHashSet());
@@ -118,9 +127,16 @@ public sealed class GetProjectCalendarQueryHandler
                             ProjectCalendarEventMemberships.Partial, count, total));
 
             var canEdit = IsEffectiveManager(objective) && !objective.IsAchieved && !objective.IsDefault;
+
+            var subtreeIds = tree.AtOrBelow(new[] { objective.Id });
+            var subtreeTasks = subtreeIds.SelectMany(id => tasksByObjective[id]).ToList();
+            var progressPercent = ObjectiveProgressCalculator.Calculate(
+                subtreeTasks.Count(t => doneStatusIds.Contains(t.StatusId)), subtreeTasks.Count);
+
             return new ProjectCalendarItemResponse(
                 objective.Id, objective.ProjectId, objective.ParentObjectiveId, objective.Title,
-                objective.StartDate, objective.EndDate, objective.IsActive, objective.IsAchieved, canEdit, links);
+                objective.StartDate, objective.EndDate, objective.IsActive, objective.IsAchieved, canEdit, links,
+                progressPercent);
         }).ToList();
 
         var contributingObjectivesByEvent = new Dictionary<Guid, HashSet<Guid>>();

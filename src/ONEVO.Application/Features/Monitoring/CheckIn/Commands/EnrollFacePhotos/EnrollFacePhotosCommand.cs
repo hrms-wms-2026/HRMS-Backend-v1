@@ -7,11 +7,12 @@ namespace ONEVO.Application.Features.Monitoring.CheckIn.Commands.EnrollFacePhoto
 public record FaceSetupPhoto(Stream Content, string ContentType, long FileSizeBytes);
 
 /// <summary>
-/// Tray face setup: the employee's look-straight, turned-left and turned-right photos, saved
-/// together as their reference faces, replacing any previously enrolled face.
+/// Tray face setup: the employee's look-straight photo, plus optional turned-left and
+/// turned-right photos (both or neither), saved together as their reference faces, replacing
+/// any previously enrolled face.
 /// </summary>
 public record EnrollFacePhotosCommand(
     FaceSetupPhoto Front,
-    FaceSetupPhoto Left,
-    FaceSetupPhoto Right
+    FaceSetupPhoto? Left = null,
+    FaceSetupPhoto? Right = null
 ) : IRequest<Result<FaceEnrollmentResponseDto>>;

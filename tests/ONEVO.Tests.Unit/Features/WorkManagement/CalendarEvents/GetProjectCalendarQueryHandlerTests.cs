@@ -10,6 +10,7 @@ using ONEVO.Domain.Features.WorkManagement.Objectives.Entities;
 using ONEVO.Domain.Features.WorkManagement.ProjectMembers.Entities;
 using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
 using Moq;
+using TaskStatusEntity = ONEVO.Domain.Features.WorkManagement.Tasks.Entities.TaskStatus;
 
 namespace ONEVO.Tests.Unit.Features.WorkManagement.CalendarEvents;
 
@@ -116,12 +117,54 @@ public sealed class GetProjectCalendarQueryHandlerTests
             new Mock<IProjectMemberRepository>().Object,
             new Mock<IObjectiveRepository>().Object,
             new Mock<IWorkTaskRepository>().Object,
-            new Mock<ICalendarEventRepository>().Object);
+            new Mock<ICalendarEventRepository>().Object,
+            new Mock<ITaskStatusRepository>().Object);
 
         var result = await handler.Handle(new GetProjectCalendarQuery(ProjectId), CancellationToken.None);
 
         Assert.False(result.IsSuccess);
         Assert.Equal(403, result.StatusCode);
+    }
+
+    [Fact]
+    public async Task Handle_ComputesSubtreeProgressFromDoneTaskStatuses()
+    {
+        // Parent objective with no direct tasks; one child objective with 4 done / 2 not-done tasks.
+        var doneStatus = new TaskStatusEntity { Id = Guid.NewGuid(), TenantId = TenantId, ProjectId = ProjectId, Name = "Done", Category = "done", MarksTaskComplete = true };
+        var activeStatus = new TaskStatusEntity { Id = Guid.NewGuid(), TenantId = TenantId, ProjectId = ProjectId, Name = "Active", Category = "active", MarksTaskComplete = false };
+
+        var h = new Harness();
+        h.WithObjectives(
+            Objective(RootId, isDefault: true, parentId: null, isAchieved: false),
+            Objective(ChildId, isDefault: false, parentId: RootId, isAchieved: false));
+        h.WithProjectTasks(
+            TaskWithStatus(Guid.NewGuid(), ChildId, doneStatus.Id),
+            TaskWithStatus(Guid.NewGuid(), ChildId, doneStatus.Id),
+            TaskWithStatus(Guid.NewGuid(), ChildId, doneStatus.Id),
+            TaskWithStatus(Guid.NewGuid(), ChildId, doneStatus.Id),
+            TaskWithStatus(Guid.NewGuid(), ChildId, activeStatus.Id),
+            TaskWithStatus(Guid.NewGuid(), ChildId, activeStatus.Id));
+        h.WithTaskStatuses(doneStatus, activeStatus);
+
+        var result = await h.Handle();
+
+        Assert.True(result.IsSuccess);
+        var parentItem = result.Value!.Modules.Single(m => m.ObjectiveId == RootId);
+        var childItem = result.Value!.Modules.Single(m => m.ObjectiveId == ChildId);
+        Assert.Equal(67, parentItem.ProgressPercent); // subtree rollup: 4/6 via its child
+        Assert.Equal(67, childItem.ProgressPercent);
+    }
+
+    [Fact]
+    public async Task Handle_ObjectiveWithNoTasksInSubtree_HasNullProgress()
+    {
+        var h = new Harness();
+        h.WithObjectives(Objective(ChildId, isDefault: false, parentId: null, isAchieved: false));
+
+        var result = await h.Handle();
+
+        var item = result.Value!.Modules.Single(m => m.ObjectiveId == ChildId);
+        Assert.Null(item.ProgressPercent);
     }
 
     private static Objective Objective(Guid id, bool isDefault, Guid? parentId, bool isAchieved) => new()
@@ -145,6 +188,11 @@ public sealed class GetProjectCalendarQueryHandlerTests
         Id = id, ProjectId = ProjectId, ObjectiveId = objectiveId, Title = "T", ShortId = "T-1"
     };
 
+    private static WorkTask TaskWithStatus(Guid id, Guid objectiveId, Guid statusId) => new()
+    {
+        Id = id, ProjectId = ProjectId, ObjectiveId = objectiveId, Title = "T", ShortId = "T-1", StatusId = statusId
+    };
+
     private sealed class Harness
     {
         private readonly Mock<ICurrentUser> _currentUser = new();
@@ -153,6 +201,7 @@ public sealed class GetProjectCalendarQueryHandlerTests
         private readonly Mock<IObjectiveRepository> _objectives = new();
         private readonly Mock<IWorkTaskRepository> _tasks = new();
         private readonly Mock<ICalendarEventRepository> _events = new();
+        private readonly Mock<ITaskStatusRepository> _taskStatuses = new();
 
         public Harness()
         {
@@ -180,6 +229,8 @@ public sealed class GetProjectCalendarQueryHandlerTests
                 .ReturnsAsync(Array.Empty<ActiveEventTaskMembership>());
             _events.Setup(x => x.ListActiveEventHeadersForProjectAsync(TenantId, ProjectId, It.IsAny<CancellationToken>()))
                 .ReturnsAsync(Array.Empty<ActiveEventHeader>());
+            _taskStatuses.Setup(x => x.GetByIdsForTenantAsync(TenantId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(Array.Empty<TaskStatusEntity>());
         }
 
         public void WithObjectives(params Objective[] objectives)
@@ -213,11 +264,15 @@ public sealed class GetProjectCalendarQueryHandlerTests
             => _tasks.Setup(x => x.GetByProjectAsync(TenantId, ProjectId, It.IsAny<CancellationToken>()))
                 .ReturnsAsync(tasks.ToList());
 
+        public void WithTaskStatuses(params TaskStatusEntity[] statuses)
+            => _taskStatuses.Setup(x => x.GetByIdsForTenantAsync(TenantId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(statuses.ToList());
+
         public Task<ONEVO.Application.Common.Models.Result<ProjectCalendarResponse>> Handle()
         {
             var handler = new GetProjectCalendarQueryHandler(
                 _currentUser.Object, _identity.Object, _members.Object, _objectives.Object,
-                _tasks.Object, _events.Object);
+                _tasks.Object, _events.Object, _taskStatuses.Object);
             return handler.Handle(new GetProjectCalendarQuery(ProjectId), CancellationToken.None);
         }
     }

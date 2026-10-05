@@ -33,6 +33,17 @@ public class EfEmployeeRepository : IEmployeeRepository
             .FirstOrDefaultAsync(e => e.TenantId == tenantId && e.Id == employeeId, ct);
     }
 
+    public async Task<IReadOnlyDictionary<Guid, Employee>> ListByIdsAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> employeeIds, CancellationToken ct = default)
+    {
+        if (employeeIds.Count == 0)
+            return new Dictionary<Guid, Employee>();
+        var rows = await _db.Employees.AsNoTracking()
+            .Where(e => e.TenantId == tenantId && employeeIds.Contains(e.Id))
+            .ToListAsync(ct);
+        return rows.ToDictionary(e => e.Id);
+    }
+
     public async Task<IReadOnlyList<Employee>> ListActiveByLegalEntityAsync(
         Guid tenantId,
         Guid? legalEntityId,

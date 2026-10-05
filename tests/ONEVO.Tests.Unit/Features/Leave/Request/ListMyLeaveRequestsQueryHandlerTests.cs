@@ -40,7 +40,7 @@ public class ListMyLeaveRequestsQueryHandlerTests
         currentUser.SetupGet(x => x.UserId).Returns(userId);
         employees.Setup(x => x.GetByUserIdAsync(tenantId, userId, It.IsAny<CancellationToken>())).ReturnsAsync(employee);
         requests.Setup(x => x.ListOwnAsync(tenantId, employee.Id, It.IsAny<LeaveRequestListFilter>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync([new LeaveRequestListRow(request, "Annual Leave", "AL")]);
+            .ReturnsAsync([new LeaveRequestListRow(request, "Annual Leave", "AL", "Priya Nair", null)]);
 
         var handler = new ListMyLeaveRequestsQueryHandler(currentUser.Object, employees.Object, requests.Object);
         var result = await handler.Handle(new ListMyLeaveRequestsQuery(null, null, null, null), CancellationToken.None);

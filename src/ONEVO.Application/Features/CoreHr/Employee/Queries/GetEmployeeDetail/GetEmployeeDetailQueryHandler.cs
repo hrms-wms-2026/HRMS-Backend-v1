@@ -8,6 +8,8 @@ using ONEVO.Application.Features.CoreHr.Employee.Models;
 using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.OnboardingDrafts.RepositoryInterfaces;
+using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
 using ONEVO.Domain.Features.Auth.Entities;
 
 namespace ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployeeDetail;
@@ -17,7 +19,8 @@ namespace ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployeeDetail;
 /// always included once the caller passes the same employees:read + coverage check
 /// GetEmployeeQueryHandler already enforces; Payroll is included only when the caller additionally
 /// holds employees:read:sensitive (omitted, not a separate 403, so the rest of the screen still
-/// renders for a caller without it).
+/// renders for a caller without it). Project memberships are limited to projects the viewer also
+/// belongs to, matching Work Management's relationship-based project visibility.
 /// </summary>
 public class GetEmployeeDetailQueryHandler : IRequestHandler<GetEmployeeDetailQuery, Result<EmployeeDetailResponse>>
 {
@@ -31,6 +34,8 @@ public class GetEmployeeDetailQueryHandler : IRequestHandler<GetEmployeeDetailQu
     private readonly ICurrentUser _currentUser;
     private readonly IDateTimeProvider _clock;
     private readonly IEmploymentTypeRepository _employmentTypes;
+    private readonly ILegalEntityRepository _legalEntities;
+    private readonly IProjectMemberRepository _projectMembers;
 
     public GetEmployeeDetailQueryHandler(
         IEmployeeRepository employeeRepository,
@@ -40,7 +45,9 @@ public class GetEmployeeDetailQueryHandler : IRequestHandler<GetEmployeeDetailQu
         IEncryptionService encryption,
         ICurrentUser currentUser,
         IDateTimeProvider clock,
-        IEmploymentTypeRepository employmentTypes)
+        IEmploymentTypeRepository employmentTypes,
+        ILegalEntityRepository legalEntities,
+        IProjectMemberRepository projectMembers)
     {
         _employeeRepository = employeeRepository;
         _visibilityScopeResolver = visibilityScopeResolver;
@@ -50,6 +57,8 @@ public class GetEmployeeDetailQueryHandler : IRequestHandler<GetEmployeeDetailQu
         _currentUser = currentUser;
         _clock = clock;
         _employmentTypes = employmentTypes;
+        _legalEntities = legalEntities;
+        _projectMembers = projectMembers;
     }
 
     public async Task<Result<EmployeeDetailResponse>> Handle(GetEmployeeDetailQuery request, CancellationToken ct)
@@ -103,11 +112,23 @@ public class GetEmployeeDetailQueryHandler : IRequestHandler<GetEmployeeDetailQu
 
         var employmentTypeCode = await _employmentTypes.GetCodeByIdAsync(existing.EmploymentTypeId, ct) ?? string.Empty;
 
+        var timezone = existing.DisplayTimezone;
+        if (string.IsNullOrWhiteSpace(timezone) && existing.LegalEntityId is Guid legalEntityId)
+            timezone = (await _legalEntities.GetByIdForTenantAsync(tenantId, legalEntityId, ct))?.Timezone;
+
+        var viewer = await _employeeRepository.GetDefaultForUserAsync(tenantId, _currentUser.UserId, ct);
+        var projectMemberships = viewer is null
+            ? new List<EmployeeDetailProjectMembership>()
+            : (await _projectMembers.ListSharedProjectMembershipsAsync(tenantId, request.EmployeeId, viewer.Id, ct))
+                .Select(m => new EmployeeDetailProjectMembership(m.ProjectId, m.ProjectName, m.MemberSince, m.IsActive))
+                .ToList();
+
         var jobInformation = new EmployeeDetailJobInformation(
             visible.EmployeeNumber, existing.LegalEntityId, visible.LegalEntityName, visible.DepartmentName, visible.PositionName,
             visible.PositionId, visible.ReportingManagerName, visible.EmploymentTypeLabel, visible.Status,
             existing.HireDate, existing.ProbationEndDate, visible.WorkModeLabel,
-            employmentTypeCode, existing.WorkModeId, existing.TerminationDate, visible.ReportingManagerId);
+            employmentTypeCode, existing.WorkModeId, existing.TerminationDate, visible.ReportingManagerId,
+            string.IsNullOrWhiteSpace(timezone) ? null : timezone);
 
         var personalInformation = new EmployeeDetailPersonalInformation(
             existing.FirstName, existing.LastName, existing.Email, existing.Phone, existing.DateOfBirth,
@@ -119,7 +140,8 @@ public class GetEmployeeDetailQueryHandler : IRequestHandler<GetEmployeeDetailQu
             emergencyContacts.Select(c => new EmployeeDetailEmergencyContact(c.Id, c.Name, c.Relationship, c.Phone, c.Email, c.IsPrimary)).ToList(),
             payroll,
             InvitationStatusOf(invitation, _clock.UtcNow), invitation?.ExpiresAt,
-            attendanceSummary));
+            attendanceSummary,
+            projectMemberships));
     }
 
     private static string? InvitationStatusOf(InvitationToken? invitation, DateTimeOffset now)

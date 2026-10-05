@@ -9,6 +9,8 @@ public record GetExceptionsQuery : IRequest<Result<PagedResult<ExceptionDto>>>
 {
     public ExceptionStatus? Status { get; init; }
     public ExceptionType? Type { get; init; }
+    /// <summary>Leave out resolved cases. Ignored when <see cref="Status"/> is set.</summary>
+    public bool ActiveOnly { get; init; }
     public int Page { get; init; } = 1;
     public int PageSize { get; init; } = 20;
 }
