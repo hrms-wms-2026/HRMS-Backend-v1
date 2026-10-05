@@ -6,9 +6,12 @@ public sealed record ApprovalApplyContext(WorkApprovalRequest Request, string Pa
 
 public enum ApplyOutcomeKind { Applied, Stale, Invalid }
 
-public sealed record ApplyOutcome(ApplyOutcomeKind Kind, string? Error = null)
+public sealed record ApplyOutcome(ApplyOutcomeKind Kind, string? Error = null, string? UndoJson = null)
 {
-    public static ApplyOutcome Applied { get; } = new(ApplyOutcomeKind.Applied);
+    /// <summary>undoJson is the pre-mutation snapshot a reverter needs to undo this apply. Appliers that
+    /// have nothing to snapshot (nothing mutated beyond what AppliedPayloadJson/PayloadJson already
+    /// records, or a type with no reverter) pass null.</summary>
+    public static ApplyOutcome Applied(string? undoJson = null) => new(ApplyOutcomeKind.Applied, null, undoJson);
     /// <summary>Target deleted, or changed since Request.TargetUpdatedAtSnapshot - nothing applied.</summary>
     public static ApplyOutcome Stale { get; } = new(ApplyOutcomeKind.Stale);
     /// <summary>The (possibly approver-edited) payload fails validation - nothing applied, the request stays pending.</summary>

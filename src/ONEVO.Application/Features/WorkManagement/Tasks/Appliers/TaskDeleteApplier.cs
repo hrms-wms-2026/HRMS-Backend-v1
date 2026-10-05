@@ -35,6 +35,6 @@ public sealed class TaskDeleteApplier : IApprovalActionApplier
             return ApplyOutcome.Invalid("This task has subtasks. Delete or move its subtasks first.");
 
         _writes.Delete(task);
-        return ApplyOutcome.Applied;
+        return ApplyOutcome.Applied();
     }
 }

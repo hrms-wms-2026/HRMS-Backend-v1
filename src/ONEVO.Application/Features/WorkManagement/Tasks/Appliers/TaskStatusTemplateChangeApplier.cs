@@ -62,6 +62,6 @@ public sealed class TaskStatusTemplateChangeApplier : IApprovalActionApplier
         await _sweeper.MarkConflictingStaleAsync(
             request.TenantId, request.ProjectId, context.DeciderEmployeeId, payload.Changes.Footprint(), request.Id, ct);
 
-        return ApplyOutcome.Applied;
+        return ApplyOutcome.Applied();
     }
 }

@@ -42,7 +42,7 @@ public abstract class SprintApplierBase : IApprovalActionApplier
             return ApplyOutcome.Stale;
 
         var result = await ApplyAsync(request.TenantId, request.RequestedByEmployeeId, sprint, context.PayloadJson, ct);
-        return result.IsSuccess ? ApplyOutcome.Applied : ApplyOutcome.Invalid(result.Error ?? "The sprint change could not be applied.");
+        return result.IsSuccess ? ApplyOutcome.Applied() : ApplyOutcome.Invalid(result.Error ?? "The sprint change could not be applied.");
     }
 
     protected static T? Read<T>(string payloadJson) where T : class

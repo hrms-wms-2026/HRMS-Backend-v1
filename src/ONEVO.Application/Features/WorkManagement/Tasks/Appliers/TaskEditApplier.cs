@@ -61,7 +61,7 @@ public sealed class TaskEditApplier : IApprovalActionApplier
         var applied = await _writes.ApplyEditAsync(request.TenantId, request.RequestedByEmployeeId, task, objective, input,
             TaskEditLogSources.ApprovedRequest, request.Id, ct);
         return applied.IsSuccess
-            ? ApplyOutcome.Applied
+            ? ApplyOutcome.Applied()
             : ApplyOutcome.Invalid(applied.Error ?? "The task edit is not valid.");
     }
 }

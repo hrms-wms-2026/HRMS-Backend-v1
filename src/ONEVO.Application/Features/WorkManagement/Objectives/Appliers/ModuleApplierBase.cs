@@ -47,7 +47,7 @@ public abstract class ModuleApplierBase : IApprovalActionApplier
             return ApplyOutcome.Stale;
 
         var result = await ApplyAsync(request.TenantId, module, context.PayloadJson, ct);
-        return result.IsSuccess ? ApplyOutcome.Applied : ApplyOutcome.Invalid(result.Error ?? "The change could not be applied.");
+        return result.IsSuccess ? ApplyOutcome.Applied() : ApplyOutcome.Invalid(result.Error ?? "The change could not be applied.");
     }
 
     protected static T? Read<T>(string payloadJson) where T : class

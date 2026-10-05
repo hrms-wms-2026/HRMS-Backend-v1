@@ -75,7 +75,7 @@ public class DecideWorkApprovalRequestCommandHandlerTests
     {
         Caller(A);
         _applier.Setup(x => x.ApplyAsync(It.Is<ApprovalApplyContext>(c => c.PayloadJson == "{\"title\":\"new\"}" && c.DeciderEmployeeId == A), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(ApplyOutcome.Applied);
+            .ReturnsAsync(ApplyOutcome.Applied());
 
         var result = await Build().Handle(Cmd(_request.Id, WorkApprovalDecision.Approve, "{\"title\":\"new\"}"), default);
 
@@ -94,7 +94,7 @@ public class DecideWorkApprovalRequestCommandHandlerTests
     {
         Caller(A);
         _request.PayloadJson = """{"Title":"A"}""";
-        _applier.Setup(x => x.ApplyAsync(It.IsAny<ApprovalApplyContext>(), It.IsAny<CancellationToken>())).ReturnsAsync(ApplyOutcome.Applied);
+        _applier.Setup(x => x.ApplyAsync(It.IsAny<ApprovalApplyContext>(), It.IsAny<CancellationToken>())).ReturnsAsync(ApplyOutcome.Applied());
 
         var result = await Build().Handle(Cmd(_request.Id, WorkApprovalDecision.Approve, """{"Title":"B"}"""), default);
 
@@ -108,7 +108,7 @@ public class DecideWorkApprovalRequestCommandHandlerTests
     public async Task Approve_without_edits_leaves_applied_payload_null()
     {
         Caller(A);
-        _applier.Setup(x => x.ApplyAsync(It.IsAny<ApprovalApplyContext>(), It.IsAny<CancellationToken>())).ReturnsAsync(ApplyOutcome.Applied);
+        _applier.Setup(x => x.ApplyAsync(It.IsAny<ApprovalApplyContext>(), It.IsAny<CancellationToken>())).ReturnsAsync(ApplyOutcome.Applied());
 
         var result = await Build().Handle(Cmd(_request.Id, WorkApprovalDecision.Approve), default);
 

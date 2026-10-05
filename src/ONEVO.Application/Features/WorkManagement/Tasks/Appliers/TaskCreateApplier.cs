@@ -51,6 +51,6 @@ public sealed class TaskCreateApplier : IApprovalActionApplier
             return ApplyOutcome.Invalid(created.Error ?? "The task could not be created.");
 
         request.TargetId = created.Value!.Id;   // links the approved request to the task it produced
-        return ApplyOutcome.Applied;
+        return ApplyOutcome.Applied();
     }
 }
