@@ -36,6 +36,7 @@ public static class WorkActionTypes
     public const string TaskEdit = "task.edit";
     public const string TaskDelete = "task.delete";
     public const string TaskStatusChange = "task.status_change";
+    public const string TaskComment = "task.comment";
     public const string ModuleEdit = "module.edit";
     public const string ModuleDelete = "module.delete";
     public const string ModuleTransfer = "module.transfer";

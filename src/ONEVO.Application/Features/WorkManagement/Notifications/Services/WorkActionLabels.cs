@@ -13,6 +13,7 @@ public static class WorkActionLabels
         [WorkActionTypes.TaskEdit] = "edited the task",
         [WorkActionTypes.TaskDelete] = "deleted the task",
         [WorkActionTypes.TaskStatusChange] = "changed the status of the task",
+        [WorkActionTypes.TaskComment] = "commented on the task",
         [WorkActionTypes.ModuleEdit] = "edited the module",
         [WorkActionTypes.ModuleDelete] = "deleted the module",
         [WorkActionTypes.ModuleTransfer] = "transferred the module",
