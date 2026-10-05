@@ -45,7 +45,27 @@ public class SprintStartReverterTests
     }
 
     [Fact]
-    public async Task RevertAsync_NoUndoSnapshot_ClearsGoalToNull()
+    public async Task RevertAsync_SnapshotHasNullPreviousGoal_ClearsGoalToNull()
+    {
+        var sprintId = Guid.NewGuid();
+        var sprint = new Sprint { Id = sprintId, TenantId = TenantId, Status = SprintStatuses.Active, Goal = "Ship it" };
+        var undo = new SprintStartUndoSnapshot(null);
+        var request = new WorkApprovalRequest
+        {
+            Id = Guid.NewGuid(), TenantId = TenantId, TargetId = sprintId, ActionType = WorkActionTypes.SprintStart,
+            UndoStateJson = JsonSerializer.Serialize(undo, SprintPayloadJson.Options)
+        };
+        _sprints.Setup(x => x.GetTrackedByIdForTenantAsync(TenantId, sprintId, It.IsAny<CancellationToken>())).ReturnsAsync(sprint);
+
+        var outcome = await Build().RevertAsync(new ApprovalRevertContext(request, Guid.NewGuid()), CancellationToken.None);
+
+        outcome.Kind.Should().Be(RevertOutcomeKind.Reverted);
+        sprint.Status.Should().Be(SprintStatuses.Draft);
+        sprint.Goal.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task RevertAsync_NoUndoSnapshotAtAll_LeavesGoalAlone_LegacyData()
     {
         var sprintId = Guid.NewGuid();
         var sprint = new Sprint { Id = sprintId, TenantId = TenantId, Status = SprintStatuses.Active, Goal = "Ship it" };
@@ -56,6 +76,7 @@ public class SprintStartReverterTests
 
         outcome.Kind.Should().Be(RevertOutcomeKind.Reverted);
         sprint.Status.Should().Be(SprintStatuses.Draft);
+        sprint.Goal.Should().Be("Ship it");
     }
 
     [Fact]

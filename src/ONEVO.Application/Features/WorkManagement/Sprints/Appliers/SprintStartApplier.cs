@@ -23,5 +23,8 @@ public sealed class SprintStartApplier : SprintApplierBase
     }
 
     protected override string? CaptureUndoJson(Sprint sprint)
-        => sprint.Goal is { } goal ? System.Text.Json.JsonSerializer.Serialize(new SprintStartUndoSnapshot(goal), SprintPayloadJson.Options) : null;
+        // Always snapshot, even when Goal is null - a null UndoJson must mean "no snapshot was taken"
+        // (legacy data from before this feature), not "the pre-start Goal was null". SprintStartReverter
+        // relies on this: a present-but-null-Goal snapshot clears Goal back to null on revert.
+        => System.Text.Json.JsonSerializer.Serialize(new SprintStartUndoSnapshot(sprint.Goal), SprintPayloadJson.Options);
 }

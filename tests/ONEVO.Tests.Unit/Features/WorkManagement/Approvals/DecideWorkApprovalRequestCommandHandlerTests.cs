@@ -127,7 +127,21 @@ public class DecideWorkApprovalRequestCommandHandlerTests
 
         result.IsSuccess.Should().BeTrue();
         _request.Status.Should().Be(WorkApprovalRequestStatuses.Stale);
+        _request.UndoStateJson.Should().BeNull();
         _notifications.Verify(x => x.NotifyAsync(It.Is<WorkNotificationEvent>(e => e.Kind == WorkNotificationKinds.Stale), It.IsAny<CancellationToken>()));
+    }
+
+    [Fact]
+    public async Task Approve_PersistsUndoJsonFromApplierOutcome_ForLaterRevert()
+    {
+        Caller(A);
+        _applier.Setup(x => x.ApplyAsync(It.IsAny<ApprovalApplyContext>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ApplyOutcome.Applied("{\"title\":\"pre-edit\"}"));
+
+        var result = await Build().Handle(Cmd(_request.Id, WorkApprovalDecision.Approve), default);
+
+        result.IsSuccess.Should().BeTrue();
+        _request.UndoStateJson.Should().Be("{\"title\":\"pre-edit\"}");
     }
 
     [Fact]
