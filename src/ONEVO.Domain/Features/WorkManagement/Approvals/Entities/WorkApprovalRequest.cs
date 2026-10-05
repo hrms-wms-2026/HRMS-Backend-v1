@@ -84,4 +84,10 @@ public class WorkApprovalRequest : BaseEntity
     /// <summary>Target's UpdatedAt when the request was made - appliers compare it to detect stale requests.</summary>
     public DateTimeOffset? TargetUpdatedAtSnapshot { get; set; }
     public DateTimeOffset? DecidedAt { get; set; }
+    /// <summary>Snapshot captured by the applier at approve-time (before it mutated anything), used to
+    /// undo the change on revert. Null for request types whose apply has nothing to undo (Reject never
+    /// applies, and some appliers reuse PayloadJson/AppliedPayloadJson instead of a separate snapshot).</summary>
+    public string? UndoStateJson { get; set; }
+    public DateTimeOffset? RevertedAt { get; set; }
+    public Guid? RevertedByEmployeeId { get; set; }
 }
