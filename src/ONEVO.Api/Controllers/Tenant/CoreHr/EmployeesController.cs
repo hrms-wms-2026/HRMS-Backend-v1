@@ -273,7 +273,7 @@ public class EmployeesController : ControllerBase
         return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
-    /// <summary>Work & Activity Needs attention card: open tasks overdue or due within 3 days (top 5 + total).</summary>
+    /// <summary>Work & Activity Needs attention card: open tasks overdue or due within 3 days (up to 50 + total).</summary>
     [HttpGet("{id:guid}/work-activity/needs-attention")]
     [RequirePermission("employees:read")]
     [RequireAnyModule("worksync_foundation", "projects", "objectives_milestones", "tasks", "boards", "planning_sprints")]

@@ -43,31 +43,33 @@ public sealed class EmployeeWorkActivityTaskRepositoryReadsTests
     }
 
     [Fact]
-    public async Task ListRecentlyChangedAssigned_OrdersByUpdatedThenCreated_AndTakes()
+    public async Task ListTodayAssigned_ReturnsTasksChangedTodayOrDueToday_NewestFirst()
     {
         // AuditableEntityInterceptor stamps CreatedAt/UpdatedAt from IDateTimeProvider.UtcNow on
         // every Added/Modified save, overwriting whatever the entity was constructed with - so
         // timestamps here are controlled through a sequenced clock, one value per SaveChanges call.
         var clock = new Mock<IDateTimeProvider>();
         clock.SetupSequence(c => c.UtcNow)
-            .Returns(DateTimeOffset.Parse("2026-09-01T00:00:00+00:00"))  // old created
-            .Returns(DateTimeOffset.Parse("2026-08-01T00:00:00+00:00"))  // edited created
-            .Returns(DateTimeOffset.Parse("2026-09-10T00:00:00+00:00"))  // fresh created
-            .Returns(DateTimeOffset.Parse("2026-09-20T00:00:00+00:00")); // edited modified
+            .Returns(DateTimeOffset.Parse("2026-09-10T00:00:00+00:00"))  // old + dueToday created
+            .Returns(DateTimeOffset.Parse("2026-09-01T00:00:00+00:00"))  // edited created
+            .Returns(DateTimeOffset.Parse("2026-09-15T08:00:00+00:00"))  // fresh + someone else's created
+            .Returns(DateTimeOffset.Parse("2026-09-15T12:00:00+00:00")); // edited modified
         await using var db = BuildInMemoryDb(clock);
         var (open, _) = SeedStatuses(db);
         var old = NewTask(open.Id, "WEB-1");
-        var edited = NewTask(open.Id, "WEB-2");
-        var fresh = NewTask(open.Id, "WEB-3");
+        var dueToday = NewTask(open.Id, "WEB-2", due: new DateOnly(2026, 9, 15));
+        var edited = NewTask(open.Id, "WEB-3");
+        var fresh = NewTask(open.Id, "WEB-4");
+        var someoneElses = NewTask(open.Id, "WEB-5");
 
-        db.WorkTasks.Add(old);
-        db.TaskAssignments.Add(Assign(old.Id));
+        db.WorkTasks.AddRange(old, dueToday);
+        db.TaskAssignments.AddRange(Assign(old.Id), Assign(dueToday.Id));
         await db.SaveChangesAsync();
         db.WorkTasks.Add(edited);
         db.TaskAssignments.Add(Assign(edited.Id));
         await db.SaveChangesAsync();
-        db.WorkTasks.Add(fresh);
-        db.TaskAssignments.Add(Assign(fresh.Id));
+        db.WorkTasks.AddRange(fresh, someoneElses);
+        db.TaskAssignments.AddRange(Assign(fresh.Id), Assign(someoneElses.Id, _otherEmployeeId));
         await db.SaveChangesAsync();
         db.ChangeTracker.Clear();
 
@@ -76,9 +78,11 @@ public sealed class EmployeeWorkActivityTaskRepositoryReadsTests
         await db.SaveChangesAsync();
         db.ChangeTracker.Clear();
 
-        var rows = await new EfWorkTaskRepository(db).ListRecentlyChangedAssignedAsync(_tenantId, _employeeId, take: 2);
+        var rows = await new EfWorkTaskRepository(db).ListTodayAssignedAsync(
+            _tenantId, _employeeId, new DateOnly(2026, 9, 15),
+            DateTimeOffset.Parse("2026-09-15T00:00:00+00:00"), DateTimeOffset.Parse("2026-09-16T00:00:00+00:00"), take: 10);
 
-        Assert.Equal(new[] { "WEB-2", "WEB-3" }, rows.Select(r => r.ShortId));
+        Assert.Equal(new[] { "WEB-3", "WEB-4", "WEB-2" }, rows.Select(r => r.ShortId));
     }
 
     [Fact]

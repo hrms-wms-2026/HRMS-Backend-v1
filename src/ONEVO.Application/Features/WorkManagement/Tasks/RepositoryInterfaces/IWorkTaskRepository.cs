@@ -131,8 +131,10 @@ public interface IWorkTaskRepository
     /// tasks with a due date on or before dueOnOrBefore - every overdue task plus the upcoming window.</summary>
     Task<IReadOnlyList<EmployeeWorkTaskRow>> ListOpenDueByAsync(Guid tenantId, Guid employeeId, DateOnly dueOnOrBefore, CancellationToken ct = default);
 
-    /// <summary>The employee's assigned tasks ordered by UpdatedAt ?? CreatedAt descending, capped at take.</summary>
-    Task<IReadOnlyList<EmployeeWorkTaskRow>> ListRecentlyChangedAssignedAsync(Guid tenantId, Guid employeeId, int take, CancellationToken ct = default);
+    /// <summary>The employee's assigned tasks that are due on <paramref name="today"/> or were created/updated
+    /// in [dayStartUtc, dayEndUtc), ordered by UpdatedAt ?? CreatedAt descending, capped at take.</summary>
+    Task<IReadOnlyList<EmployeeWorkTaskRow>> ListTodayAssignedAsync(
+        Guid tenantId, Guid employeeId, DateOnly today, DateTimeOffset dayStartUtc, DateTimeOffset dayEndUtc, int take, CancellationToken ct = default);
 
     /// <summary>CompletedAt of every completed (status marks complete or progress 100) assigned task
     /// whose CompletedAt is in [fromUtc, toUtcExclusive).</summary>

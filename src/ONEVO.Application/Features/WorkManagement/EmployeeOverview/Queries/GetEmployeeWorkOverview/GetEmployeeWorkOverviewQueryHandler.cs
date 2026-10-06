@@ -32,9 +32,12 @@ public sealed class GetEmployeeWorkOverviewQueryHandler(
         var asOf = period.Value.To < clock.Today ? period.Value.To : clock.Today;
         var stats = EmployeeTaskPeriodCalculator.Compute(rows, asOf);
 
-        int? onTimeRate = stats.CompletedWithDueDate == 0
+        // Open tasks already past their due date have missed it too, so they count against the rate -
+        // otherwise one task finished on time reads "100%" while others sit overdue.
+        var dueTasksJudged = stats.CompletedWithDueDate + stats.Overdue;
+        int? onTimeRate = dueTasksJudged == 0
             ? null
-            : EmployeeTaskPeriodCalculator.Percent(stats.OnTimeCompleted, stats.CompletedWithDueDate);
+            : EmployeeTaskPeriodCalculator.Percent(stats.OnTimeCompleted, dueTasksJudged);
 
         return Result<EmployeeWorkOverviewResponse>.Success(new EmployeeWorkOverviewResponse(
             period.Value.From, period.Value.To,

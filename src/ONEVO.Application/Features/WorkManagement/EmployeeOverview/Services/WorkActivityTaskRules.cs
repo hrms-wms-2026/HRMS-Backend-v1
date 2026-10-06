@@ -8,7 +8,10 @@ namespace ONEVO.Application.Features.WorkManagement.EmployeeOverview.Services;
 public static class WorkActivityTaskRules
 {
     public const int DueSoonDays = 3;
-    public const int MaxItems = 5;
+    /// <summary>Needs Attention returns more than it shows; the widget shows 3 and pops out the rest via "View all".</summary>
+    public const int MaxItems = 50;
+    /// <summary>Recent Tasks returns more than it shows; the widget shows 5 and expands via "View all".</summary>
+    public const int RecentTasksMaxItems = 50;
     public const int TrendMonths = 6;
 
     public static EmployeeNeedsAttentionResponse ToAttention(IReadOnlyList<EmployeeWorkTaskRow> openDueRows, DateOnly asOf)
@@ -33,9 +36,15 @@ public static class WorkActivityTaskRules
         return new EmployeeNeedsAttentionResponse(asOf, openDueRows.Count(r => r.DueDate.HasValue), items);
     }
 
-    public static EmployeeRecentTaskItem ToItem(EmployeeWorkTaskRow r) => new(
+    /// <summary>
+    /// [dayStartUtc, dayEndUtc) is the employee's local today. UpdatedToday marks tasks listed only because
+    /// they changed today - a task due today already explains itself by its due date, so it isn't flagged.
+    /// </summary>
+    public static EmployeeRecentTaskItem ToItem(
+        EmployeeWorkTaskRow r, DateOnly today, DateTimeOffset dayStartUtc, DateTimeOffset dayEndUtc) => new(
         r.Id, r.ShortId, r.Title, r.ProjectId, r.ProjectName, r.StatusName, r.StatusColor,
-        r.Priority, r.StoryPoints, r.DueDate, r.ProgressPercent);
+        r.Priority, r.StoryPoints, r.DueDate, r.ProgressPercent,
+        r.DueDate != today && r.LastChangedAt >= dayStartUtc && r.LastChangedAt < dayEndUtc);
 
     /// <summary>[first day of the first month, first day of the month after endMonth) in UTC.</summary>
     public static (DateTimeOffset From, DateTimeOffset To) TrendWindow(DateOnly endMonthDay, int months)

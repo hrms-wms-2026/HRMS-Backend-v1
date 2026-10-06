@@ -4,6 +4,7 @@ using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.DTOs.Responses;
 using ONEVO.Application.Features.CoreHr.Employee.ServiceInterfaces;
+using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.EmployeeOverview.DTOs;
 using ONEVO.Application.Features.WorkManagement.EmployeeOverview.Queries.WorkActivity.GetEmployeeDeliveryTrend;
 using ONEVO.Application.Features.WorkManagement.EmployeeOverview.Queries.WorkActivity.GetEmployeeNeedsAttention;
@@ -18,6 +19,7 @@ public sealed class GetEmployeeWorkActivityTaskHandlersTests
     private readonly Mock<IWorkTaskRepository> _tasks = new();
     private readonly Mock<ICurrentUser> _user = new();
     private readonly Mock<IDateTimeProvider> _clock = new();
+    private readonly Mock<ILegalEntityRepository> _legalEntities = new();
     private readonly Guid _tenantId = Guid.NewGuid();
     private readonly Guid _employeeId = Guid.NewGuid();
     private static readonly DateOnly Today = new(2026, 9, 15);
@@ -31,9 +33,9 @@ public sealed class GetEmployeeWorkActivityTaskHandlersTests
                 _employeeId, "E-001", "Ada", "ada@test.dev", null, null, null, null, Guid.NewGuid(), null, "full_time", "active", null, null)));
     }
 
-    private EmployeeWorkTaskRow Row(string shortId, string due) => new(
+    private EmployeeWorkTaskRow Row(string shortId, string due, string changedAt = "2026-09-10T00:00:00+00:00") => new(
         Guid.NewGuid(), shortId, shortId, Guid.NewGuid(), "Website", "Review", "#7C3AED", false,
-        "high", 5, DateOnly.Parse(due), 60, DateTimeOffset.Parse("2026-09-10T00:00:00+00:00"));
+        "high", 5, DateOnly.Parse(due), 60, DateTimeOffset.Parse(changedAt));
 
     [Fact]
     public async Task NeedsAttention_ReadsTasksDueWithinThreeDays_AndShapesThem()
@@ -68,7 +70,7 @@ public sealed class GetEmployeeWorkActivityTaskHandlersTests
     {
         _guard.Setup(g => g.EnsureCanRead(_tenantId, _employeeId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result<EmployeeListItemResponse>.Forbidden("no"));
-        var handler = new GetEmployeeRecentTasksQueryHandler(_guard.Object, _tasks.Object, _user.Object);
+        var handler = new GetEmployeeRecentTasksQueryHandler(_guard.Object, _tasks.Object, _legalEntities.Object, _user.Object, _clock.Object);
 
         var result = await handler.Handle(new GetEmployeeRecentTasksQuery(_employeeId), CancellationToken.None);
 
@@ -76,15 +78,39 @@ public sealed class GetEmployeeWorkActivityTaskHandlersTests
     }
 
     [Fact]
-    public async Task RecentTasks_ReadsAndShapesTheTopFive()
+    public async Task RecentTasks_ReadsTodaysTasks_InTheUtcDayWhenNoLegalEntityTimezone()
     {
-        _tasks.Setup(t => t.ListRecentlyChangedAssignedAsync(_tenantId, _employeeId, 5, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new[] { Row("A", "2026-09-20") });
-        var handler = new GetEmployeeRecentTasksQueryHandler(_guard.Object, _tasks.Object, _user.Object);
+        _clock.SetupGet(c => c.UtcNow).Returns(DateTimeOffset.Parse("2026-09-15T10:30:00+00:00"));
+        _tasks.Setup(t => t.ListTodayAssignedAsync(_tenantId, _employeeId, Today,
+                DateTimeOffset.Parse("2026-09-15T00:00:00+00:00"), DateTimeOffset.Parse("2026-09-16T00:00:00+00:00"),
+                50, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[] { Row("A", "2026-09-15") });
+        var handler = new GetEmployeeRecentTasksQueryHandler(_guard.Object, _tasks.Object, _legalEntities.Object, _user.Object, _clock.Object);
 
         var result = await handler.Handle(new GetEmployeeRecentTasksQuery(_employeeId), CancellationToken.None);
 
         result.Value!.Items.Should().ContainSingle().Which.Priority.Should().Be("high");
+    }
+
+    [Fact]
+    public async Task RecentTasks_FlagsTasksChangedToday()
+    {
+        _clock.SetupGet(c => c.UtcNow).Returns(DateTimeOffset.Parse("2026-09-15T10:30:00+00:00"));
+        _tasks.Setup(t => t.ListTodayAssignedAsync(_tenantId, _employeeId, Today,
+                It.IsAny<DateTimeOffset>(), It.IsAny<DateTimeOffset>(), 50, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[]
+            {
+                Row("DUE", "2026-09-15"),                                             // due today, last changed days ago
+                Row("UPD", "2026-09-01", changedAt: "2026-09-15T08:00:00+00:00"),     // overdue, changed this morning
+                Row("BOTH", "2026-09-15", changedAt: "2026-09-15T09:00:00+00:00")     // due today AND changed today
+            });
+        var handler = new GetEmployeeRecentTasksQueryHandler(_guard.Object, _tasks.Object, _legalEntities.Object, _user.Object, _clock.Object);
+
+        var result = await handler.Handle(new GetEmployeeRecentTasksQuery(_employeeId), CancellationToken.None);
+
+        result.Value!.Items.Single(i => i.ShortId == "DUE").UpdatedToday.Should().BeFalse();
+        result.Value.Items.Single(i => i.ShortId == "UPD").UpdatedToday.Should().BeTrue();
+        result.Value.Items.Single(i => i.ShortId == "BOTH").UpdatedToday.Should().BeFalse();   // its due date already explains it
     }
 
     [Fact]

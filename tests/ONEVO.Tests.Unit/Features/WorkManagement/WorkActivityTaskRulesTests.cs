@@ -13,7 +13,7 @@ public sealed class WorkActivityTaskRulesTests
         "medium", 3, due is null ? null : DateOnly.Parse(due), 20, DateTimeOffset.Parse("2026-09-01T00:00:00+00:00"));
 
     [Fact]
-    public void ToAttention_PutsOverdueFirstOldestFirst_ThenDueSoon_AndCapsAtFive()
+    public void ToAttention_PutsOverdueFirstOldestFirst_ThenDueSoon()
     {
         var rows = new[]
         {
@@ -24,7 +24,7 @@ public sealed class WorkActivityTaskRulesTests
         var result = WorkActivityTaskRules.ToAttention(rows, AsOf);
 
         result.TotalCount.Should().Be(6);
-        result.Items.Select(i => i.ShortId).Should().Equal("E", "B", "C", "D", "F");
+        result.Items.Select(i => i.ShortId).Should().Equal("E", "B", "C", "D", "F", "A");
         result.Items[0].Reason.Should().Be("overdue");
         result.Items[0].OverdueDays.Should().Be(14);
         result.Items[3].Reason.Should().Be("due_soon");
