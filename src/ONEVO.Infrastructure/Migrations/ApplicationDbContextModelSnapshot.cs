@@ -2704,6 +2704,10 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("tenant_id");
 
+                    b.Property<Guid?>("WorkTaskId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("work_task_id");
+
                     b.HasKey("Id")
                         .HasName("pk_employee_checklist_tasks");
 
@@ -2718,6 +2722,11 @@ namespace ONEVO.Infrastructure.Migrations
 
                     b.HasIndex("TemplateId")
                         .HasDatabaseName("ix_employee_checklist_tasks_template_id");
+
+                    b.HasIndex("WorkTaskId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_employee_checklist_tasks_work_task_id")
+                        .HasFilter("work_task_id IS NOT NULL");
 
                     b.HasIndex("TenantId", "OffboardingRecordId")
                         .HasDatabaseName("ix_employee_checklist_tasks_tenant_id_offboarding_record_id");
@@ -11116,6 +11125,10 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("created_by_id");
 
+                    b.Property<string>("Description")
+                        .HasColumnType("text")
+                        .HasColumnName("description");
+
                     b.Property<DateOnly>("EndDate")
                         .HasColumnType("date")
                         .HasColumnName("end_date");
@@ -11154,6 +11167,52 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasDatabaseName("ix_calendar_events_tenant_project_status");
 
                     b.ToTable("calendar_events", (string)null);
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.CalendarEvents.Entities.CalendarEventActivityLog", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("action");
+
+                    b.Property<Guid>("CalendarEventId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("calendar_event_id");
+
+                    b.Property<string>("DetailsJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("details_json");
+
+                    b.Property<DateTimeOffset>("PerformedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("performed_at");
+
+                    b.Property<Guid>("PerformedById")
+                        .HasColumnType("uuid")
+                        .HasColumnName("performed_by_id");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_calendar_event_activity_logs");
+
+                    b.HasIndex("CalendarEventId")
+                        .HasDatabaseName("ix_calendar_event_activity_logs_calendar_event_id");
+
+                    b.HasIndex("TenantId", "CalendarEventId", "PerformedAt")
+                        .HasDatabaseName("ix_calendar_event_activity_logs_tenant_event_performed_at");
+
+                    b.ToTable("calendar_event_activity_logs", (string)null);
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.CalendarEvents.Entities.CalendarEventObjective", b =>
@@ -11875,6 +11934,11 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("date")
                         .HasColumnName("start_date");
 
+                    b.Property<string>("SystemPurpose")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("system_purpose");
+
                     b.Property<DateOnly>("TargetDate")
                         .HasColumnType("date")
                         .HasColumnName("target_date");
@@ -11899,6 +11963,11 @@ namespace ONEVO.Infrastructure.Migrations
 
                     b.HasIndex("TenantId", "IsAchieved")
                         .HasDatabaseName("ix_projects_tenant_id_is_achieved");
+
+                    b.HasIndex("TenantId", "SystemPurpose")
+                        .IsUnique()
+                        .HasDatabaseName("ix_projects_tenant_id_system_purpose")
+                        .HasFilter("system_purpose IS NOT NULL");
 
                     b.HasIndex("TenantId", "CategoryId", "IsActive")
                         .HasDatabaseName("ix_projects_tenant_id_category_id_is_active");
@@ -13030,6 +13099,14 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("story_points");
 
+                    b.Property<string>("TaskKind")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasDefaultValue("standard")
+                        .HasColumnName("task_kind");
+
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uuid")
                         .HasColumnName("tenant_id");
@@ -13043,6 +13120,14 @@ namespace ONEVO.Infrastructure.Migrations
                     b.Property<DateTimeOffset?>("UpdatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("updated_at");
+
+                    b.Property<string>("VisibilityScope")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasDefaultValue("module")
+                        .HasColumnName("visibility_scope");
 
                     b.HasKey("Id")
                         .HasName("pk_tasks");
@@ -13071,6 +13156,9 @@ namespace ONEVO.Infrastructure.Migrations
 
                     b.HasIndex("TenantId", "ProjectId", "CategoryId")
                         .HasDatabaseName("ix_tasks_tenant_id_project_id_category_id");
+
+                    b.HasIndex("TenantId", "ProjectId", "VisibilityScope")
+                        .HasDatabaseName("ix_tasks_tenant_id_project_id_visibility_scope");
 
                     b.ToTable("tasks", (string)null);
                 });
@@ -13573,6 +13661,12 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasForeignKey("TemplateId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("fk_employee_checklist_tasks_checklist_templates_template_id");
+
+                    b.HasOne("ONEVO.Domain.Features.WorkManagement.Tasks.Entities.WorkTask", null)
+                        .WithMany()
+                        .HasForeignKey("WorkTaskId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_employee_checklist_tasks_work_tasks_work_task_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.CoreHr.Entities.EmployeeDependent", b =>
@@ -14736,6 +14830,16 @@ namespace ONEVO.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_calendar_events_projects_project_id");
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.CalendarEvents.Entities.CalendarEventActivityLog", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.WorkManagement.CalendarEvents.Entities.CalendarEvent", null)
+                        .WithMany()
+                        .HasForeignKey("CalendarEventId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_calendar_event_activity_logs_calendar_events_calendar_event");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.CalendarEvents.Entities.CalendarEventObjective", b =>

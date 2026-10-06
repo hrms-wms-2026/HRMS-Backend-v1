@@ -9,6 +9,7 @@ using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfa
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.DTOs.Responses;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Tasks.Services;
 using ONEVO.Domain.Features.WorkManagement.Approvals.Entities;
 
 namespace ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetSubtasks;
@@ -25,6 +26,7 @@ public sealed class GetSubtasksQueryHandler : IRequestHandler<GetSubtasksQuery, 
     private readonly ITaskAssignmentRepository _assignments;
     private readonly ITaskClockingSessionRepository _sessions;
     private readonly IWorkApprovalRequestRepository _approvalRequests;
+    private readonly ITaskAccessResolver? _taskAccess;
 
     public GetSubtasksQueryHandler(
         ICurrentUser currentUser, ICallerIdentityResolver identity,
@@ -32,7 +34,8 @@ public sealed class GetSubtasksQueryHandler : IRequestHandler<GetSubtasksQuery, 
         IPermissionResolver permissionResolver, ITaskAssignmentRepository assignments,
         ITaskClockingSessionRepository sessions,
         IWorkHierarchyService hierarchy,
-        IWorkApprovalRequestRepository approvalRequests)
+        IWorkApprovalRequestRepository approvalRequests,
+        ITaskAccessResolver? taskAccess = null)
     {
         _currentUser = currentUser;
         _identity = identity;
@@ -44,6 +47,7 @@ public sealed class GetSubtasksQueryHandler : IRequestHandler<GetSubtasksQuery, 
         _assignments = assignments;
         _sessions = sessions;
         _approvalRequests = approvalRequests;
+        _taskAccess = taskAccess;
     }
 
     public async Task<Result<IReadOnlyList<WorkTaskResponse>>> Handle(GetSubtasksQuery request, CancellationToken ct)
@@ -63,6 +67,13 @@ public sealed class GetSubtasksQueryHandler : IRequestHandler<GetSubtasksQuery, 
         var parent = await _tasks.GetByIdForTenantAsync(tenantId, request.ParentTaskId, ct);
         if (parent is null)
             return Result<IReadOnlyList<WorkTaskResponse>>.NotFound("Task not found.");
+        if (_taskAccess is not null)
+        {
+            var parentAccess = await _taskAccess.ResolveViewableTaskAsync(tenantId, userId, parent.Id, ct);
+            if (!parentAccess.IsSuccess)
+                return Result<IReadOnlyList<WorkTaskResponse>>.Failure(
+                    parentAccess.Error!, parentAccess.StatusCode ?? 404);
+        }
 
         var project = await _projects.GetByIdForTenantAsync(tenantId, parent.ProjectId, ct);
         if (project is null || !project.IsActive)
@@ -79,6 +90,9 @@ public sealed class GetSubtasksQueryHandler : IRequestHandler<GetSubtasksQuery, 
         }
 
         var children = await _tasks.GetByParentTaskIdAsync(tenantId, parent.Id, ct);
+        if (_taskAccess is not null)
+            children = await _taskAccess.FilterViewableTasksAsync(
+                tenantId, userId, callerEmployeeId.Value, children, ct);
         if (children.Count == 0)
             return Result<IReadOnlyList<WorkTaskResponse>>.Success(Array.Empty<WorkTaskResponse>());
 
@@ -120,7 +134,8 @@ public sealed class GetSubtasksQueryHandler : IRequestHandler<GetSubtasksQuery, 
             Assignees: assigneesByTaskId.GetValueOrDefault(task.Id, Array.Empty<Guid>())
                 .Select(employeeId => assigneeIdentityByEmployeeId[employeeId]).ToList(),
             ParentTaskId: task.ParentTaskId, CreatedAt: task.CreatedAt,
-            HasPendingApproval: pendingTaskIds.Contains(task.Id))).ToList();
+            HasPendingApproval: pendingTaskIds.Contains(task.Id),
+            TaskKind: task.TaskKind, VisibilityScope: task.VisibilityScope)).ToList();
 
         return Result<IReadOnlyList<WorkTaskResponse>>.Success(responses);
     }

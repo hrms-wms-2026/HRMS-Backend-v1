@@ -93,29 +93,35 @@ public class MonitoringCheckInController : ControllerBase
     }
 
     /// <summary>
-    /// Tray face setup: saves the look-straight, turned-left and turned-right photos together as
-    /// the employee's reference faces. Accepts multipart/form-data with "front", "left" and
-    /// "right" file fields. Replaces any previously enrolled face.
+    /// Tray face setup: saves the look-straight photo (plus optional turned-left and turned-right
+    /// photos) as the employee's reference faces. Accepts multipart/form-data with a "front" file
+    /// field and optional "left" / "right" fields — both or neither. Replaces any previously
+    /// enrolled face.
     /// Authorization: Bearer {tray_access_token}
     /// </summary>
     [HttpPost("face-enroll")]
     [RequestSizeLimit(16 * 1024 * 1024)]
     public async Task<IActionResult> EnrollFacePhotos(
         IFormFile front,
-        IFormFile left,
-        IFormFile right,
+        IFormFile? left,
+        IFormFile? right,
         CancellationToken ct)
     {
-        if (front is null || front.Length == 0 || left is null || left.Length == 0 || right is null || right.Length == 0)
-            return Problem("front, left and right photos are required.", statusCode: 400);
+        if (front is null || front.Length == 0)
+            return Problem("front photo is required.", statusCode: 400);
+
+        var hasLeft = left is { Length: > 0 };
+        var hasRight = right is { Length: > 0 };
+        if (hasLeft != hasRight)
+            return Problem("left and right photos must be sent together.", statusCode: 400);
 
         await using var frontStream = front.OpenReadStream();
-        await using var leftStream = left.OpenReadStream();
-        await using var rightStream = right.OpenReadStream();
+        await using var leftStream = hasLeft ? left!.OpenReadStream() : null;
+        await using var rightStream = hasRight ? right!.OpenReadStream() : null;
         var result = await _mediator.Send(new EnrollFacePhotosCommand(
             new FaceSetupPhoto(frontStream, front.ContentType, front.Length),
-            new FaceSetupPhoto(leftStream, left.ContentType, left.Length),
-            new FaceSetupPhoto(rightStream, right.ContentType, right.Length)), ct);
+            leftStream is null ? null : new FaceSetupPhoto(leftStream, left!.ContentType, left.Length),
+            rightStream is null ? null : new FaceSetupPhoto(rightStream, right!.ContentType, right.Length)), ct);
 
         if (!result.IsSuccess)
             return Problem(result.Error, statusCode: result.StatusCode ?? 400);

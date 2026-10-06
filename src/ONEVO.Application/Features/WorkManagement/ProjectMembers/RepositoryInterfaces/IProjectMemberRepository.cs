@@ -1,3 +1,4 @@
+using ONEVO.Application.Features.WorkManagement.ProjectMembers.Models;
 using ONEVO.Domain.Features.WorkManagement.ProjectMembers.Entities;
 
 namespace ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
@@ -18,6 +19,13 @@ public interface IProjectMemberRepository
     /// <summary>Returns objectives with a direct active membership plus all active descendants,
     /// matching Work Management's inherited objective-access rule.</summary>
     Task<IReadOnlyList<Guid>> GetActiveObjectiveIdsForEmployeeInProjectAsync(Guid tenantId, Guid projectId, Guid employeeId, CancellationToken ct = default);
+
+    /// <summary>Active projects <paramref name="employeeId"/> belongs to (active or removed), limited to
+    /// projects <paramref name="viewerEmployeeId"/> is also an active member of - Work Management
+    /// visibility is relationship-based, so another employee's projects are only revealed where the
+    /// viewer already shares the relationship. Viewer == employee returns all of their own projects.</summary>
+    Task<IReadOnlyList<EmployeeProjectMembershipSummary>> ListSharedProjectMembershipsAsync(
+        Guid tenantId, Guid employeeId, Guid viewerEmployeeId, CancellationToken ct = default);
 
     Task<IReadOnlyList<ProjectMember>> ListInactiveMembershipsForEmployeeAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default);
 

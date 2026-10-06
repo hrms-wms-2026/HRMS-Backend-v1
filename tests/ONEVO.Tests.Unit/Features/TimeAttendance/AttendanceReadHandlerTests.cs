@@ -9,6 +9,8 @@ using ONEVO.Application.Features.Monitoring.ActivityMonitoring.DTOs.Responses;
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.ServiceInterfaces;
 using ONEVO.Application.Features.Monitoring.CheckIn.RepositoryInterfaces;
+using ONEVO.Application.Features.Monitoring.Exceptions.RepositoryInterfaces;
+using ONEVO.Application.Features.Monitoring.Exceptions.Services;
 using ONEVO.Application.Features.Monitoring.Screenshots.RepositoryInterfaces;
 using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
 using ONEVO.Application.Features.Storage.File.ServiceInterfaces;
@@ -22,6 +24,10 @@ using ONEVO.Domain.Features.Monitoring.CheckIn.Entities;
 using ONEVO.Domain.Features.Monitoring.Screenshots.Entities;
 using ONEVO.Domain.Features.OrgStructure.Entities;
 using ONEVO.Domain.Features.TimeAttendance.Entities;
+
+using ExceptionStatus = ONEVO.Domain.Features.Monitoring.Exceptions.Entities.ExceptionStatus;
+using ExceptionType = ONEVO.Domain.Features.Monitoring.Exceptions.Entities.ExceptionType;
+using MonitoringException = ONEVO.Domain.Features.Monitoring.Exceptions.Entities.Exception;
 
 namespace ONEVO.Tests.Unit.Features.TimeAttendance;
 
@@ -212,6 +218,120 @@ public sealed class AttendanceReadHandlerTests
 
         result.Value!.AttendanceStatus.Should().Be("on_break");
         result.Value.AttendanceStatusLabel.Should().Be("On break");
+    }
+
+    private static FaceVerificationAttempt FaceAttempt(string at, string outcome, string? reason, Guid? photo = null) => new()
+    {
+        Id = Guid.NewGuid(), TenantId = TenantId, EmployeeId = EmployeeId, Purpose = "clock_in",
+        Outcome = outcome, FailureReason = reason, PhotoFileId = photo, CreatedAt = DateTimeOffset.Parse(at)
+    };
+
+    [Fact]
+    public async Task MyHistory_FlagsDaysWithFailedFaceChecks_InTheCompanyDay()
+    {
+        var faceChecks = new Mock<IFaceVerificationAttemptRepository>();
+        faceChecks.Setup(x => x.ListForEmployeeInRangeAsync(TenantId, EmployeeId, It.IsAny<DateTimeOffset>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(
+            [
+                FaceAttempt("2026-08-21T03:30:00Z", FaceVerificationAttempt.OutcomeFailed, "no_face_detected"),
+                FaceAttempt("2026-08-21T03:31:00Z", FaceVerificationAttempt.OutcomeFailed, "sunglasses_or_mask"),
+                FaceAttempt("2026-08-21T03:32:00Z", FaceVerificationAttempt.OutcomeOverridden, "no_face_detected"),
+                // 19:00 UTC on the 19th is 00:30 on the 20th in Colombo.
+                FaceAttempt("2026-08-19T19:00:00Z", FaceVerificationAttempt.OutcomeFailed, "poor_lighting"),
+                FaceAttempt("2026-08-19T19:01:00Z", FaceVerificationAttempt.OutcomePassed, null)
+            ]);
+        var fixture = CreateFixture(faceCheckRepo: faceChecks.Object);
+        AttendanceRecord Day(int day) => new() { Id = Guid.NewGuid(), TenantId = TenantId, EmployeeId = EmployeeId, Date = new(2026, 8, day) };
+        fixture.Attendance.Setup(x => x.ListRecordsAsync(TenantId, It.IsAny<IReadOnlyCollection<Guid>>(), new(2026, 8, 1), new(2026, 8, 21), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((new List<AttendanceRecord> { Day(21), Day(20), Day(19) }, 3));
+        fixture.Attendance.Setup(x => x.ListBreaksForEmployeesAsync(TenantId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<DateTimeOffset>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+
+        var result = await fixture.Handler.Handle(
+            new GetMyAttendanceHistoryQuery(new(2026, 8, 1), new(2026, 8, 21), new PagedRequest()), CancellationToken.None);
+
+        var rows = result.Value!.Items;
+        rows[0].FailedFaceChecks.Should().Be(3);
+        rows[0].FaceCheckLetThrough.Should().BeTrue();
+        rows[1].FailedFaceChecks.Should().Be(1);
+        rows[1].FaceCheckLetThrough.Should().BeFalse();
+        rows[2].FailedFaceChecks.Should().Be(0);
+    }
+
+    private static MonitoringException IdentityCase(string detectedAt, ExceptionStatus status, string purpose = "clock_in") => new()
+    {
+        Id = Guid.NewGuid(), TenantId = TenantId, EmployeeId = EmployeeId, Type = ExceptionType.IdentityAnomaly,
+        Status = status, Title = "t", Description = "d", DetectedAt = DateTimeOffset.Parse(detectedAt),
+        ResolvedAt = status == ExceptionStatus.Resolved ? DateTimeOffset.Parse(detectedAt).AddMinutes(30) : null,
+        ResolutionNote = "reviewer only",
+        MetadataJson = new ExceptionMetadata { Purpose = purpose }.ToJson()
+    };
+
+    [Fact]
+    public async Task MyHistory_ShowsTheDaysFaceCheckAlertStatus_MostUrgentWins()
+    {
+        var cases = new Mock<IExceptionRepository>();
+        cases.Setup(x => x.ListForEmployeeInRangeAsync(TenantId, EmployeeId, ExceptionType.IdentityAnomaly, It.IsAny<DateTimeOffset>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(
+            [
+                IdentityCase("2026-08-21T03:30:00Z", ExceptionStatus.Open),
+                IdentityCase("2026-08-21T12:00:00Z", ExceptionStatus.Resolved, "clock_out"),
+                IdentityCase("2026-08-20T03:30:00Z", ExceptionStatus.Resolved)
+            ]);
+        var fixture = CreateFixture(exceptionRepo: cases.Object);
+        AttendanceRecord Day(int day) => new() { Id = Guid.NewGuid(), TenantId = TenantId, EmployeeId = EmployeeId, Date = new(2026, 8, day) };
+        fixture.Attendance.Setup(x => x.ListRecordsAsync(TenantId, It.IsAny<IReadOnlyCollection<Guid>>(), new(2026, 8, 1), new(2026, 8, 21), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((new List<AttendanceRecord> { Day(21), Day(20), Day(19) }, 3));
+        fixture.Attendance.Setup(x => x.ListBreaksForEmployeesAsync(TenantId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<DateTimeOffset>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+
+        var result = await fixture.Handler.Handle(
+            new GetMyAttendanceHistoryQuery(new(2026, 8, 1), new(2026, 8, 21), new PagedRequest()), CancellationToken.None);
+
+        result.Value!.Items.Select(r => r.FaceCheckAlertStatus).Should().Equal("Open", "Resolved", null);
+    }
+
+    [Fact]
+    public async Task DayDetail_Self_ListsTheDaysFaceCheckAlerts()
+    {
+        var cases = new Mock<IExceptionRepository>();
+        cases.Setup(x => x.ListForEmployeeInRangeAsync(TenantId, EmployeeId, ExceptionType.IdentityAnomaly, It.IsAny<DateTimeOffset>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([IdentityCase("2026-08-21T03:30:00Z", ExceptionStatus.Open), IdentityCase("2026-08-21T12:00:00Z", ExceptionStatus.Resolved, "clock_out")]);
+        var fixture = CreateFixture(exceptionRepo: cases.Object);
+        fixture.Attendance.Setup(x => x.GetRecordAsync(TenantId, EmployeeId, new(2026, 8, 21), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AttendanceRecord { Id = Guid.NewGuid(), TenantId = TenantId, EmployeeId = EmployeeId, Date = new(2026, 8, 21) });
+
+        var result = await fixture.Handler.Handle(new GetAttendanceDayDetailQuery(EmployeeId, new(2026, 8, 21)), CancellationToken.None);
+
+        var alerts = result.Value!.FaceCheckAlerts!;
+        alerts.Select(a => (a.Purpose, a.Status)).Should().Equal(("clock_in", "Open"), ("clock_out", "Resolved"));
+        alerts[1].ResolvedAt.Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task DayDetail_Self_ListsFaceChecksWithTheirPhotos()
+    {
+        var photo = Guid.NewGuid();
+        var faceChecks = new Mock<IFaceVerificationAttemptRepository>();
+        faceChecks.Setup(x => x.ListForEmployeeInRangeAsync(TenantId, EmployeeId, It.IsAny<DateTimeOffset>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(
+            [
+                FaceAttempt("2026-08-21T03:32:00Z", FaceVerificationAttempt.OutcomeOverridden, "no_face_detected", photo),
+                FaceAttempt("2026-08-21T03:30:00Z", FaceVerificationAttempt.OutcomeFailed, "sunglasses_or_mask")
+            ]);
+        var fixture = CreateFixture(faceCheckRepo: faceChecks.Object);
+        fixture.Files.Setup(x => x.GetSignedUrlAsync(TenantId, photo, It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<string>.Success("https://r2.example/face.jpg"));
+        fixture.Attendance.Setup(x => x.GetRecordAsync(TenantId, EmployeeId, new(2026, 8, 21), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AttendanceRecord { Id = Guid.NewGuid(), TenantId = TenantId, EmployeeId = EmployeeId, Date = new(2026, 8, 21) });
+
+        var result = await fixture.Handler.Handle(new GetAttendanceDayDetailQuery(EmployeeId, new(2026, 8, 21)), CancellationToken.None);
+
+        var checks = result.Value!.FaceChecks!;
+        checks.Select(c => c.FailureReason).Should().Equal("sunglasses_or_mask", "no_face_detected");
+        checks[0].PhotoUrl.Should().BeNull();
+        checks[1].PhotoUrl.Should().Be("https://r2.example/face.jpg");
+        checks[1].Outcome.Should().Be(FaceVerificationAttempt.OutcomeOverridden);
     }
 
     [Fact]
@@ -748,7 +868,7 @@ public sealed class AttendanceReadHandlerTests
         shot.Url.Should().Be("https://r2.example/shot.jpg");
     }
 
-    private static Fixture CreateFixture(string localTimeUtc = "2026-08-21T10:00:00+00:00", string workModeCode = "remote", int employmentTypeId = 1, bool hasMonitoringRead = false, IActivityLiveDaySummary? liveActivity = null, IInactivityCaptureAttemptRepository? activityCheckRepo = null, IEmployeeAttendancePeriodReader? periodReader = null)
+    private static Fixture CreateFixture(string localTimeUtc = "2026-08-21T10:00:00+00:00", string workModeCode = "remote", int employmentTypeId = 1, bool hasMonitoringRead = false, IActivityLiveDaySummary? liveActivity = null, IInactivityCaptureAttemptRepository? activityCheckRepo = null, IFaceVerificationAttemptRepository? faceCheckRepo = null, IExceptionRepository? exceptionRepo = null, IEmployeeAttendancePeriodReader? periodReader = null)
     {
         var currentUser = new Mock<ICurrentUser>();
         currentUser.SetupGet(x => x.IsAuthenticated).Returns(true);
@@ -821,6 +941,8 @@ public sealed class AttendanceReadHandlerTests
                 fileStorage: files.Object,
                 liveActivity: liveActivity,
                 activityChecks: activityCheckRepo,
+                faceChecks: faceCheckRepo,
+                exceptionCases: exceptionRepo,
                 periodReader: periodReader),
             attendance,
             policies,

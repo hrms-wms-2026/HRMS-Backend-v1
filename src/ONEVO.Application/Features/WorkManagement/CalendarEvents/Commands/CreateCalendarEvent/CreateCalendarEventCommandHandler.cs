@@ -23,6 +23,7 @@ public sealed class CreateCalendarEventCommandHandler : IRequestHandler<CreateCa
     private readonly IObjectiveRepository _objectives;
     private readonly IWorkTaskRepository _tasks;
     private readonly ICalendarEventRepository _calendarEvents;
+    private readonly ICalendarEventActivityLogRepository _activityLogs;
     private readonly IUnitOfWork _unitOfWork;
 
     public CreateCalendarEventCommandHandler(
@@ -33,6 +34,7 @@ public sealed class CreateCalendarEventCommandHandler : IRequestHandler<CreateCa
         IObjectiveRepository objectives,
         IWorkTaskRepository tasks,
         ICalendarEventRepository calendarEvents,
+        ICalendarEventActivityLogRepository activityLogs,
         IUnitOfWork unitOfWork)
     {
         _currentUser = currentUser;
@@ -42,6 +44,7 @@ public sealed class CreateCalendarEventCommandHandler : IRequestHandler<CreateCa
         _objectives = objectives;
         _tasks = tasks;
         _calendarEvents = calendarEvents;
+        _activityLogs = activityLogs;
         _unitOfWork = unitOfWork;
     }
 
@@ -84,6 +87,8 @@ public sealed class CreateCalendarEventCommandHandler : IRequestHandler<CreateCa
         var memberTasks = moduleTasks
             .Concat(directTaskIds.Select(id => projectTaskById[id]))
             .GroupBy(t => t.Id).Select(g => g.First()).ToList();
+        if (memberTasks.Any(task => task.TaskKind == WorkTaskKinds.EmployeeChecklist))
+            return Result<CalendarEventResponse>.Conflict("Employee checklist tasks cannot be added to calendar events.");
 
         // R2: every member task has a DueDate inside [startDate, endDate].
         var outOfWindow = memberTasks
@@ -108,6 +113,7 @@ public sealed class CreateCalendarEventCommandHandler : IRequestHandler<CreateCa
             ProjectId = request.ProjectId,
             Name = request.Name.Trim(),
             Color = request.Color.Trim(),
+            Description = request.Description?.Trim(),
             StartDate = startDate,
             EndDate = endDate,
             Status = CalendarEventStatuses.Active,
@@ -134,6 +140,12 @@ public sealed class CreateCalendarEventCommandHandler : IRequestHandler<CreateCa
             await _calendarEvents.AddAsync(calendarEvent, innerCt);
             await _calendarEvents.AddMembershipsAsync(memberships, innerCt);
             await _calendarEvents.AddTaskMembershipsAsync(taskMemberships, innerCt);
+            await _activityLogs.AddAsync(new CalendarEventActivityLog
+            {
+                Id = Guid.NewGuid(), TenantId = tenantId, CalendarEventId = calendarEvent.Id,
+                Action = CalendarEventActivityActions.Created, PerformedById = actorResult.EmployeeId,
+                PerformedAt = now, DetailsJson = $"{{\"name\":{System.Text.Json.JsonSerializer.Serialize(calendarEvent.Name)}}}"
+            }, innerCt);
             await _unitOfWork.SaveChangesAsync(innerCt);
             return true;
         }, ct);
@@ -158,8 +170,8 @@ public sealed class CreateCalendarEventCommandHandler : IRequestHandler<CreateCa
     internal static CalendarEventResponse ToResponse(
         CalendarEvent calendarEvent, IReadOnlyList<Guid> objectiveIds, IReadOnlyList<Guid> taskIds)
         => new(calendarEvent.Id, calendarEvent.ProjectId, calendarEvent.Name, calendarEvent.Color,
-            calendarEvent.Status, calendarEvent.StartDate, calendarEvent.EndDate, objectiveIds, taskIds,
-            calendarEvent.CreatedAt, calendarEvent.ArchivedById, calendarEvent.ArchivedAt);
+            calendarEvent.Status, calendarEvent.StartDate, calendarEvent.EndDate, calendarEvent.Description,
+            objectiveIds, taskIds, calendarEvent.CreatedAt, calendarEvent.ArchivedById, calendarEvent.ArchivedAt);
 
     private sealed record ActorResult(bool IsSuccess, Guid EmployeeId, string? Error, int? StatusCode)
     {

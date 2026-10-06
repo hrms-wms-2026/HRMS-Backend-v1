@@ -13,6 +13,8 @@ using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfa
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.DTOs.Responses;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Tasks.Services;
+using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
 using ONEVO.Domain.Features.WorkManagement.Approvals.Entities;
 
 namespace ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetTaskById;
@@ -31,6 +33,7 @@ public sealed class GetTaskByIdQueryHandler : IRequestHandler<GetTaskByIdQuery, 
     private readonly ICalendarEventRepository _calendarEvents;
     private readonly IEntityAssetRepository _entityAssets;
     private readonly IWorkApprovalRequestRepository _approvalRequests;
+    private readonly ITaskAccessResolver? _taskAccess;
 
     public GetTaskByIdQueryHandler(
         ICurrentUser currentUser,
@@ -44,7 +47,8 @@ public sealed class GetTaskByIdQueryHandler : IRequestHandler<GetTaskByIdQuery, 
         ICalendarEventRepository calendarEvents,
         IEntityAssetRepository entityAssets,
         IWorkHierarchyService hierarchy,
-        IWorkApprovalRequestRepository approvalRequests)
+        IWorkApprovalRequestRepository approvalRequests,
+        ITaskAccessResolver? taskAccess = null)
     {
         _currentUser = currentUser;
         _identity = identity;
@@ -58,6 +62,7 @@ public sealed class GetTaskByIdQueryHandler : IRequestHandler<GetTaskByIdQuery, 
         _calendarEvents = calendarEvents;
         _entityAssets = entityAssets;
         _approvalRequests = approvalRequests;
+        _taskAccess = taskAccess;
     }
 
     public async Task<Result<WorkTaskResponse>> Handle(GetTaskByIdQuery request, CancellationToken ct)
@@ -93,6 +98,13 @@ public sealed class GetTaskByIdQueryHandler : IRequestHandler<GetTaskByIdQuery, 
                 return Result<WorkTaskResponse>.NotFound("Task not found.");
         }
 
+        if (_taskAccess is not null && task.VisibilityScope == WorkTaskVisibilityScopes.Assignees)
+        {
+            var access = await _taskAccess.ResolveViewableTaskAsync(tenantId, userId, task.Id, ct);
+            if (!access.IsSuccess)
+                return Result<WorkTaskResponse>.Failure(access.Error!, access.StatusCode ?? 404);
+        }
+
         var assignments = await _assignments.GetByTaskIdsAsync(new[] { task.Id }, ct);
         var assigneeIds = (IReadOnlyList<Guid>)assignments.Select(a => a.EmployeeId).ToList();
 
@@ -121,7 +133,8 @@ public sealed class GetTaskByIdQueryHandler : IRequestHandler<GetTaskByIdQuery, 
             activeEventLink?.EventName,
             attachments,
             ParentTaskId: task.ParentTaskId, CreatedAt: task.CreatedAt,
-            HasPendingApproval: pendingTaskIds.Contains(task.Id));
+            HasPendingApproval: pendingTaskIds.Contains(task.Id),
+            TaskKind: task.TaskKind, VisibilityScope: task.VisibilityScope);
 
         return Result<WorkTaskResponse>.Success(response);
     }

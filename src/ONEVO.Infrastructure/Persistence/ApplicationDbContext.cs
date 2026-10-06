@@ -298,6 +298,7 @@ public class ApplicationDbContext : DbContext
         public DbSet<Project> Projects => Set<Project>();
     public DbSet<Objective> Objectives => Set<Objective>();
     public DbSet<CalendarEvent> CalendarEvents => Set<CalendarEvent>();
+    public DbSet<CalendarEventActivityLog> CalendarEventActivityLogs => Set<CalendarEventActivityLog>();
     public DbSet<CalendarEventObjective> CalendarEventObjectives => Set<CalendarEventObjective>();
     public DbSet<CalendarEventTask> CalendarEventTasks => Set<CalendarEventTask>();
 

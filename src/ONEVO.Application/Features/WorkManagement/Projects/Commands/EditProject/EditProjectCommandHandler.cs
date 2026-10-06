@@ -7,6 +7,7 @@ using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Projects.DTOs.Responses;
 using ONEVO.Application.Features.WorkManagement.Projects.Mappers;
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
+using ONEVO.Domain.Features.WorkManagement.Projects.Entities;
 
 namespace ONEVO.Application.Features.WorkManagement.Projects.Commands.EditProject;
 
@@ -55,6 +56,8 @@ public class EditProjectCommandHandler : IRequestHandler<EditProjectCommand, Res
         var project = await _projects.GetTrackedByIdForTenantAsync(tenantId, request.ProjectId, ct);
         if (project is null || !project.IsActive)
             return Result<ProjectDetailResponse>.NotFound("Project not found.");
+        if (project.SystemPurpose == ProjectSystemPurposes.Office)
+            return Result<ProjectDetailResponse>.Conflict("The system-managed Office project cannot be edited.");
 
         // Project is the tree's root node (milestone-hierarchy design §4) - only its own
         // Head, the Lead, has unrestricted control over the node itself. Same rule

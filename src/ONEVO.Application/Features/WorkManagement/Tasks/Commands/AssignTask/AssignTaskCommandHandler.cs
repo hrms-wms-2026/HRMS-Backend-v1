@@ -6,6 +6,10 @@ using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Objectives.Services;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
+using ONEVO.Application.Features.CoreHr.Onboarding.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Notifications.Services;
+using ONEVO.Domain.Features.WorkManagement.Approvals.Entities;
+using ONEVO.Domain.Features.WorkManagement.Notifications.Entities;
 using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
 
 namespace ONEVO.Application.Features.WorkManagement.Tasks.Commands.AssignTask;
@@ -19,11 +23,15 @@ public class AssignTaskCommandHandler : IRequestHandler<AssignTaskCommand, Resul
     private readonly ITaskAssignmentRepository _assignments;
     private readonly IMilestoneMembershipCoordinator _membership;
     private readonly IUnitOfWork _unitOfWork;
+    private readonly IEmployeeChecklistTaskRepository? _checklistTasks;
+    private readonly IWorkNotificationEngine? _notifications;
 
     public AssignTaskCommandHandler(
         ICurrentUser currentUser, ICallerIdentityResolver identity, IWorkTaskRepository tasks,
         IObjectiveRepository objectives, ITaskAssignmentRepository assignments,
-        IMilestoneMembershipCoordinator membership, IUnitOfWork unitOfWork)
+        IMilestoneMembershipCoordinator membership, IUnitOfWork unitOfWork,
+        IEmployeeChecklistTaskRepository? checklistTasks = null,
+        IWorkNotificationEngine? notifications = null)
     {
         _currentUser = currentUser;
         _identity = identity;
@@ -32,6 +40,8 @@ public class AssignTaskCommandHandler : IRequestHandler<AssignTaskCommand, Resul
         _assignments = assignments;
         _membership = membership;
         _unitOfWork = unitOfWork;
+        _checklistTasks = checklistTasks;
+        _notifications = notifications;
     }
 
     public async Task<Result> Handle(AssignTaskCommand request, CancellationToken ct)
@@ -61,10 +71,21 @@ public class AssignTaskCommandHandler : IRequestHandler<AssignTaskCommand, Resul
         if (assignee is null)
             return Result.Failure("The assignee must be an active employee in this tenant.");
 
+        ONEVO.Domain.Features.CoreHr.Entities.EmployeeChecklistTask? checklistTask = null;
+        if (task.TaskKind == WorkTaskKinds.EmployeeChecklist)
+        {
+            checklistTask = _checklistTasks is null
+                ? null
+                : await _checklistTasks.GetTrackedByWorkTaskIdAsync(tenantId, task.Id, ct);
+            if (checklistTask is null)
+                return Result.Conflict("The linked employee checklist item could not be found.");
+        }
+
         return await _unitOfWork.ExecuteInTransactionAsync(async innerCt =>
         {
             var existingAssignments = await _assignments.GetByTaskIdAsync(task.Id, innerCt);
-            if (existingAssignments.Count == 1 && existingAssignments[0].EmployeeId == assignee.Id)
+            if (existingAssignments.Count == 1 && existingAssignments[0].EmployeeId == assignee.Id
+                && (checklistTask is null || checklistTask.AssignedToId == assignee.UserId))
                 return Result.Success();
 
             foreach (var existingAssignment in existingAssignments)
@@ -79,6 +100,17 @@ public class AssignTaskCommandHandler : IRequestHandler<AssignTaskCommand, Resul
                 AssignedById = callerEmployeeId.Value,
                 AssignedAt = DateTimeOffset.UtcNow
             }, innerCt);
+            await _membership.UpsertMembershipAsync(
+                tenantId, task.ProjectId, task.ObjectiveId, assignee.Id, innerCt);
+            if (checklistTask is not null)
+                checklistTask.AssignedToId = assignee.UserId;
+            if (_notifications is not null)
+            {
+                await _notifications.NotifyAsync(new WorkNotificationEvent(
+                    tenantId, task.ProjectId, callerEmployeeId.Value, WorkNotificationKinds.Direct,
+                    WorkActionTypes.TaskEdit, WorkTargetTypes.Task, task.Id, task.Title, null,
+                    [assignee.Id]), innerCt);
+            }
             await _unitOfWork.SaveChangesAsync(innerCt);
             return Result.Success();
         }, ct);

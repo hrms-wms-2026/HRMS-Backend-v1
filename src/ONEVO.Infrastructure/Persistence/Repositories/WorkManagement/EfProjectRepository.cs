@@ -29,6 +29,10 @@ public class EfProjectRepository : IProjectRepository
             .FirstOrDefaultAsync(p => p.TenantId == tenantId && p.Id == id, ct);
     }
 
+    public Task<Project?> GetBySystemPurposeAsync(Guid tenantId, string systemPurpose, CancellationToken ct = default)
+        => _db.Projects.AsNoTracking()
+            .FirstOrDefaultAsync(p => p.TenantId == tenantId && p.SystemPurpose == systemPurpose, ct);
+
     public async Task<Project?> GetTrackedByIdForTenantAsync(Guid tenantId, Guid id, CancellationToken ct = default)
     {
         // Deliberately no AsNoTracking - see interface doc. Callers must mutate and then call

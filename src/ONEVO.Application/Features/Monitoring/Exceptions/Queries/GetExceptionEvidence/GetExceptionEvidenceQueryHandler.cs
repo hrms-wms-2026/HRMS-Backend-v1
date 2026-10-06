@@ -112,9 +112,19 @@ public class GetExceptionEvidenceQueryHandler : IRequestHandler<GetExceptionEvid
         {
             identity = await BuildIdentityAsync(tenantId, meta, ct);
 
-            faceChecks = (await _faceChecks.ListForEmployeeInRangeAsync(tenantId, exception.EmployeeId, day.Start, day.End, ct))
-                .Select(a => new FaceCheckEvidenceDto(a.Id, a.CreatedAt, a.Purpose, a.Outcome, a.FailureReason, a.SimilarityScore))
-                .ToList();
+            var attempts = await _faceChecks.ListForEmployeeInRangeAsync(tenantId, exception.EmployeeId, day.Start, day.End, ct);
+            var checks = new List<FaceCheckEvidenceDto>(attempts.Count);
+            foreach (var a in attempts)
+            {
+                // The case's own photo is already signed above - reuse it rather than signing twice.
+                var photoUrl = a.PhotoFileId is null ? null
+                    : a.PhotoFileId == meta.PhotoFileId && identity.PhotoUrl is not null ? identity.PhotoUrl
+                    : await SignPhotoAsync(tenantId, a.PhotoFileId, ct);
+                checks.Add(new FaceCheckEvidenceDto(
+                    a.Id, a.CreatedAt, a.Purpose, a.Outcome, a.FailureReason, a.SimilarityScore,
+                    photoUrl, PhotoUnavailable: a.PhotoFileId is not null && photoUrl is null));
+            }
+            faceChecks = checks;
 
             if (employee is not null && employee.UserId != Guid.Empty)
             {
@@ -201,29 +211,29 @@ public class GetExceptionEvidenceQueryHandler : IRequestHandler<GetExceptionEvid
 
     private async Task<IdentityEvidenceDto> BuildIdentityAsync(Guid tenantId, ExceptionMetadata meta, CancellationToken ct)
     {
-        string? url = null;
-        DateTimeOffset? expiresAt = null;
-        if (meta.PhotoFileId is Guid photoFileId)
-        {
-            try
-            {
-                var signed = await _fileStorage.GetSignedUrlAsync(tenantId, photoFileId, PhotoUrlExpiry, ct);
-                if (signed.IsSuccess)
-                {
-                    url = signed.Value;
-                    expiresAt = _clock.UtcNow + PhotoUrlExpiry;
-                }
-            }
-            catch (Exception) when (!ct.IsCancellationRequested)
-            {
-                // Storage down: the rest of the evidence is still worth showing.
-            }
-        }
+        var url = await SignPhotoAsync(tenantId, meta.PhotoFileId, ct);
+        DateTimeOffset? expiresAt = url is null ? null : _clock.UtcNow + PhotoUrlExpiry;
 
         return new IdentityEvidenceDto(
             meta.Source, meta.OccurredAt, meta.Purpose, meta.SimilarityScore,
             meta.Reasons ?? [], meta.DeviceRegistrationId, url, expiresAt,
             PhotoUnavailable: meta.PhotoFileId is not null && url is null);
+    }
+
+    private async Task<string?> SignPhotoAsync(Guid tenantId, Guid? photoFileId, CancellationToken ct)
+    {
+        if (photoFileId is not Guid fileId)
+            return null;
+        try
+        {
+            var signed = await _fileStorage.GetSignedUrlAsync(tenantId, fileId, PhotoUrlExpiry, ct);
+            return signed.IsSuccess ? signed.Value : null;
+        }
+        catch (Exception) when (!ct.IsCancellationRequested)
+        {
+            // Storage down: the rest of the evidence is still worth showing.
+            return null;
+        }
     }
 
     /// <summary>The day the case is about, in the company timezone. Nightly cases store their target

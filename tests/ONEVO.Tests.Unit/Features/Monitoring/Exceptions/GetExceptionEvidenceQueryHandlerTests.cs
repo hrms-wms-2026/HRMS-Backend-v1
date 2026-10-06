@@ -301,6 +301,43 @@ public class GetExceptionEvidenceQueryHandlerTests
     }
 
     [Fact]
+    public async Task IdentityCase_SignsEachFailedChecksPhoto_ReusingTheCasePhoto()
+    {
+        var at = _clock.UtcNow;
+        var firstPhoto = Guid.NewGuid();
+        var brokenPhoto = Guid.NewGuid();
+        var @case = Stored(ExceptionType.IdentityAnomaly, _employee.Id, new ExceptionMetadata
+        {
+            Source = ExceptionMetadata.SourceFaceCheckOverride, OccurredAt = at, PhotoFileId = _photoFileId
+        }, at);
+        FaceVerificationAttempt Attempt(string outcome, Guid? photo) => new()
+        {
+            Id = Guid.NewGuid(), TenantId = _tenantId, EmployeeId = _employee.Id, Purpose = "clock_in",
+            Outcome = outcome, FailureReason = "no_face_detected", PhotoFileId = photo, CreatedAt = at
+        };
+        _faceChecks.Setup(f => f.ListForEmployeeInRangeAsync(_tenantId, _employee.Id, It.IsAny<DateTimeOffset>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([
+                Attempt(FaceVerificationAttempt.OutcomeFailed, firstPhoto),
+                Attempt(FaceVerificationAttempt.OutcomeFailed, brokenPhoto),
+                Attempt(FaceVerificationAttempt.OutcomeOverridden, _photoFileId),
+                Attempt(FaceVerificationAttempt.OutcomePassed, null)
+            ]);
+        _fileStorage.Setup(f => f.GetSignedUrlAsync(_tenantId, _photoFileId, It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<string>.Success("https://signed/case"));
+        _fileStorage.Setup(f => f.GetSignedUrlAsync(_tenantId, firstPhoto, It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<string>.Success("https://signed/first"));
+        _fileStorage.Setup(f => f.GetSignedUrlAsync(_tenantId, brokenPhoto, It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("storage down"));
+
+        var result = await CreateSut().Handle(new GetExceptionEvidenceQuery(@case.Id), CancellationToken.None);
+
+        var checks = result.Value!.FaceChecks;
+        checks.Select(c => c.PhotoUrl).Should().Equal("https://signed/first", null, "https://signed/case", null);
+        checks.Select(c => c.PhotoUnavailable).Should().Equal(false, true, false, false);
+        _fileStorage.Verify(f => f.GetSignedUrlAsync(_tenantId, _photoFileId, It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
     public async Task IdentityCase_WithoutAKeptPhoto_HasNoUrl()
     {
         var @case = Stored(ExceptionType.IdentityAnomaly, _employee.Id,

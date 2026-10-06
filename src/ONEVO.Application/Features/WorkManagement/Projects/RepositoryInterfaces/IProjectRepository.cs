@@ -10,6 +10,8 @@ public interface IProjectRepository
 
     Task<Project?> GetByIdForTenantAsync(Guid tenantId, Guid id, CancellationToken ct = default);
 
+    Task<Project?> GetBySystemPurposeAsync(Guid tenantId, string systemPurpose, CancellationToken ct = default);
+
     /// <summary>
     /// Same lookup as <see cref="GetByIdForTenantAsync"/>, but returns the entity tracked by the
     /// DbContext's change tracker instead of AsNoTracking. Use this only on write paths that

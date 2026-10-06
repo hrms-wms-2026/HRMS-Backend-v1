@@ -22,8 +22,11 @@ public sealed class EmployeeChecklistTaskConfiguration : IEntityTypeConfiguratio
         builder.HasOne<ONEVO.Domain.Features.CoreHr.Entities.OffboardingRecord>().WithMany()
             .HasForeignKey(x => x.OffboardingRecordId).OnDelete(DeleteBehavior.Restrict);
         builder.HasIndex(x => new { x.TenantId, x.EmployeeId, x.LifecycleType, x.Sequence });
+        builder.HasIndex(x => x.WorkTaskId).IsUnique().HasFilter("work_task_id IS NOT NULL");
         builder.HasOne<ONEVO.Domain.Features.CoreHr.Entities.Employee>().WithMany().HasForeignKey(x => x.EmployeeId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne<ChecklistTemplate>().WithMany().HasForeignKey(x => x.TemplateId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne<ONEVO.Domain.Features.WorkManagement.Tasks.Entities.WorkTask>().WithMany()
+            .HasForeignKey(x => x.WorkTaskId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne<ONEVO.Domain.Features.InfrastructureModule.Entities.User>().WithMany().HasForeignKey(x => x.AssignedToId).OnDelete(DeleteBehavior.Restrict);
     }
 }

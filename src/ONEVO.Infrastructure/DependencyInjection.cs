@@ -20,6 +20,7 @@ using ONEVO.Application.Features.CoreHr.BulkOnboarding.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.BulkOnboarding.Services;
 using ONEVO.Application.Features.CoreHr.OnboardingDraft.Services;
 using ONEVO.Application.Features.CoreHr.Onboarding.RepositoryInterfaces;
+using ONEVO.Application.Features.CoreHr.Onboarding.Services;
 using ONEVO.Application.Features.CoreHr.Offboarding.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.Offboarding.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.PositionAssignment.RepositoryInterfaces;
@@ -250,7 +251,6 @@ public static class DependencyInjection
         services.AddScoped<
             ONEVO.Application.Features.Leave.Calendar.RepositoryInterfaces.ILeaveCalendarRepository,
             ONEVO.Infrastructure.Persistence.Repositories.Leave.Calendar.EfLeaveCalendarRepository>();
-        services.AddSingleton<ONEVO.Application.Features.Leave.Request.Helpers.LeaveRequestDayCalculator>();
         services.AddSingleton<ONEVO.Application.Features.Leave.Request.Helpers.LeaveRequestHourCalculator>();
         services.AddSingleton<ONEVO.Application.Features.Leave.Calendar.Helpers.LeaveCalendarRequestProjector>();
         services.AddHttpClient<ONEVO.Application.Features.Calendar.ServiceInterfaces.INagerHolidaysClient,
@@ -266,7 +266,7 @@ public static class DependencyInjection
         services.AddScoped<ONEVO.Application.Features.Leave.Calendar.Services.ILeaveVisibilityScopeProvider,
             ONEVO.Application.Features.Leave.Calendar.Services.LeaveVisibilityScopeProvider>();
         services.AddScoped<ONEVO.Application.Features.Leave.Request.Services.ILeaveRequestConflictProvider,
-            ONEVO.Application.Features.Leave.Request.Services.NoOpLeaveRequestConflictProvider>();
+            ONEVO.Infrastructure.Services.Leave.EfLeaveRequestConflictProvider>();
         services.AddScoped<ONEVO.Application.Features.Leave.Request.Services.ILeaveApproverResolver,
             ONEVO.Application.Features.Leave.Request.Services.LeaveApproverResolver>();
         services.AddScoped<ONEVO.Application.Features.Leave.Request.Services.ILeaveTeamAbsenceWarningService,
@@ -316,6 +316,8 @@ public static class DependencyInjection
         services.AddScoped<IAccessGrantRequestRepository, EfAccessGrantRequestRepository>();
         services.AddScoped<IChecklistTemplateRepository, EfChecklistTemplateRepository>();
         services.AddScoped<IEmployeeChecklistTaskRepository, EfEmployeeChecklistTaskRepository>();
+        services.AddScoped<IOfficeProjectProvisioner, ONEVO.Infrastructure.Services.CoreHr.OfficeProjectProvisioner>();
+        services.AddScoped<IEmployeeChecklistWorkTaskProvisioner, EmployeeChecklistWorkTaskProvisioner>();
         services.AddScoped<IOffboardingRecordRepository, EfOffboardingRecordRepository>();
         services.AddScoped<IOffboardingTaskBypassRequestRepository, EfOffboardingTaskBypassRequestRepository>();
         services.AddScoped<IEmployeeOffboardingLockGuard, ONEVO.Infrastructure.Services.CoreHr.Offboarding.EmployeeOffboardingLockGuard>();
@@ -351,6 +353,7 @@ public static class DependencyInjection
         services.AddScoped<ONEVO.Infrastructure.Persistence.Repositories.WorkManagement.EfCalendarEventRepository>();
         services.AddScoped<ONEVO.Application.Features.WorkManagement.CalendarEvents.RepositoryInterfaces.ICalendarEventRepository>(
             sp => sp.GetRequiredService<ONEVO.Infrastructure.Persistence.Repositories.WorkManagement.EfCalendarEventRepository>());
+        services.AddScoped<ONEVO.Application.Features.WorkManagement.CalendarEvents.RepositoryInterfaces.ICalendarEventActivityLogRepository, EfCalendarEventActivityLogRepository>();
 
         services.AddScoped<EfTaskStatusRepository>();
         services.AddScoped<ITaskStatusRepository>(sp => sp.GetRequiredService<EfTaskStatusRepository>());

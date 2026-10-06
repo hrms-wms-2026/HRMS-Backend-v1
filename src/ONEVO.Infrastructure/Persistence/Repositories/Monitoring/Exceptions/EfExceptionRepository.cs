@@ -45,6 +45,14 @@ public class EfExceptionRepository : IExceptionRepository
         return rows.Select(r => (r.TenantId, r.EmployeeId)).ToList();
     }
 
+    public async Task<IReadOnlyList<MonitoringException>> ListForEmployeeInRangeAsync(
+        Guid tenantId, Guid employeeId, ExceptionType type, DateTimeOffset from, DateTimeOffset to, CancellationToken ct) =>
+        await _db.Exceptions.AsNoTracking()
+            .Where(e => e.TenantId == tenantId && e.EmployeeId == employeeId && e.Type == type
+                && e.DetectedAt >= from && e.DetectedAt < to)
+            .OrderBy(e => e.DetectedAt)
+            .ToListAsync(ct);
+
     public async Task<MonitoringException?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct) =>
         await _db.Exceptions.FirstOrDefaultAsync(e => e.TenantId == tenantId && e.Id == id, ct);
 
@@ -85,7 +93,9 @@ public class EfExceptionRepository : IExceptionRepository
     {
         var query = _db.Exceptions.AsNoTracking().Where(e => e.TenantId == tenantId);
         if (filter.Status.HasValue) query = query.Where(e => e.Status == filter.Status.Value);
-        if (filter.Statuses is { Count: > 0 } statuses) query = query.Where(e => statuses.Contains(e.Status));
+        else if (filter.Statuses is { Count: > 0 } statuses) query = query.Where(e => statuses.Contains(e.Status));
+        // Still needs someone: open, being worked (acknowledged) or with HR (escalated).
+        else if (filter.ActiveOnly) query = query.Where(e => e.Status != ExceptionStatus.Resolved);
         if (filter.Type.HasValue) query = query.Where(e => e.Type == filter.Type.Value);
         if (filter.EmployeeIds is not null)
         {

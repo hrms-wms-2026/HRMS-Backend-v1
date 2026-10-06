@@ -44,8 +44,8 @@ public class CompleteOffboardingCommandHandlerTests
     {
         var record = new OffboardingRecord { Id = Guid.NewGuid(), Status = OffboardingRecordStatuses.InProgress, Reason = "resignation" };
         _offboardingRecordRepository.Setup(r => r.GetOpenByEmployeeIdAsync(_tenantId, _employeeId, It.IsAny<CancellationToken>())).ReturnsAsync(record);
-        _taskRepository.Setup(r => r.ListByOffboardingRecordAsync(_tenantId, record.Id, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<EmployeeChecklistTask> { new() { IsRequired = true, Status = EmployeeChecklistTaskStatuses.Pending } });
+        _taskRepository.Setup(r => r.ListEffectiveByOffboardingRecordAsync(_tenantId, record.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([Effective(new EmployeeChecklistTask { IsRequired = true, Status = EmployeeChecklistTaskStatuses.Pending }, false)]);
 
         var result = await CreateSut().Handle(new CompleteOffboardingCommand(_employeeId), CancellationToken.None);
 
@@ -59,8 +59,8 @@ public class CompleteOffboardingCommandHandlerTests
         var userId = Guid.NewGuid();
         var record = new OffboardingRecord { Id = Guid.NewGuid(), Status = OffboardingRecordStatuses.InProgress, Reason = "resignation", LastWorkingDate = new DateOnly(2026, 12, 1) };
         _offboardingRecordRepository.Setup(r => r.GetOpenByEmployeeIdAsync(_tenantId, _employeeId, It.IsAny<CancellationToken>())).ReturnsAsync(record);
-        _taskRepository.Setup(r => r.ListByOffboardingRecordAsync(_tenantId, record.Id, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<EmployeeChecklistTask> { new() { IsRequired = true, Status = EmployeeChecklistTaskStatuses.Completed } });
+        _taskRepository.Setup(r => r.ListEffectiveByOffboardingRecordAsync(_tenantId, record.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([Effective(new EmployeeChecklistTask { IsRequired = true, Status = EmployeeChecklistTaskStatuses.Pending }, true)]);
         var employee = new EmployeeEntity { Id = _employeeId, UserId = userId, EmploymentStatusId = EmploymentStatusIds.Offboarding };
         _employeeRepository.Setup(r => r.GetTrackedByIdAsync(_tenantId, _employeeId, It.IsAny<CancellationToken>())).ReturnsAsync(employee);
         var user = new User { Id = userId, IsActive = true };
@@ -82,7 +82,8 @@ public class CompleteOffboardingCommandHandlerTests
         var userId = Guid.NewGuid();
         var record = new OffboardingRecord { Id = Guid.NewGuid(), Status = OffboardingRecordStatuses.InProgress, Reason = "termination", LastWorkingDate = new DateOnly(2026, 12, 1) };
         _offboardingRecordRepository.Setup(r => r.GetOpenByEmployeeIdAsync(_tenantId, _employeeId, It.IsAny<CancellationToken>())).ReturnsAsync(record);
-        _taskRepository.Setup(r => r.ListByOffboardingRecordAsync(_tenantId, record.Id, It.IsAny<CancellationToken>())).ReturnsAsync(new List<EmployeeChecklistTask>());
+        _taskRepository.Setup(r => r.ListEffectiveByOffboardingRecordAsync(_tenantId, record.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<EmployeeChecklistTaskEffectiveState>());
         var employee = new EmployeeEntity { Id = _employeeId, UserId = userId };
         _employeeRepository.Setup(r => r.GetTrackedByIdAsync(_tenantId, _employeeId, It.IsAny<CancellationToken>())).ReturnsAsync(employee);
         _userRepository.Setup(r => r.GetByIdAsync(userId, It.IsAny<CancellationToken>())).ReturnsAsync(new User { Id = userId, IsActive = true });
@@ -91,4 +92,7 @@ public class CompleteOffboardingCommandHandlerTests
 
         employee.EmploymentStatusId.Should().Be(EmploymentStatusIds.Terminated);
     }
+
+    private static EmployeeChecklistTaskEffectiveState Effective(EmployeeChecklistTask task, bool completed) =>
+        new(task, completed, completed ? DateTimeOffset.UtcNow : null, null, null, null);
 }

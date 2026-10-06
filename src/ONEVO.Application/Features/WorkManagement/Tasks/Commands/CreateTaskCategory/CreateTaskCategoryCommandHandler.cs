@@ -9,6 +9,7 @@ using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.DTOs.Responses;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
 using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
+using ONEVO.Domain.Features.WorkManagement.Projects.Entities;
 
 namespace ONEVO.Application.Features.WorkManagement.Tasks.Commands.CreateTaskCategory;
 
@@ -49,6 +50,8 @@ public class CreateTaskCategoryCommandHandler : IRequestHandler<CreateTaskCatego
         var project = await _projects.GetByIdForTenantAsync(tenantId, request.ProjectId, ct);
         if (project is null || !project.IsActive)
             return Result<TaskCategoryResponse>.NotFound("Project not found.");
+        if (project.SystemPurpose == ProjectSystemPurposes.Office)
+            return Result<TaskCategoryResponse>.Conflict("The Office project categories are system-managed.");
 
         var defaultObjective = await _objectives.GetDefaultByProjectIdAsync(tenantId, project.Id, ct);
         if (defaultObjective is null)

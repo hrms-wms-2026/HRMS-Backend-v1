@@ -8,6 +8,7 @@ using ONEVO.Application.Features.WorkManagement.Objectives.Services;
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.DTOs.Responses;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
+using ONEVO.Domain.Features.WorkManagement.Projects.Entities;
 
 namespace ONEVO.Application.Features.WorkManagement.Tasks.Commands.ReorderTaskCategories;
 
@@ -48,6 +49,8 @@ public class ReorderTaskCategoriesCommandHandler : IRequestHandler<ReorderTaskCa
         var project = await _projects.GetByIdForTenantAsync(tenantId, request.ProjectId, ct);
         if (project is null || !project.IsActive)
             return Result<IReadOnlyList<TaskCategoryResponse>>.NotFound("Project not found.");
+        if (project.SystemPurpose == ProjectSystemPurposes.Office)
+            return Result<IReadOnlyList<TaskCategoryResponse>>.Conflict("The Office project categories are system-managed.");
 
         var defaultObjective = await _objectives.GetDefaultByProjectIdAsync(tenantId, project.Id, ct);
         if (defaultObjective is null)

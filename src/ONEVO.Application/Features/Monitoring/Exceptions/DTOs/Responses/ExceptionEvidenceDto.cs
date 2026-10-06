@@ -81,13 +81,18 @@ public record IdentityEvidenceDto(
     DateTimeOffset? PhotoUrlExpiresAt,
     bool PhotoUnavailable = false);
 
+/// <param name="PhotoUrl">Short-lived signed URL of the photo taken at this check; null when none
+/// was kept (passed checks, or checks from before failed photos were kept).</param>
+/// <param name="PhotoUnavailable">A photo was kept but could not be served right now.</param>
 public record FaceCheckEvidenceDto(
     Guid Id,
     DateTimeOffset At,
     string Purpose,
     string Outcome,
     string? FailureReason,
-    float? SimilarityScore);
+    float? SimilarityScore,
+    string? PhotoUrl = null,
+    bool PhotoUnavailable = false);
 
 public record CheckInScanEvidenceDto(
     Guid CheckInId,

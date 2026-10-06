@@ -16,4 +16,8 @@ public interface ITaskAccessResolver
 {
     Task<Result<TaskAccessContext>> ResolveViewableTaskAsync(
         Guid tenantId, Guid userId, Guid taskId, CancellationToken ct = default);
+
+    Task<IReadOnlyList<WorkTask>> FilterViewableTasksAsync(
+        Guid tenantId, Guid userId, Guid callerEmployeeId,
+        IReadOnlyList<WorkTask> tasks, CancellationToken ct = default);
 }

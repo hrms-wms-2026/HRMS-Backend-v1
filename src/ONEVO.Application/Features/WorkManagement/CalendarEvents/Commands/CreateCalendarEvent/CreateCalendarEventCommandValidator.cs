@@ -18,5 +18,6 @@ public sealed class CreateCalendarEventCommandValidator : AbstractValidator<Crea
         RuleForEach(x => x.ObjectiveIds).NotEqual(Guid.Empty).WithMessage("Objective ids must not be empty.");
         RuleFor(x => x.TaskIds).NotNull();
         RuleForEach(x => x.TaskIds).NotEqual(Guid.Empty).WithMessage("Task ids must not be empty.");
+        RuleFor(x => x.Description).MaximumLength(2000);
     }
 }

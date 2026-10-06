@@ -90,6 +90,9 @@ public interface IWorkTaskRepository
     Task AddAsync(WorkTask task, CancellationToken ct = default);
     Task<WorkTask?> GetByIdForTenantAsync(Guid tenantId, Guid id, CancellationToken ct = default);
     Task<WorkTask?> GetTrackedByIdForTenantAsync(Guid tenantId, Guid id, CancellationToken ct = default);
+    Task<bool> IsAssignedToEmployeeAsync(Guid taskId, Guid employeeId, CancellationToken ct = default);
+    Task<IReadOnlyDictionary<Guid, IReadOnlyList<Guid>>> GetAssignedEmployeeIdsByTaskIdsAsync(
+        IReadOnlyCollection<Guid> taskIds, CancellationToken ct = default);
     Task<IReadOnlyList<WorkTask>> GetByObjectiveIdAsync(Guid tenantId, Guid objectiveId, CancellationToken ct = default);
     Task<IReadOnlyList<WorkTask>> GetByParentTaskIdAsync(Guid tenantId, Guid parentTaskId, CancellationToken ct = default);
 

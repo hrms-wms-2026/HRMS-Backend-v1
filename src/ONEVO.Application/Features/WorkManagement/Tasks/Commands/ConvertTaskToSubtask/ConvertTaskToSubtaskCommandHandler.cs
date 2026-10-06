@@ -7,6 +7,7 @@ using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Objectives.Services;
 using ONEVO.Application.Features.WorkManagement.Tasks.DTOs.Responses;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
+using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
 
 namespace ONEVO.Application.Features.WorkManagement.Tasks.Commands.ConvertTaskToSubtask;
 
@@ -54,10 +55,14 @@ public sealed class ConvertTaskToSubtaskCommandHandler : IRequestHandler<Convert
         var task = await _tasks.GetTrackedByIdForTenantAsync(tenantId, request.TaskId, ct);
         if (task is null)
             return Result<WorkTaskResponse>.NotFound("Task not found.");
+        if (task.TaskKind == WorkTaskKinds.EmployeeChecklist)
+            return Result<WorkTaskResponse>.Conflict("Checklist tasks cannot be converted to subtasks.");
 
         var newParent = await _tasks.GetByIdForTenantAsync(tenantId, request.NewParentTaskId, ct);
         if (newParent is null)
             return Result<WorkTaskResponse>.NotFound("Target task not found.");
+        if (newParent.TaskKind == WorkTaskKinds.EmployeeChecklist)
+            return Result<WorkTaskResponse>.Conflict("Checklist tasks cannot contain subtasks.");
 
         // Keeps the existing one-level nesting rule (see CreateSubtaskCommandHandler): the target
         // must itself be a top-level task, never another subtask. This also rules out every cycle -

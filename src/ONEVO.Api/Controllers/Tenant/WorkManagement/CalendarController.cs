@@ -6,6 +6,9 @@ using ONEVO.Api.Filters;
 using ONEVO.Application.Features.WorkManagement.CalendarEvents.Commands.CloseCalendarEvent;
 using ONEVO.Application.Features.WorkManagement.CalendarEvents.Commands.CreateCalendarEvent;
 using ONEVO.Application.Features.WorkManagement.CalendarEvents.Commands.UpdateCalendarEvent;
+using ONEVO.Application.Features.WorkManagement.CalendarEvents.Queries.GetCalendarEventActivity;
+using ONEVO.Application.Features.WorkManagement.CalendarEvents.Queries.GetCalendarEventById;
+using ONEVO.Application.Features.WorkManagement.CalendarEvents.Queries.GetCalendarEventTasks;
 using ONEVO.Application.Features.WorkManagement.CalendarEvents.Queries.GetProjectCalendar;
 
 namespace ONEVO.Api.Controllers.Tenant.WorkManagement;
@@ -29,13 +32,40 @@ public sealed class CalendarController : ControllerBase
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
+    [HttpGet("calendar-events/{id:guid}")]
+    public async Task<IActionResult> GetEvent(Guid id, CancellationToken ct)
+    {
+        var result = await _mediator.Send(new GetCalendarEventByIdQuery(id), ct);
+        return result.IsSuccess
+            ? Ok(result.Value!.ToViewModel())
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    [HttpGet("calendar-events/{id:guid}/tasks")]
+    public async Task<IActionResult> GetEventTasks(Guid id, CancellationToken ct)
+    {
+        var result = await _mediator.Send(new GetCalendarEventTasksQuery(id), ct);
+        return result.IsSuccess
+            ? Ok(result.Value!.Select(t => t.ToViewModel()).ToList())
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    [HttpGet("calendar-events/{id:guid}/activity")]
+    public async Task<IActionResult> GetEventActivity(Guid id, CancellationToken ct)
+    {
+        var result = await _mediator.Send(new GetCalendarEventActivityQuery(id), ct);
+        return result.IsSuccess
+            ? Ok(result.Value!.Select(e => e.ToViewModel()).ToList())
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
     [HttpPost("projects/{projectId:guid}/calendar-events")]
     public async Task<IActionResult> CreateEvent(
         Guid projectId, [FromBody] CreateCalendarEventRequest request, CancellationToken ct)
     {
         var command = new CreateCalendarEventCommand(
             projectId, request.Name, request.Color, request.StartDate, request.EndDate,
-            request.ObjectiveIds, request.TaskIds);
+            request.ObjectiveIds, request.TaskIds, request.Description);
         var result = await _mediator.Send(command, ct);
         return result.IsSuccess
             ? StatusCode(201, result.Value!.ToViewModel())
@@ -48,7 +78,7 @@ public sealed class CalendarController : ControllerBase
     {
         var command = new UpdateCalendarEventCommand(
             id, request.Name, request.Color, request.StartDate, request.EndDate,
-            request.ObjectiveIds, request.TaskIds);
+            request.ObjectiveIds, request.TaskIds, request.Description);
         var result = await _mediator.Send(command, ct);
         return result.IsSuccess
             ? Ok(result.Value!.ToViewModel())
