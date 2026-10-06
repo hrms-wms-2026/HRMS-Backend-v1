@@ -193,6 +193,69 @@ public class EfLeaveApprovalRepository : ILeaveApprovalRepository
         return Task.CompletedTask;
     }
 
+    public Task AddApproverAsync(LeaveRequestApprover approver, CancellationToken ct = default)
+    {
+        _db.LeaveRequestApprovers.Add(approver);
+        return Task.CompletedTask;
+    }
+
+    public async Task<IReadOnlyList<LeaveApprovalHistoryRow>> ListApprovalHistoryAsync(
+        Guid tenantId,
+        Guid approverEmployeeId,
+        DateOnly? fromDate,
+        DateOnly? toDate,
+        int limit,
+        CancellationToken ct = default)
+    {
+        string[] acted =
+        [
+            LeaveRequestApproverStatuses.Approved,
+            LeaveRequestApproverStatuses.Rejected,
+            LeaveRequestApproverStatuses.Forwarded,
+            LeaveRequestApproverStatuses.InformationRequested
+        ];
+
+        var query =
+            from approver in _db.LeaveRequestApprovers.AsNoTracking()
+            join request in _db.LeaveRequests.AsNoTracking() on approver.LeaveRequestId equals request.Id
+            join employee in _db.Employees.AsNoTracking() on request.EmployeeId equals employee.Id
+            join leaveType in _db.LeaveTypes.AsNoTracking() on request.LeaveTypeId equals leaveType.Id
+            where approver.TenantId == tenantId &&
+                  request.TenantId == tenantId &&
+                  approver.ApproverEmployeeId == approverEmployeeId &&
+                  acted.Contains(approver.Status)
+            select new
+            {
+                request,
+                employee.FirstName,
+                employee.LastName,
+                LeaveTypeName = leaveType.Name,
+                approver.Status,
+                approver.Comment,
+                ActedAt = approver.DecidedAt ?? request.UpdatedAt ?? request.CreatedAt
+            };
+
+        if (fromDate is { } from)
+        {
+            var fromStart = new DateTimeOffset(from.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc));
+            query = query.Where(x => x.request.EndAt >= fromStart);
+        }
+        if (toDate is { } to)
+        {
+            var toExclusive = new DateTimeOffset(to.AddDays(1).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc));
+            query = query.Where(x => x.request.StartAt < toExclusive);
+        }
+
+        var rows = await query.OrderByDescending(x => x.ActedAt).Take(limit).ToListAsync(ct);
+        return rows.Select(x => new LeaveApprovalHistoryRow(
+            x.request,
+            LeaveEntitlementMapper.EmployeeName(x.FirstName, x.LastName),
+            x.LeaveTypeName,
+            x.Status,
+            x.ActedAt,
+            x.Comment)).ToList();
+    }
+
     public Task AddBalanceAuditAsync(LeaveBalanceAudit audit, CancellationToken ct = default)
     {
         _db.LeaveBalanceAudits.Add(audit);

@@ -3,6 +3,7 @@ using Moq;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Leave.Approval.Queries;
+using ONEVO.Application.Features.Leave.Approval.Services;
 using ONEVO.Application.Features.Leave.Approval.RepositoryInterfaces;
 using ONEVO.Application.Features.Leave.Request.Services;
 using ONEVO.Domain.Features.CoreHr.Entities;
@@ -107,7 +108,7 @@ public class LeaveApprovalQueryHandlerTests
         repo.Setup(x => x.GetStateAsync(tenantId, request.Id, It.IsAny<CancellationToken>())).ReturnsAsync(state);
         var conflicts = new Mock<ILeaveRequestConflictProvider>();
 
-        var handler = new GetLeaveApprovalDetailQueryHandler(currentUser.Object, employees.Object, repo.Object, conflicts.Object);
+        var handler = new GetLeaveApprovalDetailQueryHandler(currentUser.Object, employees.Object, repo.Object, conflicts.Object, new LeaveForwardTargetResolver(Mock.Of<ILeaveApproverResolver>()), Clock());
         var result = await handler.Handle(new GetLeaveApprovalDetailQuery(request.Id), CancellationToken.None);
 
         result.StatusCode.Should().Be(403);
@@ -147,12 +148,114 @@ public class LeaveApprovalQueryHandlerTests
         conflicts.Setup(x => x.ListConflictsAsync(tenantId, request.EmployeeId, It.IsAny<DateOnly>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync([]);
 
-        var handler = new GetLeaveApprovalDetailQueryHandler(currentUser.Object, employees.Object, repo.Object, conflicts.Object);
+        var handler = new GetLeaveApprovalDetailQueryHandler(currentUser.Object, employees.Object, repo.Object, conflicts.Object, new LeaveForwardTargetResolver(Mock.Of<ILeaveApproverResolver>()), Clock());
         var result = await handler.Handle(new GetLeaveApprovalDetailQuery(request.Id, OrgWideRead: true), CancellationToken.None);
 
         result.IsSuccess.Should().BeTrue();
         result.Value!.CanDecide.Should().BeFalse();
         result.Value.Approvers.Should().ContainSingle(a => a.ApproverEmployeeId == approverId);
+    }
+
+    [Fact]
+    public async Task GetDetail_WhenCallerCanDecide_NamesTheForwardTarget()
+    {
+        var tenantId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+        var current = Employee(tenantId, userId, "Mathu");
+        var request = Request(tenantId, LeaveRequestStatuses.Pending);
+        var state = new LeaveApprovalState(
+            request, null, Employee(tenantId, Guid.NewGuid(), "Tharmi"), "Annual Leave", "AL", LeaveApprovalModes.AnyOne,
+            [new LeaveRequestApprover { ApproverEmployeeId = current.Id, SequenceOrder = 1, Status = LeaveRequestApproverStatuses.Pending }],
+            []);
+        var manager = Employee(tenantId, Guid.NewGuid(), "Nadesh");
+
+        var (currentUser, employees, repo) = Mocks(tenantId, userId, current);
+        currentUser.Setup(x => x.HasPermission("leave:approve")).Returns(true);
+        employees.Setup(x => x.ListByIdsAsync(tenantId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, Employee> { [current.Id] = current, [manager.Id] = manager });
+        repo.Setup(x => x.GetStateAsync(tenantId, request.Id, It.IsAny<CancellationToken>())).ReturnsAsync(state);
+        var conflicts = new Mock<ILeaveRequestConflictProvider>();
+        conflicts.Setup(x => x.ListConflictsAsync(tenantId, request.EmployeeId, It.IsAny<DateOnly>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+        var approverResolver = new Mock<ILeaveApproverResolver>();
+        approverResolver.Setup(x => x.ResolveAsync(tenantId, current.Id, It.IsAny<DateOnly>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new LeaveApproverResolution([new LeaveApproverResolutionRow(manager.Id, 1, null)]));
+
+        var handler = new GetLeaveApprovalDetailQueryHandler(
+            currentUser.Object, employees.Object, repo.Object, conflicts.Object, new LeaveForwardTargetResolver(approverResolver.Object), Clock());
+        var result = await handler.Handle(new GetLeaveApprovalDetailQuery(request.Id), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.CanDecide.Should().BeTrue();
+        result.Value.ForwardTo.Should().NotBeNull();
+        result.Value.ForwardTo!.EmployeeId.Should().Be(manager.Id);
+        result.Value.ForwardTo.Name.Should().StartWith("Nadesh");
+    }
+
+    [Fact]
+    public async Task ListHistory_MapsTheCallersPastActions()
+    {
+        var tenantId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+        var current = Employee(tenantId, userId, "Mathu");
+        var request = Request(tenantId, LeaveRequestStatuses.Pending);
+        var actedAt = new DateTimeOffset(2026, 10, 6, 12, 0, 0, TimeSpan.Zero);
+
+        var (currentUser, employees, repo) = Mocks(tenantId, userId, current);
+        repo.Setup(x => x.ListApprovalHistoryAsync(tenantId, current.Id, null, null, ListLeaveApprovalHistoryQueryHandler.Limit, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([new LeaveApprovalHistoryRow(request, "Tharmi Rajendran", "Annual Leave",
+                LeaveRequestApproverStatuses.Forwarded, actedAt, "Please decide")]);
+
+        var handler = new ListLeaveApprovalHistoryQueryHandler(currentUser.Object, employees.Object, repo.Object);
+        var result = await handler.Handle(new ListLeaveApprovalHistoryQuery(null, null), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        var item = result.Value.Should().ContainSingle().Subject;
+        item.RequestId.Should().Be(request.Id);
+        item.MyAction.Should().Be("forwarded");
+        item.ActedAt.Should().Be(actedAt);
+        item.MyComment.Should().Be("Please decide");
+        item.RequestStatus.Should().Be(LeaveRequestStatuses.Pending);
+    }
+
+    [Fact]
+    public async Task GetDetail_CanChangeDecision_OnlyForTheDecidingApproverBeforeTheLeaveStarts()
+    {
+        var tenantId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+        var current = Employee(tenantId, userId, "Mathu");
+        var request = Request(tenantId, LeaveRequestStatuses.Approved);
+        request.ApprovedBy = current.Id;
+        var state = new LeaveApprovalState(
+            request, null, Employee(tenantId, Guid.NewGuid(), "Tharmi"), "Annual Leave", "AL", LeaveApprovalModes.AnyOne,
+            [new LeaveRequestApprover { ApproverEmployeeId = current.Id, SequenceOrder = 1, Status = LeaveRequestApproverStatuses.Approved }],
+            []);
+
+        var (currentUser, employees, repo) = Mocks(tenantId, userId, current);
+        currentUser.Setup(x => x.HasPermission("leave:approve")).Returns(true);
+        employees.Setup(x => x.ListByIdsAsync(tenantId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, Employee> { [current.Id] = current });
+        repo.Setup(x => x.GetStateAsync(tenantId, request.Id, It.IsAny<CancellationToken>())).ReturnsAsync(state);
+        var conflicts = new Mock<ILeaveRequestConflictProvider>();
+        conflicts.Setup(x => x.ListConflictsAsync(tenantId, request.EmployeeId, It.IsAny<DateOnly>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+
+        var before = new GetLeaveApprovalDetailQueryHandler(
+            currentUser.Object, employees.Object, repo.Object, conflicts.Object,
+            new LeaveForwardTargetResolver(Mock.Of<ILeaveApproverResolver>()), Clock(request.StartAt.AddDays(-1)));
+        (await before.Handle(new GetLeaveApprovalDetailQuery(request.Id), CancellationToken.None)).Value!.CanChangeDecision.Should().BeTrue();
+
+        var after = new GetLeaveApprovalDetailQueryHandler(
+            currentUser.Object, employees.Object, repo.Object, conflicts.Object,
+            new LeaveForwardTargetResolver(Mock.Of<ILeaveApproverResolver>()), Clock(request.StartAt.AddHours(1)));
+        (await after.Handle(new GetLeaveApprovalDetailQuery(request.Id), CancellationToken.None)).Value!.CanChangeDecision.Should().BeFalse();
+    }
+
+    private static IDateTimeProvider Clock(DateTimeOffset? now = null)
+    {
+        var clock = new Mock<IDateTimeProvider>();
+        clock.SetupGet(x => x.UtcNow).Returns(now ?? new DateTimeOffset(2026, 8, 22, 10, 0, 0, TimeSpan.Zero));
+        return clock.Object;
     }
 
     private static (Mock<ICurrentUser> CurrentUser, Mock<IEmployeeRepository> Employees, Mock<ILeaveApprovalRepository> Repo)

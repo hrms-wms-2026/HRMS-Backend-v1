@@ -22,6 +22,18 @@ public interface ILeaveApprovalRepository
 
     Task AddInfoMessageAsync(LeaveRequestInfoMessage message, CancellationToken ct = default);
 
+    Task AddApproverAsync(LeaveRequestApprover approver, CancellationToken ct = default);
+
+    /// <summary>Requests this approver already acted on (approved, rejected, forwarded or asked for info),
+    /// newest action first.</summary>
+    Task<IReadOnlyList<LeaveApprovalHistoryRow>> ListApprovalHistoryAsync(
+        Guid tenantId,
+        Guid approverEmployeeId,
+        DateOnly? fromDate,
+        DateOnly? toDate,
+        int limit,
+        CancellationToken ct = default);
+
     Task AddBalanceAuditAsync(LeaveBalanceAudit audit, CancellationToken ct = default);
 
     Task AddDocumentsAsync(IReadOnlyCollection<LeaveRequestDocument> documents, CancellationToken ct = default);
@@ -72,3 +84,11 @@ public sealed record LeaveRequestAllListRow(
     string? DepartmentName,
     string LeaveTypeName,
     IReadOnlyList<string> ApproverNames);
+
+public sealed record LeaveApprovalHistoryRow(
+    LeaveRequest Request,
+    string EmployeeName,
+    string LeaveTypeName,
+    string MyAction,
+    DateTimeOffset ActedAt,
+    string? MyComment);
