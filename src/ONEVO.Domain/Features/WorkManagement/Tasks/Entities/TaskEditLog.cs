@@ -6,6 +6,7 @@ public static class TaskEditLogSources
 {
     public const string Direct = "direct";
     public const string ApprovedRequest = "approved_request";
+    public const string Reverted = "reverted";
 }
 
 /// <summary>

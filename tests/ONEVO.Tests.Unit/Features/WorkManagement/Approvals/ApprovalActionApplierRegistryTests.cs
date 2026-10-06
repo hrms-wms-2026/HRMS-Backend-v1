@@ -9,7 +9,7 @@ public class ApprovalActionApplierRegistryTests
     private sealed class StubApplier(string actionType) : IApprovalActionApplier
     {
         public string ActionType { get; } = actionType;
-        public Task<ApplyOutcome> ApplyAsync(ApprovalApplyContext context, CancellationToken ct) => Task.FromResult(ApplyOutcome.Applied);
+        public Task<ApplyOutcome> ApplyAsync(ApprovalApplyContext context, CancellationToken ct) => Task.FromResult(ApplyOutcome.Applied());
     }
 
     [Fact]

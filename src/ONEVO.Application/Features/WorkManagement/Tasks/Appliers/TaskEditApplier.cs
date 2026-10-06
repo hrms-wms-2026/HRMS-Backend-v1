@@ -58,10 +58,15 @@ public sealed class TaskEditApplier : IApprovalActionApplier
         if (objective is null)
             return ApplyOutcome.Stale;
 
+        var undo = new TaskEditInput(
+            task.Title, task.Description, task.Priority, task.DueDate, task.EstimatedHours,
+            task.StoryPoints, task.ProgressPercent, null, task.SprintId);
+        var undoJson = JsonSerializer.Serialize(undo, TaskPayload.Options);
+
         var applied = await _writes.ApplyEditAsync(request.TenantId, request.RequestedByEmployeeId, task, objective, input,
             TaskEditLogSources.ApprovedRequest, request.Id, ct);
         return applied.IsSuccess
-            ? ApplyOutcome.Applied
+            ? ApplyOutcome.Applied(undoJson)
             : ApplyOutcome.Invalid(applied.Error ?? "The task edit is not valid.");
     }
 }

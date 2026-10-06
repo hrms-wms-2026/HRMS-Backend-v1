@@ -7,6 +7,7 @@ using ONEVO.Application.Features.WorkManagement.Approvals.Comments.Commands.Edit
 using ONEVO.Application.Features.WorkManagement.Approvals.Comments.Commands.ReplyApprovalComment;
 using ONEVO.Application.Features.WorkManagement.Approvals.Comments.Queries.ListApprovalComments;
 using ONEVO.Application.Features.WorkManagement.Approvals.Commands.DecideWorkApprovalRequest;
+using ONEVO.Application.Features.WorkManagement.Approvals.Commands.RevertWorkApprovalRequest;
 using ONEVO.Application.Features.WorkManagement.Approvals.Queries.GetApprovalDetail;
 using ONEVO.Application.Features.WorkManagement.Approvals.Queries.GetProjectApprovalFeed;
 using ONEVO.Application.Features.WorkManagement.Approvals.Queries.ListProjectWorkApprovals;
@@ -56,6 +57,10 @@ public class WorkApprovalsController : ControllerBase
     [HttpPost("approvals/{id:guid}/cancel")]
     public async Task<IActionResult> Cancel(Guid id, CancellationToken ct)
         => ToResult(await _mediator.Send(new DecideWorkApprovalRequestCommand(id, WorkApprovalDecision.Cancel, null, null), ct));
+
+    [HttpPost("approvals/{id:guid}/revert")]
+    public async Task<IActionResult> Revert(Guid id, CancellationToken ct)
+        => ToResult(await _mediator.Send(new RevertWorkApprovalRequestCommand(id), ct));
 
     /// <summary>The comment thread of an approval request (subjectType=approval) or module invitation (subjectType=invitation).</summary>
     [HttpGet("approval-comments")]

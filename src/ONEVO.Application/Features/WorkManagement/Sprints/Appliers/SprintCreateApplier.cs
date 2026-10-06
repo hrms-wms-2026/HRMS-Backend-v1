@@ -51,6 +51,6 @@ public sealed class SprintCreateApplier : IApprovalActionApplier
             return ApplyOutcome.Invalid(created.Error ?? "The sprint could not be created.");
 
         request.TargetId = created.Value!.Id;
-        return ApplyOutcome.Applied;
+        return ApplyOutcome.Applied();
     }
 }

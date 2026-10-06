@@ -11045,6 +11045,14 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("requested_by_employee_id");
 
+                    b.Property<DateTimeOffset?>("RevertedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("reverted_at");
+
+                    b.Property<Guid?>("RevertedByEmployeeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("reverted_by_employee_id");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(20)
@@ -11074,6 +11082,10 @@ namespace ONEVO.Infrastructure.Migrations
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uuid")
                         .HasColumnName("tenant_id");
+
+                    b.Property<string>("UndoStateJson")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("undo_state_json");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
                         .HasColumnType("timestamp with time zone")

@@ -44,6 +44,10 @@ public sealed class TaskStatusTemplateChangeApplier : IApprovalActionApplier
         }
 
         var current = await _statuses.GetProjectTemplateAsync(request.TenantId, request.ProjectId, ct);
+        var undoJson = JsonSerializer.Serialize(
+            new ProjectStatusTemplateUndoSnapshot(current.Select(s => new ProjectStatusTemplateSnapshotEntry(
+                s.Id, s.Name, s.DisplayOrder, s.Category, s.Color, s.Visibility, s.MarksTaskComplete)).ToList()),
+            TaskPayload.Options);
         var applied = TaskStatusChangeSetApplier.Apply(
             current, payload.Changes, request.TenantId, request.ProjectId, _currentUser.UserId, DateTimeOffset.UtcNow);
 
@@ -62,6 +66,6 @@ public sealed class TaskStatusTemplateChangeApplier : IApprovalActionApplier
         await _sweeper.MarkConflictingStaleAsync(
             request.TenantId, request.ProjectId, context.DeciderEmployeeId, payload.Changes.Footprint(), request.Id, ct);
 
-        return ApplyOutcome.Applied;
+        return ApplyOutcome.Applied(undoJson);
     }
 }

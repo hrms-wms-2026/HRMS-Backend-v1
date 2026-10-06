@@ -263,6 +263,13 @@ public sealed class TaskWriteService : ITaskWriteService
 
     public void Delete(WorkTask trackedTask) => _tasks.Remove(trackedTask);
 
+    public void Restore(WorkTask trackedTask)
+    {
+        trackedTask.IsDeleted = false;
+        trackedTask.DeletedAt = null;
+        _tasks.Update(trackedTask);
+    }
+
     private async Task<Domain.Features.WorkManagement.Tasks.Entities.TaskStatus?> FindDefaultStatusAsync(
         Guid tenantId, Guid projectId, CancellationToken ct)
     {

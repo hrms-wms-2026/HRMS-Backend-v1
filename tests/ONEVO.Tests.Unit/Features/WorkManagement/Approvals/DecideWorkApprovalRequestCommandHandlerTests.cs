@@ -75,7 +75,7 @@ public class DecideWorkApprovalRequestCommandHandlerTests
     {
         Caller(A);
         _applier.Setup(x => x.ApplyAsync(It.Is<ApprovalApplyContext>(c => c.PayloadJson == "{\"title\":\"new\"}" && c.DeciderEmployeeId == A), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(ApplyOutcome.Applied);
+            .ReturnsAsync(ApplyOutcome.Applied());
 
         var result = await Build().Handle(Cmd(_request.Id, WorkApprovalDecision.Approve, "{\"title\":\"new\"}"), default);
 
@@ -94,7 +94,7 @@ public class DecideWorkApprovalRequestCommandHandlerTests
     {
         Caller(A);
         _request.PayloadJson = """{"Title":"A"}""";
-        _applier.Setup(x => x.ApplyAsync(It.IsAny<ApprovalApplyContext>(), It.IsAny<CancellationToken>())).ReturnsAsync(ApplyOutcome.Applied);
+        _applier.Setup(x => x.ApplyAsync(It.IsAny<ApprovalApplyContext>(), It.IsAny<CancellationToken>())).ReturnsAsync(ApplyOutcome.Applied());
 
         var result = await Build().Handle(Cmd(_request.Id, WorkApprovalDecision.Approve, """{"Title":"B"}"""), default);
 
@@ -108,7 +108,7 @@ public class DecideWorkApprovalRequestCommandHandlerTests
     public async Task Approve_without_edits_leaves_applied_payload_null()
     {
         Caller(A);
-        _applier.Setup(x => x.ApplyAsync(It.IsAny<ApprovalApplyContext>(), It.IsAny<CancellationToken>())).ReturnsAsync(ApplyOutcome.Applied);
+        _applier.Setup(x => x.ApplyAsync(It.IsAny<ApprovalApplyContext>(), It.IsAny<CancellationToken>())).ReturnsAsync(ApplyOutcome.Applied());
 
         var result = await Build().Handle(Cmd(_request.Id, WorkApprovalDecision.Approve), default);
 
@@ -127,7 +127,21 @@ public class DecideWorkApprovalRequestCommandHandlerTests
 
         result.IsSuccess.Should().BeTrue();
         _request.Status.Should().Be(WorkApprovalRequestStatuses.Stale);
+        _request.UndoStateJson.Should().BeNull();
         _notifications.Verify(x => x.NotifyAsync(It.Is<WorkNotificationEvent>(e => e.Kind == WorkNotificationKinds.Stale), It.IsAny<CancellationToken>()));
+    }
+
+    [Fact]
+    public async Task Approve_PersistsUndoJsonFromApplierOutcome_ForLaterRevert()
+    {
+        Caller(A);
+        _applier.Setup(x => x.ApplyAsync(It.IsAny<ApprovalApplyContext>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ApplyOutcome.Applied("{\"title\":\"pre-edit\"}"));
+
+        var result = await Build().Handle(Cmd(_request.Id, WorkApprovalDecision.Approve), default);
+
+        result.IsSuccess.Should().BeTrue();
+        _request.UndoStateJson.Should().Be("{\"title\":\"pre-edit\"}");
     }
 
     [Fact]
@@ -185,6 +199,19 @@ public class DecideWorkApprovalRequestCommandHandlerTests
         _request.Status.Should().Be(WorkApprovalRequestStatuses.Cancelled);
         _notifications.Verify(x => x.NotifyAsync(It.Is<WorkNotificationEvent>(e =>
             e.Kind == WorkNotificationKinds.Cancelled && e.RecipientEmployeeIds.Single() == A), It.IsAny<CancellationToken>()));
+    }
+
+    [Fact]
+    public async Task Cancel_WindowExpired_ReturnsConflict()
+    {
+        _request.CreatedAt = DateTimeOffset.UtcNow.AddMinutes(-(ApprovalRevertWindow.Minutes + 1));
+        Caller(Requester);
+
+        var result = await Build().Handle(Cmd(_request.Id, WorkApprovalDecision.Cancel), default);
+
+        result.IsSuccess.Should().BeFalse();
+        result.StatusCode.Should().Be(409);
+        _request.Status.Should().Be(WorkApprovalRequestStatuses.Pending);
     }
 
     [Fact]

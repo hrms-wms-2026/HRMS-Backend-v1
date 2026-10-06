@@ -94,6 +94,13 @@ public sealed class ModuleWriteService : IModuleWriteService
         return Result.Success();
     }
 
+    public void Restore(Objective trackedModule)
+    {
+        trackedModule.IsActive = true;
+        trackedModule.UpdatedAt = DateTimeOffset.UtcNow;
+        _objectives.Update(trackedModule);
+    }
+
     // ---- Transfer head ----
 
     public async Task<Result> ValidateTransferAsync(Guid tenantId, Objective module, ModuleTransferInput input, CancellationToken ct = default)

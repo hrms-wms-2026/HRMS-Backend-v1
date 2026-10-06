@@ -196,4 +196,13 @@ public class ModuleWriteServiceTests
         result.IsSuccess.Should().BeTrue();
         module.AllocatedHours.Should().Be(15m);
     }
+
+    [Fact]
+    public void Restore_SetsIsActiveTrue()
+    {
+        var module = new Objective { Id = Guid.NewGuid(), TenantId = TenantId, IsActive = false };
+        var service = Build();
+        service.Restore(module);
+        module.IsActive.Should().BeTrue();
+    }
 }

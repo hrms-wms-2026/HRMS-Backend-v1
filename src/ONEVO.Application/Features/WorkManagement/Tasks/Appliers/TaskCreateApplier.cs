@@ -8,7 +8,7 @@ using ONEVO.Domain.Features.WorkManagement.Approvals.Entities;
 
 namespace ONEVO.Application.Features.WorkManagement.Tasks.Appliers;
 
-internal static class TaskPayload
+public static class TaskPayload
 {
     // Case-insensitive: rows migrated from the old request tables were serialised PascalCase.
     public static readonly JsonSerializerOptions Options = new(JsonSerializerDefaults.Web);
@@ -51,6 +51,6 @@ public sealed class TaskCreateApplier : IApprovalActionApplier
             return ApplyOutcome.Invalid(created.Error ?? "The task could not be created.");
 
         request.TargetId = created.Value!.Id;   // links the approved request to the task it produced
-        return ApplyOutcome.Applied;
+        return ApplyOutcome.Applied();
     }
 }

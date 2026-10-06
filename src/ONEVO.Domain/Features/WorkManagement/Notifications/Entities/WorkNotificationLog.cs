@@ -14,6 +14,7 @@ public static class WorkNotificationKinds
     public const string Commented = "commented";
     /// <summary>A project monitor alert (no approval request; the actor is the system, Guid.Empty).</summary>
     public const string Alert = "alert";
+    public const string Reverted = "reverted";
 }
 
 /// <summary>One recipient's copy of a Work Management activity - the project-scoped history shown

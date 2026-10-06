@@ -58,6 +58,6 @@ public sealed class ListProjectWorkApprovalsQueryHandler
         var ids = rows.SelectMany(r => new[] { r.RequestedByEmployeeId, r.ApproverEmployeeId }).Distinct().ToList();
         var names = await _identity.ResolveDisplayNamesByEmployeeIdAsync(tenantId, ids, ct);
         return Result<IReadOnlyList<WorkApprovalRequestResponse>>.Success(
-            rows.Select(r => WorkApprovalRequestMapper.ToResponse(r, names, tree)).ToList());
+            rows.Select(r => WorkApprovalRequestMapper.ToResponse(r, names, caller, tree)).ToList());
     }
 }

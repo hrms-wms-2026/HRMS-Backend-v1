@@ -3,7 +3,9 @@ using Moq;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Features.WorkManagement.Sprints.DTOs;
 using ONEVO.Application.Features.WorkManagement.Sprints.Services;
+using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.WorkManagement.Projects.Entities;
+using ONEVO.Domain.Features.WorkManagement.ProjectMembers.Entities;
 using ONEVO.Domain.Features.WorkManagement.Sprints.Entities;
 using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
 using Xunit;
@@ -143,6 +145,62 @@ public class SprintWriteServiceTests
     }
 
     [Fact]
+    public async Task ApplyComplete_UnfinishedTasksMovedToBacklog_NotifiesIncomplete()
+    {
+        var sprint = Sprint(SprintStatuses.Active);
+        var objectiveId = Guid.NewGuid();
+        var todo = Guid.NewGuid();
+        var task = new WorkTask { Id = Guid.NewGuid(), SprintId = sprint.Id, StatusId = todo, ObjectiveId = objectiveId };
+        _w.Tasks.Setup(x => x.GetBySprintIdAsync(TenantId, sprint.Id, It.IsAny<CancellationToken>())).ReturnsAsync(new List<WorkTask> { task });
+        _w.Statuses.Setup(x => x.GetByIdForTenantAsync(TenantId, todo, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new TaskStatus { Id = todo, MarksTaskComplete = false });
+
+        var employeeId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+        _w.Members.Setup(x => x.ListActiveForObjectiveAsync(TenantId, objectiveId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<ProjectMember> { new() { EmployeeId = employeeId, ObjectiveId = objectiveId, ProjectId = ProjectId } });
+        _w.Membership.Setup(x => x.GetActiveAssigneeAsync(TenantId, employeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Employee { Id = employeeId, UserId = userId });
+
+        await _w.Writes().ApplyCompleteAsync(TenantId, Actor, sprint, new SprintCompleteInput("backlog", null));
+
+        _w.Notifications.Verify(x => x.SendTemplatedAsync(
+            TenantId, userId, "work_sprint_incomplete",
+            It.IsAny<IReadOnlyDictionary<string, string>>(), "sprint", sprint.Id, It.IsAny<CancellationToken>()), Times.Once);
+        _w.Notifications.Verify(x => x.SendTemplatedAsync(
+            It.IsAny<Guid>(), It.IsAny<Guid>(), "work_sprint_completed",
+            It.IsAny<IReadOnlyDictionary<string, string>>(), It.IsAny<string>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ApplyComplete_AllTasksAlreadyComplete_NotifiesCompleted()
+    {
+        var sprint = Sprint(SprintStatuses.Active);
+        var objectiveId = Guid.NewGuid();
+        var done = Guid.NewGuid();
+        var task = new WorkTask { Id = Guid.NewGuid(), SprintId = sprint.Id, StatusId = done, ObjectiveId = objectiveId };
+        _w.Tasks.Setup(x => x.GetBySprintIdAsync(TenantId, sprint.Id, It.IsAny<CancellationToken>())).ReturnsAsync(new List<WorkTask> { task });
+        _w.Statuses.Setup(x => x.GetByIdForTenantAsync(TenantId, done, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new TaskStatus { Id = done, MarksTaskComplete = true });
+
+        var employeeId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+        _w.Members.Setup(x => x.ListActiveForObjectiveAsync(TenantId, objectiveId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<ProjectMember> { new() { EmployeeId = employeeId, ObjectiveId = objectiveId, ProjectId = ProjectId } });
+        _w.Membership.Setup(x => x.GetActiveAssigneeAsync(TenantId, employeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Employee { Id = employeeId, UserId = userId });
+
+        await _w.Writes().ApplyCompleteAsync(TenantId, Actor, sprint, new SprintCompleteInput("backlog", null));
+
+        _w.Notifications.Verify(x => x.SendTemplatedAsync(
+            TenantId, userId, "work_sprint_completed",
+            It.IsAny<IReadOnlyDictionary<string, string>>(), "sprint", sprint.Id, It.IsAny<CancellationToken>()), Times.Once);
+        _w.Notifications.Verify(x => x.SendTemplatedAsync(
+            It.IsAny<Guid>(), It.IsAny<Guid>(), "work_sprint_incomplete",
+            It.IsAny<IReadOnlyDictionary<string, string>>(), It.IsAny<string>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
     public async Task ValidateAchieve_AlreadyAchieved_Conflict()
     {
         var result = await _w.Writes().ValidateAchieveAsync(TenantId, Sprint(SprintStatuses.Achieved));
@@ -185,5 +243,80 @@ public class SprintWriteServiceTests
 
         tracked.SprintId.Should().BeNull();
         _w.Sprints.Verify(x => x.Remove(sprint), Times.Once);
+    }
+
+    [Fact]
+    public async Task Restore_UndeletesSprintAndReattachesGivenTasks()
+    {
+        var sprint = Sprint(SprintStatuses.Complete);
+        sprint.IsDeleted = true;
+        sprint.DeletedAt = DateTimeOffset.UtcNow;
+        var task = new WorkTask { Id = Guid.NewGuid(), TenantId = TenantId, SprintId = null };
+        _w.Tasks.Setup(x => x.GetTrackedByIdForTenantAsync(TenantId, task.Id, It.IsAny<CancellationToken>())).ReturnsAsync(task);
+
+        var result = await _w.Writes().Restore(TenantId, sprint, new[] { task.Id }, CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        sprint.IsDeleted.Should().BeFalse();
+        sprint.DeletedAt.Should().BeNull();
+        task.SprintId.Should().Be(sprint.Id);
+    }
+
+    [Fact]
+    public async Task Restore_TaskAlreadyInAnotherSprint_ReturnsConflict()
+    {
+        var sprint = Sprint(SprintStatuses.Complete);
+        sprint.IsDeleted = true;
+        var elsewhere = Guid.NewGuid();
+        var task = new WorkTask { Id = Guid.NewGuid(), TenantId = TenantId, SprintId = elsewhere };
+        _w.Tasks.Setup(x => x.GetTrackedByIdForTenantAsync(TenantId, task.Id, It.IsAny<CancellationToken>())).ReturnsAsync(task);
+
+        var result = await _w.Writes().Restore(TenantId, sprint, new[] { task.Id }, CancellationToken.None);
+
+        result.IsSuccess.Should().BeFalse();
+        sprint.IsDeleted.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task ApplyUncompleteAsync_RestoresActiveStatusAndMovedTasks()
+    {
+        var sprint = Sprint(SprintStatuses.Complete);
+        sprint.CompletedAt = DateTimeOffset.UtcNow;
+        var movedTask = new WorkTask { Id = Guid.NewGuid(), TenantId = TenantId, SprintId = null };
+        _w.Tasks.Setup(x => x.GetTrackedByIdForTenantAsync(TenantId, movedTask.Id, It.IsAny<CancellationToken>())).ReturnsAsync(movedTask);
+
+        var result = await _w.Writes().ApplyUncompleteAsync(TenantId, Actor, sprint, new[] { movedTask.Id }, null, CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        sprint.Status.Should().Be(SprintStatuses.Active);
+        sprint.CompletedAt.Should().BeNull();
+        movedTask.SprintId.Should().Be(sprint.Id);
+    }
+
+    [Fact]
+    public async Task ApplyUncompleteAsync_MovedTaskNoLongerWhereCompleteLeftIt_ReturnsConflict()
+    {
+        var sprint = Sprint(SprintStatuses.Complete);
+        var elsewhere = Guid.NewGuid();
+        var movedTask = new WorkTask { Id = Guid.NewGuid(), TenantId = TenantId, SprintId = elsewhere };
+        _w.Tasks.Setup(x => x.GetTrackedByIdForTenantAsync(TenantId, movedTask.Id, It.IsAny<CancellationToken>())).ReturnsAsync(movedTask);
+
+        var result = await _w.Writes().ApplyUncompleteAsync(TenantId, Actor, sprint, new[] { movedTask.Id }, null, CancellationToken.None);
+
+        result.IsSuccess.Should().BeFalse();
+        sprint.Status.Should().Be(SprintStatuses.Complete);
+    }
+
+    [Fact]
+    public async Task ApplyUnachieveAsync_RestoresPreviousStatusAndClearsAchievedAt()
+    {
+        var sprint = Sprint(SprintStatuses.Achieved);
+        sprint.AchievedAt = DateTimeOffset.UtcNow;
+
+        var result = await _w.Writes().ApplyUnachieveAsync(TenantId, Actor, sprint, SprintStatuses.Active, CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        sprint.Status.Should().Be(SprintStatuses.Active);
+        sprint.AchievedAt.Should().BeNull();
     }
 }

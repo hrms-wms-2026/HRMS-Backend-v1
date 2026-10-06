@@ -155,9 +155,11 @@ public sealed class GetApprovalDetailQueryHandler : IRequestHandler<GetApprovalD
             ? tree.Get(m)?.AllocatedHours
             : null;
 
+        var (canRevert, revertableUntil) = ApprovalRevertWindow.ComputeCanRevert(request, caller);
         return Result<ApprovalDetailResponse>.Success(new ApprovalDetailResponse(
             item, request.PayloadJson, request.AppliedPayloadJson, fields, canEdit,
-            string.IsNullOrWhiteSpace(note) ? null : note.Trim(), allocated, Invitation: null));
+            string.IsNullOrWhiteSpace(note) ? null : note.Trim(), allocated, Invitation: null,
+            canRevert, revertableUntil));
     }
 
     private async Task<Result<ApprovalDetailResponse>> InvitationDetailAsync(Guid tenantId, Guid id, Guid caller, CancellationToken ct)
@@ -183,7 +185,7 @@ public sealed class GetApprovalDetailQueryHandler : IRequestHandler<GetApprovalD
 
         return Result<ApprovalDetailResponse>.Success(new ApprovalDetailResponse(
             item, RequestedPayloadJson: null, AppliedPayloadJson: null, Fields: [], CanEditPayload: false,
-            Note: null, CurrentAllocatedHours: null, block));
+            Note: null, CurrentAllocatedHours: null, block, CanRevert: false, RevertableUntil: null));
     }
 
     private static string? Date(DateOnly? date) => date?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);

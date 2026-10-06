@@ -18,4 +18,8 @@ public sealed record WorkApprovalRequestResponse(
     DateTimeOffset? DecidedAt,
     /// <summary>The target Module's allocated hours right now - set only for module.allocation_extend rows, so the
     /// approver sees "current -> requested".</summary>
-    decimal? CurrentAllocatedHours = null);
+    decimal? CurrentAllocatedHours,
+    /// <summary>True only for the viewer who decided this request, only while Approved/Rejected, only
+    /// within ApprovalRevertWindow.Minutes of DecidedAt.</summary>
+    bool CanRevert,
+    DateTimeOffset? RevertableUntil);

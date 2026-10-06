@@ -92,6 +92,7 @@ public sealed class WorkNotificationEngine : IWorkNotificationEngine
         WorkNotificationKinds.Rejected => "rejected",
         WorkNotificationKinds.Cancelled => "cancelled",
         WorkNotificationKinds.Stale => "closed as outdated",
+        WorkNotificationKinds.Reverted => "reopened for another decision",
         _ => string.Empty,
     };
 }

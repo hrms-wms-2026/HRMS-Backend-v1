@@ -19,6 +19,9 @@ public class EfWorkTaskRepository : IWorkTaskRepository
     public async Task<WorkTask?> GetTrackedByIdForTenantAsync(Guid tenantId, Guid id, CancellationToken ct = default)
         => await _db.WorkTasks.FirstOrDefaultAsync(t => t.TenantId == tenantId && t.Id == id, ct);
 
+    public async Task<WorkTask?> GetTrackedByIdForTenantIncludingDeletedAsync(Guid tenantId, Guid id, CancellationToken ct = default)
+        => await _db.WorkTasks.IgnoreQueryFilters().FirstOrDefaultAsync(t => t.TenantId == tenantId && t.Id == id, ct);
+
     public Task<bool> IsAssignedToEmployeeAsync(Guid taskId, Guid employeeId, CancellationToken ct = default)
         => _db.TaskAssignments.AsNoTracking()
             .AnyAsync(assignment => assignment.TaskId == taskId && assignment.EmployeeId == employeeId, ct);

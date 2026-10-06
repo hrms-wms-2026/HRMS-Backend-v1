@@ -191,11 +191,11 @@ public sealed class SprintWriteService : ISprintWriteService
         return Result.Success();
     }
 
-    public async Task<Result> ApplyCompleteAsync(Guid tenantId, Guid actorEmployeeId, Sprint trackedSprint, SprintCompleteInput input, CancellationToken ct = default)
+    public async Task<Result<IReadOnlyList<Guid>>> ApplyCompleteAsync(Guid tenantId, Guid actorEmployeeId, Sprint trackedSprint, SprintCompleteInput input, CancellationToken ct = default)
     {
         var validation = await ValidateCompleteAsync(tenantId, trackedSprint, input, ct);
         if (!validation.IsSuccess)
-            return validation;
+            return Result<IReadOnlyList<Guid>>.Failure(validation.Error!, validation.StatusCode ?? 400);
 
         var fromStatus = trackedSprint.Status;
         var tasks = await _tasks.GetBySprintIdAsync(tenantId, trackedSprint.Id, ct);
@@ -226,8 +226,9 @@ public sealed class SprintWriteService : ISprintWriteService
                 tenantId, input.TargetSprintId!.Value, actorEmployeeId, SprintActivityActions.TasksAdded,
                 details: new { taskIds = movedTaskIds }), ct);
 
-        await NotifyAudienceAsync(tenantId, trackedSprint, audience, "work_sprint_completed", ct);
-        return Result.Success();
+        var completionTemplateCode = movedTaskIds.Count > 0 ? "work_sprint_incomplete" : "work_sprint_completed";
+        await NotifyAudienceAsync(tenantId, trackedSprint, audience, completionTemplateCode, ct);
+        return Result<IReadOnlyList<Guid>>.Success(movedTaskIds);
     }
 
     // ---- Achieve ----
@@ -273,6 +274,72 @@ public sealed class SprintWriteService : ISprintWriteService
             tracked.UpdatedAt = DateTimeOffset.UtcNow;
         }
         _sprints.Remove(trackedSprint);
+    }
+
+    public async Task<Result> Restore(Guid tenantId, Sprint trackedSprint, IReadOnlyCollection<Guid> taskIdsToReattach, CancellationToken ct = default)
+    {
+        var tracked = new List<Domain.Features.WorkManagement.Tasks.Entities.WorkTask>();
+        foreach (var taskId in taskIdsToReattach)
+        {
+            var task = await _tasks.GetTrackedByIdForTenantAsync(tenantId, taskId, ct);
+            // A task this sprint's delete moved out must still be unassigned - if it's since joined a
+            // different sprint, re-grabbing it here would silently steal it from that other sprint.
+            if (task is null || task.SprintId is not null)
+                return Result.Conflict("A task that was in this sprint has since moved elsewhere - restore it manually first.");
+            tracked.Add(task);
+        }
+
+        foreach (var task in tracked)
+        {
+            task.SprintId = trackedSprint.Id;
+            task.UpdatedAt = DateTimeOffset.UtcNow;
+            _tasks.Update(task);
+        }
+
+        trackedSprint.IsDeleted = false;
+        trackedSprint.DeletedAt = null;
+        trackedSprint.UpdatedAt = DateTimeOffset.UtcNow;
+        return Result.Success();
+    }
+
+    public async Task<Result> ApplyUncompleteAsync(Guid tenantId, Guid actorEmployeeId, Sprint trackedSprint, IReadOnlyCollection<Guid> movedTaskIds, Guid? targetSprintId, CancellationToken ct = default)
+    {
+        var tracked = new List<Domain.Features.WorkManagement.Tasks.Entities.WorkTask>();
+        foreach (var taskId in movedTaskIds)
+        {
+            var task = await _tasks.GetTrackedByIdForTenantAsync(tenantId, taskId, ct);
+            if (task is null || task.SprintId != targetSprintId)
+                return Result.Conflict("A task this sprint's completion moved has since moved again - complete the sprint again instead of reverting.");
+            tracked.Add(task);
+        }
+
+        foreach (var task in tracked)
+        {
+            task.SprintId = trackedSprint.Id;
+            task.UpdatedAt = DateTimeOffset.UtcNow;
+            _tasks.Update(task);
+        }
+
+        var fromStatus = trackedSprint.Status;
+        trackedSprint.Status = SprintStatuses.Active;
+        trackedSprint.CompletedAt = null;
+        trackedSprint.UpdatedAt = DateTimeOffset.UtcNow;
+
+        await _logs.AddAsync(SprintActivityLogFactory.Create(
+            tenantId, trackedSprint.Id, actorEmployeeId, SprintActivityActions.Reverted, fromStatus, SprintStatuses.Active,
+            new { movedBackTaskIds = movedTaskIds }), ct);
+        return Result.Success();
+    }
+
+    public Task<Result> ApplyUnachieveAsync(Guid tenantId, Guid actorEmployeeId, Sprint trackedSprint, string previousStatus, CancellationToken ct = default)
+    {
+        if (trackedSprint.Status != SprintStatuses.Achieved)
+            return Task.FromResult(Result.Conflict("This sprint is not achieved."));
+
+        trackedSprint.Status = previousStatus;
+        trackedSprint.AchievedAt = null;
+        trackedSprint.UpdatedAt = DateTimeOffset.UtcNow;
+        return Task.FromResult(Result.Success());
     }
 
     private async Task NotifyAudienceAsync(Guid tenantId, Sprint sprint, IReadOnlyList<Guid> audience, string templateCode, CancellationToken ct)

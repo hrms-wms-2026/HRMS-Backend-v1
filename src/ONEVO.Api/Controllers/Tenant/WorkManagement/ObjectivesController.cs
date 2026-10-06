@@ -20,6 +20,7 @@ using ONEVO.Application.Features.WorkManagement.Objectives.Queries.GetObjectiveM
 using ONEVO.Application.Features.WorkManagement.Objectives.Queries.GetObjectiveSubtree;
 using ONEVO.Application.Features.WorkManagement.Objectives.Queries.GetObjectiveTree;
 using ONEVO.Application.Features.WorkManagement.ProjectInvitations.Commands.AcceptObjectiveInvitation;
+using ONEVO.Application.Features.WorkManagement.ProjectInvitations.Commands.CancelObjectiveInvitation;
 using ONEVO.Application.Features.WorkManagement.ProjectInvitations.Commands.RejectObjectiveInvitation;
 using ONEVO.Application.Features.WorkManagement.ProjectInvitations.Queries.GetMyObjectiveInvitations;
 
@@ -168,6 +169,18 @@ public class ObjectivesController : ControllerBase
     public async Task<IActionResult> RejectInvitation(Guid invitationId, CancellationToken ct)
     {
         var result = await _mediator.Send(new RejectObjectiveInvitationCommand(invitationId), ct);
+
+        return result.IsSuccess
+            ? NoContent()
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Withdraws a pending invitation. Caller must be the person who sent it, within 30 minutes
+    /// of sending it (ApprovalRevertWindow.Minutes).</summary>
+    [HttpPost("invitations/{invitationId:guid}/cancel")]
+    public async Task<IActionResult> CancelInvitation(Guid invitationId, CancellationToken ct)
+    {
+        var result = await _mediator.Send(new CancelObjectiveInvitationCommand(invitationId), ct);
 
         return result.IsSuccess
             ? NoContent()

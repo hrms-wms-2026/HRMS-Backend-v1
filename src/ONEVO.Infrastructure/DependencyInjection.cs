@@ -466,6 +466,27 @@ public static class DependencyInjection
         services.AddScoped<IApprovalActionApplier, ONEVO.Application.Features.WorkManagement.Sprints.Appliers.SprintStartApplier>();
         services.AddScoped<IApprovalActionApplier, ONEVO.Application.Features.WorkManagement.Sprints.Appliers.SprintEditApplier>();
         services.AddScoped<IApprovalActionApplier, ONEVO.Application.Features.WorkManagement.Sprints.Appliers.SprintCreateApplier>();
+
+        services.AddScoped<IApprovalActionReverterRegistry, ApprovalActionReverterRegistry>();
+        services.AddScoped<IApprovalActionReverter, ONEVO.Application.Features.WorkManagement.Tasks.Reverters.TaskCreateReverter>();
+        services.AddScoped<IApprovalActionReverter, ONEVO.Application.Features.WorkManagement.Tasks.Reverters.TaskEditReverter>();
+        services.AddScoped<IApprovalActionReverter, ONEVO.Application.Features.WorkManagement.Tasks.Reverters.TaskDeleteReverter>();
+        services.AddScoped<IApprovalActionReverter, ONEVO.Application.Features.WorkManagement.Tasks.Reverters.ProjectStatusTemplateChangeReverter>();
+        services.AddScoped<IApprovalActionReverter, ONEVO.Application.Features.WorkManagement.Objectives.Reverters.ModuleAllocationExtendReverter>();
+        services.AddScoped<IApprovalActionReverter, ONEVO.Application.Features.WorkManagement.Objectives.Reverters.ModuleMemberAddReverter>();
+        services.AddScoped<IApprovalActionReverter, ONEVO.Application.Features.WorkManagement.Objectives.Reverters.ModuleMemberRemoveReverter>();
+        services.AddScoped<IApprovalActionReverter, ONEVO.Application.Features.WorkManagement.Objectives.Reverters.ModuleUnachieveReverter>();
+        services.AddScoped<IApprovalActionReverter, ONEVO.Application.Features.WorkManagement.Objectives.Reverters.ModuleAchieveReverter>();
+        services.AddScoped<IApprovalActionReverter, ONEVO.Application.Features.WorkManagement.Objectives.Reverters.ModuleTransferReverter>();
+        services.AddScoped<IApprovalActionReverter, ONEVO.Application.Features.WorkManagement.Objectives.Reverters.ModuleDeleteReverter>();
+        services.AddScoped<IApprovalActionReverter, ONEVO.Application.Features.WorkManagement.Objectives.Reverters.ModuleEditReverter>();
+        services.AddScoped<IApprovalActionReverter, ONEVO.Application.Features.WorkManagement.Sprints.Reverters.SprintDeleteReverter>();
+        services.AddScoped<IApprovalActionReverter, ONEVO.Application.Features.WorkManagement.Sprints.Reverters.SprintAchieveReverter>();
+        services.AddScoped<IApprovalActionReverter, ONEVO.Application.Features.WorkManagement.Sprints.Reverters.SprintCompleteReverter>();
+        services.AddScoped<IApprovalActionReverter, ONEVO.Application.Features.WorkManagement.Sprints.Reverters.SprintStartReverter>();
+        services.AddScoped<IApprovalActionReverter, ONEVO.Application.Features.WorkManagement.Sprints.Reverters.SprintEditReverter>();
+        services.AddScoped<IApprovalActionReverter, ONEVO.Application.Features.WorkManagement.Sprints.Reverters.SprintCreateReverter>();
+
         services.AddScoped<ISprintAudienceResolver, SprintAudienceResolver>();
         services.AddScoped<ISprintTaskAssignmentService, SprintTaskAssignmentService>();
         services.AddScoped<ICallerIdentityResolver, CallerIdentityResolver>();

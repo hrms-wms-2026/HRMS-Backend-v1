@@ -29,4 +29,7 @@ public interface ITaskWriteService
 
     /// <summary>Removes the task. No SaveChanges.</summary>
     void Delete(WorkTask trackedTask);
+
+    /// <summary>Undoes Delete: clears the soft-delete flags set by SoftDeleteInterceptor.</summary>
+    void Restore(WorkTask trackedTask);
 }

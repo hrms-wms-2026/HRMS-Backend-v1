@@ -36,6 +36,7 @@ public static class WorkActionTypes
     public const string TaskEdit = "task.edit";
     public const string TaskDelete = "task.delete";
     public const string TaskStatusChange = "task.status_change";
+    public const string TaskComment = "task.comment";
     public const string ModuleEdit = "module.edit";
     public const string ModuleDelete = "module.delete";
     public const string ModuleTransfer = "module.transfer";
@@ -83,4 +84,10 @@ public class WorkApprovalRequest : BaseEntity
     /// <summary>Target's UpdatedAt when the request was made - appliers compare it to detect stale requests.</summary>
     public DateTimeOffset? TargetUpdatedAtSnapshot { get; set; }
     public DateTimeOffset? DecidedAt { get; set; }
+    /// <summary>Snapshot captured by the applier at approve-time (before it mutated anything), used to
+    /// undo the change on revert. Null for request types whose apply has nothing to undo (Reject never
+    /// applies, and some appliers reuse PayloadJson/AppliedPayloadJson instead of a separate snapshot).</summary>
+    public string? UndoStateJson { get; set; }
+    public DateTimeOffset? RevertedAt { get; set; }
+    public Guid? RevertedByEmployeeId { get; set; }
 }

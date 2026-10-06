@@ -394,6 +394,10 @@ public class TenantIsolationArchitectureTests
             // it, so re-adding someone revives that row), while preserving tenant scoping with an
             // explicit TenantId predicate in EfCalendarEventRepository.
             "EfCalendarEventRepository.cs",
+            // Approval-revert undelete: GetTrackedByIdForTenantIncludingDeletedAsync must see a
+            // soft-deleted sprint to restore it when an approved sprint.delete is reverted, while
+            // preserving tenant scoping with an explicit TenantId predicate in EfSprintRepository.
+            "EfSprintRepository.cs",
         };
 
         var srcDirectory = FindSrcDirectory();

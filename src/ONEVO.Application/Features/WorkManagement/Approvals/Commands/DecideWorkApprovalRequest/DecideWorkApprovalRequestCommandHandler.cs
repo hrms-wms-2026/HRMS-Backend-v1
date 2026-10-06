@@ -60,6 +60,8 @@ public sealed class DecideWorkApprovalRequestCommandHandler
         {
             if (request.RequestedByEmployeeId != caller)
                 return Result<WorkApprovalRequestResponse>.Forbidden("Only the person who made this request can cancel it.");
+            if (DateTimeOffset.UtcNow > request.CreatedAt.AddMinutes(ApprovalRevertWindow.Minutes))
+                return Result<WorkApprovalRequestResponse>.Conflict("The 30-minute window to cancel this request has passed.");
         }
         else
         {
@@ -92,8 +94,12 @@ public sealed class DecideWorkApprovalRequestCommandHandler
                     (status, kind) = outcome.Kind == ApplyOutcomeKind.Applied
                         ? (WorkApprovalRequestStatuses.Approved, WorkNotificationKinds.Approved)
                         : (WorkApprovalRequestStatuses.Stale, WorkNotificationKinds.Stale);
-                    if (outcome.Kind == ApplyOutcomeKind.Applied && payload != request.PayloadJson)
-                        request.AppliedPayloadJson = payload;
+                    if (outcome.Kind == ApplyOutcomeKind.Applied)
+                    {
+                        if (payload != request.PayloadJson)
+                            request.AppliedPayloadJson = payload;
+                        request.UndoStateJson = outcome.UndoJson;
+                    }
                     break;
                 case WorkApprovalDecision.Reject:
                     (status, kind) = (WorkApprovalRequestStatuses.Rejected, WorkNotificationKinds.Rejected);
@@ -123,6 +129,6 @@ public sealed class DecideWorkApprovalRequestCommandHandler
 
         var names = await _identity.ResolveDisplayNamesByEmployeeIdAsync(
             tenantId, [request.RequestedByEmployeeId, request.ApproverEmployeeId], ct);
-        return Result<WorkApprovalRequestResponse>.Success(WorkApprovalRequestMapper.ToResponse(request, names));
+        return Result<WorkApprovalRequestResponse>.Success(WorkApprovalRequestMapper.ToResponse(request, names, caller));
     }
 }
