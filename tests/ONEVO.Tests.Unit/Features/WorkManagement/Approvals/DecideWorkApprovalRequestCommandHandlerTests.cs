@@ -202,6 +202,19 @@ public class DecideWorkApprovalRequestCommandHandlerTests
     }
 
     [Fact]
+    public async Task Cancel_WindowExpired_ReturnsConflict()
+    {
+        _request.CreatedAt = DateTimeOffset.UtcNow.AddMinutes(-(ApprovalRevertWindow.Minutes + 1));
+        Caller(Requester);
+
+        var result = await Build().Handle(Cmd(_request.Id, WorkApprovalDecision.Cancel), default);
+
+        result.IsSuccess.Should().BeFalse();
+        result.StatusCode.Should().Be(409);
+        _request.Status.Should().Be(WorkApprovalRequestStatuses.Pending);
+    }
+
+    [Fact]
     public async Task AlreadyDecided_Returns409()
     {
         Caller(A);

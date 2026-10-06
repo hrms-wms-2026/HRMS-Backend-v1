@@ -60,6 +60,8 @@ public sealed class DecideWorkApprovalRequestCommandHandler
         {
             if (request.RequestedByEmployeeId != caller)
                 return Result<WorkApprovalRequestResponse>.Forbidden("Only the person who made this request can cancel it.");
+            if (DateTimeOffset.UtcNow > request.CreatedAt.AddMinutes(ApprovalRevertWindow.Minutes))
+                return Result<WorkApprovalRequestResponse>.Conflict("The 30-minute window to cancel this request has passed.");
         }
         else
         {

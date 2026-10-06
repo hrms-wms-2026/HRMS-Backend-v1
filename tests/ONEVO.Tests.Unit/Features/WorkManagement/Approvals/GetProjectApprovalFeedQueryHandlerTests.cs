@@ -172,7 +172,7 @@ public class GetProjectApprovalFeedQueryHandlerTests
     }
 
     [Fact]
-    public async Task Pending_invitation_is_decidable_by_the_invitee_only()
+    public async Task Pending_invitation_is_decidable_by_the_invitee_only_but_cancellable_by_the_sender()
     {
         Caller(Owner);
         _invites.Add(new ProjectMemberInvitation
@@ -185,6 +185,21 @@ public class GetProjectApprovalFeedQueryHandlerTests
 
         item.Direction.Should().Be("sent");
         item.CanDecide.Should().BeFalse();
+        item.CanCancel.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Pending_invitation_past_the_30_minute_window_is_no_longer_cancellable()
+    {
+        Caller(Owner);
+        _invites.Add(new ProjectMemberInvitation
+        {
+            Id = Guid.NewGuid(), ProjectId = ProjectId, ObjectiveId = _p, InvitedEmployeeId = Other, InvitedById = Owner,
+            Status = ProjectInvitationStatuses.Pending, CreatedAt = DateTimeOffset.UtcNow.AddMinutes(-31)
+        });
+
+        var item = (await Run()).Single();
+
         item.CanCancel.Should().BeFalse();
     }
 
