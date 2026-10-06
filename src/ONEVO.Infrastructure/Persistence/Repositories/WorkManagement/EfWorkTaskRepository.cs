@@ -22,6 +22,23 @@ public class EfWorkTaskRepository : IWorkTaskRepository
     public async Task<WorkTask?> GetTrackedByIdForTenantIncludingDeletedAsync(Guid tenantId, Guid id, CancellationToken ct = default)
         => await _db.WorkTasks.IgnoreQueryFilters().FirstOrDefaultAsync(t => t.TenantId == tenantId && t.Id == id, ct);
 
+    public Task<bool> IsAssignedToEmployeeAsync(Guid taskId, Guid employeeId, CancellationToken ct = default)
+        => _db.TaskAssignments.AsNoTracking()
+            .AnyAsync(assignment => assignment.TaskId == taskId && assignment.EmployeeId == employeeId, ct);
+
+    public async Task<IReadOnlyDictionary<Guid, IReadOnlyList<Guid>>> GetAssignedEmployeeIdsByTaskIdsAsync(
+        IReadOnlyCollection<Guid> taskIds, CancellationToken ct = default)
+    {
+        if (taskIds.Count == 0)
+            return new Dictionary<Guid, IReadOnlyList<Guid>>();
+        var rows = await _db.TaskAssignments.AsNoTracking()
+            .Where(assignment => taskIds.Contains(assignment.TaskId))
+            .Select(assignment => new { assignment.TaskId, assignment.EmployeeId })
+            .ToListAsync(ct);
+        return rows.GroupBy(row => row.TaskId)
+            .ToDictionary(group => group.Key, group => (IReadOnlyList<Guid>)group.Select(row => row.EmployeeId).ToList());
+    }
+
     public async Task<IReadOnlyList<WorkTask>> GetByObjectiveIdAsync(Guid tenantId, Guid objectiveId, CancellationToken ct = default)
         => await _db.WorkTasks.AsNoTracking()
             .Where(t => t.TenantId == tenantId && t.ObjectiveId == objectiveId)

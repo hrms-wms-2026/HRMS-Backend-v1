@@ -7,4 +7,5 @@ public sealed record ProjectListItemResponse(
     DateOnly StartDate, DateOnly TargetDate, string? Color, bool IsActive,
     decimal AllocatedHours, decimal CompletedHours, bool IsLead,
     bool IsAchieved, DateTimeOffset? AchievedAt, DateTimeOffset? UpdatedAt, Guid? LogoFileId,
-    IReadOnlyList<LabelSummaryDto> Labels, IReadOnlyList<ProjectMemberAvatarDto> Members, int MemberCount);
+    IReadOnlyList<LabelSummaryDto> Labels, IReadOnlyList<ProjectMemberAvatarDto> Members, int MemberCount,
+    string? SystemPurpose = null);

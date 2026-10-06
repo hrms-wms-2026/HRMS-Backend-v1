@@ -17,8 +17,8 @@ using ONEVO.Domain.Features.Monitoring.Biometrics.Entities;
 namespace ONEVO.Application.Features.Monitoring.CheckIn.Commands.EnrollFacePhotos;
 
 /// <summary>
-/// Saves the three tray face setup photos as the employee's references, replacing any
-/// previously enrolled face. Every check the tray
+/// Saves the tray face setup photos (front, plus optional left/right) as the employee's
+/// references, replacing any previously enrolled face. Every check the tray
 /// already ran per step is repeated here — the per-step results are never trusted.
 /// </summary>
 public class EnrollFacePhotosCommandHandler
@@ -88,12 +88,19 @@ public class EnrollFacePhotosCommandHandler
         var replacing = profile?.ReferencePhotoFileId is not null;
 
         var front = await ReadAsync(request.Front, cancellationToken);
-        var left = await ReadAsync(request.Left, cancellationToken);
-        var right = await ReadAsync(request.Right, cancellationToken);
+        // Side photos are optional (the tray now takes only the front one); both or neither.
+        var left = request.Left is null ? null : await ReadAsync(request.Left, cancellationToken);
+        var right = request.Right is null ? null : await ReadAsync(request.Right, cancellationToken);
 
         try
         {
-            var photos = new[] { (FacePhotoPose.Front, front), (FacePhotoPose.Left, left), (FacePhotoPose.Right, right) };
+            var photos = new List<(string Pose, MemoryStream Bytes)> { (FacePhotoPose.Front, front) };
+            if (left is not null && right is not null)
+            {
+                photos.Add((FacePhotoPose.Left, left));
+                photos.Add((FacePhotoPose.Right, right));
+            }
+
             var qualities = new Dictionary<string, FaceQualityOutcome>();
             foreach (var (pose, bytes) in photos)
             {
@@ -106,24 +113,34 @@ public class EnrollFacePhotosCommandHandler
                 qualities[pose] = quality;
             }
 
-            if (!FacePhotoPoseRules.AreOppositeSides(qualities[FacePhotoPose.Left], qualities[FacePhotoPose.Right]))
-                return Fail(FacePhotoPose.Right, FailureSameSide);
-
-            // All three must be the same person, so a setup can't mix two people's faces.
-            foreach (var (pose, side) in new[] { (FacePhotoPose.Left, left), (FacePhotoPose.Right, right) })
+            if (left is not null && right is not null)
             {
-                front.Position = 0;
-                side.Position = 0;
-                var match = await _faceMatch.CompareAsync(front, side, cancellationToken);
-                if (!match.IsMatch)
-                    return Fail(pose, ValidateFacePhotoCommandHandler.FailureNotMatched);
+                if (!FacePhotoPoseRules.AreOppositeSides(qualities[FacePhotoPose.Left], qualities[FacePhotoPose.Right]))
+                    return Fail(FacePhotoPose.Right, FailureSameSide);
+
+                // All photos must be the same person, so a setup can't mix two people's faces.
+                foreach (var (pose, side) in new[] { (FacePhotoPose.Left, left), (FacePhotoPose.Right, right) })
+                {
+                    front.Position = 0;
+                    side.Position = 0;
+                    var match = await _faceMatch.CompareAsync(front, side, cancellationToken);
+                    if (!match.IsMatch)
+                        return Fail(pose, ValidateFacePhotoCommandHandler.FailureNotMatched);
+                }
             }
 
             var frontId = await UploadAsync(front, request.Front.ContentType, FacePhotoPose.Front, cancellationToken);
-            var leftId = await UploadAsync(left, request.Left.ContentType, FacePhotoPose.Left, cancellationToken);
-            var rightId = await UploadAsync(right, request.Right.ContentType, FacePhotoPose.Right, cancellationToken);
-            if (frontId is null || leftId is null || rightId is null)
+            if (frontId is null)
                 return Fail(null, ValidateFacePhotoCommandHandler.FailureVerificationFailed);
+
+            Guid? leftId = null, rightId = null;
+            if (left is not null && right is not null)
+            {
+                leftId = await UploadAsync(left, request.Left!.ContentType, FacePhotoPose.Left, cancellationToken);
+                rightId = await UploadAsync(right, request.Right!.ContentType, FacePhotoPose.Right, cancellationToken);
+                if (leftId is null || rightId is null)
+                    return Fail(null, ValidateFacePhotoCommandHandler.FailureVerificationFailed);
+            }
 
             var now = DateTimeOffset.UtcNow;
             if (profile is not null)
@@ -169,8 +186,8 @@ public class EnrollFacePhotosCommandHandler
         finally
         {
             await front.DisposeAsync();
-            await left.DisposeAsync();
-            await right.DisposeAsync();
+            if (left is not null) await left.DisposeAsync();
+            if (right is not null) await right.DisposeAsync();
         }
     }
 

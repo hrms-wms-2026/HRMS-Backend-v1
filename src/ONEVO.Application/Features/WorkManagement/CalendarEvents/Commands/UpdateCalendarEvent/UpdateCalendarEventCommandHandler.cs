@@ -94,6 +94,8 @@ public sealed class UpdateCalendarEventCommandHandler : IRequestHandler<UpdateCa
         var memberTasks = moduleTasks
             .Concat(desiredTaskIds.Select(id => projectTaskById[id]))
             .GroupBy(t => t.Id).Select(g => g.First()).ToList();
+        if (memberTasks.Any(task => task.TaskKind == WorkTaskKinds.EmployeeChecklist))
+            return Result<CalendarEventResponse>.Conflict("Employee checklist tasks cannot be added to calendar events.");
 
         // R2/R3: re-validate every member task against the (possibly new) window.
         var outOfWindow = memberTasks

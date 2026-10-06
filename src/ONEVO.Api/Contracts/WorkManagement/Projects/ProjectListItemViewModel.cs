@@ -7,4 +7,5 @@ public sealed record ProjectListItemViewModel(
     DateOnly StartDate, DateOnly TargetDate, string? Color, bool IsActive,
     decimal AllocatedHours, decimal CompletedHours, bool IsLead,
     bool IsAchieved, DateTimeOffset? AchievedAt, DateTimeOffset? UpdatedAt, Guid? LogoFileId,
-    IReadOnlyList<LabelViewModel> Labels, IReadOnlyList<ProjectMemberAvatarViewModel> Members, int MemberCount);
+    IReadOnlyList<LabelViewModel> Labels, IReadOnlyList<ProjectMemberAvatarViewModel> Members, int MemberCount,
+    string? SystemPurpose = null);

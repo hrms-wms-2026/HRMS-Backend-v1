@@ -6,6 +6,7 @@ using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Objectives.Services;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
+using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
 
 namespace ONEVO.Application.Features.WorkManagement.Tasks.Commands.UnassignTask;
 
@@ -48,6 +49,8 @@ public class UnassignTaskCommandHandler : IRequestHandler<UnassignTaskCommand, R
         var task = await _tasks.GetByIdForTenantAsync(tenantId, request.TaskId, ct);
         if (task is null)
             return Result.NotFound("Task not found.");
+        if (task.TaskKind == WorkTaskKinds.EmployeeChecklist)
+            return Result.Conflict("Checklist tasks must always have an assignee. Reassign the task instead.");
 
         var objective = await _objectives.GetByIdForTenantAsync(tenantId, task.ObjectiveId, ct);
         if (objective is null || !objective.IsActive)

@@ -10,12 +10,26 @@ public static class WorkTaskPriorities
     public const string Critical = "critical";
 }
 
+public static class WorkTaskKinds
+{
+    public const string Standard = "standard";
+    public const string EmployeeChecklist = "employee_checklist";
+}
+
+public static class WorkTaskVisibilityScopes
+{
+    public const string Module = "module";
+    public const string Assignees = "assignees";
+}
+
 /// <summary>
 /// Core Work Management item. Table name stays "tasks" - the C# class is WorkTask to avoid
 /// colliding with System.Threading.Tasks.Task.
 /// </summary>
 public class WorkTask : BaseEntity
 {
+    public string TaskKind { get; set; } = WorkTaskKinds.Standard;
+    public string VisibilityScope { get; set; } = WorkTaskVisibilityScopes.Module;
     public Guid ProjectId { get; set; }
     public Guid? ParentTaskId { get; set; }
     public Guid ObjectiveId { get; set; }

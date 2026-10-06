@@ -28,10 +28,11 @@ public class MonitoringExceptionsController : ControllerBase
     [HttpGet]
     public async Task<IActionResult> GetExceptions(
         [FromQuery] ExceptionStatus? status, [FromQuery] ExceptionType? type,
-        [FromQuery] int page = 1, [FromQuery] int pageSize = 20, CancellationToken ct = default)
+        [FromQuery] int page = 1, [FromQuery] int pageSize = 20, [FromQuery] bool activeOnly = false,
+        CancellationToken ct = default)
     {
         var result = await _mediator.Send(
-            new GetExceptionsQuery { Status = status, Type = type, Page = page, PageSize = pageSize }, ct);
+            new GetExceptionsQuery { Status = status, Type = type, Page = page, PageSize = pageSize, ActiveOnly = activeOnly }, ct);
         return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 

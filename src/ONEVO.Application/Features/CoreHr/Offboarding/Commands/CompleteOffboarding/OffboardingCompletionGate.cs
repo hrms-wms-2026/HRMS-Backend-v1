@@ -1,4 +1,5 @@
 using ONEVO.Domain.Features.CoreHr.Entities;
+using ONEVO.Application.Features.CoreHr.Onboarding.RepositoryInterfaces;
 
 namespace ONEVO.Application.Features.CoreHr.Offboarding.Commands.CompleteOffboarding;
 
@@ -8,6 +9,10 @@ namespace ONEVO.Application.Features.CoreHr.Offboarding.Commands.CompleteOffboar
 public static class OffboardingCompletionGate
 {
     public static bool AllRequiredTasksResolved(IReadOnlyList<EmployeeChecklistTask> tasks) =>
-        tasks.Where(t => t.IsRequired)
-            .All(t => t.Status is EmployeeChecklistTaskStatuses.Completed or EmployeeChecklistTaskStatuses.Bypassed);
+        tasks.Where(task => task.IsRequired)
+            .All(task => task.Status is EmployeeChecklistTaskStatuses.Completed or EmployeeChecklistTaskStatuses.Bypassed);
+
+    public static bool AllRequiredTasksResolved(IReadOnlyList<EmployeeChecklistTaskEffectiveState> tasks) =>
+        tasks.Where(row => row.Task.IsRequired)
+            .All(row => row.IsCompleted || row.Task.Status == EmployeeChecklistTaskStatuses.Bypassed);
 }

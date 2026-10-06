@@ -4,6 +4,7 @@ using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Tasks.DTOs.Responses;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Tasks.Services;
 using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
 
 namespace ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetTaskHistory;
@@ -18,12 +19,14 @@ public sealed class GetTaskHistoryQueryHandler : IRequestHandler<GetTaskHistoryQ
     private readonly ITaskClockingSessionRepository _sessions;
     private readonly ITaskPercentageLogRepository _percentageLogs;
     private readonly ITaskCommentLogRepository _commentLogs;
+    private readonly ITaskAccessResolver? _taskAccess;
 
     public GetTaskHistoryQueryHandler(
         ICurrentUser currentUser, ICallerIdentityResolver identity, IWorkTaskRepository tasks,
         ITaskEditLogRepository editLogs, ITaskStatusChangeLogRepository statusChangeLogs,
         ITaskClockingSessionRepository sessions, ITaskPercentageLogRepository percentageLogs,
-        ITaskCommentLogRepository commentLogs)
+        ITaskCommentLogRepository commentLogs,
+        ITaskAccessResolver? taskAccess = null)
     {
         _currentUser = currentUser;
         _identity = identity;
@@ -33,6 +36,7 @@ public sealed class GetTaskHistoryQueryHandler : IRequestHandler<GetTaskHistoryQ
         _sessions = sessions;
         _percentageLogs = percentageLogs;
         _commentLogs = commentLogs;
+        _taskAccess = taskAccess;
     }
 
     public async Task<Result<TaskHistoryResponse>> Handle(GetTaskHistoryQuery request, CancellationToken ct)
@@ -41,6 +45,13 @@ public sealed class GetTaskHistoryQueryHandler : IRequestHandler<GetTaskHistoryQ
             return Result<TaskHistoryResponse>.Forbidden("Authentication required.");
 
         var tenantId = _currentUser.TenantId;
+        if (_taskAccess is not null)
+        {
+            var access = await _taskAccess.ResolveViewableTaskAsync(
+                tenantId, _currentUser.UserId, request.TaskId, ct);
+            if (!access.IsSuccess)
+                return Result<TaskHistoryResponse>.Failure(access.Error!, access.StatusCode ?? 404);
+        }
         var task = await _tasks.GetByIdForTenantAsync(tenantId, request.TaskId, ct);
         if (task is null)
             return Result<TaskHistoryResponse>.NotFound("Task not found.");

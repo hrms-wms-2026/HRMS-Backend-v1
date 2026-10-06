@@ -9,6 +9,7 @@ using ONEVO.Application.Features.WorkManagement.Tasks.DTOs;
 using ONEVO.Application.Features.WorkManagement.Tasks.DTOs.Responses;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
 using ONEVO.Domain.Features.WorkManagement.Objectives.Entities;
+using ONEVO.Domain.Features.WorkManagement.Projects.Entities;
 using ONEVO.Domain.Features.WorkManagement.Sprints.Entities;
 using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
 
@@ -56,6 +57,8 @@ public sealed class TaskWriteService : ITaskWriteService
         var project = await _projects.GetByIdForTenantAsync(tenantId, objective.ProjectId, ct);
         if (project is null || !project.IsActive)
             return Result.NotFound("Project not found.");
+        if (project.SystemPurpose == ProjectSystemPurposes.Office)
+            return Result.Forbidden("Tasks in the system-managed Office project can only be created from employee checklists.");
 
         // D-B: a task created in a module that a whole-module event covers must have a due date
         // inside every such event's window (spec §5.7).
@@ -135,6 +138,9 @@ public sealed class TaskWriteService : ITaskWriteService
 
     public async Task<Result> ValidateEditAsync(Guid tenantId, WorkTask task, Objective objective, TaskEditInput input, CancellationToken ct = default)
     {
+        if (task.TaskKind == WorkTaskKinds.EmployeeChecklist && input.SprintId.HasValue
+            && input.SprintId.Value != task.SprintId)
+            return Result.Conflict("Checklist tasks cannot be added to a sprint.");
         if (task.SprintId.HasValue)
         {
             var sprint = await _sprints.GetByIdForTenantAsync(tenantId, task.SprintId.Value, ct);

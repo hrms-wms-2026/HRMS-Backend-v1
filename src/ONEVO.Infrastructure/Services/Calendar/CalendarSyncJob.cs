@@ -40,9 +40,9 @@ public sealed class CalendarSyncJob(IServiceProvider services, ILogger<CalendarS
         {
             // PeriodicTimer.WaitForNextTickAsync throws when the token passed to it is
             // cancelled (unlike disposing the timer itself, which returns false instead) -
-            // an ordinary host shutdown must not surface as an unhandled exception here,
-            // since HostOptions.BackgroundServiceExceptionBehavior = StopHost treats any
-            // unhandled exception from a BackgroundService as a crash.
+            // an ordinary host shutdown (including an aborted startup) must not surface as an
+            // unhandled exception here, since HostOptions.BackgroundServiceExceptionBehavior =
+            // StopHost treats any unhandled exception from a BackgroundService as a crash.
         }
     }
 

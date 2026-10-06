@@ -89,6 +89,9 @@ public interface ICalendarEventRepository
     /// duplicates on every sync.</summary>
     Task RemoveHolidayEventsForYearAsync(Guid tenantId, int year, CancellationToken ct = default);
 
+    Task<IReadOnlyList<CalendarEvent>> ListBySourceTypeInRangeAsync(
+        Guid tenantId, string sourceType, DateTimeOffset from, DateTimeOffset to, CancellationToken ct = default);
+
     /// <summary>Distinct dates of synced holiday events (SourceType == holiday) whose StartDate falls in [from, to].</summary>
     Task<IReadOnlyList<DateOnly>> ListHolidayDatesAsync(Guid tenantId, DateOnly from, DateOnly to, CancellationToken ct = default);
 }

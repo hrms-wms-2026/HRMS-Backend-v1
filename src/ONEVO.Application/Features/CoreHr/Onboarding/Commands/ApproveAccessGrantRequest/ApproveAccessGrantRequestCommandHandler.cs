@@ -13,6 +13,7 @@ using ONEVO.Application.Features.CoreHr.OnboardingDraft.OutboxHandlers;
 using ONEVO.Application.Features.CoreHr.OnboardingDraft.Services;
 using ONEVO.Application.Features.CoreHr.Onboarding.DTOs.Responses;
 using ONEVO.Application.Features.CoreHr.Onboarding.RepositoryInterfaces;
+using ONEVO.Application.Features.CoreHr.Onboarding.Services;
 using ONEVO.Application.Features.CoreHr.OnboardingDrafts.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.PositionAssignment.RepositoryInterfaces;
 using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
@@ -67,6 +68,7 @@ public class ApproveAccessGrantRequestCommandHandler
     private readonly ICurrentUser _currentUser;
     private readonly IDateTimeProvider _clock;
     private readonly IUnitOfWork _unitOfWork;
+    private readonly IEmployeeChecklistWorkTaskProvisioner? _workTaskProvisioner;
 
     public ApproveAccessGrantRequestCommandHandler(
         IAccessGrantRequestRepository accessGrantRequestRepository,
@@ -89,7 +91,8 @@ public class ApproveAccessGrantRequestCommandHandler
         ISecureTokenGenerator tokenGenerator,
         ICurrentUser currentUser,
         IDateTimeProvider clock,
-        IUnitOfWork unitOfWork)
+        IUnitOfWork unitOfWork,
+        IEmployeeChecklistWorkTaskProvisioner? workTaskProvisioner = null)
     {
         _accessGrantRequestRepository = accessGrantRequestRepository;
         _draftRepository = draftRepository;
@@ -112,6 +115,7 @@ public class ApproveAccessGrantRequestCommandHandler
         _currentUser = currentUser;
         _clock = clock;
         _unitOfWork = unitOfWork;
+        _workTaskProvisioner = workTaskProvisioner;
     }
 
     public async Task<Result<ApproveAccessGrantRequestResponse>> Handle(
@@ -326,12 +330,13 @@ public class ApproveAccessGrantRequestCommandHandler
 
         var employeeId = Guid.NewGuid();
         var tasksCreated = 0;
+        IReadOnlyList<EmployeeChecklistTask> checklistTasks = Array.Empty<EmployeeChecklistTask>();
         if (template is not null)
         {
             try
             {
-                var tasks = await _checklistTaskRepository.InstantiateAsync(template, employeeId, user.Id, draft.EditedTasksJson, draft.StartDate!.Value, ct);
-                tasksCreated = tasks.Count;
+                checklistTasks = await _checklistTaskRepository.InstantiateAsync(template, employeeId, user.Id, draft.EditedTasksJson, draft.StartDate!.Value, ct);
+                tasksCreated = checklistTasks.Count;
             }
             catch (ArgumentException)
             {
@@ -358,6 +363,22 @@ public class ApproveAccessGrantRequestCommandHandler
             CreatedById = _currentUser.UserId,
         };
         await _employeeRepository.AddAsync(employee, ct);
+
+        if (_workTaskProvisioner is not null && checklistTasks.Count > 0)
+        {
+            var officeResult = await _workTaskProvisioner.EnsureOfficeProjectAsync(
+                draft.TenantId, draft.LegalEntityId, _currentUser.UserId,
+                checklistTasks.Max(task => task.DueDate), ct);
+            if (!officeResult.IsSuccess)
+                return Result<ApproveAccessGrantRequestResponse>.Failure(
+                    officeResult.Error!, officeResult.StatusCode ?? 400);
+
+            var provisionResult = await _workTaskProvisioner.ProvisionAsync(
+                officeResult.Value!, employee, checklistTasks, _currentUser.UserId, ct);
+            if (!provisionResult.IsSuccess)
+                return Result<ApproveAccessGrantRequestResponse>.Failure(
+                    provisionResult.Error!, provisionResult.StatusCode ?? 400);
+        }
 
         var reservedAssignmentId = await _positionAssignmentRepository.TryReservePositionAssignmentAsync(
             draft.TenantId, employeeId, position.Id, draft.StartDate!.Value, _currentUser.UserId, reportsToEmployeeId: null, ct);
