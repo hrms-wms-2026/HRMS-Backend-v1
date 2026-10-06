@@ -7,6 +7,7 @@ using ONEVO.Application.Features.Leave.Approval.Helpers;
 using ONEVO.Application.Features.Leave.Approval.Mappers;
 using ONEVO.Application.Features.Leave.Approval.RepositoryInterfaces;
 using ONEVO.Application.Features.Leave.Request.Services;
+using ONEVO.Domain.Features.Leave.Common;
 
 namespace ONEVO.Application.Features.Leave.Approval.Queries;
 
@@ -100,7 +101,9 @@ public sealed class ListAllLeaveRequestsQueryHandler
     }
 }
 
-public sealed record GetLeaveApprovalDetailQuery(Guid RequestId)
+/// <summary>OrgWideRead is set by the HR ledger endpoint (gated on leave:read), which may open any
+/// request read-only; the approver endpoint leaves it false and requires an assigned approver.</summary>
+public sealed record GetLeaveApprovalDetailQuery(Guid RequestId, bool OrgWideRead = false)
     : IRequest<Result<LeaveApprovalDetailResponse>>;
 
 public sealed class GetLeaveApprovalDetailQueryHandler
@@ -131,14 +134,23 @@ public sealed class GetLeaveApprovalDetailQueryHandler
             return Result<LeaveApprovalDetailResponse>.Forbidden(LeaveApprovalMessages.TenantMissing);
 
         var employee = await _employees.GetByUserIdAsync(_currentUser.TenantId, _currentUser.UserId, ct);
-        if (employee is null)
+        if (employee is null && !query.OrgWideRead)
             return Result<LeaveApprovalDetailResponse>.NotFound(LeaveApprovalMessages.NoEmployee);
 
         var state = await _repository.GetStateAsync(_currentUser.TenantId, query.RequestId, ct);
         if (state is null)
             return Result<LeaveApprovalDetailResponse>.NotFound(LeaveApprovalMessages.NotFound);
-        if (state.Approvers.All(x => x.ApproverEmployeeId != employee.Id))
+        if (!query.OrgWideRead && state.Approvers.All(x => x.ApproverEmployeeId != employee!.Id))
             return Result<LeaveApprovalDetailResponse>.Forbidden(LeaveApprovalMessages.NotAssigned);
+
+        var canDecide = employee is not null
+            && state.ApprovalMode is not null
+            && state.Request.Status is not (LeaveRequestStatuses.Approved or LeaveRequestStatuses.Rejected or LeaveRequestStatuses.Cancelled)
+            && _currentUser.HasPermission("leave:approve")
+            && LeaveApprovalModeEvaluator.IsActionable(
+                state.ApprovalMode,
+                state.Approvers.Select(x => new ApprovalModeRow(x.ApproverEmployeeId, x.SequenceOrder, x.Status)).ToList(),
+                employee.Id);
 
         var conflicts = await _conflicts.ListConflictsAsync(
             _currentUser.TenantId,
@@ -179,6 +191,7 @@ public sealed class GetLeaveApprovalDetailQueryHandler
             state.InfoMessages.Select(m => new LeaveApprovalInfoMessageResponse(m.SenderEmployeeId, m.Message, m.CreatedAt)).ToList(),
             state.Request.ConflictSnapshotJson,
             warnings,
-            remaining));
+            remaining,
+            canDecide));
     }
 }

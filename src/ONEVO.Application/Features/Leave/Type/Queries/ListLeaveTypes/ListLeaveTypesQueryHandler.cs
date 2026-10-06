@@ -23,7 +23,10 @@ public class ListLeaveTypesQueryHandler : IRequestHandler<ListLeaveTypesQuery, R
         if (!_currentUser.IsAuthenticated)
             return Result<IReadOnlyList<LeaveTypeResponse>>.Forbidden("Authentication required.");
 
-        var types = await _leaveTypes.ListAsync(_currentUser.TenantId, request.IncludeInactive, ct);
+        // Self-service callers (leave:read-own) only need requestable types for the New Request
+        // wizard; deactivated types stay visible to leave:read holders (HR configuration screens).
+        var includeInactive = request.IncludeInactive && _currentUser.HasPermission("leave:read");
+        var types = await _leaveTypes.ListAsync(_currentUser.TenantId, includeInactive, ct);
         return Result<IReadOnlyList<LeaveTypeResponse>>.Success(types.Select(LeaveTypeMapper.ToResponse).ToList());
     }
 }

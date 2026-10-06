@@ -42,7 +42,8 @@ public static class LeaveApprovalMapper
             row.Request.EndAt,
             row.Request.TotalHours,
             row.Request.Status,
-            row.Request.CreatedAt);
+            row.Request.CreatedAt,
+            row.ApproverNames);
 
     public static LeaveApprovalDecisionResponse ToDecision(
         LeaveRequest request,

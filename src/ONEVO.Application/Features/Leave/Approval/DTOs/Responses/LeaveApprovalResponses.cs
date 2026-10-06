@@ -38,7 +38,8 @@ public sealed record LeaveRequestAllListItemResponse(
     DateTimeOffset EndAt,
     decimal TotalHours,
     string Status,
-    DateTimeOffset SubmittedAt);
+    DateTimeOffset SubmittedAt,
+    IReadOnlyList<string> ApproverNames);
 
 public sealed record LeaveApprovalDetailResponse(
     Guid RequestId,
@@ -58,7 +59,8 @@ public sealed record LeaveApprovalDetailResponse(
     IReadOnlyList<LeaveApprovalInfoMessageResponse> InfoMessages,
     string? SubmissionConflictSnapshotJson,
     IReadOnlyList<LeaveApprovalWarningResponse> CurrentWarnings,
-    decimal RemainingHours);
+    decimal RemainingHours,
+    bool CanDecide);
 
 public sealed record LeaveApprovalApproverResponse(
     Guid ApproverEmployeeId,

@@ -21,7 +21,9 @@ public class LeaveTypesControllerArchitectureTests
     [Fact]
     public void Actions_UseExpectedPermissions()
     {
-        Assert.Equal("leave:read", GetPermission(nameof(LeaveTypesController.List)));
+        // Employees (leave:read-own) pick a leave type in the New Request wizard, so they must be
+        // able to list active types - the handler hides inactive ones from them.
+        Assert.Equal(new[] { "leave:read", "leave:read-own" }, GetAnyPermissions(nameof(LeaveTypesController.List)));
         Assert.Equal("leave:read", GetPermission(nameof(LeaveTypesController.Get)));
         Assert.Equal("leave:manage", GetPermission(nameof(LeaveTypesController.Create)));
         Assert.Equal("leave:manage", GetPermission(nameof(LeaveTypesController.Update)));
@@ -63,5 +65,15 @@ public class LeaveTypesControllerArchitectureTests
         var field = typeof(RequirePermissionAttribute)
             .GetField("_permission", BindingFlags.Instance | BindingFlags.NonPublic);
         return (string)field!.GetValue(attribute)!;
+    }
+
+    private static string[] GetAnyPermissions(string methodName)
+    {
+        var method = ControllerType.GetMethod(methodName);
+        var attribute = method!.GetCustomAttribute<RequireAnyPermissionAttribute>();
+        Assert.NotNull(attribute);
+        var field = typeof(RequireAnyPermissionAttribute)
+            .GetField("_permissions", BindingFlags.Instance | BindingFlags.NonPublic);
+        return (string[])field!.GetValue(attribute)!;
     }
 }

@@ -70,4 +70,5 @@ public sealed record LeaveRequestAllListRow(
     string EmployeeName,
     Guid? DepartmentId,
     string? DepartmentName,
-    string LeaveTypeName);
+    string LeaveTypeName,
+    IReadOnlyList<string> ApproverNames);

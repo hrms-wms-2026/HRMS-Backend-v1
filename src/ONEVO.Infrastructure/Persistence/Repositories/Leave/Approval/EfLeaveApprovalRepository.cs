@@ -164,12 +164,27 @@ public class EfLeaveApprovalRepository : ILeaveApprovalRepository
         }
 
         var rows = await query.OrderByDescending(x => x.request.CreatedAt).ToListAsync(ct);
+        var requestIds = rows.Select(x => x.request.Id).ToList();
+        var approverRows = await (
+            from approver in _db.LeaveRequestApprovers.AsNoTracking()
+            join person in _db.Employees.AsNoTracking() on approver.ApproverEmployeeId equals person.Id
+            where approver.TenantId == tenantId && requestIds.Contains(approver.LeaveRequestId)
+            orderby approver.SequenceOrder
+            select new { approver.LeaveRequestId, person.FirstName, person.LastName })
+            .ToListAsync(ct);
+        var approverNames = approverRows
+            .GroupBy(a => a.LeaveRequestId)
+            .ToDictionary(
+                g => g.Key,
+                g => (IReadOnlyList<string>)g.Select(a => LeaveEntitlementMapper.EmployeeName(a.FirstName, a.LastName)).Distinct().ToList());
+
         return rows.Select(x => new LeaveRequestAllListRow(
             x.request,
             LeaveEntitlementMapper.EmployeeName(x.employee.FirstName, x.employee.LastName),
             x.employee.DepartmentId,
             x.department?.Name,
-            x.leaveType.Name)).ToList();
+            x.leaveType.Name,
+            approverNames.TryGetValue(x.request.Id, out var names) ? names : [])).ToList();
     }
 
     public Task AddInfoMessageAsync(LeaveRequestInfoMessage message, CancellationToken ct = default)

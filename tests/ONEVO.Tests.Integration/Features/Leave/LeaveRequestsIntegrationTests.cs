@@ -172,6 +172,168 @@ public class LeaveRequestsIntegrationTests : IAsyncLifetime
         second.StatusCode.Should().Be(HttpStatusCode.Conflict);
     }
 
+    [Fact]
+    public async Task Submit_WithoutReportingManager_RoutesToHrManagerWhoCanApprove()
+    {
+        var leaveTypeId = await CreateLeaveTypeAsync("Annual Leave", "AL", requiresApproval: true);
+        var legalEntityId = await GetPrimaryLegalEntityIdAsync(_tenantId);
+        await EnsureWorkWindowAsync(legalEntityId);
+        await CreatePolicyAsync("Annual Policy", leaveTypeId, legalEntityId, 17.5m);
+        await EnsureEmployeeInLegalEntityAsync(_tenantId, legalEntityId);
+        var hr = await SeedAndLoginFixtureUserAsync(
+            _tenantId, _owner.Host, "hr@leave-req.test", permissionCodes: ["leave:manage", "leave:approve"], roleName: "HR Manager");
+        var hrEmployeeId = await AddEmployeeForUserAsync(_tenantId, legalEntityId, "hr@leave-req.test", "EMP-LEAVE-HR");
+
+        var leaveDay = FutureWeekdayUtc();
+        var generate = await SendAsync(HttpMethod.Post, _owner.Host, "/api/v1/leave/entitlements/generate",
+            new { year = leaveDay.Year, legalEntityId },
+            cookie: _owner.SessionCookie, csrfToken: _owner.CsrfHeader);
+        generate.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        // The owner sits at the top of the reporting line - no direct manager.
+        var submit = await SendAsync(HttpMethod.Post, _owner.Host, "/api/v1/leave/requests",
+            new
+            {
+                leaveTypeId,
+                startAt = $"{leaveDay:yyyy-MM-dd}T09:00:00Z",
+                endAt = $"{leaveDay:yyyy-MM-dd}T18:00:00Z",
+                reason = "Family event",
+                fileRecordIds = Array.Empty<Guid>()
+            },
+            cookie: _owner.SessionCookie, csrfToken: _owner.CsrfHeader);
+        submit.StatusCode.Should().Be(HttpStatusCode.OK, await submit.Content.ReadAsStringAsync());
+        var requestId = (await ReadJsonAsync(submit)).GetProperty("id").GetGuid();
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            var approvers = await db.LeaveRequestApprovers
+                .Where(x => x.TenantId == _tenantId && x.LeaveRequestId == requestId)
+                .Select(x => x.ApproverEmployeeId)
+                .ToListAsync();
+            approvers.Should().ContainSingle().Which.Should().Be(hrEmployeeId);
+        }
+
+        var pending = await SendAsync(HttpMethod.Get, _owner.Host, "/api/v1/leave/requests/pending-approvals",
+            body: null, cookie: hr.SessionCookie, csrfToken: hr.CsrfHeader);
+        pending.StatusCode.Should().Be(HttpStatusCode.OK, await pending.Content.ReadAsStringAsync());
+        var pendingJson = await ReadJsonAsync(pending);
+        var pendingItems = pendingJson.ValueKind == JsonValueKind.Array ? pendingJson : pendingJson.GetProperty("items");
+        pendingItems.EnumerateArray().Should().Contain(x => x.GetProperty("requestId").GetGuid() == requestId);
+
+        var approve = await SendAsync(HttpMethod.Post, _owner.Host, $"/api/v1/leave/requests/{requestId}/approve",
+            new { comment = (string?)null },
+            cookie: hr.SessionCookie, csrfToken: hr.CsrfHeader);
+        approve.StatusCode.Should().Be(HttpStatusCode.OK, await approve.Content.ReadAsStringAsync());
+        (await ReadJsonAsync(approve)).GetProperty("status").GetString().Should().Be("approved");
+    }
+
+    [Fact]
+    public async Task AllRequestsLedger_ShowsApprover_AndOnlyTheAssignedApproverCanDecide()
+    {
+        var leaveTypeId = await CreateLeaveTypeAsync("Annual Leave", "AL", requiresApproval: true);
+        var legalEntityId = await GetPrimaryLegalEntityIdAsync(_tenantId);
+        await EnsureWorkWindowAsync(legalEntityId);
+        await CreatePolicyAsync("Annual Policy", leaveTypeId, legalEntityId, 17.5m);
+        await EnsureEmployeeInLegalEntityAsync(_tenantId, legalEntityId);
+        var hr = await SeedAndLoginFixtureUserAsync(
+            _tenantId, _owner.Host, "hr@leave-req.test", permissionCodes: ["leave:manage", "leave:approve"], roleName: "HR Manager");
+        var hrEmployeeId = await AddEmployeeForUserAsync(_tenantId, legalEntityId, "hr@leave-req.test", "EMP-LEAVE-HR");
+
+        var leaveDay = FutureWeekdayUtc();
+        var generate = await SendAsync(HttpMethod.Post, _owner.Host, "/api/v1/leave/entitlements/generate",
+            new { year = leaveDay.Year, legalEntityId },
+            cookie: _owner.SessionCookie, csrfToken: _owner.CsrfHeader);
+        generate.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        // Owner is top of the org, so the request falls back to the HR manager (Hema Rajan).
+        var submit = await SendAsync(HttpMethod.Post, _owner.Host, "/api/v1/leave/requests",
+            new
+            {
+                leaveTypeId,
+                startAt = $"{leaveDay:yyyy-MM-dd}T09:00:00Z",
+                endAt = $"{leaveDay:yyyy-MM-dd}T18:00:00Z",
+                reason = "Family event",
+                fileRecordIds = Array.Empty<Guid>()
+            },
+            cookie: _owner.SessionCookie, csrfToken: _owner.CsrfHeader);
+        submit.StatusCode.Should().Be(HttpStatusCode.OK, await submit.Content.ReadAsStringAsync());
+        var requestId = (await ReadJsonAsync(submit)).GetProperty("id").GetGuid();
+
+        // All Requests ledger names the approver.
+        var all = await SendAsync(HttpMethod.Get, _owner.Host, "/api/v1/leave/requests/all",
+            body: null, cookie: _owner.SessionCookie, csrfToken: _owner.CsrfHeader);
+        all.StatusCode.Should().Be(HttpStatusCode.OK, await all.Content.ReadAsStringAsync());
+        var row = (await ReadJsonAsync(all)).EnumerateArray().Single(x => x.GetProperty("requestId").GetGuid() == requestId);
+        row.GetProperty("approverNames").EnumerateArray().Select(x => x.GetString()).Should().Equal("Hema Rajan");
+
+        // The approver-only endpoint still refuses a non-assigned viewer...
+        var ownerApproval = await SendAsync(HttpMethod.Get, _owner.Host, $"/api/v1/leave/requests/{requestId}/approval",
+            body: null, cookie: _owner.SessionCookie, csrfToken: _owner.CsrfHeader);
+        ownerApproval.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+
+        // ...but the ledger detail opens read-only for the owner and for a leave:read-only user.
+        var ownerDetail = await SendAsync(HttpMethod.Get, _owner.Host, $"/api/v1/leave/requests/{requestId}/detail",
+            body: null, cookie: _owner.SessionCookie, csrfToken: _owner.CsrfHeader);
+        ownerDetail.StatusCode.Should().Be(HttpStatusCode.OK, await ownerDetail.Content.ReadAsStringAsync());
+        var ownerDetailJson = await ReadJsonAsync(ownerDetail);
+        ownerDetailJson.GetProperty("canDecide").GetBoolean().Should().BeFalse();
+        ownerDetailJson.GetProperty("approvers").EnumerateArray()
+            .Should().ContainSingle(a => a.GetProperty("approverEmployeeId").GetGuid() == hrEmployeeId);
+
+        var readerDetail = await SendAsync(HttpMethod.Get, _owner.Host, $"/api/v1/leave/requests/{requestId}/detail",
+            body: null, cookie: _noManage.SessionCookie, csrfToken: _noManage.CsrfHeader);
+        readerDetail.StatusCode.Should().Be(HttpStatusCode.OK, await readerDetail.Content.ReadAsStringAsync());
+        (await ReadJsonAsync(readerDetail)).GetProperty("canDecide").GetBoolean().Should().BeFalse();
+
+        // The assigned approver can decide; once approved nobody can.
+        var hrApproval = await SendAsync(HttpMethod.Get, _owner.Host, $"/api/v1/leave/requests/{requestId}/approval",
+            body: null, cookie: hr.SessionCookie, csrfToken: hr.CsrfHeader);
+        hrApproval.StatusCode.Should().Be(HttpStatusCode.OK, await hrApproval.Content.ReadAsStringAsync());
+        (await ReadJsonAsync(hrApproval)).GetProperty("canDecide").GetBoolean().Should().BeTrue();
+
+        var ownerApprove = await SendAsync(HttpMethod.Post, _owner.Host, $"/api/v1/leave/requests/{requestId}/approve",
+            new { comment = (string?)null },
+            cookie: _owner.SessionCookie, csrfToken: _owner.CsrfHeader);
+        ownerApprove.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+
+        var approve = await SendAsync(HttpMethod.Post, _owner.Host, $"/api/v1/leave/requests/{requestId}/approve",
+            new { comment = (string?)null },
+            cookie: hr.SessionCookie, csrfToken: hr.CsrfHeader);
+        approve.StatusCode.Should().Be(HttpStatusCode.OK, await approve.Content.ReadAsStringAsync());
+
+        var afterApproval = await SendAsync(HttpMethod.Get, _owner.Host, $"/api/v1/leave/requests/{requestId}/approval",
+            body: null, cookie: hr.SessionCookie, csrfToken: hr.CsrfHeader);
+        (await ReadJsonAsync(afterApproval)).GetProperty("canDecide").GetBoolean().Should().BeFalse();
+    }
+
+    private async Task<Guid> AddEmployeeForUserAsync(Guid tenantId, Guid legalEntityId, string email, string employeeNumber)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var userId = await db.Users
+            .Where(u => u.TenantId == tenantId && u.Email == email)
+            .Select(u => u.Id)
+            .SingleAsync();
+
+        var employeeId = Guid.NewGuid();
+        db.Employees.Add(new ONEVO.Domain.Features.CoreHr.Entities.Employee
+        {
+            Id = employeeId,
+            TenantId = tenantId,
+            UserId = userId,
+            EmployeeNumber = employeeNumber,
+            FirstName = "Hema",
+            LastName = "Rajan",
+            Email = email,
+            LegalEntityId = legalEntityId,
+            HireDate = new DateOnly(2024, 1, 1),
+            EmploymentStatusId = 1
+        });
+        await db.SaveChangesAsync();
+        return employeeId;
+    }
+
     private async Task<Guid> CreateLeaveTypeAsync(string name, string code, bool requiresApproval = true)
     {
         var response = await SendAsync(HttpMethod.Post, _owner.Host, "/api/v1/leave/types",

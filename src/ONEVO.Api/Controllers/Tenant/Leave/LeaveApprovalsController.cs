@@ -54,6 +54,15 @@ public sealed class LeaveApprovalsController : ControllerBase
         return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
+    /// <summary>HR's read-only view of any request from the All Requests ledger.</summary>
+    [HttpGet("{requestId:guid}/detail")]
+    [RequirePermission("leave:read")]
+    public async Task<IActionResult> Detail(Guid requestId, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new GetLeaveApprovalDetailQuery(requestId, OrgWideRead: true), ct);
+        return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
     [HttpPost("{requestId:guid}/approve")]
     [RequirePermission("leave:approve")]
     public async Task<IActionResult> Approve(Guid requestId, [FromBody] ApproveLeaveRequestRequest? request, CancellationToken ct = default)

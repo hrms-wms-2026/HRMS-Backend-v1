@@ -70,13 +70,13 @@ public class LeaveApprovalQueryHandlerTests
         currentUser.SetupGet(x => x.UserId).Returns(userId);
         var repo = new Mock<ILeaveApprovalRepository>();
         repo.Setup(x => x.ListAllAsync(tenantId, It.IsAny<LeaveRequestAllListFilter>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync([new LeaveRequestAllListRow(request, "Priya Nair", null, null, "Annual Leave")]);
+            .ReturnsAsync([new LeaveRequestAllListRow(request, "Priya Nair", null, null, "Annual Leave", ["Mathu Kumar"])]);
 
         var handler = new ListAllLeaveRequestsQueryHandler(currentUser.Object, repo.Object);
         var result = await handler.Handle(new ListAllLeaveRequestsQuery(null, null, null, null, null, null), CancellationToken.None);
 
         result.IsSuccess.Should().BeTrue();
-        result.Value.Should().ContainSingle(x => x.RequestId == request.Id && x.EmployeeName == "Priya Nair");
+        result.Value.Should().ContainSingle(x => x.RequestId == request.Id && x.EmployeeName == "Priya Nair" && x.ApproverNames.SequenceEqual(new[] { "Mathu Kumar" }));
     }
 
     [Fact]
@@ -111,6 +111,48 @@ public class LeaveApprovalQueryHandlerTests
         var result = await handler.Handle(new GetLeaveApprovalDetailQuery(request.Id), CancellationToken.None);
 
         result.StatusCode.Should().Be(403);
+    }
+
+    [Fact]
+    public async Task GetDetail_OrgWideRead_WhenCallerIsNotAssignedApprover_ReturnsReadOnlyDetail()
+    {
+        var tenantId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+        var current = Employee(tenantId, userId, "Hr");
+        var request = Request(tenantId, LeaveRequestStatuses.Pending);
+        var approverId = Guid.NewGuid();
+        var state = new LeaveApprovalState(
+            request,
+            null,
+            Employee(tenantId, Guid.NewGuid(), "Priya"),
+            "Annual Leave",
+            "AL",
+            LeaveApprovalModes.AnyOne,
+            [
+                new LeaveRequestApprover
+                {
+                    ApproverEmployeeId = approverId,
+                    SequenceOrder = 1,
+                    Status = LeaveRequestApproverStatuses.Pending
+                }
+            ],
+            []);
+
+        var (currentUser, employees, repo) = Mocks(tenantId, userId, current);
+        currentUser.Setup(x => x.HasPermission(It.IsAny<string>())).Returns(true);
+        employees.Setup(x => x.ListByIdsAsync(tenantId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, Employee>());
+        repo.Setup(x => x.GetStateAsync(tenantId, request.Id, It.IsAny<CancellationToken>())).ReturnsAsync(state);
+        var conflicts = new Mock<ILeaveRequestConflictProvider>();
+        conflicts.Setup(x => x.ListConflictsAsync(tenantId, request.EmployeeId, It.IsAny<DateOnly>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+
+        var handler = new GetLeaveApprovalDetailQueryHandler(currentUser.Object, employees.Object, repo.Object, conflicts.Object);
+        var result = await handler.Handle(new GetLeaveApprovalDetailQuery(request.Id, OrgWideRead: true), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.CanDecide.Should().BeFalse();
+        result.Value.Approvers.Should().ContainSingle(a => a.ApproverEmployeeId == approverId);
     }
 
     private static (Mock<ICurrentUser> CurrentUser, Mock<IEmployeeRepository> Employees, Mock<ILeaveApprovalRepository> Repo)
