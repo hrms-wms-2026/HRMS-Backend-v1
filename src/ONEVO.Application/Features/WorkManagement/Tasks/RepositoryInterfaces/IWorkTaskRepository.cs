@@ -90,6 +90,11 @@ public interface IWorkTaskRepository
     Task AddAsync(WorkTask task, CancellationToken ct = default);
     Task<WorkTask?> GetByIdForTenantAsync(Guid tenantId, Guid id, CancellationToken ct = default);
     Task<WorkTask?> GetTrackedByIdForTenantAsync(Guid tenantId, Guid id, CancellationToken ct = default);
+
+    /// <summary>Same as <see cref="GetTrackedByIdForTenantAsync"/> but bypasses the soft-delete query
+    /// filter - for reverting a task.delete, where the task we need to find IS the soft-deleted one.</summary>
+    Task<WorkTask?> GetTrackedByIdForTenantIncludingDeletedAsync(Guid tenantId, Guid id, CancellationToken ct = default);
+
     Task<bool> IsAssignedToEmployeeAsync(Guid taskId, Guid employeeId, CancellationToken ct = default);
     Task<IReadOnlyDictionary<Guid, IReadOnlyList<Guid>>> GetAssignedEmployeeIdsByTaskIdsAsync(
         IReadOnlyCollection<Guid> taskIds, CancellationToken ct = default);
@@ -143,8 +148,10 @@ public interface IWorkTaskRepository
     /// tasks with a due date on or before dueOnOrBefore - every overdue task plus the upcoming window.</summary>
     Task<IReadOnlyList<EmployeeWorkTaskRow>> ListOpenDueByAsync(Guid tenantId, Guid employeeId, DateOnly dueOnOrBefore, CancellationToken ct = default);
 
-    /// <summary>The employee's assigned tasks ordered by UpdatedAt ?? CreatedAt descending, capped at take.</summary>
-    Task<IReadOnlyList<EmployeeWorkTaskRow>> ListRecentlyChangedAssignedAsync(Guid tenantId, Guid employeeId, int take, CancellationToken ct = default);
+    /// <summary>The employee's assigned tasks that are due on <paramref name="today"/> or were created/updated
+    /// in [dayStartUtc, dayEndUtc), ordered by UpdatedAt ?? CreatedAt descending, capped at take.</summary>
+    Task<IReadOnlyList<EmployeeWorkTaskRow>> ListTodayAssignedAsync(
+        Guid tenantId, Guid employeeId, DateOnly today, DateTimeOffset dayStartUtc, DateTimeOffset dayEndUtc, int take, CancellationToken ct = default);
 
     /// <summary>CompletedAt of every completed (status marks complete or progress 100) assigned task
     /// whose CompletedAt is in [fromUtc, toUtcExclusive).</summary>

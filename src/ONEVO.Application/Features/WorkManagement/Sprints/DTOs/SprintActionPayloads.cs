@@ -11,8 +11,21 @@ public sealed record SprintEditInput(string Name, string? Goal, DateOnly? StartD
 /// <summary>payload_json of sprint.start.</summary>
 public sealed record SprintStartInput(DateOnly StartDate, DateOnly EndDate, string? Goal);
 
+/// <summary>UndoStateJson for sprint.start - only the pre-start Goal; StartDate/EndDate always revert
+/// to null (a Draft sprint has no dates by definition).</summary>
+public sealed record SprintStartUndoSnapshot(string? PreviousGoal);
+
 /// <summary>payload_json of sprint.complete. Disposition is "backlog" or "sprint" (then TargetSprintId is required).</summary>
 public sealed record SprintCompleteInput(string Disposition, Guid? TargetSprintId);
+
+/// <summary>UndoStateJson for sprint.achieve - the status the sprint had right before it was achieved.</summary>
+public sealed record SprintAchieveUndoSnapshot(string PreviousStatus);
+
+/// <summary>UndoStateJson for sprint.delete - the tasks ApplyDeleteAsync detached, to reattach on revert.</summary>
+public sealed record SprintDeleteUndoSnapshot(IReadOnlyList<Guid> TaskIds);
+
+/// <summary>UndoStateJson for sprint.complete - the tasks ApplyCompleteAsync moved out, to move back on revert.</summary>
+public sealed record SprintCompleteUndoSnapshot(IReadOnlyList<Guid> MovedTaskIds);
 
 public static class SprintPayloadJson
 {

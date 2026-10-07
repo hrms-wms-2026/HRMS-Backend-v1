@@ -1,3 +1,4 @@
+using FluentAssertions;
 using Moq;
 using ONEVO.Application.Features.WorkManagement.CalendarEvents.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
@@ -206,5 +207,15 @@ public class TaskWriteServiceTests
             l.EmployeeId == ActorEmployeeId && l.PreviousPercent == 10 && l.NewPercent == 60 &&
             l.Source == TaskPercentageLogSources.ManualEdit && l.Reason == "because"),
             It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public void Restore_ClearsIsDeletedAndDeletedAt()
+    {
+        var task = new WorkTask { Id = Guid.NewGuid(), TenantId = TenantId, IsDeleted = true, DeletedAt = DateTimeOffset.UtcNow };
+        var service = Build();
+        service.Restore(task);
+        task.IsDeleted.Should().BeFalse();
+        task.DeletedAt.Should().BeNull();
     }
 }

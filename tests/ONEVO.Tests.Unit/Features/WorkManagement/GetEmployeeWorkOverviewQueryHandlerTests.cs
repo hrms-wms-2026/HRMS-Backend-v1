@@ -91,7 +91,22 @@ public sealed class GetEmployeeWorkOverviewQueryHandlerTests
         v.InProgress.Should().Be(1);
         v.NotStarted.Should().Be(1);
         v.CompletionRatePercent.Should().Be(40);
-        v.OnTimeRatePercent.Should().Be(50);
+        v.OnTimeRatePercent.Should().Be(33);   // 1 on time of 2 completed + 1 overdue
+    }
+
+    [Fact]
+    public async Task Handle_OnTimeRateCountsOverdueOpenTasksAsMissed()
+    {
+        ArrangeRows(
+            Row(due: "2026-09-10", completed: "2026-09-09T10:00:00+00:00", done: true),   // the only completed task, on time
+            Row(due: "2026-09-05", progress: 20),                                          // overdue
+            Row(due: "2026-09-12"),                                                        // overdue
+            Row(due: "2026-09-28"));                                                       // not due yet - not judged
+
+        var result = await CreateHandler().Handle(
+            new GetEmployeeWorkOverviewQuery(_employeeId, new DateOnly(2026, 9, 1), new DateOnly(2026, 9, 30)), CancellationToken.None);
+
+        result.Value!.OnTimeRatePercent.Should().Be(33);   // 1 / (1 + 2), not 100
     }
 
     [Fact]
@@ -106,7 +121,7 @@ public sealed class GetEmployeeWorkOverviewQueryHandlerTests
     }
 
     [Fact]
-    public async Task Handle_OnTimeRateIsNull_WhenNoCompletedTaskHasBothDates()
+    public async Task Handle_OnTimeRateIsNull_WhenNoTaskHasReachedItsDueDate()
     {
         ArrangeRows(Row(progress: 10));
 

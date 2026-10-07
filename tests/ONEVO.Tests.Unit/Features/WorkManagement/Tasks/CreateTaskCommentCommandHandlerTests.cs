@@ -3,9 +3,15 @@ using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
+using ONEVO.Application.Features.WorkManagement.Hierarchy;
+using ONEVO.Application.Features.WorkManagement.Notifications.Services;
+using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.CreateTaskComment;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.Services;
+using ONEVO.Domain.Features.WorkManagement.Approvals.Entities;
+using ONEVO.Domain.Features.WorkManagement.Notifications.Entities;
+using ONEVO.Domain.Features.WorkManagement.Objectives.Entities;
 using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
 using Xunit;
 
@@ -17,8 +23,11 @@ public class CreateTaskCommentCommandHandlerTests
     private static readonly Guid UserId = Guid.NewGuid();
     private static readonly Guid EmployeeId = Guid.NewGuid();
     private static readonly Guid TaskId = Guid.NewGuid();
+    private static readonly Guid ObjectiveId = Guid.NewGuid();
+    private static readonly Guid ProjectId = Guid.NewGuid();
+    private static readonly Guid OwnerId = Guid.NewGuid();
 
-    private (CreateTaskCommentCommandHandler Handler, Mock<ITaskCommentRepository> Comments, Mock<ITaskAssetLinker> Linker)
+    private (CreateTaskCommentCommandHandler Handler, Mock<ITaskCommentRepository> Comments, Mock<ITaskAssetLinker> Linker, Mock<IWorkNotificationEngine> Notifications)
         Build(Result<TaskAccessContext>? accessResult = null)
     {
         var currentUser = new Mock<ICurrentUser>();
@@ -26,10 +35,11 @@ public class CreateTaskCommentCommandHandlerTests
         currentUser.SetupGet(x => x.TenantId).Returns(TenantId);
         currentUser.SetupGet(x => x.UserId).Returns(UserId);
 
+        var task = new WorkTask { Id = TaskId, TenantId = TenantId, ObjectiveId = ObjectiveId, ProjectId = ProjectId, Title = "Fix login bug" };
+
         var access = new Mock<ITaskAccessResolver>();
         access.Setup(x => x.ResolveViewableTaskAsync(TenantId, UserId, TaskId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(accessResult ?? Result<TaskAccessContext>.Success(
-                new TaskAccessContext(new WorkTask { Id = TaskId, TenantId = TenantId }, EmployeeId)));
+            .ReturnsAsync(accessResult ?? Result<TaskAccessContext>.Success(new TaskAccessContext(task, EmployeeId)));
 
         var comments = new Mock<ITaskCommentRepository>();
         var linker = new Mock<ITaskAssetLinker>();
@@ -38,15 +48,29 @@ public class CreateTaskCommentCommandHandlerTests
             .ReturnsAsync(new Dictionary<Guid, string> { [EmployeeId] = "Priya" });
         var unitOfWork = new Mock<IUnitOfWork>();
 
+        var objective = new Objective { Id = ObjectiveId, TenantId = TenantId, ProjectId = ProjectId, OwnerId = OwnerId, IsActive = true, CreatedAt = DateTimeOffset.UtcNow };
+        var objectives = new Mock<IObjectiveRepository>();
+        objectives.Setup(x => x.GetByIdForTenantAsync(TenantId, ObjectiveId, It.IsAny<CancellationToken>())).ReturnsAsync(objective);
+
+        var hierarchy = new Mock<IWorkHierarchyService>();
+        hierarchy.Setup(x => x.LoadTreeAsync(TenantId, ProjectId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ProjectModuleTree(new[] { objective }));
+
+        var assignments = new Mock<ITaskAssignmentRepository>();
+        assignments.Setup(x => x.GetByTaskIdAsync(TaskId, It.IsAny<CancellationToken>())).ReturnsAsync(Array.Empty<TaskAssignment>());
+
+        var notifications = new Mock<IWorkNotificationEngine>();
+
         var handler = new CreateTaskCommentCommandHandler(
-            currentUser.Object, access.Object, comments.Object, linker.Object, identity.Object, unitOfWork.Object);
-        return (handler, comments, linker);
+            currentUser.Object, access.Object, comments.Object, linker.Object, identity.Object, unitOfWork.Object,
+            objectives.Object, hierarchy.Object, assignments.Object, notifications.Object);
+        return (handler, comments, linker, notifications);
     }
 
     [Fact]
     public async Task Handle_TopLevelComment_CreatesAndSyncsAssets()
     {
-        var (handler, comments, linker) = Build();
+        var (handler, comments, linker, _) = Build();
 
         var result = await handler.Handle(
             new CreateTaskCommentCommand(TaskId, null, "Looks good", new[] { Guid.NewGuid() }), CancellationToken.None);
@@ -60,9 +84,26 @@ public class CreateTaskCommentCommandHandlerTests
     }
 
     [Fact]
+    public async Task Handle_TopLevelComment_NotifiesTheObjectiveOwner()
+    {
+        var (handler, _, _, notifications) = Build();
+
+        await handler.Handle(
+            new CreateTaskCommentCommand(TaskId, null, "Looks good", Array.Empty<Guid>()), CancellationToken.None);
+
+        notifications.Verify(x => x.NotifyAsync(
+            It.Is<WorkNotificationEvent>(e =>
+                e.TenantId == TenantId && e.ProjectId == ProjectId && e.ActorEmployeeId == EmployeeId &&
+                e.Kind == WorkNotificationKinds.Direct && e.ActionType == WorkActionTypes.TaskComment &&
+                e.TargetType == WorkTargetTypes.Task && e.TargetId == TaskId && e.TargetTitle == "Fix login bug" &&
+                e.ApprovalRequestId == null && e.RecipientEmployeeIds.Contains(OwnerId)),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
     public async Task Handle_ReplyToTopLevelComment_ResolvesTaskIdFromParent()
     {
-        var (handler, comments, _) = Build();
+        var (handler, comments, _, _) = Build();
         var parentId = Guid.NewGuid();
         comments.Setup(x => x.GetByIdForTenantAsync(TenantId, parentId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new TaskComment { Id = parentId, TenantId = TenantId, TaskId = TaskId, ParentCommentId = null });
@@ -78,7 +119,7 @@ public class CreateTaskCommentCommandHandlerTests
     [Fact]
     public async Task Handle_ReplyToAReply_ReturnsBadRequest()
     {
-        var (handler, comments, _) = Build();
+        var (handler, comments, _, _) = Build();
         var topLevelId = Guid.NewGuid();
         var replyId = Guid.NewGuid();
         comments.Setup(x => x.GetByIdForTenantAsync(TenantId, replyId, It.IsAny<CancellationToken>()))
@@ -94,7 +135,7 @@ public class CreateTaskCommentCommandHandlerTests
     [Fact]
     public async Task Handle_ParentCommentNotFound_ReturnsNotFound()
     {
-        var (handler, comments, _) = Build();
+        var (handler, comments, _, _) = Build();
         var parentId = Guid.NewGuid();
         comments.Setup(x => x.GetByIdForTenantAsync(TenantId, parentId, It.IsAny<CancellationToken>())).ReturnsAsync((TaskComment?)null);
 
@@ -108,7 +149,7 @@ public class CreateTaskCommentCommandHandlerTests
     [Fact]
     public async Task Handle_NoTaskVisibility_PropagatesAccessFailure()
     {
-        var (handler, _, _) = Build(Result<TaskAccessContext>.NotFound("Task not found."));
+        var (handler, _, _, _) = Build(Result<TaskAccessContext>.NotFound("Task not found."));
 
         var result = await handler.Handle(
             new CreateTaskCommentCommand(TaskId, null, "text", Array.Empty<Guid>()), CancellationToken.None);

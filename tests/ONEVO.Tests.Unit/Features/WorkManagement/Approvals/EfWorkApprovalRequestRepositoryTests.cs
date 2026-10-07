@@ -223,6 +223,36 @@ public sealed class EfWorkApprovalRequestRepositoryTests : IDisposable
         result.Should().BeEmpty();
     }
 
+    [Fact]
+    public async Task RevertColumns_RoundTripThroughSaveAndReload()
+    {
+        var request = NewRequest(Guid.NewGuid(), WorkApprovalRequestStatuses.Pending);
+        await using (var db = CreateContext())
+        {
+            db.WorkApprovalRequests.Add(request);
+            await db.SaveChangesAsync();
+        }
+
+        var reverter = Guid.NewGuid();
+        var revertedAt = DateTimeOffset.UtcNow;
+        await using (var db = CreateContext())
+        {
+            var repo = new EfWorkApprovalRequestRepository(db);
+            var tracked = await repo.GetTrackedByIdForTenantAsync(TenantId, request.Id);
+            tracked!.UndoStateJson = "{\"title\":\"Old title\"}";
+            tracked.RevertedAt = revertedAt;
+            tracked.RevertedByEmployeeId = reverter;
+            repo.Update(tracked);
+            await db.SaveChangesAsync();
+        }
+
+        await using var read = CreateContext();
+        var reloaded = await new EfWorkApprovalRequestRepository(read).GetTrackedByIdForTenantAsync(TenantId, request.Id);
+        reloaded!.UndoStateJson.Should().Be("{\"title\":\"Old title\"}");
+        reloaded.RevertedAt.Should().BeCloseTo(revertedAt, TimeSpan.FromSeconds(1));
+        reloaded.RevertedByEmployeeId.Should().Be(reverter);
+    }
+
     private ApplicationDbContext CreateContext()
     {
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()

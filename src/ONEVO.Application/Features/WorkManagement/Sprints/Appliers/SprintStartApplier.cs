@@ -21,4 +21,10 @@ public sealed class SprintStartApplier : SprintApplierBase
             return Result.Failure("The sprint start request has no dates.");
         return await Writes.ApplyStartAsync(tenantId, actorEmployeeId, sprint, input, ct);
     }
+
+    protected override string? CaptureUndoJson(Sprint sprint)
+        // Always snapshot, even when Goal is null - a null UndoJson must mean "no snapshot was taken"
+        // (legacy data from before this feature), not "the pre-start Goal was null". SprintStartReverter
+        // relies on this: a present-but-null-Goal snapshot clears Goal back to null on revert.
+        => System.Text.Json.JsonSerializer.Serialize(new SprintStartUndoSnapshot(sprint.Goal), SprintPayloadJson.Options);
 }

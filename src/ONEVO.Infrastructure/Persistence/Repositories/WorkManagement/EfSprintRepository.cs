@@ -19,6 +19,9 @@ public class EfSprintRepository : ISprintRepository
     public async Task<Sprint?> GetTrackedByIdForTenantAsync(Guid tenantId, Guid id, CancellationToken ct = default)
         => await _db.Sprints.FirstOrDefaultAsync(s => s.TenantId == tenantId && s.Id == id, ct);
 
+    public async Task<Sprint?> GetTrackedByIdForTenantIncludingDeletedAsync(Guid tenantId, Guid id, CancellationToken ct = default)
+        => await _db.Sprints.IgnoreQueryFilters().FirstOrDefaultAsync(s => s.TenantId == tenantId && s.Id == id, ct);
+
     public async Task<IReadOnlyList<Sprint>> GetByProjectAsync(Guid tenantId, Guid projectId, CancellationToken ct = default)
         => await _db.Sprints.AsNoTracking()
             .Where(s => s.TenantId == tenantId && s.ProjectId == projectId)

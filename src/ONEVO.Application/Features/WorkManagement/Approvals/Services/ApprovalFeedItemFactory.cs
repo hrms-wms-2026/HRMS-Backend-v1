@@ -50,7 +50,7 @@ internal static class ApprovalFeedItemFactory
             r.DecidedByEmployeeId, r.DecidedByEmployeeId is Guid d ? Name(d, lookup) : null,
             r.DecisionComment, r.CreatedAt, r.DecidedAt,
             CanDecide: pending && WorkApprovalDecisionRules.CanDecide(lookup.Tree, r, caller),
-            CanCancel: pending && isSender,
+            CanCancel: pending && isSender && DateTimeOffset.UtcNow <= r.CreatedAt.AddMinutes(ApprovalRevertWindow.Minutes),
             lookup.CommentCounts.GetValueOrDefault(r.Id),
             ApprovalSummaries.For(r, payload));
     }
@@ -70,7 +70,8 @@ internal static class ApprovalFeedItemFactory
             decided ? i.InvitedEmployeeId : null, decided ? Name(i.InvitedEmployeeId, lookup) : null,
             DecisionComment: null, i.CreatedAt, i.DecidedAt,
             CanDecide: status == WorkApprovalRequestStatuses.Pending && i.InvitedEmployeeId == caller,
-            CanCancel: false,
+            CanCancel: status == WorkApprovalRequestStatuses.Pending && i.InvitedById == caller
+                && DateTimeOffset.UtcNow <= i.CreatedAt.AddMinutes(ApprovalRevertWindow.Minutes),
             lookup.CommentCounts.GetValueOrDefault(i.Id),
             $"Invited as {i.InviteType}");
     }

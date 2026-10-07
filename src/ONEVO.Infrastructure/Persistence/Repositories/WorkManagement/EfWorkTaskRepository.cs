@@ -19,6 +19,9 @@ public class EfWorkTaskRepository : IWorkTaskRepository
     public async Task<WorkTask?> GetTrackedByIdForTenantAsync(Guid tenantId, Guid id, CancellationToken ct = default)
         => await _db.WorkTasks.FirstOrDefaultAsync(t => t.TenantId == tenantId && t.Id == id, ct);
 
+    public async Task<WorkTask?> GetTrackedByIdForTenantIncludingDeletedAsync(Guid tenantId, Guid id, CancellationToken ct = default)
+        => await _db.WorkTasks.IgnoreQueryFilters().FirstOrDefaultAsync(t => t.TenantId == tenantId && t.Id == id, ct);
+
     public Task<bool> IsAssignedToEmployeeAsync(Guid taskId, Guid employeeId, CancellationToken ct = default)
         => _db.TaskAssignments.AsNoTracking()
             .AnyAsync(assignment => assignment.TaskId == taskId && assignment.EmployeeId == employeeId, ct);
@@ -237,7 +240,8 @@ public class EfWorkTaskRepository : IWorkTaskRepository
         ).ToListAsync(ct);
     }
 
-    public async Task<IReadOnlyList<EmployeeWorkTaskRow>> ListRecentlyChangedAssignedAsync(Guid tenantId, Guid employeeId, int take, CancellationToken ct = default)
+    public async Task<IReadOnlyList<EmployeeWorkTaskRow>> ListTodayAssignedAsync(
+        Guid tenantId, Guid employeeId, DateOnly today, DateTimeOffset dayStartUtc, DateTimeOffset dayEndUtc, int take, CancellationToken ct = default)
     {
         return await (
             from t in _db.WorkTasks.AsNoTracking()
@@ -245,6 +249,8 @@ public class EfWorkTaskRepository : IWorkTaskRepository
             join p in _db.Projects.AsNoTracking() on t.ProjectId equals p.Id
             where t.TenantId == tenantId
                   && _db.TaskAssignments.Any(a => a.TaskId == t.Id && a.EmployeeId == employeeId)
+                  && (t.DueDate == today
+                      || ((t.UpdatedAt ?? t.CreatedAt) >= dayStartUtc && (t.UpdatedAt ?? t.CreatedAt) < dayEndUtc))
             orderby (t.UpdatedAt ?? t.CreatedAt) descending
             select new EmployeeWorkTaskRow(
                 t.Id, t.ShortId, t.Title, t.ProjectId, p.Name, s.Name, s.Color, s.MarksTaskComplete,

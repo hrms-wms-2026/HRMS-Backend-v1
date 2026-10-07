@@ -16,4 +16,7 @@ public sealed class SprintAchieveApplier : SprintApplierBase
 
     protected override Task<Result> ApplyAsync(Guid tenantId, Guid actorEmployeeId, Sprint sprint, string payloadJson, CancellationToken ct)
         => Writes.ApplyAchieveAsync(tenantId, actorEmployeeId, sprint, ct);
+
+    protected override string? CaptureUndoJson(Sprint sprint)
+        => System.Text.Json.JsonSerializer.Serialize(new SprintAchieveUndoSnapshot(sprint.Status), SprintPayloadJson.Options);
 }

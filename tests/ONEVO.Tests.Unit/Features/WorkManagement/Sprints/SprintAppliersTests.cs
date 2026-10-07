@@ -125,7 +125,7 @@ public class SprintAppliersTests
     {
         var sprint = GivenSprint(SprintStatuses.Active);
 
-        var outcome = await Apply(new SprintDeleteApplier(_w.Sprints.Object, _w.Writes()),
+        var outcome = await Apply(new SprintDeleteApplier(_w.Sprints.Object, _w.Writes(), _w.Tasks.Object),
             Request(WorkActionTypes.SprintDelete, sprint.Id, "{}"));
 
         outcome.Kind.Should().Be(ApplyOutcomeKind.Invalid);
@@ -135,7 +135,7 @@ public class SprintAppliersTests
     [Fact]
     public async Task Delete_SprintGone_Stale()
     {
-        var outcome = await Apply(new SprintDeleteApplier(_w.Sprints.Object, _w.Writes()),
+        var outcome = await Apply(new SprintDeleteApplier(_w.Sprints.Object, _w.Writes(), _w.Tasks.Object),
             Request(WorkActionTypes.SprintDelete, Guid.NewGuid(), "{}"));
 
         outcome.Kind.Should().Be(ApplyOutcomeKind.Stale);

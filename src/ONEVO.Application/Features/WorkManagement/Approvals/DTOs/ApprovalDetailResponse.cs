@@ -23,4 +23,6 @@ public sealed record ApprovalDetailResponse(
     bool CanEditPayload,
     string? Note,                       // the payload's reason/note, if any
     decimal? CurrentAllocatedHours,     // allocation rows only
-    ApprovalInvitationResponse? Invitation);
+    ApprovalInvitationResponse? Invitation,
+    bool CanRevert,                     // engine rows only; always false for an invitation row
+    DateTimeOffset? RevertableUntil);

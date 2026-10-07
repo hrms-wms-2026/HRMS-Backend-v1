@@ -21,4 +21,9 @@ public sealed class ModuleEditApplier : ModuleApplierBase
             return Result.Failure("The edit request has no title.");
         return await Modules.ApplyEditAsync(tenantId, module, input, ct);
     }
+
+    protected override string? CaptureUndoJson(Objective module)
+        => System.Text.Json.JsonSerializer.Serialize(
+            new ModuleEditInput(module.Title, module.Description, module.StartDate, module.EndDate, module.AllocatedHours),
+            ModulePayloadJson.Options);
 }

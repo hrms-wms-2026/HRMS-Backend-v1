@@ -6,7 +6,9 @@ using ONEVO.Application.Features.Leave.Approval.DTOs.Responses;
 using ONEVO.Application.Features.Leave.Approval.Helpers;
 using ONEVO.Application.Features.Leave.Approval.Mappers;
 using ONEVO.Application.Features.Leave.Approval.RepositoryInterfaces;
+using ONEVO.Application.Features.Leave.Approval.Services;
 using ONEVO.Application.Features.Leave.Request.Services;
+using ONEVO.Domain.Features.Leave.Common;
 
 namespace ONEVO.Application.Features.Leave.Approval.Queries;
 
@@ -100,7 +102,9 @@ public sealed class ListAllLeaveRequestsQueryHandler
     }
 }
 
-public sealed record GetLeaveApprovalDetailQuery(Guid RequestId)
+/// <summary>OrgWideRead is set by the HR ledger endpoint (gated on leave:read), which may open any
+/// request read-only; the approver endpoint leaves it false and requires an assigned approver.</summary>
+public sealed record GetLeaveApprovalDetailQuery(Guid RequestId, bool OrgWideRead = false)
     : IRequest<Result<LeaveApprovalDetailResponse>>;
 
 public sealed class GetLeaveApprovalDetailQueryHandler
@@ -110,17 +114,23 @@ public sealed class GetLeaveApprovalDetailQueryHandler
     private readonly IEmployeeRepository _employees;
     private readonly ILeaveApprovalRepository _repository;
     private readonly ILeaveRequestConflictProvider _conflicts;
+    private readonly LeaveForwardTargetResolver _forwardTargets;
+    private readonly IDateTimeProvider _clock;
 
     public GetLeaveApprovalDetailQueryHandler(
         ICurrentUser currentUser,
         IEmployeeRepository employees,
         ILeaveApprovalRepository repository,
-        ILeaveRequestConflictProvider conflicts)
+        ILeaveRequestConflictProvider conflicts,
+        LeaveForwardTargetResolver forwardTargets,
+        IDateTimeProvider clock)
     {
+        _clock = clock;
         _currentUser = currentUser;
         _employees = employees;
         _repository = repository;
         _conflicts = conflicts;
+        _forwardTargets = forwardTargets;
     }
 
     public async Task<Result<LeaveApprovalDetailResponse>> Handle(GetLeaveApprovalDetailQuery query, CancellationToken ct)
@@ -131,14 +141,23 @@ public sealed class GetLeaveApprovalDetailQueryHandler
             return Result<LeaveApprovalDetailResponse>.Forbidden(LeaveApprovalMessages.TenantMissing);
 
         var employee = await _employees.GetByUserIdAsync(_currentUser.TenantId, _currentUser.UserId, ct);
-        if (employee is null)
+        if (employee is null && !query.OrgWideRead)
             return Result<LeaveApprovalDetailResponse>.NotFound(LeaveApprovalMessages.NoEmployee);
 
         var state = await _repository.GetStateAsync(_currentUser.TenantId, query.RequestId, ct);
         if (state is null)
             return Result<LeaveApprovalDetailResponse>.NotFound(LeaveApprovalMessages.NotFound);
-        if (state.Approvers.All(x => x.ApproverEmployeeId != employee.Id))
+        if (!query.OrgWideRead && state.Approvers.All(x => x.ApproverEmployeeId != employee!.Id))
             return Result<LeaveApprovalDetailResponse>.Forbidden(LeaveApprovalMessages.NotAssigned);
+
+        var canDecide = employee is not null
+            && state.ApprovalMode is not null
+            && state.Request.Status is not (LeaveRequestStatuses.Approved or LeaveRequestStatuses.Rejected or LeaveRequestStatuses.Cancelled)
+            && _currentUser.HasPermission("leave:approve")
+            && LeaveApprovalModeEvaluator.IsActionable(
+                state.ApprovalMode,
+                state.Approvers.Select(x => new ApprovalModeRow(x.ApproverEmployeeId, x.SequenceOrder, x.Status)).ToList(),
+                employee.Id);
 
         var conflicts = await _conflicts.ListConflictsAsync(
             _currentUser.TenantId,
@@ -153,8 +172,21 @@ public sealed class GetLeaveApprovalDetailQueryHandler
                 state.Entitlement.TotalHours, state.Entitlement.CarriedForwardHours,
                 state.Entitlement.UsedHours, state.Entitlement.PendingHours);
 
-        var approverIds = state.Approvers.Select(a => a.ApproverEmployeeId).Distinct().ToList();
+        var canChangeDecision = employee is not null
+            && _currentUser.HasPermission("leave:approve")
+            && LeaveDecisionChangeRules.CanChange(state, employee.Id, _clock.UtcNow);
+
+        var forwardTargetId = canDecide
+            ? await _forwardTargets.ResolveAsync(_currentUser.TenantId, state, employee!.Id, ct)
+            : null;
+
+        var approverIds = state.Approvers.Select(a => a.ApproverEmployeeId)
+            .Concat(forwardTargetId is { } id ? [id] : [])
+            .Distinct().ToList();
         var approverPeople = await _employees.ListByIdsAsync(_currentUser.TenantId, approverIds, ct);
+        var forwardTo = forwardTargetId is { } targetId && approverPeople.TryGetValue(targetId, out var target)
+            ? new LeaveApprovalForwardTargetResponse(targetId, $"{target.FirstName} {target.LastName}".Trim())
+            : null;
 
         return Result<LeaveApprovalDetailResponse>.Success(new LeaveApprovalDetailResponse(
             state.Request.Id,
@@ -179,6 +211,59 @@ public sealed class GetLeaveApprovalDetailQueryHandler
             state.InfoMessages.Select(m => new LeaveApprovalInfoMessageResponse(m.SenderEmployeeId, m.Message, m.CreatedAt)).ToList(),
             state.Request.ConflictSnapshotJson,
             warnings,
-            remaining));
+            remaining,
+            canDecide,
+            forwardTo,
+            canChangeDecision));
+    }
+}
+
+public sealed record ListLeaveApprovalHistoryQuery(DateOnly? FromDate, DateOnly? ToDate)
+    : IRequest<Result<IReadOnlyList<LeaveApprovalHistoryItemResponse>>>;
+
+public sealed class ListLeaveApprovalHistoryQueryHandler
+    : IRequestHandler<ListLeaveApprovalHistoryQuery, Result<IReadOnlyList<LeaveApprovalHistoryItemResponse>>>
+{
+    public const int Limit = 100;
+
+    private readonly ICurrentUser _currentUser;
+    private readonly IEmployeeRepository _employees;
+    private readonly ILeaveApprovalRepository _repository;
+
+    public ListLeaveApprovalHistoryQueryHandler(
+        ICurrentUser currentUser, IEmployeeRepository employees, ILeaveApprovalRepository repository)
+    {
+        _currentUser = currentUser;
+        _employees = employees;
+        _repository = repository;
+    }
+
+    public async Task<Result<IReadOnlyList<LeaveApprovalHistoryItemResponse>>> Handle(
+        ListLeaveApprovalHistoryQuery query, CancellationToken ct)
+    {
+        if (!_currentUser.IsAuthenticated)
+            return Result<IReadOnlyList<LeaveApprovalHistoryItemResponse>>.Forbidden(LeaveApprovalMessages.AuthRequired);
+        if (_currentUser.TenantId == Guid.Empty)
+            return Result<IReadOnlyList<LeaveApprovalHistoryItemResponse>>.Forbidden(LeaveApprovalMessages.TenantMissing);
+
+        var employee = await _employees.GetByUserIdAsync(_currentUser.TenantId, _currentUser.UserId, ct);
+        if (employee is null)
+            return Result<IReadOnlyList<LeaveApprovalHistoryItemResponse>>.NotFound(LeaveApprovalMessages.NoEmployee);
+
+        var rows = await _repository.ListApprovalHistoryAsync(
+            _currentUser.TenantId, employee.Id, query.FromDate, query.ToDate, Limit, ct);
+        return Result<IReadOnlyList<LeaveApprovalHistoryItemResponse>>.Success(rows.Select(row =>
+            new LeaveApprovalHistoryItemResponse(
+                row.Request.Id,
+                row.Request.EmployeeId,
+                row.EmployeeName,
+                row.LeaveTypeName,
+                row.Request.StartAt,
+                row.Request.EndAt,
+                row.Request.TotalHours,
+                row.MyAction,
+                row.ActedAt,
+                row.MyComment,
+                row.Request.Status)).ToList());
     }
 }
