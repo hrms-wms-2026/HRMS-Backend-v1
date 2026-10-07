@@ -1,5 +1,6 @@
 using MediatR;
 using ONEVO.Application.Common.Models;
+using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Leave.Request.DTOs.Responses;
 using ONEVO.Application.Features.Leave.Request.Mappers;
@@ -14,15 +15,18 @@ public sealed class PreviewSubmitLeaveRequestQueryHandler
     private readonly ICurrentUser _currentUser;
     private readonly IDateTimeProvider _clock;
     private readonly LeaveRequestSubmissionEvaluator _evaluator;
+    private readonly IEmployeeRepository _employees;
 
     public PreviewSubmitLeaveRequestQueryHandler(
         ICurrentUser currentUser,
         IDateTimeProvider clock,
-        LeaveRequestSubmissionEvaluator evaluator)
+        LeaveRequestSubmissionEvaluator evaluator,
+        IEmployeeRepository employees)
     {
         _currentUser = currentUser;
         _clock = clock;
         _evaluator = evaluator;
+        _employees = employees;
     }
 
     public async Task<Result<LeaveRequestResponse>> Handle(PreviewSubmitLeaveRequestQuery query, CancellationToken ct)
@@ -52,6 +56,12 @@ public sealed class PreviewSubmitLeaveRequestQueryHandler
                 c.Source, c.Title, c.StartsAt, c.EndsAt)).ToList(),
             draft.TeamAbsencePercent);
 
+        // Name the approver so the wizard's review step can say who the request goes to.
+        var approverIds = draft.Approvers.Approvers.Select(a => a.ApproverEmployeeId).Distinct().ToList();
+        var approverPeople = approverIds.Count == 0
+            ? (IReadOnlyDictionary<Guid, ONEVO.Domain.Features.CoreHr.Entities.Employee>)new Dictionary<Guid, ONEVO.Domain.Features.CoreHr.Entities.Employee>()
+            : await _employees.ListByIdsAsync(_currentUser.TenantId, approverIds, ct);
+
         return Result<LeaveRequestResponse>.Success(new LeaveRequestResponse(
             Guid.Empty,
             draft.TargetEmployee.Id,
@@ -68,7 +78,11 @@ public sealed class PreviewSubmitLeaveRequestQueryHandler
             query.IsOnBehalfRequest ? _currentUser.UserId : null,
             LeaveRequestMapper.ToBalanceImpact(draft.CurrentRemaining, draft.Entitlement.PendingHours, draft.PaidHours),
             draft.Approvers.Approvers.Select(a => new LeaveRequestApproverResponse(
-                a.ApproverEmployeeId, string.Empty, a.SequenceOrder, LeaveRequestApproverStatuses.Pending, a.DelegatedFromApproverId)).ToList(),
+                a.ApproverEmployeeId,
+                approverPeople.TryGetValue(a.ApproverEmployeeId, out var person) ? $"{person.FirstName} {person.LastName}".Trim() : string.Empty,
+                a.SequenceOrder,
+                LeaveRequestApproverStatuses.Pending,
+                a.DelegatedFromApproverId)).ToList(),
             snapshot,
             _clock.UtcNow));
     }

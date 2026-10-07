@@ -1,6 +1,7 @@
 namespace ONEVO.Application.Features.WorkManagement.EmployeeOverview.DTOs;
 
-/// <summary>One task row on the Work & Activity Needs attention / Recent tasks cards.</summary>
+/// <summary>One task row on the Work & Activity Today's tasks card. UpdatedToday: the task was created or
+/// changed during the employee's local today (why a task not due today is on the list).</summary>
 public sealed record EmployeeRecentTaskItem(
     Guid TaskId,
     string ShortId,
@@ -12,7 +13,8 @@ public sealed record EmployeeRecentTaskItem(
     string Priority,
     int? StoryPoints,
     DateOnly? DueDate,
-    int ProgressPercent);
+    int ProgressPercent,
+    bool UpdatedToday);
 
 /// <summary>reason: "overdue" | "due_soon". OverdueDays is set only for overdue items.</summary>
 public sealed record EmployeeAttentionItem(

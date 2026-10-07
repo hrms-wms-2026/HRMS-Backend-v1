@@ -276,6 +276,7 @@ public static class DependencyInjection
         services.AddScoped<
             ONEVO.Application.Features.Leave.Approval.RepositoryInterfaces.ILeaveApprovalRepository,
             ONEVO.Infrastructure.Persistence.Repositories.Leave.Approval.EfLeaveApprovalRepository>();
+        services.AddScoped<ONEVO.Application.Features.Leave.Approval.Services.LeaveForwardTargetResolver>();
         services.AddScoped<ONEVO.Application.Features.Leave.Approval.Commands.LeaveApprovalDecisionService>();
         services.AddOptions<ONEVO.Application.Features.Leave.Cancellation.Options.LeaveCancellationOptions>()
             .Bind(configuration.GetSection(ONEVO.Application.Features.Leave.Cancellation.Options.LeaveCancellationOptions.SectionName))

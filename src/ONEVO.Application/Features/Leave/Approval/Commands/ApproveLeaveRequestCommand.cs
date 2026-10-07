@@ -2,6 +2,7 @@ using FluentValidation;
 using MediatR;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Features.Leave.Approval.DTOs.Responses;
+using ONEVO.Application.Features.Leave.Approval.Helpers;
 
 namespace ONEVO.Application.Features.Leave.Approval.Commands;
 
@@ -66,6 +67,54 @@ public sealed class RequestLeaveInformationCommandHandler
     public RequestLeaveInformationCommandHandler(LeaveApprovalDecisionService service) => _service = service;
     public Task<Result<LeaveApprovalDecisionResponse>> Handle(RequestLeaveInformationCommand request, CancellationToken ct) =>
         _service.RequestInfoAsync(request.RequestId, request.Question, ct);
+}
+
+public sealed record ForwardLeaveRequestCommand(Guid RequestId, string? Note)
+    : IRequest<Result<LeaveApprovalDecisionResponse>>;
+
+public sealed class ForwardLeaveRequestCommandValidator : AbstractValidator<ForwardLeaveRequestCommand>
+{
+    public ForwardLeaveRequestCommandValidator()
+    {
+        RuleFor(x => x.RequestId).NotEmpty();
+        RuleFor(x => x.Note).MaximumLength(2000);
+    }
+}
+
+public sealed class ForwardLeaveRequestCommandHandler
+    : IRequestHandler<ForwardLeaveRequestCommand, Result<LeaveApprovalDecisionResponse>>
+{
+    private readonly LeaveApprovalDecisionService _service;
+    public ForwardLeaveRequestCommandHandler(LeaveApprovalDecisionService service) => _service = service;
+    public Task<Result<LeaveApprovalDecisionResponse>> Handle(ForwardLeaveRequestCommand request, CancellationToken ct) =>
+        _service.ForwardAsync(request.RequestId, request.Note, ct);
+}
+
+public sealed record ChangeLeaveDecisionCommand(Guid RequestId, string Decision, string? Comment)
+    : IRequest<Result<LeaveApprovalDecisionResponse>>;
+
+public sealed class ChangeLeaveDecisionCommandValidator : AbstractValidator<ChangeLeaveDecisionCommand>
+{
+    public ChangeLeaveDecisionCommandValidator()
+    {
+        RuleFor(x => x.RequestId).NotEmpty();
+        RuleFor(x => x.Decision)
+            .Must(d => d is ChangeLeaveDecisionValues.Approve or ChangeLeaveDecisionValues.Reject)
+            .WithMessage("Decision must be 'approve' or 'reject'.");
+        RuleFor(x => x.Comment).MaximumLength(1900);
+        RuleFor(x => x.Comment).NotEmpty()
+            .When(x => x.Decision == ChangeLeaveDecisionValues.Reject)
+            .WithMessage("A reason is required to change a decision to rejected.");
+    }
+}
+
+public sealed class ChangeLeaveDecisionCommandHandler
+    : IRequestHandler<ChangeLeaveDecisionCommand, Result<LeaveApprovalDecisionResponse>>
+{
+    private readonly LeaveApprovalDecisionService _service;
+    public ChangeLeaveDecisionCommandHandler(LeaveApprovalDecisionService service) => _service = service;
+    public Task<Result<LeaveApprovalDecisionResponse>> Handle(ChangeLeaveDecisionCommand request, CancellationToken ct) =>
+        _service.ChangeDecisionAsync(request.RequestId, request.Decision, request.Comment, ct);
 }
 
 public sealed record RespondLeaveInformationCommand(Guid RequestId, string Message, IReadOnlyList<Guid> FileRecordIds)

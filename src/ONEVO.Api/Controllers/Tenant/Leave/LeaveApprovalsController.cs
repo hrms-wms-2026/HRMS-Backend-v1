@@ -54,6 +54,15 @@ public sealed class LeaveApprovalsController : ControllerBase
         return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
+    /// <summary>HR's read-only view of any request from the All Requests ledger.</summary>
+    [HttpGet("{requestId:guid}/detail")]
+    [RequirePermission("leave:read")]
+    public async Task<IActionResult> Detail(Guid requestId, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new GetLeaveApprovalDetailQuery(requestId, OrgWideRead: true), ct);
+        return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
     [HttpPost("{requestId:guid}/approve")]
     [RequirePermission("leave:approve")]
     public async Task<IActionResult> Approve(Guid requestId, [FromBody] ApproveLeaveRequestRequest? request, CancellationToken ct = default)
@@ -75,6 +84,33 @@ public sealed class LeaveApprovalsController : ControllerBase
     public async Task<IActionResult> RequestInfo(Guid requestId, [FromBody] RequestLeaveInformationRequest request, CancellationToken ct = default)
     {
         var result = await _mediator.Send(new RequestLeaveInformationCommand(requestId, request.Question), ct);
+        return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    [HttpPost("{requestId:guid}/forward")]
+    [RequirePermission("leave:approve")]
+    public async Task<IActionResult> Forward(Guid requestId, [FromBody] ForwardLeaveRequestRequest? request, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new ForwardLeaveRequestCommand(requestId, request?.Note), ct);
+        return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    [HttpPost("{requestId:guid}/change-decision")]
+    [RequirePermission("leave:approve")]
+    public async Task<IActionResult> ChangeDecision(Guid requestId, [FromBody] ChangeLeaveDecisionRequest request, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new ChangeLeaveDecisionCommand(requestId, request.Decision, request.Comment), ct);
+        return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    [HttpGet("approval-history")]
+    [RequirePermission("leave:approve")]
+    public async Task<IActionResult> ApprovalHistory(
+        [FromQuery] DateOnly? fromDate,
+        [FromQuery] DateOnly? toDate,
+        CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new ListLeaveApprovalHistoryQuery(fromDate, toDate), ct);
         return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 

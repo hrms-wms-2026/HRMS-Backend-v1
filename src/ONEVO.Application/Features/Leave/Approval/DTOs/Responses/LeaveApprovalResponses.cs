@@ -38,7 +38,8 @@ public sealed record LeaveRequestAllListItemResponse(
     DateTimeOffset EndAt,
     decimal TotalHours,
     string Status,
-    DateTimeOffset SubmittedAt);
+    DateTimeOffset SubmittedAt,
+    IReadOnlyList<string> ApproverNames);
 
 public sealed record LeaveApprovalDetailResponse(
     Guid RequestId,
@@ -58,7 +59,26 @@ public sealed record LeaveApprovalDetailResponse(
     IReadOnlyList<LeaveApprovalInfoMessageResponse> InfoMessages,
     string? SubmissionConflictSnapshotJson,
     IReadOnlyList<LeaveApprovalWarningResponse> CurrentWarnings,
-    decimal RemainingHours);
+    decimal RemainingHours,
+    bool CanDecide,
+    LeaveApprovalForwardTargetResponse? ForwardTo,
+    bool CanChangeDecision);
+
+/// <summary>Who "Send to my manager" would hand the request to; null when the caller can't forward.</summary>
+public sealed record LeaveApprovalForwardTargetResponse(Guid EmployeeId, string Name);
+
+public sealed record LeaveApprovalHistoryItemResponse(
+    Guid RequestId,
+    Guid EmployeeId,
+    string EmployeeName,
+    string LeaveTypeName,
+    DateTimeOffset StartAt,
+    DateTimeOffset EndAt,
+    decimal TotalHours,
+    string MyAction,
+    DateTimeOffset ActedAt,
+    string? MyComment,
+    string RequestStatus);
 
 public sealed record LeaveApprovalApproverResponse(
     Guid ApproverEmployeeId,

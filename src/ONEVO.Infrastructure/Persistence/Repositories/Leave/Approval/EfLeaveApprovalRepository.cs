@@ -164,18 +164,96 @@ public class EfLeaveApprovalRepository : ILeaveApprovalRepository
         }
 
         var rows = await query.OrderByDescending(x => x.request.CreatedAt).ToListAsync(ct);
+        var requestIds = rows.Select(x => x.request.Id).ToList();
+        var approverRows = await (
+            from approver in _db.LeaveRequestApprovers.AsNoTracking()
+            join person in _db.Employees.AsNoTracking() on approver.ApproverEmployeeId equals person.Id
+            where approver.TenantId == tenantId && requestIds.Contains(approver.LeaveRequestId)
+            orderby approver.SequenceOrder
+            select new { approver.LeaveRequestId, person.FirstName, person.LastName })
+            .ToListAsync(ct);
+        var approverNames = approverRows
+            .GroupBy(a => a.LeaveRequestId)
+            .ToDictionary(
+                g => g.Key,
+                g => (IReadOnlyList<string>)g.Select(a => LeaveEntitlementMapper.EmployeeName(a.FirstName, a.LastName)).Distinct().ToList());
+
         return rows.Select(x => new LeaveRequestAllListRow(
             x.request,
             LeaveEntitlementMapper.EmployeeName(x.employee.FirstName, x.employee.LastName),
             x.employee.DepartmentId,
             x.department?.Name,
-            x.leaveType.Name)).ToList();
+            x.leaveType.Name,
+            approverNames.TryGetValue(x.request.Id, out var names) ? names : [])).ToList();
     }
 
     public Task AddInfoMessageAsync(LeaveRequestInfoMessage message, CancellationToken ct = default)
     {
         _db.LeaveRequestInfoMessages.Add(message);
         return Task.CompletedTask;
+    }
+
+    public Task AddApproverAsync(LeaveRequestApprover approver, CancellationToken ct = default)
+    {
+        _db.LeaveRequestApprovers.Add(approver);
+        return Task.CompletedTask;
+    }
+
+    public async Task<IReadOnlyList<LeaveApprovalHistoryRow>> ListApprovalHistoryAsync(
+        Guid tenantId,
+        Guid approverEmployeeId,
+        DateOnly? fromDate,
+        DateOnly? toDate,
+        int limit,
+        CancellationToken ct = default)
+    {
+        string[] acted =
+        [
+            LeaveRequestApproverStatuses.Approved,
+            LeaveRequestApproverStatuses.Rejected,
+            LeaveRequestApproverStatuses.Forwarded,
+            LeaveRequestApproverStatuses.InformationRequested
+        ];
+
+        var query =
+            from approver in _db.LeaveRequestApprovers.AsNoTracking()
+            join request in _db.LeaveRequests.AsNoTracking() on approver.LeaveRequestId equals request.Id
+            join employee in _db.Employees.AsNoTracking() on request.EmployeeId equals employee.Id
+            join leaveType in _db.LeaveTypes.AsNoTracking() on request.LeaveTypeId equals leaveType.Id
+            where approver.TenantId == tenantId &&
+                  request.TenantId == tenantId &&
+                  approver.ApproverEmployeeId == approverEmployeeId &&
+                  acted.Contains(approver.Status)
+            select new
+            {
+                request,
+                employee.FirstName,
+                employee.LastName,
+                LeaveTypeName = leaveType.Name,
+                approver.Status,
+                approver.Comment,
+                ActedAt = approver.DecidedAt ?? request.UpdatedAt ?? request.CreatedAt
+            };
+
+        if (fromDate is { } from)
+        {
+            var fromStart = new DateTimeOffset(from.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc));
+            query = query.Where(x => x.request.EndAt >= fromStart);
+        }
+        if (toDate is { } to)
+        {
+            var toExclusive = new DateTimeOffset(to.AddDays(1).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc));
+            query = query.Where(x => x.request.StartAt < toExclusive);
+        }
+
+        var rows = await query.OrderByDescending(x => x.ActedAt).Take(limit).ToListAsync(ct);
+        return rows.Select(x => new LeaveApprovalHistoryRow(
+            x.request,
+            LeaveEntitlementMapper.EmployeeName(x.FirstName, x.LastName),
+            x.LeaveTypeName,
+            x.Status,
+            x.ActedAt,
+            x.Comment)).ToList();
     }
 
     public Task AddBalanceAuditAsync(LeaveBalanceAudit audit, CancellationToken ct = default)

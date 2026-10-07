@@ -33,4 +33,35 @@ public class ListLeaveTypesQueryHandlerTests
         Assert.Single(result.Value!);
         _repoMock.Verify(r => r.ListAsync(_tenantId, false, It.IsAny<CancellationToken>()), Times.Once);
     }
+
+    [Fact]
+    public async Task Handle_IncludeInactive_WithoutLeaveRead_ReturnsOnlyActive()
+    {
+        // A self-service employee (leave:read-own) lists types for the New Request wizard only;
+        // deactivated types are HR configuration, not something they can request.
+        _currentUserMock.Setup(c => c.HasPermission("leave:read")).Returns(false);
+        _repoMock.Setup(r => r.ListAsync(_tenantId, It.IsAny<bool>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<LeaveType>());
+
+        var handler = new ListLeaveTypesQueryHandler(_repoMock.Object, _currentUserMock.Object);
+
+        var result = await handler.Handle(new ListLeaveTypesQuery(IncludeInactive: true), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        _repoMock.Verify(r => r.ListAsync(_tenantId, false, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_IncludeInactive_WithLeaveRead_ReturnsInactiveToo()
+    {
+        _currentUserMock.Setup(c => c.HasPermission("leave:read")).Returns(true);
+        _repoMock.Setup(r => r.ListAsync(_tenantId, It.IsAny<bool>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<LeaveType>());
+
+        var handler = new ListLeaveTypesQueryHandler(_repoMock.Object, _currentUserMock.Object);
+
+        await handler.Handle(new ListLeaveTypesQuery(IncludeInactive: true), CancellationToken.None);
+
+        _repoMock.Verify(r => r.ListAsync(_tenantId, true, It.IsAny<CancellationToken>()), Times.Once);
+    }
 }
