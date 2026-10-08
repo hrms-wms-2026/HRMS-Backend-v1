@@ -54,7 +54,7 @@ public sealed class GetEmployeeOverviewSignalsQueryHandlerTests
         ArrangeApprovals(Result<EmployeeApprovalActivityResponse>.Success(
             new(From, To, 0, 0, 0, 0, Array.Empty<EmployeeApprovalItem>())));
         _modules.Setup(m => m.IsModuleEnabledAsync(_tenantId, It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync(true);
-        _toggles.Setup(t => t.IsEnabledAsync(_tenantId, _employeeId, MonitoringCapability.ActivityMonitoring, It.IsAny<CancellationToken>()))
+        _toggles.Setup(t => t.IsEnabledForEmployeeAsync(_tenantId, _employeeId, MonitoringCapability.ActivityMonitoring, It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
         _notifications.Setup(n => n.CountByTypeAsync(_tenantId, _employeeId, It.IsAny<NotificationType>(),
                 It.IsAny<DateTimeOffset>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
@@ -120,7 +120,7 @@ public sealed class GetEmployeeOverviewSignalsQueryHandlerTests
     [Fact]
     public async Task MonitoringOff_OmitsMonitoringSignals()
     {
-        _toggles.Setup(t => t.IsEnabledAsync(_tenantId, _employeeId, MonitoringCapability.ActivityMonitoring, It.IsAny<CancellationToken>()))
+        _toggles.Setup(t => t.IsEnabledForEmployeeAsync(_tenantId, _employeeId, MonitoringCapability.ActivityMonitoring, It.IsAny<CancellationToken>()))
             .ReturnsAsync(false);
 
         var result = await Run();

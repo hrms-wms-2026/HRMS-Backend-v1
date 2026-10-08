@@ -49,7 +49,7 @@ public sealed class GetEmployeeSignalItemsQueryHandlerTests
             .ReturnsAsync(Result<EmployeeListItemResponse>.Success(new EmployeeListItemResponse(
                 _employeeId, "E-001", "Ada", "ada@test.dev", null, null, null, null, null, null, "full_time", "active", null, null)));
         _modules.Setup(m => m.IsModuleEnabledAsync(_tenantId, It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync(true);
-        _toggles.Setup(t => t.IsEnabledAsync(_tenantId, _employeeId, It.IsAny<MonitoringCapability>(), It.IsAny<CancellationToken>()))
+        _toggles.Setup(t => t.IsEnabledForEmployeeAsync(_tenantId, _employeeId, It.IsAny<MonitoringCapability>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
         _exceptionScope.Setup(s => s.ResolveAsync(false, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ExceptionScope(true, Guid.NewGuid(), Array.Empty<Guid>()));
@@ -191,7 +191,7 @@ public sealed class GetEmployeeSignalItemsQueryHandlerTests
     [Fact]
     public async Task IdleAlerts_Returns403_WhenActivityMonitoringIsOff()
     {
-        _toggles.Setup(t => t.IsEnabledAsync(_tenantId, _employeeId, MonitoringCapability.ActivityMonitoring, It.IsAny<CancellationToken>())).ReturnsAsync(false);
+        _toggles.Setup(t => t.IsEnabledForEmployeeAsync(_tenantId, _employeeId, MonitoringCapability.ActivityMonitoring, It.IsAny<CancellationToken>())).ReturnsAsync(false);
         (await Run("idle_activity_alerts")).StatusCode.Should().Be(403);
     }
 
@@ -208,7 +208,7 @@ public sealed class GetEmployeeSignalItemsQueryHandlerTests
 
         (await Run("location_violations")).Value!.Total.Should().Be(1);
 
-        _toggles.Setup(t => t.IsEnabledAsync(_tenantId, _employeeId, MonitoringCapability.WorkLocationVerification, It.IsAny<CancellationToken>())).ReturnsAsync(false);
+        _toggles.Setup(t => t.IsEnabledForEmployeeAsync(_tenantId, _employeeId, MonitoringCapability.WorkLocationVerification, It.IsAny<CancellationToken>())).ReturnsAsync(false);
         (await Run("location_violations")).StatusCode.Should().Be(403);
     }
 

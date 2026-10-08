@@ -37,7 +37,7 @@ public sealed class GetEmployeeActivityOverviewQueryHandlerTests
         _guard.Setup(g => g.EnsureCanRead(_tenantId, _employeeId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result<EmployeeListItemResponse>.Success(new EmployeeListItemResponse(
                 _employeeId, "E-001", "Ada", "ada@test.dev", null, null, null, null, null, null, "full_time", "active", null, null)));
-        _toggles.Setup(t => t.IsEnabledAsync(_tenantId, _employeeId, MonitoringCapability.ActivityMonitoring, It.IsAny<CancellationToken>()))
+        _toggles.Setup(t => t.IsEnabledForEmployeeAsync(_tenantId, _employeeId, MonitoringCapability.ActivityMonitoring, It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
     }
 
@@ -84,7 +84,7 @@ public sealed class GetEmployeeActivityOverviewQueryHandlerTests
     [Fact]
     public async Task Handle_ReturnsZeroesWithoutReadingSummaries_WhenMonitoringIsDisabled()
     {
-        _toggles.Setup(t => t.IsEnabledAsync(_tenantId, _employeeId, MonitoringCapability.ActivityMonitoring, It.IsAny<CancellationToken>()))
+        _toggles.Setup(t => t.IsEnabledForEmployeeAsync(_tenantId, _employeeId, MonitoringCapability.ActivityMonitoring, It.IsAny<CancellationToken>()))
             .ReturnsAsync(false);
 
         var result = await CreateHandler().Handle(new GetEmployeeActivityOverviewQuery(_employeeId, SepFrom, SepTo, "previous"), CancellationToken.None);
