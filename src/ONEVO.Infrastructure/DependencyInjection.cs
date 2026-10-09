@@ -788,8 +788,10 @@ public static class DependencyInjection
         services.AddHostedService<WorkManagementDapiDemoSeeder>();
         services.AddHostedService<DapiOrgStructureSeeder>();
         services.AddHostedService<DapiLeaveSampleSeeder>();
+        services.AddHostedService<DapiAttendanceDemoSeeder>();
         services.AddHostedService<PlatformOAuthProviderMetadataSeeder>();
         services.AddHostedService<WorkManagementSampleDataSeeder>();
+        services.AddHostedService<DapiDueTodayTaskSeeder>();
 
         // Boot-time configuration audit (warns about missing keys; never fatal).
         services.AddHostedService<ConfigurationStartupValidator>();
