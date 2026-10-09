@@ -68,21 +68,21 @@ public sealed class GetEmployeeSignalItemsQueryHandler(
         {
             case "location_violations":
             {
-                if (!await toggles.IsEnabledAsync(tenantId, request.EmployeeId, MonitoringCapability.WorkLocationVerification, ct))
+                if (!await toggles.IsEnabledForEmployeeAsync(tenantId, request.EmployeeId, MonitoringCapability.WorkLocationVerification, ct))
                     return Hidden();
                 var data = await reader.LoadAsync(tenantId, request.EmployeeId, legalEntityId, period.Value, ct);
                 return await AlertsAsync(tenantId, request, data.Timezone, [NotificationType.OutsideWorkLocationAlert], data.RangeStartUtc, data.RangeEndUtc, ct);
             }
             case "idle_activity_alerts":
             {
-                if (!await toggles.IsEnabledAsync(tenantId, request.EmployeeId, MonitoringCapability.ActivityMonitoring, ct))
+                if (!await toggles.IsEnabledForEmployeeAsync(tenantId, request.EmployeeId, MonitoringCapability.ActivityMonitoring, ct))
                     return Hidden();
                 var data = await reader.LoadAsync(tenantId, request.EmployeeId, legalEntityId, period.Value, ct);
                 return await AlertsAsync(tenantId, request, data.Timezone, [NotificationType.LongIdleAlert, NotificationType.LowActivityAlert], utcStart, utcEnd, ct);
             }
             case "monitoring_exceptions":
             {
-                if (!await toggles.IsEnabledAsync(tenantId, request.EmployeeId, MonitoringCapability.ActivityMonitoring, ct))
+                if (!await toggles.IsEnabledForEmployeeAsync(tenantId, request.EmployeeId, MonitoringCapability.ActivityMonitoring, ct))
                     return Hidden();
                 var scope = await exceptionScope.ResolveAsync(forAction: false, [request.EmployeeId], ct);
                 if (scope?.CanSee(request.EmployeeId) != true)

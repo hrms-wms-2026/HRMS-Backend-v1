@@ -38,7 +38,7 @@ public sealed class GetEmployeeAttendanceDisciplineQueryHandler(
             return Result<EmployeeAttendanceDisciplineResponse>.Failure(period.Error!, period.StatusCode ?? 400);
 
         var legalEntityId = access.Value!.LegalEntityId;
-        var trackingEnabled = await toggles.IsEnabledAsync(
+        var trackingEnabled = await toggles.IsEnabledForEmployeeAsync(
             tenantId, request.EmployeeId, MonitoringCapability.WorkLocationVerification, ct);
 
         var current = await MeasureAsync(tenantId, request.EmployeeId, legalEntityId, period.Value!, trackingEnabled, ct);

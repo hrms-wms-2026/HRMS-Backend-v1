@@ -116,4 +116,16 @@ public sealed class TimeTrackingController(IMediator mediator) : ControllerBase
             ? Ok(result.Value)
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
+
+    [HttpGet("team/today")]
+    [RequirePermission("attendance:read")]
+    public async Task<IActionResult> TeamToday(
+        [FromQuery] int limit = 50,
+        CancellationToken ct = default)
+    {
+        var result = await mediator.Send(new GetCoveredTeamTodayQuery(limit), ct);
+        return result.IsSuccess
+            ? Ok(result.Value)
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
 }

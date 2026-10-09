@@ -1,3 +1,4 @@
+using ONEVO.Application.Features.WorkManagement.Leadership.Services;
 using ONEVO.Domain.Features.WorkManagement.Objectives.Entities;
 
 namespace ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
@@ -53,6 +54,19 @@ public interface IObjectiveRepository
     /// <summary>Active objectives owned by this employee with EndDate in [from, to]. For the
     /// my-deadlines endpoint (spec §7) - not used by any other query.</summary>
     Task<IReadOnlyList<Objective>> GetOwnedByEmployeeIdWithinRangeAsync(Guid tenantId, Guid employeeId, DateOnly from, DateOnly to, CancellationToken ct = default);
+
+    /// <summary>My Team capability probe (spec §7.3 leadsWork): does the employee own any active,
+    /// not-achieved module in an active project of this legal entity? One EXISTS.</summary>
+    Task<bool> AnyActiveOwnedAsync(Guid tenantId, Guid ownerEmployeeId, Guid legalEntityId, CancellationToken ct = default);
+
+    /// <summary>Active, not-achieved modules the employee owns directly, with their project ids, in
+    /// active projects of this legal entity - the candidate heads for Work I Lead (spec §8.3.2 step
+    /// 2).</summary>
+    Task<IReadOnlyList<(Guid ObjectiveId, Guid ProjectId)>> ListActiveOwnedIdsAsync(Guid tenantId, Guid ownerEmployeeId, Guid legalEntityId, CancellationToken ct = default);
+
+    /// <summary>Every active objective (achieved included) of the given projects, as tree rows, in
+    /// one query (spec §8.3.2 step 3).</summary>
+    Task<IReadOnlyList<LedObjectiveRow>> ListActiveTreeForProjectsAsync(Guid tenantId, IReadOnlyCollection<Guid> projectIds, CancellationToken ct = default);
 
     /// <summary>Active objectives owned by this employee, any project, no date window.</summary>
     Task<IReadOnlyList<Objective>> ListActiveOwnedByEmployeeAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default);

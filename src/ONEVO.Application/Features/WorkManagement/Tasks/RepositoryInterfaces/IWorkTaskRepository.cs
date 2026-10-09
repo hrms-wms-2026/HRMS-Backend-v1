@@ -59,6 +59,15 @@ public sealed record TaskProgressRow(
     DateOnly? DueDate,
     int ProgressPercent);
 
+/// <summary>Same bucketing inputs as <see cref="TaskProgressRow"/>, plus the objective the task
+/// belongs to - for My Team's Team Progress, which rolls counts up per head module (My Team spec
+/// §8.3.3).</summary>
+public sealed record LedTaskProgressRow(Guid ObjectiveId, bool MarksTaskComplete, DateOnly? DueDate, int ProgressPercent);
+
+/// <summary>One overdue top-level task for My Team's Team Progress overdue list, with its
+/// assignees.</summary>
+public sealed record LedOverdueTaskRow(Guid TaskId, string ShortId, string Title, Guid ProjectId, Guid ObjectiveId, DateOnly DueDate, IReadOnlyList<Guid> AssigneeEmployeeIds);
+
 /// <summary>An employee's assigned task with its project and status, for the Work & Activity
 /// Needs attention and Recent tasks cards.</summary>
 public sealed record EmployeeWorkTaskRow(
@@ -162,6 +171,15 @@ public interface IWorkTaskRepository
     /// <summary>True if any physical WorkTask row, including a soft-deleted row, has this CategoryId
     /// within the tenant - used to block deleting a category while a restricted FK still references it.</summary>
     Task<bool> AnyActiveByCategoryIdAsync(Guid tenantId, Guid categoryId, CancellationToken ct = default);
+
+    /// <summary>Top-level (ParentTaskId == null) task progress inputs for the given objectives,
+    /// classified in memory by TaskProgressClassifier so Team Progress and the personal widget
+    /// share one rule (My Team spec §8.3.3).</summary>
+    Task<IReadOnlyList<LedTaskProgressRow>> ListTopLevelProgressRowsAsync(Guid tenantId, IReadOnlyCollection<Guid> objectiveIds, CancellationToken ct = default);
+
+    /// <summary>Top-level overdue tasks (not in a MarksTaskComplete status, ProgressPercent &lt; 100,
+    /// DueDate &lt; today) of the given objectives, most overdue first, with their assignees.</summary>
+    Task<IReadOnlyList<LedOverdueTaskRow>> ListTopLevelOverdueAsync(Guid tenantId, IReadOnlyCollection<Guid> objectiveIds, DateOnly today, int take, CancellationToken ct = default);
 
     void Update(WorkTask task);
     void Remove(WorkTask task);

@@ -250,9 +250,12 @@ internal sealed class EmployeeAuthorityTestGraph
 
         public Task<DomainEmployee?> GetByUserAndLegalEntityAsync(
             Guid tenantId, Guid userId, Guid legalEntityId, CancellationToken ct = default)
-            => Task.FromResult(_graph._employees.FirstOrDefault(e =>
+        {
+            _graph.RecordCall("Employee.GetByUserAndLegalEntityAsync");
+            return Task.FromResult(_graph._employees.FirstOrDefault(e =>
                 e.TenantId == tenantId && e.UserId == userId && e.LegalEntityId == legalEntityId
                 && e.EmploymentStatusId == 1));
+        }
 
         public Task<IReadOnlyList<Guid>> ListActiveEmployeeIdsAsync(
             Guid tenantId, Guid legalEntityId, IReadOnlyCollection<Guid>? departmentIds, CancellationToken ct = default)
@@ -336,6 +339,7 @@ internal sealed class EmployeeAuthorityTestGraph
         public Task<IReadOnlyList<PositionActiveHolder>> GetActiveHoldersAsync(
             Guid tenantId, Guid positionId, CancellationToken ct = default)
         {
+            _graph.RecordCall("PositionAssignment.GetActiveHoldersAsync");
             var holders = _graph._assignments
                 .Where(a => a.TenantId == tenantId && a.PositionId == positionId
                     && a.AssignmentKind == PositionAssignmentKind.PrimaryEmployment
@@ -418,6 +422,7 @@ internal sealed class EmployeeAuthorityTestGraph
         public Task<IReadOnlyList<ManagementCoverageRecord>> ListCoverageByOwnerPositionAsync(
             Guid tenantId, Guid legalEntityId, Guid ownerPositionId, CancellationToken ct = default)
         {
+            _graph.RecordCall("Position.ListCoverageByOwnerPositionAsync");
             var rows = _graph._coverage
                 .Where(c => c.TenantId == tenantId && c.LegalEntityId == legalEntityId
                     && c.OwnerPositionId == ownerPositionId)
@@ -578,9 +583,17 @@ internal sealed class EmployeeAuthorityTestGraph
         public FakeDepartmentRepository(EmployeeAuthorityTestGraph graph) => _graph = graph;
 
         public Task<IReadOnlyList<Guid>> GetDescendantDepartmentIdsAsync(
-            Guid tenantId, Guid legalEntityId, Guid departmentId, CancellationToken ct = default)
-            => Task.FromResult(_graph.DescendantDepartmentsOf(departmentId)
-                .Where(id => id != departmentId).ToList() as IReadOnlyList<Guid>);
+            Guid tenantId, Guid legalEntityId, IReadOnlyCollection<Guid> departmentIds, CancellationToken ct = default)
+        {
+            _graph.RecordCall("Department.GetDescendantDepartmentIdsAsync");
+            var roots = departmentIds.ToHashSet();
+            var result = departmentIds
+                .SelectMany(id => _graph.DescendantDepartmentsOf(id))
+                .Where(id => !roots.Contains(id))
+                .Distinct()
+                .ToList();
+            return Task.FromResult<IReadOnlyList<Guid>>(result);
+        }
 
         public Task<IReadOnlyList<ONEVO.Domain.Features.OrgStructure.Entities.Department>> ListByLegalEntityAsync(
             Guid tenantId, Guid legalEntityId, bool includeInactive, CancellationToken ct = default)
@@ -628,7 +641,10 @@ internal sealed class EmployeeAuthorityTestGraph
 
         public Task<bool> UserHasPermissionCodeAsync(
             Guid userId, string permissionCode, DateTimeOffset now, CancellationToken ct = default)
-            => Task.FromResult(_graph._permissions.Contains((userId, permissionCode)));
+        {
+            _graph.RecordCall("Permission.UserHasPermissionCodeAsync");
+            return Task.FromResult(_graph._permissions.Contains((userId, permissionCode)));
+        }
 
         public Task<IReadOnlySet<Guid>> ListUserIdsHoldingPermissionAsync(
             IReadOnlyCollection<Guid> userIds, string permissionCode, DateTimeOffset now, CancellationToken ct = default)

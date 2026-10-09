@@ -103,7 +103,7 @@ public class MonitoringSettingsController : ControllerBase
         string scopeType, Guid targetId, CancellationToken ct)
     {
         var result = await _configuration.DeleteOverrideAsync(
-            _currentUser.TenantId, scopeType, targetId, _currentUser.LegalEntityId, ct);
+            _currentUser.TenantId, _currentUser.UserId, scopeType, targetId, _currentUser.LegalEntityId, ct);
         return result.IsSuccess
             ? NoContent()
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);

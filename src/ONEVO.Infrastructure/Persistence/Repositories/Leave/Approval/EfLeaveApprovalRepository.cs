@@ -93,6 +93,8 @@ public class EfLeaveApprovalRepository : ILeaveApprovalRepository
                 && request.Status == LeaveRequestStatuses.Pending
             select new { request, employee, leaveType };
 
+        if (filter.LegalEntityId is { } legalEntityId)
+            query = query.Where(x => x.employee.LegalEntityId == legalEntityId);
         if (filter.DepartmentId is { } departmentId)
             query = query.Where(x => x.employee.DepartmentId == departmentId);
         if (filter.LeaveTypeId is { } leaveTypeId)

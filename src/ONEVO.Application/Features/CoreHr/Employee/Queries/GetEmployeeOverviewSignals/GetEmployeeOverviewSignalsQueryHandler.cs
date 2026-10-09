@@ -67,7 +67,7 @@ public sealed class GetEmployeeOverviewSignalsQueryHandler(
     private async Task<EmployeeMonitoringSignalCounts?> MonitoringAsync(
         Guid tenantId, Guid employeeId, DateOnly from, DateOnly to, CancellationToken ct)
     {
-        if (!await toggles.IsEnabledAsync(tenantId, employeeId, MonitoringCapability.ActivityMonitoring, ct))
+        if (!await toggles.IsEnabledForEmployeeAsync(tenantId, employeeId, MonitoringCapability.ActivityMonitoring, ct))
             return null;
 
         var start = new DateTimeOffset(from.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero);
