@@ -211,7 +211,7 @@ public sealed partial class DapiOrgStructureSeeder
         var id = DeterministicGuid($"dapi-org:address:{personKey}");
         // IgnoreQueryFilters: editing personal info soft-deletes the seeded row (ReplaceAddresses),
         // and re-inserting the same deterministic id would hit pk_employee_addresses.
-        if (await db.EmployeeAddresses.IgnoreQueryFilters().AnyAsync(a => a.Id == id, ct))
+        if (await db.EmployeeAddresses.IgnoreQueryFilters().AnyAsync(a => a.TenantId == DapiTenantId && a.Id == id, ct))
         {
             return;
         }
@@ -247,7 +247,7 @@ public sealed partial class DapiOrgStructureSeeder
     {
         var id = DeterministicGuid($"dapi-org:emergency-contact:{personKey}");
         // IgnoreQueryFilters: a soft-deleted seeded contact still owns this deterministic id.
-        if (await db.EmployeeEmergencyContacts.IgnoreQueryFilters().AnyAsync(c => c.Id == id, ct))
+        if (await db.EmployeeEmergencyContacts.IgnoreQueryFilters().AnyAsync(c => c.TenantId == DapiTenantId && c.Id == id, ct))
         {
             return;
         }

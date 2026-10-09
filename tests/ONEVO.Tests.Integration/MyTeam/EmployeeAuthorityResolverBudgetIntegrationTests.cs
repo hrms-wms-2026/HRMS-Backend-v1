@@ -81,7 +81,12 @@ public sealed class EmployeeAuthorityResolverBudgetIntegrationTests
 
         first.EmployeeIds.Should().HaveCount(coveredPositions + coveredDepartments);
         second.EmployeeIds.Should().BeEquivalentTo(first.EmployeeIds);
-        firstCommands.Should().BeLessThanOrEqualTo(7);
+        // First call with both position and department coverage is 9 round trips, independent of
+        // how many positions/departments are covered: actor lookup, permission check, actor's
+        // primary assignment, coverage rows, covered-position holders (batched), closure
+        // descendants, descendant departments (one CTE), active employees in those departments,
+        // final active-id filter. (7 is the count when only one coverage branch runs.)
+        firstCommands.Should().BeLessThanOrEqualTo(9);
         counter.Count.Should().BeLessThanOrEqualTo(2);
     }
 }
