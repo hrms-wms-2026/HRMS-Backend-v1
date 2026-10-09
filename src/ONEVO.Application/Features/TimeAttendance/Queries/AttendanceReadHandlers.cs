@@ -2,10 +2,14 @@ using MediatR;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.Helpers;
+using ONEVO.Application.Features.CoreHr.Employee.Models;
 using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.EmployeeAuthority.Models;
 using ONEVO.Application.Features.CoreHr.EmployeeAuthority.ServiceInterfaces;
+using ONEVO.Application.Features.CoreHr.PositionAssignment.RepositoryInterfaces;
+using ONEVO.Application.Features.Leave.Calendar.Services;
 using ONEVO.Application.Features.Leave.Request.RepositoryInterfaces;
+using ONEVO.Application.Features.Leave.Type.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.DTOs.Responses;
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.Queries.GetActivityDailySummary;
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.RepositoryInterfaces;
@@ -19,6 +23,8 @@ using ONEVO.Application.Features.Storage.File.ServiceInterfaces;
 using ONEVO.Application.Features.TimeAttendance.DTOs.Responses;
 using ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces;
 using ONEVO.Application.Features.TimeAttendance.Services;
+using ONEVO.Application.Features.TimeAttendance.Team.DTOs;
+using ONEVO.Application.Features.TimeAttendance.Team.Services;
 using ONEVO.Domain.Features.Monitoring.CheckIn.Entities;
 using ONEVO.Domain.Features.Monitoring.Exceptions.Entities;
 using ONEVO.Domain.Features.TimeAttendance.Entities;
@@ -40,6 +46,10 @@ public sealed class AttendanceReadHandler(
     IFileStorageService? fileStorage = null,
     IActivityLiveDaySummary? liveActivity = null,
     IInactivityCaptureAttemptRepository? activityChecks = null,
+    IClockInPolicyRepository? policies = null,
+    IPositionAssignmentRepository? positionAssignments = null,
+    ILeaveTypeRepository? leaveTypes = null,
+    ILeaveVisibilityScopeProvider? leaveVisibilityScope = null,
     IFaceVerificationAttemptRepository? faceChecks = null,
     IExceptionRepository? exceptionCases = null,
     IEmployeeAttendancePeriodReader? periodReader = null)
@@ -47,7 +57,8 @@ public sealed class AttendanceReadHandler(
       IRequestHandler<GetMyAttendanceHistoryQuery, Result<PagedResult<AttendanceHistoryRow>>>,
       IRequestHandler<GetCoveredAttendanceHistoryQuery, Result<PagedResult<AttendanceHistoryRow>>>,
       IRequestHandler<GetAttendanceDayDetailQuery, Result<AttendanceDayDetailResponse>>,
-      IRequestHandler<GetMyAttendanceMonthlySummaryQuery, Result<AttendanceMonthlySummaryResponse>>
+      IRequestHandler<GetMyAttendanceMonthlySummaryQuery, Result<AttendanceMonthlySummaryResponse>>,
+      IRequestHandler<GetCoveredTeamTodayQuery, Result<TeamTodayResponse>>
 {
     private const string AttendanceReadPermission = "attendance:read";
     private static readonly TimeSpan ScreenshotUrlExpiry = TimeSpan.FromMinutes(15);
@@ -528,4 +539,217 @@ public sealed class AttendanceReadHandler(
 
     private static string? ValidateRange(DateOnly from, DateOnly to)
         => from > to ? "from must be less than or equal to to." : null;
+
+    public async Task<Result<TeamTodayResponse>> Handle(GetCoveredTeamTodayQuery query, CancellationToken ct)
+    {
+        if (!currentUser.IsAuthenticated || !currentUser.HasPermission(AttendanceReadPermission))
+            return Result<TeamTodayResponse>.Forbidden();
+
+        var limit = Math.Clamp(query.Limit <= 0 ? 50 : query.Limit, 1, 200);
+
+        var actor = await employees.GetDefaultForUserAsync(currentUser.TenantId, currentUser.UserId, ct);
+        if (actor?.LegalEntityId is null)
+            return Result<TeamTodayResponse>.NotFound("Current employee record was not found.");
+
+        var legalEntity = legalEntities is null
+            ? null
+            : await legalEntities.GetByIdForTenantAsync(currentUser.TenantId, actor.LegalEntityId.Value, ct);
+        if (legalEntity is null)
+            return Result<TeamTodayResponse>.NotFound("Current employee record was not found.");
+
+        var visibility = await authority.ResolveVisibilityAsync(
+            new EmployeeAuthorityVisibilityRequest(
+                currentUser.UserId,
+                actor.LegalEntityId.Value,
+                AttendanceReadPermission,
+                IncludeSelf: false,
+                EmployeeAuthorityPurpose.TimeTrackingRead), ct);
+
+        // Same defensive strip as GetCoveredAttendanceHistoryQuery above: IncludeSelf:false stops
+        // the self channel, but company-wide/department coverage can still re-introduce the actor.
+        var coveredEmployeeIds = visibility.EmployeeIds.Where(id => id != actor.Id).ToList();
+
+        var utcNow = dateTimeProvider?.UtcNow ?? DateTimeOffset.UtcNow;
+        var scheduleResolution = AttendanceScheduleResolver.Resolve(legalEntity, utcNow);
+        var workDate = scheduleResolution.WorkDate;
+
+        if (coveredEmployeeIds.Count == 0)
+        {
+            return Result<TeamTodayResponse>.Success(new TeamTodayResponse(
+                workDate,
+                scheduleResolution.Timezone,
+                legalEntity.Id,
+                new TeamTodaySummary(0, 0, 0, 0, 0, 0, 0, 0, 0, 0),
+                Array.Empty<TeamTodayMember>(),
+                0));
+        }
+
+        var dayWindow = AttendanceTodayStateService.GetLocalDayWindow(workDate, scheduleResolution.TimeZone);
+
+        var records = await attendance.ListRecordsForDateAsync(currentUser.TenantId, coveredEmployeeIds, workDate, ct);
+        var recordsByEmployee = records.ToDictionary(r => r.EmployeeId);
+
+        var breakRecords = await attendance.ListBreaksForEmployeesAsync(
+            currentUser.TenantId, coveredEmployeeIds, dayWindow.Start, dayWindow.End, ct)
+            ?? Array.Empty<BreakRecord>();
+        var breaksByEmployee = breakRecords
+            .GroupBy(record => record.EmployeeId)
+            .ToDictionary(group => group.Key, group => (IReadOnlyList<BreakRecord>)group.ToArray());
+
+        var approvedLeave = leaveRequests is null
+            ? Array.Empty<Domain.Features.Leave.Request.Entities.LeaveRequest>()
+            : await leaveRequests.ListApprovedCoveringAsync(
+                currentUser.TenantId, coveredEmployeeIds, workDate, workDate, ct);
+        var leaveByEmployee = approvedLeave
+            .GroupBy(request => request.EmployeeId)
+            .ToDictionary(group => group.Key, group => group.OrderByDescending(request => request.EndAt).First());
+
+        var policyStatus = "not_configured";
+        if (policies is not null)
+        {
+            var activePolicies = ClockInPolicyResolver.ResolveActiveFullCompanyPolicies(
+                await policies.ListByLegalEntityAsync(currentUser.TenantId, legalEntity.Id, includeInactive: false, ct),
+                workDate);
+            policyStatus = activePolicies.Count switch
+            {
+                0 => "not_configured",
+                1 => "configured",
+                _ => "configuration_conflict",
+            };
+        }
+
+        var identities = await attendance.ListEmployeeIdentitiesAsync(
+            currentUser.TenantId, legalEntity.Id, coveredEmployeeIds, ct);
+        var employeesById = await employees.ListByIdsAsync(currentUser.TenantId, coveredEmployeeIds, ct);
+        var primaryPositionByEmployee = positionAssignments is null
+            ? new Dictionary<Guid, ONEVO.Domain.Features.CoreHr.Entities.PositionAssignment>()
+            : await positionAssignments.GetActivePrimaryByEmployeeIdsAsync(currentUser.TenantId, coveredEmployeeIds, ct);
+        var leaveTypeNames = leaveTypes is null
+            ? new Dictionary<Guid, string>()
+            : (await leaveTypes.ListAsync(currentUser.TenantId, includeInactive: true, ct))
+                .ToDictionary(type => type.Id, type => type.Name);
+
+        EmployeeVisibilityScope? leaveScope = null;
+        if (leaveVisibilityScope is not null)
+        {
+            var scopeResolution = await leaveVisibilityScope.ResolveForCurrentUserAsync(ct);
+            leaveScope = scopeResolution.Scope;
+        }
+
+        var members = new List<TeamTodayMember>(coveredEmployeeIds.Count);
+        var counts = new int[7]; // working, onBreak, clockedOut, absent, notStarted, onLeave, notScheduled
+        var lateCount = 0;
+        var needsAttentionCount = 0;
+
+        foreach (var employeeId in coveredEmployeeIds)
+        {
+            recordsByEmployee.TryGetValue(employeeId, out var record);
+            var employeeBreaks = breaksByEmployee.TryGetValue(employeeId, out var employeeBreakRecords)
+                ? employeeBreakRecords
+                : Array.Empty<BreakRecord>();
+            var hasOpenBreak = employeeBreaks.Any(breakRecord => breakRecord.BreakEnd is null);
+            var breakUsedMinutes = AttendanceTodayStateService.CalculateBreakUsage(
+                employeeBreaks, dayWindow, scheduleResolution.LocalNow);
+            var hasApprovedLeave = leaveByEmployee.TryGetValue(employeeId, out var leaveRequest);
+
+            var resolution = AttendanceDayStatusResolver.Resolve(
+                scheduleResolution.Schedule,
+                policyStatus,
+                record,
+                hasApprovedLeave,
+                hasOpenBreak,
+                legalEntity.BreakDurationMinutes,
+                breakUsedMinutes,
+                scheduleResolution.LocalNow,
+                utcNow);
+
+            employeesById.TryGetValue(employeeId, out var employeeRow);
+            primaryPositionByEmployee.TryGetValue(employeeId, out var primaryPosition);
+            var leaveAuthorized = leaveScope is not null && EmployeeVisibilityScopeMatcher.Includes(
+                leaveScope, employeeId, primaryPosition?.PositionId, employeeRow?.DepartmentId, employeeRow?.LegalEntityId);
+
+            var arrivedLate = record?.Status == AttendanceRecord.StatusLate;
+            var mapped = TeamStatusMapper.Map(resolution, arrivedLate, leaveAuthorized);
+
+            TeamTodayLeave? leaveBlock = null;
+            if (mapped.ShowLeaveDetail && hasApprovedLeave)
+            {
+                var leaveTypeName = leaveTypeNames.TryGetValue(leaveRequest!.LeaveTypeId, out var name) ? name : "Leave";
+                var endsOn = DateOnly.FromDateTime(
+                    TimeZoneInfo.ConvertTime(leaveRequest.EndAt, scheduleResolution.TimeZone).DateTime);
+                leaveBlock = new TeamTodayLeave(leaveTypeName, endsOn);
+            }
+
+            identities.TryGetValue(employeeId, out var identity);
+
+            members.Add(new TeamTodayMember(
+                employeeId,
+                identity?.DisplayName ?? "Unknown",
+                identity?.AvatarFileId,
+                identity?.Position,
+                mapped.TeamStatus,
+                TeamStatusLabel(mapped.TeamStatus),
+                mapped.IsLate,
+                record?.ActualStart,
+                record?.ActualEnd,
+                mapped.AttentionType,
+                mapped.AttentionLabel,
+                mapped.AttentionSeverity,
+                leaveBlock));
+
+            var countIndex = mapped.TeamStatus switch
+            {
+                "working" => 0,
+                "on_break" => 1,
+                "clocked_out" => 2,
+                "absent" => 3,
+                "not_started" => 4,
+                "on_leave" => 5,
+                "not_scheduled" => 6,
+                _ => -1,
+            };
+            if (countIndex >= 0) counts[countIndex]++;
+            if (mapped.IsLate) lateCount++;
+            if (mapped.AttentionSeverity is not null) needsAttentionCount++;
+        }
+
+        var ordered = members
+            .OrderBy(member => AttentionSeverityRank(member.AttentionSeverity))
+            .ThenBy(member => member.Status == "absent" ? 0 : 1)
+            .ThenBy(member => member.IsLate ? 0 : 1)
+            .ThenBy(member => member.DisplayName, StringComparer.Ordinal)
+            .ThenBy(member => member.EmployeeId)
+            .ToList();
+
+        var summary = new TeamTodaySummary(
+            members.Count, counts[0], counts[1], counts[2], lateCount,
+            counts[3], counts[4], counts[5], counts[6], needsAttentionCount);
+
+        return Result<TeamTodayResponse>.Success(new TeamTodayResponse(
+            workDate,
+            scheduleResolution.Timezone,
+            legalEntity.Id,
+            summary,
+            ordered.Take(limit).ToList(),
+            members.Count));
+    }
+
+    private static int AttentionSeverityRank(string? severity) => severity switch
+    {
+        "critical" => 0,
+        "warning" => 1,
+        _ => 2,
+    };
+
+    private static string TeamStatusLabel(string teamStatus) => teamStatus switch
+    {
+        "working" => "Working",
+        "on_break" => "On Break",
+        "clocked_out" => "Clocked Out",
+        "absent" => "Absent",
+        "not_started" => "Not Started",
+        "on_leave" => "On Leave",
+        "not_scheduled" => "Not Scheduled",
+        _ => teamStatus,
+    };
 }

@@ -245,14 +245,18 @@ public class EfDepartmentRepository : IDepartmentRepository
     }
 
     public async Task<IReadOnlyList<Guid>> GetDescendantDepartmentIdsAsync(
-        Guid tenantId, Guid legalEntityId, Guid departmentId, CancellationToken ct = default)
+        Guid tenantId, Guid legalEntityId, IReadOnlyCollection<Guid> departmentIds, CancellationToken ct = default)
     {
+        if (departmentIds.Count == 0)
+            return Array.Empty<Guid>();
+
+        var roots = departmentIds.Distinct().ToArray();
         var descendantIds = _db.Database.SqlQuery<Guid>($@"
             WITH RECURSIVE descendants AS (
                 SELECT id FROM departments
                 WHERE tenant_id = {tenantId} AND legal_entity_id = {legalEntityId}
-                    AND parent_department_id = {departmentId} AND is_active = true
-                UNION ALL
+                    AND parent_department_id = ANY({roots}) AND is_active = true
+                UNION
                 SELECT d.id FROM departments d
                 INNER JOIN descendants ON d.parent_department_id = descendants.id
                 WHERE d.tenant_id = {tenantId} AND d.legal_entity_id = {legalEntityId} AND d.is_active = true
@@ -260,7 +264,9 @@ public class EfDepartmentRepository : IDepartmentRepository
             SELECT id AS ""Value"" FROM descendants
         ");
 
-        return await descendantIds.ToListAsync(ct);
+        var ids = await descendantIds.ToListAsync(ct);
+        var rootSet = roots.ToHashSet();
+        return ids.Where(id => !rootSet.Contains(id)).Distinct().ToList();
     }
 
     public async Task<int> CountActiveChildrenAsync(

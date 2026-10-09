@@ -316,8 +316,7 @@ public class GetLeaveCalendarQueryHandlerTests
 
             var handler = new GetLeaveCalendarQueryHandler(
                 currentUser.Object,
-                employees.Object,
-                visibilityScopes.Object,
+                new LeaveVisibilityScopeProvider(currentUser.Object, employees.Object, visibilityScopes.Object),
                 repository.Object,
                 holidays.Object,
                 new LeaveCalendarRequestProjector(),

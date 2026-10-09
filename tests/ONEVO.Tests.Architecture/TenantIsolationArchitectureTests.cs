@@ -389,6 +389,10 @@ public class TenantIsolationArchitectureTests
             // tasks and requests to avoid duplicate primary keys. Every bypass retains an explicit
             // TenantId == DapiTenantId predicate.
             "WorkManagementDapiDemoSeeder.Tasks.cs",
+            // Development/test org-structure seeder: a soft-deleted seeded address or emergency
+            // contact still owns its deterministic primary key, so the existence check must see it.
+            // Every bypass retains an explicit TenantId == DapiTenantId predicate.
+            "DapiOrgStructureSeeder.Accounts.cs",
             // Removed-participant revive: GetRemovedParticipantsAsync must see the soft-deleted
             // calendar_event_participants row (the unique tenant/event/employee index still counts
             // it, so re-adding someone revives that row), while preserving tenant scoping with an

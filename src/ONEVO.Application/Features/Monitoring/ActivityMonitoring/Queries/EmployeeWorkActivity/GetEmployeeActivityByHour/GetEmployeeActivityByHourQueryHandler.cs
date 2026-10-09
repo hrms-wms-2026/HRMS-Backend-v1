@@ -44,7 +44,7 @@ public sealed class GetEmployeeActivityByHourQueryHandler(
         var zone = AttendancePeriodCalculator.ResolveTimezone(legalEntity?.Timezone);
         var zoneName = zone == TimeZoneInfo.Utc ? "UTC" : zone.Id;
 
-        if (!await toggles.IsEnabledAsync(tenantId, request.EmployeeId, MonitoringCapability.ActivityMonitoring, ct))
+        if (!await toggles.IsEnabledForEmployeeAsync(tenantId, request.EmployeeId, MonitoringCapability.ActivityMonitoring, ct))
             return Result<EmployeeActivityByHourResponse>.Success(new EmployeeActivityByHourResponse(p.From, p.To, false, zoneName, null, []));
 
         var from = AttendanceTodayStateService.GetLocalDayWindow(p.From, zone).Start;

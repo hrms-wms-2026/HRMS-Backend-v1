@@ -38,7 +38,7 @@ public sealed class GetEmployeeWorkActivityHandlersTests
         _guard.Setup(g => g.EnsureCanRead(_tenantId, _employeeId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result<EmployeeListItemResponse>.Success(new EmployeeListItemResponse(
                 _employeeId, "E-001", "Ada", "ada@test.dev", null, null, null, null, null, null, "full_time", "active", null, null)));
-        _toggles.Setup(t => t.IsEnabledAsync(_tenantId, _employeeId, It.IsAny<MonitoringCapability>(), It.IsAny<CancellationToken>()))
+        _toggles.Setup(t => t.IsEnabledForEmployeeAsync(_tenantId, _employeeId, It.IsAny<MonitoringCapability>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
         _apps.Setup(a => a.GetMinutesByProcessAsync(_tenantId, _employeeId, It.IsAny<DateTimeOffset>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new[] { new AppProcessMinutesRow("code.exe", 72, DateTimeOffset.Parse("2026-09-15T09:05:00+00:00")) });
@@ -60,7 +60,7 @@ public sealed class GetEmployeeWorkActivityHandlersTests
     [Fact]
     public async Task ByHour_WhenActivityMonitoringIsOff_ReturnsDisabled_WithoutReadingSnapshots()
     {
-        _toggles.Setup(t => t.IsEnabledAsync(_tenantId, _employeeId, MonitoringCapability.ActivityMonitoring, It.IsAny<CancellationToken>()))
+        _toggles.Setup(t => t.IsEnabledForEmployeeAsync(_tenantId, _employeeId, MonitoringCapability.ActivityMonitoring, It.IsAny<CancellationToken>()))
             .ReturnsAsync(false);
 
         var result = await ByHour().Handle(new GetEmployeeActivityByHourQuery(_employeeId, null, null), CancellationToken.None);
@@ -117,7 +117,7 @@ public sealed class GetEmployeeWorkActivityHandlersTests
     [Fact]
     public async Task Pattern_OmitsTopApp_WhenApplicationTrackingIsOff()
     {
-        _toggles.Setup(t => t.IsEnabledAsync(_tenantId, _employeeId, MonitoringCapability.ApplicationTracking, It.IsAny<CancellationToken>()))
+        _toggles.Setup(t => t.IsEnabledForEmployeeAsync(_tenantId, _employeeId, MonitoringCapability.ApplicationTracking, It.IsAny<CancellationToken>()))
             .ReturnsAsync(false);
 
         var result = await Pattern().Handle(new GetEmployeeWorkPatternQuery(_employeeId, null, null), CancellationToken.None);

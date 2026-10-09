@@ -32,4 +32,18 @@ public interface IEmployeeAuthorityResolver
     Task<IReadOnlyCollection<Guid>> ResolveApprovalInboxScopeAsync(
         EmployeeApprovalInboxScopeRequest request,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Cheap existence-only probe: does the actor hold RequiredPermission and have at least one
+    /// active management-coverage row on their own position - never expanded to actual employee
+    /// ids (no holder lookups, no descendant closure, no department expansion). Used only to
+    /// decide whether a "People I manage" capability/action-item source is worth showing at all
+    /// (My Team spec §9.2); the exact candidate set still comes from ResolveVisibilityAsync. A
+    /// coverage row can exist while its target currently resolves to zero live employees (an
+    /// unoccupied covered position, an empty covered department) - that is an accepted, documented
+    /// imprecision for a gate that exists purely to avoid a full expansion.
+    /// </summary>
+    Task<bool> HasAnyManagedCoverageAsync(
+        EmployeeAuthorityVisibilityRequest request,
+        CancellationToken cancellationToken = default);
 }

@@ -1,9 +1,11 @@
 using FluentAssertions;
 using Moq;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.Auth.Login.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.Settings.Commands.UpdateMonitoringFeatureToggles;
 using ONEVO.Application.Features.Monitoring.Settings.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.Settings.ServiceInterfaces;
+using ONEVO.Domain.Features.Auth.Entities;
 using ONEVO.Domain.Features.Monitoring.Settings.Entities;
 using Xunit;
 
@@ -16,6 +18,8 @@ public class UpdateMonitoringFeatureTogglesCommandHandlerTests
     private readonly Mock<IDateTimeProvider> _dateTimeProvider = new();
     private readonly Mock<ICacheService> _cache = new();
     private readonly Mock<ITrayPolicyRefreshNotifier> _policyRefresh = new();
+    private readonly Mock<IAuditLogRepository> _auditLogs = new();
+    private static readonly Guid ActorId = Guid.Parse("33333333-3333-3333-3333-333333333333");
 
     private static readonly Guid TenantId = Guid.Parse("11111111-1111-1111-1111-111111111111");
     private static readonly Guid LegalEntityId = Guid.Parse("22222222-2222-2222-2222-222222222222");
@@ -25,13 +29,14 @@ public class UpdateMonitoringFeatureTogglesCommandHandlerTests
     {
         _currentUser.SetupGet(c => c.IsAuthenticated).Returns(true);
         _currentUser.SetupGet(c => c.TenantId).Returns(TenantId);
+        _currentUser.SetupGet(c => c.UserId).Returns(ActorId);
         _currentUser.SetupGet(c => c.LegalEntityId).Returns(LegalEntityId);
         _toggles.Setup(r => r.LegalEntityExistsAsync(TenantId, LegalEntityId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
         _currentUser.Setup(c => c.HasPermission("monitoring:configure")).Returns(hasPermission);
         _dateTimeProvider.SetupGet(d => d.UtcNow).Returns(FixedNow);
         return new UpdateMonitoringFeatureTogglesCommandHandler(
-            _toggles.Object, _currentUser.Object, _dateTimeProvider.Object, _cache.Object, _policyRefresh.Object);
+            _toggles.Object, _currentUser.Object, _dateTimeProvider.Object, _cache.Object, _auditLogs.Object, _policyRefresh.Object);
     }
 
     private static UpdateMonitoringFeatureTogglesCommand ValidCommand(bool activityMonitoring = true) => new(
@@ -156,11 +161,69 @@ public class UpdateMonitoringFeatureTogglesCommandHandlerTests
     }
 
     [Fact]
+    public async Task Handle_ExistingRow_WritesAuditLogWithOldAndNewValues()
+    {
+        var existing = new MonitoringFeatureToggles
+        {
+            Id = Guid.NewGuid(),
+            TenantId = TenantId,
+            LegalEntityId = LegalEntityId,
+            ActivityMonitoring = true
+        };
+        _toggles.Setup(r => r.GetByLegalEntityIdAsync(TenantId, LegalEntityId, false, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(existing);
+        AuditLog? audit = null;
+        _auditLogs.Setup(a => a.AddAsync(It.IsAny<AuditLog>(), It.IsAny<CancellationToken>()))
+            .Callback<AuditLog, CancellationToken>((a, _) => audit = a)
+            .Returns(Task.CompletedTask);
+        var sut = BuildSut();
+
+        await sut.Handle(ValidCommand(activityMonitoring: false), CancellationToken.None);
+
+        audit.Should().NotBeNull();
+        audit!.TenantId.Should().Be(TenantId);
+        audit.UserId.Should().Be(ActorId);
+        audit.Action.Should().Be("monitoring.company_settings_updated");
+        audit.ResourceId.Should().Be(existing.Id);
+        audit.CreatedAt.Should().Be(FixedNow);
+        audit.OldValuesJson.Should().Contain("\"activityMonitoring\":true");
+        audit.NewValuesJson.Should().Contain("\"activityMonitoring\":false");
+    }
+
+    [Fact]
+    public async Task Handle_NoExistingRow_WritesAuditLogWithoutOldValues()
+    {
+        _toggles.Setup(r => r.GetByLegalEntityIdAsync(TenantId, LegalEntityId, false, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((MonitoringFeatureToggles?)null);
+        AuditLog? audit = null;
+        _auditLogs.Setup(a => a.AddAsync(It.IsAny<AuditLog>(), It.IsAny<CancellationToken>()))
+            .Callback<AuditLog, CancellationToken>((a, _) => audit = a)
+            .Returns(Task.CompletedTask);
+        var sut = BuildSut();
+
+        await sut.Handle(ValidCommand(), CancellationToken.None);
+
+        audit.Should().NotBeNull();
+        audit!.OldValuesJson.Should().BeNull();
+        audit.NewValuesJson.Should().Contain("\"activityMonitoring\":true");
+    }
+
+    [Fact]
+    public async Task Handle_MissingConfigurePermission_WritesNoAuditLog()
+    {
+        var sut = BuildSut(hasPermission: false);
+
+        await sut.Handle(ValidCommand(), CancellationToken.None);
+
+        _auditLogs.Verify(a => a.AddAsync(It.IsAny<AuditLog>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
     public async Task Handle_Unauthenticated_ReturnsForbidden()
     {
         _currentUser.SetupGet(c => c.IsAuthenticated).Returns(false);
         var sut = new UpdateMonitoringFeatureTogglesCommandHandler(
-            _toggles.Object, _currentUser.Object, _dateTimeProvider.Object, _cache.Object);
+            _toggles.Object, _currentUser.Object, _dateTimeProvider.Object, _cache.Object, _auditLogs.Object);
 
         var result = await sut.Handle(ValidCommand(), CancellationToken.None);
 

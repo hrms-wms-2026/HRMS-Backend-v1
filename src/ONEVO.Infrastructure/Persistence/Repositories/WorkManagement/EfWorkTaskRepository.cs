@@ -290,6 +290,48 @@ public class EfWorkTaskRepository : IWorkTaskRepository
         => await _db.WorkTasks.IgnoreQueryFilters()
             .AnyAsync(t => t.TenantId == tenantId && t.CategoryId == categoryId, ct);
 
+    public async Task<IReadOnlyList<LedTaskProgressRow>> ListTopLevelProgressRowsAsync(Guid tenantId, IReadOnlyCollection<Guid> objectiveIds, CancellationToken ct = default)
+    {
+        if (objectiveIds.Count == 0)
+            return Array.Empty<LedTaskProgressRow>();
+        var ids = objectiveIds.ToList();
+        return await (
+            from t in _db.WorkTasks.AsNoTracking()
+            join s in _db.TaskStatuses.AsNoTracking() on t.StatusId equals s.Id
+            where t.TenantId == tenantId && t.ParentTaskId == null && ids.Contains(t.ObjectiveId)
+            select new LedTaskProgressRow(t.ObjectiveId, s.MarksTaskComplete, t.DueDate, t.ProgressPercent)
+        ).ToListAsync(ct);
+    }
+
+    public async Task<IReadOnlyList<LedOverdueTaskRow>> ListTopLevelOverdueAsync(Guid tenantId, IReadOnlyCollection<Guid> objectiveIds, DateOnly today, int take, CancellationToken ct = default)
+    {
+        if (objectiveIds.Count == 0 || take <= 0)
+            return Array.Empty<LedOverdueTaskRow>();
+        var ids = objectiveIds.ToList();
+        // Same predicate as TaskProgressClassifier's Overdue bucket: not complete (status column or
+        // 100%), and DueDate strictly before today.
+        var rows = await (
+            from t in _db.WorkTasks.AsNoTracking()
+            join s in _db.TaskStatuses.AsNoTracking() on t.StatusId equals s.Id
+            where t.TenantId == tenantId && t.ParentTaskId == null && ids.Contains(t.ObjectiveId)
+                && !s.MarksTaskComplete && t.ProgressPercent < 100
+                && t.DueDate != null && t.DueDate < today
+            orderby t.DueDate, t.ShortId
+            select new { t.Id, t.ShortId, t.Title, t.ProjectId, t.ObjectiveId, DueDate = t.DueDate!.Value }
+        ).Take(take).ToListAsync(ct);
+
+        var taskIds = rows.Select(r => r.Id).ToList();
+        var assignees = taskIds.Count == 0
+            ? new Dictionary<Guid, List<Guid>>()
+            : (await _db.TaskAssignments.AsNoTracking().Where(a => taskIds.Contains(a.TaskId))
+                    .Select(a => new { a.TaskId, a.EmployeeId }).ToListAsync(ct))
+                .GroupBy(a => a.TaskId).ToDictionary(g => g.Key, g => g.Select(a => a.EmployeeId).ToList());
+
+        return rows.Select(r => new LedOverdueTaskRow(
+            r.Id, r.ShortId, r.Title, r.ProjectId, r.ObjectiveId, r.DueDate,
+            assignees.TryGetValue(r.Id, out var assigneeIds) ? assigneeIds : new List<Guid>())).ToList();
+    }
+
     public void Update(WorkTask task) => _db.WorkTasks.Update(task);
     public void Remove(WorkTask task) => _db.WorkTasks.Remove(task);
 }

@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Features.Monitoring.Settings.DTOs.Responses;
+using ONEVO.Application.Features.Monitoring.Settings.Helpers;
 using ONEVO.Application.Features.Monitoring.Settings.Mappers;
 using ONEVO.Application.Features.Monitoring.Settings.ServiceInterfaces;
 using ONEVO.Domain.Features.Monitoring.Settings.Entities;
@@ -82,6 +83,7 @@ public sealed class MonitoringPolicyConfigurationService : IMonitoringPolicyConf
         var now = DateTimeOffset.UtcNow;
         var entity = await _db.MonitoringPolicyOverrides
             .FirstOrDefaultAsync(x => x.TenantId == tenantId && x.ScopeType == normalizedScope && x.ScopeId == scopeId, ct);
+        var oldValuesJson = entity is null ? null : MonitoringSettingsAudit.Snapshot(entity);
         if (entity is null)
         {
             entity = new MonitoringPolicyOverride
@@ -113,6 +115,10 @@ public sealed class MonitoringPolicyConfigurationService : IMonitoringPolicyConf
         entity.SetById = actorId;
         entity.UpdatedAt = now;
 
+        _db.AuditLogs.Add(MonitoringSettingsAudit.Entry(
+            tenantId, actorId, MonitoringSettingsAudit.OverrideSaved, nameof(MonitoringPolicyOverride), entity.Id,
+            oldValuesJson, MonitoringSettingsAudit.Snapshot(entity), now));
+
         await _db.SaveChangesAsync(ct);
         await _cache.RemoveByPrefixAsync($"tenant:{tenantId}:monitoring-toggle:", ct);
         await NotifyTraysAsync(tenantId, ct);
@@ -121,7 +127,7 @@ public sealed class MonitoringPolicyConfigurationService : IMonitoringPolicyConf
     }
 
     public async Task<Result> DeleteOverrideAsync(
-        Guid tenantId, string scopeType, Guid scopeId, Guid? legalEntityId, CancellationToken ct = default)
+        Guid tenantId, Guid actorId, string scopeType, Guid scopeId, Guid? legalEntityId, CancellationToken ct = default)
     {
         var normalizedScope = scopeType.Trim().ToLowerInvariant();
         var entity = await _db.MonitoringPolicyOverrides
@@ -136,6 +142,9 @@ public sealed class MonitoringPolicyConfigurationService : IMonitoringPolicyConf
             return Result.NotFound("The monitoring override was not found.");
 
         _db.MonitoringPolicyOverrides.Remove(entity);
+        _db.AuditLogs.Add(MonitoringSettingsAudit.Entry(
+            tenantId, actorId, MonitoringSettingsAudit.OverrideRemoved, nameof(MonitoringPolicyOverride), entity.Id,
+            MonitoringSettingsAudit.Snapshot(entity), null, DateTimeOffset.UtcNow));
         await _db.SaveChangesAsync(ct);
         await _cache.RemoveByPrefixAsync($"tenant:{tenantId}:monitoring-toggle:", ct);
         await NotifyTraysAsync(tenantId, ct);

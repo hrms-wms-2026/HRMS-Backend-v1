@@ -39,7 +39,7 @@ public sealed class GetEmployeeAttendanceDisciplineQueryHandlerTests
         _guard.Setup(g => g.EnsureCanRead(_tenantId, _employeeId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result<EmployeeListItemResponse>.Success(new EmployeeListItemResponse(
                 _employeeId, "E-001", "Ada", "ada@test.dev", null, null, null, null, null, null, "full_time", "active", null, null)));
-        _toggles.Setup(t => t.IsEnabledAsync(_tenantId, _employeeId, MonitoringCapability.WorkLocationVerification, It.IsAny<CancellationToken>()))
+        _toggles.Setup(t => t.IsEnabledForEmployeeAsync(_tenantId, _employeeId, MonitoringCapability.WorkLocationVerification, It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
         _notifications.Setup(n => n.CountByTypeAsync(_tenantId, _employeeId, NotificationType.OutsideWorkLocationAlert, RangeStart, RangeEnd, It.IsAny<CancellationToken>()))
             .ReturnsAsync(3);
@@ -106,7 +106,7 @@ public sealed class GetEmployeeAttendanceDisciplineQueryHandlerTests
     [Fact]
     public async Task Handle_HidesLocationViolations_WhenLocationTrackingIsDisabled()
     {
-        _toggles.Setup(t => t.IsEnabledAsync(_tenantId, _employeeId, MonitoringCapability.WorkLocationVerification, It.IsAny<CancellationToken>()))
+        _toggles.Setup(t => t.IsEnabledForEmployeeAsync(_tenantId, _employeeId, MonitoringCapability.WorkLocationVerification, It.IsAny<CancellationToken>()))
             .ReturnsAsync(false);
         ArrangeData(60, new Dictionary<DateOnly, int>(), Standard());
 

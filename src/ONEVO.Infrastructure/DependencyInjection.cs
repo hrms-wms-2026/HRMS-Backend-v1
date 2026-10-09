@@ -263,6 +263,8 @@ public static class DependencyInjection
             ONEVO.Infrastructure.Persistence.Repositories.Calendar.EfHolidayCalendarSettingsRepository>();
         services.AddScoped<ONEVO.Application.Features.Leave.Calendar.Services.ILeaveCalendarHolidayProvider,
             ONEVO.Infrastructure.Services.Calendar.NagerHolidaysProvider>();
+        services.AddScoped<ONEVO.Application.Features.Leave.Calendar.Services.ILeaveVisibilityScopeProvider,
+            ONEVO.Application.Features.Leave.Calendar.Services.LeaveVisibilityScopeProvider>();
         services.AddScoped<ONEVO.Application.Features.Leave.Request.Services.ILeaveRequestConflictProvider,
             ONEVO.Infrastructure.Services.Leave.EfLeaveRequestConflictProvider>();
         services.AddScoped<ONEVO.Application.Features.Leave.Request.Services.ILeaveApproverResolver,
@@ -388,6 +390,10 @@ public static class DependencyInjection
         services.AddScoped<EfTaskStatusChangeLogRepository>();
         services.AddScoped<ITaskStatusChangeLogRepository>(sp => sp.GetRequiredService<EfTaskStatusChangeLogRepository>());
         services.AddScoped<ITaskStatusChangeAccessService, TaskStatusChangeAccessService>();
+        services.AddScoped<ONEVO.Application.Features.WorkManagement.Leadership.Services.IWorkApprovalEligibility,
+            ONEVO.Application.Features.WorkManagement.Leadership.Services.WorkApprovalEligibility>();
+        services.AddScoped<ONEVO.Application.Features.WorkManagement.Leadership.Services.IWorkLeadershipService,
+            ONEVO.Application.Features.WorkManagement.Leadership.Services.WorkLeadershipService>();
         services.AddScoped<ITaskStatusChangeRequestConflictSweeper, TaskStatusChangeRequestConflictSweeper>();
         services.AddScoped<EfTaskClockingSessionRepository>();
         services.AddScoped<ITaskClockingSessionRepository>(sp => sp.GetRequiredService<EfTaskClockingSessionRepository>());
@@ -775,6 +781,41 @@ public static class DependencyInjection
         services.AddScoped<IEmailService, TransactionalEmailService>();
 
         services.AddScoped<IEncryptionService, AesEncryptionService>();
+
+        // -- My Team dashboard: Approvals & Exceptions action sources (spec §8.2/§9.4) --
+        // One AddScoped<ITeamActionSource, ...> per source key, same pattern as
+        // IEmailProviderAdapter above - GetTeamActionItemsQueryHandler resolves all of them via
+        // IEnumerable<ITeamActionSource>.
+        services.AddScoped<
+            ONEVO.Application.Features.Dashboard.Team.Abstractions.ITeamActionSource,
+            ONEVO.Application.Features.Dashboard.Team.Sources.LeaveApprovalTeamActionSource>();
+        services.AddScoped<
+            ONEVO.Application.Features.Dashboard.Team.Abstractions.ITeamActionSource,
+            ONEVO.Application.Features.Dashboard.Team.Sources.AttendanceCorrectionTeamActionSource>();
+        services.AddScoped<
+            ONEVO.Application.Features.Dashboard.Team.Abstractions.ITeamActionSource,
+            ONEVO.Application.Features.Dashboard.Team.Sources.AttendanceWorkAreaChangeTeamActionSource>();
+        services.AddScoped<
+            ONEVO.Application.Features.Dashboard.Team.Abstractions.ITeamActionSource,
+            ONEVO.Application.Features.Dashboard.Team.Sources.AttendanceLocationChangeTeamActionSource>();
+        services.AddScoped<
+            ONEVO.Application.Features.Dashboard.Team.Abstractions.ITeamActionSource,
+            ONEVO.Application.Features.Dashboard.Team.Sources.AttendanceDeviceChangeTeamActionSource>();
+        services.AddScoped<
+            ONEVO.Application.Features.Dashboard.Team.Abstractions.ITeamActionSource,
+            ONEVO.Application.Features.Dashboard.Team.Sources.MonitoringExceptionTeamActionSource>();
+        services.AddScoped<
+            ONEVO.Application.Features.Dashboard.Team.Abstractions.ITeamActionSource,
+            ONEVO.Application.Features.Dashboard.Team.Sources.WorkTaskCreationTeamActionSource>();
+        services.AddScoped<
+            ONEVO.Application.Features.Dashboard.Team.Abstractions.ITeamActionSource,
+            ONEVO.Application.Features.Dashboard.Team.Sources.WorkTaskEditTeamActionSource>();
+        services.AddScoped<
+            ONEVO.Application.Features.Dashboard.Team.Abstractions.ITeamActionSource,
+            ONEVO.Application.Features.Dashboard.Team.Sources.WorkObjectiveChangeTeamActionSource>();
+        services.AddScoped<
+            ONEVO.Application.Features.Dashboard.Team.Abstractions.ITeamActionSource,
+            ONEVO.Application.Features.Dashboard.Team.Sources.WorkStatusTemplateChangeTeamActionSource>();
 
         // Background seeder
         services.AddHostedService<PermissionSeeder>();

@@ -39,7 +39,7 @@ public sealed class GetEmployeeWorkPatternQueryHandler(
         if (EmployeeWorkActivityCalculator.ExceedsRawRange(p.From, p.To))
             return Result<EmployeeWorkPatternSummaryResponse>.Failure($"The period cannot exceed {EmployeeWorkActivityCalculator.MaxRawDays} days.");
 
-        if (!await toggles.IsEnabledAsync(tenantId, request.EmployeeId, MonitoringCapability.ActivityMonitoring, ct))
+        if (!await toggles.IsEnabledForEmployeeAsync(tenantId, request.EmployeeId, MonitoringCapability.ActivityMonitoring, ct))
             return Result<EmployeeWorkPatternSummaryResponse>.Success(new EmployeeWorkPatternSummaryResponse(p.From, p.To, false, 0, null, 0, null));
 
         var (from, to) = EmployeeWorkActivityCalculator.UtcWindow(p.From, p.To);
@@ -54,7 +54,7 @@ public sealed class GetEmployeeWorkPatternQueryHandler(
 
         string? topApp = null;
         var topAppMinutes = 0;
-        if (await toggles.IsEnabledAsync(tenantId, request.EmployeeId, MonitoringCapability.ApplicationTracking, ct))
+        if (await toggles.IsEnabledForEmployeeAsync(tenantId, request.EmployeeId, MonitoringCapability.ApplicationTracking, ct))
         {
             var totals = await apps.GetMinutesByProcessAsync(tenantId, request.EmployeeId, from, to, ct);
             var top = totals.OrderByDescending(t => t.Samples).ThenBy(t => t.ProcessName).FirstOrDefault();

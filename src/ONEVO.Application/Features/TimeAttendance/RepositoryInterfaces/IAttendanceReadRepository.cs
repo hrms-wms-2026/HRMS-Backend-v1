@@ -31,6 +31,16 @@ public interface IAttendanceReadRepository
         int take,
         CancellationToken ct = default);
 
+    /// <summary>Batched GetRecordAsync: one AttendanceRecord per employee for a single date,
+    /// keyed by EmployeeId. Employees with no record for that date are simply absent from the
+    /// result. Mirrors ListBreaksForEmployeesAsync's batching so a "today" read across a whole
+    /// team never issues one query per employee.</summary>
+    Task<IReadOnlyList<AttendanceRecord>> ListRecordsForDateAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Guid> employeeIds,
+        DateOnly date,
+        CancellationToken ct = default);
+
     Task<IReadOnlyList<BreakRecord>> ListBreaksAsync(
         Guid tenantId,
         Guid employeeId,
