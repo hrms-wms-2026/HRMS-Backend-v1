@@ -24,6 +24,7 @@ public sealed class GetEmployeeWorkActivityHandlersTests
     private readonly Mock<IActivitySnapshotRepository> _snapshots = new();
     private readonly Mock<IAppUsageSnapshotRepository> _apps = new();
     private readonly Mock<IMeetingSignalRepository> _meetings = new();
+    private readonly Mock<IMeetingComplianceReadRepository> _meetingCompliance = new();
     private readonly Mock<ILegalEntityRepository> _legalEntities = new();
     private readonly Mock<IMonitoringToggleResolver> _toggles = new();
     private readonly Mock<ICurrentUser> _user = new();
@@ -48,12 +49,14 @@ public sealed class GetEmployeeWorkActivityHandlersTests
             .ReturnsAsync(Array.Empty<ActivitySnapshot>());
         _meetings.Setup(m => m.GetByEmployeeRangeAsync(_tenantId, _employeeId, It.IsAny<DateTimeOffset>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Array.Empty<MeetingSignal>());
+        _meetingCompliance.Setup(m => m.ListAsync(_tenantId, _employeeId, It.IsAny<DateTimeOffset>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<MeetingApplicationComplianceItem>());
     }
 
     private GetEmployeeActivityByHourQueryHandler ByHour() =>
         new(_guard.Object, _snapshots.Object, _legalEntities.Object, _toggles.Object, _user.Object, _clock.Object);
     private GetEmployeeAppUsageQueryHandler Apps() =>
-        new(_guard.Object, _apps.Object, _toggles.Object, _user.Object, _clock.Object);
+        new(_guard.Object, _apps.Object, _toggles.Object, _meetingCompliance.Object, _user.Object, _clock.Object);
     private GetEmployeeWorkPatternQueryHandler Pattern() =>
         new(_guard.Object, _snapshots.Object, _meetings.Object, _apps.Object, _toggles.Object, _user.Object, _clock.Object);
 
@@ -112,6 +115,7 @@ public sealed class GetEmployeeWorkActivityHandlersTests
         result.Value!.ApplicationTrackingEnabled.Should().BeTrue();
         result.Value.TotalMinutes.Should().Be(72);
         result.Value.Apps.Should().ContainSingle().Which.AppName.Should().Be("code.exe");
+        result.Value.MeetingCompliance.Should().BeEmpty();
     }
 
     [Fact]
