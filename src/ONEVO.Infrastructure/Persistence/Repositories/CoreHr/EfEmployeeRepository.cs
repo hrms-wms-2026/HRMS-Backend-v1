@@ -732,6 +732,12 @@ public class EfEmployeeRepository : IEmployeeRepository
         => await _db.Employees.AsNoTracking()
             .FirstOrDefaultAsync(e => e.TenantId == tenantId && e.Id == employeeId, ct);
 
+    public async Task<Guid?> GetLegalEntityIdAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default)
+        => await _db.Employees.AsNoTracking()
+            .Where(e => e.TenantId == tenantId && e.Id == employeeId)
+            .Select(e => (Guid?)e.LegalEntityId)
+            .FirstOrDefaultAsync(ct);
+
     public async Task<EmployeeEntity?> GetDefaultForUserAsync(Guid tenantId, Guid userId, CancellationToken ct = default)
     {
         var employees = await _db.Employees.AsNoTracking()
