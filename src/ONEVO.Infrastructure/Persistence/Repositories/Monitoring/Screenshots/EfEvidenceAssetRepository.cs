@@ -13,6 +13,16 @@ public class EfEvidenceAssetRepository : IEvidenceAssetRepository
     public void Add(MonitoringEvidenceAsset asset)
         => _db.MonitoringEvidenceAssets.Add(asset);
 
+    public Task<MonitoringEvidenceAsset?> FindPeriodicScreenshotAsync(
+        Guid tenantId, Guid agentDeviceId, DateTimeOffset capturedAt, CancellationToken ct)
+        => _db.MonitoringEvidenceAssets
+            .AsNoTracking()
+            .FirstOrDefaultAsync(a => a.TenantId == tenantId
+                                      && a.AgentDeviceId == agentDeviceId
+                                      && a.EvidenceType == "screenshot"
+                                      && a.TriggerType == "periodic"
+                                      && a.CapturedAt == capturedAt, ct);
+
     public Task<MonitoringEvidenceAsset?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct)
         => _db.MonitoringEvidenceAssets
             .AsNoTracking()

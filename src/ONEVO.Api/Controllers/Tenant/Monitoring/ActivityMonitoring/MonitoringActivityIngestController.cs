@@ -45,10 +45,7 @@ public class MonitoringActivityIngestController : ControllerBase
             new IngestActivitySnapshotsCommand { Snapshots = items },
             ct);
 
-        if (!result.IsSuccess)
-            return Problem(result.Error, statusCode: result.StatusCode ?? 400);
-
-        return Accepted();
+        return SnapshotIngestResponses.ToActionResult(this, result);
     }
 }
 
