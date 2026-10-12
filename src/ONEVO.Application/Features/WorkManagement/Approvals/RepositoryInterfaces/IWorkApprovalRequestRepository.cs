@@ -24,6 +24,15 @@ public interface IWorkApprovalRequestRepository
     Task<bool> HasPendingForHrApproverAsync(
         Guid tenantId, Guid approverEmployeeId, IReadOnlySet<string> actionTypes, CancellationToken ct = default);
 
+    /// <summary>Content companion to <see cref="HasPendingForHrApproverAsync"/> - the actual pending
+    /// HR-sourced rows for this approver, not just whether any exist. WM-04 fix (2026-10-12): the
+    /// gate and the My Team cross-project aggregator's content must never disagree - an HR-sourced
+    /// approver who owns zero modules anywhere was previously invisible to
+    /// WorkApprovalEligibility.ListDecidableAcrossLedProjectsAsync even though the gate correctly
+    /// flagged them as having something pending.</summary>
+    Task<IReadOnlyList<WorkApprovalRequest>> ListPendingForHrApproverAsync(
+        Guid tenantId, Guid approverEmployeeId, IReadOnlySet<string> actionTypes, CancellationToken ct = default);
+
     /// <summary>Of the given projects, the ones with at least one pending request whose ActionType is
     /// in actionTypes (backend merge plan §2's bounded pre-check) - narrows a per-project
     /// LoadTreeAsync+CanDecide loop down to projects that actually have something to evaluate,

@@ -156,4 +156,110 @@ public class UploadPurposePolicyTests
         Assert.DoesNotContain("!", safe);
         Assert.EndsWith(".png", safe);
     }
+
+    // SEC-13 (2026-10-12): magic-number signature verification, additive on top of the existing
+    // extension+content-type check above - never narrows what ValidateUpload already allows.
+
+    [Fact]
+    public void ValidateSignature_PngBytesWithPngExtension_IsAccepted()
+    {
+        using var content = new MemoryStream(new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 0 });
+
+        var result = _policy.ValidateSignature("photo.png", content);
+
+        Assert.True(result.IsSuccess);
+    }
+
+    [Fact]
+    public void ValidateSignature_PngBytesWithPdfExtension_IsRejected()
+    {
+        // A file renamed to look like a different, allowed type - exactly the SEC-13 scenario.
+        using var content = new MemoryStream(new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 0 });
+
+        var result = _policy.ValidateSignature("report.pdf", content);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(400, result.StatusCode);
+    }
+
+    [Fact]
+    public void ValidateSignature_ZipSignatureWithDocxExtension_IsAccepted()
+    {
+        // .docx is a ZIP archive at the byte level - this must NOT be treated as a mismatch.
+        using var content = new MemoryStream(new byte[] { 0x50, 0x4B, 0x03, 0x04, 0, 0, 0, 0 });
+
+        var result = _policy.ValidateSignature("budget.docx", content);
+
+        Assert.True(result.IsSuccess);
+    }
+
+    [Fact]
+    public void ValidateSignature_ZipSignatureWithXlsxExtension_IsAccepted()
+    {
+        using var content = new MemoryStream(new byte[] { 0x50, 0x4B, 0x03, 0x04, 0, 0, 0, 0 });
+
+        var result = _policy.ValidateSignature("budget.xlsx", content);
+
+        Assert.True(result.IsSuccess);
+    }
+
+    [Fact]
+    public void ValidateSignature_UnrecognizedExtension_IsAcceptedWithoutGuessing()
+    {
+        // No entry in the signature table for this extension - handled explicitly by doing
+        // nothing here, not by rejecting an ambiguous/unlisted format outright.
+        using var content = new MemoryStream(new byte[] { 1, 2, 3, 4 });
+
+        var result = _policy.ValidateSignature("notes.unknownext", content);
+
+        Assert.True(result.IsSuccess);
+    }
+
+    [Fact]
+    public void ValidateSignature_WebpRequiresBothRiffAndWebpTags()
+    {
+        // RIFF container but a different fourcc (e.g. a WAV file renamed to .webp) must be rejected.
+        using var content = new MemoryStream(new byte[] { 0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x41, 0x56, 0x45 });
+
+        var result = _policy.ValidateSignature("clip.webp", content);
+
+        Assert.False(result.IsSuccess);
+    }
+
+    [Fact]
+    public void ValidateSignature_ValidWebp_IsAccepted()
+    {
+        using var content = new MemoryStream(new byte[] { 0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x45, 0x42, 0x50 });
+
+        var result = _policy.ValidateSignature("photo.webp", content);
+
+        Assert.True(result.IsSuccess);
+    }
+
+    [Fact]
+    public void ValidateSignature_LeavesStreamPositionUnchangedForTheCaller()
+    {
+        using var content = new MemoryStream(new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 1, 2, 3, 4 });
+        content.Position = 5;
+
+        _policy.ValidateSignature("photo.png", content);
+
+        Assert.Equal(5, content.Position);
+    }
+
+    [Fact]
+    public void DetectContentType_PngBytes_ReturnsImagePng()
+    {
+        using var content = new MemoryStream(new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A });
+
+        Assert.Equal("image/png", UploadPurposePolicy.DetectContentType("photo.png", content));
+    }
+
+    [Fact]
+    public void DetectContentType_UnrecognizedExtension_ReturnsNull()
+    {
+        using var content = new MemoryStream(new byte[] { 1, 2, 3, 4 });
+
+        Assert.Null(UploadPurposePolicy.DetectContentType("notes.unknownext", content));
+    }
 }

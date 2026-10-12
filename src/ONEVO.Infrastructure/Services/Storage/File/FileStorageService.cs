@@ -142,7 +142,8 @@ public sealed class FileStorageService : IFileStorageService
         string storageFileName,
         string contentType,
         string checksumSha256,
-        CancellationToken ct)
+        CancellationToken ct,
+        string? detectedContentType = null)
     {
         // Step 1: load the reservation and confirm it is still active.
         var reservation = await _reservations.GetByIdAsync(tenantId, reservationId, ct);
@@ -191,7 +192,7 @@ public sealed class FileStorageService : IFileStorageService
             OriginalFileName = originalFileName,
             SafeFileName = safeFileName,
             ContentType = contentType,
-            DetectedContentType = null,
+            DetectedContentType = detectedContentType,
             FileSizeBytes = reservation.ReservedBytes,
             ChecksumSha256 = checksumSha256,
             UploadedByUserId = reservation.ReservedByUserId,
@@ -382,6 +383,17 @@ public sealed class FileStorageService : IFileStorageService
             await uploadContent.CopyToAsync(buffer, ct);
             buffer.Position = 0;
 
+            // SEC-13 (2026-10-12): verify the actual bytes against the extension's magic number,
+            // not just the caller-supplied Content-Type/extension (ValidateUpload above). Ambiguous
+            // extensions are left alone by ValidateSignature itself - see its doc comment.
+            var signatureValidation = _purposePolicy.ValidateSignature(storageFileName, buffer);
+            if (!signatureValidation.IsSuccess)
+            {
+                return Result<FileRecordDto>.Failure(
+                    signatureValidation.Error!, signatureValidation.StatusCode ?? 400);
+            }
+            var detectedContentType = UploadPurposePolicy.DetectContentType(storageFileName, buffer);
+
             string checksum;
             using (var sha256 = SHA256.Create())
             {
@@ -417,7 +429,8 @@ public sealed class FileStorageService : IFileStorageService
                 storageFileName,
                 storedContentType,
                 checksum,
-                ct);
+                ct,
+                detectedContentType);
         }
         finally
         {
@@ -460,6 +473,16 @@ public sealed class FileStorageService : IFileStorageService
         CancellationToken ct = default)
     {
         if (fileRecord.TenantId != tenantId || fileRecord.DeletedAt is not null)
+        {
+            return Result<FileStreamDto>.NotFound("File not found.");
+        }
+
+        // SEC-13 (2026-10-12): future-proofing only, not a behavior change today - no scan pipeline
+        // exists yet, so nothing currently sets FileRecordStatus.Quarantined. Once a real scanner is
+        // wired in (see NullMalwareScanner's doc comment), this is the one place every read path
+        // (GetTaskFileQueryHandler, GetFileQueryHandler, etc.) already funnels through that will
+        // start blocking quarantined content without any further plumbing changes.
+        if (fileRecord.Status == FileRecordStatus.Quarantined)
         {
             return Result<FileStreamDto>.NotFound("File not found.");
         }

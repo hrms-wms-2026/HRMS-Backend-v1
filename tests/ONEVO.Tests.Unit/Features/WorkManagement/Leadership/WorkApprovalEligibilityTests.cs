@@ -31,6 +31,12 @@ public sealed class WorkApprovalEligibilityTests
                 new Objective { Id = _root, OwnerId = Guid.NewGuid(), IsDefault = true },
                 new Objective { Id = _module, ParentObjectiveId = _root, OwnerId = Owner },
             }));
+        // WM-04 fix (2026-10-12): ListDecidableAcrossLedProjectsAsync always checks HR-sourced
+        // pending approvals first, regardless of owned-module count - default to none so existing
+        // owned-module-path tests don't need to know about this unless they're testing it.
+        _requests.Setup(x => x.ListPendingForHrApproverAsync(
+                TenantId, It.IsAny<Guid>(), It.IsAny<IReadOnlySet<string>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<WorkApprovalRequest>());
     }
 
     private WorkApprovalRequest Pending(Guid position, string actionType) => new()
@@ -71,7 +77,7 @@ public sealed class WorkApprovalEligibilityTests
     }
 
     [Fact]
-    public async Task AcrossLedProjects_NoOwnedModules_ReturnsEmptyWithoutQueryingPendingOrTrees()
+    public async Task AcrossLedProjects_NoOwnedModulesAndNoHrSourcedApproval_ReturnsEmptyWithoutLoadingAnyTree()
     {
         _objectives.Setup(x => x.ListActiveOwnedIdsAsync(TenantId, Owner, LegalEntityId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(Array.Empty<(Guid, Guid)>());
@@ -79,6 +85,31 @@ public sealed class WorkApprovalEligibilityTests
         var result = await Build().ListDecidableAcrossLedProjectsAsync(TenantId, Owner, LegalEntityId, new HashSet<string> { WorkActionTypes.TaskEdit });
 
         result.Should().BeEmpty();
+        _hierarchy.VerifyNoOtherCalls();
+    }
+
+    [Fact]
+    public async Task AcrossLedProjects_NoOwnedModulesButHrSourcedApprovalPending_StillAppearsInContent()
+    {
+        // WM-04 fix: the capability gate (HasPendingForHrApproverAsync) already told the caller
+        // "you have something pending" for an HR-sourced approver who owns zero modules anywhere -
+        // the content list must not disagree by coming back empty.
+        _objectives.Setup(x => x.ListActiveOwnedIdsAsync(TenantId, Owner, LegalEntityId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<(Guid, Guid)>());
+        var hrSourced = new WorkApprovalRequest
+        {
+            Id = Guid.NewGuid(), TenantId = TenantId, ProjectId = ProjectId,
+            ApproverSource = WorkApprovalSources.Hr, ApproverEmployeeId = Owner, RequestedByEmployeeId = Requester,
+            Status = WorkApprovalRequestStatuses.Pending, ActionType = WorkActionTypes.TaskEdit,
+            TargetType = WorkTargetTypes.Task, TargetTitle = "hr-sourced"
+        };
+        var actionTypes = new HashSet<string> { WorkActionTypes.TaskEdit };
+        _requests.Setup(x => x.ListPendingForHrApproverAsync(TenantId, Owner, actionTypes, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<WorkApprovalRequest> { hrSourced });
+
+        var result = await Build().ListDecidableAcrossLedProjectsAsync(TenantId, Owner, LegalEntityId, actionTypes);
+
+        result.Select(r => r.Id).Should().Equal(hrSourced.Id);
         _hierarchy.VerifyNoOtherCalls();
     }
 
