@@ -14,7 +14,7 @@ using ONEVO.Domain.Errors;
 namespace ONEVO.Application.Features.Monitoring.AppUsage.Commands.IngestAppUsageSnapshots;
 
 public class IngestAppUsageSnapshotsCommandHandler
-    : IRequestHandler<IngestAppUsageSnapshotsCommand, Result>
+    : IRequestHandler<IngestAppUsageSnapshotsCommand, Result<SnapshotIngestOutcome>>
 {
     private readonly IAppUsageSnapshotRepository _snapshots;
     private readonly IMonitoringToggleResolver _toggleResolver;
@@ -48,7 +48,7 @@ public class IngestAppUsageSnapshotsCommandHandler
         _logger = logger;
     }
 
-    public async Task<Result> Handle(
+    public async Task<Result<SnapshotIngestOutcome>> Handle(
         IngestAppUsageSnapshotsCommand request,
         CancellationToken cancellationToken)
     {
@@ -57,12 +57,12 @@ public class IngestAppUsageSnapshotsCommandHandler
             || _device.UserId == Guid.Empty
             || _device.DeviceRegistrationId == Guid.Empty)
         {
-            return Result.Failure("A valid tray device token is required.", 401);
+            return Result<SnapshotIngestOutcome>.Failure("A valid tray device token is required.", 401);
         }
 
         var tenant = await _tenants.GetByIdAsync(_device.TenantId, cancellationToken);
         if (tenant is null)
-            return Result.Failure("Tenant not found.", 401);
+            return Result<SnapshotIngestOutcome>.Failure("Tenant not found.", 401);
 
         // Tray requests may hit the base host (system mode). Switch into the JWT
         // tenant so EF query filters + PostgreSQL RLS accept the write.
@@ -83,7 +83,7 @@ public class IngestAppUsageSnapshotsCommandHandler
             _logger.LogInformation(
                 "App-usage snapshot batch rejected: monitoring disabled. TenantId={TenantId} DeviceId={DeviceId} UserId={UserId} Count={Count}",
                 tenantId, agentDeviceId, userId, request.Snapshots.Count);
-            return Result.Failure(MonitoringErrors.AppTrackingDisabled, 403);
+            return Result<SnapshotIngestOutcome>.Failure(MonitoringErrors.AppTrackingDisabled, 403, MonitoringErrors.AppTrackingDisabledCode);
         }
 
         // Resolves the real CoreHR Employee.Id to store, falling back to the raw UserId when no
@@ -92,9 +92,12 @@ public class IngestAppUsageSnapshotsCommandHandler
             tenantId, userId, _device.LegalEntityId, cancellationToken);
 
         // Judged per item: out-of-window items are skipped, the rest of the batch is still stored.
-        var window = SnapshotTimeWindow.Partition(request.Snapshots, s => s.CapturedAt, now);
+        var window = SnapshotTimeWindow.Partition(
+            request.Snapshots.Select(s => s with { CapturedAt = SnapshotTimeWindow.Normalize(s.CapturedAt) }).ToList(),
+            s => s.CapturedAt,
+            now);
         if (window.AllRejected)
-            return Result.Failure(window.RejectionError, 400);
+            return Result<SnapshotIngestOutcome>.Failure(window.RejectionError, 400, window.RejectionErrorCode);
 
         if (window.RejectedCount > 0)
         {
@@ -108,13 +111,21 @@ public class IngestAppUsageSnapshotsCommandHandler
             "App-usage snapshot batch received. TenantId={TenantId} DeviceId={DeviceId} EmployeeId={EmployeeId} Count={Count}",
             tenantId, agentDeviceId, employeeId, request.Snapshots.Count);
 
-        var entities = window.Accepted
+        // Idempotency: a retry after a lost 202 re-sends rows that are already stored.
+        var alreadyStored = await _snapshots.GetExistingCapturedAtsAsync(
+            tenantId, agentDeviceId, window.Accepted.Select(s => s.CapturedAt).ToList(), cancellationToken);
+        var fresh = SnapshotTimeWindow.WithoutDuplicates(window.Accepted, s => s.CapturedAt, alreadyStored);
+
+        var entities = fresh
             .Select(item => AppUsageSnapshotMapper.ToEntity(item, tenantId, employeeId, agentDeviceId, now))
             .ToList();
 
-        await _snapshots.AddRangeAsync(entities, cancellationToken);
-        await _unitOfWork.SaveChangesAsync(cancellationToken);
+        if (entities.Count > 0)
+        {
+            await _snapshots.AddRangeAsync(entities, cancellationToken);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+        }
 
-        return Result.Success();
+        return Result<SnapshotIngestOutcome>.Success(window.ToOutcome(entities.Count));
     }
 }
