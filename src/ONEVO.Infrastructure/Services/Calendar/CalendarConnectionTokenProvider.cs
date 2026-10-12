@@ -1,3 +1,4 @@
+using System.Net;
 using Microsoft.Extensions.Logging;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
@@ -42,8 +43,29 @@ public sealed class CalendarConnectionTokenProvider(
         }
         catch (Exception ex)
         {
-            logger.LogWarning(ex, "Token refresh failed for connection {ConnectionId}; marking reauth_required.", connection.Id);
-            connection.Status = ExternalCalendarConnectionStatuses.ReauthRequired;
+            // Only a genuine grant failure (the provider rejecting the refresh token itself -
+            // HTTP 400 invalid_grant/invalid_client, or 401) means the user must reconnect.
+            // Anything else (network failure, timeout, a provider's transient 5xx) is not an
+            // auth problem - flipping to ReauthRequired for those would force every user to
+            // reconnect over a passing outage. CalendarSyncService already uses this same
+            // FailureCount/MaxConsecutiveFailures escalation for pull/push failures; mirroring
+            // it here means a transient refresh failure just gets retried by the next scheduled
+            // CalendarSyncJob run, same as a transient sync failure already does.
+            var isGrantFailure = ex is HttpRequestException { StatusCode: HttpStatusCode.BadRequest or HttpStatusCode.Unauthorized };
+
+            if (isGrantFailure)
+            {
+                logger.LogWarning(ex, "Token refresh for connection {ConnectionId} was rejected by the provider; marking reauth_required.", connection.Id);
+                connection.Status = ExternalCalendarConnectionStatuses.ReauthRequired;
+            }
+            else
+            {
+                logger.LogWarning(ex, "Token refresh failed transiently for connection {ConnectionId} (attempt {FailureCount}); will retry on the next sync.", connection.Id, connection.FailureCount + 1);
+                connection.FailureCount++;
+                if (connection.FailureCount >= ExternalCalendarConnectionStatuses.MaxConsecutiveFailures)
+                    connection.Status = ExternalCalendarConnectionStatuses.Failed;
+            }
+
             connection.LastError = ex.Message;
             connections.Update(connection);
             await unitOfWork.SaveChangesAsync(ct);
