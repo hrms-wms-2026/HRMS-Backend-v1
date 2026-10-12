@@ -45,6 +45,38 @@ public class ConfigurationStartupValidatorTests
             "Test");
     }
 
+    private const string DevTraySecret = "dev-only-tray-jwt-secret-min-32-chars-replace-in-prod";
+
+    private static IConfiguration TraySecretConfig(string? secret) =>
+        new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["TrayApp:Jwt:Secret"] = secret })
+            .Build();
+
+    [Theory]
+    [InlineData("Production")]
+    [InlineData("Staging")]
+    [InlineData("UAT")]
+    public void ValidateTrayJwtSecret_RejectsDevPlaceholderOutsideLocalEnvironments(string environmentName)
+    {
+        Assert.Throws<InvalidOperationException>(() =>
+            ConfigurationStartupValidator.ValidateTrayJwtSecret(TraySecretConfig(DevTraySecret), environmentName));
+    }
+
+    [Theory]
+    [InlineData("Development")]
+    [InlineData("Test")]
+    public void ValidateTrayJwtSecret_AllowsDevPlaceholderLocally(string environmentName)
+    {
+        ConfigurationStartupValidator.ValidateTrayJwtSecret(TraySecretConfig(DevTraySecret), environmentName);
+    }
+
+    [Fact]
+    public void ValidateTrayJwtSecret_AcceptsRealSecretInProduction()
+    {
+        ConfigurationStartupValidator.ValidateTrayJwtSecret(
+            TraySecretConfig("k3J9vQ2xLm8pR4tY7wZ1aB6cD0eF5gH2iJ8kL3mN"), "Production");
+    }
+
     [Theory]
     [InlineData("Host=localhost;Port=5432;Database=OnevoDb;Username=postgres;Password=x", true)]
     [InlineData("Host=localhost;Port=5432;Database=OnevoDb;Username=some_superuser_role;Password=x", true)]
