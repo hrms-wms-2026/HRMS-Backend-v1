@@ -1,7 +1,9 @@
 using MediatR;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.Auth.Login.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.Settings.DTOs.Responses;
+using ONEVO.Application.Features.Monitoring.Settings.Helpers;
 using ONEVO.Application.Features.Monitoring.Settings.Mappers;
 using ONEVO.Application.Features.Monitoring.Settings.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.Settings.ServiceInterfaces;
@@ -16,6 +18,7 @@ public class UpdateMonitoringFeatureTogglesCommandHandler
     private readonly ICurrentUser _currentUser;
     private readonly IDateTimeProvider _clock;
     private readonly ICacheService _cache;
+    private readonly IAuditLogRepository _auditLogs;
     private readonly ITrayPolicyRefreshNotifier? _policyRefresh;
 
     public UpdateMonitoringFeatureTogglesCommandHandler(
@@ -23,12 +26,14 @@ public class UpdateMonitoringFeatureTogglesCommandHandler
         ICurrentUser currentUser,
         IDateTimeProvider clock,
         ICacheService cache,
+        IAuditLogRepository auditLogs,
         ITrayPolicyRefreshNotifier? policyRefresh = null)
     {
         _toggles = toggles;
         _currentUser = currentUser;
         _clock = clock;
         _cache = cache;
+        _auditLogs = auditLogs;
         _policyRefresh = policyRefresh;
     }
 
@@ -54,6 +59,8 @@ public class UpdateMonitoringFeatureTogglesCommandHandler
         var now = _clock.UtcNow;
         var existing = await _toggles.GetByLegalEntityIdAsync(
             tenantId, legalEntityId, includeTenantFallback: false, ct);
+
+        var oldValuesJson = existing is null ? null : MonitoringSettingsAudit.Snapshot(existing);
 
         if (existing is not null)
         {
@@ -98,6 +105,11 @@ public class UpdateMonitoringFeatureTogglesCommandHandler
             };
             await _toggles.AddAsync(existing, ct);
         }
+
+        await _auditLogs.AddAsync(MonitoringSettingsAudit.Entry(
+            tenantId, _currentUser.UserId, MonitoringSettingsAudit.CompanySettingsUpdated,
+            nameof(MonitoringFeatureToggles), existing.Id,
+            oldValuesJson, MonitoringSettingsAudit.Snapshot(existing), now), ct);
 
         await _toggles.SaveChangesAsync(ct);
 

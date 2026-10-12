@@ -33,7 +33,7 @@ public sealed class GetEmployeeAppUsageQueryHandler(
         if (EmployeeWorkActivityCalculator.ExceedsRawRange(p.From, p.To))
             return Result<EmployeeAppUsageResponse>.Failure($"The period cannot exceed {EmployeeWorkActivityCalculator.MaxRawDays} days.");
 
-        if (!await toggles.IsEnabledAsync(tenantId, request.EmployeeId, MonitoringCapability.ApplicationTracking, ct))
+        if (!await toggles.IsEnabledForEmployeeAsync(tenantId, request.EmployeeId, MonitoringCapability.ApplicationTracking, ct))
             return Result<EmployeeAppUsageResponse>.Success(new EmployeeAppUsageResponse(p.From, p.To, false, 0, []));
 
         var (from, to) = EmployeeWorkActivityCalculator.UtcWindow(p.From, p.To);

@@ -93,6 +93,22 @@ public class MonitoringPolicyConfigurationServiceTests
             .FirstOrDefaultAsync(x => x.TenantId == tenantId && x.ScopeType == "work_mode" && x.ScopeId == workModeId);
         persisted.Should().NotBeNull();
         persisted!.AllowedRadiusMeters.Should().Be(150);
+
+        var audit = await db.AuditLogs.SingleAsync(x => x.TenantId == tenantId);
+        audit.Action.Should().Be("monitoring.override_saved");
+        audit.UserId.Should().Be(actorId);
+        audit.ResourceId.Should().Be(persisted.Id);
+        audit.OldValuesJson.Should().BeNull();
+        audit.NewValuesJson.Should().Contain("\"scopeType\":\"work_mode\"").And.Contain("\"activityMonitoring\":true");
+
+        // Removing the override is audited too, with the removed values as OldValuesJson.
+        var deleted = await service.DeleteOverrideAsync(tenantId, actorId, "work_mode", workModeId, legalEntityId, default);
+        deleted.IsSuccess.Should().BeTrue();
+        var removal = await db.AuditLogs.SingleAsync(x => x.TenantId == tenantId && x.Action == "monitoring.override_removed");
+        removal.UserId.Should().Be(actorId);
+        removal.ResourceId.Should().Be(persisted.Id);
+        removal.OldValuesJson.Should().Contain("\"idleThresholdMinutes\":120");
+        removal.NewValuesJson.Should().BeNull();
     }
 
     [Fact]

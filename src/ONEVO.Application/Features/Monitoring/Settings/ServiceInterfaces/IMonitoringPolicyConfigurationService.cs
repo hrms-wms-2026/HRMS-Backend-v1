@@ -31,6 +31,7 @@ public interface IMonitoringPolicyConfigurationService
     /// different company than their current active one.</param>
     Task<Result> DeleteOverrideAsync(
         Guid tenantId,
+        Guid actorId,
         string scopeType,
         Guid scopeId,
         Guid? legalEntityId,

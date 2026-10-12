@@ -35,7 +35,7 @@ public sealed class GetEmployeeActivityOverviewQueryHandler(
         if (!period.IsSuccess)
             return Result<EmployeeActivityOverviewResponse>.Failure(period.Error!, period.StatusCode ?? 400);
 
-        var enabled = await toggles.IsEnabledAsync(tenantId, request.EmployeeId, MonitoringCapability.ActivityMonitoring, ct);
+        var enabled = await toggles.IsEnabledForEmployeeAsync(tenantId, request.EmployeeId, MonitoringCapability.ActivityMonitoring, ct);
         if (!enabled)
         {
             return Result<EmployeeActivityOverviewResponse>.Success(new EmployeeActivityOverviewResponse(

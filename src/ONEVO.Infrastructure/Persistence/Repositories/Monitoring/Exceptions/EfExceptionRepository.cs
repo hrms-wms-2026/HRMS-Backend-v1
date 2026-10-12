@@ -93,6 +93,7 @@ public class EfExceptionRepository : IExceptionRepository
     {
         var query = _db.Exceptions.AsNoTracking().Where(e => e.TenantId == tenantId);
         if (filter.Status.HasValue) query = query.Where(e => e.Status == filter.Status.Value);
+        else if (filter.Statuses is { Count: > 0 } statuses) query = query.Where(e => statuses.Contains(e.Status));
         // Still needs someone: open, being worked (acknowledged) or with HR (escalated).
         else if (filter.ActiveOnly) query = query.Where(e => e.Status != ExceptionStatus.Resolved);
         if (filter.Type.HasValue) query = query.Where(e => e.Type == filter.Type.Value);

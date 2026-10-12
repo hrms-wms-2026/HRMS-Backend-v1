@@ -11,6 +11,7 @@ public sealed record ExceptionListFilter(
     ExceptionType? Type,
     IReadOnlyCollection<Guid>? EmployeeIds,
     Guid? ExcludeEmployeeId,
+    IReadOnlyCollection<ExceptionStatus>? Statuses = null,
     bool ActiveOnly = false);
 
 public interface IExceptionRepository

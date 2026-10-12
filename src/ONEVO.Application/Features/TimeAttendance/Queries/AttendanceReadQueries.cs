@@ -1,6 +1,7 @@
 using MediatR;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Features.TimeAttendance.DTOs.Responses;
+using ONEVO.Application.Features.TimeAttendance.Team.DTOs;
 
 namespace ONEVO.Application.Features.TimeAttendance.Queries;
 
@@ -9,3 +10,4 @@ public sealed record GetMyAttendanceHistoryQuery(DateOnly From, DateOnly To, Pag
 public sealed record GetCoveredAttendanceHistoryQuery(DateOnly From, DateOnly To, Guid? EmployeeId, PagedRequest Paging) : IRequest<Result<PagedResult<AttendanceHistoryRow>>>;
 public sealed record GetAttendanceDayDetailQuery(Guid EmployeeId, DateOnly Date) : IRequest<Result<AttendanceDayDetailResponse>>;
 public sealed record GetMyAttendanceMonthlySummaryQuery(DateOnly From, DateOnly To) : IRequest<Result<AttendanceMonthlySummaryResponse>>;
+public sealed record GetCoveredTeamTodayQuery(int Limit = 50) : IRequest<Result<TeamTodayResponse>>;

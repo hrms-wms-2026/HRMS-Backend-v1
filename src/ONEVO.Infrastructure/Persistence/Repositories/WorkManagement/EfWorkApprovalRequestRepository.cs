@@ -59,5 +59,27 @@ public class EfWorkApprovalRequestRepository : IWorkApprovalRequestRepository
                 && r.ActionType == actionType && r.Status == WorkApprovalRequestStatuses.Pending)
             .ToListAsync(ct);
 
+    public async Task<bool> HasPendingForHrApproverAsync(
+        Guid tenantId, Guid approverEmployeeId, IReadOnlySet<string> actionTypes, CancellationToken ct = default)
+        => await _db.WorkApprovalRequests.AsNoTracking().AnyAsync(r =>
+            r.TenantId == tenantId && r.ApproverSource == WorkApprovalSources.Hr
+            && r.ApproverEmployeeId == approverEmployeeId && r.Status == WorkApprovalRequestStatuses.Pending
+            && actionTypes.Contains(r.ActionType), ct);
+
+    public async Task<IReadOnlySet<Guid>> ListProjectsWithPendingAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> projectIds, IReadOnlySet<string> actionTypes, CancellationToken ct = default)
+    {
+        if (projectIds.Count == 0)
+            return new HashSet<Guid>();
+
+        var ids = projectIds.ToList();
+        var matching = await _db.WorkApprovalRequests.AsNoTracking()
+            .Where(r => r.TenantId == tenantId && ids.Contains(r.ProjectId)
+                && r.Status == WorkApprovalRequestStatuses.Pending && actionTypes.Contains(r.ActionType))
+            .Select(r => r.ProjectId)
+            .ToListAsync(ct);
+        return matching.ToHashSet();
+    }
+
     public void Update(WorkApprovalRequest request) => _db.WorkApprovalRequests.Update(request);
 }
