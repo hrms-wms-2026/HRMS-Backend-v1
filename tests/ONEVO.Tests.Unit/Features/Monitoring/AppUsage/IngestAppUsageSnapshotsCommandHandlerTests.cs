@@ -13,6 +13,7 @@ using ONEVO.Domain.Errors;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
 using ONEVO.Domain.Features.Monitoring.AppUsage.Entities;
 using ONEVO.Tests.Unit.Fakes;
+using ONEVO.Application.Features.Monitoring.ActivityMonitoring.Helpers;
 
 namespace ONEVO.Tests.Unit.Features.Monitoring.AppUsage;
 
@@ -34,6 +35,11 @@ public class IngestAppUsageSnapshotsCommandHandlerTests
 
     public IngestAppUsageSnapshotsCommandHandlerTests()
     {
+        // Default: nothing from this batch was stored before. Replay tests override this.
+        _snapshots.Setup(s => s.GetExistingCapturedAtsAsync(
+                It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<IReadOnlyCollection<DateTimeOffset>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlySet<DateTimeOffset>)new HashSet<DateTimeOffset>());
+
         _device.Setup(d => d.IsAuthenticated).Returns(true);
         _device.Setup(d => d.TenantId).Returns(_tenantId);
         _device.Setup(d => d.UserId).Returns(_userId);
@@ -153,7 +159,7 @@ public class IngestAppUsageSnapshotsCommandHandlerTests
         result.IsSuccess.Should().BeTrue();
         _uow.SaveCallCount.Should().Be(1);
         saved.Should().NotBeNull();
-        saved!.Select(x => x.CapturedAt).Should().BeEquivalentTo([fresh1, fresh2]);
+        saved!.Select(x => x.CapturedAt).Should().BeEquivalentTo([SnapshotTimeWindow.Normalize(fresh1), SnapshotTimeWindow.Normalize(fresh2)]);
     }
 
     [Fact]
@@ -182,5 +188,69 @@ public class IngestAppUsageSnapshotsCommandHandlerTests
 
         result.IsSuccess.Should().BeFalse();
         result.StatusCode.Should().Be(401);
+    }
+
+    // AGT-01: the tray retries a batch whose 202 was lost. Its captured_at carries 100ns ticks while
+    // PostgreSQL returned the stored microsecond value — the replay must still be recognised.
+    [Fact]
+    public async Task Replay_after_lost_response_is_acknowledged_as_duplicate_not_reinserted()
+    {
+        var capturedAt = new DateTimeOffset(_clock.UtcNow.AddMinutes(-2).UtcTicks / 10 * 10 + 7, TimeSpan.Zero);
+        _snapshots.Setup(s => s.GetExistingCapturedAtsAsync(
+                It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<IReadOnlyCollection<DateTimeOffset>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlySet<DateTimeOffset>)new HashSet<DateTimeOffset> { SnapshotTimeWindow.Normalize(capturedAt) });
+
+        var result = await CreateSut().Handle(new IngestAppUsageSnapshotsCommand { Snapshots = [Item(capturedAt)] }, CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.Stored.Should().Be(0);
+        result.Value.Duplicates.Should().Be(1);
+        _snapshots.Verify(s => s.AddRangeAsync(It.IsAny<IEnumerable<AppUsageSnapshot>>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Same_item_twice_in_one_batch_is_stored_once()
+    {
+        IEnumerable<AppUsageSnapshot>? saved = null;
+        _snapshots.Setup(s => s.AddRangeAsync(It.IsAny<IEnumerable<AppUsageSnapshot>>(), It.IsAny<CancellationToken>()))
+            .Callback<IEnumerable<AppUsageSnapshot>, CancellationToken>((list, _) => saved = list.ToList())
+            .Returns(Task.CompletedTask);
+        var at = _clock.UtcNow.AddMinutes(-1);
+
+        var result = await CreateSut().Handle(new IngestAppUsageSnapshotsCommand { Snapshots = [Item(at), Item(at)] }, CancellationToken.None);
+
+        result.Value!.Stored.Should().Be(1);
+        result.Value.Duplicates.Should().Be(1);
+        saved.Should().ContainSingle();
+    }
+
+    [Fact]
+    public async Task Mixed_batch_reports_each_rejected_item_by_captured_at_and_code()
+    {
+        var stale = _clock.UtcNow.AddHours(-25);
+        var future = _clock.UtcNow.AddMinutes(30);
+
+        var result = await CreateSut().Handle(
+            new IngestAppUsageSnapshotsCommand { Snapshots = [Item(stale), Item(_clock.UtcNow.AddMinutes(-1)), Item(future)] },
+            CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.Stored.Should().Be(1);
+        result.Value.Rejected.Should().BeEquivalentTo(new[]
+        {
+            new SnapshotRejection(SnapshotTimeWindow.Normalize(stale), MonitoringErrors.SnapshotTooOldCode),
+            new SnapshotRejection(SnapshotTimeWindow.Normalize(future), MonitoringErrors.SnapshotFutureTimeCode)
+        });
+    }
+
+    [Fact]
+    public async Task All_out_of_window_batch_fails_with_machine_readable_code()
+    {
+        var result = await CreateSut().Handle(
+            new IngestAppUsageSnapshotsCommand { Snapshots = [Item(_clock.UtcNow.AddHours(-30))] }, CancellationToken.None);
+
+        result.IsSuccess.Should().BeFalse();
+        result.StatusCode.Should().Be(400);
+        result.ErrorCode.Should().Be(MonitoringErrors.SnapshotTooOldCode);
     }
 }

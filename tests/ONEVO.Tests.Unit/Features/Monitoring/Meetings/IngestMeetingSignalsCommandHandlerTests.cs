@@ -13,6 +13,7 @@ using ONEVO.Domain.Features.InfrastructureModule.Entities;
 using ONEVO.Domain.Features.Monitoring.Meetings.Entities;
 using ONEVO.Tests.Unit.Fakes;
 using Xunit;
+using ONEVO.Application.Features.Monitoring.ActivityMonitoring.Helpers;
 
 namespace ONEVO.Tests.Unit.Features.Monitoring.Meetings;
 
@@ -34,6 +35,11 @@ public class IngestMeetingSignalsCommandHandlerTests
 
     public IngestMeetingSignalsCommandHandlerTests()
     {
+        // Default: nothing from this batch was stored before. Replay tests override this.
+        _signals.Setup(s => s.GetExistingCapturedAtsAsync(
+                It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<IReadOnlyCollection<DateTimeOffset>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlySet<DateTimeOffset>)new HashSet<DateTimeOffset>());
+
         _device.Setup(d => d.IsAuthenticated).Returns(true);
         _device.Setup(d => d.TenantId).Returns(_tenantId);
         _device.Setup(d => d.UserId).Returns(_userId);
@@ -109,7 +115,7 @@ public class IngestMeetingSignalsCommandHandlerTests
 
         result.IsSuccess.Should().BeTrue();
         saved.Should().NotBeNull();
-        saved!.Select(x => x.CapturedAt).Should().BeEquivalentTo([fresh]);
+        saved!.Select(x => x.CapturedAt).Should().BeEquivalentTo([SnapshotTimeWindow.Normalize(fresh)]);
     }
 
     [Fact]
@@ -134,5 +140,69 @@ public class IngestMeetingSignalsCommandHandlerTests
 
         result.IsSuccess.Should().BeFalse();
         result.StatusCode.Should().Be(401);
+    }
+
+    // AGT-01: the tray retries a batch whose 202 was lost. Its captured_at carries 100ns ticks while
+    // PostgreSQL returned the stored microsecond value — the replay must still be recognised.
+    [Fact]
+    public async Task Replay_after_lost_response_is_acknowledged_as_duplicate_not_reinserted()
+    {
+        var capturedAt = new DateTimeOffset(_clock.UtcNow.AddMinutes(-2).UtcTicks / 10 * 10 + 7, TimeSpan.Zero);
+        _signals.Setup(s => s.GetExistingCapturedAtsAsync(
+                It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<IReadOnlyCollection<DateTimeOffset>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlySet<DateTimeOffset>)new HashSet<DateTimeOffset> { SnapshotTimeWindow.Normalize(capturedAt) });
+
+        var result = await CreateSut().Handle(new IngestMeetingSignalsCommand { Signals = [Item(capturedAt)] }, CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.Stored.Should().Be(0);
+        result.Value.Duplicates.Should().Be(1);
+        _signals.Verify(s => s.AddRangeAsync(It.IsAny<IEnumerable<MeetingSignal>>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Same_item_twice_in_one_batch_is_stored_once()
+    {
+        IEnumerable<MeetingSignal>? saved = null;
+        _signals.Setup(s => s.AddRangeAsync(It.IsAny<IEnumerable<MeetingSignal>>(), It.IsAny<CancellationToken>()))
+            .Callback<IEnumerable<MeetingSignal>, CancellationToken>((list, _) => saved = list.ToList())
+            .Returns(Task.CompletedTask);
+        var at = _clock.UtcNow.AddMinutes(-1);
+
+        var result = await CreateSut().Handle(new IngestMeetingSignalsCommand { Signals = [Item(at), Item(at)] }, CancellationToken.None);
+
+        result.Value!.Stored.Should().Be(1);
+        result.Value.Duplicates.Should().Be(1);
+        saved.Should().ContainSingle();
+    }
+
+    [Fact]
+    public async Task Mixed_batch_reports_each_rejected_item_by_captured_at_and_code()
+    {
+        var stale = _clock.UtcNow.AddHours(-25);
+        var future = _clock.UtcNow.AddMinutes(30);
+
+        var result = await CreateSut().Handle(
+            new IngestMeetingSignalsCommand { Signals = [Item(stale), Item(_clock.UtcNow.AddMinutes(-1)), Item(future)] },
+            CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.Stored.Should().Be(1);
+        result.Value.Rejected.Should().BeEquivalentTo(new[]
+        {
+            new SnapshotRejection(SnapshotTimeWindow.Normalize(stale), MonitoringErrors.SnapshotTooOldCode),
+            new SnapshotRejection(SnapshotTimeWindow.Normalize(future), MonitoringErrors.SnapshotFutureTimeCode)
+        });
+    }
+
+    [Fact]
+    public async Task All_out_of_window_batch_fails_with_machine_readable_code()
+    {
+        var result = await CreateSut().Handle(
+            new IngestMeetingSignalsCommand { Signals = [Item(_clock.UtcNow.AddHours(-30))] }, CancellationToken.None);
+
+        result.IsSuccess.Should().BeFalse();
+        result.StatusCode.Should().Be(400);
+        result.ErrorCode.Should().Be(MonitoringErrors.SnapshotTooOldCode);
     }
 }

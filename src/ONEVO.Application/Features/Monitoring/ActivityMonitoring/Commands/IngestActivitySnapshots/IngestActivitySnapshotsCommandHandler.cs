@@ -16,7 +16,7 @@ using ONEVO.Domain.Features.Monitoring.ActivityMonitoring.Entities;
 namespace ONEVO.Application.Features.Monitoring.ActivityMonitoring.Commands.IngestActivitySnapshots;
 
 public class IngestActivitySnapshotsCommandHandler
-    : IRequestHandler<IngestActivitySnapshotsCommand, Result>
+    : IRequestHandler<IngestActivitySnapshotsCommand, Result<SnapshotIngestOutcome>>
 {
     private static readonly JsonSerializerOptions PayloadJsonOptions = new()
     {
@@ -58,7 +58,7 @@ public class IngestActivitySnapshotsCommandHandler
         _logger = logger;
     }
 
-    public async Task<Result> Handle(
+    public async Task<Result<SnapshotIngestOutcome>> Handle(
         IngestActivitySnapshotsCommand request,
         CancellationToken cancellationToken)
     {
@@ -67,12 +67,12 @@ public class IngestActivitySnapshotsCommandHandler
             || _device.UserId == Guid.Empty
             || _device.DeviceRegistrationId == Guid.Empty)
         {
-            return Result.Failure("A valid tray device token is required.", 401);
+            return Result<SnapshotIngestOutcome>.Failure("A valid tray device token is required.", 401);
         }
 
         var tenant = await _tenants.GetByIdAsync(_device.TenantId, cancellationToken);
         if (tenant is null)
-            return Result.Failure("Tenant not found.", 401);
+            return Result<SnapshotIngestOutcome>.Failure("Tenant not found.", 401);
 
         // Tray requests may hit the base host (system mode). Switch into the JWT
         // tenant so EF query filters + PostgreSQL RLS accept the write.
@@ -99,7 +99,7 @@ public class IngestActivitySnapshotsCommandHandler
                 agentDeviceId,
                 userId,
                 request.Snapshots.Count);
-            return Result.Failure(MonitoringErrors.ActivityMonitoringDisabled, 403);
+            return Result<SnapshotIngestOutcome>.Failure(MonitoringErrors.ActivityMonitoringDisabled, 403, MonitoringErrors.ActivityMonitoringDisabledCode);
         }
 
         // Resolves the real CoreHR Employee.Id to store, falling back to the raw UserId when no
@@ -109,9 +109,12 @@ public class IngestActivitySnapshotsCommandHandler
 
         // Time-window validation (depends on server clock — kept out of FluentValidation).
         // Judged per item: out-of-window items are skipped, the rest of the batch is still stored.
-        var window = SnapshotTimeWindow.Partition(request.Snapshots, s => s.CapturedAt, now);
+        var window = SnapshotTimeWindow.Partition(
+            request.Snapshots.Select(s => s with { CapturedAt = SnapshotTimeWindow.Normalize(s.CapturedAt) }).ToList(),
+            s => s.CapturedAt,
+            now);
         if (window.AllRejected)
-            return Result.Failure(window.RejectionError, 400);
+            return Result<SnapshotIngestOutcome>.Failure(window.RejectionError, 400, window.RejectionErrorCode);
 
         if (window.RejectedCount > 0)
         {
@@ -157,9 +160,7 @@ public class IngestActivitySnapshotsCommandHandler
         var alreadyCaptured = await _snapshots.GetExistingCapturedAtsAsync(
             tenantId, agentDeviceId, inWindow.Select(s => s.CapturedAt).ToList(), cancellationToken);
 
-        var newSnapshots = inWindow
-            .Where(item => !alreadyCaptured.Contains(item.CapturedAt))
-            .ToList();
+        var newSnapshots = SnapshotTimeWindow.WithoutDuplicates(inWindow, s => s.CapturedAt, alreadyCaptured);
 
         if (newSnapshots.Count < inWindow.Count)
         {
@@ -181,6 +182,6 @@ public class IngestActivitySnapshotsCommandHandler
             await _unitOfWork.SaveChangesAsync(cancellationToken);
         }
 
-        return Result.Success();
+        return Result<SnapshotIngestOutcome>.Success(window.ToOutcome(entities.Count));
     }
 }

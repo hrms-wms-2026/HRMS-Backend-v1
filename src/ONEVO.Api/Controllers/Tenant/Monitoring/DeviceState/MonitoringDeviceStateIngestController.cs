@@ -44,10 +44,7 @@ public class MonitoringDeviceStateIngestController : ControllerBase
             new IngestDeviceStateSnapshotsCommand { Snapshots = items },
             ct);
 
-        if (!result.IsSuccess)
-            return Problem(result.Error, statusCode: result.StatusCode ?? 400);
-
-        return Accepted();
+        return SnapshotIngestResponses.ToActionResult(this, result);
     }
 }
 
