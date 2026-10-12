@@ -95,6 +95,36 @@ public class IngestMeetingSignalsCommandHandlerTests
     }
 
     [Fact]
+    public async Task Mixed_batch_stores_in_window_signals_and_skips_stale_ones()
+    {
+        IEnumerable<MeetingSignal>? saved = null;
+        _signals.Setup(s => s.AddRangeAsync(It.IsAny<IEnumerable<MeetingSignal>>(), It.IsAny<CancellationToken>()))
+            .Callback<IEnumerable<MeetingSignal>, CancellationToken>((list, _) => saved = list.ToList())
+            .Returns(Task.CompletedTask);
+
+        var fresh = _clock.UtcNow.AddMinutes(-1);
+        var result = await CreateSut().Handle(
+            new IngestMeetingSignalsCommand { Signals = [Item(_clock.UtcNow.AddHours(-25)), Item(fresh)] },
+            CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        saved.Should().NotBeNull();
+        saved!.Select(x => x.CapturedAt).Should().BeEquivalentTo([fresh]);
+    }
+
+    [Fact]
+    public async Task All_stale_batch_returns_400()
+    {
+        var result = await CreateSut().Handle(
+            new IngestMeetingSignalsCommand { Signals = [Item(_clock.UtcNow.AddHours(-25))] }, CancellationToken.None);
+
+        result.IsSuccess.Should().BeFalse();
+        result.StatusCode.Should().Be(400);
+        result.Error.Should().Be(MonitoringErrors.SnapshotTooOld);
+        _uow.SaveCallCount.Should().Be(0);
+    }
+
+    [Fact]
     public async Task Unauthenticated_device_returns_401()
     {
         _device.Setup(d => d.IsAuthenticated).Returns(false);

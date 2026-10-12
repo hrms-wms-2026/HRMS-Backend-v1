@@ -5,6 +5,7 @@ using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
+using ONEVO.Application.Features.Monitoring.ActivityMonitoring.Helpers;
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.Mappers;
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.ServiceInterfaces;
@@ -107,14 +108,20 @@ public class IngestActivitySnapshotsCommandHandler
             tenantId, userId, _device.LegalEntityId, cancellationToken);
 
         // Time-window validation (depends on server clock — kept out of FluentValidation).
-        foreach (var item in request.Snapshots)
-        {
-            if (item.CapturedAt > now.AddMinutes(5))
-                return Result.Failure(MonitoringErrors.SnapshotFutureTime, 400);
+        // Judged per item: out-of-window items are skipped, the rest of the batch is still stored.
+        var window = SnapshotTimeWindow.Partition(request.Snapshots, s => s.CapturedAt, now);
+        if (window.AllRejected)
+            return Result.Failure(window.RejectionError, 400);
 
-            if (item.CapturedAt < now.AddHours(-24))
-                return Result.Failure(MonitoringErrors.SnapshotTooOld, 400);
+        if (window.RejectedCount > 0)
+        {
+            _logger.LogWarning(
+                "Skipped {Rejected} out-of-window activity snapshot(s) (too old={TooOld}, future={Future}); storing {Accepted}. TenantId={TenantId} DeviceId={DeviceId}",
+                window.RejectedCount, window.TooOldCount, window.FutureCount, window.Accepted.Count,
+                tenantId, agentDeviceId);
         }
+
+        var inWindow = window.Accepted;
 
         _logger.LogInformation(
             "Activity snapshot batch received. TenantId={TenantId} DeviceId={DeviceId} EmployeeId={EmployeeId} Count={Count}",
@@ -148,17 +155,17 @@ public class IngestActivitySnapshotsCommandHandler
         // every row for the day, so inserting the same interval twice silently inflates it -
         // skip anything this device has already reported before mapping/inserting.
         var alreadyCaptured = await _snapshots.GetExistingCapturedAtsAsync(
-            tenantId, agentDeviceId, request.Snapshots.Select(s => s.CapturedAt).ToList(), cancellationToken);
+            tenantId, agentDeviceId, inWindow.Select(s => s.CapturedAt).ToList(), cancellationToken);
 
-        var newSnapshots = request.Snapshots
+        var newSnapshots = inWindow
             .Where(item => !alreadyCaptured.Contains(item.CapturedAt))
             .ToList();
 
-        if (newSnapshots.Count < request.Snapshots.Count)
+        if (newSnapshots.Count < inWindow.Count)
         {
             _logger.LogInformation(
                 "Skipped {DuplicateCount} already-ingested snapshot(s) in this batch. TenantId={TenantId} DeviceId={DeviceId}",
-                request.Snapshots.Count - newSnapshots.Count,
+                inWindow.Count - newSnapshots.Count,
                 tenantId,
                 agentDeviceId);
         }

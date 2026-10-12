@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.Monitoring.ActivityMonitoring.Helpers;
 using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.ServiceInterfaces;
 using ONEVO.Application.Features.Monitoring.CheckIn.ServiceInterfaces;
@@ -84,15 +85,20 @@ public class IngestMeetingSignalsCommandHandler : IRequestHandler<IngestMeetingS
         var employeeId = await _employeeIdentity.ResolveEmployeeIdAsync(
             tenantId, userId, _device.LegalEntityId, ct);
 
-        foreach (var item in request.Signals)
+        // Judged per item: out-of-window items are skipped, the rest of the batch is still stored.
+        var window = SnapshotTimeWindow.Partition(request.Signals, s => s.CapturedAt, now);
+        if (window.AllRejected)
+            return Result.Failure(window.RejectionError, 400);
+
+        if (window.RejectedCount > 0)
         {
-            if (item.CapturedAt > now.AddMinutes(5))
-                return Result.Failure(MonitoringErrors.SnapshotFutureTime, 400);
-            if (item.CapturedAt < now.AddHours(-24))
-                return Result.Failure(MonitoringErrors.SnapshotTooOld, 400);
+            _logger.LogWarning(
+                "Skipped {Rejected} out-of-window meeting signal(s) (too old={TooOld}, future={Future}); storing {Accepted}. TenantId={TenantId} DeviceId={DeviceId}",
+                window.RejectedCount, window.TooOldCount, window.FutureCount, window.Accepted.Count,
+                tenantId, agentDeviceId);
         }
 
-        var entities = request.Signals
+        var entities = window.Accepted
             .Select(item => MeetingSignalMapper.ToEntity(item, tenantId, employeeId, agentDeviceId, now))
             .ToList();
 

@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.Monitoring.ActivityMonitoring.Helpers;
 using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.ServiceInterfaces;
 using ONEVO.Application.Features.Monitoring.AppUsage.Mappers;
@@ -90,20 +91,24 @@ public class IngestAppUsageSnapshotsCommandHandler
         var employeeId = await _employeeIdentity.ResolveEmployeeIdAsync(
             tenantId, userId, _device.LegalEntityId, cancellationToken);
 
-        foreach (var item in request.Snapshots)
-        {
-            if (item.CapturedAt > now.AddMinutes(5))
-                return Result.Failure(MonitoringErrors.SnapshotFutureTime, 400);
+        // Judged per item: out-of-window items are skipped, the rest of the batch is still stored.
+        var window = SnapshotTimeWindow.Partition(request.Snapshots, s => s.CapturedAt, now);
+        if (window.AllRejected)
+            return Result.Failure(window.RejectionError, 400);
 
-            if (item.CapturedAt < now.AddHours(-24))
-                return Result.Failure(MonitoringErrors.SnapshotTooOld, 400);
+        if (window.RejectedCount > 0)
+        {
+            _logger.LogWarning(
+                "Skipped {Rejected} out-of-window app-usage snapshot(s) (too old={TooOld}, future={Future}); storing {Accepted}. TenantId={TenantId} DeviceId={DeviceId}",
+                window.RejectedCount, window.TooOldCount, window.FutureCount, window.Accepted.Count,
+                tenantId, agentDeviceId);
         }
 
         _logger.LogInformation(
             "App-usage snapshot batch received. TenantId={TenantId} DeviceId={DeviceId} EmployeeId={EmployeeId} Count={Count}",
             tenantId, agentDeviceId, employeeId, request.Snapshots.Count);
 
-        var entities = request.Snapshots
+        var entities = window.Accepted
             .Select(item => AppUsageSnapshotMapper.ToEntity(item, tenantId, employeeId, agentDeviceId, now))
             .ToList();
 

@@ -141,6 +141,36 @@ public class IngestDeviceStateSnapshotsCommandHandlerTests
     }
 
     [Fact]
+    public async Task Mixed_batch_stores_in_window_items_and_skips_out_of_window_ones()
+    {
+        // A weekend-offline flush straddling the 24h edge must not lose its fresh items.
+        IEnumerable<DeviceStateSnapshot>? saved = null;
+        _snapshots.Setup(s => s.AddRangeAsync(It.IsAny<IEnumerable<DeviceStateSnapshot>>(), It.IsAny<CancellationToken>()))
+            .Callback<IEnumerable<DeviceStateSnapshot>, CancellationToken>((list, _) => saved = list.ToList())
+            .Returns(Task.CompletedTask);
+
+        var fresh1 = _clock.UtcNow.AddMinutes(-10);
+        var fresh2 = _clock.UtcNow.AddHours(-23);
+        var cmd = new IngestDeviceStateSnapshotsCommand
+        {
+            Snapshots =
+            [
+                Item(_clock.UtcNow.AddHours(-25)),
+                Item(fresh1),
+                Item(_clock.UtcNow.AddHours(1)),
+                Item(fresh2)
+            ]
+        };
+
+        var result = await CreateSut().Handle(cmd, CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        _uow.SaveCallCount.Should().Be(1);
+        saved.Should().NotBeNull();
+        saved!.Select(x => x.CapturedAt).Should().BeEquivalentTo([fresh1, fresh2]);
+    }
+
+    [Fact]
     public async Task Snapshot_older_than_24h_returns_400()
     {
         var cmd = new IngestDeviceStateSnapshotsCommand
