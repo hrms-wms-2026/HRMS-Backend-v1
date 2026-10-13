@@ -8,6 +8,9 @@ public static class ConversationJoinReasons
     public const string Base = "base";
     /// <summary>Added by another participant; can view and chat but never decide.</summary>
     public const string Added = "added";
+    /// <summary>Joined because they can see the item from their own scope (HR, an escalation target): can view and
+    /// chat but never decide; cannot be removed and does not leave.</summary>
+    public const string Viewer = "viewer";
 }
 
 public class ConversationParticipant : BaseEntity

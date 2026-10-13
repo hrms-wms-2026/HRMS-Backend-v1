@@ -54,18 +54,4 @@ public sealed class ExceptionAlertRouterFactory : IExceptionAlertRouterFactory
             authority, _employees, _permissions, _notifications, _clock,
             _loggerFactory?.CreateLogger<ExceptionAlertRouter>());
     }
-
-    /// <summary>A system actor pinned to one tenant. ResolveApproverAsync only reads TenantId;
-    /// the actor holds no permissions and is never treated as a signed-in person.</summary>
-    private sealed class BackgroundTenantUser : ICurrentUser
-    {
-        public BackgroundTenantUser(Guid tenantId) => TenantId = tenantId;
-
-        public Guid UserId => Guid.Empty;
-        public Guid TenantId { get; }
-        public string Email => string.Empty;
-        public IReadOnlyList<string> Permissions => [];
-        public bool HasPermission(string permission) => false;
-        public bool IsAuthenticated => false;
-    }
 }

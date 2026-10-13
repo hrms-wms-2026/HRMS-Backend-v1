@@ -1,0 +1,106 @@
+using FluentAssertions;
+using Microsoft.Extensions.Logging.Abstractions;
+using Moq;
+using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.Auth.Permission.RepositoryInterfaces;
+using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
+using ONEVO.Application.Features.CoreHr.EmployeeAuthority.ServiceInterfaces;
+using ONEVO.Application.Features.Inbox.Escalation;
+using ONEVO.Application.Features.Monitoring.Exceptions.Inbox;
+using ONEVO.Application.Features.Monitoring.Exceptions.RepositoryInterfaces;
+using ONEVO.Application.Features.Monitoring.Exceptions.ServiceInterfaces;
+using ONEVO.Domain.Features.Monitoring.Exceptions.Entities;
+using ONEVO.Tests.Unit.Fakes;
+using Xunit;
+using MonitoringException = ONEVO.Domain.Features.Monitoring.Exceptions.Entities.Exception;
+
+namespace ONEVO.Tests.Unit.Features.Monitoring.Exceptions;
+
+/// <summary>
+/// The 3-day stale sweep moved from ExceptionDetectionJob (nightly) to the inbox escalation sweep (hourly).
+/// Characterisation: for the existing exception types the result is the old sweep's - status Escalated,
+/// EscalatedAt = now, EscalatedById null (a sweep, not a person), the HR "escalated" alert through the
+/// tenant's alert router, all saved in one SaveChanges after the alerts are queued.
+/// </summary>
+public class ExceptionEscalationSweepSourceTests
+{
+    private static readonly Guid TenantId = Guid.NewGuid();
+    private static readonly DateTimeOffset Now = new(2026, 9, 16, 0, 0, 0, TimeSpan.Zero);
+
+    private readonly Mock<IExceptionRepository> _exceptions = new();
+    private readonly Mock<IExceptionAlertRouter> _router = new();
+    private readonly Mock<IExceptionAlertRouterFactory> _routers = new();
+    private readonly List<string> _log = new();
+
+    public ExceptionEscalationSweepSourceTests()
+    {
+        _routers.Setup(f => f.CreateForTenant(TenantId)).Returns(_router.Object);
+        _router.Setup(r => r.NotifyEscalatedAsync(It.IsAny<MonitoringException>(), It.IsAny<CancellationToken>()))
+            .Callback((MonitoringException e, CancellationToken _) => _log.Add($"escalated:{e.Id}"))
+            .Returns(Task.CompletedTask);
+        _exceptions.Setup(e => e.SaveChangesAsync(It.IsAny<CancellationToken>())).Callback(() => _log.Add("save")).ReturnsAsync(1);
+    }
+
+    private static MonitoringException Case(ExceptionType type, int daysOld, ExceptionStatus status = ExceptionStatus.Open) => new()
+    {
+        Id = Guid.NewGuid(), TenantId = TenantId, EmployeeId = Guid.NewGuid(), Type = type, Status = status,
+        Title = type.ToString(), Description = "d", DetectedAt = Now.AddDays(-daysOld),
+    };
+
+    private ExceptionEscalationSweepSource Source()
+    {
+        var policy = new ReportingLineThenHrPolicy(_ => Mock.Of<IEmployeeAuthorityResolver>(), Mock.Of<IEmployeeRepository>(),
+            Mock.Of<IPermissionRepository>(), new FakeDateTimeProvider { UtcNow = Now });
+        return new ExceptionEscalationSweepSource(_exceptions.Object, _routers.Object, new InboxEscalationPolicyRegistry([policy]),
+            NullLogger<ExceptionEscalationSweepSource>.Instance);
+    }
+
+    [Fact]
+    public async Task Stale_open_cases_of_every_existing_type_are_escalated_exactly_like_the_old_nightly_sweep()
+    {
+        var stale = Enum.GetValues<ExceptionType>().Select(t => Case(t, 5)).ToList();
+        _exceptions.Setup(e => e.GetStaleOpenAsync(TenantId, Now.AddDays(-3), It.IsAny<CancellationToken>())).ReturnsAsync(stale);
+
+        var escalated = await Source().EscalateOverdueAsync(TenantId, Now, default);
+
+        escalated.Should().Be(stale.Count);
+        stale.Should().AllSatisfy(e =>
+        {
+            e.Status.Should().Be(ExceptionStatus.Escalated);
+            e.EscalatedAt.Should().Be(Now);
+            e.EscalatedById.Should().BeNull();
+        });
+        _log.Should().Equal(stale.Select(e => $"escalated:{e.Id}").Append("save"));
+        _exceptions.Verify(e => e.Update(It.IsAny<MonitoringException>()), Times.Exactly(stale.Count));
+    }
+
+    [Fact]
+    public async Task Only_overdue_open_cases_are_touched()
+    {
+        var fresh = Case(ExceptionType.SustainedLowActivity, 2);
+        var acknowledged = Case(ExceptionType.SustainedLowActivity, 9, ExceptionStatus.Acknowledged);
+        _exceptions.Setup(e => e.GetStaleOpenAsync(TenantId, It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([fresh, acknowledged]);
+
+        var escalated = await Source().EscalateOverdueAsync(TenantId, Now, default);
+
+        escalated.Should().Be(0);
+        fresh.Status.Should().Be(ExceptionStatus.Open);
+        acknowledged.Status.Should().Be(ExceptionStatus.Acknowledged);
+        _exceptions.Verify(e => e.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task An_alert_failure_still_saves_the_escalation()
+    {
+        var stale = Case(ExceptionType.UnusualActivityPattern, 4);
+        _exceptions.Setup(e => e.GetStaleOpenAsync(TenantId, It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>())).ReturnsAsync([stale]);
+        _router.Setup(r => r.NotifyEscalatedAsync(It.IsAny<MonitoringException>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("boom"));
+
+        await Source().EscalateOverdueAsync(TenantId, Now, default);
+
+        stale.Status.Should().Be(ExceptionStatus.Escalated);
+        _log.Should().Equal("save");
+    }
+}

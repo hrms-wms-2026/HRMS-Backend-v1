@@ -477,6 +477,24 @@ public static class DependencyInjection
         services.AddSingleton<ONEVO.Application.Features.Inbox.Contracts.IInboxKindRegistry, ONEVO.Application.Features.Inbox.Contracts.InboxKindRegistry>();
         services.AddScoped<ONEVO.Application.Features.Inbox.Contracts.IInboxDecisionJournal, ONEVO.Infrastructure.Persistence.Repositories.Inbox.EfInboxDecisionJournal>();
         services.AddScoped<ONEVO.Application.Features.Inbox.Services.IInboxStepsBuilder, ONEVO.Application.Features.Inbox.Services.InboxStepsBuilder>();
+        // Inbox escalation standard: one policy registry (first match wins), the shared escalation recorder, and the
+        // hourly SLA sweep over every module's IInboxEscalationSweepSource.
+        services.AddScoped<ONEVO.Application.Features.CoreHr.EmployeeAuthority.Services.IEmployeeAuthorityResolverFactory,
+            ONEVO.Application.Features.CoreHr.EmployeeAuthority.Services.EmployeeAuthorityResolverFactory>();
+        services.AddScoped<ONEVO.Application.Features.Inbox.Escalation.IInboxEscalationPolicy>(sp =>
+            new ONEVO.Application.Features.Monitoring.Exceptions.Inbox.ReportingLineThenHrPolicy(
+                sp.GetRequiredService<ONEVO.Application.Features.CoreHr.EmployeeAuthority.Services.IEmployeeAuthorityResolverFactory>().CreateForTenant,
+                sp.GetRequiredService<ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces.IEmployeeRepository>(),
+                sp.GetRequiredService<ONEVO.Application.Features.Auth.Permission.RepositoryInterfaces.IPermissionRepository>(),
+                sp.GetRequiredService<IDateTimeProvider>()));
+        services.AddScoped<ONEVO.Application.Features.Inbox.Escalation.IInboxEscalationPolicy>(sp =>
+            new ONEVO.Application.Features.Calendar.Inbox.ReportingLineThenLogPolicy(
+                sp.GetRequiredService<ONEVO.Application.Features.CoreHr.EmployeeAuthority.Services.IEmployeeAuthorityResolverFactory>().CreateForTenant,
+                sp.GetRequiredService<ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces.IEmployeeRepository>()));
+        services.AddScoped<ONEVO.Application.Features.Inbox.Escalation.IInboxEscalationPolicy, ONEVO.Application.Features.WorkManagement.Inbox.WmHierarchyPolicy>();
+        services.AddScoped<ONEVO.Application.Features.Inbox.Escalation.IInboxEscalationPolicyRegistry, ONEVO.Application.Features.Inbox.Escalation.InboxEscalationPolicyRegistry>();
+        services.AddScoped<ONEVO.Application.Features.Inbox.Escalation.IInboxEscalationRecorder, ONEVO.Application.Features.Inbox.Escalation.InboxEscalationRecorder>();
+        services.AddScoped<ONEVO.Application.Features.Inbox.Escalation.IInboxEscalationSweepSource, ONEVO.Application.Features.Monitoring.Exceptions.Inbox.ExceptionEscalationSweepSource>();
         // The Api host registers the SignalR-backed publisher; this is the fallback everywhere else.
         services.TryAddSingleton<ONEVO.Application.Features.Conversations.Contracts.IInboxRealtimePublisher,
             ONEVO.Application.Features.Conversations.Services.NullInboxRealtimePublisher>();
@@ -720,6 +738,7 @@ public static class DependencyInjection
         services.AddScoped<IMonitoringToggleResolver, MonitoringToggleResolverService>();
         services.AddHostedService<ActivityDailySummaryJob>();
         services.AddHostedService<ONEVO.Infrastructure.Services.Monitoring.Exceptions.ExceptionDetectionJob>();
+        services.AddHostedService<ONEVO.Infrastructure.Services.Inbox.InboxEscalationSweepJob>();
 
         // Monitoring - Settings (tenant-level feature toggles admin CRUD)
         services.AddScoped<
