@@ -146,6 +146,18 @@ public class NotificationTemplateSeeder : IHostedService
             },
             new()
             {
+                Id = Guid.NewGuid(), Code = "conversation_member_added",
+                InAppTitleTemplate = "Added to a conversation",
+                InAppBodyTemplate = "{{actorName}} added you to \"{{itemTitle}}\"."
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "conversation_mentioned",
+                InAppTitleTemplate = "You were mentioned",
+                InAppBodyTemplate = "{{actorName}} mentioned you in \"{{itemTitle}}\"."
+            },
+            new()
+            {
                 Id = Guid.NewGuid(), Code = "leave_request_approved",
                 InAppTitleTemplate = "Leave approved",
                 InAppBodyTemplate = "{{leaveTypeName}} from {{startDate}} to {{endDate}} was approved."

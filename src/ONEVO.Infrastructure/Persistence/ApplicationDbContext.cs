@@ -317,6 +317,14 @@ public class ApplicationDbContext : DbContext
     public DbSet<TaskAssignment> TaskAssignments => Set<TaskAssignment>();
     public DbSet<WorkApprovalRequest> WorkApprovalRequests => Set<WorkApprovalRequest>();
     public DbSet<WorkApprovalComment> WorkApprovalComments => Set<WorkApprovalComment>();
+    public DbSet<ONEVO.Domain.Features.Conversations.Entities.Conversation> Conversations
+        => Set<ONEVO.Domain.Features.Conversations.Entities.Conversation>();
+    public DbSet<ONEVO.Domain.Features.Conversations.Entities.ConversationParticipant> ConversationParticipants
+        => Set<ONEVO.Domain.Features.Conversations.Entities.ConversationParticipant>();
+    public DbSet<ONEVO.Domain.Features.Conversations.Entities.ConversationMessage> ConversationMessages
+        => Set<ONEVO.Domain.Features.Conversations.Entities.ConversationMessage>();
+    public DbSet<ONEVO.Domain.Features.Conversations.Entities.ConversationMessageMention> ConversationMessageMentions
+        => Set<ONEVO.Domain.Features.Conversations.Entities.ConversationMessageMention>();
     public DbSet<WorkNotificationLog> WorkNotificationLogs => Set<WorkNotificationLog>();
     public DbSet<MonitorAlert> MonitorAlerts => Set<MonitorAlert>();
     public DbSet<TaskEditLog> TaskEditLogs => Set<TaskEditLog>();

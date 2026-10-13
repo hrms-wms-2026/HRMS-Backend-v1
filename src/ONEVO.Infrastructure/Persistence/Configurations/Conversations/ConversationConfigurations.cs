@@ -1,0 +1,70 @@
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata.Builders;
+using ONEVO.Domain.Features.Conversations.Entities;
+
+namespace ONEVO.Infrastructure.Persistence.Configurations.Conversations;
+
+public class ConversationConfiguration : IEntityTypeConfiguration<Conversation>
+{
+    public void Configure(EntityTypeBuilder<Conversation> builder)
+    {
+        builder.ToTable("conversations");
+        builder.HasKey(c => c.Id);
+        builder.Property(c => c.SubjectSource).HasMaxLength(40).IsRequired();
+        builder.Property(c => c.SubjectKind).HasMaxLength(40).IsRequired();
+
+        builder.HasIndex(c => new { c.TenantId, c.SubjectSource, c.SubjectKind, c.SubjectId })
+            .IsUnique()
+            .HasDatabaseName("ux_conversations_tenant_id_subject_source_subject_kind_subject_id");
+    }
+}
+
+public class ConversationParticipantConfiguration : IEntityTypeConfiguration<ConversationParticipant>
+{
+    public void Configure(EntityTypeBuilder<ConversationParticipant> builder)
+    {
+        builder.ToTable("conversation_participants");
+        builder.HasKey(p => p.Id);
+        builder.Property(p => p.JoinReason).HasMaxLength(20).IsRequired();
+
+        builder.HasIndex(p => new { p.ConversationId, p.EmployeeId })
+            .IsUnique()
+            .HasDatabaseName("ux_conversation_participants_conversation_id_employee_id");
+        builder.HasIndex(p => new { p.TenantId, p.EmployeeId })
+            .HasDatabaseName("ix_conversation_participants_tenant_id_employee_id");
+
+        builder.HasOne<Conversation>().WithMany().HasForeignKey(p => p.ConversationId).OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
+public class ConversationMessageConfiguration : IEntityTypeConfiguration<ConversationMessage>
+{
+    public void Configure(EntityTypeBuilder<ConversationMessage> builder)
+    {
+        builder.ToTable("conversation_messages");
+        builder.HasKey(m => m.Id);
+        builder.Property(m => m.Kind).HasMaxLength(20).IsRequired();
+        builder.Property(m => m.BodyHtml).HasMaxLength(10_000).IsRequired();
+        builder.Property(m => m.SystemEventJson).HasMaxLength(2000);
+
+        builder.HasIndex(m => new { m.ConversationId, m.CreatedAt })
+            .HasDatabaseName("ix_conversation_messages_conversation_id_created_at");
+
+        builder.HasOne<Conversation>().WithMany().HasForeignKey(m => m.ConversationId).OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
+public class ConversationMessageMentionConfiguration : IEntityTypeConfiguration<ConversationMessageMention>
+{
+    public void Configure(EntityTypeBuilder<ConversationMessageMention> builder)
+    {
+        builder.ToTable("conversation_message_mentions");
+        builder.HasKey(m => m.Id);
+
+        builder.HasIndex(m => new { m.MessageId, m.EmployeeId })
+            .IsUnique()
+            .HasDatabaseName("ux_conversation_message_mentions_message_id_employee_id");
+
+        builder.HasOne<ConversationMessage>().WithMany().HasForeignKey(m => m.MessageId).OnDelete(DeleteBehavior.Cascade);
+    }
+}

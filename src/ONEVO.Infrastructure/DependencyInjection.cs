@@ -2,6 +2,7 @@ using Amazon.Extensions.NETCore.Setup;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
@@ -455,6 +456,20 @@ public static class DependencyInjection
         services.AddScoped<IWorkApprovalEngine, WorkApprovalEngine>();
         services.AddScoped<IApprovalActionApplierRegistry, ApprovalActionApplierRegistry>();
         services.AddScoped<IApprovalCommentAccess, ApprovalCommentAccess>();
+
+        // Conversations (inbox item group chat) - shared module; sources plug in IConversationSubjectResolver.
+        services.AddScoped<ONEVO.Infrastructure.Persistence.Repositories.Conversations.EfConversationRepository>();
+        services.AddScoped<ONEVO.Application.Features.Conversations.RepositoryInterfaces.IConversationRepository>(sp =>
+            sp.GetRequiredService<ONEVO.Infrastructure.Persistence.Repositories.Conversations.EfConversationRepository>());
+        services.AddScoped<ONEVO.Application.Features.Conversations.Services.IConversationAccess,
+            ONEVO.Application.Features.Conversations.Services.ConversationAccess>();
+        services.AddScoped<ONEVO.Application.Features.Conversations.Services.ConversationResponseBuilder>();
+        services.AddScoped<ONEVO.Application.Features.Conversations.Services.ConversationNotifier>();
+        services.AddScoped<ONEVO.Application.Features.Conversations.Services.IConversationUnreadCounts,
+            ONEVO.Application.Features.Conversations.Services.ConversationUnreadCounts>();
+        // The Api host registers the SignalR-backed publisher; this is the fallback everywhere else.
+        services.TryAddSingleton<ONEVO.Application.Features.Conversations.Contracts.IInboxRealtimePublisher,
+            ONEVO.Application.Features.Conversations.Services.NullInboxRealtimePublisher>();
         services.AddScoped<IApprovalActionApplier, ONEVO.Application.Features.WorkManagement.Tasks.Appliers.TaskCreateApplier>();
         services.AddScoped<IApprovalActionApplier, ONEVO.Application.Features.WorkManagement.Tasks.Appliers.TaskEditApplier>();
         services.AddScoped<IApprovalActionApplier, ONEVO.Application.Features.WorkManagement.Tasks.Appliers.TaskDeleteApplier>();
