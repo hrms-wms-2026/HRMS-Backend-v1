@@ -43,9 +43,13 @@ public static class InboxStepStates
     public const string Upcoming = "upcoming";
 }
 
-public sealed record InboxChange(string Field, string Label, string? Before, string? After);
+/// <summary>One row of the change set. Kind ("text", "date", "hours", "employee", …) and Editable let the
+/// approver adjust the requested value before approving (WM "edit before approve").</summary>
+public sealed record InboxChange(
+    string Field, string Label, string? Before, string? After, string Kind = "text", bool Editable = false, string? Applied = null);
 
-public sealed record InboxTarget(IReadOnlyList<string> Route, string Label);
+/// <summary>Where "open" goes in the frontend: router commands plus optional query params.</summary>
+public sealed record InboxTarget(IReadOnlyList<string> Route, string Label, IReadOnlyDictionary<string, string>? QueryParams = null);
 
 public sealed record InboxItemDetail(
     InboxItem Item, IReadOnlyList<InboxStep> Steps, string? Summary, IReadOnlyList<InboxChange> ChangeSet,

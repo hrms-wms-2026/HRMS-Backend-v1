@@ -1,0 +1,311 @@
+using System.Text.Json;
+using MediatR;
+using ONEVO.Application.Common.Models;
+using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.Inbox.Contracts;
+using ONEVO.Application.Features.WorkManagement.Approvals.Commands.DecideWorkApprovalRequest;
+using ONEVO.Application.Features.WorkManagement.Approvals.Commands.RevertWorkApprovalRequest;
+using ONEVO.Application.Features.WorkManagement.Approvals.DTOs;
+using ONEVO.Application.Features.WorkManagement.Approvals.Queries.GetApprovalDetail;
+using ONEVO.Application.Features.WorkManagement.Approvals.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Approvals.Services;
+using ONEVO.Application.Features.WorkManagement.Common.Services;
+using ONEVO.Application.Features.WorkManagement.Hierarchy;
+using ONEVO.Application.Features.WorkManagement.Monitoring.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Monitoring.Services;
+using ONEVO.Application.Features.WorkManagement.ProjectInvitations.Commands.AcceptObjectiveInvitation;
+using ONEVO.Application.Features.WorkManagement.ProjectInvitations.Commands.CancelObjectiveInvitation;
+using ONEVO.Application.Features.WorkManagement.ProjectInvitations.Commands.RejectObjectiveInvitation;
+using ONEVO.Application.Features.WorkManagement.ProjectInvitations.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
+using ONEVO.Domain.Features.WorkManagement.Monitoring.Entities;
+using ONEVO.Domain.Features.WorkManagement.Projects.Entities;
+
+namespace ONEVO.Application.Features.WorkManagement.Inbox;
+
+/// <summary>
+/// Work Management in the Inbox: approval requests and module invitations (the same rows and visibility
+/// as the project Approvals feed, over every project the caller can see) plus project-monitor alerts the
+/// caller is a recipient of. Details and actions go through the existing WM queries and commands, so
+/// every permission rule (who may decide, cancel, revert) stays where it already lives.
+/// </summary>
+public sealed class WorkInboxSourceProvider : IInboxSourceProvider
+{
+    public const int ResolvedAlertDays = 30;
+    private const string UnknownAction = "This action is not available for this item.";
+
+    private readonly IProjectRepository _projects;
+    private readonly IProjectMemberInvitationRepository _invitations;
+    private readonly IWorkApprovalRequestRepository _requests;
+    private readonly ApprovalFeedBuilder _feed;
+    private readonly IMonitorAlertRepository _alerts;
+    private readonly MonitorAlertAudience _audience;
+    private readonly IWorkHierarchyService _hierarchy;
+    private readonly IWorkTaskRepository _tasks;
+    private readonly ICallerIdentityResolver _identity;
+    private readonly ISender _sender;
+    private readonly IDateTimeProvider _clock;
+
+    public WorkInboxSourceProvider(
+        IProjectRepository projects, IProjectMemberInvitationRepository invitations, IWorkApprovalRequestRepository requests,
+        ApprovalFeedBuilder feed, IMonitorAlertRepository alerts, MonitorAlertAudience audience, IWorkHierarchyService hierarchy,
+        IWorkTaskRepository tasks, ICallerIdentityResolver identity, ISender sender, IDateTimeProvider clock)
+    {
+        _projects = projects;
+        _invitations = invitations;
+        _requests = requests;
+        _feed = feed;
+        _alerts = alerts;
+        _audience = audience;
+        _hierarchy = hierarchy;
+        _tasks = tasks;
+        _identity = identity;
+        _sender = sender;
+        _clock = clock;
+    }
+
+    public string Source => WorkInboxKinds.Source;
+    public string Label => "Work";
+
+    public async Task<IReadOnlyList<InboxItem>> ListAsync(Guid tenantId, InboxQuery query, Guid callerEmployeeId, CancellationToken ct)
+        => (await CollectAsync(tenantId, callerEmployeeId, ct)).Items;
+
+    public async Task<IReadOnlyList<InboxFilterField>> GetFilterFieldsAsync(Guid tenantId, Guid callerEmployeeId, CancellationToken ct)
+    {
+        var (items, moduleTitles, projects) = await CollectAsync(tenantId, callerEmployeeId, ct);
+
+        static InboxFilterOption Option(string value, string label) => new(value, label);
+        return
+        [
+            new("project", "Project", true, projects.OrderBy(p => p.Name).Select(p => Option(p.Id.ToString(), p.Name)).ToList()),
+            new("type", "Type", true, items.Select(i => i.ActionType).Distinct().OrderBy(t => t)
+                .Select(t => Option(t, WorkInboxItemMapper.TypeLabel(t))).ToList()),
+            new("status", "Status", true, items.Select(i => i.Status).Distinct().OrderBy(s => s)
+                .Select(s => Option(s, WorkInboxItemMapper.Capitalize(s))).ToList()),
+            new("direction", "Direction", true, items.Select(i => i.Direction).Distinct().OrderBy(d => d)
+                .Select(d => Option(d, WorkInboxItemMapper.Capitalize(d))).ToList()),
+            new("requestedBy", "Requested by", true, items.Where(i => i.RequestedBy is not null).Select(i => i.RequestedBy!)
+                .DistinctBy(p => p.Id).OrderBy(p => p.Name).Select(p => Option(p.Id.ToString(), p.Name)).ToList()),
+            new(WorkInboxItemMapper.ModuleFacet, "Module", true, moduleTitles.OrderBy(m => m.Value)
+                .Select(m => Option(m.Key.ToString(), m.Value)).ToList()),
+        ];
+    }
+
+    public async Task<InboxItemDetail?> GetDetailAsync(Guid tenantId, string kind, Guid id, Guid callerEmployeeId, CancellationToken ct)
+        => kind switch
+        {
+            WorkInboxKinds.Approval => await ApprovalDetailAsync(tenantId, id, callerEmployeeId, ct),
+            WorkInboxKinds.Invitation => await InvitationDetailAsync(tenantId, id, callerEmployeeId, ct),
+            WorkInboxKinds.MonitorAlert => await AlertDetailAsync(tenantId, id, callerEmployeeId, ct),
+            _ => null,
+        };
+
+    public async Task<Result<InboxActionResult>> ExecuteActionAsync(
+        Guid tenantId, string kind, Guid id, string action, JsonElement? body, Guid callerEmployeeId, CancellationToken ct)
+    {
+        var comment = BodyString(body, "comment");
+        switch (kind, action)
+        {
+            case (WorkInboxKinds.Approval, WorkInboxActions.Approve):
+                return await AfterApprovalAsync(tenantId, id, callerEmployeeId, await _sender.Send(
+                    new DecideWorkApprovalRequestCommand(id, WorkApprovalDecision.Approve, BodyString(body, "editedPayloadJson"), comment), ct), ct);
+            case (WorkInboxKinds.Approval, WorkInboxActions.Reject):
+                return await AfterApprovalAsync(tenantId, id, callerEmployeeId, await _sender.Send(
+                    new DecideWorkApprovalRequestCommand(id, WorkApprovalDecision.Reject, null, comment), ct), ct);
+            case (WorkInboxKinds.Approval, WorkInboxActions.Cancel):
+                return await AfterApprovalAsync(tenantId, id, callerEmployeeId, await _sender.Send(
+                    new DecideWorkApprovalRequestCommand(id, WorkApprovalDecision.Cancel, null, null), ct), ct);
+            case (WorkInboxKinds.Approval, WorkInboxActions.Revert):
+                return await AfterApprovalAsync(tenantId, id, callerEmployeeId,
+                    await _sender.Send(new RevertWorkApprovalRequestCommand(id), ct), ct);
+            case (WorkInboxKinds.Invitation, WorkInboxActions.AcceptInvitation):
+                return await AfterInvitationAsync(tenantId, id, callerEmployeeId, await _sender.Send(new AcceptObjectiveInvitationCommand(id), ct), ct);
+            case (WorkInboxKinds.Invitation, WorkInboxActions.DeclineInvitation):
+                return await AfterInvitationAsync(tenantId, id, callerEmployeeId, await _sender.Send(new RejectObjectiveInvitationCommand(id), ct), ct);
+            case (WorkInboxKinds.Invitation, WorkInboxActions.Cancel):
+                return await AfterInvitationAsync(tenantId, id, callerEmployeeId, await _sender.Send(new CancelObjectiveInvitationCommand(id), ct), ct);
+            default:
+                return Result<InboxActionResult>.UnprocessableEntity(UnknownAction);
+        }
+    }
+
+    // ---- listing ---------------------------------------------------------------------------------
+
+    private sealed record Collected(IReadOnlyList<InboxItem> Items, IReadOnlyDictionary<Guid, string> ModuleTitles, IReadOnlyList<Project> Projects);
+
+    private async Task<Collected> CollectAsync(Guid tenantId, Guid caller, CancellationToken ct)
+    {
+        var projects = await VisibleProjectsAsync(tenantId, caller, ct);
+        var items = new List<InboxItem>();
+        var moduleTitles = new Dictionary<Guid, string>();
+        var resolvedSince = _clock.UtcNow.AddDays(-ResolvedAlertDays);
+
+        foreach (var project in projects)
+        {
+            foreach (var entry in await _feed.BuildAsync(tenantId, project, caller, ct))
+            {
+                items.Add(WorkInboxItemMapper.FromFeed(entry, caller));
+                if (entry.Item.ModuleId is { } moduleId && entry.Item.ModuleTitle is { } title)
+                    moduleTitles.TryAdd(moduleId, title);
+            }
+
+            var alerts = await _alerts.ListOpenOrResolvedSinceAsync(tenantId, project.Id, resolvedSince, ct);
+            if (alerts.Count == 0)
+                continue;
+            var audience = await _audience.ResolveAsync(tenantId, project.Id, alerts, ct);
+            var mine = alerts.Where(a => audience.GetValueOrDefault(a.Id)?.Contains(caller) == true).ToList();
+            if (mine.Count == 0)
+                continue;
+
+            var contexts = await AlertContextsAsync(tenantId, project, mine, ct);
+            foreach (var alert in mine)
+            {
+                var context = contexts[alert.Id];
+                items.Add(WorkInboxItemMapper.FromAlert(alert, project.Id, context.Context));
+                if (context.Context.ModuleId is { } moduleId && context.ModuleTitle is { } title)
+                    moduleTitles.TryAdd(moduleId, title);
+            }
+        }
+        return new Collected(items, moduleTitles, projects);
+    }
+
+    /// <summary>The project list's visibility (active membership) plus projects the caller has a pending
+    /// module invitation in - an invitee is not a member until they accept.</summary>
+    private async Task<IReadOnlyList<Project>> VisibleProjectsAsync(Guid tenantId, Guid caller, CancellationToken ct)
+    {
+        var (memberProjects, _) = await _projects.ListForMemberAsync(tenantId, caller, 0, int.MaxValue, null, "asc", ct);
+        var known = memberProjects.Select(p => p.Id).ToHashSet();
+        var invitedProjectIds = (await _invitations.ListPendingForEmployeeAsync(tenantId, caller, ct))
+            .Select(i => i.ProjectId).Where(id => !known.Contains(id)).Distinct().ToList();
+        if (invitedProjectIds.Count == 0)
+            return memberProjects;
+        var invited = await _projects.ListByIdsAsync(tenantId, invitedProjectIds, ct);
+        return memberProjects.Concat(invited).ToList();
+    }
+
+    private async Task<IReadOnlyDictionary<Guid, (WorkAlertContext Context, string? ModuleTitle)>> AlertContextsAsync(
+        Guid tenantId, Project project, IReadOnlyList<MonitorAlert> alerts, CancellationToken ct)
+    {
+        var tree = await _hierarchy.LoadTreeAsync(tenantId, project.Id, ct);
+        var taskIds = alerts.Where(a => a.TargetType == MonitorTargetTypes.Task).Select(a => a.TargetId).Distinct().ToList();
+        var moduleByTask = taskIds.Count == 0
+            ? new Dictionary<Guid, Guid>()
+            : await _tasks.GetObjectiveIdsByTaskIdsAsync(tenantId, taskIds, ct);
+        var allModules = tree.Root is { } root ? tree.AtOrBelow([root.Id]) : new HashSet<Guid>();
+        var achievedScope = tree.AtOrBelow(allModules.Where(id => tree.Get(id)?.IsAchieved == true));
+
+        return alerts.ToDictionary(a => a.Id, a =>
+        {
+            Guid? moduleId = a.TargetType switch
+            {
+                MonitorTargetTypes.Module => a.TargetId,
+                MonitorTargetTypes.Task => moduleByTask.TryGetValue(a.TargetId, out var m) ? m : null,
+                _ => null,
+            };
+            var module = moduleId is { } id ? tree.Get(id) : null;
+            var title = module is null ? null : module.IsDefault ? project.Name : module.Title;
+            var inAchieved = moduleId is { } mid && achievedScope.Contains(mid);
+            return (new WorkAlertContext(project.Name, moduleId, inAchieved), title);
+        });
+    }
+
+    // ---- details ---------------------------------------------------------------------------------
+
+    private async Task<InboxItemDetail?> ApprovalDetailAsync(Guid tenantId, Guid id, Guid caller, CancellationToken ct)
+    {
+        var detail = await _sender.Send(new GetApprovalDetailQuery(id, ApprovalFeedSources.Engine), ct);
+        if (!detail.IsSuccess)
+            return null;
+        var request = await _requests.GetByIdForTenantAsync(tenantId, id, ct);
+        if (request is null)
+            return null;
+
+        var d = detail.Value!;
+        var item = WorkInboxItemMapper.FromFeed(new ApprovalFeedEntry(request.ProjectId, d.Item, request), caller, d.CanRevert);
+        string? revertedByName = null;
+        if (request.RevertedByEmployeeId is { } revertedBy)
+            revertedByName = (await _identity.ResolveDisplayNamesByEmployeeIdAsync(tenantId, [revertedBy], ct)).GetValueOrDefault(revertedBy);
+
+        return new InboxItemDetail(
+            item, WorkInboxItemMapper.ApprovalSteps(d.Item, request, revertedByName), d.Item.Summary,
+            WorkInboxItemMapper.ChangeSet(d.Fields), d.Note, ExplanationDetails: null,
+            WorkInboxItemMapper.Target(request.ProjectId, request.TargetType, request.TargetId, request.ActionType),
+            d.CanEditPayload ? d.RequestedPayloadJson : null);
+    }
+
+    private async Task<InboxItemDetail?> InvitationDetailAsync(Guid tenantId, Guid id, Guid caller, CancellationToken ct)
+    {
+        var detail = await _sender.Send(new GetApprovalDetailQuery(id, ApprovalFeedSources.Invitation), ct);
+        if (!detail.IsSuccess)
+            return null;
+        var invitation = await _invitations.GetByIdForTenantAsync(tenantId, id, ct);
+        if (invitation is null)
+            return null;
+
+        var d = detail.Value!;
+        var item = WorkInboxItemMapper.FromFeed(new ApprovalFeedEntry(invitation.ProjectId, d.Item, null), caller);
+        var explanation = d.Invitation is { } inv
+            ? $"{inv.InvitedByName} invited {inv.InviteeName} to \"{inv.ModuleTitle}\" as {inv.InviteType}."
+            : d.Item.Summary;
+        return new InboxItemDetail(
+            item, WorkInboxItemMapper.InvitationSteps(d.Item), d.Item.Summary, [], explanation, ExplanationDetails: null,
+            WorkInboxItemMapper.Target(invitation.ProjectId, "module", invitation.ObjectiveId), EditablePayloadJson: null);
+    }
+
+    private async Task<InboxItemDetail?> AlertDetailAsync(Guid tenantId, Guid id, Guid caller, CancellationToken ct)
+    {
+        var alert = await _alerts.GetByIdAsync(tenantId, id, ct);
+        if (alert is null)
+            return null;
+        var audience = await _audience.ResolveAsync(tenantId, alert.ProjectId, [alert], ct);
+        if (audience.GetValueOrDefault(alert.Id)?.Contains(caller) != true)
+            return null;
+        var project = await _projects.GetByIdForTenantAsync(tenantId, alert.ProjectId, ct);
+        if (project is null)
+            return null;
+
+        var context = (await AlertContextsAsync(tenantId, project, [alert], ct))[alert.Id].Context;
+        var item = WorkInboxItemMapper.FromAlert(alert, project.Id, context);
+        return new InboxItemDetail(
+            item, WorkInboxItemMapper.AlertSteps(alert, context.InAchievedModule), alert.Message, [],
+            alert.Message, WorkInboxItemMapper.AlertDetails(alert.DetailsJson),
+            WorkInboxItemMapper.Target(project.Id, alert.TargetType, alert.TargetId), EditablePayloadJson: null);
+    }
+
+    // ---- actions ---------------------------------------------------------------------------------
+
+    private async Task<Result<InboxActionResult>> AfterApprovalAsync<T>(
+        Guid tenantId, Guid id, Guid caller, Result<T> result, CancellationToken ct)
+    {
+        if (!result.IsSuccess)
+            return Result<InboxActionResult>.Failure(result.Error ?? "The action failed.", result.StatusCode ?? 400, result.ErrorCode);
+        var request = await _requests.GetByIdForTenantAsync(tenantId, id, ct);
+        var affected = request is null ? [caller] : ApprovalFeedParticipants.NotifyTargets(request).Append(caller).Distinct().ToList();
+        return Result<InboxActionResult>.Success(new InboxActionResult(affected));
+    }
+
+    private async Task<Result<InboxActionResult>> AfterInvitationAsync(
+        Guid tenantId, Guid id, Guid caller, Result result, CancellationToken ct)
+    {
+        if (!result.IsSuccess)
+            return Result<InboxActionResult>.Failure(result.Error ?? "The action failed.", result.StatusCode ?? 400, result.ErrorCode);
+        var invitation = await _invitations.GetByIdForTenantAsync(tenantId, id, ct);
+        IReadOnlyCollection<Guid> affected = invitation is null
+            ? [caller]
+            : new[] { invitation.InvitedById, invitation.InvitedEmployeeId, caller }.Distinct().ToList();
+        return Result<InboxActionResult>.Success(new InboxActionResult(affected));
+    }
+
+    private static string? BodyString(JsonElement? body, string property)
+    {
+        if (body is not { ValueKind: JsonValueKind.Object } element)
+            return null;
+        foreach (var p in element.EnumerateObject())
+        {
+            if (string.Equals(p.Name, property, StringComparison.OrdinalIgnoreCase))
+                return p.Value.ValueKind == JsonValueKind.String ? p.Value.GetString() : p.Value.ValueKind == JsonValueKind.Null ? null : p.Value.GetRawText();
+        }
+        return null;
+    }
+}

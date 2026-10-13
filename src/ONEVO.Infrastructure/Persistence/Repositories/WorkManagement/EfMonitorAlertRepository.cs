@@ -21,6 +21,16 @@ public class EfMonitorAlertRepository : IMonitorAlertRepository
             .OrderByDescending(a => a.FirstDetectedAt).ThenBy(a => a.Id)
             .ToListAsync(ct);
 
+    public async Task<IReadOnlyList<MonitorAlert>> ListOpenOrResolvedSinceAsync(
+        Guid tenantId, Guid projectId, DateTimeOffset resolvedSince, CancellationToken ct = default)
+        => await _db.MonitorAlerts.AsNoTracking()
+            .Where(a => a.TenantId == tenantId && a.ProjectId == projectId && (a.ResolvedAt == null || a.ResolvedAt >= resolvedSince))
+            .OrderByDescending(a => a.FirstDetectedAt).ThenBy(a => a.Id)
+            .ToListAsync(ct);
+
+    public async Task<MonitorAlert?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct = default)
+        => await _db.MonitorAlerts.AsNoTracking().FirstOrDefaultAsync(a => a.TenantId == tenantId && a.Id == id, ct);
+
     public async Task AddAsync(MonitorAlert alert, CancellationToken ct = default)
         => await _db.MonitorAlerts.AddAsync(alert, ct);
 }

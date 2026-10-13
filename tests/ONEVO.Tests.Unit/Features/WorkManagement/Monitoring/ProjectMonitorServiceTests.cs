@@ -147,6 +147,31 @@ public class ProjectMonitorServiceTests
     }
 
     [Fact]
+    public async Task ProblemGone_RefreshesTheAlertInItsRecipientsInbox_WithoutABellNotification()
+    {
+        OverCapacityModule(allocated: 100m);
+        var existing = OpenAlert(MonitorRuleCodes.ModuleOverCapacity);
+        _open.Add(existing);
+
+        await Service().EvaluateProjectAsync(TenantId, ProjectId, Mon5);
+
+        _notifications.Verify(x => x.InboxChangedAsync(TenantId,
+            It.Is<IReadOnlyCollection<Guid>>(ids => ids.Contains(RootOwner)), "monitor_alert", existing.Id, It.IsAny<CancellationToken>()), Times.Once);
+        _notifications.Verify(x => x.NotifyAsync(It.IsAny<WorkNotificationEvent>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task NewProblem_CarriesTheAlertIdSoItsInboxItemRefreshes()
+    {
+        OverCapacityModule();
+
+        await Service().EvaluateProjectAsync(TenantId, ProjectId, Mon5);
+
+        var alert = Assert.Single(_added);
+        _notifications.Verify(x => x.NotifyAsync(It.Is<WorkNotificationEvent>(e => e.MonitorAlertId == alert.Id), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
     public async Task NoActiveHolder_FallsBackToTheProjectLead()
     {
         OverCapacityModule();

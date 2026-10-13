@@ -1,6 +1,7 @@
 using FluentAssertions;
 using Moq;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.Inbox.OutboxHandlers;
 using ONEVO.Application.Features.WorkManagement.Common.OutboxHandlers;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Notifications.RepositoryInterfaces;
@@ -28,6 +29,7 @@ public class WorkNotificationEngineTests
     private readonly Mock<IMilestoneMembershipCoordinator> _membership = new();
     private readonly List<WorkNotificationLog> _written = new();
     private readonly List<WorkNotificationPayload> _enqueued = new();
+    private readonly List<InboxChangedPayload> _inboxChanges = new();
 
     public WorkNotificationEngineTests()
     {
@@ -35,6 +37,8 @@ public class WorkNotificationEngineTests
             .Callback<WorkNotificationLog, CancellationToken>((l, _) => _written.Add(l)).Returns(Task.CompletedTask);
         _outbox.Setup(x => x.EnqueueAsync(It.IsAny<string>(), It.IsAny<WorkNotificationPayload>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
             .Callback<string, WorkNotificationPayload, Guid?, CancellationToken>((_, p, _, _) => _enqueued.Add(p)).Returns(Task.CompletedTask);
+        _outbox.Setup(x => x.EnqueueAsync(OutboxMessageTypes.InboxChanged, It.IsAny<InboxChangedPayload>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
+            .Callback<string, InboxChangedPayload, Guid?, CancellationToken>((_, p, _, _) => _inboxChanges.Add(p)).Returns(Task.CompletedTask);
         _identity.Setup(x => x.ResolveDisplayNamesByEmployeeIdAsync(TenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Dictionary<Guid, string> { [Actor] = "Bala" });
         _membership.Setup(x => x.GetActiveAssigneeAsync(TenantId, Owner, It.IsAny<CancellationToken>()))
@@ -125,4 +129,52 @@ public class WorkNotificationEngineTests
     [InlineData("sprint.achieve", "achieved the sprint")]
     public void Labels_cover_sprint_lifecycle(string actionType, string label)
         => WorkActionLabels.For(actionType).Should().Be(label);
+
+    [Fact]
+    public async Task An_approval_event_tells_the_actor_and_recipients_inbox_to_refresh_the_request()
+    {
+        var e = Event(WorkNotificationKinds.Requested, Owner, Inactive);
+
+        await Build().NotifyAsync(e);
+
+        var change = _inboxChanges.Should().ContainSingle().Subject;
+        change.Should().BeEquivalentTo(new InboxChangedPayload(TenantId, [Actor, Owner, Inactive], "work", "approval", e.ApprovalRequestId!.Value));
+    }
+
+    [Fact]
+    public async Task A_monitor_alert_event_refreshes_the_alert_item()
+    {
+        var alertId = Guid.NewGuid();
+        await Build().NotifyAsync(new WorkNotificationEvent(TenantId, ProjectId, Guid.Empty, WorkNotificationKinds.Alert,
+            "monitor.task_overdue", "task", Guid.NewGuid(), "Audit events", null, [Owner], MonitorAlertId: alertId));
+
+        _inboxChanges.Should().ContainSingle().Which.Should().BeEquivalentTo(
+            new InboxChangedPayload(TenantId, [Owner], "work", "monitor_alert", alertId));
+    }
+
+    [Fact]
+    public async Task A_direct_activity_event_does_not_touch_the_inbox()
+    {
+        await Build().NotifyAsync(Event(WorkNotificationKinds.Direct, Owner));
+
+        _inboxChanges.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task InboxChanged_enqueues_one_outbox_message_for_the_distinct_people()
+    {
+        var id = Guid.NewGuid();
+        await Build().InboxChangedAsync(TenantId, [Owner, Owner, Guid.Empty, Actor], "monitor_alert", id);
+
+        _inboxChanges.Should().ContainSingle().Which.Should().BeEquivalentTo(
+            new InboxChangedPayload(TenantId, [Owner, Actor], "work", "monitor_alert", id));
+    }
+
+    [Fact]
+    public async Task InboxChanged_with_nobody_to_tell_enqueues_nothing()
+    {
+        await Build().InboxChangedAsync(TenantId, [Guid.Empty], "approval", Guid.NewGuid());
+
+        _inboxChanges.Should().BeEmpty();
+    }
 }

@@ -1,4 +1,5 @@
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.Inbox.OutboxHandlers;
 using ONEVO.Application.Features.WorkManagement.Common.OutboxHandlers;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Notifications.RepositoryInterfaces;
@@ -15,6 +16,9 @@ public sealed class WorkNotificationEngine : IWorkNotificationEngine
     public const string CommentedTemplate = "work_approval_commented";
     public const string MonitorAlertTemplate = "work_monitor_alert";
     public const string ApprovalRelatedEntityType = "work_approval_request";
+    public const string InboxSource = "work";
+    public const string ApprovalInboxKind = "approval";
+    public const string MonitorAlertInboxKind = "monitor_alert";
 
     private readonly IWorkNotificationLogRepository _logs;
     private readonly IOutboxWriter _outbox;
@@ -33,6 +37,13 @@ public sealed class WorkNotificationEngine : IWorkNotificationEngine
 
     public async Task NotifyAsync(WorkNotificationEvent e, CancellationToken ct = default)
     {
+        // The Inbox shows approval requests and monitor alerts; everyone involved (actor included, for
+        // their "Sent" list) gets a refresh signal once this transaction commits.
+        if (e.ApprovalRequestId is { } approvalId)
+            await InboxChangedAsync(e.TenantId, [e.ActorEmployeeId, .. e.RecipientEmployeeIds], ApprovalInboxKind, approvalId, ct);
+        else if (e.Kind == WorkNotificationKinds.Alert && e.MonitorAlertId is { } alertId)
+            await InboxChangedAsync(e.TenantId, e.RecipientEmployeeIds, MonitorAlertInboxKind, alertId, ct);
+
         var recipients = e.RecipientEmployeeIds
             .Where(id => id != Guid.Empty && id != e.ActorEmployeeId)
             .Distinct()
@@ -84,6 +95,15 @@ public sealed class WorkNotificationEngine : IWorkNotificationEngine
                 e.TenantId,
                 ct);
         }
+    }
+
+    public async Task InboxChangedAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> employeeIds, string kind, Guid id, CancellationToken ct = default)
+    {
+        var people = employeeIds.Where(e => e != Guid.Empty).Distinct().ToList();
+        if (people.Count == 0)
+            return;
+        await _outbox.EnqueueAsync(OutboxMessageTypes.InboxChanged, new InboxChangedPayload(tenantId, people, InboxSource, kind, id), tenantId, ct);
     }
 
     private static string DecisionWord(string kind) => kind switch

@@ -4,6 +4,7 @@ using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Approvals.DTOs;
 using ONEVO.Application.Features.WorkManagement.Approvals.Queries.GetProjectApprovalFeed;
 using ONEVO.Application.Features.WorkManagement.Approvals.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Approvals.Services;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Hierarchy;
 using ONEVO.Application.Features.WorkManagement.ProjectInvitations.RepositoryInterfaces;
@@ -79,8 +80,8 @@ public class GetProjectApprovalFeedQueryHandlerTests
     }
 
     private GetProjectApprovalFeedQueryHandler Build() => new(
-        _currentUser.Object, _identity.Object, _requests.Object, _hierarchy.Object,
-        _invitations.Object, _tasks.Object, _projects.Object, _comments);
+        _currentUser.Object, _identity.Object, _projects.Object,
+        new ApprovalFeedBuilder(_identity.Object, _requests.Object, _hierarchy.Object, _invitations.Object, _tasks.Object, _comments));
 
     private async Task<IReadOnlyList<ApprovalFeedItemResponse>> Run()
     {
