@@ -100,17 +100,20 @@ public sealed class AddConversationParticipantsCommandHandler
 
         var responses = added.Select(a => ConversationResponseBuilder.Participant(
             a.Row.EmployeeId, people.GetValueOrDefault(a.Row.EmployeeId), ConversationJoinReasons.Added, caller, now)).ToList();
+        IReadOnlyCollection<Guid> recipients = context.ParticipantIds.Concat(toAdd).ToList();
         foreach (var (row, system) in added)
         {
             var participant = responses.First(r => r.EmployeeId == row.EmployeeId);
             await ConversationRules.PublishSafelyAsync(
-                () => _realtime.ParticipantAddedAsync(context.Conversation.Id, participant, ct), _logger, "participantAdded");
+                () => _realtime.ParticipantAddedAsync(tenantId, recipients, context.Conversation.Id, participant, ct),
+                _logger, "participantAdded");
             var message = ConversationResponseBuilder.Message(system, [], author: null);
             await ConversationRules.PublishSafelyAsync(
-                () => _realtime.MessageCreatedAsync(context.Conversation.Id, message, ct), _logger, "messageCreated");
+                () => _realtime.MessageCreatedAsync(tenantId, recipients, context.Conversation.Id, message, ct),
+                _logger, "messageCreated");
         }
         await ConversationRules.PublishSafelyAsync(
-            () => _realtime.InboxChangedAsync(toAdd, context.Subject, ct), _logger, "inboxChanged");
+            () => _realtime.InboxChangedAsync(tenantId, toAdd, context.Subject, ct), _logger, "inboxChanged");
 
         return Result<IReadOnlyList<ConversationParticipantResponse>>.Success(responses);
     }

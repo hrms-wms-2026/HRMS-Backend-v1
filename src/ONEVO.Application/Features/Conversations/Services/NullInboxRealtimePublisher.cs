@@ -3,11 +3,18 @@ using ONEVO.Application.Features.Conversations.DTOs;
 
 namespace ONEVO.Application.Features.Conversations.Services;
 
-/// <summary>Used where no SignalR host is running (background jobs, tests); the Api project registers
-/// the hub-backed publisher over this.</summary>
+/// <summary>Used where no SignalR host is running (background workers, tests); the Api project replaces it
+/// with the hub-backed publisher.</summary>
 public sealed class NullInboxRealtimePublisher : IInboxRealtimePublisher
 {
-    public Task MessageCreatedAsync(Guid conversationId, ConversationMessageResponse message, CancellationToken ct = default) => Task.CompletedTask;
-    public Task ParticipantAddedAsync(Guid conversationId, ConversationParticipantResponse participant, CancellationToken ct = default) => Task.CompletedTask;
-    public Task InboxChangedAsync(IReadOnlyCollection<Guid> employeeIds, ItemRef item, CancellationToken ct = default) => Task.CompletedTask;
+    public Task MessageCreatedAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> recipientEmployeeIds, Guid conversationId, ConversationMessageResponse message,
+        CancellationToken ct = default) => Task.CompletedTask;
+
+    public Task ParticipantAddedAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> recipientEmployeeIds, Guid conversationId, ConversationParticipantResponse participant,
+        CancellationToken ct = default) => Task.CompletedTask;
+
+    public Task InboxChangedAsync(Guid tenantId, IReadOnlyCollection<Guid> employeeIds, ItemRef item, CancellationToken ct = default)
+        => Task.CompletedTask;
 }

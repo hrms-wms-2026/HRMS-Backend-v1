@@ -95,7 +95,8 @@ public sealed class PostConversationMessageCommandHandler
 
         var response = ConversationResponseBuilder.Message(message, mentionIds, author);
         await ConversationRules.PublishSafelyAsync(
-            () => _realtime.MessageCreatedAsync(context.Conversation.Id, response, ct), _logger, "messageCreated");
+            () => _realtime.MessageCreatedAsync(tenantId, context.ParticipantIds, context.Conversation.Id, response, ct),
+            _logger, "messageCreated");
         return Result<ConversationMessageResponse>.Success(response);
     }
 }

@@ -164,7 +164,7 @@ public class ConversationHandlersTests
     public async Task Posting_saves_the_message_bumps_last_message_and_publishes_after_save()
     {
         var conversation = await OpenAs(Requester);
-        _realtime.Setup(x => x.MessageCreatedAsync(conversation.Id, It.IsAny<ConversationMessageResponse>(), It.IsAny<CancellationToken>()))
+        _realtime.Setup(x => x.MessageCreatedAsync(TenantId, It.IsAny<IReadOnlyCollection<Guid>>(), conversation.Id, It.IsAny<ConversationMessageResponse>(), It.IsAny<CancellationToken>()))
             .Callback(() => _uow.SaveCallCount.Should().BeGreaterThan(0))
             .Returns(Task.CompletedTask);
 
@@ -177,7 +177,7 @@ public class ConversationHandlersTests
         result.Value.Kind.Should().Be(ConversationMessageKinds.Text);
         _repo.Messages.Should().ContainSingle();
         _repo.Conversations.Single().LastMessageAt.Should().NotBeNull();
-        _realtime.Verify(x => x.MessageCreatedAsync(conversation.Id, It.Is<ConversationMessageResponse>(m => m.Id == result.Value.Id), It.IsAny<CancellationToken>()), Times.Once);
+        _realtime.Verify(x => x.MessageCreatedAsync(TenantId, It.Is<IReadOnlyCollection<Guid>>(ids => ids.OrderBy(i => i).SequenceEqual(new[] { Requester, Approver }.OrderBy(i => i))), conversation.Id, It.Is<ConversationMessageResponse>(m => m.Id == result.Value.Id), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Theory]
@@ -192,6 +192,38 @@ public class ConversationHandlersTests
 
         result.StatusCode.Should().Be(400);
         _repo.Messages.Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData("<p>hi</p><script>alert(1)</script>")]
+    [InlineData("<img src=x onerror=alert(1)>")]
+    [InlineData("<p ONCLICK = \"x()\">hi</p>")]
+    [InlineData("<a href=\"javascript:alert(1)\">x</a>")]
+    [InlineData("<a href=' JavaScript:alert(1)'>x</a>")]
+    [InlineData("<p>see</p><iframe src=\"https://evil\"></iframe>")]
+    [InlineData("<p>see</p><object data=x></object>")]
+    [InlineData("<p>see</p><svg><use href=x/></svg>")]
+    [InlineData("<a href=\"java&#115;cript:alert(1)\">x</a>")]
+    [InlineData("<a href=\"java\tscript:alert(1)\">x</a>")]
+    [InlineData("<a href=\"data:text/html;base64,PHNjcmlwdD4=\">x</a>")]
+    public async Task Active_content_is_rejected(string body)
+    {
+        var conversation = await OpenAs(Requester);
+        var result = await Post().Handle(new PostConversationMessageCommand(conversation.Id, body, null), default);
+
+        result.StatusCode.Should().Be(400);
+        _repo.Messages.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Ordinary_formatting_and_mentions_are_accepted()
+    {
+        var conversation = await OpenAs(Requester);
+        var body = "<div><b>Bold</b> <span class=\"mention\" data-employee-id=\"x\" contenteditable=\"false\">@Anu</span> "
+            + "<a href=\"https://example.com\" target=\"_blank\">link</a> <font color=\"#e03131\">red</font> "
+            + "<ul><li>one</li></ul><code>on=1</code> the word onerror and javascript: as text</div>";
+
+        (await Post().Handle(new PostConversationMessageCommand(conversation.Id, body, null), default)).IsSuccess.Should().BeTrue();
     }
 
     [Fact]
@@ -262,7 +294,7 @@ public class ConversationHandlersTests
     public async Task A_realtime_failure_does_not_fail_the_post()
     {
         var conversation = await OpenAs(Requester);
-        _realtime.Setup(x => x.MessageCreatedAsync(It.IsAny<Guid>(), It.IsAny<ConversationMessageResponse>(), It.IsAny<CancellationToken>()))
+        _realtime.Setup(x => x.MessageCreatedAsync(It.IsAny<Guid>(), It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<Guid>(), It.IsAny<ConversationMessageResponse>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new InvalidOperationException("hub down"));
 
         (await Post().Handle(new PostConversationMessageCommand(conversation.Id, "<p>hi</p>", null), default)).IsSuccess.Should().BeTrue();
@@ -286,9 +318,9 @@ public class ConversationHandlersTests
         system.AuthorEmployeeId.Should().BeNull();
         system.SystemEventJson.Should().Contain("participant_added").And.Contain(Requester.ToString()).And.Contain(Third.ToString());
         _notifications.Should().ContainSingle(n => n.TemplateCode == ConversationNotifier.MemberAddedTemplate);
-        _realtime.Verify(x => x.ParticipantAddedAsync(conversation.Id, It.Is<ConversationParticipantResponse>(p => p.EmployeeId == Third), It.IsAny<CancellationToken>()), Times.Once);
-        _realtime.Verify(x => x.MessageCreatedAsync(conversation.Id, It.Is<ConversationMessageResponse>(m => m.Kind == ConversationMessageKinds.System), It.IsAny<CancellationToken>()), Times.Once);
-        _realtime.Verify(x => x.InboxChangedAsync(It.Is<IReadOnlyCollection<Guid>>(ids => ids.SequenceEqual(new[] { Third })), Subject, It.IsAny<CancellationToken>()), Times.Once);
+        _realtime.Verify(x => x.ParticipantAddedAsync(TenantId, It.Is<IReadOnlyCollection<Guid>>(ids => ids.Contains(Third) && ids.Contains(Approver)), conversation.Id, It.Is<ConversationParticipantResponse>(p => p.EmployeeId == Third), It.IsAny<CancellationToken>()), Times.Once);
+        _realtime.Verify(x => x.MessageCreatedAsync(TenantId, It.Is<IReadOnlyCollection<Guid>>(ids => ids.Contains(Third)), conversation.Id, It.Is<ConversationMessageResponse>(m => m.Kind == ConversationMessageKinds.System), It.IsAny<CancellationToken>()), Times.Once);
+        _realtime.Verify(x => x.InboxChangedAsync(TenantId, It.Is<IReadOnlyCollection<Guid>>(ids => ids.SequenceEqual(new[] { Third })), Subject, It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
