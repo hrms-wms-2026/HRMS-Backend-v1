@@ -109,7 +109,7 @@ public sealed class SprintEngineKit
     private SprintActionSubmitter Submitter()
     {
         var engine = new WorkApprovalEngine(W.Hierarchy.Object, Requests.Object, W.WorkNotifications.Object, W.Projects.Object, Authority.Object);
-        return new SprintActionSubmitter(W.Hierarchy.Object, W.Members.Object, W.Identity.Object, W.UnitOfWork.Object, engine, W.WorkNotifications.Object);
+        return new SprintActionSubmitter(W.Hierarchy.Object, W.Members.Object, W.Identity.Object, W.UnitOfWork.Object, engine, W.WorkNotifications.Object, W.Sprints.Object);
     }
 
     public CreateSprintCommandHandler Create()

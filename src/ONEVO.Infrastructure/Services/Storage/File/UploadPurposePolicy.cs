@@ -60,6 +60,96 @@ public sealed class UploadPurposePolicy : IUploadPurposePolicy
         return Result.Success();
     }
 
+    // Magic-number signatures for the extensions ValidateUpload's rules actually allow today
+    // (UploadPurposeCatalog.cs). .docx/.xlsx share the ZIP signature at the byte level - that is
+    // intentional, not a bug: Office Open XML documents ARE zip archives. Extensions with no entry
+    // here (anything not covered by an UploadPurposeRule's AllowedExtensions) are left to
+    // ValidateUpload's existing extension+content-type check; this table never grows the allowlist,
+    // only adds a second, byte-level check on top of it.
+    private static readonly IReadOnlyDictionary<string, byte[][]> Signatures = new Dictionary<string, byte[][]>(StringComparer.OrdinalIgnoreCase)
+    {
+        [".png"] = [[0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]],
+        [".jpg"] = [[0xFF, 0xD8, 0xFF]],
+        [".jpeg"] = [[0xFF, 0xD8, 0xFF]],
+        [".gif"] = [[0x47, 0x49, 0x46, 0x38]],
+        [".pdf"] = [[0x25, 0x50, 0x44, 0x46]],
+        [".zip"] = [[0x50, 0x4B, 0x03, 0x04]],
+        [".docx"] = [[0x50, 0x4B, 0x03, 0x04]],
+        [".xlsx"] = [[0x50, 0x4B, 0x03, 0x04]],
+        [".doc"] = [[0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1]],
+        [".xls"] = [[0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1]],
+        // RIFF....WEBP - the "WEBP" tag sits at offset 8, checked separately below.
+        [".webp"] = [[0x52, 0x49, 0x46, 0x46]],
+    };
+
+    public Result ValidateSignature(string originalFileName, Stream content)
+    {
+        var extension = System.IO.Path.GetExtension(originalFileName).ToLowerInvariant();
+        if (!Signatures.TryGetValue(extension, out var candidates))
+        {
+            // Ambiguous/unlisted extension - nothing to check against, handled explicitly by
+            // doing nothing rather than guessing or rejecting.
+            return Result.Success();
+        }
+
+        if (!content.CanSeek)
+        {
+            // Can't rewind to re-read after peeking - fail closed rather than skip the check.
+            return Result.Failure("File content could not be inspected for signature verification.", 400);
+        }
+
+        var header = new byte[16];
+        var originalPosition = content.Position;
+        content.Position = 0;
+        var read = content.Read(header, 0, header.Length);
+        content.Position = originalPosition;
+
+        var matches = candidates.Any(sig => read >= sig.Length && header.AsSpan(0, sig.Length).SequenceEqual(sig));
+        if (matches && extension == ".webp")
+        {
+            // RIFF container alone isn't enough - confirm the WEBP tag at offset 8.
+            matches = read >= 12 && header.AsSpan(8, 4).SequenceEqual(new byte[] { 0x57, 0x45, 0x42, 0x50 });
+        }
+
+        return matches
+            ? Result.Success()
+            : Result.Failure($"File content does not match the expected format for extension '{extension}'.", 400);
+    }
+
+    /// <summary>Best-effort content-type sniffed from the same signature table used by
+    /// <see cref="ValidateSignature"/> - null when the extension isn't in the table (ambiguous) or
+    /// the bytes don't match anything recognized. Used only to populate FileRecord.DetectedContentType
+    /// for audit/telemetry; never used to grant access or override the declared Content-Type.</summary>
+    public static string? DetectContentType(string originalFileName, Stream content)
+    {
+        var extension = System.IO.Path.GetExtension(originalFileName).ToLowerInvariant();
+        if (!Signatures.ContainsKey(extension) || !content.CanSeek)
+            return null;
+
+        var header = new byte[16];
+        var originalPosition = content.Position;
+        content.Position = 0;
+        var read = content.Read(header, 0, header.Length);
+        content.Position = originalPosition;
+        if (read <= 0)
+            return null;
+
+        return extension switch
+        {
+            ".png" => "image/png",
+            ".jpg" or ".jpeg" => "image/jpeg",
+            ".gif" => "image/gif",
+            ".pdf" => "application/pdf",
+            ".webp" when read >= 12 && header.AsSpan(8, 4).SequenceEqual(new byte[] { 0x57, 0x45, 0x42, 0x50 }) => "image/webp",
+            ".zip" => "application/zip",
+            ".docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            ".xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            ".doc" => "application/msword",
+            ".xls" => "application/vnd.ms-excel",
+            _ => null
+        };
+    }
+
     public string SanitizeFileName(string originalFileName)
     {
         var nameOnly = System.IO.Path.GetFileName(originalFileName);

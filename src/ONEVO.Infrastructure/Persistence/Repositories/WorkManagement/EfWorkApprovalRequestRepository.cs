@@ -66,6 +66,13 @@ public class EfWorkApprovalRequestRepository : IWorkApprovalRequestRepository
             && r.ApproverEmployeeId == approverEmployeeId && r.Status == WorkApprovalRequestStatuses.Pending
             && actionTypes.Contains(r.ActionType), ct);
 
+    public async Task<IReadOnlyList<WorkApprovalRequest>> ListPendingForHrApproverAsync(
+        Guid tenantId, Guid approverEmployeeId, IReadOnlySet<string> actionTypes, CancellationToken ct = default)
+        => await _db.WorkApprovalRequests.AsNoTracking().Where(r =>
+            r.TenantId == tenantId && r.ApproverSource == WorkApprovalSources.Hr
+            && r.ApproverEmployeeId == approverEmployeeId && r.Status == WorkApprovalRequestStatuses.Pending
+            && actionTypes.Contains(r.ActionType)).ToListAsync(ct);
+
     public async Task<IReadOnlySet<Guid>> ListProjectsWithPendingAsync(
         Guid tenantId, IReadOnlyCollection<Guid> projectIds, IReadOnlySet<string> actionTypes, CancellationToken ct = default)
     {
