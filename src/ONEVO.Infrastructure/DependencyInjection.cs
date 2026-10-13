@@ -467,6 +467,9 @@ public static class DependencyInjection
         services.AddScoped<ONEVO.Application.Features.Conversations.Services.ConversationNotifier>();
         services.AddScoped<ONEVO.Application.Features.Conversations.Services.IConversationUnreadCounts,
             ONEVO.Application.Features.Conversations.Services.ConversationUnreadCounts>();
+        // Inbox router: fans out to every registered IInboxSourceProvider (one per module).
+        services.AddScoped<ONEVO.Application.Features.Inbox.Services.IInboxRouter, ONEVO.Application.Features.Inbox.Services.InboxRouter>();
+        services.AddScoped<ONEVO.Application.Features.Inbox.Services.InboxCallerResolver>();
         // The Api host registers the SignalR-backed publisher; this is the fallback everywhere else.
         services.TryAddSingleton<ONEVO.Application.Features.Conversations.Contracts.IInboxRealtimePublisher,
             ONEVO.Application.Features.Conversations.Services.NullInboxRealtimePublisher>();
