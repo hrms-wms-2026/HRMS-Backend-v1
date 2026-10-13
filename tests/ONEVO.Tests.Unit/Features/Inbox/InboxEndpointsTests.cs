@@ -5,6 +5,9 @@ using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Inbox.Commands.ExecuteInboxAction;
 using ONEVO.Application.Features.Inbox.Contracts;
 using ONEVO.Application.Features.Inbox.Queries.GetInboxCounts;
+using ONEVO.Application.Features.Inbox.Queries.GetInboxFilters;
+using ONEVO.Application.Features.Inbox.Queries.GetInboxItemDetail;
+using ONEVO.Application.Common.Models;
 using ONEVO.Application.Features.Inbox.Queries.ListInboxItems;
 using ONEVO.Application.Features.Inbox.Services;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
@@ -72,6 +75,32 @@ public class InboxEndpointsTests
         (await new GetInboxCountsQueryHandler(Caller(), _router.Object).Handle(new GetInboxCountsQuery(), default)).StatusCode.Should().Be(403);
         (await new ExecuteInboxActionCommandHandler(Caller(), _router.Object)
             .Handle(new ExecuteInboxActionCommand("work", "approval", Guid.NewGuid(), "approve", null), default)).StatusCode.Should().Be(403);
+        _router.VerifyNoOtherCalls();
+    }
+
+    [Fact]
+    public async Task Filters_and_detail_go_to_the_router_for_the_callers_employee()
+    {
+        _identity.Setup(x => x.ResolveCallerEmployeeIdAsync(TenantId, UserId, It.IsAny<CancellationToken>())).ReturnsAsync(EmployeeId);
+        IReadOnlyList<InboxFilterField> fields = [new InboxFilterField("source", "Source", true, [])];
+        _router.Setup(r => r.GetFiltersAsync(TenantId, EmployeeId, It.IsAny<CancellationToken>())).ReturnsAsync(fields);
+        var id = Guid.NewGuid();
+        _router.Setup(r => r.GetDetailAsync(TenantId, EmployeeId, "work", "approval", id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<InboxItemDetail>.NotFound("Inbox item not found."));
+
+        (await new GetInboxFiltersQueryHandler(Caller(), _router.Object).Handle(new GetInboxFiltersQuery(), default)).Value.Should().BeSameAs(fields);
+        (await new GetInboxItemDetailQueryHandler(Caller(), _router.Object).Handle(new GetInboxItemDetailQuery("work", "approval", id), default))
+            .StatusCode.Should().Be(404);
+    }
+
+    [Fact]
+    public async Task Filters_and_detail_are_forbidden_without_an_employee_record()
+    {
+        _identity.Setup(x => x.ResolveCallerEmployeeIdAsync(TenantId, UserId, It.IsAny<CancellationToken>())).ReturnsAsync((Guid?)null);
+
+        (await new GetInboxFiltersQueryHandler(Caller(), _router.Object).Handle(new GetInboxFiltersQuery(), default)).StatusCode.Should().Be(403);
+        (await new GetInboxItemDetailQueryHandler(Caller(), _router.Object).Handle(new GetInboxItemDetailQuery("work", "approval", Guid.NewGuid()), default))
+            .StatusCode.Should().Be(403);
         _router.VerifyNoOtherCalls();
     }
 

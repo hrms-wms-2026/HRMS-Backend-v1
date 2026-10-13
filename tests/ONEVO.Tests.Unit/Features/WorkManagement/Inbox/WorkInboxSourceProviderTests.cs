@@ -382,6 +382,62 @@ public class WorkInboxSourceProviderTests
         (await Provider().GetDetailAsync(TenantId, "unknown", Guid.NewGuid(), Me, default)).Should().BeNull();
     }
 
+    private static ApprovalFeedItemResponse FeedItem(Guid id, string source, string status, bool canDecide) => new(
+        id, source, source == ApprovalFeedSources.Engine ? WorkActionTypes.TaskEdit : "module.invitation", WorkTargetTypes.Task, Guid.NewGuid(),
+        "Audit events", null, null, "Apollo", status, "received", Requester, "Bala", Me, "Anu",
+        null, null, null, Now.AddHours(-2), null, canDecide, false, "Edit title");
+
+    [Fact]
+    public async Task An_approval_detail_carries_steps_the_change_set_the_task_link_and_the_editable_payload()
+    {
+        var r = Request(_a, Requester);
+        r.TargetType = WorkTargetTypes.Task;
+        var fields = new[]
+        {
+            new ApprovalFieldResponse("title", "Title", "text", "Old", "New", null, Changed: true, Editable: true),
+            new ApprovalFieldResponse("priority", "Priority", "priority", "high", "high", null, Changed: false, Editable: true),
+        };
+        _sender.Setup(s => s.Send(It.IsAny<ONEVO.Application.Features.WorkManagement.Approvals.Queries.GetApprovalDetail.GetApprovalDetailQuery>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<ApprovalDetailResponse>.Success(new ApprovalDetailResponse(
+                FeedItem(r.Id, ApprovalFeedSources.Engine, WorkApprovalRequestStatuses.Pending, canDecide: true),
+                "{\"title\":\"New\"}", null, fields, CanEditPayload: true, Note: "typo", CurrentAllocatedHours: null,
+                Invitation: null, CanRevert: false, RevertableUntil: null)));
+
+        var detail = await Provider().GetDetailAsync(TenantId, "approval", r.Id, Me, default);
+
+        detail!.Item.AvailableActions.Select(a => a.Key).Should().Equal("approve", "reject");
+        detail.Steps.Select(s => (s.Key, s.State)).Should().Equal(("requested", "done"), ("decision", "current"));
+        detail.ChangeSet.Should().ContainSingle().Which.Should().Be(new InboxChange("title", "Title", "Old", "New", "text", true, null));
+        detail.Explanation.Should().Be("typo");
+        detail.EditablePayloadJson.Should().Be("{\"title\":\"New\"}");
+        detail.Target!.Route.Should().Equal("/work", _a.Id.ToString(), "board");
+        detail.Target.QueryParams!["taskId"].Should().Be(r.TargetId!.Value.ToString());
+    }
+
+    [Fact]
+    public async Task An_invitation_detail_explains_the_invitation_and_links_to_the_module()
+    {
+        var invite = new ProjectMemberInvitation
+        {
+            Id = Guid.NewGuid(), TenantId = TenantId, ProjectId = _c.Id, ObjectiveId = _trees[_c.Id].Module,
+            InvitedEmployeeId = Me, InvitedById = Approver, Status = ProjectInvitationStatuses.Pending
+        };
+        _invitations.Setup(x => x.GetByIdForTenantAsync(TenantId, invite.Id, It.IsAny<CancellationToken>())).ReturnsAsync(invite);
+        _sender.Setup(s => s.Send(It.IsAny<ONEVO.Application.Features.WorkManagement.Approvals.Queries.GetApprovalDetail.GetApprovalDetailQuery>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<ApprovalDetailResponse>.Success(new ApprovalDetailResponse(
+                FeedItem(invite.Id, ApprovalFeedSources.Invitation, WorkApprovalRequestStatuses.Pending, canDecide: true),
+                null, null, [], false, null, null,
+                new ApprovalInvitationResponse(Me, "Anu", "member", Approver, "Bala", invite.ObjectiveId, "Payments", null), false, null)));
+
+        var detail = await Provider().GetDetailAsync(TenantId, "invitation", invite.Id, Me, default);
+
+        detail!.Item.Kind.Should().Be("invitation");
+        detail.Item.AvailableActions.Select(a => a.Key).Should().Equal("accept_invitation", "decline_invitation");
+        detail.Steps.Select(s => s.Key).Should().Equal("invited", "response");
+        detail.Explanation.Should().Be("Bala invited Anu to \"Payments\" as member.");
+        detail.Target!.Route.Should().Equal("/work", _c.Id.ToString(), "milestones", invite.ObjectiveId.ToString(), "tree");
+    }
+
     // ---- conversation base participants ---------------------------------------------------------
 
     [Fact]
