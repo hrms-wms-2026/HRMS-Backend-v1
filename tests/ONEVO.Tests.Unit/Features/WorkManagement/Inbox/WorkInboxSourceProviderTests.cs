@@ -22,7 +22,9 @@ using ONEVO.Application.Features.WorkManagement.ProjectInvitations.Commands.Reje
 using ONEVO.Application.Features.WorkManagement.ProjectInvitations.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
+using ONEVO.Domain.Features.Conversations.Entities;
 using ONEVO.Domain.Features.WorkManagement.Approvals.Entities;
+using ONEVO.Tests.Unit.Features.Conversations;
 using ONEVO.Domain.Features.WorkManagement.Monitoring.Entities;
 using ONEVO.Domain.Features.WorkManagement.Objectives.Entities;
 using ONEVO.Domain.Features.WorkManagement.ProjectInvitations.Entities;
@@ -56,6 +58,7 @@ public class WorkInboxSourceProviderTests
     private readonly Mock<IProjectMonitorSnapshotLoader> _snapshots = new();
     private readonly Mock<ISender> _sender = new();
     private readonly Mock<IDateTimeProvider> _clock = new();
+    private readonly InMemoryConversationRepository _chats = new();
     private readonly List<Project> _memberOf = new();
     private readonly List<WorkApprovalRequest> _rows = new();
     private readonly List<ProjectMemberInvitation> _invites = new();
@@ -107,7 +110,7 @@ public class WorkInboxSourceProviderTests
     private WorkInboxSourceProvider Provider() => new(
         _projects.Object, _invitations.Object, _requests.Object,
         new ApprovalFeedBuilder(_identity.Object, _requests.Object, _hierarchy.Object, _invitations.Object, _tasks.Object),
-        _alerts.Object, Audience(), _hierarchy.Object, _tasks.Object, _identity.Object, _sender.Object, _clock.Object);
+        _alerts.Object, Audience(), _hierarchy.Object, _tasks.Object, _identity.Object, _sender.Object, _clock.Object, _chats);
 
     private WorkConversationSubjectResolver Resolver() => new(_requests.Object, _hierarchy.Object, _invitations.Object, _alerts.Object, Audience());
 
@@ -140,6 +143,17 @@ public class WorkInboxSourceProviderTests
     }
 
     private Task<IReadOnlyList<InboxItem>> List() => Provider().ListAsync(TenantId, new InboxQuery(), Me, default);
+
+    private void AddedToChat(string kind, Guid subjectId, Guid employee)
+    {
+        var conversation = new Conversation { Id = Guid.NewGuid(), TenantId = TenantId, SubjectSource = "work", SubjectKind = kind, SubjectId = subjectId };
+        _chats.Conversations.Add(conversation);
+        _chats.Participants.Add(new ConversationParticipant
+        {
+            Id = Guid.NewGuid(), TenantId = TenantId, ConversationId = conversation.Id, EmployeeId = employee,
+            JoinReason = ConversationJoinReasons.Added, AddedAt = Now
+        });
+    }
 
     // ---- list ---------------------------------------------------------------------------------
 
@@ -177,6 +191,21 @@ public class WorkInboxSourceProviderTests
 
         items.Should().ContainSingle().Which.ContextId.Should().Be(_a.Id);
         _requests.Verify(r => r.ListByProjectAsync(TenantId, _b.Id, null, null, It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task A_project_or_category_filter_skips_loading_what_it_excludes()
+    {
+        _memberOf.AddRange([_a, _b]);
+        Request(_a, Me);
+        Request(_b, Me);
+
+        var items = await Provider().ListAsync(TenantId, new InboxQuery(ContextIds: [_a.Id], Category: [InboxCategories.Alert]), Me, default);
+
+        items.Should().BeEmpty();
+        _requests.Verify(r => r.ListByProjectAsync(TenantId, It.IsAny<Guid>(), null, null, It.IsAny<CancellationToken>()), Times.Never);
+        _alerts.Verify(r => r.ListOpenOrResolvedSinceAsync(TenantId, _b.Id, It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()), Times.Never);
+        _alerts.Verify(r => r.ListOpenOrResolvedSinceAsync(TenantId, _a.Id, It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -270,6 +299,76 @@ public class WorkInboxSourceProviderTests
         fields.Single(f => f.Key == "type").Options.Should().Contain(o => o.Value == "module.edit" && o.Label == "Module edit")
             .And.Contain(o => o.Value == "monitor.module_over_capacity" && o.Label == "Module over capacity");
         fields.Single(f => f.Key == "module").Options.Should().HaveCount(2);
+    }
+
+    [Fact]
+    public async Task A_person_added_to_the_chat_sees_the_item_read_only_in_their_list()
+    {
+        _memberOf.Add(_a);
+        var r = Request(_a, Requester);          // between Requester and Approver: not visible to Me on its own
+        (await List()).Should().BeEmpty();
+
+        AddedToChat("approval", r.Id, Me);
+        var item = (await List()).Should().ContainSingle().Subject;
+
+        item.Id.Should().Be(r.Id);
+        item.Direction.Should().Be(InboxDirections.Info);
+        item.AvailableActions.Should().BeEmpty();
+        item.ContextName.Should().Be("Apollo");
+    }
+
+    [Fact]
+    public async Task An_item_the_caller_sees_anyway_is_not_listed_twice_when_they_are_also_added()
+    {
+        _memberOf.Add(_a);
+        var r = Request(_a, Me);
+        AddedToChat("approval", r.Id, Me);
+
+        (await List()).Should().ContainSingle().Which.Direction.Should().Be("sent");
+    }
+
+    [Fact]
+    public async Task A_person_added_to_the_chat_gets_a_read_only_detail_with_steps()
+    {
+        var r = Request(_b, Requester);
+        _sender.Setup(s => s.Send(It.IsAny<ONEVO.Application.Features.WorkManagement.Approvals.Queries.GetApprovalDetail.GetApprovalDetailQuery>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<ApprovalDetailResponse>.NotFound("Approval request not found."));
+        AddedToChat("approval", r.Id, Stranger);
+
+        var detail = await Provider().GetDetailAsync(TenantId, "approval", r.Id, Stranger, default);
+
+        detail!.Item.AvailableActions.Should().BeEmpty();
+        detail.Item.Direction.Should().Be(InboxDirections.Info);
+        detail.Steps.Select(s => s.Key).Should().Equal("requested", "decision");
+        detail.EditablePayloadJson.Should().BeNull();
+        detail.Target!.Route.Should().StartWith(new[] { "/work", _b.Id.ToString() });
+        (await Provider().GetDetailAsync(TenantId, "approval", r.Id, Guid.NewGuid(), default)).Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Added_members_also_see_invitations_and_alerts_read_only()
+    {
+        var invite = new ProjectMemberInvitation
+        {
+            Id = Guid.NewGuid(), TenantId = TenantId, ProjectId = _a.Id, ObjectiveId = _trees[_a.Id].Module,
+            InvitedEmployeeId = Me, InvitedById = Approver, Status = ProjectInvitationStatuses.Pending, InviteType = "member", CreatedAt = Now
+        };
+        _invitations.Setup(x => x.GetByIdForTenantAsync(TenantId, invite.Id, It.IsAny<CancellationToken>())).ReturnsAsync(invite);
+        _sender.Setup(s => s.Send(It.IsAny<ONEVO.Application.Features.WorkManagement.Approvals.Queries.GetApprovalDetail.GetApprovalDetailQuery>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<ApprovalDetailResponse>.NotFound("Approval request not found."));
+        var alert = Alert(_a);
+        AddedToChat("invitation", invite.Id, Stranger);
+        AddedToChat("monitor_alert", alert.Id, Stranger);
+        _projects.Setup(r => r.ListForMemberAsync(TenantId, Stranger, 0, int.MaxValue, null, "asc", It.IsAny<CancellationToken>()))
+            .ReturnsAsync((new List<Project>(), 0));
+        _invitations.Setup(r => r.ListPendingForEmployeeAsync(TenantId, Stranger, It.IsAny<CancellationToken>())).ReturnsAsync([]);
+
+        var items = await Provider().ListAsync(TenantId, new InboxQuery(), Stranger, default);
+
+        items.Select(i => i.Kind).Should().BeEquivalentTo(new[] { "invitation", "monitor_alert" });
+        items.Should().AllSatisfy(i => i.AvailableActions.Where(a => a.Key != "open_target").Should().BeEmpty());
+        (await Provider().GetDetailAsync(TenantId, "invitation", invite.Id, Stranger, default))!.Item.AvailableActions.Should().BeEmpty();
+        (await Provider().GetDetailAsync(TenantId, "monitor_alert", alert.Id, Stranger, default)).Should().NotBeNull();
     }
 
     // ---- actions ------------------------------------------------------------------------------
@@ -441,20 +540,31 @@ public class WorkInboxSourceProviderTests
     // ---- conversation base participants ---------------------------------------------------------
 
     [Fact]
-    public async Task Approval_chat_base_is_the_requester_and_todays_position_holder_so_a_transfer_moves_it()
+    public async Task Approval_chat_base_is_the_requester_and_everyone_who_can_decide_now_so_a_transfer_moves_it()
     {
         var r = Request(_a, Requester);
 
+        // Owners of the position module and every module above it can decide (WorkApprovalDecisionRules).
         (await Resolver().ResolveAsync(TenantId, new ItemRef("work", "approval", r.Id), default))!
-            .BaseParticipantEmployeeIds.Should().BeEquivalentTo(new[] { Requester, Approver });
+            .BaseParticipantEmployeeIds.Should().BeEquivalentTo(new[] { Requester, Approver, _trees[_a.Id].RootOwner });
 
+        var newRootOwner = Guid.NewGuid();
         _hierarchy.Setup(h => h.LoadTreeAsync(TenantId, _a.Id, It.IsAny<CancellationToken>())).ReturnsAsync(new ProjectModuleTree(
         [
-            new Objective { Id = _trees[_a.Id].Root, OwnerId = Guid.NewGuid(), IsDefault = true },
+            new Objective { Id = _trees[_a.Id].Root, OwnerId = newRootOwner, IsDefault = true },
             new Objective { Id = _trees[_a.Id].Module, ParentObjectiveId = _trees[_a.Id].Root, OwnerId = NewHolder, Title = "Payments" }
         ]));
         (await Resolver().ResolveAsync(TenantId, new ItemRef("work", "approval", r.Id), default))!
-            .BaseParticipantEmployeeIds.Should().BeEquivalentTo(new[] { Requester, NewHolder });
+            .BaseParticipantEmployeeIds.Should().BeEquivalentTo(new[] { Requester, NewHolder, newRootOwner });
+    }
+
+    [Fact]
+    public async Task The_requester_is_never_counted_twice_when_they_also_own_an_ancestor_module()
+    {
+        var r = Request(_a, _trees[_a.Id].RootOwner);
+
+        (await Resolver().ResolveAsync(TenantId, new ItemRef("work", "approval", r.Id), default))!
+            .BaseParticipantEmployeeIds.Should().BeEquivalentTo(new[] { _trees[_a.Id].RootOwner, Approver });
     }
 
     [Fact]

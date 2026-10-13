@@ -6,6 +6,7 @@ using ONEVO.Application.Features.Conversations.Commands.MarkConversationRead;
 using ONEVO.Application.Features.Conversations.Commands.OpenConversation;
 using ONEVO.Application.Features.Conversations.Commands.PostConversationMessage;
 using ONEVO.Application.Features.Conversations.Queries.ListConversationMessages;
+using ONEVO.Application.Features.Conversations.Queries.SearchConversationPeople;
 
 namespace ONEVO.Api.Controllers.Tenant.Conversations;
 
@@ -27,6 +28,11 @@ public class ConversationsController : ControllerBase
     [HttpPost("open")]
     public async Task<IActionResult> Open([FromBody] OpenConversationRequest body, CancellationToken ct)
         => ToResult(await _mediator.Send(new OpenConversationCommand(body.Source, body.Kind, body.Id), ct));
+
+    /// <summary>Active colleagues to add to a conversation (name + avatar only), by name.</summary>
+    [HttpGet("people")]
+    public async Task<IActionResult> People([FromQuery] string? search, CancellationToken ct)
+        => ToResult(await _mediator.Send(new SearchConversationPeopleQuery(search), ct));
 
     [HttpGet("{id:guid}/messages")]
     public async Task<IActionResult> Messages(Guid id, [FromQuery] DateTimeOffset? before, [FromQuery] int take = 50, CancellationToken ct = default)

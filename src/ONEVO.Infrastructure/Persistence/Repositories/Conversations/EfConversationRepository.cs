@@ -120,20 +120,32 @@ public class EfConversationRepository : IConversationRepository
             return new Dictionary<ItemRef, int>();
 
         var conversationIds = byConversation.Keys.ToList();
+        // Only conversations the employee is a participant of (has a row - every current base member gets
+        // one on the first open): an item listed for someone who cannot open its chat never shows unread.
         var counts = await (
                 from m in _db.ConversationMessages.AsNoTracking()
-                where m.TenantId == tenantId && conversationIds.Contains(m.ConversationId)
+                join p in _db.ConversationParticipants.AsNoTracking() on m.ConversationId equals p.ConversationId
+                where m.TenantId == tenantId && conversationIds.Contains(m.ConversationId) && p.EmployeeId == employeeId
                     && (m.AuthorEmployeeId == null || m.AuthorEmployeeId != employeeId)
-                let lastRead = _db.ConversationParticipants
-                    .Where(p => p.ConversationId == m.ConversationId && p.EmployeeId == employeeId)
-                    .Select(p => p.LastReadAt)
-                    .FirstOrDefault()
-                where lastRead == null || m.CreatedAt > lastRead
+                    && (p.LastReadAt == null || m.CreatedAt > p.LastReadAt)
                 group m by m.ConversationId into g
                 select new { ConversationId = g.Key, Count = g.Count() })
             .ToListAsync(ct);
 
         return counts.ToDictionary(c => byConversation[c.ConversationId], c => c.Count);
+    }
+
+    public async Task<IReadOnlyList<ItemRef>> ListAddedSubjectsAsync(
+        Guid tenantId, Guid employeeId, string source, CancellationToken ct = default)
+    {
+        var rows = await (
+                from p in _db.ConversationParticipants.AsNoTracking()
+                join c in _db.Conversations.AsNoTracking() on p.ConversationId equals c.Id
+                where p.TenantId == tenantId && p.EmployeeId == employeeId && p.JoinReason == ConversationJoinReasons.Added
+                    && c.SubjectSource == source
+                select new { c.SubjectSource, c.SubjectKind, c.SubjectId })
+            .ToListAsync(ct);
+        return rows.Select(r => new ItemRef(r.SubjectSource, r.SubjectKind, r.SubjectId)).ToList();
     }
 
     public void Update(Conversation conversation) => _db.Conversations.Update(conversation);

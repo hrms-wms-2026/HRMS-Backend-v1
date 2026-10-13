@@ -11,7 +11,9 @@ namespace ONEVO.Application.Features.WorkManagement.Inbox;
 /// <summary>
 /// Base participants of a Work item's conversation, resolved now (never stored), so a transferred
 /// approver position moves the chat to its new holder:
-/// approval → requester + today's eligible approver (+ whoever decided it);
+/// approval → requester + everyone who can decide it today (WorkApprovalDecisionRules: the owners of the
+/// position Module and of every Module above it; the stored approver for HR-routed requests) + whoever
+/// decided it;
 /// invitation → inviter + invitee; alert → its recipients (MonitorAlertAudience).
 /// </summary>
 public sealed class WorkConversationSubjectResolver : IConversationSubjectResolver
@@ -50,16 +52,17 @@ public sealed class WorkConversationSubjectResolver : IConversationSubjectResolv
         if (request is null)
             return null;
 
-        Guid? approver = request.ApproverEmployeeId;
+        IEnumerable<Guid> deciders = [request.ApproverEmployeeId];
         if (request.ApproverSource == WorkApprovalSources.Hierarchy && request.PositionObjectiveId is { } position)
         {
-            // Same lookup the approval engine uses to pick the approver, re-run against today's tree.
+            // Re-run against today's tree, so a transferred position moves the chat with it.
             var tree = await _hierarchy.LoadTreeAsync(tenantId, request.ProjectId, ct);
-            approver = await _hierarchy.FindActiveHolderAsync(tenantId, tree, position, request.RequestedByEmployeeId, ct)
-                ?? request.ApproverEmployeeId;
+            deciders = tree.AncestorChain(position).Select(m => m.OwnerId);
         }
 
-        var people = new[] { request.RequestedByEmployeeId, approver ?? Guid.Empty, request.DecidedByEmployeeId ?? Guid.Empty }
+        var people = new[] { request.RequestedByEmployeeId }
+            .Concat(deciders)
+            .Append(request.DecidedByEmployeeId ?? Guid.Empty)
             .Where(p => p != Guid.Empty).Distinct().ToList();
         return new ConversationSubject(people, $"{WorkInboxItemMapper.TypeLabel(request.ActionType)}: {request.TargetTitle}", request.ProjectId);
     }

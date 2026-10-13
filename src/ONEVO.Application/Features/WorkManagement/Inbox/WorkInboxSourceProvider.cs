@@ -2,6 +2,8 @@ using System.Text.Json;
 using MediatR;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.Conversations.Contracts;
+using ONEVO.Application.Features.Conversations.RepositoryInterfaces;
 using ONEVO.Application.Features.Inbox.Contracts;
 using ONEVO.Application.Features.WorkManagement.Approvals.Commands.DecideWorkApprovalRequest;
 using ONEVO.Application.Features.WorkManagement.Approvals.Commands.RevertWorkApprovalRequest;
@@ -28,7 +30,8 @@ namespace ONEVO.Application.Features.WorkManagement.Inbox;
 /// Work Management in the Inbox: approval requests and module invitations (the same rows and visibility
 /// as the project Approvals feed, over every project the caller can see) plus project-monitor alerts the
 /// caller is a recipient of. Details and actions go through the existing WM queries and commands, so
-/// every permission rule (who may decide, cancel, revert) stays where it already lives.
+/// every permission rule (who may decide, cancel, revert) stays where it already lives. People added to an
+/// item's conversation also get the item, read-only: they can view it and chat but never decide (D6).
 /// </summary>
 public sealed class WorkInboxSourceProvider : IInboxSourceProvider
 {
@@ -46,11 +49,13 @@ public sealed class WorkInboxSourceProvider : IInboxSourceProvider
     private readonly ICallerIdentityResolver _identity;
     private readonly ISender _sender;
     private readonly IDateTimeProvider _clock;
+    private readonly IConversationRepository _conversations;
 
     public WorkInboxSourceProvider(
         IProjectRepository projects, IProjectMemberInvitationRepository invitations, IWorkApprovalRequestRepository requests,
         ApprovalFeedBuilder feed, IMonitorAlertRepository alerts, MonitorAlertAudience audience, IWorkHierarchyService hierarchy,
-        IWorkTaskRepository tasks, ICallerIdentityResolver identity, ISender sender, IDateTimeProvider clock)
+        IWorkTaskRepository tasks, ICallerIdentityResolver identity, ISender sender, IDateTimeProvider clock,
+        IConversationRepository conversations)
     {
         _projects = projects;
         _invitations = invitations;
@@ -63,17 +68,18 @@ public sealed class WorkInboxSourceProvider : IInboxSourceProvider
         _identity = identity;
         _sender = sender;
         _clock = clock;
+        _conversations = conversations;
     }
 
     public string Source => WorkInboxKinds.Source;
     public string Label => "Work";
 
     public async Task<IReadOnlyList<InboxItem>> ListAsync(Guid tenantId, InboxQuery query, Guid callerEmployeeId, CancellationToken ct)
-        => (await CollectAsync(tenantId, callerEmployeeId, ct)).Items;
+        => (await CollectAsync(tenantId, callerEmployeeId, query, ct)).Items;
 
     public async Task<IReadOnlyList<InboxFilterField>> GetFilterFieldsAsync(Guid tenantId, Guid callerEmployeeId, CancellationToken ct)
     {
-        var (items, moduleTitles, projects) = await CollectAsync(tenantId, callerEmployeeId, ct);
+        var (items, moduleTitles, projects) = await CollectAsync(tenantId, callerEmployeeId, null, ct);
 
         static InboxFilterOption Option(string value, string label) => new(value, label);
         return
@@ -93,13 +99,22 @@ public sealed class WorkInboxSourceProvider : IInboxSourceProvider
     }
 
     public async Task<InboxItemDetail?> GetDetailAsync(Guid tenantId, string kind, Guid id, Guid callerEmployeeId, CancellationToken ct)
-        => kind switch
+    {
+        var detail = kind switch
         {
             WorkInboxKinds.Approval => await ApprovalDetailAsync(tenantId, id, callerEmployeeId, ct),
             WorkInboxKinds.Invitation => await InvitationDetailAsync(tenantId, id, callerEmployeeId, ct),
-            WorkInboxKinds.MonitorAlert => await AlertDetailAsync(tenantId, id, callerEmployeeId, ct),
+            WorkInboxKinds.MonitorAlert => await AlertDetailAsync(tenantId, id, callerEmployeeId, checkAudience: true, ct),
             _ => null,
         };
+        if (detail is not null)
+            return detail;
+
+        var added = await _conversations.ListAddedSubjectsAsync(tenantId, callerEmployeeId, Source, ct);
+        return added.Contains(new ItemRef(Source, kind, id))
+            ? await ReadOnlyDetailAsync(tenantId, kind, id, callerEmployeeId, ct)
+            : null;
+    }
 
     public async Task<Result<InboxActionResult>> ExecuteActionAsync(
         Guid tenantId, string kind, Guid id, string action, JsonElement? body, Guid callerEmployeeId, CancellationToken ct)
@@ -134,21 +149,32 @@ public sealed class WorkInboxSourceProvider : IInboxSourceProvider
 
     private sealed record Collected(IReadOnlyList<InboxItem> Items, IReadOnlyDictionary<Guid, string> ModuleTitles, IReadOnlyList<Project> Projects);
 
-    private async Task<Collected> CollectAsync(Guid tenantId, Guid caller, CancellationToken ct)
+    /// <summary>Loads the caller's items. The router applies every filter afterwards; the project and category
+    /// filters are also used here, only to skip loading what they would drop anyway.</summary>
+    private async Task<Collected> CollectAsync(Guid tenantId, Guid caller, InboxQuery? query, CancellationToken ct)
     {
         var projects = await VisibleProjectsAsync(tenantId, caller, ct);
+        var wantRequests = query?.Category is not { Count: > 0 } categories || categories.Contains(InboxCategories.Request);
+        var wantAlerts = query?.Category is not { Count: > 0 } alertCategories || alertCategories.Contains(InboxCategories.Alert);
         var items = new List<InboxItem>();
         var moduleTitles = new Dictionary<Guid, string>();
         var resolvedSince = _clock.UtcNow.AddDays(-ResolvedAlertDays);
 
         foreach (var project in projects)
         {
-            foreach (var entry in await _feed.BuildAsync(tenantId, project, caller, ct))
+            if (query?.ContextIds is { Count: > 0 } contextIds && !contextIds.Contains(project.Id))
+                continue;
+            if (wantRequests)
             {
-                items.Add(WorkInboxItemMapper.FromFeed(entry, caller));
-                if (entry.Item.ModuleId is { } moduleId && entry.Item.ModuleTitle is { } title)
-                    moduleTitles.TryAdd(moduleId, title);
+                foreach (var entry in await _feed.BuildAsync(tenantId, project, caller, ct))
+                {
+                    items.Add(WorkInboxItemMapper.FromFeed(entry, caller));
+                    if (entry.Item.ModuleId is { } moduleId && entry.Item.ModuleTitle is { } title)
+                        moduleTitles.TryAdd(moduleId, title);
+                }
             }
+            if (!wantAlerts)
+                continue;
 
             var alerts = await _alerts.ListOpenOrResolvedSinceAsync(tenantId, project.Id, resolvedSince, ct);
             if (alerts.Count == 0)
@@ -166,6 +192,16 @@ public sealed class WorkInboxSourceProvider : IInboxSourceProvider
                 if (context.Context.ModuleId is { } moduleId && context.ModuleTitle is { } title)
                     moduleTitles.TryAdd(moduleId, title);
             }
+        }
+        // Items whose conversation the caller was added to, read-only.
+        var listed = items.Select(i => new ItemRef(i.Source, i.Kind, i.Id)).ToHashSet();
+        foreach (var subject in await _conversations.ListAddedSubjectsAsync(tenantId, caller, Source, ct))
+        {
+            if (listed.Contains(subject))
+                continue;
+            var readOnly = await ReadOnlyDetailAsync(tenantId, subject.Kind, subject.Id, caller, ct);
+            if (readOnly is not null)
+                items.Add(readOnly.Item);
         }
         return new Collected(items, moduleTitles, projects);
     }
@@ -253,14 +289,17 @@ public sealed class WorkInboxSourceProvider : IInboxSourceProvider
             WorkInboxItemMapper.Target(invitation.ProjectId, "module", invitation.ObjectiveId), EditablePayloadJson: null);
     }
 
-    private async Task<InboxItemDetail?> AlertDetailAsync(Guid tenantId, Guid id, Guid caller, CancellationToken ct)
+    private async Task<InboxItemDetail?> AlertDetailAsync(Guid tenantId, Guid id, Guid caller, bool checkAudience, CancellationToken ct)
     {
         var alert = await _alerts.GetByIdAsync(tenantId, id, ct);
         if (alert is null)
             return null;
-        var audience = await _audience.ResolveAsync(tenantId, alert.ProjectId, [alert], ct);
-        if (audience.GetValueOrDefault(alert.Id)?.Contains(caller) != true)
-            return null;
+        if (checkAudience)
+        {
+            var audience = await _audience.ResolveAsync(tenantId, alert.ProjectId, [alert], ct);
+            if (audience.GetValueOrDefault(alert.Id)?.Contains(caller) != true)
+                return null;
+        }
         var project = await _projects.GetByIdForTenantAsync(tenantId, alert.ProjectId, ct);
         if (project is null)
             return null;
@@ -271,6 +310,54 @@ public sealed class WorkInboxSourceProvider : IInboxSourceProvider
             item, WorkInboxItemMapper.AlertSteps(alert, context.InAchievedModule), alert.Message, [],
             alert.Message, WorkInboxItemMapper.AlertDetails(alert.DetailsJson),
             WorkInboxItemMapper.Target(project.Id, alert.TargetType, alert.TargetId), EditablePayloadJson: null);
+    }
+
+    /// <summary>The item as seen by someone added to its conversation: no decision actions, not waiting on them.</summary>
+    private async Task<InboxItemDetail?> ReadOnlyDetailAsync(Guid tenantId, string kind, Guid id, Guid caller, CancellationToken ct)
+    {
+        var detail = kind switch
+        {
+            WorkInboxKinds.Approval => await ReadOnlyApprovalAsync(tenantId, id, caller, ct),
+            WorkInboxKinds.Invitation => await ReadOnlyInvitationAsync(tenantId, id, caller, ct),
+            WorkInboxKinds.MonitorAlert => await AlertDetailAsync(tenantId, id, caller, checkAudience: false, ct),
+            _ => null,
+        };
+        return detail is null ? null : detail with
+        {
+            Item = detail.Item with
+            {
+                AvailableActions = detail.Item.AvailableActions.Where(a => a.Key == WorkInboxActions.OpenTarget).ToList(),
+                Direction = InboxDirections.Info,
+                IsPending = false
+            },
+            EditablePayloadJson = null
+        };
+    }
+
+    private async Task<InboxItemDetail?> ReadOnlyApprovalAsync(Guid tenantId, Guid id, Guid caller, CancellationToken ct)
+    {
+        var request = await _requests.GetByIdForTenantAsync(tenantId, id, ct);
+        var project = request is null ? null : await _projects.GetByIdForTenantAsync(tenantId, request.ProjectId, ct);
+        if (request is null || project is null)
+            return null;
+        var entry = (await _feed.MapAsync(tenantId, project, [request], [], caller, ct))[0];
+        return new InboxItemDetail(
+            WorkInboxItemMapper.FromFeed(entry, caller), WorkInboxItemMapper.ApprovalSteps(entry.Item, request, revertedByName: null),
+            entry.Item.Summary, [], Explanation: null, ExplanationDetails: null,
+            WorkInboxItemMapper.Target(project.Id, request.TargetType, request.TargetId, request.ActionType), EditablePayloadJson: null);
+    }
+
+    private async Task<InboxItemDetail?> ReadOnlyInvitationAsync(Guid tenantId, Guid id, Guid caller, CancellationToken ct)
+    {
+        var invitation = await _invitations.GetByIdForTenantAsync(tenantId, id, ct);
+        var project = invitation is null ? null : await _projects.GetByIdForTenantAsync(tenantId, invitation.ProjectId, ct);
+        if (invitation is null || project is null)
+            return null;
+        var entry = (await _feed.MapAsync(tenantId, project, [], [invitation], caller, ct))[0];
+        return new InboxItemDetail(
+            WorkInboxItemMapper.FromFeed(entry, caller), WorkInboxItemMapper.InvitationSteps(entry.Item), entry.Item.Summary, [],
+            entry.Item.Summary, ExplanationDetails: null,
+            WorkInboxItemMapper.Target(project.Id, "module", invitation.ObjectiveId), EditablePayloadJson: null);
     }
 
     // ---- actions ---------------------------------------------------------------------------------

@@ -68,13 +68,23 @@ internal sealed class InMemoryConversationRepository : IConversationRepository
         {
             var conversation = Conversations.FirstOrDefault(c => c.TenantId == tenantId && Matches(c, subject));
             if (conversation is null) continue;
-            var lastRead = Participants.FirstOrDefault(p => p.ConversationId == conversation.Id && p.EmployeeId == employeeId)?.LastReadAt;
+            var row = Participants.FirstOrDefault(p => p.ConversationId == conversation.Id && p.EmployeeId == employeeId);
+            if (row is null) continue;
+            var lastRead = row.LastReadAt;
             var count = Messages.Count(m => m.ConversationId == conversation.Id && m.AuthorEmployeeId != employeeId
                 && (lastRead == null || m.CreatedAt > lastRead));
             if (count > 0) result[subject] = count;
         }
         return Task.FromResult<IReadOnlyDictionary<ItemRef, int>>(result);
     }
+
+    public Task<IReadOnlyList<ItemRef>> ListAddedSubjectsAsync(Guid tenantId, Guid employeeId, string source, CancellationToken ct = default)
+        => Task.FromResult<IReadOnlyList<ItemRef>>((
+            from p in Participants
+            where p.TenantId == tenantId && p.EmployeeId == employeeId && p.JoinReason == ConversationJoinReasons.Added
+            join c in Conversations on p.ConversationId equals c.Id
+            where c.SubjectSource == source
+            select new ItemRef(c.SubjectSource, c.SubjectKind, c.SubjectId)).ToList());
 
     public void Update(Conversation conversation) { }
     public void UpdateParticipant(ConversationParticipant participant) { }

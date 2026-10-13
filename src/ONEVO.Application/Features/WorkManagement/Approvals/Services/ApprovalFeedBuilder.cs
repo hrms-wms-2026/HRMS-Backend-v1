@@ -5,6 +5,7 @@ using ONEVO.Application.Features.WorkManagement.Hierarchy;
 using ONEVO.Application.Features.WorkManagement.ProjectInvitations.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
 using ONEVO.Domain.Features.WorkManagement.Approvals.Entities;
+using ONEVO.Domain.Features.WorkManagement.ProjectInvitations.Entities;
 using ONEVO.Domain.Features.WorkManagement.Projects.Entities;
 
 namespace ONEVO.Application.Features.WorkManagement.Approvals.Services;
@@ -41,6 +42,20 @@ public sealed class ApprovalFeedBuilder
         var all = await _requests.ListByProjectAsync(tenantId, project.Id, null, null, ct);
         var requests = all.Where(r => ApprovalFeedParticipants.CanSee(tree, r, caller)).ToList();
         var invitations = await _invitations.ListForProjectAndEmployeeAsync(tenantId, project.Id, caller, ct);
+        return await MapAsync(tenantId, project, tree, requests, invitations, caller, ct);
+    }
+
+    /// <summary>Rows for the given requests and invitations of one project as the caller would see them,
+    /// without the visibility filter - for people added to an item's conversation, who may view it.</summary>
+    public async Task<IReadOnlyList<ApprovalFeedEntry>> MapAsync(
+        Guid tenantId, Project project, IReadOnlyList<WorkApprovalRequest> requests,
+        IReadOnlyList<ProjectMemberInvitation> invitations, Guid caller, CancellationToken ct)
+        => await MapAsync(tenantId, project, await _hierarchy.LoadTreeAsync(tenantId, project.Id, ct), requests, invitations, caller, ct);
+
+    private async Task<IReadOnlyList<ApprovalFeedEntry>> MapAsync(
+        Guid tenantId, Project project, ProjectModuleTree tree, IReadOnlyList<WorkApprovalRequest> requests,
+        IReadOnlyList<ProjectMemberInvitation> invitations, Guid caller, CancellationToken ct)
+    {
         if (requests.Count == 0 && invitations.Count == 0)
             return [];
 
@@ -53,7 +68,6 @@ public sealed class ApprovalFeedBuilder
             .Concat(invitations.SelectMany(ApprovalFeedItemFactory.EmployeeIds))
             .Distinct().ToList();
         var names = await _identity.ResolveDisplayNamesByEmployeeIdAsync(tenantId, employeeIds, ct);
-
 
         var lookup = new ApprovalFeedLookup(tree, project.Name, names, taskModules);
         return requests.Select(r => new ApprovalFeedEntry(project.Id, ApprovalFeedItemFactory.FromRequest(r, caller, lookup), r))

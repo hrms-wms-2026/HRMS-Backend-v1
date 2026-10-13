@@ -9,6 +9,8 @@ using ONEVO.Application.Features.Conversations.Commands.PostConversationMessage;
 using ONEVO.Application.Features.Conversations.Contracts;
 using ONEVO.Application.Features.Conversations.DTOs;
 using ONEVO.Application.Features.Conversations.Queries.ListConversationMessages;
+using ONEVO.Application.Features.Conversations.Queries.SearchConversationPeople;
+using ONEVO.Application.Features.Conversations.RepositoryInterfaces;
 using ONEVO.Application.Features.Conversations.Services;
 using ONEVO.Application.Features.WorkManagement.Common.OutboxHandlers;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
@@ -369,6 +371,30 @@ public class ConversationHandlersTests
         Caller(Stranger);
 
         (await Add().Handle(new AddConversationParticipantsCommand(conversation.Id, new[] { Stranger }), default)).StatusCode.Should().Be(404);
+    }
+
+    // ---- People search (add members / add-and-tag) -------------------------------------------------
+
+    [Fact]
+    public async Task People_search_returns_active_colleagues_with_avatars_but_not_the_caller()
+    {
+        var directory = new Mock<IConversationPeopleDirectory>();
+        directory.Setup(d => d.SearchActiveAsync(TenantId, "pri", 21, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[] { Third, Requester });
+        var handler = new SearchConversationPeopleQueryHandler(_currentUser.Object, _identity.Object, directory.Object);
+
+        var result = await handler.Handle(new SearchConversationPeopleQuery("pri"), default);
+
+        result.Value!.Should().ContainSingle().Which.Should().Be(new ConversationPersonResponse(Third, "Priya", null));
+    }
+
+    [Fact]
+    public async Task People_search_needs_an_employee_record()
+    {
+        _identity.Setup(x => x.ResolveCallerEmployeeIdAsync(TenantId, UserId, It.IsAny<CancellationToken>())).ReturnsAsync((Guid?)null);
+        var handler = new SearchConversationPeopleQueryHandler(_currentUser.Object, _identity.Object, new Mock<IConversationPeopleDirectory>().Object);
+
+        (await handler.Handle(new SearchConversationPeopleQuery("x"), default)).StatusCode.Should().Be(403);
     }
 
     // ---- Read state ---------------------------------------------------------------------------

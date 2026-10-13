@@ -18,6 +18,7 @@ public sealed class WorkNotificationEngine : IWorkNotificationEngine
     public const string InboxSource = "work";
     public const string ApprovalInboxKind = "approval";
     public const string MonitorAlertInboxKind = "monitor_alert";
+    public const string InvitationInboxKind = "invitation";
 
     private readonly IWorkNotificationLogRepository _logs;
     private readonly IOutboxWriter _outbox;
@@ -98,13 +99,19 @@ public sealed class WorkNotificationEngine : IWorkNotificationEngine
         }
     }
 
-    public async Task InboxChangedAsync(
+    public Task InboxChangedAsync(
         Guid tenantId, IReadOnlyCollection<Guid> employeeIds, string kind, Guid id, CancellationToken ct = default)
+        => EnqueueInboxChangedAsync(_outbox, tenantId, employeeIds, kind, id, ct);
+
+    /// <summary>The inbox_changed outbox message, for Work code that writes to the outbox directly (module
+    /// invitations) rather than through NotifyAsync. Pushed after the surrounding transaction commits.</summary>
+    public static async Task EnqueueInboxChangedAsync(
+        IOutboxWriter outbox, Guid tenantId, IEnumerable<Guid> employeeIds, string kind, Guid id, CancellationToken ct = default)
     {
         var people = employeeIds.Where(e => e != Guid.Empty).Distinct().ToList();
         if (people.Count == 0)
             return;
-        await _outbox.EnqueueAsync(OutboxMessageTypes.InboxChanged, new InboxChangedPayload(tenantId, people, InboxSource, kind, id), tenantId, ct);
+        await outbox.EnqueueAsync(OutboxMessageTypes.InboxChanged, new InboxChangedPayload(tenantId, people, InboxSource, kind, id), tenantId, ct);
     }
 
     private static string DecisionWord(string kind) => kind switch

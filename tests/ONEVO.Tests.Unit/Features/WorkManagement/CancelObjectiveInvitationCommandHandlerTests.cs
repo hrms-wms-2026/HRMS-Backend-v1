@@ -1,3 +1,4 @@
+using ONEVO.Application.Features.Inbox.OutboxHandlers;
 using Moq;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
@@ -13,6 +14,8 @@ namespace ONEVO.Tests.Unit.Features.WorkManagement;
 
 public class CancelObjectiveInvitationCommandHandlerTests
 {
+    private readonly Mock<IOutboxWriter> _outbox = new();
+
     private static readonly Guid TenantId = Guid.NewGuid();
     private static readonly Guid SenderUserId = Guid.NewGuid();
     private static readonly Guid SenderEmployeeId = Guid.NewGuid();
@@ -48,7 +51,7 @@ public class CancelObjectiveInvitationCommandHandlerTests
         var unitOfWork = new Mock<IUnitOfWork>();
         unitOfWork.Setup(x => x.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
 
-        var handler = new CancelObjectiveInvitationCommandHandler(currentUser.Object, identity.Object, invitations.Object, unitOfWork.Object);
+        var handler = new CancelObjectiveInvitationCommandHandler(currentUser.Object, identity.Object, invitations.Object, unitOfWork.Object, _outbox.Object);
         return (handler, invitations);
     }
 
@@ -61,6 +64,12 @@ public class CancelObjectiveInvitationCommandHandlerTests
 
         Assert.True(result.IsSuccess);
         invitations.Verify(x => x.Update(It.Is<ProjectMemberInvitation>(i => i.Status == ProjectInvitationStatuses.Cancelled)), Times.Once);
+        var outbox = _outbox;
+        outbox.Verify(x => x.EnqueueAsync(
+            OutboxMessageTypes.InboxChanged,
+            It.Is<InboxChangedPayload>(p => p.Source == "work" && p.Kind == "invitation" && p.Id == InvitationId
+                && p.EmployeeIds.Contains(SenderEmployeeId)),
+            TenantId, It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]

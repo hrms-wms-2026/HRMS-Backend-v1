@@ -461,6 +461,8 @@ public static class DependencyInjection
         services.AddScoped<ONEVO.Infrastructure.Persistence.Repositories.Conversations.EfConversationRepository>();
         services.AddScoped<ONEVO.Application.Features.Conversations.RepositoryInterfaces.IConversationRepository>(sp =>
             sp.GetRequiredService<ONEVO.Infrastructure.Persistence.Repositories.Conversations.EfConversationRepository>());
+        services.AddScoped<ONEVO.Application.Features.Conversations.RepositoryInterfaces.IConversationPeopleDirectory,
+            ONEVO.Infrastructure.Persistence.Repositories.Conversations.EfConversationPeopleDirectory>();
         services.AddScoped<ONEVO.Application.Features.Conversations.Services.IConversationAccess,
             ONEVO.Application.Features.Conversations.Services.ConversationAccess>();
         services.AddScoped<ONEVO.Application.Features.Conversations.Services.ConversationResponseBuilder>();

@@ -27,9 +27,14 @@ public interface IConversationRepository
         Guid tenantId, IReadOnlyCollection<Guid> messageIds, CancellationToken ct = default);
 
     /// <summary>Per subject: messages not written by <paramref name="employeeId"/> and newer than that
-    /// employee's LastReadAt. Subjects with no conversation or nothing unread are absent.</summary>
+    /// employee's LastReadAt, for conversations the employee has a participant row in. Subjects with no
+    /// conversation, no row for the employee, or nothing unread are absent.</summary>
     Task<IReadOnlyDictionary<ItemRef, int>> CountUnreadAsync(
         Guid tenantId, Guid employeeId, IReadOnlyCollection<ItemRef> subjects, CancellationToken ct = default);
+
+    /// <summary>Items of <paramref name="source"/> whose conversation the employee was added to (not a base
+    /// member of) - those people can view the item and chat, so the item belongs in their Inbox.</summary>
+    Task<IReadOnlyList<ItemRef>> ListAddedSubjectsAsync(Guid tenantId, Guid employeeId, string source, CancellationToken ct = default);
 
     void Update(Conversation conversation);
     void UpdateParticipant(ConversationParticipant participant);

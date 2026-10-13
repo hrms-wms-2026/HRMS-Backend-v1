@@ -5,6 +5,8 @@ using Microsoft.EntityFrameworkCore;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Conversations.Contracts;
 using ONEVO.Domain.Features.Conversations.Entities;
+using ONEVO.Domain.Features.CoreHr.Entities;
+using ONEVO.Domain.Lookups;
 using ONEVO.Infrastructure.Identity.CurrentUser;
 using ONEVO.Infrastructure.Identity.Tenancy;
 using ONEVO.Infrastructure.Persistence;
@@ -163,7 +165,78 @@ public sealed class EfConversationRepositoryTests : IDisposable
         var counts = await new EfConversationRepository(read).CountUnreadAsync(TenantId, Me, new[] { subject, quiet, NewRef() });
 
         counts.Should().ContainSingle().Which.Should().Be(new KeyValuePair<ItemRef, int>(subject, 2));
-        (await new EfConversationRepository(read).CountUnreadAsync(TenantId, Other, new[] { subject }))[subject].Should().Be(2);
+    }
+
+    [Fact]
+    public async Task ListAddedSubjects_returns_the_source_items_where_the_employee_was_added()
+    {
+        var addedTo = NewRef();
+        var baseOf = NewRef();
+        var otherSource = new ItemRef("leave", "request", Guid.NewGuid());
+        await using (var db = CreateContext())
+        {
+            var repo = new EfConversationRepository(db);
+            foreach (var (subject, reason) in new[] { (addedTo, ConversationJoinReasons.Added), (baseOf, ConversationJoinReasons.Base), (otherSource, ConversationJoinReasons.Added) })
+            {
+                var c = await repo.GetOrCreateAsync(NewConversation(subject));
+                await repo.AddParticipantIfMissingAsync(new ConversationParticipant
+                {
+                    Id = Guid.NewGuid(), TenantId = TenantId, ConversationId = c.Id, EmployeeId = Me, JoinReason = reason, AddedAt = _clock.UtcNow
+                });
+            }
+        }
+
+        await using var read = CreateContext();
+        (await new EfConversationRepository(read).ListAddedSubjectsAsync(TenantId, Me, "work")).Should().Equal(addedTo);
+        (await new EfConversationRepository(read).ListAddedSubjectsAsync(TenantId, Other, "work")).Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task CountUnread_ignores_conversations_the_employee_is_not_a_participant_of()
+    {
+        var subject = NewRef();
+        var conversation = NewConversation(subject);
+        await using (var db = CreateContext())
+        {
+            var repo = new EfConversationRepository(db);
+            await repo.GetOrCreateAsync(conversation);
+            await repo.AddMessageAsync(NewMessage(conversation.Id, Me, "<p>hi</p>"), []);
+            conversation.LastMessageAt = _clock.UtcNow;
+            repo.Update(conversation);
+            await db.SaveChangesAsync();
+        }
+
+        await using var read = CreateContext();
+        (await new EfConversationRepository(read).CountUnreadAsync(TenantId, Other, new[] { subject })).Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task PeopleDirectory_finds_active_employees_of_the_tenant_by_name_regardless_of_reporting_line()
+    {
+        Employee E(string first, string last, int status = EmploymentStatusIds.Active, Guid? tenant = null) => new()
+        {
+            Id = Guid.NewGuid(), TenantId = tenant ?? TenantId, UserId = Guid.NewGuid(), EmployeeNumber = first,
+            FirstName = first, LastName = last, Email = first + "@example.com", EmploymentStatusId = status,
+            HireDate = new DateOnly(2026, 1, 1)
+        };
+        var priya = E("Priya", "Raj");
+        var priyanka = E("Priyanka", "Das");
+        var leaver = E("Priyam", "Gone", EmploymentStatusIds.Terminated);
+        var otherTenant = E("Priya", "Elsewhere", tenant: Guid.NewGuid());
+        var bala = E("Bala", "Kumar");
+        await using (var db = CreateContext())
+        {
+            db.Employees.AddRange(priya, priyanka, leaver, otherTenant, bala);
+            await db.SaveChangesAsync();
+        }
+
+        await using var read = CreateContext();
+        var directory = new EfConversationPeopleDirectory(read);
+
+        (await directory.SearchActiveAsync(TenantId, "pri", 20)).Should().BeEquivalentTo(new[] { priya.Id, priyanka.Id });
+        (await directory.SearchActiveAsync(TenantId, "das", 20)).Should().Equal(priyanka.Id);
+        (await directory.SearchActiveAsync(TenantId, "priya raj", 20)).Should().Equal(priya.Id);
+        (await directory.SearchActiveAsync(TenantId, null, 2)).Should().HaveCount(2);
     }
 
     private ApplicationDbContext CreateContext()
