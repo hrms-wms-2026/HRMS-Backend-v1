@@ -85,19 +85,29 @@ All findings below were verified against `development` on 2026-10-13. Line numbe
 
 #### 3.2.2 Online-meeting provisioning, cancellation and email idempotency (P1-5, X-1, X-2, X-3)
 
-- **Link generation.** Each event gets a `meeting_link_generation` counter (starts at 1, incremented whenever a link is removed). A retry of the same create reuses the current generation; a genuinely new link after removal uses the next one.
-- **Durable provisioning state.** `CreateEventMeeting` first saves a `calendar_event_meetings` row with `status = provisioning`, the generation, and the organizer's connection ID. Then it calls the provider. The result is classified as below; every non-success outcome also triggers the P1-5 fallback (invites without a link + an organizer notice).
+- **Link generation.** `calendar_event_meetings` gets a `link_generation` column (starts at 1, incremented whenever a link is removed and a new one is created). A retry of the same create reuses the current generation; a genuinely new link uses the next one.
+- **One provisioner per event (concurrency, verified).** `calendar_event_meetings` already has a **unique index on `calendar_event_id`**: one meeting row per event. Provisioning ownership is claimed atomically on that row before any provider call:
+  - No row → `INSERT … status = provisioning`. A concurrent second request hits the unique index and loses.
+  - Row in `failed` or `cancelled` → a conditional `UPDATE … SET status = provisioning, link_generation = link_generation + 1 WHERE id = … AND status IN ('failed','cancelled') RETURNING …`. Exactly one request gets a row back.
+  - The losing request makes **no provider call**. It returns the current row (`provisioning` → 409 "A meeting link is already being created"; `active` → the existing link).
+- **Durable provisioning state.** After winning the claim, `CreateEventMeeting` saves the row (`status = provisioning`, generation, the organizer's connection ID), then calls the provider. The result is classified as below; every non-success outcome also triggers the P1-5 fallback (invites without a link + an organizer notice).
 
   | Provider outcome | Class | Row status | Retry |
   |---|---|---|---|
   | 2xx with meeting ID | success | `active` | — |
   | 401 | auth | refresh the token once (CAL-01 classifier) and retry once; still 401 → `failed` | no |
-  | 429 | transient | stays `provisioning` | honour `Retry-After`, at most 3 attempts in the request, then `provisioning_unknown` |
+  | 429 | transient, **nothing created** | stays `provisioning` | honour `Retry-After`; **3 attempts total** in the request. Still 429 → `failed` (reason `rate_limited`, safe to retry: the provider rejected the request). |
   | 400 / 403 / 404 / not connected / missing scope | permanent | `failed` | no |
   | timeout / 5xx / connection reset | **ambiguous**: the meeting may exist remotely | `provisioning_unknown` | Teams: safe to retry (below). Zoom: no automatic retry. |
 
 - **Teams is idempotent at the provider.** Create with Graph `POST /me/onlineMeetings/createOrGet` and `externalId = {eventId}:{generation}`. Retrying the same generation returns the same meeting; a new generation creates a new one. `createOrGet` is scoped to the signed-in organizer, so a different organizer always gets a different meeting. *The plan verifies that the existing `OnlineMeetings.ReadWrite` scope covers it, and that a removed (deleted) meeting's `externalId` is not returned again.*
-- **Zoom has no provider idempotency, so we correlate explicitly.** Every Zoom meeting we create carries the token `onexso:{eventId}:{generation}` in its `agenda`. After an ambiguous failure, an organizer retry first lists their upcoming meetings and adopts one **only if the token matches exactly**. No token match → create a new meeting. Topic or time is never used to match. If the list call can't return `agenda`, it fetches the details of same-day candidates. If correlation still isn't possible, the organizer is shown "a Zoom meeting may already exist; check Zoom before creating another" and confirms before we create one.
+- **Zoom has no provider idempotency, so we correlate explicitly.** Every Zoom meeting we create carries the token `onexso:{eventId}:{generation}` in its `agenda`.
+  - After an ambiguous failure, an organizer retry first lists their meetings with `GET /users/me/meetings?type=scheduled`, following `next_page_token` to the last page. It does **not** use `/users/{id}/upcoming_meetings`, which only covers the next 24 hours.
+  - It adopts a meeting **only if the token matches exactly**. No token match → create a new meeting. Topic or time is never used to match.
+  - If the list response doesn't include `agenda`, it fetches details (`GET /meetings/{id}`) for meetings whose start date equals the event's.
+  - If correlation still isn't possible, the organizer is shown "A Zoom meeting may already exist; check Zoom before creating another" and confirms before we create one.
+  - *This is new client code (today's `ZoomMeetingClient` only creates, deletes and reads past participants). The plan verifies the endpoint and fields against Zoom's API reference.*
+- **How long `provisioning_unknown` lasts.** It is only reached after a timeout, 5xx or connection reset. There is **no background job** (SCL-01). The row stays `provisioning_unknown` and the event shows "Meeting link status unknown" with **Retry** and **Remove**. Retry is safe: Teams via `createOrGet`, Zoom via token correlation. Remove cancels the generation. Invites have already gone out without a link (P1-5), so nobody is left uninvited meanwhile. Once the event has ended, the row is moved to `failed` the next time it's read, so it doesn't linger.
 - **Self-contained cancellation (X-2).** The outbox payload carries everything the cancel needs after the local row is gone: `tenantId, provider, externalMeetingId, externalCalendarConnectionId, organizerEmployeeId, eventTitle`. Transient failures retry through the outbox's existing backoff. If the connection no longer exists, or the provider permanently refuses, the message is **parked as `Failed`** (the outbox's existing dead-letter state, never silently dropped). The organizer gets an in-app notice: "We couldn't cancel the {provider} meeting for '{title}'. Please delete it in {provider}."
 - **Email idempotency keys (X-1), one per operation and recipient instance:**
   - `invite:{participantRowId|guestRowId}`
@@ -106,7 +116,9 @@ All findings below were verified against `development` on 2026-10-13. Line numbe
   - `cancel:{eventId}:{occurrenceStart|series}:{recipient}`
   - `link-removed:{meetingId}:{recipient}`
 
-  Row IDs are new on every add, so a participant removed and added again gets a fresh invite, while a retried request doesn't. `revision` is the event's update counter, so every genuine update still emails. Keys are checked through the existing `IIdempotencyStore`. *The plan verifies its TTL is long enough.*
+  Row IDs are new on every add, so a participant removed and added again gets a fresh invite, while a retried request doesn't. `revision` is the event's update counter, so every genuine update still emails.
+
+  **Atomic dedupe (verified: `outbox_messages` has no dedupe column today).** Add a nullable `deduplication_key` column with a **unique index** (filtered `is not null`). The key is written on the outbox row in the same transaction as the business change. A duplicate insert hits the unique index; the writer treats that as "already queued" and continues. So the check and the enqueue are a single atomic database operation, and concurrent requests or workers can't both queue the email. `IIdempotencyStore` (an HTTP-request cache with a TTL) is **not** used for this.
 
 ### 3.3 Out of scope for Phase 0 (owned by the exception-engine work)
 
@@ -125,7 +137,13 @@ P1-1 (RSVP history), P1-6 (integration-health notices), P2-1 (`.ics`), P2-2 (rem
   | 401 → refresh → 2xx | `active`, one token refresh |
   | 401 → refresh → 401 | `failed`, fallback invites, organizer notice |
   | 429 ×2 → 2xx | `active` after waits |
-  | 429 ×4 | `provisioning_unknown`, fallback |
+  | 429 ×3 | `failed` (`rate_limited`), fallback; a later retry provisions normally |
+  | two concurrent first-time creates for one event | exactly one provider call and one meeting; the other request gets 409 "already being created" |
+  | concurrent re-create after `failed` | one wins the conditional update; one provider call |
+  | `provisioning_unknown`, event already ended, row read | moved to `failed` |
+  | same email key enqueued by two concurrent requests | one outbox row (unique index), no error to the caller |
+  | Teams report exists, records span several pages | all pages stored; `synced` |
+  | Teams report exists, zero records **after reading every page** | `synced` with 0 rows (nobody joined) |
   | timeout, Teams retry | same `externalId` → same meeting adopted, no second set of invites |
   | timeout, Zoom retry with matching token | meeting adopted, not duplicated |
   | timeout, Zoom retry, no token match | new meeting created |
@@ -237,6 +255,7 @@ P1-1 (RSVP history), P1-6 (integration-health notices), P2-1 (`.ics`), P2-2 (rem
 | Attendance status | Consume `attendance_sync_status`. `attendance_unavailable` / `sync_failed` mean unknown, not no-show. |
 | Frontend company filter | Office project visibility for employees of other companies (§4.2). |
 | Exception-engine coordination | Order of landing with the calendar exception engine (reads attendance by event ID). |
+| Meeting creation form | **One shared form component** used by both the Calendar and (Phase 3) the planner. It covers project/Office selection, module, bulk participant picker, guests, Teams/Zoom, recurrence, privacy, and action items. Phase 0/1 only adds the P1-5 failure message to today's form. |
 
 - **Phase 3 — Daily planner** (B11, B12). One timeline: meetings, planned task blocks (new table), a synced-event busy overlay, and due/overdue tasks. Plan vs actual against clocked hours.
 - **Later:** transcript-based action-item suggestions; SCL-01 locking for any new background job.
