@@ -142,6 +142,18 @@ public class WorkNotificationEngineTests
     }
 
     [Fact]
+    public async Task A_monitor_alert_notification_links_to_the_alert_inbox_item()
+    {
+        var alertId = Guid.NewGuid();
+        await Build().NotifyAsync(new WorkNotificationEvent(TenantId, ProjectId, Guid.Empty, WorkNotificationKinds.Alert,
+            "monitor.task_overdue", "task", Guid.NewGuid(), "Audit events", null, [Owner], MonitorAlertId: alertId));
+
+        _enqueued.Should().ContainSingle();
+        _enqueued[0].RelatedEntityType.Should().Be("monitor_alert");
+        _enqueued[0].RelatedEntityId.Should().Be(alertId);
+    }
+
+    [Fact]
     public async Task A_monitor_alert_event_refreshes_the_alert_item()
     {
         var alertId = Guid.NewGuid();

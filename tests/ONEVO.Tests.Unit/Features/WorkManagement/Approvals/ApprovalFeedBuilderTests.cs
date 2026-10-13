@@ -2,7 +2,6 @@ using FluentAssertions;
 using Moq;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Approvals.DTOs;
-using ONEVO.Application.Features.WorkManagement.Approvals.Queries.GetProjectApprovalFeed;
 using ONEVO.Application.Features.WorkManagement.Approvals.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Approvals.Services;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
@@ -18,7 +17,8 @@ using Xunit;
 
 namespace ONEVO.Tests.Unit.Features.WorkManagement.Approvals;
 
-public class GetProjectApprovalFeedQueryHandlerTests
+/// <summary>Visibility and row mapping of the approval feed (shared by the Inbox's Work provider).</summary>
+public class ApprovalFeedBuilderTests
 {
     private static readonly Guid TenantId = Guid.NewGuid();
     private static readonly Guid ProjectId = Guid.NewGuid();
@@ -40,7 +40,7 @@ public class GetProjectApprovalFeedQueryHandlerTests
     private readonly List<WorkApprovalRequest> _rows = new();
     private readonly List<ProjectMemberInvitation> _invites = new();
 
-    public GetProjectApprovalFeedQueryHandlerTests()
+    public ApprovalFeedBuilderTests()
     {
         _currentUser.SetupGet(x => x.IsAuthenticated).Returns(true);
         _currentUser.SetupGet(x => x.TenantId).Returns(TenantId);
@@ -62,8 +62,9 @@ public class GetProjectApprovalFeedQueryHandlerTests
             .ReturnsAsync(new Dictionary<Guid, Guid>());
     }
 
-    private void Caller(Guid employeeId)
-        => _identity.Setup(x => x.ResolveCallerEmployeeIdAsync(TenantId, UserId, It.IsAny<CancellationToken>())).ReturnsAsync(employeeId);
+    private Guid _caller;
+
+    private void Caller(Guid employeeId) => _caller = employeeId;
 
     private WorkApprovalRequest Add(Guid position, string status = WorkApprovalRequestStatuses.Pending, DateTimeOffset? createdAt = null)
     {
@@ -78,15 +79,13 @@ public class GetProjectApprovalFeedQueryHandlerTests
         return r;
     }
 
-    private GetProjectApprovalFeedQueryHandler Build() => new(
-        _currentUser.Object, _identity.Object, _projects.Object,
-        new ApprovalFeedBuilder(_identity.Object, _requests.Object, _hierarchy.Object, _invitations.Object, _tasks.Object));
+    private ApprovalFeedBuilder Build() => new(_identity.Object, _requests.Object, _hierarchy.Object, _invitations.Object, _tasks.Object);
 
     private async Task<IReadOnlyList<ApprovalFeedItemResponse>> Run()
     {
-        var result = await Build().Handle(new GetProjectApprovalFeedQuery(ProjectId), default);
-        result.IsSuccess.Should().BeTrue();
-        return result.Value!;
+        var entries = await Build().BuildAsync(TenantId, new Project { Id = ProjectId, Name = "Apollo" }, _caller, default);
+        entries.Should().AllSatisfy(e => e.ProjectId.Should().Be(ProjectId));
+        return entries.Select(e => e.Item).ToList();
     }
 
     [Fact]
@@ -204,17 +203,6 @@ public class GetProjectApprovalFeedQueryHandlerTests
     }
 
     [Fact]
-    public async Task Pending_rows_come_first_then_newest()
-    {
-        Caller(Requester);
-        var decidedNewest = Add(_p, WorkApprovalRequestStatuses.Approved, DateTimeOffset.UtcNow);
-        var pendingOld = Add(_p, createdAt: DateTimeOffset.UtcNow.AddDays(-5));
-        var pendingNew = Add(_p, createdAt: DateTimeOffset.UtcNow.AddDays(-1));
-
-        (await Run()).Select(i => i.Id).Should().Equal(pendingNew.Id, pendingOld.Id, decidedNewest.Id);
-    }
-
-    [Fact]
     public async Task Task_edit_row_gets_its_module_from_the_task()
     {
         Caller(Requester);
@@ -259,12 +247,4 @@ public class GetProjectApprovalFeedQueryHandlerTests
         (await Run()).Single().Summary.Should().Be("+35h - scope grew");
     }
 
-    [Fact]
-    public async Task Missing_project_returns_404()
-    {
-        Caller(Requester);
-        _projects.Setup(x => x.GetByIdForTenantAsync(TenantId, ProjectId, It.IsAny<CancellationToken>())).ReturnsAsync((Project?)null);
-
-        (await Build().Handle(new GetProjectApprovalFeedQuery(ProjectId), default)).StatusCode.Should().Be(404);
-    }
 }

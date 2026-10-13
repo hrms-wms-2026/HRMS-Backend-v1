@@ -5,7 +5,6 @@ using ONEVO.Api.Filters;
 using ONEVO.Application.Features.WorkManagement.Approvals.Commands.DecideWorkApprovalRequest;
 using ONEVO.Application.Features.WorkManagement.Approvals.Commands.RevertWorkApprovalRequest;
 using ONEVO.Application.Features.WorkManagement.Approvals.Queries.GetApprovalDetail;
-using ONEVO.Application.Features.WorkManagement.Approvals.Queries.GetProjectApprovalFeed;
 using ONEVO.Application.Features.WorkManagement.Approvals.Queries.ListProjectWorkApprovals;
 using ONEVO.Application.Features.WorkManagement.Notifications.Queries.ListProjectWorkNotifications;
 
@@ -14,8 +13,8 @@ namespace ONEVO.Api.Controllers.Tenant.WorkManagement;
 public sealed record ApproveWorkApprovalRequestRequest(string? EditedPayloadJson, string? Comment);
 public sealed record RejectWorkApprovalRequestRequest(string? Comment);
 
-/// <summary>The unified Work Management approval inbox and project notification history, backed by
-/// the approval and notification engines.</summary>
+/// <summary>Decisions on Work Management approval requests (the request list itself is the Inbox, api/v1/inbox)
+/// and the project notification history, backed by the approval and notification engines.</summary>
 [ApiController]
 [Route("api/v1/work")]
 [Authorize(Policy = "TenantPolicy")]
@@ -29,11 +28,6 @@ public class WorkApprovalsController : ControllerBase
     [HttpGet("projects/{projectId:guid}/approvals")]
     public async Task<IActionResult> List(Guid projectId, [FromQuery] string scope = "inbox", [FromQuery] string? status = null, CancellationToken ct = default)
         => ToResult(await _mediator.Send(new ListProjectWorkApprovalsQuery(projectId, scope, status), ct));
-
-    /// <summary>Every request the caller sent or received in this project (engine requests + module invitations), pending first.</summary>
-    [HttpGet("projects/{projectId:guid}/approval-feed")]
-    public async Task<IActionResult> Feed(Guid projectId, CancellationToken ct)
-        => ToResult(await _mediator.Send(new GetProjectApprovalFeedQuery(projectId), ct));
 
     /// <summary>The explanation card of one row: field diff (current / requested / applied), invitation detail, permissions.</summary>
     [HttpGet("approvals/{id:guid}")]

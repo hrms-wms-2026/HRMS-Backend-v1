@@ -82,12 +82,6 @@ internal static class ApprovalFeedItemFactory
         _ => WorkApprovalRequestStatuses.Pending
     };
 
-    /// <summary>Pending first, then newest first.</summary>
-    public static IReadOnlyList<ApprovalFeedItemResponse> Sort(IEnumerable<ApprovalFeedItemResponse> items)
-        => items.OrderBy(i => i.Status == WorkApprovalRequestStatuses.Pending ? 0 : 1)
-            .ThenByDescending(i => i.CreatedAt)
-            .ToList();
-
     private static Guid? ResolveModuleId(WorkApprovalRequest r, System.Text.Json.JsonElement? payload, ApprovalFeedLookup lookup)
     {
         if (r.TargetType == WorkTargetTypes.Module)

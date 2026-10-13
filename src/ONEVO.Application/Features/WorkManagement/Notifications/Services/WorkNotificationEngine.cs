@@ -68,9 +68,12 @@ public sealed class WorkNotificationEngine : IWorkNotificationEngine
             WorkNotificationKinds.Requested => RequestedTemplate,
             _ => DecidedTemplate,
         };
+        // A click opens the item in the Inbox: the request, or the alert itself (it links on to its target).
         var (relatedType, relatedId) = e.ApprovalRequestId is { } requestId
             ? (ApprovalRelatedEntityType, (Guid?)requestId)
-            : (e.TargetType, e.TargetId);
+            : e.Kind == WorkNotificationKinds.Alert && e.MonitorAlertId is { } monitorAlertId
+                ? (MonitorAlertInboxKind, (Guid?)monitorAlertId)
+                : (e.TargetType, e.TargetId);
 
         foreach (var recipientId in recipients)
         {

@@ -13,8 +13,8 @@ namespace ONEVO.Application.Features.WorkManagement.Approvals.Services;
 public sealed record ApprovalFeedEntry(Guid ProjectId, ApprovalFeedItemResponse Item, WorkApprovalRequest? Request);
 
 /// <summary>Every request the caller sent or received in one project (engine requests they can see under
-/// ApprovalFeedParticipants + module invitations they sent or received). Shared by the project feed and
-/// the user-scoped Inbox so both apply the same visibility rules.</summary>
+/// ApprovalFeedParticipants + module invitations they sent or received). Used by
+/// the Inbox's Work provider, which applies these visibility rules across every project the caller sees.</summary>
 public sealed class ApprovalFeedBuilder
 {
     private readonly ICallerIdentityResolver _identity;
@@ -34,7 +34,7 @@ public sealed class ApprovalFeedBuilder
         _tasks = tasks;
     }
 
-    /// <summary>Unsorted; use ApprovalFeedItemFactory.Sort for the Approvals-page order.</summary>
+    /// <summary>Unsorted - the inbox router orders items.</summary>
     public async Task<IReadOnlyList<ApprovalFeedEntry>> BuildAsync(Guid tenantId, Project project, Guid caller, CancellationToken ct)
     {
         var tree = await _hierarchy.LoadTreeAsync(tenantId, project.Id, ct);
