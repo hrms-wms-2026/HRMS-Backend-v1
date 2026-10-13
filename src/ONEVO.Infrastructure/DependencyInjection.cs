@@ -653,6 +653,9 @@ public static class DependencyInjection
         services.AddScoped<IActivitySnapshotRepository, EfActivitySnapshotRepository>();
         services.AddScoped<IActivityRawBufferRepository, EfActivityRawBufferRepository>();
         services.AddScoped<IAppUsageSnapshotRepository, EfAppUsageSnapshotRepository>();
+        services.AddScoped<
+            ONEVO.Application.Features.DevPlatform.AppCatalog.RepositoryInterfaces.IGlobalApplicationRepository,
+            ONEVO.Infrastructure.Persistence.Repositories.DevPlatform.AppCatalog.EfGlobalApplicationRepository>();
         services.AddScoped<IDeviceStateSnapshotRepository, EfDeviceStateSnapshotRepository>();
         services.AddScoped<
             ONEVO.Application.Features.Monitoring.Notifications.RepositoryInterfaces.INotificationRepository,
@@ -660,6 +663,9 @@ public static class DependencyInjection
         services.AddScoped<
             ONEVO.Application.Features.Monitoring.Meetings.RepositoryInterfaces.IMeetingSignalRepository,
             ONEVO.Infrastructure.Persistence.Repositories.Monitoring.Meetings.EfMeetingSignalRepository>();
+        services.AddScoped<
+            ONEVO.Application.Features.Monitoring.Meetings.RepositoryInterfaces.IMeetingComplianceReadRepository,
+            ONEVO.Infrastructure.Persistence.Repositories.Monitoring.Meetings.EfMeetingComplianceReadRepository>();
         services.AddScoped<
             ONEVO.Application.Features.Monitoring.Biometrics.RepositoryInterfaces.IBiometricEnrollmentAttemptRepository,
             ONEVO.Infrastructure.Persistence.Repositories.Monitoring.Biometrics.EfBiometricEnrollmentAttemptRepository>();
@@ -836,6 +842,7 @@ public static class DependencyInjection
         services.AddHostedService<DapiOrgStructureSeeder>();
         services.AddHostedService<DapiLeaveSampleSeeder>();
         services.AddHostedService<DapiAttendanceDemoSeeder>();
+        services.AddHostedService<DapiHistorySeeder>();
         services.AddHostedService<PlatformOAuthProviderMetadataSeeder>();
         services.AddHostedService<WorkManagementSampleDataSeeder>();
         services.AddHostedService<DapiDueTodayTaskSeeder>();

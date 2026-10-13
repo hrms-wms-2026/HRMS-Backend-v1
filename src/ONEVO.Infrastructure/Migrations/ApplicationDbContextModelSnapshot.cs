@@ -3336,6 +3336,85 @@ namespace ONEVO.Infrastructure.Migrations
                     b.ToTable("position_assignments", (string)null);
                 });
 
+            modelBuilder.Entity("ONEVO.Domain.Features.DevPlatform.AppCatalog.Entities.GlobalApplication", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("AppName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("app_name");
+
+                    b.Property<string>("Category")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("category");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedById")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by_id");
+
+                    b.Property<DateTimeOffset>("FirstSeenAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("first_seen_at");
+
+                    b.Property<bool>("IsProductiveDefault")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_productive_default");
+
+                    b.Property<bool>("IsPublic")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_public");
+
+                    b.Property<DateTimeOffset>("LastSeenAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_seen_at");
+
+                    b.Property<byte[]>("Logo")
+                        .HasColumnType("bytea")
+                        .HasColumnName("logo");
+
+                    b.Property<string>("LogoContentType")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("logo_content_type");
+
+                    b.Property<string>("ProcessName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("process_name");
+
+                    b.Property<string>("Publisher")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("publisher");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_global_app_catalog");
+
+                    b.HasIndex("ProcessName")
+                        .IsUnique()
+                        .HasDatabaseName("ux_global_app_catalog_process_name");
+
+                    b.HasIndex("Category", "LastSeenAt")
+                        .HasDatabaseName("ix_global_app_catalog_category_last_seen");
+
+                    b.ToTable("global_app_catalog", (string)null);
+                });
+
             modelBuilder.Entity("ONEVO.Domain.Features.DevPlatform.Compliance.Entities.LegalDocumentVersion", b =>
                 {
                     b.Property<Guid>("Id")

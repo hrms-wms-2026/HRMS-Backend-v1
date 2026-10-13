@@ -775,7 +775,8 @@ public sealed class DevSmokeTestTenantSeederTests : IDisposable
 
         acmeSubscription.IncludedSeats.Should().Be(25);
         acmeSubscription.OverageAllowed.Should().BeFalse();
-        dapiSubscription.IncludedSeats.Should().Be(25);
+        // Dapi carries a larger tenant-specific minimum for its history/demo seeder roster.
+        dapiSubscription.IncludedSeats.Should().Be(50);
         dapiSubscription.OverageAllowed.Should().BeFalse();
     }
 
