@@ -88,9 +88,12 @@ All findings below were verified against `development` on 2026-10-13. Line numbe
 - **Link generation.** `calendar_event_meetings` gets a `link_generation` column (starts at 1, incremented whenever a link is removed and a new one is created). A retry of the same create reuses the current generation; a genuinely new link uses the next one.
 - **One provisioner per event (concurrency, verified).** `calendar_event_meetings` already has a **unique index on `calendar_event_id`**: one meeting row per event. Provisioning ownership is claimed atomically on that row before any provider call:
   - No row → `INSERT … status = provisioning`. A concurrent second request hits the unique index and loses.
-  - Row in `failed` or `cancelled` → a conditional `UPDATE … SET status = provisioning, link_generation = link_generation + 1 WHERE id = … AND status IN ('failed','cancelled') RETURNING …`. Exactly one request gets a row back.
+  - Row in `failed` or `cancelled` → a conditional `UPDATE … SET status = provisioning, link_generation = link_generation + 1, provisioning_started_at = now() WHERE id = … AND status IN ('failed','cancelled') RETURNING …`. Exactly one request gets a row back.
+  - Row **stuck in `provisioning`** (the request crashed, or its final save failed after the provider call) → claimable only once it is **stale**: `provisioning_started_at < now() − 5 min`. The claim is `UPDATE … SET status = provisioning_unknown WHERE id = … AND status = 'provisioning' AND provisioning_started_at < now() − interval '5 min' RETURNING …`. Recovery then follows the `provisioning_unknown` path below, with the **same generation**, so Teams `createOrGet` and the Zoom token find the meeting the crashed request may have created.
+  - Row in `provisioning_unknown` → claimable by an explicit organizer **Retry** (same generation).
+  - Row in **`unresolved`** (see below) → **not claimable**. The organizer must first confirm the old meeting was cleaned up ("I've deleted it in Zoom/Teams" → `cancelled`). The single row per event holds only one generation's correlation data, so a new generation would lose the stray meeting's details.
   - The losing request makes **no provider call**. It returns the current row (`provisioning` → 409 "A meeting link is already being created"; `active` → the existing link).
-- **Durable provisioning state.** After winning the claim, `CreateEventMeeting` saves the row (`status = provisioning`, generation, the organizer's connection ID), then calls the provider. The result is classified as below; every non-success outcome also triggers the P1-5 fallback (invites without a link + an organizer notice).
+- **Durable provisioning state.** After winning the claim, `CreateEventMeeting` saves the row (`status = provisioning`, generation, `provisioning_started_at`, the organizer's connection ID), then calls the provider. **A request's total provider time is capped at 90 s**: the HTTP timeout, the 429 `Retry-After` waits (capped per wait and in total) and the 401 refresh all count. So a healthy request always finishes well before the 5-minute stale threshold, and a stale claim can't race a request that is still running. The result is classified as below; every non-success outcome also triggers the P1-5 fallback (invites without a link + an organizer notice).
 
   | Provider outcome | Class | Row status | Retry |
   |---|---|---|---|
@@ -107,16 +110,23 @@ All findings below were verified against `development` on 2026-10-13. Line numbe
   - If the list response doesn't include `agenda`, it fetches details (`GET /meetings/{id}`) for meetings whose start date equals the event's.
   - If correlation still isn't possible, the organizer is shown "A Zoom meeting may already exist; check Zoom before creating another" and confirms before we create one.
   - *This is new client code (today's `ZoomMeetingClient` only creates, deletes and reads past participants). The plan verifies the endpoint and fields against Zoom's API reference.*
-- **How long `provisioning_unknown` lasts.** It is only reached after a timeout, 5xx or connection reset. There is **no background job** (SCL-01). The row stays `provisioning_unknown` and the event shows "Meeting link status unknown" with **Retry** and **Remove**. Retry is safe: Teams via `createOrGet`, Zoom via token correlation. Remove cancels the generation. Invites have already gone out without a link (P1-5), so nobody is left uninvited meanwhile. Once the event has ended, the row is moved to `failed` the next time it's read, so it doesn't linger.
+- **`provisioning_unknown`: lifetime, Retry and Remove.** It is reached after a timeout, 5xx or connection reset, or by stale-claim recovery. There is **no background job** (SCL-01). The row keeps the generation, the connection ID and (for Zoom) the correlation token, and the event shows "Meeting link status unknown" with **Retry** and **Remove**. Invites have already gone out without a link (P1-5), so nobody is left uninvited meanwhile.
+  - **Retry:** Teams via `createOrGet` (same `externalId`); Zoom via token correlation, then create if none is found.
+  - **Remove resolves the remote side first**, because ONEXSO may not know the external meeting ID:
+    - **Teams:** call `createOrGet` with the same `externalId`. This returns the meeting if it exists, or creates it if not, and either way gives us its ID. Then delete it → `cancelled`. Since no link was ever sent, an extra create-then-delete is invisible to users.
+    - **Zoom:** run the token correlation. Match found → delete it → `cancelled`. Complete list read with no match → nothing exists remotely → `cancelled`.
+    - **Correlation impossible** (provider/list call fails, connection gone, scope missing) → status **`unresolved`**. Its correlation data is kept, and the organizer is warned: "A {provider} meeting for '{title}' may still exist. Please check and delete it in {provider}, then confirm here."
+  - **Event ended while still `provisioning_unknown`** (applied lazily, the next time the row is read) → **`unresolved`**, not `failed`. The stray-meeting information is kept and the organizer gets the same warning. A past meeting that may exist remotely is still cleanup work, not a failure to forget.
+  - **`unresolved` is left only by the organizer's confirmation** ("I've deleted it" → `cancelled`). Only after that can a new link generation be claimed.
 - **Self-contained cancellation (X-2).** The outbox payload carries everything the cancel needs after the local row is gone: `tenantId, provider, externalMeetingId, externalCalendarConnectionId, organizerEmployeeId, eventTitle`. Transient failures retry through the outbox's existing backoff. If the connection no longer exists, or the provider permanently refuses, the message is **parked as `Failed`** (the outbox's existing dead-letter state, never silently dropped). The organizer gets an in-app notice: "We couldn't cancel the {provider} meeting for '{title}'. Please delete it in {provider}."
 - **Email idempotency keys (X-1), one per operation and recipient instance:**
   - `invite:{participantRowId|guestRowId}`
-  - `link:{meetingId}:{participantRowId|guestRowId}`
+  - `link:{meetingId}:{generation}:{participantRowId|guestRowId}`
   - `update:{eventId}:{revision}:{recipient}`
   - `cancel:{eventId}:{occurrenceStart|series}:{recipient}`
-  - `link-removed:{meetingId}:{recipient}`
+  - `link-removed:{meetingId}:{generation}:{recipient}`
 
-  Row IDs are new on every add, so a participant removed and added again gets a fresh invite, while a retried request doesn't. `revision` is the event's update counter, so every genuine update still emails.
+  Row IDs are new on every add, so a participant removed and added again gets a fresh invite, while a retried request doesn't. The meeting row (and its `meetingId`) is **reused across link generations** (one row per event). That's why the link and link-removed keys carry the **generation**: a second link after a removal, or a second removal, is a new email; a retry of the same generation is not. `revision` is the event's update counter, so every genuine update still emails.
 
   **Atomic dedupe (verified: `outbox_messages` has no dedupe column today).** Add a nullable `deduplication_key` column with a **unique index** (filtered `is not null`). Keyed messages are **not** staged as tracked entities, because a unique violation during `SaveChangesAsync` would fail the whole save, business change included. Instead the outbox writer runs `INSERT … ON CONFLICT (deduplication_key) DO NOTHING` immediately, **inside the handler's open transaction** (`ExecuteInTransactionAsync`). The writer refuses to enqueue a keyed message when no transaction is active, so a keyed email can never commit separately from its business change. A duplicate becomes a silent no-op, the business change still commits, and concurrent requests or workers can't both queue the same email. Unkeyed messages keep today's staging behaviour. `IIdempotencyStore` (an HTTP-request cache with a TTL) is **not** used for this.
 
@@ -140,14 +150,22 @@ P1-1 (RSVP history), P1-6 (integration-health notices), P2-1 (`.ics`), P2-2 (rem
   | 429 ×3 | `failed` (`rate_limited`), fallback; a later retry provisions normally |
   | two concurrent first-time creates for one event | exactly one provider call and one meeting; the other request gets 409 "already being created" |
   | concurrent re-create after `failed` | one wins the conditional update; one provider call |
-  | `provisioning_unknown`, event already ended, row read | moved to `failed` |
+  | `provisioning_unknown`, event already ended, row read | moved to `unresolved` (not `failed`), correlation data kept, organizer warned |
   | same email key enqueued by two concurrent requests | one outbox row (unique index), no error to the caller |
   | Teams report exists, records span several pages | all pages stored; `synced` |
   | Teams report exists, zero records **after reading every page** | `synced` with 0 rows (nobody joined) |
   | timeout, Teams retry | same `externalId` → same meeting adopted, no second set of invites |
   | timeout, Zoom retry with matching token | meeting adopted, not duplicated |
   | timeout, Zoom retry, no token match | new meeting created |
-  | provider success, then local save fails | next retry adopts (Teams by `externalId`, Zoom by token); no orphan or duplicate |
+  | provider success, then local save fails (row left `provisioning`) | within 5 min: further requests get 409 and make no provider call. After 5 min: stale claim → `provisioning_unknown` → Retry adopts (Teams by `externalId`, Zoom by token); no orphan or duplicate |
+  | stale-claim attempt while the original request is still inside its 90 s budget | the claim's `WHERE` doesn't match; no second provider call |
+  | two concurrent stale claims | exactly one wins the conditional update |
+  | Remove on `provisioning_unknown`, Teams | `createOrGet` (same `externalId`) then delete → `cancelled` |
+  | Remove on `provisioning_unknown`, Zoom, token match | remote meeting deleted → `cancelled` |
+  | Remove on `provisioning_unknown`, Zoom, full list read, no match | `cancelled`, no delete call |
+  | Remove on `provisioning_unknown`, Zoom list call fails | `unresolved`, correlation data kept, organizer warned |
+  | create link while `unresolved` | rejected until the organizer confirms cleanup; then a new generation is claimed |
+  | link created → removed → created → removed → created (generations 1→3) | every link email and every link-removed email is sent once; retries within a generation are not resent |
   | remove link → add link | new generation → new meeting; recipients get the new link once |
   | participant removed then re-added | a second invite is sent |
   | same create request sent twice | one meeting, one invite per recipient |
@@ -221,7 +239,7 @@ P1-1 (RSVP history), P1-6 (integration-health notices), P2-1 (`.ics`), P2-2 (rem
 
 **Owner changes (contract):** there is currently **no** feature that revokes or transfers a tenant user's role (verified: the only role-removal code is for platform-admin users). Any future owner-transfer or role-revoke feature **must call `OfficeProjectReconciler` for that tenant after it saves**. Until then, the startup run is the recovery path. No new periodic job is added (SCL-01: background jobs have no multi-instance locking yet).
 
-**Owner without an Employee record:** ⚠️ *pending a product decision.* See §7, Q1.
+**Owner without an Employee record:** decided on 2026-10-13, Q1 option (a). See §7. The temporary HR lead from the onboarding-checklist path is an **accepted exception**: it's today's behaviour, and the reconciler switches the lead to the owner as soon as an owner employee exists.
 
 ### 4.3 Frontend (tenant app)
 
@@ -272,8 +290,8 @@ P1-1 (RSVP history), P1-6 (integration-health notices), P2-1 (`.ics`), P2-2 (rem
 
 ## 7. Open questions
 
-**Q1 — Tenant owner without an Employee record (blocks §4.2).** The Office project's lead must be an Employee, and the `Owner` role does **not** hold `*`, so there is no automatically safe stand-in. B3 says every tenant must have an Office project. Options:
-- **(a) Pending + any owner (recommended):** the lead is the earliest-assigned owner-role user **who has an active Employee record** (the §4.2 rule). If no owner has one, the reconciler does nothing and retries on every employee creation and every startup.
+**Q1 — Tenant owner without an Employee record. ✅ Decided 2026-10-13: option (a).** The Office project's lead must be an Employee, and the `Owner` role does **not** hold `*`, so there is no automatically safe stand-in. B3 says every tenant must have an Office project. Options considered:
+- **(a) Pending + any owner — chosen:** the lead is the earliest-assigned owner-role user **who has an active Employee record** (the §4.2 rule). If no owner has one, the reconciler does nothing and retries on every employee creation and every startup.
   - **Onboarding checklists, verified (`EmployeeChecklistWorkTaskProvisioner.cs:30-35`):** if no Office project exists, the first checklist creates it with the **acting HR employee as lead**, and that actor must be an active employee (otherwise 403). This is today's behaviour and is kept unchanged: it exposes nothing new, since that person is the one running onboarding. Once an owner employee exists, the reconciler switches the lead to the owner (B4).
   - So a tenant gets its Office project from whichever happens first: an owner gets an employee record, or the first onboarding checklist runs.
   - **Phase 2:** a non-project meeting in a tenant that has neither is rejected with a clear message ("Your workspace owner needs an employee profile before company meetings can be created").
