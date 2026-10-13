@@ -322,6 +322,8 @@ public class ApplicationDbContext : DbContext
         => Set<ONEVO.Domain.Features.Conversations.Entities.ConversationParticipant>();
     public DbSet<ONEVO.Domain.Features.Conversations.Entities.ConversationMessage> ConversationMessages
         => Set<ONEVO.Domain.Features.Conversations.Entities.ConversationMessage>();
+    public DbSet<ONEVO.Domain.Features.Inbox.Entities.InboxDecisionJournalEntry> InboxDecisionJournal
+        => Set<ONEVO.Domain.Features.Inbox.Entities.InboxDecisionJournalEntry>();
     public DbSet<ONEVO.Domain.Features.Conversations.Entities.ConversationMessageMention> ConversationMessageMentions
         => Set<ONEVO.Domain.Features.Conversations.Entities.ConversationMessageMention>();
     public DbSet<WorkNotificationLog> WorkNotificationLogs => Set<WorkNotificationLog>();

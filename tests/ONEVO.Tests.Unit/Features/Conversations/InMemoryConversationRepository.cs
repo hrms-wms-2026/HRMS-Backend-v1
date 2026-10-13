@@ -86,6 +86,11 @@ internal sealed class InMemoryConversationRepository : IConversationRepository
             where c.SubjectSource == source
             select new ItemRef(c.SubjectSource, c.SubjectKind, c.SubjectId)).ToList());
 
+    public Task<IReadOnlyList<ConversationMessage>> ListSystemMessagesAsync(Guid tenantId, Guid conversationId, CancellationToken ct = default)
+        => Task.FromResult<IReadOnlyList<ConversationMessage>>(Messages
+            .Where(m => m.TenantId == tenantId && m.ConversationId == conversationId && m.Kind == ConversationMessageKinds.System)
+            .OrderBy(m => m.CreatedAt).ToList());
+
     public void Update(Conversation conversation) { }
     public void UpdateParticipant(ConversationParticipant participant) { }
 

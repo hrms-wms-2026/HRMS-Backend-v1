@@ -4969,6 +4969,97 @@ namespace ONEVO.Infrastructure.Migrations
                     b.ToTable("tray_app_releases", (string)null);
                 });
 
+            modelBuilder.Entity("ONEVO.Domain.Features.Inbox.Entities.InboxDecisionJournalEntry", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)")
+                        .HasColumnName("action");
+
+                    b.Property<Guid>("ActorEmployeeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("actor_employee_id");
+
+                    b.Property<string>("AfterJson")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("after_json");
+
+                    b.Property<string>("BeforeJson")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("before_json");
+
+                    b.Property<string>("Comment")
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)")
+                        .HasColumnName("comment");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("CreatedById")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by_id");
+
+                    b.Property<DateTimeOffset>("DecidedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("decided_at");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("deleted_at");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_deleted");
+
+                    b.Property<Guid>("ItemId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("item_id");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("kind");
+
+                    b.Property<Guid?>("RevertedByJournalId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("reverted_by_journal_id");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("source");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_inbox_decision_journal");
+
+                    b.HasIndex("TenantId", "ActorEmployeeId", "DecidedAt")
+                        .IsDescending(false, false, true)
+                        .HasDatabaseName("ix_inbox_decision_journal_tenant_id_actor_employee_id_decided_at");
+
+                    b.HasIndex("TenantId", "Source", "Kind", "ItemId", "DecidedAt")
+                        .HasDatabaseName("ix_inbox_decision_journal_tenant_id_source_kind_item_id_decided_at");
+
+                    b.ToTable("inbox_decision_journal", (string)null);
+                });
+
             modelBuilder.Entity("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", b =>
                 {
                     b.Property<Guid>("Id")

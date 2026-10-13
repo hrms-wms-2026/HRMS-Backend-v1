@@ -472,6 +472,11 @@ public static class DependencyInjection
         // Inbox router: fans out to every registered IInboxSourceProvider (one per module).
         services.AddScoped<ONEVO.Application.Features.Inbox.Services.IInboxRouter, ONEVO.Application.Features.Inbox.Services.InboxRouter>();
         services.AddScoped<ONEVO.Application.Features.Inbox.Services.InboxCallerResolver>();
+        // Inbox Standard: kind descriptors (each module adds its own with services.AddInboxKind), the decision
+        // journal, the merged Steps timeline. Reverters register as IInboxDecisionReverter per (source, kind).
+        services.AddSingleton<ONEVO.Application.Features.Inbox.Contracts.IInboxKindRegistry, ONEVO.Application.Features.Inbox.Contracts.InboxKindRegistry>();
+        services.AddScoped<ONEVO.Application.Features.Inbox.Contracts.IInboxDecisionJournal, ONEVO.Infrastructure.Persistence.Repositories.Inbox.EfInboxDecisionJournal>();
+        services.AddScoped<ONEVO.Application.Features.Inbox.Services.IInboxStepsBuilder, ONEVO.Application.Features.Inbox.Services.InboxStepsBuilder>();
         // The Api host registers the SignalR-backed publisher; this is the fallback everywhere else.
         services.TryAddSingleton<ONEVO.Application.Features.Conversations.Contracts.IInboxRealtimePublisher,
             ONEVO.Application.Features.Conversations.Services.NullInboxRealtimePublisher>();

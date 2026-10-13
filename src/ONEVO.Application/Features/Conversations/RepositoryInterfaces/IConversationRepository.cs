@@ -36,6 +36,9 @@ public interface IConversationRepository
     /// member of) - those people can view the item and chat, so the item belongs in their Inbox.</summary>
     Task<IReadOnlyList<ItemRef>> ListAddedSubjectsAsync(Guid tenantId, Guid employeeId, string source, CancellationToken ct = default);
 
+    /// <summary>The conversation's system messages (people added/removed, …), oldest first - the item's Steps show them.</summary>
+    Task<IReadOnlyList<ConversationMessage>> ListSystemMessagesAsync(Guid tenantId, Guid conversationId, CancellationToken ct = default);
+
     void Update(Conversation conversation);
     void UpdateParticipant(ConversationParticipant participant);
 }

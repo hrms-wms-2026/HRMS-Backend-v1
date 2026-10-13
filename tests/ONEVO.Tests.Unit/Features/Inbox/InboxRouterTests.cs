@@ -6,12 +6,15 @@ using ONEVO.Application.Common.Models;
 using ONEVO.Application.Features.Conversations.Contracts;
 using ONEVO.Application.Features.Conversations.Services;
 using ONEVO.Application.Features.Inbox.Contracts;
+using ONEVO.Application.Features.Inbox.Revert;
 using ONEVO.Application.Features.Inbox.Services;
+using ONEVO.Application.Common.RepositoryInterfaces;
+using ONEVO.Application.Common.ServiceInterfaces;
 using Xunit;
 
 namespace ONEVO.Tests.Unit.Features.Inbox;
 
-public class InboxRouterTests
+public partial class InboxRouterTests
 {
     private static readonly Guid TenantId = Guid.NewGuid();
     private static readonly Guid Me = Guid.NewGuid();
@@ -24,15 +27,24 @@ public class InboxRouterTests
     private readonly FakeProvider _leave = new("leave", "Leave");
     private readonly Mock<IConversationUnreadCounts> _unread = new();
     private readonly Mock<IInboxRealtimePublisher> _realtime = new();
+    private readonly List<InboxKindDescriptor> _kinds = new();
+    private readonly InMemoryInboxDecisionJournal _journal = new();
+    private readonly List<IInboxDecisionReverter> _reverters = new();
+    private readonly Mock<IUnitOfWork> _uow = new();
+    private readonly Mock<IDateTimeProvider> _clock = new();
+    private readonly Mock<IInboxStepsBuilder> _steps = new();
 
     public InboxRouterTests()
     {
         _unread.Setup(u => u.GetAsync(TenantId, Me, It.IsAny<IReadOnlyCollection<ItemRef>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Dictionary<ItemRef, int>());
+        _clock.SetupGet(c => c.UtcNow).Returns(T0.AddHours(1));
+        _steps.Setup(s => s.BuildAsync(It.IsAny<Guid>(), It.IsAny<ItemRef>(), It.IsAny<IReadOnlyList<InboxStep>>(), It.IsAny<CancellationToken>()))
+            .Returns((Guid _, ItemRef _, IReadOnlyList<InboxStep> steps, CancellationToken _) => Task.FromResult(steps));
     }
 
     private InboxRouter Router() => new(new IInboxSourceProvider[] { _work, _leave }, _unread.Object, _realtime.Object,
-        NullLogger<InboxRouter>.Instance);
+        NullLogger<InboxRouter>.Instance, new InboxKindRegistry(_kinds), _journal, _reverters, _steps.Object, _uow.Object, _clock.Object);
 
     private static InboxItem Item(
         string source, string title, int minutesAfterT0, bool pending = false, string category = InboxCategories.Request,
@@ -204,6 +216,8 @@ public class InboxRouterTests
         public Dictionary<Guid, InboxItemDetail> Details { get; } = new();
         public Result<InboxActionResult> ActionResult { get; set; } = Result<InboxActionResult>.Success(new InboxActionResult([]));
         public (string Kind, Guid Id, string Action)? LastAction { get; private set; }
+        public Dictionary<Guid, Result<InboxActionResult>> ActionResults { get; } = new();
+        public List<(string Kind, Guid Id, string Action, JsonElement? Body)> Actions { get; } = new();
         public int ListCalls { get; private set; }
 
         public string Source => source;
@@ -225,7 +239,8 @@ public class InboxRouterTests
             Guid tenantId, string kind, Guid id, string action, JsonElement? body, Guid callerEmployeeId, CancellationToken ct)
         {
             LastAction = (kind, id, action);
-            return Task.FromResult(ActionResult);
+            Actions.Add((kind, id, action, body));
+            return Task.FromResult(ActionResults.GetValueOrDefault(id, ActionResult));
         }
     }
 }

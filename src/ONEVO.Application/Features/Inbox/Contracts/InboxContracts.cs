@@ -20,8 +20,10 @@ public static class InboxDirections
 public sealed record InboxPerson(Guid Id, string Name);
 
 /// <summary>An action the caller may run on the item right now. Tone drives the button style
-/// ("primary" | "danger" | "neutral").</summary>
-public sealed record InboxAction(string Key, string Label, string Tone, bool NeedsComment, bool NeedsPayload);
+/// ("primary" | "danger" | "neutral"). Meta carries per-action extras the frontend dialogs read
+/// (e.g. "revertableUntil", "escalateTo").</summary>
+public sealed record InboxAction(
+    string Key, string Label, string Tone, bool NeedsComment, bool NeedsPayload, IReadOnlyDictionary<string, string>? Meta = null);
 
 /// <summary>One row of the inbox, the same shape for every source module. <see cref="Facets"/> carries
 /// source-specific filterable values (e.g. "module" → module ids) matched by the router generically.</summary>
@@ -41,6 +43,8 @@ public static class InboxStepStates
     public const string Done = "done";
     public const string Current = "current";
     public const string Upcoming = "upcoming";
+    /// <summary>A decision that was later undone (shown struck through).</summary>
+    public const string Reverted = "reverted";
 }
 
 /// <summary>One row of the change set. Kind ("text", "date", "hours", "employee", …) and Editable let the

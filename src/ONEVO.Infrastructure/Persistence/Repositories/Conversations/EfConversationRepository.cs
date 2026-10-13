@@ -148,6 +148,12 @@ public class EfConversationRepository : IConversationRepository
         return rows.Select(r => new ItemRef(r.SubjectSource, r.SubjectKind, r.SubjectId)).ToList();
     }
 
+    public async Task<IReadOnlyList<ConversationMessage>> ListSystemMessagesAsync(Guid tenantId, Guid conversationId, CancellationToken ct = default)
+        => await _db.ConversationMessages.AsNoTracking()
+            .Where(m => m.TenantId == tenantId && m.ConversationId == conversationId && m.Kind == ConversationMessageKinds.System)
+            .OrderBy(m => m.CreatedAt)
+            .ToListAsync(ct);
+
     public void Update(Conversation conversation) => _db.Conversations.Update(conversation);
 
     public void UpdateParticipant(ConversationParticipant participant) => _db.ConversationParticipants.Update(participant);

@@ -4,10 +4,13 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
 using ONEVO.Application.Features.Inbox.Commands.ExecuteInboxAction;
+using ONEVO.Application.Features.Inbox.Commands.ExecuteInboxBulkAction;
 using ONEVO.Application.Features.Inbox.Contracts;
 using ONEVO.Application.Features.Inbox.Queries.GetInboxCounts;
 using ONEVO.Application.Features.Inbox.Queries.GetInboxFilters;
+using ONEVO.Application.Features.Inbox.Queries.GetInboxHistory;
 using ONEVO.Application.Features.Inbox.Queries.GetInboxItemDetail;
+using ONEVO.Application.Features.Inbox.Queries.GetInboxKinds;
 using ONEVO.Application.Features.Inbox.Queries.ListInboxItems;
 
 namespace ONEVO.Api.Controllers.Tenant.Inbox;
@@ -64,6 +67,23 @@ public class InboxController : ControllerBase
     [HttpGet("counts")]
     public async Task<IActionResult> Counts(CancellationToken ct)
         => ToResult(await _mediator.Send(new GetInboxCountsQuery(), ct));
+
+    /// <summary>Every (source, kind) with its capabilities; the frontend caches this.</summary>
+    [HttpGet("kinds")]
+    public async Task<IActionResult> Kinds(CancellationToken ct)
+        => ToResult(await _mediator.Send(new GetInboxKindsQuery(), ct));
+
+    /// <summary>Decisions the caller took (the History tab), newest first.</summary>
+    [HttpGet("history")]
+    public async Task<IActionResult> History(
+        [FromQuery] DateTimeOffset? from, [FromQuery] DateTimeOffset? to, [FromQuery] string? source, [FromQuery] string? kind,
+        [FromQuery] int page = 1, [FromQuery] int pageSize = 25, CancellationToken ct = default)
+        => ToResult(await _mediator.Send(new GetInboxHistoryQuery(new InboxHistoryQuery(from, to, source, kind, page, pageSize)), ct));
+
+    /// <summary>One action over many items (only kinds that declare Bulk). Returns which succeeded and which failed.</summary>
+    [HttpPost("bulk")]
+    public async Task<IActionResult> Bulk([FromBody] InboxBulkRequest request, CancellationToken ct)
+        => ToResult(await _mediator.Send(new ExecuteInboxBulkActionCommand(request), ct));
 
     [HttpGet("{source}/{kind}/{id:guid}")]
     public async Task<IActionResult> Detail(string source, string kind, Guid id, CancellationToken ct)
