@@ -5,6 +5,7 @@ using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
+using ONEVO.Application.Features.DevPlatform.AppCatalog.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.ServiceInterfaces;
 using ONEVO.Application.Features.Monitoring.AppUsage.Commands.IngestAppUsageSnapshots;
 using ONEVO.Application.Features.Monitoring.AppUsage.RepositoryInterfaces;
@@ -26,6 +27,7 @@ public class IngestAppUsageSnapshotsCommandHandlerTests
     private readonly Mock<ITrayEmployeeIdentityResolver> _employeeIdentity = new();
     private readonly FakeDateTimeProvider _clock = new();
     private readonly FakeUnitOfWork _uow = new();
+    private readonly Mock<IGlobalApplicationRepository> _globalApplications = new();
 
     private readonly Guid _tenantId = Guid.NewGuid();
     private readonly Guid _userId = Guid.NewGuid();
@@ -66,6 +68,7 @@ public class IngestAppUsageSnapshotsCommandHandlerTests
         _employeeIdentity.Object,
         _clock,
         _uow,
+        _globalApplications.Object,
         NullLogger<IngestAppUsageSnapshotsCommandHandler>.Instance);
 
     private static AppUsageSnapshotItem Item(DateTimeOffset capturedAt) => new()
@@ -93,6 +96,10 @@ public class IngestAppUsageSnapshotsCommandHandlerTests
         saved.First().ProcessName.Should().Be("code.exe");
         saved.First().TenantId.Should().Be(_tenantId);
         saved.First().AgentDeviceId.Should().Be(_deviceId);
+        _globalApplications.Verify(x => x.RecordObservedAsync(
+            It.Is<IEnumerable<string>>(names => names.Single() == "code.exe"),
+            _clock.UtcNow,
+            It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
