@@ -85,18 +85,28 @@ All findings below were verified against `development` on 2026-10-13. Line numbe
 
 #### 3.2.2 Online-meeting provisioning, cancellation and email idempotency (P1-5, X-1, X-2, X-3)
 
-- **Durable provisioning state.** `CreateEventMeeting` first saves a `calendar_event_meetings` row with `status = provisioning`, then calls the provider. Success → `active` with the external ID. Definite failure (4xx / not connected) → `failed`, plus the P1-5 fallback (invites without a link + an organizer notice). Ambiguous failure (timeout / 5xx) → `provisioning_unknown`, plus the same fallback.
-- **Teams is idempotent at the provider.** Create with Graph `POST /me/onlineMeetings/createOrGet` and `externalId = <event id>`, so a retry returns the same meeting. *Verify in the plan that the existing `OnlineMeetings.ReadWrite` scope covers it.*
-- **Zoom has no provider idempotency.** An ambiguous failure is **not** retried automatically. When the organizer retries, we first look for a matching meeting among their upcoming Zoom meetings (same topic and start time). If one exists we adopt it; otherwise we create a new one.
-- **Self-contained cancellation (X-2).** The outbox payload carries everything the cancel needs after the local row is gone: `tenantId, provider, externalMeetingId, externalCalendarConnectionId`. If the connection no longer exists, the handler logs and drops the message.
-- **Email idempotency keys (X-1), one per operation and recipient:**
-  - `invite:{eventId}:{recipient}`
-  - `link:{meetingId}:{recipient}`
+- **Link generation.** Each event gets a `meeting_link_generation` counter (starts at 1, incremented whenever a link is removed). A retry of the same create reuses the current generation; a genuinely new link after removal uses the next one.
+- **Durable provisioning state.** `CreateEventMeeting` first saves a `calendar_event_meetings` row with `status = provisioning`, the generation, and the organizer's connection ID. Then it calls the provider. The result is classified as below; every non-success outcome also triggers the P1-5 fallback (invites without a link + an organizer notice).
+
+  | Provider outcome | Class | Row status | Retry |
+  |---|---|---|---|
+  | 2xx with meeting ID | success | `active` | — |
+  | 401 | auth | refresh the token once (CAL-01 classifier) and retry once; still 401 → `failed` | no |
+  | 429 | transient | stays `provisioning` | honour `Retry-After`, at most 3 attempts in the request, then `provisioning_unknown` |
+  | 400 / 403 / 404 / not connected / missing scope | permanent | `failed` | no |
+  | timeout / 5xx / connection reset | **ambiguous**: the meeting may exist remotely | `provisioning_unknown` | Teams: safe to retry (below). Zoom: no automatic retry. |
+
+- **Teams is idempotent at the provider.** Create with Graph `POST /me/onlineMeetings/createOrGet` and `externalId = {eventId}:{generation}`. Retrying the same generation returns the same meeting; a new generation creates a new one. `createOrGet` is scoped to the signed-in organizer, so a different organizer always gets a different meeting. *The plan verifies that the existing `OnlineMeetings.ReadWrite` scope covers it, and that a removed (deleted) meeting's `externalId` is not returned again.*
+- **Zoom has no provider idempotency, so we correlate explicitly.** Every Zoom meeting we create carries the token `onexso:{eventId}:{generation}` in its `agenda`. After an ambiguous failure, an organizer retry first lists their upcoming meetings and adopts one **only if the token matches exactly**. No token match → create a new meeting. Topic or time is never used to match. If the list call can't return `agenda`, it fetches the details of same-day candidates. If correlation still isn't possible, the organizer is shown "a Zoom meeting may already exist; check Zoom before creating another" and confirms before we create one.
+- **Self-contained cancellation (X-2).** The outbox payload carries everything the cancel needs after the local row is gone: `tenantId, provider, externalMeetingId, externalCalendarConnectionId, organizerEmployeeId, eventTitle`. Transient failures retry through the outbox's existing backoff. If the connection no longer exists, or the provider permanently refuses, the message is **parked as `Failed`** (the outbox's existing dead-letter state, never silently dropped). The organizer gets an in-app notice: "We couldn't cancel the {provider} meeting for '{title}'. Please delete it in {provider}."
+- **Email idempotency keys (X-1), one per operation and recipient instance:**
+  - `invite:{participantRowId|guestRowId}`
+  - `link:{meetingId}:{participantRowId|guestRowId}`
   - `update:{eventId}:{revision}:{recipient}`
   - `cancel:{eventId}:{occurrenceStart|series}:{recipient}`
   - `link-removed:{meetingId}:{recipient}`
 
-  Here `revision` is the event's update counter, so every genuine update still emails, while a retried request does not. Keys are checked through the existing `IIdempotencyStore`. *The plan verifies its TTL is long enough.*
+  Row IDs are new on every add, so a participant removed and added again gets a fresh invite, while a retried request doesn't. `revision` is the event's update counter, so every genuine update still emails. Keys are checked through the existing `IIdempotencyStore`. *The plan verifies its TTL is long enough.*
 
 ### 3.3 Out of scope for Phase 0 (owned by the exception-engine work)
 
@@ -107,6 +117,26 @@ P1-1 (RSVP history), P1-6 (integration-health notices), P2-1 (`.ics`), P2-2 (rem
 - Unit tests for each handler change. They assert the outbox rows staged, not just "sender was called".
 - **New integration tests** (Testcontainers Postgres, real `OutboxWriter` + `ApplicationDbContext`). For P0-1a/b/c, P1-2, P1-3 and P1-4, they assert the outbox row **exists in the database after the command returns**. This closes the gap that let P0-1 ship.
 - P0-2: unit tests for the empty / grace / cut-off / pagination paths of both sync jobs, with fake clients.
+- Provisioning, cancellation and idempotency (§3.2.2), against fake provider clients plus the real outbox and DbContext:
+
+  | Scenario | Expected |
+  |---|---|
+  | 2xx | `active`, link emails once per recipient |
+  | 401 → refresh → 2xx | `active`, one token refresh |
+  | 401 → refresh → 401 | `failed`, fallback invites, organizer notice |
+  | 429 ×2 → 2xx | `active` after waits |
+  | 429 ×4 | `provisioning_unknown`, fallback |
+  | timeout, Teams retry | same `externalId` → same meeting adopted, no second set of invites |
+  | timeout, Zoom retry with matching token | meeting adopted, not duplicated |
+  | timeout, Zoom retry, no token match | new meeting created |
+  | provider success, then local save fails | next retry adopts (Teams by `externalId`, Zoom by token); no orphan or duplicate |
+  | remove link → add link | new generation → new meeting; recipients get the new link once |
+  | participant removed then re-added | a second invite is sent |
+  | same create request sent twice | one meeting, one invite per recipient |
+  | delete event, cancel succeeds | event gone, remote cancelled after commit |
+  | delete event, cancel transient-fails then succeeds | retried, cancelled |
+  | delete event, connection gone | message parked `Failed`, organizer notice |
+  | delete event, local save fails | remote meeting untouched (no cancel message committed) |
 
 ---
 
@@ -147,7 +177,7 @@ P1-1 (RSVP history), P1-6 (integration-health notices), P2-1 (`.ics`), P2-2 (rem
 
 ### 4.2 Office project for every tenant, led by the tenant owner
 
-**Tenant owner:** the user holding the tenant's system role named `Owner` (assigned by `TenantOwnerInvitationService`). Expired assignments (`UserRole.ExpiresAt` in the past) don't count; if more than one user still holds it, the earliest `UserRole.AssignedAt` wins. The owner's **Employee** record in that tenant is the lead. If the owner has several Employee records (one per legal entity), it's the one in the primary legal entity, falling back to the earliest created.
+**Tenant owner:** the user holding the tenant's system role named `Owner` (assigned by `TenantOwnerInvitationService`). Expired assignments (`UserRole.ExpiresAt` in the past) don't count. Among the remaining owner-role users, only those **with an active Employee record** in the tenant are eligible, and the earliest `UserRole.AssignedAt` among them wins (§7 Q1). The owner's **Employee** record in that tenant is the lead. If the owner has several Employee records (one per legal entity), it's the one in the primary legal entity, falling back to the earliest created.
 
 **`OfficeProjectReconciler`** is a new idempotent service. For one tenant it:
 
@@ -224,5 +254,8 @@ P1-1 (RSVP history), P1-6 (integration-health notices), P2-1 (`.ics`), P2-2 (rem
 ## 7. Open questions
 
 **Q1 — Tenant owner without an Employee record (blocks §4.2).** The Office project's lead must be an Employee, and the `Owner` role does **not** hold `*`, so there is no automatically safe stand-in. B3 says every tenant must have an Office project. Options:
-- **(a) Pending + any owner (recommended):** the lead is the earliest-assigned owner-role user **who has an Employee record** (this refines §4.2's tie-break). If no owner has one, the tenant stays pending: the reconciler retries on every employee creation and every startup. Until then, onboarding checklists (which already need an Office project) keep today's behaviour, and Phase 2 rejects non-project meetings with a clear message ("Your workspace owner needs an employee profile before company meetings can be created").
+- **(a) Pending + any owner (recommended):** the lead is the earliest-assigned owner-role user **who has an active Employee record** (the §4.2 rule). If no owner has one, the reconciler does nothing and retries on every employee creation and every startup.
+  - **Onboarding checklists, verified (`EmployeeChecklistWorkTaskProvisioner.cs:30-35`):** if no Office project exists, the first checklist creates it with the **acting HR employee as lead**, and that actor must be an active employee (otherwise 403). This is today's behaviour and is kept unchanged: it exposes nothing new, since that person is the one running onboarding. Once an owner employee exists, the reconciler switches the lead to the owner (B4).
+  - So a tenant gets its Office project from whichever happens first: an owner gets an employee record, or the first onboarding checklist runs.
+  - **Phase 2:** a non-project meeting in a tenant that has neither is rejected with a clear message ("Your workspace owner needs an employee profile before company meetings can be created").
 - **(b) Interim lead:** use the employee who triggered creation and swap to the owner later. Not recommended: the interim lead would gain lead-bypass visibility of every Office checklist task.
