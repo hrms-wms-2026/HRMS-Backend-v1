@@ -42,7 +42,6 @@ using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.Services;
 using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.ProjectInvitations.RepositoryInterfaces;
-using ONEVO.Application.Features.WorkManagement.Approvals.Comments;
 using ONEVO.Application.Features.WorkManagement.Approvals.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Notifications.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Hierarchy;
@@ -381,8 +380,6 @@ public static class DependencyInjection
         services.AddScoped<ITaskAssignmentRepository>(sp => sp.GetRequiredService<EfTaskAssignmentRepository>());
         services.AddScoped<EfWorkApprovalRequestRepository>();
         services.AddScoped<IWorkApprovalRequestRepository>(sp => sp.GetRequiredService<EfWorkApprovalRequestRepository>());
-        services.AddScoped<EfWorkApprovalCommentRepository>();
-        services.AddScoped<IWorkApprovalCommentRepository>(sp => sp.GetRequiredService<EfWorkApprovalCommentRepository>());
         services.AddScoped<EfWorkNotificationLogRepository>();
         services.AddScoped<IWorkNotificationLogRepository>(sp => sp.GetRequiredService<EfWorkNotificationLogRepository>());
         services.AddScoped<IMonitorAlertRepository, EfMonitorAlertRepository>();
@@ -455,7 +452,6 @@ public static class DependencyInjection
         services.AddScoped<IWorkNotificationEngine, WorkNotificationEngine>();
         services.AddScoped<IWorkApprovalEngine, WorkApprovalEngine>();
         services.AddScoped<IApprovalActionApplierRegistry, ApprovalActionApplierRegistry>();
-        services.AddScoped<IApprovalCommentAccess, ApprovalCommentAccess>();
         services.AddScoped<ONEVO.Application.Features.WorkManagement.Approvals.Services.ApprovalFeedBuilder>();
         services.AddScoped<ONEVO.Application.Features.WorkManagement.Inbox.MonitorAlertAudience>();
         services.AddScoped<ONEVO.Application.Features.Inbox.Contracts.IInboxSourceProvider, ONEVO.Application.Features.WorkManagement.Inbox.WorkInboxSourceProvider>();

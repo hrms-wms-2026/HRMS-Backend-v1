@@ -13,7 +13,6 @@ public sealed class WorkNotificationEngine : IWorkNotificationEngine
     public const string ActivityTemplate = "work_activity_recorded";
     public const string RequestedTemplate = "work_approval_requested";
     public const string DecidedTemplate = "work_approval_decided";
-    public const string CommentedTemplate = "work_approval_commented";
     public const string MonitorAlertTemplate = "work_monitor_alert";
     public const string ApprovalRelatedEntityType = "work_approval_request";
     public const string InboxSource = "work";
@@ -67,7 +66,6 @@ public sealed class WorkNotificationEngine : IWorkNotificationEngine
             WorkNotificationKinds.Direct => ActivityTemplate,
             WorkNotificationKinds.Alert => MonitorAlertTemplate,
             WorkNotificationKinds.Requested => RequestedTemplate,
-            WorkNotificationKinds.Commented => CommentedTemplate,
             _ => DecidedTemplate,
         };
         var (relatedType, relatedId) = e.ApprovalRequestId is { } requestId

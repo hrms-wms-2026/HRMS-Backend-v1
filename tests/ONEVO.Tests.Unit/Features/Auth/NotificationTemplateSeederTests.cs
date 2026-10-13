@@ -81,13 +81,12 @@ public sealed class NotificationTemplateSeederTests : IDisposable
         Assert.Contains("work_activity_recorded", codes);
         Assert.Contains("work_approval_requested", codes);
         Assert.Contains("work_approval_decided", codes);
-        Assert.Contains("work_approval_commented", codes);
         Assert.Contains("work_monitor_alert", codes);
         Assert.Contains("exception_alert_detected", codes);
         Assert.Contains("exception_alert_escalated", codes);
         Assert.Contains("conversation_member_added", codes);
         Assert.Contains("conversation_mentioned", codes);
-        Assert.Equal(43, codes.Count);
+        Assert.Equal(42, codes.Count);
         var expectedCodes = new[]
         {
             "work_task_creation_request_created",
@@ -105,7 +104,6 @@ public sealed class NotificationTemplateSeederTests : IDisposable
             "work_activity_recorded",
             "work_approval_requested",
             "work_approval_decided",
-            "work_approval_commented",
             "work_monitor_alert",
             "conversation_member_added",
             "conversation_mentioned",

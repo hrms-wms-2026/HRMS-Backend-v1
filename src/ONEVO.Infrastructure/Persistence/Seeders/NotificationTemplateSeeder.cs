@@ -134,12 +134,6 @@ public class NotificationTemplateSeeder : IHostedService
             },
             new()
             {
-                Id = Guid.NewGuid(), Code = "work_approval_commented",
-                InAppTitleTemplate = "New comment on a request",
-                InAppBodyTemplate = "{{actorName}} commented on {{actionLabel}} \"{{targetTitle}}\"."
-            },
-            new()
-            {
                 Id = Guid.NewGuid(), Code = "work_monitor_alert",
                 InAppTitleTemplate = "Project alert",
                 InAppBodyTemplate = "{{actionLabel}}: \"{{targetTitle}}\"."

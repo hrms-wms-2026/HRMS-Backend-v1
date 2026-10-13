@@ -27,7 +27,6 @@ using ONEVO.Domain.Features.WorkManagement.Monitoring.Entities;
 using ONEVO.Domain.Features.WorkManagement.Objectives.Entities;
 using ONEVO.Domain.Features.WorkManagement.ProjectInvitations.Entities;
 using ONEVO.Domain.Features.WorkManagement.Projects.Entities;
-using ONEVO.Tests.Unit.Features.WorkManagement.Approvals;
 using Xunit;
 
 namespace ONEVO.Tests.Unit.Features.WorkManagement.Inbox;
@@ -57,7 +56,6 @@ public class WorkInboxSourceProviderTests
     private readonly Mock<IProjectMonitorSnapshotLoader> _snapshots = new();
     private readonly Mock<ISender> _sender = new();
     private readonly Mock<IDateTimeProvider> _clock = new();
-    private readonly ApprovalCommentHandlersTests.InMemoryApprovalCommentRepository _comments = new();
     private readonly List<Project> _memberOf = new();
     private readonly List<WorkApprovalRequest> _rows = new();
     private readonly List<ProjectMemberInvitation> _invites = new();
@@ -108,7 +106,7 @@ public class WorkInboxSourceProviderTests
 
     private WorkInboxSourceProvider Provider() => new(
         _projects.Object, _invitations.Object, _requests.Object,
-        new ApprovalFeedBuilder(_identity.Object, _requests.Object, _hierarchy.Object, _invitations.Object, _tasks.Object, _comments),
+        new ApprovalFeedBuilder(_identity.Object, _requests.Object, _hierarchy.Object, _invitations.Object, _tasks.Object),
         _alerts.Object, Audience(), _hierarchy.Object, _tasks.Object, _identity.Object, _sender.Object, _clock.Object);
 
     private WorkConversationSubjectResolver Resolver() => new(_requests.Object, _hierarchy.Object, _invitations.Object, _alerts.Object, Audience());

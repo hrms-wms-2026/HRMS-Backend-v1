@@ -316,7 +316,6 @@ public class ApplicationDbContext : DbContext
     public DbSet<SprintActivityLog> SprintActivityLogs => Set<SprintActivityLog>();
     public DbSet<TaskAssignment> TaskAssignments => Set<TaskAssignment>();
     public DbSet<WorkApprovalRequest> WorkApprovalRequests => Set<WorkApprovalRequest>();
-    public DbSet<WorkApprovalComment> WorkApprovalComments => Set<WorkApprovalComment>();
     public DbSet<ONEVO.Domain.Features.Conversations.Entities.Conversation> Conversations
         => Set<ONEVO.Domain.Features.Conversations.Entities.Conversation>();
     public DbSet<ONEVO.Domain.Features.Conversations.Entities.ConversationParticipant> ConversationParticipants

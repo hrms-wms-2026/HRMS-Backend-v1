@@ -22,18 +22,16 @@ public sealed class ApprovalFeedBuilder
     private readonly IWorkHierarchyService _hierarchy;
     private readonly IProjectMemberInvitationRepository _invitations;
     private readonly IWorkTaskRepository _tasks;
-    private readonly IWorkApprovalCommentRepository _comments;
 
     public ApprovalFeedBuilder(
         ICallerIdentityResolver identity, IWorkApprovalRequestRepository requests, IWorkHierarchyService hierarchy,
-        IProjectMemberInvitationRepository invitations, IWorkTaskRepository tasks, IWorkApprovalCommentRepository comments)
+        IProjectMemberInvitationRepository invitations, IWorkTaskRepository tasks)
     {
         _identity = identity;
         _requests = requests;
         _hierarchy = hierarchy;
         _invitations = invitations;
         _tasks = tasks;
-        _comments = comments;
     }
 
     /// <summary>Unsorted; use ApprovalFeedItemFactory.Sort for the Approvals-page order.</summary>
@@ -56,13 +54,8 @@ public sealed class ApprovalFeedBuilder
             .Distinct().ToList();
         var names = await _identity.ResolveDisplayNamesByEmployeeIdAsync(tenantId, employeeIds, ct);
 
-        var approvalCounts = await _comments.CountBySubjectsAsync(
-            tenantId, WorkApprovalCommentSubjects.Approval, requests.Select(r => r.Id).ToList(), ct);
-        var invitationCounts = await _comments.CountBySubjectsAsync(
-            tenantId, WorkApprovalCommentSubjects.Invitation, invitations.Select(i => i.Id).ToList(), ct);
-        var commentCounts = approvalCounts.Concat(invitationCounts).ToDictionary(kv => kv.Key, kv => kv.Value);
 
-        var lookup = new ApprovalFeedLookup(tree, project.Name, names, taskModules, commentCounts);
+        var lookup = new ApprovalFeedLookup(tree, project.Name, names, taskModules);
         return requests.Select(r => new ApprovalFeedEntry(project.Id, ApprovalFeedItemFactory.FromRequest(r, caller, lookup), r))
             .Concat(invitations.Select(i => new ApprovalFeedEntry(project.Id, ApprovalFeedItemFactory.FromInvitation(i, caller, lookup), null)))
             .ToList();
