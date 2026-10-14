@@ -2206,7 +2206,6 @@ using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using ONEVO.Application.Common.ServiceInterfaces;
-using ONEVO.Application.Features.Calendar.DTOs;
 using ONEVO.Application.Features.Calendar.OutboxHandlers;
 using ONEVO.Application.Features.Calendar.ServiceInterfaces;
 using ONEVO.Application.Features.Calendar.Services;
@@ -2329,7 +2328,7 @@ public sealed class CalendarNotificationDb
             Recurrence = recurring ? CalendarRecurrences.Weekly : CalendarRecurrences.None,
             RecurrenceRule = recurring ? "FREQ=WEEKLY" : null
         };
-        db.CalendarEvents.Add(calendarEvent);
+        db.PersonalCalendarEvents.Add(calendarEvent);
         foreach (var participant in participants)
             db.CalendarEventParticipants.Add(new CalendarEventParticipant
             {
@@ -2376,7 +2375,7 @@ public sealed class CalendarNotificationDb
 }
 ```
 
-Verify the namespaces against the code before compiling: `grep -rn "namespace" src/ONEVO.Application/Features/Calendar/DTOs/*Teams* src/ONEVO.Infrastructure/Persistence/Repositories/Calendar/EfCalendarEventRepository.cs src/ONEVO.Infrastructure/Persistence/UnitOfWork.cs | head`. If a DTO such as `TeamsMeetingDto` lives elsewhere, fix that `using` only. The `DbSet` names (`CalendarEvents`, `CalendarEventParticipants`, `CalendarEventGuests`) come from `ApplicationDbContext`; check them with `grep -n "DbSet<CalendarEvent" src/ONEVO.Infrastructure/Persistence/ApplicationDbContext.cs`.
+Notes, already checked against the code: the Teams/Zoom DTOs (`TeamsMeetingDto`, `TeamsAttendanceRecordDto`, `ZoomMeetingDto`, `ZoomAttendanceRecordDto`) are declared beside their interfaces in `ONEVO.Application.Features.Calendar.ServiceInterfaces`. The calendar's own events are `ApplicationDbContext.PersonalCalendarEvents`; `CalendarEvents` is Work Management's table, a different entity. Participants are `CalendarEventParticipants` and guests are `CalendarEventGuests`.
 
 - [ ] **Step 2: Write the integration tests**
 
@@ -2479,7 +2478,7 @@ public sealed class CalendarNotificationOutboxIntegrationTests
             var unused = h.Unused;
             var result = await new DeleteCalendarEventCommandHandler(
                     h.OrganizerUser, s.Events, s.Employees, s.Sender,
-                    new EfCalendarEventMeetingRepository(s.Db), new EfExternalCalendarConnectionRepository(s.Db),
+                    new EfCalendarEventMeetingRepository(s.Db, new ONEVO.Infrastructure.Identity.Time.SystemDateTimeProvider()), new EfExternalCalendarConnectionRepository(s.Db),
                     (ICalendarConnectionTokenProvider)unused, (ITeamsMeetingClient)unused, (IZoomMeetingClient)unused, s.UnitOfWork)
                 .Handle(new DeleteCalendarEventCommand(evt.Id), CancellationToken.None);
             Assert.True(result.IsSuccess);
