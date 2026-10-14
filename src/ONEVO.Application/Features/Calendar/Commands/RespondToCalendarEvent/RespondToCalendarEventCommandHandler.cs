@@ -63,19 +63,27 @@ public sealed class RespondToCalendarEventCommandHandler(
         participant.ResponseStatus = normalizedStatus;
         participant.ResponseReason = request.Reason;
 
-        // Enqueue the organizer notification BEFORE the single SaveChanges below: the notification
-        // sender only stages an outbox row (no save of its own), so it has to ride along with the
-        // participant update's save - otherwise it is silently dropped.
-        if (normalizedStatus is CalendarEventParticipantStatuses.ResolutionRequested or CalendarEventParticipantStatuses.ReplacementNominated)
+        // Stage organizer/nominee notifications BEFORE the single SaveChanges below: the sender only
+        // stages outbox rows, so anything enqueued after the save would be silently dropped.
+        var calendarEvent = await events.GetByIdForTenantAsync(tenantId, request.EventId, ct);
+        if (calendarEvent is not null)
         {
-            var calendarEvent = await events.GetByIdForTenantAsync(tenantId, request.EventId, ct);
-            if (calendarEvent is not null)
+            var responderName = $"{employee.FirstName} {employee.LastName}";
+            switch (normalizedStatus)
             {
-                var responderName = $"{employee.FirstName} {employee.LastName}";
-                if (normalizedStatus == CalendarEventParticipantStatuses.ResolutionRequested)
+                case CalendarEventParticipantStatuses.Accepted:
+                case CalendarEventParticipantStatuses.Rejected:
+                    await notifications.NotifyRsvpAsync(
+                        tenantId, calendarEvent.CreatedById, calendarEvent.Title, responderName,
+                        accepted: normalizedStatus == CalendarEventParticipantStatuses.Accepted, ct);
+                    break;
+                case CalendarEventParticipantStatuses.ResolutionRequested:
                     await notifications.NotifyResolutionRequestedAsync(tenantId, calendarEvent.CreatedById, calendarEvent.Title, responderName, request.Reason!, ct);
-                else
+                    break;
+                case CalendarEventParticipantStatuses.ReplacementNominated:
                     await notifications.NotifyReplacementNominatedAsync(tenantId, calendarEvent.CreatedById, calendarEvent.Title, responderName, nomineeName!, ct);
+                    await notifications.NotifyNomineeAsync(tenantId, request.NomineeEmployeeId!.Value, calendarEvent.Title, responderName, ct);
+                    break;
             }
         }
 
