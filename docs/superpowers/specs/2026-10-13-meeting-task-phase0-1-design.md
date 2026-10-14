@@ -230,7 +230,7 @@ P1-1 (RSVP history), P1-6 (integration-health notices), P2-1 (`.ics`), P2-2 (rem
 
 **RLS defect fixed on the way (found 2026-10-13):** `OfficeProjectProvisioner.EnsureAsync` opened a fresh DI scope, whose `TenantContextAccessor` starts in System mode. The `tenant_isolation` policy fails closed in System mode, and the app role `onevo_app` has `rolbypassrls = false`, so under the real role the provisioner could neither find nor create the Office project (insert failed with 42501). It now switches its scope to the target tenant first. An integration test runs it as `onevo_app` to keep it fixed.
 
-**Lead switch scope:** only `projects.lead_id` changes. The Office root objective's `OwnerId` is left as it was (it doesn't gate access to Office items).
+**Lead switch scope:** `projects.lead_id` and the Office root objective's `OwnerId` both move to the owner's employee. The root owner carries owner-only powers (`IsEffectiveOwnerAsync`: deciding task edit requests, editing tasks directly) and the led-work dashboard scope, so leaving it on the previous HR lead would keep those powers with HR and away from the owner. The previous lead stays a member.
 
 **Concurrency:** `OfficeProjectProvisioner` already handles the unique-violation race. The lead update is a single-row update guarded by the project's current `LeadId`, so concurrent runs converge.
 

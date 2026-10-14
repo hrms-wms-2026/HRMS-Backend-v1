@@ -71,6 +71,9 @@ public sealed class OfficeProjectReconcilerIntegrationTests
         Assert.Equal(owner.Id, office.LeadId);
         Assert.True(await IsActiveMemberAsync(harness, office.Id, owner.Id));
         Assert.True(await IsActiveMemberAsync(harness, office.Id, hr.Id));
+        await using var admin = harness.AdminContext();
+        var root = await admin.Objectives.SingleAsync(o => o.ProjectId == office.Id && o.IsDefault);
+        Assert.Equal(owner.Id, root.OwnerId);
     }
 
     [Fact]
