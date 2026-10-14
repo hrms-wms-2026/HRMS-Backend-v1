@@ -1,7 +1,9 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
+using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.Onboarding.Services;
+using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
 using ONEVO.Domain.Features.WorkManagement.Objectives.Entities;
 using ONEVO.Domain.Features.WorkManagement.ProjectMembers.Entities;
 using ONEVO.Domain.Features.WorkManagement.Projects.Entities;
@@ -18,6 +20,9 @@ public sealed class OfficeProjectProvisioner(IServiceScopeFactory scopeFactory) 
         Guid actingEmployeeId, DateOnly targetDate, CancellationToken ct = default)
     {
         await using var scope = scopeFactory.CreateAsyncScope();
+        // A fresh scope's tenant context starts in System mode, which the tenant_isolation RLS
+        // policy fails closed, so every read and write below would see or affect nothing.
+        await SwitchToTenantAsync(scope.ServiceProvider, tenantId, ct);
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
         var effectiveTargetDate = targetDate < today ? today : targetDate;
@@ -125,6 +130,14 @@ public sealed class OfficeProjectProvisioner(IServiceScopeFactory scopeFactory) 
             Id = Guid.NewGuid(), TenantId = tenantId, ProjectId = project.Id,
             Name = name, DisplayOrder = order, CreatedById = actingUserId, CreatedAt = now
         };
+    }
+
+    private static async Task SwitchToTenantAsync(IServiceProvider services, Guid tenantId, CancellationToken ct)
+    {
+        var tenant = await services.GetRequiredService<ITenantRepository>().GetByIdAsync(tenantId, ct)
+            ?? throw new InvalidOperationException($"Tenant {tenantId} does not exist.");
+        await services.GetRequiredService<ITenantContextSwitcher>().SwitchToTenantAsync(
+            new TenantRegistryEntry(tenant.Id, tenant.Slug, tenant.Status, PlanCode: null), ct);
     }
 
     private static async Task<OfficeProjectContext> LoadContextAsync(
