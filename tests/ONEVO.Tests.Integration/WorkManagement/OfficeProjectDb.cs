@@ -97,7 +97,10 @@ public sealed class OfficeProjectDb : IAsyncDisposable
 
     /// <summary>Production-like wiring under onevo_app: scoped tenant context, RLS interceptor,
     /// tenant switcher, the real provisioner and reconciler.</summary>
-    public IServiceScopeFactory BuildAppScopeFactory()
+    public IServiceScopeFactory BuildAppScopeFactory(Action<IServiceCollection>? configure = null) =>
+        BuildAppServices(configure).GetRequiredService<IServiceScopeFactory>();
+
+    public IServiceProvider BuildAppServices(Action<IServiceCollection>? configure = null)
     {
         var services = new ServiceCollection();
         services.AddLogging();
@@ -118,7 +121,8 @@ public sealed class OfficeProjectDb : IAsyncDisposable
         services.AddScoped<ITenantContextSwitcher, TenantContextSwitcher>();
         services.AddScoped<IOfficeProjectProvisioner, OfficeProjectProvisioner>();
         services.AddScoped<IOfficeProjectReconciler, OfficeProjectReconciler>();
-        return services.BuildServiceProvider().GetRequiredService<IServiceScopeFactory>();
+        configure?.Invoke(services);
+        return services.BuildServiceProvider();
     }
 
     public async Task<Employee> SeedEmployeeAsync(Guid? legalEntityId = null, int employmentStatusId = EmploymentStatusIds.Active, Guid? userId = null)

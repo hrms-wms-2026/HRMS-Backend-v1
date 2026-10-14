@@ -4,6 +4,7 @@ using ONEVO.Application.Features.CoreHr.Onboarding.Services;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
 using ONEVO.Domain.Features.WorkManagement.Projects.Entities;
 using ONEVO.Domain.Lookups;
+using ONEVO.Infrastructure.Services.CoreHr;
 using Xunit;
 
 namespace ONEVO.Tests.Integration.WorkManagement;
@@ -218,5 +219,85 @@ public sealed class OfficeProjectReconcilerIntegrationTests
         Assert.Null(row.DeletedAt);
         Assert.True(row.IsActive);
         Assert.Null(row.RemovedAt);
+    }
+
+    /// <summary>Simulates losing the create race: an HR-led Ensure lands first, so the owner-led
+    /// Ensure the reconciler issues returns the existing HR-led project.</summary>
+    private sealed class HrWinsCreateRaceProvisioner(IOfficeProjectProvisioner inner, Guid hrUserId, Guid hrEmployeeId)
+        : IOfficeProjectProvisioner
+    {
+        public async Task<OfficeProjectContext> EnsureAsync(
+            Guid tenantId, Guid initialOwningLegalEntityId, Guid actingUserId, Guid actingEmployeeId,
+            DateOnly targetDate, CancellationToken ct = default)
+        {
+            await inner.EnsureAsync(tenantId, initialOwningLegalEntityId, hrUserId, hrEmployeeId, targetDate, ct);
+            return await inner.EnsureAsync(tenantId, initialOwningLegalEntityId, actingUserId, actingEmployeeId, targetDate, ct);
+        }
+    }
+
+    [Fact]
+    public async Task LostCreateRace_ToHrLedEnsure_StillEndsOwnerLed()
+    {
+        await using var harness = await OfficeProjectDb.CreateAsync();
+        var hr = await harness.SeedEmployeeAsync(harness.LegalEntityId);
+        var role = await harness.SeedOwnerRoleAsync();
+        var owner = await harness.SeedEmployeeAsync(harness.LegalEntityId);
+        await harness.AssignRoleAsync(owner.UserId, role, DateTimeOffset.UtcNow.AddDays(-5));
+        var scopes = harness.BuildAppScopeFactory(services => services.AddScoped<IOfficeProjectProvisioner>(sp =>
+            new HrWinsCreateRaceProvisioner(
+                new OfficeProjectProvisioner(sp.GetRequiredService<IServiceScopeFactory>()), hr.UserId, hr.Id)));
+
+        OfficeProjectReconcileOutcome outcome;
+        await using (var scope = scopes.CreateAsyncScope())
+            outcome = await scope.ServiceProvider.GetRequiredService<IOfficeProjectReconciler>().ReconcileAsync(harness.TenantId);
+
+        Assert.Equal(OfficeProjectReconcileOutcome.LeadSwitched, outcome);
+        var office = (await OfficeAsync(harness))!;
+        Assert.Equal(owner.Id, office.LeadId);
+        Assert.True(await IsActiveMemberAsync(harness, office.Id, owner.Id));
+        await using var admin = harness.AdminContext();
+        Assert.Equal(owner.Id, (await admin.Objectives.SingleAsync(o => o.ProjectId == office.Id && o.IsDefault)).OwnerId);
+    }
+
+    [Fact]
+    public async Task PartiallyAppliedEarlierRun_NextRunConverges()
+    {
+        await using var harness = await OfficeProjectDb.CreateAsync();
+        var hr = await harness.SeedEmployeeAsync(harness.LegalEntityId);
+        await using (var scope = harness.BuildAppScopeFactory().CreateAsyncScope())
+            await scope.ServiceProvider.GetRequiredService<IOfficeProjectProvisioner>()
+                .EnsureAsync(harness.TenantId, harness.LegalEntityId, hr.UserId, hr.Id, DateOnly.FromDateTime(DateTime.UtcNow));
+        var role = await harness.SeedOwnerRoleAsync();
+        var owner = await harness.SeedEmployeeAsync(harness.LegalEntityId);
+        await harness.AssignRoleAsync(owner.UserId, role, DateTimeOffset.UtcNow.AddDays(-5));
+        // An earlier run switched the lead and then failed before the root owner and membership steps.
+        var officeId = (await OfficeAsync(harness))!.Id;
+        await using (var admin = harness.AdminContext())
+            await admin.Projects.Where(p => p.Id == officeId)
+                .ExecuteUpdateAsync(s => s.SetProperty(p => p.LeadId, owner.Id));
+
+        Assert.Equal(OfficeProjectReconcileOutcome.AlreadyAligned, await ReconcileAsync(harness));
+
+        Assert.True(await IsActiveMemberAsync(harness, officeId, owner.Id));
+        await using var verify = harness.AdminContext();
+        Assert.Equal(owner.Id, (await verify.Objectives.SingleAsync(o => o.ProjectId == officeId && o.IsDefault)).OwnerId);
+    }
+
+    [Fact]
+    public async Task EarliestOwnerWithNoResolvableCompany_FallsThroughToNextOwner()
+    {
+        await using var harness = await OfficeProjectDb.CreateAsync();
+        var role = await harness.SeedOwnerRoleAsync();
+        var secondary = await harness.SeedSecondaryLegalEntityAsync();
+        await using (var admin = harness.AdminContext())
+            await admin.LegalEntities.Where(le => le.Id == harness.LegalEntityId)
+                .ExecuteUpdateAsync(s => s.SetProperty(le => le.IsActive, false));
+        var noCompany = await harness.SeedEmployeeAsync(legalEntityId: null);
+        await harness.AssignRoleAsync(noCompany.UserId, role, DateTimeOffset.UtcNow.AddDays(-30));
+        var next = await harness.SeedEmployeeAsync(secondary);
+        await harness.AssignRoleAsync(next.UserId, role, DateTimeOffset.UtcNow.AddDays(-2));
+
+        Assert.Equal(OfficeProjectReconcileOutcome.Created, await ReconcileAsync(harness));
+        Assert.Equal(next.Id, (await OfficeAsync(harness))!.LeadId);
     }
 }
