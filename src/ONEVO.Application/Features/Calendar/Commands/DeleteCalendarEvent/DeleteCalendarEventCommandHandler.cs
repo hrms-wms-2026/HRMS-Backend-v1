@@ -35,41 +35,45 @@ public sealed class DeleteCalendarEventCommandHandler(
         if (existing.CreatedById != currentUser.UserId)
             return Result.Forbidden("Only the event creator can delete this event.");
 
-        // Cancel any auto-generated Teams/Zoom meeting before the event itself is removed, so a
-        // failure here still lets the pending SaveChangesAsync below roll the whole delete back
-        // rather than leaving an orphaned remote meeting with no local event.
-        var meeting = await meetings.GetTrackedByCalendarEventAsync(tenantId, existing.Id, ct);
-        if (meeting is not null && meeting.Status == CalendarEventMeetingStatuses.Active)
+        return await unitOfWork.ExecuteInTransactionAsync(async innerCt =>
         {
-            var connection = await connections.GetByIdForTenantAsync(tenantId, meeting.ExternalCalendarConnectionId, ct);
-            if (connection is not null)
+            // Plan 0C (X-2) replaces this remote cancel with an after-commit outbox message.
+            var meeting = await meetings.GetTrackedByCalendarEventAsync(tenantId, existing.Id, innerCt);
+            if (meeting is not null && meeting.Status == CalendarEventMeetingStatuses.Active)
             {
-                var isZoom = meeting.Provider == CalendarEventMeetingProviders.Zoom;
-                var oauthProvider = isZoom ? "zoom" : "microsoft";
-                var accessToken = await tokenProvider.GetFreshAccessTokenAsync(connection, oauthProvider, ct);
-                if (accessToken is not null)
+                var connection = await connections.GetByIdForTenantAsync(tenantId, meeting.ExternalCalendarConnectionId, innerCt);
+                if (connection is not null)
                 {
-                    if (isZoom)
-                        await zoomClient.CancelMeetingAsync(accessToken, meeting.ExternalMeetingId, ct);
-                    else
-                        await teamsClient.CancelMeetingAsync(accessToken, meeting.ExternalMeetingId, ct);
+                    var isZoom = meeting.Provider == CalendarEventMeetingProviders.Zoom;
+                    var oauthProvider = isZoom ? "zoom" : "microsoft";
+                    var accessToken = await tokenProvider.GetFreshAccessTokenAsync(connection, oauthProvider, innerCt);
+                    if (accessToken is not null)
+                    {
+                        if (isZoom)
+                            await zoomClient.CancelMeetingAsync(accessToken, meeting.ExternalMeetingId, innerCt);
+                        else
+                            await teamsClient.CancelMeetingAsync(accessToken, meeting.ExternalMeetingId, innerCt);
+                    }
                 }
             }
-        }
 
-        var participantsByEvent = await events.GetParticipantsForEventsAsync(tenantId, [existing.Id], ct);
-        var participantEmployeeIds = participantsByEvent.TryGetValue(existing.Id, out var p) ? p.Select(x => x.EmployeeId).ToList() : [];
-        if (participantEmployeeIds.Count > 0)
-        {
-            var callerEmployee = await employees.GetDefaultForUserAsync(tenantId, currentUser.UserId, ct);
-            var organizerName = callerEmployee is null ? "Someone" : $"{callerEmployee.FirstName} {callerEmployee.LastName}";
-            await notifications.NotifyEventCancelledAsync(
-                tenantId, existing.Title, existing.StartDate, existing.Location,
-                participantEmployeeIds.Select(id => new CalendarParticipantRecipient(id)).ToList(), [], organizerName, ct);
-        }
+            // Load participants AND guests before the event is removed, and stage before the save.
+            var participants = (await events.GetParticipantsForEventsAsync(tenantId, [existing.Id], innerCt)).GetValueOrDefault(existing.Id) ?? [];
+            var guests = (await events.GetGuestsForEventsAsync(tenantId, [existing.Id], innerCt)).GetValueOrDefault(existing.Id) ?? [];
+            if (participants.Count > 0 || guests.Count > 0)
+            {
+                var callerEmployee = await employees.GetDefaultForUserAsync(tenantId, currentUser.UserId, innerCt);
+                var organizerName = callerEmployee is null ? "Someone" : $"{callerEmployee.FirstName} {callerEmployee.LastName}";
+                await notifications.NotifyEventCancelledAsync(
+                    tenantId, existing.Title, existing.StartDate, existing.Location,
+                    participants.Select(p => new CalendarParticipantRecipient(p.EmployeeId, CalendarEmailKeys.Cancel(existing.Id, null, p.Id))).ToList(),
+                    guests.Select(g => new CalendarGuestRecipient(g.Email, CalendarEmailKeys.Cancel(existing.Id, null, g.Id))).ToList(),
+                    organizerName, innerCt);
+            }
 
-        events.Remove(existing);
-        await unitOfWork.SaveChangesAsync(ct);
-        return Result.Success();
+            events.Remove(existing);
+            await unitOfWork.SaveChangesAsync(innerCt);
+            return Result.Success();
+        }, ct);
     }
 }

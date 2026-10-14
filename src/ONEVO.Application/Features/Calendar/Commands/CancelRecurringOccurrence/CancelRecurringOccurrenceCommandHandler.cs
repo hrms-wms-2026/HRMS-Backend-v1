@@ -32,38 +32,44 @@ public sealed class CancelRecurringOccurrenceCommandHandler(
         if (master.CreatedById != currentUser.UserId)
             return Result.Forbidden("Only the series creator can cancel an occurrence.");
 
-        var child = await events.GetTrackedChildByOriginalStartAsync(tenantId, master.Id, request.OriginalStart, ct);
-        if (child is null)
+        return await unitOfWork.ExecuteInTransactionAsync(async innerCt =>
         {
-            child = new CalendarEvent
+            var child = await events.GetTrackedChildByOriginalStartAsync(tenantId, master.Id, request.OriginalStart, innerCt);
+            if (child is null)
             {
-                Id = Guid.NewGuid(), TenantId = tenantId, RecurrenceParentId = master.Id,
-                RecurrenceOriginalStart = request.OriginalStart, IsRecurrenceCancelled = true,
-                Title = master.Title, StartDate = request.OriginalStart,
-                EndDate = request.OriginalStart + (master.EndDate - master.StartDate),
-                SourceType = master.SourceType, Recurrence = CalendarRecurrences.None
-            };
-            await events.AddAsync(child, ct);
-        }
-        else
-        {
-            child.IsRecurrenceCancelled = true;
-            events.Update(child);
-        }
+                child = new CalendarEvent
+                {
+                    Id = Guid.NewGuid(), TenantId = tenantId, RecurrenceParentId = master.Id,
+                    RecurrenceOriginalStart = request.OriginalStart, IsRecurrenceCancelled = true,
+                    Title = master.Title, StartDate = request.OriginalStart,
+                    EndDate = request.OriginalStart + (master.EndDate - master.StartDate),
+                    SourceType = master.SourceType, Recurrence = CalendarRecurrences.None
+                };
+                await events.AddAsync(child, innerCt);
+            }
+            else
+            {
+                child.IsRecurrenceCancelled = true;
+                events.Update(child);
+            }
 
-        await unitOfWork.SaveChangesAsync(ct);
+            // Spec §3.1: stage before the save. Keyed on the occurrence, so cancelling it twice
+            // can't email anyone twice.
+            var participants = (await events.GetParticipantsForEventsAsync(tenantId, [master.Id], innerCt)).GetValueOrDefault(master.Id) ?? [];
+            var guests = (await events.GetGuestsForEventsAsync(tenantId, [master.Id], innerCt)).GetValueOrDefault(master.Id) ?? [];
+            if (participants.Count > 0 || guests.Count > 0)
+            {
+                var callerEmployee = await employees.GetDefaultForUserAsync(tenantId, currentUser.UserId, innerCt);
+                var organizerName = callerEmployee is null ? "Someone" : $"{callerEmployee.FirstName} {callerEmployee.LastName}";
+                await notifications.NotifyEventCancelledAsync(
+                    tenantId, master.Title, request.OriginalStart, master.Location,
+                    participants.Select(p => new CalendarParticipantRecipient(p.EmployeeId, CalendarEmailKeys.Cancel(master.Id, request.OriginalStart, p.Id))).ToList(),
+                    guests.Select(g => new CalendarGuestRecipient(g.Email, CalendarEmailKeys.Cancel(master.Id, request.OriginalStart, g.Id))).ToList(),
+                    organizerName, innerCt);
+            }
 
-        var participantsByEvent = await events.GetParticipantsForEventsAsync(tenantId, [master.Id], ct);
-        var participantEmployeeIds = participantsByEvent.TryGetValue(master.Id, out var p) ? p.Select(x => x.EmployeeId).ToList() : [];
-        if (participantEmployeeIds.Count > 0)
-        {
-            var callerEmployee = await employees.GetDefaultForUserAsync(tenantId, currentUser.UserId, ct);
-            var organizerName = callerEmployee is null ? "Someone" : $"{callerEmployee.FirstName} {callerEmployee.LastName}";
-            await notifications.NotifyEventCancelledAsync(
-                tenantId, master.Title, request.OriginalStart, master.Location,
-                participantEmployeeIds.Select(id => new CalendarParticipantRecipient(id)).ToList(), [], organizerName, ct);
-        }
-
-        return Result.Success();
+            await unitOfWork.SaveChangesAsync(innerCt);
+            return Result.Success();
+        }, ct);
     }
 }

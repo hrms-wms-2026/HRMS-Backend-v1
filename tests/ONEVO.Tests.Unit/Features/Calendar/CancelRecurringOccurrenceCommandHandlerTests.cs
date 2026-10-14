@@ -32,6 +32,11 @@ public sealed class CancelRecurringOccurrenceCommandHandlerTests
             .ReturnsAsync(new Employee { Id = Guid.NewGuid(), TenantId = TenantId, UserId = UserId, FirstName = "Ada", LastName = "Owner" });
         _events.Setup(x => x.GetParticipantsForEventsAsync(TenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Dictionary<Guid, IReadOnlyList<CalendarEventParticipant>>());
+        _events.Setup(x => x.GetGuestsForEventsAsync(TenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, IReadOnlyList<CalendarEventGuest>>());
+        _unitOfWork.Setup(u => u.ExecuteInTransactionAsync(
+                It.IsAny<Func<CancellationToken, Task<ONEVO.Application.Common.Models.Result>>>(), It.IsAny<CancellationToken>()))
+            .Returns<Func<CancellationToken, Task<ONEVO.Application.Common.Models.Result>>, CancellationToken>((op, ct) => op(ct));
         return new CancelRecurringOccurrenceCommandHandler(_currentUser.Object, _events.Object, _employees.Object, _notifications.Object, _unitOfWork.Object);
     }
 
@@ -110,6 +115,44 @@ public sealed class CancelRecurringOccurrenceCommandHandlerTests
         Assert.True(result.IsSuccess);
         _notifications.Verify(x => x.NotifyEventCancelledAsync(
             TenantId, "Standup", It.IsAny<DateTimeOffset>(), It.IsAny<string?>(), It.Is<IReadOnlyList<CalendarParticipantRecipient>>(r => r.Count == 1 && r[0].EmployeeId == participantId), It.IsAny<IReadOnlyList<CalendarGuestRecipient>>(),
+            "Ada Owner", It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_NotifiesParticipantsAndGuestsBeforeSaving_KeyedOnTheOccurrence()
+    {
+        var sut = BuildSut();
+        var master = new CalendarEvent
+        {
+            Id = MasterId, TenantId = TenantId, CreatedById = UserId, Title = "Standup", Location = "Room 4",
+            StartDate = new DateTimeOffset(2026, 10, 1, 9, 0, 0, TimeSpan.Zero), EndDate = new DateTimeOffset(2026, 10, 1, 9, 30, 0, TimeSpan.Zero),
+            Recurrence = CalendarRecurrences.Weekly, RecurrenceRule = "FREQ=WEEKLY"
+        };
+        var originalStart = master.StartDate.AddDays(7);
+        _events.Setup(x => x.GetTrackedByIdForTenantAsync(TenantId, MasterId, It.IsAny<CancellationToken>())).ReturnsAsync(master);
+        _events.Setup(x => x.GetTrackedChildByOriginalStartAsync(TenantId, MasterId, originalStart, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((CalendarEvent?)null);
+        var participant = new CalendarEventParticipant { Id = Guid.NewGuid(), TenantId = TenantId, EventId = MasterId, EmployeeId = Guid.NewGuid() };
+        var guest = new CalendarEventGuest { Id = Guid.NewGuid(), TenantId = TenantId, EventId = MasterId, Email = "vendor@example.com" };
+        _events.Setup(x => x.GetParticipantsForEventsAsync(TenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, IReadOnlyList<CalendarEventParticipant>> { [MasterId] = [participant] });
+        _events.Setup(x => x.GetGuestsForEventsAsync(TenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, IReadOnlyList<CalendarEventGuest>> { [MasterId] = [guest] });
+        var calls = new List<string>();
+        _notifications.Setup(x => x.NotifyEventCancelledAsync(
+                It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<DateTimeOffset>(), It.IsAny<string?>(),
+                It.IsAny<IReadOnlyList<CalendarParticipantRecipient>>(), It.IsAny<IReadOnlyList<CalendarGuestRecipient>>(),
+                It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Callback(() => calls.Add("notify")).Returns(Task.CompletedTask);
+        _unitOfWork.Setup(u => u.SaveChangesAsync(It.IsAny<CancellationToken>())).Callback(() => calls.Add("save")).ReturnsAsync(1);
+
+        await sut.Handle(new CancelRecurringOccurrenceCommand(MasterId, originalStart), CancellationToken.None);
+
+        Assert.Equal(new[] { "notify", "save" }, calls);
+        _notifications.Verify(x => x.NotifyEventCancelledAsync(
+            TenantId, "Standup", originalStart, "Room 4",
+            It.Is<IReadOnlyList<CalendarParticipantRecipient>>(r => r.Single().EmailKey == $"cancel:{MasterId}:{originalStart.UtcTicks}:{participant.Id}"),
+            It.Is<IReadOnlyList<CalendarGuestRecipient>>(g => g.Single().EmailKey == $"cancel:{MasterId}:{originalStart.UtcTicks}:{guest.Id}"),
             "Ada Owner", It.IsAny<CancellationToken>()), Times.Once);
     }
 }
