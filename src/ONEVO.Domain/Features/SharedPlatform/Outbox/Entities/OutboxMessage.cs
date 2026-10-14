@@ -27,6 +27,11 @@ public class OutboxMessage
     public DateTimeOffset NextAttemptAt { get; set; }
     public DateTimeOffset? ProcessedAt { get; set; }
     public string? LastError { get; set; }
+
+    /// <summary>Optional idempotency key (unique when set). Keyed messages are inserted with
+    /// INSERT … ON CONFLICT DO NOTHING inside the caller's transaction, so the same logical message
+    /// (e.g. one email per recipient per operation) is queued at most once.</summary>
+    public string? DeduplicationKey { get; set; }
 }
 
 public static class OutboxMessageStatus
