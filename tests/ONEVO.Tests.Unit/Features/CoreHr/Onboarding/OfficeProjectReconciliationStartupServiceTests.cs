@@ -78,6 +78,28 @@ public class OfficeProjectReconciliationStartupServiceTests
     }
 
     [Fact]
+    public async Task ExecuteAsync_TenantListThrows_IsLoggedAndDoesNotEscape()
+    {
+        var repository = new Mock<ITenantRepository>();
+        repository
+            .Setup(r => r.ListAsync(null, null, It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("database unavailable"));
+        var hostEnvironment = new Mock<IHostEnvironment>();
+        hostEnvironment.SetupGet(e => e.EnvironmentName).Returns("Development");
+        var services = new ServiceCollection();
+        services.AddSingleton(repository.Object);
+        services.AddSingleton(Mock.Of<IOfficeProjectReconciler>());
+        var service = new OfficeProjectReconciliationStartupService(
+            services.BuildServiceProvider(), hostEnvironment.Object,
+            NullLogger<OfficeProjectReconciliationStartupService>.Instance, startupDelay: TimeSpan.Zero);
+
+        await service.StartAsync(CancellationToken.None);
+        await service.ExecuteTask!;
+
+        Assert.True(service.ExecuteTask.IsCompletedSuccessfully);
+    }
+
+    [Fact]
     public async Task StartAsync_InTestEnvironment_DoesNothing()
     {
         var (service, reconciler) = Build(new[] { TenantWith(TenantStatus.Active) }, environment: "Test");

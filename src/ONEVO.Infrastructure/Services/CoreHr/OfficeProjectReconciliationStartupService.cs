@@ -14,10 +14,11 @@ namespace ONEVO.Infrastructure.Services.CoreHr;
 public sealed class OfficeProjectReconciliationStartupService(
     IServiceProvider services,
     IHostEnvironment environment,
-    ILogger<OfficeProjectReconciliationStartupService> logger) : BackgroundService
+    ILogger<OfficeProjectReconciliationStartupService> logger,
+    TimeSpan? startupDelay = null) : BackgroundService
 {
     public const int PageSize = 200;
-    private static readonly TimeSpan StartupDelay = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan DefaultStartupDelay = TimeSpan.FromSeconds(30);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -26,12 +27,19 @@ public sealed class OfficeProjectReconciliationStartupService(
 
         try
         {
-            await Task.Delay(StartupDelay, stoppingToken);
+            await Task.Delay(startupDelay ?? DefaultStartupDelay, stoppingToken);
             await RunOnceAsync(stoppingToken);
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
         {
             // Host shutting down before or during the run.
+        }
+        catch (Exception ex)
+        {
+            // BackgroundServiceExceptionBehavior = StopHost: a one-off backfill must never take
+            // the API down. Anything missed is retried on the next start or the next time the
+            // Office project is needed.
+            logger.LogError(ex, "Office project reconciliation startup run failed.");
         }
     }
 
