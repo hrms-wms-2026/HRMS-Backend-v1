@@ -176,6 +176,7 @@ public sealed class DapiHistorySeeder : IHostedService
         DateOnly monthStart,
         CancellationToken ct)
     {
+        var now = DateTimeOffset.UtcNow;
         var monthEnd = new DateOnly(
             monthStart.Year,
             monthStart.Month,
@@ -269,6 +270,9 @@ public sealed class DapiHistorySeeder : IHostedService
             var verificationDate = workdays[(2 + index * 5) % workdays.Length];
             foreach (var date in allDates)
             {
+                if (!IsHistoricalDate(date, now))
+                    continue;
+
                 var isWorkingDay = date.DayOfWeek is not DayOfWeek.Saturday and not DayOfWeek.Sunday;
                 var isApprovedLeave = plan.Status == LeaveRequestStatuses.Approved && plan.Date == date;
 
@@ -309,13 +313,16 @@ public sealed class DapiHistorySeeder : IHostedService
                 }
             }
 
-            SeedVerificationAlert(
-                db,
-                employee.Id,
-                index,
-                verificationDate,
-                existingExceptionIds,
-                existingNotifications);
+            if (IsHistoricalDate(verificationDate, now))
+            {
+                SeedVerificationAlert(
+                    db,
+                    employee.Id,
+                    index,
+                    verificationDate,
+                    existingExceptionIds,
+                    existingNotifications);
+            }
 
             if ((index + 1) % 5 == 0)
                 await db.SaveChangesAsync(ct);
@@ -880,6 +887,14 @@ public sealed class DapiHistorySeeder : IHostedService
 
     private static string MonthLabel(DateOnly date) =>
         date.ToDateTime(TimeOnly.MinValue).ToString("MMMM yyyy", CultureInfo.InvariantCulture);
+
+    /// <summary>
+    /// True only for days before today in Colombo time. Today and later are never seeded: a seeded
+    /// record for today marks the day as already clocked in and out, so the tray agent shows
+    /// "Workday Completed" before the employee has clocked in.
+    /// </summary>
+    public static bool IsHistoricalDate(DateOnly date, DateTimeOffset now) =>
+        date < DateOnly.FromDateTime(now.ToOffset(ColomboOffset).DateTime);
 
     private static DateTimeOffset At(DateOnly date, int hour, int minute) =>
         new DateTimeOffset(date.Year, date.Month, date.Day, hour, minute, 0, ColomboOffset).ToUniversalTime();
