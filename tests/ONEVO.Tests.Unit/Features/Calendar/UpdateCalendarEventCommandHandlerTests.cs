@@ -41,6 +41,7 @@ public sealed class UpdateCalendarEventCommandHandlerTests
                 (action, ct) => action(ct));
         _events.Setup(x => x.GetGuestsForEventsAsync(TenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Dictionary<Guid, IReadOnlyList<CalendarEventGuest>>());
+        _events.Setup(x => x.IncrementRevisionAsync(TenantId, It.IsAny<Guid>(), It.IsAny<CancellationToken>())).ReturnsAsync(1);
         return new UpdateCalendarEventCommandHandler(_currentUser.Object, _events.Object, _employees.Object, _notifications.Object, _unitOfWork.Object);
     }
 
@@ -189,6 +190,7 @@ public sealed class UpdateCalendarEventCommandHandlerTests
         var sut = BuildSut();
         var existing = new CalendarEvent { Id = EventId, TenantId = TenantId, CreatedById = UserId, Title = "Old", StartDate = Start, EndDate = Start.AddMinutes(30), Revision = 4 };
         _events.Setup(x => x.GetTrackedByIdForTenantAsync(TenantId, EventId, It.IsAny<CancellationToken>())).ReturnsAsync(existing);
+        _events.Setup(x => x.IncrementRevisionAsync(TenantId, EventId, It.IsAny<CancellationToken>())).ReturnsAsync(5);
         var participantRow = new CalendarEventParticipant { Id = Guid.NewGuid(), TenantId = TenantId, EventId = EventId, EmployeeId = Guid.NewGuid() };
         var guestRow = new CalendarEventGuest { Id = Guid.NewGuid(), TenantId = TenantId, EventId = EventId, Email = "vendor@example.com" };
         _events.Setup(x => x.GetParticipantsForEventsAsync(TenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
@@ -222,5 +224,28 @@ public sealed class UpdateCalendarEventCommandHandlerTests
         Assert.True(result.IsSuccess);
         _notifications.VerifyNoOtherCalls();
         _unitOfWork.Verify(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_KeysEmailsOnTheRevisionTheDatabaseIssued_NotAnInMemoryIncrement()
+    {
+        // Two concurrent edits both load revision 4; only a database-side increment gives them 5 and 6.
+        var sut = BuildSut();
+        var existing = new CalendarEvent { Id = EventId, TenantId = TenantId, CreatedById = UserId, Title = "Old", StartDate = Start, EndDate = Start.AddMinutes(30), Revision = 4 };
+        _events.Setup(x => x.GetTrackedByIdForTenantAsync(TenantId, EventId, It.IsAny<CancellationToken>())).ReturnsAsync(existing);
+        _events.Setup(x => x.IncrementRevisionAsync(TenantId, EventId, It.IsAny<CancellationToken>())).ReturnsAsync(6);
+        var guestRow = new CalendarEventGuest { Id = Guid.NewGuid(), TenantId = TenantId, EventId = EventId, Email = "vendor@example.com" };
+        _events.Setup(x => x.GetGuestsForEventsAsync(TenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, IReadOnlyList<CalendarEventGuest>> { [EventId] = [guestRow] });
+
+        await sut.Handle(
+            new UpdateCalendarEventCommand(EventId, "New Title", null, Start, Start.AddHours(1), false, null, null, null, CalendarRecurrences.None),
+            CancellationToken.None);
+
+        Assert.Equal(6, existing.Revision);
+        _notifications.Verify(x => x.NotifyEventUpdatedAsync(
+            TenantId, "New Title", Start, null, null, It.IsAny<IReadOnlyList<CalendarParticipantRecipient>>(),
+            It.Is<IReadOnlyList<CalendarGuestRecipient>>(g => g.Single().EmailKey == $"update:{EventId}:6:{guestRow.Id}"),
+            "Ada Owner", It.IsAny<CancellationToken>()), Times.Once);
     }
 }

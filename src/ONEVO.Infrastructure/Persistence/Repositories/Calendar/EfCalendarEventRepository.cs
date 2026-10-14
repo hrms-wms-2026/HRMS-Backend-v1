@@ -143,6 +143,13 @@ public class EfCalendarEventRepository : ICalendarEventRepository
             .ToListAsync(ct);
     }
 
+    public async Task<int> IncrementRevisionAsync(Guid tenantId, Guid eventId, CancellationToken ct = default)
+        => (await _db.Database.SqlQuery<int>($"""
+            UPDATE personal_calendar_events SET revision = revision + 1
+            WHERE tenant_id = {tenantId} AND id = {eventId}
+            RETURNING revision AS "Value"
+            """).ToListAsync(ct)).Single();
+
     public void Update(CalendarEvent calendarEvent) => _db.PersonalCalendarEvents.Update(calendarEvent);
     public void Remove(CalendarEvent calendarEvent) => _db.PersonalCalendarEvents.Remove(calendarEvent);
 

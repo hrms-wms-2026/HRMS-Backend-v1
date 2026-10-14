@@ -75,6 +75,11 @@ public interface ICalendarEventRepository
     /// as owner OR participant.</summary>
     Task<IReadOnlyList<CalendarEvent>> GetRecurringMastersForEmployeeAsync(
         Guid tenantId, Guid employeeId, DateTimeOffset to, CancellationToken ct = default);
+    /// <summary>revision = revision + 1 in the database, returning the new value. The row lock makes
+    /// concurrent edits take distinct revisions, so each one's "updated" email key is its own.
+    /// Call inside the edit's transaction.</summary>
+    Task<int> IncrementRevisionAsync(Guid tenantId, Guid eventId, CancellationToken ct = default);
+
     void Update(CalendarEvent calendarEvent);
     void Remove(CalendarEvent calendarEvent);
 

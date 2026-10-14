@@ -54,7 +54,7 @@ public sealed class EditRecurringOccurrenceCommandHandler(
         => unitOfWork.ExecuteInTransactionAsync(async innerCt =>
         {
             ApplyFields(master, request);
-            master.Revision++;
+            master.Revision = await events.IncrementRevisionAsync(master.TenantId, master.Id, innerCt);
             events.Update(master);
 
             await NotifyAttendeesOfAsync(master.TenantId, attendeesOf: master.Id, changed: master, innerCt);
@@ -83,7 +83,7 @@ public sealed class EditRecurringOccurrenceCommandHandler(
             {
                 child.IsRecurrenceCancelled = false;
                 ApplyFields(child, request);
-                child.Revision++;
+                child.Revision = await events.IncrementRevisionAsync(tenantId, child.Id, innerCt);
                 events.Update(child);
             }
 

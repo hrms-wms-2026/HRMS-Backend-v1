@@ -44,6 +44,7 @@ public sealed class EditRecurringOccurrenceCommandHandlerTests
             .ReturnsAsync(new Dictionary<Guid, IReadOnlyList<CalendarEventGuest>>());
         _events.Setup(x => x.GetChildrenForMasterAsync(TenantId, It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync([]);
+        _events.Setup(x => x.IncrementRevisionAsync(TenantId, It.IsAny<Guid>(), It.IsAny<CancellationToken>())).ReturnsAsync(1);
         return new EditRecurringOccurrenceCommandHandler(_currentUser.Object, _events.Object, _employees.Object, _notifications.Object, _unitOfWork.Object);
     }
 

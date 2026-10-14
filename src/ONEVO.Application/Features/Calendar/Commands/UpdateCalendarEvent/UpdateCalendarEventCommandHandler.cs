@@ -49,7 +49,7 @@ public sealed class UpdateCalendarEventCommandHandler(
             existing.Color = request.Color;
             existing.Recurrence = request.Recurrence;
 
-            existing.Revision++;
+            existing.Revision = await events.IncrementRevisionAsync(tenantId, existing.Id, innerCt);
             events.Update(existing);
 
             // Spec §3.1: stage every notification BEFORE the single SaveChangesAsync, so the change

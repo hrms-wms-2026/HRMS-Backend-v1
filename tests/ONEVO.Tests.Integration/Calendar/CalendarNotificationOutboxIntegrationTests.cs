@@ -154,4 +154,25 @@ public sealed class CalendarNotificationOutboxIntegrationTests
         Assert.Single(Emails(rows, CalendarEmailKinds.Removed));
         Assert.Single(InApp(rows, "calendar_event_participant_removed"));
     }
+
+    [Fact]
+    public async Task TwoConcurrentUpdates_GetDistinctRevisions_SoBothEmailsAreSent()
+    {
+        var h = await CalendarNotificationDb.CreateAsync();
+        var evt = await h.AddEventAsync([], ["vendor@example.com"]);
+
+        async Task UpdateAsync(string title)
+        {
+            await using var s = h.Scope();
+            var result = await new UpdateCalendarEventCommandHandler(h.OrganizerUser, s.Events, s.Employees, s.Sender, s.UnitOfWork).Handle(
+                new UpdateCalendarEventCommand(evt.Id, title, null, evt.StartDate, evt.EndDate, false, null, null, null, CalendarRecurrences.None),
+                CancellationToken.None);
+            Assert.True(result.IsSuccess);
+        }
+
+        await Task.WhenAll(UpdateAsync("First"), UpdateAsync("Second"));
+
+        var keys = Emails(await h.OutboxAsync(), CalendarEmailKinds.Updated).Select(e => e.DeduplicationKey!.Split(':')[2]).OrderBy(k => k).ToList();
+        Assert.Equal(new[] { "1", "2" }, keys);
+    }
 }
