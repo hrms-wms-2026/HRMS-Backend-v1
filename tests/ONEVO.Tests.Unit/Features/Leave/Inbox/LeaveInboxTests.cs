@@ -71,6 +71,7 @@ public class LeaveInboxTests
         public List<LeaveRequestDayAllocation> Allocations { get; } = new();
         public List<LeaveRequestDayAllocation> AddedAllocations { get; } = new();
         public List<LeaveBalanceAudit> Audits { get; } = new();
+        public bool CanApprove { get; set; } = true;
         public LeaveApprovalState State { get; }
 
         public EditFixture(decimal remaining)
@@ -88,6 +89,7 @@ public class LeaveInboxTests
             CurrentUser.SetupGet(x => x.TenantId).Returns(Harness.TenantId);
             CurrentUser.SetupGet(x => x.UserId).Returns(Harness.UserId);
             CurrentUser.SetupGet(x => x.IsAuthenticated).Returns(true);
+            CurrentUser.Setup(x => x.HasPermission("leave:approve")).Returns(true);
             Repository.Setup(x => x.ListActiveAllocationsAsync(Harness.TenantId, State.Request.Id, It.IsAny<CancellationToken>())).ReturnsAsync(Allocations);
             Repository.Setup(x => x.AddAllocationsAsync(It.IsAny<IReadOnlyCollection<LeaveRequestDayAllocation>>(), It.IsAny<CancellationToken>()))
                 .Callback((IReadOnlyCollection<LeaveRequestDayAllocation> a, CancellationToken _) => AddedAllocations.AddRange(a)).Returns(Task.CompletedTask);
@@ -104,7 +106,7 @@ public class LeaveInboxTests
     {
         var f = new EditFixture(remaining: 160m);
 
-        var result = await f.Editor().ApplyAsync(f.State, At(18, 9), At(19, 18), "Dates changed by the approver", default);
+        var result = await f.Editor().ApplyAsync(f.State, At(18, 9), At(19, 18), "Dates changed by the approver", default, allowLonger: true);
 
         result.IsSuccess.Should().BeTrue(result.Error);
         f.State.Request.EndAt.Should().Be(At(19, 18));
@@ -123,7 +125,7 @@ public class LeaveInboxTests
     {
         var f = new EditFixture(remaining: 8m); // only this request's own 8 h are available
 
-        var result = await f.Editor().ApplyAsync(f.State, At(18, 9), At(19, 18), "x", default);
+        var result = await f.Editor().ApplyAsync(f.State, At(18, 9), At(19, 18), "x", default, allowLonger: true);
 
         result.StatusCode.Should().Be(422);
         result.Error.Should().Contain("balance", "the evaluator's own insufficient-balance message is returned");
@@ -131,6 +133,20 @@ public class LeaveInboxTests
         f.Harness.Entitlement.PendingHours.Should().Be(8m);
         f.AddedAllocations.Should().BeEmpty();
         f.Audits.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task An_approver_can_shorten_or_move_a_request_but_never_make_it_longer()
+    {
+        var f = new EditFixture(remaining: 160m);
+
+        var longer = await f.Editor().ApplyAsync(f.State, At(18, 9), At(19, 18), "x", default, allowLonger: false);
+        var moved = await f.Editor().ApplyAsync(f.State, At(19, 9), At(19, 18), "x", default, allowLonger: false);
+
+        longer.StatusCode.Should().Be(422);
+        longer.Error.Should().Be(LeaveRequestRangeEditor.CannotLengthen);
+        moved.IsSuccess.Should().BeTrue(moved.Error);
+        f.State.Request.StartAt.Should().Be(At(19, 9));
     }
 
     [Fact]
@@ -190,6 +206,7 @@ public class LeaveInboxTests
             Employees.Setup(x => x.ListByIdsAsync(TenantId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(new Dictionary<Guid, Employee> { [Requester.Id] = Requester, [First.Id] = First, [Second.Id] = Second });
             CurrentUser.Setup(x => x.HasPermission("leave:approve")).Returns(true);
+            CurrentUser.Setup(x => x.HasPermission("leave:read-own")).Returns(true);
             Approvals.Setup(x => x.ListPendingForApproverAsync(TenantId, It.IsAny<Guid>(), It.IsAny<LeaveApprovalListFilter>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(() => States.Select(s => new LeavePendingApprovalListRow(s.Request, "Bala", "Annual Leave", "AL")).ToList());
             Approvals.Setup(x => x.GetStateAsync(TenantId, It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
@@ -324,6 +341,39 @@ public class LeaveInboxTests
     }
 
     [Fact]
+    public async Task Without_leave_approve_an_approver_row_neither_lists_nor_decides_through_the_inbox()
+    {
+        var f = new ProviderFixture();
+        var state = f.Add(LeaveApprovalModes.AnyOne, (f.First, LeaveRequestApproverStatuses.Pending));
+        f.CurrentUser.Setup(x => x.HasPermission("leave:approve")).Returns(false);
+
+        var listed = await f.Provider().ListAsync(f.TenantId, new InboxQuery(), f.First.Id, default);
+        var approve = await f.Provider().ExecuteActionAsync(f.TenantId, "request", state.Request.Id, "approve", null, f.First.Id, default);
+        var bulk = await f.Provider().ExecuteBulkAsync(f.TenantId, "request", "approve", [state.Request.Id],
+            JsonSerializer.SerializeToElement(new { }), f.First.Id, default);
+
+        listed.Should().BeEmpty();
+        approve.StatusCode.Should().Be(403);
+        bulk!.Should().OnlyContain(r => r.Result.StatusCode == 403);
+        f.Sender.Invocations.Should().BeEmpty();
+        f.Journal.Entries.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Replying_to_an_information_request_needs_the_employee_self_service_permission()
+    {
+        var f = new ProviderFixture();
+        var state = f.Add(LeaveApprovalModes.AnyOne, (f.First, LeaveRequestApproverStatuses.InformationRequested));
+        f.CurrentUser.Setup(x => x.HasPermission("leave:read-own")).Returns(false);
+
+        var result = await f.Provider().ExecuteActionAsync(f.TenantId, "request", state.Request.Id, "respond_info",
+            JsonSerializer.SerializeToElement(new { comment = "here" }), f.Requester.Id, default);
+
+        result.StatusCode.Should().Be(403);
+        f.Sender.Invocations.Should().BeEmpty();
+    }
+
+    [Fact]
     public async Task A_refused_module_action_writes_no_journal_row()
     {
         var f = new ProviderFixture();
@@ -350,6 +400,7 @@ public class LeaveInboxTests
         public InMemoryInboxDecisionJournal Journal { get; } = new();
         public FakeDateTimeProvider Clock { get; } = new() { UtcNow = At(15, 9) };
         public List<LeaveBalanceAudit> Audits { get; } = new();
+        public bool CanApprove { get; set; } = true;
 
         public RevertFixture(decimal totalHours = 160m)
         {
@@ -377,6 +428,7 @@ public class LeaveInboxTests
         public LeaveDecisionReverter Reverter()
         {
             var currentUser = new Mock<ICurrentUser>();
+            currentUser.Setup(x => x.HasPermission("leave:approve")).Returns(CanApprove);
             return new LeaveDecisionReverter(Journal, new FakeUnitOfWork(), Clock, Approvals.Object,
                 new LeaveRequestRangeEditor(currentUser.Object, Clock, Approvals.Object, null!, new LeaveRequestDayAllocationBuilder()), currentUser.Object);
         }
@@ -407,6 +459,19 @@ public class LeaveInboxTests
         (f.State.Entitlement!.UsedHours, f.State.Entitlement.PendingHours).Should().Be((0m, 8m));
         f.Audits.Should().ContainSingle(a => a.ChangeType == LeaveBalanceChangeTypes.Adjustment);
         f.Approvals.Verify(x => x.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Someone_who_lost_leave_approve_cannot_undo_their_decision()
+    {
+        var f = new RevertFixture();
+        f.Decide(LeaveInboxActions.Approve, Approve);
+        f.CanApprove = false;
+
+        var result = await f.Revert();
+
+        result.StatusCode.Should().Be(403);
+        f.State.Request.Status.Should().Be(LeaveRequestStatuses.Approved);
     }
 
     [Fact]

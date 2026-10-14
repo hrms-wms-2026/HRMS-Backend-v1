@@ -37,6 +37,8 @@ public sealed class LeaveInboxSourceProvider : IInboxSourceProvider, IInboxBulkA
     public const string LeaveReadPermission = "leave:read";
     public const string LeaveApprovePermission = "leave:approve";
     public const string LeaveManagePermission = "leave:manage";
+    public const string LeaveReadOwnPermission = "leave:read-own";
+    public const string MissingPermission = "You do not have permission to do this.";
     private const string UnknownAction = "This action is not available for this item.";
 
     private readonly ICurrentUser _currentUser;
@@ -83,15 +85,22 @@ public sealed class LeaveInboxSourceProvider : IInboxSourceProvider, IInboxBulkA
             return [];
 
         var items = new Dictionary<Guid, InboxItem>();
-        // Pending for the caller: the shared actionable query (it loads each pending request's state for the mode check).
-        foreach (var (_, state) in await LeavePendingApprovals.ListActionableAsync(
-                     _approvals, tenantId, caller.Id, new LeaveApprovalListFilter(null, null, null, null, null), ct))
-            items.TryAdd(state.Request.Id, Item(ListRow.Of(state), InboxDirections.Received, pending: true, ReceivedActions()));
+        // Pending for the caller (scope = act: only with the permission the approve endpoint requires): the shared
+        // actionable query (it loads each pending request's state for the mode check).
+        var approver = _currentUser.HasPermission(LeaveApprovePermission);
+        if (approver)
+        {
+            foreach (var (_, state) in await LeavePendingApprovals.ListActionableAsync(
+                         _approvals, tenantId, caller.Id, new LeaveApprovalListFilter(null, null, null, null, null), ct))
+                items.TryAdd(state.Request.Id, Item(ListRow.Of(state), InboxDirections.Received, pending: true, ReceivedActions()));
+        }
 
         // Decided by me, own requests, on-behalf requests: mapped from their rows plus one batched employee lookup
         // (no per-item state loads in the list path).
         var since = DateOnly.FromDateTime(_clock.UtcNow.AddDays(-DecidedHistoryDays).UtcDateTime);
-        var history = await _approvals.ListApprovalHistoryAsync(tenantId, caller.Id, since, null, DecidedHistoryLimit, ct);
+        var history = approver
+            ? await _approvals.ListApprovalHistoryAsync(tenantId, caller.Id, since, null, DecidedHistoryLimit, ct)
+            : [];
         var onBehalf = await _approvals.ListSubmittedOnBehalfAsync(tenantId, caller.UserId, ct);
         var employeeIds = history.Select(h => h.Request.EmployeeId).Concat(onBehalf.Select(r => r.EmployeeId)).Distinct().ToList();
         var employees = employeeIds.Count == 0
@@ -184,6 +193,9 @@ public sealed class LeaveInboxSourceProvider : IInboxSourceProvider, IInboxBulkA
         if (kind != LeaveInboxKinds.Request)
             return Result<InboxActionResult>.UnprocessableEntity(UnknownAction);
         var comment = BodyString(body, "comment");
+        // The Inbox calls the Leave commands directly, so it must hold the same permission the Leave endpoints require.
+        if (!MayRun(action))
+            return Result<InboxActionResult>.Forbidden(MissingPermission);
         var subject = new ItemRef(Source, kind, id);
         Func<Task>? afterCommit = null;
         if (action == LeaveInboxActions.Cancel)
@@ -237,6 +249,8 @@ public sealed class LeaveInboxSourceProvider : IInboxSourceProvider, IInboxBulkA
     {
         if (kind != LeaveInboxKinds.Request || action is not (LeaveInboxActions.Approve or LeaveInboxActions.Reject))
             return null;
+        if (!MayRun(action))
+            return ids.Select(id => (new ItemRef(Source, kind, id), Result<InboxActionResult>.Forbidden(MissingPermission))).ToList();
         var comment = BodyString(body, "comment");
         if (action == LeaveInboxActions.Reject && string.IsNullOrWhiteSpace(comment))
             return ids.Select(id => (new ItemRef(Source, kind, id), Result<InboxActionResult>.UnprocessableEntity("A reason is required to reject."))).ToList();
@@ -327,6 +341,16 @@ public sealed class LeaveInboxSourceProvider : IInboxSourceProvider, IInboxBulkA
     {
         public Result<InboxActionResult> Result { get; } = result;
     }
+
+    /// <summary>The permission each Leave endpoint requires (LeaveApprovalsController / LeaveRequestsController).</summary>
+    private bool MayRun(string action) => action switch
+    {
+        LeaveInboxActions.Approve or LeaveInboxActions.Reject or LeaveInboxActions.RequestInfo or LeaveInboxActions.Forward
+            or LeaveInboxActions.ChangeDecision => _currentUser.HasPermission(LeaveApprovePermission),
+        LeaveInboxActions.RespondInfo => _currentUser.HasPermission(LeaveReadOwnPermission),
+        LeaveInboxActions.Cancel => _currentUser.HasPermission(LeaveReadOwnPermission) || _currentUser.HasPermission(LeaveManagePermission),
+        _ => true,
+    };
 
     // ---- mapping --------------------------------------------------------------------------------
 

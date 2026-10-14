@@ -50,6 +50,9 @@ public sealed class LeaveDecisionReverter : InboxDecisionReverterBase
 
     protected override async Task<Result> CheckDependenciesAsync(Guid tenantId, InboxDecisionJournalEntry decision, CancellationToken ct)
     {
+        // Undoing a decision is deciding again: the same permission the Leave approval endpoints require.
+        if (decision.Action != LeaveInboxActions.Cancel && !_currentUser.HasPermission(LeaveInboxSourceProvider.LeaveApprovePermission))
+            return Result.Forbidden(LeaveInboxSourceProvider.MissingPermission);
         var before = LeaveDecisionSnapshot.Parse(decision.BeforeJson);
         var after = LeaveDecisionSnapshot.Parse(decision.AfterJson);
         var state = await _approvals.GetStateAsync(tenantId, decision.ItemId, ct);
@@ -151,7 +154,8 @@ public sealed class LeaveDecisionReverter : InboxDecisionReverterBase
         // An approval that also moved the dates: move them back (re-runs the leave rules for the original range).
         if (decision.Action == LeaveInboxActions.Approve && (before.Range.StartAt != after.Range.StartAt || before.Range.EndAt != after.Range.EndAt))
         {
-            var moved = await _editor.ApplyAsync(state, before.Range.StartAt, before.Range.EndAt, "Date change undone in the Inbox", ct);
+            var moved = await _editor.ApplyAsync(state, before.Range.StartAt, before.Range.EndAt, "Date change undone in the Inbox", ct,
+                allowLonger: true);
             if (!moved.IsSuccess)
                 return Result<InboxActionResult>.Failure(moved.Error!, moved.StatusCode ?? 409);
         }

@@ -54,6 +54,8 @@ public sealed class ApproveEditedLeaveRequestCommandHandler
     {
         if (!_currentUser.IsAuthenticated)
             return Result<LeaveApprovalDecisionResponse>.Forbidden(LeaveApprovalMessages.AuthRequired);
+        if (!_currentUser.HasPermission("leave:approve"))
+            return Result<LeaveApprovalDecisionResponse>.Forbidden(LeaveApprovalMessages.NotAssigned);
         var employee = await _employees.GetByUserIdAsync(_currentUser.TenantId, _currentUser.UserId, ct);
         if (employee is null)
             return Result<LeaveApprovalDecisionResponse>.NotFound(LeaveApprovalMessages.NoEmployee);

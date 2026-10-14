@@ -24,6 +24,7 @@ public sealed class LeaveRequestRangeEditor
 {
     public const string OtherYear = "Leave cannot be moved into another year.";
     public const string NotPending = "Only a pending request can be edited.";
+    public const string CannotLengthen = "An approver can shorten or move a request, but not make it longer.";
 
     private readonly ICurrentUser _currentUser;
     private readonly IDateTimeProvider _clock;
@@ -43,7 +44,8 @@ public sealed class LeaveRequestRangeEditor
     }
 
     public async Task<Result<(LeaveRangeSnapshot Before, LeaveRangeSnapshot After)>> ApplyAsync(
-        LeaveApprovalState state, DateTimeOffset startAt, DateTimeOffset endAt, string auditReason, CancellationToken ct)
+        LeaveApprovalState state, DateTimeOffset startAt, DateTimeOffset endAt, string auditReason, CancellationToken ct,
+        bool allowLonger = false)
     {
         var request = state.Request;
         if (request.Status is not (LeaveRequestStatuses.Pending or LeaveRequestStatuses.InformationRequested))
@@ -60,6 +62,10 @@ public sealed class LeaveRequestRangeEditor
             return Result<(LeaveRangeSnapshot, LeaveRangeSnapshot)>.UnprocessableEntity(evaluation.Error!);
 
         var draft = evaluation.Value!;
+        // An approver may not book more leave than the employee asked for (P3: shorten or shift). Only an undo
+        // that restores the employee's own original range may be longer than the current one.
+        if (!allowLonger && draft.TotalHours > before.TotalHours)
+            return Result<(LeaveRangeSnapshot, LeaveRangeSnapshot)>.UnprocessableEntity(CannotLengthen);
         var now = _clock.UtcNow;
         var entitlement = state.Entitlement ?? draft.Entitlement;
         entitlement.PendingHours += draft.PaidHours - request.PaidHours;
