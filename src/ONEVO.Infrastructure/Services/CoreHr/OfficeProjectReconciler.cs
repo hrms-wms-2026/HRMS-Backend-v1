@@ -49,8 +49,17 @@ public sealed class OfficeProjectReconciler(
         {
             await provisioner.EnsureAsync(
                 tenantId, owner.LegalEntityId, owner.UserId, owner.EmployeeId, DateOnly.FromDateTime(now.UtcDateTime), ct);
-            logger.LogInformation("Created the Office project for tenant {TenantId}, led by the tenant owner.", tenantId);
-            return OfficeProjectReconcileOutcome.Created;
+            office = await db.Projects.AsNoTracking()
+                .Where(p => p.TenantId == tenantId && p.SystemPurpose == ProjectSystemPurposes.Office)
+                .Select(p => new { p.Id, p.LeadId })
+                .FirstAsync(ct);
+            if (office.LeadId == owner.EmployeeId)
+            {
+                logger.LogInformation("Created the Office project for tenant {TenantId}, led by the tenant owner.", tenantId);
+                return OfficeProjectReconcileOutcome.Created;
+            }
+            // Lost the create race to an Ensure with another lead (the HR onboarding path):
+            // align that project below instead of reporting it as created owner-led.
         }
 
         var outcome = OfficeProjectReconcileOutcome.AlreadyAligned;
@@ -140,7 +149,9 @@ public sealed class OfficeProjectReconciler(
                 continue;
 
             var legalEntityId = chosen.LegalEntityId ?? primaryLegalEntityId;
-            return legalEntityId is null ? null : new OwnerEmployee(chosen.Id, chosen.UserId, legalEntityId.Value);
+            if (legalEntityId is null)
+                continue; // No company to own the project for this owner; try the next one.
+            return new OwnerEmployee(chosen.Id, chosen.UserId, legalEntityId.Value);
         }
 
         return null;
