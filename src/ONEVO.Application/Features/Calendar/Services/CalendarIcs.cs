@@ -54,19 +54,19 @@ public static class CalendarIcs
             $"DTEND:{Utc(ics.EndUtc < startUtc ? startUtc : ics.EndUtc)}",
             $"SUMMARY:{Escape(title)}",
             $"ORGANIZER;CN={Escape(organizerName)}:mailto:noreply@onevo.app",
-            $"ATTENDEE;ROLE=REQ-PARTICIPANT;RSVP=TRUE:mailto:{attendeeEmail}",
+            $"ATTENDEE;ROLE=REQ-PARTICIPANT;RSVP=TRUE:mailto:{Raw(attendeeEmail)}",
             $"STATUS:{(cancel ? "CANCELLED" : "CONFIRMED")}",
         };
         // One occurrence of a series is addressed by RECURRENCE-ID; the series itself carries its rule.
         if (ics.RecurrenceId is { } occurrence)
             lines.Add($"RECURRENCE-ID:{Utc(occurrence)}");
         else if (!string.IsNullOrWhiteSpace(ics.RecurrenceRule))
-            lines.Add($"RRULE:{ics.RecurrenceRule}");
+            lines.Add($"RRULE:{Raw(ics.RecurrenceRule!)}");
         if (!string.IsNullOrWhiteSpace(location))
             lines.Add($"LOCATION:{Escape(location)}");
         if (!string.IsNullOrWhiteSpace(meetingLink))
         {
-            lines.Add($"URL:{meetingLink}");
+            lines.Add($"URL:{Raw(meetingLink)}");
             lines.Add($"DESCRIPTION:{Escape($"Join: {meetingLink}")}");
         }
         lines.Add("END:VEVENT");
@@ -81,7 +81,11 @@ public static class CalendarIcs
     private static string Utc(DateTimeOffset at) => at.UtcDateTime.ToString("yyyyMMdd'T'HHmmss'Z'", CultureInfo.InvariantCulture);
 
     private static string Escape(string value)
-        => value.Replace("\\", "\\\\").Replace(";", "\\;").Replace(",", "\\,").Replace("\r\n", "\\n").Replace("\n", "\\n");
+        => value.Replace("\\", "\\\\").Replace(";", "\\;").Replace(",", "\\,").Replace("\r\n", "\\n").Replace("\n", "\\n").Replace("\r", "\\n");
+
+    /// <summary>Values written without TEXT escaping (URL, RRULE, mailto) come from users: a CR or LF in them would start a new
+    /// property line, so line breaks are dropped.</summary>
+    private static string Raw(string value) => value.Replace("\r", string.Empty).Replace("\n", string.Empty);
 
     /// <summary>Lines longer than 75 octets are folded with CRLF + space (RFC 5545 §3.1).</summary>
     private static string Fold(string line)

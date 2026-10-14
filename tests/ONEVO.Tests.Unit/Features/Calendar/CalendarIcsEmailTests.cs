@@ -79,5 +79,20 @@ public sealed class CalendarIcsEmailTests
         Encoding.UTF8.GetString(file.Content).Should().StartWith("BEGIN:VCALENDAR");
     }
 
+    [Fact]
+    public void Untrusted_values_can_never_start_a_new_property_line()
+    {
+        var ics = new CalendarEventIcs(EventId, Start.AddHours(1), 1, "FREQ=WEEKLY\r\nATTENDEE:mailto:evil@x.com");
+
+        var text = CalendarIcs.Build(CalendarEventEmailKinds.Invite, ics, "Title\rORGANIZER:mailto:evil@x.com", Start, "Room\n4", "Ada\r\nX-EVIL:1",
+            "bob@acme.com\r\nATTENDEE:mailto:evil@x.com", "https://zoom.us/j/1\r\nATTENDEE:mailto:evil@x.com", Start);
+
+        // Physical lines are either a property or a fold continuation (leading space); no injected property appears.
+        var lines = text.Split("\r\n", StringSplitOptions.RemoveEmptyEntries);
+        lines.Should().NotContain(l => l.StartsWith("ATTENDEE:mailto:evil") || l.StartsWith("ORGANIZER:mailto:evil") || l.StartsWith("X-EVIL"));
+        lines.Count(l => l.StartsWith("ATTENDEE")).Should().Be(1);
+        text.Replace("\r\n", "").Should().NotContain("\r").And.NotContain("\n");
+    }
+
     private static string Uid(string ics) => ics.Split("\r\n").Single(l => l.StartsWith("UID:"))["UID:".Length..];
 }
