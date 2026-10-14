@@ -87,32 +87,42 @@ public sealed class ZoomMeetingClient(HttpClient httpClient, ILogger<ZoomMeeting
         }
     }
 
+    private const int MaxAttendancePages = 100;
+
     public async Task<IReadOnlyList<ZoomAttendanceRecordDto>> GetAttendanceAsync(
         string accessToken, string externalMeetingId, CancellationToken ct)
     {
-        // Zoom's past-meeting participants report, the direct analogue of Microsoft Graph's
-        // attendanceReports endpoint — see MicrosoftGraphMeetingClient.GetAttendanceAsync for the
-        // Teams equivalent. Phase 2 takes only the first page (up to Zoom's default page size),
-        // matching Teams' own simplification of "non-recurring single-session events only".
-        using var request = new HttpRequestMessage(
-            HttpMethod.Get, $"https://api.zoom.us/v2/past_meetings/{externalMeetingId}/participants");
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
-        using var response = await httpClient.SendAsync(request, ct);
-        await EnsureSuccessOrLogAsync(response, "list past meeting participants", ct);
-        using var stream = await response.Content.ReadAsStreamAsync(ct);
-        using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: ct);
-
+        // Zoom's past-meeting participants report, paged by next_page_token (empty on the last page).
         var result = new List<ZoomAttendanceRecordDto>();
-        foreach (var participant in doc.RootElement.GetProperty("participants").EnumerateArray())
+        string? pageToken = null;
+        for (var page = 1; ; page++)
         {
-            var name = participant.TryGetProperty("name", out var n) ? n.GetString() : null;
-            var email = participant.TryGetProperty("user_email", out var e) ? e.GetString() : null;
-            var joined = participant.GetProperty("join_time").GetDateTimeOffset();
-            var left = participant.TryGetProperty("leave_time", out var l) && l.ValueKind != JsonValueKind.Null
-                ? l.GetDateTimeOffset() : (DateTimeOffset?)null;
-            result.Add(new ZoomAttendanceRecordDto(name, email, joined, left));
+            if (page > MaxAttendancePages)
+                throw new InvalidOperationException($"Zoom participants report exceeded {MaxAttendancePages} pages.");
+
+            var url = $"https://api.zoom.us/v2/past_meetings/{externalMeetingId}/participants?page_size=300"
+                + (string.IsNullOrEmpty(pageToken) ? "" : $"&next_page_token={Uri.EscapeDataString(pageToken)}");
+            using var request = new HttpRequestMessage(HttpMethod.Get, url);
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+            using var response = await httpClient.SendAsync(request, ct);
+            await EnsureSuccessOrLogAsync(response, "list past meeting participants", ct);
+            await using var stream = await response.Content.ReadAsStreamAsync(ct);
+            using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: ct);
+
+            foreach (var participant in doc.RootElement.GetProperty("participants").EnumerateArray())
+            {
+                var name = participant.TryGetProperty("name", out var n) ? n.GetString() : null;
+                var email = participant.TryGetProperty("user_email", out var e) ? e.GetString() : null;
+                var joined = participant.GetProperty("join_time").GetDateTimeOffset();
+                var left = participant.TryGetProperty("leave_time", out var l) && l.ValueKind != JsonValueKind.Null
+                    ? l.GetDateTimeOffset() : (DateTimeOffset?)null;
+                result.Add(new ZoomAttendanceRecordDto(name, email, joined, left));
+            }
+
+            pageToken = doc.RootElement.TryGetProperty("next_page_token", out var token) ? token.GetString() : null;
+            if (string.IsNullOrEmpty(pageToken))
+                return result;
         }
-        return result;
     }
 
     /// <summary>Same reasoning as MicrosoftGraphMeetingClient.EnsureSuccessOrLogAsync — logs

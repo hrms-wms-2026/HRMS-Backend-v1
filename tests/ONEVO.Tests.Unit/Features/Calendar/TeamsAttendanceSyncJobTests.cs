@@ -65,11 +65,11 @@ public sealed class TeamsAttendanceSyncJobTests
 
         var teamsClientMock = new Mock<ITeamsMeetingClient>();
         teamsClientMock.Setup(t => t.GetAttendanceAsync("access-token", "graph-meeting-1", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<TeamsAttendanceRecordDto>
+            .ReturnsAsync(new TeamsAttendanceResult(true, new List<TeamsAttendanceRecordDto>
             {
                 new("Ada Lovelace", "ada@acme.com", DateTimeOffset.UtcNow.AddMinutes(-30), DateTimeOffset.UtcNow),
                 new("Grace Hopper", "grace@acme.com", DateTimeOffset.UtcNow.AddMinutes(-20), DateTimeOffset.UtcNow)
-            });
+            }));
 
         var attendancesRepoMock = new Mock<ICalendarEventMeetingAttendanceRepository>();
 
@@ -128,7 +128,7 @@ public sealed class TeamsAttendanceSyncJobTests
         teamsClientMock.Setup(t => t.GetAttendanceAsync("access-token", failingMeeting.ExternalMeetingId, It.IsAny<CancellationToken>()))
             .ThrowsAsync(new HttpRequestException("simulated Graph 500"));
         teamsClientMock.Setup(t => t.GetAttendanceAsync("access-token", succeedingMeeting.ExternalMeetingId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<TeamsAttendanceRecordDto> { new("Ada Lovelace", "ada@acme.com", DateTimeOffset.UtcNow, null) });
+            .ReturnsAsync(new TeamsAttendanceResult(true, new List<TeamsAttendanceRecordDto> { new("Ada Lovelace", "ada@acme.com", DateTimeOffset.UtcNow, null) }));
 
         var attendancesRepoMock = new Mock<ICalendarEventMeetingAttendanceRepository>();
 

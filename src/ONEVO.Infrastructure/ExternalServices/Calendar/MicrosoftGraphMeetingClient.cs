@@ -47,35 +47,26 @@ public sealed class MicrosoftGraphMeetingClient(HttpClient httpClient, ILogger<M
         await EnsureSuccessOrLogAsync(response, "cancel online meeting", ct);
     }
 
-    public async Task<IReadOnlyList<TeamsAttendanceRecordDto>> GetAttendanceAsync(
+    private const int MaxPages = 100;
+
+    public async Task<TeamsAttendanceResult> GetAttendanceAsync(
         string accessToken, string externalMeetingId, CancellationToken ct)
     {
-        // Graph returns a list of attendance *reports* per meeting (one per session, for a
-        // recurring/reconvened meeting); Phase 1 events are non-recurring single sessions, so take
-        // the most recent report only.
-        using var reportsRequest = new HttpRequestMessage(
-            HttpMethod.Get, $"https://graph.microsoft.com/v1.0/me/onlineMeetings/{externalMeetingId}/attendanceReports");
-        reportsRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
-        using var reportsResponse = await httpClient.SendAsync(reportsRequest, ct);
-        await EnsureSuccessOrLogAsync(reportsResponse, "list attendance reports", ct);
-        using var reportsStream = await reportsResponse.Content.ReadAsStreamAsync(ct);
-        using var reportsDoc = await JsonDocument.ParseAsync(reportsStream, cancellationToken: ct);
-        var reports = reportsDoc.RootElement.GetProperty("value").EnumerateArray().ToList();
+        // One report per session; the last one is the most recent. Every list is paged by Graph.
+        var reports = await GetAllPagesAsync(
+            accessToken, $"https://graph.microsoft.com/v1.0/me/onlineMeetings/{externalMeetingId}/attendanceReports",
+            "list attendance reports", ct);
         if (reports.Count == 0)
-            return [];
+            return new TeamsAttendanceResult(false, []);
         var reportId = reports[^1].GetProperty("id").GetString();
 
-        using var recordsRequest = new HttpRequestMessage(
-            HttpMethod.Get,
-            $"https://graph.microsoft.com/v1.0/me/onlineMeetings/{externalMeetingId}/attendanceReports/{reportId}/attendanceRecords");
-        recordsRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
-        using var recordsResponse = await httpClient.SendAsync(recordsRequest, ct);
-        await EnsureSuccessOrLogAsync(recordsResponse, "list attendance records", ct);
-        using var recordsStream = await recordsResponse.Content.ReadAsStreamAsync(ct);
-        using var recordsDoc = await JsonDocument.ParseAsync(recordsStream, cancellationToken: ct);
+        var records = await GetAllPagesAsync(
+            accessToken,
+            $"https://graph.microsoft.com/v1.0/me/onlineMeetings/{externalMeetingId}/attendanceReports/{reportId}/attendanceRecords",
+            "list attendance records", ct);
 
         var result = new List<TeamsAttendanceRecordDto>();
-        foreach (var record in recordsDoc.RootElement.GetProperty("value").EnumerateArray())
+        foreach (var record in records)
         {
             var identity = record.TryGetProperty("identity", out var i) ? i : default;
             var name = identity.ValueKind != JsonValueKind.Undefined && identity.TryGetProperty("displayName", out var n) ? n.GetString() : null;
@@ -89,7 +80,30 @@ public sealed class MicrosoftGraphMeetingClient(HttpClient httpClient, ILogger<M
                 result.Add(new TeamsAttendanceRecordDto(name, email, joined, left));
             }
         }
-        return result;
+        return new TeamsAttendanceResult(true, result);
+    }
+
+    private async Task<List<JsonElement>> GetAllPagesAsync(string accessToken, string firstUrl, string operation, CancellationToken ct)
+    {
+        var items = new List<JsonElement>();
+        string? url = firstUrl;
+        for (var page = 1; url is not null; page++)
+        {
+            if (page > MaxPages)
+                throw new InvalidOperationException($"Microsoft Graph {operation} exceeded {MaxPages} pages.");
+
+            using var request = new HttpRequestMessage(HttpMethod.Get, url);
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+            using var response = await httpClient.SendAsync(request, ct);
+            await EnsureSuccessOrLogAsync(response, operation, ct);
+            await using var stream = await response.Content.ReadAsStreamAsync(ct);
+            using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: ct);
+            items.AddRange(doc.RootElement.GetProperty("value").EnumerateArray().Select(element => element.Clone()));
+            url = doc.RootElement.TryGetProperty("@odata.nextLink", out var next) && next.ValueKind == JsonValueKind.String
+                ? next.GetString()
+                : null;
+        }
+        return items;
     }
 
     /// <summary>EnsureSuccessStatusCode() alone throws with no detail beyond the status code -

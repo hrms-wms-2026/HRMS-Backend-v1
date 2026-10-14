@@ -44,7 +44,7 @@ public sealed class CalendarNotificationDb
     {
         Task<TeamsMeetingDto> ITeamsMeetingClient.CreateMeetingAsync(string a, string s, DateTimeOffset b, DateTimeOffset e, CancellationToken ct) => throw new InvalidOperationException("not used");
         Task ITeamsMeetingClient.CancelMeetingAsync(string a, string id, CancellationToken ct) => throw new InvalidOperationException("not used");
-        Task<IReadOnlyList<TeamsAttendanceRecordDto>> ITeamsMeetingClient.GetAttendanceAsync(string a, string id, CancellationToken ct) => throw new InvalidOperationException("not used");
+        Task<TeamsAttendanceResult> ITeamsMeetingClient.GetAttendanceAsync(string a, string id, CancellationToken ct) => throw new InvalidOperationException("not used");
         Task<ZoomMeetingDto> IZoomMeetingClient.CreateMeetingAsync(string a, string s, DateTimeOffset b, DateTimeOffset e, CancellationToken ct) => throw new InvalidOperationException("not used");
         Task IZoomMeetingClient.CancelMeetingAsync(string a, string id, CancellationToken ct) => throw new InvalidOperationException("not used");
         Task<IReadOnlyList<ZoomAttendanceRecordDto>> IZoomMeetingClient.GetAttendanceAsync(string a, string id, CancellationToken ct) => throw new InvalidOperationException("not used");

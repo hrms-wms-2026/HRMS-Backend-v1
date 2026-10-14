@@ -144,7 +144,7 @@ public sealed class ZoomMeetingClientTests
         var handler = new StubHandler(request =>
         {
             Assert.Equal(
-                "https://api.zoom.us/v2/past_meetings/987654321/participants",
+                "https://api.zoom.us/v2/past_meetings/987654321/participants?page_size=300",
                 request.RequestUri!.ToString());
             return new HttpResponseMessage(HttpStatusCode.OK)
             {
@@ -169,5 +169,23 @@ public sealed class ZoomMeetingClientTests
         Assert.Equal("Ada Lovelace", record.ParticipantName);
         Assert.Equal("ada@acme.com", record.ParticipantEmail);
         Assert.NotNull(record.LeftAt);
+    }
+
+    [Fact]
+    public async Task GetAttendanceAsync_SeveralPages_FollowsNextPageTokenAndReturnsThemAll()
+    {
+        var handler = new StubHandler(request =>
+        {
+            var url = request.RequestUri!.ToString();
+            object Participant(string name) => new { name, user_email = $"{name}@acme.com", join_time = "2026-09-23T10:00:00Z", leave_time = "2026-09-23T10:30:00Z" };
+            return url.EndsWith("next_page_token=tok2")
+                ? new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(new { participants = new[] { Participant("grace") }, next_page_token = "" }) }
+                : new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(new { participants = new[] { Participant("ada") }, next_page_token = "tok2" }) };
+        });
+        var client = new ZoomMeetingClient(new HttpClient(handler), NullLogger<ZoomMeetingClient>.Instance);
+
+        var result = await client.GetAttendanceAsync("access-token", "987654321", CancellationToken.None);
+
+        Assert.Equal(new[] { "ada", "grace" }, result.Select(r => r.ParticipantName));
     }
 }

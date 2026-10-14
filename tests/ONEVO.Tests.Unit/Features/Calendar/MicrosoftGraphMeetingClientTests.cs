@@ -56,7 +56,7 @@ public sealed class MicrosoftGraphMeetingClientTests
     }
 
     [Fact]
-    public async Task GetAttendanceAsync_NoReports_ReturnsEmpty()
+    public async Task GetAttendanceAsync_NoReports_SaysNoReportExists()
     {
         var handler = new StubHandler(request =>
         {
@@ -67,7 +67,8 @@ public sealed class MicrosoftGraphMeetingClientTests
 
         var result = await client.GetAttendanceAsync("access-token", "graph-meeting-1", CancellationToken.None);
 
-        Assert.Empty(result);
+        Assert.False(result.ReportExists);
+        Assert.Empty(result.Records);
     }
 
     [Fact]
@@ -111,9 +112,54 @@ public sealed class MicrosoftGraphMeetingClientTests
         var result = await client.GetAttendanceAsync("access-token", "graph-meeting-1", CancellationToken.None);
 
         Assert.Equal(2, callCount);
-        var record = Assert.Single(result);
+        Assert.True(result.ReportExists);
+        var record = Assert.Single(result.Records);
         Assert.Equal("Ada Lovelace", record.ParticipantName);
         Assert.Equal("ada@acme.com", record.ParticipantEmail);
         Assert.NotNull(record.LeftAt);
+    }
+
+    [Fact]
+    public async Task GetAttendanceAsync_ReportWithZeroRecords_IsAReportThatExists()
+    {
+        var handler = new StubHandler(request => request.RequestUri!.ToString().EndsWith("attendanceReports")
+            ? new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(new { value = new[] { new { id = "report-1" } } }) }
+            : new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(new { value = Array.Empty<object>() }) });
+        var client = new MicrosoftGraphMeetingClient(new HttpClient(handler), NullLogger<MicrosoftGraphMeetingClient>.Instance);
+
+        var result = await client.GetAttendanceAsync("access-token", "graph-meeting-1", CancellationToken.None);
+
+        Assert.True(result.ReportExists);
+        Assert.Empty(result.Records);
+    }
+
+    [Fact]
+    public async Task GetAttendanceAsync_RecordsOnSeveralPages_FollowsNextLinkAndReturnsThemAll()
+    {
+        const string page2 = "https://graph.microsoft.com/v1.0/me/onlineMeetings/graph-meeting-1/attendanceReports/report-1/attendanceRecords?$skiptoken=abc";
+        object Record(string name) => new
+        {
+            identity = new { displayName = name, upn = $"{name}@acme.com" },
+            attendanceIntervals = new[] { new { joinDateTime = "2026-09-23T10:00:00Z", leaveDateTime = "2026-09-23T10:30:00Z" } }
+        };
+        var handler = new StubHandler(request =>
+        {
+            var url = request.RequestUri!.ToString();
+            if (url.EndsWith("attendanceReports"))
+                return new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(new { value = new[] { new { id = "report-1" } } }) };
+            if (url == page2)
+                return new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(new { value = new[] { Record("grace") } }) };
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(
+                    $$"""{"value":[{"identity":{"displayName":"ada","upn":"ada@acme.com"},"attendanceIntervals":[{"joinDateTime":"2026-09-23T10:00:00Z","leaveDateTime":"2026-09-23T10:30:00Z"}]}],"@odata.nextLink":"{{page2}}"}""",
+                    System.Text.Encoding.UTF8, "application/json")
+            };
+        });
+        var client = new MicrosoftGraphMeetingClient(new HttpClient(handler), NullLogger<MicrosoftGraphMeetingClient>.Instance);
+
+        var result = await client.GetAttendanceAsync("access-token", "graph-meeting-1", CancellationToken.None);
+
+        Assert.Equal(new[] { "ada", "grace" }, result.Records.Select(r => r.ParticipantName));
     }
 }

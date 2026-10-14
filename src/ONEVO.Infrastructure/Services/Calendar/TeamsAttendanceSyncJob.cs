@@ -109,7 +109,7 @@ public sealed class TeamsAttendanceSyncJob(IServiceProvider services, ILogger<Te
         if (accessToken is null)
             return; // reauth required - retried automatically next run once the connection is fixed
 
-        var records = await teamsClient.GetAttendanceAsync(accessToken, meeting.ExternalMeetingId, ct);
+        var records = (await teamsClient.GetAttendanceAsync(accessToken, meeting.ExternalMeetingId, ct)).Records;
         var toAdd = records.Select(r => new CalendarEventMeetingAttendance
         {
             Id = Guid.NewGuid(), TenantId = tenantId, CalendarEventMeetingId = meeting.Id,
