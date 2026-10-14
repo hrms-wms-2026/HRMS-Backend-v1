@@ -29,6 +29,9 @@ public interface IConversationAccess
     /// <summary>True when the employee may see the subject from their own scope (they become a viewer).</summary>
     Task<bool> CanViewAsync(Guid tenantId, ItemRef subject, Guid employeeId, CancellationToken ct);
 
+    /// <summary>True when the employee has the module's oversight (review) scope over the subject - export only.</summary>
+    Task<bool> CanReviewAsync(Guid tenantId, ItemRef subject, Guid employeeId, CancellationToken ct);
+
     /// <summary>Null when the caller is neither a current base participant, an active viewer or added participant,
     /// nor someone the subject's module lets view the item (who is then recorded as a viewer).</summary>
     Task<ConversationContext?> AuthorizeAsync(Guid tenantId, Conversation conversation, ConversationSubject subjectInfo, Guid caller, CancellationToken ct);
@@ -55,6 +58,9 @@ public sealed class ConversationAccess : IConversationAccess
 
     public async Task<bool> CanViewAsync(Guid tenantId, ItemRef subject, Guid employeeId, CancellationToken ct)
         => _resolvers.TryGetValue(subject.Source, out var resolver) && await resolver.CanViewAsync(tenantId, subject, employeeId, ct);
+
+    public async Task<bool> CanReviewAsync(Guid tenantId, ItemRef subject, Guid employeeId, CancellationToken ct)
+        => _resolvers.TryGetValue(subject.Source, out var resolver) && await resolver.CanReviewAsync(tenantId, subject, employeeId, ct);
 
     public async Task<ConversationContext?> AuthorizeAsync(
         Guid tenantId, Conversation conversation, ConversationSubject subjectInfo, Guid caller, CancellationToken ct)

@@ -91,6 +91,9 @@ public class InboxController : ControllerBase
     public async Task<IActionResult> Export(string source, string kind, Guid id, CancellationToken ct)
     {
         var result = await _mediator.Send(new ExportInboxItemQuery(source, kind, id), ct);
+        // Served as a download only, never sniffed or rendered inline from the API origin.
+        Response.Headers["X-Content-Type-Options"] = "nosniff";
+        Response.Headers["Content-Security-Policy"] = "default-src 'none'; style-src 'unsafe-inline'";
         return result.IsSuccess
             ? File(System.Text.Encoding.UTF8.GetBytes(result.Value!.Html), "text/html; charset=utf-8", result.Value.FileName)
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);

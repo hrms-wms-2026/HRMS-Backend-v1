@@ -19,4 +19,8 @@ public interface IConversationSubjectResolver
     /// (HR, an escalation target, a project lead). They join the chat as a "viewer" on first open: they can read
     /// and post but never decide. Default: nobody beyond the base and added participants.</summary>
     Task<bool> CanViewAsync(Guid tenantId, ItemRef subject, Guid employeeId, CancellationToken ct) => Task.FromResult(false);
+
+    /// <summary>True when the employee reviews the item from an oversight role (HR scope, the case reviewer chain) and
+    /// may take the investigation export - narrower than <see cref="CanViewAsync"/>. Default: nobody; a module opts in.</summary>
+    Task<bool> CanReviewAsync(Guid tenantId, ItemRef subject, Guid employeeId, CancellationToken ct) => Task.FromResult(false);
 }

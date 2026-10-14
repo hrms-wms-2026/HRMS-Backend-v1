@@ -100,8 +100,8 @@ public class ExportInboxItemQueryTests
         result.IsSuccess.Should().BeTrue(result.Error);
         var html = result.Value!.Html;
         html.Should().Contain("Unusual activity - Sam").And.Contain("Detected").And.Contain("acknowledge");
-        html.Should().Contain("<p>I was with a client</p>").And.Contain(InboxInvestigationExport.EditedMarker).And.Contain("<p>I was out</p>");
-        html.Should().Contain(InboxInvestigationExport.DeletedMarker).And.Contain("<p>looks fishy</p>");
+        html.Should().Contain("I was with a client").And.Contain(InboxInvestigationExport.EditedMarker).And.Contain("I was out");
+        html.Should().Contain(InboxInvestigationExport.DeletedMarker).And.Contain("looks fishy");
         html.Should().Contain("calendar.png");
         result.Value.FileName.Should().EndWith(".html");
     }
@@ -120,11 +120,35 @@ public class ExportInboxItemQueryTests
         result.StatusCode.Should().Be(403);
     }
 
+    [Fact]
+    public async Task Seeing_the_item_is_not_enough_to_export_when_the_module_does_not_grant_review_scope()
+    {
+        _resolver.ViewersCanReview = false;
+
+        (await ExportAs(Hr)).StatusCode.Should().Be(403);
+    }
+
+    [Fact]
+    public async Task Chat_bodies_are_exported_as_text_never_as_markup()
+    {
+        _repo.Messages.Add(Message(Reviewer, "<p>see <a href=\"https://evil.example\" title=x>this</a><img src=x></p>", T0.AddMinutes(6)));
+        _repo.Revisions.Add(Revision(_repo.Messages[0].Id, "<p><b>bold</b> claim</p>", ConversationRevisionKinds.Edit, T0.AddMinutes(7)));
+
+        var html = (await ExportAs(Reviewer)).Value!.Html;
+
+        html.Should().Contain("see this").And.Contain("bold claim");
+        html.Should().NotContain("<a href").And.NotContain("<img").And.NotContain("<b>");
+    }
+
     private sealed class Resolver : IConversationSubjectResolver
     {
         public ConversationSubject? Subject { get; set; }
         public HashSet<Guid> Viewers { get; } = new();
+        public bool ViewersCanReview { get; set; } = true;
         public string Source => Item.Source;
+
+        public Task<bool> CanReviewAsync(Guid tenantId, ItemRef subject, Guid employeeId, CancellationToken ct)
+            => Task.FromResult(ViewersCanReview && subject == Item && Viewers.Contains(employeeId));
 
         public Task<ConversationSubject?> ResolveAsync(Guid tenantId, ItemRef subject, CancellationToken ct)
             => Task.FromResult(subject == Item ? Subject : null);

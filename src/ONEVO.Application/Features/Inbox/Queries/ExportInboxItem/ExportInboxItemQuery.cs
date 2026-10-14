@@ -63,7 +63,9 @@ public sealed class ExportInboxItemQueryHandler : IRequestHandler<ExportInboxIte
         var subject = await _access.ResolveSubjectAsync(caller.TenantId, item, ct);
         var isDecider = subject is not null && subject.BaseParticipantEmployeeIds.Contains(caller.EmployeeId)
             && subject.SubjectEmployeeId != caller.EmployeeId && detail.Value!.Item.RequestedBy?.Id != caller.EmployeeId;
-        if (!isDecider && !await _access.CanViewAsync(caller.TenantId, item, caller.EmployeeId, ct))
+        // Seeing the item (CanView) is not enough: the bundle holds deleted and edited messages, so only deciders and
+        // people the module gives oversight (review) scope may take it.
+        if (!isDecider && !await _access.CanReviewAsync(caller.TenantId, item, caller.EmployeeId, ct))
             return Result<InboxExport>.Forbidden(NotAllowed);
 
         var journal = await _journal.ListForItemAsync(caller.TenantId, item, ct);
@@ -85,12 +87,23 @@ public sealed class ExportInboxItemQueryHandler : IRequestHandler<ExportInboxIte
     }
 }
 
-/// <summary>Renders the investigation bundle. Every value is HTML-encoded except chat bodies, which are stored
-/// sanitized (ConversationRules rejects active content) and are shown as they appeared in the chat.</summary>
+/// <summary>Renders the investigation bundle. Every value is HTML-encoded, chat bodies included: they are reduced to
+/// plain text first, so nothing a participant wrote is ever served as markup from the API origin.</summary>
 public static class InboxInvestigationExport
 {
     public const string DeletedMarker = "[deleted]";
     public const string EditedMarker = "[earlier version]";
+
+    /// <summary>A chat body as plain text: tags dropped (block ends become spaces), entities decoded, whitespace
+    /// collapsed. The caller HTML-encodes the result.</summary>
+    public static string Text(string? bodyHtml)
+    {
+        if (string.IsNullOrEmpty(bodyHtml))
+            return string.Empty;
+        var withoutTags = System.Text.RegularExpressions.Regex.Replace(bodyHtml, "<[^>]*>", " ");
+        var decoded = WebUtility.HtmlDecode(withoutTags);
+        return System.Text.RegularExpressions.Regex.Replace(decoded, @"\s+", " ").Trim();
+    }
 
     public static string Render(
         InboxItemDetail detail, IReadOnlyList<InboxDecisionJournalEntry> journal, IReadOnlyList<ConversationMessage> messages,
@@ -151,10 +164,10 @@ public static class InboxInvestigationExport
             {
                 var marker = revision.Kind == ConversationRevisionKinds.Delete ? DeletedMarker : EditedMarker;
                 sb.Append("<blockquote class=\"").Append(revision.Kind == ConversationRevisionKinds.Delete ? "deleted" : "edited").Append("\">")
-                    .Append(E(marker)).Append(' ').Append(E(At(revision.RevisedAt))).Append(": ").Append(revision.BodyHtml).Append("</blockquote>");
+                    .Append(E(marker)).Append(' ').Append(E(At(revision.RevisedAt))).Append(": ").Append(E(Text(revision.BodyHtml))).Append("</blockquote>");
             }
             if (!message.IsRetracted)
-                sb.Append("<div>").Append(message.BodyHtml).Append("</div>");
+                sb.Append("<div>").Append(E(Text(message.BodyHtml))).Append("</div>");
             if (attachments.GetValueOrDefault(message.Id) is { Count: > 0 } files)
             {
                 sb.Append("<ul>");
