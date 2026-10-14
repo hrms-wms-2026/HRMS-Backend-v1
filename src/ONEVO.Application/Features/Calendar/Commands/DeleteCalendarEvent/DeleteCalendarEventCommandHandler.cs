@@ -37,7 +37,9 @@ public sealed class DeleteCalendarEventCommandHandler(
         {
             // X-2: delete locally first. The remote cancel is a self-contained outbox message inserted in
             // THIS transaction, so it exists only if the delete commits.
-            var meeting = await meetings.GetTrackedByCalendarEventAsync(tenantId, existing.Id, innerCt);
+            // Decide from the database, not the tracked row: if the execution strategy re-runs this lambda
+            // after a failed save, the tracked row still carries the rolled-back attempt's "cancelled".
+            var meeting = await meetings.GetByCalendarEventAsync(tenantId, existing.Id, innerCt);
             if (meeting is not null)
             {
                 var providerName = CalendarMeetingProviderNames.Display(meeting.Provider);
@@ -50,8 +52,9 @@ public sealed class DeleteCalendarEventCommandHandler(
                             tenantId, meeting.Provider, meeting.ExternalMeetingId, meeting.ExternalCalendarConnectionId,
                             existing.CreatedById, organizerEmployee?.Id ?? Guid.Empty, existing.Title),
                         $"meeting-cancel:{meeting.Id}:{meeting.LinkGeneration}", tenantId, innerCt);
-                    meeting.Status = CalendarEventMeetingStatuses.Cancelled;
-                    meetings.Update(meeting);
+                    var tracked = (await meetings.GetTrackedByCalendarEventAsync(tenantId, existing.Id, innerCt))!;
+                    tracked.Status = CalendarEventMeetingStatuses.Cancelled;
+                    meetings.Update(tracked);
                 }
                 else if (meeting.Status is CalendarEventMeetingStatuses.Provisioning
                     or CalendarEventMeetingStatuses.ProvisioningUnknown or CalendarEventMeetingStatuses.Unresolved)
