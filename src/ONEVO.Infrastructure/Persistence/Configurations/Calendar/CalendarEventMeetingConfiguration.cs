@@ -18,6 +18,8 @@ public class CalendarEventMeetingConfiguration : IEntityTypeConfiguration<Calend
         builder.Property(m => m.PasscodeOrPin).HasMaxLength(50);
         builder.Property(m => m.Status).HasMaxLength(20).IsRequired();
         builder.Property(m => m.AttendanceSyncStatus).HasMaxLength(32);
+        builder.Property(m => m.LinkGeneration).HasDefaultValue(1);
+        builder.Property(m => m.FailureReason).HasMaxLength(40);
 
         // One auto-generated meeting per event.
         builder.HasIndex(m => m.CalendarEventId)

@@ -1473,6 +1473,11 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("character varying(255)")
                         .HasColumnName("external_meeting_id");
 
+                    b.Property<string>("FailureReason")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("failure_reason");
+
                     b.Property<string>("JoinUrl")
                         .IsRequired()
                         .HasMaxLength(500)
@@ -1482,6 +1487,12 @@ namespace ONEVO.Infrastructure.Migrations
                     b.Property<DateTimeOffset?>("LastAttendanceSyncedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("last_attendance_synced_at");
+
+                    b.Property<int>("LinkGeneration")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(1)
+                        .HasColumnName("link_generation");
 
                     b.Property<string>("OrganizerJoinUrl")
                         .HasMaxLength(500)
@@ -1498,6 +1509,10 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasMaxLength(30)
                         .HasColumnType("character varying(30)")
                         .HasColumnName("provider");
+
+                    b.Property<DateTimeOffset?>("ProvisioningStartedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("provisioning_started_at");
 
                     b.Property<string>("Status")
                         .IsRequired()

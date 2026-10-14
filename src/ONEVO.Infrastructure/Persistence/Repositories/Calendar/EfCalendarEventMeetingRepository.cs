@@ -43,4 +43,60 @@ public class EfCalendarEventMeetingRepository : ICalendarEventMeetingRepository
     }
 
     public void Update(CalendarEventMeeting meeting) => _db.CalendarEventMeetings.Update(meeting);
+
+    public async Task<CalendarEventMeeting?> GetByCalendarEventAsync(Guid tenantId, Guid calendarEventId, CancellationToken ct = default)
+        => await _db.CalendarEventMeetings.AsNoTracking()
+            .FirstOrDefaultAsync(m => m.TenantId == tenantId && m.CalendarEventId == calendarEventId, ct);
+
+    // The claim statements run outside any transaction, so each commits on its own and other requests
+    // see the claim before this request calls the provider (spec §3.2.2).
+    public async Task<bool> TryInsertProvisioningAsync(CalendarEventMeeting row, CancellationToken ct = default)
+        => await _db.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO calendar_event_meetings
+                (id, tenant_id, calendar_event_id, external_calendar_connection_id, provider, external_meeting_id, join_url,
+                 status, link_generation, provisioning_started_at, created_at)
+            VALUES
+                ({row.Id}, {row.TenantId}, {row.CalendarEventId}, {row.ExternalCalendarConnectionId}, {row.Provider}, '', '',
+                 {CalendarEventMeetingStatuses.Provisioning}, 1, {row.ProvisioningStartedAt}, {row.CreatedAt})
+            ON CONFLICT (calendar_event_id) DO NOTHING
+            """, ct) == 1;
+
+    public async Task<int?> TryClaimNewGenerationAsync(
+        Guid tenantId, Guid meetingId, Guid connectionId, string provider, DateTimeOffset now, CancellationToken ct = default)
+    {
+        var generations = await _db.Database.SqlQuery<int>($"""
+            UPDATE calendar_event_meetings
+            SET status = {CalendarEventMeetingStatuses.Provisioning}, link_generation = link_generation + 1,
+                provisioning_started_at = {now}, external_calendar_connection_id = {connectionId}, provider = {provider},
+                external_meeting_id = '', join_url = '', organizer_join_url = NULL, passcode_or_pin = NULL,
+                failure_reason = NULL, attendance_sync_status = NULL, last_attendance_synced_at = NULL, updated_at = {now}
+            WHERE tenant_id = {tenantId} AND id = {meetingId}
+              AND status IN ({CalendarEventMeetingStatuses.Failed}, {CalendarEventMeetingStatuses.Cancelled})
+            RETURNING link_generation AS "Value"
+            """).ToListAsync(ct);
+        return generations.Count == 1 ? generations[0] : null;
+    }
+
+    public async Task<bool> TryMarkStaleProvisioningUnknownAsync(
+        Guid tenantId, Guid meetingId, DateTimeOffset staleBefore, DateTimeOffset now, CancellationToken ct = default)
+        => await _db.Database.ExecuteSqlInterpolatedAsync($"""
+            UPDATE calendar_event_meetings
+            SET status = {CalendarEventMeetingStatuses.ProvisioningUnknown}, failure_reason = 'timeout_or_server_error', updated_at = {now}
+            WHERE tenant_id = {tenantId} AND id = {meetingId}
+              AND status = {CalendarEventMeetingStatuses.Provisioning} AND provisioning_started_at < {staleBefore}
+            """, ct) == 1;
+
+    public async Task<bool> TryClaimUnknownAsync(Guid tenantId, Guid meetingId, DateTimeOffset now, CancellationToken ct = default)
+        => await _db.Database.ExecuteSqlInterpolatedAsync($"""
+            UPDATE calendar_event_meetings
+            SET status = {CalendarEventMeetingStatuses.Provisioning}, provisioning_started_at = {now}, updated_at = {now}
+            WHERE tenant_id = {tenantId} AND id = {meetingId} AND status = {CalendarEventMeetingStatuses.ProvisioningUnknown}
+            """, ct) == 1;
+
+    public async Task<bool> TryMarkUnknownUnresolvedAsync(Guid tenantId, Guid meetingId, DateTimeOffset now, CancellationToken ct = default)
+        => await _db.Database.ExecuteSqlInterpolatedAsync($"""
+            UPDATE calendar_event_meetings
+            SET status = {CalendarEventMeetingStatuses.Unresolved}, updated_at = {now}
+            WHERE tenant_id = {tenantId} AND id = {meetingId} AND status = {CalendarEventMeetingStatuses.ProvisioningUnknown}
+            """, ct) == 1;
 }
