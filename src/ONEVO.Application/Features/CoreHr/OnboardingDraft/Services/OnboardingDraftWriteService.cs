@@ -69,6 +69,7 @@ public class OnboardingDraftWriteService : IOnboardingDraftWriteService
     private readonly IUnitOfWork _unitOfWork;
     private readonly IEmployeeChecklistWorkTaskProvisioner? _workTaskProvisioner;
     private readonly IOnboardingWizardLookupService? _wizardLookups;
+    private readonly IOfficeProjectReconciler? _officeReconciler;
 
     public OnboardingDraftWriteService(
         IOnboardingDraftRepository draftRepository,
@@ -94,7 +95,8 @@ public class OnboardingDraftWriteService : IOnboardingDraftWriteService
         IDateTimeProvider clock,
         IUnitOfWork unitOfWork,
         IEmployeeChecklistWorkTaskProvisioner? workTaskProvisioner = null,
-        IOnboardingWizardLookupService? wizardLookups = null)
+        IOnboardingWizardLookupService? wizardLookups = null,
+        IOfficeProjectReconciler? officeReconciler = null)
     {
         _draftRepository = draftRepository;
         _employeeRepository = employeeRepository;
@@ -120,6 +122,7 @@ public class OnboardingDraftWriteService : IOnboardingDraftWriteService
         _unitOfWork = unitOfWork;
         _workTaskProvisioner = workTaskProvisioner;
         _wizardLookups = wizardLookups;
+        _officeReconciler = officeReconciler;
     }
 
     public async Task<Result<OnboardingDraftResponse>> SaveAsync(
@@ -766,6 +769,11 @@ public class OnboardingDraftWriteService : IOnboardingDraftWriteService
 
         if (draft.AvatarFileId is Guid draftAvatarId && _wizardLookups is not null)
             await TryLinkDraftAvatarAsync(draft.TenantId, employeeId, draftAvatarId, ct);
+
+        // Spec §4.2: the employee is committed, so if this user holds the Owner role the Office
+        // project can now be created (or re-led) owner-led. Best-effort: never fails onboarding.
+        if (_officeReconciler is not null)
+            await _officeReconciler.TryReconcileAsync(draft.TenantId, ct);
 
         return Result<FinalizeOnboardingDraftResponse>.Success(new FinalizeOnboardingDraftResponse(
             draft.Id, employeeId, draft.Status, draft.DraftReason,

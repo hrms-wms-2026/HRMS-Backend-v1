@@ -84,6 +84,19 @@ public sealed class OfficeProjectReconciler(
         return outcome;
     }
 
+    public async Task<OfficeProjectReconcileOutcome?> TryReconcileAsync(Guid tenantId, CancellationToken ct = default)
+    {
+        try
+        {
+            return await ReconcileAsync(tenantId, ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogWarning(ex, "Office project reconciliation failed for tenant {TenantId}; it will be retried by the next trigger.", tenantId);
+            return null;
+        }
+    }
+
     private static async Task<OwnerEmployee?> FindOwnerEmployeeAsync(
         ApplicationDbContext db, Guid tenantId, DateTimeOffset now, CancellationToken ct)
     {

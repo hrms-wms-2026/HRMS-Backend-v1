@@ -10,6 +10,7 @@ using ONEVO.Application.Features.Auth.Permission.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.Onboarding.Commands.ApproveAccessGrantRequest;
 using ONEVO.Application.Features.CoreHr.Onboarding.RepositoryInterfaces;
+using ONEVO.Application.Features.CoreHr.Onboarding.Services;
 using ONEVO.Application.Features.CoreHr.OnboardingDraft.OutboxHandlers;
 using ONEVO.Application.Features.CoreHr.OnboardingDrafts.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.PositionAssignment.RepositoryInterfaces;
@@ -50,6 +51,7 @@ public sealed class ApproveAccessGrantRequestCommandHandlerTests
     private readonly Mock<ICurrentUser> _currentUser = new();
     private readonly Mock<IDateTimeProvider> _clock = new();
     private readonly TrackingUnitOfWork _unitOfWork = new();
+    private readonly Mock<IOfficeProjectReconciler> _officeReconciler = new();
 
     private readonly Guid _tenantId = Guid.NewGuid();
     private readonly Guid _userId = Guid.NewGuid();
@@ -123,7 +125,8 @@ public sealed class ApproveAccessGrantRequestCommandHandlerTests
         _legalEntityRepository.Object, _departmentRepository.Object, _employmentTypeRepository.Object,
         _workModeRepository.Object, _seatEntitlementService.Object, _checklistTemplateRepository.Object,
         _checklistTaskRepository.Object, _invitationTokenRepository.Object, _tenantRepository.Object, _outboxWriter.Object,
-        _tokenGenerator.Object, _currentUser.Object, _clock.Object, _unitOfWork);
+        _tokenGenerator.Object, _currentUser.Object, _clock.Object, _unitOfWork,
+        officeReconciler: _officeReconciler.Object);
 
     private OnboardingDraftEntity ValidDraft(Guid draftId, string status = OnboardingDraftStatus.WaitingForPositionApproval) => new()
     {
@@ -438,6 +441,35 @@ public sealed class ApproveAccessGrantRequestCommandHandlerTests
         var expected = chosenState == "left_company" ? firstHolder : chosen;
         _positionAssignmentRepository.Verify(r => r.TryReservePositionAssignmentAsync(
             _tenantId, It.IsAny<Guid>(), _positionId, It.IsAny<DateOnly>(), _userId, expected, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_SeatApproved_ReconcilesTheOfficeProjectAfterTheEmployeeIsSaved()
+    {
+        SetupHappyPath(out var requestId, out _);
+        var calls = new List<string>();
+        _draftRepository.Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()))
+            .Callback(() => calls.Add("save")).ReturnsAsync(1);
+        _officeReconciler.Setup(r => r.TryReconcileAsync(_tenantId, It.IsAny<CancellationToken>()))
+            .Callback(() => calls.Add("reconcile")).ReturnsAsync(OfficeProjectReconcileOutcome.Created);
+
+        var result = await CreateHandler().Handle(new ApproveAccessGrantRequestCommand(requestId), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(new[] { "save", "reconcile" }, calls);
+    }
+
+    [Fact]
+    public async Task Handle_SaveConflict_DoesNotReconcile()
+    {
+        SetupHappyPath(out var requestId, out _);
+        _draftRepository.Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new UniqueConstraintConflictException(new Exception("dup")));
+
+        var result = await CreateHandler().Handle(new ApproveAccessGrantRequestCommand(requestId), CancellationToken.None);
+
+        Assert.Equal(409, result.StatusCode);
+        _officeReconciler.Verify(r => r.TryReconcileAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
