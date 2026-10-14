@@ -10,6 +10,7 @@ using ONEVO.Application.Features.Monitoring.Notifications.RepositoryInterfaces;
 using ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces;
 
 using ONEVO.Application.Features.TimeAttendance.Services;
+using ONEVO.Domain.Features.TimeAttendance.Alerts;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.Monitoring.Notifications.Entities;
 using ONEVO.Domain.Features.TimeAttendance.Entities;
@@ -367,6 +368,18 @@ public class EfEmployeeRepository : IEmployeeRepository
                 attendanceOptions.UtcNow,
                 ct);
 
+            // Open attendance alerts awaiting review (plan E1, D-a): one grouped query for the page, not one per row.
+            var pagedIds = pagedRows.Where(row => row.AttendanceSummary is not null).Select(row => row.Row.e.Id).ToList();
+            var openAlerts = pagedIds.Count == 0
+                ? new Dictionary<Guid, int>()
+                : await _db.AttendanceAlerts.AsNoTracking()
+                    .Where(a => a.TenantId == tenantId && pagedIds.Contains(a.EmployeeId) && a.Status == AttendanceAlertStatuses.Open)
+                    .GroupBy(a => a.EmployeeId)
+                    .Select(g => new { g.Key, Count = g.Count() })
+                    .ToDictionaryAsync(x => x.Key, x => x.Count, ct);
+            EmployeeListAttendanceSummaryResponse? WithAlerts(EmployeeListAttendanceSummaryResponse? summary, Guid employeeId) =>
+                summary is not null && openAlerts.TryGetValue(employeeId, out var open) ? summary with { OpenAlertCount = open } : summary;
+
             var responseRows = pagedRows
                 .Select(row => new EmployeeListItemResponse(
                     row.Row.e.Id,
@@ -385,7 +398,7 @@ public class EfEmployeeRepository : IEmployeeRepository
                     row.Row.manager != null ? row.Row.manager.FirstName + " " + row.Row.manager.LastName : null,
                     null,
                     null,
-                    monitoringWarnings.TryGetValue(row.Row.e.Id, out var overridden) ? overridden : row.AttendanceSummary,
+                    WithAlerts(monitoringWarnings.TryGetValue(row.Row.e.Id, out var overridden) ? overridden : row.AttendanceSummary, row.Row.e.Id),
                     row.Row.workMode != null ? row.Row.workMode.Name : null))
                 .ToList();
 

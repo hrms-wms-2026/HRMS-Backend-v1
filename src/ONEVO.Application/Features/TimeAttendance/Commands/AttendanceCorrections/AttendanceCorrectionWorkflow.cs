@@ -11,10 +11,12 @@ using ONEVO.Application.Features.Leave.Request.RepositoryInterfaces;
 using MediatR;
 using CoreEmployeeRepository = ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces.IEmployeeRepository;
 using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
+using ONEVO.Application.Features.TimeAttendance.Alerts;
 using ONEVO.Application.Features.TimeAttendance.DTOs.Responses;
 using ONEVO.Application.Features.TimeAttendance.Queries.AttendanceCorrections;
 using ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces;
 using ONEVO.Application.Features.TimeAttendance.Services;
+using ONEVO.Domain.Features.TimeAttendance.Alerts;
 using ONEVO.Domain.Features.TimeAttendance.Entities;
 
 namespace ONEVO.Application.Features.TimeAttendance.Commands.AttendanceCorrections;
@@ -32,7 +34,8 @@ public sealed class AttendanceCorrectionWorkflow(
     INotificationDispatcher notifications,
     IUnitOfWork unitOfWork,
     ILeaveRequestReadRepository? leaveRequests = null,
-    IInboxChangeNotifier? inbox = null)
+    IInboxChangeNotifier? inbox = null,
+    IAttendanceAlertRepository? alerts = null)
 {
     private const string ApprovalPermission = "attendance:approve";
     // The bell opens the Inbox item (inbox plan S4.2).
@@ -97,6 +100,7 @@ public sealed class AttendanceCorrectionWorkflow(
                 {
                     await ApplyCorrectionAsync(correction, value.Record!, value.Schedule, value.TimeZone,
                         value.LegalEntity.BreakDurationMinutes, value.PolicyStatus, transactionCt);
+                    await ResolveMissingClockOutAlertAsync(correction, null, transactionCt);
                     correction.Status = AttendanceCorrection.StatusApproved;
                     correction.ReviewedById = currentUser.UserId;
                     correction.ReviewedAt = dateTime.UtcNow;
@@ -285,6 +289,7 @@ public sealed class AttendanceCorrectionWorkflow(
                         return Result<AttendanceCorrectionResponse>.Conflict("The attendance day no longer exists.");
                     await ApplyCorrectionAsync(correction, record, scheduleResolution.Schedule,
                         scheduleResolution.TimeZone, legalEntity.BreakDurationMinutes, "configured", transactionCt);
+                    await ResolveMissingClockOutAlertAsync(correction, route.Value.ApproverEmployeeId, transactionCt);
                 }
 
                 correction.Status = decision;
@@ -490,6 +495,23 @@ public sealed class AttendanceCorrectionWorkflow(
             hasOpenBreak: false, breakAllowanceMinutes, record.BreakMinutes, dateTime.UtcNow, dateTime.UtcNow);
         record.Status = resolved.Status;
         record.UpdatedAt = dateTime.UtcNow;
+    }
+
+    /// <summary>An approved correction that sets the clock-out answers that day's missing-clock-out alert (plan E1): it
+    /// is resolved as excused with the note "corrected", saved with the correction.</summary>
+    private async Task ResolveMissingClockOutAlertAsync(AttendanceCorrection correction, Guid? resolvedBy, CancellationToken ct)
+    {
+        if (alerts is null || correction.CorrectionType is not (AttendanceCorrection.TypeClockOut or AttendanceCorrection.TypeFullDay))
+            return;
+        var alert = await alerts.FindOpenAsync(
+            correction.TenantId, correction.EmployeeId, correction.WorkDate, AttendanceAlertSignals.MissingClockOuts, ct);
+        if (alert is null)
+            return;
+        alert.Status = AttendanceAlertStatuses.Resolved;
+        alert.Outcome = AttendanceAlertOutcomes.Excused;
+        alert.Note = "corrected";
+        alert.ResolvedByEmployeeId = resolvedBy;
+        alert.ResolvedAt = dateTime.UtcNow;
     }
 
     private Task DeleteBreakAsync(Guid id, CancellationToken ct)

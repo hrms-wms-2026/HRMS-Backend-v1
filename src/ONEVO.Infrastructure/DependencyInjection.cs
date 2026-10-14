@@ -193,6 +193,10 @@ public static class DependencyInjection
         services.AddScoped<IDepartmentRepository, EfDepartmentRepository>();
         services.AddScoped<IClockInPolicyRepository, EfClockInPolicyRepository>();
         services.AddScoped<IAttendanceReadRepository, EfAttendanceReadRepository>();
+        services.AddScoped<ONEVO.Infrastructure.Persistence.Repositories.TimeAttendance.EfAttendanceAlertRepository>();
+        services.AddScoped<ONEVO.Application.Features.TimeAttendance.Alerts.IAttendanceAlertRepository>(sp => sp.GetRequiredService<ONEVO.Infrastructure.Persistence.Repositories.TimeAttendance.EfAttendanceAlertRepository>());
+        services.AddScoped<ONEVO.Application.Features.TimeAttendance.Alerts.IAttendanceAlertResolutionLookup>(sp => sp.GetRequiredService<ONEVO.Infrastructure.Persistence.Repositories.TimeAttendance.EfAttendanceAlertRepository>());
+        services.AddScoped<ONEVO.Application.Features.TimeAttendance.Alerts.IAttendanceAlertMaterializer, ONEVO.Application.Features.TimeAttendance.Alerts.AttendanceAlertMaterializer>();
         services.AddScoped<
             ONEVO.Application.Features.Leave.Type.RepositoryInterfaces.ILeaveTypeRepository,
             ONEVO.Infrastructure.Persistence.Repositories.Leave.Type.EfLeaveTypeRepository>();
@@ -765,6 +769,7 @@ public static class DependencyInjection
         services.AddHostedService<ActivityDailySummaryJob>();
         services.AddHostedService<ONEVO.Infrastructure.Services.Monitoring.Exceptions.ExceptionDetectionJob>();
         services.AddHostedService<ONEVO.Infrastructure.Services.Inbox.InboxEscalationSweepJob>();
+        services.AddHostedService<ONEVO.Infrastructure.Services.TimeAttendance.AttendanceAlertMaterializerJob>();
         services.AddScoped<ONEVO.Application.Features.Monitoring.Exceptions.Services.CameraVerificationSkippedDetector>();
 
         // Monitoring - Settings (tenant-level feature toggles admin CRUD)

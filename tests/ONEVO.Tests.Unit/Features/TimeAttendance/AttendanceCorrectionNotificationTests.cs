@@ -149,6 +149,50 @@ public sealed class AttendanceCorrectionNotificationTests
         fixture.UnitOfWork.TransactionCallCount.Should().Be(1);
     }
 
+    [Theory]
+    [InlineData(AttendanceCorrection.TypeClockOut, true)]
+    [InlineData(AttendanceCorrection.TypeClockIn, false)]
+    public async Task Approve_AClockOutCorrection_ResolvesThatDaysOpenMissingClockOutAlertAsExcused(string type, bool resolves)
+    {
+        var fixture = new Fixture(approvalRequired: true, actingAsApprover: true);
+        var pending = fixture.PendingCorrection();
+        pending.CorrectionType = type;
+        if (type == AttendanceCorrection.TypeClockOut)
+        {
+            pending.RequestedClockInAt = null;
+            pending.RequestedClockOutAt = new DateTimeOffset(2026, 8, 24, 17, 30, 0, TimeSpan.Zero);
+            fixture.Record.ActualStart = new DateTimeOffset(2026, 8, 24, 9, 0, 0, TimeSpan.Zero);
+        }
+        fixture.Corrections.Setup(x => x.GetTrackedByIdAsync(fixture.TenantId, pending.Id, It.IsAny<CancellationToken>())).ReturnsAsync(pending);
+        fixture.Attendance.Setup(x => x.GetTrackedRecordAsync(fixture.TenantId, fixture.EmployeeId, fixture.WorkDate, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(fixture.Record);
+        var alert = new ONEVO.Domain.Features.TimeAttendance.Alerts.AttendanceAlert
+        {
+            Id = Guid.NewGuid(), TenantId = fixture.TenantId, EmployeeId = fixture.EmployeeId, WorkDate = fixture.WorkDate,
+            SignalKey = ONEVO.Domain.Features.TimeAttendance.Alerts.AttendanceAlertSignals.MissingClockOuts
+        };
+        fixture.Alerts.Setup(x => x.FindOpenAsync(fixture.TenantId, fixture.EmployeeId, fixture.WorkDate,
+                ONEVO.Domain.Features.TimeAttendance.Alerts.AttendanceAlertSignals.MissingClockOuts, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(alert);
+
+        var result = await fixture.Workflow.ApproveAsync(new ApproveAttendanceCorrectionCommand(pending.Id, null), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue(result.Error);
+        if (resolves)
+        {
+            alert.Status.Should().Be(ONEVO.Domain.Features.TimeAttendance.Alerts.AttendanceAlertStatuses.Resolved);
+            alert.Outcome.Should().Be(ONEVO.Domain.Features.TimeAttendance.Alerts.AttendanceAlertOutcomes.Excused);
+            alert.Note.Should().Be("corrected");
+            alert.ResolvedByEmployeeId.Should().Be(fixture.ApproverEmployeeId);
+            alert.ResolvedAt.Should().NotBeNull();
+        }
+        else
+        {
+            alert.Status.Should().Be(ONEVO.Domain.Features.TimeAttendance.Alerts.AttendanceAlertStatuses.Open);
+            fixture.Alerts.Verify(x => x.FindOpenAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<DateOnly>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        }
+    }
+
     [Fact]
     public async Task Approve_WithEditedValues_AppliesTheApproverValuesAndKeepsWhatWasRequested()
     {
@@ -326,6 +370,7 @@ public sealed class AttendanceCorrectionNotificationTests
         public readonly List<NotificationCall> Notifications = [];
         public bool NotificationWasCreatedInsideTransaction { get; private set; }
         public Mock<ONEVO.Application.Features.Inbox.Services.IInboxChangeNotifier> Inbox { get; } = new();
+        public Mock<ONEVO.Application.Features.TimeAttendance.Alerts.IAttendanceAlertRepository> Alerts { get; } = new();
         public List<string> Order { get; } = new();
         public List<Guid> InboxRecipients { get; } = new();
         public ONEVO.Application.Features.Conversations.Contracts.ItemRef? InboxItem { get; private set; }
@@ -427,7 +472,7 @@ public sealed class AttendanceCorrectionNotificationTests
 
             Workflow = new AttendanceCorrectionWorkflow(CurrentUser.Object, Clock.Object, Employees.Object,
                 LegalEntities.Object, Policies.Object, Attendance.Object, Corrections.Object,
-                Authority.Object, Positions.Object, Dispatcher.Object, UnitOfWork, inbox: Inbox.Object);
+                Authority.Object, Positions.Object, Dispatcher.Object, UnitOfWork, inbox: Inbox.Object, alerts: Alerts.Object);
         }
 
         public ClockInPolicy Policy { get; }

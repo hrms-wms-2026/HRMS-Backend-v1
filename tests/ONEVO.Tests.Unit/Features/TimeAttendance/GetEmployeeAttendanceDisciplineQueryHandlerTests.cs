@@ -87,6 +87,28 @@ public sealed class GetEmployeeAttendanceDisciplineQueryHandlerTests
     }
 
     [Fact]
+    public async Task Handle_LeavesOutDaysWhoseAttendanceAlertWasExcused()
+    {
+        ArrangeData(60, new Dictionary<DateOnly, int>(), Standard());
+        var data = await _reader.Object.LoadAsync(_tenantId, _employeeId, null, new EmployeePeriod(D3, D6), CancellationToken.None);
+        _reader.Setup(r => r.LoadAsync(_tenantId, _employeeId, It.IsAny<Guid?>(), It.IsAny<EmployeePeriod>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(data with
+            {
+                Excused = new Dictionary<string, IReadOnlySet<DateOnly>>
+                {
+                    [ONEVO.Domain.Features.TimeAttendance.Alerts.AttendanceAlertSignals.LateClockIns] = new HashSet<DateOnly> { D4 },
+                    [ONEVO.Domain.Features.TimeAttendance.Alerts.AttendanceAlertSignals.MissingClockOuts] = new HashSet<DateOnly> { D6 },
+                }
+            });
+
+        var v = (await CreateHandler().Handle(new GetEmployeeAttendanceDisciplineQuery(_employeeId, null, null), CancellationToken.None)).Value!;
+
+        v.LateClockIns.Should().Be(0);
+        v.MissingClockOuts.Should().Be(0);
+        v.EarlyClockOuts.Should().Be(1, "only the excused signals drop");
+    }
+
+    [Fact]
     public async Task Handle_CountsLateEarlyMissingAndOverBreak_AndLocationAlertsWhenTrackingIsOn()
     {
         ArrangeData(60, new Dictionary<DateOnly, int> { [D3] = 30, [D4] = 75, [D5] = 90, [D6] = 60 }, Standard());
