@@ -99,4 +99,12 @@ public class EfCalendarEventMeetingRepository : ICalendarEventMeetingRepository
             SET status = {CalendarEventMeetingStatuses.Unresolved}, updated_at = {now}
             WHERE tenant_id = {tenantId} AND id = {meetingId} AND status = {CalendarEventMeetingStatuses.ProvisioningUnknown}
             """, ct) == 1;
+
+    public void UpdateAttendanceSync(CalendarEventMeeting meeting)
+    {
+        var entry = _db.CalendarEventMeetings.Attach(meeting);
+        entry.Property(m => m.AttendanceSyncStatus).IsModified = true;
+        entry.Property(m => m.LastAttendanceSyncedAt).IsModified = true;
+        entry.Property(m => m.UpdatedAt).IsModified = true;
+    }
 }

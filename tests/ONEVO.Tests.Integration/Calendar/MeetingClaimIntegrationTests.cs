@@ -94,4 +94,44 @@ public sealed class MeetingClaimIntegrationTests
         Assert.True(await repo.TryClaimUnknownAsync(h.TenantId, stale.Id, now));
         Assert.False(await repo.TryClaimUnknownAsync(h.TenantId, stale.Id, now)); // already claimed
     }
+
+    [Fact]
+    public async Task AttendanceSyncUpdate_WritesOnlyTheAttendanceColumns_NeverAStaleStatus()
+    {
+        var h = await CalendarNotificationDb.CreateAsync();
+        var now = DateTimeOffset.UtcNow;
+        var row = NewRow(h.TenantId, (await h.AddEventAsync([], [])).Id, now);
+        row.Status = CalendarEventMeetingStatuses.Active;
+        row.ExternalMeetingId = "graph-1";
+        row.JoinUrl = "https://teams/j/1";
+        await using (var db = h.Context())
+        {
+            db.CalendarEventMeetings.Add(row);
+            await db.SaveChangesAsync();
+        }
+        CalendarEventMeeting snapshot;
+        await using (var db = h.Context())
+            snapshot = await db.CalendarEventMeetings.AsNoTracking().SingleAsync(m => m.Id == row.Id);
+        await using (var db = h.Context())
+        {
+            // The organizer removes the meeting while the sync job holds its untracked snapshot.
+            var tracked = await db.CalendarEventMeetings.SingleAsync(m => m.Id == row.Id);
+            tracked.Status = CalendarEventMeetingStatuses.Cancelled;
+            await db.SaveChangesAsync();
+        }
+
+        snapshot.AttendanceSyncStatus = CalendarAttendanceSyncStatuses.Synced;
+        snapshot.LastAttendanceSyncedAt = now;
+        snapshot.UpdatedAt = now;
+        await using (var db = h.Context())
+        {
+            Repo(db).UpdateAttendanceSync(snapshot);
+            await db.SaveChangesAsync();
+        }
+
+        await using var verify = h.Context();
+        var stored = await verify.CalendarEventMeetings.AsNoTracking().SingleAsync(m => m.Id == row.Id);
+        Assert.Equal(CalendarEventMeetingStatuses.Cancelled, stored.Status);
+        Assert.Equal(CalendarAttendanceSyncStatuses.Synced, stored.AttendanceSyncStatus);
+    }
 }

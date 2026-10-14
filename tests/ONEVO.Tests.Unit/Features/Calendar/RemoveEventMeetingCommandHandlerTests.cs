@@ -64,7 +64,7 @@ public sealed class RemoveEventMeetingCommandHandlerTests
         employees.Setup(e => e.GetDefaultForUserAsync(TenantId, UserId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Employee { Id = Guid.NewGuid(), TenantId = TenantId, UserId = UserId, FirstName = "Ada", LastName = "Owner" });
         var links = new EventMeetingLinkService(_events.Object, _meetings.Object, _connections.Object, _provisioner.Object,
-            _notifications.Object, _unitOfWork.Object, _clock.Object);
+            _notifications.Object, _unitOfWork.Object, _clock.Object, Mock.Of<IOutboxWriter>());
         return new RemoveEventMeetingCommandHandler(_currentUser.Object, _events.Object, _meetings.Object, _connections.Object,
             _tokens.Object, _teams.Object, _zoom.Object, links, employees.Object, _unitOfWork.Object);
     }

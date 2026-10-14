@@ -34,4 +34,9 @@ public interface ICalendarEventMeetingRepository
     Task<bool> TryMarkUnknownUnresolvedAsync(Guid tenantId, Guid meetingId, DateTimeOffset now, CancellationToken ct = default);
 
     void Update(CalendarEventMeeting meeting);
+
+    /// <summary>Stages a write of ONLY the attendance-sync columns (status, synced-at, updated-at) of an
+    /// untracked snapshot, so a sync job never writes back a status or link generation that changed
+    /// after it read the row.</summary>
+    void UpdateAttendanceSync(CalendarEventMeeting meeting);
 }

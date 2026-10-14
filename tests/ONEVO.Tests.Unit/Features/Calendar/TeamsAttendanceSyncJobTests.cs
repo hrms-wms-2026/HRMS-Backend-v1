@@ -122,7 +122,7 @@ public sealed class TeamsAttendanceSyncJobTests
 
         Assert.Null(meeting.AttendanceSyncStatus);
         Assert.Null(meeting.LastAttendanceSyncedAt);
-        rig.Meetings.Verify(m => m.Update(It.IsAny<CalendarEventMeeting>()), Times.Never);
+        rig.Meetings.Verify(m => m.UpdateAttendanceSync(It.IsAny<CalendarEventMeeting>()), Times.Never);
     }
 
     [Fact]

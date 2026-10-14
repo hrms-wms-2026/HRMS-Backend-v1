@@ -48,6 +48,7 @@ public sealed class CreateEventMeetingCommandHandlerTests
         _currentUser.SetupGet(x => x.UserId).Returns(UserId);
         _clock.SetupGet(c => c.UtcNow).Returns(Now);
         _events.Setup(e => e.GetTrackedByIdForTenantAsync(TenantId, EventId, It.IsAny<CancellationToken>())).ReturnsAsync(_evt);
+        _events.Setup(e => e.GetByIdForTenantAsync(TenantId, EventId, It.IsAny<CancellationToken>())).ReturnsAsync(_evt);
         _events.Setup(e => e.GetParticipantsForEventsAsync(TenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Dictionary<Guid, IReadOnlyList<CalendarEventParticipant>>());
         _events.Setup(e => e.GetGuestsForEventsAsync(TenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
@@ -61,7 +62,7 @@ public sealed class CreateEventMeetingCommandHandlerTests
         _unitOfWork.Setup(u => u.ExecuteInTransactionAsync(It.IsAny<Func<CancellationToken, Task<bool>>>(), It.IsAny<CancellationToken>()))
             .Returns<Func<CancellationToken, Task<bool>>, CancellationToken>((op, ct) => op(ct));
         var links = new EventMeetingLinkService(_events.Object, _meetings.Object, _connections.Object, _provisioner.Object,
-            _notifications.Object, _unitOfWork.Object, _clock.Object);
+            _notifications.Object, _unitOfWork.Object, _clock.Object, Mock.Of<IOutboxWriter>());
         return new CreateEventMeetingCommandHandler(
             _currentUser.Object, _events.Object, _connections.Object, _meetings.Object, links, _employees.Object, _clock.Object, _unitOfWork.Object);
     }

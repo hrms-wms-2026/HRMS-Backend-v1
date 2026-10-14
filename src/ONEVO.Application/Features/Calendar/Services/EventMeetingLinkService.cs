@@ -2,6 +2,7 @@ using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Calendar.Commands.CreateEventMeeting;
+using ONEVO.Application.Features.Calendar.OutboxHandlers;
 using ONEVO.Application.Features.Calendar.RepositoryInterfaces;
 using ONEVO.Domain.Features.Calendar.Entities;
 
@@ -16,7 +17,8 @@ public sealed class EventMeetingLinkService(
     IMeetingProvisioner provisioner,
     ICalendarNotificationSender notifications,
     IUnitOfWork unitOfWork,
-    IDateTimeProvider clock)
+    IDateTimeProvider clock,
+    IOutboxWriter outbox)
 {
     public static readonly TimeSpan StaleAfter = TimeSpan.FromMinutes(5);
 
@@ -30,6 +32,9 @@ public sealed class EventMeetingLinkService(
 
         return await unitOfWork.ExecuteInTransactionAsync(async innerCt =>
         {
+            // The provider call can take up to 90 s, so re-read the event's committed state instead of
+            // trusting the copy loaded before it: it may have been edited or deleted in the meantime.
+            var current = await events.GetByIdForTenantAsync(evt.TenantId, evt.Id, innerCt);
             claimed.UpdatedAt = clock.UtcNow;
             if (outcome.Kind == MeetingProvisioningOutcomeKind.Created)
             {
@@ -41,26 +46,57 @@ public sealed class EventMeetingLinkService(
                 claimed.PasscodeOrPin = meeting.PasscodeOrPin;
                 claimed.FailureReason = null;
                 claimed.ProvisioningStartedAt = null;
+                if (current is null)
+                {
+                    // Deleted during the call: nobody gets a link to it, and the new remote meeting is
+                    // cancelled after this commits (same keyed message the delete itself would queue).
+                    claimed.Status = CalendarEventMeetingStatuses.Cancelled;
+                    meetings.Update(claimed);
+                    await outbox.EnqueueKeyedAsync(
+                        OutboxMessageTypes.CalendarMeetingCancel,
+                        new CalendarMeetingCancelPayload(
+                            evt.TenantId, claimed.Provider, meeting.ExternalMeetingId, claimed.ExternalCalendarConnectionId,
+                            evt.CreatedById, Guid.Empty, evt.Title),
+                        $"meeting-cancel:{claimed.Id}:{claimed.LinkGeneration}", evt.TenantId, innerCt);
+                    await unitOfWork.SaveChangesAsync(innerCt);
+                    return Result<CreateEventMeetingResult>.NotFound("Calendar event not found.");
+                }
+
                 meetings.Update(claimed);
+                // evt is tracked: setting the one property writes only meeting_link. A whole-row Update
+                // here would overwrite edits committed during the provider call.
                 evt.MeetingLink = meeting.JoinUrl;
-                events.Update(evt);
-                await SendLinkEmailsAsync(evt, claimed, organizerName, innerCt);
+                await SendLinkEmailsAsync(current, claimed, organizerName, innerCt);
                 await unitOfWork.SaveChangesAsync(innerCt);
                 return Result<CreateEventMeetingResult>.Success(new CreateEventMeetingResult(meeting.JoinUrl));
             }
 
             var ambiguous = outcome.Kind == MeetingProvisioningOutcomeKind.Ambiguous;
-            claimed.Status = ambiguous ? CalendarEventMeetingStatuses.ProvisioningUnknown : CalendarEventMeetingStatuses.Failed;
             claimed.FailureReason = outcome.Reason;
+            if (current is null)
+            {
+                // Deleted during the call: no invitations to a deleted event. An ambiguous call may have
+                // left a meeting behind that only the organizer can find.
+                claimed.Status = ambiguous ? CalendarEventMeetingStatuses.Unresolved : CalendarEventMeetingStatuses.Failed;
+                claimed.ProvisioningStartedAt = null;
+                meetings.Update(claimed);
+                if (ambiguous)
+                    await notifications.NotifyOrganizerAboutMeetingAsync(
+                        evt.TenantId, evt.CreatedById, CalendarMeetingNoticeCodes.Unresolved, evt.Title, providerName, innerCt);
+                await unitOfWork.SaveChangesAsync(innerCt);
+                return Result<CreateEventMeetingResult>.NotFound("Calendar event not found.");
+            }
+
+            claimed.Status = ambiguous ? CalendarEventMeetingStatuses.ProvisioningUnknown : CalendarEventMeetingStatuses.Failed;
             if (!ambiguous)
                 claimed.ProvisioningStartedAt = null;
             meetings.Update(claimed);
             // P1-5: nobody may be left uninvited because the link didn't happen.
-            await SendFallbackInvitesAsync(evt, organizerName, innerCt);
+            await SendFallbackInvitesAsync(current, organizerName, innerCt);
             await notifications.NotifyOrganizerAboutMeetingAsync(
-                evt.TenantId, evt.CreatedById,
+                current.TenantId, current.CreatedById,
                 ambiguous ? CalendarMeetingNoticeCodes.LinkUnknown : CalendarMeetingNoticeCodes.LinkFailed,
-                evt.Title, providerName, innerCt);
+                current.Title, providerName, innerCt);
             await unitOfWork.SaveChangesAsync(innerCt);
 
             return outcome.Kind switch

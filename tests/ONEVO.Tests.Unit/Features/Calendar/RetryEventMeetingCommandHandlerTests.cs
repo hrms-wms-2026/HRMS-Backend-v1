@@ -35,6 +35,7 @@ public sealed class RetryEventMeetingCommandHandlerTests
         _currentUser.SetupGet(x => x.UserId).Returns(UserId);
         _clock.SetupGet(c => c.UtcNow).Returns(Now);
         _events.Setup(e => e.GetTrackedByIdForTenantAsync(TenantId, EventId, It.IsAny<CancellationToken>())).ReturnsAsync(_evt);
+        _events.Setup(e => e.GetByIdForTenantAsync(TenantId, EventId, It.IsAny<CancellationToken>())).ReturnsAsync(_evt);
         _events.Setup(e => e.GetParticipantsForEventsAsync(TenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Dictionary<Guid, IReadOnlyList<CalendarEventParticipant>>());
         _events.Setup(e => e.GetGuestsForEventsAsync(TenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
@@ -51,7 +52,7 @@ public sealed class RetryEventMeetingCommandHandlerTests
         _unitOfWork.Setup(u => u.ExecuteInTransactionAsync(It.IsAny<Func<CancellationToken, Task<Result<CreateEventMeetingResult>>>>(), It.IsAny<CancellationToken>()))
             .Returns<Func<CancellationToken, Task<Result<CreateEventMeetingResult>>>, CancellationToken>((op, ct) => op(ct));
         var links = new EventMeetingLinkService(_events.Object, _meetings.Object, _connections.Object, _provisioner.Object,
-            Mock.Of<ICalendarNotificationSender>(), _unitOfWork.Object, _clock.Object);
+            Mock.Of<ICalendarNotificationSender>(), _unitOfWork.Object, _clock.Object, Mock.Of<IOutboxWriter>());
         return new RetryEventMeetingCommandHandler(_currentUser.Object, _events.Object, _connections.Object, _meetings.Object, links,
             Mock.Of<ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces.IEmployeeRepository>(), _clock.Object);
     }

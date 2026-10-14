@@ -73,7 +73,8 @@ public sealed class MeetingProvisioningIntegrationTests
         var meetings = new EfCalendarEventMeetingRepository(s.Db, clock);
         var connections = new EfExternalCalendarConnectionRepository(s.Db);
         var provisioner = new MeetingProvisioner(teams, teams, new UnusedZoom(), NullLogger<MeetingProvisioner>.Instance);
-        var links = new EventMeetingLinkService(s.Events, meetings, connections, provisioner, s.Sender, s.UnitOfWork, clock);
+        var links = new EventMeetingLinkService(s.Events, meetings, connections, provisioner, s.Sender, s.UnitOfWork, clock,
+            new ONEVO.Infrastructure.Services.SharedPlatform.Outbox.OutboxWriter(s.Db, Encryption, clock));
         return (
             new CreateEventMeetingCommandHandler(h.OrganizerUser, s.Events, connections, meetings, links, s.Employees, clock, s.UnitOfWork),
             new RemoveEventMeetingCommandHandler(h.OrganizerUser, s.Events, meetings, connections, teams, teams, new UnusedZoom(), links, s.Employees, s.UnitOfWork));
@@ -166,5 +167,80 @@ public sealed class MeetingProvisioningIntegrationTests
         var cancel = Assert.Single((await h.OutboxAsync()).Where(r => r.Type == OutboxMessageTypes.CalendarMeetingCancel));
         Assert.Equal("graph-1", cancel.Payload.RootElement.GetProperty("ExternalMeetingId").GetString());
         Assert.Empty(teams.Cancelled); // not called inline
+    }
+
+    private static async Task WaitForAsync(Func<bool> condition)
+    {
+        for (var i = 0; i < 400 && !condition(); i++)
+            await Task.Delay(25);
+        Assert.True(condition(), "Timed out waiting for the provider call to start.");
+    }
+
+    private static Task<ONEVO.Application.Common.Models.Result<CreateEventMeetingResult>> StartCreateAsync(
+        CalendarNotificationDb h, FakeTeams teams, Guid eventId)
+        => Task.Run(async () =>
+        {
+            await using var s = h.Scope();
+            return await Handlers(h, s, teams).Create.Handle(
+                new CreateEventMeetingCommand(eventId, CalendarEventMeetingProviders.MicrosoftTeams), CancellationToken.None);
+        });
+
+    [Fact]
+    public async Task EventDeletedWhileTheLinkIsBeingCreated_StaysDeleted_TheMeetingIsCancelled_AndNobodyGetsALink()
+    {
+        var h = await CalendarNotificationDb.CreateAsync();
+        await AddTeamsConnectionAsync(h);
+        var participant = await h.AddEmployeeAsync("Grace", "Hopper");
+        var evt = await h.AddEventAsync([participant], []);
+        var teams = new FakeTeams { Block = true };
+
+        var create = StartCreateAsync(h, teams, evt.Id);
+        await WaitForAsync(() => teams.CreateCalls == 1);
+        await using (var s = h.Scope())
+        {
+            var clock = new SystemDateTimeProvider();
+            var deleted = await new ONEVO.Application.Features.Calendar.Commands.DeleteCalendarEvent.DeleteCalendarEventCommandHandler(
+                    h.OrganizerUser, s.Events, s.Employees, s.Sender, new EfCalendarEventMeetingRepository(s.Db, clock),
+                    new ONEVO.Infrastructure.Services.SharedPlatform.Outbox.OutboxWriter(s.Db, Encryption, clock), s.UnitOfWork)
+                .Handle(new ONEVO.Application.Features.Calendar.Commands.DeleteCalendarEvent.DeleteCalendarEventCommand(evt.Id), CancellationToken.None);
+            Assert.True(deleted.IsSuccess);
+        }
+        teams.Release.SetResult();
+        var result = await create;
+
+        Assert.False(result.IsSuccess);
+        await using var db = h.Context();
+        Assert.True((await db.PersonalCalendarEvents.IgnoreQueryFilters().AsNoTracking().SingleAsync(e => e.Id == evt.Id)).IsDeleted);
+        var rows = await h.OutboxAsync();
+        Assert.Single(rows, r => r.Type == OutboxMessageTypes.CalendarMeetingCancel);
+        Assert.DoesNotContain(rows, r => r.DeduplicationKey?.StartsWith("link:") == true);
+    }
+
+    [Fact]
+    public async Task EventRenamedWhileTheLinkIsBeingCreated_KeepsTheNewTitleAndRevision_AndGetsTheLink()
+    {
+        var h = await CalendarNotificationDb.CreateAsync();
+        await AddTeamsConnectionAsync(h);
+        var evt = await h.AddEventAsync([], []);
+        var teams = new FakeTeams { Block = true };
+
+        var create = StartCreateAsync(h, teams, evt.Id);
+        await WaitForAsync(() => teams.CreateCalls == 1);
+        await using (var s = h.Scope())
+        {
+            var renamed = await new ONEVO.Application.Features.Calendar.Commands.UpdateCalendarEvent.UpdateCalendarEventCommandHandler(
+                    h.OrganizerUser, s.Events, s.Employees, s.Sender, s.UnitOfWork)
+                .Handle(new ONEVO.Application.Features.Calendar.Commands.UpdateCalendarEvent.UpdateCalendarEventCommand(
+                    evt.Id, "Renamed", null, evt.StartDate, evt.EndDate, false, null, null, null, CalendarRecurrences.None), CancellationToken.None);
+            Assert.True(renamed.IsSuccess);
+        }
+        teams.Release.SetResult();
+        Assert.True((await create).IsSuccess);
+
+        await using var db = h.Context();
+        var stored = await db.PersonalCalendarEvents.AsNoTracking().SingleAsync(e => e.Id == evt.Id);
+        Assert.Equal("Renamed", stored.Title);
+        Assert.Equal(1, stored.Revision);
+        Assert.Equal("https://teams/j/1", stored.MeetingLink);
     }
 }

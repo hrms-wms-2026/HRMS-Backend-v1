@@ -38,7 +38,7 @@ internal static class AttendanceSyncRecorder
         meeting.AttendanceSyncStatus = status;
         meeting.LastAttendanceSyncedAt = status == CalendarAttendanceSyncStatuses.Synced ? now : null;
         meeting.UpdatedAt = now;
-        meetings.Update(meeting);
+        meetings.UpdateAttendanceSync(meeting);
         await unitOfWork.SaveChangesAsync(ct);
 
         if (status != CalendarAttendanceSyncStatuses.Synced)

@@ -73,7 +73,6 @@ public sealed class RemoveEventMeetingCommandHandler(
             meeting.Status = CalendarEventMeetingStatuses.Cancelled;
             meetings.Update(meeting);
             existing.MeetingLink = null;
-            events.Update(existing);
             // P1-4: people must not keep a dead join link.
             await links.SendLinkRemovedAsync(existing, meeting, organizerName, innerCt);
             await unitOfWork.SaveChangesAsync(innerCt);
@@ -85,8 +84,7 @@ public sealed class RemoveEventMeetingCommandHandler(
     {
         if (existing.MeetingLink is not null)
         {
-            existing.MeetingLink = null;
-            events.Update(existing);
+            existing.MeetingLink = null; // tracked: only meeting_link is written
             await unitOfWork.SaveChangesAsync(ct);
         }
         return Result.Success();
