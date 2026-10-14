@@ -41,6 +41,14 @@ public class EfTenantRepository : ITenantRepository
             .ToListAsync(ct);
     }
 
+    public async Task<IReadOnlyList<Tenant>> ListPageByIdAsync(Guid? afterId, int take, CancellationToken ct = default)
+    {
+        var query = _db.Tenants.AsNoTracking();
+        if (afterId is Guid after)
+            query = query.Where(t => t.Id > after);
+        return await query.OrderBy(t => t.Id).Take(take).ToListAsync(ct);
+    }
+
     public Task<int> CountAsync(
         TenantStatus? statusFilter,
         string? searchTerm,
