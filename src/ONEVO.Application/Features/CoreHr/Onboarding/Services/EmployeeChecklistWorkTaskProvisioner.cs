@@ -16,6 +16,7 @@ namespace ONEVO.Application.Features.CoreHr.Onboarding.Services;
 
 public sealed class EmployeeChecklistWorkTaskProvisioner(
     IOfficeProjectProvisioner officeProjects,
+    IOfficeProjectReconciler officeReconciler,
     IEmployeeRepository employees,
     IProjectRepository projects,
     IWorkTaskRepository workTasks,
@@ -30,6 +31,11 @@ public sealed class EmployeeChecklistWorkTaskProvisioner(
         var actor = await employees.GetByUserIdAsync(tenantId, actingUserId, ct);
         if (actor is null || actor.EmploymentStatusId != EmploymentStatusIds.Active)
             return Result<OfficeProjectContext>.Forbidden("No active employee record exists for the current user.");
+
+        // Create it owner-led when an owner employee exists, and align an existing one's lead.
+        // EnsureAsync below then only extends the target date or, when no owner employee exists
+        // yet, creates it with the acting HR employee as lead (accepted exception, spec §7 Q1).
+        await officeReconciler.ReconcileAsync(tenantId, ct);
 
         var office = await officeProjects.EnsureAsync(
             tenantId, legalEntityId, actingUserId, actor.Id, targetDate, ct);
