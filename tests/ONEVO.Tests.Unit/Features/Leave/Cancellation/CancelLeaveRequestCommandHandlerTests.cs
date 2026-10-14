@@ -107,6 +107,40 @@ public class CancelLeaveRequestCommandHandlerTests
     }
 
     [Fact]
+    public async Task Handle_RevertOfAnApproverBackdatedLeave_CancelsThePastLeaveForTheApproverWhoCreatedIt()
+    {
+        var harness = Harness.Create(LeaveRequestStatuses.Approved, ownerIsCaller: false, paidHours: 8m, pendingHours: 0m, usedHours: 8m,
+            start: new DateOnly(2026, 8, 14), end: new DateOnly(2026, 8, 14), businessDate: new DateOnly(2026, 8, 22));
+        harness.Request.ApprovedBy = harness.Caller.Id;
+        harness.Request.SubmittedOnBehalfOfBy = harness.Caller.UserId;
+
+        var result = await harness.Sut.Handle(new CancelLeaveRequestCommand(harness.Request.Id, "Reverted from Inbox", null, null,
+            RevertOfApproverBackdatedLeave: true), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue(result.Error);
+        harness.Request.Status.Should().Be(LeaveRequestStatuses.Cancelled);
+        harness.Entitlement.UsedHours.Should().Be(0m);
+        harness.Audits.Should().ContainSingle(a => a.ChangeType == LeaveBalanceChangeTypes.Adjustment && a.HoursChanged == 8m);
+        harness.OutboxTypes.Should().Contain(OutboxMessageTypes.LeaveRequestCancelled);
+    }
+
+    [Fact]
+    public async Task Handle_RevertOfAnApproverBackdatedLeave_IsRefusedForAnyoneButTheApproverWhoCreatedIt()
+    {
+        var harness = Harness.Create(LeaveRequestStatuses.Approved, ownerIsCaller: false, hrPermission: true, paidHours: 8m, usedHours: 8m,
+            start: new DateOnly(2026, 8, 14), end: new DateOnly(2026, 8, 14), businessDate: new DateOnly(2026, 8, 22));
+        harness.Request.ApprovedBy = Guid.NewGuid(); // someone else created it - even HR cannot use the past-period bypass
+        harness.Request.SubmittedOnBehalfOfBy = Guid.NewGuid();
+
+        var result = await harness.Sut.Handle(new CancelLeaveRequestCommand(harness.Request.Id, "Reverted from Inbox", null, null,
+            RevertOfApproverBackdatedLeave: true), CancellationToken.None);
+
+        result.StatusCode.Should().Be(403);
+        harness.Request.Status.Should().Be(LeaveRequestStatuses.Approved);
+        harness.Entitlement.UsedHours.Should().Be(8m);
+    }
+
+    [Fact]
     public async Task Handle_ApprovedFuture_RestoresUsedHoursAndWritesAdjustment()
     {
         var harness = Harness.Create(

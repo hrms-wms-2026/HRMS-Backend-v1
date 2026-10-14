@@ -187,6 +187,7 @@ public class LeaveRequestSubmissionEvaluatorTests
         public Mock<IDateTimeProvider> Clock { get; } = new();
         public Mock<ILeaveRequestRepository> Requests { get; } = new();
         public Mock<ILeaveApproverResolver> Approvers { get; } = new();
+        public Mock<IEmployeeRepository> Employees { get; } = new();
         public LeaveRequestSubmissionEvaluator Sut { get; }
         public LeaveEntitlement Entitlement { get; }
 
@@ -252,7 +253,7 @@ public class LeaveRequestSubmissionEvaluatorTests
             Clock.SetupGet(x => x.Today).Returns(new DateOnly(2026, 8, 17));
             Clock.SetupGet(x => x.UtcNow).Returns(new DateTimeOffset(2026, 8, 17, 9, 0, 0, TimeSpan.Zero));
 
-            var employees = new Mock<IEmployeeRepository>();
+            var employees = Employees;
             employees.Setup(x => x.GetByUserIdAsync(TenantId, UserId, It.IsAny<CancellationToken>())).ReturnsAsync(Employee);
             employees.Setup(x => x.GetByIdAsync(TenantId, Employee.Id, It.IsAny<CancellationToken>())).ReturnsAsync(Employee);
 

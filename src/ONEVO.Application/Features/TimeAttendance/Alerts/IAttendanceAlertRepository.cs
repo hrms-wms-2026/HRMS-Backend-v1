@@ -22,6 +22,9 @@ public interface IAttendanceAlertRepository : IAttendanceAlertResolutionLookup
 
     Task<AttendanceAlert?> FindOpenAsync(Guid tenantId, Guid employeeId, DateOnly workDate, string signalKey, CancellationToken ct);
 
+    /// <summary>Open alerts of one legal entity, oldest day first, at most <paramref name="take"/> (the Inbox received list).</summary>
+    Task<IReadOnlyList<AttendanceAlert>> ListOpenAsync(Guid tenantId, Guid legalEntityId, int take, CancellationToken ct);
+
     void Add(AttendanceAlert alert);
     void Remove(AttendanceAlert alert);
     Task SaveChangesAsync(CancellationToken ct);

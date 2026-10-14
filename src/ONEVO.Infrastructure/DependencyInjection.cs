@@ -296,6 +296,8 @@ public static class DependencyInjection
         foreach (var kind in ONEVO.Application.Features.TimeAttendance.Inbox.AttendanceInboxKinds.Descriptors)
             services.AddInboxKind(kind);
         services.AddScoped<ONEVO.Application.Features.TimeAttendance.Inbox.AttendanceInboxSourceProvider>();
+        services.AddScoped<ONEVO.Application.Features.TimeAttendance.Inbox.AttendanceAlertInbox>();
+        services.AddScoped<ONEVO.Application.Features.Inbox.Revert.IInboxDecisionReverter, ONEVO.Application.Features.TimeAttendance.Inbox.AttendanceAlertReverter>();
         services.AddScoped<ONEVO.Application.Features.Inbox.Contracts.IInboxSourceProvider>(sp => sp.GetRequiredService<ONEVO.Application.Features.TimeAttendance.Inbox.AttendanceInboxSourceProvider>());
         services.AddScoped<ONEVO.Application.Features.Conversations.Contracts.IConversationSubjectResolver, ONEVO.Application.Features.TimeAttendance.Inbox.AttendanceConversationSubjectResolver>();
         services.AddScoped<ONEVO.Application.Features.Inbox.Revert.IInboxDecisionReverter, ONEVO.Application.Features.TimeAttendance.Inbox.AttendanceCorrectionReverter>();

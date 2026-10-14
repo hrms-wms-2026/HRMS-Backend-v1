@@ -12,6 +12,8 @@ public static class AttendanceInboxKinds
     public const string WorkModeChange = "work_mode_change";
     public const string LocationChange = "location_change";
     public const string DeviceChange = "device_change";
+    /// <summary>An attendance alert (plan E1/E2): reviewed by the attendance approver, resolved with an outcome.</summary>
+    public const string Alert = "alert";
     public const string ApprovePermission = "attendance:approve";
     public const string ReadPermission = "attendance:read";
 
@@ -27,6 +29,8 @@ public static class AttendanceInboxKinds
             RequestBase | InboxCapabilities.Cancel, "location-change"),
         // No cancel: there is no cancel command for device changes.
         new(Source, DeviceChange, "Device change", InboxCategories.Request, RequestBase, "device-change"),
+        new(Source, Alert, "Attendance alert", InboxCategories.Alert,
+            InboxCapabilities.Chat | InboxCapabilities.Revert | InboxCapabilities.Bulk | InboxCapabilities.Resolve, "attendance-alert"),
     ];
 
     public static readonly IReadOnlyDictionary<string, EmployeeAuthorityPurpose> Purposes = new Dictionary<string, EmployeeAuthorityPurpose>
@@ -35,6 +39,8 @@ public static class AttendanceInboxKinds
         [WorkModeChange] = EmployeeAuthorityPurpose.WorkAreaChangeApproval,
         [LocationChange] = EmployeeAuthorityPurpose.LocationChangeApproval,
         [DeviceChange] = EmployeeAuthorityPurpose.DeviceChangeApproval,
+        // Alerts are reviewed by the attendance approver - the same route as corrections.
+        [Alert] = EmployeeAuthorityPurpose.AttendanceCorrectionApproval,
     };
 
     public static string Label(string kind) => Descriptors.FirstOrDefault(d => d.Kind == kind)?.Label ?? "Attendance request";
@@ -45,6 +51,7 @@ public static class AttendanceInboxActions
     public const string Approve = "approve";
     public const string Reject = "reject";
     public const string Cancel = "cancel";
+    public const string Resolve = "resolve";
 }
 
 public sealed record AttendanceBreakSnapshot(DateTimeOffset BreakStart, DateTimeOffset? BreakEnd, string? BreakType);
@@ -70,4 +77,28 @@ public sealed record AttendanceDecisionSnapshot(
 
     public static AttendanceDecisionSnapshot? Parse(string? json)
         => string.IsNullOrWhiteSpace(json) ? null : JsonSerializer.Deserialize<AttendanceDecisionSnapshot>(json, Json);
+}
+
+/// <summary>The resolution outcomes a reviewer picks for an attendance alert (convert_to_leave = absences only).</summary>
+public static class AttendanceAlertResolveOutcomes
+{
+    public const string Excused = "excused";
+    public const string Confirmed = "confirmed";
+    public const string ConvertToLeave = "convert_to_leave";
+
+    public static bool IsValid(string? outcome) => outcome is Excused or Confirmed or ConvertToLeave;
+}
+
+/// <summary>An attendance alert's review state, kept in the inbox journal (before/after) so a resolution can be
+/// undone. <see cref="LeaveUpdatedAt"/> is the converted leave's last change when the decision was taken.</summary>
+public sealed record AttendanceAlertSnapshot(
+    string Title, string Status, string? Outcome, string? Note, Guid? ResolvedByEmployeeId, DateTimeOffset? ResolvedAt,
+    Guid? ConvertedLeaveRequestId, DateTimeOffset? LeaveUpdatedAt = null)
+{
+    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
+
+    public string ToJson() => JsonSerializer.Serialize(this, Json);
+
+    public static AttendanceAlertSnapshot? Parse(string? json)
+        => string.IsNullOrWhiteSpace(json) ? null : JsonSerializer.Deserialize<AttendanceAlertSnapshot>(json, Json);
 }

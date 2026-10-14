@@ -52,6 +52,11 @@ public class AttendanceInboxTests
         public InMemoryInboxDecisionJournal Journal { get; } = new();
         public FakeDateTimeProvider Clock { get; } = new() { UtcNow = Now };
         public HashSet<Guid> Scope { get; } = new();
+        public Mock<ONEVO.Application.Features.TimeAttendance.Alerts.IAttendanceAlertRepository> Alerts { get; } = new();
+        public Mock<ONEVO.Application.Features.Leave.Entitlement.RepositoryInterfaces.ILeaveEntitlementRepository> Entitlements { get; } = new();
+        public Mock<ONEVO.Application.Features.Leave.Approval.RepositoryInterfaces.ILeaveApprovalRepository> LeaveApprovals { get; } = new();
+        public List<ONEVO.Domain.Features.TimeAttendance.Alerts.AttendanceAlert> OpenAlerts { get; } = new();
+        public List<ONEVO.Domain.Features.TimeAttendance.Alerts.AttendanceAlert> OwnAlerts { get; } = new();
 
         public Fixture()
         {
@@ -84,6 +89,11 @@ public class AttendanceInboxTests
             Devices.Setup(x => x.ListForEmployeeAsync(TenantId, It.IsAny<Guid>(), It.IsAny<CancellationToken>())).ReturnsAsync([]);
             Devices.Setup(x => x.ListApprovalInboxAsync(TenantId, LegalEntityId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync((Array.Empty<DeviceChangeRequest>(), 0));
+            Alerts.Setup(x => x.ListOpenAsync(TenantId, LegalEntityId, It.IsAny<int>(), It.IsAny<CancellationToken>())).ReturnsAsync(() => OpenAlerts.ToList());
+            Alerts.Setup(x => x.ListForEmployeeAsync(TenantId, It.IsAny<Guid>(), It.IsAny<DateOnly>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(() => OwnAlerts.ToList());
+            Alerts.Setup(x => x.GetByIdAsync(TenantId, It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync((Guid _, Guid id, CancellationToken _) => OpenAlerts.Concat(OwnAlerts).FirstOrDefault(a => a.Id == id));
         }
 
         public Mock<IConversationRepository> Conversations()
@@ -96,7 +106,17 @@ public class AttendanceInboxTests
         public AttendanceInboxSourceProvider Provider() => new(
             CurrentUser.Object, Employees.Object, Authority.Object, Corrections.Object, WorkAreas.Object, Locations.Object, Devices.Object,
             Attendance.Object, WorkLocations.Object, Tray.Object, Mock.Of<IWorkModeRepository>(), Mock.Of<ILegalEntityRepository>(),
-            Sender.Object, Journal, new FakeUnitOfWork(), Conversations().Object, Clock);
+            Sender.Object, Journal, new FakeUnitOfWork(), Conversations().Object, Clock, AlertInbox());
+
+        public AttendanceAlertInbox AlertInbox() => new(
+            CurrentUser.Object, Employees.Object, Authority.Object, Alerts.Object, Entitlements.Object, LeaveApprovals.Object, Sender.Object,
+            Journal, new FakeUnitOfWork(), Clock);
+
+        public ONEVO.Domain.Features.TimeAttendance.Alerts.AttendanceAlert Alert(Guid employeeId, string signal = ONEVO.Domain.Features.TimeAttendance.Alerts.AttendanceAlertSignals.AbsentDays) => new()
+        {
+            Id = Guid.NewGuid(), TenantId = TenantId, EmployeeId = employeeId, LegalEntityId = LegalEntityId, WorkDate = new DateOnly(2026, 10, 9),
+            SignalKey = signal, Status = ONEVO.Domain.Features.TimeAttendance.Alerts.AttendanceAlertStatuses.Open, DetectedAt = Now.AddDays(-4),
+        };
 
         public AttendanceCorrection Correction(string status = AttendanceCorrection.StatusPending) => new()
         {
@@ -310,5 +330,197 @@ public class AttendanceInboxTests
             .RevertAsync(f.TenantId, new ItemRef("attendance", "work_mode_change", request.Id), f.Approver.Id, null, default);
 
         result.Error.Should().Be(WorkModeChangeReverter.AlreadyWorked);
+    }
+
+    // ---- attendance alerts (plan E2) -------------------------------------------------------------
+
+    private static JsonElement Body(object value) => JsonSerializer.SerializeToElement(value);
+
+    private static ItemRef AlertRef(ONEVO.Domain.Features.TimeAttendance.Alerts.AttendanceAlert alert)
+        => new(AttendanceInboxKinds.Source, AttendanceInboxKinds.Alert, alert.Id);
+
+    [Fact]
+    public async Task Alerts_are_received_only_for_employees_in_the_reviewers_scope_and_the_employee_sees_their_own_as_info()
+    {
+        var f = new Fixture();
+        var other = Guid.NewGuid();
+        var inScope = f.Alert(f.Worker.Id);
+        f.OpenAlerts.AddRange([inScope, f.Alert(other)]);
+        f.Scope.Add(f.Worker.Id);
+        var own = f.Alert(f.Approver.Id, ONEVO.Domain.Features.TimeAttendance.Alerts.AttendanceAlertSignals.LateClockIns);
+        f.OwnAlerts.Add(own);
+
+        var items = await f.Provider().ListAsync(f.TenantId, new InboxQuery(Category: [InboxCategories.Alert]), f.Approver.Id, default);
+
+        items.Should().HaveCount(2);
+        var received = items.Single(i => i.Id == inScope.Id);
+        (received.Direction, received.IsPending, received.Category, received.AvailableActions.Single().Key)
+            .Should().Be((InboxDirections.Received, true, InboxCategories.Alert, AttendanceInboxActions.Resolve));
+        received.AvailableActions.Single().Meta!["outcomes"].Should().Contain(AttendanceAlertResolveOutcomes.ConvertToLeave);
+        received.Facets["signal_key"].Should().Equal(ONEVO.Domain.Features.TimeAttendance.Alerts.AttendanceAlertSignals.AbsentDays);
+        var info = items.Single(i => i.Id == own.Id);
+        (info.Direction, info.IsPending, info.AvailableActions.Count).Should().Be((InboxDirections.Info, false, 0));
+        info.AvailableActions.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Without_attendance_approve_no_alert_is_received_and_resolving_is_refused()
+    {
+        var f = new Fixture();
+        f.CurrentUser.Setup(x => x.HasPermission("attendance:approve")).Returns(false);
+        var alert = f.Alert(f.Worker.Id);
+        f.OpenAlerts.Add(alert);
+        f.Scope.Add(f.Worker.Id);
+
+        (await f.Provider().ListAsync(f.TenantId, new InboxQuery(Category: [InboxCategories.Alert]), f.Approver.Id, default)).Should().BeEmpty();
+        var result = await f.Provider().ExecuteActionAsync(f.TenantId, AttendanceInboxKinds.Alert, alert.Id, AttendanceInboxActions.Resolve,
+            Body(new { outcome = "excused" }), f.Approver.Id, default);
+        result.StatusCode.Should().Be(403);
+        alert.Status.Should().Be(ONEVO.Domain.Features.TimeAttendance.Alerts.AttendanceAlertStatuses.Open);
+    }
+
+    [Fact]
+    public async Task Resolving_out_of_scope_is_refused_and_convert_to_leave_is_for_absences_only()
+    {
+        var f = new Fixture();
+        var outOfScope = f.Alert(f.Worker.Id);
+        f.OpenAlerts.Add(outOfScope);
+        (await f.Provider().ExecuteActionAsync(f.TenantId, AttendanceInboxKinds.Alert, outOfScope.Id, AttendanceInboxActions.Resolve,
+            Body(new { outcome = "excused" }), f.Approver.Id, default)).StatusCode.Should().Be(403);
+
+        f.Scope.Add(f.Worker.Id);
+        var late = f.Alert(f.Worker.Id, ONEVO.Domain.Features.TimeAttendance.Alerts.AttendanceAlertSignals.LateClockIns);
+        f.OpenAlerts.Add(late);
+        var converted = await f.Provider().ExecuteActionAsync(f.TenantId, AttendanceInboxKinds.Alert, late.Id, AttendanceInboxActions.Resolve,
+            Body(new { outcome = "convert_to_leave", leaveTypeId = Guid.NewGuid().ToString() }), f.Approver.Id, default);
+        converted.StatusCode.Should().Be(422);
+        converted.Error.Should().Be(AttendanceAlertInbox.ConvertOnlyAbsence);
+        (await f.Provider().ExecuteActionAsync(f.TenantId, AttendanceInboxKinds.Alert, late.Id, AttendanceInboxActions.Resolve,
+            Body(new { outcome = "ignored" }), f.Approver.Id, default)).StatusCode.Should().Be(422);
+        f.Journal.Entries.Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData("excused")]
+    [InlineData("confirmed")]
+    public async Task Resolving_marks_the_alert_and_journals_the_review_state_before_and_after(string outcome)
+    {
+        var f = new Fixture();
+        var alert = f.Alert(f.Worker.Id);
+        f.OpenAlerts.Add(alert);
+        f.Scope.Add(f.Worker.Id);
+
+        var result = await f.Provider().ExecuteActionAsync(f.TenantId, AttendanceInboxKinds.Alert, alert.Id, AttendanceInboxActions.Resolve,
+            Body(new { outcome, comment = "Doctor's note" }), f.Approver.Id, default);
+
+        result.IsSuccess.Should().BeTrue(result.Error);
+        result.Value!.AffectedEmployeeIds.Should().BeEquivalentTo([f.Worker.Id, f.Approver.Id]);
+        (alert.Status, alert.Outcome, alert.Note, alert.ResolvedByEmployeeId, alert.ResolvedAt)
+            .Should().Be((ONEVO.Domain.Features.TimeAttendance.Alerts.AttendanceAlertStatuses.Resolved, outcome, "Doctor's note", (Guid?)f.Approver.Id, (DateTimeOffset?)Now));
+        var entry = f.Journal.Entries.Should().ContainSingle().Subject;
+        entry.Action.Should().Be(InboxJournalActions.Resolve(outcome));
+        AttendanceAlertSnapshot.Parse(entry.BeforeJson)!.Status.Should().Be(ONEVO.Domain.Features.TimeAttendance.Alerts.AttendanceAlertStatuses.Open);
+        AttendanceAlertSnapshot.Parse(entry.AfterJson)!.Outcome.Should().Be(outcome);
+        f.Alerts.Verify(x => x.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Converting_an_absence_runs_the_leave_modules_command_and_links_the_leave()
+    {
+        var f = new Fixture();
+        var alert = f.Alert(f.Worker.Id);
+        f.OpenAlerts.Add(alert);
+        f.Scope.Add(f.Worker.Id);
+        var leaveType = Guid.NewGuid();
+        var leaveId = Guid.NewGuid();
+        ONEVO.Application.Features.Leave.Approval.Commands.CreateApproverBackdatedLeaveCommand? sent = null;
+        f.Sender.Setup(s => s.Send(It.IsAny<ONEVO.Application.Features.Leave.Approval.Commands.CreateApproverBackdatedLeaveCommand>(), It.IsAny<CancellationToken>()))
+            .Callback((IRequest<Result<Guid>> c, CancellationToken _) => sent = (ONEVO.Application.Features.Leave.Approval.Commands.CreateApproverBackdatedLeaveCommand)c)
+            .ReturnsAsync(Result<Guid>.Success(leaveId));
+
+        var result = await f.Provider().ExecuteActionAsync(f.TenantId, AttendanceInboxKinds.Alert, alert.Id, AttendanceInboxActions.Resolve,
+            Body(new { outcome = "convert_to_leave", leaveTypeId = leaveType.ToString() }), f.Approver.Id, default);
+
+        result.IsSuccess.Should().BeTrue(result.Error);
+        sent.Should().Be(new ONEVO.Application.Features.Leave.Approval.Commands.CreateApproverBackdatedLeaveCommand(f.Worker.Id, leaveType, alert.WorkDate, null));
+        (alert.Outcome, alert.ConvertedLeaveRequestId).Should().Be((ONEVO.Domain.Features.TimeAttendance.Alerts.AttendanceAlertOutcomes.ConvertedToLeave, (Guid?)leaveId));
+        f.Journal.Entries.Single().Action.Should().Be(InboxJournalActions.Resolve(ONEVO.Domain.Features.TimeAttendance.Alerts.AttendanceAlertOutcomes.ConvertedToLeave));
+    }
+
+    [Fact]
+    public async Task A_refused_leave_conversion_leaves_the_alert_open_with_the_leave_modules_message()
+    {
+        var f = new Fixture();
+        var alert = f.Alert(f.Worker.Id);
+        f.OpenAlerts.Add(alert);
+        f.Scope.Add(f.Worker.Id);
+        f.Sender.Setup(s => s.Send(It.IsAny<ONEVO.Application.Features.Leave.Approval.Commands.CreateApproverBackdatedLeaveCommand>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<Guid>.UnprocessableEntity("Insufficient leave balance."));
+
+        var result = await f.Provider().ExecuteActionAsync(f.TenantId, AttendanceInboxKinds.Alert, alert.Id, AttendanceInboxActions.Resolve,
+            Body(new { outcome = "convert_to_leave", leaveTypeId = Guid.NewGuid().ToString() }), f.Approver.Id, default);
+
+        (result.StatusCode, result.Error).Should().Be((422, "Insufficient leave balance."));
+        alert.Status.Should().Be(ONEVO.Domain.Features.TimeAttendance.Alerts.AttendanceAlertStatuses.Open);
+        alert.ConvertedLeaveRequestId.Should().BeNull();
+        f.Journal.Entries.Should().BeEmpty();
+    }
+
+    private static AttendanceAlertReverter AlertReverter(Fixture f)
+        => new(f.Journal, new FakeUnitOfWork(), f.Clock, f.Alerts.Object, f.LeaveApprovals.Object, f.AlertInbox(), f.Sender.Object);
+
+    [Fact]
+    public async Task Undoing_a_resolution_puts_the_alert_back_to_open()
+    {
+        var f = new Fixture();
+        var alert = f.Alert(f.Worker.Id);
+        f.OpenAlerts.Add(alert);
+        f.Scope.Add(f.Worker.Id);
+        await f.Provider().ExecuteActionAsync(f.TenantId, AttendanceInboxKinds.Alert, alert.Id, AttendanceInboxActions.Resolve,
+            Body(new { outcome = "excused" }), f.Approver.Id, default);
+
+        var result = await AlertReverter(f).RevertAsync(f.TenantId, AlertRef(alert), f.Approver.Id, null, default);
+
+        result.IsSuccess.Should().BeTrue(result.Error);
+        (alert.Status, alert.Outcome, alert.ResolvedByEmployeeId, alert.ResolvedAt)
+            .Should().Be((ONEVO.Domain.Features.TimeAttendance.Alerts.AttendanceAlertStatuses.Open, (string?)null, (Guid?)null, (DateTimeOffset?)null));
+    }
+
+    [Fact]
+    public async Task Undoing_a_conversion_cancels_the_created_leave_and_is_blocked_once_that_leave_changed()
+    {
+        var f = new Fixture();
+        var alert = f.Alert(f.Worker.Id);
+        f.OpenAlerts.Add(alert);
+        f.Scope.Add(f.Worker.Id);
+        var leave = new ONEVO.Domain.Features.Leave.Request.Entities.LeaveRequest
+        {
+            Id = Guid.NewGuid(), TenantId = f.TenantId, EmployeeId = f.Worker.Id, Status = ONEVO.Domain.Features.Leave.Common.LeaveRequestStatuses.Approved,
+            UpdatedAt = Now,
+        };
+        f.LeaveApprovals.Setup(x => x.GetStateAsync(f.TenantId, leave.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(() => new ONEVO.Application.Features.Leave.Approval.RepositoryInterfaces.LeaveApprovalState(leave, null, f.Worker, "Annual", "AL", "any_one", [], []));
+        f.Sender.Setup(s => s.Send(It.IsAny<ONEVO.Application.Features.Leave.Approval.Commands.CreateApproverBackdatedLeaveCommand>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<Guid>.Success(leave.Id));
+        ONEVO.Application.Features.Leave.Cancellation.Commands.CancelLeaveRequestCommand? cancel = null;
+        f.Sender.Setup(s => s.Send(It.IsAny<ONEVO.Application.Features.Leave.Cancellation.Commands.CancelLeaveRequestCommand>(), It.IsAny<CancellationToken>()))
+            .Callback((IRequest<Result<ONEVO.Application.Features.Leave.Cancellation.DTOs.Responses.CancelLeaveRequestResponse>> c, CancellationToken _)
+                => cancel = (ONEVO.Application.Features.Leave.Cancellation.Commands.CancelLeaveRequestCommand)c)
+            .ReturnsAsync(Result<ONEVO.Application.Features.Leave.Cancellation.DTOs.Responses.CancelLeaveRequestResponse>.Success(null!));
+        await f.Provider().ExecuteActionAsync(f.TenantId, AttendanceInboxKinds.Alert, alert.Id, AttendanceInboxActions.Resolve,
+            Body(new { outcome = "convert_to_leave", leaveTypeId = Guid.NewGuid().ToString() }), f.Approver.Id, default);
+
+        leave.UpdatedAt = Now.AddMinutes(5); // HR touched the leave since
+        var blocked = await AlertReverter(f).RevertAsync(f.TenantId, AlertRef(alert), f.Approver.Id, null, default);
+        blocked.Error.Should().Be(AttendanceAlertReverter.LeaveChangedSince);
+        cancel.Should().BeNull();
+
+        leave.UpdatedAt = Now;
+        var result = await AlertReverter(f).RevertAsync(f.TenantId, AlertRef(alert), f.Approver.Id, null, default);
+
+        result.IsSuccess.Should().BeTrue(result.Error);
+        cancel.Should().Be(new ONEVO.Application.Features.Leave.Cancellation.Commands.CancelLeaveRequestCommand(
+            leave.Id, AttendanceAlertReverter.RevertReason, null, null, RevertOfApproverBackdatedLeave: true));
+        (alert.Status, alert.ConvertedLeaveRequestId).Should().Be((ONEVO.Domain.Features.TimeAttendance.Alerts.AttendanceAlertStatuses.Open, (Guid?)null));
     }
 }

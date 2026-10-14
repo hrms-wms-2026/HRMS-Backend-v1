@@ -36,6 +36,13 @@ public sealed class EfAttendanceAlertRepository : IAttendanceAlertRepository
         _db.AttendanceAlerts.FirstOrDefaultAsync(a => a.TenantId == tenantId && a.EmployeeId == employeeId
             && a.WorkDate == workDate && a.SignalKey == signalKey && a.Status == AttendanceAlertStatuses.Open, ct);
 
+    public async Task<IReadOnlyList<AttendanceAlert>> ListOpenAsync(Guid tenantId, Guid legalEntityId, int take, CancellationToken ct) =>
+        await _db.AttendanceAlerts.AsNoTracking()
+            .Where(a => a.TenantId == tenantId && a.LegalEntityId == legalEntityId && a.Status == AttendanceAlertStatuses.Open)
+            .OrderBy(a => a.WorkDate).ThenBy(a => a.Id)
+            .Take(take)
+            .ToListAsync(ct);
+
     public void Add(AttendanceAlert alert) => _db.AttendanceAlerts.Add(alert);
 
     public void Remove(AttendanceAlert alert) => _db.AttendanceAlerts.Remove(alert);

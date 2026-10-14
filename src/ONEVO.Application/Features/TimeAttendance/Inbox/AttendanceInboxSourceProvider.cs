@@ -55,13 +55,15 @@ public sealed class AttendanceInboxSourceProvider : IInboxSourceProvider
     private readonly IUnitOfWork _unitOfWork;
     private readonly IConversationRepository _conversations;
     private readonly IDateTimeProvider _clock;
+    private readonly AttendanceAlertInbox _alerts;
 
     public AttendanceInboxSourceProvider(
         ICurrentUser currentUser, IEmployeeRepository employees, IEmployeeAuthorityResolver authority,
         IAttendanceCorrectionRepository corrections, IWorkAreaChangeRequestRepository workAreas, ILocationChangeRequestRepository locations,
         IDeviceChangeRequestRepository devices, IAttendanceReadRepository attendance, IEmployeeWorkLocationRepository workLocations,
         ITrayActivationRepository tray, IWorkModeRepository workModes, ILegalEntityRepository legalEntities, ISender sender,
-        IInboxDecisionJournal journal, IUnitOfWork unitOfWork, IConversationRepository conversations, IDateTimeProvider clock)
+        IInboxDecisionJournal journal, IUnitOfWork unitOfWork, IConversationRepository conversations, IDateTimeProvider clock,
+        AttendanceAlertInbox alerts)
     {
         _currentUser = currentUser;
         _employees = employees;
@@ -80,6 +82,7 @@ public sealed class AttendanceInboxSourceProvider : IInboxSourceProvider
         _unitOfWork = unitOfWork;
         _conversations = conversations;
         _clock = clock;
+        _alerts = alerts;
     }
 
     public string Source => AttendanceInboxKinds.Source;
@@ -94,11 +97,16 @@ public sealed class AttendanceInboxSourceProvider : IInboxSourceProvider
 
     public async Task<IReadOnlyList<InboxItem>> ListAsync(Guid tenantId, InboxQuery query, Guid callerEmployeeId, CancellationToken ct)
     {
-        if (query.Category is { Count: > 0 } categories && !categories.Contains(InboxCategories.Request))
+        var wantRequests = query.Category is not { Count: > 0 } || query.Category.Contains(InboxCategories.Request);
+        var wantAlerts = query.Category is not { Count: > 0 } || query.Category.Contains(InboxCategories.Alert);
+        if (!wantRequests && !wantAlerts)
             return [];
         var caller = await _employees.GetByIdAsync(tenantId, callerEmployeeId, ct);
         if (caller is null)
             return [];
+        var alerts = wantAlerts ? await _alerts.ListAsync(tenantId, caller.Id, await CallerLegalEntitiesAsync(tenantId, ct), ct) : [];
+        if (!wantRequests)
+            return alerts;
 
         var received = await ReceivedAsync(tenantId, ct);
         var sent = await SentAsync(tenantId, caller.Id, ct);
@@ -119,6 +127,8 @@ public sealed class AttendanceInboxSourceProvider : IInboxSourceProvider
             items.TryAdd((row.Kind, row.Id), Item(row, people, InboxDirections.Sent, IsPending(row.Status), SentActions(row)));
         foreach (var row in added)
             items.TryAdd((row.Kind, row.Id), Item(row, people, InboxDirections.Info, pending: false, []));
+        foreach (var alert in alerts)
+            items.TryAdd((alert.Kind, alert.Id), alert);
         return items.Values.ToList();
     }
 
@@ -230,6 +240,10 @@ public sealed class AttendanceInboxSourceProvider : IInboxSourceProvider
                 .Select(i => i.Facets["correction_type"][0]).Distinct().Select(t => Option(t, Humanize(t))).ToList()),
             new("employee", "Employee", true, items.Where(i => i.RequestedBy is not null).Select(i => i.RequestedBy!)
                 .DistinctBy(p => p.Id).OrderBy(p => p.Name).Select(p => Option(p.Id.ToString(), p.Name)).ToList()),
+            new("signal_key", "Alert", true, items.Where(i => i.Facets.ContainsKey("signal_key"))
+                .Select(i => i.Facets["signal_key"][0]).Distinct().Select(s => Option(s, AttendanceAlertInbox.SignalLabel(s))).ToList()),
+            new("work_date", "Day", true, items.Where(i => i.Facets.ContainsKey("work_date"))
+                .Select(i => i.Facets["work_date"][0]).Distinct().OrderByDescending(d => d, StringComparer.Ordinal).Select(d => Option(d, d)).ToList()),
         ];
     }
 
@@ -237,6 +251,11 @@ public sealed class AttendanceInboxSourceProvider : IInboxSourceProvider
 
     public async Task<InboxItemDetail?> GetDetailAsync(Guid tenantId, string kind, Guid id, Guid callerEmployeeId, CancellationToken ct)
     {
+        if (kind == AttendanceInboxKinds.Alert)
+        {
+            var addedToChat = (await _conversations.ListAddedSubjectsAsync(tenantId, callerEmployeeId, Source, ct)).Contains(new ItemRef(Source, kind, id));
+            return await _alerts.GetDetailAsync(tenantId, id, callerEmployeeId, addedToChat, ct);
+        }
         var row = await LoadRowAsync(tenantId, kind, id, ct);
         var caller = await _employees.GetByIdAsync(tenantId, callerEmployeeId, ct);
         if (row is null || caller is null)
@@ -358,6 +377,10 @@ public sealed class AttendanceInboxSourceProvider : IInboxSourceProvider
     public async Task<Result<InboxActionResult>> ExecuteActionAsync(
         Guid tenantId, string kind, Guid id, string action, JsonElement? body, Guid callerEmployeeId, CancellationToken ct)
     {
+        if (kind == AttendanceInboxKinds.Alert)
+            return action == AttendanceInboxActions.Resolve
+                ? await _alerts.ResolveAsync(tenantId, id, body, callerEmployeeId, ct)
+                : Result<InboxActionResult>.UnprocessableEntity(UnknownAction);
         // The Inbox calls the module commands directly, so it must hold the permission the module endpoints require.
         if (action is AttendanceInboxActions.Approve or AttendanceInboxActions.Reject
             && !_currentUser.HasPermission(AttendanceInboxKinds.ApprovePermission))

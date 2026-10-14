@@ -24,11 +24,13 @@ public sealed class AttendanceConversationSubjectResolver : IConversationSubject
     private readonly IEmployeeAuthorityResolverFactory _authority;
     private readonly IPermissionRepository _permissions;
     private readonly IDateTimeProvider _clock;
+    private readonly ONEVO.Application.Features.TimeAttendance.Alerts.IAttendanceAlertRepository _alerts;
 
     public AttendanceConversationSubjectResolver(
         IAttendanceCorrectionRepository corrections, IWorkAreaChangeRequestRepository workAreas, ILocationChangeRequestRepository locations,
         IDeviceChangeRequestRepository devices, IEmployeeRepository employees, IEmployeeAuthorityResolverFactory authority,
-        IPermissionRepository permissions, IDateTimeProvider clock)
+        IPermissionRepository permissions, IDateTimeProvider clock,
+        ONEVO.Application.Features.TimeAttendance.Alerts.IAttendanceAlertRepository alerts)
     {
         _corrections = corrections;
         _workAreas = workAreas;
@@ -38,6 +40,7 @@ public sealed class AttendanceConversationSubjectResolver : IConversationSubject
         _authority = authority;
         _permissions = permissions;
         _clock = clock;
+        _alerts = alerts;
     }
 
     public string Source => AttendanceInboxKinds.Source;
@@ -54,6 +57,8 @@ public sealed class AttendanceConversationSubjectResolver : IConversationSubject
                 ? (l.EmployeeId, l.LegalEntityId, "Work location change") : null,
             AttendanceInboxKinds.DeviceChange => await _devices.GetTrackedByIdAsync(tenantId, subject.Id, ct) is { } d
                 ? (d.EmployeeId, d.LegalEntityId, $"Device change · {d.NewDeviceName}") : null,
+            AttendanceInboxKinds.Alert => await _alerts.GetByIdAsync(tenantId, subject.Id, ct) is { } a
+                ? (a.EmployeeId, a.LegalEntityId, $"{AttendanceAlertInbox.SignalLabel(a.SignalKey)} · {a.WorkDate:dd MMM yyyy}") : null,
             _ => null,
         };
         if (item is not { } found)

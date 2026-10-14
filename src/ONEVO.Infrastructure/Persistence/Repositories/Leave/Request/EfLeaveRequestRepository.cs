@@ -200,7 +200,9 @@ public class EfLeaveRequestRepository : ILeaveRequestRepository
         var executionStrategy = _db.Database.CreateExecutionStrategy();
         await executionStrategy.ExecuteAsync(async () =>
         {
+            // Joins a transaction the caller already opened (e.g. an approver-created leave inside an Inbox action).
             await using var transaction = _db.Database.IsRelational()
+                && _db.Database.CurrentTransaction is null
                 ? await _db.Database.BeginTransactionAsync(ct)
                 : null;
 
