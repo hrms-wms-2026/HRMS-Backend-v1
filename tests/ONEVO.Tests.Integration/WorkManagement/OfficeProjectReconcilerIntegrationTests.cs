@@ -190,4 +190,33 @@ public sealed class OfficeProjectReconcilerIntegrationTests
         await Assert.ThrowsAnyAsync<InvalidOperationException>(() => reconciler.ReconcileAsync(harness.TenantId));
         Assert.Null(await reconciler.TryReconcileAsync(harness.TenantId));
     }
+
+    [Fact]
+    public async Task SoftDeletedOwnerMembership_IsRestored_NotDuplicated()
+    {
+        await using var harness = await OfficeProjectDb.CreateAsync();
+        var role = await harness.SeedOwnerRoleAsync();
+        var owner = await harness.SeedEmployeeAsync(harness.LegalEntityId);
+        await harness.AssignRoleAsync(owner.UserId, role, DateTimeOffset.UtcNow.AddDays(-5));
+        await ReconcileAsync(harness);
+        var office = (await OfficeAsync(harness))!;
+        await using (var admin = harness.AdminContext())
+            await admin.ProjectMembers.IgnoreQueryFilters()
+                .Where(m => m.ProjectId == office.Id && m.EmployeeId == owner.Id)
+                .ExecuteUpdateAsync(s => s
+                    .SetProperty(m => m.IsDeleted, true)
+                    .SetProperty(m => m.DeletedAt, DateTimeOffset.UtcNow)
+                    .SetProperty(m => m.IsActive, false));
+
+        await ReconcileAsync(harness);
+
+        await using var verify = harness.AdminContext();
+        var rows = await verify.ProjectMembers.IgnoreQueryFilters()
+            .Where(m => m.ProjectId == office.Id && m.EmployeeId == owner.Id).ToListAsync();
+        var row = Assert.Single(rows);
+        Assert.False(row.IsDeleted);
+        Assert.Null(row.DeletedAt);
+        Assert.True(row.IsActive);
+        Assert.Null(row.RemovedAt);
+    }
 }

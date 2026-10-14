@@ -154,7 +154,9 @@ public sealed class OfficeProjectReconciler(
             .Select(o => o.Id)
             .SingleAsync(ct);
 
-        var membership = await db.ProjectMembers.FirstOrDefaultAsync(m =>
+        // Includes soft-deleted rows: the unique (tenant, project, objective, employee) index is
+        // not filtered by is_deleted, so a soft-deleted membership must be restored, not re-added.
+        var membership = await db.ProjectMembers.IgnoreQueryFilters().FirstOrDefaultAsync(m =>
             m.TenantId == tenantId && m.ProjectId == projectId
             && m.ObjectiveId == rootObjectiveId && m.EmployeeId == owner.EmployeeId, ct);
 
@@ -167,9 +169,11 @@ public sealed class OfficeProjectReconciler(
                 IsActive = true, JoinedAt = now, CreatedById = owner.UserId, CreatedAt = now
             });
         }
-        else if (!membership.IsActive)
+        else if (!membership.IsActive || membership.IsDeleted)
         {
             membership.IsActive = true;
+            membership.IsDeleted = false;
+            membership.DeletedAt = null;
             membership.RemovedAt = null;
             membership.JoinedAt = now;
         }
