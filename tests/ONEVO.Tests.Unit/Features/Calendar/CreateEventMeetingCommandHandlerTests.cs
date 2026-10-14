@@ -119,7 +119,7 @@ public sealed class CreateEventMeetingCommandHandlerTests
             It.IsAny<CancellationToken>()), Times.Once);
         _notifications.Verify(n => n.NotifyMeetingLinkAddedAsync(
             TenantId, evt.Title, evt.StartDate, null,
-            It.Is<IReadOnlyList<Guid>>(ids => ids.Contains(ParticipantEmployeeId)),
+            It.Is<IReadOnlyList<CalendarParticipantRecipient>>(r => r.Any(x => x.EmployeeId == ParticipantEmployeeId)),
             "Ada Owner", "https://teams.microsoft.com/l/meetup-join/abc", It.IsAny<CancellationToken>()), Times.Once);
     }
 

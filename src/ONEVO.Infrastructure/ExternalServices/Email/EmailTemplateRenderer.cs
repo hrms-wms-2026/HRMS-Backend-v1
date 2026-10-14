@@ -343,6 +343,9 @@ public class EmailTemplateRenderer : IEmailTemplateRenderer
             "removed" => ($"Removed from: {eventTitle}", "You've been removed from an event",
                 $"{Escape(organizerName)} removed you from this event:",
                 $"{organizerName} removed you from \"{eventTitle}\".", false),
+            "link_removed" => ($"Meeting link removed: {eventTitle}", "Online meeting removed",
+                $"{Escape(organizerName)} removed the online meeting link from this event. The event itself is unchanged:",
+                $"{organizerName} removed the online meeting link from \"{eventTitle}\". The event itself is unchanged.", false),
             _ => ($"You're invited: {eventTitle}", "Meeting invitation",
                 $"{Escape(organizerName)} has invited you to the following event:",
                 $"{organizerName} has invited you to \"{eventTitle}\".", true)

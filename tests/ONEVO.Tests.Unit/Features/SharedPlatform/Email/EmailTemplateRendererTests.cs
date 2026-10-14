@@ -457,4 +457,19 @@ public sealed class EmailTemplateRendererTests
 
         rendered.Subject.Should().Be("You're invited: Deployment Meeting");
     }
+
+    [Fact]
+    public void RenderCalendarEventInvite_LinkRemoved_SaysSo_WithoutTheLink()
+    {
+        var renderer = new EmailTemplateRenderer(Options.Create(new EmailOptions()));
+
+        var rendered = renderer.Render("calendar_event_invite", new
+        {
+            recipientName = "Ada", eventTitle = "Standup", startDateUtc = "2026-09-29T14:45:00Z",
+            location = (string?)null, organizerName = "Owner", meetingLink = "https://zoom.us/j/1", kind = "link_removed"
+        });
+
+        rendered.Subject.Should().Be("Meeting link removed: Standup");
+        rendered.HtmlBody.Should().NotContain("https://zoom.us/j/1");
+    }
 }

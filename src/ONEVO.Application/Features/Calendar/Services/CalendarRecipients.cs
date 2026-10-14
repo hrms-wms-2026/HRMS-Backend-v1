@@ -27,4 +27,25 @@ public static class CalendarEmailKeys
 
     public static string Cancel(Guid eventId, DateTimeOffset? occurrenceStart, Guid rowId) =>
         $"cancel:{eventId}:{(occurrenceStart is { } start ? start.UtcTicks.ToString(CultureInfo.InvariantCulture) : "series")}:{rowId}";
+
+    public static string Link(Guid meetingId, int generation, Guid rowId) =>
+        $"link:{meetingId}:{generation.ToString(CultureInfo.InvariantCulture)}:{rowId}";
+
+    public static string LinkRemoved(Guid meetingId, int generation, Guid rowId) =>
+        $"link-removed:{meetingId}:{generation.ToString(CultureInfo.InvariantCulture)}:{rowId}";
+}
+
+/// <summary>In-app notices to an event's organizer about its online meeting (template codes).</summary>
+public static class CalendarMeetingNoticeCodes
+{
+    public const string LinkFailed = "calendar_event_meeting_link_failed";
+    public const string LinkUnknown = "calendar_event_meeting_link_unknown";
+    public const string Unresolved = "calendar_event_meeting_unresolved";
+    public const string CancelFailed = "calendar_event_meeting_cancel_failed";
+}
+
+public static class CalendarMeetingProviderNames
+{
+    public static string Display(string provider) =>
+        provider == ONEVO.Domain.Features.Calendar.Entities.CalendarEventMeetingProviders.Zoom ? "Zoom" : "Microsoft Teams";
 }

@@ -9,6 +9,7 @@ public static class CalendarEmailKinds
     public const string Updated = "updated";
     public const string Cancelled = "cancelled";
     public const string Removed = "removed";
+    public const string LinkRemoved = "link_removed";
 }
 
 public sealed record CalendarEventInviteEmailPayload(

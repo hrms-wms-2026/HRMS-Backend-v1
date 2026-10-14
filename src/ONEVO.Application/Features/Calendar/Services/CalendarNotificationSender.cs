@@ -31,18 +31,30 @@ public sealed class CalendarNotificationSender(IOutboxWriter outboxWriter, IEmpl
 
     public async Task NotifyMeetingLinkAddedAsync(
         Guid tenantId, string eventTitle, DateTimeOffset startDate, string? location,
-        IReadOnlyList<Guid> employeeIds, string organizerName, string meetingLink, CancellationToken ct = default)
+        IReadOnlyList<CalendarParticipantRecipient> participants, string organizerName, string? meetingLink, CancellationToken ct = default)
     {
-        foreach (var employeeId in employeeIds)
+        foreach (var recipient in participants)
         {
-            var employee = await employees.GetByIdAsync(tenantId, employeeId, ct);
+            var employee = await employees.GetByIdAsync(tenantId, recipient.EmployeeId, ct);
             if (employee is null) continue;
 
             await EnqueueEmailAsync(tenantId,
                 new CalendarEventInviteEmailPayload(tenantId, employee.Email, FullName(employee), eventTitle, startDate, location, organizerName, meetingLink),
-                emailKey: null, ct);
+                recipient.EmailKey, ct);
         }
     }
+
+    public Task NotifyMeetingLinkRemovedAsync(
+        Guid tenantId, string eventTitle, DateTimeOffset startDate, string? location,
+        IReadOnlyList<CalendarParticipantRecipient> participants, IReadOnlyList<CalendarGuestRecipient> guests,
+        string organizerName, CancellationToken ct = default)
+        => NotifyChangeAsync(tenantId, "calendar_event_meeting_link_removed", CalendarEmailKinds.LinkRemoved, eventTitle, startDate,
+            location, meetingLink: null, participants, guests, organizerName, ct);
+
+    public Task NotifyOrganizerAboutMeetingAsync(
+        Guid tenantId, Guid organizerUserId, string templateCode, string eventTitle, string providerName, CancellationToken ct = default)
+        => EnqueueInAppAsync(tenantId, organizerUserId, templateCode,
+            new Dictionary<string, string> { ["eventTitle"] = eventTitle, ["provider"] = providerName }, ct);
 
     public async Task NotifyGuestsAsync(
         Guid tenantId, string eventTitle, DateTimeOffset startDate, string? location,

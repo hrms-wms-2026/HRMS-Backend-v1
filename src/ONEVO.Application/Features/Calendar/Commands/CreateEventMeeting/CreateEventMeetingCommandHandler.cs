@@ -113,7 +113,7 @@ public sealed class CreateEventMeetingCommandHandler(
             {
                 await notifications.NotifyMeetingLinkAddedAsync(
                     tenantId, existing.Title, existing.StartDate, existing.Location,
-                    participantEmployeeIds, organizerName, joinUrl, innerCt);
+                    participantEmployeeIds.Select(id => new CalendarParticipantRecipient(id)).ToList(), organizerName, joinUrl, innerCt);
             }
 
             if (guestEmails.Count > 0)

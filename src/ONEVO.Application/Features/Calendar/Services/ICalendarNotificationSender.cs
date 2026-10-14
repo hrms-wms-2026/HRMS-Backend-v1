@@ -13,11 +13,21 @@ public interface ICalendarNotificationSender
         IReadOnlyList<CalendarParticipantRecipient> participants, string organizerName, CancellationToken ct = default,
         string? meetingLink = null, bool sendInviteEmail = true);
 
-    /// <summary>Invite email (with the join link) to each existing participant when a Teams/Zoom
-    /// meeting is added after they were invited. No in-app notification.</summary>
+    /// <summary>Invite email (with the join link, or without one when <paramref name="meetingLink"/> is null -
+    /// the P1-5 fallback) to each participant. No in-app notification (they got one when added).</summary>
     Task NotifyMeetingLinkAddedAsync(
         Guid tenantId, string eventTitle, DateTimeOffset startDate, string? location,
-        IReadOnlyList<Guid> employeeIds, string organizerName, string meetingLink, CancellationToken ct = default);
+        IReadOnlyList<CalendarParticipantRecipient> participants, string organizerName, string? meetingLink, CancellationToken ct = default);
+
+    /// <summary>In-app to participants + "link removed" email to participants and guests.</summary>
+    Task NotifyMeetingLinkRemovedAsync(
+        Guid tenantId, string eventTitle, DateTimeOffset startDate, string? location,
+        IReadOnlyList<CalendarParticipantRecipient> participants, IReadOnlyList<CalendarGuestRecipient> guests,
+        string organizerName, CancellationToken ct = default);
+
+    /// <summary>In-app notice to the organizer about their online meeting (see CalendarMeetingNoticeCodes).</summary>
+    Task NotifyOrganizerAboutMeetingAsync(
+        Guid tenantId, Guid organizerUserId, string templateCode, string eventTitle, string providerName, CancellationToken ct = default);
 
     /// <summary>Invite email to external guests (no account, so no in-app notification).</summary>
     Task NotifyGuestsAsync(

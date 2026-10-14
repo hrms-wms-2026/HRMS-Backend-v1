@@ -109,7 +109,7 @@ public sealed class CalendarNotificationSenderTests
     public async Task NotifyMeetingLinkAddedAsync_EnqueuesInviteEmailWithLinkToEachParticipant()
     {
         await BuildSut().NotifyMeetingLinkAddedAsync(
-            TenantId, "Standup", Start, null, [EmployeeId], "Ada Owner", "https://teams.microsoft.com/l/1", CancellationToken.None);
+            TenantId, "Standup", Start, null, [new CalendarParticipantRecipient(EmployeeId)], "Ada Owner", "https://teams.microsoft.com/l/1", CancellationToken.None);
 
         _outbox.Verify(x => x.EnqueueAsync(
             OutboxMessageTypes.CalendarEventInviteEmail,
@@ -189,5 +189,45 @@ public sealed class CalendarNotificationSenderTests
             "Ada Owner", CancellationToken.None);
 
         _outbox.VerifyNoOtherCalls();
+    }
+
+    [Fact]
+    public async Task NotifyMeetingLinkAddedAsync_KeyedLinkEmail_NoInApp()
+    {
+        await BuildSut().NotifyMeetingLinkAddedAsync(
+            TenantId, "Standup", Start, null, [new CalendarParticipantRecipient(EmployeeId, "link:m:1:p")], "Ada Owner", "https://zoom.us/j/1", CancellationToken.None);
+
+        _outbox.Verify(x => x.EnqueueKeyedAsync(
+            OutboxMessageTypes.CalendarEventInviteEmail,
+            It.Is<CalendarEventInviteEmailPayload>(p => p.MeetingLink == "https://zoom.us/j/1" && p.Kind == CalendarEmailKinds.Invite),
+            "link:m:1:p", TenantId, It.IsAny<CancellationToken>()), Times.Once);
+        _outbox.Verify(x => x.EnqueueAsync(
+            OutboxMessageTypes.WorkNotification, It.IsAny<WorkNotificationPayload>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task NotifyMeetingLinkRemovedAsync_InAppToParticipants_LinkRemovedEmailToEveryone()
+    {
+        await BuildSut().NotifyMeetingLinkRemovedAsync(
+            TenantId, "Standup", Start, null,
+            [new CalendarParticipantRecipient(EmployeeId, "link-removed:p")], [new CalendarGuestRecipient("vendor@example.com", "link-removed:g")],
+            "Ada Owner", CancellationToken.None);
+
+        VerifyInApp(UserId, "calendar_event_meeting_link_removed", Times.Once());
+        VerifyKeyedEmail("ada@example.com", CalendarEmailKinds.LinkRemoved, "link-removed:p");
+        VerifyKeyedEmail("vendor@example.com", CalendarEmailKinds.LinkRemoved, "link-removed:g");
+    }
+
+    [Fact]
+    public async Task NotifyOrganizerAboutMeetingAsync_InAppToTheOrganizer_WithTheProviderName()
+    {
+        await BuildSut().NotifyOrganizerAboutMeetingAsync(
+            TenantId, OrganizerUserId, CalendarMeetingNoticeCodes.LinkFailed, "Standup", "Zoom", CancellationToken.None);
+
+        _outbox.Verify(x => x.EnqueueAsync(
+            OutboxMessageTypes.WorkNotification,
+            It.Is<WorkNotificationPayload>(p => p.RecipientUserId == OrganizerUserId && p.TemplateCode == "calendar_event_meeting_link_failed"
+                && p.Placeholders["provider"] == "Zoom"),
+            TenantId, It.IsAny<CancellationToken>()), Times.Once);
     }
 }

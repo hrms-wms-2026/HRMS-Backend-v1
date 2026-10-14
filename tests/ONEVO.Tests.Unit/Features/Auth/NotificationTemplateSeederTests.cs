@@ -85,7 +85,7 @@ public sealed class NotificationTemplateSeederTests : IDisposable
         Assert.Contains("work_monitor_alert", codes);
         Assert.Contains("exception_alert_detected", codes);
         Assert.Contains("exception_alert_escalated", codes);
-        Assert.Equal(45, codes.Count);
+        Assert.Equal(50, codes.Count);
         var expectedCodes = new[]
         {
             "work_task_creation_request_created",
@@ -132,7 +132,12 @@ public sealed class NotificationTemplateSeederTests : IDisposable
             "calendar_event_rsvp_accepted",
             "calendar_event_rsvp_rejected",
             "calendar_event_participant_removed",
-            "calendar_event_replacement_nominee"
+            "calendar_event_replacement_nominee",
+            "calendar_event_meeting_link_removed",
+            "calendar_event_meeting_link_failed",
+            "calendar_event_meeting_link_unknown",
+            "calendar_event_meeting_unresolved",
+            "calendar_event_meeting_cancel_failed"
         };
 
         Assert.Equal(
