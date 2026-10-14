@@ -86,7 +86,8 @@ public sealed class OfficeProjectProvisioner(IServiceScopeFactory scopeFactory) 
         var categories = new[]
         {
             TaskCategory("Onboarding", 0),
-            TaskCategory("Offboarding", 1)
+            TaskCategory("Offboarding", 1),
+            TaskCategory("Meeting", 2, TaskCategorySystemKeys.Meeting)
         };
 
         db.Projects.Add(project);
@@ -125,10 +126,10 @@ public sealed class OfficeProjectProvisioner(IServiceScopeFactory scopeFactory) 
             MarksTaskComplete = complete, Visibility = TaskStatusVisibilities.Public,
             CreatedById = actingUserId, CreatedAt = now
         };
-        ONEVO.Domain.Features.WorkManagement.Tasks.Entities.TaskCategory TaskCategory(string name, int order) => new()
+        ONEVO.Domain.Features.WorkManagement.Tasks.Entities.TaskCategory TaskCategory(string name, int order, string? systemKey = null) => new()
         {
             Id = Guid.NewGuid(), TenantId = tenantId, ProjectId = project.Id,
-            Name = name, DisplayOrder = order, CreatedById = actingUserId, CreatedAt = now
+            Name = name, DisplayOrder = order, SystemKey = systemKey, CreatedById = actingUserId, CreatedAt = now
         };
     }
 

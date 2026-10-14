@@ -45,4 +45,21 @@ public sealed class OfficeProjectProvisionerRlsIntegrationTests
         await using var admin = harness.AdminContext();
         Assert.Equal(1, await admin.Projects.CountAsync(p => p.TenantId == harness.TenantId && p.SystemPurpose == ProjectSystemPurposes.Office));
     }
+
+    [Fact]
+    public async Task EnsureAsync_NewOfficeProject_HasTheSystemMeetingCategory()
+    {
+        await using var harness = await OfficeProjectDb.CreateAsync();
+        var hr = await harness.SeedEmployeeAsync(harness.LegalEntityId);
+        var scopes = harness.BuildAppScopeFactory();
+
+        await using var scope = scopes.CreateAsyncScope();
+        var context = await scope.ServiceProvider.GetRequiredService<IOfficeProjectProvisioner>()
+            .EnsureAsync(harness.TenantId, harness.LegalEntityId, hr.UserId, hr.Id, DateOnly.FromDateTime(DateTime.UtcNow));
+
+        await using var admin = harness.AdminContext();
+        var meeting = await admin.TaskCategories.SingleAsync(c => c.ProjectId == context.ProjectId && c.SystemKey == "meeting");
+        Assert.Equal("Meeting", meeting.Name);
+        Assert.True(context.CategoryIds.ContainsKey("meeting"));
+    }
 }
