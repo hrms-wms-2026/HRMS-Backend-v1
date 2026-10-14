@@ -7,6 +7,7 @@ using ONEVO.Application.Features.Inbox.Commands.ExecuteInboxAction;
 using ONEVO.Application.Features.Inbox.Commands.ExecuteInboxBulkAction;
 using ONEVO.Application.Features.Inbox.Contracts;
 using ONEVO.Application.Features.Inbox.Queries.GetInboxCounts;
+using ONEVO.Application.Features.Inbox.Queries.ExportInboxItem;
 using ONEVO.Application.Features.Inbox.Queries.GetInboxFilters;
 using ONEVO.Application.Features.Inbox.Queries.GetInboxHistory;
 using ONEVO.Application.Features.Inbox.Queries.GetInboxItemDetail;
@@ -84,6 +85,16 @@ public class InboxController : ControllerBase
     [HttpPost("bulk")]
     public async Task<IActionResult> Bulk([FromBody] InboxBulkRequest request, CancellationToken ct)
         => ToResult(await _mediator.Send(new ExecuteInboxBulkActionCommand(request), ct));
+
+    /// <summary>The investigation bundle (HTML): detail, steps, journal, full chat with edits and deletions, attachments.</summary>
+    [HttpGet("{source}/{kind}/{id:guid}/export")]
+    public async Task<IActionResult> Export(string source, string kind, Guid id, CancellationToken ct)
+    {
+        var result = await _mediator.Send(new ExportInboxItemQuery(source, kind, id), ct);
+        return result.IsSuccess
+            ? File(System.Text.Encoding.UTF8.GetBytes(result.Value!.Html), "text/html; charset=utf-8", result.Value.FileName)
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
 
     [HttpGet("{source}/{kind}/{id:guid}")]
     public async Task<IActionResult> Detail(string source, string kind, Guid id, CancellationToken ct)

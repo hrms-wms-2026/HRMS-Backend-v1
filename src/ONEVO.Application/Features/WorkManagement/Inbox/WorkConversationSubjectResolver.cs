@@ -51,7 +51,7 @@ public sealed class WorkConversationSubjectResolver : IConversationSubjectResolv
     /// <summary>Anyone who can open the item in their own Work inbox (e.g. a Module owner above the approver chain
     /// who sees it in the project feed) may read and post in its chat as a viewer.</summary>
     public async Task<bool> CanViewAsync(Guid tenantId, ItemRef subject, Guid employeeId, CancellationToken ct)
-        => _inbox is not null && await _inbox.GetDetailAsync(tenantId, subject.Kind, subject.Id, employeeId, ct) is not null;
+        => _inbox is not null && await _inbox.GetScopedDetailAsync(tenantId, subject.Kind, subject.Id, employeeId, ct) is not null;
 
     private async Task<ConversationSubject?> ApprovalAsync(Guid tenantId, Guid id, CancellationToken ct)
     {

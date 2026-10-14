@@ -100,13 +100,7 @@ public sealed class WorkInboxSourceProvider : IInboxSourceProvider
 
     public async Task<InboxItemDetail?> GetDetailAsync(Guid tenantId, string kind, Guid id, Guid callerEmployeeId, CancellationToken ct)
     {
-        var detail = kind switch
-        {
-            WorkInboxKinds.Approval => await ApprovalDetailAsync(tenantId, id, callerEmployeeId, ct),
-            WorkInboxKinds.Invitation => await InvitationDetailAsync(tenantId, id, callerEmployeeId, ct),
-            WorkInboxKinds.MonitorAlert => await AlertDetailAsync(tenantId, id, callerEmployeeId, checkAudience: true, ct),
-            _ => null,
-        };
+        var detail = await GetScopedDetailAsync(tenantId, kind, id, callerEmployeeId, ct);
         if (detail is not null)
             return detail;
 
@@ -115,6 +109,17 @@ public sealed class WorkInboxSourceProvider : IInboxSourceProvider
             ? await ReadOnlyDetailAsync(tenantId, kind, id, callerEmployeeId, ct)
             : null;
     }
+
+    /// <summary>The item as the caller sees it from their own Work access (feed, invitation, alert audience) -
+    /// not through having been added to its chat. Null when they have no such access.</summary>
+    public async Task<InboxItemDetail?> GetScopedDetailAsync(Guid tenantId, string kind, Guid id, Guid callerEmployeeId, CancellationToken ct)
+        => kind switch
+        {
+            WorkInboxKinds.Approval => await ApprovalDetailAsync(tenantId, id, callerEmployeeId, ct),
+            WorkInboxKinds.Invitation => await InvitationDetailAsync(tenantId, id, callerEmployeeId, ct),
+            WorkInboxKinds.MonitorAlert => await AlertDetailAsync(tenantId, id, callerEmployeeId, checkAudience: true, ct),
+            _ => null,
+        };
 
     public async Task<Result<InboxActionResult>> ExecuteActionAsync(
         Guid tenantId, string kind, Guid id, string action, JsonElement? body, Guid callerEmployeeId, CancellationToken ct)
