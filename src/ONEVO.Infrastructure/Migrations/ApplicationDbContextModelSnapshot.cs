@@ -12428,6 +12428,11 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("project_id");
 
+                    b.Property<string>("SystemKey")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("system_key");
+
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uuid")
                         .HasColumnName("tenant_id");
@@ -12445,6 +12450,11 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasIndex("TenantId", "ProjectId", "Name")
                         .IsUnique()
                         .HasDatabaseName("ix_task_categories_one_name_per_project");
+
+                    b.HasIndex("TenantId", "ProjectId", "SystemKey")
+                        .IsUnique()
+                        .HasDatabaseName("ix_task_categories_one_system_key_per_project")
+                        .HasFilter("system_key IS NOT NULL");
 
                     b.ToTable("task_categories", (string)null);
                 });
