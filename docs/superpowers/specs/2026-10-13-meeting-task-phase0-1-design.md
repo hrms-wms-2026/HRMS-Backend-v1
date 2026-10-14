@@ -223,9 +223,14 @@ P1-1 (RSVP history), P1-6 (integration-health notices), P2-1 (`.ics`), P2-2 (rem
 
 **When it runs:**
 
-- **Startup backfill:** a hosted service runs it once for every active tenant. It runs under admin mode for the cross-tenant tenant list, then switches to each tenant before writing, the same pattern as `ActivityDailySummaryJob`. It's safe to run on every start.
-- **After an employee is created:** the two paths that create Employee rows (`OnboardingDraftWriteService` finalize and `ApproveAccessGrantRequestCommandHandler`) call it for that tenant after their save. A new tenant gets its Office project as soon as the owner's employee exists.
+- **Startup backfill:** a hosted service (`OfficeProjectReconciliationStartupService`) runs it once, 30 s after start, for every tenant that isn't Suspended or Cancelled, paging the tenant list 200 at a time. Each reconcile switches its own scope to the tenant before touching data. A failure for one tenant is logged and the run continues. It's safe to run on every start. It is skipped in the `Test` environment so integration-test hosts don't create Office projects behind the tests' backs.
+- **Whenever the Office project is needed:** `EmployeeChecklistWorkTaskProvisioner.EnsureOfficeProjectAsync` calls the reconciler before `EnsureAsync`. So the first onboarding/offboarding checklist after the owner's employee exists creates (or re-leads) the project owner-led.
+- *Changed at plan time (2026-10-13):* the reconciler is **not** wired into the two employee-creation paths (`OnboardingDraftWriteService` finalize, `ApproveAccessGrantRequestCommandHandler`). Both are large transactional handlers, and the two triggers above cover every case. A new tenant's Office project therefore appears at the first checklist or the next restart, whichever comes first, rather than at the moment the owner's employee is saved. Phase 2 (meeting creation) must call the reconciler too before it needs the Office project.
 - **Existing call sites:** `EnsureAsync` stays where it is (the checklist provisioner) as a safety net, and gains the Meeting category.
+
+**RLS defect fixed on the way (found 2026-10-13):** `OfficeProjectProvisioner.EnsureAsync` opened a fresh DI scope, whose `TenantContextAccessor` starts in System mode. The `tenant_isolation` policy fails closed in System mode, and the app role `onevo_app` has `rolbypassrls = false`, so under the real role the provisioner could neither find nor create the Office project (insert failed with 42501). It now switches its scope to the target tenant first. An integration test runs it as `onevo_app` to keep it fixed.
+
+**Lead switch scope:** only `projects.lead_id` changes. The Office root objective's `OwnerId` is left as it was (it doesn't gate access to Office items).
 
 **Concurrency:** `OfficeProjectProvisioner` already handles the unique-violation race. The lead update is a single-row update guarded by the project's current `LeadId`, so concurrent runs converge.
 
@@ -291,7 +296,7 @@ P1-1 (RSVP history), P1-6 (integration-health notices), P2-1 (`.ics`), P2-2 (rem
 ## 7. Open questions
 
 **Q1 — Tenant owner without an Employee record. ✅ Decided 2026-10-13: option (a).** The Office project's lead must be an Employee, and the `Owner` role does **not** hold `*`, so there is no automatically safe stand-in. B3 says every tenant must have an Office project. Options considered:
-- **(a) Pending + any owner — chosen:** the lead is the earliest-assigned owner-role user **who has an active Employee record** (the §4.2 rule). If no owner has one, the reconciler does nothing and retries on every employee creation and every startup.
+- **(a) Pending + any owner — chosen:** the lead is the earliest-assigned owner-role user **who has an active Employee record** (the §4.2 rule). If no owner has one, the reconciler does nothing and retries at the next startup and the next time the Office project is needed (§4.2).
   - **Onboarding checklists, verified (`EmployeeChecklistWorkTaskProvisioner.cs:30-35`):** if no Office project exists, the first checklist creates it with the **acting HR employee as lead**, and that actor must be an active employee (otherwise 403). This is today's behaviour and is kept unchanged: it exposes nothing new, since that person is the one running onboarding. Once an owner employee exists, the reconciler switches the lead to the owner (B4).
   - So a tenant gets its Office project from whichever happens first: an owner gets an employee record, or the first onboarding checklist runs.
   - **Phase 2:** a non-project meeting in a tenant that has neither is rejected with a clear message ("Your workspace owner needs an employee profile before company meetings can be created").
