@@ -294,6 +294,66 @@ public class NotificationTemplateSeeder : IHostedService
                 Id = Guid.NewGuid(), Code = "calendar_event_replacement_nominated",
                 InAppTitleTemplate = "Replacement nominated",
                 InAppBodyTemplate = "{{responderName}} nominated {{nomineeName}} as a replacement for \"{{eventTitle}}\"."
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "calendar_event_rsvp_accepted",
+                InAppTitleTemplate = "Invitation accepted",
+                InAppBodyTemplate = "{{responderName}} accepted \"{{eventTitle}}\"."
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "calendar_event_rsvp_rejected",
+                InAppTitleTemplate = "Invitation declined",
+                InAppBodyTemplate = "{{responderName}} declined \"{{eventTitle}}\"."
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "calendar_event_replacement_nominee",
+                InAppTitleTemplate = "You were nominated as a replacement",
+                InAppBodyTemplate = "{{responderName}} nominated you to attend \"{{eventTitle}}\" in their place."
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "calendar_event_participant_removed",
+                InAppTitleTemplate = "Removed from an event",
+                InAppBodyTemplate = "{{organizerName}} removed you from \"{{eventTitle}}\"."
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "calendar_event_meeting_link_removed",
+                InAppTitleTemplate = "Meeting link removed",
+                InAppBodyTemplate = "{{organizerName}} removed the meeting link from \"{{eventTitle}}\"."
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "calendar_event_meeting_link_failed",
+                InAppTitleTemplate = "Meeting link could not be created",
+                InAppBodyTemplate = "The {{provider}} link for \"{{eventTitle}}\" could not be created. Invitations were sent without it - add the link again from the event."
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "calendar_connection_reauth_required",
+                InAppTitleTemplate = "Reconnect your calendar",
+                InAppBodyTemplate = "Your {{provider}} connection needs you to sign in again before it can sync."
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "calendar_connection_failed",
+                InAppTitleTemplate = "Calendar sync failed",
+                InAppBodyTemplate = "Your {{provider}} calendar could not be synced. Check the connection in your calendar settings."
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "calendar_connection_sync_conflict",
+                InAppTitleTemplate = "Calendar sync conflict",
+                InAppBodyTemplate = "Some events in your {{provider}} calendar conflicted with ONEVO and were not synced."
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "calendar_event_reminder",
+                InAppTitleTemplate = "Starting soon",
+                InAppBodyTemplate = "\"{{eventTitle}}\" starts at {{eventTime}}."
             }
 
         };

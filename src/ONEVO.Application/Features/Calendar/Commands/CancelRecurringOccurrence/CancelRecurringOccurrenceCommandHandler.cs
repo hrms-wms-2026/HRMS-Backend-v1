@@ -54,11 +54,18 @@ public sealed class CancelRecurringOccurrenceCommandHandler(
         // The sender only stages outbox rows, so they must be staged before the save that writes them.
         var participantsByEvent = await events.GetParticipantsForEventsAsync(tenantId, [master.Id], ct);
         var participantEmployeeIds = participantsByEvent.TryGetValue(master.Id, out var p) ? p.Select(x => x.EmployeeId).ToList() : [];
-        if (participantEmployeeIds.Count > 0)
+        var guestEmails = await CalendarEventAudience.GuestEmailsAsync(events, tenantId, master.Id, ct);
+        if (participantEmployeeIds.Count > 0 || guestEmails.Count > 0)
         {
             var callerEmployee = await employees.GetDefaultForUserAsync(tenantId, currentUser.UserId, ct);
             var organizerName = callerEmployee is null ? "Someone" : $"{callerEmployee.FirstName} {callerEmployee.LastName}";
-            await notifications.NotifyEventCancelledAsync(tenantId, master.Title, participantEmployeeIds, organizerName, ct);
+            if (participantEmployeeIds.Count > 0)
+                await notifications.NotifyEventCancelledAsync(tenantId, master.Title, participantEmployeeIds, organizerName, ct);
+            // Only that occurrence is cancelled in the recipients' calendars: the .ics addresses it by RECURRENCE-ID.
+            var ics = CalendarEventIcs.For(master.Id, request.OriginalStart + (master.EndDate - master.StartDate), master.RecurrenceRule, DateTimeOffset.UtcNow)
+                with { RecurrenceId = request.OriginalStart };
+            await notifications.EmailEventChangedAsync(tenantId, CalendarEventEmailKinds.Cancelled, ics, master.Title, request.OriginalStart,
+                master.Location, null, participantEmployeeIds, guestEmails, organizerName, ct);
         }
 
         await unitOfWork.SaveChangesAsync(ct);

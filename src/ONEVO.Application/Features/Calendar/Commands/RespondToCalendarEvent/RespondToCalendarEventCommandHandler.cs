@@ -13,7 +13,8 @@ public sealed class RespondToCalendarEventCommandHandler(
     ICalendarEventRepository events,
     ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces.IEmployeeRepository employees,
     IUnitOfWork unitOfWork,
-    ICalendarNotificationSender notifications)
+    ICalendarNotificationSender notifications,
+    IDateTimeProvider? clock = null)
     : IRequestHandler<RespondToCalendarEventCommand, Result>
 {
     public async Task<Result> Handle(RespondToCalendarEventCommand request, CancellationToken ct)
@@ -45,6 +46,7 @@ public sealed class RespondToCalendarEventCommandHandler(
             return Result.NotFound("You are not a participant on this event.");
 
         string? nomineeName = null;
+        Guid? nomineeUserId = null;
         if (normalizedStatus == CalendarEventParticipantStatuses.ReplacementNominated)
         {
             if (request.NomineeEmployeeId is not { } nomineeId)
@@ -58,25 +60,40 @@ public sealed class RespondToCalendarEventCommandHandler(
 
             var nominee = await employees.GetByIdAsync(tenantId, nomineeId, ct);
             nomineeName = nominee is null ? "Unknown" : $"{nominee.FirstName} {nominee.LastName}";
+            nomineeUserId = nominee?.UserId;
         }
 
+        // Every answer is kept (plan C1 P1-1): when, from what, to what, and why.
+        var now = clock?.UtcNow ?? DateTimeOffset.UtcNow;
+        await events.AddRsvpHistoryAsync(new CalendarEventParticipantRsvpHistory
+        {
+            Id = Guid.NewGuid(), TenantId = tenantId, ParticipantId = participant.Id, EventId = request.EventId, EmployeeId = employee.Id,
+            FromStatus = participant.ResponseStatus, ToStatus = normalizedStatus, ChangedAt = now, Reason = request.Reason, CreatedAt = now,
+        }, ct);
         participant.ResponseStatus = normalizedStatus;
         participant.ResponseReason = request.Reason;
+        participant.RespondedAt = now;
 
         // Enqueue the organizer notification BEFORE the single SaveChanges below: the notification
         // sender only stages an outbox row (no save of its own), so it has to ride along with the
         // participant update's save - otherwise it is silently dropped.
-        if (normalizedStatus is CalendarEventParticipantStatuses.ResolutionRequested or CalendarEventParticipantStatuses.ReplacementNominated)
+        var calendarEvent = await events.GetByIdForTenantAsync(tenantId, request.EventId, ct);
+        if (calendarEvent is not null)
         {
-            var calendarEvent = await events.GetByIdForTenantAsync(tenantId, request.EventId, ct);
-            if (calendarEvent is not null)
+            var responderName = $"{employee.FirstName} {employee.LastName}";
+            if (normalizedStatus == CalendarEventParticipantStatuses.ResolutionRequested)
+                await notifications.NotifyResolutionRequestedAsync(tenantId, calendarEvent.CreatedById, calendarEvent.Title, responderName, request.Reason!, ct);
+            else if (normalizedStatus == CalendarEventParticipantStatuses.ReplacementNominated)
             {
-                var responderName = $"{employee.FirstName} {employee.LastName}";
-                if (normalizedStatus == CalendarEventParticipantStatuses.ResolutionRequested)
-                    await notifications.NotifyResolutionRequestedAsync(tenantId, calendarEvent.CreatedById, calendarEvent.Title, responderName, request.Reason!, ct);
-                else
-                    await notifications.NotifyReplacementNominatedAsync(tenantId, calendarEvent.CreatedById, calendarEvent.Title, responderName, nomineeName!, ct);
+                await notifications.NotifyReplacementNominatedAsync(tenantId, calendarEvent.CreatedById, calendarEvent.Title, responderName, nomineeName!, ct);
+                // The nominee hears about it too (plan C1 P1-4).
+                if (nomineeUserId is Guid nomineeUser && nomineeUser != Guid.Empty)
+                    await notifications.NotifyNomineeAsync(tenantId, nomineeUser, calendarEvent.Title, responderName, ct);
             }
+            // Accept / decline reaches the organizer too (P1-2) - unless the organizer is answering their own event.
+            else if (calendarEvent.CreatedById != currentUser.UserId)
+                await notifications.NotifyRsvpAnsweredAsync(tenantId, calendarEvent.CreatedById, calendarEvent.Title, responderName,
+                    normalizedStatus == CalendarEventParticipantStatuses.Accepted, ct);
         }
 
         await unitOfWork.SaveChangesAsync(ct);

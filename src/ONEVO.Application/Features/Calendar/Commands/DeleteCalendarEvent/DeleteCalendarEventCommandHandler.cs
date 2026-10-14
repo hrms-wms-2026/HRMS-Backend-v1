@@ -59,11 +59,17 @@ public sealed class DeleteCalendarEventCommandHandler(
 
         var participantsByEvent = await events.GetParticipantsForEventsAsync(tenantId, [existing.Id], ct);
         var participantEmployeeIds = participantsByEvent.TryGetValue(existing.Id, out var p) ? p.Select(x => x.EmployeeId).ToList() : [];
-        if (participantEmployeeIds.Count > 0)
+        var guestEmails = await CalendarEventAudience.GuestEmailsAsync(events, tenantId, existing.Id, ct);
+        if (participantEmployeeIds.Count > 0 || guestEmails.Count > 0)
         {
             var callerEmployee = await employees.GetDefaultForUserAsync(tenantId, currentUser.UserId, ct);
             var organizerName = callerEmployee is null ? "Someone" : $"{callerEmployee.FirstName} {callerEmployee.LastName}";
-            await notifications.NotifyEventCancelledAsync(tenantId, existing.Title, participantEmployeeIds, organizerName, ct);
+            if (participantEmployeeIds.Count > 0)
+                await notifications.NotifyEventCancelledAsync(tenantId, existing.Title, participantEmployeeIds, organizerName, ct);
+            // The cancellation email removes the entry from participants' and guests' own calendars (CANCEL .ics).
+            await notifications.EmailEventChangedAsync(tenantId, CalendarEventEmailKinds.Cancelled,
+                CalendarEventIcs.For(existing.Id, existing.EndDate, existing.RecurrenceRule, DateTimeOffset.UtcNow),
+                existing.Title, existing.StartDate, existing.Location, null, participantEmployeeIds, guestEmails, organizerName, ct);
         }
 
         events.Remove(existing);

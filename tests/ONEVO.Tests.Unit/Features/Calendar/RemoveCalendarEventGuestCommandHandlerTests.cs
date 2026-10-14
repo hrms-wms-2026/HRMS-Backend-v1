@@ -78,4 +78,27 @@ public sealed class RemoveCalendarEventGuestCommandHandlerTests
         _events.Verify(e => e.RemoveGuest(guest), Times.Once);
         _unitOfWork.Verify(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
+
+    [Fact]
+    public async Task Handle_RemovedGuest_IsEmailedThatTheyWereRemoved()
+    {
+        BuildSut();
+        var notifications = new Mock<ONEVO.Application.Features.Calendar.Services.ICalendarNotificationSender>();
+        var employees = new Mock<ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces.IEmployeeRepository>();
+        employees.Setup(x => x.GetDefaultForUserAsync(TenantId, UserId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ONEVO.Domain.Features.CoreHr.Entities.Employee { Id = Guid.NewGuid(), TenantId = TenantId, UserId = UserId, FirstName = "Ada", LastName = "Owner" });
+        var evt = new CalendarEvent { Id = EventId, TenantId = TenantId, Title = "Vendor sync", CreatedById = UserId, StartDate = DateTimeOffset.UtcNow.AddHours(1), EndDate = DateTimeOffset.UtcNow.AddHours(2) };
+        _events.Setup(e => e.GetTrackedByIdForTenantAsync(TenantId, EventId, It.IsAny<CancellationToken>())).ReturnsAsync(evt);
+        _events.Setup(e => e.GetTrackedGuestAsync(TenantId, EventId, "guest@example.com", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CalendarEventGuest { Id = Guid.NewGuid(), TenantId = TenantId, EventId = EventId, Email = "guest@example.com" });
+        var sut = new RemoveCalendarEventGuestCommandHandler(_currentUser.Object, _events.Object, _unitOfWork.Object, notifications.Object, employees.Object);
+
+        var result = await sut.Handle(new RemoveCalendarEventGuestCommand(EventId, "Guest@Example.com"), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        notifications.Verify(n => n.EmailEventChangedAsync(TenantId, ONEVO.Application.Features.Calendar.Services.CalendarEventEmailKinds.Removed,
+            It.IsAny<ONEVO.Application.Features.Calendar.Services.CalendarEventIcs>(), "Vendor sync", It.IsAny<DateTimeOffset>(), It.IsAny<string?>(), null,
+            It.Is<IReadOnlyList<Guid>>(ids => ids.Count == 0), It.Is<IReadOnlyList<string>>(g => g.Single() == "guest@example.com"),
+            "Ada Owner", It.IsAny<CancellationToken>()), Times.Once);
+    }
 }

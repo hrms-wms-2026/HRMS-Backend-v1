@@ -12,7 +12,7 @@ public interface ICalendarNotificationSender
     Task NotifyParticipantsAddedAsync(
         Guid tenantId, string eventTitle, DateTimeOffset startDate, string? location,
         IReadOnlyList<Guid> employeeIds, string organizerName, CancellationToken ct = default,
-        string? meetingLink = null, bool sendInviteEmail = true);
+        string? meetingLink = null, bool sendInviteEmail = true, CalendarEventIcs? ics = null);
 
     /// <summary>Invite email (with the join link) to each existing participant, for when a
     /// Teams/Zoom meeting is added to an event after participants were already invited -
@@ -21,13 +21,13 @@ public interface ICalendarNotificationSender
     /// channel for this kind of update.</summary>
     Task NotifyMeetingLinkAddedAsync(
         Guid tenantId, string eventTitle, DateTimeOffset startDate, string? location,
-        IReadOnlyList<Guid> employeeIds, string organizerName, string meetingLink, CancellationToken ct = default);
+        IReadOnlyList<Guid> employeeIds, string organizerName, string meetingLink, CancellationToken ct = default, CalendarEventIcs? ics = null);
 
     /// <summary>Invite email (with the join link when there is one) to external guests identified only
     /// by email - covers both first invite and a meeting link added later.</summary>
     Task NotifyGuestsAsync(
         Guid tenantId, string eventTitle, DateTimeOffset startDate, string? location,
-        IReadOnlyList<string> guestEmails, string organizerName, string? meetingLink, CancellationToken ct = default);
+        IReadOnlyList<string> guestEmails, string organizerName, string? meetingLink, CancellationToken ct = default, CalendarEventIcs? ics = null);
 
     /// <summary>In-app notification only (no email) to each participant that an event changed.</summary>
     Task NotifyEventUpdatedAsync(
@@ -44,4 +44,33 @@ public interface ICalendarNotificationSender
     /// <summary>In-app notification only, to the event organizer, that a participant nominated a replacement.</summary>
     Task NotifyReplacementNominatedAsync(
         Guid tenantId, Guid organizerUserId, string eventTitle, string responderName, string nomineeName, CancellationToken ct = default);
+
+    /// <summary>In-app notification to the organizer that a participant accepted or declined (plan C1 P1-2).</summary>
+    Task NotifyRsvpAnsweredAsync(
+        Guid tenantId, Guid organizerUserId, string eventTitle, string responderName, bool accepted, CancellationToken ct = default);
+
+    /// <summary>Email (with its .ics) to every participant and guest that an event was updated or cancelled, or to the people
+    /// just removed (<see cref="CalendarEventEmailKinds"/>; plan C1 P1-3 / P1-4).</summary>
+    Task EmailEventChangedAsync(
+        Guid tenantId, string kind, CalendarEventIcs ics, string eventTitle, DateTimeOffset startDate, string? location, string? meetingLink,
+        IReadOnlyList<Guid> employeeIds, IReadOnlyList<string> guestEmails, string organizerName, CancellationToken ct = default);
+
+    /// <summary>In-app notification to the nominee that they were nominated to replace a participant (P1-4).</summary>
+    Task NotifyNomineeAsync(Guid tenantId, Guid nomineeUserId, string eventTitle, string responderName, CancellationToken ct = default);
+
+    /// <summary>In-app notification to a participant the organizer removed from an event (P1-4).</summary>
+    Task NotifyParticipantRemovedAsync(Guid tenantId, Guid employeeId, string eventTitle, string organizerName, CancellationToken ct = default);
+
+    /// <summary>In-app notification to each participant that the meeting link was removed (P1-4).</summary>
+    Task NotifyMeetingLinkRemovedAsync(Guid tenantId, string eventTitle, IReadOnlyList<Guid> employeeIds, string organizerName, CancellationToken ct = default);
+
+    /// <summary>In-app alert to the organizer that the Teams/Zoom link could not be created (P1-5).</summary>
+    Task NotifyMeetingLinkFailedAsync(Guid tenantId, Guid organizerUserId, string eventTitle, string providerLabel, CancellationToken ct = default);
+
+    /// <summary>In-app notification to the connection owner that their calendar integration needs attention (P1-6):
+    /// <paramref name="problem"/> is reauth_required, failed or sync_conflict.</summary>
+    Task NotifyConnectionProblemAsync(Guid tenantId, Guid userId, string providerLabel, string problem, CancellationToken ct = default);
+
+    /// <summary>In-app reminder that an event starts soon (P2-2).</summary>
+    Task NotifyEventReminderAsync(Guid tenantId, Guid userId, string eventTitle, DateTimeOffset startDate, CancellationToken ct = default);
 }

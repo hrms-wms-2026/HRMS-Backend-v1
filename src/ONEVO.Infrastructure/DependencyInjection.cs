@@ -672,6 +672,8 @@ public static class DependencyInjection
         services.AddHttpClient<IZoomMeetingClient, ZoomMeetingClient>(client => { client.Timeout = TimeSpan.FromSeconds(30); });
         services.AddScoped<ICalendarConnectionTokenProvider, CalendarConnectionTokenProvider>();
         services.AddScoped<ICalendarSyncService, CalendarSyncService>();
+        services.AddScoped<ONEVO.Application.Features.Calendar.Services.CalendarEventReminderService>();
+        services.AddHostedService<ONEVO.Infrastructure.Services.Calendar.CalendarEventReminderJob>();
 
         // Tenant cache invalidation
         services.AddScoped<ITenantCacheInvalidator, TenantCacheInvalidator>();

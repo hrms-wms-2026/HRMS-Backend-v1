@@ -74,7 +74,8 @@ public sealed class AddCalendarEventParticipantsCommandHandler(
                 var organizerName = callerEmployee is null ? "Someone" : $"{callerEmployee.FirstName} {callerEmployee.LastName}";
                 await notifications.NotifyParticipantsAddedAsync(
                     tenantId, existing.Title, existing.StartDate, existing.Location,
-                    newEmployeeIds, organizerName, innerCt, existing.MeetingLink);
+                    newEmployeeIds, organizerName, innerCt, existing.MeetingLink,
+                    ics: CalendarEventIcs.For(existing.Id, existing.EndDate, existing.RecurrenceRule, DateTimeOffset.UtcNow));
 
                 await unitOfWork.SaveChangesAsync(innerCt);
             }

@@ -58,11 +58,16 @@ public sealed class EditRecurringOccurrenceCommandHandler(
         // The sender only stages outbox rows, so they must be staged before the save that writes them.
         var participantsByEvent = await events.GetParticipantsForEventsAsync(master.TenantId, [master.Id], ct);
         var participantEmployeeIds = participantsByEvent.TryGetValue(master.Id, out var p) ? p.Select(x => x.EmployeeId).ToList() : [];
-        if (participantEmployeeIds.Count > 0)
+        var guestEmails = await CalendarEventAudience.GuestEmailsAsync(events, master.TenantId, master.Id, ct);
+        if (participantEmployeeIds.Count > 0 || guestEmails.Count > 0)
         {
             var callerEmployee = await employees.GetDefaultForUserAsync(master.TenantId, currentUser.UserId, ct);
             var organizerName = callerEmployee is null ? "Someone" : $"{callerEmployee.FirstName} {callerEmployee.LastName}";
-            await notifications.NotifyEventUpdatedAsync(master.TenantId, master.Title, participantEmployeeIds, organizerName, ct);
+            if (participantEmployeeIds.Count > 0)
+                await notifications.NotifyEventUpdatedAsync(master.TenantId, master.Title, participantEmployeeIds, organizerName, ct);
+            await notifications.EmailEventChangedAsync(master.TenantId, CalendarEventEmailKinds.Updated,
+                CalendarEventIcs.For(master.Id, master.EndDate, master.RecurrenceRule, DateTimeOffset.UtcNow),
+                master.Title, master.StartDate, master.Location, master.MeetingLink, participantEmployeeIds, guestEmails, organizerName, ct);
         }
 
         await unitOfWork.SaveChangesAsync(ct);

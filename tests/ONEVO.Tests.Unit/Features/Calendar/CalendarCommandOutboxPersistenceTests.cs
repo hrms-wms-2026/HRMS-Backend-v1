@@ -8,6 +8,7 @@ using ONEVO.Application.Features.Calendar.Commands.EditRecurringOccurrence;
 using ONEVO.Application.Features.Calendar.Commands.UpdateCalendarEvent;
 using ONEVO.Application.Features.Calendar.RepositoryInterfaces;
 using ONEVO.Application.Features.Calendar.Services;
+using ONEVO.Application.Features.Calendar.OutboxHandlers;
 using ONEVO.Domain.Features.Calendar.Entities;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.SharedPlatform.Entities;
@@ -40,7 +41,7 @@ public sealed class CalendarCommandOutboxPersistenceTests
         _currentUser.SetupGet(x => x.IsAuthenticated).Returns(true);
         _currentUser.SetupGet(x => x.TenantId).Returns(_tenantId);
         _currentUser.SetupGet(x => x.UserId).Returns(_userId);
-        _participant = new Employee { Id = Guid.NewGuid(), TenantId = _tenantId, UserId = Guid.NewGuid(), FirstName = "Pat", LastName = "Doe" };
+        _participant = new Employee { Id = Guid.NewGuid(), TenantId = _tenantId, UserId = Guid.NewGuid(), FirstName = "Pat", LastName = "Doe", Email = "pat@acme.com" };
         _employees.Setup(x => x.GetByIdAsync(_tenantId, _participant.Id, It.IsAny<CancellationToken>())).ReturnsAsync(_participant);
         _employees.Setup(x => x.GetDefaultForUserAsync(_tenantId, _userId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Employee { Id = Guid.NewGuid(), TenantId = _tenantId, UserId = _userId, FirstName = "Ada", LastName = "Owner" });
@@ -50,6 +51,11 @@ public sealed class CalendarCommandOutboxPersistenceTests
             Recurrence = "weekly", RecurrenceRule = "FREQ=WEEKLY",
         };
         _events.Setup(x => x.GetTrackedByIdForTenantAsync(_tenantId, _master.Id, It.IsAny<CancellationToken>())).ReturnsAsync(_master);
+        _events.Setup(x => x.GetGuestsForEventsAsync(_tenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, IReadOnlyList<CalendarEventGuest>>
+            {
+                [_master.Id] = [new CalendarEventGuest { Id = Guid.NewGuid(), TenantId = _tenantId, EventId = _master.Id, Email = "vendor@example.com" }],
+            });
         _events.Setup(x => x.GetParticipantsForEventsAsync(_tenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Dictionary<Guid, IReadOnlyList<CalendarEventParticipant>>
             {
@@ -84,10 +90,17 @@ public sealed class CalendarCommandOutboxPersistenceTests
         return (new CalendarNotificationSender(outbox, _employees.Object), new DbUnitOfWork(db));
     }
 
-    private int SavedOutboxRows()
+    private int SavedOutboxRows(string type)
     {
         using var fresh = Db();
-        return fresh.Set<OutboxMessage>().Count();
+        return fresh.Set<OutboxMessage>().Count(m => m.Type == type);
+    }
+
+    private List<CalendarEventInviteEmailPayload> SavedEmails()
+    {
+        using var fresh = Db();
+        return fresh.Set<OutboxMessage>().Where(m => m.Type == OutboxMessageTypes.CalendarEventInviteEmail).AsEnumerable()
+            .Select(m => System.Text.Json.JsonSerializer.Deserialize<CalendarEventInviteEmailPayload>(m.EncryptedPayload)!).ToList();
     }
 
     [Fact]
@@ -100,7 +113,7 @@ public sealed class CalendarCommandOutboxPersistenceTests
             new UpdateCalendarEventCommand(_master.Id, "Standup v2", null, Start, Start.AddHours(1), false, null, null, null, "weekly"), default);
 
         Assert.True(result.IsSuccess, result.Error);
-        Assert.Equal(1, SavedOutboxRows());
+        Assert.Equal(1, SavedOutboxRows(OutboxMessageTypes.WorkNotification));
     }
 
     [Fact]
@@ -114,7 +127,7 @@ public sealed class CalendarCommandOutboxPersistenceTests
             default);
 
         Assert.True(result.IsSuccess, result.Error);
-        Assert.Equal(1, SavedOutboxRows());
+        Assert.Equal(1, SavedOutboxRows(OutboxMessageTypes.WorkNotification));
     }
 
     [Fact]
@@ -127,6 +140,48 @@ public sealed class CalendarCommandOutboxPersistenceTests
             new CancelRecurringOccurrenceCommand(_master.Id, Start.AddDays(7)), default);
 
         Assert.True(result.IsSuccess, result.Error);
-        Assert.Equal(1, SavedOutboxRows());
+        Assert.Equal(1, SavedOutboxRows(OutboxMessageTypes.WorkNotification));
+    }
+
+    [Fact]
+    public async Task Update_emails_participants_and_guests_the_updated_invite_with_its_ics()
+    {
+        await using var db = Db();
+        var (sender, uow) = Wiring(db);
+
+        await new UpdateCalendarEventCommandHandler(_currentUser.Object, _events.Object, _employees.Object, sender, uow).Handle(
+            new UpdateCalendarEventCommand(_master.Id, "Standup v2", null, Start, Start.AddHours(1), false, "Room 9", null, null, "weekly"), default);
+
+        var emails = SavedEmails();
+        Assert.Equal(new[] { "pat@acme.com", "vendor@example.com" }, emails.Select(e => e.ToEmail).OrderBy(e => e));
+        Assert.All(emails, e =>
+        {
+            Assert.Equal(CalendarEventEmailKinds.Updated, e.Kind);
+            Assert.Equal(_master.Id, e.EventId);
+            Assert.Equal("Standup v2", e.EventTitle);
+            Assert.Equal("FREQ=WEEKLY", e.RecurrenceRule);
+            Assert.True(e.Sequence > 0);
+        });
+    }
+
+    [Fact]
+    public async Task Cancelling_one_occurrence_emails_a_cancellation_of_that_occurrence_only()
+    {
+        await using var db = Db();
+        var (sender, uow) = Wiring(db);
+        var occurrence = Start.AddDays(7);
+
+        await new CancelRecurringOccurrenceCommandHandler(_currentUser.Object, _events.Object, _employees.Object, sender, uow).Handle(
+            new CancelRecurringOccurrenceCommand(_master.Id, occurrence), default);
+
+        var emails = SavedEmails();
+        Assert.Equal(2, emails.Count);
+        Assert.All(emails, e =>
+        {
+            Assert.Equal(CalendarEventEmailKinds.Cancelled, e.Kind);
+            Assert.Equal(occurrence, e.RecurrenceId);
+            Assert.Equal(occurrence, e.StartDateUtc);
+            Assert.Null(e.MeetingLink);
+        });
     }
 }

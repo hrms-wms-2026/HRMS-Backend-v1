@@ -93,7 +93,8 @@ public static class HolidayCalendarSettingsViewModelMapper
         dto.HolidaySyncEnabled, dto.LastSyncedYear, dto.LastSyncedAt);
 }
 
-public sealed record CreateEventMeetingRequestModel(string Provider);
+/// <summary><see cref="InvitesHeldBack"/> = the event was just created with this meeting pending (its invites wait for the link).</summary>
+public sealed record CreateEventMeetingRequestModel(string Provider, bool InvitesHeldBack = false);
 
 public sealed record CreateEventMeetingResponseModel(string JoinUrl);
 

@@ -53,11 +53,17 @@ public sealed class UpdateCalendarEventCommandHandler(
             // The sender only stages outbox rows, so they must be staged before the save that writes them.
             var participantsByEvent = await events.GetParticipantsForEventsAsync(tenantId, [existing.Id], innerCt);
             var participantEmployeeIds = participantsByEvent.TryGetValue(existing.Id, out var p) ? p.Select(x => x.EmployeeId).ToList() : [];
-            if (participantEmployeeIds.Count > 0)
+            var guestEmails = await CalendarEventAudience.GuestEmailsAsync(events, tenantId, existing.Id, innerCt);
+            if (participantEmployeeIds.Count > 0 || guestEmails.Count > 0)
             {
                 var callerEmployee = await employees.GetDefaultForUserAsync(tenantId, currentUser.UserId, innerCt);
                 var organizerName = callerEmployee is null ? "Someone" : $"{callerEmployee.FirstName} {callerEmployee.LastName}";
-                await notifications.NotifyEventUpdatedAsync(tenantId, existing.Title, participantEmployeeIds, organizerName, innerCt);
+                if (participantEmployeeIds.Count > 0)
+                    await notifications.NotifyEventUpdatedAsync(tenantId, existing.Title, participantEmployeeIds, organizerName, innerCt);
+                // Participants and guests also get the updated invite by email, with its .ics (plan C1 P1-3 / P2-1).
+                await notifications.EmailEventChangedAsync(tenantId, CalendarEventEmailKinds.Updated,
+                    CalendarEventIcs.For(existing.Id, existing.EndDate, existing.RecurrenceRule, DateTimeOffset.UtcNow),
+                    existing.Title, existing.StartDate, existing.Location, existing.MeetingLink, participantEmployeeIds, guestEmails, organizerName, innerCt);
             }
 
             await unitOfWork.SaveChangesAsync(innerCt);

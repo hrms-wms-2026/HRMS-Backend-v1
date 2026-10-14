@@ -33,6 +33,21 @@ public interface ICalendarEventRepository
 
     Task AddParticipantsAsync(IReadOnlyList<CalendarEventParticipant> participants, CancellationToken ct = default);
 
+    /// <summary>Stages one RSVP change (saved with the caller's unit of work).</summary>
+    Task AddRsvpHistoryAsync(CalendarEventParticipantRsvpHistory entry, CancellationToken ct = default);
+
+    /// <summary>Single events (not recurring masters, not cancelled occurrences) with at least one participant whose start is in [from, to).</summary>
+    Task<IReadOnlyList<CalendarEvent>> ListWithParticipantsStartingBetweenAsync(Guid tenantId, DateTimeOffset from, DateTimeOffset to, CancellationToken ct = default);
+
+    /// <summary>Recurring masters with at least one participant whose series started before <paramref name="to"/>.</summary>
+    Task<IReadOnlyList<CalendarEvent>> ListRecurringMastersWithParticipantsAsync(Guid tenantId, DateTimeOffset to, CancellationToken ct = default);
+
+    /// <summary>The (event, occurrence, employee) start reminders already sent for occurrences in [from, to).</summary>
+    Task<IReadOnlySet<(Guid EventId, DateTimeOffset OccurrenceStart, Guid EmployeeId)>> ListSentRemindersAsync(
+        Guid tenantId, DateTimeOffset from, DateTimeOffset to, CancellationToken ct = default);
+
+    Task AddReminderLogsAsync(IReadOnlyList<CalendarEventReminderLog> logs, CancellationToken ct = default);
+
     /// <summary>Every participant row for the given events, grouped by EventId - used to attach
     /// participant summaries to items returned from GetCalendarEventsQueryHandler.</summary>
     Task<IReadOnlyDictionary<Guid, IReadOnlyList<CalendarEventParticipant>>> GetParticipantsForEventsAsync(
