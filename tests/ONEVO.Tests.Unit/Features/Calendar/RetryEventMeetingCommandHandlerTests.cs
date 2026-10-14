@@ -92,4 +92,18 @@ public sealed class RetryEventMeetingCommandHandlerTests
 
         Assert.Equal("meeting_link_unresolved", result.Error);
     }
+
+    [Fact]
+    public async Task StaleProvisioning_IsRecoveredAsUnknown_ThenRetried()
+    {
+        var sut = BuildSut(CalendarEventMeetingStatuses.Provisioning);
+        _meetings.Setup(m => m.TryMarkStaleProvisioningUnknownAsync(TenantId, It.IsAny<Guid>(), Now.AddMinutes(-5), Now, It.IsAny<CancellationToken>())).ReturnsAsync(true);
+        _provisioner.Setup(p => p.ProvisionAsync(It.IsAny<MeetingProvisioningRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new MeetingProvisioningOutcome(MeetingProvisioningOutcomeKind.Created, new ProvisionedMeeting("g", "https://teams/j/2", null, null), null));
+
+        var result = await sut.Handle(new RetryEventMeetingCommand(EventId), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        _provisioner.Verify(p => p.ProvisionAsync(It.Is<MeetingProvisioningRequest>(r => r.Recovery), It.IsAny<CancellationToken>()), Times.Once);
+    }
 }

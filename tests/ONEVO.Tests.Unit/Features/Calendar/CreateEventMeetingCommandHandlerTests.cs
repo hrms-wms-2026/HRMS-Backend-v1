@@ -263,4 +263,22 @@ public sealed class CreateEventMeetingCommandHandlerTests
 
         Assert.Equal(403, result.StatusCode);
     }
+
+    [Fact]
+    public async Task RequestCancelledAfterTheClaim_ProvisioningAndItsSaveStillRunToTheEnd()
+    {
+        // A closed tab must not strand a claimed row in provisioning with the held-back invites unsent.
+        var sut = BuildSut();
+        FirstClaimSucceeds();
+        ProvisionerReturns(new MeetingProvisioningOutcome(MeetingProvisioningOutcomeKind.Created, new ProvisionedMeeting("graph-1", "https://teams/j/1", null, null), null));
+        using var cancelled = new CancellationTokenSource();
+        cancelled.Cancel();
+
+        var result = await sut.Handle(Teams(), cancelled.Token);
+
+        Assert.True(result.IsSuccess);
+        _provisioner.Verify(p => p.ProvisionAsync(It.IsAny<MeetingProvisioningRequest>(), It.Is<CancellationToken>(t => !t.IsCancellationRequested)), Times.Once);
+        _unitOfWork.Verify(u => u.ExecuteInTransactionAsync(
+            It.IsAny<Func<CancellationToken, Task<Result<CreateEventMeetingResult>>>>(), It.Is<CancellationToken>(t => !t.IsCancellationRequested)), Times.Once);
+    }
 }

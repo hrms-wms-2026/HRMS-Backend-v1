@@ -121,6 +121,13 @@ public sealed class MeetingProvisioner(
         {
             return Failed(MeetingProvisioningOutcomeKind.Ambiguous, "timeout_or_server_error");
         }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // Unclassified (e.g. an unreadable 2xx body): the meeting may well exist, so it is ambiguous,
+            // never "nothing happened" - and never an unhandled error that strands the claimed row.
+            logger.LogWarning(ex, "{Provider} meeting creation failed unexpectedly for event {EventId}.", request.Provider, request.EventId);
+            return Failed(MeetingProvisioningOutcomeKind.Ambiguous, "timeout_or_server_error");
+        }
     }
 
     public async Task<bool> ResolveForRemovalAsync(MeetingProvisioningRequest request, CancellationToken ct)

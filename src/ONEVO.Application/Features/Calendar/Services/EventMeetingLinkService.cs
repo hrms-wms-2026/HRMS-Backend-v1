@@ -22,12 +22,16 @@ public sealed class EventMeetingLinkService(
 {
     public static readonly TimeSpan StaleAfter = TimeSpan.FromMinutes(5);
 
+    /// <summary>Provider call + outcome for a row this request has claimed. Runs to completion even if
+    /// <paramref name="ct"/> is cancelled (a closed tab): an abandoned claim would strand the row in
+    /// provisioning and the held-back invites unsent. The provider budget still bounds it.</summary>
     public async Task<Result<CreateEventMeetingResult>> ProvisionClaimedAsync(
         CalendarEvent evt, CalendarEventMeeting claimed, ExternalCalendarConnection connection, bool recovery,
         string organizerName, CancellationToken ct)
     {
         var outcome = await provisioner.ProvisionAsync(new MeetingProvisioningRequest(
-            connection, claimed.Provider, evt.Id, claimed.LinkGeneration, evt.Title, evt.StartDate, evt.EndDate, recovery), ct);
+            connection, claimed.Provider, evt.Id, claimed.LinkGeneration, evt.Title, evt.StartDate, evt.EndDate, recovery),
+            CancellationToken.None);
         var providerName = CalendarMeetingProviderNames.Display(claimed.Provider);
 
         return await unitOfWork.ExecuteInTransactionAsync(async innerCt =>
@@ -105,7 +109,7 @@ public sealed class EventMeetingLinkService(
                 MeetingProvisioningOutcomeKind.NotConnected => Result<CreateEventMeetingResult>.Conflict("meeting_provider_not_connected"),
                 _ => Result<CreateEventMeetingResult>.Failure("meeting_link_failed", 502)
             };
-        }, ct);
+        }, CancellationToken.None);
     }
 
     /// <summary>Invite emails WITHOUT a link to every participant and guest, keyed invite:{rowId} - the
@@ -146,6 +150,28 @@ public sealed class EventMeetingLinkService(
             CalendarMeetingProviderNames.Display(snapshot.Provider), ct);
         await unitOfWork.SaveChangesAsync(ct);
         snapshot.Status = CalendarEventMeetingStatuses.Unresolved;
+        return snapshot;
+    }
+
+    /// <summary>A provisioning row whose request died (crash, lost save) becomes provisioning_unknown
+    /// once stale - with the P1-5 fallback invites and a notice - so Retry and Remove can recover it.
+    /// Returns the row as it now stands.</summary>
+    public async Task<CalendarEventMeeting> RecoverStaleProvisioningAsync(
+        CalendarEvent evt, CalendarEventMeeting snapshot, string organizerName, CancellationToken ct)
+    {
+        var now = clock.UtcNow;
+        if (snapshot.Status != CalendarEventMeetingStatuses.Provisioning
+            || !await meetings.TryMarkStaleProvisioningUnknownAsync(evt.TenantId, snapshot.Id, now - StaleAfter, now, ct))
+            return snapshot;
+
+        await unitOfWork.ExecuteInTransactionAsync(async innerCt =>
+        {
+            await SendFallbackInvitesAsync(evt, organizerName, innerCt);
+            await NotifyOrganizerAsync(evt, CalendarMeetingNoticeCodes.LinkUnknown, snapshot.Provider, innerCt);
+            await unitOfWork.SaveChangesAsync(innerCt);
+            return true;
+        }, ct);
+        snapshot.Status = CalendarEventMeetingStatuses.ProvisioningUnknown;
         return snapshot;
     }
 

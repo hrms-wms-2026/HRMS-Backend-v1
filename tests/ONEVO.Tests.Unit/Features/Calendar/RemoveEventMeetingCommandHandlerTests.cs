@@ -170,4 +170,20 @@ public sealed class RemoveEventMeetingCommandHandlerTests
 
         Assert.Equal(403, (await sut.Handle(new RemoveEventMeetingCommand(EventId), CancellationToken.None)).StatusCode);
     }
+
+    [Fact]
+    public async Task StaleProvisioning_IsRecoveredAsUnknown_ThenResolvedRemotely()
+    {
+        // The request that claimed the row died: Remove must not answer "in progress" forever.
+        var sut = BuildSut(CalendarEventMeetingStatuses.Provisioning);
+        _row.ProvisioningStartedAt = Now.AddMinutes(-6);
+        _meetings.Setup(m => m.TryMarkStaleProvisioningUnknownAsync(TenantId, _row.Id, Now.AddMinutes(-5), Now, It.IsAny<CancellationToken>())).ReturnsAsync(true);
+        _meetings.Setup(m => m.TryClaimUnknownAsync(TenantId, _row.Id, Now, It.IsAny<CancellationToken>())).ReturnsAsync(true);
+        _provisioner.Setup(p => p.ResolveForRemovalAsync(It.IsAny<MeetingProvisioningRequest>(), It.IsAny<CancellationToken>())).ReturnsAsync(true);
+
+        var result = await sut.Handle(new RemoveEventMeetingCommand(EventId), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(CalendarEventMeetingStatuses.Cancelled, _row.Status);
+    }
 }

@@ -33,7 +33,10 @@ public sealed class RetryEventMeetingCommandHandler(
         var snapshot = await meetings.GetByCalendarEventAsync(tenantId, evt.Id, ct);
         if (snapshot is null)
             return Result<CreateEventMeetingResult>.Conflict("meeting_link_not_retryable");
+        var organizer = await employees.GetDefaultForUserAsync(tenantId, currentUser.UserId, ct);
+        var organizerName = organizer is null ? "Someone" : $"{organizer.FirstName} {organizer.LastName}";
         snapshot = await links.ExpireIfEndedAsync(evt, snapshot, ct);
+        snapshot = await links.RecoverStaleProvisioningAsync(evt, snapshot, organizerName, ct);
         if (snapshot.Status == CalendarEventMeetingStatuses.Unresolved)
             return Result<CreateEventMeetingResult>.Conflict("meeting_link_unresolved");
         if (snapshot.Status != CalendarEventMeetingStatuses.ProvisioningUnknown)
@@ -47,8 +50,6 @@ public sealed class RetryEventMeetingCommandHandler(
         if (!await meetings.TryClaimUnknownAsync(tenantId, snapshot.Id, clock.UtcNow, ct))
             return Result<CreateEventMeetingResult>.Conflict("meeting_link_in_progress");
 
-        var organizer = await employees.GetDefaultForUserAsync(tenantId, currentUser.UserId, ct);
-        var organizerName = organizer is null ? "Someone" : $"{organizer.FirstName} {organizer.LastName}";
         var claimed = (await meetings.GetTrackedByCalendarEventAsync(tenantId, evt.Id, ct))!;
         return await links.ProvisionClaimedAsync(evt, claimed, connection, recovery: true, organizerName, ct);
     }

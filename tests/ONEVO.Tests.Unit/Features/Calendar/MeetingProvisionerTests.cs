@@ -210,4 +210,15 @@ public sealed class MeetingProvisionerTests
 
         Assert.False(await BuildSut().ResolveForRemovalAsync(Request(CalendarEventMeetingProviders.Zoom), CancellationToken.None));
     }
+
+    [Fact]
+    public async Task UnexpectedFailureReadingTheProviderResponse_IsAmbiguous_NotAnUnhandledError()
+    {
+        // e.g. a truncated 2xx body: the meeting may well exist, so it must not be treated as "nothing happened".
+        TeamsSequence(new System.Text.Json.JsonException("truncated"));
+
+        var outcome = await BuildSut().ProvisionAsync(Request(CalendarEventMeetingProviders.MicrosoftTeams), CancellationToken.None);
+
+        Assert.Equal(MeetingProvisioningOutcomeKind.Ambiguous, outcome.Kind);
+    }
 }

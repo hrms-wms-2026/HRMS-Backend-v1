@@ -39,6 +39,9 @@ public sealed class RemoveEventMeetingCommandHandler(
             return await ClearLocalLinkAsync(existing, ct); // a pasted link: nothing tracked remotely
 
         snapshot = await links.ExpireIfEndedAsync(existing, snapshot, ct);
+        var organizer = await employees.GetDefaultForUserAsync(tenantId, currentUser.UserId, ct);
+        snapshot = await links.RecoverStaleProvisioningAsync(
+            existing, snapshot, organizer is null ? "Someone" : $"{organizer.FirstName} {organizer.LastName}", ct);
         return snapshot.Status switch
         {
             CalendarEventMeetingStatuses.Active => await RemoveActiveAsync(existing, ct),
