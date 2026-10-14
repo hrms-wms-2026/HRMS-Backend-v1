@@ -52,6 +52,8 @@ public class CreateTaskCategoryCommandHandler : IRequestHandler<CreateTaskCatego
             return Result<TaskCategoryResponse>.NotFound("Project not found.");
         if (project.SystemPurpose == ProjectSystemPurposes.Office)
             return Result<TaskCategoryResponse>.Conflict("The Office project categories are system-managed.");
+        if (TaskCategorySystemKeys.IsReservedName(request.Name))
+            return Result<TaskCategoryResponse>.Conflict("This project already has a Meeting category.");
 
         var defaultObjective = await _objectives.GetDefaultByProjectIdAsync(tenantId, project.Id, ct);
         if (defaultObjective is null)

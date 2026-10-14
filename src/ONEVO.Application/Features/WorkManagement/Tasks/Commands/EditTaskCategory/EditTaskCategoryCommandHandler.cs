@@ -8,6 +8,7 @@ using ONEVO.Application.Features.WorkManagement.Objectives.Services;
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
 using ONEVO.Domain.Features.WorkManagement.Projects.Entities;
+using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
 
 namespace ONEVO.Application.Features.WorkManagement.Tasks.Commands.EditTaskCategory;
 
@@ -64,9 +65,15 @@ public class EditTaskCategoryCommandHandler : IRequestHandler<EditTaskCategoryCo
         if (!await _membership.IsEffectiveManagerAsync(tenantId, defaultObjective.Id, callerEmployeeId.Value, ct))
             return Result.Forbidden("Only an owner or member of this project can edit task categories.");
 
+        var newName = request.Name.Trim();
+        if (category.SystemKey is not null && !string.Equals(category.Name, newName, StringComparison.Ordinal))
+            return Result.Conflict("System categories can't be renamed.");
+        if (category.SystemKey is null && TaskCategorySystemKeys.IsReservedName(newName))
+            return Result.Conflict("This project already has a Meeting category.");
+
         return await _unitOfWork.ExecuteInTransactionAsync(async innerCt =>
         {
-            category.Name = request.Name.Trim();
+            category.Name = newName;
             category.DisplayOrder = request.DisplayOrder;
             category.UpdatedAt = DateTimeOffset.UtcNow;
             _categories.Update(category);
