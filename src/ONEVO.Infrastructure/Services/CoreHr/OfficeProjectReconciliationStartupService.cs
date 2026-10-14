@@ -16,7 +16,8 @@ public sealed class OfficeProjectReconciliationStartupService(
     IHostEnvironment environment,
     ILogger<OfficeProjectReconciliationStartupService> logger,
     TimeSpan? startupDelay = null,
-    TimeSpan? retryDelay = null) : BackgroundService
+    TimeSpan? retryDelay = null,
+    int? pageSize = null) : BackgroundService
 {
     public const int PageSize = 200;
     public const int MaxAttempts = 3;
@@ -86,10 +87,12 @@ public sealed class OfficeProjectReconciliationStartupService(
         var reconciler = scope.ServiceProvider.GetRequiredService<IOfficeProjectReconciler>();
 
         var failed = new List<Guid>();
-        var skip = 0;
+        var size = pageSize ?? PageSize;
+        Guid? afterId = null;
         while (true)
         {
-            var page = await tenants.ListAsync(statusFilter: null, searchTerm: null, skip, PageSize, ct);
+            // Keyset by Id: a tenant created mid-run can't shift the pages and skip or repeat one.
+            var page = await tenants.ListPageByIdAsync(afterId, size, ct);
             foreach (var tenant in page)
             {
                 if (tenant.Status is TenantStatus.Suspended or TenantStatus.Cancelled)
@@ -98,9 +101,9 @@ public sealed class OfficeProjectReconciliationStartupService(
                     failed.Add(tenant.Id);
             }
 
-            if (page.Count < PageSize)
+            if (page.Count < size)
                 break;
-            skip += PageSize;
+            afterId = page[^1].Id;
         }
 
         return failed;

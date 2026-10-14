@@ -16,10 +16,7 @@ public class OfficeProjectReconciliationStartupServiceTests
         IReadOnlyList<Tenant> tenants, string environment = "Development")
     {
         var repository = new Mock<ITenantRepository>();
-        repository
-            .Setup(r => r.ListAsync(null, null, It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((TenantStatus? _, string? _, int skip, int take, CancellationToken _) =>
-                tenants.Skip(skip).Take(take).ToList());
+        SetupPages(repository, tenants);
         var reconciler = new Mock<IOfficeProjectReconciler>();
         var hostEnvironment = new Mock<IHostEnvironment>();
         hostEnvironment.SetupGet(e => e.EnvironmentName).Returns(environment);
@@ -32,6 +29,14 @@ public class OfficeProjectReconciliationStartupServiceTests
         return (new OfficeProjectReconciliationStartupService(
             provider, hostEnvironment.Object, NullLogger<OfficeProjectReconciliationStartupService>.Instance), reconciler);
     }
+
+    private static IReadOnlyList<Tenant> Page(IEnumerable<Tenant> tenants, Guid? afterId, int take) =>
+        tenants.OrderBy(t => t.Id).Where(t => afterId is null || t.Id.CompareTo(afterId.Value) > 0).Take(take).ToList();
+
+    private static void SetupPages(Mock<ITenantRepository> repository, IEnumerable<Tenant> tenants) =>
+        repository
+            .Setup(r => r.ListPageByIdAsync(It.IsAny<Guid?>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Guid? afterId, int take, CancellationToken _) => Page(tenants, afterId, take));
 
     private static Tenant TenantWith(TenantStatus status) => new()
     {
@@ -82,7 +87,7 @@ public class OfficeProjectReconciliationStartupServiceTests
     {
         var repository = new Mock<ITenantRepository>();
         repository
-            .Setup(r => r.ListAsync(null, null, It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .Setup(r => r.ListPageByIdAsync(It.IsAny<Guid?>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new InvalidOperationException("database unavailable"));
         var hostEnvironment = new Mock<IHostEnvironment>();
         hostEnvironment.SetupGet(e => e.EnvironmentName).Returns("Development");
@@ -129,9 +134,7 @@ public class OfficeProjectReconciliationStartupServiceTests
     {
         var tenant = TenantWith(TenantStatus.Active);
         var repository = new Mock<ITenantRepository>();
-        repository.Setup(r => r.ListAsync(null, null, It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((TenantStatus? _, string? _, int skip, int take, CancellationToken _) =>
-                new[] { tenant }.Skip(skip).Take(take).ToList());
+        SetupPages(repository, new[] { tenant });
         repository.Setup(r => r.GetByIdAsync(tenant.Id, It.IsAny<CancellationToken>())).ReturnsAsync(tenant);
         var reconciler = new Mock<IOfficeProjectReconciler>();
         reconciler.SetupSequence(r => r.ReconcileAsync(tenant.Id, It.IsAny<CancellationToken>()))
@@ -151,12 +154,12 @@ public class OfficeProjectReconciliationStartupServiceTests
         var tenant = TenantWith(TenantStatus.Active);
         var repository = new Mock<ITenantRepository>();
         var listCalls = 0;
-        repository.Setup(r => r.ListAsync(null, null, It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((TenantStatus? _, string? _, int skip, int take, CancellationToken _) =>
+        repository.Setup(r => r.ListPageByIdAsync(It.IsAny<Guid?>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Guid? afterId, int take, CancellationToken _) =>
             {
                 if (listCalls++ == 0)
                     throw new InvalidOperationException("database unavailable");
-                return new[] { tenant }.Skip(skip).Take(take).ToList();
+                return Page(new[] { tenant }, afterId, take);
             });
         var reconciler = new Mock<IOfficeProjectReconciler>();
         var service = BuildForRetries(repository, reconciler);
@@ -172,9 +175,7 @@ public class OfficeProjectReconciliationStartupServiceTests
     {
         var tenant = TenantWith(TenantStatus.Active);
         var repository = new Mock<ITenantRepository>();
-        repository.Setup(r => r.ListAsync(null, null, It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((TenantStatus? _, string? _, int skip, int take, CancellationToken _) =>
-                new[] { tenant }.Skip(skip).Take(take).ToList());
+        SetupPages(repository, new[] { tenant });
         repository.Setup(r => r.GetByIdAsync(tenant.Id, It.IsAny<CancellationToken>())).ReturnsAsync(tenant);
         var reconciler = new Mock<IOfficeProjectReconciler>();
         reconciler.Setup(r => r.ReconcileAsync(tenant.Id, It.IsAny<CancellationToken>()))
