@@ -91,11 +91,10 @@ public sealed class CalendarNotificationOutboxIntegrationTests
 
         await using (var s = h.Scope())
         {
-            var unused = h.Unused;
+            var clock = new ONEVO.Infrastructure.Identity.Time.SystemDateTimeProvider();
             var result = await new DeleteCalendarEventCommandHandler(
-                    h.OrganizerUser, s.Events, s.Employees, s.Sender,
-                    new EfCalendarEventMeetingRepository(s.Db, new ONEVO.Infrastructure.Identity.Time.SystemDateTimeProvider()), new EfExternalCalendarConnectionRepository(s.Db),
-                    (ICalendarConnectionTokenProvider)unused, (ITeamsMeetingClient)unused, (IZoomMeetingClient)unused, s.UnitOfWork)
+                    h.OrganizerUser, s.Events, s.Employees, s.Sender, new EfCalendarEventMeetingRepository(s.Db, clock),
+                    new ONEVO.Infrastructure.Services.SharedPlatform.Outbox.OutboxWriter(s.Db, CalendarNotificationDb.Encryption, clock), s.UnitOfWork)
                 .Handle(new DeleteCalendarEventCommand(evt.Id), CancellationToken.None);
             Assert.True(result.IsSuccess);
         }

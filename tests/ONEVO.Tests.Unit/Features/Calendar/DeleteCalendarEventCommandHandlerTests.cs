@@ -2,6 +2,7 @@ using Moq;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Calendar.Commands.DeleteCalendarEvent;
+using ONEVO.Application.Features.Calendar.OutboxHandlers;
 using ONEVO.Application.Features.Calendar.RepositoryInterfaces;
 using ONEVO.Application.Features.Calendar.ServiceInterfaces;
 using ONEVO.Application.Features.Calendar.Services;
@@ -22,10 +23,7 @@ public sealed class DeleteCalendarEventCommandHandlerTests
     private readonly Mock<ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces.IEmployeeRepository> _employees = new();
     private readonly Mock<ICalendarNotificationSender> _notifications = new();
     private readonly Mock<ICalendarEventMeetingRepository> _meetings = new();
-    private readonly Mock<IExternalCalendarConnectionRepository> _connections = new();
-    private readonly Mock<ICalendarConnectionTokenProvider> _tokenProvider = new();
-    private readonly Mock<ITeamsMeetingClient> _teamsClient = new();
-    private readonly Mock<IZoomMeetingClient> _zoomClient = new();
+    private readonly Mock<IOutboxWriter> _outbox = new();
     private readonly Mock<IUnitOfWork> _unitOfWork = new();
 
     private DeleteCalendarEventCommandHandler BuildSut()
@@ -46,7 +44,7 @@ public sealed class DeleteCalendarEventCommandHandlerTests
             .Returns<Func<CancellationToken, Task<ONEVO.Application.Common.Models.Result>>, CancellationToken>((op, ct) => op(ct));
         return new DeleteCalendarEventCommandHandler(
             _currentUser.Object, _events.Object, _employees.Object, _notifications.Object,
-            _meetings.Object, _connections.Object, _tokenProvider.Object, _teamsClient.Object, _zoomClient.Object, _unitOfWork.Object);
+            _meetings.Object, _outbox.Object, _unitOfWork.Object);
     }
 
     [Fact]
@@ -88,71 +86,6 @@ public sealed class DeleteCalendarEventCommandHandlerTests
         Assert.True(result.IsSuccess);
         _events.Verify(x => x.Remove(existing), Times.Once);
         _unitOfWork.Verify(x => x.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
-    }
-
-    [Fact]
-    public async Task Handle_EventHasActiveMeeting_CancelsItRemotelyBeforeDeleting()
-    {
-        var sut = BuildSut();
-        var existing = new CalendarEvent { Id = EventId, TenantId = TenantId, CreatedById = UserId, Title = "Event" };
-        _events.Setup(x => x.GetTrackedByIdForTenantAsync(TenantId, EventId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(existing);
-        var connection = new ExternalCalendarConnection { Id = Guid.NewGuid() };
-        var meeting = new CalendarEventMeeting
-        {
-            Id = Guid.NewGuid(), TenantId = TenantId, CalendarEventId = EventId,
-            ExternalCalendarConnectionId = connection.Id, ExternalMeetingId = "graph-meeting-1",
-            Status = CalendarEventMeetingStatuses.Active
-        };
-        _meetings.Setup(x => x.GetTrackedByCalendarEventAsync(TenantId, EventId, It.IsAny<CancellationToken>())).ReturnsAsync(meeting);
-        _connections.Setup(x => x.GetByIdForTenantAsync(TenantId, connection.Id, It.IsAny<CancellationToken>())).ReturnsAsync(connection);
-        _tokenProvider.Setup(x => x.GetFreshAccessTokenAsync(connection, "microsoft", It.IsAny<CancellationToken>())).ReturnsAsync("access-token");
-
-        var result = await sut.Handle(new DeleteCalendarEventCommand(EventId), CancellationToken.None);
-
-        Assert.True(result.IsSuccess);
-        _teamsClient.Verify(x => x.CancelMeetingAsync("access-token", "graph-meeting-1", It.IsAny<CancellationToken>()), Times.Once);
-        _events.Verify(x => x.Remove(existing), Times.Once);
-    }
-
-    [Fact]
-    public async Task Handle_EventHasActiveZoomMeeting_CancelsItViaZoomClientBeforeDeleting()
-    {
-        var sut = BuildSut();
-        var existing = new CalendarEvent { Id = EventId, TenantId = TenantId, CreatedById = UserId, Title = "Event" };
-        _events.Setup(x => x.GetTrackedByIdForTenantAsync(TenantId, EventId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(existing);
-        var connection = new ExternalCalendarConnection { Id = Guid.NewGuid() };
-        var meeting = new CalendarEventMeeting
-        {
-            Id = Guid.NewGuid(), TenantId = TenantId, CalendarEventId = EventId,
-            ExternalCalendarConnectionId = connection.Id, Provider = CalendarEventMeetingProviders.Zoom,
-            ExternalMeetingId = "987654321", Status = CalendarEventMeetingStatuses.Active
-        };
-        _meetings.Setup(x => x.GetTrackedByCalendarEventAsync(TenantId, EventId, It.IsAny<CancellationToken>())).ReturnsAsync(meeting);
-        _connections.Setup(x => x.GetByIdForTenantAsync(TenantId, connection.Id, It.IsAny<CancellationToken>())).ReturnsAsync(connection);
-        _tokenProvider.Setup(x => x.GetFreshAccessTokenAsync(connection, "zoom", It.IsAny<CancellationToken>())).ReturnsAsync("access-token");
-
-        var result = await sut.Handle(new DeleteCalendarEventCommand(EventId), CancellationToken.None);
-
-        Assert.True(result.IsSuccess);
-        _zoomClient.Verify(x => x.CancelMeetingAsync("access-token", "987654321", It.IsAny<CancellationToken>()), Times.Once);
-        _teamsClient.Verify(x => x.CancelMeetingAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
-        _events.Verify(x => x.Remove(existing), Times.Once);
-    }
-
-    [Fact]
-    public async Task Handle_NoActiveMeeting_NeverCallsTeamsClient()
-    {
-        var sut = BuildSut();
-        var existing = new CalendarEvent { Id = EventId, TenantId = TenantId, CreatedById = UserId, Title = "Event" };
-        _events.Setup(x => x.GetTrackedByIdForTenantAsync(TenantId, EventId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(existing);
-
-        var result = await sut.Handle(new DeleteCalendarEventCommand(EventId), CancellationToken.None);
-
-        Assert.True(result.IsSuccess);
-        _teamsClient.Verify(x => x.CancelMeetingAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -203,5 +136,56 @@ public sealed class DeleteCalendarEventCommandHandlerTests
             It.IsAny<IReadOnlyList<CalendarParticipantRecipient>>(),
             It.Is<IReadOnlyList<CalendarGuestRecipient>>(g => g.Single().EmailKey == $"cancel:{EventId}:series:{guest.Id}"),
             "Ada Owner", It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_ActiveMeeting_QueuesASelfContainedCancel_InsideTheTransaction_AndNeverCallsTheProvider()
+    {
+        var sut = BuildSut();
+        var existing = new CalendarEvent { Id = EventId, TenantId = TenantId, CreatedById = UserId, Title = "Event", StartDate = DateTimeOffset.UtcNow.AddDays(1), EndDate = DateTimeOffset.UtcNow.AddDays(1).AddHours(1) };
+        _events.Setup(x => x.GetTrackedByIdForTenantAsync(TenantId, EventId, It.IsAny<CancellationToken>())).ReturnsAsync(existing);
+        var meeting = new CalendarEventMeeting
+        {
+            Id = Guid.NewGuid(), TenantId = TenantId, CalendarEventId = EventId, Provider = CalendarEventMeetingProviders.Zoom,
+            ExternalMeetingId = "987654321", ExternalCalendarConnectionId = Guid.NewGuid(), Status = CalendarEventMeetingStatuses.Active, LinkGeneration = 3
+        };
+        _meetings.Setup(x => x.GetTrackedByCalendarEventAsync(TenantId, EventId, It.IsAny<CancellationToken>())).ReturnsAsync(meeting);
+        var calls = new List<string>();
+        _outbox.Setup(o => o.EnqueueKeyedAsync(OutboxMessageTypes.CalendarMeetingCancel, It.IsAny<CalendarMeetingCancelPayload>(),
+                $"meeting-cancel:{meeting.Id}:3", TenantId, It.IsAny<CancellationToken>()))
+            .Callback(() => calls.Add("queue")).ReturnsAsync(true);
+        _unitOfWork.Setup(u => u.SaveChangesAsync(It.IsAny<CancellationToken>())).Callback(() => calls.Add("save")).ReturnsAsync(1);
+
+        await sut.Handle(new DeleteCalendarEventCommand(EventId), CancellationToken.None);
+
+        Assert.Equal(new[] { "queue", "save" }, calls);
+        _outbox.Verify(o => o.EnqueueKeyedAsync(OutboxMessageTypes.CalendarMeetingCancel,
+            It.Is<CalendarMeetingCancelPayload>(p => p.ExternalMeetingId == "987654321" && p.Provider == CalendarEventMeetingProviders.Zoom
+                && p.OrganizerUserId == UserId && p.EventTitle == "Event" && p.ExternalCalendarConnectionId == meeting.ExternalCalendarConnectionId),
+            It.IsAny<string>(), TenantId, It.IsAny<CancellationToken>()), Times.Once);
+        Assert.Equal(CalendarEventMeetingStatuses.Cancelled, meeting.Status);
+    }
+
+    [Fact]
+    public async Task Handle_LocalSaveFails_TheCancelMessageIsNeverCommitted()
+    {
+        var sut = BuildSut();
+        var existing = new CalendarEvent { Id = EventId, TenantId = TenantId, CreatedById = UserId, Title = "Event" };
+        _events.Setup(x => x.GetTrackedByIdForTenantAsync(TenantId, EventId, It.IsAny<CancellationToken>())).ReturnsAsync(existing);
+        _meetings.Setup(x => x.GetTrackedByCalendarEventAsync(TenantId, EventId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CalendarEventMeeting { Id = Guid.NewGuid(), Status = CalendarEventMeetingStatuses.Active, Provider = CalendarEventMeetingProviders.MicrosoftTeams });
+        _unitOfWork.Setup(u => u.SaveChangesAsync(It.IsAny<CancellationToken>())).ThrowsAsync(new InvalidOperationException("db down"));
+        var committed = false;
+        _unitOfWork.Setup(u => u.ExecuteInTransactionAsync(It.IsAny<Func<CancellationToken, Task<ONEVO.Application.Common.Models.Result>>>(), It.IsAny<CancellationToken>()))
+            .Returns(async (Func<CancellationToken, Task<ONEVO.Application.Common.Models.Result>> op, CancellationToken ct) =>
+            {
+                var result = await op(ct); // throws before this line on a failed save
+                committed = true;
+                return result;
+            });
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => sut.Handle(new DeleteCalendarEventCommand(EventId), CancellationToken.None));
+
+        Assert.False(committed); // the keyed insert ran inside the transaction, so a rollback removes it
     }
 }

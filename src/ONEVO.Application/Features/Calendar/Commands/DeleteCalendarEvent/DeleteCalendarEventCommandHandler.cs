@@ -2,6 +2,7 @@ using MediatR;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.Calendar.OutboxHandlers;
 using ONEVO.Application.Features.Calendar.RepositoryInterfaces;
 using ONEVO.Application.Features.Calendar.ServiceInterfaces;
 using ONEVO.Application.Features.Calendar.Services;
@@ -15,10 +16,7 @@ public sealed class DeleteCalendarEventCommandHandler(
     ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces.IEmployeeRepository employees,
     ICalendarNotificationSender notifications,
     ICalendarEventMeetingRepository meetings,
-    IExternalCalendarConnectionRepository connections,
-    ICalendarConnectionTokenProvider tokenProvider,
-    ITeamsMeetingClient teamsClient,
-    IZoomMeetingClient zoomClient,
+    IOutboxWriter outbox,
     IUnitOfWork unitOfWork)
     : IRequestHandler<DeleteCalendarEventCommand, Result>
 {
@@ -37,23 +35,30 @@ public sealed class DeleteCalendarEventCommandHandler(
 
         return await unitOfWork.ExecuteInTransactionAsync(async innerCt =>
         {
-            // Plan 0C (X-2) replaces this remote cancel with an after-commit outbox message.
+            // X-2: delete locally first. The remote cancel is a self-contained outbox message inserted in
+            // THIS transaction, so it exists only if the delete commits.
             var meeting = await meetings.GetTrackedByCalendarEventAsync(tenantId, existing.Id, innerCt);
-            if (meeting is not null && meeting.Status == CalendarEventMeetingStatuses.Active)
+            if (meeting is not null)
             {
-                var connection = await connections.GetByIdForTenantAsync(tenantId, meeting.ExternalCalendarConnectionId, innerCt);
-                if (connection is not null)
+                var providerName = CalendarMeetingProviderNames.Display(meeting.Provider);
+                if (meeting.Status == CalendarEventMeetingStatuses.Active)
                 {
-                    var isZoom = meeting.Provider == CalendarEventMeetingProviders.Zoom;
-                    var oauthProvider = isZoom ? "zoom" : "microsoft";
-                    var accessToken = await tokenProvider.GetFreshAccessTokenAsync(connection, oauthProvider, innerCt);
-                    if (accessToken is not null)
-                    {
-                        if (isZoom)
-                            await zoomClient.CancelMeetingAsync(accessToken, meeting.ExternalMeetingId, innerCt);
-                        else
-                            await teamsClient.CancelMeetingAsync(accessToken, meeting.ExternalMeetingId, innerCt);
-                    }
+                    var organizerEmployee = await employees.GetDefaultForUserAsync(tenantId, currentUser.UserId, innerCt);
+                    await outbox.EnqueueKeyedAsync(
+                        OutboxMessageTypes.CalendarMeetingCancel,
+                        new CalendarMeetingCancelPayload(
+                            tenantId, meeting.Provider, meeting.ExternalMeetingId, meeting.ExternalCalendarConnectionId,
+                            existing.CreatedById, organizerEmployee?.Id ?? Guid.Empty, existing.Title),
+                        $"meeting-cancel:{meeting.Id}:{meeting.LinkGeneration}", tenantId, innerCt);
+                    meeting.Status = CalendarEventMeetingStatuses.Cancelled;
+                    meetings.Update(meeting);
+                }
+                else if (meeting.Status is CalendarEventMeetingStatuses.Provisioning
+                    or CalendarEventMeetingStatuses.ProvisioningUnknown or CalendarEventMeetingStatuses.Unresolved)
+                {
+                    // We don't know the remote meeting's ID: the organizer has to check by hand.
+                    await notifications.NotifyOrganizerAboutMeetingAsync(
+                        tenantId, existing.CreatedById, CalendarMeetingNoticeCodes.Unresolved, existing.Title, providerName, innerCt);
                 }
             }
 
