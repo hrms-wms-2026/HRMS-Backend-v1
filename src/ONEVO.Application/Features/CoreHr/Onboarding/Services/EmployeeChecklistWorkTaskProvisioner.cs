@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Notifications.Services;
@@ -22,7 +23,8 @@ public sealed class EmployeeChecklistWorkTaskProvisioner(
     IWorkTaskRepository workTasks,
     ITaskAssignmentRepository assignments,
     IProjectMemberRepository members,
-    IWorkNotificationEngine notifications) : IEmployeeChecklistWorkTaskProvisioner
+    IWorkNotificationEngine notifications,
+    ILogger<EmployeeChecklistWorkTaskProvisioner> logger) : IEmployeeChecklistWorkTaskProvisioner
 {
     public async Task<Result<OfficeProjectContext>> EnsureOfficeProjectAsync(
         Guid tenantId, Guid legalEntityId, Guid actingUserId, DateOnly targetDate,
@@ -35,7 +37,15 @@ public sealed class EmployeeChecklistWorkTaskProvisioner(
         // Create it owner-led when an owner employee exists, and align an existing one's lead.
         // EnsureAsync below then only extends the target date or, when no owner employee exists
         // yet, creates it with the acting HR employee as lead (accepted exception, spec §7 Q1).
-        await officeReconciler.ReconcileAsync(tenantId, ct);
+        // Best-effort: aligning the owner must never block onboarding or offboarding.
+        try
+        {
+            await officeReconciler.ReconcileAsync(tenantId, ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogWarning(ex, "Office project reconciliation failed for tenant {TenantId}; continuing.", tenantId);
+        }
 
         var office = await officeProjects.EnsureAsync(
             tenantId, legalEntityId, actingUserId, actor.Id, targetDate, ct);
