@@ -71,6 +71,15 @@ public sealed class OfficeProjectReconciler(
             }
         }
 
+        // The root module's owner carries owner-only powers (IsEffectiveOwnerAsync) and led-work
+        // scope, so it follows the lead. Unconditional on the switch above, so a run interrupted
+        // between the two updates converges on the next one.
+        await db.Objectives
+            .Where(o => o.TenantId == tenantId && o.ProjectId == office.Id && o.IsDefault && o.OwnerId != owner.EmployeeId)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(o => o.OwnerId, owner.EmployeeId)
+                .SetProperty(o => o.UpdatedAt, now), ct);
+
         await EnsureOwnerMembershipAsync(db, tenantId, office.Id, owner, now, ct);
         return outcome;
     }
