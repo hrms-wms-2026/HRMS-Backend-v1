@@ -1450,6 +1450,11 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<string>("AttendanceSyncStatus")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("attendance_sync_status");
+
                     b.Property<Guid>("CalendarEventId")
                         .HasColumnType("uuid")
                         .HasColumnName("calendar_event_id");

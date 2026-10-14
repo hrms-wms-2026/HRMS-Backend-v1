@@ -15,6 +15,15 @@ public static class CalendarEventMeetingStatuses
     public const string Failed = "failed";
 }
 
+/// <summary>Outcome of attendance sync (spec §3.2.1). Null = not decided yet (still retried).
+/// <see cref="Unavailable"/> means "no data received", never "nobody attended".</summary>
+public static class CalendarAttendanceSyncStatuses
+{
+    public const string Synced = "synced";
+    public const string Unavailable = "attendance_unavailable";
+    public const string Failed = "sync_failed";
+}
+
 public class CalendarEventMeeting : ITenantOwnedEntity
 {
     public Guid Id { get; set; }
@@ -28,6 +37,7 @@ public class CalendarEventMeeting : ITenantOwnedEntity
     public string? PasscodeOrPin { get; set; }
     public string Status { get; set; } = CalendarEventMeetingStatuses.Active;
     public DateTimeOffset? LastAttendanceSyncedAt { get; set; }
+    public string? AttendanceSyncStatus { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset? UpdatedAt { get; set; }
 }
