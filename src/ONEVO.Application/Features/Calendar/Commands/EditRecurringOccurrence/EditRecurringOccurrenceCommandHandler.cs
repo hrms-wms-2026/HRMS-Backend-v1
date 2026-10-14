@@ -49,52 +49,49 @@ public sealed class EditRecurringOccurrenceCommandHandler(
         };
     }
 
-    private async Task<Result<CalendarEventItem>> EditAllEventsAsync(
+    private Task<Result<CalendarEventItem>> EditAllEventsAsync(
         CalendarEvent master, EditRecurringOccurrenceCommand request, CancellationToken ct)
-    {
-        ApplyFields(master, request);
-        events.Update(master);
-        await unitOfWork.SaveChangesAsync(ct);
-
-        var participantsByEvent = await events.GetParticipantsForEventsAsync(master.TenantId, [master.Id], ct);
-        var participantEmployeeIds = participantsByEvent.TryGetValue(master.Id, out var p) ? p.Select(x => x.EmployeeId).ToList() : [];
-        if (participantEmployeeIds.Count > 0)
+        => unitOfWork.ExecuteInTransactionAsync(async innerCt =>
         {
-            var callerEmployee = await employees.GetDefaultForUserAsync(master.TenantId, currentUser.UserId, ct);
-            var organizerName = callerEmployee is null ? "Someone" : $"{callerEmployee.FirstName} {callerEmployee.LastName}";
-            await notifications.NotifyEventUpdatedAsync(
-                master.TenantId, master.Title, master.StartDate, master.Location, master.MeetingLink,
-                participantEmployeeIds.Select(id => new CalendarParticipantRecipient(id)).ToList(), [], organizerName, ct);
-        }
+            ApplyFields(master, request);
+            master.Revision++;
+            events.Update(master);
 
-        return Result<CalendarEventItem>.Success(ToItem(master, isOccurrence: false, masterId: null, originalStart: null));
-    }
+            await NotifyAttendeesOfAsync(master.TenantId, attendeesOf: master.Id, changed: master, innerCt);
+            await unitOfWork.SaveChangesAsync(innerCt);
+            return Result<CalendarEventItem>.Success(ToItem(master, isOccurrence: false, masterId: null, originalStart: null));
+        }, ct);
 
-    private async Task<Result<CalendarEventItem>> EditThisEventOnlyAsync(
+    private Task<Result<CalendarEventItem>> EditThisEventOnlyAsync(
         Guid tenantId, CalendarEvent master, EditRecurringOccurrenceCommand request, CancellationToken ct)
-    {
-        var child = await events.GetTrackedChildByOriginalStartAsync(tenantId, master.Id, request.OriginalStart, ct);
-        if (child is null)
+        => unitOfWork.ExecuteInTransactionAsync(async innerCt =>
         {
-            child = new CalendarEvent
+            var child = await events.GetTrackedChildByOriginalStartAsync(tenantId, master.Id, request.OriginalStart, innerCt);
+            if (child is null)
             {
-                Id = Guid.NewGuid(), TenantId = tenantId, RecurrenceParentId = master.Id,
-                RecurrenceOriginalStart = request.OriginalStart, Recurrence = CalendarRecurrences.None,
-                SourceType = master.SourceType, Timezone = master.Timezone
-            };
-            ApplyFields(child, request);
-            await events.AddAsync(child, ct);
-        }
-        else
-        {
-            child.IsRecurrenceCancelled = false;
-            ApplyFields(child, request);
-            events.Update(child);
-        }
+                child = new CalendarEvent
+                {
+                    Id = Guid.NewGuid(), TenantId = tenantId, RecurrenceParentId = master.Id,
+                    RecurrenceOriginalStart = request.OriginalStart, Recurrence = CalendarRecurrences.None,
+                    SourceType = master.SourceType, Timezone = master.Timezone
+                };
+                ApplyFields(child, request);
+                child.Revision++;
+                await events.AddAsync(child, innerCt);
+            }
+            else
+            {
+                child.IsRecurrenceCancelled = false;
+                ApplyFields(child, request);
+                child.Revision++;
+                events.Update(child);
+            }
 
-        await unitOfWork.SaveChangesAsync(ct);
-        return Result<CalendarEventItem>.Success(ToItem(child, isOccurrence: true, masterId: master.Id, originalStart: request.OriginalStart));
-    }
+            // The occurrence has no attendee rows of its own: the series' attendees are its attendees.
+            await NotifyAttendeesOfAsync(tenantId, attendeesOf: master.Id, changed: child, innerCt);
+            await unitOfWork.SaveChangesAsync(innerCt);
+            return Result<CalendarEventItem>.Success(ToItem(child, isOccurrence: true, masterId: master.Id, originalStart: request.OriginalStart));
+        }, ct);
 
     private async Task<Result<CalendarEventItem>> EditThisAndFollowingAsync(
         Guid tenantId, CalendarEvent master, EditRecurringOccurrenceCommand request, CancellationToken ct)
@@ -109,10 +106,13 @@ public sealed class EditRecurringOccurrenceCommandHandler(
             {
                 Id = Guid.NewGuid(), TenantId = tenantId, RecurrenceParentId = null,
                 Recurrence = master.Recurrence, RecurrenceRule = originalRule, SourceType = master.SourceType,
-                Timezone = master.Timezone
+                Timezone = master.Timezone, Revision = 1
             };
             ApplyFields(newMaster, request);
             await events.AddAsync(newMaster, innerCt);
+
+            // P0-3: the new series keeps the series' participants (with their responses) and guests.
+            var (participants, guests) = await CopyAttendeesAsync(tenantId, master.Id, newMaster.Id, innerCt);
 
             var children = await events.GetChildrenForMasterAsync(tenantId, master.Id, innerCt);
             foreach (var child in children.Where(c => c.RecurrenceOriginalStart >= request.OriginalStart))
@@ -123,9 +123,55 @@ public sealed class EditRecurringOccurrenceCommandHandler(
                 events.Update(tracked);
             }
 
+            await NotifyRecipientsAsync(tenantId, newMaster, participants, guests, innerCt);
             await unitOfWork.SaveChangesAsync(innerCt);
             return Result<CalendarEventItem>.Success(ToItem(newMaster, isOccurrence: true, masterId: newMaster.Id, originalStart: request.StartDate));
         }, ct);
+    }
+
+    private async Task<(IReadOnlyList<CalendarEventParticipant> Participants, IReadOnlyList<CalendarEventGuest> Guests)> CopyAttendeesAsync(
+        Guid tenantId, Guid fromEventId, Guid toEventId, CancellationToken ct)
+    {
+        var participants = ((await events.GetParticipantsForEventsAsync(tenantId, [fromEventId], ct)).GetValueOrDefault(fromEventId) ?? [])
+            .Select(p => new CalendarEventParticipant
+            {
+                Id = Guid.NewGuid(), TenantId = tenantId, EventId = toEventId, EmployeeId = p.EmployeeId,
+                ResponseStatus = p.ResponseStatus, ResponseReason = p.ResponseReason
+            })
+            .ToList();
+        if (participants.Count > 0)
+            await events.AddParticipantsAsync(participants, ct);
+
+        var guests = ((await events.GetGuestsForEventsAsync(tenantId, [fromEventId], ct)).GetValueOrDefault(fromEventId) ?? [])
+            .Select(g => new CalendarEventGuest { Id = Guid.NewGuid(), TenantId = tenantId, EventId = toEventId, Email = g.Email })
+            .ToList();
+        if (guests.Count > 0)
+            await events.AddGuestsAsync(guests, ct);
+
+        return (participants, guests);
+    }
+
+    private async Task NotifyAttendeesOfAsync(Guid tenantId, Guid attendeesOf, CalendarEvent changed, CancellationToken ct)
+    {
+        var participants = (await events.GetParticipantsForEventsAsync(tenantId, [attendeesOf], ct)).GetValueOrDefault(attendeesOf) ?? [];
+        var guests = (await events.GetGuestsForEventsAsync(tenantId, [attendeesOf], ct)).GetValueOrDefault(attendeesOf) ?? [];
+        await NotifyRecipientsAsync(tenantId, changed, participants, guests, ct);
+    }
+
+    private async Task NotifyRecipientsAsync(
+        Guid tenantId, CalendarEvent changed, IReadOnlyList<CalendarEventParticipant> participants,
+        IReadOnlyList<CalendarEventGuest> guests, CancellationToken ct)
+    {
+        if (participants.Count == 0 && guests.Count == 0)
+            return;
+
+        var callerEmployee = await employees.GetDefaultForUserAsync(tenantId, currentUser.UserId, ct);
+        var organizerName = callerEmployee is null ? "Someone" : $"{callerEmployee.FirstName} {callerEmployee.LastName}";
+        await notifications.NotifyEventUpdatedAsync(
+            tenantId, changed.Title, changed.StartDate, changed.Location, changed.MeetingLink,
+            participants.Select(p => new CalendarParticipantRecipient(p.EmployeeId, CalendarEmailKeys.Update(changed.Id, changed.Revision, p.Id))).ToList(),
+            guests.Select(g => new CalendarGuestRecipient(g.Email, CalendarEmailKeys.Update(changed.Id, changed.Revision, g.Id))).ToList(),
+            organizerName, ct);
     }
 
     private static void ApplyFields(CalendarEvent target, EditRecurringOccurrenceCommand request)
