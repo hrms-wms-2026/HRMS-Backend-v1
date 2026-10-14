@@ -39,6 +39,8 @@ public sealed class UpdateCalendarEventCommandHandlerTests
                 It.IsAny<CancellationToken>()))
             .Returns<Func<CancellationToken, Task<ONEVO.Application.Common.Models.Result<CalendarEventItem>>>, CancellationToken>(
                 (action, ct) => action(ct));
+        _events.Setup(x => x.GetGuestsForEventsAsync(TenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, IReadOnlyList<CalendarEventGuest>>());
         return new UpdateCalendarEventCommandHandler(_currentUser.Object, _events.Object, _employees.Object, _notifications.Object, _unitOfWork.Object);
     }
 
@@ -153,5 +155,72 @@ public sealed class UpdateCalendarEventCommandHandlerTests
             CancellationToken.None);
 
         Assert.Equal("Asia/Colombo", existing.Timezone);
+    }
+
+    [Fact]
+    public async Task Handle_NotifiesBeforeTheSave_SoTheOutboxRowsCommitWithTheChange()
+    {
+        var sut = BuildSut();
+        var existing = new CalendarEvent { Id = EventId, TenantId = TenantId, CreatedById = UserId, Title = "Old", StartDate = Start, EndDate = Start.AddMinutes(30) };
+        _events.Setup(x => x.GetTrackedByIdForTenantAsync(TenantId, EventId, It.IsAny<CancellationToken>())).ReturnsAsync(existing);
+        _events.Setup(x => x.GetParticipantsForEventsAsync(TenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, IReadOnlyList<CalendarEventParticipant>>
+            {
+                [EventId] = [new CalendarEventParticipant { Id = Guid.NewGuid(), TenantId = TenantId, EventId = EventId, EmployeeId = Guid.NewGuid() }]
+            });
+        var calls = new List<string>();
+        _notifications.Setup(x => x.NotifyEventUpdatedAsync(
+                It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<DateTimeOffset>(), It.IsAny<string?>(), It.IsAny<string?>(),
+                It.IsAny<IReadOnlyList<CalendarParticipantRecipient>>(), It.IsAny<IReadOnlyList<CalendarGuestRecipient>>(),
+                It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Callback(() => calls.Add("notify")).Returns(Task.CompletedTask);
+        _unitOfWork.Setup(u => u.SaveChangesAsync(It.IsAny<CancellationToken>())).Callback(() => calls.Add("save")).ReturnsAsync(1);
+
+        await sut.Handle(
+            new UpdateCalendarEventCommand(EventId, "New Title", null, Start, Start.AddHours(1), false, null, null, null, CalendarRecurrences.None),
+            CancellationToken.None);
+
+        Assert.Equal(new[] { "notify", "save" }, calls);
+    }
+
+    [Fact]
+    public async Task Handle_IncrementsTheRevision_AndKeysParticipantAndGuestEmailsOnIt()
+    {
+        var sut = BuildSut();
+        var existing = new CalendarEvent { Id = EventId, TenantId = TenantId, CreatedById = UserId, Title = "Old", StartDate = Start, EndDate = Start.AddMinutes(30), Revision = 4 };
+        _events.Setup(x => x.GetTrackedByIdForTenantAsync(TenantId, EventId, It.IsAny<CancellationToken>())).ReturnsAsync(existing);
+        var participantRow = new CalendarEventParticipant { Id = Guid.NewGuid(), TenantId = TenantId, EventId = EventId, EmployeeId = Guid.NewGuid() };
+        var guestRow = new CalendarEventGuest { Id = Guid.NewGuid(), TenantId = TenantId, EventId = EventId, Email = "vendor@example.com" };
+        _events.Setup(x => x.GetParticipantsForEventsAsync(TenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, IReadOnlyList<CalendarEventParticipant>> { [EventId] = [participantRow] });
+        _events.Setup(x => x.GetGuestsForEventsAsync(TenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, IReadOnlyList<CalendarEventGuest>> { [EventId] = [guestRow] });
+
+        await sut.Handle(
+            new UpdateCalendarEventCommand(EventId, "New Title", null, Start, Start.AddHours(1), false, "Room 2", "https://zoom.us/j/9", null, CalendarRecurrences.None),
+            CancellationToken.None);
+
+        Assert.Equal(5, existing.Revision);
+        _notifications.Verify(x => x.NotifyEventUpdatedAsync(
+            TenantId, "New Title", Start, "Room 2", "https://zoom.us/j/9",
+            It.Is<IReadOnlyList<CalendarParticipantRecipient>>(r => r.Single().EmailKey == $"update:{EventId}:5:{participantRow.Id}"),
+            It.Is<IReadOnlyList<CalendarGuestRecipient>>(g => g.Single().Email == "vendor@example.com" && g.Single().EmailKey == $"update:{EventId}:5:{guestRow.Id}"),
+            "Ada Owner", It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_NoParticipantsOrGuests_NotifiesNoOne_AndStillSaves()
+    {
+        var sut = BuildSut();
+        var existing = new CalendarEvent { Id = EventId, TenantId = TenantId, CreatedById = UserId, Title = "Old", StartDate = Start, EndDate = Start.AddMinutes(30) };
+        _events.Setup(x => x.GetTrackedByIdForTenantAsync(TenantId, EventId, It.IsAny<CancellationToken>())).ReturnsAsync(existing);
+
+        var result = await sut.Handle(
+            new UpdateCalendarEventCommand(EventId, "New Title", null, Start, Start.AddHours(1), false, null, null, null, CalendarRecurrences.None),
+            CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        _notifications.VerifyNoOtherCalls();
+        _unitOfWork.Verify(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
 }

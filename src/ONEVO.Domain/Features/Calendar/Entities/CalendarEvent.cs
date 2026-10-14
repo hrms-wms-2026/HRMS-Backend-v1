@@ -62,4 +62,8 @@ public class CalendarEvent : BaseEntity
     public Guid? RecurrenceParentId { get; set; }
     public DateTimeOffset? RecurrenceOriginalStart { get; set; }
     public bool IsRecurrenceCancelled { get; set; }
+
+    /// <summary>Incremented by every organizer edit of this row. Part of the "updated" email key
+    /// (spec X-1), so each genuine update emails once and a retry of the same update does not.</summary>
+    public int Revision { get; set; }
 }

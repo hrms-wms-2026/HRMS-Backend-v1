@@ -1353,6 +1353,10 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("text")
                         .HasColumnName("recurrence_rule");
 
+                    b.Property<int>("Revision")
+                        .HasColumnType("integer")
+                        .HasColumnName("revision");
+
                     b.Property<Guid?>("SourceId")
                         .HasColumnType("uuid")
                         .HasColumnName("source_id");
