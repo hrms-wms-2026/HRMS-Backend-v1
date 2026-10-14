@@ -76,7 +76,7 @@ public class CreateTaskCategoryCommandHandler : IRequestHandler<CreateTaskCatego
             await _unitOfWork.SaveChangesAsync(innerCt);
 
             return Result<TaskCategoryResponse>.Success(new TaskCategoryResponse(
-                category.Id, category.Name, category.DisplayOrder));
+                category.Id, category.Name, category.DisplayOrder, category.SystemKey));
         }, ct);
     }
 }
