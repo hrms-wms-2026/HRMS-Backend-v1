@@ -1,4 +1,5 @@
 using FluentAssertions;
+using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.Onboarding.Services;
@@ -68,7 +69,8 @@ public sealed class EmployeeChecklistWorkTaskProvisionerTests
 
         var sut = new EmployeeChecklistWorkTaskProvisioner(
             officeProjects.Object, reconciler.Object, employees.Object, projects.Object, workTasks.Object,
-            assignments.Object, members.Object, notifications.Object);
+            assignments.Object, members.Object, notifications.Object,
+            NullLogger<EmployeeChecklistWorkTaskProvisioner>.Instance);
 
         var result = await sut.ProvisionAsync(office, newHire, [checklist], actorUserId);
 
@@ -117,11 +119,41 @@ public sealed class EmployeeChecklistWorkTaskProvisionerTests
         var sut = new EmployeeChecklistWorkTaskProvisioner(
             officeProjects.Object, reconciler.Object, employees.Object, Mock.Of<IProjectRepository>(),
             Mock.Of<IWorkTaskRepository>(), Mock.Of<ITaskAssignmentRepository>(), Mock.Of<IProjectMemberRepository>(),
-            Mock.Of<IWorkNotificationEngine>());
+            Mock.Of<IWorkNotificationEngine>(), NullLogger<EmployeeChecklistWorkTaskProvisioner>.Instance);
 
         var result = await sut.EnsureOfficeProjectAsync(tenantId, legalEntityId, actingUserId, DateOnly.FromDateTime(DateTime.UtcNow));
 
         result.IsSuccess.Should().BeTrue();
         calls.Should().Equal("reconcile", "ensure");
+    }
+
+    [Fact]
+    public async Task EnsureOfficeProjectAsync_ReconcileFails_StillEnsuresTheOfficeProject()
+    {
+        var tenantId = Guid.NewGuid();
+        var legalEntityId = Guid.NewGuid();
+        var actingUserId = Guid.NewGuid();
+        var actor = new EmployeeEntity { Id = Guid.NewGuid(), TenantId = tenantId, UserId = actingUserId, EmploymentStatusId = EmploymentStatusIds.Active };
+        var office = new OfficeProjectContext(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), new Dictionary<string, Guid>());
+
+        var officeProjects = new Mock<IOfficeProjectProvisioner>();
+        var reconciler = new Mock<IOfficeProjectReconciler>();
+        var employees = new Mock<IEmployeeRepository>();
+        employees.Setup(repository => repository.GetByUserIdAsync(tenantId, actingUserId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(actor);
+        reconciler.Setup(r => r.ReconcileAsync(tenantId, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("Sequence contains no elements."));
+        officeProjects.Setup(o => o.EnsureAsync(tenantId, legalEntityId, actingUserId, actor.Id, It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(office);
+
+        var sut = new EmployeeChecklistWorkTaskProvisioner(
+            officeProjects.Object, reconciler.Object, employees.Object, Mock.Of<IProjectRepository>(),
+            Mock.Of<IWorkTaskRepository>(), Mock.Of<ITaskAssignmentRepository>(), Mock.Of<IProjectMemberRepository>(),
+            Mock.Of<IWorkNotificationEngine>(), NullLogger<EmployeeChecklistWorkTaskProvisioner>.Instance);
+
+        var result = await sut.EnsureOfficeProjectAsync(tenantId, legalEntityId, actingUserId, DateOnly.FromDateTime(DateTime.UtcNow));
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Should().Be(office);
     }
 }
