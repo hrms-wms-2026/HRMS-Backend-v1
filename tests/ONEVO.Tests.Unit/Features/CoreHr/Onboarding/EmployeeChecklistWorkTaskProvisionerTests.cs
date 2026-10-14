@@ -40,6 +40,7 @@ public sealed class EmployeeChecklistWorkTaskProvisionerTests
             new Dictionary<string, Guid> { ["onboarding"] = Guid.NewGuid(), ["offboarding"] = Guid.NewGuid() });
 
         var officeProjects = new Mock<IOfficeProjectProvisioner>();
+        var reconciler = new Mock<IOfficeProjectReconciler>();
         var employees = new Mock<IEmployeeRepository>();
         var projects = new Mock<IProjectRepository>();
         var workTasks = new Mock<IWorkTaskRepository>();
@@ -66,7 +67,7 @@ public sealed class EmployeeChecklistWorkTaskProvisionerTests
             .Returns(Task.CompletedTask);
 
         var sut = new EmployeeChecklistWorkTaskProvisioner(
-            officeProjects.Object, employees.Object, projects.Object, workTasks.Object,
+            officeProjects.Object, reconciler.Object, employees.Object, projects.Object, workTasks.Object,
             assignments.Object, members.Object, notifications.Object);
 
         var result = await sut.ProvisionAsync(office, newHire, [checklist], actorUserId);
@@ -89,5 +90,38 @@ public sealed class EmployeeChecklistWorkTaskProvisionerTests
             It.Is<WorkNotificationEvent>(notification => notification.TargetId == createdTask.Id
                 && notification.RecipientEmployeeIds.Contains(newHire.Id)),
             It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task EnsureOfficeProjectAsync_ReconcilesBeforeEnsuring()
+    {
+        var tenantId = Guid.NewGuid();
+        var legalEntityId = Guid.NewGuid();
+        var actingUserId = Guid.NewGuid();
+        var actor = new EmployeeEntity { Id = Guid.NewGuid(), TenantId = tenantId, UserId = actingUserId, EmploymentStatusId = EmploymentStatusIds.Active };
+
+        var officeProjects = new Mock<IOfficeProjectProvisioner>();
+        var reconciler = new Mock<IOfficeProjectReconciler>();
+        var employees = new Mock<IEmployeeRepository>();
+        employees.Setup(repository => repository.GetByUserIdAsync(tenantId, actingUserId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(actor);
+
+        var calls = new List<string>();
+        reconciler.Setup(r => r.ReconcileAsync(tenantId, It.IsAny<CancellationToken>()))
+            .Callback(() => calls.Add("reconcile"))
+            .ReturnsAsync(OfficeProjectReconcileOutcome.AlreadyAligned);
+        officeProjects.Setup(o => o.EnsureAsync(tenantId, legalEntityId, actingUserId, actor.Id, It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .Callback(() => calls.Add("ensure"))
+            .ReturnsAsync(new OfficeProjectContext(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), new Dictionary<string, Guid>()));
+
+        var sut = new EmployeeChecklistWorkTaskProvisioner(
+            officeProjects.Object, reconciler.Object, employees.Object, Mock.Of<IProjectRepository>(),
+            Mock.Of<IWorkTaskRepository>(), Mock.Of<ITaskAssignmentRepository>(), Mock.Of<IProjectMemberRepository>(),
+            Mock.Of<IWorkNotificationEngine>());
+
+        var result = await sut.EnsureOfficeProjectAsync(tenantId, legalEntityId, actingUserId, DateOnly.FromDateTime(DateTime.UtcNow));
+
+        result.IsSuccess.Should().BeTrue();
+        calls.Should().Equal("reconcile", "ensure");
     }
 }
