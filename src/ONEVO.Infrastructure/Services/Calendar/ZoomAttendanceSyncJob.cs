@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Calendar.RepositoryInterfaces;
+using ONEVO.Application.Features.Calendar.Services;
 using ONEVO.Application.Features.Calendar.ServiceInterfaces;
 using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
 using ONEVO.Domain.Features.Calendar.Entities;
@@ -73,16 +74,17 @@ public sealed class ZoomAttendanceSyncJob(IServiceProvider services, ILogger<Zoo
                     var zoomClient = scope.ServiceProvider.GetRequiredService<IZoomMeetingClient>();
                     var attendances = scope.ServiceProvider.GetRequiredService<ICalendarEventMeetingAttendanceRepository>();
                     var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
+                    var clock = scope.ServiceProvider.GetRequiredService<IDateTimeProvider>();
 
-                    foreach (var meeting in await meetings.GetDueForAttendanceSyncAsync(tenant.Id, CalendarEventMeetingProviders.Zoom, ct))
+                    foreach (var due in await meetings.GetDueForAttendanceSyncAsync(tenant.Id, CalendarEventMeetingProviders.Zoom, ct))
                     {
                         try
                         {
-                            await SyncOneMeetingAsync(tenant.Id, meeting, connections, tokenProvider, zoomClient, attendances, meetings, unitOfWork, ct);
+                            await SyncOneMeetingAsync(tenant.Id, due, connections, tokenProvider, zoomClient, attendances, meetings, unitOfWork, clock, ct);
                         }
-                        catch (Exception ex)
+                        catch (Exception ex) when (ex is not OperationCanceledException)
                         {
-                            logger.LogWarning(ex, "Attendance sync failed for meeting {MeetingId} (tenant {TenantId}); skipping.", meeting.Id, tenant.Id);
+                            logger.LogWarning(ex, "Attendance sync failed for meeting {MeetingId} (tenant {TenantId}); skipping.", due.Meeting.Id, tenant.Id);
                         }
                     }
                 }
@@ -96,33 +98,32 @@ public sealed class ZoomAttendanceSyncJob(IServiceProvider services, ILogger<Zoo
         }
     }
 
-    private static async Task SyncOneMeetingAsync(
-        Guid tenantId, CalendarEventMeeting meeting,
+    private async Task SyncOneMeetingAsync(
+        Guid tenantId, DueAttendanceSync due,
         IExternalCalendarConnectionRepository connections, ICalendarConnectionTokenProvider tokenProvider,
         IZoomMeetingClient zoomClient, ICalendarEventMeetingAttendanceRepository attendances,
-        ICalendarEventMeetingRepository meetings, IUnitOfWork unitOfWork, CancellationToken ct)
+        ICalendarEventMeetingRepository meetings, IUnitOfWork unitOfWork, IDateTimeProvider clock, CancellationToken ct)
     {
-        var connection = await connections.GetByIdForTenantAsync(tenantId, meeting.ExternalCalendarConnectionId, ct);
-        if (connection is null)
-            return;
-
-        var accessToken = await tokenProvider.GetFreshAccessTokenAsync(connection, "zoom", ct);
-        if (accessToken is null)
-            return; // reauth required - retried automatically next run once the connection is fixed
-
-        var records = await zoomClient.GetAttendanceAsync(accessToken, meeting.ExternalMeetingId, ct);
-        var toAdd = records.Select(r => new CalendarEventMeetingAttendance
+        var outcome = AttendanceFetchOutcome.Failed;
+        IReadOnlyList<FetchedAttendance> records = [];
+        try
         {
-            Id = Guid.NewGuid(), TenantId = tenantId, CalendarEventMeetingId = meeting.Id,
-            ExternalParticipantName = r.ParticipantName, ExternalParticipantEmail = r.ParticipantEmail,
-            JoinedAt = r.JoinedAt, LeftAt = r.LeftAt,
-            DurationSeconds = r.LeftAt.HasValue ? (int)(r.LeftAt.Value - r.JoinedAt).TotalSeconds : null,
-            CreatedAt = DateTimeOffset.UtcNow
-        });
-        await attendances.AddRangeAsync(toAdd, ct);
+            var connection = await connections.GetByIdForTenantAsync(tenantId, due.Meeting.ExternalCalendarConnectionId, ct);
+            var accessToken = connection is null ? null : await tokenProvider.GetFreshAccessTokenAsync(connection, "zoom", ct);
+            if (accessToken is not null)
+            {
+                var participants = await zoomClient.GetAttendanceAsync(accessToken, due.Meeting.ExternalMeetingId, ct);
+                // 0 participants can't be told apart from "report not ready" (spec §3.2.1).
+                outcome = participants.Count > 0 ? AttendanceFetchOutcome.Final : AttendanceFetchOutcome.NotReady;
+                records = participants.Select(r => new FetchedAttendance(r.ParticipantName, r.ParticipantEmail, r.JoinedAt, r.LeftAt)).ToList();
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogWarning(ex, "Zoom attendance fetch failed for meeting {MeetingId}; will retry.", due.Meeting.Id);
+        }
 
-        meeting.LastAttendanceSyncedAt = DateTimeOffset.UtcNow;
-        meetings.Update(meeting);
-        await unitOfWork.SaveChangesAsync(ct);
+        await AttendanceSyncRecorder.RecordAsync(
+            tenantId, due, outcome, records, clock.UtcNow, attendances, meetings, unitOfWork, logger, ct);
     }
 }

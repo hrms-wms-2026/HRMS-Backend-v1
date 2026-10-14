@@ -93,6 +93,7 @@ public sealed class CreateEventMeetingCommandHandler(
                 existingMeeting.PasscodeOrPin = passcode;
                 existingMeeting.Status = CalendarEventMeetingStatuses.Active;
                 existingMeeting.LastAttendanceSyncedAt = null;
+                existingMeeting.AttendanceSyncStatus = null;
                 existingMeeting.UpdatedAt = DateTimeOffset.UtcNow;
                 meetings.Update(existingMeeting);
             }

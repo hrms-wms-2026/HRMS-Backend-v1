@@ -16,142 +16,130 @@ namespace ONEVO.Tests.Unit.Features.Calendar;
 public sealed class ZoomAttendanceSyncJobTests
 {
     private static readonly Guid TenantId = Guid.NewGuid();
+    private static readonly DateTimeOffset Now = new(2026, 10, 14, 12, 0, 0, TimeSpan.Zero);
 
-    private static Tenant MakeTenant() => new()
+    private sealed class Rig
     {
-        Id = TenantId, Name = "Acme", Slug = "acme", Status = TenantStatus.Active
-    };
+        public Mock<ICalendarEventMeetingRepository> Meetings { get; } = new();
+        public Mock<IExternalCalendarConnectionRepository> Connections { get; } = new();
+        public Mock<ICalendarConnectionTokenProvider> Tokens { get; } = new();
+        public Mock<IZoomMeetingClient> Zoom { get; } = new();
+        public Mock<ICalendarEventMeetingAttendanceRepository> Attendances { get; } = new();
+        public Mock<IUnitOfWork> UnitOfWork { get; } = new();
+        public List<CalendarEventMeeting> Due { get; } = [];
 
-    private static CalendarEventMeeting MakeMeeting(string? externalMeetingId = null) => new()
-    {
-        Id = Guid.NewGuid(), TenantId = TenantId, CalendarEventId = Guid.NewGuid(),
-        ExternalCalendarConnectionId = Guid.NewGuid(), Provider = CalendarEventMeetingProviders.Zoom,
-        ExternalMeetingId = externalMeetingId ?? "graph-meeting-1", JoinUrl = "https://teams.microsoft.com/l/meetup-join/abc",
-        Status = CalendarEventMeetingStatuses.Active
-    };
+        public CalendarEventMeeting AddDue(TimeSpan endedAgo, string externalId = "zoom-meeting-1")
+        {
+            var meeting = new CalendarEventMeeting
+            {
+                Id = Guid.NewGuid(), TenantId = TenantId, CalendarEventId = Guid.NewGuid(), ExternalCalendarConnectionId = Guid.NewGuid(),
+                Provider = CalendarEventMeetingProviders.Zoom, ExternalMeetingId = externalId,
+                JoinUrl = "https://zoom.us/j/1", Status = CalendarEventMeetingStatuses.Active
+            };
+            Due.Add(meeting);
+            _ends[meeting.Id] = Now - endedAgo;
+            var connection = new ExternalCalendarConnection
+            {
+                Id = meeting.ExternalCalendarConnectionId, TenantId = TenantId, UserId = Guid.NewGuid(),
+                Provider = CalendarExternalSources.Zoom, ExternalAccountEmail = "me@acme.com",
+                RefreshTokenEncrypted = [1], Status = ExternalCalendarConnectionStatuses.Active
+            };
+            Connections.Setup(c => c.GetByIdForTenantAsync(TenantId, connection.Id, It.IsAny<CancellationToken>())).ReturnsAsync(connection);
+            Tokens.Setup(t => t.GetFreshAccessTokenAsync(connection, "zoom", It.IsAny<CancellationToken>())).ReturnsAsync("access-token");
+            return meeting;
+        }
 
-    private static ExternalCalendarConnection MakeConnection(Guid id) => new()
-    {
-        Id = id, TenantId = TenantId, UserId = Guid.NewGuid(),
-        Provider = CalendarExternalSources.Zoom, ExternalAccountEmail = "me@acme.com",
-        RefreshTokenEncrypted = [1], Status = ExternalCalendarConnectionStatuses.Active
-    };
+        private readonly Dictionary<Guid, DateTimeOffset> _ends = [];
+
+        public async Task RunAsync()
+        {
+            Meetings.Setup(m => m.GetDueForAttendanceSyncAsync(TenantId, CalendarEventMeetingProviders.Zoom, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(Due.Select(m => new DueAttendanceSync(m, _ends[m.Id])).ToList());
+            var tenants = new Mock<ITenantRepository>();
+            tenants.Setup(t => t.ListAsync(TenantStatus.Active, null, 0, 100, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new List<Tenant> { new() { Id = TenantId, Name = "Acme", Slug = "acme", Status = TenantStatus.Active } });
+            tenants.Setup(t => t.ListAsync(TenantStatus.Active, null, 100, 100, It.IsAny<CancellationToken>())).ReturnsAsync(new List<Tenant>());
+            var clock = new Mock<IDateTimeProvider>();
+            clock.SetupGet(c => c.UtcNow).Returns(Now);
+
+            var services = new ServiceCollection();
+            services.AddSingleton(tenants.Object);
+            services.AddSingleton(Meetings.Object);
+            services.AddSingleton(Connections.Object);
+            services.AddSingleton(Tokens.Object);
+            services.AddSingleton(Zoom.Object);
+            services.AddSingleton(Attendances.Object);
+            services.AddSingleton(UnitOfWork.Object);
+            services.AddSingleton(clock.Object);
+            services.AddSingleton(Mock.Of<IWritableTenantContext>());
+            services.AddSingleton(Mock.Of<ITenantContextSwitcher>());
+            await new ZoomAttendanceSyncJob(services.BuildServiceProvider(), NullLogger<ZoomAttendanceSyncJob>.Instance)
+                .RunOnceAsync(CancellationToken.None);
+        }
+    }
+
+    private static ZoomAttendanceRecordDto Record(string name) => new(name, $"{name}@acme.com", Now.AddHours(-2), Now.AddHours(-1));
 
     [Fact]
-    public async Task RunOnceAsync_MeetingDueForSync_WritesAttendanceRecordsAndStampsSyncedAt()
+    public async Task AtLeastOneParticipant_IsSynced()
     {
-        var services = new ServiceCollection();
+        var rig = new Rig();
+        var meeting = rig.AddDue(TimeSpan.FromHours(1));
+        rig.Zoom.Setup(z => z.GetAttendanceAsync("access-token", "zoom-meeting-1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync([Record("ada")]);
 
-        var tenantRepoMock = new Mock<ITenantRepository>();
-        tenantRepoMock.Setup(t => t.ListAsync(TenantStatus.Active, null, 0, 100, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<Tenant> { MakeTenant() });
-        tenantRepoMock.Setup(t => t.ListAsync(TenantStatus.Active, null, 100, 100, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<Tenant>());
+        await rig.RunAsync();
 
-        var meeting = MakeMeeting();
-        var connection = MakeConnection(meeting.ExternalCalendarConnectionId);
-
-        var meetingsRepoMock = new Mock<ICalendarEventMeetingRepository>();
-        meetingsRepoMock.Setup(m => m.GetDueForAttendanceSyncAsync(TenantId, CalendarEventMeetingProviders.Zoom, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<CalendarEventMeeting> { meeting });
-
-        var connectionsRepoMock = new Mock<IExternalCalendarConnectionRepository>();
-        connectionsRepoMock.Setup(c => c.GetByIdForTenantAsync(TenantId, connection.Id, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(connection);
-
-        var tokenProviderMock = new Mock<ICalendarConnectionTokenProvider>();
-        tokenProviderMock.Setup(t => t.GetFreshAccessTokenAsync(connection, "zoom", It.IsAny<CancellationToken>()))
-            .ReturnsAsync("access-token");
-
-        var zoomClientMock = new Mock<IZoomMeetingClient>();
-        zoomClientMock.Setup(t => t.GetAttendanceAsync("access-token", "graph-meeting-1", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<ZoomAttendanceRecordDto>
-            {
-                new("Ada Lovelace", "ada@acme.com", DateTimeOffset.UtcNow.AddMinutes(-30), DateTimeOffset.UtcNow),
-                new("Grace Hopper", "grace@acme.com", DateTimeOffset.UtcNow.AddMinutes(-20), DateTimeOffset.UtcNow)
-            });
-
-        var attendancesRepoMock = new Mock<ICalendarEventMeetingAttendanceRepository>();
-
-        services.AddSingleton(tenantRepoMock.Object);
-        services.AddSingleton(meetingsRepoMock.Object);
-        services.AddSingleton(connectionsRepoMock.Object);
-        services.AddSingleton(tokenProviderMock.Object);
-        services.AddSingleton(zoomClientMock.Object);
-        services.AddSingleton(attendancesRepoMock.Object);
-        services.AddSingleton(Mock.Of<IUnitOfWork>());
-        services.AddSingleton(Mock.Of<IWritableTenantContext>());
-        services.AddSingleton(Mock.Of<ITenantContextSwitcher>());
-        var provider = services.BuildServiceProvider();
-
-        var job = new ZoomAttendanceSyncJob(provider, NullLogger<ZoomAttendanceSyncJob>.Instance);
-        await job.RunOnceAsync(CancellationToken.None);
-
-        attendancesRepoMock.Verify(a => a.AddRangeAsync(
-            It.Is<IEnumerable<CalendarEventMeetingAttendance>>(records => records.Count() == 2),
-            It.IsAny<CancellationToken>()), Times.Once);
-        meetingsRepoMock.Verify(m => m.Update(
-            It.Is<CalendarEventMeeting>(cm => cm.Id == meeting.Id && cm.LastAttendanceSyncedAt != null)), Times.Once);
+        Assert.Equal(CalendarAttendanceSyncStatuses.Synced, meeting.AttendanceSyncStatus);
     }
 
     [Fact]
-    public async Task RunOnceAsync_OneMeetingThrows_OtherMeetingsInSameTenantStillSync()
+    public async Task ZeroParticipants_WithinTheCutOff_ChangesNothing()
     {
-        var services = new ServiceCollection();
+        var rig = new Rig();
+        var meeting = rig.AddDue(TimeSpan.FromHours(2));
+        rig.Zoom.Setup(z => z.GetAttendanceAsync("access-token", "zoom-meeting-1", It.IsAny<CancellationToken>())).ReturnsAsync([]);
 
-        var tenantRepoMock = new Mock<ITenantRepository>();
-        tenantRepoMock.Setup(t => t.ListAsync(TenantStatus.Active, null, 0, 100, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<Tenant> { MakeTenant() });
-        tenantRepoMock.Setup(t => t.ListAsync(TenantStatus.Active, null, 100, 100, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<Tenant>());
+        await rig.RunAsync();
 
-        var failingMeeting = MakeMeeting("graph-meeting-failing");
-        var succeedingMeeting = MakeMeeting("graph-meeting-succeeding");
-        var failingConnection = MakeConnection(failingMeeting.ExternalCalendarConnectionId);
-        var succeedingConnection = MakeConnection(succeedingMeeting.ExternalCalendarConnectionId);
+        Assert.Null(meeting.AttendanceSyncStatus);
+    }
 
-        var meetingsRepoMock = new Mock<ICalendarEventMeetingRepository>();
-        meetingsRepoMock.Setup(m => m.GetDueForAttendanceSyncAsync(TenantId, CalendarEventMeetingProviders.Zoom, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<CalendarEventMeeting> { failingMeeting, succeedingMeeting });
+    [Fact]
+    public async Task ZeroParticipants_PastTheCutOff_IsUnavailable_NotNobodyJoined()
+    {
+        var rig = new Rig();
+        var meeting = rig.AddDue(TimeSpan.FromHours(25));
+        rig.Zoom.Setup(z => z.GetAttendanceAsync("access-token", "zoom-meeting-1", It.IsAny<CancellationToken>())).ReturnsAsync([]);
 
-        var connectionsRepoMock = new Mock<IExternalCalendarConnectionRepository>();
-        connectionsRepoMock.Setup(c => c.GetByIdForTenantAsync(TenantId, failingConnection.Id, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(failingConnection);
-        connectionsRepoMock.Setup(c => c.GetByIdForTenantAsync(TenantId, succeedingConnection.Id, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(succeedingConnection);
+        await rig.RunAsync();
 
-        var tokenProviderMock = new Mock<ICalendarConnectionTokenProvider>();
-        tokenProviderMock.Setup(t => t.GetFreshAccessTokenAsync(It.IsAny<ExternalCalendarConnection>(), "zoom", It.IsAny<CancellationToken>()))
-            .ReturnsAsync("access-token");
+        Assert.Equal(CalendarAttendanceSyncStatuses.Unavailable, meeting.AttendanceSyncStatus);
+        rig.Attendances.Verify(a => a.AddRangeAsync(It.IsAny<IEnumerable<CalendarEventMeetingAttendance>>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
 
-        var zoomClientMock = new Mock<IZoomMeetingClient>();
-        zoomClientMock.Setup(t => t.GetAttendanceAsync("access-token", failingMeeting.ExternalMeetingId, It.IsAny<CancellationToken>()))
-            .ThrowsAsync(new HttpRequestException("simulated Zoom 500"));
-        zoomClientMock.Setup(t => t.GetAttendanceAsync("access-token", succeedingMeeting.ExternalMeetingId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<ZoomAttendanceRecordDto> { new("Ada Lovelace", "ada@acme.com", DateTimeOffset.UtcNow, null) });
+    [Fact]
+    public async Task FetchThrows_PastTheCutOff_IsSyncFailed()
+    {
+        var rig = new Rig();
+        var meeting = rig.AddDue(TimeSpan.FromHours(30));
+        rig.Zoom.Setup(z => z.GetAttendanceAsync("access-token", "zoom-meeting-1", It.IsAny<CancellationToken>())).ThrowsAsync(new HttpRequestException("500"));
 
-        var attendancesRepoMock = new Mock<ICalendarEventMeetingAttendanceRepository>();
+        await rig.RunAsync();
 
-        services.AddSingleton(tenantRepoMock.Object);
-        services.AddSingleton(meetingsRepoMock.Object);
-        services.AddSingleton(connectionsRepoMock.Object);
-        services.AddSingleton(tokenProviderMock.Object);
-        services.AddSingleton(zoomClientMock.Object);
-        services.AddSingleton(attendancesRepoMock.Object);
-        services.AddSingleton(Mock.Of<IUnitOfWork>());
-        services.AddSingleton(Mock.Of<IWritableTenantContext>());
-        services.AddSingleton(Mock.Of<ITenantContextSwitcher>());
-        var provider = services.BuildServiceProvider();
+        Assert.Equal(CalendarAttendanceSyncStatuses.Failed, meeting.AttendanceSyncStatus);
+    }
 
-        var job = new ZoomAttendanceSyncJob(provider, NullLogger<ZoomAttendanceSyncJob>.Instance);
+    [Fact]
+    public async Task MissingConnection_PastTheCutOff_IsSyncFailed()
+    {
+        var rig = new Rig();
+        var meeting = rig.AddDue(TimeSpan.FromHours(30));
+        rig.Connections.Setup(c => c.GetByIdForTenantAsync(TenantId, meeting.ExternalCalendarConnectionId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ExternalCalendarConnection?)null);
 
-        // Should not throw - the failing meeting's exception must be caught and logged, not
-        // propagated, and the second meeting must still be synced.
-        await job.RunOnceAsync(CancellationToken.None);
+        await rig.RunAsync();
 
-        meetingsRepoMock.Verify(m => m.Update(
-            It.Is<CalendarEventMeeting>(cm => cm.Id == succeedingMeeting.Id && cm.LastAttendanceSyncedAt != null)), Times.Once);
-        meetingsRepoMock.Verify(m => m.Update(
-            It.Is<CalendarEventMeeting>(cm => cm.Id == failingMeeting.Id)), Times.Never);
+        Assert.Equal(CalendarAttendanceSyncStatuses.Failed, meeting.AttendanceSyncStatus);
     }
 }

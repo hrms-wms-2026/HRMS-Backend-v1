@@ -77,7 +77,7 @@ public sealed class EfCalendarEventMeetingRepositoryTests
         var result = await repository.GetDueForAttendanceSyncAsync(TenantId, CalendarEventMeetingProviders.MicrosoftTeams, CancellationToken.None);
 
         Assert.Single(result);
-        Assert.Equal(due.Id, result[0].Id);
+        Assert.Equal(due.Id, result[0].Meeting.Id);
     }
 
     [Fact]
@@ -104,7 +104,7 @@ public sealed class EfCalendarEventMeetingRepositoryTests
         var result = await repository.GetDueForAttendanceSyncAsync(TenantId, CalendarEventMeetingProviders.Zoom, CancellationToken.None);
 
         var meeting = Assert.Single(result);
-        Assert.Equal(zoomMeeting.Id, meeting.Id);
+        Assert.Equal(zoomMeeting.Id, meeting.Meeting.Id);
     }
 
     private static CalendarEventMeeting MakeMeeting(Guid calendarEventId, string provider = CalendarEventMeetingProviders.MicrosoftTeams) => new()
@@ -137,5 +137,47 @@ public sealed class EfCalendarEventMeetingRepositoryTests
             new SoftDeleteInterceptor(dateTimeProvider.Object),
             new DomainEventDispatchInterceptor(publisher.Object),
             tenantContext.Object);
+    }
+
+    [Fact]
+    public async Task GetDueForAttendanceSyncAsync_EndedInsideTheGrace_IsNotDueYet_AndCarriesTheEventEnd()
+    {
+        await using var db = BuildInMemoryDb();
+        var now = new DateTimeOffset(2026, 9, 23, 12, 0, 0, TimeSpan.Zero);
+        var justEnded = MakeCalendarEvent(now.AddHours(-1), now.AddMinutes(-10));
+        var endedLongAgo = MakeCalendarEvent(now.AddHours(-2), now.AddMinutes(-31));
+        db.PersonalCalendarEvents.AddRange(justEnded, endedLongAgo);
+        db.CalendarEventMeetings.AddRange(MakeMeeting(justEnded.Id), MakeMeeting(endedLongAgo.Id));
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+        var clock = new Mock<IDateTimeProvider>();
+        clock.SetupGet(d => d.UtcNow).Returns(now);
+
+        var result = await new EfCalendarEventMeetingRepository(db, clock.Object)
+            .GetDueForAttendanceSyncAsync(TenantId, CalendarEventMeetingProviders.MicrosoftTeams, CancellationToken.None);
+
+        var due = Assert.Single(result);
+        Assert.Equal(endedLongAgo.EndDate, due.EventEndDate);
+    }
+
+    [Fact]
+    public async Task GetDueForAttendanceSyncAsync_ExcludesMeetingsWithADecidedStatus()
+    {
+        await using var db = BuildInMemoryDb();
+        var now = new DateTimeOffset(2026, 9, 23, 12, 0, 0, TimeSpan.Zero);
+        var evt = MakeCalendarEvent(now.AddHours(-3), now.AddHours(-2));
+        var decided = MakeMeeting(evt.Id);
+        decided.AttendanceSyncStatus = CalendarAttendanceSyncStatuses.Unavailable;
+        db.PersonalCalendarEvents.Add(evt);
+        db.CalendarEventMeetings.Add(decided);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+        var clock = new Mock<IDateTimeProvider>();
+        clock.SetupGet(d => d.UtcNow).Returns(now);
+
+        var result = await new EfCalendarEventMeetingRepository(db, clock.Object)
+            .GetDueForAttendanceSyncAsync(TenantId, CalendarEventMeetingProviders.MicrosoftTeams, CancellationToken.None);
+
+        Assert.Empty(result);
     }
 }

@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Calendar.RepositoryInterfaces;
+using ONEVO.Application.Features.Calendar.Services;
 using ONEVO.Application.Features.Calendar.ServiceInterfaces;
 using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
 using ONEVO.Domain.Features.Calendar.Entities;
@@ -72,16 +73,17 @@ public sealed class TeamsAttendanceSyncJob(IServiceProvider services, ILogger<Te
                     var teamsClient = scope.ServiceProvider.GetRequiredService<ITeamsMeetingClient>();
                     var attendances = scope.ServiceProvider.GetRequiredService<ICalendarEventMeetingAttendanceRepository>();
                     var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
+                    var clock = scope.ServiceProvider.GetRequiredService<IDateTimeProvider>();
 
-                    foreach (var meeting in await meetings.GetDueForAttendanceSyncAsync(tenant.Id, CalendarEventMeetingProviders.MicrosoftTeams, ct))
+                    foreach (var due in await meetings.GetDueForAttendanceSyncAsync(tenant.Id, CalendarEventMeetingProviders.MicrosoftTeams, ct))
                     {
                         try
                         {
-                            await SyncOneMeetingAsync(tenant.Id, meeting, connections, tokenProvider, teamsClient, attendances, meetings, unitOfWork, ct);
+                            await SyncOneMeetingAsync(tenant.Id, due, connections, tokenProvider, teamsClient, attendances, meetings, unitOfWork, clock, ct);
                         }
-                        catch (Exception ex)
+                        catch (Exception ex) when (ex is not OperationCanceledException)
                         {
-                            logger.LogWarning(ex, "Attendance sync failed for meeting {MeetingId} (tenant {TenantId}); skipping.", meeting.Id, tenant.Id);
+                            logger.LogWarning(ex, "Attendance sync failed for meeting {MeetingId} (tenant {TenantId}); skipping.", due.Meeting.Id, tenant.Id);
                         }
                     }
                 }
@@ -95,33 +97,31 @@ public sealed class TeamsAttendanceSyncJob(IServiceProvider services, ILogger<Te
         }
     }
 
-    private static async Task SyncOneMeetingAsync(
-        Guid tenantId, CalendarEventMeeting meeting,
+    private async Task SyncOneMeetingAsync(
+        Guid tenantId, DueAttendanceSync due,
         IExternalCalendarConnectionRepository connections, ICalendarConnectionTokenProvider tokenProvider,
         ITeamsMeetingClient teamsClient, ICalendarEventMeetingAttendanceRepository attendances,
-        ICalendarEventMeetingRepository meetings, IUnitOfWork unitOfWork, CancellationToken ct)
+        ICalendarEventMeetingRepository meetings, IUnitOfWork unitOfWork, IDateTimeProvider clock, CancellationToken ct)
     {
-        var connection = await connections.GetByIdForTenantAsync(tenantId, meeting.ExternalCalendarConnectionId, ct);
-        if (connection is null)
-            return;
-
-        var accessToken = await tokenProvider.GetFreshAccessTokenAsync(connection, "microsoft", ct);
-        if (accessToken is null)
-            return; // reauth required - retried automatically next run once the connection is fixed
-
-        var records = (await teamsClient.GetAttendanceAsync(accessToken, meeting.ExternalMeetingId, ct)).Records;
-        var toAdd = records.Select(r => new CalendarEventMeetingAttendance
+        var outcome = AttendanceFetchOutcome.Failed;
+        IReadOnlyList<FetchedAttendance> records = [];
+        try
         {
-            Id = Guid.NewGuid(), TenantId = tenantId, CalendarEventMeetingId = meeting.Id,
-            ExternalParticipantName = r.ParticipantName, ExternalParticipantEmail = r.ParticipantEmail,
-            JoinedAt = r.JoinedAt, LeftAt = r.LeftAt,
-            DurationSeconds = r.LeftAt.HasValue ? (int)(r.LeftAt.Value - r.JoinedAt).TotalSeconds : null,
-            CreatedAt = DateTimeOffset.UtcNow
-        });
-        await attendances.AddRangeAsync(toAdd, ct);
+            var connection = await connections.GetByIdForTenantAsync(tenantId, due.Meeting.ExternalCalendarConnectionId, ct);
+            var accessToken = connection is null ? null : await tokenProvider.GetFreshAccessTokenAsync(connection, "microsoft", ct);
+            if (accessToken is not null)
+            {
+                var result = await teamsClient.GetAttendanceAsync(accessToken, due.Meeting.ExternalMeetingId, ct);
+                outcome = result.ReportExists ? AttendanceFetchOutcome.Final : AttendanceFetchOutcome.NotReady;
+                records = result.Records.Select(r => new FetchedAttendance(r.ParticipantName, r.ParticipantEmail, r.JoinedAt, r.LeftAt)).ToList();
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogWarning(ex, "Teams attendance fetch failed for meeting {MeetingId}; will retry.", due.Meeting.Id);
+        }
 
-        meeting.LastAttendanceSyncedAt = DateTimeOffset.UtcNow;
-        meetings.Update(meeting);
-        await unitOfWork.SaveChangesAsync(ct);
+        await AttendanceSyncRecorder.RecordAsync(
+            tenantId, due, outcome, records, clock.UtcNow, attendances, meetings, unitOfWork, logger, ct);
     }
 }
