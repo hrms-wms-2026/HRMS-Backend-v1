@@ -37,6 +37,26 @@ public class EfLeaveRequestRepository : ILeaveRequestRepository
             ct);
     }
 
+    public async Task<bool> HasOverlappingPendingOrApprovedRequestExceptAsync(
+        Guid tenantId,
+        Guid employeeId,
+        DateTimeOffset startAt,
+        DateTimeOffset endAt,
+        Guid excludeRequestId,
+        CancellationToken ct = default)
+    {
+        return await _db.LeaveRequests.AsNoTracking().AnyAsync(
+            request =>
+                request.TenantId == tenantId &&
+                request.EmployeeId == employeeId &&
+                request.Id != excludeRequestId &&
+                (request.Status == LeaveRequestStatuses.Pending ||
+                 request.Status == LeaveRequestStatuses.Approved) &&
+                request.StartAt < endAt &&
+                request.EndAt > startAt,
+            ct);
+    }
+
     public async Task<IReadOnlyList<LeaveRequestListRow>> ListOwnAsync(
         Guid tenantId,
         Guid employeeId,

@@ -55,10 +55,12 @@ public sealed record InboxChange(
 /// <summary>Where "open" goes in the frontend: router commands plus optional query params.</summary>
 public sealed record InboxTarget(IReadOnlyList<string> Route, string Label, IReadOnlyDictionary<string, string>? QueryParams = null);
 
+/// <summary><see cref="ExtraJson"/> is the payload of the kind's detail renderer (descriptor DetailRenderer), e.g. the leave
+/// balance impact or exception evidence; null for the default view.</summary>
 public sealed record InboxItemDetail(
     InboxItem Item, IReadOnlyList<InboxStep> Steps, string? Summary, IReadOnlyList<InboxChange> ChangeSet,
     string? Explanation, IReadOnlyDictionary<string, string>? ExplanationDetails, InboxTarget? Target,
-    string? EditablePayloadJson);
+    string? EditablePayloadJson, string? ExtraJson = null);
 
 public sealed record InboxFilterOption(string Value, string Label);
 

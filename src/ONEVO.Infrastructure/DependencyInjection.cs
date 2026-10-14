@@ -1,3 +1,4 @@
+using ONEVO.Application.Features.Inbox.Contracts;
 using Amazon.Extensions.NETCore.Setup;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -280,6 +281,12 @@ public static class DependencyInjection
             ONEVO.Infrastructure.Persistence.Repositories.Leave.Approval.EfLeaveApprovalRepository>();
         services.AddScoped<ONEVO.Application.Features.Leave.Approval.Services.LeaveForwardTargetResolver>();
         services.AddScoped<ONEVO.Application.Features.Leave.Approval.Commands.LeaveApprovalDecisionService>();
+        services.AddScoped<ONEVO.Application.Features.Leave.Approval.Services.LeaveRequestRangeEditor>();
+        // Leave in the Inbox (plan L1).
+        services.AddInboxKind(ONEVO.Application.Features.Leave.Inbox.LeaveInboxKinds.Descriptor);
+        services.AddScoped<ONEVO.Application.Features.Inbox.Contracts.IInboxSourceProvider, ONEVO.Application.Features.Leave.Inbox.LeaveInboxSourceProvider>();
+        services.AddScoped<ONEVO.Application.Features.Conversations.Contracts.IConversationSubjectResolver, ONEVO.Application.Features.Leave.Inbox.LeaveConversationSubjectResolver>();
+        services.AddScoped<ONEVO.Application.Features.Inbox.Revert.IInboxDecisionReverter, ONEVO.Application.Features.Leave.Inbox.LeaveDecisionReverter>();
         services.AddOptions<ONEVO.Application.Features.Leave.Cancellation.Options.LeaveCancellationOptions>()
             .Bind(configuration.GetSection(ONEVO.Application.Features.Leave.Cancellation.Options.LeaveCancellationOptions.SectionName))
             .Validate(
@@ -468,6 +475,7 @@ public static class DependencyInjection
             ONEVO.Application.Features.Conversations.Services.ConversationAccess>();
         services.AddScoped<ONEVO.Application.Features.Conversations.Services.ConversationResponseBuilder>();
         services.AddScoped<ONEVO.Application.Features.Conversations.Services.ConversationNotifier>();
+        services.AddScoped<ONEVO.Application.Features.Conversations.Services.IConversationPoster, ONEVO.Application.Features.Conversations.Services.ConversationPoster>();
         services.AddScoped<ONEVO.Application.Features.Conversations.Services.IConversationUnreadCounts,
             ONEVO.Application.Features.Conversations.Services.ConversationUnreadCounts>();
         // Inbox router: fans out to every registered IInboxSourceProvider (one per module).

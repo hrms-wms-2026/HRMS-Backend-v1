@@ -575,7 +575,7 @@ public sealed class LeaveApprovalDecisionService
             return;
         await _notifications.SendTemplatedAsync(
             _currentUser.TenantId, state.Employee.UserId, template, placeholders,
-            "leave_request", state.Request.Id, ct);
+            ONEVO.Application.Features.Inbox.Contracts.InboxNotificationNavigation.RelatedEntityType("leave", "request"), state.Request.Id, ct);
     }
 
     private async Task NotifyApproverAsync(Guid approverEmployeeId, LeaveApprovalState state, CancellationToken ct)
@@ -592,7 +592,7 @@ public sealed class LeaveApprovalDecisionService
                 ["startDate"] = state.Request.StartAt.ToString("yyyy-MM-dd"),
                 ["endDate"] = state.Request.EndAt.ToString("yyyy-MM-dd")
             },
-            "leave_request", state.Request.Id, ct);
+            ONEVO.Application.Features.Inbox.Contracts.InboxNotificationNavigation.RelatedEntityType("leave", "request"), state.Request.Id, ct);
     }
 
     private static string LeaveEntitlementName(Employee employee) =>

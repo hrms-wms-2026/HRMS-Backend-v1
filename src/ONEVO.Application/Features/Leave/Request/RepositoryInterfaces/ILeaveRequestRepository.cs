@@ -12,6 +12,15 @@ public interface ILeaveRequestRepository
         DateTimeOffset endAt,
         CancellationToken ct = default);
 
+    /// <summary>The same overlap check, ignoring one request (that request's own dates being edited).</summary>
+    Task<bool> HasOverlappingPendingOrApprovedRequestExceptAsync(
+        Guid tenantId,
+        Guid employeeId,
+        DateTimeOffset startAt,
+        DateTimeOffset endAt,
+        Guid excludeRequestId,
+        CancellationToken ct = default);
+
     Task<IReadOnlyList<LeaveRequestListRow>> ListOwnAsync(
         Guid tenantId,
         Guid employeeId,

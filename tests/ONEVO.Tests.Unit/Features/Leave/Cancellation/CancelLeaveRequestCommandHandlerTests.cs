@@ -75,7 +75,7 @@ public class CancelLeaveRequestCommandHandlerTests
         result.IsSuccess.Should().BeTrue();
         harness.Notifications.Verify(x => x.SendTemplatedAsync(
             harness.TenantId, harness.Subject.UserId, "leave_request_cancelled_by_hr",
-            It.IsAny<IReadOnlyDictionary<string, string>>(), "leave_request", harness.Request.Id, It.IsAny<CancellationToken>()), Times.Once);
+            It.IsAny<IReadOnlyDictionary<string, string>>(), "inbox:leave:request", harness.Request.Id, It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -204,7 +204,7 @@ public class CancelLeaveRequestCommandHandlerTests
         result.IsSuccess.Should().BeTrue();
         harness.Notifications.Verify(x => x.SendTemplatedAsync(
             harness.TenantId, harness.ApproverUserId, "leave_request_cancelled_by_employee",
-            It.IsAny<IReadOnlyDictionary<string, string>>(), "leave_request", harness.Request.Id, It.IsAny<CancellationToken>()), Times.Once);
+            It.IsAny<IReadOnlyDictionary<string, string>>(), "inbox:leave:request", harness.Request.Id, It.IsAny<CancellationToken>()), Times.Once);
     }
 
     private static LeaveRequestDayAllocation Allocation(Harness harness, DateOnly date, decimal hours) => new()

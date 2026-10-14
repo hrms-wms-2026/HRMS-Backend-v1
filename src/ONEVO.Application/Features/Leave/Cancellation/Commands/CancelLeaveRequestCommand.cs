@@ -377,7 +377,7 @@ public sealed class CancelLeaveRequestCommandHandler
             {
                 await _notifications.SendTemplatedAsync(
                     _currentUser.TenantId, state.Employee.UserId, template, placeholders,
-                    "leave_request", state.Request.Id, ct);
+                    ONEVO.Application.Features.Inbox.Contracts.InboxNotificationNavigation.RelatedEntityType("leave", "request"), state.Request.Id, ct);
             }
 
             return;
@@ -393,7 +393,7 @@ public sealed class CancelLeaveRequestCommandHandler
         {
             await _notifications.SendTemplatedAsync(
                 _currentUser.TenantId, recipient.UserId!.Value, template, placeholders,
-                "leave_request", state.Request.Id, ct);
+                ONEVO.Application.Features.Inbox.Contracts.InboxNotificationNavigation.RelatedEntityType("leave", "request"), state.Request.Id, ct);
         }
     }
 
