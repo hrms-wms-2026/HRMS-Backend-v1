@@ -42,6 +42,19 @@ public sealed class AttendanceCorrectionNotificationTests
     }
 
     [Fact]
+    public async Task Request_WhenApprovalRequired_EnqueuesInboxChangedForApproverAndRequesterBeforeTheSave()
+    {
+        var fixture = new Fixture(approvalRequired: true);
+
+        var result = await fixture.Workflow.RequestAsync(fixture.Request(), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        fixture.Order.Should().Equal("inbox", "save");
+        fixture.InboxRecipients.Should().BeEquivalentTo([fixture.ApproverEmployeeId, fixture.EmployeeId]);
+        fixture.InboxItem.Should().Be(new ONEVO.Application.Features.Conversations.Contracts.ItemRef("attendance", "correction", result.Value!.Id));
+    }
+
+    [Fact]
     public async Task Request_ResponseIncludesLegalEntityTimezone()
     {
         var fixture = new Fixture(approvalRequired: true, timezone: "Asia/Colombo");
@@ -273,6 +286,10 @@ public sealed class AttendanceCorrectionNotificationTests
         public readonly FakeUnitOfWork UnitOfWork = new();
         public readonly List<NotificationCall> Notifications = [];
         public bool NotificationWasCreatedInsideTransaction { get; private set; }
+        public Mock<ONEVO.Application.Features.Inbox.Services.IInboxChangeNotifier> Inbox { get; } = new();
+        public List<string> Order { get; } = new();
+        public List<Guid> InboxRecipients { get; } = new();
+        public ONEVO.Application.Features.Conversations.Contracts.ItemRef? InboxItem { get; private set; }
         public readonly AttendanceRecord Record;
         public AttendanceCorrection? AddedCorrection { get; private set; }
         public AttendanceCorrectionWorkflow Workflow;
@@ -341,7 +358,10 @@ public sealed class AttendanceCorrectionNotificationTests
             Corrections.Setup(x => x.AddAsync(It.IsAny<AttendanceCorrection>(), It.IsAny<CancellationToken>()))
                 .Callback<AttendanceCorrection, CancellationToken>((correction, _) => AddedCorrection = correction)
                 .Returns(Task.CompletedTask);
-            Corrections.Setup(x => x.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
+            Corrections.Setup(x => x.SaveChangesAsync(It.IsAny<CancellationToken>())).Callback(() => Order.Add("save")).ReturnsAsync(1);
+            Inbox.Setup(x => x.EnqueueAsync(It.IsAny<Guid>(), It.IsAny<IEnumerable<Guid>>(), It.IsAny<ONEVO.Application.Features.Conversations.Contracts.ItemRef>(), It.IsAny<CancellationToken>()))
+                .Callback((Guid _, IEnumerable<Guid> ids, ONEVO.Application.Features.Conversations.Contracts.ItemRef item, CancellationToken _) => { Order.Add("inbox"); InboxRecipients.AddRange(ids); InboxItem = item; })
+                .Returns(Task.CompletedTask);
             Positions.Setup(x => x.GetByIdAsync(TenantId, PositionId, It.IsAny<CancellationToken>()))
                 .ReturnsAsync(new Position { Id = PositionId, TenantId = TenantId, LegalEntityId = LegalEntityId, Name = "HR Manager" });
             Authority.Setup(x => x.ResolveVisibilityAsync(
@@ -368,7 +388,7 @@ public sealed class AttendanceCorrectionNotificationTests
 
             Workflow = new AttendanceCorrectionWorkflow(CurrentUser.Object, Clock.Object, Employees.Object,
                 LegalEntities.Object, Policies.Object, Attendance.Object, Corrections.Object,
-                Authority.Object, Positions.Object, Dispatcher.Object, UnitOfWork);
+                Authority.Object, Positions.Object, Dispatcher.Object, UnitOfWork, inbox: Inbox.Object);
         }
 
         public ClockInPolicy Policy { get; }

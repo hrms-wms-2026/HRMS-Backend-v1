@@ -76,7 +76,11 @@ public sealed record InboxActionResult(IReadOnlyCollection<Guid> AffectedEmploye
 
 public sealed record InboxPage(IReadOnlyList<InboxItem> Items, int Total, int Page, int PageSize);
 
-public sealed record InboxCounts(int PendingReceived, int UnreadMessages, int OpenAlerts);
+/// <summary><see cref="PendingReceived"/> is the rail badge. <see cref="BySource"/>/<see cref="ByKind"/> ("source:kind") count
+/// what needs the caller: pending requests addressed to them plus open alerts - the tab badges.</summary>
+public sealed record InboxCounts(
+    int PendingReceived, int UnreadMessages, int OpenAlerts,
+    IReadOnlyDictionary<string, int>? BySource = null, IReadOnlyDictionary<string, int>? ByKind = null);
 
 /// <summary>One per module. The inbox router fans out to these; a new module (Leave, HR, …) plugs in by
 /// registering a provider, with no change to Inbox or Conversations code.</summary>

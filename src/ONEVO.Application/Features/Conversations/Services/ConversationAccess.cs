@@ -62,7 +62,12 @@ public sealed class ConversationAccess : IConversationAccess
         var subject = new ItemRef(conversation.SubjectSource, conversation.SubjectKind, conversation.SubjectId);
         var rows = await _conversations.ListParticipantsAsync(tenantId, conversation.Id, ct);
         var participantIds = Members(subjectInfo, rows);
-        if (!participantIds.Contains(caller))
+        // Base and active added members are trusted from the subject and their rows. A viewer row is only a read
+        // marker: a viewer gets in only while their own scope still lets them see the item (checked live, so a
+        // revoked HR permission or a moved reporting line ends access at once).
+        var trusted = subjectInfo.BaseParticipantEmployeeIds.Contains(caller)
+            || rows.Any(r => r.EmployeeId == caller && r.IsActive && r.JoinReason == ConversationJoinReasons.Added);
+        if (!trusted)
         {
             if (!await CanViewAsync(tenantId, subject, caller, ct))
                 return null;

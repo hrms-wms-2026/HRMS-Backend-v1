@@ -21,6 +21,7 @@ public sealed class ExceptionAlertRouterFactory : IExceptionAlertRouterFactory
     private readonly IPermissionRepository _permissions;
     private readonly INotificationDispatcher _notifications;
     private readonly ILoggerFactory? _loggerFactory;
+    private readonly ONEVO.Application.Features.Inbox.Services.IInboxChangeNotifier? _inbox;
 
     public ExceptionAlertRouterFactory(
         IDateTimeProvider clock,
@@ -31,7 +32,8 @@ public sealed class ExceptionAlertRouterFactory : IExceptionAlertRouterFactory
         IDepartmentRepository departments,
         IPermissionRepository permissions,
         INotificationDispatcher notifications,
-        ILoggerFactory? loggerFactory = null)
+        ILoggerFactory? loggerFactory = null,
+        ONEVO.Application.Features.Inbox.Services.IInboxChangeNotifier? inbox = null)
     {
         _clock = clock;
         _employees = employees;
@@ -42,6 +44,7 @@ public sealed class ExceptionAlertRouterFactory : IExceptionAlertRouterFactory
         _permissions = permissions;
         _notifications = notifications;
         _loggerFactory = loggerFactory;
+        _inbox = inbox;
     }
 
     public IExceptionAlertRouter CreateForTenant(Guid tenantId)
@@ -52,6 +55,6 @@ public sealed class ExceptionAlertRouterFactory : IExceptionAlertRouterFactory
 
         return new ExceptionAlertRouter(
             authority, _employees, _permissions, _notifications, _clock,
-            _loggerFactory?.CreateLogger<ExceptionAlertRouter>());
+            _loggerFactory?.CreateLogger<ExceptionAlertRouter>(), _inbox);
     }
 }

@@ -478,6 +478,7 @@ public static class DependencyInjection
         services.AddSingleton<ONEVO.Application.Features.Inbox.Contracts.IInboxKindRegistry, ONEVO.Application.Features.Inbox.Contracts.InboxKindRegistry>();
         services.AddScoped<ONEVO.Application.Features.Inbox.Contracts.IInboxDecisionJournal, ONEVO.Infrastructure.Persistence.Repositories.Inbox.EfInboxDecisionJournal>();
         services.AddScoped<ONEVO.Application.Features.Inbox.Services.IInboxStepsBuilder, ONEVO.Application.Features.Inbox.Services.InboxStepsBuilder>();
+        services.AddScoped<ONEVO.Application.Features.Inbox.Services.IInboxChangeNotifier, ONEVO.Application.Features.Inbox.Services.OutboxInboxChangeNotifier>();
         // Inbox escalation standard: one policy registry (first match wins), the shared escalation recorder, and the
         // hourly SLA sweep over every module's IInboxEscalationSweepSource.
         services.AddScoped<ONEVO.Application.Features.CoreHr.EmployeeAuthority.Services.IEmployeeAuthorityResolverFactory,

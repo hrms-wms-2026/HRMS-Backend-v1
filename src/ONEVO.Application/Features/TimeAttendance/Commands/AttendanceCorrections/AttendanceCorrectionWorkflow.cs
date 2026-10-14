@@ -6,6 +6,7 @@ using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.EmployeeAuthority.Models;
 using ONEVO.Application.Features.CoreHr.EmployeeAuthority.ServiceInterfaces;
+using ONEVO.Application.Features.Inbox.Services;
 using ONEVO.Application.Features.Leave.Request.RepositoryInterfaces;
 using MediatR;
 using CoreEmployeeRepository = ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces.IEmployeeRepository;
@@ -30,7 +31,8 @@ public sealed class AttendanceCorrectionWorkflow(
     IPositionRepository positions,
     INotificationDispatcher notifications,
     IUnitOfWork unitOfWork,
-    ILeaveRequestReadRepository? leaveRequests = null)
+    ILeaveRequestReadRepository? leaveRequests = null,
+    IInboxChangeNotifier? inbox = null)
 {
     private const string ApprovalPermission = "attendance:approve";
     private const string RelatedType = "attendance_correction";
@@ -85,6 +87,10 @@ public sealed class AttendanceCorrectionWorkflow(
                         RelatedType,
                         correction.Id,
                         transactionCt);
+                    // Approver and requester inboxes refresh after commit (outbox row in this transaction).
+                    if (inbox is not null)
+                        await inbox.EnqueueAsync(currentUser.TenantId, [value.Approver.EmployeeId, value.Employee.Id],
+                            InboxRefs.AttendanceCorrection(correction.Id), transactionCt);
                 }
                 else
                 {

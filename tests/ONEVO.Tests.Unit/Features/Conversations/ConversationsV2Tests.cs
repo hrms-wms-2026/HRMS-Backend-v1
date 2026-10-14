@@ -258,6 +258,19 @@ public class ConversationsV2Tests
         stranger.StatusCode.Should().Be(404);
     }
 
+    [Fact]
+    public async Task A_viewer_whose_scope_is_revoked_loses_access_even_though_their_viewer_row_remains()
+    {
+        (await OpenAs(Approver)).IsSuccess.Should().BeTrue();
+        (await OpenAs(Hr)).IsSuccess.Should().BeTrue();
+
+        _resolver.Viewers.Remove(Hr);
+
+        (await ListAs(Hr)).StatusCode.Should().Be(404);
+        (await PostAs(Hr)).StatusCode.Should().Be(404);
+        _repo.Participants.Should().ContainSingle(p => p.EmployeeId == Hr && p.JoinReason == ConversationJoinReasons.Viewer);
+    }
+
     // ---- edit / delete ----------------------------------------------------------------------
 
     [Fact]

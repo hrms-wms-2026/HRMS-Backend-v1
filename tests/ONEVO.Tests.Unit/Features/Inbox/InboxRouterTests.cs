@@ -159,7 +159,23 @@ public partial class InboxRouterTests
 
         var counts = await Router().GetCountsAsync(TenantId, Me, default);
 
-        counts.Should().Be(new InboxCounts(PendingReceived: 1, UnreadMessages: 2, OpenAlerts: 1));
+        (counts.PendingReceived, counts.UnreadMessages, counts.OpenAlerts).Should().Be((1, 2, 1));
+        // Tab badges: what needs the caller (received pending requests + open alerts), per source and per kind.
+        counts.BySource.Should().BeEquivalentTo(new Dictionary<string, int> { ["work"] = 2 });
+        counts.ByKind.Should().BeEquivalentTo(new Dictionary<string, int> { ["work:approval"] = 1, ["work:monitor_alert"] = 1 });
+    }
+
+    [Fact]
+    public async Task Count_maps_split_by_source_and_kind()
+    {
+        _work.Items.Add(Item("work", "w", 1, pending: true));
+        _leave.Items.AddRange([Item("leave", "l1", 2, pending: true), Item("leave", "l2", 3, pending: true),
+            Item("leave", "mine", 4, pending: true, direction: InboxDirections.Sent)]);
+
+        var counts = await Router().GetCountsAsync(TenantId, Me, default);
+
+        counts.BySource.Should().BeEquivalentTo(new Dictionary<string, int> { ["work"] = 1, ["leave"] = 2 });
+        counts.ByKind!["leave:approval"].Should().Be(2);
     }
 
     [Fact]
