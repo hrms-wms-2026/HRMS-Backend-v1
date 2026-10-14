@@ -48,7 +48,8 @@ public interface IExceptionRepository
     Task<int> CountDetectedInRangeAsync(
         Guid tenantId, Guid employeeId, DateTimeOffset fromUtc, DateTimeOffset toUtcExclusive, CancellationToken ct);
 
-    /// <summary>The cases <see cref="CountDetectedInRangeAsync"/> counts, newest first, at most <paramref name="take"/>.</summary>
+    /// <summary>The cases <see cref="CountDetectedInRangeAsync"/> counts (open or acknowledged, not resolved or escalated),
+    /// newest first, at most <paramref name="take"/>.</summary>
     Task<IReadOnlyList<MonitoringException>> ListDetectedInRangeAsync(
         Guid tenantId, Guid employeeId, DateTimeOffset fromUtc, DateTimeOffset toUtcExclusive, int take, CancellationToken ct);
 

@@ -6980,6 +6980,10 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasDefaultValue("{}")
                         .HasColumnName("metadata_json");
 
+                    b.Property<string>("Outcome")
+                        .HasColumnType("text")
+                        .HasColumnName("outcome");
+
                     b.Property<string>("ResolutionNote")
                         .HasMaxLength(1000)
                         .HasColumnType("character varying(1000)")

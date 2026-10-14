@@ -31,4 +31,17 @@ public class Exception : ITenantOwnedEntity
     public Guid? EscalatedById { get; set; }
     /// <summary>What the reviewer found, written when they resolve or escalate the case.</summary>
     public string? ResolutionNote { get; set; }
+    /// <summary>How a resolved case ended (<see cref="ExceptionOutcomes"/>): excused (it stops counting) or confirmed.</summary>
+    public string? Outcome { get; set; }
+}
+
+/// <summary>How a resolved exception case ended.</summary>
+public static class ExceptionOutcomes
+{
+    /// <summary>The employee's explanation was accepted.</summary>
+    public const string Excused = "excused";
+    /// <summary>The reviewer confirmed the problem.</summary>
+    public const string Confirmed = "confirmed";
+
+    public static bool IsValid(string? outcome) => outcome is Excused or Confirmed;
 }

@@ -71,6 +71,8 @@ public sealed class ExceptionDetectionJob : BackgroundService
         var tenantContext = scope.ServiceProvider.GetRequiredService<IWritableTenantContext>();
         var clock = scope.ServiceProvider.GetRequiredService<IDateTimeProvider>();
         var alertRouters = scope.ServiceProvider.GetRequiredService<IExceptionAlertRouterFactory>();
+        // Optional so hosts and tests without the monitoring check-in services still run detection (inbox plan D-b).
+        var cameraSkipped = scope.ServiceProvider.GetService<CameraVerificationSkippedDetector>();
 
         // exceptions and activity_daily_summary are under FORCE row-level security. A
         // background scope defaults to system mode, which the tenant_isolation policy
@@ -169,6 +171,10 @@ public sealed class ExceptionDetectionJob : BackgroundService
                     });
                 }
             }
+
+            if (cameraSkipped is not null)
+                created.AddRange(await cameraSkipped.DetectAsync(
+                    tenantId, tenantGroup.Select(k => k.EmployeeId).Distinct().ToList(), targetDate, now, ct));
 
             // Cases and their in-app alerts go into the same SaveChanges, per tenant, while that
             // tenant's context is still active on the connection.

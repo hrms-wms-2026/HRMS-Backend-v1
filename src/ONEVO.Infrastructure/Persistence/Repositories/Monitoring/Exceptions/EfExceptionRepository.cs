@@ -60,12 +60,14 @@ public class EfExceptionRepository : IExceptionRepository
         Guid tenantId, Guid employeeId, DateTimeOffset fromUtc, DateTimeOffset toUtcExclusive, CancellationToken ct) =>
         _db.Exceptions.AsNoTracking().CountAsync(
             e => e.TenantId == tenantId && e.EmployeeId == employeeId
+                 && (e.Status == ExceptionStatus.Open || e.Status == ExceptionStatus.Acknowledged)
                  && e.DetectedAt >= fromUtc && e.DetectedAt < toUtcExclusive, ct);
 
     public async Task<IReadOnlyList<MonitoringException>> ListDetectedInRangeAsync(
         Guid tenantId, Guid employeeId, DateTimeOffset fromUtc, DateTimeOffset toUtcExclusive, int take, CancellationToken ct) =>
         await _db.Exceptions.AsNoTracking()
             .Where(e => e.TenantId == tenantId && e.EmployeeId == employeeId
+                        && (e.Status == ExceptionStatus.Open || e.Status == ExceptionStatus.Acknowledged)
                         && e.DetectedAt >= fromUtc && e.DetectedAt < toUtcExclusive)
             .OrderByDescending(e => e.DetectedAt)
             .Take(take)
