@@ -3,6 +3,7 @@ using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Calendar.RepositoryInterfaces;
+using ONEVO.Application.Features.Calendar.Services;
 
 namespace ONEVO.Application.Features.Calendar.Commands.RemoveCalendarEventParticipant;
 
@@ -14,6 +15,8 @@ public sealed record RemoveCalendarEventParticipantCommand(Guid EventId, Guid Em
 public sealed class RemoveCalendarEventParticipantCommandHandler(
     ICurrentUser currentUser,
     ICalendarEventRepository events,
+    ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces.IEmployeeRepository employees,
+    ICalendarNotificationSender notifications,
     IUnitOfWork unitOfWork)
     : IRequestHandler<RemoveCalendarEventParticipantCommand, Result>
 {
@@ -33,6 +36,12 @@ public sealed class RemoveCalendarEventParticipantCommandHandler(
         var participant = await events.GetTrackedParticipantAsync(tenantId, request.EventId, request.EmployeeId, ct);
         if (participant is null)
             return Result.NotFound("This employee is not a participant on this event.");
+
+        var callerEmployee = await employees.GetDefaultForUserAsync(tenantId, currentUser.UserId, ct);
+        var organizerName = callerEmployee is null ? "Someone" : $"{callerEmployee.FirstName} {callerEmployee.LastName}";
+        // Staged before the save so it commits with the removal.
+        await notifications.NotifyParticipantRemovedAsync(
+            tenantId, existing.Title, existing.StartDate, existing.Location, participant.EmployeeId, organizerName, ct);
 
         events.RemoveParticipant(participant);
         await unitOfWork.SaveChangesAsync(ct);

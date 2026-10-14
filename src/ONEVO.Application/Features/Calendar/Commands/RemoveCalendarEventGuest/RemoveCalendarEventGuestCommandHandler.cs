@@ -4,6 +4,7 @@ using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Calendar.Helpers;
 using ONEVO.Application.Features.Calendar.RepositoryInterfaces;
+using ONEVO.Application.Features.Calendar.Services;
 
 namespace ONEVO.Application.Features.Calendar.Commands.RemoveCalendarEventGuest;
 
@@ -14,6 +15,8 @@ public sealed record RemoveCalendarEventGuestCommand(Guid EventId, string Email)
 public sealed class RemoveCalendarEventGuestCommandHandler(
     ICurrentUser currentUser,
     ICalendarEventRepository events,
+    ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces.IEmployeeRepository employees,
+    ICalendarNotificationSender notifications,
     IUnitOfWork unitOfWork)
     : IRequestHandler<RemoveCalendarEventGuestCommand, Result>
 {
@@ -36,6 +39,12 @@ public sealed class RemoveCalendarEventGuestCommandHandler(
         var guest = await events.GetTrackedGuestAsync(tenantId, request.EventId, email, ct);
         if (guest is null)
             return Result.NotFound("This guest is not invited to this event.");
+
+        var callerEmployee = await employees.GetDefaultForUserAsync(tenantId, currentUser.UserId, ct);
+        var organizerName = callerEmployee is null ? "Someone" : $"{callerEmployee.FirstName} {callerEmployee.LastName}";
+        // Staged before the save so it commits with the removal.
+        await notifications.NotifyGuestRemovedAsync(
+            tenantId, existing.Title, existing.StartDate, existing.Location, guest.Email, organizerName, ct);
 
         events.RemoveGuest(guest);
         await unitOfWork.SaveChangesAsync(ct);
