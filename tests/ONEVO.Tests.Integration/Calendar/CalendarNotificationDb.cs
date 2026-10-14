@@ -50,6 +50,7 @@ public sealed class CalendarNotificationDb
         Task IZoomMeetingClient.CancelMeetingAsync(string a, string id, CancellationToken ct) => throw new InvalidOperationException("not used");
         Task<IReadOnlyList<ZoomAttendanceRecordDto>> IZoomMeetingClient.GetAttendanceAsync(string a, string id, CancellationToken ct) => throw new InvalidOperationException("not used");
         Task<string?> ICalendarConnectionTokenProvider.GetFreshAccessTokenAsync(ExternalCalendarConnection c, string p, CancellationToken ct) => throw new InvalidOperationException("not used");
+        Task<string?> ICalendarConnectionTokenProvider.ForceRefreshAccessTokenAsync(ExternalCalendarConnection c, string p, CancellationToken ct) => throw new InvalidOperationException("not used");
     }
 
     public static readonly AesEncryptionService Encryption = new(

@@ -23,6 +23,14 @@ public sealed class CalendarConnectionTokenProvider(
         if (!needsRefresh && connection.AccessTokenEncrypted is not null)
             return encryption.DecryptBytes(connection.AccessTokenEncrypted);
 
+        return await RefreshAsync(connection, oauthProvider, ct);
+    }
+
+    public Task<string?> ForceRefreshAccessTokenAsync(ExternalCalendarConnection connection, string oauthProvider, CancellationToken ct)
+        => RefreshAsync(connection, oauthProvider, ct);
+
+    private async Task<string?> RefreshAsync(ExternalCalendarConnection connection, string oauthProvider, CancellationToken ct)
+    {
         try
         {
             var app = await appResolver.GetActiveAppForProviderAsync(oauthProvider, ct);
