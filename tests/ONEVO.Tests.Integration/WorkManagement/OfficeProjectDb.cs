@@ -117,6 +117,7 @@ public sealed class OfficeProjectDb : IAsyncDisposable
         services.AddScoped<ITenantRepository, EfTenantRepository>();
         services.AddScoped<ITenantContextSwitcher, TenantContextSwitcher>();
         services.AddScoped<IOfficeProjectProvisioner, OfficeProjectProvisioner>();
+        services.AddScoped<IOfficeProjectReconciler, OfficeProjectReconciler>();
         return services.BuildServiceProvider().GetRequiredService<IServiceScopeFactory>();
     }
 

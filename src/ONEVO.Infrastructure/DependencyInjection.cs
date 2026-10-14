@@ -318,6 +318,7 @@ public static class DependencyInjection
         services.AddScoped<IChecklistTemplateRepository, EfChecklistTemplateRepository>();
         services.AddScoped<IEmployeeChecklistTaskRepository, EfEmployeeChecklistTaskRepository>();
         services.AddScoped<IOfficeProjectProvisioner, ONEVO.Infrastructure.Services.CoreHr.OfficeProjectProvisioner>();
+        services.AddScoped<IOfficeProjectReconciler, ONEVO.Infrastructure.Services.CoreHr.OfficeProjectReconciler>();
         services.AddScoped<IEmployeeChecklistWorkTaskProvisioner, EmployeeChecklistWorkTaskProvisioner>();
         services.AddScoped<IOffboardingRecordRepository, EfOffboardingRecordRepository>();
         services.AddScoped<IOffboardingTaskBypassRequestRepository, EfOffboardingTaskBypassRequestRepository>();
