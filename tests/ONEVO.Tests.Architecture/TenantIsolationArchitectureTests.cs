@@ -407,6 +407,11 @@ public class TenantIsolationArchitectureTests
             // re-insert would hit pk_tasks. The bypass retains an explicit
             // TenantId == DapiTenantId predicate in DapiDueTodayTaskSeeder.
             "DapiDueTodayTaskSeeder.cs",
+            // Office project owner-membership restore: EnsureOwnerMembershipAsync must see a
+            // soft-deleted project_members row (the unique tenant/project/objective/employee index
+            // has no is_deleted filter, so it is restored rather than re-added), while preserving
+            // tenant scoping with an explicit TenantId predicate in OfficeProjectReconciler.
+            "OfficeProjectReconciler.cs",
         };
 
         var srcDirectory = FindSrcDirectory();
