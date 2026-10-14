@@ -408,4 +408,53 @@ public sealed class EmailTemplateRendererTests
         rendered.HtmlBody.Should().NotContain("Join meeting");
         rendered.TextBody.Should().NotContain("Join:");
     }
+
+    [Theory]
+    [InlineData("updated", "Updated: Deployment Meeting", "Event updated")]
+    [InlineData("cancelled", "Cancelled: Deployment Meeting", "Event cancelled")]
+    [InlineData("removed", "Removed from: Deployment Meeting", "removed from an event")]
+    public void RenderCalendarEventInvite_Kind_ChangesSubjectAndHeading(string kind, string subject, string heading)
+    {
+        var renderer = new EmailTemplateRenderer(Options.Create(new EmailOptions()));
+
+        var rendered = renderer.Render("calendar_event_invite", new
+        {
+            recipientName = "Ada Lovelace", eventTitle = "Deployment Meeting", startDateUtc = "2026-09-29T14:45:00Z",
+            location = (string?)null, organizerName = "Dapi Owner", meetingLink = "https://us05web.zoom.us/j/1", kind
+        });
+
+        rendered.Subject.Should().Be(subject);
+        rendered.HtmlBody.Should().Contain(heading);
+    }
+
+    [Theory]
+    [InlineData("cancelled")]
+    [InlineData("removed")]
+    public void RenderCalendarEventInvite_CancelledOrRemoved_NeverShowsTheJoinLink(string kind)
+    {
+        var renderer = new EmailTemplateRenderer(Options.Create(new EmailOptions()));
+
+        var rendered = renderer.Render("calendar_event_invite", new
+        {
+            recipientName = "Ada Lovelace", eventTitle = "Deployment Meeting", startDateUtc = "2026-09-29T14:45:00Z",
+            location = (string?)null, organizerName = "Dapi Owner", meetingLink = "https://us05web.zoom.us/j/1", kind
+        });
+
+        rendered.HtmlBody.Should().NotContain("https://us05web.zoom.us/j/1");
+        rendered.TextBody.Should().NotContain("https://us05web.zoom.us/j/1");
+    }
+
+    [Fact]
+    public void RenderCalendarEventInvite_NoKind_IsTheInvite()
+    {
+        var renderer = new EmailTemplateRenderer(Options.Create(new EmailOptions()));
+
+        var rendered = renderer.Render("calendar_event_invite", new
+        {
+            recipientName = "Ada Lovelace", eventTitle = "Deployment Meeting", startDateUtc = "2026-09-29T14:45:00Z",
+            location = (string?)null, organizerName = "Dapi Owner"
+        });
+
+        rendered.Subject.Should().Be("You're invited: Deployment Meeting");
+    }
 }

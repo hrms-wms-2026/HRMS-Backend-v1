@@ -331,21 +331,37 @@ public class EmailTemplateRenderer : IEmailTemplateRenderer
         var organizerName = Get(f, "organizerName");
         var meetingLink = Get(f, "meetingLink");
 
-        var subject = $"You're invited: {eventTitle}";
+        var kind = Get(f, "kind", fallback: "invite");
+        var (subject, heading, introHtml, introText, showJoinLink) = kind switch
+        {
+            "updated" => ($"Updated: {eventTitle}", "Event updated",
+                $"{Escape(organizerName)} updated this event. Here are the current details:",
+                $"{organizerName} updated \"{eventTitle}\". Here are the current details:", true),
+            "cancelled" => ($"Cancelled: {eventTitle}", "Event cancelled",
+                $"{Escape(organizerName)} cancelled this event:",
+                $"{organizerName} cancelled \"{eventTitle}\".", false),
+            "removed" => ($"Removed from: {eventTitle}", "You've been removed from an event",
+                $"{Escape(organizerName)} removed you from this event:",
+                $"{organizerName} removed you from \"{eventTitle}\".", false),
+            _ => ($"You're invited: {eventTitle}", "Meeting invitation",
+                $"{Escape(organizerName)} has invited you to the following event:",
+                $"{organizerName} has invited you to \"{eventTitle}\".", true)
+        };
         var whenRow = $"""<tr><td style="padding:4px 8px 4px 0; color:#64748b;">When</td><td style="padding:4px 0;">{Escape(startDateUtc)}</td></tr>""";
         var whereRow = string.IsNullOrWhiteSpace(location)
             ? ""
             : $"""<tr><td style="padding:4px 8px 4px 0; color:#64748b;">Where</td><td style="padding:4px 0;">{Escape(location)}</td></tr>""";
-        var meetingLinkLine = string.IsNullOrWhiteSpace(meetingLink)
+        var joinUrl = showJoinLink && !string.IsNullOrWhiteSpace(meetingLink) ? meetingLink : null;
+        var meetingLinkLine = joinUrl is null
             ? ""
-            : $"""<p><a href="{Escape(meetingLink)}" style="display:inline-block; padding:10px 16px; background:#0f172a; color:#fff; text-decoration:none; border-radius:6px;">Join meeting</a></p>""";
+            : $"""<p><a href="{Escape(joinUrl)}" style="display:inline-block; padding:10px 16px; background:#0f172a; color:#fff; text-decoration:none; border-radius:6px;">Join meeting</a></p>""";
         var html = $"""
             <!doctype html>
             <html>
               <body style="font-family: -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; line-height:1.5; color:#0f172a;">
-                <h2 style="margin:0 0 12px;">Meeting invitation</h2>
+                <h2 style="margin:0 0 12px;">{heading}</h2>
                 <p>Hi {Escape(recipientName)},</p>
-                <p>{Escape(organizerName)} has invited you to the following event:</p>
+                <p>{introHtml}</p>
                 <p style="font-size:16px; font-weight:600; margin:16px 0 8px;">{Escape(eventTitle)}</p>
                 <table style="border-collapse:collapse; margin:0 0 16px;">
                   {whenRow}
@@ -360,10 +376,10 @@ public class EmailTemplateRenderer : IEmailTemplateRenderer
         var text = $"""
             Hi {recipientName},
 
-            {organizerName} has invited you to "{eventTitle}".
+            {introText}
 
             When: {startDateUtc}
-            {(string.IsNullOrWhiteSpace(location) ? "" : $"Where: {location}\n")}{(string.IsNullOrWhiteSpace(meetingLink) ? "" : $"Join: {meetingLink}\n")}
+            {(string.IsNullOrWhiteSpace(location) ? "" : $"Where: {location}\n")}{(joinUrl is null ? "" : $"Join: {joinUrl}\n")}
             If you weren't expecting this invitation, you can disregard this email.
             """;
         return new RenderedEmail(subject, html, text);
