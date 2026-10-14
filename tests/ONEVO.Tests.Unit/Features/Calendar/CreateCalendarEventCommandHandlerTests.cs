@@ -76,7 +76,7 @@ public sealed class CreateCalendarEventCommandHandlerTests
             It.IsAny<CancellationToken>()), Times.Once);
         _notifications.Verify(x => x.NotifyParticipantsAddedAsync(
             TenantId, "Sprint Planning", Start, "Room 4",
-            It.Is<IReadOnlyList<Guid>>(ids => ids.Count == 1 && ids[0] == participantId),
+            It.Is<IReadOnlyList<CalendarParticipantRecipient>>(r => r.Count == 1 && r[0].EmployeeId == participantId),
             "Ada Owner", It.IsAny<CancellationToken>()), Times.Once);
     }
 
@@ -98,7 +98,7 @@ public sealed class CreateCalendarEventCommandHandlerTests
             It.IsAny<CancellationToken>()), Times.Once);
         _notifications.Verify(x => x.NotifyParticipantsAddedAsync(
             TenantId, "Sprint Planning", Start, "Room 4",
-            It.Is<IReadOnlyList<Guid>>(ids => ids.Count == 1 && ids[0] == participantId),
+            It.Is<IReadOnlyList<CalendarParticipantRecipient>>(r => r.Count == 1 && r[0].EmployeeId == participantId),
             "Ada Owner", It.IsAny<CancellationToken>(), null, false), Times.Once);
     }
 
@@ -117,7 +117,7 @@ public sealed class CreateCalendarEventCommandHandlerTests
         _events.Verify(x => x.AddGuestsAsync(It.IsAny<IReadOnlyList<CalendarEventGuest>>(), It.IsAny<CancellationToken>()), Times.Once);
         _notifications.Verify(x => x.NotifyGuestsAsync(
             It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<DateTimeOffset>(), It.IsAny<string?>(),
-            It.IsAny<IReadOnlyList<string>>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
+            It.IsAny<IReadOnlyList<CalendarGuestRecipient>>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -134,7 +134,7 @@ public sealed class CreateCalendarEventCommandHandlerTests
 
         _notifications.Verify(x => x.NotifyParticipantsAddedAsync(
             TenantId, "Sprint Planning", Start, "Room 4",
-            It.Is<IReadOnlyList<Guid>>(ids => ids.Count == 1 && ids[0] == participantId),
+            It.Is<IReadOnlyList<CalendarParticipantRecipient>>(r => r.Count == 1 && r[0].EmployeeId == participantId),
             "Ada Owner", It.IsAny<CancellationToken>(), null, true), Times.Once);
     }
 
@@ -155,7 +155,7 @@ public sealed class CreateCalendarEventCommandHandlerTests
             It.IsAny<CancellationToken>()), Times.Once);
         _notifications.Verify(x => x.NotifyGuestsAsync(
             TenantId, "Vendor sync", Start, "Room 4",
-            It.Is<IReadOnlyList<string>>(e => e.SequenceEqual(new[] { "vendor@example.com", "pm@example.com" })),
+            It.Is<IReadOnlyList<CalendarGuestRecipient>>(g => g.Select(x => x.Email).SequenceEqual(new[] { "vendor@example.com", "pm@example.com" })),
             "Ada Owner", "https://us05web.zoom.us/j/1", It.IsAny<CancellationToken>()), Times.Once);
     }
 
@@ -202,7 +202,7 @@ public sealed class CreateCalendarEventCommandHandlerTests
 
         _notifications.Verify(x => x.NotifyGuestsAsync(
             It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<DateTimeOffset>(), It.IsAny<string?>(),
-            It.IsAny<IReadOnlyList<string>>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
+            It.IsAny<IReadOnlyList<CalendarGuestRecipient>>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -217,7 +217,7 @@ public sealed class CreateCalendarEventCommandHandlerTests
         Assert.True(result.IsSuccess);
         _notifications.Verify(x => x.NotifyParticipantsAddedAsync(
             It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<DateTimeOffset>(), It.IsAny<string?>(),
-            It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+            It.IsAny<IReadOnlyList<CalendarParticipantRecipient>>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]

@@ -91,7 +91,7 @@ public sealed class AddCalendarEventParticipantsCommandHandlerTests
             It.IsAny<CancellationToken>()), Times.Once);
         _notifications.Verify(n => n.NotifyParticipantsAddedAsync(
             TenantId, evt.Title, evt.StartDate, evt.Location,
-            It.Is<IReadOnlyList<Guid>>(ids => ids.Single() == NewEmployeeId),
+            It.Is<IReadOnlyList<CalendarParticipantRecipient>>(r => r.Single().EmployeeId == NewEmployeeId),
             "Ada Owner", It.IsAny<CancellationToken>(), evt.MeetingLink), Times.Once);
     }
 
@@ -125,7 +125,7 @@ public sealed class AddCalendarEventParticipantsCommandHandlerTests
         _events.Verify(e => e.AddParticipantsAsync(It.IsAny<IReadOnlyList<CalendarEventParticipant>>(), It.IsAny<CancellationToken>()), Times.Never);
         _notifications.Verify(n => n.NotifyParticipantsAddedAsync(
             TenantId, evt.Title, evt.StartDate, evt.Location,
-            It.Is<IReadOnlyList<Guid>>(ids => ids.Single() == NewEmployeeId),
+            It.Is<IReadOnlyList<CalendarParticipantRecipient>>(r => r.Single().EmployeeId == NewEmployeeId),
             "Ada Owner", It.IsAny<CancellationToken>(), evt.MeetingLink), Times.Once);
     }
 
@@ -158,7 +158,7 @@ public sealed class AddCalendarEventParticipantsCommandHandlerTests
             It.IsAny<CancellationToken>()), Times.Once);
         _notifications.Verify(n => n.NotifyParticipantsAddedAsync(
             TenantId, evt.Title, evt.StartDate, evt.Location,
-            It.Is<IReadOnlyList<Guid>>(ids => ids.Count == 2 && ids.Contains(NewEmployeeId) && ids.Contains(brandNewEmployeeId)),
+            It.Is<IReadOnlyList<CalendarParticipantRecipient>>(r => r.Count == 2 && r.Any(x => x.EmployeeId == NewEmployeeId) && r.Any(x => x.EmployeeId == brandNewEmployeeId)),
             "Ada Owner", It.IsAny<CancellationToken>(), evt.MeetingLink), Times.Once);
     }
 
@@ -182,6 +182,51 @@ public sealed class AddCalendarEventParticipantsCommandHandlerTests
         _events.Verify(e => e.AddParticipantsAsync(It.IsAny<IReadOnlyList<CalendarEventParticipant>>(), It.IsAny<CancellationToken>()), Times.Never);
         _notifications.Verify(n => n.NotifyParticipantsAddedAsync(
             It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<DateTimeOffset>(), It.IsAny<string?>(),
-            It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<string>(), It.IsAny<CancellationToken>(), It.IsAny<string?>()), Times.Never);
+            It.IsAny<IReadOnlyList<CalendarParticipantRecipient>>(), It.IsAny<string>(), It.IsAny<CancellationToken>(), It.IsAny<string?>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Handle_NewParticipant_GetsAnInviteKeyedOnItsNewRow()
+    {
+        var evt = MakeEvent();
+        _events.Setup(e => e.GetTrackedByIdForTenantAsync(TenantId, EventId, It.IsAny<CancellationToken>())).ReturnsAsync(evt);
+        _events.Setup(e => e.GetParticipantsForEventsAsync(TenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, IReadOnlyList<CalendarEventParticipant>> { [EventId] = [] });
+        CalendarEventParticipant? added = null;
+        _events.Setup(e => e.AddParticipantsAsync(It.IsAny<IReadOnlyList<CalendarEventParticipant>>(), It.IsAny<CancellationToken>()))
+            .Callback<IReadOnlyList<CalendarEventParticipant>, CancellationToken>((rows, _) => added = rows.Single())
+            .Returns(Task.CompletedTask);
+
+        await BuildSut().Handle(new AddCalendarEventParticipantsCommand(EventId, [NewEmployeeId]), CancellationToken.None);
+
+        _notifications.Verify(n => n.NotifyParticipantsAddedAsync(
+            TenantId, evt.Title, evt.StartDate, evt.Location,
+            It.Is<IReadOnlyList<CalendarParticipantRecipient>>(r => r.Single().EmailKey == $"invite:{added!.Id}"),
+            "Ada Owner", It.IsAny<CancellationToken>(), evt.MeetingLink), Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_PreviouslyRemovedEmployee_GetsAReInviteKeyedOnTheRemoval()
+    {
+        var sut = BuildSut();
+        var evt = MakeEvent();
+        var deletedAt = new DateTimeOffset(2026, 10, 1, 8, 0, 0, TimeSpan.Zero);
+        var removedRow = new CalendarEventParticipant
+        {
+            Id = Guid.NewGuid(), TenantId = TenantId, EventId = EventId, EmployeeId = NewEmployeeId,
+            ResponseStatus = CalendarEventParticipantStatuses.Rejected, IsDeleted = true, DeletedAt = deletedAt
+        };
+        _events.Setup(e => e.GetTrackedByIdForTenantAsync(TenantId, EventId, It.IsAny<CancellationToken>())).ReturnsAsync(evt);
+        _events.Setup(e => e.GetParticipantsForEventsAsync(TenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, IReadOnlyList<CalendarEventParticipant>> { [EventId] = [] });
+        _events.Setup(e => e.GetRemovedParticipantsAsync(TenantId, EventId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([removedRow]);
+
+        await sut.Handle(new AddCalendarEventParticipantsCommand(EventId, [NewEmployeeId]), CancellationToken.None);
+
+        _notifications.Verify(n => n.NotifyParticipantsAddedAsync(
+            TenantId, evt.Title, evt.StartDate, evt.Location,
+            It.Is<IReadOnlyList<CalendarParticipantRecipient>>(r => r.Single().EmailKey == $"invite:{removedRow.Id}:{deletedAt.UtcTicks}"),
+            "Ada Owner", It.IsAny<CancellationToken>(), evt.MeetingLink), Times.Once);
     }
 }

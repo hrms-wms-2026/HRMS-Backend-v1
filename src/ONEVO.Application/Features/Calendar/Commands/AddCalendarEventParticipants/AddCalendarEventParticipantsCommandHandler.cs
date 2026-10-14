@@ -51,8 +51,12 @@ public sealed class AddCalendarEventParticipantsCommandHandler(
             if (newEmployeeIds.Count > 0)
             {
                 var removedRows = await events.GetRemovedParticipantsAsync(tenantId, existing.Id, newEmployeeIds, innerCt);
+                var recipients = new List<CalendarParticipantRecipient>();
                 foreach (var row in removedRows)
                 {
+                    // Reviving reuses the row, so key the re-invite on the removal it undoes.
+                    recipients.Add(new CalendarParticipantRecipient(
+                        row.EmployeeId, CalendarEmailKeys.ReInvite(row.Id, row.DeletedAt ?? row.CreatedAt)));
                     row.IsDeleted = false;
                     row.DeletedAt = null;
                     row.ResponseStatus = CalendarEventParticipantStatuses.Pending;
@@ -69,12 +73,13 @@ public sealed class AddCalendarEventParticipantsCommandHandler(
                 if (newParticipants.Count > 0)
                     await events.AddParticipantsAsync(newParticipants, innerCt);
                 currentParticipants.AddRange(newParticipants);
+                recipients.AddRange(newParticipants.Select(p => new CalendarParticipantRecipient(p.EmployeeId, CalendarEmailKeys.Invite(p.Id))));
 
                 var callerEmployee = await employees.GetDefaultForUserAsync(tenantId, currentUser.UserId, innerCt);
                 var organizerName = callerEmployee is null ? "Someone" : $"{callerEmployee.FirstName} {callerEmployee.LastName}";
                 await notifications.NotifyParticipantsAddedAsync(
                     tenantId, existing.Title, existing.StartDate, existing.Location,
-                    newEmployeeIds, organizerName, innerCt, existing.MeetingLink);
+                    recipients, organizerName, innerCt, existing.MeetingLink);
 
                 await unitOfWork.SaveChangesAsync(innerCt);
             }

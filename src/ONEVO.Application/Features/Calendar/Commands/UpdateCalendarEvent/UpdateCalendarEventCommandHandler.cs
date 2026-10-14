@@ -57,7 +57,9 @@ public sealed class UpdateCalendarEventCommandHandler(
             {
                 var callerEmployee = await employees.GetDefaultForUserAsync(tenantId, currentUser.UserId, innerCt);
                 var organizerName = callerEmployee is null ? "Someone" : $"{callerEmployee.FirstName} {callerEmployee.LastName}";
-                await notifications.NotifyEventUpdatedAsync(tenantId, existing.Title, participantEmployeeIds, organizerName, innerCt);
+                await notifications.NotifyEventUpdatedAsync(
+                    tenantId, existing.Title, existing.StartDate, existing.Location, existing.MeetingLink,
+                    participantEmployeeIds.Select(id => new CalendarParticipantRecipient(id)).ToList(), [], organizerName, innerCt);
             }
 
             return Result<CalendarEventItem>.Success(new CalendarEventItem(

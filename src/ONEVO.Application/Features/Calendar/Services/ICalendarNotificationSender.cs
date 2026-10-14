@@ -1,41 +1,41 @@
 namespace ONEVO.Application.Features.Calendar.Services;
 
+/// <summary>Stages calendar notifications in the outbox. Unkeyed rows are only persisted by the
+/// caller's SaveChangesAsync, so call these BEFORE it (spec §3.1). Keyed emails (a recipient with an
+/// EmailKey) are inserted immediately and need the caller's open transaction.</summary>
 public interface ICalendarNotificationSender
 {
     /// <summary>In-app notification + invite email to each newly-added participant. Pass
-    /// <paramref name="meetingLink"/> when the event already has an auto-generated Teams/Zoom
-    /// join link at invite time so the email includes it. Pass <paramref name="sendInviteEmail"/>
-    /// = false when the caller knows a Teams/Zoom meeting is about to be attached in the same
-    /// one-click create flow (CreateCalendarEventCommand.PendingMeetingProvider) - the in-app
-    /// notification still fires immediately, but the email is deferred to
-    /// NotifyMeetingLinkAddedAsync so the recipient gets one invite (with the link) instead of two.</summary>
+    /// <paramref name="sendInviteEmail"/> = false when a Teams/Zoom meeting is about to be attached
+    /// in the same create flow; the in-app notification still fires.</summary>
     Task NotifyParticipantsAddedAsync(
         Guid tenantId, string eventTitle, DateTimeOffset startDate, string? location,
-        IReadOnlyList<Guid> employeeIds, string organizerName, CancellationToken ct = default,
+        IReadOnlyList<CalendarParticipantRecipient> participants, string organizerName, CancellationToken ct = default,
         string? meetingLink = null, bool sendInviteEmail = true);
 
-    /// <summary>Invite email (with the join link) to each existing participant, for when a
-    /// Teams/Zoom meeting is added to an event after participants were already invited -
-    /// the common case, since "Add Teams/Zoom meeting" is a separate action from inviting
-    /// people. No in-app notification, matching NotifyParticipantsAddedAsync's email-only
-    /// channel for this kind of update.</summary>
+    /// <summary>Invite email (with the join link) to each existing participant when a Teams/Zoom
+    /// meeting is added after they were invited. No in-app notification.</summary>
     Task NotifyMeetingLinkAddedAsync(
         Guid tenantId, string eventTitle, DateTimeOffset startDate, string? location,
         IReadOnlyList<Guid> employeeIds, string organizerName, string meetingLink, CancellationToken ct = default);
 
-    /// <summary>Invite email (with the join link when there is one) to external guests identified only
-    /// by email - covers both first invite and a meeting link added later.</summary>
+    /// <summary>Invite email to external guests (no account, so no in-app notification).</summary>
     Task NotifyGuestsAsync(
         Guid tenantId, string eventTitle, DateTimeOffset startDate, string? location,
-        IReadOnlyList<string> guestEmails, string organizerName, string? meetingLink, CancellationToken ct = default);
+        IReadOnlyList<CalendarGuestRecipient> guests, string organizerName, string? meetingLink, CancellationToken ct = default);
 
-    /// <summary>In-app notification only (no email) to each participant that an event changed.</summary>
+    /// <summary>In-app to participants + "updated" email to participants and guests.</summary>
     Task NotifyEventUpdatedAsync(
-        Guid tenantId, string eventTitle, IReadOnlyList<Guid> employeeIds, string organizerName, CancellationToken ct = default);
+        Guid tenantId, string eventTitle, DateTimeOffset startDate, string? location, string? meetingLink,
+        IReadOnlyList<CalendarParticipantRecipient> participants, IReadOnlyList<CalendarGuestRecipient> guests,
+        string organizerName, CancellationToken ct = default);
 
-    /// <summary>In-app notification only (no email) to each participant that an event was cancelled.</summary>
+    /// <summary>In-app to participants + "cancelled" email to participants and guests.
+    /// <paramref name="startDate"/> is the cancelled occurrence's start (or the event's).</summary>
     Task NotifyEventCancelledAsync(
-        Guid tenantId, string eventTitle, IReadOnlyList<Guid> employeeIds, string organizerName, CancellationToken ct = default);
+        Guid tenantId, string eventTitle, DateTimeOffset startDate, string? location,
+        IReadOnlyList<CalendarParticipantRecipient> participants, IReadOnlyList<CalendarGuestRecipient> guests,
+        string organizerName, CancellationToken ct = default);
 
     /// <summary>In-app notification only, to the event organizer, that a participant requested help resolving a conflict.</summary>
     Task NotifyResolutionRequestedAsync(
@@ -44,4 +44,22 @@ public interface ICalendarNotificationSender
     /// <summary>In-app notification only, to the event organizer, that a participant nominated a replacement.</summary>
     Task NotifyReplacementNominatedAsync(
         Guid tenantId, Guid organizerUserId, string eventTitle, string responderName, string nomineeName, CancellationToken ct = default);
+
+    /// <summary>In-app notification only, to the event organizer, that a participant accepted or declined.</summary>
+    Task NotifyRsvpAsync(
+        Guid tenantId, Guid organizerUserId, string eventTitle, string responderName, bool accepted, CancellationToken ct = default);
+
+    /// <summary>In-app notification only, to the nominated replacement.</summary>
+    Task NotifyNomineeAsync(
+        Guid tenantId, Guid nomineeEmployeeId, string eventTitle, string responderName, CancellationToken ct = default);
+
+    /// <summary>In-app + "removed" email to a participant the organizer removed.</summary>
+    Task NotifyParticipantRemovedAsync(
+        Guid tenantId, string eventTitle, DateTimeOffset startDate, string? location, Guid employeeId,
+        string organizerName, CancellationToken ct = default);
+
+    /// <summary>"Removed" email to a guest the organizer removed.</summary>
+    Task NotifyGuestRemovedAsync(
+        Guid tenantId, string eventTitle, DateTimeOffset startDate, string? location, string guestEmail,
+        string organizerName, CancellationToken ct = default);
 }

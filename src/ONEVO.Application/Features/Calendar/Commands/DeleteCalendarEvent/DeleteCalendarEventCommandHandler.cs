@@ -63,7 +63,9 @@ public sealed class DeleteCalendarEventCommandHandler(
         {
             var callerEmployee = await employees.GetDefaultForUserAsync(tenantId, currentUser.UserId, ct);
             var organizerName = callerEmployee is null ? "Someone" : $"{callerEmployee.FirstName} {callerEmployee.LastName}";
-            await notifications.NotifyEventCancelledAsync(tenantId, existing.Title, participantEmployeeIds, organizerName, ct);
+            await notifications.NotifyEventCancelledAsync(
+                tenantId, existing.Title, existing.StartDate, existing.Location,
+                participantEmployeeIds.Select(id => new CalendarParticipantRecipient(id)).ToList(), [], organizerName, ct);
         }
 
         events.Remove(existing);

@@ -59,7 +59,9 @@ public sealed class CancelRecurringOccurrenceCommandHandler(
         {
             var callerEmployee = await employees.GetDefaultForUserAsync(tenantId, currentUser.UserId, ct);
             var organizerName = callerEmployee is null ? "Someone" : $"{callerEmployee.FirstName} {callerEmployee.LastName}";
-            await notifications.NotifyEventCancelledAsync(tenantId, master.Title, participantEmployeeIds, organizerName, ct);
+            await notifications.NotifyEventCancelledAsync(
+                tenantId, master.Title, request.OriginalStart, master.Location,
+                participantEmployeeIds.Select(id => new CalendarParticipantRecipient(id)).ToList(), [], organizerName, ct);
         }
 
         return Result.Success();

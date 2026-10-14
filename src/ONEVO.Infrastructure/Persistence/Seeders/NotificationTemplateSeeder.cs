@@ -289,6 +289,31 @@ public class NotificationTemplateSeeder : IHostedService
                 InAppTitleTemplate = "Replacement nominated",
                 InAppBodyTemplate = "{{responderName}} nominated {{nomineeName}} as a replacement for \"{{eventTitle}}\"."
             }
+            ,
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "calendar_event_rsvp_accepted",
+                InAppTitleTemplate = "Invitation accepted",
+                InAppBodyTemplate = "{{responderName}} accepted \"{{eventTitle}}\"."
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "calendar_event_rsvp_rejected",
+                InAppTitleTemplate = "Invitation declined",
+                InAppBodyTemplate = "{{responderName}} declined \"{{eventTitle}}\"."
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "calendar_event_participant_removed",
+                InAppTitleTemplate = "Removed from an event",
+                InAppBodyTemplate = "{{organizerName}} removed you from \"{{eventTitle}}\"."
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "calendar_event_replacement_nominee",
+                InAppTitleTemplate = "You were nominated",
+                InAppBodyTemplate = "{{responderName}} nominated you to attend \"{{eventTitle}}\" in their place."
+            }
 
         };
 

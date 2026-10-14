@@ -119,7 +119,7 @@ public sealed class CreateEventMeetingCommandHandler(
             {
                 await notifications.NotifyGuestsAsync(
                     tenantId, existing.Title, existing.StartDate, existing.Location,
-                    guestEmails, organizerName, joinUrl, innerCt);
+                    guestEmails.Select(email => new CalendarGuestRecipient(email)).ToList(), organizerName, joinUrl, innerCt);
             }
 
             await unitOfWork.SaveChangesAsync(innerCt);

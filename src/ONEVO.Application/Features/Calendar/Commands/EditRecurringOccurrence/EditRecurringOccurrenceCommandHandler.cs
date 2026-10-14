@@ -62,7 +62,9 @@ public sealed class EditRecurringOccurrenceCommandHandler(
         {
             var callerEmployee = await employees.GetDefaultForUserAsync(master.TenantId, currentUser.UserId, ct);
             var organizerName = callerEmployee is null ? "Someone" : $"{callerEmployee.FirstName} {callerEmployee.LastName}";
-            await notifications.NotifyEventUpdatedAsync(master.TenantId, master.Title, participantEmployeeIds, organizerName, ct);
+            await notifications.NotifyEventUpdatedAsync(
+                master.TenantId, master.Title, master.StartDate, master.Location, master.MeetingLink,
+                participantEmployeeIds.Select(id => new CalendarParticipantRecipient(id)).ToList(), [], organizerName, ct);
         }
 
         return Result<CalendarEventItem>.Success(ToItem(master, isOccurrence: false, masterId: null, originalStart: null));

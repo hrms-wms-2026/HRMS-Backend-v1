@@ -72,15 +72,17 @@ public sealed class CreateCalendarEventCommandHandler(
                 var organizerName = callerEmployee is null ? "Someone" : $"{callerEmployee.FirstName} {callerEmployee.LastName}";
                 await notifications.NotifyParticipantsAddedAsync(
                     tenantId, calendarEvent.Title, calendarEvent.StartDate, calendarEvent.Location,
-                    request.ParticipantEmployeeIds, organizerName, innerCt, sendInviteEmail: !hasPendingMeeting);
+                    participants.Select(p => new CalendarParticipantRecipient(p.EmployeeId, CalendarEmailKeys.Invite(p.Id))).ToList(),
+                    organizerName, innerCt, sendInviteEmail: !hasPendingMeeting);
             }
 
             if (guestEmails.Count > 0)
             {
-                await events.AddGuestsAsync(guestEmails.Select(email => new CalendarEventGuest
+                var guestRows = guestEmails.Select(email => new CalendarEventGuest
                 {
                     Id = Guid.NewGuid(), TenantId = tenantId, EventId = calendarEvent.Id, Email = email
-                }).ToList(), innerCt);
+                }).ToList();
+                await events.AddGuestsAsync(guestRows, innerCt);
 
                 // Guests have no account, so there is no in-app fallback the way participants get one
                 // above - when a meeting is about to be attached, skip inviting them now entirely and
@@ -91,7 +93,8 @@ public sealed class CreateCalendarEventCommandHandler(
                     var guestOrganizerName = organizer is null ? "Someone" : $"{organizer.FirstName} {organizer.LastName}";
                     await notifications.NotifyGuestsAsync(
                         tenantId, calendarEvent.Title, calendarEvent.StartDate, calendarEvent.Location,
-                        guestEmails, guestOrganizerName, calendarEvent.MeetingLink, innerCt);
+                        guestRows.Select(g => new CalendarGuestRecipient(g.Email, CalendarEmailKeys.Invite(g.Id))).ToList(),
+                        guestOrganizerName, calendarEvent.MeetingLink, innerCt);
                 }
             }
 

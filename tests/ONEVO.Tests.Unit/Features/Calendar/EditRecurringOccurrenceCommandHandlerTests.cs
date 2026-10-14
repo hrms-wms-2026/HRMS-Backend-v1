@@ -142,7 +142,7 @@ public sealed class EditRecurringOccurrenceCommandHandlerTests
 
         Assert.True(result.IsSuccess);
         _notifications.Verify(x => x.NotifyEventUpdatedAsync(
-            TenantId, "New Title", It.Is<IReadOnlyList<Guid>>(ids => ids.Count == 1 && ids[0] == participantId),
+            TenantId, "New Title", It.IsAny<DateTimeOffset>(), It.IsAny<string?>(), It.IsAny<string?>(), It.Is<IReadOnlyList<CalendarParticipantRecipient>>(r => r.Count == 1 && r[0].EmployeeId == participantId), It.IsAny<IReadOnlyList<CalendarGuestRecipient>>(),
             "Ada Owner", It.IsAny<CancellationToken>()), Times.Once);
     }
 

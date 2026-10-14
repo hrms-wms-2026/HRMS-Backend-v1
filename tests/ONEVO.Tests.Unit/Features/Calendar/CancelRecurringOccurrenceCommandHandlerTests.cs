@@ -109,7 +109,7 @@ public sealed class CancelRecurringOccurrenceCommandHandlerTests
 
         Assert.True(result.IsSuccess);
         _notifications.Verify(x => x.NotifyEventCancelledAsync(
-            TenantId, "Standup", It.Is<IReadOnlyList<Guid>>(ids => ids.Count == 1 && ids[0] == participantId),
+            TenantId, "Standup", It.IsAny<DateTimeOffset>(), It.IsAny<string?>(), It.Is<IReadOnlyList<CalendarParticipantRecipient>>(r => r.Count == 1 && r[0].EmployeeId == participantId), It.IsAny<IReadOnlyList<CalendarGuestRecipient>>(),
             "Ada Owner", It.IsAny<CancellationToken>()), Times.Once);
     }
 }

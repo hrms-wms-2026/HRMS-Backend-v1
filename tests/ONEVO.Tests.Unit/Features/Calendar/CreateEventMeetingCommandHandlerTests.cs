@@ -215,7 +215,7 @@ public sealed class CreateEventMeetingCommandHandlerTests
         result.IsSuccess.Should().BeTrue();
         _notifications.Verify(n => n.NotifyGuestsAsync(
             TenantId, evt.Title, evt.StartDate, evt.Location,
-            It.Is<IReadOnlyList<string>>(emails => emails.Single() == "vendor@example.com"),
+            It.Is<IReadOnlyList<CalendarGuestRecipient>>(g => g.Single().Email == "vendor@example.com" && g.Single().EmailKey == null),
             "Ada Owner", "https://teams.microsoft.com/l/meetup-join/abc", It.IsAny<CancellationToken>()), Times.Once);
     }
 
