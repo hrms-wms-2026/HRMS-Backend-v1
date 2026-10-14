@@ -10562,6 +10562,18 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("boolean")
                         .HasColumnName("approval_required");
 
+                    b.Property<string>("ApprovedBreakJson")
+                        .HasColumnType("text")
+                        .HasColumnName("approved_break_json");
+
+                    b.Property<DateTimeOffset?>("ApprovedClockInAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("approved_clock_in_at");
+
+                    b.Property<DateTimeOffset?>("ApprovedClockOutAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("approved_clock_out_at");
+
                     b.Property<Guid?>("AttendanceRecordId")
                         .HasColumnType("uuid")
                         .HasColumnName("attendance_record_id");

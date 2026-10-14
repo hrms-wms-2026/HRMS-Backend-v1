@@ -35,7 +35,8 @@ public sealed class AttendanceCorrectionWorkflow(
     IInboxChangeNotifier? inbox = null)
 {
     private const string ApprovalPermission = "attendance:approve";
-    private const string RelatedType = "attendance_correction";
+    // The bell opens the Inbox item (inbox plan S4.2).
+    private static readonly string RelatedType = ONEVO.Application.Features.Inbox.Contracts.InboxNotificationNavigation.RelatedEntityType("attendance", "correction");
     private const string CreatedTemplate = "attendance_correction_request_created";
     private const string DecidedTemplate = "attendance_correction_request_decided";
     private const string CancelledTemplate = "attendance_correction_request_cancelled";
@@ -131,7 +132,7 @@ public sealed class AttendanceCorrectionWorkflow(
 
     public async Task<Result<AttendanceCorrectionResponse>> ApproveAsync(
         ApproveAttendanceCorrectionCommand request, CancellationToken ct)
-        => await DecideAsync(request.Id, AttendanceCorrection.StatusApproved, request.ReviewComment, ct);
+        => await DecideAsync(request.Id, AttendanceCorrection.StatusApproved, request.ReviewComment, ct, request.EditedValues);
 
     public async Task<Result<AttendanceCorrectionResponse>> RejectAsync(
         RejectAttendanceCorrectionCommand request, CancellationToken ct)
@@ -228,7 +229,7 @@ public sealed class AttendanceCorrectionWorkflow(
     }
 
     private async Task<Result<AttendanceCorrectionResponse>> DecideAsync(
-        Guid id, string decision, string? reviewComment, CancellationToken ct)
+        Guid id, string decision, string? reviewComment, CancellationToken ct, AttendanceCorrectionEditedValues? edited = null)
     {
         if (!currentUser.IsAuthenticated)
             return Result<AttendanceCorrectionResponse>.Forbidden("Authentication is required.");
@@ -267,6 +268,17 @@ public sealed class AttendanceCorrectionWorkflow(
                     ? await attendance.GetTrackedRecordAsync(currentUser.TenantId, correction.EmployeeId,
                         correction.WorkDate, transactionCt)
                     : null;
+                if (decision == AttendanceCorrection.StatusApproved && edited is not null)
+                {
+                    // Edit before approve: the approver's values must pass the same time rules as a new request.
+                    var invalid = ValidateRequestedTimes(correction.CorrectionType, correction.WorkDate, scheduleResolution.TimeZone,
+                        edited.ClockInAt, edited.ClockOutAt, edited.Breaks);
+                    if (invalid is not null)
+                        return Result<AttendanceCorrectionResponse>.UnprocessableEntity(invalid);
+                    correction.ApprovedClockInAt = edited.ClockInAt;
+                    correction.ApprovedClockOutAt = edited.ClockOutAt;
+                    correction.ApprovedBreakJson = edited.Breaks is null ? null : JsonSerializer.Serialize(edited.Breaks);
+                }
                 if (decision == AttendanceCorrection.StatusApproved)
                 {
                     if (record is null)
@@ -434,23 +446,23 @@ public sealed class AttendanceCorrectionWorkflow(
         string policyStatus, CancellationToken ct)
     {
         if (correction.CorrectionType == AttendanceCorrection.TypeClockIn
-            && correction.RequestedClockInAt is null)
+            && (correction.ApprovedClockInAt ?? correction.RequestedClockInAt) is null)
             throw new InvalidOperationException("Clock-in correction is missing its requested time.");
         if (correction.CorrectionType == AttendanceCorrection.TypeClockOut
             && record.ActualStart is null)
             throw new InvalidOperationException("A clock-out correction requires an existing clock-in.");
         if (correction.CorrectionType == AttendanceCorrection.TypeClockIn)
-            record.ActualStart = correction.RequestedClockInAt;
+            record.ActualStart = correction.ApprovedClockInAt ?? correction.RequestedClockInAt;
         if (correction.CorrectionType == AttendanceCorrection.TypeClockOut)
-            record.ActualEnd = correction.RequestedClockOutAt;
+            record.ActualEnd = correction.ApprovedClockOutAt ?? correction.RequestedClockOutAt;
         if (correction.CorrectionType == AttendanceCorrection.TypeFullDay)
         {
-            record.ActualStart = correction.RequestedClockInAt;
-            record.ActualEnd = correction.RequestedClockOutAt;
+            record.ActualStart = correction.ApprovedClockInAt ?? correction.RequestedClockInAt;
+            record.ActualEnd = correction.ApprovedClockOutAt ?? correction.RequestedClockOutAt;
         }
         if (correction.CorrectionType == AttendanceCorrection.TypeBreak)
         {
-            var requested = JsonSerializer.Deserialize<AttendanceCorrectionBreak[]>(correction.RequestedBreakJson ?? "[]") ?? [];
+            var requested = JsonSerializer.Deserialize<AttendanceCorrectionBreak[]>(correction.ApprovedBreakJson ?? correction.RequestedBreakJson ?? "[]") ?? [];
             var localDay = GetLocalDayWindow(record.Date, timeZone);
             var existing = await attendance.ListBreaksAsync(currentUser.TenantId, record.EmployeeId,
                 localDay.Start, localDay.End, ct);

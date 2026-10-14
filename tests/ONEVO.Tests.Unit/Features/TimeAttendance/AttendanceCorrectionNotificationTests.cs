@@ -37,7 +37,7 @@ public sealed class AttendanceCorrectionNotificationTests
         fixture.Notifications.Should().ContainSingle(x =>
             x.RecipientUserId == fixture.ApproverUserId
             && x.TemplateCode == "attendance_correction_request_created"
-            && x.RelatedEntityType == "attendance_correction"
+            && x.RelatedEntityType == "inbox:attendance:correction"
             && x.RelatedEntityId == result.Value.Id);
     }
 
@@ -147,6 +147,45 @@ public sealed class AttendanceCorrectionNotificationTests
             && x.TemplateCode == "attendance_correction_request_decided"
             && x.RelatedEntityId == pending.Id);
         fixture.UnitOfWork.TransactionCallCount.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Approve_WithEditedValues_AppliesTheApproverValuesAndKeepsWhatWasRequested()
+    {
+        var fixture = new Fixture(approvalRequired: true, actingAsApprover: true);
+        var pending = fixture.PendingCorrection();
+        fixture.Corrections.Setup(x => x.GetTrackedByIdAsync(fixture.TenantId, pending.Id, It.IsAny<CancellationToken>())).ReturnsAsync(pending);
+        fixture.Attendance.Setup(x => x.GetTrackedRecordAsync(fixture.TenantId, fixture.EmployeeId, fixture.WorkDate, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(fixture.Record);
+        var edited = new DateTimeOffset(2026, 8, 24, 9, 5, 0, TimeSpan.Zero);
+
+        var result = await fixture.Workflow.ApproveAsync(new ApproveAttendanceCorrectionCommand(pending.Id, null,
+            new AttendanceCorrectionEditedValues(edited, null, null)), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue(result.Error);
+        fixture.Record.ActualStart.Should().Be(edited);
+        pending.ApprovedClockInAt.Should().Be(edited);
+        pending.RequestedClockInAt.Should().Be(new DateTimeOffset(2026, 8, 24, 9, 15, 0, TimeSpan.Zero));
+    }
+
+    [Fact]
+    public async Task Approve_WithEditedValuesThatBreakTheRequestRules_Is422AndNothingIsApplied()
+    {
+        var fixture = new Fixture(approvalRequired: true, actingAsApprover: true);
+        var pending = fixture.PendingCorrection();
+        fixture.Corrections.Setup(x => x.GetTrackedByIdAsync(fixture.TenantId, pending.Id, It.IsAny<CancellationToken>())).ReturnsAsync(pending);
+        fixture.Attendance.Setup(x => x.GetTrackedRecordAsync(fixture.TenantId, fixture.EmployeeId, fixture.WorkDate, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(fixture.Record);
+        var originalStart = fixture.Record.ActualStart;
+
+        // A clock-in correction without a clock-in time fails the same rule a new request does.
+        var result = await fixture.Workflow.ApproveAsync(new ApproveAttendanceCorrectionCommand(pending.Id, null,
+            new AttendanceCorrectionEditedValues(null, null, null)), CancellationToken.None);
+
+        result.StatusCode.Should().Be(422);
+        pending.Status.Should().Be(AttendanceCorrection.StatusPending);
+        pending.ApprovedClockInAt.Should().BeNull();
+        fixture.Record.ActualStart.Should().Be(originalStart);
     }
 
     [Fact]

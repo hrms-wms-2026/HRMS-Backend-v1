@@ -282,6 +282,16 @@ public static class DependencyInjection
         services.AddScoped<ONEVO.Application.Features.Leave.Approval.Services.LeaveForwardTargetResolver>();
         services.AddScoped<ONEVO.Application.Features.Leave.Approval.Commands.LeaveApprovalDecisionService>();
         services.AddScoped<ONEVO.Application.Features.Leave.Approval.Services.LeaveRequestRangeEditor>();
+        // Attendance requests in the Inbox (plan A1).
+        foreach (var kind in ONEVO.Application.Features.TimeAttendance.Inbox.AttendanceInboxKinds.Descriptors)
+            services.AddInboxKind(kind);
+        services.AddScoped<ONEVO.Application.Features.TimeAttendance.Inbox.AttendanceInboxSourceProvider>();
+        services.AddScoped<ONEVO.Application.Features.Inbox.Contracts.IInboxSourceProvider>(sp => sp.GetRequiredService<ONEVO.Application.Features.TimeAttendance.Inbox.AttendanceInboxSourceProvider>());
+        services.AddScoped<ONEVO.Application.Features.Conversations.Contracts.IConversationSubjectResolver, ONEVO.Application.Features.TimeAttendance.Inbox.AttendanceConversationSubjectResolver>();
+        services.AddScoped<ONEVO.Application.Features.Inbox.Revert.IInboxDecisionReverter, ONEVO.Application.Features.TimeAttendance.Inbox.AttendanceCorrectionReverter>();
+        services.AddScoped<ONEVO.Application.Features.Inbox.Revert.IInboxDecisionReverter, ONEVO.Application.Features.TimeAttendance.Inbox.WorkModeChangeReverter>();
+        services.AddScoped<ONEVO.Application.Features.Inbox.Revert.IInboxDecisionReverter, ONEVO.Application.Features.TimeAttendance.Inbox.LocationChangeReverter>();
+        services.AddScoped<ONEVO.Application.Features.Inbox.Revert.IInboxDecisionReverter, ONEVO.Application.Features.TimeAttendance.Inbox.DeviceChangeReverter>();
         // Leave in the Inbox (plan L1).
         services.AddInboxKind(ONEVO.Application.Features.Leave.Inbox.LeaveInboxKinds.Descriptor);
         services.AddScoped<ONEVO.Application.Features.Inbox.Contracts.IInboxSourceProvider, ONEVO.Application.Features.Leave.Inbox.LeaveInboxSourceProvider>();

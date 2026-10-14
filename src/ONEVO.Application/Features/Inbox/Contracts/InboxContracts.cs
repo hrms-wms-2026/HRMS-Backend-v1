@@ -48,9 +48,11 @@ public static class InboxStepStates
 }
 
 /// <summary>One row of the change set. Kind ("text", "date", "hours", "employee", …) and Editable let the
-/// approver adjust the requested value before approving (WM "edit before approve").</summary>
+/// approver adjust the requested value before approving (WM "edit before approve"); Options lists the choices of a
+/// "select" row.</summary>
 public sealed record InboxChange(
-    string Field, string Label, string? Before, string? After, string Kind = "text", bool Editable = false, string? Applied = null);
+    string Field, string Label, string? Before, string? After, string Kind = "text", bool Editable = false, string? Applied = null,
+    IReadOnlyList<InboxFilterOption>? Options = null);
 
 /// <summary>Where "open" goes in the frontend: router commands plus optional query params.</summary>
 public sealed record InboxTarget(IReadOnlyList<string> Route, string Label, IReadOnlyDictionary<string, string>? QueryParams = null);

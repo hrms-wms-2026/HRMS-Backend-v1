@@ -1,0 +1,314 @@
+using System.Text.Json;
+using FluentAssertions;
+using MediatR;
+using Moq;
+using ONEVO.Application.Common.Models;
+using ONEVO.Application.Common.RepositoryInterfaces;
+using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.Conversations.Contracts;
+using ONEVO.Application.Features.Conversations.RepositoryInterfaces;
+using ONEVO.Application.Features.CoreHr.EmployeeAuthority.Models;
+using ONEVO.Application.Features.CoreHr.EmployeeAuthority.ServiceInterfaces;
+using ONEVO.Application.Features.Inbox.Contracts;
+using ONEVO.Application.Features.Monitoring.TrayActivation.RepositoryInterfaces;
+using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
+using ONEVO.Application.Features.TimeAttendance.Commands.AttendanceCorrections;
+using ONEVO.Application.Features.TimeAttendance.DTOs.Responses;
+using ONEVO.Application.Features.TimeAttendance.Inbox;
+using ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces;
+using ONEVO.Domain.Features.CoreHr.Entities;
+using ONEVO.Domain.Features.Inbox.Entities;
+using ONEVO.Domain.Features.Monitoring.TrayActivation.Entities;
+using ONEVO.Domain.Features.TimeAttendance.Entities;
+using ONEVO.Tests.Unit.Fakes;
+using ONEVO.Tests.Unit.Features.Inbox;
+using Xunit;
+
+namespace ONEVO.Tests.Unit.Features.TimeAttendance.Inbox;
+
+/// <summary>Attendance requests in the Inbox (plan A1): scope = act, D-c device scoping, journaled snapshots, revert.</summary>
+public class AttendanceInboxTests
+{
+    private static readonly DateTimeOffset Now = new(2026, 10, 14, 10, 0, 0, TimeSpan.Zero);
+
+    private sealed class Fixture
+    {
+        public Guid TenantId { get; } = Guid.NewGuid();
+        public Guid LegalEntityId { get; } = Guid.NewGuid();
+        public Guid ApproverUserId { get; } = Guid.NewGuid();
+        public Employee Approver { get; }
+        public Employee Worker { get; }
+        public Mock<ICurrentUser> CurrentUser { get; } = new();
+        public Mock<IEmployeeRepository> Employees { get; } = new();
+        public Mock<IEmployeeAuthorityResolver> Authority { get; } = new();
+        public Mock<IAttendanceCorrectionRepository> Corrections { get; } = new();
+        public Mock<IWorkAreaChangeRequestRepository> WorkAreas { get; } = new();
+        public Mock<ILocationChangeRequestRepository> Locations { get; } = new();
+        public Mock<IDeviceChangeRequestRepository> Devices { get; } = new();
+        public Mock<IAttendanceReadRepository> Attendance { get; } = new();
+        public Mock<IEmployeeWorkLocationRepository> WorkLocations { get; } = new();
+        public Mock<ITrayActivationRepository> Tray { get; } = new();
+        public Mock<ISender> Sender { get; } = new();
+        public InMemoryInboxDecisionJournal Journal { get; } = new();
+        public FakeDateTimeProvider Clock { get; } = new() { UtcNow = Now };
+        public HashSet<Guid> Scope { get; } = new();
+
+        public Fixture()
+        {
+            Approver = new Employee { Id = Guid.NewGuid(), TenantId = TenantId, UserId = ApproverUserId, FirstName = "Anu", LegalEntityId = LegalEntityId };
+            Worker = new Employee { Id = Guid.NewGuid(), TenantId = TenantId, UserId = Guid.NewGuid(), FirstName = "Bala", LegalEntityId = LegalEntityId };
+            CurrentUser.SetupGet(x => x.TenantId).Returns(TenantId);
+            CurrentUser.SetupGet(x => x.UserId).Returns(ApproverUserId);
+            CurrentUser.Setup(x => x.HasPermission("attendance:approve")).Returns(true);
+            foreach (var e in new[] { Approver, Worker })
+                Employees.Setup(x => x.GetByIdAsync(TenantId, e.Id, It.IsAny<CancellationToken>())).ReturnsAsync(e);
+            Employees.Setup(x => x.GetByUserIdsAsync(TenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>())).ReturnsAsync([Approver]);
+            Employees.Setup(x => x.ListByIdsAsync(TenantId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new Dictionary<Guid, Employee> { [Approver.Id] = Approver, [Worker.Id] = Worker });
+            Authority.Setup(a => a.ResolveVisibilityAsync(It.IsAny<EmployeeAuthorityVisibilityRequest>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new EmployeeAuthorityVisibilityScope(ApproverUserId, LegalEntityId, false, [Worker.Id]));
+            Authority.Setup(a => a.ResolveApprovalInboxScopeAsync(It.IsAny<EmployeeApprovalInboxScopeRequest>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync((EmployeeApprovalInboxScopeRequest r, CancellationToken _) => r.CandidateEmployeeIds.Where(Scope.Contains).ToList());
+            Corrections.Setup(x => x.ListMyAsync(TenantId, It.IsAny<Guid>(), It.IsAny<DateOnly?>(), It.IsAny<DateOnly?>(), It.IsAny<string?>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync((Array.Empty<AttendanceCorrection>(), 0));
+            Corrections.Setup(x => x.ListApprovalInboxAsync(TenantId, LegalEntityId, It.IsAny<IReadOnlyCollection<Guid>>(), null, null, "pending", It.IsAny<CancellationToken>()))
+                .ReturnsAsync([]);
+            WorkAreas.Setup(x => x.ListMyAsync(TenantId, It.IsAny<Guid>(), null, null, null, It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync((Array.Empty<WorkAreaChangeRequest>(), 0));
+            WorkAreas.Setup(x => x.ListPendingEmployeeIdsAsync(TenantId, LegalEntityId, null, null, It.IsAny<CancellationToken>())).ReturnsAsync([]);
+            Locations.Setup(x => x.ListMyAsync(TenantId, It.IsAny<Guid>(), null, It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync((Array.Empty<LocationChangeRequest>(), 0));
+            Locations.Setup(x => x.ListPendingEmployeeIdsAsync(TenantId, LegalEntityId, It.IsAny<CancellationToken>())).ReturnsAsync([]);
+            Devices.Setup(x => x.ListPendingEmployeeIdsAsync(TenantId, LegalEntityId, It.IsAny<CancellationToken>())).ReturnsAsync([]);
+            Devices.Setup(x => x.ListPendingWithoutLegalEntityAsync(TenantId, It.IsAny<CancellationToken>())).ReturnsAsync([]);
+            Devices.Setup(x => x.ListForEmployeeAsync(TenantId, It.IsAny<Guid>(), It.IsAny<CancellationToken>())).ReturnsAsync([]);
+            Devices.Setup(x => x.ListApprovalInboxAsync(TenantId, LegalEntityId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync((Array.Empty<DeviceChangeRequest>(), 0));
+        }
+
+        public Mock<IConversationRepository> Conversations()
+        {
+            var conversations = new Mock<IConversationRepository>();
+            conversations.Setup(x => x.ListAddedSubjectsAsync(TenantId, It.IsAny<Guid>(), "attendance", It.IsAny<CancellationToken>())).ReturnsAsync([]);
+            return conversations;
+        }
+
+        public AttendanceInboxSourceProvider Provider() => new(
+            CurrentUser.Object, Employees.Object, Authority.Object, Corrections.Object, WorkAreas.Object, Locations.Object, Devices.Object,
+            Attendance.Object, WorkLocations.Object, Tray.Object, Mock.Of<IWorkModeRepository>(), Mock.Of<ILegalEntityRepository>(),
+            Sender.Object, Journal, new FakeUnitOfWork(), Conversations().Object, Clock);
+
+        public AttendanceCorrection Correction(string status = AttendanceCorrection.StatusPending) => new()
+        {
+            Id = Guid.NewGuid(), TenantId = TenantId, EmployeeId = Worker.Id, LegalEntityId = LegalEntityId, WorkDate = new DateOnly(2026, 10, 13),
+            CorrectionType = AttendanceCorrection.TypeClockIn, RequestedClockInAt = new DateTimeOffset(2026, 10, 13, 9, 0, 0, TimeSpan.Zero),
+            Status = status, Reason = "forgot", CreatedAt = Now.AddDays(-1), UpdatedAt = Now.AddDays(-1),
+        };
+    }
+
+    [Fact]
+    public async Task Received_lists_only_requests_the_caller_is_the_exact_approver_of()
+    {
+        var f = new Fixture();
+        var mine = f.Correction();
+        var someoneElses = f.Correction();
+        someoneElses.EmployeeId = Guid.NewGuid();
+        f.Corrections.Setup(x => x.ListApprovalInboxAsync(f.TenantId, f.LegalEntityId, It.IsAny<IReadOnlyCollection<Guid>>(), null, null, "pending", It.IsAny<CancellationToken>()))
+            .ReturnsAsync([mine, someoneElses]);
+        f.Scope.Add(f.Worker.Id);
+
+        var items = await f.Provider().ListAsync(f.TenantId, new InboxQuery(), f.Approver.Id, default);
+
+        items.Select(i => i.Id).Should().Equal(mine.Id);
+        items[0].Direction.Should().Be(InboxDirections.Received);
+    }
+
+    [Fact]
+    public async Task Without_attendance_approve_nothing_is_received_and_decisions_are_refused()
+    {
+        var f = new Fixture();
+        var correction = f.Correction();
+        f.Corrections.Setup(x => x.ListApprovalInboxAsync(f.TenantId, f.LegalEntityId, It.IsAny<IReadOnlyCollection<Guid>>(), null, null, "pending", It.IsAny<CancellationToken>()))
+            .ReturnsAsync([correction]);
+        f.Scope.Add(f.Worker.Id);
+        f.CurrentUser.Setup(x => x.HasPermission("attendance:approve")).Returns(false);
+
+        var items = await f.Provider().ListAsync(f.TenantId, new InboxQuery(), f.Approver.Id, default);
+        var approve = await f.Provider().ExecuteActionAsync(f.TenantId, "correction", correction.Id, "approve", null, f.Approver.Id, default);
+
+        items.Should().BeEmpty();
+        approve.StatusCode.Should().Be(403);
+        f.Sender.Invocations.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task A_device_request_without_its_own_legal_entity_is_scoped_through_the_employees()
+    {
+        var f = new Fixture();
+        var request = new DeviceChangeRequest
+        {
+            Id = Guid.NewGuid(), TenantId = f.TenantId, EmployeeId = f.Worker.Id, LegalEntityId = null, NewDeviceName = "Laptop", NewDeviceOs = "Windows",
+            Status = DeviceChangeRequest.StatusPending, RequestedAt = Now,
+        };
+        f.Devices.Setup(x => x.ListPendingWithoutLegalEntityAsync(f.TenantId, It.IsAny<CancellationToken>())).ReturnsAsync([request]);
+        f.Scope.Add(f.Worker.Id);
+
+        var items = await f.Provider().ListAsync(f.TenantId, new InboxQuery(), f.Approver.Id, default);
+
+        items.Should().ContainSingle(i => i.Id == request.Id && i.Kind == "device_change" && i.ContextId == f.LegalEntityId);
+    }
+
+    [Fact]
+    public async Task Approving_a_correction_journals_the_attendance_day_as_it_was()
+    {
+        var f = new Fixture();
+        var correction = f.Correction();
+        f.Corrections.Setup(x => x.GetByIdAsync(f.TenantId, correction.Id, It.IsAny<CancellationToken>())).ReturnsAsync(correction);
+        f.Attendance.Setup(x => x.GetRecordAsync(f.TenantId, f.Worker.Id, correction.WorkDate, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AttendanceRecord { ActualStart = null, Status = AttendanceRecord.StatusNotClockedIn, WorkedMinutes = 0 });
+        f.Sender.Setup(s => s.Send(It.IsAny<ApproveAttendanceCorrectionCommand>(), It.IsAny<CancellationToken>()))
+            .Callback(() => correction.Status = AttendanceCorrection.StatusApproved)
+            .ReturnsAsync(Result<AttendanceCorrectionResponse>.Success(null!));
+
+        var result = await f.Provider().ExecuteActionAsync(f.TenantId, "correction", correction.Id, "approve",
+            JsonSerializer.SerializeToElement(new { comment = "ok" }), f.Approver.Id, default);
+
+        result.IsSuccess.Should().BeTrue(result.Error);
+        var row = f.Journal.Entries.Should().ContainSingle().Subject;
+        var before = AttendanceDecisionSnapshot.Parse(row.BeforeJson)!;
+        before.Status.Should().Be("pending");
+        before.Record!.Status.Should().Be(AttendanceRecord.StatusNotClockedIn);
+        AttendanceDecisionSnapshot.Parse(row.AfterJson)!.Status.Should().Be("approved");
+    }
+
+    // ---- revert -----------------------------------------------------------------------------
+
+    private static void Journal(Fixture f, string kind, Guid id, AttendanceDecisionSnapshot before, string after)
+        => f.Journal.Add(f.TenantId, new ItemRef("attendance", kind, id), "approve", f.Approver.Id, Now.AddMinutes(-5),
+            new AttendanceDecisionSnapshot("t", after).ToJson()).BeforeJson = before.ToJson();
+
+    [Fact]
+    public async Task Undoing_a_correction_restores_the_attendance_day()
+    {
+        var f = new Fixture();
+        var correction = f.Correction(AttendanceCorrection.StatusApproved);
+        correction.ApprovedClockInAt = correction.RequestedClockInAt;
+        var record = new AttendanceRecord { ActualStart = correction.RequestedClockInAt, WorkedMinutes = 400, Status = AttendanceRecord.StatusOnTime };
+        f.Corrections.Setup(x => x.GetByIdAsync(f.TenantId, correction.Id, It.IsAny<CancellationToken>())).ReturnsAsync(correction);
+        f.Corrections.Setup(x => x.GetTrackedByIdAsync(f.TenantId, correction.Id, It.IsAny<CancellationToken>())).ReturnsAsync(correction);
+        f.Corrections.Setup(x => x.ListMyAsync(f.TenantId, f.Worker.Id, correction.WorkDate, correction.WorkDate, "approved", 0, 100, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((new[] { correction }, 1));
+        f.Attendance.Setup(x => x.GetTrackedRecordAsync(f.TenantId, f.Worker.Id, correction.WorkDate, It.IsAny<CancellationToken>())).ReturnsAsync(record);
+        Journal(f, "correction", correction.Id, new AttendanceDecisionSnapshot("t", "pending",
+            new AttendanceRecordSnapshot(null, null, 0, 0, null, AttendanceRecord.StatusNotClockedIn, [])), "approved");
+
+        var result = await new AttendanceCorrectionReverter(f.Journal, new FakeUnitOfWork(), f.Clock, f.CurrentUser.Object,
+                f.Corrections.Object, f.Attendance.Object, f.Provider())
+            .RevertAsync(f.TenantId, new ItemRef("attendance", "correction", correction.Id), f.Approver.Id, null, default);
+
+        result.IsSuccess.Should().BeTrue(result.Error);
+        (record.ActualStart, record.WorkedMinutes, record.Status).Should().Be(((DateTimeOffset?)null, 0, AttendanceRecord.StatusNotClockedIn));
+        correction.Status.Should().Be(AttendanceCorrection.StatusPending);
+        correction.ApprovedClockInAt.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task A_correction_cannot_be_undone_once_a_newer_one_was_applied_to_the_same_day()
+    {
+        var f = new Fixture();
+        var correction = f.Correction(AttendanceCorrection.StatusApproved);
+        var newer = f.Correction(AttendanceCorrection.StatusApproved);
+        newer.ReviewedAt = Now.AddMinutes(-1);
+        f.Corrections.Setup(x => x.GetByIdAsync(f.TenantId, correction.Id, It.IsAny<CancellationToken>())).ReturnsAsync(correction);
+        f.Corrections.Setup(x => x.ListMyAsync(f.TenantId, f.Worker.Id, correction.WorkDate, correction.WorkDate, "approved", 0, 100, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((new[] { correction, newer }, 2));
+        Journal(f, "correction", correction.Id, new AttendanceDecisionSnapshot("t", "pending"), "approved");
+
+        var result = await new AttendanceCorrectionReverter(f.Journal, new FakeUnitOfWork(), f.Clock, f.CurrentUser.Object,
+                f.Corrections.Object, f.Attendance.Object, f.Provider())
+            .RevertAsync(f.TenantId, new ItemRef("attendance", "correction", correction.Id), f.Approver.Id, null, default);
+
+        result.StatusCode.Should().Be(409);
+        result.Error.Should().Be(AttendanceCorrectionReverter.NewerCorrection);
+    }
+
+    [Fact]
+    public async Task A_device_approval_cannot_be_undone_once_the_new_device_was_used_and_otherwise_reactivates_the_old_one()
+    {
+        var f = new Fixture();
+        var oldDevice = Guid.NewGuid();
+        var request = new DeviceChangeRequest
+        {
+            Id = Guid.NewGuid(), TenantId = f.TenantId, EmployeeId = f.Worker.Id, CurrentDeviceRegistrationId = oldDevice,
+            Status = DeviceChangeRequest.StatusApproved, RequestedAt = Now.AddHours(-1),
+        };
+        f.Devices.Setup(x => x.GetTrackedByIdAsync(f.TenantId, request.Id, It.IsAny<CancellationToken>())).ReturnsAsync(request);
+        Journal(f, "device_change", request.Id, new AttendanceDecisionSnapshot("t", "pending", OldDeviceRegistrationId: oldDevice, OldDeviceActive: true), "approved");
+        AttendanceDecisionReverterBaseShim(out var reverter, f);
+
+        f.Tray.Setup(x => x.FindActiveDeviceForUserAsync(f.Worker.UserId, f.TenantId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new TrayDeviceRegistration { Id = Guid.NewGuid(), ActivatedAt = Now.AddMinutes(-2) });
+        var blocked = await reverter.RevertAsync(f.TenantId, new ItemRef("attendance", "device_change", request.Id), f.Approver.Id, null, default);
+
+        f.Tray.Setup(x => x.FindActiveDeviceForUserAsync(f.Worker.UserId, f.TenantId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((TrayDeviceRegistration?)null);
+        var undone = await reverter.RevertAsync(f.TenantId, new ItemRef("attendance", "device_change", request.Id), f.Approver.Id, null, default);
+
+        blocked.Error.Should().Be(DeviceChangeReverter.NewDeviceUsed);
+        undone.IsSuccess.Should().BeTrue(undone.Error);
+        f.Tray.Verify(x => x.ReactivateDeviceAsync(oldDevice, It.IsAny<CancellationToken>()), Times.Once);
+        request.Status.Should().Be(DeviceChangeRequest.StatusPending);
+    }
+
+    private static void AttendanceDecisionReverterBaseShim(out DeviceChangeReverter reverter, Fixture f)
+        => reverter = new DeviceChangeReverter(f.Journal, new FakeUnitOfWork(), f.Clock, f.CurrentUser.Object, f.Devices.Object, f.Tray.Object, f.Employees.Object);
+
+    [Fact]
+    public async Task An_applied_location_change_is_undone_to_the_previous_location_only_while_it_is_still_the_latest()
+    {
+        var f = new Fixture();
+        var appliedAt = Now.AddMinutes(-3);
+        var request = new LocationChangeRequest
+        {
+            Id = Guid.NewGuid(), TenantId = f.TenantId, EmployeeId = f.Worker.Id, LegalEntityId = f.LegalEntityId,
+            RequestedLatitude = 7.1, RequestedLongitude = 80.1, Status = LocationChangeRequest.StatusApplied, AppliedAt = appliedAt, RequestedAt = Now.AddHours(-1),
+        };
+        var current = new EmployeeWorkLocation { EmployeeId = f.Worker.Id, Latitude = 7.1, Longitude = 80.1, UpdatedAt = Now.AddMinutes(-1) };
+        f.Locations.Setup(x => x.GetByIdAsync(f.TenantId, request.Id, It.IsAny<CancellationToken>())).ReturnsAsync(request);
+        f.Locations.Setup(x => x.GetTrackedByIdAsync(f.TenantId, request.Id, It.IsAny<CancellationToken>())).ReturnsAsync(request);
+        f.WorkLocations.Setup(x => x.GetByEmployeeIdAsync(f.TenantId, f.Worker.Id, It.IsAny<CancellationToken>())).ReturnsAsync(current);
+        Journal(f, "location_change", request.Id, new AttendanceDecisionSnapshot("t", "pending",
+            WorkLocation: new WorkLocationSnapshot(6.9, 79.8, 15, Now.AddDays(-30))), "approved");
+        var reverter = new LocationChangeReverter(f.Journal, new FakeUnitOfWork(), f.Clock, f.CurrentUser.Object, f.Locations.Object, f.WorkLocations.Object);
+        var item = new ItemRef("attendance", "location_change", request.Id);
+
+        var blocked = await reverter.RevertAsync(f.TenantId, item, f.Approver.Id, null, default); // another change was applied later
+        current.UpdatedAt = appliedAt;
+        var undone = await reverter.RevertAsync(f.TenantId, item, f.Approver.Id, null, default);
+
+        blocked.Error.Should().Be(LocationChangeReverter.NewerLocation);
+        undone.IsSuccess.Should().BeTrue(undone.Error);
+        (current.Latitude, current.Longitude, current.AccuracyMeters).Should().Be((6.9, 79.8, (double?)15));
+        (request.Status, request.AppliedAt).Should().Be((LocationChangeRequest.StatusPending, (DateTimeOffset?)null));
+    }
+
+    [Fact]
+    public async Task A_work_mode_approval_cannot_be_undone_once_the_past_day_was_worked_under_it()
+    {
+        var f = new Fixture();
+        var request = new WorkAreaChangeRequest
+        {
+            Id = Guid.NewGuid(), TenantId = f.TenantId, EmployeeId = f.Worker.Id, LegalEntityId = f.LegalEntityId, Date = new DateOnly(2026, 10, 12),
+            Status = WorkAreaChangeRequest.StatusApproved, RequestedAt = Now.AddDays(-3),
+        };
+        f.WorkAreas.Setup(x => x.GetByIdAsync(f.TenantId, request.Id, It.IsAny<CancellationToken>())).ReturnsAsync(request);
+        f.Attendance.Setup(x => x.GetRecordAsync(f.TenantId, f.Worker.Id, request.Date, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AttendanceRecord { ActualStart = Now.AddDays(-2) });
+        Journal(f, "work_mode_change", request.Id, new AttendanceDecisionSnapshot("t", "pending"), "approved");
+
+        var result = await new WorkModeChangeReverter(f.Journal, new FakeUnitOfWork(), f.Clock, f.CurrentUser.Object, f.WorkAreas.Object, f.Attendance.Object)
+            .RevertAsync(f.TenantId, new ItemRef("attendance", "work_mode_change", request.Id), f.Approver.Id, null, default);
+
+        result.Error.Should().Be(WorkModeChangeReverter.AlreadyWorked);
+    }
+}
