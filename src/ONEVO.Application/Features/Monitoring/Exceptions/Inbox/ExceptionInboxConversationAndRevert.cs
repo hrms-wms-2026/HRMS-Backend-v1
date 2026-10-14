@@ -54,18 +54,21 @@ public sealed class ExceptionConversationSubjectResolver : IConversationSubjectR
         return new ConversationSubject(people.Distinct().ToList(), exception.Title, null, SubjectEmployeeId: exception.EmployeeId);
     }
 
-    public Task<bool> CanViewAsync(Guid tenantId, ItemRef subject, Guid employeeId, CancellationToken ct) => InScopeAsync(tenantId, subject, employeeId, ct);
+    public Task<bool> CanViewAsync(Guid tenantId, ItemRef subject, Guid employeeId, CancellationToken ct)
+        => InScopeAsync(tenantId, subject, employeeId, forAction: false, ct);
 
-    public Task<bool> CanReviewAsync(Guid tenantId, ItemRef subject, Guid employeeId, CancellationToken ct) => InScopeAsync(tenantId, subject, employeeId, ct);
+    /// <summary>The investigation export holds deleted and edited messages: it needs the scope that may work the case.</summary>
+    public Task<bool> CanReviewAsync(Guid tenantId, ItemRef subject, Guid employeeId, CancellationToken ct)
+        => InScopeAsync(tenantId, subject, employeeId, forAction: true, ct);
 
-    private async Task<bool> InScopeAsync(Guid tenantId, ItemRef subject, Guid employeeId, CancellationToken ct)
+    private async Task<bool> InScopeAsync(Guid tenantId, ItemRef subject, Guid employeeId, bool forAction, CancellationToken ct)
     {
         if (await _identity.ResolveCallerEmployeeIdAsync(tenantId, _currentUser.UserId, ct) != employeeId)
             return false;
         var exception = await _exceptions.GetByIdAsync(tenantId, subject.Id, ct);
         if (exception is null)
             return false;
-        var scope = await _scope.ResolveAsync(forAction: false, [exception.EmployeeId], ct);
+        var scope = await _scope.ResolveAsync(forAction, [exception.EmployeeId], ct);
         return scope?.CanSee(exception.EmployeeId) == true;
     }
 }
@@ -95,6 +98,9 @@ public class ExceptionCaseReverter : InboxDecisionReverterBase
         var exception = await _exceptions.GetByIdAsync(tenantId, decision.ItemId, ct);
         if (exception is null || ExceptionStateSnapshot.Parse(decision.BeforeJson) is null)
             return Result.NotFound("Exception not found.");
+        // A change made outside the Inbox after this decision (e.g. on the Alerts page) is not journaled: never undo over it.
+        if (ExceptionStateSnapshot.Parse(decision.AfterJson) is { } after && after.Status != exception.Status.ToString())
+            return Result.Conflict("This case changed after your decision, so it can no longer be undone.");
         var scope = await _scope.ResolveAsync(forAction: true, [exception.EmployeeId], ct);
         return scope?.CanSee(exception.EmployeeId) == true ? Result.Success() : Result.Forbidden("You can no longer review this case.");
     }

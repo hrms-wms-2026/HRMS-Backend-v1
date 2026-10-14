@@ -197,6 +197,41 @@ public class ExceptionInboxTests
         _exceptions.Verify(x => x.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
 
+    [Fact]
+    public async Task A_decision_cannot_be_undone_after_the_case_was_changed_outside_the_inbox()
+    {
+        var c = Case(ExceptionStatus.Escalated); // escalated on the old Alerts page after the inbox resolve
+        _journal.Add(TenantId, new ItemRef("monitoring", "exception_case", c.Id), "resolve:confirmed", Reviewer, Now.AddMinutes(-2),
+                new ExceptionStateSnapshot("t", "Resolved", null, null, Now.AddMinutes(-2), null, null, null, null, "confirmed").ToJson())
+            .BeforeJson = new ExceptionStateSnapshot("t", "Open", null, null, null, null, null, null, null, null).ToJson();
+        ScopeIs(isHr: false, Subject);
+
+        var result = await new ExceptionCaseReverter(_journal, new FakeUnitOfWork(), new FakeDateTimeProvider { UtcNow = Now }, _exceptions.Object, _scope.Object)
+            .RevertAsync(TenantId, new ItemRef("monitoring", "exception_case", c.Id), Reviewer, null, default);
+
+        result.StatusCode.Should().Be(409);
+        c.Status.Should().Be(ExceptionStatus.Escalated);
+    }
+
+    [Fact]
+    public async Task Taking_the_investigation_export_needs_the_action_scope_not_just_view()
+    {
+        var c = Case();
+        var currentUser = new Mock<ICurrentUser>();
+        var identity = new Mock<ONEVO.Application.Features.WorkManagement.Common.Services.ICallerIdentityResolver>();
+        identity.Setup(i => i.ResolveCallerEmployeeIdAsync(TenantId, It.IsAny<Guid>(), It.IsAny<CancellationToken>())).ReturnsAsync(Reviewer);
+        _scope.Setup(s => s.ResolveAsync(false, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ExceptionScope(false, Reviewer, [Subject]));
+        _scope.Setup(s => s.ResolveAsync(true, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ExceptionScope?)null);
+        var resolver = new ExceptionConversationSubjectResolver(_exceptions.Object, _scope.Object,
+            new InboxEscalationPolicyRegistry([_policy.Object]), currentUser.Object, identity.Object);
+        var item = new ItemRef("monitoring", "exception_case", c.Id);
+
+        (await resolver.CanViewAsync(TenantId, item, Reviewer, default)).Should().BeTrue();
+        (await resolver.CanReviewAsync(TenantId, item, Reviewer, default)).Should().BeFalse();
+    }
+
     // ---- D-b: camera verification skipped ----------------------------------------------------
 
     [Fact]
