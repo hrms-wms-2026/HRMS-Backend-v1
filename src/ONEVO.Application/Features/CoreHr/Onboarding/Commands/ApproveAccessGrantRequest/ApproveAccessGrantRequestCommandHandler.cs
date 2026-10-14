@@ -69,6 +69,7 @@ public class ApproveAccessGrantRequestCommandHandler
     private readonly IDateTimeProvider _clock;
     private readonly IUnitOfWork _unitOfWork;
     private readonly IEmployeeChecklistWorkTaskProvisioner? _workTaskProvisioner;
+    private readonly IOfficeProjectReconciler? _officeReconciler;
 
     public ApproveAccessGrantRequestCommandHandler(
         IAccessGrantRequestRepository accessGrantRequestRepository,
@@ -92,7 +93,8 @@ public class ApproveAccessGrantRequestCommandHandler
         ICurrentUser currentUser,
         IDateTimeProvider clock,
         IUnitOfWork unitOfWork,
-        IEmployeeChecklistWorkTaskProvisioner? workTaskProvisioner = null)
+        IEmployeeChecklistWorkTaskProvisioner? workTaskProvisioner = null,
+        IOfficeProjectReconciler? officeReconciler = null)
     {
         _accessGrantRequestRepository = accessGrantRequestRepository;
         _draftRepository = draftRepository;
@@ -116,6 +118,7 @@ public class ApproveAccessGrantRequestCommandHandler
         _clock = clock;
         _unitOfWork = unitOfWork;
         _workTaskProvisioner = workTaskProvisioner;
+        _officeReconciler = officeReconciler;
     }
 
     public async Task<Result<ApproveAccessGrantRequestResponse>> Handle(
@@ -455,6 +458,11 @@ public class ApproveAccessGrantRequestCommandHandler
         var saveResult = await SaveAsync(ct);
         if (saveResult is not null)
             return saveResult;
+
+        // Spec §4.2: the employee is committed, so if this user holds the Owner role the Office
+        // project can now be created (or re-led) owner-led. Best-effort: never fails onboarding.
+        if (_officeReconciler is not null)
+            await _officeReconciler.TryReconcileAsync(draft.TenantId, ct);
 
         return Result<ApproveAccessGrantRequestResponse>.Success(new ApproveAccessGrantRequestResponse(
             grantRequest.Id, draft.Id, employeeId, draft.Status,

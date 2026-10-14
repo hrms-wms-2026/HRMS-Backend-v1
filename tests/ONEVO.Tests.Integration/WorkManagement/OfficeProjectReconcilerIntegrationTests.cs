@@ -170,4 +170,24 @@ public sealed class OfficeProjectReconcilerIntegrationTests
 
         Assert.Equal(OfficeProjectReconcileOutcome.TenantInactive, await ReconcileAsync(harness));
     }
+
+    [Fact]
+    public async Task TryReconcileAsync_WhenReconcileThrows_ReturnsNullInsteadOfThrowing()
+    {
+        await using var harness = await OfficeProjectDb.CreateAsync();
+        var role = await harness.SeedOwnerRoleAsync();
+        var owner = await harness.SeedEmployeeAsync(harness.LegalEntityId);
+        await harness.AssignRoleAsync(owner.UserId, role, DateTimeOffset.UtcNow.AddDays(-5));
+        await ReconcileAsync(harness);
+        // Corrupt the project so ReconcileAsync fails: its root module is gone.
+        await using (var admin = harness.AdminContext())
+            await admin.Objectives.IgnoreQueryFilters()
+                .Where(o => o.TenantId == harness.TenantId && o.IsDefault)
+                .ExecuteUpdateAsync(s => s.SetProperty(o => o.IsDeleted, true));
+
+        await using var scope = harness.BuildAppScopeFactory().CreateAsyncScope();
+        var reconciler = scope.ServiceProvider.GetRequiredService<IOfficeProjectReconciler>();
+        await Assert.ThrowsAnyAsync<InvalidOperationException>(() => reconciler.ReconcileAsync(harness.TenantId));
+        Assert.Null(await reconciler.TryReconcileAsync(harness.TenantId));
+    }
 }

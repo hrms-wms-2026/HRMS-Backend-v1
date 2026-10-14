@@ -67,6 +67,7 @@ public class OnboardingDraftWriteService : IOnboardingDraftWriteService
     private readonly IDateTimeProvider _clock;
     private readonly IUnitOfWork _unitOfWork;
     private readonly IEmployeeChecklistWorkTaskProvisioner? _workTaskProvisioner;
+    private readonly IOfficeProjectReconciler? _officeReconciler;
 
     public OnboardingDraftWriteService(
         IOnboardingDraftRepository draftRepository,
@@ -91,7 +92,8 @@ public class OnboardingDraftWriteService : IOnboardingDraftWriteService
         ICurrentUser currentUser,
         IDateTimeProvider clock,
         IUnitOfWork unitOfWork,
-        IEmployeeChecklistWorkTaskProvisioner? workTaskProvisioner = null)
+        IEmployeeChecklistWorkTaskProvisioner? workTaskProvisioner = null,
+        IOfficeProjectReconciler? officeReconciler = null)
     {
         _draftRepository = draftRepository;
         _employeeRepository = employeeRepository;
@@ -116,6 +118,7 @@ public class OnboardingDraftWriteService : IOnboardingDraftWriteService
         _clock = clock;
         _unitOfWork = unitOfWork;
         _workTaskProvisioner = workTaskProvisioner;
+        _officeReconciler = officeReconciler;
     }
 
     public async Task<Result<OnboardingDraftResponse>> SaveAsync(
@@ -725,6 +728,11 @@ public class OnboardingDraftWriteService : IOnboardingDraftWriteService
             return Result<FinalizeOnboardingDraftResponse>.Conflict(
                 "This request conflicts with an existing record (e.g. a duplicate email, employee number, or a request already submitted). Please refresh and try again.");
         }
+
+        // Spec §4.2: the employee is committed, so if this user holds the Owner role the Office
+        // project can now be created (or re-led) owner-led. Best-effort: never fails onboarding.
+        if (_officeReconciler is not null)
+            await _officeReconciler.TryReconcileAsync(draft.TenantId, ct);
 
         return Result<FinalizeOnboardingDraftResponse>.Success(new FinalizeOnboardingDraftResponse(
             draft.Id, employeeId, draft.Status, draft.DraftReason,
