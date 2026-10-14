@@ -51,8 +51,7 @@ public sealed class CancelRecurringOccurrenceCommandHandler(
             events.Update(child);
         }
 
-        await unitOfWork.SaveChangesAsync(ct);
-
+        // The sender only stages outbox rows, so they must be staged before the save that writes them.
         var participantsByEvent = await events.GetParticipantsForEventsAsync(tenantId, [master.Id], ct);
         var participantEmployeeIds = participantsByEvent.TryGetValue(master.Id, out var p) ? p.Select(x => x.EmployeeId).ToList() : [];
         if (participantEmployeeIds.Count > 0)
@@ -62,6 +61,7 @@ public sealed class CancelRecurringOccurrenceCommandHandler(
             await notifications.NotifyEventCancelledAsync(tenantId, master.Title, participantEmployeeIds, organizerName, ct);
         }
 
+        await unitOfWork.SaveChangesAsync(ct);
         return Result.Success();
     }
 }

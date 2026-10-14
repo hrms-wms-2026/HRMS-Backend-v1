@@ -1446,6 +1446,10 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<DateTimeOffset?>("AttendanceUnavailableAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("attendance_unavailable_at");
+
                     b.Property<Guid>("CalendarEventId")
                         .HasColumnType("uuid")
                         .HasColumnName("calendar_event_id");

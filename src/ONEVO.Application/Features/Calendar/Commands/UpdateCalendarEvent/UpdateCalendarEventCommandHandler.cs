@@ -49,8 +49,8 @@ public sealed class UpdateCalendarEventCommandHandler(
             existing.Recurrence = request.Recurrence;
 
             events.Update(existing);
-            await unitOfWork.SaveChangesAsync(innerCt);
 
+            // The sender only stages outbox rows, so they must be staged before the save that writes them.
             var participantsByEvent = await events.GetParticipantsForEventsAsync(tenantId, [existing.Id], innerCt);
             var participantEmployeeIds = participantsByEvent.TryGetValue(existing.Id, out var p) ? p.Select(x => x.EmployeeId).ToList() : [];
             if (participantEmployeeIds.Count > 0)
@@ -59,6 +59,8 @@ public sealed class UpdateCalendarEventCommandHandler(
                 var organizerName = callerEmployee is null ? "Someone" : $"{callerEmployee.FirstName} {callerEmployee.LastName}";
                 await notifications.NotifyEventUpdatedAsync(tenantId, existing.Title, participantEmployeeIds, organizerName, innerCt);
             }
+
+            await unitOfWork.SaveChangesAsync(innerCt);
 
             return Result<CalendarEventItem>.Success(new CalendarEventItem(
                 existing.Id, existing.Title, existing.Description, existing.StartDate, existing.EndDate,

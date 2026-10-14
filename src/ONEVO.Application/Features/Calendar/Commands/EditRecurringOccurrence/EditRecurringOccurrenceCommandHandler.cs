@@ -54,8 +54,8 @@ public sealed class EditRecurringOccurrenceCommandHandler(
     {
         ApplyFields(master, request);
         events.Update(master);
-        await unitOfWork.SaveChangesAsync(ct);
 
+        // The sender only stages outbox rows, so they must be staged before the save that writes them.
         var participantsByEvent = await events.GetParticipantsForEventsAsync(master.TenantId, [master.Id], ct);
         var participantEmployeeIds = participantsByEvent.TryGetValue(master.Id, out var p) ? p.Select(x => x.EmployeeId).ToList() : [];
         if (participantEmployeeIds.Count > 0)
@@ -65,6 +65,7 @@ public sealed class EditRecurringOccurrenceCommandHandler(
             await notifications.NotifyEventUpdatedAsync(master.TenantId, master.Title, participantEmployeeIds, organizerName, ct);
         }
 
+        await unitOfWork.SaveChangesAsync(ct);
         return Result<CalendarEventItem>.Success(ToItem(master, isOccurrence: false, masterId: null, originalStart: null));
     }
 
@@ -111,6 +112,17 @@ public sealed class EditRecurringOccurrenceCommandHandler(
             };
             ApplyFields(newMaster, request);
             await events.AddAsync(newMaster, innerCt);
+
+            // The new series keeps the same people; their answers are for the old times, so they answer again.
+            var participantsByEvent = await events.GetParticipantsForEventsAsync(tenantId, [master.Id], innerCt);
+            if (participantsByEvent.TryGetValue(master.Id, out var participants) && participants.Count > 0)
+            {
+                await events.AddParticipantsAsync(participants.Select(p => new CalendarEventParticipant
+                {
+                    Id = Guid.NewGuid(), TenantId = tenantId, EventId = newMaster.Id, EmployeeId = p.EmployeeId,
+                    ResponseStatus = CalendarEventParticipantStatuses.Pending,
+                }).ToList(), innerCt);
+            }
 
             var children = await events.GetChildrenForMasterAsync(tenantId, master.Id, innerCt);
             foreach (var child in children.Where(c => c.RecurrenceOriginalStart >= request.OriginalStart))
