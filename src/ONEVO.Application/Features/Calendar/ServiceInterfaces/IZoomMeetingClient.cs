@@ -13,8 +13,16 @@ public sealed record ZoomAttendanceRecordDto(
 
 public interface IZoomMeetingClient
 {
+    /// <summary>Creates a scheduled meeting whose agenda is <paramref name="correlationToken"/>.
+    /// Throws MeetingProviderException on failure.</summary>
     Task<ZoomMeetingDto> CreateMeetingAsync(
-        string accessToken, string subject, DateTimeOffset start, DateTimeOffset end, CancellationToken ct);
+        string accessToken, string subject, DateTimeOffset start, DateTimeOffset end, string correlationToken, CancellationToken ct);
+
+    /// <summary>The organizer's scheduled meeting whose agenda is exactly <paramref name="correlationToken"/>,
+    /// or null when every page was read and none matches. Throws MeetingProviderException when the list
+    /// can't be read completely (then nothing is known).</summary>
+    Task<ZoomMeetingDto?> FindMeetingByCorrelationTokenAsync(
+        string accessToken, string correlationToken, DateTimeOffset eventStart, CancellationToken ct);
     Task CancelMeetingAsync(string accessToken, string externalMeetingId, CancellationToken ct);
     Task<IReadOnlyList<ZoomAttendanceRecordDto>> GetAttendanceAsync(
         string accessToken, string externalMeetingId, CancellationToken ct);

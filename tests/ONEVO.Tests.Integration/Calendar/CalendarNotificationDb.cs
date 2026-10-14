@@ -42,10 +42,11 @@ public sealed class CalendarNotificationDb
     /// <summary>Delete never reaches these: the harness events have no online meeting.</summary>
     private sealed class UnusedProviderClients : ITeamsMeetingClient, IZoomMeetingClient, ICalendarConnectionTokenProvider
     {
-        Task<TeamsMeetingDto> ITeamsMeetingClient.CreateMeetingAsync(string a, string s, DateTimeOffset b, DateTimeOffset e, CancellationToken ct) => throw new InvalidOperationException("not used");
+        Task<TeamsMeetingDto> ITeamsMeetingClient.CreateOrGetMeetingAsync(string a, string externalId, string s, DateTimeOffset b, DateTimeOffset e, CancellationToken ct) => throw new InvalidOperationException("not used");
         Task ITeamsMeetingClient.CancelMeetingAsync(string a, string id, CancellationToken ct) => throw new InvalidOperationException("not used");
         Task<TeamsAttendanceResult> ITeamsMeetingClient.GetAttendanceAsync(string a, string id, CancellationToken ct) => throw new InvalidOperationException("not used");
-        Task<ZoomMeetingDto> IZoomMeetingClient.CreateMeetingAsync(string a, string s, DateTimeOffset b, DateTimeOffset e, CancellationToken ct) => throw new InvalidOperationException("not used");
+        Task<ZoomMeetingDto> IZoomMeetingClient.CreateMeetingAsync(string a, string s, DateTimeOffset b, DateTimeOffset e, string correlationToken, CancellationToken ct) => throw new InvalidOperationException("not used");
+        Task<ZoomMeetingDto?> IZoomMeetingClient.FindMeetingByCorrelationTokenAsync(string a, string t, DateTimeOffset s, CancellationToken ct) => throw new InvalidOperationException("not used");
         Task IZoomMeetingClient.CancelMeetingAsync(string a, string id, CancellationToken ct) => throw new InvalidOperationException("not used");
         Task<IReadOnlyList<ZoomAttendanceRecordDto>> IZoomMeetingClient.GetAttendanceAsync(string a, string id, CancellationToken ct) => throw new InvalidOperationException("not used");
         Task<string?> ICalendarConnectionTokenProvider.GetFreshAccessTokenAsync(ExternalCalendarConnection c, string p, CancellationToken ct) => throw new InvalidOperationException("not used");

@@ -1,4 +1,5 @@
 using System.Net;
+using ONEVO.Application.Features.Calendar.ServiceInterfaces;
 using System.Net.Http.Json;
 using Microsoft.Extensions.Logging.Abstractions;
 using ONEVO.Infrastructure.ExternalServices.Calendar;
@@ -15,30 +16,73 @@ public sealed class MicrosoftGraphMeetingClientTests
     }
 
     [Fact]
-    public async Task CreateMeetingAsync_PostsToOnlineMeetingsEndpoint_ReturnsJoinInfo()
+    public async Task CreateOrGetMeetingAsync_PostsToCreateOrGetWithTheExternalId_ReturnsJoinInfo()
     {
+        string? body = null;
         var handler = new StubHandler(request =>
         {
             Assert.Equal(HttpMethod.Post, request.Method);
-            Assert.Equal("https://graph.microsoft.com/v1.0/me/onlineMeetings", request.RequestUri!.ToString());
+            Assert.Equal("https://graph.microsoft.com/v1.0/me/onlineMeetings/createOrGet", request.RequestUri!.ToString());
+            body = request.Content!.ReadAsStringAsync().GetAwaiter().GetResult();
             return new HttpResponseMessage(HttpStatusCode.Created)
             {
-                Content = JsonContent.Create(new
-                {
-                    id = "graph-meeting-1",
-                    joinWebUrl = "https://teams.microsoft.com/l/meetup-join/abc",
-                    joinInformation = new { content = "Passcode: 123456" }
-                })
+                Content = JsonContent.Create(new { id = "graph-meeting-1", joinWebUrl = "https://teams.microsoft.com/l/meetup-join/abc" })
             };
         });
         var client = new MicrosoftGraphMeetingClient(new HttpClient(handler), NullLogger<MicrosoftGraphMeetingClient>.Instance);
 
-        var result = await client.CreateMeetingAsync(
-            "access-token", "Sprint planning", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddHours(1), CancellationToken.None);
+        var result = await client.CreateOrGetMeetingAsync(
+            "access-token", "evt-1:2", "Sprint planning",
+            new DateTimeOffset(2026, 10, 20, 9, 0, 0, TimeSpan.Zero), new DateTimeOffset(2026, 10, 20, 10, 0, 0, TimeSpan.Zero), CancellationToken.None);
 
         Assert.Equal("graph-meeting-1", result.ExternalMeetingId);
-        Assert.Equal("https://teams.microsoft.com/l/meetup-join/abc", result.JoinUrl);
-        Assert.Equal("Passcode: 123456", result.PasscodeOrPin);
+        Assert.Contains("\"externalId\":\"evt-1:2\"", body);
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.Unauthorized, MeetingProviderFailureKind.Unauthorized)]
+    [InlineData(HttpStatusCode.TooManyRequests, MeetingProviderFailureKind.RateLimited)]
+    [InlineData(HttpStatusCode.Forbidden, MeetingProviderFailureKind.Permanent)]
+    [InlineData(HttpStatusCode.BadRequest, MeetingProviderFailureKind.Permanent)]
+    [InlineData(HttpStatusCode.ServiceUnavailable, MeetingProviderFailureKind.Ambiguous)]
+    public async Task CreateOrGetMeetingAsync_ClassifiesFailures(HttpStatusCode status, MeetingProviderFailureKind kind)
+    {
+        var handler = new StubHandler(_ =>
+        {
+            var response = new HttpResponseMessage(status) { Content = new StringContent("{}") };
+            if (status == HttpStatusCode.TooManyRequests)
+                response.Headers.RetryAfter = new System.Net.Http.Headers.RetryConditionHeaderValue(TimeSpan.FromSeconds(7));
+            return response;
+        });
+        var client = new MicrosoftGraphMeetingClient(new HttpClient(handler), NullLogger<MicrosoftGraphMeetingClient>.Instance);
+
+        var ex = await Assert.ThrowsAsync<MeetingProviderException>(() => client.CreateOrGetMeetingAsync(
+            "t", "e:1", "s", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddHours(1), CancellationToken.None));
+
+        Assert.Equal(kind, ex.Kind);
+        if (kind == MeetingProviderFailureKind.RateLimited)
+            Assert.Equal(TimeSpan.FromSeconds(7), ex.RetryAfter);
+    }
+
+    [Fact]
+    public async Task CreateOrGetMeetingAsync_ConnectionFailure_IsAmbiguous()
+    {
+        var handler = new StubHandler(_ => throw new HttpRequestException("connection reset"));
+        var client = new MicrosoftGraphMeetingClient(new HttpClient(handler), NullLogger<MicrosoftGraphMeetingClient>.Instance);
+
+        var ex = await Assert.ThrowsAsync<MeetingProviderException>(() => client.CreateOrGetMeetingAsync(
+            "t", "e:1", "s", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddHours(1), CancellationToken.None));
+
+        Assert.Equal(MeetingProviderFailureKind.Ambiguous, ex.Kind);
+    }
+
+    [Fact]
+    public async Task CancelMeetingAsync_AlreadyGone_IsSuccess()
+    {
+        var handler = new StubHandler(_ => new HttpResponseMessage(HttpStatusCode.NotFound) { Content = new StringContent("{}") });
+        var client = new MicrosoftGraphMeetingClient(new HttpClient(handler), NullLogger<MicrosoftGraphMeetingClient>.Instance);
+
+        await client.CancelMeetingAsync("access-token", "graph-meeting-1", CancellationToken.None);
     }
 
     [Fact]

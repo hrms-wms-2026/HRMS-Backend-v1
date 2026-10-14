@@ -93,7 +93,11 @@ public static class PlatformOAuthProviderCatalog
                     // call return 400 even though the token exchange itself succeeds.
                     "user:read:user",
                     "meeting:write:meeting", "meeting:delete:meeting",
-                    "meeting:read:meeting", "meeting:read:list_past_participants"
+                    "meeting:read:meeting", "meeting:read:list_past_participants",
+                    // Correlating a meeting whose creation timed out (spec §3.2.2) lists the organizer's
+                    // scheduled meetings. Also enable it on the Zoom Marketplace app; existing connections
+                    // pick it up on reconnect, and until then correlation fails safely (no duplicate).
+                    "meeting:read:list_meetings"
                 },
                 ClientSecretRequired: true,
                 Capabilities: new[] { CapabilityUserOAuth, CapabilityMeetings })

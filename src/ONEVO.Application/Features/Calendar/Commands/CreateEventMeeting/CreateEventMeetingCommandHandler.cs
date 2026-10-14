@@ -61,12 +61,12 @@ public sealed class CreateEventMeetingCommandHandler(
         string? organizerJoinUrl, passcode;
         if (isZoom)
         {
-            var dto = await zoomClient.CreateMeetingAsync(accessToken, existing.Title, existing.StartDate, existing.EndDate, ct);
+            var dto = await zoomClient.CreateMeetingAsync(accessToken, existing.Title, existing.StartDate, existing.EndDate, CalendarMeetingCorrelation.ZoomToken(existing.Id, 1), ct);
             (externalMeetingId, joinUrl, organizerJoinUrl, passcode) = (dto.ExternalMeetingId, dto.JoinUrl, dto.OrganizerJoinUrl, dto.PasscodeOrPin);
         }
         else
         {
-            var dto = await teamsClient.CreateMeetingAsync(accessToken, existing.Title, existing.StartDate, existing.EndDate, ct);
+            var dto = await teamsClient.CreateOrGetMeetingAsync(accessToken, CalendarMeetingCorrelation.TeamsExternalId(existing.Id, 1), existing.Title, existing.StartDate, existing.EndDate, ct);
             (externalMeetingId, joinUrl, organizerJoinUrl, passcode) = (dto.ExternalMeetingId, dto.JoinUrl, dto.OrganizerJoinUrl, dto.PasscodeOrPin);
         }
 

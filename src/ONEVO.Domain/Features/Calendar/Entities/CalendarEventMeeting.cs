@@ -41,3 +41,12 @@ public class CalendarEventMeeting : ITenantOwnedEntity
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset? UpdatedAt { get; set; }
 }
+
+/// <summary>Provider-side identities for one link generation of an event (spec §3.2.2). The same
+/// (event, generation) always maps to the same remote meeting, so a retry adopts it instead of
+/// creating a second one.</summary>
+public static class CalendarMeetingCorrelation
+{
+    public static string TeamsExternalId(Guid eventId, int generation) => $"{eventId}:{generation}";
+    public static string ZoomToken(Guid eventId, int generation) => $"onexso:{eventId}:{generation}";
+}

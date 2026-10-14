@@ -1,3 +1,4 @@
+using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -8,20 +9,20 @@ namespace ONEVO.Infrastructure.ExternalServices.Calendar;
 
 public sealed class MicrosoftGraphMeetingClient(HttpClient httpClient, ILogger<MicrosoftGraphMeetingClient> logger) : ITeamsMeetingClient
 {
-    public async Task<TeamsMeetingDto> CreateMeetingAsync(
-        string accessToken, string subject, DateTimeOffset start, DateTimeOffset end, CancellationToken ct)
+    public async Task<TeamsMeetingDto> CreateOrGetMeetingAsync(
+        string accessToken, string externalId, string subject, DateTimeOffset start, DateTimeOffset end, CancellationToken ct)
     {
-        using var request = new HttpRequestMessage(HttpMethod.Post, "https://graph.microsoft.com/v1.0/me/onlineMeetings");
+        using var request = new HttpRequestMessage(HttpMethod.Post, "https://graph.microsoft.com/v1.0/me/onlineMeetings/createOrGet");
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
         request.Content = JsonContent.Create(new
         {
+            externalId,
             startDateTime = start.UtcDateTime.ToString("o"),
             endDateTime = end.UtcDateTime.ToString("o"),
             subject
         });
-        using var response = await httpClient.SendAsync(request, ct);
-        await EnsureSuccessOrLogAsync(response, "create online meeting", ct);
-        using var stream = await response.Content.ReadAsStreamAsync(ct);
+        using var response = await SendClassifiedAsync(request, "create or get online meeting", ct);
+        await using var stream = await response.Content.ReadAsStreamAsync(ct);
         using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: ct);
         var root = doc.RootElement;
 
@@ -43,8 +44,42 @@ public sealed class MicrosoftGraphMeetingClient(HttpClient httpClient, ILogger<M
         using var request = new HttpRequestMessage(
             HttpMethod.Delete, $"https://graph.microsoft.com/v1.0/me/onlineMeetings/{externalMeetingId}");
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
-        using var response = await httpClient.SendAsync(request, ct);
-        await EnsureSuccessOrLogAsync(response, "cancel online meeting", ct);
+        // 404: already deleted - the goal state, not a failure.
+        using var _ = await SendClassifiedAsync(request, "cancel online meeting", ct, HttpStatusCode.NotFound);
+    }
+
+    /// <summary>Sends and returns the response for 2xx (or an accepted status), otherwise logs Graph's
+    /// error body and throws a MeetingProviderException classified for the caller's retry decision.</summary>
+    private async Task<HttpResponseMessage> SendClassifiedAsync(
+        HttpRequestMessage request, string operation, CancellationToken ct, params HttpStatusCode[] acceptedStatuses)
+    {
+        HttpResponseMessage response;
+        try
+        {
+            response = await httpClient.SendAsync(request, ct);
+        }
+        catch (HttpRequestException ex)
+        {
+            throw new MeetingProviderException(MeetingProviderFailureKind.Ambiguous, $"Microsoft Graph {operation} failed: {ex.Message}", innerException: ex);
+        }
+        catch (TaskCanceledException ex) when (!ct.IsCancellationRequested)
+        {
+            throw new MeetingProviderException(MeetingProviderFailureKind.Ambiguous, $"Microsoft Graph {operation} timed out.", innerException: ex);
+        }
+
+        if (response.IsSuccessStatusCode || acceptedStatuses.Contains(response.StatusCode))
+            return response;
+
+        using (response)
+        {
+            var errorBody = await response.Content.ReadAsStringAsync(ct);
+            logger.LogWarning("Microsoft Graph {Operation} returned {StatusCode}: {ErrorBody}", operation, (int)response.StatusCode, errorBody);
+            var retryAfter = response.Headers.RetryAfter?.Delta
+                ?? (response.Headers.RetryAfter?.Date is { } date ? date - DateTimeOffset.UtcNow : null);
+            throw new MeetingProviderException(
+                MeetingProviderException.Classify(response.StatusCode),
+                $"Microsoft Graph {operation} returned {(int)response.StatusCode}.", retryAfter);
+        }
     }
 
     private const int MaxPages = 100;

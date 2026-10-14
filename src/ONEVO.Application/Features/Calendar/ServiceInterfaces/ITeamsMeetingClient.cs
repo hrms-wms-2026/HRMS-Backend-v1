@@ -12,8 +12,10 @@ public sealed record TeamsAttendanceResult(bool ReportExists, IReadOnlyList<Team
 
 public interface ITeamsMeetingClient
 {
-    Task<TeamsMeetingDto> CreateMeetingAsync(
-        string accessToken, string subject, DateTimeOffset start, DateTimeOffset end, CancellationToken ct);
+    /// <summary>Graph POST /me/onlineMeetings/createOrGet: returns the organizer's existing meeting with
+    /// this externalId, or creates it. Throws MeetingProviderException on failure.</summary>
+    Task<TeamsMeetingDto> CreateOrGetMeetingAsync(
+        string accessToken, string externalId, string subject, DateTimeOffset start, DateTimeOffset end, CancellationToken ct);
     Task CancelMeetingAsync(string accessToken, string externalMeetingId, CancellationToken ct);
     Task<TeamsAttendanceResult> GetAttendanceAsync(
         string accessToken, string externalMeetingId, CancellationToken ct);

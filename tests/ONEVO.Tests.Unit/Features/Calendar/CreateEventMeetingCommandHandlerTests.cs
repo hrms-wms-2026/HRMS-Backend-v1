@@ -106,7 +106,7 @@ public sealed class CreateEventMeetingCommandHandlerTests
             .ReturnsAsync(connection);
         _tokenProvider.Setup(t => t.GetFreshAccessTokenAsync(connection, "microsoft", It.IsAny<CancellationToken>()))
             .ReturnsAsync("access-token");
-        _teamsClient.Setup(t => t.CreateMeetingAsync("access-token", evt.Title, evt.StartDate, evt.EndDate, It.IsAny<CancellationToken>()))
+        _teamsClient.Setup(t => t.CreateOrGetMeetingAsync("access-token", It.IsAny<string>(), evt.Title, evt.StartDate, evt.EndDate, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new TeamsMeetingDto("graph-meeting-1", "https://teams.microsoft.com/l/meetup-join/abc", null, "123456"));
 
         var result = await BuildSut().Handle(new CreateEventMeetingCommand(EventId, CalendarEventMeetingProviders.MicrosoftTeams), CancellationToken.None);
@@ -145,7 +145,7 @@ public sealed class CreateEventMeetingCommandHandlerTests
         _meetings.Setup(m => m.GetTrackedByCalendarEventAsync(TenantId, EventId, It.IsAny<CancellationToken>())).ReturnsAsync(cancelled);
         _connections.Setup(c => c.GetByTenantUserProviderAsync(TenantId, UserId, "zoom", It.IsAny<CancellationToken>())).ReturnsAsync(connection);
         _tokenProvider.Setup(t => t.GetFreshAccessTokenAsync(connection, "zoom", It.IsAny<CancellationToken>())).ReturnsAsync("zoom-token");
-        _zoomClient.Setup(z => z.CreateMeetingAsync("zoom-token", evt.Title, evt.StartDate, evt.EndDate, It.IsAny<CancellationToken>()))
+        _zoomClient.Setup(z => z.CreateMeetingAsync("zoom-token", evt.Title, evt.StartDate, evt.EndDate, It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ZoomMeetingDto("zoom-42", "https://us05web.zoom.us/j/42", "https://us05web.zoom.us/s/42", "9876"));
 
         var result = await sut.Handle(new CreateEventMeetingCommand(EventId, CalendarEventMeetingProviders.Zoom), CancellationToken.None);
@@ -185,7 +185,7 @@ public sealed class CreateEventMeetingCommandHandlerTests
         result.IsSuccess.Should().BeFalse();
         result.StatusCode.Should().Be(409);
         result.Error.Should().Be("meeting_already_exists");
-        _zoomClient.Verify(z => z.CreateMeetingAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<DateTimeOffset>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()), Times.Never);
+        _zoomClient.Verify(z => z.CreateMeetingAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<DateTimeOffset>(), It.IsAny<DateTimeOffset>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
         _meetings.Verify(m => m.AddAsync(It.IsAny<CalendarEventMeeting>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
@@ -207,7 +207,7 @@ public sealed class CreateEventMeetingCommandHandlerTests
             });
         _connections.Setup(c => c.GetByTenantUserProviderAsync(TenantId, UserId, "outlook_calendar", It.IsAny<CancellationToken>())).ReturnsAsync(connection);
         _tokenProvider.Setup(t => t.GetFreshAccessTokenAsync(connection, "microsoft", It.IsAny<CancellationToken>())).ReturnsAsync("access-token");
-        _teamsClient.Setup(t => t.CreateMeetingAsync("access-token", evt.Title, evt.StartDate, evt.EndDate, It.IsAny<CancellationToken>()))
+        _teamsClient.Setup(t => t.CreateOrGetMeetingAsync("access-token", It.IsAny<string>(), evt.Title, evt.StartDate, evt.EndDate, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new TeamsMeetingDto("graph-meeting-1", "https://teams.microsoft.com/l/meetup-join/abc", null, "123456"));
 
         var result = await sut.Handle(new CreateEventMeetingCommand(EventId, CalendarEventMeetingProviders.MicrosoftTeams), CancellationToken.None);
@@ -248,7 +248,7 @@ public sealed class CreateEventMeetingCommandHandlerTests
             .ReturnsAsync(connection);
         _tokenProvider.Setup(t => t.GetFreshAccessTokenAsync(connection, "zoom", It.IsAny<CancellationToken>()))
             .ReturnsAsync("access-token");
-        _zoomClient.Setup(z => z.CreateMeetingAsync("access-token", evt.Title, evt.StartDate, evt.EndDate, It.IsAny<CancellationToken>()))
+        _zoomClient.Setup(z => z.CreateMeetingAsync("access-token", evt.Title, evt.StartDate, evt.EndDate, It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ZoomMeetingDto("987654321", "https://us05web.zoom.us/j/987654321", null, "123456"));
 
         var result = await BuildSut().Handle(new CreateEventMeetingCommand(EventId, CalendarEventMeetingProviders.Zoom), CancellationToken.None);
