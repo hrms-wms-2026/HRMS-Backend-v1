@@ -118,16 +118,19 @@ public sealed class AddConversationParticipantsCommandHandler
         return Result<IReadOnlyList<ConversationParticipantResponse>>.Success(responses);
     }
 
-    /// <summary>A former base participant (e.g. a transferred approver) already has a row: it is re-labelled
-    /// as added rather than duplicated.</summary>
+    /// <summary>A former base participant (e.g. a transferred approver), or someone who was removed or left, already
+    /// has a row: it is re-labelled as added (and made active again) rather than duplicated.</summary>
     private async Task<ConversationParticipant> AddRowAsync(
         Guid tenantId, ConversationContext context, Guid employeeId, Guid caller, DateTimeOffset now, CancellationToken ct)
     {
-        if (context.RowOf(employeeId) is { } existing)
+        if (context.Rows.FirstOrDefault(r => r.EmployeeId == employeeId) is { } existing)
         {
             existing.JoinReason = ConversationJoinReasons.Added;
             existing.AddedByEmployeeId = caller;
             existing.AddedAt = now;
+            existing.RemovedAt = null;
+            existing.RemovedByEmployeeId = null;
+            existing.LeftAt = null;
             _conversations.UpdateParticipant(existing);
             return existing;
         }

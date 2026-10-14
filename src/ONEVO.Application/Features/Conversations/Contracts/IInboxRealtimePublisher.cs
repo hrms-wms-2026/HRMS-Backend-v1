@@ -16,4 +16,16 @@ public interface IInboxRealtimePublisher
         CancellationToken ct = default);
 
     Task InboxChangedAsync(Guid tenantId, IReadOnlyCollection<Guid> employeeIds, ItemRef item, CancellationToken ct = default);
+
+    /// <summary>A message was edited; <paramref name="message"/> is its new state.</summary>
+    Task MessageUpdatedAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> recipientEmployeeIds, Guid conversationId, ConversationMessageResponse message,
+        CancellationToken ct = default);
+
+    Task MessageDeletedAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> recipientEmployeeIds, Guid conversationId, Guid messageId, CancellationToken ct = default);
+
+    /// <summary>Someone was removed or left. Sent to the remaining members and to that person (their panel closes).</summary>
+    Task ParticipantRemovedAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> recipientEmployeeIds, Guid conversationId, Guid employeeId, CancellationToken ct = default);
 }

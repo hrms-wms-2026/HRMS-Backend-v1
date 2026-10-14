@@ -46,8 +46,9 @@ public sealed class OpenConversationCommandHandler : IRequestHandler<OpenConvers
         var conversation = await _conversations.GetBySubjectAsync(tenantId, subject, ct);
         if (conversation is null)
         {
-            // Only a base participant may bring a conversation into existence.
-            if (!subjectInfo.BaseParticipantEmployeeIds.Contains(caller.Value))
+            // Only a base participant, or someone the module lets view the item, may bring a conversation into existence.
+            if (!subjectInfo.BaseParticipantEmployeeIds.Contains(caller.Value)
+                && !await _access.CanViewAsync(tenantId, subject, caller.Value, ct))
                 return Result<ConversationResponse>.NotFound(ConversationRules.NotFoundMessage);
             conversation = await _conversations.GetOrCreateAsync(new Conversation
             {
@@ -72,7 +73,8 @@ public sealed class OpenConversationCommandHandler : IRequestHandler<OpenConvers
             await _responses.ParticipantsAsync(tenantId, context, ct),
             await _responses.MessagesAsync(tenantId, messages, ct),
             hasMore,
-            context.RowOf(caller.Value)?.LastReadAt));
+            context.RowOf(caller.Value)?.LastReadAt,
+            subjectInfo.SubjectEmployeeId));
     }
 
     /// <summary>Gives each current base participant a row (it holds their read marker). True if any was added.</summary>

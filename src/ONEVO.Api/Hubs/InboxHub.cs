@@ -16,6 +16,9 @@ public sealed class InboxHub : Hub
     public const string MessageCreated = "messageCreated";
     public const string ParticipantAdded = "participantAdded";
     public const string InboxChanged = "inboxChanged";
+    public const string MessageUpdated = "messageUpdated";
+    public const string MessageDeleted = "messageDeleted";
+    public const string ParticipantRemoved = "participantRemoved";
 
     public static string UserGroup(Guid tenantId, Guid userId) => $"inbox:{tenantId:D}:{userId:D}";
 

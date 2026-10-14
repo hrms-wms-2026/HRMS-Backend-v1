@@ -15,7 +15,7 @@ internal static partial class ConversationRules
     /// <summary>Trimmed HTML, or the validation error. The frontend renders messages through its HTML
     /// sanitizer; as defense in depth, active content (script-capable tags, inline event handlers and
     /// script/data URLs) is rejected here so it is never stored.</summary>
-    public static (string? Body, string? Error) ValidateBody(string? bodyHtml)
+    public static (string? Body, string? Error) ValidateBody(string? bodyHtml, bool allowEmpty = false)
     {
         var body = bodyHtml?.Trim() ?? string.Empty;
         if (body.Length > MaxBodyLength)
@@ -23,7 +23,7 @@ internal static partial class ConversationRules
         if (HasActiveContent(body))
             return (null, "Message contains content that is not allowed.");
         var text = WebUtility.HtmlDecode(Tags().Replace(body, " ")).Replace(' ', ' ').Trim();
-        if (text.Length == 0 && !Embeds().IsMatch(body))
+        if (text.Length == 0 && !allowEmpty && !Embeds().IsMatch(body))
             return (null, "Message cannot be empty.");
         return (body, null);
     }

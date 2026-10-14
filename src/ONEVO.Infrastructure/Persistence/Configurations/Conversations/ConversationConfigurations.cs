@@ -46,6 +46,7 @@ public class ConversationMessageConfiguration : IEntityTypeConfiguration<Convers
         builder.Property(m => m.Kind).HasMaxLength(20).IsRequired();
         builder.Property(m => m.BodyHtml).HasMaxLength(10_000).IsRequired();
         builder.Property(m => m.SystemEventJson).HasMaxLength(2000);
+        builder.Property(m => m.Tag).HasMaxLength(20);
 
         builder.HasIndex(m => new { m.ConversationId, m.CreatedAt })
             .HasDatabaseName("ix_conversation_messages_conversation_id_created_at");
@@ -66,5 +67,36 @@ public class ConversationMessageMentionConfiguration : IEntityTypeConfiguration<
             .HasDatabaseName("ux_conversation_message_mentions_message_id_employee_id");
 
         builder.HasOne<ConversationMessage>().WithMany().HasForeignKey(m => m.MessageId).OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
+public class ConversationMessageRevisionConfiguration : IEntityTypeConfiguration<ConversationMessageRevision>
+{
+    public void Configure(EntityTypeBuilder<ConversationMessageRevision> builder)
+    {
+        builder.ToTable("conversation_message_revisions");
+        builder.HasKey(r => r.Id);
+        builder.Property(r => r.BodyHtml).HasMaxLength(10_000).IsRequired();
+        builder.Property(r => r.Kind).HasMaxLength(20).IsRequired();
+
+        builder.HasIndex(r => new { r.MessageId, r.RevisedAt })
+            .HasDatabaseName("ix_conversation_message_revisions_message_id_revised_at");
+
+        builder.HasOne<ConversationMessage>().WithMany().HasForeignKey(r => r.MessageId).OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
+public class ConversationMessageAttachmentConfiguration : IEntityTypeConfiguration<ConversationMessageAttachment>
+{
+    public void Configure(EntityTypeBuilder<ConversationMessageAttachment> builder)
+    {
+        builder.ToTable("conversation_message_attachments");
+        builder.HasKey(a => a.Id);
+        builder.Property(a => a.FileName).HasMaxLength(255).IsRequired();
+        builder.Property(a => a.ContentType).HasMaxLength(255).IsRequired();
+
+        builder.HasIndex(a => a.MessageId).HasDatabaseName("ix_conversation_message_attachments_message_id");
+
+        builder.HasOne<ConversationMessage>().WithMany().HasForeignKey(a => a.MessageId).OnDelete(DeleteBehavior.Cascade);
     }
 }

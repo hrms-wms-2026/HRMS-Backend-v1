@@ -126,6 +126,7 @@ public class EfConversationRepository : IConversationRepository
                 from m in _db.ConversationMessages.AsNoTracking()
                 join p in _db.ConversationParticipants.AsNoTracking() on m.ConversationId equals p.ConversationId
                 where m.TenantId == tenantId && conversationIds.Contains(m.ConversationId) && p.EmployeeId == employeeId
+                    && p.RemovedAt == null && p.LeftAt == null
                     && (m.AuthorEmployeeId == null || m.AuthorEmployeeId != employeeId)
                     && (p.LastReadAt == null || m.CreatedAt > p.LastReadAt)
                 group m by m.ConversationId into g
@@ -142,6 +143,7 @@ public class EfConversationRepository : IConversationRepository
                 from p in _db.ConversationParticipants.AsNoTracking()
                 join c in _db.Conversations.AsNoTracking() on p.ConversationId equals c.Id
                 where p.TenantId == tenantId && p.EmployeeId == employeeId && p.JoinReason == ConversationJoinReasons.Added
+                    && p.RemovedAt == null && p.LeftAt == null
                     && c.SubjectSource == source
                 select new { c.SubjectSource, c.SubjectKind, c.SubjectId })
             .ToListAsync(ct);
@@ -153,6 +155,54 @@ public class EfConversationRepository : IConversationRepository
             .Where(m => m.TenantId == tenantId && m.ConversationId == conversationId && m.Kind == ConversationMessageKinds.System)
             .OrderBy(m => m.CreatedAt)
             .ToListAsync(ct);
+
+    public async Task<ConversationMessage?> GetMessageAsync(Guid tenantId, Guid messageId, CancellationToken ct = default)
+        => await _db.ConversationMessages.FirstOrDefaultAsync(m => m.TenantId == tenantId && m.Id == messageId, ct);
+
+    public void UpdateMessage(ConversationMessage message) => _db.ConversationMessages.Update(message);
+
+    public async Task AddMentionsAsync(IReadOnlyCollection<ConversationMessageMention> mentions, CancellationToken ct = default)
+    {
+        if (mentions.Count > 0)
+            await _db.ConversationMessageMentions.AddRangeAsync(mentions, ct);
+    }
+
+    public async Task AddRevisionAsync(ConversationMessageRevision revision, CancellationToken ct = default)
+        => await _db.ConversationMessageRevisions.AddAsync(revision, ct);
+
+    public async Task<IReadOnlyList<ConversationMessageRevision>> ListRevisionsAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> messageIds, CancellationToken ct = default)
+    {
+        if (messageIds.Count == 0)
+            return [];
+        var ids = messageIds.ToList();
+        return await _db.ConversationMessageRevisions.AsNoTracking()
+            .Where(r => r.TenantId == tenantId && ids.Contains(r.MessageId))
+            .OrderBy(r => r.RevisedAt)
+            .ToListAsync(ct);
+    }
+
+    public async Task AddAttachmentsAsync(IReadOnlyCollection<ConversationMessageAttachment> attachments, CancellationToken ct = default)
+    {
+        if (attachments.Count > 0)
+            await _db.ConversationMessageAttachments.AddRangeAsync(attachments, ct);
+    }
+
+    public async Task<IReadOnlyDictionary<Guid, IReadOnlyList<ConversationMessageAttachment>>> ListAttachmentsAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> messageIds, CancellationToken ct = default)
+    {
+        if (messageIds.Count == 0)
+            return new Dictionary<Guid, IReadOnlyList<ConversationMessageAttachment>>();
+        var ids = messageIds.ToList();
+        var rows = await _db.ConversationMessageAttachments.AsNoTracking()
+            .Where(a => a.TenantId == tenantId && ids.Contains(a.MessageId))
+            .ToListAsync(ct);
+        return rows.GroupBy(a => a.MessageId)
+            .ToDictionary(g => g.Key, g => (IReadOnlyList<ConversationMessageAttachment>)g.OrderBy(a => a.CreatedAt).ToList());
+    }
+
+    public async Task<ConversationMessageAttachment?> GetAttachmentAsync(Guid tenantId, Guid attachmentId, CancellationToken ct = default)
+        => await _db.ConversationMessageAttachments.AsNoTracking().FirstOrDefaultAsync(a => a.TenantId == tenantId && a.Id == attachmentId, ct);
 
     public void Update(Conversation conversation) => _db.Conversations.Update(conversation);
 

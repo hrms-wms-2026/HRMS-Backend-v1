@@ -9,6 +9,8 @@ internal sealed class InMemoryConversationRepository : IConversationRepository
     public List<Conversation> Conversations { get; } = new();
     public List<ConversationParticipant> Participants { get; } = new();
     public List<ConversationMessage> Messages { get; } = new();
+    public List<ConversationMessageRevision> Revisions { get; } = new();
+    public List<ConversationMessageAttachment> Attachments { get; } = new();
     public List<ConversationMessageMention> Mentions { get; } = new();
 
     public Task<Conversation?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct = default)
@@ -68,7 +70,7 @@ internal sealed class InMemoryConversationRepository : IConversationRepository
         {
             var conversation = Conversations.FirstOrDefault(c => c.TenantId == tenantId && Matches(c, subject));
             if (conversation is null) continue;
-            var row = Participants.FirstOrDefault(p => p.ConversationId == conversation.Id && p.EmployeeId == employeeId);
+            var row = Participants.FirstOrDefault(p => p.ConversationId == conversation.Id && p.EmployeeId == employeeId && p.IsActive);
             if (row is null) continue;
             var lastRead = row.LastReadAt;
             var count = Messages.Count(m => m.ConversationId == conversation.Id && m.AuthorEmployeeId != employeeId
@@ -81,7 +83,7 @@ internal sealed class InMemoryConversationRepository : IConversationRepository
     public Task<IReadOnlyList<ItemRef>> ListAddedSubjectsAsync(Guid tenantId, Guid employeeId, string source, CancellationToken ct = default)
         => Task.FromResult<IReadOnlyList<ItemRef>>((
             from p in Participants
-            where p.TenantId == tenantId && p.EmployeeId == employeeId && p.JoinReason == ConversationJoinReasons.Added
+            where p.TenantId == tenantId && p.EmployeeId == employeeId && p.JoinReason == ConversationJoinReasons.Added && p.IsActive
             join c in Conversations on p.ConversationId equals c.Id
             where c.SubjectSource == source
             select new ItemRef(c.SubjectSource, c.SubjectKind, c.SubjectId)).ToList());
@@ -90,6 +92,44 @@ internal sealed class InMemoryConversationRepository : IConversationRepository
         => Task.FromResult<IReadOnlyList<ConversationMessage>>(Messages
             .Where(m => m.TenantId == tenantId && m.ConversationId == conversationId && m.Kind == ConversationMessageKinds.System)
             .OrderBy(m => m.CreatedAt).ToList());
+
+    public Task<ConversationMessage?> GetMessageAsync(Guid tenantId, Guid messageId, CancellationToken ct = default)
+        => Task.FromResult(Messages.FirstOrDefault(m => m.TenantId == tenantId && m.Id == messageId));
+
+    public void UpdateMessage(ConversationMessage message) { }
+
+    public Task AddMentionsAsync(IReadOnlyCollection<ConversationMessageMention> mentions, CancellationToken ct = default)
+    {
+        Mentions.AddRange(mentions);
+        return Task.CompletedTask;
+    }
+
+    public Task AddRevisionAsync(ConversationMessageRevision revision, CancellationToken ct = default)
+    {
+        Revisions.Add(revision);
+        return Task.CompletedTask;
+    }
+
+    public Task<IReadOnlyList<ConversationMessageRevision>> ListRevisionsAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> messageIds, CancellationToken ct = default)
+        => Task.FromResult<IReadOnlyList<ConversationMessageRevision>>(Revisions
+            .Where(r => r.TenantId == tenantId && messageIds.Contains(r.MessageId)).OrderBy(r => r.RevisedAt).ToList());
+
+    public Task AddAttachmentsAsync(IReadOnlyCollection<ConversationMessageAttachment> attachments, CancellationToken ct = default)
+    {
+        Attachments.AddRange(attachments);
+        return Task.CompletedTask;
+    }
+
+    public Task<IReadOnlyDictionary<Guid, IReadOnlyList<ConversationMessageAttachment>>> ListAttachmentsAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> messageIds, CancellationToken ct = default)
+        => Task.FromResult<IReadOnlyDictionary<Guid, IReadOnlyList<ConversationMessageAttachment>>>(Attachments
+            .Where(a => a.TenantId == tenantId && messageIds.Contains(a.MessageId))
+            .GroupBy(a => a.MessageId)
+            .ToDictionary(g => g.Key, g => (IReadOnlyList<ConversationMessageAttachment>)g.ToList()));
+
+    public Task<ConversationMessageAttachment?> GetAttachmentAsync(Guid tenantId, Guid attachmentId, CancellationToken ct = default)
+        => Task.FromResult(Attachments.FirstOrDefault(a => a.TenantId == tenantId && a.Id == attachmentId));
 
     public void Update(Conversation conversation) { }
     public void UpdateParticipant(ConversationParticipant participant) { }

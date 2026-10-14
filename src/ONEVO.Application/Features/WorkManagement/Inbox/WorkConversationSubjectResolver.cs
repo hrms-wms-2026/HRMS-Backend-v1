@@ -23,16 +23,18 @@ public sealed class WorkConversationSubjectResolver : IConversationSubjectResolv
     private readonly IProjectMemberInvitationRepository _invitations;
     private readonly IMonitorAlertRepository _alerts;
     private readonly MonitorAlertAudience _audience;
+    private readonly WorkInboxSourceProvider? _inbox;
 
     public WorkConversationSubjectResolver(
         IWorkApprovalRequestRepository requests, IWorkHierarchyService hierarchy, IProjectMemberInvitationRepository invitations,
-        IMonitorAlertRepository alerts, MonitorAlertAudience audience)
+        IMonitorAlertRepository alerts, MonitorAlertAudience audience, WorkInboxSourceProvider? inbox = null)
     {
         _requests = requests;
         _hierarchy = hierarchy;
         _invitations = invitations;
         _alerts = alerts;
         _audience = audience;
+        _inbox = inbox;
     }
 
     public string Source => WorkInboxKinds.Source;
@@ -45,6 +47,11 @@ public sealed class WorkConversationSubjectResolver : IConversationSubjectResolv
             WorkInboxKinds.MonitorAlert => await AlertAsync(tenantId, subject.Id, ct),
             _ => null,
         };
+
+    /// <summary>Anyone who can open the item in their own Work inbox (e.g. a Module owner above the approver chain
+    /// who sees it in the project feed) may read and post in its chat as a viewer.</summary>
+    public async Task<bool> CanViewAsync(Guid tenantId, ItemRef subject, Guid employeeId, CancellationToken ct)
+        => _inbox is not null && await _inbox.GetDetailAsync(tenantId, subject.Kind, subject.Id, employeeId, ct) is not null;
 
     private async Task<ConversationSubject?> ApprovalAsync(Guid tenantId, Guid id, CancellationToken ct)
     {

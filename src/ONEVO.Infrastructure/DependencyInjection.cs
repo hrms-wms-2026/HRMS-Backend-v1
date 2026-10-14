@@ -454,7 +454,8 @@ public static class DependencyInjection
         services.AddScoped<IApprovalActionApplierRegistry, ApprovalActionApplierRegistry>();
         services.AddScoped<ONEVO.Application.Features.WorkManagement.Approvals.Services.ApprovalFeedBuilder>();
         services.AddScoped<ONEVO.Application.Features.WorkManagement.Inbox.MonitorAlertAudience>();
-        services.AddScoped<ONEVO.Application.Features.Inbox.Contracts.IInboxSourceProvider, ONEVO.Application.Features.WorkManagement.Inbox.WorkInboxSourceProvider>();
+        services.AddScoped<ONEVO.Application.Features.WorkManagement.Inbox.WorkInboxSourceProvider>();
+        services.AddScoped<ONEVO.Application.Features.Inbox.Contracts.IInboxSourceProvider>(sp => sp.GetRequiredService<ONEVO.Application.Features.WorkManagement.Inbox.WorkInboxSourceProvider>());
         services.AddScoped<ONEVO.Application.Features.Conversations.Contracts.IConversationSubjectResolver, ONEVO.Application.Features.WorkManagement.Inbox.WorkConversationSubjectResolver>();
 
         // Conversations (inbox item group chat) - shared module; sources plug in IConversationSubjectResolver.

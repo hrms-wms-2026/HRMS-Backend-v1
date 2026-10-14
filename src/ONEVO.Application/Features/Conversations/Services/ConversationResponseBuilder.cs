@@ -26,9 +26,9 @@ public sealed class ConversationResponseBuilder
         return context.ParticipantIds.Select(id =>
         {
             var row = context.RowOf(id);
-            var reason = context.IsBase(id) ? ConversationJoinReasons.Base : ConversationJoinReasons.Added;
+            var reason = context.JoinReasonOf(id);
             return Participant(id, people.GetValueOrDefault(id), reason,
-                reason == ConversationJoinReasons.Added ? row?.AddedByEmployeeId : null, row?.AddedAt);
+                reason == ConversationJoinReasons.Base ? null : row?.AddedByEmployeeId, row?.AddedAt);
         }).ToList();
     }
 
@@ -36,24 +36,37 @@ public sealed class ConversationResponseBuilder
         Guid employeeId, EmployeeIdentityDto? identity, string joinReason, Guid? addedBy, DateTimeOffset? addedAt)
         => new(employeeId, identity?.Name ?? FallbackName, identity?.AvatarFileId, joinReason, addedBy, addedAt);
 
-    /// <summary>Messages in the order given, with their mentions and authors.</summary>
+    /// <summary>Messages in the order given, with their mentions, attachments and authors.</summary>
     public async Task<IReadOnlyList<ConversationMessageResponse>> MessagesAsync(
         Guid tenantId, IReadOnlyList<ConversationMessage> messages, CancellationToken ct)
     {
         if (messages.Count == 0)
             return [];
-        var mentions = await _conversations.ListMentionsAsync(tenantId, messages.Select(m => m.Id).ToList(), ct);
+        var ids = messages.Select(m => m.Id).ToList();
+        var mentions = await _conversations.ListMentionsAsync(tenantId, ids, ct);
+        var attachments = await _conversations.ListAttachmentsAsync(tenantId, ids, ct);
         var authorIds = messages.Where(m => m.AuthorEmployeeId.HasValue).Select(m => m.AuthorEmployeeId!.Value).Distinct().ToList();
         var authors = authorIds.Count == 0
             ? new Dictionary<Guid, EmployeeIdentityDto>()
             : await _identity.ResolveIdentitiesByEmployeeIdAsync(tenantId, authorIds, ct);
         return messages.Select(m => Message(m, mentions.GetValueOrDefault(m.Id) ?? [],
-            m.AuthorEmployeeId is { } author ? authors.GetValueOrDefault(author) : null)).ToList();
+            m.AuthorEmployeeId is { } author ? authors.GetValueOrDefault(author) : null,
+            attachments.GetValueOrDefault(m.Id))).ToList();
     }
 
+    /// <summary>A deleted message is returned as a placeholder: no body, mentions or attachments.</summary>
     public static ConversationMessageResponse Message(
-        ConversationMessage message, IReadOnlyList<Guid> mentionEmployeeIds, EmployeeIdentityDto? author)
-        => new(message.Id, message.ConversationId, message.AuthorEmployeeId,
+        ConversationMessage message, IReadOnlyList<Guid> mentionEmployeeIds, EmployeeIdentityDto? author,
+        IReadOnlyList<ConversationMessageAttachment>? attachments = null)
+    {
+        var deleted = message.IsRetracted;
+        return new(message.Id, message.ConversationId, message.AuthorEmployeeId,
             message.AuthorEmployeeId.HasValue ? author?.Name ?? FallbackName : null, author?.AvatarFileId,
-            message.Kind, message.BodyHtml, message.SystemEventJson, mentionEmployeeIds, message.CreatedAt);
+            message.Kind, deleted ? string.Empty : message.BodyHtml, message.SystemEventJson,
+            deleted ? [] : mentionEmployeeIds, message.CreatedAt,
+            message.Tag, message.EditedAt, deleted,
+            deleted || attachments is null
+                ? []
+                : attachments.Select(a => new ConversationAttachmentResponse(a.Id, a.FileName, a.ContentType, a.SizeBytes)).ToList());
+    }
 }

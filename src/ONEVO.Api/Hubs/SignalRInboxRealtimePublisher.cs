@@ -27,6 +27,19 @@ public sealed class SignalRInboxRealtimePublisher(
         => SendAsync(tenantId, employeeIds, InboxHub.InboxChanged,
             new { item = new { source = item.Source, kind = item.Kind, id = item.Id } }, ct);
 
+    public Task MessageUpdatedAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> recipientEmployeeIds, Guid conversationId, ConversationMessageResponse message,
+        CancellationToken ct = default)
+        => SendAsync(tenantId, recipientEmployeeIds, InboxHub.MessageUpdated, new { conversationId, message }, ct);
+
+    public Task MessageDeletedAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> recipientEmployeeIds, Guid conversationId, Guid messageId, CancellationToken ct = default)
+        => SendAsync(tenantId, recipientEmployeeIds, InboxHub.MessageDeleted, new { conversationId, messageId }, ct);
+
+    public Task ParticipantRemovedAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> recipientEmployeeIds, Guid conversationId, Guid employeeId, CancellationToken ct = default)
+        => SendAsync(tenantId, recipientEmployeeIds, InboxHub.ParticipantRemoved, new { conversationId, employeeId }, ct);
+
     private async Task SendAsync(Guid tenantId, IReadOnlyCollection<Guid> employeeIds, string eventName, object payload, CancellationToken ct)
     {
         try
