@@ -2,6 +2,7 @@ using MediatR;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Calendar.RepositoryInterfaces;
+using ONEVO.Domain.Features.Calendar.Entities;
 
 namespace ONEVO.Application.Features.Calendar.Queries.GetEventMeetingAttendance;
 
@@ -18,12 +19,16 @@ public sealed class GetEventMeetingAttendanceQueryHandler(
 
         var tenantId = currentUser.TenantId;
         var meeting = await meetings.GetTrackedByCalendarEventAsync(tenantId, request.EventId, ct);
-        if (meeting is null || meeting.LastAttendanceSyncedAt is null)
-            return Result<GetEventMeetingAttendanceResult>.Success(new GetEventMeetingAttendanceResult(false, []));
+        if (meeting is null)
+            return Result<GetEventMeetingAttendanceResult>.Success(new GetEventMeetingAttendanceResult(false, [], "none"));
+        if (meeting.AttendanceSyncStatus != CalendarAttendanceSyncStatuses.Synced)
+            return Result<GetEventMeetingAttendanceResult>.Success(
+                new GetEventMeetingAttendanceResult(false, [], meeting.AttendanceSyncStatus ?? "pending"));
 
         var records = await attendances.GetByMeetingIdAsync(tenantId, meeting.Id, ct);
         var items = records.Select(a => new MeetingAttendeeItem(
             a.ExternalParticipantName, a.ExternalParticipantEmail, a.JoinedAt, a.LeftAt, a.DurationSeconds)).ToList();
-        return Result<GetEventMeetingAttendanceResult>.Success(new GetEventMeetingAttendanceResult(true, items));
+        return Result<GetEventMeetingAttendanceResult>.Success(
+            new GetEventMeetingAttendanceResult(true, items, CalendarAttendanceSyncStatuses.Synced));
     }
 }

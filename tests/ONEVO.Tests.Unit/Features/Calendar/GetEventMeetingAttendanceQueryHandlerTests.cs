@@ -35,6 +35,7 @@ public sealed class GetEventMeetingAttendanceQueryHandlerTests
         result.IsSuccess.Should().BeTrue();
         result.Value!.Available.Should().BeFalse();
         result.Value.Attendees.Should().BeEmpty();
+        result.Value.SyncStatus.Should().Be("none");
     }
 
     [Fact]
@@ -46,12 +47,13 @@ public sealed class GetEventMeetingAttendanceQueryHandlerTests
         var result = await BuildSut().Handle(new GetEventMeetingAttendanceQuery(EventId), CancellationToken.None);
 
         result.Value!.Available.Should().BeFalse();
+        result.Value!.SyncStatus.Should().Be("pending");
     }
 
     [Fact]
     public async Task Handle_MeetingSynced_ReturnsAttendees()
     {
-        var meeting = new CalendarEventMeeting { Id = Guid.NewGuid(), LastAttendanceSyncedAt = DateTimeOffset.UtcNow };
+        var meeting = new CalendarEventMeeting { Id = Guid.NewGuid(), LastAttendanceSyncedAt = DateTimeOffset.UtcNow, AttendanceSyncStatus = CalendarAttendanceSyncStatuses.Synced };
         _meetings.Setup(m => m.GetTrackedByCalendarEventAsync(TenantId, EventId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(meeting);
         _attendances.Setup(a => a.GetByMeetingIdAsync(TenantId, meeting.Id, It.IsAny<CancellationToken>()))
@@ -67,5 +69,20 @@ public sealed class GetEventMeetingAttendanceQueryHandlerTests
 
         result.Value!.Available.Should().BeTrue();
         result.Value.Attendees.Should().ContainSingle(a => a.Name == "Ada Lovelace");
+        result.Value.SyncStatus.Should().Be("synced");
+    }
+
+    [Theory]
+    [InlineData(CalendarAttendanceSyncStatuses.Unavailable)]
+    [InlineData(CalendarAttendanceSyncStatuses.Failed)]
+    public async Task Handle_Undecidable_IsNotAvailable_AndSaysWhy(string status)
+    {
+        _meetings.Setup(m => m.GetTrackedByCalendarEventAsync(TenantId, EventId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CalendarEventMeeting { Id = Guid.NewGuid(), AttendanceSyncStatus = status });
+
+        var result = await BuildSut().Handle(new GetEventMeetingAttendanceQuery(EventId), CancellationToken.None);
+
+        result.Value!.Available.Should().BeFalse();
+        result.Value.SyncStatus.Should().Be(status);
     }
 }
