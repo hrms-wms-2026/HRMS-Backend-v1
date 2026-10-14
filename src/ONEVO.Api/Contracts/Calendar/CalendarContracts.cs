@@ -97,6 +97,8 @@ public sealed record CreateEventMeetingRequestModel(string Provider);
 
 public sealed record CreateEventMeetingResponseModel(string JoinUrl);
 
+public sealed record EventMeetingStatusViewModel(string Status, string? Provider, string? JoinUrl, string? FailureReason);
+
 public sealed record MeetingAttendeeViewModel(string? Name, string? Email, DateTimeOffset JoinedAt, DateTimeOffset? LeftAt, int? DurationSeconds);
 public sealed record MeetingAttendanceViewModel(bool Available, IReadOnlyList<MeetingAttendeeViewModel> Attendees, string SyncStatus);
 

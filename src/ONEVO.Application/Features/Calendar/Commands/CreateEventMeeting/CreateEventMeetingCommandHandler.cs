@@ -4,23 +4,22 @@ using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Calendar.RepositoryInterfaces;
-using ONEVO.Application.Features.Calendar.ServiceInterfaces;
 using ONEVO.Application.Features.Calendar.Services;
 using ONEVO.Domain.Features.Calendar.Entities;
 
 namespace ONEVO.Application.Features.Calendar.Commands.CreateEventMeeting;
 
+/// <summary>Claims the event's meeting row atomically, then provisions (spec §3.2.2). A request that
+/// doesn't win the claim makes no provider call.</summary>
 public sealed class CreateEventMeetingCommandHandler(
     ICurrentUser currentUser,
     ICalendarEventRepository events,
     IExternalCalendarConnectionRepository connections,
-    ICalendarConnectionTokenProvider tokenProvider,
-    ITeamsMeetingClient teamsClient,
-    IZoomMeetingClient zoomClient,
     ICalendarEventMeetingRepository meetings,
-    IUnitOfWork unitOfWork,
-    ICalendarNotificationSender notifications,
-    ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces.IEmployeeRepository employees)
+    EventMeetingLinkService links,
+    ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces.IEmployeeRepository employees,
+    IDateTimeProvider clock,
+    IUnitOfWork unitOfWork)
     : IRequestHandler<CreateEventMeetingCommand, Result<CreateEventMeetingResult>>
 {
     public async Task<Result<CreateEventMeetingResult>> Handle(CreateEventMeetingCommand request, CancellationToken ct)
@@ -32,101 +31,81 @@ public sealed class CreateEventMeetingCommandHandler(
         var existing = await events.GetTrackedByIdForTenantAsync(tenantId, request.EventId, ct);
         if (existing is null)
             return Result<CreateEventMeetingResult>.NotFound("Calendar event not found.");
-
         if (existing.CreatedById != currentUser.UserId)
             return Result<CreateEventMeetingResult>.Forbidden("Only the event organizer can add a meeting.");
 
+        var organizer = await employees.GetDefaultForUserAsync(tenantId, currentUser.UserId, ct);
+        var organizerName = organizer is null ? "Someone" : $"{organizer.FirstName} {organizer.LastName}";
+        var now = clock.UtcNow;
+
+        var snapshot = await meetings.GetByCalendarEventAsync(tenantId, existing.Id, ct);
+        if (snapshot is not null)
+        {
+            snapshot = await links.ExpireIfEndedAsync(existing, snapshot, ct);
+            switch (snapshot.Status)
+            {
+                case CalendarEventMeetingStatuses.Active:
+                    return Result<CreateEventMeetingResult>.Success(new CreateEventMeetingResult(snapshot.JoinUrl));
+                case CalendarEventMeetingStatuses.ProvisioningUnknown:
+                    return Result<CreateEventMeetingResult>.Conflict("meeting_link_status_unknown");
+                case CalendarEventMeetingStatuses.Unresolved:
+                    return Result<CreateEventMeetingResult>.Conflict("meeting_link_unresolved");
+                case CalendarEventMeetingStatuses.Provisioning:
+                    // Someone else's request owns the row. Only once it is stale (its request crashed, or its
+                    // save failed after the provider call) does it become provisioning_unknown, for Retry/Remove.
+                    if (await meetings.TryMarkStaleProvisioningUnknownAsync(tenantId, snapshot.Id, now - EventMeetingLinkService.StaleAfter, now, ct))
+                    {
+                        await SendFallbackAsync(existing, organizerName, ct, CalendarMeetingNoticeCodes.LinkUnknown, snapshot.Provider);
+                        return Result<CreateEventMeetingResult>.Conflict("meeting_link_status_unknown");
+                    }
+                    return Result<CreateEventMeetingResult>.Conflict("meeting_link_in_progress");
+            }
+        }
+
         var isZoom = request.Provider == CalendarEventMeetingProviders.Zoom;
-        var externalSource = isZoom ? CalendarExternalSources.Zoom : CalendarExternalSources.OutlookCalendar;
-        var oauthProvider = isZoom ? "zoom" : "microsoft";
-        var requiredScope = isZoom ? "meeting:write:meeting" : "OnlineMeetings.ReadWrite";
-
-        var existingMeeting = await meetings.GetTrackedByCalendarEventAsync(tenantId, existing.Id, ct);
-        if (existingMeeting is { Status: CalendarEventMeetingStatuses.Active })
-            return Result<CreateEventMeetingResult>.Conflict("meeting_already_exists");
-
-        var connection = await connections.GetByTenantUserProviderAsync(tenantId, currentUser.UserId, externalSource, ct);
+        var connection = await connections.GetByTenantUserProviderAsync(
+            tenantId, currentUser.UserId, isZoom ? CalendarExternalSources.Zoom : CalendarExternalSources.OutlookCalendar, ct);
         if (connection is null
             || connection.Status != ExternalCalendarConnectionStatuses.Active
-            || !HasMeetingScope(connection.ScopesJson, requiredScope))
+            || !HasMeetingScope(connection.ScopesJson, isZoom ? "meeting:write:meeting" : "OnlineMeetings.ReadWrite"))
         {
+            // P1-5: the one-click create flow held invites back for the link; send them without one.
+            await SendFallbackAsync(existing, organizerName, ct);
             return Result<CreateEventMeetingResult>.Conflict("meeting_provider_not_connected");
         }
 
-        var accessToken = await tokenProvider.GetFreshAccessTokenAsync(connection, oauthProvider, ct);
-        if (accessToken is null)
-            return Result<CreateEventMeetingResult>.Conflict("meeting_provider_not_connected");
-
-        string externalMeetingId, joinUrl;
-        string? organizerJoinUrl, passcode;
-        if (isZoom)
+        if (snapshot is null)
         {
-            var dto = await zoomClient.CreateMeetingAsync(accessToken, existing.Title, existing.StartDate, existing.EndDate, CalendarMeetingCorrelation.ZoomToken(existing.Id, 1), ct);
-            (externalMeetingId, joinUrl, organizerJoinUrl, passcode) = (dto.ExternalMeetingId, dto.JoinUrl, dto.OrganizerJoinUrl, dto.PasscodeOrPin);
+            var row = new CalendarEventMeeting
+            {
+                Id = Guid.NewGuid(), TenantId = tenantId, CalendarEventId = existing.Id, ExternalCalendarConnectionId = connection.Id,
+                Provider = request.Provider, Status = CalendarEventMeetingStatuses.Provisioning, LinkGeneration = 1,
+                ProvisioningStartedAt = now, CreatedAt = now
+            };
+            if (!await meetings.TryInsertProvisioningAsync(row, ct))
+                return Result<CreateEventMeetingResult>.Conflict("meeting_link_in_progress");
         }
-        else
+        else if (await meetings.TryClaimNewGenerationAsync(tenantId, snapshot.Id, connection.Id, request.Provider, now, ct) is null)
         {
-            var dto = await teamsClient.CreateOrGetMeetingAsync(accessToken, CalendarMeetingCorrelation.TeamsExternalId(existing.Id, 1), existing.Title, existing.StartDate, existing.EndDate, ct);
-            (externalMeetingId, joinUrl, organizerJoinUrl, passcode) = (dto.ExternalMeetingId, dto.JoinUrl, dto.OrganizerJoinUrl, dto.PasscodeOrPin);
+            return Result<CreateEventMeetingResult>.Conflict("meeting_link_in_progress");
         }
 
-        var participantsByEvent = await events.GetParticipantsForEventsAsync(tenantId, [existing.Id], ct);
-        var participantEmployeeIds = participantsByEvent.TryGetValue(existing.Id, out var p) ? p.Select(x => x.EmployeeId).ToList() : [];
-        var guestsByEvent = await events.GetGuestsForEventsAsync(tenantId, [existing.Id], ct);
-        var guestEmails = guestsByEvent.TryGetValue(existing.Id, out var g) ? g.Select(x => x.Email).ToList() : [];
-        var organizerEmployee = await employees.GetDefaultForUserAsync(tenantId, currentUser.UserId, ct);
-        var organizerName = organizerEmployee is null ? "Someone" : $"{organizerEmployee.FirstName} {organizerEmployee.LastName}";
-
-        return await unitOfWork.ExecuteInTransactionAsync(async innerCt =>
-        {
-            existing.MeetingLink = joinUrl;
-            events.Update(existing);
-
-            if (existingMeeting is not null)
-            {
-                // One row per event (unique index): a previously removed (cancelled) meeting is reused.
-                existingMeeting.ExternalCalendarConnectionId = connection.Id;
-                existingMeeting.Provider = request.Provider;
-                existingMeeting.ExternalMeetingId = externalMeetingId;
-                existingMeeting.JoinUrl = joinUrl;
-                existingMeeting.OrganizerJoinUrl = organizerJoinUrl;
-                existingMeeting.PasscodeOrPin = passcode;
-                existingMeeting.Status = CalendarEventMeetingStatuses.Active;
-                existingMeeting.LastAttendanceSyncedAt = null;
-                existingMeeting.AttendanceSyncStatus = null;
-                existingMeeting.UpdatedAt = DateTimeOffset.UtcNow;
-                meetings.Update(existingMeeting);
-            }
-            else
-            {
-                await meetings.AddAsync(new CalendarEventMeeting
-                {
-                    Id = Guid.NewGuid(), TenantId = tenantId, CalendarEventId = existing.Id,
-                    ExternalCalendarConnectionId = connection.Id, Provider = request.Provider,
-                    ExternalMeetingId = externalMeetingId, JoinUrl = joinUrl,
-                    OrganizerJoinUrl = organizerJoinUrl, PasscodeOrPin = passcode,
-                    Status = CalendarEventMeetingStatuses.Active, CreatedAt = DateTimeOffset.UtcNow
-                }, innerCt);
-            }
-
-            if (participantEmployeeIds.Count > 0)
-            {
-                await notifications.NotifyMeetingLinkAddedAsync(
-                    tenantId, existing.Title, existing.StartDate, existing.Location,
-                    participantEmployeeIds.Select(id => new CalendarParticipantRecipient(id)).ToList(), organizerName, joinUrl, innerCt);
-            }
-
-            if (guestEmails.Count > 0)
-            {
-                await notifications.NotifyGuestsAsync(
-                    tenantId, existing.Title, existing.StartDate, existing.Location,
-                    guestEmails.Select(email => new CalendarGuestRecipient(email)).ToList(), organizerName, joinUrl, innerCt);
-            }
-
-            await unitOfWork.SaveChangesAsync(innerCt);
-            return Result<CreateEventMeetingResult>.Success(new CreateEventMeetingResult(joinUrl));
-        }, ct);
+        var claimed = (await meetings.GetTrackedByCalendarEventAsync(tenantId, existing.Id, ct))!;
+        return await links.ProvisionClaimedAsync(existing, claimed, connection, recovery: false, organizerName, ct);
     }
+
+    /// <summary>P1-5 fallback in its own transaction (keyed emails need one); with a notice code the
+    /// organizer is also told why there is no link.</summary>
+    private Task SendFallbackAsync(
+        CalendarEvent evt, string organizerName, CancellationToken ct, string? noticeCode = null, string? provider = null)
+        => unitOfWork.ExecuteInTransactionAsync(async innerCt =>
+        {
+            await links.SendFallbackInvitesAsync(evt, organizerName, innerCt);
+            if (noticeCode is not null)
+                await links.NotifyOrganizerAsync(evt, noticeCode, provider!, innerCt);
+            await unitOfWork.SaveChangesAsync(innerCt);
+            return true;
+        }, ct);
 
     private static bool HasMeetingScope(string scopesJson, string requiredScope)
     {
