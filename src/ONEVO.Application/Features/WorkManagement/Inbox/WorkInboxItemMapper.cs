@@ -35,9 +35,14 @@ public static class WorkInboxItemMapper
             }
             if (i.CanCancel)
                 actions.Add(new(WorkInboxActions.Cancel, "Cancel request", "neutral", false, false));
-            var canRevert = canRevertOverride ?? (entry.Request is { } r && ApprovalRevertWindow.ComputeCanRevert(r, caller).CanRevert);
+            var window = entry.Request is { } r ? ApprovalRevertWindow.ComputeCanRevert(r, caller) : (false, null);
+            var canRevert = canRevertOverride ?? window.CanRevert;
+            // The standard undo: its deadline lets the Inbox show the "Undo - available until" banner (plan FW).
             if (canRevert)
-                actions.Add(new(WorkInboxActions.Revert, "Revert decision", "neutral", false, false));
+                actions.Add(new(WorkInboxActions.Revert, "Undo", "neutral", false, false,
+                    window.RevertableUntil is { } until
+                        ? new Dictionary<string, string> { [InboxStandardActions.MetaRevertableUntil] = until.ToString("O") }
+                        : null));
         }
         else
         {
