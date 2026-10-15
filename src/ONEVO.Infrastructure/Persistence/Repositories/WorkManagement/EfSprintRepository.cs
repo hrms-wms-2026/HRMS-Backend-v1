@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using ONEVO.Application.Common.Exceptions;
 using ONEVO.Application.Features.WorkManagement.Sprints.RepositoryInterfaces;
 using ONEVO.Domain.Features.WorkManagement.Sprints.Entities;
 
@@ -46,4 +47,16 @@ public class EfSprintRepository : ISprintRepository
     public void Update(Sprint sprint) => _db.Sprints.Update(sprint);
 
     public void Remove(Sprint sprint) => _db.Sprints.Remove(sprint);
+
+    public async Task<int> SaveChangesAsync(CancellationToken ct = default)
+    {
+        try
+        {
+            return await _db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateConcurrencyException ex)
+        {
+            throw new ConcurrencyConflictException(ex);
+        }
+    }
 }

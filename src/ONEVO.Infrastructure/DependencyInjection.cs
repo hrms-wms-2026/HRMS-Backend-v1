@@ -542,6 +542,12 @@ public static class DependencyInjection
         services.AddScoped<
             ONEVO.Application.Features.Storage.File.ServiceInterfaces.IFileStorageService,
             ONEVO.Infrastructure.Services.Storage.File.FileStorageService>();
+        // SEC-13: no real scanner is deployed in any environment yet - see NullMalwareScanner's
+        // doc comment. Not wired into the upload/read path until a scanner is selected (decision
+        // gate in docs/superpowers/plans/next/2026-10-12-pre-uat-audit-wm-sec-findings.md).
+        services.AddScoped<
+            ONEVO.Application.Features.Storage.File.ServiceInterfaces.IMalwareScanner,
+            ONEVO.Infrastructure.Services.Storage.File.NullMalwareScanner>();
 
         // System Config - Payment Gateway (Phase 1 canonical tables)
         services.AddScoped<IPaymentGatewayRepository, EfPaymentGatewayRepository>();
@@ -850,9 +856,11 @@ public static class DependencyInjection
         services.AddHostedService<WorkManagementDapiDemoSeeder>();
         services.AddHostedService<DapiOrgStructureSeeder>();
         services.AddHostedService<DapiLeaveSampleSeeder>();
+        services.AddHostedService<DapiAttendanceDemoSeeder>();
         services.AddHostedService<DapiHistorySeeder>();
         services.AddHostedService<PlatformOAuthProviderMetadataSeeder>();
         services.AddHostedService<WorkManagementSampleDataSeeder>();
+        services.AddHostedService<DapiDueTodayTaskSeeder>();
 
         // Boot-time configuration audit (warns about missing keys; never fatal).
         services.AddHostedService<ConfigurationStartupValidator>();

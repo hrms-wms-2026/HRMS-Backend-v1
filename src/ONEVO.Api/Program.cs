@@ -17,6 +17,9 @@ var builder = WebApplication.CreateBuilder(args);
 ConfigurationStartupValidator.ValidateRequiredLocalConfiguration(
     builder.Configuration,
     builder.Environment.EnvironmentName);
+ConfigurationStartupValidator.ValidateTrayJwtSecret(
+    builder.Configuration,
+    builder.Environment.EnvironmentName);
 
 // Development only: generates the local mkcert certificate if it's missing, before anything
 // that depends on the database, so a fresh clone doesn't need a separate manual cert-setup

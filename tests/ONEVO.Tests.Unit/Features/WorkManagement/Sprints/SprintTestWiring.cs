@@ -44,6 +44,7 @@ public sealed class SprintTestWiring
         UnitOfWork.Setup(x => x.ExecuteInTransactionAsync(It.IsAny<Func<CancellationToken, Task<Result<SprintActionOutcome>>>>(), It.IsAny<CancellationToken>()))
             .Returns((Func<CancellationToken, Task<Result<SprintActionOutcome>>> op, CancellationToken ct) => op(ct));
         UnitOfWork.Setup(x => x.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
+        Sprints.Setup(x => x.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
     }
 
     public Guid TenantId { get; }
@@ -81,7 +82,7 @@ public sealed class SprintTestWiring
         Logs.Object, new SprintAudienceResolver(Tasks.Object, Members.Object), Membership.Object, Notifications.Object);
 
     public SprintActionSubmitter Submitter() => new(Hierarchy.Object, Members.Object, Identity.Object, UnitOfWork.Object,
-        Approvals.Object, WorkNotifications.Object);
+        Approvals.Object, WorkNotifications.Object, Sprints.Object);
 
     public void VerifyEngineNeverCalled()
         => Approvals.Verify(x => x.SubmitAsync(It.IsAny<WorkAction>(), It.IsAny<CancellationToken>()), Times.Never);
