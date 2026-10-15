@@ -66,4 +66,11 @@ public sealed class CalendarIncidentEngineReportTests
         cancelled.Status = CalendarEventMeetingStatuses.Cancelled;
         CalendarIncidentEngine.ReportFor(cancelled, [], Start, End, Employee, Identities, End.AddHours(1)).State.Should().Be(CalendarReportState.NoOnlineMeeting);
     }
+
+    [Fact]
+    public void A_private_meetings_title_never_reaches_the_evidence()
+    {
+        CalendarIncidentEngine.DisplayTitle(new CalendarEvent { Title = "Doctor appointment", IsPrivate = true }).Should().Be("Private meeting");
+        CalendarIncidentEngine.DisplayTitle(new CalendarEvent { Title = "Sprint review" }).Should().Be("Sprint review");
+    }
 }

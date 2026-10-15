@@ -4,6 +4,7 @@ using ONEVO.Application.Features.Calendar.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.EmployeeAuthority.Models;
 using ONEVO.Application.Features.CoreHr.EmployeeAuthority.Services;
 using ONEVO.Application.Features.Leave.Request.RepositoryInterfaces;
+using ONEVO.Application.Features.Monitoring.ActivityMonitoring.ServiceInterfaces;
 using ONEVO.Application.Features.Monitoring.Exceptions.Services;
 using ONEVO.Application.Features.Monitoring.Meetings.RepositoryInterfaces;
 using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
@@ -31,7 +32,8 @@ public sealed class CalendarIncidentEngine(
     IEmployeeAuthorityResolverFactory authority,
     IEnumerable<ICalendarIncidentRule> rules,
     CalendarCaseService cases,
-    IDateTimeProvider clock)
+    IDateTimeProvider clock,
+    IMonitoringToggleResolver? toggles = null)
 {
     public const int LookAheadDays = 14;
 
@@ -86,8 +88,13 @@ public sealed class CalendarIncidentEngine(
                 if (!string.IsNullOrWhiteSpace(connection.ExternalAccountEmail))
                     identities.Add(connection.ExternalAccountEmail);
 
-        var agent = (await compliance.ListAsync(tenantId, employeeId, from, now, ct))
-            .GroupBy(c => (c.EventId, c.StartsAt)).ToDictionary(g => g.Key, g => g.First().UsagePercentage / 100m);
+        // The desktop agent only counts when activity monitoring is on for this employee: without it there are no samples,
+        // which would read as 0% and the company has not agreed to that monitoring (plan C2 security review).
+        var agentAllowed = toggles is not null && await toggles.IsEnabledForEmployeeAsync(tenantId, employeeId, MonitoringCapability.ActivityMonitoring, ct);
+        var agent = !agentAllowed
+            ? new Dictionary<(Guid, DateTimeOffset), decimal>()
+            : (await compliance.ListAsync(tenantId, employeeId, from, now, ct))
+                .GroupBy(c => (c.EventId, c.StartsAt)).ToDictionary(g => g.Key, g => g.First().UsagePercentage / 100m);
         var managerId = await ReportingManagerAsync(tenantId, employee, ct);
         var organizerIds = new Dictionary<Guid, Guid?>();
 
@@ -114,7 +121,7 @@ public sealed class CalendarIncidentEngine(
             var (state, spans) = ReportFor(report.Meeting, report.Rows, start, end, employeeId, identities, now);
 
             views.Add(new CalendarMeetingView(
-                seriesId, start, end, e.Title, e.IsAllDay, cancelled, isOrganizer, peopleCount, organizerId,
+                seriesId, start, end, DisplayTitle(e), e.IsAllDay, cancelled, isOrganizer, peopleCount, organizerId,
                 organizerId is not null && organizerId == managerId,
                 mine?.ResponseStatus ?? CalendarEventParticipantStatuses.Accepted,
                 history.TryGetValue(seriesId, out var changes) ? changes.Select(h => new CalendarRsvpChange(h.FromStatus, h.ToStatus, h.ChangedAt)).ToList() : [],
@@ -141,6 +148,9 @@ public sealed class CalendarIncidentEngine(
 
         return new CalendarIncidentInput(employeeId, now, views, leaveIntervals, holidays, hours);
     }
+
+    /// <summary>What the rules, the evidence and the reviewer may see of a meeting's title: a private event stays private.</summary>
+    public static string DisplayTitle(CalendarEvent e) => e.IsPrivate ? "Private meeting" : e.Title;
 
     private static bool IsCancelled(CalendarEvent e) => e.IsRecurrenceCancelled || e.EventStatus == CalendarEventStatuses.Cancelled;
 
