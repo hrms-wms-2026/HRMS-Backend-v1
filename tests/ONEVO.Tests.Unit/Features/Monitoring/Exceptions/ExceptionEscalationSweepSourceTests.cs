@@ -58,8 +58,10 @@ public class ExceptionEscalationSweepSourceTests
     [Fact]
     public async Task Stale_open_cases_of_every_existing_type_are_escalated_exactly_like_the_old_nightly_sweep()
     {
-        var stale = Enum.GetValues<ExceptionType>().Select(t => Case(t, 5)).ToList();
-        _exceptions.Setup(e => e.GetStaleOpenAsync(TenantId, Now.AddDays(-3), It.IsAny<CancellationToken>())).ReturnsAsync(stale);
+        // Calendar meeting-exception cases are escalated by the calendar sweep (plan C2), never here.
+        var stale = Enum.GetValues<ExceptionType>().Where(t => !CalendarExceptionTypes.IsCalendar(t)).Select(t => Case(t, 5)).ToList();
+        var calendarCase = Case(ExceptionType.MeetingNoShow, 5);
+        _exceptions.Setup(e => e.GetStaleOpenAsync(TenantId, Now.AddDays(-3), It.IsAny<CancellationToken>())).ReturnsAsync(stale.Append(calendarCase).ToList());
 
         var escalated = await Source().EscalateOverdueAsync(TenantId, Now, default);
 
@@ -71,6 +73,7 @@ public class ExceptionEscalationSweepSourceTests
             e.EscalatedById.Should().BeNull();
         });
         _log.Should().Equal(stale.Select(e => $"escalated:{e.Id}").Append("save"));
+        calendarCase.Status.Should().Be(ExceptionStatus.Open);
         _exceptions.Verify(e => e.Update(It.IsAny<MonitoringException>()), Times.Exactly(stale.Count));
     }
 

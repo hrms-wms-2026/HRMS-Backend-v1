@@ -80,6 +80,7 @@ public sealed class ZoomAttendanceSyncJob(IServiceProvider services, ILogger<Zoo
                         try
                         {
                             await SyncOneMeetingAsync(tenant.Id, meeting, connections, tokenProvider, zoomClient, attendances, meetings, unitOfWork, ct);
+                            await QueueEvaluationWhenSettledAsync(scope.ServiceProvider, tenant.Id, meeting, unitOfWork, ct);
                         }
                         catch (Exception ex)
                         {
@@ -95,6 +96,22 @@ public sealed class ZoomAttendanceSyncJob(IServiceProvider services, ILogger<Zoo
 
             skip += TenantPageSize;
         }
+    }
+
+    /// <summary>Once the report settled (synced, or unavailable at the cutoff) the meeting's participants are re-evaluated
+    /// against the attendance rules (plan C2 post-meeting trigger).</summary>
+    private static async Task QueueEvaluationWhenSettledAsync(
+        IServiceProvider services, Guid tenantId, CalendarEventMeeting meeting, IUnitOfWork unitOfWork, CancellationToken ct)
+    {
+        if (meeting.LastAttendanceSyncedAt is null && meeting.AttendanceUnavailableAt is null)
+            return;
+        if (services.GetService<ICalendarNotificationSender>() is not { } sender || services.GetService<ICalendarEventRepository>() is not { } events)
+            return;
+        var participants = await events.GetParticipantsForEventsAsync(tenantId, [meeting.CalendarEventId], ct);
+        if (participants is null || !participants.TryGetValue(meeting.CalendarEventId, out var list) || list.Count == 0)
+            return;
+        await sender.QueueIncidentEvaluationAsync(tenantId, list.Select(p => p.EmployeeId).ToList(), ct);
+        await unitOfWork.SaveChangesAsync(ct);
     }
 
     private static async Task SyncOneMeetingAsync(

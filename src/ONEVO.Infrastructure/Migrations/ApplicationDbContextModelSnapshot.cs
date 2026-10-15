@@ -1773,6 +1773,88 @@ namespace ONEVO.Infrastructure.Migrations
                     b.ToTable("calendar_event_reminders_sent", (string)null);
                 });
 
+            modelBuilder.Entity("ONEVO.Domain.Features.Calendar.Entities.CalendarMeetingIncident", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Confidence")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("confidence");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("CreatedById")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by_id");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("deleted_at");
+
+                    b.Property<DateTimeOffset>("DetectedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("detected_at");
+
+                    b.Property<Guid>("EmployeeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("employee_id");
+
+                    b.Property<Guid>("EventId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("event_id");
+
+                    b.Property<string>("EvidenceJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("evidence_json");
+
+                    b.Property<Guid?>("ExceptionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("exception_id");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_deleted");
+
+                    b.Property<DateTimeOffset>("OccurrenceStart")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("occurrence_start");
+
+                    b.Property<string>("RuleCode")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("rule_code");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_calendar_meeting_incidents");
+
+                    b.HasIndex("TenantId", "ExceptionId")
+                        .HasDatabaseName("ix_calendar_meeting_incidents_exception");
+
+                    b.HasIndex("TenantId", "EmployeeId", "RuleCode", "EventId", "OccurrenceStart")
+                        .IsUnique()
+                        .HasDatabaseName("ux_calendar_meeting_incidents_once")
+                        .HasFilter("is_deleted = false");
+
+                    b.ToTable("calendar_meeting_incidents", (string)null);
+                });
+
             modelBuilder.Entity("ONEVO.Domain.Features.Calendar.Entities.ExternalCalendarConnection", b =>
                 {
                     b.Property<Guid>("Id")

@@ -674,6 +674,21 @@ public static class DependencyInjection
         services.AddScoped<ICalendarSyncService, CalendarSyncService>();
         services.AddScoped<ONEVO.Application.Features.Calendar.Services.CalendarEventReminderService>();
         services.AddHostedService<ONEVO.Infrastructure.Services.Calendar.CalendarEventReminderJob>();
+        // Calendar meeting exceptions (plan C2).
+        services.AddScoped<ONEVO.Application.Features.Calendar.Exceptions.ICalendarIncidentRepository, ONEVO.Infrastructure.Persistence.Repositories.Calendar.EfCalendarIncidentRepository>();
+        foreach (var rule in new[] { typeof(ONEVO.Application.Features.Calendar.Exceptions.NoShowRule), typeof(ONEVO.Application.Features.Calendar.Exceptions.LateJoinRule),
+                     typeof(ONEVO.Application.Features.Calendar.Exceptions.EarlyLeaveRule), typeof(ONEVO.Application.Features.Calendar.Exceptions.NoResponseRule),
+                     typeof(ONEVO.Application.Features.Calendar.Exceptions.DeclineRateRule), typeof(ONEVO.Application.Features.Calendar.Exceptions.LateDeclineRule),
+                     typeof(ONEVO.Application.Features.Calendar.Exceptions.UnresolvedRequestRule), typeof(ONEVO.Application.Features.Calendar.Exceptions.DoubleBookRule),
+                     typeof(ONEVO.Application.Features.Calendar.Exceptions.OnLeaveRule), typeof(ONEVO.Application.Features.Calendar.Exceptions.OverloadRule),
+                     typeof(ONEVO.Application.Features.Calendar.Exceptions.OffHoursRule) })
+            services.AddSingleton(typeof(ONEVO.Application.Features.Calendar.Exceptions.ICalendarIncidentRule), rule);
+        services.AddScoped<ONEVO.Application.Features.Calendar.Exceptions.CalendarCaseService>();
+        services.AddScoped<ONEVO.Application.Features.Calendar.Exceptions.CalendarIncidentEngine>();
+        services.AddScoped<ONEVO.Application.Common.ServiceInterfaces.IOutboxMessageHandler, ONEVO.Application.Features.Calendar.OutboxHandlers.CalendarIncidentEvaluateOutboxHandler>();
+        services.AddScoped<ONEVO.Application.Features.Inbox.Escalation.IInboxEscalationSweepSource, ONEVO.Application.Features.Calendar.Exceptions.CalendarExceptionEscalationSweepSource>();
+        services.AddHostedService<ONEVO.Infrastructure.Services.Calendar.CalendarIncidentJob>();
+        services.AddScoped<ONEVO.Application.Features.Dashboard.Team.Abstractions.ITeamActionSource, ONEVO.Application.Features.Dashboard.Team.Sources.CalendarMeetingExceptionTeamActionSource>();
 
         // Tenant cache invalidation
         services.AddScoped<ITenantCacheInvalidator, TenantCacheInvalidator>();

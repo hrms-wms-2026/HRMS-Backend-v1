@@ -349,6 +349,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<PersonalCalendarEventParticipant> CalendarEventParticipants => Set<PersonalCalendarEventParticipant>();
     public DbSet<ONEVO.Domain.Features.Calendar.Entities.CalendarEventParticipantRsvpHistory> CalendarEventParticipantRsvpHistory => Set<ONEVO.Domain.Features.Calendar.Entities.CalendarEventParticipantRsvpHistory>();
     public DbSet<ONEVO.Domain.Features.Calendar.Entities.CalendarEventReminderLog> CalendarEventRemindersSent => Set<ONEVO.Domain.Features.Calendar.Entities.CalendarEventReminderLog>();
+    public DbSet<ONEVO.Domain.Features.Calendar.Entities.CalendarMeetingIncident> CalendarMeetingIncidents => Set<ONEVO.Domain.Features.Calendar.Entities.CalendarMeetingIncident>();
     public DbSet<ExternalCalendarConnection> ExternalCalendarConnections => Set<ExternalCalendarConnection>();
     public DbSet<ExternalCalendarEventLink> ExternalCalendarEventLinks => Set<ExternalCalendarEventLink>();
     public DbSet<HolidayCalendarSettings> HolidayCalendarSettings => Set<HolidayCalendarSettings>();

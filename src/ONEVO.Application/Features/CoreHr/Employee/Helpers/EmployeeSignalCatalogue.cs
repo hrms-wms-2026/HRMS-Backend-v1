@@ -3,7 +3,7 @@ using ONEVO.Application.Features.CoreHr.Employee.DTOs.Responses;
 namespace ONEVO.Application.Features.CoreHr.Employee.Helpers;
 
 /// <summary>
-/// The 12 Employee Overview violations in their fixed importance rank. A signal is emitted only
+/// The 13 Employee Overview violations in their fixed importance rank. A signal is emitted only
 /// when its source is present and its value is at least 1; the list is ordered strictly by rank.
 /// </summary>
 public static class EmployeeSignalCatalogue
@@ -63,6 +63,9 @@ public static class EmployeeSignalCatalogue
                 Add("monitoring_exceptions", 12, "critical", "monitoring", ex, "count", null,
                     $"{ex} monitoring {S(ex, "exception", "exceptions")}", "Flagged cases to review");
         }
+        if (i.MeetingExceptions is int mx)
+            Add("meeting_exceptions", 13, "warning", "meetings", mx, "count", null,
+                $"{mx} meeting {S(mx, "exception", "exceptions")}", "Missed, late or conflicting meetings to review");
 
         return list.OrderBy(s => s.Rank).ToList();
     }

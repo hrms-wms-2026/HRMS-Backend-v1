@@ -120,6 +120,14 @@ public sealed class CalendarNotificationSender(IOutboxWriter outboxWriter, IEmpl
         => await InAppAsync(tenantId, userId, "calendar_event_reminder",
             new Dictionary<string, string> { ["eventTitle"] = eventTitle, ["eventTime"] = startDate.ToString("u") }, ct);
 
+    public async Task QueueIncidentEvaluationAsync(Guid tenantId, IReadOnlyCollection<Guid> employeeIds, CancellationToken ct = default)
+    {
+        if (employeeIds.Count == 0)
+            return;
+        await outboxWriter.EnqueueAsync(OutboxMessageTypes.CalendarIncidentEvaluate,
+            new CalendarIncidentEvaluatePayload(tenantId, employeeIds.Distinct().ToList()), tenantId, ct);
+    }
+
     private async Task EmailAsync(
         Guid tenantId, string email, string recipientName, string kind, string eventTitle, DateTimeOffset startDate, string? location,
         string organizerName, string? meetingLink, CalendarEventIcs? ics, CancellationToken ct)

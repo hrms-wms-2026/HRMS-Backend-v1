@@ -73,6 +73,8 @@ public sealed class RespondToCalendarEventCommandHandler(
         participant.ResponseStatus = normalizedStatus;
         participant.ResponseReason = request.Reason;
         participant.RespondedAt = now;
+        // A late decline, or a decline that clears a meeting-during-leave / double booking, is picked up at once (plan C2).
+        await notifications.QueueIncidentEvaluationAsync(tenantId, [employee.Id], ct);
 
         // Enqueue the organizer notification BEFORE the single SaveChanges below: the notification
         // sender only stages an outbox row (no save of its own), so it has to ride along with the

@@ -74,6 +74,7 @@ public sealed class CreateCalendarEventCommandHandler(
                 await notifications.NotifyParticipantsAddedAsync(
                     tenantId, calendarEvent.Title, calendarEvent.StartDate, calendarEvent.Location,
                     request.ParticipantEmployeeIds, organizerName, innerCt, sendInviteEmail: !hasPendingMeeting, ics: ics);
+                await notifications.QueueIncidentEvaluationAsync(tenantId, request.ParticipantEmployeeIds, innerCt);
             }
 
             if (guestEmails.Count > 0)

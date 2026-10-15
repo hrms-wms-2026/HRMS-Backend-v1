@@ -48,6 +48,13 @@ public interface ICalendarEventRepository
 
     Task AddReminderLogsAsync(IReadOnlyList<CalendarEventReminderLog> logs, CancellationToken ct = default);
 
+    /// <summary>One employee's RSVP changes on the given events, oldest first (meeting-exception rules, plan C2).</summary>
+    Task<IReadOnlyList<CalendarEventParticipantRsvpHistory>> ListRsvpHistoryAsync(
+        Guid tenantId, Guid employeeId, IReadOnlyCollection<Guid> eventIds, CancellationToken ct = default);
+
+    /// <summary>Employees invited to a meeting in [from, to], or to a recurring series running by then (the nightly evaluation set).</summary>
+    Task<IReadOnlyList<Guid>> ListParticipantEmployeeIdsInRangeAsync(Guid tenantId, DateTimeOffset from, DateTimeOffset to, CancellationToken ct = default);
+
     /// <summary>Every participant row for the given events, grouped by EventId - used to attach
     /// participant summaries to items returned from GetCalendarEventsQueryHandler.</summary>
     Task<IReadOnlyDictionary<Guid, IReadOnlyList<CalendarEventParticipant>>> GetParticipantsForEventsAsync(

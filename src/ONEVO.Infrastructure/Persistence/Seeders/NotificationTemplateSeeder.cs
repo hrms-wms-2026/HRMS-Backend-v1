@@ -354,6 +354,24 @@ public class NotificationTemplateSeeder : IHostedService
                 Id = Guid.NewGuid(), Code = "calendar_event_reminder",
                 InAppTitleTemplate = "Starting soon",
                 InAppBodyTemplate = "\"{{eventTitle}}\" starts at {{eventTime}}."
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "calendar_exception_detected",
+                InAppTitleTemplate = "Meeting exception to review",
+                InAppBodyTemplate = "{{employeeName}}: {{title}}. {{description}}"
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "calendar_exception_raised_for_you",
+                InAppTitleTemplate = "A meeting exception was raised for you",
+                InAppBodyTemplate = "{{title}}. {{description}} You can add your explanation in the Inbox."
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "calendar_exception_escalated",
+                InAppTitleTemplate = "Meeting exception escalated",
+                InAppBodyTemplate = "{{title}} was not reviewed in time and needs your attention. {{description}}"
             }
 
         };

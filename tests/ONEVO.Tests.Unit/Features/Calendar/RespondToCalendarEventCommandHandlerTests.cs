@@ -228,4 +228,17 @@ public sealed class RespondToCalendarEventCommandHandlerTests
         Assert.True(result.IsSuccess);
         _notifications.Verify(x => x.NotifyNomineeAsync(TenantId, nominee.UserId, "Payroll review", "Ada Lovelace", It.IsAny<CancellationToken>()), Times.Once);
     }
+
+    [Fact]
+    public async Task Handle_AnyAnswer_QueuesAMeetingExceptionReEvaluationOfTheResponder()
+    {
+        var sut = BuildSut();
+        var participant = new CalendarEventParticipant { Id = Guid.NewGuid(), TenantId = TenantId, EventId = EventId, EmployeeId = EmployeeId, ResponseStatus = CalendarEventParticipantStatuses.Accepted };
+        _events.Setup(x => x.GetTrackedParticipantAsync(TenantId, EventId, EmployeeId, It.IsAny<CancellationToken>())).ReturnsAsync(participant);
+
+        await sut.Handle(new RespondToCalendarEventCommand(EventId, "Rejected"), CancellationToken.None);
+
+        _notifications.Verify(x => x.QueueIncidentEvaluationAsync(TenantId, It.Is<IReadOnlyCollection<Guid>>(ids => ids.Single() == EmployeeId),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
 }

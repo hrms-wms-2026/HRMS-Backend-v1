@@ -65,6 +65,7 @@ public sealed class UpdateCalendarEventCommandHandler(
                     CalendarEventIcs.For(existing.Id, existing.EndDate, existing.RecurrenceRule, DateTimeOffset.UtcNow),
                     existing.Title, existing.StartDate, existing.Location, existing.MeetingLink, participantEmployeeIds, guestEmails, organizerName, innerCt);
             }
+            await notifications.QueueIncidentEvaluationAsync(tenantId, participantEmployeeIds, innerCt);
 
             await unitOfWork.SaveChangesAsync(innerCt);
 

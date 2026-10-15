@@ -56,17 +56,27 @@ public class EfExceptionRepository : IExceptionRepository
     public async Task<MonitoringException?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct) =>
         await _db.Exceptions.FirstOrDefaultAsync(e => e.TenantId == tenantId && e.Id == id, ct);
 
+    // The calendar meeting-exception types, as an array EF can translate to IN (...).
+    private static readonly ExceptionType[] CalendarTypes = CalendarExceptionTypes.All.ToArray();
+
+    public async Task<MonitoringException?> GetOpenOrAcknowledgedAsync(Guid tenantId, Guid employeeId, ExceptionType type, CancellationToken ct) =>
+        await _db.Exceptions
+            .Where(e => e.TenantId == tenantId && e.EmployeeId == employeeId && e.Type == type
+                        && (e.Status == ExceptionStatus.Open || e.Status == ExceptionStatus.Acknowledged))
+            .OrderByDescending(e => e.DetectedAt)
+            .FirstOrDefaultAsync(ct);
+
     public Task<int> CountDetectedInRangeAsync(
-        Guid tenantId, Guid employeeId, DateTimeOffset fromUtc, DateTimeOffset toUtcExclusive, CancellationToken ct) =>
+        Guid tenantId, Guid employeeId, DateTimeOffset fromUtc, DateTimeOffset toUtcExclusive, CancellationToken ct, bool calendar = false) =>
         _db.Exceptions.AsNoTracking().CountAsync(
-            e => e.TenantId == tenantId && e.EmployeeId == employeeId
+            e => e.TenantId == tenantId && e.EmployeeId == employeeId && CalendarTypes.Contains(e.Type) == calendar
                  && (e.Status == ExceptionStatus.Open || e.Status == ExceptionStatus.Acknowledged)
                  && e.DetectedAt >= fromUtc && e.DetectedAt < toUtcExclusive, ct);
 
     public async Task<IReadOnlyList<MonitoringException>> ListDetectedInRangeAsync(
-        Guid tenantId, Guid employeeId, DateTimeOffset fromUtc, DateTimeOffset toUtcExclusive, int take, CancellationToken ct) =>
+        Guid tenantId, Guid employeeId, DateTimeOffset fromUtc, DateTimeOffset toUtcExclusive, int take, CancellationToken ct, bool calendar = false) =>
         await _db.Exceptions.AsNoTracking()
-            .Where(e => e.TenantId == tenantId && e.EmployeeId == employeeId
+            .Where(e => e.TenantId == tenantId && e.EmployeeId == employeeId && CalendarTypes.Contains(e.Type) == calendar
                         && (e.Status == ExceptionStatus.Open || e.Status == ExceptionStatus.Acknowledged)
                         && e.DetectedAt >= fromUtc && e.DetectedAt < toUtcExclusive)
             .OrderByDescending(e => e.DetectedAt)
@@ -99,6 +109,7 @@ public class EfExceptionRepository : IExceptionRepository
         // Still needs someone: open, being worked (acknowledged) or with HR (escalated).
         else if (filter.ActiveOnly) query = query.Where(e => e.Status != ExceptionStatus.Resolved);
         if (filter.Type.HasValue) query = query.Where(e => e.Type == filter.Type.Value);
+        if (filter.Calendar is bool calendar) query = query.Where(e => CalendarTypes.Contains(e.Type) == calendar);
         if (filter.EmployeeIds is not null)
         {
             var ids = filter.EmployeeIds.ToList();

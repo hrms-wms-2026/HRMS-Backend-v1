@@ -71,6 +71,7 @@ public sealed class DeleteCalendarEventCommandHandler(
                 CalendarEventIcs.For(existing.Id, existing.EndDate, existing.RecurrenceRule, DateTimeOffset.UtcNow),
                 existing.Title, existing.StartDate, existing.Location, null, participantEmployeeIds, guestEmails, organizerName, ct);
         }
+        await notifications.QueueIncidentEvaluationAsync(tenantId, participantEmployeeIds, ct);
 
         events.Remove(existing);
         await unitOfWork.SaveChangesAsync(ct);

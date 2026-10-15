@@ -67,6 +67,7 @@ public sealed class CancelRecurringOccurrenceCommandHandler(
             await notifications.EmailEventChangedAsync(tenantId, CalendarEventEmailKinds.Cancelled, ics, master.Title, request.OriginalStart,
                 master.Location, null, participantEmployeeIds, guestEmails, organizerName, ct);
         }
+        await notifications.QueueIncidentEvaluationAsync(tenantId, participantEmployeeIds, ct);
 
         await unitOfWork.SaveChangesAsync(ct);
         return Result.Success();

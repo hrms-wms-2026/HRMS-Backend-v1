@@ -69,6 +69,7 @@ public sealed class EditRecurringOccurrenceCommandHandler(
                 CalendarEventIcs.For(master.Id, master.EndDate, master.RecurrenceRule, DateTimeOffset.UtcNow),
                 master.Title, master.StartDate, master.Location, master.MeetingLink, participantEmployeeIds, guestEmails, organizerName, ct);
         }
+        await notifications.QueueIncidentEvaluationAsync(master.TenantId, participantEmployeeIds, ct);
 
         await unitOfWork.SaveChangesAsync(ct);
         return Result<CalendarEventItem>.Success(ToItem(master, isOccurrence: false, masterId: null, originalStart: null));

@@ -43,7 +43,8 @@ public sealed class ExceptionEscalationSweepSource : IInboxEscalationSweepSource
             return 0;
 
         var candidates = await _exceptions.GetStaleOpenAsync(tenantId, now - slas.Values.Min(), ct);
-        var overdue = candidates.Where(e => e.Status == ExceptionStatus.Open
+        // Calendar meeting exceptions escalate through the calendar policy (log only at the top), never to HR.
+        var overdue = candidates.Where(e => e.Status == ExceptionStatus.Open && !CalendarExceptionTypes.IsCalendar(e.Type)
             && slas.TryGetValue(e.Type, out var sla) && e.DetectedAt < now - sla).ToList();
         if (overdue.Count == 0)
             return 0;

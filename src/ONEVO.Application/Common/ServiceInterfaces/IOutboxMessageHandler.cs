@@ -44,4 +44,6 @@ public static class OutboxMessageTypes
     /// <summary>Tells the affected people's open inboxes to refresh one item (InboxChangedOutboxHandler), after commit.</summary>
     public const string InboxChanged = "inbox_changed";
     public const string CalendarEventInviteEmail = "calendar_event_invite_email";
+    /// <summary>Re-run the calendar meeting-exception rules for some employees (plan C2 triggers).</summary>
+    public const string CalendarIncidentEvaluate = "calendar_incident_evaluate";
 }
