@@ -429,6 +429,10 @@ public static class DependencyInjection
         services.AddScoped<ONEVO.Application.Features.Storage.EntityAssets.Services.EmployeeEntityAssetAccessPolicy>();
         services.AddScoped<ONEVO.Application.Features.Storage.EntityAssets.Services.LegalEntityEntityAssetAccessPolicy>();
         services.AddScoped<
+            ONEVO.Application.Features.CoreHr.Employee.Documents.IEmployeeDocumentAccess,
+            ONEVO.Application.Features.CoreHr.Employee.Documents.EmployeeDocumentAccess>();
+        services.AddScoped<ONEVO.Application.Features.Storage.EntityAssets.Services.EmployeeDocumentAccessPolicy>();
+        services.AddScoped<
             ONEVO.Application.Features.Storage.EntityAssets.ServiceInterfaces.IPrimaryEntityAssetLinker,
             ONEVO.Application.Features.Storage.EntityAssets.Services.PrimaryEntityAssetLinker>();
         services.AddScoped<ONEVO.Application.Features.Storage.EntityAssets.ServiceInterfaces.IEntityAssetAccessPolicyResolver>(sp =>
@@ -438,7 +442,9 @@ public static class DependencyInjection
                     [ONEVO.Application.Common.Constants.EntityAssetOwnerTypes.Employee] =
                         sp.GetRequiredService<ONEVO.Application.Features.Storage.EntityAssets.Services.EmployeeEntityAssetAccessPolicy>(),
                     [ONEVO.Application.Common.Constants.EntityAssetOwnerTypes.LegalEntity] =
-                        sp.GetRequiredService<ONEVO.Application.Features.Storage.EntityAssets.Services.LegalEntityEntityAssetAccessPolicy>()
+                        sp.GetRequiredService<ONEVO.Application.Features.Storage.EntityAssets.Services.LegalEntityEntityAssetAccessPolicy>(),
+                    [ONEVO.Application.Common.Constants.EntityAssetOwnerTypes.EmployeeDocument] =
+                        sp.GetRequiredService<ONEVO.Application.Features.Storage.EntityAssets.Services.EmployeeDocumentAccessPolicy>()
                     // Part 2 plan (Project/Objective/Task endpoint consolidation) adds the remaining
                     // three owner types here when their controllers migrate to the generic resolve endpoint.
                 }));
@@ -693,6 +699,15 @@ public static class DependencyInjection
             ONEVO.Application.Features.Monitoring.Exceptions.RepositoryInterfaces.IExceptionRepository,
             ONEVO.Infrastructure.Persistence.Repositories.Monitoring.Exceptions.EfExceptionRepository>();
         services.AddScoped<IMonitoringToggleResolver, MonitoringToggleResolverService>();
+        services.AddScoped<
+            ONEVO.Application.Features.OrgStructure.Services.IPositionPeopleChartReader,
+            ONEVO.Infrastructure.Services.OrgStructure.PositionPeopleChartReader>();
+        services.AddScoped<
+            ONEVO.Application.Features.OrgStructure.Services.IReportingLineMoveService,
+            ONEVO.Infrastructure.Services.OrgStructure.ReportingLineMoveService>();
+        services.AddScoped<
+            ONEVO.Application.Features.CoreHr.OnboardingDraft.Services.IOnboardingWizardLookupService,
+            ONEVO.Infrastructure.Services.CoreHr.OnboardingWizardLookupService>();
         services.AddHostedService<ActivityDailySummaryJob>();
         services.AddHostedService<ONEVO.Infrastructure.Services.Monitoring.Exceptions.ExceptionDetectionJob>();
 

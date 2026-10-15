@@ -112,6 +112,38 @@ public sealed class GetEmployeeDetailQueryHandlerTests
             Times.Never);
     }
 
+    [Theory]
+    [InlineData(false, "Design Lead")]
+    [InlineData(true, null)]
+    public async Task Handle_PendingInvite_ReportsTheReservedPositionAsPending(bool inviteAccepted, string? expected)
+    {
+        ArrangeVisibleEmployee();
+        var positionId = Guid.NewGuid();
+        _invitationTokenRepository
+            .Setup(r => r.GetLatestByEmployeeIdAsync(_tenantId, _employeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new InvitationToken
+            {
+                TenantId = _tenantId, EmployeeId = _employeeId, PositionId = positionId,
+                ExpiresAt = _now.AddHours(24), UsedAt = inviteAccepted ? _now.AddHours(-1) : null
+            });
+        var positions = new Mock<IPositionRepository>();
+        positions
+            .Setup(r => r.GetByIdAsync(_tenantId, positionId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Position { Id = positionId, TenantId = _tenantId, Name = "Design Lead" });
+
+        var handler = new GetEmployeeDetailQueryHandler(
+            _employeeRepository.Object, _scopeResolver.Object, _profile.Object, _invitationTokenRepository.Object,
+            _encryption.Object, _currentUser.Object, _clock.Object, _employmentTypes.Object, _legalEntities.Object,
+            _projectMembers.Object, positions.Object);
+
+        var result = await handler.Handle(new GetEmployeeDetailQuery(_employeeId), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        // The planned assignment only becomes the real position once the invite is accepted.
+        Assert.Null(result.Value!.JobInformation.PositionName);
+        Assert.Equal(expected, result.Value.JobInformation.PendingPositionName);
+    }
+
     [Fact]
     public async Task Handle_IncludesWorkModeLabelFromVisibleEmployeeProjection()
     {

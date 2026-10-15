@@ -264,8 +264,12 @@ public sealed class AttendanceTodayStateService(
             tenantId, userId, legalEntityId, MonitoringCapability.WorkLocationVerification, ct);
         var radiusMeters = await toggles.GetAllowedRadiusMetersAsync(tenantId, userId, legalEntityId, ct);
 
+        // A per-employee override (set in the Add Employee wizard) beats whichever mode applies today.
+        var photoRequired = await toggles.GetPhotoRequiredOverrideAsync(tenantId, userId, legalEntityId, ct)
+            ?? mode.PhotoRequired;
+
         return new AllowedClockInMethods(
-            mode.WebEnabled, mode.TrayEnabled, mode.BiometricEnabled, mode.PhotoRequired,
+            mode.WebEnabled, mode.TrayEnabled, mode.BiometricEnabled, photoRequired,
             locationEnabled, radiusMeters);
     }
 

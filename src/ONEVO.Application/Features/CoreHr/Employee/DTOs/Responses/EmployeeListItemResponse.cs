@@ -42,4 +42,9 @@ public record EmployeeListItemResponse(
     DateTimeOffset? InvitationExpiresAt = null,
     EmployeeListAttendanceSummaryResponse? AttendanceSummary = null,
     string? WorkModeLabel = null,
-    Guid? AvatarFileId = null);
+    Guid? AvatarFileId = null,
+    /// <summary>
+    /// True when PositionName/ReportingManager come from a still-planned assignment - an invited
+    /// employee who hasn't accepted yet. The seat is reserved but not active.
+    /// </summary>
+    bool PositionPending = false);

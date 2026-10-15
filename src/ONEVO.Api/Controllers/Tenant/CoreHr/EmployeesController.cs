@@ -6,6 +6,10 @@ using ONEVO.Api.Contracts.CoreHr.Employees;
 using ONEVO.Api.Contracts.Storage;
 using ONEVO.Api.Filters;
 using ONEVO.Application.Features.CoreHr.Employee.Commands.AddDependent;
+using ONEVO.Application.Features.CoreHr.Employee.Commands.AddMyDocument;
+using ONEVO.Application.Features.CoreHr.Employee.Commands.DeleteMyDocument;
+using ONEVO.Application.Features.CoreHr.Employee.Queries.ListMyDocuments;
+using ONEVO.Application.Features.CoreHr.Employee.Queries.ListEmployeeDocuments;
 using ONEVO.Application.Features.CoreHr.Employee.Commands.BulkChangeEmployeePosition;
 using ONEVO.Application.Features.CoreHr.Employee.Commands.BulkChangeEmploymentType;
 using ONEVO.Application.Features.CoreHr.Offboarding.Commands.BulkStartOffboarding;
@@ -536,6 +540,49 @@ public class EmployeesController : ControllerBase
         var result = await _mediator.Send(new LinkMyAvatarCommand(request.FileId), ct);
         return result.IsSuccess
             ? Ok(new { avatarFileId = result.Value })
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>An employee's personal documents, read-only, for HR/managers. Requires employees:read
+    /// and the employee inside the caller's management coverage (checked in the handler).</summary>
+    [HttpGet("{id:guid}/documents")]
+    [RequirePermission("employees:read")]
+    public async Task<IActionResult> ListEmployeeDocuments(Guid id, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new ListEmployeeDocumentsQuery(id), ct);
+        return result.IsSuccess
+            ? Ok(result.Value)
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>The caller's own personal documents (CV, ID, certificates), newest first.
+    /// Self-service only - files are readable through /files/{id} by their owner alone.</summary>
+    [HttpGet("me/documents")]
+    public async Task<IActionResult> ListMyDocuments(CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new ListMyDocumentsQuery(), ct);
+        return result.IsSuccess
+            ? Ok(result.Value)
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Links a pending employee_document upload to the caller's documents.</summary>
+    [HttpPost("me/documents")]
+    public async Task<IActionResult> AddMyDocument([FromBody] AddMyDocumentRequest request, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new AddMyDocumentCommand(request.FileId, request.Type, request.Name), ct);
+        return result.IsSuccess
+            ? StatusCode(StatusCodes.Status201Created, result.Value)
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Removes one of the caller's documents and deletes its stored file.</summary>
+    [HttpDelete("me/documents/{documentId:guid}")]
+    public async Task<IActionResult> DeleteMyDocument(Guid documentId, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new DeleteMyDocumentCommand(documentId), ct);
+        return result.IsSuccess
+            ? NoContent()
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 

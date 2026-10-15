@@ -68,7 +68,8 @@ public static class PositionMapper
             preview.AssignedCount,
             occupantPreview,
             preview.AssignedCount - occupantPreview.Count,
-            requiresApproval);
+            requiresApproval,
+            preview.ReservedCount);
     }
 
     public static PositionOccupantPreviewResponse ToOccupantPreviewResponse(PositionOccupantPreviewItem item)

@@ -68,11 +68,13 @@ public class EfPositionAssignmentRepository : IPositionAssignmentRepository
                 && e.TenantId == tenantId
                 && positionIds.Contains(pa.PositionId)
                 && pa.AssignmentKind == PositionAssignmentKind.PrimaryEmployment
-                && pa.AssignmentStatus == PositionAssignmentStatus.Active
+                && (pa.AssignmentStatus == PositionAssignmentStatus.Active
+                    || pa.AssignmentStatus == PositionAssignmentStatus.Planned)
             orderby pa.PositionId, pa.EffectiveFrom, pa.Id
             select new
             {
                 pa.PositionId,
+                IsPlanned = pa.AssignmentStatus == PositionAssignmentStatus.Planned,
                 EmployeeId = e.Id,
                 e.FirstName,
                 e.LastName,
@@ -84,10 +86,11 @@ public class EfPositionAssignmentRepository : IPositionAssignmentRepository
             .ToDictionary(
                 group => group.Key,
                 group => new PositionOccupancyPreview(
-                    group.Count(),
-                    group.Take(previewLimit)
+                    group.Count(row => !row.IsPlanned),
+                    group.Where(row => !row.IsPlanned).Take(previewLimit)
                         .Select(row => new PositionOccupantPreviewItem(row.EmployeeId, row.FirstName, row.LastName, row.AvatarFileId))
-                        .ToList()));
+                        .ToList(),
+                    group.Count(row => row.IsPlanned)));
     }
 
     public async Task<IReadOnlyList<PositionActiveHolder>> GetActiveHoldersAsync(
@@ -99,13 +102,19 @@ public class EfPositionAssignmentRepository : IPositionAssignmentRepository
             join e in _db.Employees.AsNoTracking() on pa.EmployeeId equals e.Id
             join asset in avatarAssets on e.Id equals asset.OwnerId into assetJoin
             from asset in assetJoin.DefaultIfEmpty()
+            join dept in _db.Departments.AsNoTracking() on e.DepartmentId equals dept.Id into deptJoin
+            from dept in deptJoin.DefaultIfEmpty()
             where pa.TenantId == tenantId
                 && pa.PositionId == positionId
                 && pa.AssignmentKind == PositionAssignmentKind.PrimaryEmployment
                 && pa.AssignmentStatus == PositionAssignmentStatus.Active
+            // Deterministic order: the Add Employee wizard pre-selects the first holder as the
+            // default reporting manager, so the same list must come back in the same order.
+            orderby e.FirstName, e.LastName, e.Id
             select new PositionActiveHolder(
                 e.Id, e.FirstName, e.LastName, e.Email,
-                asset == null ? null : asset.FileRecordId))
+                asset == null ? null : asset.FileRecordId,
+                dept == null ? null : dept.Name))
             .ToListAsync(ct);
     }
 
@@ -357,6 +366,16 @@ public class EfPositionAssignmentRepository : IPositionAssignmentRepository
                 && (pa.AssignmentStatus == PositionAssignmentStatus.Active
                     || pa.AssignmentStatus == PositionAssignmentStatus.Ended))
             .OrderBy(pa => pa.EffectiveFrom)
+            .ToListAsync(ct);
+    }
+
+    public async Task<IReadOnlyList<ReportingManagerChange>> ListReportingManagerChangesForEmployeeAsync(
+        Guid tenantId, Guid employeeId, CancellationToken ct = default)
+    {
+        return await _db.ReportingManagerChanges
+            .AsNoTracking()
+            .Where(change => change.TenantId == tenantId && change.EmployeeId == employeeId)
+            .OrderBy(change => change.EffectiveAt)
             .ToListAsync(ct);
     }
 

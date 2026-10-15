@@ -389,7 +389,7 @@ public class EfEmployeeRepository : IEmployeeRepository
                     row.Row.workMode != null ? row.Row.workMode.Name : null))
                 .ToList();
 
-            return (responseRows, totalCount);
+            return (await FillPendingPositionsAsync(tenantId, responseRows, ct), totalCount);
         }
 
         var items = await joined
@@ -416,7 +416,90 @@ public class EfEmployeeRepository : IEmployeeRepository
                 row.workMode != null ? row.workMode.Name : null))
             .ToListAsync(ct);
 
-                return (items, totalCount);
+                return (await FillPendingPositionsAsync(tenantId, items, ct), totalCount);
+    }
+
+    /// <summary>
+    /// Invited employees only hold a "planned" assignment until they accept the invite, so the
+    /// active-assignment joins above leave their position and manager blank. Fill those from the
+    /// planned seat instead (flagged PositionPending) - for this page's rows only.
+    /// </summary>
+    private async Task<IReadOnlyList<EmployeeListItemResponse>> FillPendingPositionsAsync(
+        Guid tenantId, IReadOnlyList<EmployeeListItemResponse> items, CancellationToken ct)
+    {
+        var missing = items.Where(i => i.PositionId is null).Select(i => i.Id).ToList();
+        if (missing.Count == 0)
+            return items;
+
+        var planned = await (
+            from pa in _db.PositionAssignments.AsNoTracking()
+            join position in _db.Positions.AsNoTracking() on pa.PositionId equals position.Id
+            where pa.TenantId == tenantId
+                && missing.Contains(pa.EmployeeId)
+                && pa.AssignmentKind == PositionAssignmentKind.PrimaryEmployment
+                && pa.AssignmentStatus == PositionAssignmentStatus.Planned
+            select new { pa.EmployeeId, pa.EffectiveFrom, pa.ReportsToEmployeeId, position.Id, position.Name, position.ReportsToPositionId })
+            .ToListAsync(ct);
+        if (planned.Count == 0)
+            return items;
+
+        var plannedByEmployee = planned
+            .GroupBy(p => p.EmployeeId)
+            .ToDictionary(g => g.Key, g => g.OrderByDescending(p => p.EffectiveFrom).First());
+
+        // Manager: the explicit pick stored on the assignment, else the only active holder of the
+        // position it reports to (same rule the closure uses once the seat is activated).
+        var reportsToPositionIds = plannedByEmployee.Values
+            .Where(p => p.ReportsToEmployeeId is null && p.ReportsToPositionId is not null)
+            .Select(p => p.ReportsToPositionId!.Value)
+            .Distinct()
+            .ToList();
+        var holders = reportsToPositionIds.Count == 0
+            ? []
+            : await (
+                from pa in _db.PositionAssignments.AsNoTracking()
+                where pa.TenantId == tenantId
+                    && reportsToPositionIds.Contains(pa.PositionId)
+                    && pa.AssignmentKind == PositionAssignmentKind.PrimaryEmployment
+                    && pa.AssignmentStatus == PositionAssignmentStatus.Active
+                select new { pa.PositionId, pa.EmployeeId })
+                .ToListAsync(ct);
+        var singleHolderByPosition = holders
+            .GroupBy(h => h.PositionId)
+            .Where(g => g.Count() == 1)
+            .ToDictionary(g => g.Key, g => g.First().EmployeeId);
+
+        var managerIds = plannedByEmployee.Values
+            .Select(p => p.ReportsToEmployeeId
+                ?? (p.ReportsToPositionId is Guid rp && singleHolderByPosition.TryGetValue(rp, out var h) ? h : (Guid?)null))
+            .Where(id => id is not null)
+            .Select(id => id!.Value)
+            .Distinct()
+            .ToList();
+        var managerNames = managerIds.Count == 0
+            ? new Dictionary<Guid, string>()
+            : await _db.Employees.AsNoTracking()
+                .Where(e => e.TenantId == tenantId && managerIds.Contains(e.Id))
+                .ToDictionaryAsync(e => e.Id, e => e.FirstName + " " + e.LastName, ct);
+
+        return items
+            .Select(item =>
+            {
+                if (item.PositionId is not null || !plannedByEmployee.TryGetValue(item.Id, out var p))
+                    return item;
+                var managerId = p.ReportsToEmployeeId
+                    ?? (p.ReportsToPositionId is Guid rp && singleHolderByPosition.TryGetValue(rp, out var h) ? h : (Guid?)null);
+                var managerName = managerId is Guid m && managerNames.TryGetValue(m, out var n) ? n : null;
+                return item with
+                {
+                    PositionId = p.Id,
+                    PositionName = p.Name,
+                    ReportingManagerId = item.ReportingManagerId ?? (managerName is null ? null : managerId),
+                    ReportingManagerName = item.ReportingManagerName ?? managerName,
+                    PositionPending = true
+                };
+            })
+            .ToList();
     }
 
     private static int GetAttentionPriority(string? attentionType)
