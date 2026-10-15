@@ -13,16 +13,43 @@ public sealed class GetEventMeetingAttendanceQueryHandlerTests
 {
     private static readonly Guid TenantId = Guid.NewGuid();
     private static readonly Guid EventId = Guid.NewGuid();
+    private static readonly Guid OrganizerUser = Guid.NewGuid();
 
     private readonly Mock<ICurrentUser> _currentUser = new();
     private readonly Mock<ICalendarEventMeetingRepository> _meetings = new();
     private readonly Mock<ICalendarEventMeetingAttendanceRepository> _attendances = new();
+    private readonly Mock<ICalendarEventRepository> _events = new();
+    private readonly Mock<ICalendarIncidentRepository> _incidents = new();
+    private readonly Mock<ONEVO.Application.Common.RepositoryInterfaces.IEmployeeRepository> _employees = new();
 
-    private GetEventMeetingAttendanceQueryHandler BuildSut()
+    public GetEventMeetingAttendanceQueryHandlerTests()
+    {
+        _events.Setup(e => e.GetByIdForTenantAsync(TenantId, EventId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CalendarEvent { Id = EventId, TenantId = TenantId, Title = "Sprint review", CreatedById = OrganizerUser });
+    }
+
+    private GetEventMeetingAttendanceQueryHandler BuildSut(Guid? callerUserId = null)
     {
         _currentUser.SetupGet(x => x.IsAuthenticated).Returns(true);
         _currentUser.SetupGet(x => x.TenantId).Returns(TenantId);
-        return new GetEventMeetingAttendanceQueryHandler(_currentUser.Object, _meetings.Object, _attendances.Object);
+        _currentUser.SetupGet(x => x.UserId).Returns(callerUserId ?? OrganizerUser);
+        return new GetEventMeetingAttendanceQueryHandler(_currentUser.Object, _meetings.Object, _attendances.Object, _events.Object);
+    }
+
+    private CalendarEventMeeting SyncedMeetingWithOneAttendee()
+    {
+        var meeting = new CalendarEventMeeting { Id = Guid.NewGuid(), LastAttendanceSyncedAt = DateTimeOffset.UtcNow };
+        _meetings.Setup(m => m.GetTrackedByCalendarEventAsync(TenantId, EventId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(meeting);
+        _attendances.Setup(a => a.GetByMeetingIdAsync(TenantId, meeting.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([
+                new CalendarEventMeetingAttendance
+                {
+                    Id = Guid.NewGuid(), ExternalParticipantName = "Ada Lovelace", ExternalParticipantEmail = "ada@example.com",
+                    JoinedAt = DateTimeOffset.UtcNow.AddMinutes(-30), LeftAt = DateTimeOffset.UtcNow, DurationSeconds = 1800
+                }
+            ]);
+        return meeting;
     }
 
     [Fact]
@@ -50,40 +77,71 @@ public sealed class GetEventMeetingAttendanceQueryHandlerTests
     }
 
     [Fact]
-    public async Task Handle_MeetingSynced_ReturnsAttendees()
+    public async Task Handle_EventNotStored_ReturnsUnavailableWithoutReadingTheMeeting()
     {
-        var meeting = new CalendarEventMeeting { Id = Guid.NewGuid(), LastAttendanceSyncedAt = DateTimeOffset.UtcNow };
-        _meetings.Setup(m => m.GetTrackedByCalendarEventAsync(TenantId, EventId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(meeting);
-        _attendances.Setup(a => a.GetByMeetingIdAsync(TenantId, meeting.Id, It.IsAny<CancellationToken>()))
-            .ReturnsAsync([
-                new CalendarEventMeetingAttendance
-                {
-                    Id = Guid.NewGuid(), ExternalParticipantName = "Ada Lovelace", ExternalParticipantEmail = "ada@example.com",
-                    JoinedAt = DateTimeOffset.UtcNow.AddMinutes(-30), LeftAt = DateTimeOffset.UtcNow, DurationSeconds = 1800
-                }
-            ]);
+        var virtualOccurrenceId = Guid.NewGuid();
 
-        var result = await BuildSut().Handle(new GetEventMeetingAttendanceQuery(EventId), CancellationToken.None);
+        var result = await BuildSut().Handle(new GetEventMeetingAttendanceQuery(virtualOccurrenceId), CancellationToken.None);
 
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.Available.Should().BeFalse();
+        _meetings.Verify(m => m.GetTrackedByCalendarEventAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    // ---- audience: the organizer only - participants and unrelated tenant users are refused ------------------------
+
+    [Fact]
+    public async Task The_organizer_sees_the_attendance_rows()
+    {
+        SyncedMeetingWithOneAttendee();
+
+        var result = await BuildSut(OrganizerUser).Handle(new GetEventMeetingAttendanceQuery(EventId), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
         result.Value!.Available.Should().BeTrue();
-        result.Value.Attendees.Should().ContainSingle(a => a.Name == "Ada Lovelace");
+        result.Value.Attendees.Should().ContainSingle(a => a.Name == "Ada Lovelace" && a.Email == "ada@example.com");
+    }
+
+    [Fact]
+    public async Task A_participant_who_is_not_the_organizer_is_forbidden()
+    {
+        // The caller is invited (a participant row exists) but did not organize the event.
+        var participantUser = Guid.NewGuid();
+        _events.Setup(e => e.GetParticipantsForEventsAsync(TenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, IReadOnlyList<CalendarEventParticipant>>
+            {
+                [EventId] = [new CalendarEventParticipant { EventId = EventId, EmployeeId = Guid.NewGuid() }],
+            });
+        SyncedMeetingWithOneAttendee();
+
+        var result = await BuildSut(participantUser).Handle(new GetEventMeetingAttendanceQuery(EventId), CancellationToken.None);
+
+        result.IsSuccess.Should().BeFalse();
+        result.StatusCode.Should().Be(403);
+        result.Value.Should().BeNull();
+        _attendances.Verify(a => a.GetByMeetingIdAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task An_unrelated_tenant_user_is_forbidden()
+    {
+        SyncedMeetingWithOneAttendee();
+
+        var result = await BuildSut(Guid.NewGuid()).Handle(new GetEventMeetingAttendanceQuery(EventId), CancellationToken.None);
+
+        result.IsSuccess.Should().BeFalse();
+        result.StatusCode.Should().Be(403);
+        _meetings.Verify(m => m.GetTrackedByCalendarEventAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+        _attendances.Verify(a => a.GetByMeetingIdAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     // ---- plan FC: the organizer's Attendance tab also lists the incidents this meeting raised ----------------------
-
-    private readonly Mock<ICalendarEventRepository> _events = new();
-    private readonly Mock<ICalendarIncidentRepository> _incidents = new();
-    private readonly Mock<ONEVO.Application.Common.RepositoryInterfaces.IEmployeeRepository> _employees = new();
-    private static readonly Guid OrganizerUser = Guid.NewGuid();
 
     private GetEventMeetingAttendanceQueryHandler BuildWithIncidents(Guid callerUserId)
     {
         _currentUser.SetupGet(x => x.IsAuthenticated).Returns(true);
         _currentUser.SetupGet(x => x.TenantId).Returns(TenantId);
         _currentUser.SetupGet(x => x.UserId).Returns(callerUserId);
-        _events.Setup(e => e.GetByIdForTenantAsync(TenantId, EventId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new CalendarEvent { Id = EventId, TenantId = TenantId, Title = "Sprint review", CreatedById = OrganizerUser });
         var pat = new ONEVO.Domain.Features.CoreHr.Entities.Employee { Id = Guid.NewGuid(), FirstName = "Pat", LastName = "Doe" };
         _incidents.Setup(i => i.ListForEventAsync(TenantId, EventId, It.IsAny<CancellationToken>())).ReturnsAsync(
         [
@@ -114,11 +172,11 @@ public sealed class GetEventMeetingAttendanceQueryHandlerTests
     }
 
     [Fact]
-    public async Task Anyone_but_the_organizer_gets_no_incidents()
+    public async Task Anyone_but_the_organizer_is_refused_before_incidents_are_read()
     {
         var result = await BuildWithIncidents(Guid.NewGuid()).Handle(new GetEventMeetingAttendanceQuery(EventId), CancellationToken.None);
 
-        result.Value!.Incidents.Should().BeEmpty();
+        result.StatusCode.Should().Be(403);
         _incidents.Verify(i => i.ListForEventAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 }

@@ -12,7 +12,7 @@ public sealed class GetEventMeetingAttendanceQueryHandler(
     ICurrentUser currentUser,
     ICalendarEventMeetingRepository meetings,
     ICalendarEventMeetingAttendanceRepository attendances,
-    ICalendarEventRepository? events = null,
+    ICalendarEventRepository events,
     ICalendarIncidentRepository? incidents = null,
     IEmployeeRepository? employees = null)
     : IRequestHandler<GetEventMeetingAttendanceQuery, Result<GetEventMeetingAttendanceResult>>
@@ -23,7 +23,16 @@ public sealed class GetEventMeetingAttendanceQueryHandler(
             return Result<GetEventMeetingAttendanceResult>.Forbidden();
 
         var tenantId = currentUser.TenantId;
-        var raised = await OrganizerIncidentsAsync(tenantId, request.EventId, ct);
+        var calendarEvent = await events.GetByIdForTenantAsync(tenantId, request.EventId, ct);
+        // No stored row (e.g. a virtual recurring occurrence) means no meeting either - nothing to reveal.
+        if (calendarEvent is null)
+            return Result<GetEventMeetingAttendanceResult>.Success(new GetEventMeetingAttendanceResult(false, []));
+
+        // The provider's report (participant names, emails, join/leave times) is the organizer's view only.
+        if (calendarEvent.CreatedById != currentUser.UserId)
+            return Result<GetEventMeetingAttendanceResult>.Forbidden("Only the event organizer can view its meeting attendance.");
+
+        var raised = await IncidentsAsync(tenantId, request.EventId, ct);
         var meeting = await meetings.GetTrackedByCalendarEventAsync(tenantId, request.EventId, ct);
         if (meeting is null || meeting.LastAttendanceSyncedAt is null)
             return Result<GetEventMeetingAttendanceResult>.Success(new GetEventMeetingAttendanceResult(false, [], raised));
@@ -34,13 +43,10 @@ public sealed class GetEventMeetingAttendanceQueryHandler(
         return Result<GetEventMeetingAttendanceResult>.Success(new GetEventMeetingAttendanceResult(true, items, raised));
     }
 
-    /// <summary>The incidents this meeting raised - for its organizer only: rule and occurrence, never the evidence.</summary>
-    private async Task<IReadOnlyList<MeetingIncidentItem>> OrganizerIncidentsAsync(Guid tenantId, Guid eventId, CancellationToken ct)
+    /// <summary>The incidents this meeting raised (caller already checked as organizer): rule and occurrence, never the evidence.</summary>
+    private async Task<IReadOnlyList<MeetingIncidentItem>> IncidentsAsync(Guid tenantId, Guid eventId, CancellationToken ct)
     {
-        if (events is null || incidents is null || employees is null)
-            return [];
-        var calendarEvent = await events.GetByIdForTenantAsync(tenantId, eventId, ct);
-        if (calendarEvent is null || calendarEvent.CreatedById != currentUser.UserId)
+        if (incidents is null || employees is null)
             return [];
         var rows = await incidents.ListForEventAsync(tenantId, eventId, ct);
         if (rows.Count == 0)

@@ -9,7 +9,8 @@ public sealed record MeetingAttendeeItem(string? Name, string? Email, DateTimeOf
 /// it); <see cref="Estimated"/> = detected from the desktop agent rather than the provider's attendance report.</summary>
 public sealed record MeetingIncidentItem(string EmployeeName, string Rule, DateTimeOffset OccurrenceStart, bool Estimated);
 
-/// <summary><see cref="Incidents"/> is filled for the event's organizer only (plan FC Attendance tab).</summary>
+/// <summary>The organizer's Attendance tab (plan FC) - anyone else is refused: the provider's report plus the incidents
+/// the meeting raised.</summary>
 public sealed record GetEventMeetingAttendanceResult(
     bool Available, IReadOnlyList<MeetingAttendeeItem> Attendees, IReadOnlyList<MeetingIncidentItem>? Incidents = null)
 {
