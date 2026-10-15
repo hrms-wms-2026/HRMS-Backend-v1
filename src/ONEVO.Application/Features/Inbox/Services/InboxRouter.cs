@@ -35,6 +35,7 @@ public interface IInboxRouter
 public sealed class InboxRouter : IInboxRouter
 {
     public const string SourceFilterKey = "source";
+    public const string KindFilterKey = "kind";
     public const int MaxPageSize = 100;
     public const int MaxBulkItems = 100;
     private const string NotFoundMessage = "Inbox item not found.";
@@ -386,7 +387,10 @@ public sealed class InboxRouter : IInboxRouter
             {
                 if (values.Count == 0)
                     continue;
-                if (!item.Facets.TryGetValue(key, out var itemValues) || !itemValues.Intersect(values).Any())
+                // "kind" filters by the item's own kind; a provider need not repeat it as a facet.
+                IReadOnlyList<string>? itemValues = item.Facets.TryGetValue(key, out var facetValues) ? facetValues
+                    : key == KindFilterKey ? [item.Kind] : null;
+                if (itemValues is null || !itemValues.Intersect(values).Any())
                     return false;
             }
         }

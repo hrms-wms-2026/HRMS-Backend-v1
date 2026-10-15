@@ -117,6 +117,17 @@ public partial class InboxRouterTests
     }
 
     [Fact]
+    public async Task A_kind_facet_matches_the_item_kind_even_when_the_provider_sends_no_kind_facet()
+    {
+        _work.Items.AddRange([Item("work", "request", 1), Item("work", "alert", 2, category: InboxCategories.Alert)]);
+
+        var page = await Router().ListAsync(TenantId, Me,
+            new InboxQuery(Facets: new Dictionary<string, IReadOnlyList<string>> { ["kind"] = ["monitor_alert"] }), default);
+
+        page.Items.Select(i => i.Title).Should().Equal("alert");
+    }
+
+    [Fact]
     public async Task Unread_message_counts_are_filled_for_the_returned_page()
     {
         var item = Item("work", "w", 1);
