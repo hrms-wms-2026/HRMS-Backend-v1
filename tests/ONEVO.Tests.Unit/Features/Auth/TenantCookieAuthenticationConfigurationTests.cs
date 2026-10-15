@@ -40,6 +40,7 @@ public sealed class TenantCookieAuthenticationConfigurationTests
     private static CookieAuthenticationOptions InvokeAddApiAuthentication()
     {
         var services = new ServiceCollection();
+        services.AddLogging();
         services.AddSingleton(Mock.Of<IDateTimeProvider>());
 
         var environment = new Mock<IWebHostEnvironment>();

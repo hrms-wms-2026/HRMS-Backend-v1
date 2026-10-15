@@ -1,3 +1,4 @@
+using System.Net;
 using Moq;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
@@ -66,12 +67,18 @@ public sealed class CalendarConnectionTokenProviderTests
         _unitOfWork.Verify(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
 
+    // CAL-01: a non-HTTP failure (here, missing platform OAuth app config) is not a grant
+    // rejection - the connection owner reconnecting would not fix a missing platform config,
+    // so this must not jump straight to ReauthRequired. It now follows the same
+    // FailureCount/MaxConsecutiveFailures escalation CalendarSyncService already uses for
+    // pull/push failures, and stays eligible for the next scheduled retry until it does.
     [Fact]
-    public async Task GetFreshAccessTokenAsync_RefreshFails_MarksReauthRequiredAndReturnsNull()
+    public async Task GetFreshAccessTokenAsync_RefreshFails_WithNonGrantException_IncrementsFailureCountWithoutReauthRequired()
     {
         var connection = new ExternalCalendarConnection
         {
-            Id = Guid.NewGuid(), RefreshTokenEncrypted = [9], ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(-1)
+            Id = Guid.NewGuid(), RefreshTokenEncrypted = [9], ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(-1),
+            Status = ExternalCalendarConnectionStatuses.Active
         };
         _appResolver.Setup(a => a.GetActiveAppForProviderAsync("microsoft", It.IsAny<CancellationToken>()))
             .ReturnsAsync((ResolvedPlatformOAuthApp?)null);
@@ -79,7 +86,60 @@ public sealed class CalendarConnectionTokenProviderTests
         var result = await BuildSut().GetFreshAccessTokenAsync(connection, "microsoft", CancellationToken.None);
 
         Assert.Null(result);
-        Assert.Equal(ExternalCalendarConnectionStatuses.ReauthRequired, connection.Status);
+        Assert.Equal(ExternalCalendarConnectionStatuses.Active, connection.Status);
+        Assert.Equal(1, connection.FailureCount);
+        Assert.NotNull(connection.LastError);
         _connections.Verify(c => c.Update(connection), Times.Once);
+        _unitOfWork.Verify(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task GetFreshAccessTokenAsync_RefreshFails_WithGenuineGrantRejection_MarksReauthRequired()
+    {
+        var connection = new ExternalCalendarConnection
+        {
+            Id = Guid.NewGuid(), RefreshTokenEncrypted = [9], ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(-1),
+            Status = ExternalCalendarConnectionStatuses.Active
+        };
+        _appResolver.Setup(a => a.GetActiveAppForProviderAsync("microsoft", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ResolvedPlatformOAuthApp("microsoft", "client-id", "https://login.microsoftonline.com/common/oauth2/v2.0/authorize", "https://login.microsoftonline.com/common/oauth2/v2.0/token", ["scope"]));
+        _appResolver.Setup(a => a.GetActiveCredentialForProviderAsync("microsoft", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ResolvedPlatformOAuthAppCredential("microsoft", "client-id", "client-secret", null, 1));
+        _encryption.Setup(e => e.DecryptBytes(connection.RefreshTokenEncrypted)).Returns("old-refresh-token");
+        _tokenExchange.Setup(t => t.RefreshTokenAsync(
+                "https://login.microsoftonline.com/common/oauth2/v2.0/token", "client-id", "client-secret", "old-refresh-token", It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new HttpRequestException("invalid_grant", null, HttpStatusCode.BadRequest));
+
+        var result = await BuildSut().GetFreshAccessTokenAsync(connection, "microsoft", CancellationToken.None);
+
+        Assert.Null(result);
+        Assert.Equal(ExternalCalendarConnectionStatuses.ReauthRequired, connection.Status);
+        Assert.Equal(0, connection.FailureCount);
+        _connections.Verify(c => c.Update(connection), Times.Once);
+    }
+
+    [Fact]
+    public async Task GetFreshAccessTokenAsync_RefreshFails_TransientlyReachesMaxConsecutiveFailures_MarksFailed()
+    {
+        var connection = new ExternalCalendarConnection
+        {
+            Id = Guid.NewGuid(), RefreshTokenEncrypted = [9], ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(-1),
+            Status = ExternalCalendarConnectionStatuses.Active,
+            FailureCount = ExternalCalendarConnectionStatuses.MaxConsecutiveFailures - 1
+        };
+        _appResolver.Setup(a => a.GetActiveAppForProviderAsync("microsoft", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ResolvedPlatformOAuthApp("microsoft", "client-id", "https://login.microsoftonline.com/common/oauth2/v2.0/authorize", "https://login.microsoftonline.com/common/oauth2/v2.0/token", ["scope"]));
+        _appResolver.Setup(a => a.GetActiveCredentialForProviderAsync("microsoft", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ResolvedPlatformOAuthAppCredential("microsoft", "client-id", "client-secret", null, 1));
+        _encryption.Setup(e => e.DecryptBytes(connection.RefreshTokenEncrypted)).Returns("old-refresh-token");
+        _tokenExchange.Setup(t => t.RefreshTokenAsync(
+                "https://login.microsoftonline.com/common/oauth2/v2.0/token", "client-id", "client-secret", "old-refresh-token", It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new HttpRequestException("timeout", null, HttpStatusCode.ServiceUnavailable));
+
+        var result = await BuildSut().GetFreshAccessTokenAsync(connection, "microsoft", CancellationToken.None);
+
+        Assert.Null(result);
+        Assert.Equal(ExternalCalendarConnectionStatuses.MaxConsecutiveFailures, connection.FailureCount);
+        Assert.Equal(ExternalCalendarConnectionStatuses.Failed, connection.Status);
     }
 }

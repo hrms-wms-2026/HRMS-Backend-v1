@@ -248,6 +248,9 @@ internal sealed class EmployeeAuthorityTestGraph
         public Task<DomainEmployee?> GetByIdAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default)
             => Task.FromResult(_graph._employees.FirstOrDefault(e => e.TenantId == tenantId && e.Id == employeeId));
 
+        public Task<Guid?> GetLegalEntityIdAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default)
+            => Task.FromResult(_graph._employees.FirstOrDefault(e => e.TenantId == tenantId && e.Id == employeeId)?.LegalEntityId);
+
         public Task<DomainEmployee?> GetByUserAndLegalEntityAsync(
             Guid tenantId, Guid userId, Guid legalEntityId, CancellationToken ct = default)
         {

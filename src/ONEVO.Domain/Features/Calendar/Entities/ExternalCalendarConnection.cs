@@ -17,6 +17,14 @@ public static class ExternalCalendarConnectionStatuses
     public const string Paused = "paused";
     public const string Revoked = "revoked";
     public const string Failed = "failed";
+
+    /// <summary>
+    /// Shared between CalendarSyncService (pull/push failures) and
+    /// CalendarConnectionTokenProvider (token-refresh failures): a connection only moves to
+    /// <see cref="Failed"/> after this many consecutive failures, so a single transient
+    /// network/5xx blip never strands it - it keeps being retried by the next scheduled sync.
+    /// </summary>
+    public const int MaxConsecutiveFailures = 3;
 }
 
 public class ExternalCalendarConnection : ITenantOwnedEntity
