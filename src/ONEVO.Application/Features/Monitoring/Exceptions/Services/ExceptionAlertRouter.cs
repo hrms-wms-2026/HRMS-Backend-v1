@@ -9,6 +9,7 @@ using ONEVO.Application.Features.Inbox.Escalation;
 using ONEVO.Application.Features.Inbox.Services;
 using ONEVO.Application.Features.Monitoring.Exceptions.Inbox;
 using ONEVO.Application.Features.Monitoring.Exceptions.ServiceInterfaces;
+using ONEVO.Domain.Features.Monitoring.Exceptions.Entities;
 using MonitoringException = ONEVO.Domain.Features.Monitoring.Exceptions.Entities.Exception;
 
 namespace ONEVO.Application.Features.Monitoring.Exceptions.Services;
@@ -40,6 +41,9 @@ public sealed class ExceptionAlertRouter : IExceptionAlertRouter
 
     public async Task NotifyDetectedAsync(MonitoringException exception, CancellationToken ct)
     {
+        // Calendar meeting exceptions are routed by the calendar policy (CalendarCaseService), never through HR.
+        if (CalendarExceptionTypes.IsCalendar(exception.Type))
+            return;
         var employee = await _employees.GetByIdAsync(exception.TenantId, exception.EmployeeId, ct);
         var target = await _policy.InitialAsync(exception.TenantId, Context(exception), ct);
         await SendAsync(exception, employee, ExceptionPermissions.DetectedTemplate, UserIds(target), ct);
@@ -50,6 +54,8 @@ public sealed class ExceptionAlertRouter : IExceptionAlertRouter
 
     public async Task NotifyEscalatedAsync(MonitoringException exception, CancellationToken ct)
     {
+        if (CalendarExceptionTypes.IsCalendar(exception.Type))
+            return;
         var employee = await _employees.GetByIdAsync(exception.TenantId, exception.EmployeeId, ct);
         var target = await _policy.NextAsync(exception.TenantId, Context(exception), ct);
         await SendAsync(exception, employee, ExceptionPermissions.EscalatedTemplate, UserIds(target), ct);

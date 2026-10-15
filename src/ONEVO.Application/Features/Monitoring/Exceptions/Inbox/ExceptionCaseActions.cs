@@ -86,10 +86,12 @@ public sealed class ExceptionCaseActions
     private readonly IInboxEscalationPolicyRegistry _policies;
     private readonly IUnitOfWork _unitOfWork;
     private readonly IDateTimeProvider _clock;
+    private readonly INotificationDispatcher? _notifications;
 
     public ExceptionCaseActions(
         ISender sender, IExceptionRepository exceptions, IInboxDecisionJournal journal, IInboxEscalationRecorder escalations,
-        IInboxEscalationPolicyRegistry policies, IUnitOfWork unitOfWork, IDateTimeProvider clock)
+        IInboxEscalationPolicyRegistry policies, IUnitOfWork unitOfWork, IDateTimeProvider clock,
+        INotificationDispatcher? notifications = null)
     {
         _sender = sender;
         _exceptions = exceptions;
@@ -98,6 +100,7 @@ public sealed class ExceptionCaseActions
         _policies = policies;
         _unitOfWork = unitOfWork;
         _clock = clock;
+        _notifications = notifications;
     }
 
     public async Task<Result<InboxActionResult>> RunAsync(
@@ -135,6 +138,13 @@ public sealed class ExceptionCaseActions
                 if (action == ExceptionCaseInboxActions.Escalate)
                 {
                     var target = await NextReviewersAsync(tenantId, item, updated, callerEmployeeId, t);
+                    // A calendar case goes up the manager chain (log only at the top) and the next reviewer is told here - the
+                    // monitoring alert router never handles calendar types (plan C3).
+                    if (item.Source == "calendar" && target is EscalationTarget.Employees next && _notifications is not null)
+                        foreach (var recipient in next.Recipients)
+                            await _notifications.SendTemplatedAsync(tenantId, recipient.UserId, "calendar_exception_escalated",
+                                new Dictionary<string, string> { ["title"] = updated.Title, ["description"] = updated.Description },
+                                InboxNotificationNavigation.RelatedEntityType("calendar", "meeting_exception"), updated.Id, t);
                     affected = (await _escalations.RecordAsync(tenantId,
                         new EscalationRecord(item, target, callerEmployeeId, note, [callerEmployeeId], before, after), t))
                         .Append(updated.EmployeeId).Distinct().ToList();
