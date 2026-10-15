@@ -104,12 +104,13 @@ public class InboxController : ControllerBase
         => ToResult(await _mediator.Send(new GetInboxItemDetailQuery(source, kind, id), ct));
 
     /// <summary>Runs an action listed in the item's availableActions. Body is action-specific, e.g.
-    /// {"comment": "...", "editedPayloadJson": "..."} for approve.</summary>
-    [HttpPost("{source}/{kind}/{id:guid}/actions/{action}")]
+    /// {"comment": "...", "editedPayloadJson": "..."} for approve. The segment is {actionKey}, not {action}: "action" is a
+    /// reserved MVC route value and would only match the method name.</summary>
+    [HttpPost("{source}/{kind}/{id:guid}/actions/{actionKey}")]
     public async Task<IActionResult> Execute(
-        string source, string kind, Guid id, string action,
+        string source, string kind, Guid id, string actionKey,
         [FromBody(EmptyBodyBehavior = EmptyBodyBehavior.Allow)] JsonElement? body, CancellationToken ct)
-        => ToResult(await _mediator.Send(new ExecuteInboxActionCommand(source, kind, id, action, body), ct));
+        => ToResult(await _mediator.Send(new ExecuteInboxActionCommand(source, kind, id, actionKey, body), ct));
 
     private IActionResult ToResult<T>(ONEVO.Application.Common.Models.Result<T> result)
         => result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
