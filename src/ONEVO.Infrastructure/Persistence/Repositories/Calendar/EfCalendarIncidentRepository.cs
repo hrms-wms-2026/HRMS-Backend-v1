@@ -17,6 +17,12 @@ public sealed class EfCalendarIncidentRepository(ApplicationDbContext db) : ICal
             .OrderBy(i => i.OccurrenceStart)
             .ToListAsync(ct);
 
+    public async Task<IReadOnlyList<CalendarMeetingIncident>> ListForEventAsync(Guid tenantId, Guid eventId, CancellationToken ct) =>
+        await db.CalendarMeetingIncidents.AsNoTracking()
+            .Where(i => i.TenantId == tenantId && i.EventId == eventId)
+            .OrderBy(i => i.OccurrenceStart)
+            .ToListAsync(ct);
+
     public async Task<int> PurgeUnattachedAsync(Guid tenantId, DateTimeOffset before, CancellationToken ct)
     {
         var stale = await db.CalendarMeetingIncidents

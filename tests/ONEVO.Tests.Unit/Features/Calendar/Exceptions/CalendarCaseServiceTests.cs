@@ -36,6 +36,8 @@ public sealed class CalendarCaseServiceTests
             => Task.FromResult(Rows.Where(r => r.EmployeeId == employeeId && r.OccurrenceStart >= from).ToList());
         public Task<IReadOnlyList<CalendarMeetingIncident>> ListForExceptionAsync(Guid tenantId, Guid exceptionId, CancellationToken ct)
             => Task.FromResult<IReadOnlyList<CalendarMeetingIncident>>(Rows.Where(r => r.ExceptionId == exceptionId).ToList());
+        public Task<IReadOnlyList<CalendarMeetingIncident>> ListForEventAsync(Guid tenantId, Guid eventId, CancellationToken ct)
+            => Task.FromResult<IReadOnlyList<CalendarMeetingIncident>>(Rows.Where(r => r.EventId == eventId).ToList());
         public Task<int> PurgeUnattachedAsync(Guid tenantId, DateTimeOffset before, CancellationToken ct) => Task.FromResult(0);
         public void Add(CalendarMeetingIncident incident) => Rows.Add(incident);
         public void Remove(CalendarMeetingIncident incident) => Rows.Remove(incident);

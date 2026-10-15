@@ -79,4 +79,23 @@ public sealed class EfCalendarIncidentRepositoryTests
         list.Select(i => i.Id).Should().Equal(earlier.Id, later.Id);
         (await new EfCalendarIncidentRepository(db).ListForExceptionAsync(Guid.NewGuid(), caseId, default)).Should().BeEmpty("another tenant");
     }
+
+    [Fact]
+    public async Task An_events_incidents_are_listed_for_its_organizer_in_occurrence_order()
+    {
+        var eventId = Guid.NewGuid();
+        CalendarMeetingIncident second = Incident(Now.AddDays(-1)), first = Incident(Now.AddDays(-8));
+        second.EventId = eventId;
+        first.EventId = eventId;
+        await using (var seed = Db())
+        {
+            seed.CalendarMeetingIncidents.AddRange(second, first, Incident(Now.AddDays(-2)));
+            await seed.SaveChangesAsync();
+        }
+
+        await using var db = Db();
+        (await new EfCalendarIncidentRepository(db).ListForEventAsync(TenantId, eventId, default)).Select(i => i.Id)
+            .Should().Equal(first.Id, second.Id);
+        (await new EfCalendarIncidentRepository(db).ListForEventAsync(Guid.NewGuid(), eventId, default)).Should().BeEmpty("another tenant");
+    }
 }
