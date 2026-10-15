@@ -115,14 +115,22 @@ public class InboxEscalationPolicyTests
         target.Should().BeOfType<EscalationTarget.LogOnly>();
     }
 
+    // W1 replaced the log-only stub with the Module chain (WorkAlertEscalationTests); here: its SLA, and a gone alert is only logged.
     [Fact]
-    public async Task Work_management_alerts_are_log_only_with_no_SLA_until_W1()
+    public async Task Work_management_alerts_have_a_three_day_SLA_and_a_missing_alert_is_only_logged()
     {
-        var policy = new WmHierarchyPolicy();
+        var policy = Wm();
 
-        policy.Sla.Should().BeNull();
+        policy.Sla.Should().Be(TimeSpan.FromDays(3));
         (await policy.NextAsync(TenantId, Context("work"), default)).Should().BeOfType<EscalationTarget.LogOnly>();
     }
+
+    private static WmHierarchyPolicy Wm() => new(
+        Mock.Of<ONEVO.Application.Features.WorkManagement.Monitoring.RepositoryInterfaces.IMonitorAlertRepository>(),
+        Mock.Of<ONEVO.Application.Features.WorkManagement.Monitoring.Services.IProjectMonitorSnapshotLoader>(),
+        Mock.Of<ONEVO.Application.Features.WorkManagement.Hierarchy.IWorkHierarchyService>(),
+        Mock.Of<ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces.IProjectRepository>(),
+        Mock.Of<ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces.IEmployeeRepository>());
 
     [Theory]
     [InlineData("monitoring", "SustainedLowActivity", "reporting_line_then_hr")]
@@ -133,7 +141,7 @@ public class InboxEscalationPolicyTests
     [InlineData("leave", "request", null)]
     public void The_registry_picks_one_policy_per_source_and_type(string source, string type, string? expected)
     {
-        var registry = new InboxEscalationPolicyRegistry([Monitoring(), Calendar(), new WmHierarchyPolicy()]);
+        var registry = new InboxEscalationPolicyRegistry([Monitoring(), Calendar(), Wm()]);
 
         registry.For(source, type)?.Name.Should().Be(expected);
         if (expected is null)

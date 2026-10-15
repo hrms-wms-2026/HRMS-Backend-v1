@@ -21,6 +21,7 @@ using ONEVO.Application.Features.WorkManagement.ProjectInvitations.Commands.Reje
 using ONEVO.Application.Features.WorkManagement.ProjectInvitations.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
+using ONEVO.Domain.Features.Inbox.Entities;
 using ONEVO.Domain.Features.WorkManagement.Monitoring.Entities;
 using ONEVO.Domain.Features.WorkManagement.Projects.Entities;
 
@@ -50,13 +51,17 @@ public sealed class WorkInboxSourceProvider : IInboxSourceProvider
     private readonly ISender _sender;
     private readonly IDateTimeProvider _clock;
     private readonly IConversationRepository _conversations;
+    private readonly IInboxDecisionJournal? _journal;
+    private readonly WorkAlertEscalation? _escalation;
 
     public WorkInboxSourceProvider(
         IProjectRepository projects, IProjectMemberInvitationRepository invitations, IWorkApprovalRequestRepository requests,
         ApprovalFeedBuilder feed, IMonitorAlertRepository alerts, MonitorAlertAudience audience, IWorkHierarchyService hierarchy,
         IWorkTaskRepository tasks, ICallerIdentityResolver identity, ISender sender, IDateTimeProvider clock,
-        IConversationRepository conversations)
+        IConversationRepository conversations, IInboxDecisionJournal? journal = null, WorkAlertEscalation? escalation = null)
     {
+        _journal = journal;
+        _escalation = escalation;
         _projects = projects;
         _invitations = invitations;
         _requests = requests;
@@ -125,20 +130,27 @@ public sealed class WorkInboxSourceProvider : IInboxSourceProvider
         Guid tenantId, string kind, Guid id, string action, JsonElement? body, Guid callerEmployeeId, CancellationToken ct)
     {
         var comment = BodyString(body, "comment");
+        // The approval's status before the decision, for the journal row (plan W1).
+        var before = kind == WorkInboxKinds.Approval ? (await _requests.GetByIdForTenantAsync(tenantId, id, ct))?.Status : null;
         switch (kind, action)
         {
             case (WorkInboxKinds.Approval, WorkInboxActions.Approve):
                 return await AfterApprovalAsync(tenantId, id, callerEmployeeId, await _sender.Send(
-                    new DecideWorkApprovalRequestCommand(id, WorkApprovalDecision.Approve, BodyString(body, "editedPayloadJson"), comment), ct), ct);
+                    new DecideWorkApprovalRequestCommand(id, WorkApprovalDecision.Approve, BodyString(body, "editedPayloadJson"), comment), ct),
+                    InboxJournalActions.Approve, before, comment, ct);
             case (WorkInboxKinds.Approval, WorkInboxActions.Reject):
                 return await AfterApprovalAsync(tenantId, id, callerEmployeeId, await _sender.Send(
-                    new DecideWorkApprovalRequestCommand(id, WorkApprovalDecision.Reject, null, comment), ct), ct);
+                    new DecideWorkApprovalRequestCommand(id, WorkApprovalDecision.Reject, null, comment), ct),
+                    InboxJournalActions.Reject, before, comment, ct);
             case (WorkInboxKinds.Approval, WorkInboxActions.Cancel):
                 return await AfterApprovalAsync(tenantId, id, callerEmployeeId, await _sender.Send(
-                    new DecideWorkApprovalRequestCommand(id, WorkApprovalDecision.Cancel, null, null), ct), ct);
+                    new DecideWorkApprovalRequestCommand(id, WorkApprovalDecision.Cancel, null, null), ct),
+                    InboxJournalActions.Cancel, before, comment, ct);
             case (WorkInboxKinds.Approval, WorkInboxActions.Revert):
                 return await AfterApprovalAsync(tenantId, id, callerEmployeeId,
-                    await _sender.Send(new RevertWorkApprovalRequestCommand(id), ct), ct);
+                    await _sender.Send(new RevertWorkApprovalRequestCommand(id), ct), InboxJournalActions.Revert, before, comment, ct);
+            case (WorkInboxKinds.MonitorAlert, WorkInboxActions.Escalate):
+                return await EscalateAlertAsync(tenantId, id, callerEmployeeId, comment, ct);
             case (WorkInboxKinds.Invitation, WorkInboxActions.AcceptInvitation):
                 return await AfterInvitationAsync(tenantId, id, callerEmployeeId, await _sender.Send(new AcceptObjectiveInvitationCommand(id), ct), ct);
             case (WorkInboxKinds.Invitation, WorkInboxActions.DeclineInvitation):
@@ -193,7 +205,7 @@ public sealed class WorkInboxSourceProvider : IInboxSourceProvider
             foreach (var alert in mine)
             {
                 var context = contexts[alert.Id];
-                items.Add(WorkInboxItemMapper.FromAlert(alert, project.Id, context.Context));
+                items.Add(WithEscalate(WorkInboxItemMapper.FromAlert(alert, project.Id, context.Context), alert));
                 if (context.Context.ModuleId is { } moduleId && context.ModuleTitle is { } title)
                     moduleTitles.TryAdd(moduleId, title);
             }
@@ -310,7 +322,7 @@ public sealed class WorkInboxSourceProvider : IInboxSourceProvider
             return null;
 
         var context = (await AlertContextsAsync(tenantId, project, [alert], ct))[alert.Id].Context;
-        var item = WorkInboxItemMapper.FromAlert(alert, project.Id, context);
+        var item = WithEscalate(WorkInboxItemMapper.FromAlert(alert, project.Id, context), alert);
         return new InboxItemDetail(
             item, WorkInboxItemMapper.AlertSteps(alert, context.InAchievedModule), alert.Message, [],
             alert.Message, WorkInboxItemMapper.AlertDetails(alert.DetailsJson),
@@ -368,13 +380,55 @@ public sealed class WorkInboxSourceProvider : IInboxSourceProvider
     // ---- actions ---------------------------------------------------------------------------------
 
     private async Task<Result<InboxActionResult>> AfterApprovalAsync<T>(
-        Guid tenantId, Guid id, Guid caller, Result<T> result, CancellationToken ct)
+        Guid tenantId, Guid id, Guid caller, Result<T> result, string journalAction, string? before, string? comment, CancellationToken ct)
     {
         if (!result.IsSuccess)
             return Result<InboxActionResult>.Failure(result.Error ?? "The action failed.", result.StatusCode ?? 400, result.ErrorCode);
         var request = await _requests.GetByIdForTenantAsync(tenantId, id, ct);
+        await JournalAsync(tenantId, id, caller, journalAction, before, request?.Status, comment, ct);
         var affected = request is null ? [caller] : ApprovalFeedParticipants.NotifyTargets(request).Append(caller).Distinct().ToList();
         return Result<InboxActionResult>.Success(new InboxActionResult(affected));
+    }
+
+    /// <summary>The decision in the Inbox journal (History, Steps), after the WM command committed its change (plan W1).
+    /// A revert marks the caller's latest decision reverted. WM's own revert window and rules are unchanged.</summary>
+    private async Task JournalAsync(
+        Guid tenantId, Guid id, Guid caller, string action, string? before, string? after, string? comment, CancellationToken ct)
+    {
+        if (_journal is null)
+            return;
+        var now = _clock.UtcNow;
+        var entry = new ONEVO.Domain.Features.Inbox.Entities.InboxDecisionJournalEntry
+        {
+            Id = Guid.NewGuid(), TenantId = tenantId, Source = Source, Kind = WorkInboxKinds.Approval, ItemId = id, Action = action,
+            ActorEmployeeId = caller, BeforeJson = JsonSerializer.Serialize(new { status = before }),
+            AfterJson = JsonSerializer.Serialize(new { status = after }),
+            Comment = string.IsNullOrWhiteSpace(comment) ? null : comment.Trim(), DecidedAt = now, CreatedAt = now,
+        };
+        var latest = action == InboxJournalActions.Revert ? await _journal.LatestAsync(tenantId, new ItemRef(Source, WorkInboxKinds.Approval, id), ct) : null;
+        if (latest is not null && latest.Action != InboxJournalActions.Revert && latest.RevertedByJournalId is null)
+            await _journal.MarkRevertedAsync(latest, entry, ct);
+        else
+            await _journal.RecordAsync(entry, ct);
+    }
+
+    /// <summary>Manual escalation of a monitor alert (plan W1): only someone the alert is for (its audience or its current
+    /// escalation holder) may escalate it, and only while it is open.</summary>
+    private async Task<Result<InboxActionResult>> EscalateAlertAsync(Guid tenantId, Guid id, Guid caller, string? comment, CancellationToken ct)
+    {
+        if (_escalation is null)
+            return Result<InboxActionResult>.UnprocessableEntity(UnknownAction);
+        var alert = await _alerts.GetByIdAsync(tenantId, id, ct);
+        if (alert is null)
+            return Result<InboxActionResult>.NotFound("Alert not found.");
+        if (alert.ResolvedAt is not null)
+            return Result<InboxActionResult>.Conflict("This alert is already resolved.");
+        var audience = (await _audience.ResolveAsync(tenantId, alert.ProjectId, [alert], ct)).GetValueOrDefault(alert.Id) ?? [];
+        var holders = await _escalation.CurrentHoldersAsync(tenantId, alert, ct);
+        if (!audience.Contains(caller) && !holders.Contains(caller))
+            return Result<InboxActionResult>.Forbidden("Only someone this alert is for can escalate it.");
+        var affected = await _escalation.EscalateAsync(tenantId, alert, caller, comment, ct);
+        return Result<InboxActionResult>.Success(new InboxActionResult(affected.Append(caller).Distinct().ToList()));
     }
 
     private async Task<Result<InboxActionResult>> AfterInvitationAsync(
@@ -388,6 +442,16 @@ public sealed class WorkInboxSourceProvider : IInboxSourceProvider
             : new[] { invitation.InvitedById, invitation.InvitedEmployeeId, caller }.Distinct().ToList();
         return Result<InboxActionResult>.Success(new InboxActionResult(affected));
     }
+
+    /// <summary>An open alert can be escalated up the Module chain by the people it is for (plan W1).</summary>
+    private InboxItem WithEscalate(InboxItem item, MonitorAlert alert)
+        => _escalation is null || alert.ResolvedAt is not null
+            ? item
+            : item with
+            {
+                AvailableActions = item.AvailableActions
+                    .Append(new InboxAction(WorkInboxActions.Escalate, "Escalate", "danger", NeedsComment: true, NeedsPayload: false)).ToList(),
+            };
 
     private static string? BodyString(JsonElement? body, string property)
     {

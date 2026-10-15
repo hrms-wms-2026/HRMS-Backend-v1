@@ -488,6 +488,11 @@ public static class DependencyInjection
         services.AddScoped<IApprovalActionApplierRegistry, ApprovalActionApplierRegistry>();
         services.AddScoped<ONEVO.Application.Features.WorkManagement.Approvals.Services.ApprovalFeedBuilder>();
         services.AddScoped<ONEVO.Application.Features.WorkManagement.Inbox.MonitorAlertAudience>();
+        // Work Management aligned to the Inbox standard (plan W1).
+        foreach (var kind in ONEVO.Application.Features.WorkManagement.Inbox.WorkInboxKinds.Descriptors)
+            services.AddInboxKind(kind);
+        services.AddScoped<ONEVO.Application.Features.WorkManagement.Inbox.WorkAlertEscalation>();
+        services.AddScoped<ONEVO.Application.Features.Inbox.Escalation.IInboxEscalationSweepSource, ONEVO.Application.Features.WorkManagement.Inbox.WorkMonitorAlertSweepSource>();
         services.AddScoped<ONEVO.Application.Features.WorkManagement.Inbox.WorkInboxSourceProvider>();
         services.AddScoped<ONEVO.Application.Features.Inbox.Contracts.IInboxSourceProvider>(sp => sp.GetRequiredService<ONEVO.Application.Features.WorkManagement.Inbox.WorkInboxSourceProvider>());
         services.AddScoped<ONEVO.Application.Features.Conversations.Contracts.IConversationSubjectResolver, ONEVO.Application.Features.WorkManagement.Inbox.WorkConversationSubjectResolver>();

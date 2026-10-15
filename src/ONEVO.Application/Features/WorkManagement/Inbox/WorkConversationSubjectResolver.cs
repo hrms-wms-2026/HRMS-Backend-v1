@@ -94,6 +94,8 @@ public sealed class WorkConversationSubjectResolver : IConversationSubjectResolv
         var audience = await _audience.ResolveAsync(tenantId, alert.ProjectId, [alert], ct);
         return new ConversationSubject(
             audience.GetValueOrDefault(alert.Id) ?? [],
-            $"{WorkActionLabels.For(WorkActionLabels.MonitorPrefix + alert.RuleCode)}: {alert.TargetTitle}", alert.ProjectId);
+            $"{WorkActionLabels.For(WorkActionLabels.MonitorPrefix + alert.RuleCode)}: {alert.TargetTitle}", alert.ProjectId,
+            // The employee a deadline-overload alert is about (P10).
+            SubjectEmployeeId: alert.SubjectEmployeeId);
     }
 }

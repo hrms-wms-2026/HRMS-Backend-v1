@@ -31,6 +31,11 @@ public class EfMonitorAlertRepository : IMonitorAlertRepository
     public async Task<MonitorAlert?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct = default)
         => await _db.MonitorAlerts.AsNoTracking().FirstOrDefaultAsync(a => a.TenantId == tenantId && a.Id == id, ct);
 
+    public async Task<IReadOnlyList<MonitorAlert>> ListOpenDetectedBeforeAsync(Guid tenantId, DateTimeOffset before, CancellationToken ct = default)
+        => await _db.MonitorAlerts.AsNoTracking()
+            .Where(a => a.TenantId == tenantId && a.ResolvedAt == null && a.FirstDetectedAt < before)
+            .ToListAsync(ct);
+
     public async Task AddAsync(MonitorAlert alert, CancellationToken ct = default)
         => await _db.MonitorAlerts.AddAsync(alert, ct);
 }

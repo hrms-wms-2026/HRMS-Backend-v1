@@ -599,4 +599,82 @@ public class WorkInboxSourceProviderTests
         (await Resolver().ResolveAsync(TenantId, new ItemRef("work", "approval", Guid.NewGuid()), default)).Should().BeNull();
         (await Resolver().ResolveAsync(TenantId, new ItemRef("work", "sprint", Guid.NewGuid()), default)).Should().BeNull();
     }
+
+    // ---- W1: the Inbox standard -------------------------------------------------------------------
+
+    private readonly ONEVO.Tests.Unit.Features.Inbox.InMemoryInboxDecisionJournal _journal = new();
+    private readonly Mock<ONEVO.Application.Features.Inbox.Escalation.IInboxEscalationRecorder> _recorder = new();
+
+
+    private WorkInboxSourceProvider StandardProvider(Guid? nextHolder = null)
+    {
+        var policy = new Mock<ONEVO.Application.Features.Inbox.Escalation.IInboxEscalationPolicy>();
+        policy.Setup(p => p.InitialAsync(TenantId, It.IsAny<ONEVO.Application.Features.Inbox.Escalation.EscalationContext>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ONEVO.Application.Features.Inbox.Escalation.EscalationTarget.Employees([new(Guid.NewGuid(), Me)]));
+        policy.Setup(p => p.NextAsync(TenantId, It.IsAny<ONEVO.Application.Features.Inbox.Escalation.EscalationContext>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(nextHolder is Guid next
+                ? new ONEVO.Application.Features.Inbox.Escalation.EscalationTarget.Employees([new(Guid.NewGuid(), next)])
+                : new ONEVO.Application.Features.Inbox.Escalation.EscalationTarget.LogOnly("No Module owner above - logged."));
+        var registry = new Mock<ONEVO.Application.Features.Inbox.Escalation.IInboxEscalationPolicyRegistry>();
+        registry.Setup(r => r.For("work", "monitor_alert")).Returns(policy.Object);
+        _recorder.Setup(r => r.RecordAsync(TenantId, It.IsAny<ONEVO.Application.Features.Inbox.Escalation.EscalationRecord>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Guid _, ONEVO.Application.Features.Inbox.Escalation.EscalationRecord r, CancellationToken _) =>
+                r.Target is ONEVO.Application.Features.Inbox.Escalation.EscalationTarget.Employees e
+                    ? e.Recipients.Select(x => x.EmployeeId!.Value).ToList() : []);
+        var escalation = new WorkAlertEscalation(registry.Object, _recorder.Object, _journal, Mock.Of<INotificationDispatcher>());
+        return new(_projects.Object, _invitations.Object, _requests.Object,
+            new ApprovalFeedBuilder(_identity.Object, _requests.Object, _hierarchy.Object, _invitations.Object, _tasks.Object),
+            _alerts.Object, Audience(), _hierarchy.Object, _tasks.Object, _identity.Object, _sender.Object, _clock.Object, _chats, _journal, escalation);
+    }
+
+    [Fact]
+    public async Task A_decision_and_its_revert_are_written_to_the_Inbox_journal()
+    {
+        var r = Request(_a, Requester);
+        _sender.Setup(s => s.Send(It.IsAny<DecideWorkApprovalRequestCommand>(), It.IsAny<CancellationToken>()))
+            .Callback(() => r.Status = WorkApprovalRequestStatuses.Approved)
+            .ReturnsAsync(Result<WorkApprovalRequestResponse>.Success(null!));
+        _sender.Setup(s => s.Send(It.IsAny<RevertWorkApprovalRequestCommand>(), It.IsAny<CancellationToken>()))
+            .Callback(() => r.Status = WorkApprovalRequestStatuses.Pending)
+            .ReturnsAsync(Result<WorkApprovalRequestResponse>.Success(null!));
+
+        await StandardProvider().ExecuteActionAsync(TenantId, "approval", r.Id, "approve", Body("{\"comment\":\"ok\"}"), Me, default);
+        await StandardProvider().ExecuteActionAsync(TenantId, "approval", r.Id, "revert", null, Me, default);
+
+        var entries = _journal.Entries.Where(e => e.ItemId == r.Id).OrderBy(e => e.DecidedAt).ToList();
+        entries.Select(e => e.Action).Should().Equal("approve", "revert");
+        entries[0].Should().Match<ONEVO.Domain.Features.Inbox.Entities.InboxDecisionJournalEntry>(e =>
+            e.Source == "work" && e.Kind == "approval" && e.ActorEmployeeId == Me && e.Comment == "ok"
+            && e.BeforeJson!.Contains("pending") && e.AfterJson!.Contains("approved"));
+        entries[0].RevertedByJournalId.Should().Be(entries[1].Id, "the revert marks the decision it undid");
+    }
+
+    [Fact]
+    public async Task An_open_alert_can_be_escalated_by_someone_it_is_for_and_not_by_anyone_else()
+    {
+        _memberOf.Add(_a);
+        var alert = Alert(_a, subject: Me);
+        var above = Guid.NewGuid();
+
+        var listed = (await StandardProvider(above).ListAsync(TenantId, new InboxQuery(), Me, default)).Single(i => i.Kind == "monitor_alert");
+        listed.AvailableActions.Select(a => a.Key).Should().Contain("escalate");
+
+        var result = await StandardProvider(above).ExecuteActionAsync(TenantId, "monitor_alert", alert.Id, "escalate", Body("{\"comment\":\"blocked\"}"), Me, default);
+        result.IsSuccess.Should().BeTrue(result.Error);
+        result.Value!.AffectedEmployeeIds.Should().Contain(above);
+        _recorder.Verify(r => r.RecordAsync(TenantId, It.Is<ONEVO.Application.Features.Inbox.Escalation.EscalationRecord>(x =>
+            x.Item.Kind == "monitor_alert" && x.ActorEmployeeId == Me && x.Note == "blocked"), It.IsAny<CancellationToken>()), Times.Once);
+
+        (await StandardProvider(above).ExecuteActionAsync(TenantId, "monitor_alert", alert.Id, "escalate", null, Stranger, default))
+            .StatusCode.Should().Be(403);
+    }
+
+    [Fact]
+    public async Task A_resolved_alert_cannot_be_escalated()
+    {
+        var alert = Alert(_a, subject: Me, resolvedAt: Now.AddHours(-1));
+
+        (await StandardProvider(Guid.NewGuid()).ExecuteActionAsync(TenantId, "monitor_alert", alert.Id, "escalate", null, Me, default))
+            .StatusCode.Should().Be(409);
+    }
 }

@@ -16,5 +16,8 @@ public interface IMonitorAlertRepository
 
     Task<MonitorAlert?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct = default);
 
+    /// <summary>Every open alert of the tenant first detected before <paramref name="before"/> (the escalation SLA sweep, plan W1).</summary>
+    Task<IReadOnlyList<MonitorAlert>> ListOpenDetectedBeforeAsync(Guid tenantId, DateTimeOffset before, CancellationToken ct = default);
+
     Task AddAsync(MonitorAlert alert, CancellationToken ct = default);
 }

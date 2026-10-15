@@ -372,6 +372,12 @@ public class NotificationTemplateSeeder : IHostedService
                 Id = Guid.NewGuid(), Code = "calendar_exception_escalated",
                 InAppTitleTemplate = "Meeting exception escalated",
                 InAppBodyTemplate = "{{title}} was not reviewed in time and needs your attention. {{description}}"
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "work_monitor_alert_escalated",
+                InAppTitleTemplate = "Project alert escalated to you",
+                InAppBodyTemplate = "{{title}}: {{message}}"
             }
 
         };
