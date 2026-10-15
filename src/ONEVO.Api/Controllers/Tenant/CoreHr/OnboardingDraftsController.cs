@@ -7,6 +7,7 @@ using ONEVO.Application.Features.CoreHr.OnboardingDrafts.Commands.CancelOnboardi
 using ONEVO.Application.Features.CoreHr.OnboardingDrafts.Commands.FinalizeOnboardingDraft;
 using ONEVO.Application.Features.CoreHr.OnboardingDrafts.Commands.SaveOnboardingDraft;
 using ONEVO.Application.Features.CoreHr.OnboardingDrafts.Queries.GetOnboardingDraft;
+using ONEVO.Application.Features.CoreHr.OnboardingDrafts.Queries.GetOnboardingWizardLookups;
 using ONEVO.Application.Features.CoreHr.OnboardingDrafts.Queries.ListOnboardingDrafts;
 
 namespace ONEVO.Api.Controllers.Tenant.CoreHr;
@@ -31,6 +32,40 @@ public class OnboardingDraftsController : ControllerBase
         [FromQuery] int page = 1, [FromQuery] int pageSize = 25, [FromQuery] bool mine = false, CancellationToken ct = default)
     {
         var result = await _mediator.Send(new ListOnboardingDraftsQuery(page, pageSize, mine), ct);
+        return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>The chosen reporting manager's chain up to the organisation root (root first,
+    /// manager last), for the wizard's Reporting step preview.</summary>
+    [HttpGet("reporting-chain")]
+    [RequirePermission("employees:write")]
+    public async Task<IActionResult> GetReportingChain([FromQuery] Guid managerEmployeeId, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new GetOnboardingReportingChainQuery(managerEmployeeId), ct);
+        return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Anyone with an active seat in the company matching <paramref name="search"/>
+    /// (name, position or department) - the Reporting step's "Choose someone else" box.</summary>
+    [HttpGet("manager-candidates")]
+    [RequirePermission("employees:write")]
+    public async Task<IActionResult> SearchManagerCandidates(
+        [FromQuery] Guid legalEntityId, [FromQuery] string? search = null, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new SearchManagerCandidatesQuery(legalEntityId, search ?? string.Empty), ct);
+        return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Clock-in evidence (camera photo, location capture) a new employee would inherit
+    /// from the chosen work mode and organisation policy, for the wizard's Work setup step.</summary>
+    [HttpGet("clock-in-defaults")]
+    [RequirePermission("employees:write")]
+    public async Task<IActionResult> GetClockInDefaults(
+        [FromQuery] Guid legalEntityId, [FromQuery] Guid workModeId,
+        [FromQuery] Guid? positionId = null, [FromQuery] Guid? departmentId = null, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(
+            new GetOnboardingClockInDefaultsQuery(legalEntityId, workModeId, positionId, departmentId), ct);
         return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
@@ -59,7 +94,8 @@ public class OnboardingDraftsController : ControllerBase
             null, request.FirstName, request.LastName, request.WorkEmail, request.LegalEntityId, request.DepartmentId,
             request.PositionId, request.EmploymentType, request.StartDate, request.EmployeeNumber,
             request.WorkModeId, request.SelectedTemplateId, request.EditedTasksJson, request.LastSavedStep,
-            IfMatchVersion: null, request.ReportsToEmployeeId);
+            IfMatchVersion: null, request.ReportsToEmployeeId,
+            request.PhotoRequiredOverride, request.LocationCaptureOverride, request.AvatarFileId);
 
         var result = await _mediator.Send(command, ct);
         return result.IsSuccess
@@ -79,7 +115,8 @@ public class OnboardingDraftsController : ControllerBase
             id, request.FirstName, request.LastName, request.WorkEmail, request.LegalEntityId, request.DepartmentId,
             request.PositionId, request.EmploymentType, request.StartDate, request.EmployeeNumber,
             request.WorkModeId, request.SelectedTemplateId, request.EditedTasksJson, request.LastSavedStep,
-            ifMatch, request.ReportsToEmployeeId);
+            ifMatch, request.ReportsToEmployeeId,
+            request.PhotoRequiredOverride, request.LocationCaptureOverride, request.AvatarFileId);
 
         var result = await _mediator.Send(command, ct);
         return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);

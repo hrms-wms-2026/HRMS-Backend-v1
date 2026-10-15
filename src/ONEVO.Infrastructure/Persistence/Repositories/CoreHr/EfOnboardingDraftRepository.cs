@@ -64,7 +64,10 @@ public class EfOnboardingDraftRepository : IOnboardingDraftRepository
                 EF.Property<uint>(d, "xmin").ToString(),
                 d.ReportsToEmployeeId,
                 manager != null ? manager.FirstName + " " + manager.LastName : null,
-                reportsToPosition != null ? reportsToPosition.Name : null))
+                reportsToPosition != null ? reportsToPosition.Name : null,
+                d.PhotoRequiredOverride,
+                d.LocationCaptureOverride,
+                d.AvatarFileId))
             .FirstOrDefaultAsync(ct);
 
     public async Task<(IReadOnlyList<OnboardingDraftResponse> Items, int TotalCount)> ListAsync(
@@ -116,7 +119,10 @@ public class EfOnboardingDraftRepository : IOnboardingDraftRepository
                 EF.Property<uint>(d, "xmin").ToString(),
                 d.ReportsToEmployeeId,
                 manager != null ? manager.FirstName + " " + manager.LastName : null,
-                reportsToPosition != null ? reportsToPosition.Name : null))
+                reportsToPosition != null ? reportsToPosition.Name : null,
+                d.PhotoRequiredOverride,
+                d.LocationCaptureOverride,
+                d.AvatarFileId))
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .ToListAsync(ct);

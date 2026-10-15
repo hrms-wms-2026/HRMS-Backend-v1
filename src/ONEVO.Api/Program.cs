@@ -67,6 +67,13 @@ builder.Services.AddSignalR();
 builder.Services.AddSingleton<
     ONEVO.Application.Features.Monitoring.Settings.ServiceInterfaces.ITrayPolicyRefreshNotifier,
     ONEVO.Api.Hubs.SignalRTrayPolicyRefreshNotifier>();
+builder.Services.AddSingleton<
+    ONEVO.Application.Features.Monitoring.TrayActivation.ServiceInterfaces.ITrayPushNotifier,
+    ONEVO.Api.Hubs.SignalRTrayPushNotifier>();
+builder.Services.AddSingleton<ONEVO.Api.Hubs.TrayConnectionTracker>();
+builder.Services.AddSingleton<
+    ONEVO.Application.Features.Monitoring.TrayActivation.ServiceInterfaces.ITrayConnectionPresence>(
+    sp => sp.GetRequiredService<ONEVO.Api.Hubs.TrayConnectionTracker>());
 builder.Services.AddApiSwagger();
 builder.Services.AddApiCors(builder.Configuration);
 builder.Services.AddHealthChecks()
@@ -124,7 +131,9 @@ app.UseMiddleware<PermissionVersionMiddleware>();
 app.UseAuthorization();
 
 app.MapControllers();
-app.MapHub<ONEVO.Api.Hubs.AgentCommandsHub>("/hubs/agent-commands");
+// Close a tray connection when its device JWT expires — the live connection counts as presence.
+app.MapHub<ONEVO.Api.Hubs.AgentCommandsHub>("/hubs/agent-commands",
+    options => options.CloseOnAuthenticationExpiration = true);
 // Liveness: process-only checks. Must NOT include dependency checks — a brief
 // DB outage should fail readiness, not liveness.
 app.MapHealthChecks("/health", new HealthCheckOptions

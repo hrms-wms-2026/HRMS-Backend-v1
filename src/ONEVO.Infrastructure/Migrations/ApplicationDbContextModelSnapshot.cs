@@ -3109,6 +3109,10 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<Guid?>("AvatarFileId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("avatar_file_id");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
@@ -3174,6 +3178,14 @@ namespace ONEVO.Infrastructure.Migrations
                     b.Property<Guid>("LegalEntityId")
                         .HasColumnType("uuid")
                         .HasColumnName("legal_entity_id");
+
+                    b.Property<bool?>("LocationCaptureOverride")
+                        .HasColumnType("boolean")
+                        .HasColumnName("location_capture_override");
+
+                    b.Property<bool?>("PhotoRequiredOverride")
+                        .HasColumnType("boolean")
+                        .HasColumnName("photo_required_override");
 
                     b.Property<Guid?>("PositionId")
                         .HasColumnType("uuid")
@@ -3334,6 +3346,87 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasDatabaseName("ix_position_assignments_tenant_id_position_id_assignment_status");
 
                     b.ToTable("position_assignments", (string)null);
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.CoreHr.Entities.ReportingManagerChange", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("BatchId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("batch_id");
+
+                    b.Property<string>("ChangeReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("change_reason");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("CreatedById")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by_id");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("deleted_at");
+
+                    b.Property<DateTimeOffset>("EffectiveAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("effective_at");
+
+                    b.Property<Guid>("EmployeeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("employee_id");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_deleted");
+
+                    b.Property<Guid>("LegalEntityId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("legal_entity_id");
+
+                    b.Property<Guid>("NewManagerEmployeeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("new_manager_employee_id");
+
+                    b.Property<Guid?>("PreviousManagerEmployeeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("previous_manager_employee_id");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_reporting_manager_changes");
+
+                    b.HasIndex("EmployeeId")
+                        .HasDatabaseName("ix_reporting_manager_changes_employee_id");
+
+                    b.HasIndex("NewManagerEmployeeId")
+                        .HasDatabaseName("ix_reporting_manager_changes_new_manager_employee_id");
+
+                    b.HasIndex("PreviousManagerEmployeeId")
+                        .HasDatabaseName("ix_reporting_manager_changes_previous_manager_employee_id");
+
+                    b.HasIndex("TenantId", "BatchId")
+                        .HasDatabaseName("ix_reporting_manager_changes_tenant_batch");
+
+                    b.HasIndex("TenantId", "EmployeeId", "EffectiveAt")
+                        .HasDatabaseName("ix_reporting_manager_changes_tenant_employee_effective_at");
+
+                    b.ToTable("reporting_manager_changes", (string)null);
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.DevPlatform.AppCatalog.Entities.GlobalApplication", b =>
@@ -6969,6 +7062,10 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)")
                         .HasColumnName("override_reason");
+
+                    b.Property<bool?>("PhotoRequired")
+                        .HasColumnType("boolean")
+                        .HasColumnName("photo_required");
 
                     b.Property<bool?>("ScreenshotCapture")
                         .HasColumnType("boolean")
@@ -13856,6 +13953,29 @@ namespace ONEVO.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_position_assignments_positions_position_id");
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.CoreHr.Entities.ReportingManagerChange", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.CoreHr.Entities.Employee", null)
+                        .WithMany()
+                        .HasForeignKey("EmployeeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_reporting_manager_changes_employees_employee_id");
+
+                    b.HasOne("ONEVO.Domain.Features.CoreHr.Entities.Employee", null)
+                        .WithMany()
+                        .HasForeignKey("NewManagerEmployeeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_reporting_manager_changes_employees_new_manager_employee_id");
+
+                    b.HasOne("ONEVO.Domain.Features.CoreHr.Entities.Employee", null)
+                        .WithMany()
+                        .HasForeignKey("PreviousManagerEmployeeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_reporting_manager_changes_employees_previous_manager_employ");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.DevPlatform.Compliance.Entities.LegalDocumentVersion", b =>
