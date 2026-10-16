@@ -36,6 +36,7 @@ public class GetEmployeeDetailQueryHandler : IRequestHandler<GetEmployeeDetailQu
     private readonly IEmploymentTypeRepository _employmentTypes;
     private readonly ILegalEntityRepository _legalEntities;
     private readonly IProjectMemberRepository _projectMembers;
+    private readonly IPositionRepository? _positions;
 
     public GetEmployeeDetailQueryHandler(
         IEmployeeRepository employeeRepository,
@@ -47,7 +48,8 @@ public class GetEmployeeDetailQueryHandler : IRequestHandler<GetEmployeeDetailQu
         IDateTimeProvider clock,
         IEmploymentTypeRepository employmentTypes,
         ILegalEntityRepository legalEntities,
-        IProjectMemberRepository projectMembers)
+        IProjectMemberRepository projectMembers,
+        IPositionRepository? positions = null)
     {
         _employeeRepository = employeeRepository;
         _visibilityScopeResolver = visibilityScopeResolver;
@@ -59,6 +61,7 @@ public class GetEmployeeDetailQueryHandler : IRequestHandler<GetEmployeeDetailQu
         _employmentTypes = employmentTypes;
         _legalEntities = legalEntities;
         _projectMembers = projectMembers;
+        _positions = positions;
     }
 
     public async Task<Result<EmployeeDetailResponse>> Handle(GetEmployeeDetailQuery request, CancellationToken ct)
@@ -123,12 +126,21 @@ public class GetEmployeeDetailQueryHandler : IRequestHandler<GetEmployeeDetailQu
                 .Select(m => new EmployeeDetailProjectMembership(m.ProjectId, m.ProjectName, m.MemberSince, m.IsActive))
                 .ToList();
 
+        string? pendingPositionName = null;
+        if (visible.PositionName is null
+            && _positions is not null
+            && invitation is { UsedAt: null, RevokedAt: null, PositionId: Guid invitedPositionId })
+        {
+            pendingPositionName = (await _positions.GetByIdAsync(tenantId, invitedPositionId, ct))?.Name;
+        }
+
         var jobInformation = new EmployeeDetailJobInformation(
             visible.EmployeeNumber, existing.LegalEntityId, visible.LegalEntityName, visible.DepartmentName, visible.PositionName,
             visible.PositionId, visible.ReportingManagerName, visible.EmploymentTypeLabel, visible.Status,
             existing.HireDate, existing.ProbationEndDate, visible.WorkModeLabel,
             employmentTypeCode, existing.WorkModeId, existing.TerminationDate, visible.ReportingManagerId,
-            string.IsNullOrWhiteSpace(timezone) ? null : timezone);
+            string.IsNullOrWhiteSpace(timezone) ? null : timezone,
+            pendingPositionName);
 
         var personalInformation = new EmployeeDetailPersonalInformation(
             existing.FirstName, existing.LastName, existing.Email, existing.Phone, existing.DateOfBirth,

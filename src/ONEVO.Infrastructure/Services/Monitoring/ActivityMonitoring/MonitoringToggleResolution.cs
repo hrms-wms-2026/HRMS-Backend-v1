@@ -7,10 +7,11 @@ namespace ONEVO.Infrastructure.Services.Monitoring.ActivityMonitoring;
 public static class MonitoringToggleResolution
 {
     /// <summary>
-    /// Minutes of continuous inactivity before the TrayApp prompts for a screenshot, used when
-    /// no tenant/policy/employee row has configured a value yet.
+    /// Minutes of continuous inactivity before the TrayApp's activity check (screenshot request,
+    /// or "Were you working?" when screenshot capture is off), used when no tenant/policy/employee
+    /// row has configured a value yet.
     /// </summary>
-    public const int DefaultIdleThresholdMinutes = 2;
+    public const int DefaultIdleThresholdMinutes = 15;
 
     public static bool Resolve(
         bool? employeeOverride,

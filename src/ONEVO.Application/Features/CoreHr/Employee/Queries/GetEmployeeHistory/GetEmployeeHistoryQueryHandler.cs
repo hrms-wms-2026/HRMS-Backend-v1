@@ -50,9 +50,19 @@ public sealed class GetEmployeeHistoryQueryHandler(
 
         var today = clock.Today;
         var history = await assignments.ListHistoryForEmployeeAsync(tenantId, request.EmployeeId, ct);
+        var managerChanges = await assignments.ListReportingManagerChangesForEmployeeAsync(
+            tenantId, request.EmployeeId, ct);
         var positionNames = (await positions.GetByIdsAsync(tenantId, history.Select(h => h.PositionId).Distinct().ToList(), ct))
             .ToDictionary(p => p.Id, p => p.Name);
-        var managerIds = history.Where(h => h.ReportsToEmployeeId is not null).Select(h => h.ReportsToEmployeeId!.Value).Distinct().ToList();
+        var managerIds = history.Where(h => h.ReportsToEmployeeId is not null)
+            .Select(h => h.ReportsToEmployeeId!.Value)
+            .Concat(managerChanges.SelectMany(change => new Guid?[]
+            {
+                change.PreviousManagerEmployeeId,
+                change.NewManagerEmployeeId
+            }).Where(id => id.HasValue).Select(id => id!.Value))
+            .Distinct()
+            .ToList();
         var managerNames = managerIds.Count == 0
             ? new Dictionary<Guid, string>()
             : (await identity.ResolveDisplayNamesByEmployeeIdAsync(tenantId, managerIds, ct)).ToDictionary(p => p.Key, p => p.Value);
@@ -87,6 +97,22 @@ public sealed class GetEmployeeHistoryQueryHandler(
                     $"Reporting manager changed to {managerNames.GetValueOrDefault(managerId) ?? "a new manager"}",
                     current.EffectiveFrom));
             }
+        }
+
+        foreach (var change in managerChanges)
+        {
+            var previousManager = change.PreviousManagerEmployeeId is { } previousId
+                ? managerNames.GetValueOrDefault(previousId) ?? "the previous manager"
+                : "Top of organisation";
+            var newManager = managerNames.GetValueOrDefault(change.NewManagerEmployeeId) ?? "a new manager";
+            var reason = string.IsNullOrWhiteSpace(change.ChangeReason)
+                ? string.Empty
+                : $" ({change.ChangeReason})";
+
+            events.Add(new EmployeeHistoryEvent(
+                "manager_changed", "Reporting manager changed",
+                $"{previousManager} → {newManager}{reason}",
+                DateOnly.FromDateTime(change.EffectiveAt.UtcDateTime)));
         }
 
         var leaveRows = await leave.ListOwnAsync(tenantId, request.EmployeeId, new LeaveRequestListFilter(null, null, null, null), ct);

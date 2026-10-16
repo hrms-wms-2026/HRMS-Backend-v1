@@ -101,5 +101,10 @@ public interface IPositionAssignmentRepository
     Task<IReadOnlyList<ONEVO.Domain.Features.CoreHr.Entities.PositionAssignment>> ListHistoryForEmployeeAsync(
         Guid tenantId, Guid employeeId, CancellationToken ct = default);
 
+    /// <summary>Immutable direct-manager changes, oldest first. These are deliberately separate
+    /// from position assignments because a manager reassignment is not a position transfer.</summary>
+    Task<IReadOnlyList<ONEVO.Domain.Features.CoreHr.Entities.ReportingManagerChange>> ListReportingManagerChangesForEmployeeAsync(
+        Guid tenantId, Guid employeeId, CancellationToken ct = default);
+
     Task<int> SaveChangesAsync(CancellationToken ct = default);
 }

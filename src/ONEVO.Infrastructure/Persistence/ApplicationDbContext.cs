@@ -236,6 +236,7 @@ public class ApplicationDbContext : DbContext
     // CoreHR
     public DbSet<Employee> Employees => Set<Employee>();
     public DbSet<PositionAssignment> PositionAssignments => Set<PositionAssignment>();
+    public DbSet<ReportingManagerChange> ReportingManagerChanges => Set<ReportingManagerChange>();
     public DbSet<EmployeeHierarchyClosure> EmployeeHierarchyClosures => Set<EmployeeHierarchyClosure>();
     public DbSet<EmployeeAddress> EmployeeAddresses => Set<EmployeeAddress>();
     public DbSet<EmployeeEmergencyContact> EmployeeEmergencyContacts => Set<EmployeeEmergencyContact>();
