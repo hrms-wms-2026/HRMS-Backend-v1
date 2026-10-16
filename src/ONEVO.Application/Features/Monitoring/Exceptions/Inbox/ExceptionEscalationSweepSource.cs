@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Features.Inbox.Escalation;
 using ONEVO.Application.Features.Monitoring.Exceptions.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.Exceptions.ServiceInterfaces;
@@ -10,23 +11,26 @@ namespace ONEVO.Application.Features.Monitoring.Exceptions.Inbox;
 /// <summary>
 /// The stale-case sweep for monitoring exception cases, moved out of ExceptionDetectionJob unchanged: an Open case
 /// older than its policy's SLA (3 days) becomes Escalated with EscalatedById null, HR gets the "escalated" alert
-/// through the tenant's alert router, and everything is saved together. A failure to alert never blocks the save.
+/// through the tenant's alert router, and each case is saved with its alert before its inbox record is written.
+/// A failure to alert or to record never blocks the save, of that case or of the next.
 /// </summary>
 public sealed class ExceptionEscalationSweepSource : IInboxEscalationSweepSource
 {
     private readonly IExceptionRepository _exceptions;
     private readonly IExceptionAlertRouterFactory _routers;
     private readonly IInboxEscalationPolicyRegistry _policies;
+    private readonly IUnitOfWork _unitOfWork;
     private readonly ILogger<ExceptionEscalationSweepSource> _logger;
     private readonly IInboxEscalationRecorder? _recorder;
 
     public ExceptionEscalationSweepSource(
-        IExceptionRepository exceptions, IExceptionAlertRouterFactory routers, IInboxEscalationPolicyRegistry policies,
+        IExceptionRepository exceptions, IExceptionAlertRouterFactory routers, IInboxEscalationPolicyRegistry policies, IUnitOfWork unitOfWork,
         ILogger<ExceptionEscalationSweepSource> logger, IInboxEscalationRecorder? recorder = null)
     {
         _exceptions = exceptions;
         _routers = routers;
         _policies = policies;
+        _unitOfWork = unitOfWork;
         _logger = logger;
         _recorder = recorder;
     }
@@ -57,9 +61,10 @@ public sealed class ExceptionEscalationSweepSource : IInboxEscalationSweepSource
             exception.EscalatedAt = now;
             _exceptions.Update(exception);
             await NotifySafelyAsync(() => alerts.NotifyEscalatedAsync(exception, ct), exception, ct);
+            // Saved before the inbox record, so a failed record can drop its leftovers without losing the escalation.
+            await _exceptions.SaveChangesAsync(ct);
             await RecordSafelyAsync(tenantId, exception, before, ct);
         }
-        await _exceptions.SaveChangesAsync(ct);
         return overdue.Count;
     }
 
@@ -71,11 +76,20 @@ public sealed class ExceptionEscalationSweepSource : IInboxEscalationSweepSource
         var item = new ONEVO.Application.Features.Conversations.Contracts.ItemRef(ExceptionInboxKinds.Source, ExceptionInboxKinds.Case, exception.Id);
         await NotifySafelyAsync(async () =>
         {
-            var target = _policies.For(Source, exception.Type.ToString()) is { } policy
-                ? await policy.NextAsync(tenantId, new EscalationContext(item, exception.Type.ToString(), [], exception.EmployeeId, null, null), ct)
-                : new EscalationTarget.LogOnly("No escalation policy for this case type.");
-            await _recorder.RecordAsync(tenantId, new EscalationRecord(item, target, null, "Not reviewed in time", [], before,
-                ExceptionStateSnapshot.Of(exception).ToJson()), ct);
+            try
+            {
+                var target = _policies.For(Source, exception.Type.ToString()) is { } policy
+                    ? await policy.NextAsync(tenantId, new EscalationContext(item, exception.Type.ToString(), [], exception.EmployeeId, null, null), ct)
+                    : new EscalationTarget.LogOnly("No escalation policy for this case type.");
+                await _recorder.RecordAsync(tenantId, new EscalationRecord(item, target, null, "Not reviewed in time", [], before,
+                    ExceptionStateSnapshot.Of(exception).ToJson()), ct);
+            }
+            catch (System.Exception) when (!ct.IsCancellationRequested)
+            {
+                // The recorder's half-written rows must not sink the next case's save (the escalation itself is saved).
+                _unitOfWork.ClearTracking();
+                throw;
+            }
         }, exception, ct);
     }
 

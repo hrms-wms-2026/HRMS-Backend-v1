@@ -1,6 +1,7 @@
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
+using IUnitOfWork = ONEVO.Application.Common.RepositoryInterfaces.IUnitOfWork;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Permission.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
@@ -20,7 +21,8 @@ namespace ONEVO.Tests.Unit.Features.Monitoring.Exceptions;
 /// The 3-day stale sweep moved from ExceptionDetectionJob (nightly) to the inbox escalation sweep (hourly).
 /// Characterisation: for the existing exception types the result is the old sweep's - status Escalated,
 /// EscalatedAt = now, EscalatedById null (a sweep, not a person), the HR "escalated" alert through the
-/// tenant's alert router, all saved in one SaveChanges after the alerts are queued.
+/// tenant's alert router. Each case is saved right after its alert is queued (BE-11: a failed inbox record of one
+/// case must never sink the others).
 /// </summary>
 public class ExceptionEscalationSweepSourceTests
 {
@@ -30,6 +32,7 @@ public class ExceptionEscalationSweepSourceTests
     private readonly Mock<IExceptionRepository> _exceptions = new();
     private readonly Mock<IExceptionAlertRouter> _router = new();
     private readonly Mock<IExceptionAlertRouterFactory> _routers = new();
+    private readonly Mock<IUnitOfWork> _unitOfWork = new();
     private readonly List<string> _log = new();
 
     public ExceptionEscalationSweepSourceTests()
@@ -47,12 +50,41 @@ public class ExceptionEscalationSweepSourceTests
         Title = type.ToString(), Description = "d", DetectedAt = Now.AddDays(-daysOld),
     };
 
-    private ExceptionEscalationSweepSource Source()
+    private ExceptionEscalationSweepSource Source(IInboxEscalationPolicy? policy = null, IInboxEscalationRecorder? recorder = null)
     {
-        var policy = new ReportingLineThenHrPolicy(_ => Mock.Of<IEmployeeAuthorityResolver>(), Mock.Of<IEmployeeRepository>(),
+        policy ??= new ReportingLineThenHrPolicy(_ => Mock.Of<IEmployeeAuthorityResolver>(), Mock.Of<IEmployeeRepository>(),
             Mock.Of<IPermissionRepository>(), new FakeDateTimeProvider { UtcNow = Now });
         return new ExceptionEscalationSweepSource(_exceptions.Object, _routers.Object, new InboxEscalationPolicyRegistry([policy]),
-            NullLogger<ExceptionEscalationSweepSource>.Instance);
+            _unitOfWork.Object, NullLogger<ExceptionEscalationSweepSource>.Instance, recorder);
+    }
+
+    [Fact]
+    public async Task A_recorder_failure_drops_its_half_written_rows_so_the_other_escalations_still_save()
+    {
+        var failing = Case(ExceptionType.SustainedLowActivity, 5);
+        var next = Case(ExceptionType.SustainedLowActivity, 5);
+        _exceptions.Setup(e => e.GetStaleOpenAsync(TenantId, It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>())).ReturnsAsync([failing, next]);
+        var policy = new Mock<IInboxEscalationPolicy>();
+        policy.Setup(p => p.AppliesTo(It.IsAny<string>(), It.IsAny<string>())).Returns(true);
+        policy.SetupGet(p => p.Sla).Returns(TimeSpan.FromDays(3));
+        policy.Setup(p => p.NextAsync(TenantId, It.IsAny<EscalationContext>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new EscalationTarget.LogOnly("top"));
+        var recorder = new Mock<IInboxEscalationRecorder>();
+        recorder.Setup(r => r.RecordAsync(TenantId, It.IsAny<EscalationRecord>(), It.IsAny<CancellationToken>()))
+            .Callback((Guid _, EscalationRecord r, CancellationToken _) => _log.Add($"record:{r.Item.Id}"))
+            .ReturnsAsync([]);
+        recorder.Setup(r => r.RecordAsync(TenantId, It.Is<EscalationRecord>(x => x.Item.Id == failing.Id), It.IsAny<CancellationToken>()))
+            .Callback(() => _log.Add($"record:{failing.Id}"))
+            .ThrowsAsync(new InvalidOperationException("conversation insert failed"));
+        _unitOfWork.Setup(u => u.ClearTracking()).Callback(() => _log.Add("clear"));
+
+        var escalated = await Source(policy.Object, recorder.Object).EscalateOverdueAsync(TenantId, Now, default);
+
+        escalated.Should().Be(2);
+        // Each escalation is saved before its inbox record; the failed record's leftovers are dropped before the next save.
+        _log.Should().Equal(
+            $"escalated:{failing.Id}", "save", $"record:{failing.Id}", "clear",
+            $"escalated:{next.Id}", "save", $"record:{next.Id}");
     }
 
     [Fact]
@@ -72,7 +104,7 @@ public class ExceptionEscalationSweepSourceTests
             e.EscalatedAt.Should().Be(Now);
             e.EscalatedById.Should().BeNull();
         });
-        _log.Should().Equal(stale.Select(e => $"escalated:{e.Id}").Append("save"));
+        _log.Should().Equal(stale.SelectMany(e => new[] { $"escalated:{e.Id}", "save" }));
         calendarCase.Status.Should().Be(ExceptionStatus.Open);
         _exceptions.Verify(e => e.Update(It.IsAny<MonitoringException>()), Times.Exactly(stale.Count));
     }
