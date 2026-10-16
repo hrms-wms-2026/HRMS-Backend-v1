@@ -125,6 +125,23 @@ public class InboxDecisionReverterBaseTests
     }
 
     [Fact]
+    public async Task A_double_clicked_undo_reverts_once_and_the_second_click_is_a_conflict()
+    {
+        var decision = _journal.Add(TenantId, Item, InboxJournalActions.Approve, Me, Now.AddMinutes(-5));
+        var winner = Reverter();
+        var loser = Reverter();
+        // The second click passed its checks; the first click finishes while the second is mid-rollback.
+        loser.OnApply = () => winner.RevertAsync(TenantId, Item, Me, null, default);
+
+        var result = await loser.RevertAsync(TenantId, Item, Me, null, default);
+
+        result.StatusCode.Should().Be(409);
+        result.Error.Should().Be(InboxDecisionReverterBase.AlreadyReverted);
+        _journal.Entries.Where(e => e.Action == InboxJournalActions.Revert).Should().ContainSingle()
+            .Which.Id.Should().Be(decision.RevertedByJournalId!.Value);
+    }
+
+    [Fact]
     public async Task Nothing_to_undo_is_not_found()
         => (await Reverter().RevertAsync(TenantId, Item, Me, null, default)).StatusCode.Should().Be(404);
 
@@ -134,6 +151,7 @@ public class InboxDecisionReverterBaseTests
         public Result Dependencies { get; set; } = Result.Success();
         public Result<InboxActionResult> ApplyResult { get; set; } = Result<InboxActionResult>.Success(new InboxActionResult([Guid.NewGuid()]));
         public List<Guid> Applied { get; } = new();
+        public Func<Task>? OnApply { get; set; }
 
         public override string Source => "leave";
         public override string Kind => "request";
@@ -141,12 +159,14 @@ public class InboxDecisionReverterBaseTests
         protected override Task<Result> CheckDependenciesAsync(Guid tenantId, InboxDecisionJournalEntry decision, CancellationToken ct)
             => Task.FromResult(Dependencies);
 
-        protected override Task<Result<InboxActionResult>> ApplyRevertAsync(
+        protected override async Task<Result<InboxActionResult>> ApplyRevertAsync(
             Guid tenantId, InboxDecisionJournalEntry decision, Guid callerEmployeeId, CancellationToken ct)
         {
+            if (OnApply is not null)
+                await OnApply();
             if (ApplyResult.IsSuccess)
                 Applied.Add(decision.Id);
-            return Task.FromResult(ApplyResult);
+            return ApplyResult;
         }
     }
 }

@@ -129,6 +129,34 @@ public sealed class EfInboxDecisionJournalTests : IDisposable
         rows[0].RevertedByJournalId.Should().Be(revert.Id);
     }
 
+    [Fact]
+    public async Task MarkReverted_on_a_row_another_request_already_reverted_records_nothing()
+    {
+        var item = new ItemRef("attendance", "correction", Guid.NewGuid());
+        var original = Entry(item, InboxJournalActions.Approve, 0);
+        await using (var db = CreateContext())
+            await new EfInboxDecisionJournal(db).RecordAsync(original);
+
+        // Both clicks of a double-clicked Undo read the row before either marks it.
+        await using var first = CreateContext();
+        await using var second = CreateContext();
+        var firstJournal = new EfInboxDecisionJournal(first);
+        var secondJournal = new EfInboxDecisionJournal(second);
+        var firstLoaded = (await firstJournal.LatestAsync(TenantId, item))!;
+        var secondLoaded = (await secondJournal.LatestAsync(TenantId, item))!;
+        var firstRevert = Entry(item, InboxJournalActions.Revert, 5);
+        await firstJournal.MarkRevertedAsync(firstLoaded, firstRevert);
+
+        var secondRevert = Entry(item, InboxJournalActions.Revert, 6);
+        var marked = await secondJournal.MarkRevertedAsync(secondLoaded, secondRevert);
+
+        marked.Should().BeFalse();
+        await using var read = CreateContext();
+        var rows = await new EfInboxDecisionJournal(read).ListForItemAsync(TenantId, item);
+        rows.Select(r => r.Action).Should().Equal("approve", "revert");
+        rows[0].RevertedByJournalId.Should().Be(firstRevert.Id);
+    }
+
     private ApplicationDbContext CreateContext()
     {
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()

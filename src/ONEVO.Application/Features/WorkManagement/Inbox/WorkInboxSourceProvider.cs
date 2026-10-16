@@ -406,9 +406,9 @@ public sealed class WorkInboxSourceProvider : IInboxSourceProvider
             Comment = string.IsNullOrWhiteSpace(comment) ? null : comment.Trim(), DecidedAt = now, CreatedAt = now,
         };
         var latest = action == InboxJournalActions.Revert ? await _journal.LatestAsync(tenantId, new ItemRef(Source, WorkInboxKinds.Approval, id), ct) : null;
-        if (latest is not null && latest.Action != InboxJournalActions.Revert && latest.RevertedByJournalId is null)
-            await _journal.MarkRevertedAsync(latest, entry, ct);
-        else
+        // WM's own revert has already committed, so the revert row is kept even if a concurrent one marked the decision first.
+        if (latest is null || latest.Action == InboxJournalActions.Revert || latest.RevertedByJournalId is not null
+            || !await _journal.MarkRevertedAsync(latest, entry, ct))
             await _journal.RecordAsync(entry, ct);
     }
 

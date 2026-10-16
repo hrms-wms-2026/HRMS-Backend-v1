@@ -56,13 +56,23 @@ public class EfInboxDecisionJournal : IInboxDecisionJournal
             .ToList();
     }
 
-    public async Task MarkRevertedAsync(InboxDecisionJournalEntry original, InboxDecisionJournalEntry revertEntry, CancellationToken ct = default)
+    public async Task<bool> MarkRevertedAsync(InboxDecisionJournalEntry original, InboxDecisionJournalEntry revertEntry, CancellationToken ct = default)
     {
-        await _db.InboxDecisionJournal.AddAsync(revertEntry, ct);
+        // Conditional claim (UPDATE ... WHERE reverted_by_journal_id IS NULL): of two concurrent reverts of one
+        // decision only the first matches a row; the second waits on the row lock, then matches none.
+        var claimed = await _db.InboxDecisionJournal
+            .Where(e => e.Id == original.Id && e.RevertedByJournalId == null)
+            .ExecuteUpdateAsync(s => s.SetProperty(e => e.RevertedByJournalId, revertEntry.Id), ct);
+        if (claimed == 0)
+            return false;
+
         original.RevertedByJournalId = revertEntry.Id;
-        if (_db.Entry(original).State == EntityState.Detached)
-            _db.InboxDecisionJournal.Update(original);
+        var tracked = _db.Entry(original);
+        if (tracked.State != EntityState.Detached)
+            tracked.Property(e => e.RevertedByJournalId).IsModified = false;
+        await _db.InboxDecisionJournal.AddAsync(revertEntry, ct);
         await _db.SaveChangesAsync(ct);
+        return true;
     }
 
     private IQueryable<InboxDecisionJournalEntry> ForItem(Guid tenantId, ItemRef item)

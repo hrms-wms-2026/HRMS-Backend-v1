@@ -42,11 +42,13 @@ public sealed class InMemoryInboxDecisionJournal : IInboxDecisionJournal
             .Select(g => g.OrderByDescending(e => e.DecidedAt).ThenByDescending(e => e.CreatedAt).First())
             .ToList());
 
-    public Task MarkRevertedAsync(InboxDecisionJournalEntry original, InboxDecisionJournalEntry revertEntry, CancellationToken ct = default)
+    public Task<bool> MarkRevertedAsync(InboxDecisionJournalEntry original, InboxDecisionJournalEntry revertEntry, CancellationToken ct = default)
     {
+        if (original.RevertedByJournalId is not null)
+            return Task.FromResult(false);
         Entries.Add(revertEntry);
         original.RevertedByJournalId = revertEntry.Id;
-        return Task.CompletedTask;
+        return Task.FromResult(true);
     }
 
     public InboxDecisionJournalEntry Add(

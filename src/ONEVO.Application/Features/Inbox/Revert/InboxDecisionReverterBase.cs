@@ -72,7 +72,9 @@ public abstract class InboxDecisionReverterBase : IInboxDecisionReverter
                     Action = InboxJournalActions.Revert, ActorEmployeeId = callerEmployeeId, BeforeJson = decision.AfterJson,
                     AfterJson = decision.BeforeJson, Comment = comment, DecidedAt = _clock.UtcNow,
                 };
-                await _journal.MarkRevertedAsync(decision, revert, token);
+                // A concurrent revert (double-clicked Undo) claimed the decision first: roll this one back.
+                if (!await _journal.MarkRevertedAsync(decision, revert, token))
+                    throw new InboxRevertAbortedException(Result<InboxActionResult>.Conflict(AlreadyReverted));
                 return applied;
             }, ct);
         }

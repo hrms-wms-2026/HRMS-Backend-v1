@@ -25,8 +25,9 @@ public interface IInboxDecisionJournal
     Task<IReadOnlyList<InboxDecisionJournalEntry>> ListLatestEscalationsAsync(
         Guid tenantId, string source, string kind, CancellationToken ct = default);
 
-    /// <summary>Records <paramref name="revertEntry"/> and points <paramref name="original"/> at it.</summary>
-    Task MarkRevertedAsync(InboxDecisionJournalEntry original, InboxDecisionJournalEntry revertEntry, CancellationToken ct = default);
+    /// <summary>Records <paramref name="revertEntry"/> and points <paramref name="original"/> at it - only if no other
+    /// revert got there first. False (nothing written) when <paramref name="original"/> is already reverted.</summary>
+    Task<bool> MarkRevertedAsync(InboxDecisionJournalEntry original, InboxDecisionJournalEntry revertEntry, CancellationToken ct = default);
 }
 
 public sealed record InboxJournalPage(IReadOnlyList<InboxDecisionJournalEntry> Entries, int Total);
