@@ -16,7 +16,10 @@ public record EmployeeDetailJobInformation(
     Guid? PositionId, string? ReportingManagerName, string EmploymentTypeLabel, string Status,
     DateOnly HireDate, DateOnly? ProbationEndDate, string? WorkModeLabel,
     string EmploymentTypeCode, Guid? WorkModeId, DateOnly? TerminationDate, Guid? ReportingManagerId = null,
-    string? Timezone = null);
+    string? Timezone = null,
+    // Position reserved for this employee by their onboarding invitation. The assignment stays
+    // "planned" (so PositionName is null) until they accept the invite and it is activated.
+    string? PendingPositionName = null);
 
 public record EmployeeDetailPersonalInformation(
     string FirstName, string LastName, string Email, string? Phone, DateOnly? DateOfBirth,

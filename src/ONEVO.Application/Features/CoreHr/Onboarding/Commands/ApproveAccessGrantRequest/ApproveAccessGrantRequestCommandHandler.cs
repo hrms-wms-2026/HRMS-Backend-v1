@@ -22,6 +22,7 @@ using ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces;
 using ONEVO.Domain.Features.Auth.Entities;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
+using ONEVO.Domain.Features.Monitoring.Settings.Entities;
 using ONEVO.Domain.Features.OrgStructure.Entities;
 using EmployeeEntity = ONEVO.Domain.Features.CoreHr.Entities.Employee;
 using OnboardingDraftEntity = ONEVO.Domain.Features.CoreHr.Entities.OnboardingDraft;
@@ -69,6 +70,7 @@ public class ApproveAccessGrantRequestCommandHandler
     private readonly IDateTimeProvider _clock;
     private readonly IUnitOfWork _unitOfWork;
     private readonly IEmployeeChecklistWorkTaskProvisioner? _workTaskProvisioner;
+    private readonly IOnboardingWizardLookupService? _wizardLookups;
     private readonly IOfficeProjectReconciler? _officeReconciler;
 
     public ApproveAccessGrantRequestCommandHandler(
@@ -94,6 +96,7 @@ public class ApproveAccessGrantRequestCommandHandler
         IDateTimeProvider clock,
         IUnitOfWork unitOfWork,
         IEmployeeChecklistWorkTaskProvisioner? workTaskProvisioner = null,
+        IOnboardingWizardLookupService? wizardLookups = null,
         IOfficeProjectReconciler? officeReconciler = null)
     {
         _accessGrantRequestRepository = accessGrantRequestRepository;
@@ -118,6 +121,7 @@ public class ApproveAccessGrantRequestCommandHandler
         _clock = clock;
         _unitOfWork = unitOfWork;
         _workTaskProvisioner = workTaskProvisioner;
+        _wizardLookups = wizardLookups;
         _officeReconciler = officeReconciler;
     }
 
@@ -367,6 +371,25 @@ public class ApproveAccessGrantRequestCommandHandler
         };
         await _employeeRepository.AddAsync(employee, ct);
 
+        // Same per-employee clock-in overrides the direct finalize path writes (see
+        // OnboardingDraftWriteService) - approval must not silently drop the wizard's choices.
+        if (_wizardLookups is not null
+            && (draft.PhotoRequiredOverride.HasValue || draft.LocationCaptureOverride.HasValue))
+        {
+            await _wizardLookups.AddEmployeeOverrideAsync(new EmployeeMonitoringOverride
+            {
+                Id = Guid.NewGuid(),
+                TenantId = draft.TenantId,
+                EmployeeId = employeeId,
+                PhotoRequired = draft.PhotoRequiredOverride,
+                WorkLocationVerification = draft.LocationCaptureOverride,
+                OverrideReason = "Set during onboarding (Add Employee wizard).",
+                SetById = _currentUser.UserId,
+                CreatedAt = _clock.UtcNow,
+                UpdatedAt = _clock.UtcNow,
+            }, ct);
+        }
+
         if (_workTaskProvisioner is not null && checklistTasks.Count > 0)
         {
             var officeResult = await _workTaskProvisioner.EnsureOfficeProjectAsync(
@@ -383,8 +406,27 @@ public class ApproveAccessGrantRequestCommandHandler
                     provisionResult.Error!, provisionResult.StatusCode ?? 400);
         }
 
+        // Keep the manager the Add Employee wizard picked - a holder of the position above, or a
+        // one-off manager from another reporting line. Approval can come days later, so re-check
+        // they're still employed here with an active seat; if not, fall back to the wizard's own
+        // default (the first current holder of the position above, when there are several).
+        Guid? reportsToEmployeeId = null;
+        if (draft.ReportsToEmployeeId is Guid chosen
+            && await _employeeRepository.GetByIdAsync(draft.TenantId, chosen, ct) is { } chosenEmployee
+            && chosenEmployee.LegalEntityId == draft.LegalEntityId
+            && await _positionAssignmentRepository.GetActivePrimaryAsync(draft.TenantId, chosen, ct) is not null)
+        {
+            reportsToEmployeeId = chosen;
+        }
+        else if (position.ReportsToPositionId is Guid reportsToPositionId)
+        {
+            var holders = await _positionAssignmentRepository.GetActiveHoldersAsync(draft.TenantId, reportsToPositionId, ct);
+            if (holders.Count > 1)
+                reportsToEmployeeId = holders[0].EmployeeId;
+        }
+
         var reservedAssignmentId = await _positionAssignmentRepository.TryReservePositionAssignmentAsync(
-            draft.TenantId, employeeId, position.Id, draft.StartDate!.Value, _currentUser.UserId, reportsToEmployeeId: null, ct);
+            draft.TenantId, employeeId, position.Id, draft.StartDate!.Value, _currentUser.UserId, reportsToEmployeeId, ct);
         if (reservedAssignmentId is null)
             return Result<ApproveAccessGrantRequestResponse>.Conflict("This position has reached its capacity.");
 
@@ -458,6 +500,19 @@ public class ApproveAccessGrantRequestCommandHandler
         var saveResult = await SaveAsync(ct);
         if (saveResult is not null)
             return saveResult;
+
+        // Profile photo from the wizard - linked only now that the employee is committed, and
+        // best effort (see OnboardingDraftWriteService).
+        if (draft.AvatarFileId is Guid draftAvatarId && _wizardLookups is not null)
+        {
+            try
+            {
+                await _wizardLookups.LinkDraftAvatarAsync(draft.TenantId, employeeId, draftAvatarId, ct);
+            }
+            catch (Exception) when (!ct.IsCancellationRequested)
+            {
+            }
+        }
 
         // Spec §4.2: the employee is committed, so if this user holds the Owner role the Office
         // project can now be created (or re-led) owner-led. Best-effort: never fails onboarding.

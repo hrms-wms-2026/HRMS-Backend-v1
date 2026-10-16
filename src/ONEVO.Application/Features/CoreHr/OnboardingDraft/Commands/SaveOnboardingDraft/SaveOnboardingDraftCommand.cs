@@ -20,4 +20,7 @@ public record SaveOnboardingDraftCommand(
     string? EditedTasksJson,
     string LastSavedStep,
     string? IfMatchVersion,
-    Guid? ReportsToEmployeeId) : IRequest<Result<OnboardingDraftResponse>>;
+    Guid? ReportsToEmployeeId,
+    bool? PhotoRequiredOverride = null,
+    bool? LocationCaptureOverride = null,
+    Guid? AvatarFileId = null) : IRequest<Result<OnboardingDraftResponse>>;

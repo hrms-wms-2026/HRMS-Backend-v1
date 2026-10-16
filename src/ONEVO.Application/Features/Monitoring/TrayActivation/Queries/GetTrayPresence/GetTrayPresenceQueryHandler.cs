@@ -18,19 +18,22 @@ public sealed class GetTrayPresenceQueryHandler
     private readonly IDateTimeProvider _clock;
     private readonly TrayPresenceOptions _options;
     private readonly ITrayPresenceRequirementEvaluator _requirement;
+    private readonly ITrayConnectionPresence? _livePresence;
 
     public GetTrayPresenceQueryHandler(
         ITrayActivationRepository repository,
         ICurrentUser currentUser,
         IDateTimeProvider clock,
         IOptions<TrayPresenceOptions> options,
-        ITrayPresenceRequirementEvaluator requirement)
+        ITrayPresenceRequirementEvaluator requirement,
+        ITrayConnectionPresence? livePresence = null)
     {
         _repository = repository;
         _currentUser = currentUser;
         _clock = clock;
         _options = options.Value;
         _requirement = requirement;
+        _livePresence = livePresence;
     }
 
     public async Task<Result<TrayPresenceResponseDto>> Handle(
@@ -42,11 +45,16 @@ public sealed class GetTrayPresenceQueryHandler
             _currentUser.UserId,
             _currentUser.TenantId,
             ct);
-        var connected = device?.LastSeenAt is { } lastSeen
-            && lastSeen > now.AddSeconds(-_options.GracePeriodSeconds);
+        // A live agent-hub connection is presence on its own — the heartbeat is slow while
+        // connected, so LastSeenAt alone would read as stale.
+        var liveConnection = _livePresence?.IsConnected(_currentUser.TenantId, _currentUser.UserId) == true;
+        var connected = liveConnection
+            || (device?.LastSeenAt is { } lastSeen && lastSeen > now.AddSeconds(-_options.GracePeriodSeconds));
         var required = string.Equals(_options.Mode, "Enforce", StringComparison.OrdinalIgnoreCase)
             && await _requirement.IsRequiredForCurrentUserAsync(ct);
-        var validUntil = device?.LastSeenAt?.AddSeconds(_options.GracePeriodSeconds);
+        var validUntil = liveConnection
+            ? now.AddSeconds(_options.GracePeriodSeconds)
+            : device?.LastSeenAt?.AddSeconds(_options.GracePeriodSeconds);
         var responseDevice = connected && device is not null && device.LastSeenAt is { } seen
             ? new TrayPresenceDeviceDto(device.Id, device.DeviceName, seen)
             : null;

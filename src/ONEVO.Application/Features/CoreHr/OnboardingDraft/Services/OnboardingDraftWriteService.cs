@@ -22,6 +22,7 @@ using ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces;
 using ONEVO.Domain.Features.Auth.Entities;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
+using ONEVO.Domain.Features.Monitoring.Settings.Entities;
 using ONEVO.Domain.Features.OrgStructure.Entities;
 using EmployeeEntity = ONEVO.Domain.Features.CoreHr.Entities.Employee;
 using OnboardingDraftEntity = ONEVO.Domain.Features.CoreHr.Entities.OnboardingDraft;
@@ -67,6 +68,7 @@ public class OnboardingDraftWriteService : IOnboardingDraftWriteService
     private readonly IDateTimeProvider _clock;
     private readonly IUnitOfWork _unitOfWork;
     private readonly IEmployeeChecklistWorkTaskProvisioner? _workTaskProvisioner;
+    private readonly IOnboardingWizardLookupService? _wizardLookups;
     private readonly IOfficeProjectReconciler? _officeReconciler;
 
     public OnboardingDraftWriteService(
@@ -93,6 +95,7 @@ public class OnboardingDraftWriteService : IOnboardingDraftWriteService
         IDateTimeProvider clock,
         IUnitOfWork unitOfWork,
         IEmployeeChecklistWorkTaskProvisioner? workTaskProvisioner = null,
+        IOnboardingWizardLookupService? wizardLookups = null,
         IOfficeProjectReconciler? officeReconciler = null)
     {
         _draftRepository = draftRepository;
@@ -118,6 +121,7 @@ public class OnboardingDraftWriteService : IOnboardingDraftWriteService
         _clock = clock;
         _unitOfWork = unitOfWork;
         _workTaskProvisioner = workTaskProvisioner;
+        _wizardLookups = wizardLookups;
         _officeReconciler = officeReconciler;
     }
 
@@ -135,6 +139,15 @@ public class OnboardingDraftWriteService : IOnboardingDraftWriteService
         if (legalEntity is null || !legalEntity.IsActive)
             return Result<OnboardingDraftResponse>.Failure("The selected legal entity does not exist or is inactive.");
 
+        if (request.AvatarFileId is { } avatarFileId && _wizardLookups is not null)
+        {
+            // Re-saving a draft keeps the photo it already has, even if someone else uploaded it.
+            var alreadyOnDraft = request.DraftId is { } existingDraftId
+                && (await _draftRepository.GetTrackedAsync(tenantId, existingDraftId, ct))?.AvatarFileId == avatarFileId;
+            if (!alreadyOnDraft && !await _wizardLookups.IsUsableDraftAvatarAsync(tenantId, actingUserId, avatarFileId, ct))
+                return Result<OnboardingDraftResponse>.Failure("The profile photo could not be found. Upload it again.");
+        }
+
         if (request.DepartmentId is not null)
         {
             var department = await _departmentRepository.GetByIdForLegalEntityAsync(tenantId, request.LegalEntityId, request.DepartmentId.Value, ct);
@@ -148,20 +161,22 @@ public class OnboardingDraftWriteService : IOnboardingDraftWriteService
             if (position is null || !position.IsActive || (request.DepartmentId is not null && position.DepartmentId != request.DepartmentId))
                 return Result<OnboardingDraftResponse>.Failure("The selected position does not exist, is inactive, or does not match the selected legal entity and department.");
 
-            if (position.ReportsToPositionId is { } reportsToPositionId)
+            if (position.ReportsToPositionId is { } reportsToPositionId && request.ReportsToEmployeeId is null)
             {
                 var activeHolders = await _positionAssignmentRepository.GetActiveHoldersAsync(tenantId, reportsToPositionId, ct);
                 if (activeHolders.Count > 1)
-                {
-                    if (request.ReportsToEmployeeId is not { } chosenManagerId)
-                        return Result<OnboardingDraftResponse>.UnprocessableEntity(
-                            "This position's manager position has multiple current holders — select which one this employee reports to.");
-
-                    if (!activeHolders.Any(h => h.EmployeeId == chosenManagerId))
-                        return Result<OnboardingDraftResponse>.UnprocessableEntity(
-                            "The selected reporting manager is not a current holder of this position's manager position.");
-                }
+                    return Result<OnboardingDraftResponse>.UnprocessableEntity(
+                        "This position's manager position has multiple current holders — select which one this employee reports to.");
             }
+        }
+
+        // The chosen manager may be a holder of the position above, or - as a one-off for this
+        // employee only - anyone else currently employed in this company with an active seat.
+        if (request.ReportsToEmployeeId is { } chosenManagerId
+            && !await IsActiveEmployeeInLegalEntityAsync(tenantId, request.LegalEntityId, chosenManagerId, ct))
+        {
+            return Result<OnboardingDraftResponse>.UnprocessableEntity(
+                "The selected reporting manager is not a current employee of this company.");
         }
 
         if (!string.IsNullOrWhiteSpace(request.WorkEmail)
@@ -277,6 +292,9 @@ public class OnboardingDraftWriteService : IOnboardingDraftWriteService
         draft.StartDate = request.StartDate;
         draft.EmployeeNumber = string.IsNullOrEmpty(normalizedEmployeeNumber) ? null : normalizedEmployeeNumber;
         draft.WorkModeId = request.WorkModeId;
+        draft.PhotoRequiredOverride = request.PhotoRequiredOverride;
+        draft.LocationCaptureOverride = request.LocationCaptureOverride;
+        draft.AvatarFileId = request.AvatarFileId;
         draft.SelectedTemplateId = request.SelectedTemplateId;
         draft.EditedTasksJson = request.EditedTasksJson;
         draft.LastSavedStep = request.LastSavedStep;
@@ -604,6 +622,26 @@ public class OnboardingDraftWriteService : IOnboardingDraftWriteService
             {
                 await _draftRepository.SaveChangesAsync(txnCt);
 
+                // Clock-in evidence the wizard changed for this employee only. Added after the
+                // employee row is flushed above (employee_monitoring_overrides references it)
+                // and committed by the final save below.
+                if (_wizardLookups is not null
+                    && (draft.PhotoRequiredOverride.HasValue || draft.LocationCaptureOverride.HasValue))
+                {
+                    await _wizardLookups.AddEmployeeOverrideAsync(new EmployeeMonitoringOverride
+                    {
+                        Id = Guid.NewGuid(),
+                        TenantId = draft.TenantId,
+                        EmployeeId = employeeId,
+                        PhotoRequired = draft.PhotoRequiredOverride,
+                        WorkLocationVerification = draft.LocationCaptureOverride,
+                        OverrideReason = "Set during onboarding (Add Employee wizard).",
+                        SetById = actingUserId,
+                        CreatedAt = _clock.UtcNow,
+                        UpdatedAt = _clock.UtcNow,
+                    }, txnCt);
+                }
+
                 if (position is not null)
                 {
                     reservedAssignmentId = await _positionAssignmentRepository.TryReservePositionAssignmentAsync(
@@ -729,6 +767,9 @@ public class OnboardingDraftWriteService : IOnboardingDraftWriteService
                 "This request conflicts with an existing record (e.g. a duplicate email, employee number, or a request already submitted). Please refresh and try again.");
         }
 
+        if (draft.AvatarFileId is Guid draftAvatarId && _wizardLookups is not null)
+            await TryLinkDraftAvatarAsync(draft.TenantId, employeeId, draftAvatarId, ct);
+
         // Spec §4.2: the employee is committed, so if this user holds the Owner role the Office
         // project can now be created (or re-led) owner-led. Best-effort: never fails onboarding.
         if (_officeReconciler is not null)
@@ -738,6 +779,28 @@ public class OnboardingDraftWriteService : IOnboardingDraftWriteService
             draft.Id, employeeId, draft.Status, draft.DraftReason,
             InvitationQueued: true, PositionApprovalPending: false, ChecklistTasksCreated: tasksCreated > 0,
             MessageKey: "onboarding.finalize.invitation_sent"));
+    }
+
+    private async Task<bool> IsActiveEmployeeInLegalEntityAsync(
+        Guid tenantId, Guid legalEntityId, Guid employeeId, CancellationToken ct)
+    {
+        var employee = await _employeeRepository.GetByIdAsync(tenantId, employeeId, ct);
+        if (employee is null || employee.LegalEntityId != legalEntityId)
+            return false;
+        return await _positionAssignmentRepository.GetActivePrimaryAsync(tenantId, employeeId, ct) is not null;
+    }
+
+    private async Task TryLinkDraftAvatarAsync(Guid tenantId, Guid employeeId, Guid fileId, CancellationToken ct)
+    {
+        try
+        {
+            await _wizardLookups!.LinkDraftAvatarAsync(tenantId, employeeId, fileId, ct);
+        }
+        catch (Exception) when (!ct.IsCancellationRequested)
+        {
+            // Best effort - the employee and invite are already committed; a missing photo is
+            // recoverable from their profile, an un-onboarded employee is not.
+        }
     }
 
     /// <summary>Thrown inside <see cref="IUnitOfWork.ExecuteInTransactionAsync{TResult}"/> so the

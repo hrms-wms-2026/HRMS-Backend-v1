@@ -115,30 +115,46 @@ public class EfEmployeeHierarchyClosureRepository : IEmployeeHierarchyClosureRep
             .Where(p => p.TenantId == tenantId)
             .ToDictionaryAsync(p => p.Id, ct);
 
+        // An employee's explicitly chosen manager (assignment.ReportsToEmployeeId) can be anyone
+        // with an active primary seat - a holder of the position above, or someone from a
+        // different reporting line picked as a one-off for just this employee. Resolve them by
+        // employee, not by position.
+        var activeByEmployeeId = activeAssignments
+            .GroupBy(pa => pa.EmployeeId)
+            .ToDictionary(g => g.Key, g => g.OrderByDescending(pa => pa.EffectiveFrom).First());
+
         var newRows = new List<ONEVO.Domain.Features.CoreHr.Entities.EmployeeHierarchyClosure>();
         var now = _clock.UtcNow;
 
         foreach (var assignment in activeAssignments)
         {
             var depth = 1;
-            positions.TryGetValue(assignment.PositionId, out var ownPosition);
-            var currentPositionId = ownPosition?.ReportsToPositionId;
-            var currentReportsToEmployeeId = assignment.ReportsToEmployeeId;
-            var visited = new HashSet<Guid> { assignment.PositionId };
+            var current = assignment;
+            var visitedEmployees = new HashSet<Guid> { assignment.EmployeeId };
 
-            while (currentPositionId is not null
-                && visited.Add(currentPositionId.Value)
-                && holdersByPositionId.TryGetValue(currentPositionId.Value, out var holders))
+            while (true)
             {
-                ONEVO.Domain.Features.CoreHr.Entities.PositionAssignment? ancestorAssignment = holders.Count switch
-                {
-                    1 => holders[0],
-                    _ => currentReportsToEmployeeId is { } overrideId
-                        ? holders.FirstOrDefault(h => h.EmployeeId == overrideId)
-                        : null,
-                };
+                ONEVO.Domain.Features.CoreHr.Entities.PositionAssignment? ancestorAssignment = null;
 
-                if (ancestorAssignment is null)
+                if (current.ReportsToEmployeeId is { } chosenManagerId
+                    && activeByEmployeeId.TryGetValue(chosenManagerId, out var chosenManager))
+                {
+                    // Explicit pick wins, wherever that manager sits.
+                    ancestorAssignment = chosenManager;
+                }
+                else if (positions.TryGetValue(current.PositionId, out var currentPosition)
+                    && currentPosition.ReportsToPositionId is { } reportsToPositionId
+                    && holdersByPositionId.TryGetValue(reportsToPositionId, out var holders)
+                    && holders.Count == 1)
+                {
+                    // No pick: only an unambiguous single holder of the position above counts.
+                    // Several holders with no pick stay unresolved here - management coverage
+                    // decides approvals for them (see EmployeeAuthorityResolver).
+                    ancestorAssignment = holders[0];
+                }
+
+                // Stop at the top, at an ambiguous/vacant step, or on a cycle (A -> B -> A).
+                if (ancestorAssignment is null || !visitedEmployees.Add(ancestorAssignment.EmployeeId))
                     break;
 
                 newRows.Add(new ONEVO.Domain.Features.CoreHr.Entities.EmployeeHierarchyClosure
@@ -152,10 +168,7 @@ public class EfEmployeeHierarchyClosureRepository : IEmployeeHierarchyClosureRep
                 });
 
                 depth++;
-                currentReportsToEmployeeId = ancestorAssignment.ReportsToEmployeeId;
-                currentPositionId = positions.TryGetValue(currentPositionId.Value, out var ancestorPosition)
-                    ? ancestorPosition.ReportsToPositionId
-                    : null;
+                current = ancestorAssignment;
             }
         }
 
