@@ -43,6 +43,34 @@ public sealed class EfInboxDecisionJournalTests : IDisposable
     };
 
     [Fact]
+    public async Task Latest_escalations_are_one_per_item_of_the_source_and_kind_skipping_undone_ones()
+    {
+        var a = new ItemRef("calendar", "meeting_exception", Guid.NewGuid());
+        var b = new ItemRef("calendar", "meeting_exception", Guid.NewGuid());
+        Guid undoneId;
+        await using (var db = CreateContext())
+        {
+            var journal = new EfInboxDecisionJournal(db);
+            await journal.RecordAsync(Entry(a, InboxJournalActions.Escalate, 5));
+            await journal.RecordAsync(Entry(a, InboxJournalActions.Escalate, 10));
+            await journal.RecordAsync(Entry(a, InboxJournalActions.Resolve("excused"), 20));
+            await journal.RecordAsync(Entry(b, InboxJournalActions.Escalate, 5));
+            var undone = Entry(b, InboxJournalActions.Escalate, 15);
+            undone.RevertedByJournalId = Guid.NewGuid();
+            undoneId = undone.Id;
+            await journal.RecordAsync(undone);
+            await journal.RecordAsync(Entry(new ItemRef("monitoring", "exception_case", Guid.NewGuid()), InboxJournalActions.Escalate, 5));
+            await journal.RecordAsync(Entry(a, InboxJournalActions.Escalate, 30, tenant: Guid.NewGuid()));
+        }
+
+        await using var read = CreateContext();
+        var latest = await new EfInboxDecisionJournal(read).ListLatestEscalationsAsync(TenantId, "calendar", "meeting_exception");
+
+        latest.Select(e => (e.ItemId, e.DecidedAt)).Should().BeEquivalentTo(new[] { (a.Id, T0.AddMinutes(10)), (b.Id, T0.AddMinutes(5)) });
+        latest.Should().NotContain(e => e.Id == undoneId);
+    }
+
+    [Fact]
     public async Task Item_entries_are_oldest_first_and_latest_is_the_newest()
     {
         var item = new ItemRef("leave", "request", Guid.NewGuid());

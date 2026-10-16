@@ -6,10 +6,16 @@ namespace ONEVO.Application.Features.Monitoring.Exceptions.ServiceInterfaces;
 /// which IEmployeeAuthorityResolver derived from management coverage and approver routing. Nobody
 /// ever works an alert about themselves.
 /// </summary>
-public sealed record ExceptionScope(bool IsHr, Guid? ActorEmployeeId, IReadOnlyCollection<Guid> EmployeeIds)
+public sealed record ExceptionScope(
+    bool IsHr, Guid? ActorEmployeeId, IReadOnlyCollection<Guid> EmployeeIds, IReadOnlyCollection<Guid>? HeldCaseIds = null)
 {
     public bool CanSee(Guid employeeId) =>
         employeeId != ActorEmployeeId && (IsHr || EmployeeIds.Contains(employeeId));
+
+    /// <summary><see cref="CanSee"/>, or the caller holds this very case by escalation (<see cref="HeldCaseIds"/>: calendar
+    /// cases escalated up the reporting line to someone coverage does not show the employee).</summary>
+    public bool CanAct(Guid caseId, Guid employeeId) =>
+        CanSee(employeeId) || (employeeId != ActorEmployeeId && HeldCaseIds?.Contains(caseId) == true);
 }
 
 public interface IExceptionScopeResolver

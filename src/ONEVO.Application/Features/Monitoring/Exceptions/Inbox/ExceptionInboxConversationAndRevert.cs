@@ -102,7 +102,7 @@ public class ExceptionCaseReverter : InboxDecisionReverterBase
         if (ExceptionStateSnapshot.Parse(decision.AfterJson) is { } after && after.Status != exception.Status.ToString())
             return Result.Conflict("This case changed after your decision, so it can no longer be undone.");
         var scope = await _scope.ResolveAsync(forAction: true, [exception.EmployeeId], ct);
-        return scope?.CanSee(exception.EmployeeId) == true ? Result.Success() : Result.Forbidden("You can no longer review this case.");
+        return scope?.CanAct(exception.Id, exception.EmployeeId) == true ? Result.Success() : Result.Forbidden("You can no longer review this case.");
     }
 
     protected override async Task<Result<InboxActionResult>> ApplyRevertAsync(

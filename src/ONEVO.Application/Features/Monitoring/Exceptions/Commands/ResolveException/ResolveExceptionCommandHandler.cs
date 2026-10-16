@@ -31,7 +31,7 @@ public class ResolveExceptionCommandHandler : IRequestHandler<ResolveExceptionCo
         if (scope is null)
             return Result.Forbidden("You do not have permission to resolve exceptions.");
 
-        if (exception is null || !scope.CanSee(exception.EmployeeId))
+        if (exception is null || !scope.CanAct(exception.Id, exception.EmployeeId))
             return Result.NotFound("Exception not found.");
         if (request.Outcome is not null && !ExceptionOutcomes.IsValid(request.Outcome))
             return Result.UnprocessableEntity("The outcome must be excused or confirmed.");

@@ -21,6 +21,10 @@ public interface IInboxDecisionJournal
         Guid tenantId, Guid actorEmployeeId, DateTimeOffset? from, DateTimeOffset? to, string? source, string? kind,
         int page, int pageSize, CancellationToken ct = default);
 
+    /// <summary>Per item of the source and kind, its newest escalation that was not undone (who holds the item now).</summary>
+    Task<IReadOnlyList<InboxDecisionJournalEntry>> ListLatestEscalationsAsync(
+        Guid tenantId, string source, string kind, CancellationToken ct = default);
+
     /// <summary>Records <paramref name="revertEntry"/> and points <paramref name="original"/> at it.</summary>
     Task MarkRevertedAsync(InboxDecisionJournalEntry original, InboxDecisionJournalEntry revertEntry, CancellationToken ct = default);
 }

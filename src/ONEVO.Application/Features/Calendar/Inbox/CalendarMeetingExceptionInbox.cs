@@ -75,7 +75,7 @@ public sealed class CalendarInboxSourceProvider(
         {
             if (exception.EmployeeId == callerEmployeeId)
                 items.Add((exception, InboxDirections.Info, false));
-            else if (reviewScope?.CanSee(exception.EmployeeId) == true)
+            else if (reviewScope?.CanAct(exception.Id, exception.EmployeeId) == true)
                 // HR is never in the calendar route (log only at the top), so HR sees the cases as info.
                 items.Add((exception, reviewScope.IsHr ? InboxDirections.Info : InboxDirections.Received, true));
         }
@@ -113,7 +113,7 @@ public sealed class CalendarInboxSourceProvider(
 
         var isSubject = exception.EmployeeId == callerEmployeeId;
         var reviewScope = isSubject ? null : await scope.ResolveAsync(forAction: true, [exception.EmployeeId], ct);
-        var canAct = reviewScope?.CanSee(exception.EmployeeId) == true;
+        var canAct = reviewScope?.CanAct(exception.Id, exception.EmployeeId) == true;
         var added = !isSubject && !canAct && (await conversations.ListAddedSubjectsAsync(tenantId, callerEmployeeId, Source, ct))
             .Contains(new ItemRef(Source, kind, id));
         if (!isSubject && !canAct && !added)
@@ -274,7 +274,7 @@ public sealed class CalendarConversationSubjectResolver(
         if (exception is null || !CalendarExceptionTypes.IsCalendar(exception.Type))
             return false;
         var resolved = await scope.ResolveAsync(forAction, [exception.EmployeeId], ct);
-        return resolved?.CanSee(exception.EmployeeId) == true;
+        return resolved?.CanAct(exception.Id, exception.EmployeeId) == true;
     }
 }
 

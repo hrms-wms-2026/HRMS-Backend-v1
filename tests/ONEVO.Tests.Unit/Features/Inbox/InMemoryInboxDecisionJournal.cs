@@ -33,6 +33,15 @@ public sealed class InMemoryInboxDecisionJournal : IInboxDecisionJournal
         return Task.FromResult(new InboxJournalPage(rows, query.Count));
     }
 
+    public Task<IReadOnlyList<InboxDecisionJournalEntry>> ListLatestEscalationsAsync(
+        Guid tenantId, string source, string kind, CancellationToken ct = default)
+        => Task.FromResult<IReadOnlyList<InboxDecisionJournalEntry>>(Entries
+            .Where(e => e.TenantId == tenantId && e.Source == source && e.Kind == kind
+                        && e.Action == InboxJournalActions.Escalate && e.RevertedByJournalId == null)
+            .GroupBy(e => e.ItemId)
+            .Select(g => g.OrderByDescending(e => e.DecidedAt).ThenByDescending(e => e.CreatedAt).First())
+            .ToList());
+
     public Task MarkRevertedAsync(InboxDecisionJournalEntry original, InboxDecisionJournalEntry revertEntry, CancellationToken ct = default)
     {
         Entries.Add(revertEntry);

@@ -61,6 +61,23 @@ public class ExceptionCommandHandlerTests
     }
 
     [Fact]
+    public async Task ACaseTheCallerHoldsByEscalation_CanBeWorkedEvenOutsideTheirCoverage_ButNoOtherCaseOfThatEmployee()
+    {
+        var outsider = Guid.NewGuid();
+        _case = NewCase(ExceptionStatus.Open, outsider);
+        var held = _case.Id;
+        _scope.Setup(s => s.ResolveAsync(true, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ExceptionScope(false, Guid.NewGuid(), [], HeldCaseIds: [held]));
+
+        var ack = await Acknowledge().Handle(new AcknowledgeExceptionCommand(held), CancellationToken.None);
+        _case = NewCase(ExceptionStatus.Open, outsider);
+        var other = await Acknowledge().Handle(new AcknowledgeExceptionCommand(_case.Id), CancellationToken.None);
+
+        ack.IsSuccess.Should().BeTrue(ack.Error);
+        other.StatusCode.Should().Be(404);
+    }
+
+    [Fact]
     public async Task CaseForAnEmployeeOutsideTheManagersScope_IsNotFound_AndUntouched()
     {
         _case = NewCase(ExceptionStatus.Open, Guid.NewGuid());

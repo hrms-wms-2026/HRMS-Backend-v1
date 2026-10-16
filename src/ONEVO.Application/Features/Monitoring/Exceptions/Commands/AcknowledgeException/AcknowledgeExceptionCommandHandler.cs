@@ -32,7 +32,7 @@ public class AcknowledgeExceptionCommandHandler : IRequestHandler<AcknowledgeExc
             return Result.Forbidden("You do not have permission to acknowledge exceptions.");
 
         // Out-of-scope cases answer the same as missing ones so ids can't be probed.
-        if (exception is null || !scope.CanSee(exception.EmployeeId))
+        if (exception is null || !scope.CanAct(exception.Id, exception.EmployeeId))
             return Result.NotFound("Exception not found.");
         if (exception.Status is ExceptionStatus.Resolved)
             return Result.Conflict("Exception is already resolved.");

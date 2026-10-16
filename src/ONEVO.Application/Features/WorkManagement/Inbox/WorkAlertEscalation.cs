@@ -47,13 +47,13 @@ public sealed class WorkAlertEscalation(
         var target = Policy() is { } policy
             ? await policy.NextAsync(tenantId, Context(alert, holders), ct)
             : new EscalationTarget.LogOnly("No escalation policy for Work alerts.");
-        var affected = await recorder.RecordAsync(tenantId, new EscalationRecord(Ref(alert.Id), target, actorEmployeeId, note, holders), ct);
+        // The dispatcher only adds the bell; queue it before the recorder's save so both commit together.
         if (target is EscalationTarget.Employees next)
             foreach (var recipient in next.Recipients)
                 await notifications.SendTemplatedAsync(tenantId, recipient.UserId, EscalatedTemplate,
                     new Dictionary<string, string> { ["title"] = alert.TargetTitle, ["message"] = alert.Message },
                     InboxNotificationNavigation.RelatedEntityType(WorkInboxKinds.Source, WorkInboxKinds.MonitorAlert), alert.Id, ct);
-        return affected;
+        return await recorder.RecordAsync(tenantId, new EscalationRecord(Ref(alert.Id), target, actorEmployeeId, note, holders), ct);
     }
 
     private IInboxEscalationPolicy? Policy() => policies.For(WorkInboxKinds.Source, WorkInboxKinds.MonitorAlert);
@@ -61,20 +61,7 @@ public sealed class WorkAlertEscalation(
     private static EscalationContext Context(MonitorAlert alert, IReadOnlyCollection<Guid> holders)
         => new(Ref(alert.Id), WorkInboxKinds.MonitorAlert, holders, alert.SubjectEmployeeId, null, alert.ProjectId);
 
-    public static IReadOnlyList<Guid> EscalatedTo(InboxDecisionJournalEntry entry)
-    {
-        try
-        {
-            using var doc = JsonDocument.Parse(entry.AfterJson ?? "{}");
-            return doc.RootElement.TryGetProperty("escalatedTo", out var to) && to.ValueKind == JsonValueKind.Array
-                ? to.EnumerateArray().Where(v => v.TryGetGuid(out _)).Select(v => v.GetGuid()).ToList()
-                : [];
-        }
-        catch (JsonException)
-        {
-            return [];
-        }
-    }
+    public static IReadOnlyList<Guid> EscalatedTo(InboxDecisionJournalEntry entry) => InboxEscalationJournal.EscalatedTo(entry);
 
     public static bool LoggedOnly(InboxDecisionJournalEntry entry)
     {

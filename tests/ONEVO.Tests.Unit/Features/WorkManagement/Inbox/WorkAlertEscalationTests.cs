@@ -123,6 +123,21 @@ public sealed class WorkAlertEscalationTests
     }
 
     [Fact]
+    public async Task The_bell_is_queued_before_the_recorder_saves_so_it_is_persisted_with_the_escalation()
+    {
+        var calls = new List<string>();
+        _notifications.Setup(n => n.SendTemplatedAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<string>(),
+                It.IsAny<IReadOnlyDictionary<string, string>>(), It.IsAny<string>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .Callback(() => calls.Add("notify")).Returns(Task.CompletedTask);
+        _recorder.Setup(r => r.RecordAsync(TenantId, It.IsAny<EscalationRecord>(), It.IsAny<CancellationToken>()))
+            .Callback(() => calls.Add("record (saves)")).ReturnsAsync(Array.Empty<Guid>());
+
+        await Escalation().EscalateAsync(TenantId, _alert, _leafOwner, "Blocked", default);
+
+        calls.Should().Equal("notify", "record (saves)");
+    }
+
+    [Fact]
     public async Task The_sweep_escalates_an_alert_left_for_three_days_and_stops_once_the_root_only_logged_it()
     {
         var sweep = new WorkMonitorAlertSweepSource(_alerts.Object, Escalation());

@@ -103,6 +103,19 @@ public sealed class CalendarInboxTests
     }
 
     [Fact]
+    public async Task An_escalation_target_outside_coverage_receives_opens_and_works_the_case_they_hold()
+    {
+        _scope.Setup(s => s.ResolveAsync(It.IsAny<bool>(), It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ExceptionScope(false, _manager, [], HeldCaseIds: [_case.Id]));
+
+        var received = (await Provider().ListAsync(TenantId, new InboxQuery(), _manager, default)).Single();
+        var detail = await Provider().GetDetailAsync(TenantId, "meeting_exception", _case.Id, _manager, default);
+
+        received.Direction.Should().Be(InboxDirections.Received);
+        detail!.Item.AvailableActions.Select(a => a.Key).Should().Contain(ExceptionCaseInboxActions.Resolve);
+    }
+
+    [Fact]
     public async Task HR_sees_calendar_cases_only_as_info()
     {
         ReviewerScope(isHr: true);
