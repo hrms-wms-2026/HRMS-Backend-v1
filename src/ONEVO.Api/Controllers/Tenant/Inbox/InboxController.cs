@@ -33,9 +33,11 @@ public sealed class InboxListRequest
     public string[]? Facet { get; set; }
     public int Page { get; set; } = 1;
     public int PageSize { get; set; } = 25;
+    /// <summary>"latest" (default), "newest" or "oldest" - see <see cref="InboxSorts"/>.</summary>
+    public string? Sort { get; set; }
 
     public InboxQuery ToQuery() => new(
-        Category, Source, Project, Status, Direction, Type, RequestedBy, From, To, Search, ParseFacets(Facet), Page, PageSize);
+        Category, Source, Project, Status, Direction, Type, RequestedBy, From, To, Search, ParseFacets(Facet), Page, PageSize, Sort);
 
     private static IReadOnlyDictionary<string, IReadOnlyList<string>>? ParseFacets(string[]? facets)
         => facets is not { Length: > 0 }

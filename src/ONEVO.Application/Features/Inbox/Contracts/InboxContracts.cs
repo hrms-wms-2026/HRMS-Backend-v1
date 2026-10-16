@@ -9,6 +9,15 @@ public static class InboxCategories
     public const string Alert = "alert";
 }
 
+/// <summary>List orders for GET /inbox; anything else (or nothing) is the default latest-activity order.</summary>
+public static class InboxSorts
+{
+    /// <summary>Pending first, then the most recently updated (the default).</summary>
+    public const string Latest = "latest";
+    public const string Newest = "newest";
+    public const string Oldest = "oldest";
+}
+
 public static class InboxDirections
 {
     public const string Received = "received";
@@ -73,7 +82,8 @@ public sealed record InboxQuery(
     IReadOnlyList<string>? Category = null, IReadOnlyList<string>? Source = null, IReadOnlyList<Guid>? ContextIds = null,
     IReadOnlyList<string>? Status = null, IReadOnlyList<string>? Direction = null, IReadOnlyList<string>? ActionTypes = null,
     IReadOnlyList<Guid>? RequestedBy = null, DateTimeOffset? From = null, DateTimeOffset? To = null, string? Search = null,
-    IReadOnlyDictionary<string, IReadOnlyList<string>>? Facets = null, int Page = 1, int PageSize = 25);
+    IReadOnlyDictionary<string, IReadOnlyList<string>>? Facets = null, int Page = 1, int PageSize = 25,
+    string? Sort = null);
 
 /// <summary>Who must refresh their inbox after an action (requester, approvers, …).</summary>
 public sealed record InboxActionResult(IReadOnlyCollection<Guid> AffectedEmployeeIds, string? Message = null);

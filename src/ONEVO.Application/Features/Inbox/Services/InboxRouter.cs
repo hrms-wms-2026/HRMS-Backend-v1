@@ -75,7 +75,7 @@ public sealed class InboxRouter : IInboxRouter
     public async Task<InboxPage> ListAsync(Guid tenantId, Guid callerEmployeeId, InboxQuery query, CancellationToken ct)
     {
         var items = (await CollectAsync(tenantId, callerEmployeeId, query, ct)).Where(i => Matches(i, query));
-        var sorted = items.OrderByDescending(i => i.IsPending).ThenByDescending(i => i.UpdatedAt).ToList();
+        var sorted = Sort(items, query.Sort).ToList();
 
         var pageSize = Math.Clamp(query.PageSize <= 0 ? 25 : query.PageSize, 1, MaxPageSize);
         var page = Math.Max(1, query.Page);
@@ -83,6 +83,13 @@ public sealed class InboxRouter : IInboxRouter
         var withRevert = await WithRevertActionAsync(tenantId, callerEmployeeId, pageItems, ct);
         return new InboxPage(await WithUnreadAsync(tenantId, callerEmployeeId, withRevert, ct), sorted.Count, page, pageSize);
     }
+
+    private static IEnumerable<InboxItem> Sort(IEnumerable<InboxItem> items, string? sort) => sort switch
+    {
+        InboxSorts.Newest => items.OrderByDescending(i => i.CreatedAt).ThenByDescending(i => i.UpdatedAt),
+        InboxSorts.Oldest => items.OrderBy(i => i.CreatedAt).ThenBy(i => i.UpdatedAt),
+        _ => items.OrderByDescending(i => i.IsPending).ThenByDescending(i => i.UpdatedAt)
+    };
 
     public async Task<IReadOnlyList<InboxFilterField>> GetFiltersAsync(Guid tenantId, Guid callerEmployeeId, CancellationToken ct)
     {

@@ -41,7 +41,7 @@ public class InboxEndpointsTests
         var request = new InboxListRequest
         {
             Category = ["alert"], Project = [project], Type = ["task_edit"], Search = "budget",
-            Facet = ["module:m1", "module:m2", "module:m1", "broken", ":x", "label:"], Page = 2, PageSize = 10
+            Facet = ["module:m1", "module:m2", "module:m1", "broken", ":x", "label:"], Page = 2, PageSize = 10, Sort = "oldest"
         };
 
         var query = request.ToQuery();
@@ -52,6 +52,7 @@ public class InboxEndpointsTests
         query.Search.Should().Be("budget");
         query.Facets.Should().ContainSingle().Which.Value.Should().Equal("m1", "m2");
         (query.Page, query.PageSize).Should().Be((2, 10));
+        query.Sort.Should().Be("oldest");
     }
 
     [Fact]

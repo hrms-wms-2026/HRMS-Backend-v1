@@ -68,6 +68,22 @@ public partial class InboxRouterTests
         page.Total.Should().Be(4);
     }
 
+    [Theory]
+    [InlineData(InboxSorts.Newest, new[] { "created 3", "created 2", "created 1" })]
+    [InlineData(InboxSorts.Oldest, new[] { "created 1", "created 2", "created 3" })]
+    [InlineData("unknown", new[] { "created 1", "created 3", "created 2" })]
+    public async Task List_sorts_by_creation_time_when_asked_and_by_latest_activity_otherwise(string sort, string[] expected)
+    {
+        _work.Items.AddRange([
+            Item("work", "created 2", 1) with { CreatedAt = T0.AddDays(2) },
+            Item("work", "created 1", 9) with { CreatedAt = T0.AddDays(1) }]);
+        _leave.Items.Add(Item("leave", "created 3", 5) with { CreatedAt = T0.AddDays(3) });
+
+        var page = await Router().ListAsync(TenantId, Me, new InboxQuery(Sort: sort), default);
+
+        page.Items.Select(i => i.Title).Should().Equal(expected);
+    }
+
     [Fact]
     public async Task List_pages_across_providers()
     {
