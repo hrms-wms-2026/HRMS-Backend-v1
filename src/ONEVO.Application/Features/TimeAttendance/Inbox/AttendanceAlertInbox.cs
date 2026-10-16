@@ -84,9 +84,10 @@ public sealed class AttendanceAlertInbox
         {
             foreach (var legalEntityId in callerLegalEntities)
             {
-                var open = await _alerts.ListOpenAsync(tenantId, legalEntityId, ReceivedLimit, ct);
-                var scope = await ScopeAsync(legalEntityId, open.Select(a => a.EmployeeId), ct);
-                received.AddRange(open.Where(a => scope.Contains(a.EmployeeId) && a.EmployeeId != callerEmployeeId));
+                var candidates = await _alerts.ListOpenEmployeeIdsAsync(tenantId, legalEntityId, ct);
+                var scope = (await ScopeAsync(legalEntityId, candidates, ct)).Where(e => e != callerEmployeeId).ToList();
+                if (scope.Count > 0)
+                    received.AddRange(await _alerts.ListOpenAsync(tenantId, legalEntityId, scope, ReceivedLimit, ct));
             }
         }
         var own = await _alerts.ListForEmployeeAsync(
@@ -120,6 +121,14 @@ public sealed class AttendanceAlertInbox
         return legalEntityId is Guid le && (await ScopeAsync(le, [alert.EmployeeId], ct)).Contains(alert.EmployeeId);
     }
 
+    private async Task<bool> HrReaderCoversAsync(AttendanceAlert alert, CancellationToken ct)
+    {
+        if (!_currentUser.HasPermission(AttendanceInboxKinds.ReadPermission))
+            return false;
+        var legalEntityId = alert.LegalEntityId ?? (await _employees.GetByIdAsync(_currentUser.TenantId, alert.EmployeeId, ct))?.LegalEntityId;
+        return await AttendanceReadCoverage.CoversAsync(_authority, _currentUser.UserId, legalEntityId, alert.EmployeeId, ct);
+    }
+
     // ---- detail ---------------------------------------------------------------------------------
 
     public async Task<InboxItemDetail?> GetDetailAsync(Guid tenantId, Guid id, Guid callerEmployeeId, bool addedToChat, CancellationToken ct)
@@ -129,7 +138,7 @@ public sealed class AttendanceAlertInbox
             return null;
         var isSubject = alert.EmployeeId == callerEmployeeId;
         var reviewer = await CanReviewAsync(alert, callerEmployeeId, ct);
-        if (!isSubject && !reviewer && !addedToChat && !_currentUser.HasPermission(AttendanceInboxKinds.ReadPermission))
+        if (!isSubject && !reviewer && !addedToChat && !await HrReaderCoversAsync(alert, ct))
             return null;
 
         var people = await _employees.ListByIdsAsync(tenantId, [alert.EmployeeId], ct);

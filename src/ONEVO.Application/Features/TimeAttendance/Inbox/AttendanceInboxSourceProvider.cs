@@ -265,7 +265,7 @@ public sealed class AttendanceInboxSourceProvider : IInboxSourceProvider
         var isApprover = IsPending(row.Status) && await IsExactApproverAsync(row, ct);
         var added = !isRequester && !isApprover
             && (await _conversations.ListAddedSubjectsAsync(tenantId, caller.Id, Source, ct)).Contains(new ItemRef(Source, kind, id));
-        if (!isRequester && !isApprover && !added && !_currentUser.HasPermission(AttendanceInboxKinds.ReadPermission))
+        if (!isRequester && !isApprover && !added && !await HrReaderCoversAsync(row, ct))
             return null;
 
         var people = await _employees.ListByIdsAsync(tenantId, [row.EmployeeId], ct);
@@ -274,6 +274,14 @@ public sealed class AttendanceInboxSourceProvider : IInboxSourceProvider
         var item = Item(row, people, direction, isApprover || (isRequester && IsPending(row.Status)), actions);
         var (changes, extra, payload) = await ChangeSetAsync(tenantId, kind, id, editable: isApprover, ct);
         return new InboxItemDetail(item, Steps(row, people), row.Subtitle, changes, null, null, null, payload, extra);
+    }
+
+    private async Task<bool> HrReaderCoversAsync(Row row, CancellationToken ct)
+    {
+        if (!_currentUser.HasPermission(AttendanceInboxKinds.ReadPermission))
+            return false;
+        var legalEntityId = row.LegalEntityId ?? (await _employees.GetByIdAsync(_currentUser.TenantId, row.EmployeeId, ct))?.LegalEntityId;
+        return await AttendanceReadCoverage.CoversAsync(_authority, _currentUser.UserId, legalEntityId, row.EmployeeId, ct);
     }
 
     /// <summary>The same check the module's approve command enforces: the caller is the resolved approver now.</summary>

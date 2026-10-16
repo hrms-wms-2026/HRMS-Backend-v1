@@ -89,7 +89,11 @@ public class AttendanceInboxTests
             Devices.Setup(x => x.ListForEmployeeAsync(TenantId, It.IsAny<Guid>(), It.IsAny<CancellationToken>())).ReturnsAsync([]);
             Devices.Setup(x => x.ListApprovalInboxAsync(TenantId, LegalEntityId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync((Array.Empty<DeviceChangeRequest>(), 0));
-            Alerts.Setup(x => x.ListOpenAsync(TenantId, LegalEntityId, It.IsAny<int>(), It.IsAny<CancellationToken>())).ReturnsAsync(() => OpenAlerts.ToList());
+            Alerts.Setup(x => x.ListOpenEmployeeIdsAsync(TenantId, LegalEntityId, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(() => OpenAlerts.Select(a => a.EmployeeId).Distinct().ToList());
+            Alerts.Setup(x => x.ListOpenAsync(TenantId, LegalEntityId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync((Guid _, Guid _, IReadOnlyCollection<Guid> ids, int take, CancellationToken _) =>
+                    OpenAlerts.Where(a => ids.Contains(a.EmployeeId)).OrderByDescending(a => a.WorkDate).ThenBy(a => a.Id).Take(take).ToList());
             Alerts.Setup(x => x.ListForEmployeeAsync(TenantId, It.IsAny<Guid>(), It.IsAny<DateOnly>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(() => OwnAlerts.ToList());
             Alerts.Setup(x => x.GetByIdAsync(TenantId, It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
@@ -522,5 +526,77 @@ public class AttendanceInboxTests
         cancel.Should().Be(new ONEVO.Application.Features.Leave.Cancellation.Commands.CancelLeaveRequestCommand(
             leave.Id, AttendanceAlertReverter.RevertReason, null, null, RevertOfApproverBackdatedLeave: true));
         (alert.Status, alert.ConvertedLeaveRequestId).Should().Be((ONEVO.Domain.Features.TimeAttendance.Alerts.AttendanceAlertStatuses.Open, (Guid?)null));
+    }
+
+    // ---- final review fixes -----------------------------------------------------------------------
+
+    [Fact]
+    public async Task Undoing_a_conversion_is_allowed_when_the_stored_leave_time_only_lost_its_sub_microsecond_ticks()
+    {
+        var f = new Fixture();
+        var alert = f.Alert(f.Worker.Id);
+        f.OpenAlerts.Add(alert);
+        f.Scope.Add(f.Worker.Id);
+        var leave = new ONEVO.Domain.Features.Leave.Request.Entities.LeaveRequest
+        {
+            Id = Guid.NewGuid(), TenantId = f.TenantId, EmployeeId = f.Worker.Id, Status = ONEVO.Domain.Features.Leave.Common.LeaveRequestStatuses.Approved,
+            UpdatedAt = Now.AddTicks(3), // the in-memory value the save interceptor set (100 ns precision)
+        };
+        f.LeaveApprovals.Setup(x => x.GetStateAsync(f.TenantId, leave.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(() => new ONEVO.Application.Features.Leave.Approval.RepositoryInterfaces.LeaveApprovalState(leave, null, f.Worker, "Annual", "AL", "any_one", [], []));
+        f.Sender.Setup(s => s.Send(It.IsAny<ONEVO.Application.Features.Leave.Approval.Commands.CreateApproverBackdatedLeaveCommand>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<Guid>.Success(leave.Id));
+        f.Sender.Setup(s => s.Send(It.IsAny<ONEVO.Application.Features.Leave.Cancellation.Commands.CancelLeaveRequestCommand>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<ONEVO.Application.Features.Leave.Cancellation.DTOs.Responses.CancelLeaveRequestResponse>.Success(null!));
+        await f.Provider().ExecuteActionAsync(f.TenantId, AttendanceInboxKinds.Alert, alert.Id, AttendanceInboxActions.Resolve,
+            Body(new { outcome = "convert_to_leave", leaveTypeId = Guid.NewGuid().ToString() }), f.Approver.Id, default);
+
+        leave.UpdatedAt = Now; // read back from Postgres timestamptz: microseconds only
+        var result = await AlertReverter(f).RevertAsync(f.TenantId, AlertRef(alert), f.Approver.Id, null, default);
+
+        result.IsSuccess.Should().BeTrue(result.Error);
+    }
+
+    [Fact]
+    public async Task Received_alerts_are_scoped_before_the_list_cap_so_older_out_of_scope_alerts_do_not_crowd_out_the_team()
+    {
+        var f = new Fixture();
+        for (var i = 0; i < AttendanceAlertInbox.ReceivedLimit + 100; i++)
+        {
+            var old = f.Alert(Guid.NewGuid());
+            old.WorkDate = new DateOnly(2026, 8, 1);
+            f.OpenAlerts.Add(old);
+        }
+        var mine = f.Alert(f.Worker.Id);
+        f.OpenAlerts.Add(mine);
+        f.Scope.Add(f.Worker.Id);
+
+        var items = await f.Provider().ListAsync(f.TenantId, new InboxQuery(Category: [InboxCategories.Alert]), f.Approver.Id, default);
+
+        items.Select(i => i.Id).Should().Equal(mine.Id);
+    }
+
+    [Fact]
+    public async Task Attendance_read_outside_the_callers_coverage_opens_neither_a_request_nor_an_alert()
+    {
+        var f = new Fixture();
+        f.CurrentUser.Setup(x => x.HasPermission("attendance:approve")).Returns(false);
+        f.CurrentUser.Setup(x => x.HasPermission("attendance:read")).Returns(true);
+        var correction = f.Correction();
+        f.Corrections.Setup(x => x.GetByIdAsync(f.TenantId, correction.Id, It.IsAny<CancellationToken>())).ReturnsAsync(correction);
+        var alert = f.Alert(f.Worker.Id);
+        f.OpenAlerts.Add(alert);
+        f.Authority.Setup(a => a.ResolveVisibilityAsync(It.IsAny<EmployeeAuthorityVisibilityRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new EmployeeAuthorityVisibilityScope(f.ApproverUserId, f.LegalEntityId, false, []));
+
+        (await f.Provider().GetDetailAsync(f.TenantId, "correction", correction.Id, f.Approver.Id, default)).Should().BeNull();
+        (await f.Provider().GetDetailAsync(f.TenantId, AttendanceInboxKinds.Alert, alert.Id, f.Approver.Id, default)).Should().BeNull();
+
+        f.Authority.Setup(a => a.ResolveVisibilityAsync(It.IsAny<EmployeeAuthorityVisibilityRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new EmployeeAuthorityVisibilityScope(f.ApproverUserId, f.LegalEntityId, false, [f.Worker.Id]));
+        (await f.Provider().GetDetailAsync(f.TenantId, "correction", correction.Id, f.Approver.Id, default)).Should().NotBeNull();
+        (await f.Provider().GetDetailAsync(f.TenantId, AttendanceInboxKinds.Alert, alert.Id, f.Approver.Id, default)).Should().NotBeNull();
+        f.Authority.Verify(a => a.ResolveVisibilityAsync(It.Is<EmployeeAuthorityVisibilityRequest>(r =>
+            r.RequiredPermission == "attendance:read" && r.LegalEntityId == f.LegalEntityId), It.IsAny<CancellationToken>()), Times.AtLeastOnce);
     }
 }

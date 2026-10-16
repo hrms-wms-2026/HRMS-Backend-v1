@@ -60,11 +60,15 @@ public sealed class AttendanceAlertReverter : InboxDecisionReverterBase
         if (after.ConvertedLeaveRequestId is Guid leaveId)
         {
             var leave = (await _leaveApprovals.GetStateAsync(tenantId, leaveId, ct))?.Request;
-            if (leave is null || leave.Status != LeaveRequestStatuses.Approved || leave.UpdatedAt != after.LeaveUpdatedAt)
+            if (leave is null || leave.Status != LeaveRequestStatuses.Approved || !SameMicrosecond(leave.UpdatedAt, after.LeaveUpdatedAt))
                 return Result.Conflict(LeaveChangedSince);
         }
         return Result.Success();
     }
+
+    /// <summary>The journal keeps the in-memory UpdatedAt (100 ns ticks); Postgres timestamptz reads it back in microseconds.</summary>
+    private static bool SameMicrosecond(DateTimeOffset? stored, DateTimeOffset? journaled)
+        => stored is { } a && journaled is { } b && a.UtcTicks / 10 == b.UtcTicks / 10;
 
     protected override async Task<Result<InboxActionResult>> ApplyRevertAsync(
         Guid tenantId, InboxDecisionJournalEntry decision, Guid callerEmployeeId, CancellationToken ct)

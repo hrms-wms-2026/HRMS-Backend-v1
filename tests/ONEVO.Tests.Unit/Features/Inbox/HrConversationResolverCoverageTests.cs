@@ -139,7 +139,47 @@ public sealed class HrConversationResolverCoverageTests
 
         (await resolver.ResolveAsync(TenantId, item, default)).Should().BeNull();
         (await resolver.ResolveAsync(TenantId, item with { Kind = "other" }, default)).Should().BeNull();
-        (await resolver.CanViewAsync(TenantId, item, _hr.Id, default)).Should().BeTrue();
+        (await resolver.CanViewAsync(TenantId, item, _hr.Id, default)).Should().BeFalse("a missing item has no employee in anyone's scope");
         (await resolver.CanReviewAsync(TenantId, item, _other.Id, default)).Should().BeFalse();
+    }
+
+    // ---- final review fixes -----------------------------------------------------------------------
+
+    private void ReaderCovers(params Guid[] employeeIds)
+        => _authority.Setup(a => a.ResolveVisibilityAsync(It.IsAny<EmployeeAuthorityVisibilityRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new EmployeeAuthorityVisibilityScope(_hr.UserId, Guid.Empty, false, employeeIds));
+
+    [Fact]
+    public async Task Attendance_readers_view_and_export_only_items_of_employees_in_their_coverage()
+    {
+        var correction = new AttendanceCorrection { Id = Guid.NewGuid(), TenantId = TenantId, EmployeeId = _requester.Id, LegalEntityId = Guid.NewGuid(), WorkDate = new DateOnly(2026, 10, 13) };
+        _corrections.Setup(c => c.GetByIdAsync(TenantId, correction.Id, It.IsAny<CancellationToken>())).ReturnsAsync(correction);
+        var item = new ItemRef("attendance", "correction", correction.Id);
+        var resolver = Attendance();
+
+        ReaderCovers();
+        (await resolver.CanViewAsync(TenantId, item, _hr.Id, default)).Should().BeFalse();
+        (await resolver.CanReviewAsync(TenantId, item, _hr.Id, default)).Should().BeFalse();
+
+        ReaderCovers(_requester.Id);
+        (await resolver.CanViewAsync(TenantId, item, _hr.Id, default)).Should().BeTrue();
+        (await resolver.CanReviewAsync(TenantId, item, _hr.Id, default)).Should().BeTrue();
+        (await resolver.CanViewAsync(TenantId, item, _other.Id, default)).Should().BeFalse("no attendance:read");
+        _authority.Verify(a => a.ResolveVisibilityAsync(It.Is<EmployeeAuthorityVisibilityRequest>(r =>
+            r.ActorUserId == _hr.UserId && r.LegalEntityId == correction.LegalEntityId && r.RequiredPermission == "attendance:read"), It.IsAny<CancellationToken>()), Times.AtLeastOnce);
+    }
+
+    [Fact]
+    public async Task An_alert_chat_names_the_employee_as_its_subject_so_they_can_post_a_justification()
+    {
+        ApproverIs(Guid.NewGuid());
+        var alert = new AttendanceAlert { Id = Guid.NewGuid(), TenantId = TenantId, EmployeeId = _requester.Id, LegalEntityId = Guid.NewGuid(), SignalKey = AttendanceAlertSignals.AbsentDays, WorkDate = new DateOnly(2026, 10, 13) };
+        _alerts.Setup(a => a.GetByIdAsync(TenantId, alert.Id, It.IsAny<CancellationToken>())).ReturnsAsync(alert);
+        var correction = new AttendanceCorrection { Id = Guid.NewGuid(), TenantId = TenantId, EmployeeId = _requester.Id, LegalEntityId = Guid.NewGuid(), WorkDate = new DateOnly(2026, 10, 13) };
+        _corrections.Setup(c => c.GetByIdAsync(TenantId, correction.Id, It.IsAny<CancellationToken>())).ReturnsAsync(correction);
+
+        (await Attendance().ResolveAsync(TenantId, new ItemRef("attendance", "alert", alert.Id), default))!.SubjectEmployeeId.Should().Be(_requester.Id);
+        (await Attendance().ResolveAsync(TenantId, new ItemRef("attendance", "correction", correction.Id), default))!.SubjectEmployeeId
+            .Should().BeNull("a request has a requester, not an investigated subject");
     }
 }
