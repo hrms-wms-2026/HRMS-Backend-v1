@@ -84,20 +84,29 @@ public sealed class AttendanceAlertMaterializerJob : BackgroundService
         foreach (var tenant in await tenants.ListAsync(TenantStatus.Active, null, 0, int.MaxValue, ct))
         {
             ct.ThrowIfCancellationRequested();
-            await tenantSwitcher.SwitchToTenantAsync(new TenantRegistryEntry(tenant.Id, tenant.Slug, tenant.Status, PlanCode: null), ct);
-            foreach (var employee in await employees.ListActiveByLegalEntityAsync(tenant.Id, null, ct))
+            try
             {
-                try
+                await tenantSwitcher.SwitchToTenantAsync(new TenantRegistryEntry(tenant.Id, tenant.Slug, tenant.Status, PlanCode: null), ct);
+                foreach (var employee in await employees.ListActiveByLegalEntityAsync(tenant.Id, null, ct))
                 {
-                    var result = await materializer.MaterializeAsync(tenant.Id, employee.Id, employee.LegalEntityId, ct);
-                    changed += result.Added + result.Removed;
+                    try
+                    {
+                        var result = await materializer.MaterializeAsync(tenant.Id, employee.Id, employee.LegalEntityId, ct);
+                        changed += result.Added + result.Removed;
+                    }
+                    catch (Exception ex) when (ex is not OperationCanceledException)
+                    {
+                        // A failed employee's unsaved changes must not be flushed by the next employee's save.
+                        unitOfWork.ClearTracking();
+                        _logger.LogError(ex, "Attendance alert materialisation failed for employee {EmployeeId} in tenant {TenantId}.", employee.Id, tenant.Id);
+                    }
                 }
-                catch (Exception ex) when (ex is not OperationCanceledException)
-                {
-                    // A failed employee's unsaved changes must not be flushed by the next employee's save.
-                    unitOfWork.ClearTracking();
-                    _logger.LogError(ex, "Attendance alert materialisation failed for employee {EmployeeId} in tenant {TenantId}.", employee.Id, tenant.Id);
-                }
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                // A failed tenant's unsaved changes must not be flushed into the next tenant's save.
+                unitOfWork.ClearTracking();
+                _logger.LogError(ex, "Attendance alert materialisation failed for tenant {TenantId}; skipping.", tenant.Id);
             }
         }
         if (changed > 0)

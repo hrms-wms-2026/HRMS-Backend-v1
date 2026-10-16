@@ -66,4 +66,45 @@ public class AttendanceAlertMaterializerJobTests
             $"switch:{tenantB}", $"materialise:{cy.Id}:{legalEntity}");
         uow.Verify(u => u.ClearTracking(), Times.Once);
     }
+
+    [Fact]
+    public async Task A_tenant_whose_employee_listing_fails_is_skipped_with_its_tracking_cleared_and_the_next_tenant_still_runs()
+    {
+        var tenantA = Guid.NewGuid();
+        var tenantB = Guid.NewGuid();
+        var cy = new Employee { Id = Guid.NewGuid(), TenantId = tenantB, LegalEntityId = null };
+        var log = new List<string>();
+
+        var tenants = new Mock<ITenantRepository>();
+        tenants.Setup(t => t.ListAsync(TenantStatus.Active, null, 0, int.MaxValue, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([TenantRow(tenantA), TenantRow(tenantB)]);
+        var switcher = new Mock<ITenantContextSwitcher>();
+        switcher.Setup(s => s.SwitchToTenantAsync(It.IsAny<TenantRegistryEntry>(), It.IsAny<CancellationToken>()))
+            .Callback((TenantRegistryEntry e, CancellationToken _) => log.Add($"switch:{e.TenantId}"))
+            .Returns(Task.CompletedTask);
+        var employees = new Mock<IEmployeeRepository>();
+        employees.Setup(e => e.ListActiveByLegalEntityAsync(tenantA, null, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("employees query failed"));
+        employees.Setup(e => e.ListActiveByLegalEntityAsync(tenantB, null, It.IsAny<CancellationToken>())).ReturnsAsync([cy]);
+        var materializer = new Mock<IAttendanceAlertMaterializer>();
+        materializer.Setup(m => m.MaterializeAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
+            .Callback((Guid t, Guid e, Guid? _, CancellationToken _) => log.Add($"materialise:{e}"))
+            .ReturnsAsync(new AttendanceAlertMaterializeResult(1, 0));
+        var uow = new Mock<IUnitOfWork>();
+        uow.Setup(u => u.ClearTracking()).Callback(() => log.Add("clear"));
+
+        var services = new ServiceCollection();
+        services.AddSingleton(tenants.Object);
+        services.AddSingleton(switcher.Object);
+        services.AddSingleton<IWritableTenantContext>(new TenantContextAccessor());
+        services.AddSingleton(employees.Object);
+        services.AddSingleton(materializer.Object);
+        services.AddSingleton(uow.Object);
+
+        var job = new AttendanceAlertMaterializerJob(services.BuildServiceProvider(), NullLogger<AttendanceAlertMaterializerJob>.Instance);
+        var changed = await job.RunOnceAsync(CancellationToken.None);
+
+        changed.Should().Be(1);
+        log.Should().Equal($"switch:{tenantA}", "clear", $"switch:{tenantB}", $"materialise:{cy.Id}");
+    }
 }

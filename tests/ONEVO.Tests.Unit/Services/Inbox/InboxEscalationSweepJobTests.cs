@@ -67,4 +67,44 @@ public class InboxEscalationSweepJobTests
             $"switch:{tenantB}", $"monitoring:{tenantB}", $"calendar:{tenantB}");
         uow.Verify(u => u.ClearTracking(), Times.Exactly(2));
     }
+
+    [Fact]
+    public async Task A_tenant_whose_context_switch_fails_is_skipped_with_its_tracking_cleared_and_the_next_tenant_is_still_swept()
+    {
+        var tenantA = Guid.NewGuid();
+        var tenantB = Guid.NewGuid();
+        var log = new List<string>();
+
+        var tenants = new Mock<ITenantRepository>();
+        tenants.Setup(t => t.ListAsync(TenantStatus.Active, null, 0, int.MaxValue, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([TenantRow(tenantA), TenantRow(tenantB)]);
+        var switcher = new Mock<ITenantContextSwitcher>();
+        switcher.Setup(s => s.SwitchToTenantAsync(It.IsAny<TenantRegistryEntry>(), It.IsAny<CancellationToken>()))
+            .Callback((TenantRegistryEntry e, CancellationToken _) => log.Add($"switch:{e.TenantId}"))
+            .Returns(Task.CompletedTask);
+        switcher.Setup(s => s.SwitchToTenantAsync(It.Is<TenantRegistryEntry>(e => e.TenantId == tenantA), It.IsAny<CancellationToken>()))
+            .Callback(() => log.Add($"switch:{tenantA}"))
+            .ThrowsAsync(new InvalidOperationException("tenant database unreachable"));
+        var calendar = new Mock<IInboxEscalationSweepSource>();
+        calendar.SetupGet(s => s.Source).Returns("calendar");
+        calendar.Setup(s => s.EscalateOverdueAsync(It.IsAny<Guid>(), Now, It.IsAny<CancellationToken>()))
+            .Callback((Guid t, DateTimeOffset _, CancellationToken _) => log.Add($"calendar:{t}"))
+            .ReturnsAsync(1);
+        var uow = new Mock<IUnitOfWork>();
+        uow.Setup(u => u.ClearTracking()).Callback(() => log.Add("clear"));
+
+        var services = new ServiceCollection();
+        services.AddSingleton(tenants.Object);
+        services.AddSingleton(switcher.Object);
+        services.AddSingleton<IWritableTenantContext>(new TenantContextAccessor());
+        services.AddSingleton<IDateTimeProvider>(new FakeDateTimeProvider { UtcNow = Now });
+        services.AddSingleton(calendar.Object);
+        services.AddSingleton(uow.Object);
+
+        var job = new InboxEscalationSweepJob(services.BuildServiceProvider(), NullLogger<InboxEscalationSweepJob>.Instance);
+        var escalated = await job.RunOnceAsync(CancellationToken.None);
+
+        escalated.Should().Be(1);
+        log.Should().Equal($"switch:{tenantA}", "clear", $"switch:{tenantB}", $"calendar:{tenantB}");
+    }
 }
