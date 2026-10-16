@@ -47,6 +47,16 @@ public interface IConversationRepository
     /// <summary>Adds (does not save) mention rows for an existing message (an edit that mentions new people).</summary>
     Task AddMentionsAsync(IReadOnlyCollection<ConversationMessageMention> mentions, CancellationToken ct = default);
 
+    /// <summary>Tracked: the employee's reaction on the message, if any.</summary>
+    Task<ConversationMessageReaction?> GetReactionAsync(Guid tenantId, Guid messageId, Guid employeeId, CancellationToken ct = default);
+    /// <summary>Adds (does not save) a reaction.</summary>
+    Task AddReactionAsync(ConversationMessageReaction reaction, CancellationToken ct = default);
+    /// <summary>Marks (does not save) a reaction for removal.</summary>
+    void RemoveReaction(ConversationMessageReaction reaction);
+    /// <summary>The reactions of the given messages, oldest first.</summary>
+    Task<IReadOnlyDictionary<Guid, IReadOnlyList<ConversationMessageReaction>>> ListReactionsAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> messageIds, CancellationToken ct = default);
+
     /// <summary>Adds (does not save) one audit row of a message.</summary>
     Task AddRevisionAsync(ConversationMessageRevision revision, CancellationToken ct = default);
     /// <summary>Every revision of the given messages, oldest first (investigation export only).</summary>

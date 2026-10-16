@@ -7,12 +7,16 @@ public sealed record ConversationParticipantResponse(
 
 public sealed record ConversationAttachmentResponse(Guid Id, string FileName, string ContentType, long SizeBytes);
 
+/// <summary>One emoji on a message and who reacted with it (first reactor first).</summary>
+public sealed record ConversationReactionResponse(string Emoji, IReadOnlyList<Guid> EmployeeIds);
+
 /// <summary>A deleted message keeps its place with <see cref="IsDeleted"/> true, an empty body and no attachments.</summary>
 public sealed record ConversationMessageResponse(
     Guid Id, Guid ConversationId, Guid? AuthorEmployeeId, string? AuthorName, Guid? AuthorAvatarFileId,
     string Kind, string BodyHtml, string? SystemEventJson, IReadOnlyList<Guid> MentionEmployeeIds, DateTimeOffset CreatedAt,
     string? Tag = null, DateTimeOffset? EditedAt = null, bool IsDeleted = false,
-    IReadOnlyList<ConversationAttachmentResponse>? Attachments = null);
+    IReadOnlyList<ConversationAttachmentResponse>? Attachments = null,
+    IReadOnlyList<ConversationReactionResponse>? Reactions = null);
 
 public sealed record ConversationMessagesPageResponse(IReadOnlyList<ConversationMessageResponse> Items, bool HasMore);
 

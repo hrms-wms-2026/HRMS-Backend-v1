@@ -34,12 +34,14 @@ public sealed class PostConversationMessageCommandHandler
     private readonly IInboxRealtimePublisher _realtime;
     private readonly ILogger<PostConversationMessageCommandHandler> _logger;
     private readonly IFileStorageService? _files;
+    private readonly IEnumerable<IConversationActivityListener>? _listeners;
 
     public PostConversationMessageCommandHandler(
         ICurrentUser currentUser, ICallerIdentityResolver identity, IConversationAccess access,
         IConversationRepository conversations, IUnitOfWork unitOfWork, ConversationNotifier notifier,
         ConversationResponseBuilder responses, IInboxRealtimePublisher realtime,
-        ILogger<PostConversationMessageCommandHandler> logger, IFileStorageService? files = null)
+        ILogger<PostConversationMessageCommandHandler> logger, IFileStorageService? files = null,
+        IEnumerable<IConversationActivityListener>? listeners = null)
     {
         _currentUser = currentUser;
         _identity = identity;
@@ -51,6 +53,7 @@ public sealed class PostConversationMessageCommandHandler
         _realtime = realtime;
         _logger = logger;
         _files = files;
+        _listeners = listeners;
     }
 
     public async Task<Result<ConversationMessageResponse>> Handle(PostConversationMessageCommand command, CancellationToken ct)
@@ -137,6 +140,8 @@ public sealed class PostConversationMessageCommandHandler
         await ConversationRules.PublishSafelyAsync(
             () => _realtime.MessageCreatedAsync(tenantId, context.ParticipantIds, context.Conversation.Id, response, ct),
             _logger, "messageCreated");
+        await ConversationRules.NotifyActivityAsync(_listeners, tenantId, context.Subject, caller.Value,
+            ConversationActivities.MessagePosted, _logger, ct);
         return Result<ConversationMessageResponse>.Success(response);
     }
 }

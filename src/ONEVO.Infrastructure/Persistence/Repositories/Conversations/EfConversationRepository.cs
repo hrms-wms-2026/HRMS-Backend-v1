@@ -167,6 +167,29 @@ public class EfConversationRepository : IConversationRepository
             await _db.ConversationMessageMentions.AddRangeAsync(mentions, ct);
     }
 
+    public async Task<ConversationMessageReaction?> GetReactionAsync(Guid tenantId, Guid messageId, Guid employeeId, CancellationToken ct = default)
+        => await _db.ConversationMessageReactions
+            .FirstOrDefaultAsync(r => r.TenantId == tenantId && r.MessageId == messageId && r.EmployeeId == employeeId, ct);
+
+    public async Task AddReactionAsync(ConversationMessageReaction reaction, CancellationToken ct = default)
+        => await _db.ConversationMessageReactions.AddAsync(reaction, ct);
+
+    public void RemoveReaction(ConversationMessageReaction reaction) => _db.ConversationMessageReactions.Remove(reaction);
+
+    public async Task<IReadOnlyDictionary<Guid, IReadOnlyList<ConversationMessageReaction>>> ListReactionsAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> messageIds, CancellationToken ct = default)
+    {
+        if (messageIds.Count == 0)
+            return new Dictionary<Guid, IReadOnlyList<ConversationMessageReaction>>();
+        var ids = messageIds.ToList();
+        var rows = await _db.ConversationMessageReactions.AsNoTracking()
+            .Where(r => r.TenantId == tenantId && ids.Contains(r.MessageId))
+            .ToListAsync(ct);
+        // A few rows per message; ordered here (reacted-at = UpdatedAt ?? CreatedAt) rather than in SQL.
+        return rows.OrderBy(r => r.UpdatedAt ?? r.CreatedAt).GroupBy(r => r.MessageId)
+            .ToDictionary(g => g.Key, g => (IReadOnlyList<ConversationMessageReaction>)g.ToList());
+    }
+
     public async Task AddRevisionAsync(ConversationMessageRevision revision, CancellationToken ct = default)
         => await _db.ConversationMessageRevisions.AddAsync(revision, ct);
 

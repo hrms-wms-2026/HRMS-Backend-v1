@@ -70,6 +70,23 @@ public class ConversationMessageMentionConfiguration : IEntityTypeConfiguration<
     }
 }
 
+public class ConversationMessageReactionConfiguration : IEntityTypeConfiguration<ConversationMessageReaction>
+{
+    public void Configure(EntityTypeBuilder<ConversationMessageReaction> builder)
+    {
+        builder.ToTable("conversation_message_reactions");
+        builder.HasKey(r => r.Id);
+        builder.Property(r => r.Emoji).HasMaxLength(32).IsRequired();
+
+        // One reaction per person per message: reacting again replaces it.
+        builder.HasIndex(r => new { r.MessageId, r.EmployeeId })
+            .IsUnique()
+            .HasDatabaseName("ux_conversation_message_reactions_message_id_employee_id");
+
+        builder.HasOne<ConversationMessage>().WithMany().HasForeignKey(r => r.MessageId).OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
 public class ConversationMessageRevisionConfiguration : IEntityTypeConfiguration<ConversationMessageRevision>
 {
     public void Configure(EntityTypeBuilder<ConversationMessageRevision> builder)

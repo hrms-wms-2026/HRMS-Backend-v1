@@ -292,6 +292,8 @@ public static class DependencyInjection
         services.AddScoped<ONEVO.Application.Features.Inbox.Contracts.IInboxSourceProvider, ONEVO.Application.Features.Monitoring.Exceptions.Inbox.ExceptionInboxSourceProvider>();
         services.AddScoped<ONEVO.Application.Features.Conversations.Contracts.IConversationSubjectResolver, ONEVO.Application.Features.Monitoring.Exceptions.Inbox.ExceptionConversationSubjectResolver>();
         services.AddScoped<ONEVO.Application.Features.Inbox.Revert.IInboxDecisionReverter, ONEVO.Application.Features.Monitoring.Exceptions.Inbox.ExceptionCaseReverter>();
+        // A reviewer's chat activity on a monitoring or calendar case acknowledges it (stops the SLA escalation).
+        services.AddScoped<ONEVO.Application.Features.Conversations.Contracts.IConversationActivityListener, ONEVO.Application.Features.Monitoring.Exceptions.Inbox.ExceptionCaseActivityAcknowledger>();
         // Calendar meeting-exception cases in the Inbox (plan C3).
         services.AddInboxKind(ONEVO.Application.Features.Calendar.Inbox.CalendarInboxKinds.Descriptor);
         services.AddScoped<ONEVO.Application.Features.Inbox.Contracts.IInboxSourceProvider, ONEVO.Application.Features.Calendar.Inbox.CalendarInboxSourceProvider>();

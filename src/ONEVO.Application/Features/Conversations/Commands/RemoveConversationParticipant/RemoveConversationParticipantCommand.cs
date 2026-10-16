@@ -31,10 +31,12 @@ public sealed class RemoveConversationParticipantCommandHandler : IRequestHandle
     private readonly IUnitOfWork _unitOfWork;
     private readonly IInboxRealtimePublisher _realtime;
     private readonly ILogger<RemoveConversationParticipantCommandHandler> _logger;
+    private readonly IEnumerable<IConversationActivityListener>? _listeners;
 
     public RemoveConversationParticipantCommandHandler(
         ICurrentUser currentUser, ICallerIdentityResolver identity, IConversationAccess access, IConversationRepository conversations,
-        IUnitOfWork unitOfWork, IInboxRealtimePublisher realtime, ILogger<RemoveConversationParticipantCommandHandler> logger)
+        IUnitOfWork unitOfWork, IInboxRealtimePublisher realtime, ILogger<RemoveConversationParticipantCommandHandler> logger,
+        IEnumerable<IConversationActivityListener>? listeners = null)
     {
         _currentUser = currentUser;
         _identity = identity;
@@ -43,6 +45,7 @@ public sealed class RemoveConversationParticipantCommandHandler : IRequestHandle
         _unitOfWork = unitOfWork;
         _realtime = realtime;
         _logger = logger;
+        _listeners = listeners;
     }
 
     public async Task<Result> Handle(RemoveConversationParticipantCommand command, CancellationToken ct)
@@ -80,6 +83,8 @@ public sealed class RemoveConversationParticipantCommandHandler : IRequestHandle
 
         await ConversationRealtime.AfterDepartureAsync(
             _realtime, _logger, caller.TenantId, context, command.EmployeeId, system, ct);
+        await ConversationRules.NotifyActivityAsync(_listeners, caller.TenantId, context.Subject, caller.EmployeeId,
+            ConversationActivities.MemberRemoved, _logger, ct);
         return Result.Success();
     }
 }

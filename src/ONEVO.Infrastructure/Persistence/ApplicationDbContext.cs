@@ -333,6 +333,8 @@ public class ApplicationDbContext : DbContext
         => Set<ONEVO.Domain.Features.Inbox.Entities.InboxDecisionJournalEntry>();
     public DbSet<ONEVO.Domain.Features.Conversations.Entities.ConversationMessageMention> ConversationMessageMentions
         => Set<ONEVO.Domain.Features.Conversations.Entities.ConversationMessageMention>();
+    public DbSet<ONEVO.Domain.Features.Conversations.Entities.ConversationMessageReaction> ConversationMessageReactions
+        => Set<ONEVO.Domain.Features.Conversations.Entities.ConversationMessageReaction>();
     public DbSet<WorkNotificationLog> WorkNotificationLogs => Set<WorkNotificationLog>();
     public DbSet<MonitorAlert> MonitorAlerts => Set<MonitorAlert>();
     public DbSet<TaskEditLog> TaskEditLogs => Set<TaskEditLog>();
