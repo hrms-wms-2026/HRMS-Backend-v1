@@ -23,6 +23,7 @@ public static class InboxNotificationNavigation
             ["leave_request_cancelled_by_employee"] = ("leave", "request"),
             ["leave_request_cancelled_by_hr"] = ("leave", "request"),
             ["leave_request_partially_cancelled"] = ("leave", "request"),
+            ["leave_request_decision_undone"] = ("leave", "request"),
             ["attendance_correction_request_created"] = ("attendance", "correction"),
             ["attendance_correction_request_decided"] = ("attendance", "correction"),
             ["attendance_correction_request_cancelled"] = ("attendance", "correction"),

@@ -401,10 +401,11 @@ public class LeaveInboxTests
         public FakeDateTimeProvider Clock { get; } = new() { UtcNow = At(15, 9) };
         public List<LeaveBalanceAudit> Audits { get; } = new();
         public bool CanApprove { get; set; } = true;
+        public Mock<INotificationDispatcher> Notifications { get; } = new();
 
         public RevertFixture(decimal totalHours = 160m)
         {
-            Requester = new Employee { Id = Guid.NewGuid(), TenantId = TenantId, FirstName = "Bala" };
+            Requester = new Employee { Id = Guid.NewGuid(), TenantId = TenantId, UserId = Guid.NewGuid(), FirstName = "Bala" };
             Approver = new Employee { Id = Guid.NewGuid(), TenantId = TenantId, FirstName = "Anu" };
             var requestId = Guid.NewGuid();
             State = LeaveInboxTests.State(Requester, new LeaveEntitlement { TotalHours = totalHours, PendingHours = 8m }, Guid.NewGuid(),
@@ -430,7 +431,8 @@ public class LeaveInboxTests
             var currentUser = new Mock<ICurrentUser>();
             currentUser.Setup(x => x.HasPermission("leave:approve")).Returns(CanApprove);
             return new LeaveDecisionReverter(Journal, new FakeUnitOfWork(), Clock, Approvals.Object,
-                new LeaveRequestRangeEditor(currentUser.Object, Clock, Approvals.Object, null!, new LeaveRequestDayAllocationBuilder()), currentUser.Object);
+                new LeaveRequestRangeEditor(currentUser.Object, Clock, Approvals.Object, null!, new LeaveRequestDayAllocationBuilder()), currentUser.Object,
+                Notifications.Object);
         }
 
         public Task<Result<InboxActionResult>> Revert()
@@ -459,6 +461,33 @@ public class LeaveInboxTests
         (f.State.Entitlement!.UsedHours, f.State.Entitlement.PendingHours).Should().Be((0m, 8m));
         f.Audits.Should().ContainSingle(a => a.ChangeType == LeaveBalanceChangeTypes.Adjustment);
         f.Approvals.Verify(x => x.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Undoing_a_final_decision_tells_the_employee_their_request_is_pending_again_in_the_same_save()
+    {
+        var f = new RevertFixture();
+        f.Decide(LeaveInboxActions.Approve, Approve);
+        var calls = new List<string>();
+        f.Notifications.Setup(n => n.SendTemplatedAsync(f.TenantId, f.Requester.UserId, LeaveDecisionReverter.UndoneTemplate,
+                It.IsAny<IReadOnlyDictionary<string, string>>(), "inbox:leave:request", f.State.Request.Id, It.IsAny<CancellationToken>()))
+            .Callback(() => calls.Add("notify")).Returns(Task.CompletedTask);
+        f.Approvals.Setup(x => x.SaveChangesAsync(It.IsAny<CancellationToken>())).Callback(() => calls.Add("save")).Returns(Task.CompletedTask);
+
+        (await f.Revert()).IsSuccess.Should().BeTrue();
+
+        calls.Should().Equal("notify", "save");
+    }
+
+    [Fact]
+    public async Task Undoing_a_step_the_employee_was_never_told_about_sends_nothing()
+    {
+        var f = new RevertFixture();
+        f.Decide(LeaveInboxActions.Approve, s => s.Approvers[0].Status = LeaveRequestApproverStatuses.Approved); // one of several steps
+
+        (await f.Revert()).IsSuccess.Should().BeTrue();
+
+        f.Notifications.Invocations.Should().BeEmpty();
     }
 
     [Fact]

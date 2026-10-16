@@ -28,21 +28,24 @@ public sealed class LeaveDecisionReverter : InboxDecisionReverterBase
     public const string ForwardActed = "The person you forwarded this to has already acted on it.";
     public const string InfoAnswered = "The employee has already answered your question.";
     public const string NotUndoable = "This kind of decision cannot be undone from the Inbox.";
+    public const string UndoneTemplate = "leave_request_decision_undone";
 
     private readonly ILeaveApprovalRepository _approvals;
     private readonly LeaveRequestRangeEditor _editor;
     private readonly ICurrentUser _currentUser;
     private readonly IDateTimeProvider _clock;
+    private readonly INotificationDispatcher _notifications;
 
     public LeaveDecisionReverter(
         IInboxDecisionJournal journal, IUnitOfWork unitOfWork, IDateTimeProvider clock, ILeaveApprovalRepository approvals,
-        LeaveRequestRangeEditor editor, ICurrentUser currentUser)
+        LeaveRequestRangeEditor editor, ICurrentUser currentUser, INotificationDispatcher notifications)
         : base(journal, unitOfWork, clock)
     {
         _approvals = approvals;
         _editor = editor;
         _currentUser = currentUser;
         _clock = clock;
+        _notifications = notifications;
     }
 
     public override string Source => LeaveInboxKinds.Source;
@@ -159,6 +162,17 @@ public sealed class LeaveDecisionReverter : InboxDecisionReverterBase
             if (!moved.IsSuccess)
                 return Result<InboxActionResult>.Failure(moved.Error!, moved.StatusCode ?? 409);
         }
+
+        // The employee was told "approved" / "rejected": tell them it is pending again (the bell lands in the same save).
+        if (wasCompleted && state.Employee.UserId != Guid.Empty)
+            await _notifications.SendTemplatedAsync(tenantId, state.Employee.UserId, UndoneTemplate,
+                new Dictionary<string, string>
+                {
+                    ["leaveType"] = state.LeaveTypeName,
+                    ["startDate"] = request.StartAt.ToString("dd MMM yyyy"),
+                    ["decision"] = after.Status == LeaveRequestStatuses.Approved ? "approval" : "rejection",
+                },
+                InboxNotificationNavigation.RelatedEntityType(LeaveInboxKinds.Source, LeaveInboxKinds.Request), request.Id, ct);
 
         await _approvals.SaveChangesAsync(ct);
         return Result<InboxActionResult>.Success(new InboxActionResult(LeaveInboxSourceProvider.People(state)));

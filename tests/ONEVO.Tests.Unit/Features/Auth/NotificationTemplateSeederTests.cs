@@ -75,6 +75,7 @@ public sealed class NotificationTemplateSeederTests : IDisposable
         Assert.Contains("leave_request_cancelled_by_employee", codes);
         Assert.Contains("leave_request_cancelled_by_hr", codes);
         Assert.Contains("leave_request_partially_cancelled", codes);
+        Assert.Contains("leave_request_decision_undone", codes);
         Assert.Contains("face_verification_override", codes);
         Assert.Contains("work_task_status_change_request_created", codes);
         Assert.Contains("work_task_status_change_request_decided", codes);
@@ -86,7 +87,7 @@ public sealed class NotificationTemplateSeederTests : IDisposable
         Assert.Contains("exception_alert_escalated", codes);
         Assert.Contains("conversation_member_added", codes);
         Assert.Contains("conversation_mentioned", codes);
-        Assert.Equal(56, codes.Count);
+        Assert.Equal(57, codes.Count);
         var expectedCodes = new[]
         {
             "work_task_creation_request_created",
@@ -144,7 +145,8 @@ public sealed class NotificationTemplateSeederTests : IDisposable
             "calendar_exception_detected",
             "calendar_exception_raised_for_you",
             "calendar_exception_escalated",
-            "work_monitor_alert_escalated"
+            "work_monitor_alert_escalated",
+            "leave_request_decision_undone"
         };
 
         Assert.Equal(

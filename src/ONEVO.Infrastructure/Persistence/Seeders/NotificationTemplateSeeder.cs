@@ -378,6 +378,12 @@ public class NotificationTemplateSeeder : IHostedService
                 Id = Guid.NewGuid(), Code = "work_monitor_alert_escalated",
                 InAppTitleTemplate = "Project alert escalated to you",
                 InAppBodyTemplate = "{{title}}: {{message}}"
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "leave_request_decision_undone",
+                InAppTitleTemplate = "Leave decision undone",
+                InAppBodyTemplate = "The {{decision}} of your {{leaveType}} from {{startDate}} was undone. Your request is pending again."
             }
 
         };
