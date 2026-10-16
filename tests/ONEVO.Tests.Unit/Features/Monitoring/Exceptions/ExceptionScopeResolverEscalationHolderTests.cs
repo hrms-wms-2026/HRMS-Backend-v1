@@ -62,4 +62,17 @@ public sealed class ExceptionScopeResolverEscalationHolderTests
         scope.CanAct(movedOn.Id, Guid.NewGuid()).Should().BeFalse();
         scope.CanAct(held.Id, _skipLevel.Id).Should().BeFalse("nobody works a case about themselves");
     }
+
+    [Fact]
+    public async Task Holding_a_case_never_stands_in_for_the_exception_permissions()
+    {
+        var held = new ItemRef("calendar", "meeting_exception", Guid.NewGuid());
+        Escalated(held, 0, _skipLevel.Id);
+        _currentUser.Setup(u => u.HasPermission(It.IsAny<string>())).Returns(false);
+
+        var scope = await new ExceptionScopeResolver(_currentUser.Object, _employees.Object, _authority.Object, _journal)
+            .ResolveAsync(forAction: true, [Guid.NewGuid()], default);
+
+        scope.Should().BeNull();
+    }
 }

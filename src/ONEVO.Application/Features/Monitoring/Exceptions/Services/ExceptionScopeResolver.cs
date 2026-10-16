@@ -40,14 +40,16 @@ public sealed class ExceptionScopeResolver : IExceptionScopeResolver
         var isManager = _currentUser.HasPermission(ExceptionPermissions.ManagerReview);
         var codePermission = forAction ? ExceptionPermissions.Acknowledge : ExceptionPermissions.View;
         var hasCodePermission = _currentUser.HasPermission(codePermission);
+        if (!isHr && !isManager && !hasCodePermission)
+            return null;
+
         var actor = await _employees.GetDefaultForUserAsync(_currentUser.TenantId, _currentUser.UserId, ct);
         if (isHr)
             return new ExceptionScope(true, actor?.Id, Array.Empty<Guid>());
 
+        // Holding a case by escalation widens the reach of someone who may already review exceptions; it never stands
+        // in for the exception permissions themselves.
         var held = actor is null ? [] : await HeldCalendarCasesAsync(actor.Id, ct);
-        if (!isManager && !hasCodePermission)
-            return held.Count == 0 ? null : new ExceptionScope(false, actor!.Id, Array.Empty<Guid>(), held);
-
         if (actor?.LegalEntityId is not Guid legalEntityId)
             return new ExceptionScope(false, actor?.Id, Array.Empty<Guid>(), held);
 
