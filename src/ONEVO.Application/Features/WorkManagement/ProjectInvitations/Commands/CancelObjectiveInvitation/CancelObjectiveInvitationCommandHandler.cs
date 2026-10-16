@@ -6,6 +6,7 @@ using ONEVO.Application.Features.WorkManagement.Approvals.Services;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.ProjectInvitations.RepositoryInterfaces;
 using ONEVO.Domain.Features.WorkManagement.ProjectInvitations.Entities;
+using ONEVO.Application.Features.WorkManagement.Notifications.Services;
 
 namespace ONEVO.Application.Features.WorkManagement.ProjectInvitations.Commands.CancelObjectiveInvitation;
 
@@ -18,15 +19,17 @@ public class CancelObjectiveInvitationCommandHandler : IRequestHandler<CancelObj
     private readonly ICallerIdentityResolver _identity;
     private readonly IProjectMemberInvitationRepository _invitations;
     private readonly IUnitOfWork _unitOfWork;
+    private readonly IOutboxWriter _outboxWriter;
 
     public CancelObjectiveInvitationCommandHandler(
         ICurrentUser currentUser, ICallerIdentityResolver identity, IProjectMemberInvitationRepository invitations,
-        IUnitOfWork unitOfWork)
+        IUnitOfWork unitOfWork, IOutboxWriter outboxWriter)
     {
         _currentUser = currentUser;
         _identity = identity;
         _invitations = invitations;
         _unitOfWork = unitOfWork;
+        _outboxWriter = outboxWriter;
     }
 
     public async Task<Result> Handle(CancelObjectiveInvitationCommand request, CancellationToken ct)
@@ -59,6 +62,8 @@ public class CancelObjectiveInvitationCommandHandler : IRequestHandler<CancelObj
         invitation.Status = ProjectInvitationStatuses.Cancelled;
         invitation.DecidedAt = DateTimeOffset.UtcNow;
         _invitations.Update(invitation);
+        await WorkNotificationEngine.EnqueueInboxChangedAsync(
+            _outboxWriter, tenantId, [invitation.InvitedById, invitation.InvitedEmployeeId], WorkNotificationEngine.InvitationInboxKind, invitation.Id, ct);
         await _unitOfWork.SaveChangesAsync(ct);
 
         return Result.Success();

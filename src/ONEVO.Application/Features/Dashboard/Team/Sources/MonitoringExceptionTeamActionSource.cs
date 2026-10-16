@@ -52,9 +52,9 @@ public sealed class MonitoringExceptionTeamActionSource(
         var scopedEmployeeIds = scope.IsHr ? null : scope.EmployeeIds;
 
         var actionableFilter = new ExceptionListFilter(
-            Status: null, Type: null, scopedEmployeeIds, scope.ActorEmployeeId, ActionableStatuses);
+            Status: null, Type: null, scopedEmployeeIds, scope.ActorEmployeeId, ActionableStatuses, Calendar: false);
         var inProgressFilter = new ExceptionListFilter(
-            ExceptionStatus.Acknowledged, Type: null, scopedEmployeeIds, scope.ActorEmployeeId);
+            ExceptionStatus.Acknowledged, Type: null, scopedEmployeeIds, scope.ActorEmployeeId, Calendar: false);
 
         var actionableRows = await exceptions.GetListAsync(tenantId, actionableFilter, 1, int.MaxValue, ct);
         var inProgressCount = await exceptions.GetListTotalCountAsync(tenantId, inProgressFilter, ct);

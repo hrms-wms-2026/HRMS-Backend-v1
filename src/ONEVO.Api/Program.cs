@@ -70,6 +70,12 @@ builder.Services.AddSignalR();
 builder.Services.AddSingleton<
     ONEVO.Application.Features.Monitoring.Settings.ServiceInterfaces.ITrayPolicyRefreshNotifier,
     ONEVO.Api.Hubs.SignalRTrayPolicyRefreshNotifier>();
+// Inbox realtime: replaces Infrastructure's null publisher with the InboxHub-backed one.
+Microsoft.Extensions.DependencyInjection.Extensions.ServiceCollectionDescriptorExtensions.Replace(
+    builder.Services,
+    ServiceDescriptor.Scoped<
+        ONEVO.Application.Features.Conversations.Contracts.IInboxRealtimePublisher,
+        ONEVO.Api.Hubs.SignalRInboxRealtimePublisher>());
 builder.Services.AddSingleton<
     ONEVO.Application.Features.Monitoring.TrayActivation.ServiceInterfaces.ITrayPushNotifier,
     ONEVO.Api.Hubs.SignalRTrayPushNotifier>();
@@ -137,6 +143,7 @@ app.MapControllers();
 // Close a tray connection when its device JWT expires — the live connection counts as presence.
 app.MapHub<ONEVO.Api.Hubs.AgentCommandsHub>("/hubs/agent-commands",
     options => options.CloseOnAuthenticationExpiration = true);
+app.MapHub<ONEVO.Api.Hubs.InboxHub>("/hubs/inbox");
 // Liveness: process-only checks. Must NOT include dependency checks — a brief
 // DB outage should fail readiness, not liveness.
 app.MapHealthChecks("/health", new HealthCheckOptions

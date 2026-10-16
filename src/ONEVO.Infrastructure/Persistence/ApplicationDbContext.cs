@@ -317,7 +317,22 @@ public class ApplicationDbContext : DbContext
     public DbSet<SprintActivityLog> SprintActivityLogs => Set<SprintActivityLog>();
     public DbSet<TaskAssignment> TaskAssignments => Set<TaskAssignment>();
     public DbSet<WorkApprovalRequest> WorkApprovalRequests => Set<WorkApprovalRequest>();
-    public DbSet<WorkApprovalComment> WorkApprovalComments => Set<WorkApprovalComment>();
+    public DbSet<ONEVO.Domain.Features.Conversations.Entities.Conversation> Conversations
+        => Set<ONEVO.Domain.Features.Conversations.Entities.Conversation>();
+    public DbSet<ONEVO.Domain.Features.Conversations.Entities.ConversationParticipant> ConversationParticipants
+        => Set<ONEVO.Domain.Features.Conversations.Entities.ConversationParticipant>();
+    public DbSet<ONEVO.Domain.Features.Conversations.Entities.ConversationMessage> ConversationMessages
+        => Set<ONEVO.Domain.Features.Conversations.Entities.ConversationMessage>();
+    public DbSet<ONEVO.Domain.Features.Conversations.Entities.ConversationMessageRevision> ConversationMessageRevisions
+        => Set<ONEVO.Domain.Features.Conversations.Entities.ConversationMessageRevision>();
+    public DbSet<ONEVO.Domain.Features.Conversations.Entities.ConversationMessageAttachment> ConversationMessageAttachments
+        => Set<ONEVO.Domain.Features.Conversations.Entities.ConversationMessageAttachment>();
+    public DbSet<ONEVO.Domain.Features.TimeAttendance.Alerts.AttendanceAlert> AttendanceAlerts
+        => Set<ONEVO.Domain.Features.TimeAttendance.Alerts.AttendanceAlert>();
+    public DbSet<ONEVO.Domain.Features.Inbox.Entities.InboxDecisionJournalEntry> InboxDecisionJournal
+        => Set<ONEVO.Domain.Features.Inbox.Entities.InboxDecisionJournalEntry>();
+    public DbSet<ONEVO.Domain.Features.Conversations.Entities.ConversationMessageMention> ConversationMessageMentions
+        => Set<ONEVO.Domain.Features.Conversations.Entities.ConversationMessageMention>();
     public DbSet<WorkNotificationLog> WorkNotificationLogs => Set<WorkNotificationLog>();
     public DbSet<MonitorAlert> MonitorAlerts => Set<MonitorAlert>();
     public DbSet<TaskEditLog> TaskEditLogs => Set<TaskEditLog>();
@@ -333,6 +348,9 @@ public class ApplicationDbContext : DbContext
     public DbSet<Notification> Notifications => Set<Notification>();
     public DbSet<PersonalCalendarEvent> PersonalCalendarEvents => Set<PersonalCalendarEvent>();
     public DbSet<PersonalCalendarEventParticipant> CalendarEventParticipants => Set<PersonalCalendarEventParticipant>();
+    public DbSet<ONEVO.Domain.Features.Calendar.Entities.CalendarEventParticipantRsvpHistory> CalendarEventParticipantRsvpHistory => Set<ONEVO.Domain.Features.Calendar.Entities.CalendarEventParticipantRsvpHistory>();
+    public DbSet<ONEVO.Domain.Features.Calendar.Entities.CalendarEventReminderLog> CalendarEventRemindersSent => Set<ONEVO.Domain.Features.Calendar.Entities.CalendarEventReminderLog>();
+    public DbSet<ONEVO.Domain.Features.Calendar.Entities.CalendarMeetingIncident> CalendarMeetingIncidents => Set<ONEVO.Domain.Features.Calendar.Entities.CalendarMeetingIncident>();
     public DbSet<ExternalCalendarConnection> ExternalCalendarConnections => Set<ExternalCalendarConnection>();
     public DbSet<ExternalCalendarEventLink> ExternalCalendarEventLinks => Set<ExternalCalendarEventLink>();
     public DbSet<HolidayCalendarSettings> HolidayCalendarSettings => Set<HolidayCalendarSettings>();

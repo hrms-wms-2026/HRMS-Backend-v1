@@ -344,6 +344,10 @@ public sealed class LeaveApprovalDecisionService
                 _currentUser.TenantId, state.Request.Id, state.Request.EmployeeId, state.Request.LeaveTypeId,
                 state.Request.StartAt, state.Request.EndAt, state.Request.PaidHours, state.Request.UnpaidHours,
                 currentEmployee.Id), _currentUser.TenantId, ct);
+            // Meetings during the approved leave become calendar meeting exceptions (plan C2 trigger).
+            await _outbox.EnqueueAsync(OutboxMessageTypes.CalendarIncidentEvaluate,
+                new ONEVO.Application.Features.Calendar.OutboxHandlers.CalendarIncidentEvaluatePayload(_currentUser.TenantId, [state.Request.EmployeeId]),
+                _currentUser.TenantId, ct);
 
             await NotifyEmployeeAsync(state, "leave_request_approved", new Dictionary<string, string>
             {
@@ -490,6 +494,10 @@ public sealed class LeaveApprovalDecisionService
                 _currentUser.TenantId, state.Request.Id, state.Request.EmployeeId, state.Request.LeaveTypeId,
                 state.Request.StartAt, state.Request.EndAt, state.Request.PaidHours, state.Request.UnpaidHours,
                 currentEmployee.Id), _currentUser.TenantId, ct);
+            // Meetings during the approved leave become calendar meeting exceptions (plan C2 trigger).
+            await _outbox.EnqueueAsync(OutboxMessageTypes.CalendarIncidentEvaluate,
+                new ONEVO.Application.Features.Calendar.OutboxHandlers.CalendarIncidentEvaluatePayload(_currentUser.TenantId, [state.Request.EmployeeId]),
+                _currentUser.TenantId, ct);
 
             await NotifyEmployeeAsync(state, "leave_request_approved", new Dictionary<string, string>
             {
@@ -575,7 +583,7 @@ public sealed class LeaveApprovalDecisionService
             return;
         await _notifications.SendTemplatedAsync(
             _currentUser.TenantId, state.Employee.UserId, template, placeholders,
-            "leave_request", state.Request.Id, ct);
+            ONEVO.Application.Features.Inbox.Contracts.InboxNotificationNavigation.RelatedEntityType("leave", "request"), state.Request.Id, ct);
     }
 
     private async Task NotifyApproverAsync(Guid approverEmployeeId, LeaveApprovalState state, CancellationToken ct)
@@ -592,7 +600,7 @@ public sealed class LeaveApprovalDecisionService
                 ["startDate"] = state.Request.StartAt.ToString("yyyy-MM-dd"),
                 ["endDate"] = state.Request.EndAt.ToString("yyyy-MM-dd")
             },
-            "leave_request", state.Request.Id, ct);
+            ONEVO.Application.Features.Inbox.Contracts.InboxNotificationNavigation.RelatedEntityType("leave", "request"), state.Request.Id, ct);
     }
 
     private static string LeaveEntitlementName(Employee employee) =>

@@ -230,4 +230,46 @@ public sealed class EditRecurringOccurrenceCommandHandlerTests
         Assert.Equal(MasterId, earlierChild.RecurrenceParentId); // untouched - before the split point
         _events.Verify(x => x.Update(laterChild), Times.Once); // re-parented - on/after the split point
     }
+
+    [Fact]
+    public async Task Handle_ThisAndFollowing_CopiesTheParticipantsToTheNewSeriesWithTheirRsvpReset()
+    {
+        var sut = BuildSut();
+        var master = MakeMaster();
+        var accepted = new CalendarEventParticipant
+        {
+            Id = Guid.NewGuid(), TenantId = TenantId, EventId = MasterId, EmployeeId = Guid.NewGuid(),
+            ResponseStatus = CalendarEventParticipantStatuses.Accepted, ResponseReason = "ok",
+        };
+        var rejected = new CalendarEventParticipant
+        {
+            Id = Guid.NewGuid(), TenantId = TenantId, EventId = MasterId, EmployeeId = Guid.NewGuid(),
+            ResponseStatus = CalendarEventParticipantStatuses.Rejected,
+        };
+        _events.Setup(x => x.GetTrackedByIdForTenantAsync(TenantId, MasterId, It.IsAny<CancellationToken>())).ReturnsAsync(master);
+        _events.Setup(x => x.GetChildrenForMasterAsync(TenantId, MasterId, It.IsAny<CancellationToken>())).ReturnsAsync([]);
+        _events.Setup(x => x.GetParticipantsForEventsAsync(TenantId, It.Is<IReadOnlyList<Guid>>(ids => ids.Contains(MasterId)), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, IReadOnlyList<CalendarEventParticipant>> { [MasterId] = [accepted, rejected] });
+        CalendarEvent? newMaster = null;
+        _events.Setup(x => x.AddAsync(It.IsAny<CalendarEvent>(), It.IsAny<CancellationToken>()))
+            .Callback((CalendarEvent e, CancellationToken _) => newMaster = e).Returns(Task.CompletedTask);
+        IReadOnlyList<CalendarEventParticipant>? copied = null;
+        _events.Setup(x => x.AddParticipantsAsync(It.IsAny<IReadOnlyList<CalendarEventParticipant>>(), It.IsAny<CancellationToken>()))
+            .Callback((IReadOnlyList<CalendarEventParticipant> p, CancellationToken _) => copied = p).Returns(Task.CompletedTask);
+
+        var result = await sut.Handle(MakeCommand(RecurrenceEditScope.ThisAndFollowing), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.NotNull(copied);
+        Assert.Equal(new[] { accepted.EmployeeId, rejected.EmployeeId }, copied!.Select(p => p.EmployeeId));
+        Assert.All(copied, p =>
+        {
+            Assert.Equal(newMaster!.Id, p.EventId);
+            Assert.Equal(TenantId, p.TenantId);
+            Assert.Equal(CalendarEventParticipantStatuses.Pending, p.ResponseStatus);
+            Assert.Null(p.ResponseReason);
+            Assert.NotEqual(Guid.Empty, p.Id);
+        });
+        Assert.Equal(CalendarEventParticipantStatuses.Accepted, accepted.ResponseStatus); // the earlier series keeps its answers
+    }
 }

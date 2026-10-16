@@ -111,6 +111,7 @@ public static class DependencyInjection
         services.AddScoped<ONEVO.Application.Features.Monitoring.TrayActivation.Commands.DeviceChangeRequests.DeviceChangeRequestWorkflow>();
 
         services.AddScoped<IOutboxMessageHandler, WorkNotificationOutboxHandler>();
+        services.AddScoped<IOutboxMessageHandler, ONEVO.Application.Features.Inbox.OutboxHandlers.InboxChangedOutboxHandler>();
         services.AddScoped<IOutboxMessageHandler, ONEVO.Application.Features.Calendar.OutboxHandlers.CalendarEventInviteEmailOutboxHandler>();
         services.AddScoped<GetBulkOnboardingTemplateQueryHandler>();
 

@@ -6,6 +6,7 @@ using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.ProjectInvitations.RepositoryInterfaces;
 using ONEVO.Domain.Features.WorkManagement.ProjectInvitations.Entities;
+using ONEVO.Application.Features.WorkManagement.Notifications.Services;
 
 namespace ONEVO.Application.Features.WorkManagement.ProjectInvitations.Commands.RejectObjectiveInvitation;
 
@@ -16,16 +17,18 @@ public class RejectObjectiveInvitationCommandHandler : IRequestHandler<RejectObj
     private readonly IProjectMemberInvitationRepository _invitations;
     private readonly IObjectiveRepository _objectives;
     private readonly IUnitOfWork _unitOfWork;
+    private readonly IOutboxWriter _outboxWriter;
 
     public RejectObjectiveInvitationCommandHandler(
         ICurrentUser currentUser, ICallerIdentityResolver identity, IProjectMemberInvitationRepository invitations,
-        IObjectiveRepository objectives, IUnitOfWork unitOfWork)
+        IObjectiveRepository objectives, IUnitOfWork unitOfWork, IOutboxWriter outboxWriter)
     {
         _currentUser = currentUser;
         _identity = identity;
         _invitations = invitations;
         _objectives = objectives;
         _unitOfWork = unitOfWork;
+        _outboxWriter = outboxWriter;
     }
 
     public async Task<Result> Handle(RejectObjectiveInvitationCommand request, CancellationToken ct)
@@ -59,6 +62,8 @@ public class RejectObjectiveInvitationCommandHandler : IRequestHandler<RejectObj
         invitation.Status = ProjectInvitationStatuses.Declined;
         invitation.DecidedAt = DateTimeOffset.UtcNow;
         _invitations.Update(invitation);
+        await WorkNotificationEngine.EnqueueInboxChangedAsync(
+            _outboxWriter, tenantId, [invitation.InvitedById, invitation.InvitedEmployeeId], WorkNotificationEngine.InvitationInboxKind, invitation.Id, ct);
         await _unitOfWork.SaveChangesAsync(ct);
 
         return Result.Success();

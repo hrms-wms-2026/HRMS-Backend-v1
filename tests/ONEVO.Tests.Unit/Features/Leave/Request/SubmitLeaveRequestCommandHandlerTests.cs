@@ -47,6 +47,35 @@ public class SubmitLeaveRequestCommandHandlerTests
     }
 
     [Fact]
+    public async Task InboxChanged_enqueued_before_the_repository_save_is_committed_with_the_request()
+    {
+        // The submit handler enqueues inboxChanged (real OutboxWriter, same DbContext) and only then calls
+        // AddPendingRequestAsync, whose SaveChanges commits both. Enqueueing after the save would send nothing.
+        await using var db = BuildDb();
+        var tenantId = Guid.NewGuid();
+        var request = Request(tenantId, 8m);
+        var entitlement = Entitlement(tenantId, request, pending: 0m);
+        db.LeaveEntitlements.Add(entitlement);
+        await db.SaveChangesAsync();
+        var clock = new Mock<IDateTimeProvider>();
+        clock.SetupGet(x => x.UtcNow).Returns(DateTimeOffset.UtcNow);
+        var notifier = new ONEVO.Application.Features.Inbox.Services.OutboxInboxChangeNotifier(
+            new ONEVO.Infrastructure.Services.SharedPlatform.Outbox.OutboxWriter(db, new ONEVO.Infrastructure.Security.NoOpEncryptionService(), clock.Object));
+        var approver = Guid.NewGuid();
+
+        await notifier.EnqueueAsync(tenantId, [approver, request.EmployeeId],
+            ONEVO.Application.Features.Inbox.Services.InboxRefs.LeaveRequest(request.Id), CancellationToken.None);
+        await new EfLeaveRequestRepository(db, clock.Object).AddPendingRequestAsync(
+            new LeaveRequestWriteSet(request, [], [], [Allocation(tenantId, request.Id, new DateOnly(2026, 9, 14), 8m)], entitlement),
+            CancellationToken.None);
+
+        var outbox = await db.Set<ONEVO.Domain.Features.SharedPlatform.Entities.OutboxMessage>().AsNoTracking().ToListAsync();
+        outbox.Should().ContainSingle(m => m.Type == OutboxMessageTypes.InboxChanged && m.TenantId == tenantId);
+        System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(outbox.Single().EncryptedPayload))
+            .Should().Contain(request.Id.ToString()).And.Contain(approver.ToString());
+    }
+
+    [Fact]
     public async Task AddPendingRequestAsync_AfternoonPartialWritesFourHours()
     {
         await using var db = BuildDb();

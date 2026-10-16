@@ -28,5 +28,7 @@ public sealed class EfEmployeeWorkLocationRepository(ApplicationDbContext db) : 
 
     public void Update(EmployeeWorkLocation location) => db.EmployeeWorkLocations.Update(location);
 
+    public void Remove(EmployeeWorkLocation location) => db.EmployeeWorkLocations.Remove(location);
+
     public Task<int> SaveChangesAsync(CancellationToken ct = default) => db.SaveChangesAsync(ct);
 }

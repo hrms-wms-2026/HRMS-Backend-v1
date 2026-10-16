@@ -1,0 +1,77 @@
+using ONEVO.Application.Features.WorkManagement.Approvals.DTOs;
+using ONEVO.Application.Features.WorkManagement.Approvals.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Common.Services;
+using ONEVO.Application.Features.WorkManagement.Hierarchy;
+using ONEVO.Application.Features.WorkManagement.ProjectInvitations.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
+using ONEVO.Domain.Features.WorkManagement.Approvals.Entities;
+using ONEVO.Domain.Features.WorkManagement.ProjectInvitations.Entities;
+using ONEVO.Domain.Features.WorkManagement.Projects.Entities;
+
+namespace ONEVO.Application.Features.WorkManagement.Approvals.Services;
+
+/// <summary>A feed row plus what the inbox needs that the row does not carry. Request is null for invitations.</summary>
+public sealed record ApprovalFeedEntry(Guid ProjectId, ApprovalFeedItemResponse Item, WorkApprovalRequest? Request);
+
+/// <summary>Every request the caller sent or received in one project (engine requests they can see under
+/// ApprovalFeedParticipants + module invitations they sent or received). Used by
+/// the Inbox's Work provider, which applies these visibility rules across every project the caller sees.</summary>
+public sealed class ApprovalFeedBuilder
+{
+    private readonly ICallerIdentityResolver _identity;
+    private readonly IWorkApprovalRequestRepository _requests;
+    private readonly IWorkHierarchyService _hierarchy;
+    private readonly IProjectMemberInvitationRepository _invitations;
+    private readonly IWorkTaskRepository _tasks;
+
+    public ApprovalFeedBuilder(
+        ICallerIdentityResolver identity, IWorkApprovalRequestRepository requests, IWorkHierarchyService hierarchy,
+        IProjectMemberInvitationRepository invitations, IWorkTaskRepository tasks)
+    {
+        _identity = identity;
+        _requests = requests;
+        _hierarchy = hierarchy;
+        _invitations = invitations;
+        _tasks = tasks;
+    }
+
+    /// <summary>Unsorted - the inbox router orders items.</summary>
+    public async Task<IReadOnlyList<ApprovalFeedEntry>> BuildAsync(Guid tenantId, Project project, Guid caller, CancellationToken ct)
+    {
+        var tree = await _hierarchy.LoadTreeAsync(tenantId, project.Id, ct);
+        var all = await _requests.ListByProjectAsync(tenantId, project.Id, null, null, ct);
+        var requests = all.Where(r => ApprovalFeedParticipants.CanSee(tree, r, caller)).ToList();
+        var invitations = await _invitations.ListForProjectAndEmployeeAsync(tenantId, project.Id, caller, ct);
+        return await MapAsync(tenantId, project, tree, requests, invitations, caller, ct);
+    }
+
+    /// <summary>Rows for the given requests and invitations of one project as the caller would see them,
+    /// without the visibility filter - for people added to an item's conversation, who may view it.</summary>
+    public async Task<IReadOnlyList<ApprovalFeedEntry>> MapAsync(
+        Guid tenantId, Project project, IReadOnlyList<WorkApprovalRequest> requests,
+        IReadOnlyList<ProjectMemberInvitation> invitations, Guid caller, CancellationToken ct)
+        => await MapAsync(tenantId, project, await _hierarchy.LoadTreeAsync(tenantId, project.Id, ct), requests, invitations, caller, ct);
+
+    private async Task<IReadOnlyList<ApprovalFeedEntry>> MapAsync(
+        Guid tenantId, Project project, ProjectModuleTree tree, IReadOnlyList<WorkApprovalRequest> requests,
+        IReadOnlyList<ProjectMemberInvitation> invitations, Guid caller, CancellationToken ct)
+    {
+        if (requests.Count == 0 && invitations.Count == 0)
+            return [];
+
+        var taskIds = ApprovalFeedItemFactory.TaskIdsNeedingModule(requests);
+        var taskModules = taskIds.Count == 0
+            ? new Dictionary<Guid, Guid>()
+            : await _tasks.GetObjectiveIdsByTaskIdsAsync(tenantId, taskIds, ct);
+
+        var employeeIds = requests.SelectMany(ApprovalFeedItemFactory.EmployeeIds)
+            .Concat(invitations.SelectMany(ApprovalFeedItemFactory.EmployeeIds))
+            .Distinct().ToList();
+        var names = await _identity.ResolveDisplayNamesByEmployeeIdAsync(tenantId, employeeIds, ct);
+
+        var lookup = new ApprovalFeedLookup(tree, project.Name, names, taskModules);
+        return requests.Select(r => new ApprovalFeedEntry(project.Id, ApprovalFeedItemFactory.FromRequest(r, caller, lookup), r))
+            .Concat(invitations.Select(i => new ApprovalFeedEntry(project.Id, ApprovalFeedItemFactory.FromInvitation(i, caller, lookup), null)))
+            .ToList();
+    }
+}

@@ -16,7 +16,9 @@ public sealed record EmployeeListAttendanceSummaryResponse(
     int BreakUsedMinutes = 0,
     int? BreakAllowanceMinutes = null,
     int BreakOverageMinutes = 0,
-    bool IsOverBreakAllowance = false);
+    bool IsOverBreakAllowance = false,
+    // Open attendance alerts awaiting review (plan E1, D-a).
+    int OpenAlertCount = 0);
 
 public record EmployeeListItemResponse(
     Guid Id,

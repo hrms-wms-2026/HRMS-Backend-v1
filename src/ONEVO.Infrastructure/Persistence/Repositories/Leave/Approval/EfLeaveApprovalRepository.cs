@@ -286,5 +286,39 @@ public class EfLeaveApprovalRepository : ILeaveApprovalRepository
         return available == distinct.Length;
     }
 
+    public async Task<int> CountDocumentsAsync(Guid tenantId, Guid requestId, CancellationToken ct = default)
+        => await _db.LeaveRequestDocuments.AsNoTracking().CountAsync(x => x.TenantId == tenantId && x.LeaveRequestId == requestId, ct);
+
+    public async Task<IReadOnlyList<LeaveRequest>> ListSubmittedOnBehalfAsync(Guid tenantId, Guid submitterUserId, CancellationToken ct = default)
+        => await _db.LeaveRequests.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.SubmittedOnBehalfOfBy == submitterUserId)
+            .OrderByDescending(x => x.CreatedAt)
+            .ToListAsync(ct);
+
+    public async Task<IReadOnlyDictionary<Guid, string>> ListLeaveTypeNamesAsync(Guid tenantId, IReadOnlyCollection<Guid> leaveTypeIds, CancellationToken ct = default)
+    {
+        var ids = leaveTypeIds.ToList();
+        return await _db.LeaveTypes.AsNoTracking().Where(x => x.TenantId == tenantId && ids.Contains(x.Id))
+            .ToDictionaryAsync(x => x.Id, x => x.Name, ct);
+    }
+
+    public void RemoveApprover(LeaveRequestApprover approver) => _db.LeaveRequestApprovers.Remove(approver);
+
+    public async Task<IReadOnlyList<LeaveRequestDayAllocation>> ListActiveAllocationsAsync(Guid tenantId, Guid requestId, CancellationToken ct = default)
+        => await _db.LeaveRequestDayAllocations
+            .Where(x => x.TenantId == tenantId && x.LeaveRequestId == requestId && x.Status == LeaveRequestDayAllocationStatuses.Active)
+            .OrderBy(x => x.LeaveDate)
+            .ToListAsync(ct);
+
+    public async Task AddAllocationsAsync(IReadOnlyCollection<LeaveRequestDayAllocation> allocations, CancellationToken ct = default)
+        => await _db.LeaveRequestDayAllocations.AddRangeAsync(allocations, ct);
+
+    public async Task<IReadOnlyList<LeaveBalanceAudit>> ListBalanceAuditsSinceAsync(
+        Guid tenantId, Guid employeeId, Guid leaveTypeId, DateTimeOffset since, CancellationToken ct = default)
+        => await _db.LeaveBalanceAudits.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.EmployeeId == employeeId && x.LeaveTypeId == leaveTypeId && x.CreatedAt > since)
+            .OrderBy(x => x.CreatedAt)
+            .ToListAsync(ct);
+
     public Task SaveChangesAsync(CancellationToken ct = default) => _db.SaveChangesAsync(ct);
 }

@@ -9,16 +9,19 @@ namespace ONEVO.Infrastructure.ExternalServices.Calendar;
 public sealed class MicrosoftGraphMeetingClient(HttpClient httpClient, ILogger<MicrosoftGraphMeetingClient> logger) : ITeamsMeetingClient
 {
     public async Task<TeamsMeetingDto> CreateMeetingAsync(
-        string accessToken, string subject, DateTimeOffset start, DateTimeOffset end, CancellationToken ct)
+        string accessToken, string subject, DateTimeOffset start, DateTimeOffset end, CancellationToken ct,
+        IReadOnlyList<string>? attendeeEmails = null)
     {
+        var attendees = (attendeeEmails ?? []).Where(e => !string.IsNullOrWhiteSpace(e)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         using var request = new HttpRequestMessage(HttpMethod.Post, "https://graph.microsoft.com/v1.0/me/onlineMeetings");
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
         request.Content = JsonContent.Create(new
         {
             startDateTime = start.UtcDateTime.ToString("o"),
             endDateTime = end.UtcDateTime.ToString("o"),
-            subject
-        });
+            subject,
+            participants = attendees.Count == 0 ? null : new { attendees = attendees.Select(e => new { upn = e, role = "attendee" }).ToArray() }
+        }, options: new System.Text.Json.JsonSerializerOptions { DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull });
         using var response = await httpClient.SendAsync(request, ct);
         await EnsureSuccessOrLogAsync(response, "create online meeting", ct);
         using var stream = await response.Content.ReadAsStreamAsync(ct);

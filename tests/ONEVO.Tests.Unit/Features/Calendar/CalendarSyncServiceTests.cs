@@ -401,4 +401,60 @@ public sealed class CalendarSyncServiceTests
 
         Assert.Null(connection.DeltaLinkEncrypted);
     }
+
+    private CalendarSyncService BuildSutWithNotifications(Mock<ONEVO.Application.Features.Calendar.Services.ICalendarNotificationSender> notifications)
+    {
+        BuildSut();
+        return new CalendarSyncService(
+            _connections.Object, _links.Object, _events.Object, _tokenProvider.Object,
+            _googleClient.Object, _msClient.Object, _encryption.Object,
+            _unitOfWork.Object, NullLogger<CalendarSyncService>.Instance, notifications.Object);
+    }
+
+    [Theory]
+    [InlineData(ExternalCalendarConnectionStatuses.Active, true)]
+    [InlineData(ExternalCalendarConnectionStatuses.Failed, false)]
+    public async Task SyncConnectionAsync_TheRunThatTurnsAConnectionFailed_TellsItsOwnerOnce(string priorStatus, bool notified)
+    {
+        var notifications = new Mock<ONEVO.Application.Features.Calendar.Services.ICalendarNotificationSender>();
+        var sut = BuildSutWithNotifications(notifications);
+        var connection = MakeConnection(CalendarSyncDirections.PullOnly);
+        connection.FailureCount = 2;
+        connection.Status = priorStatus;
+        _connections.Setup(x => x.GetTrackedByIdForTenantAsync(TenantId, ConnectionId, It.IsAny<CancellationToken>())).ReturnsAsync(connection);
+        _googleClient.Setup(x => x.ListEventsAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<DateTimeOffset>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new HttpRequestException("rate limited"));
+
+        await sut.SyncConnectionAsync(TenantId, ConnectionId, CancellationToken.None);
+
+        notifications.Verify(n => n.NotifyConnectionProblemAsync(TenantId, connection.UserId, "Google Calendar", "failed", It.IsAny<CancellationToken>()),
+            notified ? Times.Once() : Times.Never());
+    }
+
+    [Fact]
+    public async Task SyncConnectionAsync_ANewTwoWayConflict_TellsTheOwner()
+    {
+        var notifications = new Mock<ONEVO.Application.Features.Calendar.Services.ICalendarNotificationSender>();
+        var sut = BuildSutWithNotifications(notifications);
+        var connection = MakeConnection(CalendarSyncDirections.TwoWay);
+        connection.LastSuccessfulSyncAt = DateTimeOffset.UtcNow.AddHours(-2);
+        _connections.Setup(x => x.GetTrackedByIdForTenantAsync(TenantId, ConnectionId, It.IsAny<CancellationToken>())).ReturnsAsync(connection);
+        var local = new CalendarEvent { Id = Guid.NewGuid(), TenantId = TenantId, Title = "Local edit", UpdatedAt = DateTimeOffset.UtcNow.AddHours(-1) };
+        var link = new ExternalCalendarEventLink
+        {
+            Id = Guid.NewGuid(), TenantId = TenantId, CalendarEventId = local.Id, ExternalCalendarConnectionId = ConnectionId, ExternalEventId = "ext-1",
+            ExternalEtag = "etag-old", SyncStatus = ExternalCalendarSyncStatuses.Synced,
+        };
+        _googleClient.Setup(x => x.ListEventsAsync("decrypted-token", "me@acme.com", null, It.IsAny<DateTimeOffset>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new GoogleCalendarPage(
+                [new GoogleCalendarEventDto("ext-1", "etag-new", "Remote edit", null, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddHours(1), false, "UTC", null, false, false)],
+                "sync-token-1"));
+        _links.Setup(x => x.GetTrackedByConnectionAndExternalEventAsync(TenantId, ConnectionId, "ext-1", It.IsAny<CancellationToken>())).ReturnsAsync(link);
+        _events.Setup(x => x.GetTrackedByIdForTenantAsync(TenantId, local.Id, It.IsAny<CancellationToken>())).ReturnsAsync(local);
+
+        await sut.SyncConnectionAsync(TenantId, ConnectionId, CancellationToken.None);
+
+        Assert.Equal(ExternalCalendarSyncStatuses.Conflict, link.SyncStatus);
+        notifications.Verify(n => n.NotifyConnectionProblemAsync(TenantId, connection.UserId, "Google Calendar", "sync_conflict", It.IsAny<CancellationToken>()), Times.Once);
+    }
 }
