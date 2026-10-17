@@ -192,20 +192,11 @@ public class MyDocumentsHandlerTests
     }
 
     [Fact]
-    public async Task Access_DeniesOthersWithoutEmployeesRead()
+    public async Task Access_AllowsOthersWithinCoverage_WithoutAnyPermission()
     {
+        // Relationship-based: managing the employee is the grant, no permission code needed.
         var other = Guid.NewGuid();
         GrantPermissions();
-        MakeVisible(other);
-
-        Assert.False(await Access().CanViewAsync(_tenantId, other));
-    }
-
-    [Fact]
-    public async Task Access_AllowsEmployeesReadWithinCoverage()
-    {
-        var other = Guid.NewGuid();
-        GrantPermissions("employees:read");
         _scopeResolver.Setup(r => r.ResolveAsync(_tenantId, _userId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(EmployeeVisibilityScope.Unrestricted());
         MakeVisible(other);
@@ -214,9 +205,21 @@ public class MyDocumentsHandlerTests
     }
 
     [Fact]
-    public async Task Access_DeniesEmployeesReadOutsideCoverage()
+    public async Task Access_AllowsOrgManageWithinCoverage()
     {
-        GrantPermissions("employees:read");
+        var other = Guid.NewGuid();
+        GrantPermissions("org:manage");
+        _scopeResolver.Setup(r => r.ResolveAsync(_tenantId, _userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(EmployeeVisibilityScope.Unrestricted());
+        MakeVisible(other);
+
+        Assert.True(await Access().CanViewAsync(_tenantId, other));
+    }
+
+    [Fact]
+    public async Task Access_DeniesOutsideCoverage()
+    {
+        GrantPermissions();
         _scopeResolver.Setup(r => r.ResolveAsync(_tenantId, _userId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(EmployeeVisibilityScope.Unrestricted());
 

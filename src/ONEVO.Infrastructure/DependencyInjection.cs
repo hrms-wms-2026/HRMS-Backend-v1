@@ -175,6 +175,8 @@ public static class DependencyInjection
         services.AddScoped<IUserRepository, EfUserRepository>();
         services.AddScoped<IRefreshTokenRepository, EfRefreshTokenRepository>();
         services.AddScoped<ISessionRepository, EfSessionRepository>();
+        services.AddScoped<ONEVO.Application.Features.Auth.UserAccounts.RepositoryInterfaces.IUserAccountRepository,
+            ONEVO.Infrastructure.Persistence.Repositories.Auth.UserAccounts.EfUserAccountRepository>();
         services.AddScoped<IPasswordResetTokenRepository, EfPasswordResetTokenRepository>();
         services.AddScoped<IUserMfaRepository, EfUserMfaRepository>();
         services.AddScoped<IRoleRepository, EfRoleRepository>();
@@ -463,6 +465,12 @@ public static class DependencyInjection
         services.AddScoped<
             ONEVO.Application.Features.CoreHr.Employee.Documents.IEmployeeDocumentAccess,
             ONEVO.Application.Features.CoreHr.Employee.Documents.EmployeeDocumentAccess>();
+        services.AddScoped<
+            ONEVO.Application.Features.CoreHr.Employee.Access.IEmployeeViewAccess,
+            ONEVO.Application.Features.CoreHr.Employee.Access.EmployeeViewAccess>();
+        services.AddScoped<
+            ONEVO.Application.Features.CoreHr.Employee.Access.IEmployeeInvitationAccess,
+            ONEVO.Application.Features.CoreHr.Employee.Access.EmployeeInvitationAccess>();
         services.AddScoped<ONEVO.Application.Features.Storage.EntityAssets.Services.EmployeeDocumentAccessPolicy>();
         services.AddScoped<
             ONEVO.Application.Features.Storage.EntityAssets.ServiceInterfaces.IPrimaryEntityAssetLinker,
@@ -745,6 +753,7 @@ public static class DependencyInjection
         services.AddScoped<ITrayActivationRepository, EfTrayActivationRepository>();
         services.AddScoped<IDeviceChangeRequestRepository, EfDeviceChangeRequestRepository>();
         services.AddSingleton<ITrayTokenService, TrayTokenService>();
+        services.AddScoped<IEmployeeOnlineStatusReader, EmployeeOnlineStatusReader>();
 
         // Monitoring - Check-In
         services.AddScoped<ICheckInRepository, EfCheckInRepository>();

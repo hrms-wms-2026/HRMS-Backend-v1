@@ -2,12 +2,14 @@ using MediatR;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Invite.RepositoryInterfaces;
+using ONEVO.Application.Features.CoreHr.Employee.Access;
 using ONEVO.Application.Features.CoreHr.Employee.DTOs.Responses;
 using ONEVO.Application.Features.CoreHr.Employee.Helpers;
 using ONEVO.Application.Features.CoreHr.Employee.Models;
 using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.OnboardingDrafts.RepositoryInterfaces;
+using ONEVO.Application.Features.Monitoring.TrayActivation.ServiceInterfaces;
 using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
 using ONEVO.Domain.Features.Auth.Entities;
@@ -37,6 +39,8 @@ public class GetEmployeeDetailQueryHandler : IRequestHandler<GetEmployeeDetailQu
     private readonly ILegalEntityRepository _legalEntities;
     private readonly IProjectMemberRepository _projectMembers;
     private readonly IPositionRepository? _positions;
+    private readonly IEmployeeOnlineStatusReader? _onlineStatus;
+    private readonly IEmployeeInvitationAccess? _invitationAccess;
 
     public GetEmployeeDetailQueryHandler(
         IEmployeeRepository employeeRepository,
@@ -49,7 +53,9 @@ public class GetEmployeeDetailQueryHandler : IRequestHandler<GetEmployeeDetailQu
         IEmploymentTypeRepository employmentTypes,
         ILegalEntityRepository legalEntities,
         IProjectMemberRepository projectMembers,
-        IPositionRepository? positions = null)
+        IPositionRepository? positions = null,
+        IEmployeeOnlineStatusReader? onlineStatus = null,
+        IEmployeeInvitationAccess? invitationAccess = null)
     {
         _employeeRepository = employeeRepository;
         _visibilityScopeResolver = visibilityScopeResolver;
@@ -62,6 +68,8 @@ public class GetEmployeeDetailQueryHandler : IRequestHandler<GetEmployeeDetailQu
         _legalEntities = legalEntities;
         _projectMembers = projectMembers;
         _positions = positions;
+        _onlineStatus = onlineStatus;
+        _invitationAccess = invitationAccess;
     }
 
     public async Task<Result<EmployeeDetailResponse>> Handle(GetEmployeeDetailQuery request, CancellationToken ct)
@@ -76,7 +84,20 @@ public class GetEmployeeDetailQueryHandler : IRequestHandler<GetEmployeeDetailQu
             ? EmployeeVisibilityScope.Unrestricted()
             : await _visibilityScopeResolver.ResolveAsync(tenantId, _currentUser.UserId, ct);
 
+        var invitation = await _invitationTokenRepository.GetLatestByEmployeeIdAsync(tenantId, request.EmployeeId, ct);
+
         var visible = await _employeeRepository.GetVisibleByIdAsync(tenantId, scope, request.EmployeeId, ct);
+        // The person who added an employee sees them in the list while the invite is open
+        // (ListInvitedPendingByInviterAsync) even without coverage, so they can open the detail
+        // too - that is where they resend or revoke it.
+        if (visible is null
+            && _invitationAccess is not null
+            && invitation is { UsedAt: null, RevokedAt: null }
+            && await _invitationAccess.ResolveInviterUserIdAsync(invitation, existing.CreatedById, ct) == _currentUser.UserId)
+        {
+            visible = await _employeeRepository.GetVisibleByIdAsync(
+                tenantId, EmployeeVisibilityScope.Unrestricted(), request.EmployeeId, ct);
+        }
         if (visible is null)
             return Result<EmployeeDetailResponse>.Forbidden("You do not have access to manage this employee.");
 
@@ -92,8 +113,6 @@ public class GetEmployeeDetailQueryHandler : IRequestHandler<GetEmployeeDetailQu
                 : BankAccountMasker.Mask(_encryption.Decrypt(bankDetail.AccountNumberEncrypted));
             payroll = new EmployeeDetailPayroll(bankDetail is not null, bankDetail?.BankName, maskedAccountNumber, bankDetail?.AccountType);
         }
-
-        var invitation = await _invitationTokenRepository.GetLatestByEmployeeIdAsync(tenantId, request.EmployeeId, ct);
 
         EmployeeListAttendanceSummaryResponse? attendanceSummary = null;
         if (_currentUser.HasPermission(AttendanceReadPermission))
@@ -147,13 +166,25 @@ public class GetEmployeeDetailQueryHandler : IRequestHandler<GetEmployeeDetailQu
             existing.Gender, existing.NationalityId,
             addresses.Select(a => new EmployeeDetailAddress(a.Id, a.AddressType, a.AddressJson, a.IsPrimary)).ToList());
 
+        var isOnline = _onlineStatus is not null
+            && (await _onlineStatus.GetOnlineEmployeeIdsAsync(_currentUser.TenantId, [request.EmployeeId], ct))
+                .Contains(request.EmployeeId);
+
+        // Resend/revoke are offered only while the invitation is still open, and only to the
+        // person who added the employee or users:manage - the same rule the commands enforce.
+        var canManageInvitation = _invitationAccess is not null
+            && invitation is { UsedAt: null, RevokedAt: null }
+            && await _invitationAccess.CanManageAsync(invitation, existing.CreatedById, ct);
+
         return Result<EmployeeDetailResponse>.Success(new EmployeeDetailResponse(
             request.EmployeeId, jobInformation, personalInformation,
             emergencyContacts.Select(c => new EmployeeDetailEmergencyContact(c.Id, c.Name, c.Relationship, c.Phone, c.Email, c.IsPrimary)).ToList(),
             payroll,
             InvitationStatusOf(invitation, _clock.UtcNow), invitation?.ExpiresAt,
             attendanceSummary,
-            projectMemberships));
+            projectMemberships,
+            isOnline,
+            canManageInvitation));
     }
 
     private static string? InvitationStatusOf(InvitationToken? invitation, DateTimeOffset now)

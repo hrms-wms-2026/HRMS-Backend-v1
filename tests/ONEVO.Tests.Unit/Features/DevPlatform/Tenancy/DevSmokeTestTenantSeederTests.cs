@@ -243,7 +243,7 @@ public sealed class DevSmokeTestTenantSeederTests : IDisposable
 
         codes.Should().BeEquivalentTo(
             [
-                "org:read", "org:manage", "employees:read", "employees:write", "roles:read",
+                "org:read", "org:manage", "employees:write", "roles:read",
                 "calendar:read", "leave:read", "leave:manage", "leave:approve"
             ]);
     }
@@ -262,7 +262,7 @@ public sealed class DevSmokeTestTenantSeederTests : IDisposable
         var codes = await RolePermissionCodesForAsync(verify, acmeTenant.Id, user.Id);
 
         codes.Should().BeEquivalentTo(
-            ["org:read", "employees:read", "projects:create"]);
+            ["org:read", "projects:create"]);
         codes.Should().NotContain("org:manage");
     }
 
