@@ -77,6 +77,10 @@ builder.Services.AddSingleton<ONEVO.Api.Hubs.TrayConnectionTracker>();
 builder.Services.AddSingleton<
     ONEVO.Application.Features.Monitoring.TrayActivation.ServiceInterfaces.ITrayConnectionPresence>(
     sp => sp.GetRequiredService<ONEVO.Api.Hubs.TrayConnectionTracker>());
+builder.Services.AddSingleton<ONEVO.Api.Middleware.WebActivityTracker>();
+builder.Services.AddSingleton<
+    ONEVO.Application.Features.Monitoring.TrayActivation.ServiceInterfaces.IWebActivityPresence>(
+    sp => sp.GetRequiredService<ONEVO.Api.Middleware.WebActivityTracker>());
 builder.Services.AddApiSwagger();
 builder.Services.AddApiCors(builder.Configuration);
 builder.Services.AddHealthChecks()
@@ -127,6 +131,7 @@ app.UseAuthentication();
 // Middleware removed as part of cookie auth migration
 app.UseMiddleware<CsrfProtectionMiddleware>();
 app.UseMiddleware<TenantEnforcementMiddleware>();
+app.UseMiddleware<ONEVO.Api.Middleware.WebActivityTrackingMiddleware>();
 app.UseMiddleware<TrayPresenceEnforcementMiddleware>();
 
 app.UseMiddleware<PermissionVersionMiddleware>();

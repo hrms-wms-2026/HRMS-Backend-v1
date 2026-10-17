@@ -5015,6 +5015,14 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("boolean")
                         .HasColumnName("password_set_by_admin");
 
+                    b.Property<DateTimeOffset?>("SuspendedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("suspended_at");
+
+                    b.Property<Guid?>("SuspendedById")
+                        .HasColumnType("uuid")
+                        .HasColumnName("suspended_by_id");
+
                     b.Property<DateTimeOffset?>("TemporaryPasswordExpiresAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("temporary_password_expires_at");

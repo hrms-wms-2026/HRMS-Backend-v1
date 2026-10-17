@@ -5,8 +5,8 @@ namespace ONEVO.Application.Features.Storage.EntityAssets.Services;
 
 /// <summary>
 /// Personal documents (CV, national ID, certificates) are NOT coverage-free like
-/// EmployeeEntityAssetAccessPolicy's avatars: readable by the owning employee, or by a caller with
-/// employees:read who has the employee in their management coverage (see EmployeeDocumentAccess).
+/// EmployeeEntityAssetAccessPolicy's avatars: readable by the owning employee, or by
+/// anyone who has the employee in their management coverage (see EmployeeDocumentAccess).
 /// </summary>
 public sealed class EmployeeDocumentAccessPolicy : IEntityAssetAccessPolicy
 {

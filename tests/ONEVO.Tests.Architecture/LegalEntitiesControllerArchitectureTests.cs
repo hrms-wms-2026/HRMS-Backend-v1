@@ -45,7 +45,8 @@ public class LegalEntitiesControllerArchitectureTests
     public void EveryAction_HasARequirePermissionAttribute()
     {
         var missing = ActionMethods()
-            .Where(m => m.GetCustomAttribute<RequirePermissionAttribute>() is null)
+            .Where(m => m.GetCustomAttribute<RequirePermissionAttribute>() is null
+                && m.GetCustomAttribute<RequireAnyPermissionAttribute>() is null)
             .Select(m => m.Name)
             .ToList();
 
@@ -62,10 +63,16 @@ public class LegalEntitiesControllerArchitectureTests
     }
 
     [Fact]
-    public void GetGeneralSettingsAction_UsesLegalEntityUpdate()
+    public void GetGeneralSettingsAction_UsesLegalEntityReadOrUpdate()
     {
         var method = ControllerType.GetMethod(nameof(LegalEntitiesController.GetGeneralSettings));
-        GetPermission(method!).Should().Be("legal_entity:update");
+        var attribute = method!.GetCustomAttribute<RequireAnyPermissionAttribute>();
+        Assert.NotNull(attribute);
+
+        var permissions = (string[])typeof(RequireAnyPermissionAttribute)
+            .GetField("_permissions", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .GetValue(attribute)!;
+        permissions.Should().BeEquivalentTo("legal_entity:read", "legal_entity:update");
     }
 
     [Fact]
@@ -93,7 +100,7 @@ public class LegalEntitiesControllerArchitectureTests
     public void NoAction_UsesOrgManage()
     {
         var offenders = ActionMethods()
-            .Select(GetPermission)
+            .SelectMany(GetPermissions)
             .Where(p => p == "org:manage")
             .ToList();
 
@@ -131,7 +138,7 @@ public class LegalEntitiesControllerArchitectureTests
     public void NoAction_UsesSettingsAdminPermission()
     {
         var offenders = ActionMethods()
-            .Select(GetPermission)
+            .SelectMany(GetPermissions)
             .Where(p => p == "settings:admin")
             .ToList();
 
@@ -172,5 +179,17 @@ public class LegalEntitiesControllerArchitectureTests
         var field = typeof(RequirePermissionAttribute)
             .GetField("_permission", BindingFlags.Instance | BindingFlags.NonPublic);
         return (string)field!.GetValue(attribute)!;
+    }
+
+    /// <summary>Every permission an action accepts, from RequirePermission or RequireAnyPermission.</summary>
+    private static IEnumerable<string> GetPermissions(MethodInfo method)
+    {
+        if (method.GetCustomAttribute<RequireAnyPermissionAttribute>() is { } any)
+        {
+            return (string[])typeof(RequireAnyPermissionAttribute)
+                .GetField("_permissions", BindingFlags.Instance | BindingFlags.NonPublic)!
+                .GetValue(any)!;
+        }
+        return [GetPermission(method)];
     }
 }

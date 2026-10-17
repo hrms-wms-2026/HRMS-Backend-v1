@@ -27,7 +27,7 @@ public class OnboardingDraftsController : ControllerBase
     /// <summary>List onboarding drafts. Defaults to the caller's own drafts unless they hold
     /// employees:write.</summary>
     [HttpGet]
-    [RequirePermission("employees:read")]
+    [RequirePermission("employees:write")]
     public async Task<IActionResult> List(
         [FromQuery] int page = 1, [FromQuery] int pageSize = 25, [FromQuery] bool mine = false, CancellationToken ct = default)
     {
@@ -73,7 +73,7 @@ public class OnboardingDraftsController : ControllerBase
     /// tenant, 403 if it exists but the caller neither started it nor holds
     /// employees:write.</summary>
     [HttpGet("{id:guid}")]
-    [RequirePermission("employees:read")]
+    [RequirePermission("employees:write")]
     public async Task<IActionResult> GetById(Guid id, CancellationToken ct = default)
     {
         var result = await _mediator.Send(new GetOnboardingDraftQuery(id), ct);

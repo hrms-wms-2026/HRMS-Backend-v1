@@ -11,14 +11,12 @@ public interface IEmployeeDocumentAccess
 }
 
 /// <summary>
-/// The owning employee always sees their own documents. Anyone else needs employees:read AND the
-/// employee inside their management coverage (org:manage is unrestricted) - the same gate as
-/// GetEmployeeDetail. View-only: upload/delete stay self-service.
+/// The owning employee always sees their own documents. Anyone else needs the employee inside
+/// their management coverage (org:manage is unrestricted) - the same relationship rule as
+/// GetEmployeeDetail, no permission code. View-only: upload/delete stay self-service.
 /// </summary>
 public sealed class EmployeeDocumentAccess : IEmployeeDocumentAccess
 {
-    public const string ViewPermission = "employees:read";
-
     private readonly Common.RepositoryInterfaces.IEmployeeRepository _employees;
     private readonly RepositoryInterfaces.IEmployeeRepository _visibleEmployees;
     private readonly IEmployeeVisibilityScopeResolver _scopeResolver;
@@ -44,9 +42,6 @@ public sealed class EmployeeDocumentAccess : IEmployeeDocumentAccess
         var self = await _employees.GetByUserIdAsync(tenantId, _currentUser.UserId, ct);
         if (self is not null && self.Id == employeeId)
             return true;
-
-        if (!_currentUser.HasPermission(ViewPermission))
-            return false;
 
         var scope = _currentUser.HasPermission("org:manage")
             ? EmployeeVisibilityScope.Unrestricted()

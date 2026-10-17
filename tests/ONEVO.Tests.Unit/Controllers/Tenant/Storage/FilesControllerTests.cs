@@ -30,7 +30,7 @@ public sealed class FilesControllerTests
         Assert.IsType<FileStreamResult>(result);
         Assert.Equal("private, max-age=900", controller.Response.Headers.CacheControl);
         Assert.Equal(etag, controller.Response.Headers.ETag);
-        Assert.Equal("Cookie", controller.Response.Headers.Vary);
+        Assert.Equal("Cookie, Origin", controller.Response.Headers.Vary);
         Assert.Equal("nosniff", controller.Response.Headers["X-Content-Type-Options"]);
         Assert.Equal(3, controller.Response.ContentLength);
     }
@@ -56,7 +56,7 @@ public sealed class FilesControllerTests
         Assert.Equal(StatusCodes.Status304NotModified, status.StatusCode);
         Assert.Equal("private, max-age=900", controller.Response.Headers.CacheControl);
         Assert.Equal(etag, controller.Response.Headers.ETag);
-        Assert.Equal("Cookie", controller.Response.Headers.Vary);
+        Assert.Equal("Cookie, Origin", controller.Response.Headers.Vary);
         Assert.Null(controller.Response.ContentLength);
     }
 

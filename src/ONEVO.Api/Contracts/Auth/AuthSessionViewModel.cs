@@ -33,5 +33,6 @@ public record AuthSessionViewModel(
     [property: JsonPropertyName("pending_legal_documents")] IReadOnlyList<PendingLegalDocumentViewModel>? PendingLegalDocuments = null,
     [property: JsonPropertyName("expires_at")] DateTimeOffset? ExpiresAt = null,
     [property: JsonPropertyName("continue_url")] string? ContinueUrl = null,
-    [property: JsonPropertyName("workspace")] WorkspaceViewModel? Workspace = null
+    [property: JsonPropertyName("workspace")] WorkspaceViewModel? Workspace = null,
+    [property: JsonPropertyName("manages_people")] bool ManagesPeople = false
 );
