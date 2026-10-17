@@ -148,9 +148,23 @@ public sealed class WorkModeDataMigrationTests : IAsyncLifetime
 
         await using (var context = CreateContext())
         {
-            context.AddRange(tenant, legalEntityWithPolicy, legalEntityWithoutPolicy,
-                userOnsite, userRemote, userHybrid,
-                employeeOnsite, employeeRemote, employeeHybrid, attendanceHybrid, attendanceField);
+            context.AddRange(tenant, legalEntityWithPolicy, legalEntityWithoutPolicy);
+            await context.SaveChangesAsync();
+        }
+
+        // Users go in via raw SQL: the compiled User model now includes suspended_at/suspended_by_id
+        // (AddUserSuspension, much later than PreBackfillMigration), so an EF INSERT would reference
+        // columns that don't exist yet at this pinned schema point.
+        await using (var connection = new NpgsqlConnection(_migratorConnectionString))
+        {
+            await connection.OpenAsync();
+            await SetAdminModeAsync(connection);
+            await HistoricalSchemaSeed.InsertUsersAsync(connection, userOnsite, userRemote, userHybrid);
+        }
+
+        await using (var context = CreateContext())
+        {
+            context.AddRange(employeeOnsite, employeeRemote, employeeHybrid, attendanceHybrid, attendanceField);
             await context.SaveChangesAsync();
         }
 
