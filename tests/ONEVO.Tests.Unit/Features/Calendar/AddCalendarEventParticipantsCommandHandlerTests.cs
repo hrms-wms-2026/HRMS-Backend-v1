@@ -92,7 +92,7 @@ public sealed class AddCalendarEventParticipantsCommandHandlerTests
         _notifications.Verify(n => n.NotifyParticipantsAddedAsync(
             TenantId, evt.Title, evt.StartDate, evt.Location,
             It.Is<IReadOnlyList<Guid>>(ids => ids.Single() == NewEmployeeId),
-            "Ada Owner", It.IsAny<CancellationToken>(), evt.MeetingLink), Times.Once);
+            "Ada Owner", It.IsAny<CancellationToken>(), evt.MeetingLink, true, It.IsAny<ONEVO.Application.Features.Calendar.Services.CalendarEventIcs?>()), Times.Once);
     }
 
     [Fact]
@@ -126,7 +126,7 @@ public sealed class AddCalendarEventParticipantsCommandHandlerTests
         _notifications.Verify(n => n.NotifyParticipantsAddedAsync(
             TenantId, evt.Title, evt.StartDate, evt.Location,
             It.Is<IReadOnlyList<Guid>>(ids => ids.Single() == NewEmployeeId),
-            "Ada Owner", It.IsAny<CancellationToken>(), evt.MeetingLink), Times.Once);
+            "Ada Owner", It.IsAny<CancellationToken>(), evt.MeetingLink, true, It.IsAny<ONEVO.Application.Features.Calendar.Services.CalendarEventIcs?>()), Times.Once);
     }
 
     [Fact]
@@ -159,7 +159,7 @@ public sealed class AddCalendarEventParticipantsCommandHandlerTests
         _notifications.Verify(n => n.NotifyParticipantsAddedAsync(
             TenantId, evt.Title, evt.StartDate, evt.Location,
             It.Is<IReadOnlyList<Guid>>(ids => ids.Count == 2 && ids.Contains(NewEmployeeId) && ids.Contains(brandNewEmployeeId)),
-            "Ada Owner", It.IsAny<CancellationToken>(), evt.MeetingLink), Times.Once);
+            "Ada Owner", It.IsAny<CancellationToken>(), evt.MeetingLink, true, It.IsAny<ONEVO.Application.Features.Calendar.Services.CalendarEventIcs?>()), Times.Once);
     }
 
     [Fact]
@@ -182,6 +182,6 @@ public sealed class AddCalendarEventParticipantsCommandHandlerTests
         _events.Verify(e => e.AddParticipantsAsync(It.IsAny<IReadOnlyList<CalendarEventParticipant>>(), It.IsAny<CancellationToken>()), Times.Never);
         _notifications.Verify(n => n.NotifyParticipantsAddedAsync(
             It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<DateTimeOffset>(), It.IsAny<string?>(),
-            It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<string>(), It.IsAny<CancellationToken>(), It.IsAny<string?>()), Times.Never);
+            It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<string>(), It.IsAny<CancellationToken>(), It.IsAny<string?>(), true, It.IsAny<ONEVO.Application.Features.Calendar.Services.CalendarEventIcs?>()), Times.Never);
     }
 }

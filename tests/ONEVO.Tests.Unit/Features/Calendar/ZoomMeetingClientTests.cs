@@ -170,4 +170,27 @@ public sealed class ZoomMeetingClientTests
         Assert.Equal("ada@acme.com", record.ParticipantEmail);
         Assert.NotNull(record.LeftAt);
     }
+
+    [Fact]
+    public async Task CreateMeetingAsync_AddsTheInvitedPeopleAsMeetingInvitees()
+    {
+        string? body = null;
+        var handler = new StubHandler(request =>
+        {
+            body = request.Content!.ReadAsStringAsync().GetAwaiter().GetResult();
+            return new HttpResponseMessage(HttpStatusCode.Created)
+            {
+                Content = JsonContent.Create(new { id = 987654321L, join_url = "https://us05web.zoom.us/j/987654321" })
+            };
+        });
+        var client = new ZoomMeetingClient(new HttpClient(handler), NullLogger<ZoomMeetingClient>.Instance);
+
+        await client.CreateMeetingAsync("access-token", "Sync", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddHours(1),
+            CancellationToken.None, ["ada@acme.com", "vendor@example.com"]);
+
+        using var doc = System.Text.Json.JsonDocument.Parse(body!);
+        var invitees = doc.RootElement.GetProperty("settings").GetProperty("meeting_invitees").EnumerateArray()
+            .Select(i => i.GetProperty("email").GetString()).ToList();
+        Assert.Equal(new[] { "ada@acme.com", "vendor@example.com" }, invitees);
+    }
 }

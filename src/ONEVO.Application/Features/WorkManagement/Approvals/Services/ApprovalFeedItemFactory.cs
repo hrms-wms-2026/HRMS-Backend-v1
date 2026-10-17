@@ -5,14 +5,12 @@ using ONEVO.Domain.Features.WorkManagement.ProjectInvitations.Entities;
 
 namespace ONEVO.Application.Features.WorkManagement.Approvals.Services;
 
-/// <summary>Everything the factory needs that must be loaded first. TaskModules maps a task id to its
-/// module; CommentCounts maps a subject id (request or invitation) to its comment count.</summary>
+/// <summary>Everything the factory needs that must be loaded first. TaskModules maps a task id to its module.</summary>
 internal sealed record ApprovalFeedLookup(
     ProjectModuleTree Tree,
     string ProjectName,
     IReadOnlyDictionary<Guid, string> Names,
-    IReadOnlyDictionary<Guid, Guid> TaskModules,
-    IReadOnlyDictionary<Guid, int> CommentCounts);
+    IReadOnlyDictionary<Guid, Guid> TaskModules);
 
 /// <summary>Builds Approvals-page rows for engine requests and module invitations. Shared by the feed and
 /// detail queries so a row looks the same in the list and in the explanation card.</summary>
@@ -51,7 +49,6 @@ internal static class ApprovalFeedItemFactory
             r.DecisionComment, r.CreatedAt, r.DecidedAt,
             CanDecide: pending && WorkApprovalDecisionRules.CanDecide(lookup.Tree, r, caller),
             CanCancel: pending && isSender && DateTimeOffset.UtcNow <= r.CreatedAt.AddMinutes(ApprovalRevertWindow.Minutes),
-            lookup.CommentCounts.GetValueOrDefault(r.Id),
             ApprovalSummaries.For(r, payload));
     }
 
@@ -72,7 +69,6 @@ internal static class ApprovalFeedItemFactory
             CanDecide: status == WorkApprovalRequestStatuses.Pending && i.InvitedEmployeeId == caller,
             CanCancel: status == WorkApprovalRequestStatuses.Pending && i.InvitedById == caller
                 && DateTimeOffset.UtcNow <= i.CreatedAt.AddMinutes(ApprovalRevertWindow.Minutes),
-            lookup.CommentCounts.GetValueOrDefault(i.Id),
             $"Invited as {i.InviteType}");
     }
 
@@ -85,12 +81,6 @@ internal static class ApprovalFeedItemFactory
         ProjectInvitationStatuses.Cancelled => WorkApprovalRequestStatuses.Cancelled,
         _ => WorkApprovalRequestStatuses.Pending
     };
-
-    /// <summary>Pending first, then newest first.</summary>
-    public static IReadOnlyList<ApprovalFeedItemResponse> Sort(IEnumerable<ApprovalFeedItemResponse> items)
-        => items.OrderBy(i => i.Status == WorkApprovalRequestStatuses.Pending ? 0 : 1)
-            .ThenByDescending(i => i.CreatedAt)
-            .ToList();
 
     private static Guid? ResolveModuleId(WorkApprovalRequest r, System.Text.Json.JsonElement? payload, ApprovalFeedLookup lookup)
     {

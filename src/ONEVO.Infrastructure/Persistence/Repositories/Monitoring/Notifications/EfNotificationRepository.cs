@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using ONEVO.Application.Features.Monitoring.Notifications.RepositoryInterfaces;
 using ONEVO.Domain.Features.Monitoring.Notifications.Entities;
+using ONEVO.Domain.Features.TimeAttendance.Alerts;
 
 namespace ONEVO.Infrastructure.Persistence.Repositories.Monitoring.Notifications;
 
@@ -9,6 +10,13 @@ public class EfNotificationRepository : INotificationRepository
     private readonly ApplicationDbContext _db;
 
     public EfNotificationRepository(ApplicationDbContext db) => _db = db;
+
+    /// <summary>Alert notifications a reviewer excused (or converted to leave) as an attendance alert stop counting
+    /// (plan E1): every count, list and "recent alert" lookback below reads through this.</summary>
+    private IQueryable<Notification> Counted() =>
+        _db.MonitoringNotifications.AsNoTracking().Where(n => !_db.AttendanceAlerts.Any(a =>
+            a.TenantId == n.TenantId && a.SourceId == n.Id
+            && (a.Outcome == AttendanceAlertOutcomes.Excused || a.Outcome == AttendanceAlertOutcomes.ConvertedToLeave)));
 
     public async Task AddAsync(Notification notification, CancellationToken ct)
         => await _db.MonitoringNotifications.AddAsync(notification, ct);
@@ -21,14 +29,14 @@ public class EfNotificationRepository : INotificationRepository
     public async Task<int> CountByTypeAsync(
         Guid tenantId, Guid employeeId, NotificationType type,
         DateTimeOffset fromUtc, DateTimeOffset toUtcExclusive, CancellationToken ct) =>
-        await _db.MonitoringNotifications.AsNoTracking().CountAsync(
+        await Counted().CountAsync(
             n => n.TenantId == tenantId && n.EmployeeId == employeeId && n.Type == type
                  && n.CreatedAt >= fromUtc && n.CreatedAt < toUtcExclusive, ct);
 
     public async Task<IReadOnlyList<Notification>> ListByTypesAsync(
         Guid tenantId, Guid employeeId, IReadOnlyCollection<NotificationType> types,
         DateTimeOffset fromUtc, DateTimeOffset toUtcExclusive, int take, CancellationToken ct) =>
-        await _db.MonitoringNotifications.AsNoTracking()
+        await Counted()
             .Where(n => n.TenantId == tenantId && n.EmployeeId == employeeId && types.Contains(n.Type)
                         && n.CreatedAt >= fromUtc && n.CreatedAt < toUtcExclusive)
             .OrderByDescending(n => n.CreatedAt)
@@ -69,8 +77,7 @@ public class EfNotificationRepository : INotificationRepository
     {
         if (employeeIds.Count == 0) return new HashSet<Guid>();
 
-        var matches = await _db.MonitoringNotifications
-            .AsNoTracking()
+        var matches = await Counted()
             .Where(n => n.TenantId == tenantId && employeeIds.Contains(n.EmployeeId)
                         && n.Type == type && n.CreatedAt >= sinceUtc)
             .Select(n => n.EmployeeId)

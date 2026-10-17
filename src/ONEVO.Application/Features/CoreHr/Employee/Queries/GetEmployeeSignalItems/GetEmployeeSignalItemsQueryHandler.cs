@@ -34,7 +34,8 @@ public sealed class GetEmployeeSignalItemsQueryHandler(
     IExceptionRepository exceptions,
     IExceptionScopeResolver exceptionScope,
     ICurrentUser currentUser,
-    IDateTimeProvider clock)
+    IDateTimeProvider clock,
+    ONEVO.Application.Features.Calendar.Exceptions.ICalendarIncidentRepository? incidents = null)
     : IRequestHandler<GetEmployeeSignalItemsQuery, Result<EmployeeSignalItemsResponse>>
 {
     public const int MaxItems = 50;
@@ -94,6 +95,27 @@ public sealed class GetEmployeeSignalItemsQueryHandler(
                     "exception_case", c.Id.ToString(), LocalDate(c.DetectedAt, data.Timezone), c.Title, c.Description,
                     OccurredAt: c.DetectedAt)).ToList();
                 return Result<EmployeeSignalItemsResponse>.Success(new(request.Key, total, data.Timezone.Id, items));
+            }
+            case "meeting_exceptions":
+            {
+                // The meetings behind the open calendar meeting-exception cases (plan C2) - meeting facts only, never
+                // application names or activity samples.
+                var scope = await exceptionScope.ResolveAsync(forAction: false, [request.EmployeeId], ct);
+                if (scope?.CanSee(request.EmployeeId) != true)
+                    return Hidden();
+                var data = await reader.LoadAsync(tenantId, request.EmployeeId, legalEntityId, period.Value, ct);
+                var total = await exceptions.CountDetectedInRangeAsync(tenantId, request.EmployeeId, utcStart, utcEnd, ct, calendar: true);
+                var cases = await exceptions.ListDetectedInRangeAsync(tenantId, request.EmployeeId, utcStart, utcEnd, MaxItems, ct, calendar: true);
+                var items = new List<EmployeeSignalItem>();
+                foreach (var c in cases)
+                {
+                    var rows = incidents is null ? [] : await incidents.ListForExceptionAsync(tenantId, c.Id, ct);
+                    items.AddRange(rows.Count == 0
+                        ? [new EmployeeSignalItem("meeting_incident", c.Id.ToString(), LocalDate(c.DetectedAt, data.Timezone), c.Title, c.Description, OccurredAt: c.DetectedAt)]
+                        : rows.Select(i => new EmployeeSignalItem("meeting_incident", i.Id.ToString(), LocalDate(i.OccurrenceStart, data.Timezone), c.Title,
+                            ONEVO.Application.Features.Calendar.Exceptions.CalendarIncidentEvidence.MeetingTitle(i.EvidenceJson), OccurredAt: i.OccurrenceStart)));
+                }
+                return Result<EmployeeSignalItemsResponse>.Success(new(request.Key, total, data.Timezone.Id, items.Take(MaxItems).ToList()));
             }
             case "overdue_tasks":
             {

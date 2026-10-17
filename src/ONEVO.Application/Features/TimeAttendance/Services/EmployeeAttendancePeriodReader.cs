@@ -4,6 +4,7 @@ using ONEVO.Application.Features.CoreHr.Employee.Helpers;
 using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
 using ONEVO.Application.Features.Leave.Request.RepositoryInterfaces;
 using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
+using ONEVO.Application.Features.TimeAttendance.Alerts;
 using ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces;
 
 namespace ONEVO.Application.Features.TimeAttendance.Services;
@@ -14,7 +15,8 @@ public sealed class EmployeeAttendancePeriodReader(
     ILegalEntityRepository legalEntities,
     IDateTimeProvider clock,
     IEmployeeRepository employees,
-    ICalendarEventRepository calendarEvents) : IEmployeeAttendancePeriodReader
+    ICalendarEventRepository calendarEvents,
+    IAttendanceAlertResolutionLookup? alertResolutions = null) : IEmployeeAttendancePeriodReader
 {
     // A 366-day period has at most 366 attendance rows.
     private const int MaxRecords = 400;
@@ -60,8 +62,12 @@ public sealed class EmployeeAttendancePeriodReader(
             weekdays, holidays, period.From, period.To,
             employee?.HireDate ?? period.From, employee?.TerminationDate, clock.Today);
 
+        // Days a reviewer excused (or converted to leave) as an attendance alert stop counting (plan E1).
+        var excused = alertResolutions is null ? null
+            : await alertResolutions.ExcusedDatesAsync(tenantId, employeeId, period.From, period.To, ct);
+
         return new AttendancePeriodData(
             records, timezone, now, clock.Today, legalEntity?.BreakDurationMinutes,
-            breakMinutesByDate, leaves, rangeStart, rangeEnd, workdays);
+            breakMinutesByDate, leaves, rangeStart, rangeEnd, workdays, excused);
     }
 }

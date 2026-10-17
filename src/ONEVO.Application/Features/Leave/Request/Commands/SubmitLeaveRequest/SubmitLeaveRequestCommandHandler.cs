@@ -1,6 +1,7 @@
 using MediatR;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.Inbox.Services;
 using ONEVO.Application.Features.Leave.Cancellation.Helpers;
 using ONEVO.Application.Features.Leave.Request.DTOs.Responses;
 using ONEVO.Application.Features.Leave.Request.Helpers;
@@ -20,19 +21,22 @@ public sealed class SubmitLeaveRequestCommandHandler
     private readonly LeaveRequestSubmissionEvaluator _evaluator;
     private readonly ILeaveRequestRepository _requests;
     private readonly LeaveRequestDayAllocationBuilder _allocationBuilder;
+    private readonly IInboxChangeNotifier? _inbox;
 
     public SubmitLeaveRequestCommandHandler(
         ICurrentUser currentUser,
         IDateTimeProvider clock,
         LeaveRequestSubmissionEvaluator evaluator,
         ILeaveRequestRepository requests,
-        LeaveRequestDayAllocationBuilder allocationBuilder)
+        LeaveRequestDayAllocationBuilder allocationBuilder,
+        IInboxChangeNotifier? inbox = null)
     {
         _currentUser = currentUser;
         _clock = clock;
         _evaluator = evaluator;
         _requests = requests;
         _allocationBuilder = allocationBuilder;
+        _inbox = inbox;
     }
 
     public async Task<Result<LeaveRequestResponse>> Handle(SubmitLeaveRequestCommand command, CancellationToken ct)
@@ -108,6 +112,12 @@ public sealed class SubmitLeaveRequestCommandHandler
             _currentUser.TenantId, requestId, allocationDrafts, now);
 
         var pendingBeforeSubmit = draft.Entitlement.PendingHours;
+
+        // The approvers' (and the employee's) open inboxes refresh once the request commits. Enqueued before the
+        // repository's SaveChanges so the outbox row lands in the same transaction.
+        if (_inbox is not null)
+            await _inbox.EnqueueAsync(_currentUser.TenantId,
+                approvers.Select(a => a.ApproverEmployeeId).Append(request.EmployeeId), InboxRefs.LeaveRequest(requestId), ct);
 
         try
         {

@@ -75,17 +75,19 @@ public sealed class NotificationTemplateSeederTests : IDisposable
         Assert.Contains("leave_request_cancelled_by_employee", codes);
         Assert.Contains("leave_request_cancelled_by_hr", codes);
         Assert.Contains("leave_request_partially_cancelled", codes);
+        Assert.Contains("leave_request_decision_undone", codes);
         Assert.Contains("face_verification_override", codes);
         Assert.Contains("work_task_status_change_request_created", codes);
         Assert.Contains("work_task_status_change_request_decided", codes);
         Assert.Contains("work_activity_recorded", codes);
         Assert.Contains("work_approval_requested", codes);
         Assert.Contains("work_approval_decided", codes);
-        Assert.Contains("work_approval_commented", codes);
         Assert.Contains("work_monitor_alert", codes);
         Assert.Contains("exception_alert_detected", codes);
         Assert.Contains("exception_alert_escalated", codes);
-        Assert.Equal(41, codes.Count);
+        Assert.Contains("conversation_member_added", codes);
+        Assert.Contains("conversation_mentioned", codes);
+        Assert.Equal(57, codes.Count);
         var expectedCodes = new[]
         {
             "work_task_creation_request_created",
@@ -103,8 +105,9 @@ public sealed class NotificationTemplateSeederTests : IDisposable
             "work_activity_recorded",
             "work_approval_requested",
             "work_approval_decided",
-            "work_approval_commented",
             "work_monitor_alert",
+            "conversation_member_added",
+            "conversation_mentioned",
             "leave_request_approved",
             "leave_request_rejected",
             "leave_request_information_requested",
@@ -128,7 +131,22 @@ public sealed class NotificationTemplateSeederTests : IDisposable
             "calendar_event_updated",
             "calendar_event_cancelled",
             "calendar_event_resolution_requested",
-            "calendar_event_replacement_nominated"
+            "calendar_event_replacement_nominated",
+            "calendar_event_rsvp_accepted",
+            "calendar_event_rsvp_rejected",
+            "calendar_event_replacement_nominee",
+            "calendar_event_participant_removed",
+            "calendar_event_meeting_link_removed",
+            "calendar_event_meeting_link_failed",
+            "calendar_connection_reauth_required",
+            "calendar_connection_failed",
+            "calendar_connection_sync_conflict",
+            "calendar_event_reminder",
+            "calendar_exception_detected",
+            "calendar_exception_raised_for_you",
+            "calendar_exception_escalated",
+            "work_monitor_alert_escalated",
+            "leave_request_decision_undone"
         };
 
         Assert.Equal(

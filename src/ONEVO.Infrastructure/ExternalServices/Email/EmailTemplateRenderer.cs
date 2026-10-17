@@ -35,7 +35,10 @@ public class EmailTemplateRenderer : IEmailTemplateRenderer
             "employee_onboarding_invite" => RenderEmployeeOnboardingInvite(fields),
             "position_change_approval_request" => RenderPositionChangeApprovalRequest(fields),
             "invoice_email" => RenderInvoiceEmail(fields),
-            "calendar_event_invite" => RenderCalendarEventInvite(fields),
+            "calendar_event_invite" => RenderCalendarEvent(fields, "invite"),
+            "calendar_event_updated" => RenderCalendarEvent(fields, "updated"),
+            "calendar_event_cancelled" => RenderCalendarEvent(fields, "cancelled"),
+            "calendar_event_removed" => RenderCalendarEvent(fields, "removed"),
             _ => throw new InvalidOperationException(
                 $"Unknown email template '{templateId}'. Add a case in EmailTemplateRenderer.")
         };
@@ -322,16 +325,24 @@ public class EmailTemplateRenderer : IEmailTemplateRenderer
         return builder.Uri.ToString();
     }
 
-    private RenderedEmail RenderCalendarEventInvite(IReadOnlyDictionary<string, object?> f)
+    /// <summary>The calendar emails (plan C1 P1-3): an invite, or an update / cancellation / removal of an event the recipient
+    /// was invited to. A cancelled or removed event offers no join link.</summary>
+    private RenderedEmail RenderCalendarEvent(IReadOnlyDictionary<string, object?> f, string kind)
     {
         var recipientName = Get(f, "recipientName");
         var eventTitle = Get(f, "eventTitle");
         var startDateUtc = FormatCalendarEventStart(Get(f, "startDateUtc"));
         var location = Get(f, "location");
         var organizerName = Get(f, "organizerName");
-        var meetingLink = Get(f, "meetingLink");
+        var meetingLink = kind is "cancelled" or "removed" ? "" : Get(f, "meetingLink");
 
-        var subject = $"You're invited: {eventTitle}";
+        var (subject, heading, intro, textIntro) = kind switch
+        {
+            "updated" => ($"Updated: {eventTitle}", "Event updated", $"{Escape(organizerName)} has updated the following event:", $"{organizerName} has updated \"{eventTitle}\"."),
+            "cancelled" => ($"Cancelled: {eventTitle}", "Event cancelled", $"{Escape(organizerName)} has cancelled the following event:", $"{organizerName} has cancelled \"{eventTitle}\"."),
+            "removed" => ($"Removed: {eventTitle}", "Removed from an event", $"{Escape(organizerName)} removed you from the following event:", $"{organizerName} removed you from \"{eventTitle}\"."),
+            _ => ($"You're invited: {eventTitle}", "Meeting invitation", $"{Escape(organizerName)} has invited you to the following event:", $"{organizerName} has invited you to \"{eventTitle}\"."),
+        };
         var whenRow = $"""<tr><td style="padding:4px 8px 4px 0; color:#64748b;">When</td><td style="padding:4px 0;">{Escape(startDateUtc)}</td></tr>""";
         var whereRow = string.IsNullOrWhiteSpace(location)
             ? ""
@@ -343,9 +354,9 @@ public class EmailTemplateRenderer : IEmailTemplateRenderer
             <!doctype html>
             <html>
               <body style="font-family: -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; line-height:1.5; color:#0f172a;">
-                <h2 style="margin:0 0 12px;">Meeting invitation</h2>
+                <h2 style="margin:0 0 12px;">{Escape(heading)}</h2>
                 <p>Hi {Escape(recipientName)},</p>
-                <p>{Escape(organizerName)} has invited you to the following event:</p>
+                <p>{intro}</p>
                 <p style="font-size:16px; font-weight:600; margin:16px 0 8px;">{Escape(eventTitle)}</p>
                 <table style="border-collapse:collapse; margin:0 0 16px;">
                   {whenRow}
@@ -360,7 +371,7 @@ public class EmailTemplateRenderer : IEmailTemplateRenderer
         var text = $"""
             Hi {recipientName},
 
-            {organizerName} has invited you to "{eventTitle}".
+            {textIntro}
 
             When: {startDateUtc}
             {(string.IsNullOrWhiteSpace(location) ? "" : $"Where: {location}\n")}{(string.IsNullOrWhiteSpace(meetingLink) ? "" : $"Join: {meetingLink}\n")}

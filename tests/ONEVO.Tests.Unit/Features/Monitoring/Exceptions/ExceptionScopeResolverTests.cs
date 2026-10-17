@@ -37,7 +37,8 @@ public class ExceptionScopeResolverTests
         _currentUser.Setup(u => u.HasPermission(It.IsAny<string>()))
             .Returns((string p) => permissions.Contains(p));
 
-    private ExceptionScopeResolver CreateSut() => new(_currentUser.Object, _employees.Object, _authority.Object);
+    private ExceptionScopeResolver CreateSut() => new(_currentUser.Object, _employees.Object, _authority.Object,
+        new ONEVO.Tests.Unit.Features.Inbox.InMemoryInboxDecisionJournal());
 
     [Fact]
     public async Task NoManagerHrOrExceptionPermission_ReturnsNull()

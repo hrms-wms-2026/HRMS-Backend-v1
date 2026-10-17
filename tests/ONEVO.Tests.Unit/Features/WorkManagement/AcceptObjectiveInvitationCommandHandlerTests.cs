@@ -1,3 +1,4 @@
+using ONEVO.Application.Features.Inbox.OutboxHandlers;
 using Moq;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
@@ -117,6 +118,11 @@ public class AcceptObjectiveInvitationCommandHandlerTests
         invitations.Verify(x => x.Update(It.Is<ProjectMemberInvitation>(i => i.Status == ProjectInvitationStatuses.Accepted)), Times.Once);
         outbox.Verify(x => x.EnqueueAsync(
             It.IsAny<string>(), It.IsAny<WorkNotificationPayload>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()), Times.Never);
+        outbox.Verify(x => x.EnqueueAsync(
+            OutboxMessageTypes.InboxChanged,
+            It.Is<InboxChangedPayload>(p => p.Source == "work" && p.Kind == "invitation" && p.Id == InvitationId
+                && p.EmployeeIds.Contains(InvitedEmployeeId)),
+            TenantId, It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]

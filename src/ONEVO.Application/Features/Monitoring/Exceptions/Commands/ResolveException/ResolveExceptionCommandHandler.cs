@@ -31,14 +31,17 @@ public class ResolveExceptionCommandHandler : IRequestHandler<ResolveExceptionCo
         if (scope is null)
             return Result.Forbidden("You do not have permission to resolve exceptions.");
 
-        if (exception is null || !scope.CanSee(exception.EmployeeId))
+        if (exception is null || !scope.CanAct(exception.Id, exception.EmployeeId))
             return Result.NotFound("Exception not found.");
+        if (request.Outcome is not null && !ExceptionOutcomes.IsValid(request.Outcome))
+            return Result.UnprocessableEntity("The outcome must be excused or confirmed.");
         if (exception.Status is ExceptionStatus.Resolved)
             return Result.Conflict("Exception is already resolved.");
 
         exception.Status = ExceptionStatus.Resolved;
         exception.ResolvedAt = _clock.UtcNow;
         exception.ResolvedById = _currentUser.UserId;
+        exception.Outcome = request.Outcome ?? ExceptionOutcomes.Confirmed;
         if (!string.IsNullOrWhiteSpace(request.Note))
             exception.ResolutionNote = request.Note.Trim();
         _exceptions.Update(exception);

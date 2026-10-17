@@ -5,6 +5,7 @@ using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Calendar.RepositoryInterfaces;
 using ONEVO.Application.Features.Calendar.ServiceInterfaces;
+using ONEVO.Application.Features.Calendar.Services;
 using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
 using ONEVO.Domain.Features.Calendar.Entities;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
@@ -79,6 +80,7 @@ public sealed class ZoomAttendanceSyncJob(IServiceProvider services, ILogger<Zoo
                         try
                         {
                             await SyncOneMeetingAsync(tenant.Id, meeting, connections, tokenProvider, zoomClient, attendances, meetings, unitOfWork, ct);
+                            await QueueEvaluationWhenSettledAsync(scope.ServiceProvider, tenant.Id, meeting, unitOfWork, ct);
                         }
                         catch (Exception ex)
                         {
@@ -96,6 +98,22 @@ public sealed class ZoomAttendanceSyncJob(IServiceProvider services, ILogger<Zoo
         }
     }
 
+    /// <summary>Once the report settled (synced, or unavailable at the cutoff) the meeting's participants are re-evaluated
+    /// against the attendance rules (plan C2 post-meeting trigger).</summary>
+    private static async Task QueueEvaluationWhenSettledAsync(
+        IServiceProvider services, Guid tenantId, CalendarEventMeeting meeting, IUnitOfWork unitOfWork, CancellationToken ct)
+    {
+        if (meeting.LastAttendanceSyncedAt is null && meeting.AttendanceUnavailableAt is null)
+            return;
+        if (services.GetService<ICalendarNotificationSender>() is not { } sender || services.GetService<ICalendarEventRepository>() is not { } events)
+            return;
+        var participants = await events.GetParticipantsForEventsAsync(tenantId, [meeting.CalendarEventId], ct);
+        if (participants is null || !participants.TryGetValue(meeting.CalendarEventId, out var list) || list.Count == 0)
+            return;
+        await sender.QueueIncidentEvaluationAsync(tenantId, list.Select(p => p.EmployeeId).ToList(), ct);
+        await unitOfWork.SaveChangesAsync(ct);
+    }
+
     private static async Task SyncOneMeetingAsync(
         Guid tenantId, CalendarEventMeeting meeting,
         IExternalCalendarConnectionRepository connections, ICalendarConnectionTokenProvider tokenProvider,
@@ -111,6 +129,18 @@ public sealed class ZoomAttendanceSyncJob(IServiceProvider services, ILogger<Zoo
             return; // reauth required - retried automatically next run once the connection is fixed
 
         var records = await zoomClient.GetAttendanceAsync(accessToken, meeting.ExternalMeetingId, ct);
+        var now = DateTimeOffset.UtcNow;
+        switch (CalendarAttendanceSyncPolicy.Decide(records.Count, await meetings.GetEventEndAsync(tenantId, meeting.CalendarEventId, ct), now))
+        {
+            case CalendarAttendanceSyncOutcome.RetryLater:
+                return; // no report yet - the meeting stays due and is retried next run
+            case CalendarAttendanceSyncOutcome.Unavailable:
+                meeting.AttendanceUnavailableAt = now;
+                meetings.Update(meeting);
+                await unitOfWork.SaveChangesAsync(ct);
+                return;
+        }
+
         var toAdd = records.Select(r => new CalendarEventMeetingAttendance
         {
             Id = Guid.NewGuid(), TenantId = tenantId, CalendarEventMeetingId = meeting.Id,

@@ -22,7 +22,9 @@ public sealed record RequestAttendanceCorrectionCommand(
     string Reason,
     string? Notes) : IRequest<Result<AttendanceCorrectionResponse>>;
 
-public sealed record ApproveAttendanceCorrectionCommand(Guid Id, string? ReviewComment)
+/// <summary><see cref="EditedValues"/>: the approver's changed times/breaks (edit before approve), validated with the same
+/// rules as a new request; null approves the values as requested.</summary>
+public sealed record ApproveAttendanceCorrectionCommand(Guid Id, string? ReviewComment, AttendanceCorrectionEditedValues? EditedValues = null)
     : IRequest<Result<AttendanceCorrectionResponse>>;
 
 public sealed record RejectAttendanceCorrectionCommand(Guid Id, string? ReviewComment)
@@ -35,3 +37,8 @@ public sealed record AttendanceCorrectionInputBreak(
     DateTimeOffset BreakStart,
     DateTimeOffset BreakEnd,
     string BreakType);
+
+public sealed record AttendanceCorrectionEditedValues(
+    DateTimeOffset? ClockInAt,
+    DateTimeOffset? ClockOutAt,
+    IReadOnlyList<AttendanceCorrectionInputBreak>? Breaks);

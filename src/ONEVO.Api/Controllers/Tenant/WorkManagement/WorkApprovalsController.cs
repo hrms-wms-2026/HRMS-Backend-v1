@@ -2,14 +2,9 @@ using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ONEVO.Api.Filters;
-using ONEVO.Application.Features.WorkManagement.Approvals.Comments.Commands.CreateApprovalComment;
-using ONEVO.Application.Features.WorkManagement.Approvals.Comments.Commands.EditApprovalComment;
-using ONEVO.Application.Features.WorkManagement.Approvals.Comments.Commands.ReplyApprovalComment;
-using ONEVO.Application.Features.WorkManagement.Approvals.Comments.Queries.ListApprovalComments;
 using ONEVO.Application.Features.WorkManagement.Approvals.Commands.DecideWorkApprovalRequest;
 using ONEVO.Application.Features.WorkManagement.Approvals.Commands.RevertWorkApprovalRequest;
 using ONEVO.Application.Features.WorkManagement.Approvals.Queries.GetApprovalDetail;
-using ONEVO.Application.Features.WorkManagement.Approvals.Queries.GetProjectApprovalFeed;
 using ONEVO.Application.Features.WorkManagement.Approvals.Queries.ListProjectWorkApprovals;
 using ONEVO.Application.Features.WorkManagement.Notifications.Queries.ListProjectWorkNotifications;
 
@@ -17,11 +12,9 @@ namespace ONEVO.Api.Controllers.Tenant.WorkManagement;
 
 public sealed record ApproveWorkApprovalRequestRequest(string? EditedPayloadJson, string? Comment);
 public sealed record RejectWorkApprovalRequestRequest(string? Comment);
-public sealed record CreateApprovalCommentRequest(string SubjectType, Guid SubjectId, string Content);
-public sealed record ApprovalCommentContentRequest(string Content);
 
-/// <summary>The unified Work Management approval inbox and project notification history, backed by
-/// the approval and notification engines.</summary>
+/// <summary>Decisions on Work Management approval requests (the request list itself is the Inbox, api/v1/inbox)
+/// and the project notification history, backed by the approval and notification engines.</summary>
 [ApiController]
 [Route("api/v1/work")]
 [Authorize(Policy = "TenantPolicy")]
@@ -35,11 +28,6 @@ public class WorkApprovalsController : ControllerBase
     [HttpGet("projects/{projectId:guid}/approvals")]
     public async Task<IActionResult> List(Guid projectId, [FromQuery] string scope = "inbox", [FromQuery] string? status = null, CancellationToken ct = default)
         => ToResult(await _mediator.Send(new ListProjectWorkApprovalsQuery(projectId, scope, status), ct));
-
-    /// <summary>Every request the caller sent or received in this project (engine requests + module invitations), pending first.</summary>
-    [HttpGet("projects/{projectId:guid}/approval-feed")]
-    public async Task<IActionResult> Feed(Guid projectId, CancellationToken ct)
-        => ToResult(await _mediator.Send(new GetProjectApprovalFeedQuery(projectId), ct));
 
     /// <summary>The explanation card of one row: field diff (current / requested / applied), invitation detail, permissions.</summary>
     [HttpGet("approvals/{id:guid}")]
@@ -61,23 +49,6 @@ public class WorkApprovalsController : ControllerBase
     [HttpPost("approvals/{id:guid}/revert")]
     public async Task<IActionResult> Revert(Guid id, CancellationToken ct)
         => ToResult(await _mediator.Send(new RevertWorkApprovalRequestCommand(id), ct));
-
-    /// <summary>The comment thread of an approval request (subjectType=approval) or module invitation (subjectType=invitation).</summary>
-    [HttpGet("approval-comments")]
-    public async Task<IActionResult> Comments([FromQuery] string subjectType, [FromQuery] Guid subjectId, CancellationToken ct)
-        => ToResult(await _mediator.Send(new ListApprovalCommentsQuery(subjectType, subjectId), ct));
-
-    [HttpPost("approval-comments")]
-    public async Task<IActionResult> CreateComment([FromBody] CreateApprovalCommentRequest body, CancellationToken ct)
-        => ToResult(await _mediator.Send(new CreateApprovalCommentCommand(body.SubjectType, body.SubjectId, body.Content), ct));
-
-    [HttpPost("approval-comments/{id:guid}/replies")]
-    public async Task<IActionResult> Reply(Guid id, [FromBody] ApprovalCommentContentRequest body, CancellationToken ct)
-        => ToResult(await _mediator.Send(new ReplyApprovalCommentCommand(id, body.Content), ct));
-
-    [HttpPatch("approval-comments/{id:guid}")]
-    public async Task<IActionResult> EditComment(Guid id, [FromBody] ApprovalCommentContentRequest body, CancellationToken ct)
-        => ToResult(await _mediator.Send(new EditApprovalCommentCommand(id, body.Content), ct));
 
     [HttpGet("projects/{projectId:guid}/work-notifications")]
     public async Task<IActionResult> Notifications(Guid projectId, [FromQuery] int page = 1, CancellationToken ct = default)

@@ -201,6 +201,19 @@ public class EfTrayActivationRepository : ITrayActivationRepository
                 .SetProperty(d => d.DeactivatedAt, deactivatedAt), ct);
     }
 
+    public async Task ReactivateDeviceAsync(Guid deviceRegistrationId, CancellationToken ct)
+    {
+        await _db.TrayDeviceRegistrations
+            .Where(d => d.Id == deviceRegistrationId)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(d => d.IsActive, true)
+                .SetProperty(d => d.DeactivatedAt, (DateTimeOffset?)null), ct);
+    }
+
+    public async Task<TrayDeviceRegistration?> FindDeviceAsync(Guid deviceRegistrationId, Guid tenantId, CancellationToken ct)
+        => await _db.TrayDeviceRegistrations.AsNoTracking()
+            .FirstOrDefaultAsync(d => d.Id == deviceRegistrationId && d.TenantId == tenantId, ct);
+
     public async Task<TrayEmployeeProfile?> FindEmployeeProfileAsync(
         Guid userId, Guid tenantId, Guid? legalEntityId, CancellationToken ct)
     {

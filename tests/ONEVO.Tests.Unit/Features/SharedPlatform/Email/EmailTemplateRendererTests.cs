@@ -408,4 +408,32 @@ public sealed class EmailTemplateRendererTests
         rendered.HtmlBody.Should().NotContain("Join meeting");
         rendered.TextBody.Should().NotContain("Join:");
     }
+
+    [Theory]
+    [InlineData("calendar_event_updated", "Updated: Deployment Meeting", "has updated")]
+    [InlineData("calendar_event_cancelled", "Cancelled: Deployment Meeting", "has cancelled")]
+    [InlineData("calendar_event_removed", "Removed: Deployment Meeting", "removed you from")]
+    public void RenderCalendarEventChange_SaysWhatHappenedInSubjectAndBothBodies(string template, string subject, string phrase)
+    {
+        var renderer = new EmailTemplateRenderer(Options.Create(new EmailOptions()));
+
+        var rendered = renderer.Render(template, new
+        {
+            recipientName = "Ada Lovelace",
+            eventTitle = "Deployment Meeting",
+            startDateUtc = "2026-09-29T14:45:00Z",
+            location = "Room 4",
+            organizerName = "Dapi Owner",
+            meetingLink = "https://us05web.zoom.us/j/123456789"
+        });
+
+        rendered.Subject.Should().Be(subject);
+        rendered.HtmlBody.Should().Contain(phrase).And.Contain("Tuesday, September 29, 2026 at 2:45 PM UTC").And.Contain("Room 4");
+        rendered.TextBody.Should().Contain(phrase);
+        // A cancelled or removed event offers no join link.
+        if (template == "calendar_event_updated")
+            rendered.HtmlBody.Should().Contain("https://us05web.zoom.us/j/123456789");
+        else
+            rendered.HtmlBody.Should().NotContain("https://us05web.zoom.us/j/123456789");
+    }
 }
