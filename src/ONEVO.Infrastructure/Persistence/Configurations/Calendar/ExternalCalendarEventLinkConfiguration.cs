@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using ONEVO.Domain.Features.Calendar.Entities;
+using ONEVO.Domain.Features.WorkManagement.Meetings.Entities;
 
 namespace ONEVO.Infrastructure.Persistence.Configurations.Calendar;
 
@@ -27,5 +28,12 @@ public class ExternalCalendarEventLinkConfiguration : IEntityTypeConfiguration<E
         builder.HasIndex(l => new { l.ExternalCalendarConnectionId, l.ExternalEventId })
             .IsUnique()
             .HasDatabaseName("ix_external_calendar_event_links_one_per_connection_event");
+
+        // A pushed meeting occurrence has one link per connection (spec 5.10).
+        builder.HasIndex(l => new { l.MeetingTaskId, l.ExternalCalendarConnectionId })
+            .IsUnique()
+            .HasFilter("meeting_task_id IS NOT NULL")
+            .HasDatabaseName("ux_external_calendar_event_links_meeting_task_connection");
+        builder.HasOne<MeetingDetails>().WithMany().HasForeignKey(l => l.MeetingTaskId).OnDelete(DeleteBehavior.Restrict);
     }
 }

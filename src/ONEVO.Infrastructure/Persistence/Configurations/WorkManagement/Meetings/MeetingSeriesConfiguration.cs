@@ -1,6 +1,8 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
+using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.WorkManagement.Meetings.Entities;
+using ONEVO.Domain.Features.WorkManagement.Objectives.Entities;
 
 namespace ONEVO.Infrastructure.Persistence.Configurations.WorkManagement.Meetings;
 
@@ -29,5 +31,11 @@ public class MeetingSeriesConfiguration : IEntityTypeConfiguration<MeetingSeries
             .HasDatabaseName("ix_meeting_series_organizer");
         builder.HasIndex(s => new { s.TenantId, s.SplitFromSeriesId })
             .HasDatabaseName("ix_meeting_series_split_from");
+
+        // Plain FKs let EF order inserts; AddMeetingWorkItemsFoundation adds the tenant-composite FKs on top
+        // (the placement FK is (tenant_id, project_id, objective_id) -> objectives).
+        builder.HasOne<Objective>().WithMany().HasForeignKey(s => s.ObjectiveId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne<Employee>().WithMany().HasForeignKey(s => s.OrganizerEmployeeId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne<MeetingSeries>().WithMany().HasForeignKey(s => s.SplitFromSeriesId).OnDelete(DeleteBehavior.Restrict);
     }
 }

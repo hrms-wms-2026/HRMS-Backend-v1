@@ -1,6 +1,8 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
+using ONEVO.Domain.Features.Calendar.Entities;
 using ONEVO.Domain.Features.WorkManagement.Meetings.Entities;
+using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
 
 namespace ONEVO.Infrastructure.Persistence.Configurations.WorkManagement.Meetings;
 
@@ -27,5 +29,10 @@ public class MeetingDetailsConfiguration : IEntityTypeConfiguration<MeetingDetai
             .HasDatabaseName("ix_meeting_details_attendance_due");
         builder.HasIndex(d => new { d.TenantId, d.CalendarEventMeetingId })
             .HasDatabaseName("ix_meeting_details_calendar_event_meeting");
+
+        // Plain FKs let EF order inserts; the migration adds the tenant-composite FKs on top.
+        builder.HasOne<WorkTask>().WithOne().HasForeignKey<MeetingDetails>(d => d.TaskId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne<MeetingSeries>().WithMany().HasForeignKey(d => d.SeriesId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne<CalendarEventMeeting>().WithMany().HasForeignKey(d => d.CalendarEventMeetingId).OnDelete(DeleteBehavior.Restrict);
     }
 }

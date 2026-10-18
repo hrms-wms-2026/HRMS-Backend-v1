@@ -1,5 +1,4 @@
 using Microsoft.EntityFrameworkCore;
-using ONEVO.Domain.Features.InfrastructureModule.Entities;
 using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
 using ONEVO.Infrastructure.Persistence.Repositories.WorkManagement;
 using ONEVO.Tests.Integration.MyTeam;
@@ -14,23 +13,14 @@ public sealed class ExcludeMeetingsIntegrationTests
     private static async Task<(MyTeamDb H, WorkTask Standard, WorkTask Meeting, WorkTask OtherTenantsMeeting)> SeedAsync()
     {
         var h = await MyTeamDb.CreateAsync();
+        var other = await h.AddTenantAsync();
         await using var db = h.NewContext();
-        var lead = h.AddEmployee(db);
-        var (projectId, rootId) = h.AddProject(db, lead.Id);
-        var statusId = h.AddStatus(db, projectId, marksComplete: false);
-        var standard = h.AddTask(db, projectId, rootId, statusId, progress: 0, due: null);
-        var meeting = h.AddTask(db, projectId, rootId, statusId, progress: 0, due: null);
-        meeting.TaskKind = WorkTaskKinds.Meeting;
+        var at = h.AddPlacement(db);
+        var standard = h.AddTask(db, at.ProjectId, at.ObjectiveId, at.StatusId, progress: 0, due: null);
+        var (meeting, _) = h.AddOccurrence(db, h.AddSeries(db, at), at);
 
-        var otherTenant = new Tenant
-        {
-            Id = Guid.NewGuid(), Name = "Other", Slug = $"other-{Guid.NewGuid():N}"[..20],
-            CompanySizeRange = "1-10", Status = TenantStatus.Active,
-        };
-        db.Tenants.Add(otherTenant);
-        var otherMeeting = h.AddTask(db, projectId, rootId, statusId, progress: 0, due: null);
-        otherMeeting.TenantId = otherTenant.Id;
-        otherMeeting.TaskKind = WorkTaskKinds.Meeting;
+        var otherAt = other.AddPlacement(db);
+        var (otherMeeting, _) = other.AddOccurrence(db, other.AddSeries(db, otherAt), otherAt);
         await db.SaveChangesAsync();
         return (h, standard, meeting, otherMeeting);
     }

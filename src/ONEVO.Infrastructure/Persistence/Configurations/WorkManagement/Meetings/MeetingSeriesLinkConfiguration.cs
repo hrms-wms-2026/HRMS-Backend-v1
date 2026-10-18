@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
+using ONEVO.Domain.Features.Calendar.Entities;
 using ONEVO.Domain.Features.WorkManagement.Meetings.Entities;
 
 namespace ONEVO.Infrastructure.Persistence.Configurations.WorkManagement.Meetings;
@@ -24,5 +25,8 @@ public class MeetingSeriesLinkConfiguration : IEntityTypeConfiguration<MeetingSe
         builder.HasIndex(l => new { l.TenantId, l.CalendarEventMeetingId })
             .HasFilter("released_at IS NULL")
             .HasDatabaseName("ix_meeting_series_links_active_by_link");
+
+        builder.HasOne<MeetingSeries>().WithMany().HasForeignKey(l => l.SeriesId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne<CalendarEventMeeting>().WithMany().HasForeignKey(l => l.CalendarEventMeetingId).OnDelete(DeleteBehavior.Restrict);
     }
 }

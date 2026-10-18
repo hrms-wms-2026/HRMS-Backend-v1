@@ -1421,9 +1421,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("character varying(255)")
                         .HasColumnName("email");
 
-                    b.Property<Guid>("EventId")
+                    b.Property<Guid?>("EventId")
                         .HasColumnType("uuid")
                         .HasColumnName("event_id");
+
+                    b.Property<Guid?>("MeetingSeriesId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("meeting_series_id");
 
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uuid")
@@ -1432,9 +1436,17 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasKey("Id")
                         .HasName("pk_calendar_event_guests");
 
+                    b.HasIndex("MeetingSeriesId")
+                        .HasDatabaseName("ix_calendar_event_guests_meeting_series_id");
+
                     b.HasIndex("TenantId", "EventId", "Email")
                         .IsUnique()
                         .HasDatabaseName("ix_calendar_event_guests_one_row_per_email");
+
+                    b.HasIndex("TenantId", "MeetingSeriesId", "Email")
+                        .IsUnique()
+                        .HasDatabaseName("ux_calendar_event_guests_series_email")
+                        .HasFilter("meeting_series_id IS NOT NULL");
 
                     b.ToTable("calendar_event_guests", (string)null);
                 });
@@ -1459,7 +1471,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("attendance_unavailable_at");
 
-                    b.Property<Guid>("CalendarEventId")
+                    b.Property<Guid?>("CalendarEventId")
                         .HasColumnType("uuid")
                         .HasColumnName("calendar_event_id");
 
@@ -1506,6 +1518,14 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)")
                         .HasColumnName("organizer_join_url");
+
+                    b.Property<string>("OwnerKind")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasDefaultValue("calendar_event")
+                        .HasColumnName("owner_kind");
 
                     b.Property<string>("PasscodeOrPin")
                         .HasMaxLength(50)
@@ -1556,6 +1576,10 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<Guid?>("AttendanceSessionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("attendance_session_id");
+
                     b.Property<Guid>("CalendarEventMeetingId")
                         .HasColumnType("uuid")
                         .HasColumnName("calendar_event_meeting_id");
@@ -1590,6 +1614,15 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("left_at");
 
+                    b.Property<Guid?>("OccurrenceTaskId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("occurrence_task_id");
+
+                    b.Property<string>("ParticipantKey")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("participant_key");
+
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uuid")
                         .HasColumnName("tenant_id");
@@ -1597,8 +1630,19 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasKey("Id")
                         .HasName("pk_calendar_event_meeting_attendances");
 
+                    b.HasIndex("OccurrenceTaskId")
+                        .HasDatabaseName("ix_calendar_event_meeting_attendances_occurrence_task_id");
+
                     b.HasIndex("TenantId", "CalendarEventMeetingId")
                         .HasDatabaseName("ix_calendar_event_meeting_attendances_tenant_id_meeting_id");
+
+                    b.HasIndex("TenantId", "OccurrenceTaskId")
+                        .HasDatabaseName("ix_calendar_event_meeting_attendances_occurrence");
+
+                    b.HasIndex("AttendanceSessionId", "ParticipantKey", "JoinedAt")
+                        .IsUnique()
+                        .HasDatabaseName("ux_calendar_event_meeting_attendances_session_participant_joined")
+                        .HasFilter("attendance_session_id IS NOT NULL");
 
                     b.ToTable("calendar_event_meeting_attendances", (string)null);
                 });
@@ -1626,13 +1670,17 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("employee_id");
 
-                    b.Property<Guid>("EventId")
+                    b.Property<Guid?>("EventId")
                         .HasColumnType("uuid")
                         .HasColumnName("event_id");
 
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("boolean")
                         .HasColumnName("is_deleted");
+
+                    b.Property<Guid?>("MeetingSeriesId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("meeting_series_id");
 
                     b.Property<DateTimeOffset?>("RespondedAt")
                         .HasColumnType("timestamp with time zone")
@@ -1661,12 +1709,20 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasKey("Id")
                         .HasName("pk_calendar_event_participants");
 
+                    b.HasIndex("MeetingSeriesId")
+                        .HasDatabaseName("ix_calendar_event_participants_meeting_series_id");
+
                     b.HasIndex("TenantId", "EmployeeId")
                         .HasDatabaseName("ix_calendar_event_participants_tenant_id_employee_id");
 
                     b.HasIndex("TenantId", "EventId", "EmployeeId")
                         .IsUnique()
                         .HasDatabaseName("ix_calendar_event_participants_one_row_per_employee");
+
+                    b.HasIndex("TenantId", "MeetingSeriesId", "EmployeeId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_calendar_event_participants_series_employee")
+                        .HasFilter("meeting_series_id IS NOT NULL");
 
                     b.ToTable("calendar_event_participants", (string)null);
                 });
@@ -2002,7 +2058,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
-                    b.Property<Guid>("CalendarEventId")
+                    b.Property<Guid?>("CalendarEventId")
                         .HasColumnType("uuid")
                         .HasColumnName("calendar_event_id");
 
@@ -2039,6 +2095,10 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("last_synced_at");
 
+                    b.Property<Guid?>("MeetingTaskId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("meeting_task_id");
+
                     b.Property<string>("Provider")
                         .IsRequired()
                         .HasMaxLength(30)
@@ -2071,6 +2131,11 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasIndex("ExternalCalendarConnectionId", "ExternalEventId")
                         .IsUnique()
                         .HasDatabaseName("ix_external_calendar_event_links_one_per_connection_event");
+
+                    b.HasIndex("MeetingTaskId", "ExternalCalendarConnectionId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_external_calendar_event_links_meeting_task_connection")
+                        .HasFilter("meeting_task_id IS NOT NULL");
 
                     b.HasIndex("TenantId", "CalendarEventId")
                         .HasDatabaseName("ix_external_calendar_event_links_tenant_id_calendar_event_id");
@@ -10127,6 +10192,33 @@ namespace ONEVO.Infrastructure.Migrations
                     b.ToTable("tenant_subscriptions", (string)null);
                 });
 
+            modelBuilder.Entity("ONEVO.Domain.Features.SharedPlatform.Jobs.Entities.JobLease", b =>
+                {
+                    b.Property<string>("JobName")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("job_name");
+
+                    b.Property<DateTimeOffset>("HeartbeatAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("heartbeat_at");
+
+                    b.Property<DateTimeOffset>("LeaseUntil")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("lease_until");
+
+                    b.Property<string>("OwnerInstanceId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("owner_instance_id");
+
+                    b.HasKey("JobName")
+                        .HasName("pk_job_leases");
+
+                    b.ToTable("job_leases", (string)null);
+                });
+
             modelBuilder.Entity("ONEVO.Domain.Features.SharedPlatform.Notifications.Entities.Notification", b =>
                 {
                     b.Property<Guid>("Id")
@@ -12333,6 +12425,505 @@ namespace ONEVO.Infrastructure.Migrations
                     b.ToTable("labels", (string)null);
                 });
 
+            modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Meetings.Entities.MeetingActionItem", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("CreatedByEmployeeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by_employee_id");
+
+                    b.Property<Guid>("OccurrenceTaskId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("occurrence_task_id");
+
+                    b.Property<Guid>("TaskId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("task_id");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_meeting_action_items");
+
+                    b.HasIndex("OccurrenceTaskId")
+                        .HasDatabaseName("ix_meeting_action_items_occurrence_task_id");
+
+                    b.HasIndex("TaskId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_meeting_action_items_task_id");
+
+                    b.HasIndex("TenantId", "OccurrenceTaskId")
+                        .HasDatabaseName("ix_meeting_action_items_occurrence");
+
+                    b.ToTable("meeting_action_items", (string)null);
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Meetings.Entities.MeetingAttendanceSession", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("CalendarEventMeetingId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("calendar_event_meeting_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("OccurrenceTaskId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("occurrence_task_id");
+
+                    b.Property<string>("ProviderSessionId")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("provider_session_id");
+
+                    b.Property<DateTimeOffset?>("SessionEnd")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("session_end");
+
+                    b.Property<DateTimeOffset>("SessionStart")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("session_start");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_meeting_attendance_sessions");
+
+                    b.HasIndex("OccurrenceTaskId")
+                        .HasDatabaseName("ix_meeting_attendance_sessions_occurrence_task_id");
+
+                    b.HasIndex("CalendarEventMeetingId", "ProviderSessionId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_meeting_attendance_sessions_provider_session");
+
+                    b.HasIndex("TenantId", "OccurrenceTaskId")
+                        .HasDatabaseName("ix_meeting_attendance_sessions_occurrence");
+
+                    b.ToTable("meeting_attendance_sessions", (string)null);
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Meetings.Entities.MeetingDetails", b =>
+                {
+                    b.Property<Guid>("TaskId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("task_id");
+
+                    b.Property<int>("AttendanceCheckpoint")
+                        .HasColumnType("integer")
+                        .HasColumnName("attendance_checkpoint");
+
+                    b.Property<DateTimeOffset?>("AttendanceFinalizedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("attendance_finalized_at");
+
+                    b.Property<string>("AttendanceLastError")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("attendance_last_error");
+
+                    b.Property<DateTimeOffset?>("AttendanceNextCheckAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("attendance_next_check_at");
+
+                    b.Property<string>("AttendanceStatus")
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("attendance_status");
+
+                    b.Property<Guid?>("CalendarEventMeetingId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("calendar_event_meeting_id");
+
+                    b.Property<DateTimeOffset?>("CancelledAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("cancelled_at");
+
+                    b.Property<DateTimeOffset>("EndAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("end_at");
+
+                    b.Property<bool>("IsAllDay")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_all_day");
+
+                    b.Property<bool>("IsDetached")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_detached");
+
+                    b.Property<bool>("IsPrivate")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_private");
+
+                    b.Property<string>("Location")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("location");
+
+                    b.Property<DateTimeOffset>("OriginalStart")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("original_start");
+
+                    b.Property<int>("Revision")
+                        .IsConcurrencyToken()
+                        .HasColumnType("integer")
+                        .HasColumnName("revision");
+
+                    b.Property<Guid>("SeriesId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("series_id");
+
+                    b.Property<DateTimeOffset>("StartAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("start_at");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.HasKey("TaskId")
+                        .HasName("pk_meeting_details");
+
+                    b.HasAlternateKey("SeriesId", "OriginalStart")
+                        .HasName("uq_meeting_details_series_original_start");
+
+                    b.HasIndex("CalendarEventMeetingId")
+                        .HasDatabaseName("ix_meeting_details_calendar_event_meeting_id");
+
+                    b.HasIndex("TenantId", "AttendanceNextCheckAt")
+                        .HasDatabaseName("ix_meeting_details_attendance_due")
+                        .HasFilter("attendance_finalized_at IS NULL AND attendance_next_check_at IS NOT NULL");
+
+                    b.HasIndex("TenantId", "CalendarEventMeetingId")
+                        .HasDatabaseName("ix_meeting_details_calendar_event_meeting");
+
+                    b.HasIndex("TenantId", "StartAt")
+                        .HasDatabaseName("ix_meeting_details_tenant_id_start_at");
+
+                    b.ToTable("meeting_details", (string)null);
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Meetings.Entities.MeetingOccurrenceAttendee", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("AttendeeKind")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("attendee_kind");
+
+                    b.Property<string>("Change")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)")
+                        .HasColumnName("change");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Email")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("email");
+
+                    b.Property<Guid?>("EmployeeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("employee_id");
+
+                    b.Property<Guid>("OccurrenceTaskId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("occurrence_task_id");
+
+                    b.Property<string>("ResponseReason")
+                        .HasColumnType("text")
+                        .HasColumnName("response_reason");
+
+                    b.Property<string>("ResponseStatus")
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("response_status");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_meeting_occurrence_attendees");
+
+                    b.HasIndex("EmployeeId")
+                        .HasDatabaseName("ix_meeting_occurrence_attendees_employee_id");
+
+                    b.HasIndex("OccurrenceTaskId", "EmployeeId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_meeting_occurrence_attendees_employee")
+                        .HasFilter("attendee_kind = 'employee'");
+
+                    b.HasIndex("TenantId", "EmployeeId")
+                        .HasDatabaseName("ix_meeting_occurrence_attendees_tenant_id_employee_id");
+
+                    b.ToTable("meeting_occurrence_attendees", (string)null);
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Meetings.Entities.MeetingOccurrenceSuppression", b =>
+                {
+                    b.Property<Guid>("SeriesId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("series_id");
+
+                    b.Property<DateTimeOffset>("OriginalStart")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("original_start");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("CreatedByEmployeeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by_employee_id");
+
+                    b.Property<Guid>("MovedToTaskId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("moved_to_task_id");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("reason");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.HasKey("SeriesId", "OriginalStart")
+                        .HasName("pk_meeting_occurrence_suppressions");
+
+                    b.HasIndex("MovedToTaskId")
+                        .HasDatabaseName("ix_meeting_occurrence_suppressions_moved_to_task_id");
+
+                    b.HasIndex("TenantId", "MovedToTaskId")
+                        .HasDatabaseName("ix_meeting_occurrence_suppressions_moved_to");
+
+                    b.ToTable("meeting_occurrence_suppressions", (string)null);
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Meetings.Entities.MeetingSeries", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid?>("ApprovalRequestId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("approval_request_id");
+
+                    b.Property<DateTimeOffset?>("CancelledAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("cancelled_at");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("CreatedById")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by_id");
+
+                    b.Property<string>("CreationPath")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("creation_path");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("text")
+                        .HasColumnName("description");
+
+                    b.Property<DateTimeOffset>("DtStart")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("dt_start");
+
+                    b.Property<int>("DurationMinutes")
+                        .HasColumnType("integer")
+                        .HasColumnName("duration_minutes");
+
+                    b.Property<bool>("IsAllDay")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_all_day");
+
+                    b.Property<bool>("IsPrivate")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_private");
+
+                    b.Property<string>("Location")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("location");
+
+                    b.Property<Guid>("ObjectiveId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("objective_id");
+
+                    b.Property<Guid>("OrganizerEmployeeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("organizer_employee_id");
+
+                    b.Property<Guid>("ProjectId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("project_id");
+
+                    b.Property<string>("RecurrenceRule")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("recurrence_rule");
+
+                    b.Property<int>("Revision")
+                        .IsConcurrencyToken()
+                        .HasColumnType("integer")
+                        .HasColumnName("revision");
+
+                    b.Property<DateTimeOffset?>("SplitAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("split_at");
+
+                    b.Property<Guid?>("SplitFromSeriesId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("split_from_series_id");
+
+                    b.Property<string>("SplitReason")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("split_reason");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<string>("Timezone")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("timezone");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("title");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_meeting_series");
+
+                    b.HasIndex("ApprovalRequestId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_meeting_series_approval_request_id")
+                        .HasFilter("approval_request_id IS NOT NULL");
+
+                    b.HasIndex("ObjectiveId")
+                        .HasDatabaseName("ix_meeting_series_objective_id");
+
+                    b.HasIndex("OrganizerEmployeeId")
+                        .HasDatabaseName("ix_meeting_series_organizer_employee_id");
+
+                    b.HasIndex("SplitFromSeriesId")
+                        .HasDatabaseName("ix_meeting_series_split_from_series_id");
+
+                    b.HasIndex("TenantId", "OrganizerEmployeeId")
+                        .HasDatabaseName("ix_meeting_series_organizer");
+
+                    b.HasIndex("TenantId", "SplitFromSeriesId")
+                        .HasDatabaseName("ix_meeting_series_split_from");
+
+                    b.HasIndex("TenantId", "ProjectId", "ObjectiveId")
+                        .HasDatabaseName("ix_meeting_series_placement");
+
+                    b.ToTable("meeting_series", (string)null);
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Meetings.Entities.MeetingSeriesLink", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("AttachedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("attached_at");
+
+                    b.Property<Guid>("CalendarEventMeetingId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("calendar_event_meeting_id");
+
+                    b.Property<string>("Origin")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("origin");
+
+                    b.Property<DateTimeOffset?>("ReleasedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("released_at");
+
+                    b.Property<Guid>("SeriesId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("series_id");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_meeting_series_links");
+
+                    b.HasIndex("CalendarEventMeetingId")
+                        .HasDatabaseName("ix_meeting_series_links_calendar_event_meeting_id");
+
+                    b.HasIndex("SeriesId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_meeting_series_links_one_active_per_series")
+                        .HasFilter("released_at IS NULL");
+
+                    b.HasIndex("SeriesId", "CalendarEventMeetingId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_meeting_series_links_series_link");
+
+                    b.HasIndex("TenantId", "CalendarEventMeetingId")
+                        .HasDatabaseName("ix_meeting_series_links_active_by_link")
+                        .HasFilter("released_at IS NULL");
+
+                    b.ToTable("meeting_series_links", (string)null);
+                });
+
             modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Monitoring.Entities.MonitorAlert", b =>
                 {
                     b.Property<Guid>("Id")
@@ -14502,6 +15093,48 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasConstraintName("fk_personal_calendar_events_recurrence_parent_id");
                 });
 
+            modelBuilder.Entity("ONEVO.Domain.Features.Calendar.Entities.CalendarEventGuest", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.WorkManagement.Meetings.Entities.MeetingSeries", null)
+                        .WithMany()
+                        .HasForeignKey("MeetingSeriesId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_calendar_event_guests_meeting_series_meeting_series_id");
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.Calendar.Entities.CalendarEventMeetingAttendance", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.WorkManagement.Meetings.Entities.MeetingAttendanceSession", null)
+                        .WithMany()
+                        .HasForeignKey("AttendanceSessionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_calendar_event_meeting_attendances_meeting_attendance_sessi");
+
+                    b.HasOne("ONEVO.Domain.Features.WorkManagement.Meetings.Entities.MeetingDetails", null)
+                        .WithMany()
+                        .HasForeignKey("OccurrenceTaskId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_calendar_event_meeting_attendances_meeting_details_occurren");
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.Calendar.Entities.CalendarEventParticipant", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.WorkManagement.Meetings.Entities.MeetingSeries", null)
+                        .WithMany()
+                        .HasForeignKey("MeetingSeriesId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_calendar_event_participants_meeting_series_meeting_series_id");
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.Calendar.Entities.ExternalCalendarEventLink", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.WorkManagement.Meetings.Entities.MeetingDetails", null)
+                        .WithMany()
+                        .HasForeignKey("MeetingTaskId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_external_calendar_event_links_meeting_details_meeting_task_");
+                });
+
             modelBuilder.Entity("ONEVO.Domain.Features.Conversations.Entities.ConversationMessage", b =>
                 {
                     b.HasOne("ONEVO.Domain.Features.Conversations.Entities.Conversation", null)
@@ -15954,6 +16587,135 @@ namespace ONEVO.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_labels_projects_project_id");
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Meetings.Entities.MeetingActionItem", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.WorkManagement.Meetings.Entities.MeetingDetails", null)
+                        .WithMany()
+                        .HasForeignKey("OccurrenceTaskId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_meeting_action_items_meeting_details_occurrence_task_id");
+
+                    b.HasOne("ONEVO.Domain.Features.WorkManagement.Tasks.Entities.WorkTask", null)
+                        .WithMany()
+                        .HasForeignKey("TaskId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_meeting_action_items_work_tasks_task_id");
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Meetings.Entities.MeetingAttendanceSession", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.Calendar.Entities.CalendarEventMeeting", null)
+                        .WithMany()
+                        .HasForeignKey("CalendarEventMeetingId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_meeting_attendance_sessions_calendar_event_meetings_calenda");
+
+                    b.HasOne("ONEVO.Domain.Features.WorkManagement.Meetings.Entities.MeetingDetails", null)
+                        .WithMany()
+                        .HasForeignKey("OccurrenceTaskId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_meeting_attendance_sessions_meeting_details_occurrence_task");
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Meetings.Entities.MeetingDetails", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.Calendar.Entities.CalendarEventMeeting", null)
+                        .WithMany()
+                        .HasForeignKey("CalendarEventMeetingId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_meeting_details_calendar_event_meetings_calendar_event_meet");
+
+                    b.HasOne("ONEVO.Domain.Features.WorkManagement.Meetings.Entities.MeetingSeries", null)
+                        .WithMany()
+                        .HasForeignKey("SeriesId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_meeting_details_meeting_series_series_id");
+
+                    b.HasOne("ONEVO.Domain.Features.WorkManagement.Tasks.Entities.WorkTask", null)
+                        .WithOne()
+                        .HasForeignKey("ONEVO.Domain.Features.WorkManagement.Meetings.Entities.MeetingDetails", "TaskId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_meeting_details_work_tasks_task_id");
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Meetings.Entities.MeetingOccurrenceAttendee", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.CoreHr.Entities.Employee", null)
+                        .WithMany()
+                        .HasForeignKey("EmployeeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_meeting_occurrence_attendees_employees_employee_id");
+
+                    b.HasOne("ONEVO.Domain.Features.WorkManagement.Meetings.Entities.MeetingDetails", null)
+                        .WithMany()
+                        .HasForeignKey("OccurrenceTaskId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_meeting_occurrence_attendees_meeting_details_occurrence_tas");
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Meetings.Entities.MeetingOccurrenceSuppression", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.WorkManagement.Tasks.Entities.WorkTask", null)
+                        .WithMany()
+                        .HasForeignKey("MovedToTaskId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_meeting_occurrence_suppressions_work_tasks_moved_to_task_id");
+
+                    b.HasOne("ONEVO.Domain.Features.WorkManagement.Meetings.Entities.MeetingSeries", null)
+                        .WithMany()
+                        .HasForeignKey("SeriesId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_meeting_occurrence_suppressions_meeting_series_series_id");
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Meetings.Entities.MeetingSeries", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.WorkManagement.Objectives.Entities.Objective", null)
+                        .WithMany()
+                        .HasForeignKey("ObjectiveId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_meeting_series_objectives_objective_id");
+
+                    b.HasOne("ONEVO.Domain.Features.CoreHr.Entities.Employee", null)
+                        .WithMany()
+                        .HasForeignKey("OrganizerEmployeeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_meeting_series_employees_organizer_employee_id");
+
+                    b.HasOne("ONEVO.Domain.Features.WorkManagement.Meetings.Entities.MeetingSeries", null)
+                        .WithMany()
+                        .HasForeignKey("SplitFromSeriesId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_meeting_series_meeting_series_split_from_series_id");
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Meetings.Entities.MeetingSeriesLink", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.Calendar.Entities.CalendarEventMeeting", null)
+                        .WithMany()
+                        .HasForeignKey("CalendarEventMeetingId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_meeting_series_links_calendar_event_meetings_calendar_event");
+
+                    b.HasOne("ONEVO.Domain.Features.WorkManagement.Meetings.Entities.MeetingSeries", null)
+                        .WithMany()
+                        .HasForeignKey("SeriesId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_meeting_series_links_meeting_series_series_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Objectives.Entities.Objective", b =>

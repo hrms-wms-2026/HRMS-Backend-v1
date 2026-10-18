@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using ONEVO.Domain.Features.WorkManagement.Meetings.Entities;
+using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
 
 namespace ONEVO.Infrastructure.Persistence.Configurations.WorkManagement.Meetings;
 
@@ -17,5 +18,8 @@ public class MeetingActionItemConfiguration : IEntityTypeConfiguration<MeetingAc
             .HasDatabaseName("ux_meeting_action_items_task_id");
         builder.HasIndex(a => new { a.TenantId, a.OccurrenceTaskId })
             .HasDatabaseName("ix_meeting_action_items_occurrence");
+
+        builder.HasOne<MeetingDetails>().WithMany().HasForeignKey(a => a.OccurrenceTaskId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne<WorkTask>().WithMany().HasForeignKey(a => a.TaskId).OnDelete(DeleteBehavior.Restrict);
     }
 }

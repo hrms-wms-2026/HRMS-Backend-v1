@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
+using ONEVO.Domain.Features.Calendar.Entities;
 using ONEVO.Domain.Features.WorkManagement.Meetings.Entities;
 
 namespace ONEVO.Infrastructure.Persistence.Configurations.WorkManagement.Meetings;
@@ -18,5 +19,8 @@ public class MeetingAttendanceSessionConfiguration : IEntityTypeConfiguration<Me
             .HasDatabaseName("ux_meeting_attendance_sessions_provider_session");
         builder.HasIndex(s => new { s.TenantId, s.OccurrenceTaskId })
             .HasDatabaseName("ix_meeting_attendance_sessions_occurrence");
+
+        builder.HasOne<CalendarEventMeeting>().WithMany().HasForeignKey(s => s.CalendarEventMeetingId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne<MeetingDetails>().WithMany().HasForeignKey(s => s.OccurrenceTaskId).OnDelete(DeleteBehavior.Restrict);
     }
 }
