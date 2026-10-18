@@ -1,5 +1,7 @@
 using FluentAssertions;
 using Moq;
+using ONEVO.Application.Features.WorkManagement.Tasks.Services;
+using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.Onboarding.Commands.CreateChecklistTemplate;
 using ONEVO.Application.Features.CoreHr.Onboarding.RepositoryInterfaces;
@@ -25,7 +27,8 @@ public class CreateChecklistTemplateCommandHandlerTests
         _currentUser.SetupGet(c => c.TenantId).Returns(_tenantId);
         return new CreateChecklistTemplateCommandHandler(
             _templateRepository.Object, _legalEntityRepository.Object, _departmentRepository.Object, _positionRepository.Object,
-            new ChecklistTemplateTaskInputResolver(_positionRepository.Object), _currentUser.Object);
+            new ChecklistTemplateTaskInputResolver(_positionRepository.Object),
+            new Mock<ITaskAssetLinker>().Object, ChecklistTemplateTestDoubles.NoTemplateFiles(), _currentUser.Object);
     }
 
     private void SetupActiveLegalEntity()

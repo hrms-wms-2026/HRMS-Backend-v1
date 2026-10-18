@@ -20,6 +20,7 @@ public class EmployeeViewAccessTests
     private readonly Mock<CommonEmployeeRepo> _employees = new();
     private readonly Mock<VisibleEmployeeRepo> _visibleEmployees = new();
     private readonly Mock<IEmployeeVisibilityScopeResolver> _scopeResolver = new();
+    private readonly EmployeeVisibilityScope _scope;
 
     public EmployeeViewAccessTests()
     {
@@ -30,17 +31,18 @@ public class EmployeeViewAccessTests
         _currentUser.Setup(c => c.HasPermission(It.IsAny<string>())).Returns(false);
         _employees.Setup(r => r.GetByUserIdAsync(_tenantId, _userId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new EmployeeEntity { Id = _employeeId, TenantId = _tenantId });
+        _scope = new EmployeeVisibilityScope(
+            false, _employeeId, new HashSet<Guid> { Guid.NewGuid() }, new HashSet<Guid>(), new HashSet<Guid>());
         _scopeResolver.Setup(r => r.ResolveAsync(_tenantId, _userId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new EmployeeVisibilityScope(
-                false, _employeeId, new HashSet<Guid> { Guid.NewGuid() }, new HashSet<Guid>(), new HashSet<Guid>()));
+            .ReturnsAsync(_scope);
     }
 
     private EmployeeViewAccess Sut() =>
         new(_employees.Object, _visibleEmployees.Object, _scopeResolver.Object, _currentUser.Object);
 
-    private void MakeVisible(Guid employeeId) =>
-        _visibleEmployees.Setup(r => r.GetVisibleByIdAsync(_tenantId, It.IsAny<EmployeeVisibilityScope>(), employeeId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new EmployeeListItemResponse(employeeId, "E-1", "Ada", "ada@test.dev", null, null, null, null, null, null, "full_time", "active", null, null));
+    private void MakeVisible(Guid employeeId, string status = "active") =>
+        _visibleEmployees.Setup(r => r.GetVisibleByIdAsync(_tenantId, _scope, employeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new EmployeeListItemResponse(employeeId, "E-1", "Ada", "ada@test.dev", null, null, null, null, null, null, "full_time", status, null, null));
 
     [Fact]
     public async Task Self_IsAlwaysVisible()
@@ -55,6 +57,17 @@ public class EmployeeViewAccessTests
         MakeVisible(report);
 
         Assert.True(await Sut().CanViewAsync(report));
+    }
+
+    [Fact]
+    public async Task OffboardingReport_StaysVisible()
+    {
+        // Starting offboarding flips the status to "offboarding"; the manager must still be able
+        // to load the offboarding wizard (GET offboarding, checklist-matches) afterwards.
+        var leaver = Guid.NewGuid();
+        MakeVisible(leaver, status: "offboarding");
+
+        Assert.True(await Sut().CanViewAsync(leaver));
     }
 
     [Fact]

@@ -159,6 +159,36 @@ public class EfLeaveCalendarRepositoryTests
         rows.Select(row => row.EmployeeName).Should().BeEquivalentTo("Priya Nair", "Ravi Kumar");
     }
 
+    [Fact]
+    public async Task ListMonthRequestsAsync_IncludesSkipLevelEmployeesReachedByCoverageExpansion()
+    {
+        await using var db = BuildInMemoryDb();
+        var tenantId = Guid.NewGuid();
+        var legalEntity = CreateLegalEntity(tenantId, "Dapi");
+        var department = CreateDepartment(tenantId, legalEntity.Id, "Hardware");
+        var leaveType = CreateLeaveType(tenantId, "Annual Leave", "AL");
+        var skipLevel = CreateEmployee(tenantId, legalEntity.Id, department.Id, "EMP-007", "Kiru", "Balachandran");
+        var unrelated = CreateEmployee(tenantId, legalEntity.Id, department.Id, "EMP-008", "Tara", "Jones");
+        db.AddRange(legalEntity, department, leaveType, skipLevel, unrelated);
+        db.LeaveRequests.AddRange(
+            CreateRequest(tenantId, skipLevel.Id, leaveType.Id, LeaveRequestStatuses.Approved, new DateOnly(2026, 8, 10), new DateOnly(2026, 8, 10)),
+            CreateRequest(tenantId, unrelated.Id, leaveType.Id, LeaveRequestStatuses.Approved, new DateOnly(2026, 8, 11), new DateOnly(2026, 8, 11)));
+        await db.SaveChangesAsync();
+
+        // No direct position/department coverage matches Kiru - only the resolver's reporting-line
+        // expansion (CEO covers GM -> Lead -> Kiru) does.
+        var scope = new EmployeeVisibilityScope(
+            false, null, new HashSet<Guid>(), new HashSet<Guid>(), new HashSet<Guid>())
+        {
+            CoveredEmployeeIds = new HashSet<Guid> { skipLevel.Id },
+        };
+
+        var rows = await new EfLeaveCalendarRepository(db).ListMonthRequestsAsync(
+            tenantId, scope, Filter(includeTentative: true), CancellationToken.None);
+
+        rows.Select(row => row.EmployeeName).Should().BeEquivalentTo("Kiru Balachandran");
+    }
+
     private static async Task<(Employee Employee, LeaveType LeaveType)> SeedEmployeeAndTypeAsync(ApplicationDbContext db, Guid tenantId)
     {
         var legalEntity = CreateLegalEntity(tenantId, "Acme Lanka");

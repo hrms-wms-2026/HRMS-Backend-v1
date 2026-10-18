@@ -10,10 +10,15 @@ public interface IEmployeeViewAccess
 }
 
 /// <summary>
-/// Relationship-based employee visibility, with no permission code: you can view yourself and the
-/// employees inside your management coverage (management_coverage_records on your own position).
-/// The same rule GetEmployee/GetEmployeeDetail apply; this lets per-employee endpoints whose
-/// handlers never scoped by themselves enforce it in one place (RequireVisibleEmployeeAttribute).
+/// Relationship-based employee visibility, with no permission code: you can view yourself and
+/// every employee inside your management coverage - the holders of the positions your position
+/// covers plus their whole reporting-line subtree, department and company coverage included
+/// (IEmployeeVisibilityScopeResolver). This is the same rule GetEmployee/GetEmployeeDetail apply,
+/// so the widgets agree with the detail page.
+///
+/// Deliberately NOT IEmployeeAuthorityResolver.ResolveVisibilityAsync: that one keeps only
+/// employment status "active", so an employee who is on leave, suspended or mid-offboarding
+/// vanished and their manager got 403 on the offboarding wizard the moment step 1 ran.
 /// </summary>
 public sealed class EmployeeViewAccess : IEmployeeViewAccess
 {
