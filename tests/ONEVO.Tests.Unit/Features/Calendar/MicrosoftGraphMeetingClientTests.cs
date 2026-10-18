@@ -65,56 +65,118 @@ public sealed class MicrosoftGraphMeetingClientTests
         });
         var client = new MicrosoftGraphMeetingClient(new HttpClient(handler), NullLogger<MicrosoftGraphMeetingClient>.Instance);
 
-        var result = await client.GetAttendanceAsync("access-token", "graph-meeting-1", CancellationToken.None);
+        var result = await client.GetAttendanceAsync("access-token", "graph-meeting-1", SessionStart, SessionEnd, CancellationToken.None);
+
+        Assert.Empty(result);
+    }
+
+    private static readonly DateTimeOffset SessionStart = new(2026, 9, 23, 10, 0, 0, TimeSpan.Zero);
+    private static readonly DateTimeOffset SessionEnd = SessionStart.AddMinutes(30);
+
+    private static object Record(string name, string email, string joined, string left) => new
+    {
+        identity = new { displayName = name, upn = email },
+        attendanceIntervals = new[] { new { joinDateTime = joined, leaveDateTime = left } }
+    };
+
+    [Fact]
+    public async Task GetAttendanceAsync_TakesTheReportOfTheScheduledSession_NotTheLatestOne()
+    {
+        var requested = new List<string>();
+        var handler = new StubHandler(request =>
+        {
+            var url = request.RequestUri!.ToString();
+            requested.Add(url);
+            if (url.EndsWith("attendanceReports"))
+            {
+                // A reused link: the session asked about, then a later one a week on (the newest, listed last).
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = JsonContent.Create(new
+                    {
+                        value = new[]
+                        {
+                            new { id = "this-session", meetingStartDateTime = "2026-09-23T10:02:00Z" },
+                            new { id = "next-week", meetingStartDateTime = "2026-09-30T10:01:00Z" },
+                        }
+                    })
+                };
+            }
+            Assert.EndsWith("attendanceReports/this-session/attendanceRecords", url);
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = JsonContent.Create(new { value = new[] { Record("Ada Lovelace", "ada@acme.com", "2026-09-23T10:00:00Z", "2026-09-23T10:30:00Z") } })
+            };
+        });
+        var client = new MicrosoftGraphMeetingClient(new HttpClient(handler), NullLogger<MicrosoftGraphMeetingClient>.Instance);
+
+        var result = await client.GetAttendanceAsync("access-token", "graph-meeting-1", SessionStart, SessionEnd, CancellationToken.None);
+
+        var record = Assert.Single(result);
+        Assert.Equal("Ada Lovelace", record.ParticipantName);
+        Assert.Equal("ada@acme.com", record.ParticipantEmail);
+        Assert.NotNull(record.LeftAt);
+        Assert.DoesNotContain(requested, u => u.Contains("next-week"));
+    }
+
+    [Fact]
+    public async Task GetAttendanceAsync_NoReportForTheScheduledSession_ReturnsEmpty()
+    {
+        var handler = new StubHandler(request =>
+        {
+            Assert.EndsWith("attendanceReports", request.RequestUri!.ToString());
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = JsonContent.Create(new { value = new[] { new { id = "next-week", meetingStartDateTime = "2026-09-30T10:01:00Z" } } })
+            };
+        });
+        var client = new MicrosoftGraphMeetingClient(new HttpClient(handler), NullLogger<MicrosoftGraphMeetingClient>.Instance);
+
+        var result = await client.GetAttendanceAsync("access-token", "graph-meeting-1", SessionStart, SessionEnd, CancellationToken.None);
 
         Assert.Empty(result);
     }
 
     [Fact]
-    public async Task GetAttendanceAsync_HasReport_ReturnsFlattenedIntervalsFromMostRecentReport()
+    public async Task GetAttendanceAsync_ReadsEveryPageOfReportsAndRecords()
     {
-        var callCount = 0;
         var handler = new StubHandler(request =>
         {
-            callCount++;
-            if (request.RequestUri!.ToString().EndsWith("attendanceReports"))
-            {
+            var url = request.RequestUri!.ToString();
+            if (url.EndsWith("attendanceReports"))
                 return new HttpResponseMessage(HttpStatusCode.OK)
                 {
-                    Content = JsonContent.Create(new { value = new[] { new { id = "report-1" } } })
+                    Content = JsonContent.Create(new Dictionary<string, object>
+                    {
+                        ["value"] = new[] { new { id = "older", meetingStartDateTime = "2026-09-16T10:00:00Z" } },
+                        ["@odata.nextLink"] = "https://graph.microsoft.com/v1.0/reports-page-2",
+                    })
                 };
-            }
-
-            Assert.Equal(
-                "https://graph.microsoft.com/v1.0/me/onlineMeetings/graph-meeting-1/attendanceReports/report-1/attendanceRecords",
-                request.RequestUri!.ToString());
+            if (url.EndsWith("reports-page-2"))
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = JsonContent.Create(new { value = new[] { new { id = "this-session", meetingStartDateTime = "2026-09-23T10:00:00Z" } } })
+                };
+            if (url.EndsWith("this-session/attendanceRecords"))
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = JsonContent.Create(new Dictionary<string, object>
+                    {
+                        ["value"] = new[] { Record("Ada", "ada@acme.com", "2026-09-23T10:00:00Z", "2026-09-23T10:30:00Z") },
+                        ["@odata.nextLink"] = "https://graph.microsoft.com/v1.0/records-page-2",
+                    })
+                };
+            Assert.EndsWith("records-page-2", url);
             return new HttpResponseMessage(HttpStatusCode.OK)
             {
-                Content = JsonContent.Create(new
-                {
-                    value = new[]
-                    {
-                        new
-                        {
-                            identity = new { displayName = "Ada Lovelace", upn = "ada@acme.com" },
-                            attendanceIntervals = new[]
-                            {
-                                new { joinDateTime = "2026-09-23T10:00:00Z", leaveDateTime = "2026-09-23T10:30:00Z" }
-                            }
-                        }
-                    }
-                })
+                Content = JsonContent.Create(new { value = new[] { Record("Grace", "grace@acme.com", "2026-09-23T10:05:00Z", "2026-09-23T10:30:00Z") } })
             };
         });
         var client = new MicrosoftGraphMeetingClient(new HttpClient(handler), NullLogger<MicrosoftGraphMeetingClient>.Instance);
 
-        var result = await client.GetAttendanceAsync("access-token", "graph-meeting-1", CancellationToken.None);
+        var result = await client.GetAttendanceAsync("access-token", "graph-meeting-1", SessionStart, SessionEnd, CancellationToken.None);
 
-        Assert.Equal(2, callCount);
-        var record = Assert.Single(result);
-        Assert.Equal("Ada Lovelace", record.ParticipantName);
-        Assert.Equal("ada@acme.com", record.ParticipantEmail);
-        Assert.NotNull(record.LeftAt);
+        Assert.Equal(new[] { "ada@acme.com", "grace@acme.com" }, result.Select(r => r.ParticipantEmail));
     }
 
     [Fact]

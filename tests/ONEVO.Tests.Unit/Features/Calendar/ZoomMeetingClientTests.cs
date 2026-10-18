@@ -138,37 +138,102 @@ public sealed class ZoomMeetingClientTests
         Assert.IsType<HttpRequestException>(ex);
     }
 
+    private static readonly DateTimeOffset SessionStart = new(2026, 9, 23, 10, 0, 0, TimeSpan.Zero);
+    private static readonly DateTimeOffset SessionEnd = SessionStart.AddMinutes(30);
+
+    private static object Participant(string name, string email, string joined, string left)
+        => new { name, user_email = email, join_time = joined, leave_time = left };
+
     [Fact]
-    public async Task GetAttendanceAsync_ReturnsFlattenedParticipants()
+    public async Task GetAttendanceAsync_ReadsTheInstanceOfTheScheduledSession_NotTheLatestOne()
     {
         var handler = new StubHandler(request =>
         {
-            Assert.Equal(
-                "https://api.zoom.us/v2/past_meetings/987654321/participants",
-                request.RequestUri!.ToString());
+            var url = request.RequestUri!.AbsoluteUri;
+            if (url == "https://api.zoom.us/v2/past_meetings/987654321/instances")
+            {
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = JsonContent.Create(new
+                    {
+                        meetings = new[]
+                        {
+                            new { uuid = "/abc//def==", start_time = "2026-09-23T10:01:00Z" },
+                            new { uuid = "later==", start_time = "2026-09-30T10:00:00Z" },
+                        }
+                    })
+                };
+            }
+            // A UUID that starts with '/' or contains '//' must be double-encoded (Zoom API rule).
+            Assert.Equal("https://api.zoom.us/v2/past_meetings/%252Fabc%252F%252Fdef%253D%253D/participants?page_size=300", url);
             return new HttpResponseMessage(HttpStatusCode.OK)
             {
-                Content = JsonContent.Create(new
-                {
-                    participants = new[]
-                    {
-                        new
-                        {
-                            name = "Ada Lovelace", user_email = "ada@acme.com",
-                            join_time = "2026-09-23T10:00:00Z", leave_time = "2026-09-23T10:30:00Z"
-                        }
-                    }
-                })
+                Content = JsonContent.Create(new { participants = new[] { Participant("Ada Lovelace", "ada@acme.com", "2026-09-23T10:00:00Z", "2026-09-23T10:30:00Z") } })
             };
         });
         var client = new ZoomMeetingClient(new HttpClient(handler), NullLogger<ZoomMeetingClient>.Instance);
 
-        var result = await client.GetAttendanceAsync("access-token", "987654321", CancellationToken.None);
+        var result = await client.GetAttendanceAsync("access-token", "987654321", SessionStart, SessionEnd, CancellationToken.None);
 
         var record = Assert.Single(result);
         Assert.Equal("Ada Lovelace", record.ParticipantName);
         Assert.Equal("ada@acme.com", record.ParticipantEmail);
         Assert.NotNull(record.LeftAt);
+    }
+
+    [Fact]
+    public async Task GetAttendanceAsync_NoInstanceForTheScheduledSession_ReturnsEmpty()
+    {
+        var handler = new StubHandler(request =>
+        {
+            Assert.EndsWith("/instances", request.RequestUri!.AbsoluteUri);
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = JsonContent.Create(new { meetings = new[] { new { uuid = "later==", start_time = "2026-09-30T10:00:00Z" } } })
+            };
+        });
+        var client = new ZoomMeetingClient(new HttpClient(handler), NullLogger<ZoomMeetingClient>.Instance);
+
+        var result = await client.GetAttendanceAsync("access-token", "987654321", SessionStart, SessionEnd, CancellationToken.None);
+
+        Assert.Empty(result);
+    }
+
+    [Fact]
+    public async Task GetAttendanceAsync_FollowsEveryParticipantsPage()
+    {
+        var handler = new StubHandler(request =>
+        {
+            var url = request.RequestUri!.AbsoluteUri;
+            if (url.EndsWith("/instances"))
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = JsonContent.Create(new { meetings = new[] { new { uuid = "plain==", start_time = "2026-09-23T10:00:00Z" } } })
+                };
+            if (!url.Contains("next_page_token"))
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = JsonContent.Create(new
+                    {
+                        participants = new[] { Participant("Ada", "ada@acme.com", "2026-09-23T10:00:00Z", "2026-09-23T10:30:00Z") },
+                        next_page_token = "page-2",
+                    })
+                };
+            Assert.EndsWith("next_page_token=page-2", url);
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = JsonContent.Create(new
+                {
+                    participants = new[] { Participant("Grace", "grace@acme.com", "2026-09-23T10:05:00Z", "2026-09-23T10:30:00Z") },
+                    next_page_token = "",
+                })
+            };
+        });
+        var client = new ZoomMeetingClient(new HttpClient(handler), NullLogger<ZoomMeetingClient>.Instance);
+
+        var result = await client.GetAttendanceAsync("access-token", "987654321", SessionStart, SessionEnd, CancellationToken.None);
+
+        Assert.Equal(new[] { "ada@acme.com", "grace@acme.com" }, result.Select(r => r.ParticipantEmail));
     }
 
     [Fact]

@@ -14,5 +14,5 @@ public interface ITeamsMeetingClient
         IReadOnlyList<string>? attendeeEmails = null);
     Task CancelMeetingAsync(string accessToken, string externalMeetingId, CancellationToken ct);
     Task<IReadOnlyList<TeamsAttendanceRecordDto>> GetAttendanceAsync(
-        string accessToken, string externalMeetingId, CancellationToken ct);
+        string accessToken, string externalMeetingId, DateTimeOffset sessionStart, DateTimeOffset sessionEnd, CancellationToken ct);
 }

@@ -1446,6 +1446,15 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<string>("AttendanceSyncError")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("attendance_sync_error");
+
+                    b.Property<DateTimeOffset?>("AttendanceSyncFailedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("attendance_sync_failed_at");
+
                     b.Property<DateTimeOffset?>("AttendanceUnavailableAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("attendance_unavailable_at");

@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using ONEVO.Application.Features.Calendar.ServiceInterfaces;
+using ONEVO.Application.Features.Calendar.Services;
 
 namespace ONEVO.Infrastructure.ExternalServices.Calendar;
 
@@ -50,35 +51,31 @@ public sealed class MicrosoftGraphMeetingClient(HttpClient httpClient, ILogger<M
         await EnsureSuccessOrLogAsync(response, "cancel online meeting", ct);
     }
 
-    public async Task<IReadOnlyList<TeamsAttendanceRecordDto>> GetAttendanceAsync(
-        string accessToken, string externalMeetingId, CancellationToken ct)
-    {
-        // Graph returns a list of attendance *reports* per meeting (one per session, for a
-        // recurring/reconvened meeting); Phase 1 events are non-recurring single sessions, so take
-        // the most recent report only.
-        using var reportsRequest = new HttpRequestMessage(
-            HttpMethod.Get, $"https://graph.microsoft.com/v1.0/me/onlineMeetings/{externalMeetingId}/attendanceReports");
-        reportsRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
-        using var reportsResponse = await httpClient.SendAsync(reportsRequest, ct);
-        await EnsureSuccessOrLogAsync(reportsResponse, "list attendance reports", ct);
-        using var reportsStream = await reportsResponse.Content.ReadAsStreamAsync(ct);
-        using var reportsDoc = await JsonDocument.ParseAsync(reportsStream, cancellationToken: ct);
-        var reports = reportsDoc.RootElement.GetProperty("value").EnumerateArray().ToList();
-        if (reports.Count == 0)
-            return [];
-        var reportId = reports[^1].GetProperty("id").GetString();
+    private const int MaxPages = 100;
 
-        using var recordsRequest = new HttpRequestMessage(
-            HttpMethod.Get,
-            $"https://graph.microsoft.com/v1.0/me/onlineMeetings/{externalMeetingId}/attendanceReports/{reportId}/attendanceRecords");
-        recordsRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
-        using var recordsResponse = await httpClient.SendAsync(recordsRequest, ct);
-        await EnsureSuccessOrLogAsync(recordsResponse, "list attendance records", ct);
-        using var recordsStream = await recordsResponse.Content.ReadAsStreamAsync(ct);
-        using var recordsDoc = await JsonDocument.ParseAsync(recordsStream, cancellationToken: ct);
+    public async Task<IReadOnlyList<TeamsAttendanceRecordDto>> GetAttendanceAsync(
+        string accessToken, string externalMeetingId, DateTimeOffset sessionStart, DateTimeOffset sessionEnd, CancellationToken ct)
+    {
+        // Graph keeps one attendance report per session. A link reused across occurrences has several,
+        // so take the report of the session asked about - never simply the newest (spec E6b).
+        var reports = await GetAllPagesAsync(
+            accessToken, $"https://graph.microsoft.com/v1.0/me/onlineMeetings/{externalMeetingId}/attendanceReports",
+            "list attendance reports", ct);
+        var picked = AttendanceSessionMatcher.PickIndex(
+            reports.Select(r => r.TryGetProperty("meetingStartDateTime", out var s) && s.ValueKind == JsonValueKind.String
+                ? s.GetDateTimeOffset() : (DateTimeOffset?)null).ToList(),
+            sessionStart, sessionEnd);
+        if (picked is not { } index)
+            return [];
+        var reportId = reports[index].GetProperty("id").GetString();
+
+        var records = await GetAllPagesAsync(
+            accessToken,
+            $"https://graph.microsoft.com/v1.0/me/onlineMeetings/{externalMeetingId}/attendanceReports/{reportId}/attendanceRecords",
+            "list attendance records", ct);
 
         var result = new List<TeamsAttendanceRecordDto>();
-        foreach (var record in recordsDoc.RootElement.GetProperty("value").EnumerateArray())
+        foreach (var record in records)
         {
             var identity = record.TryGetProperty("identity", out var i) ? i : default;
             var name = identity.ValueKind != JsonValueKind.Undefined && identity.TryGetProperty("displayName", out var n) ? n.GetString() : null;
@@ -93,6 +90,30 @@ public sealed class MicrosoftGraphMeetingClient(HttpClient httpClient, ILogger<M
             }
         }
         return result;
+    }
+
+    /// <summary>Every page of a Graph collection, following <c>@odata.nextLink</c>.</summary>
+    private async Task<List<JsonElement>> GetAllPagesAsync(string accessToken, string firstUrl, string operation, CancellationToken ct)
+    {
+        var items = new List<JsonElement>();
+        string? url = firstUrl;
+        for (var page = 1; url is not null; page++)
+        {
+            if (page > MaxPages)
+                throw new InvalidOperationException($"Microsoft Graph {operation} exceeded {MaxPages} pages.");
+
+            using var request = new HttpRequestMessage(HttpMethod.Get, url);
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+            using var response = await httpClient.SendAsync(request, ct);
+            await EnsureSuccessOrLogAsync(response, operation, ct);
+            await using var stream = await response.Content.ReadAsStreamAsync(ct);
+            using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: ct);
+            items.AddRange(doc.RootElement.GetProperty("value").EnumerateArray().Select(element => element.Clone()));
+            url = doc.RootElement.TryGetProperty("@odata.nextLink", out var next) && next.ValueKind == JsonValueKind.String
+                ? next.GetString()
+                : null;
+        }
+        return items;
     }
 
     /// <summary>EnsureSuccessStatusCode() alone throws with no detail beyond the status code -

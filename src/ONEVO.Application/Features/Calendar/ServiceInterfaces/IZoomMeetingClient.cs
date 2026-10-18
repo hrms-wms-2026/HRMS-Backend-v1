@@ -19,5 +19,5 @@ public interface IZoomMeetingClient
         IReadOnlyList<string>? attendeeEmails = null);
     Task CancelMeetingAsync(string accessToken, string externalMeetingId, CancellationToken ct);
     Task<IReadOnlyList<ZoomAttendanceRecordDto>> GetAttendanceAsync(
-        string accessToken, string externalMeetingId, CancellationToken ct);
+        string accessToken, string externalMeetingId, DateTimeOffset sessionStart, DateTimeOffset sessionEnd, CancellationToken ct);
 }

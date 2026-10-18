@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Calendar.RepositoryInterfaces;
+using ONEVO.Application.Features.Calendar.Services;
 using ONEVO.Domain.Features.Calendar.Entities;
 
 namespace ONEVO.Infrastructure.Persistence.Repositories.Calendar;
@@ -34,6 +35,7 @@ public class EfCalendarEventMeetingRepository : ICalendarEventMeetingRepository
                 && meeting.Status == CalendarEventMeetingStatuses.Active
                 && meeting.LastAttendanceSyncedAt == null
                 && meeting.AttendanceUnavailableAt == null
+                && meeting.AttendanceSyncFailedAt == null
                 && calendarEvent.EndDate < now
             select meeting
         ).ToListAsync(ct);
@@ -43,6 +45,12 @@ public class EfCalendarEventMeetingRepository : ICalendarEventMeetingRepository
         await _db.PersonalCalendarEvents.AsNoTracking()
             .Where(e => e.TenantId == tenantId && e.Id == calendarEventId)
             .Select(e => (DateTimeOffset?)e.EndDate)
+            .FirstOrDefaultAsync(ct);
+
+    public async Task<CalendarEventWindow?> GetEventWindowAsync(Guid tenantId, Guid calendarEventId, CancellationToken ct = default) =>
+        await _db.PersonalCalendarEvents.AsNoTracking()
+            .Where(e => e.TenantId == tenantId && e.Id == calendarEventId)
+            .Select(e => new CalendarEventWindow(e.StartDate, e.EndDate))
             .FirstOrDefaultAsync(ct);
 
     public void Update(CalendarEventMeeting meeting) => _db.CalendarEventMeetings.Update(meeting);

@@ -4,6 +4,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using ONEVO.Application.Features.Calendar.ServiceInterfaces;
+using ONEVO.Application.Features.Calendar.Services;
 
 namespace ONEVO.Infrastructure.ExternalServices.Calendar;
 
@@ -94,32 +95,65 @@ public sealed class ZoomMeetingClient(HttpClient httpClient, ILogger<ZoomMeeting
         }
     }
 
+    private const int MaxAttendancePages = 100;
+
     public async Task<IReadOnlyList<ZoomAttendanceRecordDto>> GetAttendanceAsync(
-        string accessToken, string externalMeetingId, CancellationToken ct)
+        string accessToken, string externalMeetingId, DateTimeOffset sessionStart, DateTimeOffset sessionEnd, CancellationToken ct)
     {
-        // Zoom's past-meeting participants report, the direct analogue of Microsoft Graph's
-        // attendanceReports endpoint — see MicrosoftGraphMeetingClient.GetAttendanceAsync for the
-        // Teams equivalent. Phase 2 takes only the first page (up to Zoom's default page size),
-        // matching Teams' own simplification of "non-recurring single-session events only".
-        using var request = new HttpRequestMessage(
-            HttpMethod.Get, $"https://api.zoom.us/v2/past_meetings/{externalMeetingId}/participants");
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
-        using var response = await httpClient.SendAsync(request, ct);
-        await EnsureSuccessOrLogAsync(response, "list past meeting participants", ct);
-        using var stream = await response.Content.ReadAsStreamAsync(ct);
-        using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: ct);
+        // past_meetings/{meetingId}/participants only ever reports the newest instance of a reused
+        // meeting ID, so find the instance of the session asked about first (spec E6c).
+        using var instancesRequest = new HttpRequestMessage(
+            HttpMethod.Get, $"https://api.zoom.us/v2/past_meetings/{externalMeetingId}/instances");
+        instancesRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+        using var instancesResponse = await httpClient.SendAsync(instancesRequest, ct);
+        await EnsureSuccessOrLogAsync(instancesResponse, "list past meeting instances", ct);
+        await using var instancesStream = await instancesResponse.Content.ReadAsStreamAsync(ct);
+        using var instancesDoc = await JsonDocument.ParseAsync(instancesStream, cancellationToken: ct);
+        var instances = instancesDoc.RootElement.TryGetProperty("meetings", out var m) && m.ValueKind == JsonValueKind.Array
+            ? m.EnumerateArray().Select(element => element.Clone()).ToList()
+            : [];
+        var picked = AttendanceSessionMatcher.PickIndex(
+            instances.Select(i => i.TryGetProperty("start_time", out var s) && s.ValueKind == JsonValueKind.String
+                ? s.GetDateTimeOffset() : (DateTimeOffset?)null).ToList(),
+            sessionStart, sessionEnd);
+        if (picked is not { } index || instances[index].GetProperty("uuid").GetString() is not { Length: > 0 } uuid)
+            return [];
+
+        // Zoom: a UUID that starts with '/' or contains '//' must be URL-encoded twice.
+        var encodedUuid = uuid.StartsWith('/') || uuid.Contains("//", StringComparison.Ordinal)
+            ? Uri.EscapeDataString(Uri.EscapeDataString(uuid))
+            : Uri.EscapeDataString(uuid);
 
         var result = new List<ZoomAttendanceRecordDto>();
-        foreach (var participant in doc.RootElement.GetProperty("participants").EnumerateArray())
+        string? pageToken = null;
+        for (var page = 1; ; page++)
         {
-            var name = participant.TryGetProperty("name", out var n) ? n.GetString() : null;
-            var email = participant.TryGetProperty("user_email", out var e) ? e.GetString() : null;
-            var joined = participant.GetProperty("join_time").GetDateTimeOffset();
-            var left = participant.TryGetProperty("leave_time", out var l) && l.ValueKind != JsonValueKind.Null
-                ? l.GetDateTimeOffset() : (DateTimeOffset?)null;
-            result.Add(new ZoomAttendanceRecordDto(name, email, joined, left));
+            if (page > MaxAttendancePages)
+                throw new InvalidOperationException($"Zoom participants report exceeded {MaxAttendancePages} pages.");
+
+            var url = $"https://api.zoom.us/v2/past_meetings/{encodedUuid}/participants?page_size=300"
+                + (string.IsNullOrEmpty(pageToken) ? "" : $"&next_page_token={Uri.EscapeDataString(pageToken)}");
+            using var request = new HttpRequestMessage(HttpMethod.Get, url);
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+            using var response = await httpClient.SendAsync(request, ct);
+            await EnsureSuccessOrLogAsync(response, "list past meeting participants", ct);
+            await using var stream = await response.Content.ReadAsStreamAsync(ct);
+            using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: ct);
+
+            foreach (var participant in doc.RootElement.GetProperty("participants").EnumerateArray())
+            {
+                var name = participant.TryGetProperty("name", out var n) ? n.GetString() : null;
+                var email = participant.TryGetProperty("user_email", out var e) ? e.GetString() : null;
+                var joined = participant.GetProperty("join_time").GetDateTimeOffset();
+                var left = participant.TryGetProperty("leave_time", out var l) && l.ValueKind != JsonValueKind.Null
+                    ? l.GetDateTimeOffset() : (DateTimeOffset?)null;
+                result.Add(new ZoomAttendanceRecordDto(name, email, joined, left));
+            }
+
+            pageToken = doc.RootElement.TryGetProperty("next_page_token", out var token) ? token.GetString() : null;
+            if (string.IsNullOrEmpty(pageToken))
+                return result;
         }
-        return result;
     }
 
     /// <summary>Same reasoning as MicrosoftGraphMeetingClient.EnsureSuccessOrLogAsync — logs

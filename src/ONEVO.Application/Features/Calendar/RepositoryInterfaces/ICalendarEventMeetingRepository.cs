@@ -1,3 +1,4 @@
+using ONEVO.Application.Features.Calendar.Services;
 using ONEVO.Domain.Features.Calendar.Entities;
 
 namespace ONEVO.Application.Features.Calendar.RepositoryInterfaces;
@@ -14,6 +15,9 @@ public interface ICalendarEventMeetingRepository
 
     /// <summary>The end of the meeting's event (null if the event is gone) - the attendance-report cutoff runs from it.</summary>
     Task<DateTimeOffset?> GetEventEndAsync(Guid tenantId, Guid calendarEventId, CancellationToken ct = default);
+
+    /// <summary>The event's scheduled start and end (its first occurrence for a series); null when it is gone.</summary>
+    Task<CalendarEventWindow?> GetEventWindowAsync(Guid tenantId, Guid calendarEventId, CancellationToken ct = default);
 
     void Update(CalendarEventMeeting meeting);
 }

@@ -5,6 +5,7 @@ using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Calendar.RepositoryInterfaces;
 using ONEVO.Application.Features.Calendar.ServiceInterfaces;
+using ONEVO.Application.Features.Calendar.Services;
 using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
 using ONEVO.Domain.Features.Calendar.Entities;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
@@ -52,6 +53,8 @@ public sealed class TeamsAttendanceSyncJobTests
         var connection = MakeConnection(meeting.ExternalCalendarConnectionId);
 
         var meetingsRepoMock = new Mock<ICalendarEventMeetingRepository>();
+        meetingsRepoMock.Setup(m => m.GetEventWindowAsync(TenantId, It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CalendarEventWindow(DateTimeOffset.UtcNow.AddHours(-2), DateTimeOffset.UtcNow.AddHours(-1)));
         meetingsRepoMock.Setup(m => m.GetDueForAttendanceSyncAsync(TenantId, CalendarEventMeetingProviders.MicrosoftTeams, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<CalendarEventMeeting> { meeting });
 
@@ -64,7 +67,7 @@ public sealed class TeamsAttendanceSyncJobTests
             .ReturnsAsync("access-token");
 
         var teamsClientMock = new Mock<ITeamsMeetingClient>();
-        teamsClientMock.Setup(t => t.GetAttendanceAsync("access-token", "graph-meeting-1", It.IsAny<CancellationToken>()))
+        teamsClientMock.Setup(t => t.GetAttendanceAsync("access-token", "graph-meeting-1", It.IsAny<DateTimeOffset>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<TeamsAttendanceRecordDto>
             {
                 new("Ada Lovelace", "ada@acme.com", DateTimeOffset.UtcNow.AddMinutes(-30), DateTimeOffset.UtcNow),
@@ -111,6 +114,8 @@ public sealed class TeamsAttendanceSyncJobTests
         var succeedingConnection = MakeConnection(succeedingMeeting.ExternalCalendarConnectionId);
 
         var meetingsRepoMock = new Mock<ICalendarEventMeetingRepository>();
+        meetingsRepoMock.Setup(m => m.GetEventWindowAsync(TenantId, It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CalendarEventWindow(DateTimeOffset.UtcNow.AddHours(-2), DateTimeOffset.UtcNow.AddHours(-1)));
         meetingsRepoMock.Setup(m => m.GetDueForAttendanceSyncAsync(TenantId, CalendarEventMeetingProviders.MicrosoftTeams, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<CalendarEventMeeting> { failingMeeting, succeedingMeeting });
 
@@ -125,9 +130,9 @@ public sealed class TeamsAttendanceSyncJobTests
             .ReturnsAsync("access-token");
 
         var teamsClientMock = new Mock<ITeamsMeetingClient>();
-        teamsClientMock.Setup(t => t.GetAttendanceAsync("access-token", failingMeeting.ExternalMeetingId, It.IsAny<CancellationToken>()))
+        teamsClientMock.Setup(t => t.GetAttendanceAsync("access-token", failingMeeting.ExternalMeetingId, It.IsAny<DateTimeOffset>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new HttpRequestException("simulated Graph 500"));
-        teamsClientMock.Setup(t => t.GetAttendanceAsync("access-token", succeedingMeeting.ExternalMeetingId, It.IsAny<CancellationToken>()))
+        teamsClientMock.Setup(t => t.GetAttendanceAsync("access-token", succeedingMeeting.ExternalMeetingId, It.IsAny<DateTimeOffset>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<TeamsAttendanceRecordDto> { new("Ada Lovelace", "ada@acme.com", DateTimeOffset.UtcNow, null) });
 
         var attendancesRepoMock = new Mock<ICalendarEventMeetingAttendanceRepository>();
@@ -169,16 +174,18 @@ public sealed class TeamsAttendanceSyncJobTests
         var meeting = MakeMeeting();
         var connection = MakeConnection(meeting.ExternalCalendarConnectionId);
         var meetingsRepoMock = new Mock<ICalendarEventMeetingRepository>();
+        meetingsRepoMock.Setup(m => m.GetEventWindowAsync(TenantId, It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CalendarEventWindow(DateTimeOffset.UtcNow.AddHours(-2), DateTimeOffset.UtcNow.AddHours(-1)));
         meetingsRepoMock.Setup(m => m.GetDueForAttendanceSyncAsync(TenantId, CalendarEventMeetingProviders.MicrosoftTeams, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<CalendarEventMeeting> { meeting });
-        meetingsRepoMock.Setup(m => m.GetEventEndAsync(TenantId, meeting.CalendarEventId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(DateTimeOffset.UtcNow.AddHours(-hoursSinceEnd));
+        meetingsRepoMock.Setup(m => m.GetEventWindowAsync(TenantId, meeting.CalendarEventId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CalendarEventWindow(DateTimeOffset.UtcNow.AddHours(-hoursSinceEnd).AddMinutes(-30), DateTimeOffset.UtcNow.AddHours(-hoursSinceEnd)));
         var connectionsRepoMock = new Mock<IExternalCalendarConnectionRepository>();
         connectionsRepoMock.Setup(c => c.GetByIdForTenantAsync(TenantId, connection.Id, It.IsAny<CancellationToken>())).ReturnsAsync(connection);
         var tokenProviderMock = new Mock<ICalendarConnectionTokenProvider>();
         tokenProviderMock.Setup(t => t.GetFreshAccessTokenAsync(connection, "microsoft", It.IsAny<CancellationToken>())).ReturnsAsync("access-token");
         var clientMock = new Mock<ITeamsMeetingClient>();
-        clientMock.Setup(t => t.GetAttendanceAsync("access-token", "graph-meeting-1", It.IsAny<CancellationToken>())).ReturnsAsync(new List<TeamsAttendanceRecordDto>());
+        clientMock.Setup(t => t.GetAttendanceAsync("access-token", "graph-meeting-1", It.IsAny<DateTimeOffset>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>())).ReturnsAsync(new List<TeamsAttendanceRecordDto>());
         var attendancesRepoMock = new Mock<ICalendarEventMeetingAttendanceRepository>();
         services.AddSingleton(tenantRepoMock.Object);
         services.AddSingleton(meetingsRepoMock.Object);
@@ -195,5 +202,97 @@ public sealed class TeamsAttendanceSyncJobTests
         // Never stamped as synced on an empty report: within the cutoff it stays due; after it, it is marked unavailable.
         meetingsRepoMock.Verify(m => m.Update(It.Is<CalendarEventMeeting>(cm => cm.LastAttendanceSyncedAt != null)), Times.Never);
         meetingsRepoMock.Verify(m => m.Update(It.Is<CalendarEventMeeting>(cm => cm.AttendanceUnavailableAt != null)), unavailable ? Times.Once() : Times.Never());
+    }
+
+    private static (Mock<ICalendarEventMeetingRepository> Meetings, Mock<ITeamsMeetingClient> Client, TeamsAttendanceSyncJob Job, CalendarEventMeeting Meeting)
+        BuildJob(int hoursSinceEnd, bool connectionExists = true, string? accessToken = "access-token", Exception? providerError = null)
+    {
+        var services = new ServiceCollection();
+        var tenantRepoMock = new Mock<ITenantRepository>();
+        tenantRepoMock.Setup(t => t.ListAsync(TenantStatus.Active, null, 0, 100, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<Tenant> { MakeTenant() });
+        tenantRepoMock.Setup(t => t.ListAsync(TenantStatus.Active, null, 100, 100, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<Tenant>());
+        var meeting = MakeMeeting();
+        var connection = MakeConnection(meeting.ExternalCalendarConnectionId);
+        var meetingsRepoMock = new Mock<ICalendarEventMeetingRepository>();
+        meetingsRepoMock.Setup(m => m.GetDueForAttendanceSyncAsync(TenantId, CalendarEventMeetingProviders.MicrosoftTeams, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<CalendarEventMeeting> { meeting });
+        meetingsRepoMock.Setup(m => m.GetEventWindowAsync(TenantId, meeting.CalendarEventId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CalendarEventWindow(EventEnd(hoursSinceEnd).AddMinutes(-30), EventEnd(hoursSinceEnd)));
+        var connectionsRepoMock = new Mock<IExternalCalendarConnectionRepository>();
+        connectionsRepoMock.Setup(c => c.GetByIdForTenantAsync(TenantId, connection.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(connectionExists ? connection : null);
+        var tokenProviderMock = new Mock<ICalendarConnectionTokenProvider>();
+        tokenProviderMock.Setup(t => t.GetFreshAccessTokenAsync(connection, "microsoft", It.IsAny<CancellationToken>())).ReturnsAsync(accessToken);
+        var clientMock = new Mock<ITeamsMeetingClient>();
+        var setup = clientMock.Setup(t => t.GetAttendanceAsync("access-token", meeting.ExternalMeetingId,
+            It.IsAny<DateTimeOffset>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()));
+        if (providerError is not null)
+            setup.ThrowsAsync(providerError);
+        else
+            setup.ReturnsAsync(new List<TeamsAttendanceRecordDto> { new("Ada Lovelace", "ada@acme.com", DateTimeOffset.UtcNow.AddHours(-2), DateTimeOffset.UtcNow.AddHours(-1)) });
+        services.AddSingleton(tenantRepoMock.Object);
+        services.AddSingleton(meetingsRepoMock.Object);
+        services.AddSingleton(connectionsRepoMock.Object);
+        services.AddSingleton(tokenProviderMock.Object);
+        services.AddSingleton(clientMock.Object);
+        services.AddSingleton(Mock.Of<ICalendarEventMeetingAttendanceRepository>());
+        services.AddSingleton(Mock.Of<IUnitOfWork>());
+        services.AddSingleton(Mock.Of<IWritableTenantContext>());
+        services.AddSingleton(Mock.Of<ITenantContextSwitcher>());
+        return (meetingsRepoMock, clientMock, new TeamsAttendanceSyncJob(services.BuildServiceProvider(), NullLogger<TeamsAttendanceSyncJob>.Instance), meeting);
+    }
+
+    private static readonly DateTimeOffset Now = DateTimeOffset.UtcNow;
+    private static DateTimeOffset EventEnd(int hoursSinceEnd) => Now.AddHours(-hoursSinceEnd);
+
+    [Fact]
+    public async Task RunOnceAsync_AsksTheProviderForTheSessionOfTheScheduledEvent()
+    {
+        var (_, client, job, meeting) = BuildJob(hoursSinceEnd: 2);
+
+        await job.RunOnceAsync(CancellationToken.None);
+
+        client.Verify(c => c.GetAttendanceAsync("access-token", meeting.ExternalMeetingId,
+            EventEnd(2).AddMinutes(-30), EventEnd(2), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Theory]
+    [InlineData("provider_error")]
+    [InlineData("not_connected")]
+    [InlineData("reauth_required")]
+    public async Task RunOnceAsync_AFailurePastTheCutoff_IsRecordedAsSyncFailedAndStopsRetrying(string reason)
+    {
+        var (meetings, _, job, meeting) = reason switch
+        {
+            "not_connected" => BuildJob(hoursSinceEnd: 25, connectionExists: false),
+            "reauth_required" => BuildJob(hoursSinceEnd: 25, accessToken: null),
+            _ => BuildJob(hoursSinceEnd: 25, providerError: new HttpRequestException("simulated 500")),
+        };
+
+        await job.RunOnceAsync(CancellationToken.None);
+
+        meetings.Verify(m => m.Update(It.Is<CalendarEventMeeting>(cm =>
+            cm.Id == meeting.Id && cm.AttendanceSyncFailedAt != null && cm.AttendanceSyncError == reason
+            && cm.AttendanceUnavailableAt == null && cm.LastAttendanceSyncedAt == null)), Times.Once);
+    }
+
+    [Theory]
+    [InlineData("provider_error")]
+    [InlineData("not_connected")]
+    [InlineData("reauth_required")]
+    public async Task RunOnceAsync_AFailureBeforeTheCutoff_IsRetriedNextRun(string reason)
+    {
+        var (meetings, _, job, _) = reason switch
+        {
+            "not_connected" => BuildJob(hoursSinceEnd: 2, connectionExists: false),
+            "reauth_required" => BuildJob(hoursSinceEnd: 2, accessToken: null),
+            _ => BuildJob(hoursSinceEnd: 2, providerError: new HttpRequestException("simulated 500")),
+        };
+
+        await job.RunOnceAsync(CancellationToken.None);
+
+        meetings.Verify(m => m.Update(It.IsAny<CalendarEventMeeting>()), Times.Never);
     }
 }

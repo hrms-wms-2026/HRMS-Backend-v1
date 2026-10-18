@@ -15,6 +15,13 @@ public static class CalendarEventMeetingStatuses
     public const string Failed = "failed";
 }
 
+public static class CalendarAttendanceSyncErrors
+{
+    public const string ProviderError = "provider_error";
+    public const string NotConnected = "not_connected";
+    public const string ReauthRequired = "reauth_required";
+}
+
 public class CalendarEventMeeting : ITenantOwnedEntity
 {
     public Guid Id { get; set; }
@@ -31,6 +38,14 @@ public class CalendarEventMeeting : ITenantOwnedEntity
     /// <summary>Set when the provider still had no attendance report
     /// 24 h after the meeting ended (plan C0 P0-2): the meeting stops being retried and shows "attendance unavailable".</summary>
     public DateTimeOffset? AttendanceUnavailableAt { get; set; }
+
+    /// <summary>Set when attendance still could not be fetched (provider error, no connection, sign-in
+    /// needed) at the cutoff: the meeting stops being retried. Unlike <see cref="AttendanceUnavailableAt"/>
+    /// the provider never answered, so this means "unknown", never "nobody attended".</summary>
+    public DateTimeOffset? AttendanceSyncFailedAt { get; set; }
+
+    /// <summary>Why the sync failed: <see cref="CalendarAttendanceSyncErrors"/>.</summary>
+    public string? AttendanceSyncError { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset? UpdatedAt { get; set; }
 }

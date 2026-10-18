@@ -102,14 +102,18 @@ public sealed record MeetingAttendeeViewModel(string? Name, string? Email, DateT
 public sealed record MeetingIncidentViewModel(string EmployeeName, string Rule, DateTimeOffset OccurrenceStart, bool Estimated);
 
 /// <summary><see cref="Incidents"/>: the incidents this meeting raised - for its organizer only (empty otherwise).</summary>
+/// <summary><see cref="SyncStatus"/>: none | pending | synced | attendance_unavailable | sync_failed (the last two mean
+/// "unknown", never "nobody attended"); <see cref="SyncError"/> says why a sync failed.</summary>
 public sealed record MeetingAttendanceViewModel(
-    bool Available, IReadOnlyList<MeetingAttendeeViewModel> Attendees, IReadOnlyList<MeetingIncidentViewModel> Incidents);
+    bool Available, IReadOnlyList<MeetingAttendeeViewModel> Attendees, IReadOnlyList<MeetingIncidentViewModel> Incidents,
+    string SyncStatus, string? SyncError);
 
 public static class MeetingAttendanceViewModelMapper
 {
     public static MeetingAttendanceViewModel ToViewModel(this GetEventMeetingAttendanceResult dto) =>
         new(dto.Available, dto.Attendees.Select(a => new MeetingAttendeeViewModel(a.Name, a.Email, a.JoinedAt, a.LeftAt, a.DurationSeconds)).ToList(),
-            dto.Incidents.Select(i => new MeetingIncidentViewModel(i.EmployeeName, i.Rule, i.OccurrenceStart, i.Estimated)).ToList());
+            dto.Incidents.Select(i => new MeetingIncidentViewModel(i.EmployeeName, i.Rule, i.OccurrenceStart, i.Estimated)).ToList(),
+            dto.SyncStatus, dto.SyncError);
 }
 
 public sealed record StartCalendarConnectionRequest(); // provider comes from the route, body is empty
