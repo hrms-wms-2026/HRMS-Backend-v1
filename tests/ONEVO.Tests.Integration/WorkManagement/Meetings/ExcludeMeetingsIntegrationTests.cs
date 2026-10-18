@@ -56,4 +56,38 @@ public sealed class ExcludeMeetingsIntegrationTests
         Assert.Equal(new[] { standard.Id, meeting.Id }.OrderBy(x => x), ids.OrderBy(x => x));
         Assert.DoesNotContain(otherTenantsMeeting.Id, ids);
     }
+
+    [Fact]
+    public async Task IncludingDeletedLookup_StillHidesMeetings()
+    {
+        var (h, _, meeting, _) = await SeedAsync();
+        await using (var write = h.NewContext())
+        {
+            var tracked = await write.WorkTasks.IgnoreQueryFilters().SingleAsync(t => t.Id == meeting.Id);
+            tracked.IsDeleted = true;
+            tracked.DeletedAt = DateTimeOffset.UtcNow;
+            await write.SaveChangesAsync();
+        }
+        await using var db = h.NewTenantContext();
+
+        Assert.Null(await new EfWorkTaskRepository(db).GetTrackedByIdForTenantIncludingDeletedAsync(h.TenantId, meeting.Id));
+    }
+
+    [Fact]
+    public async Task StatusUsedOnlyByAMeetingTask_CountsAsInUse()
+    {
+        var (h, standard, meeting, _) = await SeedAsync();
+        Guid meetingOnlyStatus;
+        await using (var write = h.NewContext())
+        {
+            meetingOnlyStatus = h.AddStatus(write, meeting.ProjectId, marksComplete: false);
+            var tracked = await write.WorkTasks.IgnoreQueryFilters().SingleAsync(t => t.Id == meeting.Id);
+            tracked.StatusId = meetingOnlyStatus;
+            await write.SaveChangesAsync();
+        }
+        await using var db = h.NewTenantContext();
+
+        Assert.True(await new EfWorkTaskRepository(db).AnyActiveByStatusIdAsync(h.TenantId, meetingOnlyStatus));
+        Assert.NotEqual(standard.StatusId, meetingOnlyStatus);
+    }
 }
