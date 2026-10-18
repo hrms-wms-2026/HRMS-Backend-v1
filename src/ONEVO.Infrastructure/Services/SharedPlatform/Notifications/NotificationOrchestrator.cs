@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.SharedPlatform.Notifications.Catalog;
 using ONEVO.Application.Features.SharedPlatform.Notifications.Delivery;
@@ -22,12 +23,15 @@ public sealed class NotificationOrchestrator : INotificationOrchestrator
     private readonly IOutboxWriter _outbox;
     private readonly IDateTimeProvider _clock;
     private readonly ILogger<NotificationOrchestrator> _logger;
+    private readonly INotificationRepository _inbox;
 
     public NotificationOrchestrator(
         ITenantNotificationRuleRepository rules, INotificationTemplateStore templates,
         INotificationDeliveryRepository deliveries, INotificationTemplateRenderer renderer,
-        IOutboxWriter outbox, IDateTimeProvider clock, ILogger<NotificationOrchestrator> logger)
+        IOutboxWriter outbox, IDateTimeProvider clock, ILogger<NotificationOrchestrator> logger,
+        INotificationRepository inbox)
     {
+        _inbox = inbox;
         _rules = rules;
         _templates = templates;
         _deliveries = deliveries;
@@ -44,7 +48,7 @@ public sealed class NotificationOrchestrator : INotificationOrchestrator
         if (rule.Channels == NotificationChannels.None)
             return;
 
-        var (version, failure) = await ResolveVersionAsync(definition, rule.TemplateId, ct);
+        var (template, version, failure) = await ResolveVersionAsync(definition, rule.TemplateId, ct);
         RenderedNotificationContent? content = null;
         if (version is not null)
         {
@@ -97,8 +101,37 @@ public sealed class NotificationOrchestrator : INotificationOrchestrator
                 delivery.EmailText = content.EmailText;
             }
 
+            if (channel == NotificationChannels.InApp)
+            {
+                // A database write, not an external side effect: written in the producer's own transaction, exactly
+                // when the legacy dispatcher wrote it, so it is never late and never ahead of an inbox refresh.
+                if (template is { InAppEnabled: false })
+                {
+                    delivery.Status = NotificationDeliveryStatus.Skipped;
+                    delivery.StatusReason = "in_app_disabled";
+                    delivery.CompletedAt = now;
+                }
+                else
+                {
+                    var row = new Notification
+                    {
+                        Id = Guid.NewGuid(), TenantId = request.TenantId, RecipientUserId = request.RecipientUserId,
+                        TemplateCode = request.EventKey, Title = delivery.Title, Body = delivery.Body,
+                        RelatedEntityType = request.RelatedEntityType, RelatedEntityId = request.RelatedEntityId,
+                        IsRead = false, CreatedAt = now
+                    };
+                    await _inbox.AddAsync(row, ct);
+                    delivery.NotificationId = row.Id;
+                    delivery.Status = NotificationDeliveryStatus.AvailableInInbox;
+                    delivery.AttemptCount = 1;
+                    delivery.CompletedAt = now;
+                }
+                await _deliveries.AddAsync(delivery, ct);
+                continue;
+            }
+
             await _deliveries.AddAsync(delivery, ct);
-            // In-app and email are delivered through the outbox. The tray collects its own pending deliveries;
+            // Email is delivered through the outbox. The tray collects its own pending deliveries;
             // it only gets a post-commit wake-up so it fetches now rather than on its slow fallback poll.
             if (channel == NotificationChannels.Tray)
                 await _outbox.EnqueueAsync(OutboxMessageTypes.NotificationTrayPush,
@@ -109,7 +142,7 @@ public sealed class NotificationOrchestrator : INotificationOrchestrator
         }
     }
 
-    private async Task<(NotificationTemplateVersion? Version, string? Failure)> ResolveVersionAsync(
+    private async Task<(NotificationTemplate? Template, NotificationTemplateVersion? Version, string? Failure)> ResolveVersionAsync(
         NotificationEventDefinition definition, Guid? selectedTemplateId, CancellationToken ct)
     {
         NotificationTemplate? template = null;
@@ -122,9 +155,9 @@ public sealed class NotificationOrchestrator : INotificationOrchestrator
         // A selected template that was since unpublished or removed falls back to the product default.
         template ??= await _templates.GetDefaultForEventAsync(definition.Key, ct);
         if (template?.ActiveVersionId is not { } versionId)
-            return (null, "no_published_template");
+            return (template, null, "no_published_template");
 
         var version = await _templates.GetVersionAsync(versionId, ct);
-        return version is null ? (null, "no_published_template") : (version, null);
+        return version is null ? (template, null, "no_published_template") : (template, version, null);
     }
 }

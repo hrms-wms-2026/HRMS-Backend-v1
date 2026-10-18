@@ -111,7 +111,7 @@ public sealed class WorkNotificationEngine : IWorkNotificationEngine
 
             await _outbox.EnqueueAsync(
                 OutboxMessageTypes.WorkNotification,
-                new WorkNotificationPayload(e.TenantId, recipient.UserId, template, new Dictionary<string, string>(placeholders), relatedType, relatedId),
+                new WorkNotificationPayload(e.TenantId, recipient.UserId, template, new Dictionary<string, string>(placeholders), relatedType, relatedId, EventId: eventId),
                 e.TenantId,
                 ct);
         }

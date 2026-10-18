@@ -1,6 +1,7 @@
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
+using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.SharedPlatform.Notifications.Catalog;
 using ONEVO.Application.Features.SharedPlatform.Notifications.Delivery;
@@ -20,6 +21,8 @@ public class NotificationOrchestratorTests
     private readonly NotificationTestFakes.FakeDeliveryRepository _deliveries = new();
     private readonly Mock<IOutboxWriter> _outbox = new();
     private readonly Mock<IDateTimeProvider> _clock = new();
+    private readonly Mock<INotificationRepository> _inbox = new();
+    private readonly List<Notification> _inboxRows = [];
     private readonly List<NotificationDeliveryPayload> _enqueued = [];
     private readonly List<NotificationTrayPushPayload> _trayPushes = [];
     private readonly Guid _tenant = Guid.NewGuid();
@@ -29,6 +32,8 @@ public class NotificationOrchestratorTests
     public NotificationOrchestratorTests()
     {
         _clock.SetupGet(c => c.UtcNow).Returns(Now);
+        _inbox.Setup(i => i.AddAsync(It.IsAny<Notification>(), It.IsAny<CancellationToken>()))
+            .Callback<Notification, CancellationToken>((n, _) => _inboxRows.Add(n)).Returns(Task.CompletedTask);
         _outbox.Setup(o => o.EnqueueAsync(OutboxMessageTypes.NotificationDelivery, It.IsAny<NotificationDeliveryPayload>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
             .Callback<string, NotificationDeliveryPayload, Guid?, CancellationToken>((_, p, _, _) => _enqueued.Add(p))
             .Returns(Task.CompletedTask);
@@ -53,7 +58,7 @@ public class NotificationOrchestratorTests
 
     private NotificationOrchestrator Build() => new(
         _rules, _store, _deliveries, new NotificationTemplateRenderer(), _outbox.Object, _clock.Object,
-        NullLogger<NotificationOrchestrator>.Instance);
+        NullLogger<NotificationOrchestrator>.Instance, _inbox.Object);
 
     private NotificationDispatchRequest Request(Guid? eventId = null) => new(
         eventId ?? Guid.NewGuid(), Event, _tenant, _recipient,
@@ -64,12 +69,36 @@ public class NotificationOrchestratorTests
         => _rules.Rules.Add(new TenantNotificationRule { Id = Guid.NewGuid(), TenantId = _tenant, EventKey = Event, EnabledChannels = channels, TemplateId = templateId });
 
     [Fact]
-    public async Task Defaults_CreateOnlyAnInAppDelivery()
+    public async Task Defaults_WriteTheInboxRowInTheCallersTransaction()
     {
+        var request = Request();
+
+        await Build().EnqueueAsync(request);
+
+        // In-app is a database write, not an external side effect: it lands at the producer's commit, as before,
+        // so the bell never refreshes ahead of the row.
+        var row = _inboxRows.Should().ContainSingle().Subject;
+        row.TemplateCode.Should().Be(Event);
+        row.RecipientUserId.Should().Be(_recipient);
+        row.RelatedEntityType.Should().Be(request.RelatedEntityType);
+        row.RelatedEntityId.Should().Be(request.RelatedEntityId);
+        row.Body.Should().Be("Bala asked about \"Q4 plan\"");
+        var delivery = _deliveries.Deliveries.Should().ContainSingle().Subject;
+        delivery.Channel.Should().Be(NotificationChannels.InApp);
+        delivery.Status.Should().Be(NotificationDeliveryStatus.AvailableInInbox);
+        delivery.NotificationId.Should().Be(row.Id);
+        _enqueued.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task InAppDisabledOnTheTemplate_StillSuppressesTheInboxRow()
+    {
+        _template.InAppEnabled = false;
+
         await Build().EnqueueAsync(Request());
 
-        _deliveries.Deliveries.Should().ContainSingle(d => d.Channel == NotificationChannels.InApp && d.Status == NotificationDeliveryStatus.Pending);
-        _enqueued.Should().ContainSingle(p => p.DeliveryId == _deliveries.Deliveries[0].Id && p.TenantId == _tenant);
+        _inboxRows.Should().BeEmpty();
+        _deliveries.Deliveries.Should().ContainSingle(d => d.Status == NotificationDeliveryStatus.Skipped && d.StatusReason == "in_app_disabled");
     }
 
     [Fact]
@@ -124,7 +153,8 @@ public class NotificationOrchestratorTests
 
         _deliveries.Deliveries.Should().HaveCount(3);
         _deliveries.Deliveries.Select(d => d.Channel).Should().OnlyHaveUniqueItems();
-        _enqueued.Should().HaveCount(2);
+        _inboxRows.Should().ContainSingle();
+        _enqueued.Should().ContainSingle(); // email only
     }
 
     [Fact]
