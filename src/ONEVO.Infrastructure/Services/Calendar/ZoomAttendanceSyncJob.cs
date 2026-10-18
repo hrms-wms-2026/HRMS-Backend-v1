@@ -107,8 +107,10 @@ public sealed class ZoomAttendanceSyncJob(IServiceProvider services, ILogger<Zoo
             return;
         if (services.GetService<ICalendarNotificationSender>() is not { } sender || services.GetService<ICalendarEventRepository>() is not { } events)
             return;
-        var participants = await events.GetParticipantsForEventsAsync(tenantId, [meeting.CalendarEventId], ct);
-        if (participants is null || !participants.TryGetValue(meeting.CalendarEventId, out var list) || list.Count == 0)
+        if (meeting.CalendarEventId is not Guid eventId)
+            return; // a meeting series' link: its occurrences are evaluated by the Phase 2 attendance sync
+        var participants = await events.GetParticipantsForEventsAsync(tenantId, [eventId], ct);
+        if (participants is null || !participants.TryGetValue(eventId, out var list) || list.Count == 0)
             return;
         await sender.QueueIncidentEvaluationAsync(tenantId, list.Select(p => p.EmployeeId).ToList(), ct);
         await unitOfWork.SaveChangesAsync(ct);
@@ -120,7 +122,10 @@ public sealed class ZoomAttendanceSyncJob(IServiceProvider services, ILogger<Zoo
         IZoomMeetingClient zoomClient, ICalendarEventMeetingAttendanceRepository attendances,
         ICalendarEventMeetingRepository meetings, IUnitOfWork unitOfWork, CancellationToken ct)
     {
-        if (await meetings.GetEventWindowAsync(tenantId, meeting.CalendarEventId, ct) is not { } window)
+        // A meeting series' link is synced per occurrence by the Phase 2 attendance sync, never by this one-shot job.
+        if (meeting.CalendarEventId is not Guid eventId)
+            return;
+        if (await meetings.GetEventWindowAsync(tenantId, eventId, ct) is not { } window)
             return; // the event is gone - nothing to ask the provider about
 
         string? failure = null;

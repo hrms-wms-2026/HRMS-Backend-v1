@@ -153,12 +153,16 @@ public sealed class CalendarSyncService(
         DateTimeOffset start, DateTimeOffset end, bool isAllDay, string? timezone, string? location, bool isCancelled, bool isPrivate, CancellationToken ct)
     {
         var link = await links.GetTrackedByConnectionAndExternalEventAsync(connection.TenantId, connection.Id, externalEventId, ct);
+        // A pulled-back copy of a meeting occurrence we pushed (spec 5.10): the occurrence is the source of truth, so the
+        // pull never creates, updates or deletes anything for it.
+        if (link is { CalendarEventId: null })
+            return;
 
         if (isCancelled)
         {
             if (link is not null)
             {
-                var existingEvent = await events.GetTrackedByIdForTenantAsync(connection.TenantId, link.CalendarEventId, ct);
+                var existingEvent = await events.GetTrackedByIdForTenantAsync(connection.TenantId, link.CalendarEventId!.Value, ct);
                 if (existingEvent is not null)
                     events.Remove(existingEvent);
                 links.Remove(link);
@@ -192,7 +196,7 @@ public sealed class CalendarSyncService(
             return;
         }
 
-        var localEvent = await events.GetTrackedByIdForTenantAsync(connection.TenantId, link.CalendarEventId, ct);
+        var localEvent = await events.GetTrackedByIdForTenantAsync(connection.TenantId, link.CalendarEventId!.Value, ct);
         if (localEvent is null)
             return;
 

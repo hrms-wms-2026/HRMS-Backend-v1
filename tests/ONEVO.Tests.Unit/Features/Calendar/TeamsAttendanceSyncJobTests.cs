@@ -178,7 +178,7 @@ public sealed class TeamsAttendanceSyncJobTests
             .ReturnsAsync(new CalendarEventWindow(DateTimeOffset.UtcNow.AddHours(-2), DateTimeOffset.UtcNow.AddHours(-1)));
         meetingsRepoMock.Setup(m => m.GetDueForAttendanceSyncAsync(TenantId, CalendarEventMeetingProviders.MicrosoftTeams, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<CalendarEventMeeting> { meeting });
-        meetingsRepoMock.Setup(m => m.GetEventWindowAsync(TenantId, meeting.CalendarEventId, It.IsAny<CancellationToken>()))
+        meetingsRepoMock.Setup(m => m.GetEventWindowAsync(TenantId, meeting.CalendarEventId!.Value, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new CalendarEventWindow(DateTimeOffset.UtcNow.AddHours(-hoursSinceEnd).AddMinutes(-30), DateTimeOffset.UtcNow.AddHours(-hoursSinceEnd)));
         var connectionsRepoMock = new Mock<IExternalCalendarConnectionRepository>();
         connectionsRepoMock.Setup(c => c.GetByIdForTenantAsync(TenantId, connection.Id, It.IsAny<CancellationToken>())).ReturnsAsync(connection);
@@ -218,7 +218,7 @@ public sealed class TeamsAttendanceSyncJobTests
         var meetingsRepoMock = new Mock<ICalendarEventMeetingRepository>();
         meetingsRepoMock.Setup(m => m.GetDueForAttendanceSyncAsync(TenantId, CalendarEventMeetingProviders.MicrosoftTeams, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<CalendarEventMeeting> { meeting });
-        meetingsRepoMock.Setup(m => m.GetEventWindowAsync(TenantId, meeting.CalendarEventId, It.IsAny<CancellationToken>()))
+        meetingsRepoMock.Setup(m => m.GetEventWindowAsync(TenantId, meeting.CalendarEventId!.Value, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new CalendarEventWindow(EventEnd(hoursSinceEnd).AddMinutes(-30), EventEnd(hoursSinceEnd)));
         var connectionsRepoMock = new Mock<IExternalCalendarConnectionRepository>();
         connectionsRepoMock.Setup(c => c.GetByIdForTenantAsync(TenantId, connection.Id, It.IsAny<CancellationToken>()))

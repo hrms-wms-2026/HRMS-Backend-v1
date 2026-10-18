@@ -13,6 +13,7 @@ public class CalendarEventMeetingAttendanceConfiguration : IEntityTypeConfigurat
 
         builder.Property(a => a.ExternalParticipantName).HasMaxLength(200);
         builder.Property(a => a.ExternalParticipantEmail).HasMaxLength(255);
+        builder.Property(a => a.ParticipantKey).HasMaxLength(255);
 
         builder.HasIndex(a => new { a.TenantId, a.CalendarEventMeetingId })
             .HasDatabaseName("ix_calendar_event_meeting_attendances_tenant_id_meeting_id");

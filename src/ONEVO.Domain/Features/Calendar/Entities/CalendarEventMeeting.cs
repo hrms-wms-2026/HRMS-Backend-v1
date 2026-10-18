@@ -29,11 +29,22 @@ public static class CalendarAttendanceSyncErrors
     public const string ReauthRequired = "reauth_required";
 }
 
+/// <summary>Who owns a provider meeting link (meetings-as-tasks Phase 2 spec 4.1).</summary>
+public static class CalendarMeetingOwnerKinds
+{
+    /// <summary>A calendar event; <see cref="CalendarEventMeeting.CalendarEventId"/> is set.</summary>
+    public const string CalendarEvent = "calendar_event";
+    /// <summary>A meeting series, through meeting_series_links; <see cref="CalendarEventMeeting.CalendarEventId"/> is null.</summary>
+    public const string MeetingSeries = "meeting_series";
+}
+
 public class CalendarEventMeeting : ITenantOwnedEntity
 {
     public Guid Id { get; set; }
     public Guid TenantId { get; set; }
-    public Guid CalendarEventId { get; set; }
+    /// <summary>Set exactly when <see cref="OwnerKind"/> is <see cref="CalendarMeetingOwnerKinds.CalendarEvent"/>.</summary>
+    public Guid? CalendarEventId { get; set; }
+    public string OwnerKind { get; set; } = CalendarMeetingOwnerKinds.CalendarEvent;
     public Guid ExternalCalendarConnectionId { get; set; }
     public string Provider { get; set; } = string.Empty;
     public string ExternalMeetingId { get; set; } = string.Empty;
