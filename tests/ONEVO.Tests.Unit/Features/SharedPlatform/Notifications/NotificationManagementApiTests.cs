@@ -240,7 +240,7 @@ public class NotificationManagementApiTests
 
         var setting = result.Value!.Single(s => s.EventKey == Event);
         setting.EnabledChannels.Should().Equal(NotificationChannelNames.InApp);
-        setting.SupportedChannels.Should().Equal(NotificationChannelNames.InApp, NotificationChannelNames.Email);
+        setting.SupportedChannels.Should().Equal(NotificationChannelNames.InApp, NotificationChannelNames.Email, NotificationChannelNames.Tray);
         setting.Configurable.Should().BeTrue();
         result.Value!.Single(s => s.EventKey == "work_sprint_completed").Configurable.Should().BeFalse();
         setting.IsOverridden.Should().BeFalse();
@@ -259,11 +259,12 @@ public class NotificationManagementApiTests
     }
 
     [Fact]
-    public async Task Update_TrayOnTheFirstSliceEvent_IsRejectedUntilTheTrayTransportExists()
+    public async Task Update_TrayOnTheFirstSliceEvent_IsAccepted()
     {
         var result = await UpdateHandler(_tenantA).Handle(new UpdateNotificationSettingCommand(Event, ["in_app", "tray"], null, null, null), default);
 
-        result.StatusCode.Should().Be(400);
+        result.IsSuccess.Should().BeTrue();
+        _rules.Rules.Single().EnabledChannels.Should().Be(NotificationChannels.InApp | NotificationChannels.Tray);
     }
 
     [Fact]

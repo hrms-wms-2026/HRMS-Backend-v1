@@ -17,6 +17,17 @@ internal static class NotificationTestFakes
         public Task AddAsync(NotificationDelivery delivery, CancellationToken ct = default) { Deliveries.Add(delivery); return Task.CompletedTask; }
         public Task<NotificationDelivery?> GetTrackedAsync(Guid deliveryId, CancellationToken ct = default)
             => Task.FromResult(Deliveries.FirstOrDefault(d => d.Id == deliveryId));
+        public Task<IReadOnlyList<NotificationDelivery>> ListPendingTrayAsync(Guid tenantId, Guid recipientUserId, DateTimeOffset now, int max, CancellationToken ct = default)
+            => Task.FromResult<IReadOnlyList<NotificationDelivery>>(Deliveries
+                .Where(d => d.TenantId == tenantId && d.RecipientUserId == recipientUserId && d.Channel == NotificationChannels.Tray
+                    && d.Status == NotificationDeliveryStatus.Pending && d.ExpiresAt > now)
+                .OrderBy(d => d.CreatedAt).Take(max).ToList());
+        public Task<int> ExpirePendingTrayAsync(DateTimeOffset now, CancellationToken ct = default)
+        {
+            var expired = Deliveries.Where(d => d.Channel == NotificationChannels.Tray && d.Status == NotificationDeliveryStatus.Pending && d.ExpiresAt <= now).ToList();
+            expired.ForEach(d => { d.Status = NotificationDeliveryStatus.Expired; d.StatusReason = "not_collected_before_expiry"; d.CompletedAt = now; });
+            return Task.FromResult(expired.Count);
+        }
     }
 
     internal sealed class FakeTemplateStore : INotificationTemplateStore

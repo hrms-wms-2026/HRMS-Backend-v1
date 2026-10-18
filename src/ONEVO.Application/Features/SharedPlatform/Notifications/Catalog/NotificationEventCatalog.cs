@@ -17,7 +17,7 @@ public static class NotificationEventCatalog
     /// <summary>Events cut over to INotificationOrchestrator (one owner per event; see docs/notifications/rollout.md).</summary>
     private static readonly HashSet<string> OrchestratorOwnedEvents = new(StringComparer.Ordinal) { FirstSliceEventKey };
 
-    private const NotificationChannels OrchestratorChannels = NotificationChannels.InApp | NotificationChannels.Email;
+    private const NotificationChannels OrchestratorChannels = NotificationChannels.InApp | NotificationChannels.Email | NotificationChannels.Tray;
 
     public static readonly IReadOnlyList<NotificationEventDefinition> All =
     [
@@ -105,7 +105,7 @@ public static class NotificationEventCatalog
 
     /// <summary>An event the shared dispatcher sends in-app. While the legacy dispatcher owns it, in-app is the only
     /// channel anything delivers, so it is the only one advertised. Once cut over to the orchestrator, email becomes
-    /// available (OFF by default); tray joins with the generic tray transport.</summary>
+    /// and tray (generic tray transport) become available, both OFF by default.</summary>
     private static NotificationEventDefinition Shared(
         string key, string module, string displayName, IReadOnlyList<NotificationVariableDefinition> variables)
         => new(key, module, displayName,

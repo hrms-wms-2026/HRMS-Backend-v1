@@ -13,7 +13,11 @@ Each catalog event has exactly one delivery owner:
 Channel support follows ownership, so the settings screen never offers a switch nothing reads:
 legacy shared events advertise in-app only and monitoring alerts tray only (both read-only in tenant
 settings, `configurable: false`, PUT/DELETE return 422); orchestrator-owned events advertise in-app + email.
-Tray is added for orchestrator-owned events together with the generic tray transport (plan Task 5).
+Orchestrator-owned events also offer tray: the tray service polls
+`api/v1/monitoring/tray/notifications/deliveries/pending`, forwards each delivery to the tray process over
+IPC, and acks `.../deliveries/{id}/ack` only after the tray process confirms it accepted the toast
+(`client_accepted`). `NotificationTrayExpiryJob` marks uncollected tray deliveries `expired` every 15 minutes.
+Old tray builds never call the generic routes and keep receiving legacy monitoring alerts unchanged.
 
 Ownership is the `OrchestratorOwnedEvents` set in `NotificationEventCatalog`. Cut over one event per change:
 add it to the set **and** switch its producer in the same commit, so the old and new path are never both on.
@@ -56,6 +60,8 @@ No schema rollback after live writes: the new tables are additive.
 - Email is **at-least-once**: if the provider accepts but the status save fails, or the provider times out
   after accepting, the retry may send a second copy. The providers in use expose no idempotency key here.
 - Delivery records are retained; a cleanup job is a follow-up.
+- Tray display is at-least-once: if the tray shows the toast but crashes before confirming, the next poll
+  re-sends it; the tray suppresses repeats with a bounded on-disk list of shown delivery ids.
 - Emails reuse the template copy; `open_related` is not yet turned into a link in the email body.
 
 ## Inspecting failures

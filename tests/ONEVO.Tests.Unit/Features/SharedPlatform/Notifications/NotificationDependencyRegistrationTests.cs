@@ -62,6 +62,8 @@ public class NotificationDependencyRegistrationTests
     [InlineData(typeof(WorkNotificationEngine))]
     [InlineData(typeof(SendTestNotificationCommandHandler))]
     [InlineData(typeof(UpdateNotificationSettingCommandHandler))]
+    [InlineData(typeof(ONEVO.Application.Features.SharedPlatform.Notifications.Tray.Commands.AckTrayDelivery.AckTrayDeliveryCommandHandler))]
+    [InlineData(typeof(ONEVO.Application.Features.SharedPlatform.Notifications.Tray.Queries.GetPendingTrayDeliveries.GetPendingTrayDeliveriesQueryHandler))]
     public void EveryConstructorDependency_IsRegistered(Type type)
     {
         var parameters = type.GetConstructors().Single().GetParameters();

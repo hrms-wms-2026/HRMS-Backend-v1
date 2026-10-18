@@ -84,26 +84,29 @@ public class NotificationOrchestratorTests
     }
 
     [Fact]
-    public async Task UnsupportedStoredChannel_IsNeverReserved()
+    public async Task Tray_IsHeldForThePollingClient_WithAnExpiry()
     {
-        Route(NotificationChannels.Tray); // e.g. saved before tray support was withdrawn
+        Route(NotificationChannels.Tray);
 
         await Build().EnqueueAsync(Request());
 
-        _deliveries.Deliveries.Should().BeEmpty();
-        _enqueued.Should().BeEmpty();
+        var tray = _deliveries.Deliveries.Should().ContainSingle().Subject;
+        tray.Channel.Should().Be(NotificationChannels.Tray);
+        tray.Title.Should().Be("Approval needed");
+        tray.ExpiresAt.Should().Be(Now.Add(NotificationOrchestrator.TrayExpiry));
+        _enqueued.Should().BeEmpty("the tray collects its own deliveries");
     }
 
     [Fact]
     public async Task RepeatedSameEvent_YieldsOneRecordPerChannel()
     {
-        Route(NotificationChannels.InApp | NotificationChannels.Email);
+        Route(NotificationChannels.InApp | NotificationChannels.Email | NotificationChannels.Tray);
         var eventId = Guid.NewGuid();
 
         await Build().EnqueueAsync(Request(eventId));
         await Build().EnqueueAsync(Request(eventId));
 
-        _deliveries.Deliveries.Should().HaveCount(2);
+        _deliveries.Deliveries.Should().HaveCount(3);
         _deliveries.Deliveries.Select(d => d.Channel).Should().OnlyHaveUniqueItems();
         _enqueued.Should().HaveCount(2);
     }

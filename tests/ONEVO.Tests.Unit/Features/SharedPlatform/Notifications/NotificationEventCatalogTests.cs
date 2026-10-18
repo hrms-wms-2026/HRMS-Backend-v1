@@ -77,14 +77,13 @@ public class NotificationEventCatalogTests
     }
 
     [Fact]
-    public void FirstSliceEvent_SupportsInAppAndEmail_WithExistingInAppDefault()
+    public void FirstSliceEvent_SupportsAllThreeChannels_WithExistingInAppDefault()
     {
         var e = NotificationEventCatalog.Get(NotificationEventCatalog.FirstSliceEventKey);
 
         e.Module.Should().Be("work_management");
         e.OrchestratorOwned.Should().BeTrue();
-        // Tray joins when the generic tray transport lands (plan Task 5); until then nothing would collect it.
-        e.SupportedChannels.Should().Be(NotificationChannels.InApp | NotificationChannels.Email);
+        e.SupportedChannels.Should().Be(NotificationChannels.InApp | NotificationChannels.Email | NotificationChannels.Tray);
         e.DefaultChannels.Should().Be(NotificationChannels.InApp);
     }
 

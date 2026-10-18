@@ -27,4 +27,25 @@ public sealed class EfNotificationDeliveryRepository : INotificationDeliveryRepo
 
     public Task<NotificationDelivery?> GetTrackedAsync(Guid deliveryId, CancellationToken ct = default)
         => _db.NotificationDeliveries.FirstOrDefaultAsync(d => d.Id == deliveryId, ct);
+
+    public async Task<IReadOnlyList<NotificationDelivery>> ListPendingTrayAsync(
+        Guid tenantId, Guid recipientUserId, DateTimeOffset now, int max, CancellationToken ct = default)
+        => await _db.NotificationDeliveries.AsNoTracking()
+            .Where(d => d.TenantId == tenantId && d.RecipientUserId == recipientUserId
+                && d.Channel == NotificationChannels.Tray && d.Status == NotificationDeliveryStatus.Pending
+                && d.ExpiresAt > now)
+            .OrderBy(d => d.CreatedAt)
+            .Take(max)
+            .ToListAsync(ct);
+
+    /// <remarks>Cross-tenant by design: NotificationTrayExpiryJob runs it in admin mode, where both the EF tenant
+    /// filter and the RLS policy pass every tenant's rows. No IgnoreQueryFilters needed.</remarks>
+    public Task<int> ExpirePendingTrayAsync(DateTimeOffset now, CancellationToken ct = default)
+        => _db.NotificationDeliveries
+            .Where(d => d.Channel == NotificationChannels.Tray && d.Status == NotificationDeliveryStatus.Pending && d.ExpiresAt <= now)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(d => d.Status, NotificationDeliveryStatus.Expired)
+                .SetProperty(d => d.StatusReason, "not_collected_before_expiry")
+                .SetProperty(d => d.UpdatedAt, now)
+                .SetProperty(d => d.CompletedAt, now), ct);
 }
