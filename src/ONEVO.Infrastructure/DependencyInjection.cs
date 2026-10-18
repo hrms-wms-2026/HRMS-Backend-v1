@@ -400,6 +400,15 @@ public static class DependencyInjection
         services.AddScoped<ITaskCategoryRepository>(sp => sp.GetRequiredService<EfTaskCategoryRepository>());
         services.AddScoped<EfWorkTaskRepository>();
         services.AddScoped<IWorkTaskRepository>(sp => sp.GetRequiredService<EfWorkTaskRepository>());
+        // Meetings-as-tasks Phase 2 (spec 8): every flag off by default; bad attendance settings or BulkInvite without
+        // the outbox claim fix (P-1) stop the app at startup.
+        services.AddSingleton<Microsoft.Extensions.Options.IValidateOptions<ONEVO.Application.Features.WorkManagement.Meetings.MeetingsOptions>,
+            ONEVO.Application.Features.WorkManagement.Meetings.MeetingsOptionsValidator>();
+        services.AddOptions<ONEVO.Application.Features.WorkManagement.Meetings.MeetingsOptions>()
+            .Configure(options => ONEVO.Application.Features.WorkManagement.Meetings.MeetingsOptions.BindFrom(
+                configuration.GetSection(ONEVO.Application.Features.WorkManagement.Meetings.MeetingsOptions.Section), options))
+            .ValidateOnStart();
+        services.AddHostedService<Services.WorkManagement.Meetings.MeetingsStartupCheck>();
         services.AddScoped<ONEVO.Application.Features.WorkManagement.Meetings.RepositoryInterfaces.IMeetingOccurrenceWriter,
             ONEVO.Infrastructure.Persistence.Repositories.WorkManagement.Meetings.EfMeetingOccurrenceWriter>();
         services.AddScoped<ONEVO.Infrastructure.Persistence.Repositories.Calendar.EfCalendarEventRepository>();
