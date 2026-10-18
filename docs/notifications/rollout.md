@@ -24,10 +24,16 @@ Old tray builds never call the generic routes and keep receiving legacy monitori
 Ownership is the `OrchestratorOwnedEvents` set in `NotificationEventCatalog`. Cut over one event per change:
 add it to the set **and** switch its producer in the same commit, so the old and new path are never both on.
 
-| Event | Owner | Since |
-|---|---|---|
-| `work_approval_requested` | orchestrator | this branch |
-| every other catalog event | legacy | — |
+| Module (one line each in `OrchestratorOwnedEvents`) | Owner |
+|---|---|
+| Work Management, Conversations, Time & Attendance, Leave, Calendar, Monitoring reviewer notices | orchestrator |
+| 9 producer-less seeded codes | legacy (nothing raises them) |
+| Monitoring tray alerts | legacy monitoring tray transport (excluded in v1) |
+
+Direct producers are cut over through `NotificationDispatcher` (the compatibility adapter): an owned event goes to
+the orchestrator, everything else to the legacy insert - never both. The in-app row is written in the producer's
+transaction exactly as before. Events whose producer still sends its own email (6 leave, 5 calendar) do not offer
+an orchestrator Email channel, so a tenant can never cause a second email.
 
 ### In-flight work at cutover
 
@@ -37,7 +43,9 @@ No double delivery: an occurrence is enqueued by exactly one path.
 
 ### Rollback
 
-Remove the event from `OrchestratorOwnedEvents` (the producer falls back to the legacy payload) and deploy.
+Remove the module's line (or a single event) from `OrchestratorOwnedEvents` and deploy: the dispatcher and the
+Work engine fall back to the legacy path for it. Already-written inbox rows stay; queued email/tray work for it
+drains from its captured content.
 Queued `notification_delivery` messages keep processing from their captured content. Never run both owners.
 No schema rollback after live writes: the new tables are additive.
 
@@ -83,5 +91,6 @@ Outbox side: `outbox_messages` rows of type `notification_delivery` with `status
 - Unit tests: catalog, renderer, versions/seeder, management/settings handlers, orchestrator, channel handlers.
 - Architecture tests: RLS policy coverage for `tenant_notification_rules` and `notification_deliveries`.
 - DI: `NotificationDependencyRegistrationTests` checks the new types against the real `AddApplication`/`AddInfrastructure` registrations.
+- Migration regression: `NotificationEventMigrationTests` (all migrated events, seeded copy validates).
 - **Not yet run**: PostgreSQL integration tests (Testcontainers needs Docker, which was unavailable),
   applying the migration to a database, and an end-to-end send through a running API.

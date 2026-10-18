@@ -14,8 +14,47 @@ public static class NotificationEventCatalog
     /// <summary>The first event delivered through the orchestrator on all three channels.</summary>
     public const string FirstSliceEventKey = "work_approval_requested";
 
-    /// <summary>Events cut over to INotificationOrchestrator (one owner per event; see docs/notifications/rollout.md).</summary>
-    private static readonly HashSet<string> OrchestratorOwnedEvents = new(StringComparer.Ordinal) { FirstSliceEventKey };
+    /// <summary>
+    /// Events cut over to INotificationOrchestrator - one owner per event, see docs/notifications/rollout.md. Grouped
+    /// by module so a rollback removes one module's line. Not listed: the producer-less seeded codes and the
+    /// monitoring tray alerts (they stay on the legacy monitoring tray transport).
+    /// </summary>
+    private static readonly HashSet<string> OrchestratorOwnedEvents = new(StringComparer.Ordinal)
+    {
+        // Work Management
+        FirstSliceEventKey, "work_activity_recorded", "work_approval_decided", "work_monitor_alert", "work_monitor_alert_escalated",
+        "work_sprint_completed", "work_sprint_incomplete", "work_sprint_achieved",
+        "work_project_member_invited", "work_objective_invitation_created", "work_project_member_accepted",
+        // Conversations
+        "conversation_member_added", "conversation_mentioned",
+        // Time & Attendance
+        "attendance_correction_request_created", "attendance_correction_request_decided", "attendance_correction_request_cancelled",
+        "work_area_change_request_created", "work_area_change_request_decided", "work_area_change_request_cancelled",
+        // Leave
+        "leave_request_approved", "leave_request_rejected", "leave_request_information_requested", "leave_request_next_approval_required",
+        "leave_request_cancelled_by_employee", "leave_request_cancelled_by_hr", "leave_request_partially_cancelled", "leave_request_decision_undone",
+        // Calendar
+        "calendar_event_participant_added", "calendar_event_updated", "calendar_event_cancelled", "calendar_event_resolution_requested",
+        "calendar_event_replacement_nominated", "calendar_event_rsvp_accepted", "calendar_event_rsvp_rejected",
+        "calendar_event_replacement_nominee", "calendar_event_participant_removed", "calendar_event_meeting_link_removed",
+        "calendar_event_meeting_link_failed", "calendar_connection_reauth_required", "calendar_connection_failed",
+        "calendar_connection_sync_conflict", "calendar_event_reminder",
+        "calendar_exception_detected", "calendar_exception_raised_for_you", "calendar_exception_escalated",
+        // Monitoring (in-app reviewer notices; not the tray alerts)
+        "face_verification_override", "exception_alert_detected", "exception_alert_escalated",
+    };
+
+    /// <summary>
+    /// Owned events whose producer still sends its own email (leave emails to the employee-record address; calendar
+    /// invite/update/cancel/removal emails with ICS). The catalog does not offer a second email for them.
+    /// </summary>
+    private static readonly HashSet<string> ProducerSendsOwnEmail = new(StringComparer.Ordinal)
+    {
+        "leave_request_approved", "leave_request_rejected", "leave_request_information_requested",
+        "leave_request_cancelled_by_employee", "leave_request_cancelled_by_hr", "leave_request_partially_cancelled",
+        "calendar_event_participant_added", "calendar_event_updated", "calendar_event_cancelled",
+        "calendar_event_participant_removed", "calendar_event_meeting_link_removed",
+    };
 
     private const NotificationChannels OrchestratorChannels = NotificationChannels.InApp | NotificationChannels.Email | NotificationChannels.Tray;
 
@@ -109,7 +148,9 @@ public static class NotificationEventCatalog
     private static NotificationEventDefinition Shared(
         string key, string module, string displayName, IReadOnlyList<NotificationVariableDefinition> variables)
         => new(key, module, displayName,
-            SupportedChannels: OrchestratorOwnedEvents.Contains(key) ? OrchestratorChannels : NotificationChannels.InApp,
+            SupportedChannels: !OrchestratorOwnedEvents.Contains(key)
+                ? NotificationChannels.InApp
+                : ProducerSendsOwnEmail.Contains(key) ? OrchestratorChannels & ~NotificationChannels.Email : OrchestratorChannels,
             DefaultChannels: NotificationChannels.InApp,
             RequiredChannels: NotificationChannels.None,
             AllowedVariables: variables,

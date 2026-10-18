@@ -96,7 +96,7 @@ public class NotificationManagementApiTests
     {
         var handler = new CreateNotificationTemplateCommandHandler(_store, _uow.Object, _admin.Object, _clock.Object);
 
-        var result = await handler.Handle(new CreateNotificationTemplateCommand("work_sprint_completed", "Alt", Content()), default);
+        var result = await handler.Handle(new CreateNotificationTemplateCommand("work_task_creation_request_created", "Alt", Content()), default);
 
         result.StatusCode.Should().Be(422);
         _store.Templates.Should().BeEmpty();
@@ -106,7 +106,7 @@ public class NotificationManagementApiTests
     public void EventResponse_FlagsWhichEventsAcceptAlternateTemplates()
     {
         NotificationEventCatalog.Get(Event).ToResponse().Customizable.Should().BeTrue();
-        NotificationEventCatalog.Get("work_sprint_completed").ToResponse().Customizable.Should().BeFalse();
+        NotificationEventCatalog.Get("work_task_creation_request_created").ToResponse().Customizable.Should().BeFalse();
     }
 
     [Fact]
@@ -261,7 +261,7 @@ public class NotificationManagementApiTests
         setting.EnabledChannels.Should().Equal(NotificationChannelNames.InApp);
         setting.SupportedChannels.Should().Equal(NotificationChannelNames.InApp, NotificationChannelNames.Email, NotificationChannelNames.Tray);
         setting.Configurable.Should().BeTrue();
-        result.Value!.Single(s => s.EventKey == "work_sprint_completed").Configurable.Should().BeFalse();
+        result.Value!.Single(s => s.EventKey == "work_task_creation_request_created").Configurable.Should().BeFalse();
         setting.IsOverridden.Should().BeFalse();
         setting.Templates.Should().ContainSingle(t => t.IsProductDefault);
     }
@@ -289,9 +289,9 @@ public class NotificationManagementApiTests
     [Fact]
     public async Task UpdateAndReset_LegacyOwnedEvent_AreRejected_BecauseNothingWouldReadTheSetting()
     {
-        var update = await UpdateHandler(_tenantA).Handle(new UpdateNotificationSettingCommand("work_sprint_completed", ["in_app"], null, null, null), default);
+        var update = await UpdateHandler(_tenantA).Handle(new UpdateNotificationSettingCommand("work_task_creation_request_created", ["in_app"], null, null, null), default);
         var reset = await new ResetNotificationSettingCommandHandler(TenantUser(_tenantA).Object, _rules, _store, _audit.Object, _uow.Object, _clock.Object)
-            .Handle(new ResetNotificationSettingCommand("work_sprint_completed"), default);
+            .Handle(new ResetNotificationSettingCommand("work_task_creation_request_created"), default);
 
         update.StatusCode.Should().Be(422);
         reset.StatusCode.Should().Be(422);
