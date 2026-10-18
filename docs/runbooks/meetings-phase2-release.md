@@ -1,0 +1,64 @@
+# Meetings as Tasks — Phase 2 release runbook (Release A)
+
+Spec: [`docs/superpowers/specs/2026-10-18-meeting-task-phase2-design.md`](../superpowers/specs/2026-10-18-meeting-task-phase2-design.md) §8, §9.
+Plan: [`docs/superpowers/plans/2026-10-18-meeting-task-phase2-A-foundation.md`](../superpowers/plans/2026-10-18-meeting-task-phase2-A-foundation.md).
+
+## What Release A ships
+
+Schema and primitives only. **No meeting behaviour is switched on.**
+
+| Piece | What it is |
+|---|---|
+| Migration `AddMeetingWorkItemsFoundation` | The 7 meeting tables + `job_leases`; owner columns on `calendar_event_participants`, `calendar_event_guests`, `calendar_event_meetings`, `calendar_event_meeting_attendances`, `external_calendar_event_links`; tenant-composite FKs; one-owner CHECKs; the occurrence key `uq_meeting_details_series_original_start` (NOT DEFERRABLE); deferred pairing and placement triggers; forced RLS on the meeting tables |
+| `ExcludeMeetings` query filter | Ordinary task queries never see a meeting task |
+| `IMeetingOccurrenceWriter` | Concurrency-safe occurrence insert and remap (spec §5.6, verified on PostgreSQL) |
+| `IJobLeaseService` | One instance at a time for singleton background jobs |
+| `Meetings` settings | All flags `false`; attendance timings validated at startup |
+
+## Release order
+
+```
+P-1 (outbox claim fix)  →  Release A (this)  →  Release B (meeting core, Plan B)
+```
+
+- **P-1** is branch `fix/outbox-concurrency`, migration `AddOutboxClaimLease`. It may ship before or with A. Release A itself does not need it.
+- **`Meetings:BulkInvite` needs P-1.** With the flag on and P-1 missing (no `outbox_messages.locked_by`), the app refuses to start: `Meetings:BulkInvite needs the outbox claim fix (P-1)`.
+- Release B only starts after A is live everywhere.
+
+## Before deploying
+
+1. **Run the preflight, read-only, as the migrator.**
+
+   ```bash
+   psql "$MIGRATION_CONNECTION" -v ON_ERROR_STOP=1 -f ops/meetings/phase2-preflight.sql
+   ```
+
+   **Every count must be 0.** Non-zero means the migration's `VALIDATE CONSTRAINT` step would fail; fix that data first. The script runs inside `BEGIN READ ONLY … ROLLBACK`, so it never changes anything.
+
+2. **Check the settings.** Every `Meetings:*` flag stays `false` in A: `Create`, `BulkInvite`, `Background`, `ReadOnly`. Leave `Meetings:Attendance` at the appsettings defaults (30m / 2h / 24h checkpoints, 1h match window, 7d recheck, 3d retry). A bad value stops the app at startup, and the error names the key.
+
+## Deploy
+
+The normal deploy applies the migration (`DatabaseMigrationRunner`, as `onevo_migrator`).
+
+- It runs in one transaction.
+- It adds three unique indexes on existing tables (`tasks`, `objectives`, `calendar_event_meetings`) and validates four CHECKs. Expect short write locks on those tables. Deploy outside peak hours on large tenants.
+
+After the deploy:
+- `SELECT migration_id FROM "__EFMigrationsHistory" ORDER BY migration_id DESC LIMIT 1;` returns `…_AddMeetingWorkItemsFoundation`.
+- Re-running the preflight now reports `already applied`.
+
+## Rollback rules
+
+**Never roll back below Release A once meeting rows exist.**
+
+- `Down()` of `AddMeetingWorkItemsFoundation` raises and aborts if any of these exist:
+  - a meeting series;
+  - a meeting task;
+  - a series-owned participant, guest or link;
+  - a meeting push link.
+- Dropping those tables would lose meetings.
+- **Never work around the guard by deleting meeting rows.**
+- A rollback of A is possible only while no meeting data exists, e.g. right after deploying A, since every flag is off.
+- **Recovery once meetings exist:** switch `Meetings:ReadOnly` on. That keeps meeting data visible and blocks writes. Then fix forward. The other flags are switched off independently.
+- **Code-only rollback of A is safe.** The previous build runs against A's schema: the new columns are nullable or defaulted, and legacy rows keep their legacy owner.
