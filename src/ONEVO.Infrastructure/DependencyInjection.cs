@@ -719,6 +719,9 @@ public static class DependencyInjection
 
         // Transactional outbox + idempotency
         services.AddScoped<IOutboxWriter, Services.SharedPlatform.Outbox.OutboxWriter>();
+        // Per-scope "which outbox message is being dispatched" - feeds provider idempotency keys.
+        services.AddScoped<Services.SharedPlatform.Outbox.OutboxDispatchContext>();
+        services.AddScoped<IOutboxDispatchContext>(sp => sp.GetRequiredService<Services.SharedPlatform.Outbox.OutboxDispatchContext>());
         services.AddScoped<INotificationDispatcher, Services.SharedPlatform.Notifications.NotificationDispatcher>();
         services.AddScoped<IIdempotencyStore, Persistence.Repositories.SharedPlatform.Idempotency.EfIdempotencyStore>();
         services.AddHostedService<Services.SharedPlatform.Outbox.OutboxProcessor>();
