@@ -17,7 +17,7 @@ Action for shared events is `open_related` (existing `RelatedEntityType`/`Relate
 
 | Event keys | Producer (trigger file) | Path | Recipients (`default`) | Status |
 |---|---|---|---|---|
-| `work_activity_recorded`, `work_approval_requested`, `work_approval_decided`, `work_monitor_alert` | `Features/WorkManagement/Notifications/Services/WorkNotificationEngine.cs` | `work_notification` outbox → `WorkNotificationOutboxHandler` | Active milestone assignees named by the event, excluding the actor (UserId via `GetActiveAssigneeAsync`) | legacy — **`work_approval_requested` is the first slice** |
+| `work_activity_recorded`, `work_approval_requested`, `work_approval_decided`, `work_monitor_alert` | `Features/WorkManagement/Notifications/Services/WorkNotificationEngine.cs` | `work_notification` outbox → `WorkNotificationOutboxHandler`; `work_approval_requested` → `INotificationOrchestrator` | Active milestone assignees named by the event, excluding the actor (UserId via `GetActiveAssigneeAsync`) | `work_approval_requested`: **orchestrator**; others legacy |
 | `work_sprint_completed`, `work_sprint_incomplete`, `work_sprint_achieved` | `Features/WorkManagement/Sprints/Services/SprintWriteService.cs` | direct dispatcher call in the business transaction | Sprint milestone members | legacy |
 | `work_monitor_alert_escalated` | `Features/WorkManagement/Inbox/WorkAlertEscalation.cs` | direct | Escalation target | legacy |
 | `work_project_member_invited` | `Features/WorkManagement/Projects/Commands/AddProjectMember/AddProjectMemberCommandHandler.cs` | `work_notification` outbox | Invited employee | legacy |
@@ -64,5 +64,5 @@ of the first slice.
 
 | Event | Owner | Tests |
 |---|---|---|
-| `work_approval_requested` | legacy → orchestrator in Task 4 | `NotificationOrchestratorTests` (Task 4) |
+| `work_approval_requested` | orchestrator | `NotificationOrchestratorTests`, `NotificationDeliveryHandlerTests`, `WorkNotificationEngineTests.Requested_*` |
 | all others | legacy | — |

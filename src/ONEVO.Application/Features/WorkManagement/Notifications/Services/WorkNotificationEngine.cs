@@ -1,5 +1,7 @@
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Inbox.OutboxHandlers;
+using ONEVO.Application.Features.SharedPlatform.Notifications.Catalog;
+using ONEVO.Application.Features.SharedPlatform.Notifications.Delivery;
 using ONEVO.Application.Features.WorkManagement.Common.OutboxHandlers;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Notifications.RepositoryInterfaces;
@@ -24,15 +26,18 @@ public sealed class WorkNotificationEngine : IWorkNotificationEngine
     private readonly IOutboxWriter _outbox;
     private readonly ICallerIdentityResolver _identity;
     private readonly IMilestoneMembershipCoordinator _membership;
+    private readonly INotificationOrchestrator _orchestrator;
 
     public WorkNotificationEngine(
         IWorkNotificationLogRepository logs, IOutboxWriter outbox,
-        ICallerIdentityResolver identity, IMilestoneMembershipCoordinator membership)
+        ICallerIdentityResolver identity, IMilestoneMembershipCoordinator membership,
+        INotificationOrchestrator orchestrator)
     {
         _logs = logs;
         _outbox = outbox;
         _identity = identity;
         _membership = membership;
+        _orchestrator = orchestrator;
     }
 
     public async Task NotifyAsync(WorkNotificationEvent e, CancellationToken ct = default)
@@ -76,6 +81,11 @@ public sealed class WorkNotificationEngine : IWorkNotificationEngine
                 ? (MonitorAlertInboxKind, (Guid?)monitorAlertId)
                 : (e.TargetType, e.TargetId);
 
+        // Events cut over to the orchestrator are routed per tenant settings (in-app / email / tray) instead
+        // of the legacy in-app-only payload - never both. One event id for the occurrence, shared by all recipients.
+        var orchestratorOwned = NotificationEventCatalog.TryGet(template, out var definition) && definition.OrchestratorOwned;
+        var eventId = Guid.NewGuid();
+
         foreach (var recipientId in recipients)
         {
             var recipient = await _membership.GetActiveAssigneeAsync(e.TenantId, recipientId, ct);
@@ -90,6 +100,14 @@ public sealed class WorkNotificationEngine : IWorkNotificationEngine
                 TargetTitle = e.TargetTitle, ApprovalRequestId = e.ApprovalRequestId,
                 CreatedAt = DateTimeOffset.UtcNow
             }, ct);
+
+            if (orchestratorOwned)
+            {
+                await _orchestrator.EnqueueAsync(new NotificationDispatchRequest(
+                    eventId, template, e.TenantId, recipient.UserId, new Dictionary<string, string>(placeholders),
+                    relatedType, relatedId), ct);
+                continue;
+            }
 
             await _outbox.EnqueueAsync(
                 OutboxMessageTypes.WorkNotification,

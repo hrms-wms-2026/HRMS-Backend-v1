@@ -14,6 +14,9 @@ public static class NotificationEventCatalog
     /// <summary>The first event delivered through the orchestrator on all three channels.</summary>
     public const string FirstSliceEventKey = "work_approval_requested";
 
+    /// <summary>Events cut over to INotificationOrchestrator (one owner per event; see docs/notifications/rollout.md).</summary>
+    private static readonly HashSet<string> OrchestratorOwnedEvents = new(StringComparer.Ordinal) { FirstSliceEventKey };
+
     private const NotificationChannels AllChannels = NotificationChannels.InApp | NotificationChannels.Email | NotificationChannels.Tray;
 
     public static readonly IReadOnlyList<NotificationEventDefinition> All =
@@ -110,7 +113,8 @@ public static class NotificationEventCatalog
             RequiredChannels: NotificationChannels.None,
             AllowedVariables: variables,
             AllowedRecipientRules: [NotificationRecipientRules.Default],
-            AllowedActionKeys: [NotificationActionKeys.OpenRelated, NotificationActionKeys.None]);
+            AllowedActionKeys: [NotificationActionKeys.OpenRelated, NotificationActionKeys.None],
+            OrchestratorOwned: OrchestratorOwnedEvents.Contains(key));
 
     /// <summary>A monitoring alert produced straight into the monitoring notification table and polled by the
     /// tray. Tray-only until its producer is migrated (Task 8).</summary>

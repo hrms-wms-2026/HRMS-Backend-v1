@@ -723,6 +723,11 @@ public static class DependencyInjection
         services.AddSingleton<ONEVO.Application.Features.SharedPlatform.Notifications.Rendering.INotificationTemplateRenderer, Services.SharedPlatform.Notifications.NotificationTemplateRenderer>();
         services.AddScoped<ONEVO.Application.Features.SharedPlatform.Notifications.RepositoryInterfaces.INotificationTemplateStore, Persistence.Repositories.SharedPlatform.EfNotificationTemplateStore>();
         services.AddScoped<ONEVO.Application.Features.SharedPlatform.Notifications.RepositoryInterfaces.ITenantNotificationRuleRepository, Persistence.Repositories.SharedPlatform.EfTenantNotificationRuleRepository>();
+        services.AddScoped<ONEVO.Application.Features.SharedPlatform.Notifications.RepositoryInterfaces.INotificationDeliveryRepository, Persistence.Repositories.SharedPlatform.EfNotificationDeliveryRepository>();
+        services.AddScoped<ONEVO.Application.Features.SharedPlatform.Notifications.Delivery.INotificationOrchestrator, Services.SharedPlatform.Notifications.NotificationOrchestrator>();
+        services.AddScoped<ONEVO.Application.Features.SharedPlatform.Notifications.Delivery.INotificationChannelDeliveryHandler, Services.SharedPlatform.Notifications.NotificationInAppDeliveryHandler>();
+        services.AddScoped<ONEVO.Application.Features.SharedPlatform.Notifications.Delivery.INotificationChannelDeliveryHandler, Services.SharedPlatform.Notifications.NotificationEmailDeliveryHandler>();
+        services.AddScoped<ONEVO.Application.Common.ServiceInterfaces.IOutboxMessageHandler, ONEVO.Application.Features.SharedPlatform.Notifications.Delivery.NotificationDeliveryOutboxHandler>();
         services.AddScoped<IIdempotencyStore, Persistence.Repositories.SharedPlatform.Idempotency.EfIdempotencyStore>();
         services.AddHostedService<Services.SharedPlatform.Outbox.OutboxProcessor>();
         services.AddHostedService<Services.CoreHr.BulkOnboarding.BulkOnboardingBatchProcessor>();
