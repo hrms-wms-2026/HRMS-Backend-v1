@@ -38,9 +38,11 @@ public class NotificationTemplateSeeder : IHostedService
 
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 
-    private async Task SeedAsync(INotificationRepository notifications, ApplicationDbContext db, CancellationToken ct)
+    /// <summary>Product-default notification copy. Seeding inserts only codes that are missing, so an
+    /// administrator's edits are never overwritten on restart.</summary>
+    public static IReadOnlyList<NotificationTemplate> DefaultTemplates()
     {
-        var templates = new List<NotificationTemplate>
+        return new List<NotificationTemplate>
         {
             new()
             {
@@ -387,6 +389,11 @@ public class NotificationTemplateSeeder : IHostedService
             }
 
         };
+    }
+
+    private async Task SeedAsync(INotificationRepository notifications, ApplicationDbContext db, CancellationToken ct)
+    {
+        var templates = DefaultTemplates();
 
         var addedCount = 0;
         foreach (var template in templates)
