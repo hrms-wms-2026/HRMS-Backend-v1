@@ -62,6 +62,7 @@ public class NotificationDependencyRegistrationTests
     [InlineData(typeof(WorkNotificationEngine))]
     [InlineData(typeof(SendTestNotificationCommandHandler))]
     [InlineData(typeof(UpdateNotificationSettingCommandHandler))]
+    [InlineData(typeof(ONEVO.Application.Features.SharedPlatform.Notifications.Tray.NotificationTrayPushOutboxHandler))]
     [InlineData(typeof(ONEVO.Application.Features.SharedPlatform.Notifications.Tray.Commands.AckTrayDelivery.AckTrayDeliveryCommandHandler))]
     [InlineData(typeof(ONEVO.Application.Features.SharedPlatform.Notifications.Tray.Queries.GetPendingTrayDeliveries.GetPendingTrayDeliveriesQueryHandler))]
     public void EveryConstructorDependency_IsRegistered(Type type)
@@ -73,6 +74,8 @@ public class NotificationDependencyRegistrationTests
             var dependency = parameter.ParameterType;
             if (dependency.IsGenericType && dependency.GetGenericTypeDefinition() == typeof(ILogger<>))
                 continue;
+            if (parameter.HasDefaultValue)
+                continue; // optional (e.g. ITrayPushNotifier is registered by the API host only)
             if (dependency.IsGenericType && dependency.GetGenericTypeDefinition() == typeof(IEnumerable<>))
                 dependency = dependency.GetGenericArguments()[0];
 

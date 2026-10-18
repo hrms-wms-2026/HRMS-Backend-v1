@@ -29,6 +29,9 @@ public interface INotificationOrchestrator
 /// <summary>Outbox payload for one channel delivery. Content is reloaded from the delivery row, never carried here.</summary>
 public sealed record NotificationDeliveryPayload(Guid DeliveryId, Guid TenantId);
 
+/// <summary>Outbox payload asking for a tray wake-up push to one user.</summary>
+public sealed record NotificationTrayPushPayload(Guid TenantId, Guid UserId);
+
 /// <summary>Delivers one pending delivery on its channel and updates only that delivery's status.</summary>
 public interface INotificationChannelDeliveryHandler
 {

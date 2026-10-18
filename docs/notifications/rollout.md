@@ -16,7 +16,9 @@ settings, `configurable: false`, PUT/DELETE return 422); orchestrator-owned even
 Orchestrator-owned events also offer tray: the tray service polls
 `api/v1/monitoring/tray/notifications/deliveries/pending`, forwards each delivery to the tray process over
 IPC, and acks `.../deliveries/{id}/ack` only after the tray process confirms it accepted the toast
-(`client_accepted`). `NotificationTrayExpiryJob` marks uncollected tray deliveries `expired` every 15 minutes.
+(`client_accepted`). Each tray delivery also enqueues a post-commit `notification_tray_push` that sends the
+same `NotificationsPending` hub signal legacy alerts use, so the tray fetches immediately instead of on its
+15-minute fallback poll. `NotificationTrayExpiryJob` marks uncollected tray deliveries `expired` every 15 minutes.
 Old tray builds never call the generic routes and keep receiving legacy monitoring alerts unchanged.
 
 Ownership is the `OrchestratorOwnedEvents` set in `NotificationEventCatalog`. Cut over one event per change:
@@ -62,6 +64,8 @@ No schema rollback after live writes: the new tables are additive.
 - Delivery records are retained; a cleanup job is a follow-up.
 - Tray display is at-least-once: if the tray shows the toast but crashes before confirming, the next poll
   re-sends it; the tray suppresses repeats with a bounded on-disk list of shown delivery ids.
+- Tray toast clicks open the portal dashboard (bell), not the record: the web app has no route the tray can
+  deep-link to yet. The portal URL is the tray's existing hard-coded `WorkspaceLinks.PortalUrl`.
 - Emails reuse the template copy; `open_related` is not yet turned into a link in the email body.
 
 ## Inspecting failures

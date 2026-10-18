@@ -21,6 +21,7 @@ public class NotificationOrchestratorTests
     private readonly Mock<IOutboxWriter> _outbox = new();
     private readonly Mock<IDateTimeProvider> _clock = new();
     private readonly List<NotificationDeliveryPayload> _enqueued = [];
+    private readonly List<NotificationTrayPushPayload> _trayPushes = [];
     private readonly Guid _tenant = Guid.NewGuid();
     private readonly Guid _recipient = Guid.NewGuid();
     private readonly NotificationTemplate _template;
@@ -30,6 +31,9 @@ public class NotificationOrchestratorTests
         _clock.SetupGet(c => c.UtcNow).Returns(Now);
         _outbox.Setup(o => o.EnqueueAsync(OutboxMessageTypes.NotificationDelivery, It.IsAny<NotificationDeliveryPayload>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
             .Callback<string, NotificationDeliveryPayload, Guid?, CancellationToken>((_, p, _, _) => _enqueued.Add(p))
+            .Returns(Task.CompletedTask);
+        _outbox.Setup(o => o.EnqueueAsync(OutboxMessageTypes.NotificationTrayPush, It.IsAny<NotificationTrayPushPayload>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
+            .Callback<string, NotificationTrayPushPayload, Guid?, CancellationToken>((_, p, _, _) => _trayPushes.Add(p))
             .Returns(Task.CompletedTask);
         _template = Publish(new NotificationTemplate { Id = Guid.NewGuid(), Code = Event, EventKey = Event, Name = "Default" },
             "Approval needed", "{{actorName}} asked about \"{{targetTitle}}\"");
@@ -95,6 +99,18 @@ public class NotificationOrchestratorTests
         tray.Title.Should().Be("Approval needed");
         tray.ExpiresAt.Should().Be(Now.Add(NotificationOrchestrator.TrayExpiry));
         _enqueued.Should().BeEmpty("the tray collects its own deliveries");
+        // ...but is woken after commit, instead of waiting for its slow fallback poll.
+        _trayPushes.Should().ContainSingle(p => p.TenantId == _tenant && p.UserId == _recipient);
+    }
+
+    [Fact]
+    public async Task NoTrayChannel_SendsNoTrayWakeUp()
+    {
+        Route(NotificationChannels.InApp | NotificationChannels.Email);
+
+        await Build().EnqueueAsync(Request());
+
+        _trayPushes.Should().BeEmpty();
     }
 
     [Fact]

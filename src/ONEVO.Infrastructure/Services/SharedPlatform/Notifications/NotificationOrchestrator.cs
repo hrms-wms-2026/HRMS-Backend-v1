@@ -98,8 +98,12 @@ public sealed class NotificationOrchestrator : INotificationOrchestrator
             }
 
             await _deliveries.AddAsync(delivery, ct);
-            // The tray collects its own pending deliveries; in-app and email are pushed through the outbox.
-            if (channel != NotificationChannels.Tray)
+            // In-app and email are delivered through the outbox. The tray collects its own pending deliveries;
+            // it only gets a post-commit wake-up so it fetches now rather than on its slow fallback poll.
+            if (channel == NotificationChannels.Tray)
+                await _outbox.EnqueueAsync(OutboxMessageTypes.NotificationTrayPush,
+                    new NotificationTrayPushPayload(delivery.TenantId, delivery.RecipientUserId), delivery.TenantId, ct);
+            else
                 await _outbox.EnqueueAsync(OutboxMessageTypes.NotificationDelivery,
                     new NotificationDeliveryPayload(delivery.Id, delivery.TenantId), delivery.TenantId, ct);
         }

@@ -43,6 +43,8 @@ public static class OutboxMessageTypes
     public const string WorkNotification = "work_notification";
     /// <summary>One channel delivery reserved by INotificationOrchestrator (NotificationDeliveryOutboxHandler).</summary>
     public const string NotificationDelivery = "notification_delivery";
+    /// <summary>Wake one user's tray after a tray delivery commits (NotificationTrayPushOutboxHandler).</summary>
+    public const string NotificationTrayPush = "notification_tray_push";
     /// <summary>Tells the affected people's open inboxes to refresh one item (InboxChangedOutboxHandler), after commit.</summary>
     public const string InboxChanged = "inbox_changed";
     public const string CalendarEventInviteEmail = "calendar_event_invite_email";
