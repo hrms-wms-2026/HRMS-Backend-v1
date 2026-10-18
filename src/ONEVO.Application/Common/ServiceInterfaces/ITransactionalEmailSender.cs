@@ -10,6 +10,9 @@ public static class TransactionalEmailFailureCodes
 /// Request to send one transactional/system email (invite, password reset, system notice).
 /// Carries no secret material - provider credentials are resolved server-side from
 /// platform_service_keys by the Infrastructure sender.
+/// IdempotencyKey is stable per logical send (see IOutboxDispatchContext) and is passed only to
+/// providers that genuinely honour one (Resend's Idempotency-Key header); SendGrid has no such
+/// mechanism, so it is not sent there.
 /// </summary>
 public sealed record TransactionalEmailRequest(
     Guid? TenantId,
@@ -20,7 +23,8 @@ public sealed record TransactionalEmailRequest(
     Guid? EmailDeliveryLogId = null,
     Guid? NotificationTemplateId = null,
     Guid? OutboxMessageId = null,
-    IReadOnlyList<EmailAttachment>? Attachments = null);
+    IReadOnlyList<EmailAttachment>? Attachments = null,
+    string? IdempotencyKey = null);
 
 /// <summary>A file sent with an email (e.g. a calendar .ics). <see cref="ContentType"/> may carry parameters
 /// ("text/calendar; method=REQUEST").</summary>

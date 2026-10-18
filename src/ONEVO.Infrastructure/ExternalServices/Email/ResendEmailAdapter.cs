@@ -14,11 +14,27 @@ namespace ONEVO.Infrastructure.ExternalServices.Email;
 /// appsettings; the API key now always comes from platform_service_keys.
 /// SECURITY: same rules as SendGrid - Authorization built locally, never logged,
 /// provider error bodies never stored.
+///
+/// IDEMPOTENCY: Resend honours an Idempotency-Key header on POST /emails
+/// (https://resend.com/docs/dashboard/emails/idempotency-keys): 1-256 characters, kept for
+/// 24 hours; the same key with the same payload returns the original response without sending
+/// again, the same key with a different payload is 409 invalid_idempotent_request, and a key whose
+/// first request is still in flight is 409 concurrent_idempotent_requests. The outbox passes a key
+/// derived from the message id (TransactionalEmailRequest.IdempotencyKey), so a retry after a crash
+/// that followed Resend's acceptance does not send a second email within that 24-hour window.
 /// </summary>
 public sealed class ResendEmailAdapter : IEmailProviderAdapter
 {
     public const string HttpClientName = "email-resend";
+    public const string IdempotencyKeyHeader = "Idempotency-Key";
     private const string SendEmailUrl = "https://api.resend.com/emails";
+
+    /// <summary>The only parts of a 409 body ever surfaced: Resend's documented idempotency error names.</summary>
+    private static readonly HashSet<string> IdempotencyErrorNames = new(StringComparer.Ordinal)
+    {
+        "concurrent_idempotent_requests",
+        "invalid_idempotent_request",
+    };
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -62,6 +78,8 @@ public sealed class ResendEmailAdapter : IEmailProviderAdapter
 
         using var httpRequest = new HttpRequestMessage(HttpMethod.Post, SendEmailUrl);
         httpRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
+        if (!string.IsNullOrWhiteSpace(request.IdempotencyKey))
+            httpRequest.Headers.TryAddWithoutValidation(IdempotencyKeyHeader, request.IdempotencyKey);
         httpRequest.Content = new StringContent(
             JsonSerializer.Serialize(payload, JsonOptions), Encoding.UTF8, "application/json");
 
@@ -87,10 +105,17 @@ public sealed class ResendEmailAdapter : IEmailProviderAdapter
         {
             if (!response.IsSuccessStatusCode)
             {
-                _logger.LogWarning("Resend email send returned {StatusCode} for recipient {Recipient}.",
-                    (int)response.StatusCode, request.RecipientEmail);
+                var idempotencyError = response.StatusCode == System.Net.HttpStatusCode.Conflict
+                    ? await ReadIdempotencyErrorNameAsync(response, ct)
+                    : null;
+                _logger.LogWarning("Resend email send returned {StatusCode}{IdempotencyError} for recipient {Recipient}.",
+                    (int)response.StatusCode, idempotencyError is null ? "" : $" ({idempotencyError})", request.RecipientEmail);
+                // A 409 concurrent_idempotent_requests is retryable (the outbox backs off and retries);
+                // invalid_idempotent_request means the payload changed under the same key.
                 return TransactionalEmailResult.Failed(
-                    Provider, $"Resend API returned {(int)response.StatusCode} {response.StatusCode}.");
+                    Provider, idempotencyError is null
+                        ? $"Resend API returned {(int)response.StatusCode} {response.StatusCode}."
+                        : $"Resend API returned {(int)response.StatusCode} {response.StatusCode} ({idempotencyError}).");
             }
 
             string? providerMessageId = null;
@@ -107,6 +132,27 @@ public sealed class ResendEmailAdapter : IEmailProviderAdapter
             }
 
             return TransactionalEmailResult.Sent(Provider, providerMessageId, _clock.UtcNow);
+        }
+    }
+
+    /// <summary>Returns the error name only when it is one of Resend's documented idempotency
+    /// errors; the rest of the provider body is never surfaced or stored.</summary>
+    private static async Task<string?> ReadIdempotencyErrorNameAsync(HttpResponseMessage response, CancellationToken ct)
+    {
+        try
+        {
+            var body = await response.Content.ReadAsStringAsync(ct);
+            using var doc = JsonDocument.Parse(body);
+            return doc.RootElement.ValueKind == JsonValueKind.Object
+                && doc.RootElement.TryGetProperty("name", out var name)
+                && name.ValueKind == JsonValueKind.String
+                && IdempotencyErrorNames.Contains(name.GetString()!)
+                    ? name.GetString()
+                    : null;
+        }
+        catch (JsonException)
+        {
+            return null;
         }
     }
 }
