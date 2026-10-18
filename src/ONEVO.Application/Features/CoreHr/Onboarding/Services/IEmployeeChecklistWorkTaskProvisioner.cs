@@ -21,4 +21,13 @@ public interface IEmployeeChecklistWorkTaskProvisioner
         IReadOnlyList<EmployeeChecklistTask> checklistTasks,
         Guid actingUserId,
         CancellationToken ct = default);
+
+    /// <summary>Copies each provisioned task's checklist-template attachments onto its Work task.
+    /// File copies save through the shared unit of work, so call this only AFTER the caller's own
+    /// SaveChanges/transaction has committed. Best-effort: a failed copy never fails the caller.</summary>
+    Task CopyTemplateAttachmentsAsync(
+        Guid tenantId,
+        IReadOnlyList<EmployeeChecklistTask> checklistTasks,
+        Guid actingUserId,
+        CancellationToken ct = default);
 }
