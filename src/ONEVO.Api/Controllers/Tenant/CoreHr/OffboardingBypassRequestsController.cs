@@ -17,7 +17,7 @@ public class OffboardingBypassRequestsController(IMediator mediator) : Controlle
     /// <summary>Always scoped to the caller as approver - there is no arbitrary approverId
     /// override, per design spec §6.</summary>
     [HttpGet]
-    [RequirePermission("employees:read")]
+    [RequirePermission("employees:write")]
     public async Task<IActionResult> ListMine(CancellationToken ct = default)
     {
         var result = await mediator.Send(new ListMyPendingBypassRequestsQuery(), ct);

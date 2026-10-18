@@ -18,7 +18,17 @@ public class PermissionSeeder : IHostedService
         "okr:read", "okr:write", "wiki:read", "wiki:write",
         "sprints:read", "sprints:manage",
         "workspaces:read", "workspaces:create", "workspaces:manage",
-        "resources:read", "resources:manage", "roadmaps:read", "roadmaps:write"
+        "resources:read", "resources:manage", "roadmaps:read", "roadmaps:write",
+        // Never enforced by any endpoint or screen. settings:billing duplicated billing:manage,
+        // settings:branding is covered by legal_entity:update, settings:read by legal_entity:read.
+        "settings:read", "settings:admin", "settings:billing", "settings:branding",
+        "settings:integrations", "settings:alerts", "settings:system",
+        // Employee visibility is relationship-based (management coverage), not a permission:
+        // a manager sees the people their position covers without any code.
+        "employees:read", "employees:read-team", "attendance:read-team",
+        // Invitation resend/revoke is allowed for the person who added the employee, or for
+        // users:manage (Settings > Users) - see EmployeeInvitationAccess.
+        "invitations:manage"
     };
 
     private readonly IServiceProvider _services;
@@ -108,18 +118,16 @@ public class PermissionSeeder : IHostedService
         Perm("*", "Super Admin bypass â€” all access.", "system"),
 
         // Employees
-        Perm("employees:read", "View all employees in scope.", "core_hr"),
-        Perm("employees:read-team", "View direct reports only.", "core_hr"),
         Perm("employees:write", "Create, update employees.", "core_hr"),
         Perm("employees:offboard", "Start, cancel, or complete an employee's offboarding.", "core_hr"),
         Perm("employees:read:sensitive", "View sensitive employee data (bank details) on the employee detail screen.", "core_hr"),
-        Perm("invitations:manage", "Resend or revoke employee onboarding invitations.", "core_hr"),
         Perm("employees:delete", "Delete employee records.", "core_hr"),
 
         // Organization
         Perm("org:read", "View org structure, departments, hierarchy.", "org_structure"),
         Perm("org:manage", "Create and edit org structure, departments.", "org_structure"),
         Perm("legal_entity:create", "Create a legal entity (company) inside the tenant.", "org_structure"),
+        Perm("legal_entity:read", "View a legal entity's general settings (read-only).", "org_structure"),
         Perm("legal_entity:update", "Edit a legal entity's general settings.", "org_structure"),
         Perm("legal_entity:delete", "Deactivate (soft-delete) a legal entity.", "org_structure"),
 
@@ -145,9 +153,8 @@ public class PermissionSeeder : IHostedService
 
         // Attendance
         Perm("attendance:read", "View attendance records for all employees in scope.", "core_hr"),
-        Perm("attendance:read-team", "View attendance records for direct reports only.", "core_hr"),
-        Perm("attendance:approve", "Approve overtime and attendance corrections.", "core_hr"),
-        Perm("attendance:write", "Correct attendance records for employees in scope.", "core_hr"),
+        Perm("attendance:approve", "Approve requests and alerts for your team and escalated records: attendance corrections, location, work mode and device changes, identity verification alerts.", "core_hr"),
+        Perm("attendance:write", "Configure clock-in policy and work modes.", "core_hr"),
 
         // Payroll
         Perm("payroll:read", "View payroll records and salary data.", "payroll"),
@@ -182,13 +189,6 @@ public class PermissionSeeder : IHostedService
         Perm("notifications:manage", "Manage notification templates and delivery settings.", "notifications"),
 
         // Settings
-        Perm("settings:read", "View any settings section (read-only).", "configuration"),
-        Perm("settings:admin", "Manage core system settings.", "configuration"),
-        Perm("settings:billing", "Manage subscription, plan, and payment methods.", "configuration"),
-        Perm("settings:branding", "Manage company logo, colors, and custom domain.", "configuration"),
-        Perm("settings:integrations", "Connect or disconnect tenant-wide app integrations.", "configuration"),
-        Perm("settings:alerts", "Configure alert thresholds and escalation rules.", "configuration"),
-        Perm("settings:system", "Manage system-level settings â€” audit config, data retention policies.", "configuration"),
         Perm("settings:device", "View biometric device connection status.", "configuration"),
         Perm("settings:device:configure", "Add, remove, and configure biometric device integrations.", "configuration"),
 

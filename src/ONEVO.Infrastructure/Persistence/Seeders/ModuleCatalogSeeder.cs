@@ -225,11 +225,12 @@ public class ModuleCatalogSeeder : IHostedService
         var ownershipToSeed = new[]
         {
             // auth
+            new { Module = "auth", Perm = "users:read" },
             new { Module = "auth", Perm = "users:manage" },
 
             // configuration
-            new { Module = "configuration", Perm = "settings:read" },
-            new { Module = "configuration", Perm = "settings:admin" },
+            new { Module = "configuration", Perm = "billing:read" },
+            new { Module = "configuration", Perm = "billing:manage" },
 
             // roles
             new { Module = "roles", Perm = "roles:manage" },
@@ -241,11 +242,11 @@ public class ModuleCatalogSeeder : IHostedService
             new { Module = "org_structure", Perm = "org:read" },
             new { Module = "org_structure", Perm = "org:manage" },
             new { Module = "org_structure", Perm = "legal_entity:create" },
+            new { Module = "org_structure", Perm = "legal_entity:read" },
             new { Module = "org_structure", Perm = "legal_entity:update" },
             new { Module = "org_structure", Perm = "legal_entity:delete" },
 
             // core_hr
-            new { Module = "core_hr", Perm = "employees:read" },
             new { Module = "core_hr", Perm = "employees:write" },
             new { Module = "core_hr", Perm = "employees:offboard" },
             new { Module = "core_hr", Perm = "employees:delete" },

@@ -49,4 +49,6 @@ public record EmployeeListItemResponse(
     /// True when PositionName/ReportingManager come from a still-planned assignment - an invited
     /// employee who hasn't accepted yet. The seat is reserved but not active.
     /// </summary>
-    bool PositionPending = false);
+    bool PositionPending = false,
+    /// <summary>The employee's tray app is connected right now (see IEmployeeOnlineStatusReader).</summary>
+    bool IsOnline = false);

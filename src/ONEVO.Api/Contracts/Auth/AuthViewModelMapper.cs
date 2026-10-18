@@ -16,7 +16,8 @@ public static class AuthViewModelMapper
         dto.PendingLegalDocuments?.Select(ToViewModel).ToList(),
         dto.ExpiresAt,
         dto.ContinueUrl,
-        dto.Workspace is null ? null : new WorkspaceViewModel(dto.Workspace.Slug, dto.Workspace.DisplayName)
+        dto.Workspace is null ? null : new WorkspaceViewModel(dto.Workspace.Slug, dto.Workspace.DisplayName),
+        dto.ManagesPeople
     );
 
     public static PendingLegalDocumentViewModel ToViewModel(this PendingLegalDocumentDto dto) => new(

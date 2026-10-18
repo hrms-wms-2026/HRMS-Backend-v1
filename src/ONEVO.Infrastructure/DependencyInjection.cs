@@ -175,6 +175,8 @@ public static class DependencyInjection
         services.AddScoped<IUserRepository, EfUserRepository>();
         services.AddScoped<IRefreshTokenRepository, EfRefreshTokenRepository>();
         services.AddScoped<ISessionRepository, EfSessionRepository>();
+        services.AddScoped<ONEVO.Application.Features.Auth.UserAccounts.RepositoryInterfaces.IUserAccountRepository,
+            ONEVO.Infrastructure.Persistence.Repositories.Auth.UserAccounts.EfUserAccountRepository>();
         services.AddScoped<IPasswordResetTokenRepository, EfPasswordResetTokenRepository>();
         services.AddScoped<IUserMfaRepository, EfUserMfaRepository>();
         services.AddScoped<IRoleRepository, EfRoleRepository>();
@@ -465,6 +467,12 @@ public static class DependencyInjection
         services.AddScoped<
             ONEVO.Application.Features.CoreHr.Employee.Documents.IEmployeeDocumentAccess,
             ONEVO.Application.Features.CoreHr.Employee.Documents.EmployeeDocumentAccess>();
+        services.AddScoped<
+            ONEVO.Application.Features.CoreHr.Employee.Access.IEmployeeViewAccess,
+            ONEVO.Application.Features.CoreHr.Employee.Access.EmployeeViewAccess>();
+        services.AddScoped<
+            ONEVO.Application.Features.CoreHr.Employee.Access.IEmployeeInvitationAccess,
+            ONEVO.Application.Features.CoreHr.Employee.Access.EmployeeInvitationAccess>();
         services.AddScoped<ONEVO.Application.Features.Storage.EntityAssets.Services.EmployeeDocumentAccessPolicy>();
         services.AddScoped<
             ONEVO.Application.Features.Storage.EntityAssets.ServiceInterfaces.IPrimaryEntityAssetLinker,
@@ -714,6 +722,15 @@ public static class DependencyInjection
         // Transactional outbox + idempotency
         services.AddScoped<IOutboxWriter, Services.SharedPlatform.Outbox.OutboxWriter>();
         services.AddScoped<INotificationDispatcher, Services.SharedPlatform.Notifications.NotificationDispatcher>();
+        services.AddSingleton<ONEVO.Application.Features.SharedPlatform.Notifications.Rendering.INotificationTemplateRenderer, Services.SharedPlatform.Notifications.NotificationTemplateRenderer>();
+        services.AddScoped<ONEVO.Application.Features.SharedPlatform.Notifications.RepositoryInterfaces.INotificationTemplateStore, Persistence.Repositories.SharedPlatform.EfNotificationTemplateStore>();
+        services.AddScoped<ONEVO.Application.Features.SharedPlatform.Notifications.RepositoryInterfaces.ITenantNotificationRuleRepository, Persistence.Repositories.SharedPlatform.EfTenantNotificationRuleRepository>();
+        services.AddScoped<ONEVO.Application.Features.SharedPlatform.Notifications.RepositoryInterfaces.INotificationDeliveryRepository, Persistence.Repositories.SharedPlatform.EfNotificationDeliveryRepository>();
+        services.AddScoped<ONEVO.Application.Features.SharedPlatform.Notifications.Delivery.INotificationOrchestrator, Services.SharedPlatform.Notifications.NotificationOrchestrator>();
+        services.AddScoped<ONEVO.Application.Features.SharedPlatform.Notifications.Delivery.INotificationChannelDeliveryHandler, Services.SharedPlatform.Notifications.NotificationInAppDeliveryHandler>();
+        services.AddScoped<ONEVO.Application.Features.SharedPlatform.Notifications.Delivery.INotificationChannelDeliveryHandler, Services.SharedPlatform.Notifications.NotificationEmailDeliveryHandler>();
+        services.AddScoped<ONEVO.Application.Common.ServiceInterfaces.IOutboxMessageHandler, ONEVO.Application.Features.SharedPlatform.Notifications.Delivery.NotificationDeliveryOutboxHandler>();
+        services.AddScoped<ONEVO.Application.Common.ServiceInterfaces.IOutboxMessageHandler, ONEVO.Application.Features.SharedPlatform.Notifications.Tray.NotificationTrayPushOutboxHandler>();
         services.AddScoped<IIdempotencyStore, Persistence.Repositories.SharedPlatform.Idempotency.EfIdempotencyStore>();
         services.AddHostedService<Services.SharedPlatform.Outbox.OutboxProcessor>();
         services.AddHostedService<Services.CoreHr.BulkOnboarding.BulkOnboardingBatchProcessor>();
@@ -747,6 +764,7 @@ public static class DependencyInjection
         services.AddScoped<ITrayActivationRepository, EfTrayActivationRepository>();
         services.AddScoped<IDeviceChangeRequestRepository, EfDeviceChangeRequestRepository>();
         services.AddSingleton<ITrayTokenService, TrayTokenService>();
+        services.AddScoped<IEmployeeOnlineStatusReader, EmployeeOnlineStatusReader>();
 
         // Monitoring - Check-In
         services.AddScoped<ICheckInRepository, EfCheckInRepository>();
@@ -956,6 +974,7 @@ public static class DependencyInjection
         services.AddHostedService<RoleTemplateSeeder>();
         services.AddHostedService<LookupDataSeeder>();
         services.AddHostedService<NotificationTemplateSeeder>();
+        services.AddHostedService<Services.SharedPlatform.Notifications.NotificationTrayExpiryJob>();
         services.AddHostedService<PlatformAccessSeeder>();
         services.AddHostedService<PositionTemplatePackSeeder>();
         services.AddHostedService<ModuleCatalogSeeder>();

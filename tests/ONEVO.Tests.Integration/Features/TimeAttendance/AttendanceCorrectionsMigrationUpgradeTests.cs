@@ -127,9 +127,13 @@ public sealed class AttendanceCorrectionsMigrationUpgradeTests : IAsyncLifetime
             await command.ExecuteNonQueryAsync();
         }
 
+        // Users are inserted via raw SQL for the same reason: the compiled User model now includes
+        // suspended_at/suspended_by_id (AddUserSuspension, much later than PreApprovalSnapshotMigration).
         var employeeIdValue = Guid.NewGuid();
-        await using (var context = CreateContext())
+        await using (var connection = new NpgsqlConnection(_migratorConnectionString))
         {
+            await connection.OpenAsync();
+            await SetAdminModeAsync(connection);
             var requester = new User
             {
                 Id = userId, TenantId = tenant.Id, Email = "requester@mig-upgrade.test",
@@ -144,8 +148,7 @@ public sealed class AttendanceCorrectionsMigrationUpgradeTests : IAsyncLifetime
                 IsActive = true, EmailVerified = true, CreatedAt = DateTimeOffset.UtcNow, CreatedById = userId
             };
 
-            context.AddRange(requester, reviewer);
-            await context.SaveChangesAsync();
+            await HistoricalSchemaSeed.InsertUsersAsync(connection, requester, reviewer);
 
             tenantId = tenant.Id;
             employeeId = employeeIdValue;

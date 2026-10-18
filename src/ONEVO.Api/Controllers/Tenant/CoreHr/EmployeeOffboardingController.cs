@@ -32,7 +32,7 @@ public class EmployeeOffboardingController(IMediator mediator) : ControllerBase
     }
 
     [HttpGet]
-    [RequirePermission("employees:read")]
+    [RequireVisibleEmployee("employeeId")]
     public async Task<IActionResult> Get(Guid employeeId, CancellationToken ct = default)
     {
         var result = await mediator.Send(new GetOffboardingQuery(employeeId), ct);
@@ -40,7 +40,7 @@ public class EmployeeOffboardingController(IMediator mediator) : ControllerBase
     }
 
     [HttpGet("checklist-matches")]
-    [RequirePermission("employees:read")]
+    [RequireVisibleEmployee("employeeId")]
     public async Task<IActionResult> GetChecklistMatches(Guid employeeId, CancellationToken ct = default)
     {
         var result = await mediator.Send(new ListOffboardingChecklistMatchesQuery(employeeId), ct);
