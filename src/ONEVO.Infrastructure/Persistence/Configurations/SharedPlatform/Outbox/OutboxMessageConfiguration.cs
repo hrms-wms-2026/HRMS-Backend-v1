@@ -16,8 +16,14 @@ public class OutboxMessageConfiguration : IEntityTypeConfiguration<OutboxMessage
         builder.Property(m => m.EncryptedPayload).IsRequired();
         builder.Property(m => m.Status).HasMaxLength(20).IsRequired();
         builder.Property(m => m.LastError).HasMaxLength(2000);
+        builder.Property(m => m.LockedBy).HasMaxLength(OutboxMessage.LockedByMaxLength);
 
-        // Worker poll: WHERE status = 'pending' AND next_attempt_at <= now ORDER BY created_at
+        // Claim, due branch: WHERE status = 'pending' AND next_attempt_at <= now() ORDER BY next_attempt_at
         builder.HasIndex(m => new { m.Status, m.NextAttemptAt });
+
+        // Claim, recovery branch: WHERE status = 'processing' AND locked_until < now() (expired leases)
+        builder.HasIndex(m => m.LockedUntil)
+            .HasFilter("status = 'processing'")
+            .HasDatabaseName("ix_outbox_messages_processing_locked_until");
     }
 }
