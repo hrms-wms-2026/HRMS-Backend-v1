@@ -7,6 +7,9 @@ namespace ONEVO.Application.Features.SharedPlatform.Notifications.Settings.Mappe
 
 public static class NotificationSettingMapper
 {
+    public const string NotConfigurable =
+        "Delivery for this event is not configurable yet; it still uses the product's built-in routing.";
+
     /// <summary>Published templates only: a tenant can never select an unpublished draft.</summary>
     public static IReadOnlyList<NotificationTemplateOptionResponse> PublishedOptions(
         IEnumerable<NotificationTemplate> templates, string eventKey)
@@ -31,6 +34,7 @@ public static class NotificationSettingMapper
             definition.AllowedRecipientRules,
             PublishedOptions(templates, definition.Key),
             effective.IsOverridden,
-            effective.Revision);
+            effective.Revision,
+            definition.OrchestratorOwned);
     }
 }

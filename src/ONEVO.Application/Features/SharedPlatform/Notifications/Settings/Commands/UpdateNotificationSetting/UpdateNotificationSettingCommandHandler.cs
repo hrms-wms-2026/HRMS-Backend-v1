@@ -45,6 +45,8 @@ public sealed class UpdateNotificationSettingCommandHandler
             return Result<NotificationSettingResponse>.Forbidden("Authentication required.");
         if (!NotificationEventCatalog.TryGet(request.EventKey, out var definition))
             return Result<NotificationSettingResponse>.NotFound("Notification event not found.");
+        if (!definition.OrchestratorOwned)
+            return Result<NotificationSettingResponse>.UnprocessableEntity(NotificationSettingMapper.NotConfigurable);
 
         if (!NotificationChannelNames.TryParse(request.EnabledChannels, out var channels, out var unknown))
             return Result<NotificationSettingResponse>.Failure($"Unknown channel '{unknown}'.");

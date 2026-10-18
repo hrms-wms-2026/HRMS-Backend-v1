@@ -40,6 +40,8 @@ public sealed class ResetNotificationSettingCommandHandler
             return Result<NotificationSettingResponse>.Forbidden("Authentication required.");
         if (!NotificationEventCatalog.TryGet(request.EventKey, out var definition))
             return Result<NotificationSettingResponse>.NotFound("Notification event not found.");
+        if (!definition.OrchestratorOwned)
+            return Result<NotificationSettingResponse>.UnprocessableEntity(NotificationSettingMapper.NotConfigurable);
 
         var rule = await _rules.GetTrackedAsync(_currentUser.TenantId, definition.Key, ct);
         if (rule is not null)

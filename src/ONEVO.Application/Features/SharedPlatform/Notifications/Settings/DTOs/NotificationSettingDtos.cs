@@ -15,7 +15,9 @@ public sealed record NotificationSettingResponse(
     IReadOnlyList<string> RecipientRules,
     IReadOnlyList<NotificationTemplateOptionResponse> Templates,
     bool IsOverridden,
-    int? Revision);
+    int? Revision,
+    /// <summary>False while the event is still delivered by its legacy path, which ignores tenant routing.</summary>
+    bool Configurable);
 
 public sealed record UpdateNotificationSettingRequest(
     IReadOnlyList<string> EnabledChannels,

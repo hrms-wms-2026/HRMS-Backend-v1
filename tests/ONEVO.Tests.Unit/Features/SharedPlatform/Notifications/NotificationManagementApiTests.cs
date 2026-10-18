@@ -240,19 +240,41 @@ public class NotificationManagementApiTests
 
         var setting = result.Value!.Single(s => s.EventKey == Event);
         setting.EnabledChannels.Should().Equal(NotificationChannelNames.InApp);
-        setting.SupportedChannels.Should().Equal(NotificationChannelNames.InApp, NotificationChannelNames.Email, NotificationChannelNames.Tray);
+        setting.SupportedChannels.Should().Equal(NotificationChannelNames.InApp, NotificationChannelNames.Email);
+        setting.Configurable.Should().BeTrue();
+        result.Value!.Single(s => s.EventKey == "work_sprint_completed").Configurable.Should().BeFalse();
         setting.IsOverridden.Should().BeFalse();
         setting.Templates.Should().ContainSingle(t => t.IsProductDefault);
     }
 
     [Fact]
-    public async Task Update_UnsupportedChannel_IsRejected()
+    public async Task Update_MonitoringAlert_IsNotConfigurableYet()
     {
         var monitoringEvent = NotificationEventCatalog.MonitoringEventKey(ONEVO.Domain.Features.Monitoring.Notifications.Entities.NotificationType.BreakReminder);
 
         var result = await UpdateHandler(_tenantA).Handle(new UpdateNotificationSettingCommand(monitoringEvent, ["tray", "email"], null, null, null), default);
 
+        result.StatusCode.Should().Be(422);
+        _rules.Rules.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Update_TrayOnTheFirstSliceEvent_IsRejectedUntilTheTrayTransportExists()
+    {
+        var result = await UpdateHandler(_tenantA).Handle(new UpdateNotificationSettingCommand(Event, ["in_app", "tray"], null, null, null), default);
+
         result.StatusCode.Should().Be(400);
+    }
+
+    [Fact]
+    public async Task UpdateAndReset_LegacyOwnedEvent_AreRejected_BecauseNothingWouldReadTheSetting()
+    {
+        var update = await UpdateHandler(_tenantA).Handle(new UpdateNotificationSettingCommand("work_sprint_completed", ["in_app"], null, null, null), default);
+        var reset = await new ResetNotificationSettingCommandHandler(TenantUser(_tenantA).Object, _rules, _store, _audit.Object, _uow.Object, _clock.Object)
+            .Handle(new ResetNotificationSettingCommand("work_sprint_completed"), default);
+
+        update.StatusCode.Should().Be(422);
+        reset.StatusCode.Should().Be(422);
         _rules.Rules.Should().BeEmpty();
     }
 
@@ -289,11 +311,11 @@ public class NotificationManagementApiTests
     [Fact]
     public async Task Update_SavesIndependentChannels_AndWritesAudit()
     {
-        var result = await UpdateHandler(_tenantA).Handle(new UpdateNotificationSettingCommand(Event, ["email", "tray"], null, null, null), default);
+        var result = await UpdateHandler(_tenantA).Handle(new UpdateNotificationSettingCommand(Event, ["email"], null, null, null), default);
 
         result.IsSuccess.Should().BeTrue();
-        result.Value!.EnabledChannels.Should().Equal(NotificationChannelNames.Email, NotificationChannelNames.Tray);
-        _rules.Rules.Single().EnabledChannels.Should().Be(NotificationChannels.Email | NotificationChannels.Tray);
+        result.Value!.EnabledChannels.Should().Equal(NotificationChannelNames.Email);
+        _rules.Rules.Single().EnabledChannels.Should().Be(NotificationChannels.Email);
         _audit.Verify(a => a.AddAsync(It.Is<AuditLog>(l => l.TenantId == _tenantA && l.Action == "notification_settings.updated"),
             It.IsAny<CancellationToken>()), Times.Once);
     }
@@ -305,8 +327,8 @@ public class NotificationManagementApiTests
         await handler.Handle(new UpdateNotificationSettingCommand(Event, ["email"], null, null, null), default);
         await handler.Handle(new UpdateNotificationSettingCommand(Event, ["in_app"], null, null, 1), default);
 
-        var stale = await handler.Handle(new UpdateNotificationSettingCommand(Event, ["tray"], null, null, 1), default);
-        var createdMeanwhile = await handler.Handle(new UpdateNotificationSettingCommand(Event, ["tray"], null, null, null), default);
+        var stale = await handler.Handle(new UpdateNotificationSettingCommand(Event, ["email"], null, null, 1), default);
+        var createdMeanwhile = await handler.Handle(new UpdateNotificationSettingCommand(Event, ["email"], null, null, null), default);
 
         stale.StatusCode.Should().Be(409);
         createdMeanwhile.StatusCode.Should().Be(409);
@@ -316,11 +338,11 @@ public class NotificationManagementApiTests
     [Fact]
     public async Task Update_OnlyTouchesTheCallersTenant()
     {
-        await UpdateHandler(_tenantB).Handle(new UpdateNotificationSettingCommand(Event, ["tray"], null, null, null), default);
+        await UpdateHandler(_tenantB).Handle(new UpdateNotificationSettingCommand(Event, ["in_app"], null, null, null), default);
 
         await UpdateHandler(_tenantA).Handle(new UpdateNotificationSettingCommand(Event, ["email"], null, null, null), default);
 
-        _rules.Rules.Single(r => r.TenantId == _tenantB).EnabledChannels.Should().Be(NotificationChannels.Tray);
+        _rules.Rules.Single(r => r.TenantId == _tenantB).EnabledChannels.Should().Be(NotificationChannels.InApp);
         _rules.Rules.Single(r => r.TenantId == _tenantA).EnabledChannels.Should().Be(NotificationChannels.Email);
     }
 

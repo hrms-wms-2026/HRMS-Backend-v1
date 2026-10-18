@@ -10,6 +10,11 @@ Each catalog event has exactly one delivery owner:
 - **Orchestrator** — the producer calls `INotificationOrchestrator.EnqueueAsync` inside its business
   transaction. Routing follows the tenant's Notification Settings (in-app / email / tray).
 
+Channel support follows ownership, so the settings screen never offers a switch nothing reads:
+legacy shared events advertise in-app only and monitoring alerts tray only (both read-only in tenant
+settings, `configurable: false`, PUT/DELETE return 422); orchestrator-owned events advertise in-app + email.
+Tray is added for orchestrator-owned events together with the generic tray transport (plan Task 5).
+
 Ownership is the `OrchestratorOwnedEvents` set in `NotificationEventCatalog`. Cut over one event per change:
 add it to the set **and** switch its producer in the same commit, so the old and new path are never both on.
 
@@ -51,6 +56,7 @@ No schema rollback after live writes: the new tables are additive.
 - Email is **at-least-once**: if the provider accepts but the status save fails, or the provider times out
   after accepting, the retry may send a second copy. The providers in use expose no idempotency key here.
 - Delivery records are retained; a cleanup job is a follow-up.
+- Emails reuse the template copy; `open_related` is not yet turned into a link in the email body.
 
 ## Inspecting failures
 
@@ -66,5 +72,6 @@ Outbox side: `outbox_messages` rows of type `notification_delivery` with `status
 
 - Unit tests: catalog, renderer, versions/seeder, management/settings handlers, orchestrator, channel handlers.
 - Architecture tests: RLS policy coverage for `tenant_notification_rules` and `notification_deliveries`.
+- DI: `NotificationDependencyRegistrationTests` checks the new types against the real `AddApplication`/`AddInfrastructure` registrations.
 - **Not yet run**: PostgreSQL integration tests (Testcontainers needs Docker, which was unavailable),
   applying the migration to a database, and an end-to-end send through a running API.

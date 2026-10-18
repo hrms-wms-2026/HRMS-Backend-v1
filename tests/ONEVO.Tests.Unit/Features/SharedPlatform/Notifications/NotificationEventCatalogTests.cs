@@ -77,12 +77,21 @@ public class NotificationEventCatalogTests
     }
 
     [Fact]
-    public void FirstSliceEvent_SupportsAllThreeChannels_WithExistingInAppDefault()
+    public void FirstSliceEvent_SupportsInAppAndEmail_WithExistingInAppDefault()
     {
         var e = NotificationEventCatalog.Get(NotificationEventCatalog.FirstSliceEventKey);
 
         e.Module.Should().Be("work_management");
-        e.SupportedChannels.Should().Be(NotificationChannels.InApp | NotificationChannels.Email | NotificationChannels.Tray);
+        e.OrchestratorOwned.Should().BeTrue();
+        // Tray joins when the generic tray transport lands (plan Task 5); until then nothing would collect it.
+        e.SupportedChannels.Should().Be(NotificationChannels.InApp | NotificationChannels.Email);
         e.DefaultChannels.Should().Be(NotificationChannels.InApp);
+    }
+
+    [Fact]
+    public void LegacyOwnedEvents_OnlyAdvertiseTheChannelTheirProducerActuallyDelivers()
+    {
+        foreach (var e in NotificationEventCatalog.All.Where(e => !e.OrchestratorOwned))
+            e.SupportedChannels.Should().Be(e.Key.StartsWith("monitoring_", StringComparison.Ordinal) ? NotificationChannels.Tray : NotificationChannels.InApp, e.Key);
     }
 }
