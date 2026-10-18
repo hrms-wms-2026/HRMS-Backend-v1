@@ -15,7 +15,8 @@ public static class NotificationTemplateMapper
         NotificationChannelNames.ToNames(e.RequiredChannels),
         e.AllowedVariables.Select(v => new NotificationVariableResponse(v.Key, v.Type, v.Required)).ToList(),
         e.AllowedRecipientRules,
-        e.AllowedActionKeys);
+        e.AllowedActionKeys,
+        e.OrchestratorOwned);
 
     public static NotificationTemplateContent ToContent(this NotificationTemplateContentRequest r) => new(
         r.InAppTitle?.Trim() ?? string.Empty, r.InAppBody ?? string.Empty,

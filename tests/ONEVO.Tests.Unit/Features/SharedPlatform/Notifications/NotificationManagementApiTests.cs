@@ -19,6 +19,7 @@ using ONEVO.Application.Features.SharedPlatform.Notifications.Management.Command
 using ONEVO.Application.Features.SharedPlatform.Notifications.Management.Commands.SaveNotificationTemplateDraft;
 using ONEVO.Application.Features.SharedPlatform.Notifications.Management.Commands.SendTestNotification;
 using ONEVO.Application.Features.SharedPlatform.Notifications.Management.DTOs;
+using ONEVO.Application.Features.SharedPlatform.Notifications.Management.Mappers;
 using ONEVO.Application.Features.SharedPlatform.Notifications.Management.Queries.PreviewNotificationTemplate;
 using ONEVO.Application.Features.SharedPlatform.Notifications.RepositoryInterfaces;
 using ONEVO.Application.Features.SharedPlatform.Notifications.Settings.Commands.ResetNotificationSetting;
@@ -88,6 +89,24 @@ public class NotificationManagementApiTests
         result.IsSuccess.Should().BeFalse();
         result.StatusCode.Should().Be(400);
         _store.Templates.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Create_ForAnEventStillOnItsBuiltInPath_IsRejected_BecauseNothingWouldUseIt()
+    {
+        var handler = new CreateNotificationTemplateCommandHandler(_store, _uow.Object, _admin.Object, _clock.Object);
+
+        var result = await handler.Handle(new CreateNotificationTemplateCommand("work_sprint_completed", "Alt", Content()), default);
+
+        result.StatusCode.Should().Be(422);
+        _store.Templates.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void EventResponse_FlagsWhichEventsAcceptAlternateTemplates()
+    {
+        NotificationEventCatalog.Get(Event).ToResponse().Customizable.Should().BeTrue();
+        NotificationEventCatalog.Get("work_sprint_completed").ToResponse().Customizable.Should().BeFalse();
     }
 
     [Fact]

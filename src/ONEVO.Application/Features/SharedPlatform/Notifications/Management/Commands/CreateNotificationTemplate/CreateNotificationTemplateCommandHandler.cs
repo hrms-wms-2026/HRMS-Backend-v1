@@ -37,6 +37,9 @@ public sealed class CreateNotificationTemplateCommandHandler
         if (!NotificationEventCatalog.TryGet(request.EventKey ?? string.Empty, out var definition))
             return Result<NotificationTemplateDetailResponse>.Failure(
                 "Templates can only be created for a registered notification event.", 400, "unknown_notification_event");
+        if (!definition.OrchestratorOwned)
+            return Result<NotificationTemplateDetailResponse>.UnprocessableEntity(
+                "This event still uses its built-in delivery, which only reads the default template. Edit the default template instead.");
 
         var name = request.Name?.Trim() ?? string.Empty;
         if (name.Length is 0 or > 150)

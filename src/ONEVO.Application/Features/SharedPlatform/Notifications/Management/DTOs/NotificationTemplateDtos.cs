@@ -11,7 +11,10 @@ public sealed record NotificationEventResponse(
     IReadOnlyList<string> RequiredChannels,
     IReadOnlyList<NotificationVariableResponse> Variables,
     IReadOnlyList<string> RecipientRules,
-    IReadOnlyList<string> ActionKeys);
+    IReadOnlyList<string> ActionKeys,
+    /// <summary>True when the event is delivered by the orchestrator, so alternate templates and non-in-app channel
+    /// copy are actually used. Built-in (legacy) events only use the default template's in-app copy.</summary>
+    bool Customizable);
 
 public sealed record NotificationTemplateContentRequest(
     string InAppTitle,
