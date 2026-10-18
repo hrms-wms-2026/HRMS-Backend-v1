@@ -358,6 +358,16 @@ public class ApplicationDbContext : DbContext
     public DbSet<CalendarEventMeeting> CalendarEventMeetings => Set<CalendarEventMeeting>();
     public DbSet<CalendarEventMeetingAttendance> CalendarEventMeetingAttendances => Set<CalendarEventMeetingAttendance>();
 
+    // Meetings-as-tasks Phase 2: a meeting occurrence is a WorkTask (task_kind = 'meeting') plus its MeetingDetails.
+    public DbSet<ONEVO.Domain.Features.WorkManagement.Meetings.Entities.MeetingSeries> MeetingSeries => Set<ONEVO.Domain.Features.WorkManagement.Meetings.Entities.MeetingSeries>();
+    public DbSet<ONEVO.Domain.Features.WorkManagement.Meetings.Entities.MeetingDetails> MeetingDetails => Set<ONEVO.Domain.Features.WorkManagement.Meetings.Entities.MeetingDetails>();
+    public DbSet<ONEVO.Domain.Features.WorkManagement.Meetings.Entities.MeetingOccurrenceSuppression> MeetingOccurrenceSuppressions => Set<ONEVO.Domain.Features.WorkManagement.Meetings.Entities.MeetingOccurrenceSuppression>();
+    public DbSet<ONEVO.Domain.Features.WorkManagement.Meetings.Entities.MeetingOccurrenceAttendee> MeetingOccurrenceAttendees => Set<ONEVO.Domain.Features.WorkManagement.Meetings.Entities.MeetingOccurrenceAttendee>();
+    public DbSet<ONEVO.Domain.Features.WorkManagement.Meetings.Entities.MeetingSeriesLink> MeetingSeriesLinks => Set<ONEVO.Domain.Features.WorkManagement.Meetings.Entities.MeetingSeriesLink>();
+    public DbSet<ONEVO.Domain.Features.WorkManagement.Meetings.Entities.MeetingAttendanceSession> MeetingAttendanceSessions => Set<ONEVO.Domain.Features.WorkManagement.Meetings.Entities.MeetingAttendanceSession>();
+    public DbSet<ONEVO.Domain.Features.WorkManagement.Meetings.Entities.MeetingActionItem> MeetingActionItems => Set<ONEVO.Domain.Features.WorkManagement.Meetings.Entities.MeetingActionItem>();
+    public DbSet<ONEVO.Domain.Features.SharedPlatform.Jobs.Entities.JobLease> JobLeases => Set<ONEVO.Domain.Features.SharedPlatform.Jobs.Entities.JobLease>();
+
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
         optionsBuilder

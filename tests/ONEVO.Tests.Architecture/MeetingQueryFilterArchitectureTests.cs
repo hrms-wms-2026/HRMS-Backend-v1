@@ -1,5 +1,7 @@
 using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
+using ONEVO.Domain.Features.SharedPlatform.Jobs.Entities;
+using ONEVO.Domain.Features.WorkManagement.Meetings.Entities;
 using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
 using ONEVO.Infrastructure.ExternalServices.Messaging;
 using ONEVO.Infrastructure.Identity.CurrentUser;
@@ -25,6 +27,35 @@ public sealed class MeetingQueryFilterArchitectureTests
         Assert.Contains(filters, f => f.Key == WorkTaskQueryFilters.ExcludeMeetings);
         Assert.Contains(filters, f => f.Key == WorkTaskQueryFilters.TenantScope);
         Assert.DoesNotContain(filters, f => f.Key is null); // never mix anonymous and named filters
+    }
+
+    [Fact]
+    public void MeetingEntities_AreTenantFilteredAndMapToTheSpecTables()
+    {
+        using var context = CreateModelInspectionContext();
+        var expected = new Dictionary<Type, string>
+        {
+            [typeof(MeetingSeries)] = "meeting_series",
+            [typeof(MeetingDetails)] = "meeting_details",
+            [typeof(MeetingOccurrenceSuppression)] = "meeting_occurrence_suppressions",
+            [typeof(MeetingOccurrenceAttendee)] = "meeting_occurrence_attendees",
+            [typeof(MeetingSeriesLink)] = "meeting_series_links",
+            [typeof(MeetingAttendanceSession)] = "meeting_attendance_sessions",
+            [typeof(MeetingActionItem)] = "meeting_action_items",
+        };
+
+        foreach (var (clrType, table) in expected)
+        {
+            var entityType = context.Model.FindEntityType(clrType);
+            Assert.NotNull(entityType);
+            Assert.Equal(table, entityType!.GetTableName());
+            Assert.True(entityType.GetDeclaredQueryFilters().Count > 0, $"{clrType.Name} has no tenant query filter");
+        }
+
+        var lease = context.Model.FindEntityType(typeof(JobLease));
+        Assert.NotNull(lease);
+        Assert.Equal("job_leases", lease!.GetTableName());
+        Assert.Empty(lease.GetDeclaredQueryFilters()); // platform-level: no tenant scope, no RLS (spec 4.1)
     }
 
     /// <summary>Bare IgnoreQueryFilters() on WorkTasks also drops ExcludeMeetings. Only these may do it: each counts
