@@ -22,7 +22,7 @@ public sealed class CalendarNotificationSender(IOutboxWriter outboxWriter, IEmpl
                 new WorkNotificationPayload(
                     tenantId, employee.UserId, "calendar_event_participant_added",
                     new Dictionary<string, string> { ["organizerName"] = organizerName, ["eventTitle"] = eventTitle, ["eventDate"] = startDate.ToString("u") },
-                    "calendar_event", null),
+                    "calendar_event", null, EventId: Guid.NewGuid()),
                 tenantId, ct);
 
             if (!sendInviteEmail) continue;
@@ -140,7 +140,7 @@ public sealed class CalendarNotificationSender(IOutboxWriter outboxWriter, IEmpl
     private async Task InAppAsync(Guid tenantId, Guid userId, string templateCode, Dictionary<string, string> placeholders, CancellationToken ct)
         => await outboxWriter.EnqueueAsync(
             OutboxMessageTypes.WorkNotification,
-            new WorkNotificationPayload(tenantId, userId, templateCode, placeholders, "calendar_event", null),
+            new WorkNotificationPayload(tenantId, userId, templateCode, placeholders, "calendar_event", null, EventId: Guid.NewGuid()),
             tenantId, ct);
 
     private async Task NotifyInAppOnlyAsync(

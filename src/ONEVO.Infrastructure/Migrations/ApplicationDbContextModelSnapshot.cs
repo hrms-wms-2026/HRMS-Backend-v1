@@ -10151,12 +10151,136 @@ namespace ONEVO.Infrastructure.Migrations
                     b.ToTable("notifications", (string)null);
                 });
 
+            modelBuilder.Entity("ONEVO.Domain.Features.SharedPlatform.Notifications.Entities.NotificationDelivery", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("ActionKey")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("action_key");
+
+                    b.Property<int>("AttemptCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("attempt_count");
+
+                    b.Property<string>("Body")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("body");
+
+                    b.Property<int>("Channel")
+                        .HasColumnType("integer")
+                        .HasColumnName("channel");
+
+                    b.Property<DateTimeOffset?>("CompletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("completed_at");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("EmailHtml")
+                        .HasColumnType("text")
+                        .HasColumnName("email_html");
+
+                    b.Property<string>("EmailSubject")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("email_subject");
+
+                    b.Property<string>("EmailText")
+                        .HasColumnType("text")
+                        .HasColumnName("email_text");
+
+                    b.Property<Guid>("EventId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("event_id");
+
+                    b.Property<string>("EventKey")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("event_key");
+
+                    b.Property<DateTimeOffset?>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("expires_at");
+
+                    b.Property<Guid?>("NotificationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("notification_id");
+
+                    b.Property<Guid>("RecipientUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("recipient_user_id");
+
+                    b.Property<Guid?>("RelatedEntityId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("related_entity_id");
+
+                    b.Property<string>("RelatedEntityType")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("related_entity_type");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("status");
+
+                    b.Property<string>("StatusReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("status_reason");
+
+                    b.Property<Guid?>("TemplateVersionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("template_version_id");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("title");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_notification_deliveries");
+
+                    b.HasIndex("TenantId", "Channel", "RecipientUserId", "Status")
+                        .HasDatabaseName("ix_notification_deliveries_tenant_channel_recipient_status");
+
+                    b.HasIndex("TenantId", "EventId", "RecipientUserId", "Channel")
+                        .IsUnique()
+                        .HasDatabaseName("ix_notification_deliveries_identity");
+
+                    b.ToTable("notification_deliveries", (string)null);
+                });
+
             modelBuilder.Entity("ONEVO.Domain.Features.SharedPlatform.Notifications.Entities.NotificationTemplate", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid")
                         .HasColumnName("id");
+
+                    b.Property<Guid?>("ActiveVersionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("active_version_id");
 
                     b.Property<string>("Code")
                         .IsRequired()
@@ -10167,6 +10291,12 @@ namespace ONEVO.Infrastructure.Migrations
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
+
+                    b.Property<string>("EventKey")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("event_key");
 
                     b.Property<string>("InAppBodyTemplate")
                         .IsRequired()
@@ -10183,6 +10313,12 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("character varying(255)")
                         .HasColumnName("in_app_title_template");
 
+                    b.Property<string>("Locale")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)")
+                        .HasColumnName("locale");
+
                     b.Property<string>("MailBodyTemplate")
                         .HasColumnType("text")
                         .HasColumnName("mail_body_template");
@@ -10195,6 +10331,12 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("text")
                         .HasColumnName("mail_subject_template");
 
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)")
+                        .HasColumnName("name");
+
                     b.Property<DateTimeOffset?>("UpdatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("updated_at");
@@ -10206,7 +10348,179 @@ namespace ONEVO.Infrastructure.Migrations
                         .IsUnique()
                         .HasDatabaseName("ix_notification_templates_one_per_code");
 
+                    b.HasIndex("EventKey", "Locale")
+                        .HasDatabaseName("ix_notification_templates_event_key_locale");
+
                     b.ToTable("notification_templates", (string)null);
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.SharedPlatform.Notifications.Entities.NotificationTemplateVersion", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("ActionKey")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("action_key");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by_user_id");
+
+                    b.Property<string>("EmailCss")
+                        .HasColumnType("text")
+                        .HasColumnName("email_css");
+
+                    b.Property<string>("EmailHtml")
+                        .HasColumnType("text")
+                        .HasColumnName("email_html");
+
+                    b.Property<string>("EmailSubject")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("email_subject");
+
+                    b.Property<string>("EmailText")
+                        .HasColumnType("text")
+                        .HasColumnName("email_text");
+
+                    b.Property<string>("InAppBody")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("in_app_body");
+
+                    b.Property<string>("InAppTitle")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("in_app_title");
+
+                    b.Property<DateTimeOffset?>("PublishedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("published_at");
+
+                    b.Property<Guid?>("PublishedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("published_by_user_id");
+
+                    b.Property<int>("Revision")
+                        .IsConcurrencyToken()
+                        .HasColumnType("integer")
+                        .HasColumnName("revision");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("status");
+
+                    b.Property<Guid>("TemplateId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("template_id");
+
+                    b.Property<string>("TrayBody")
+                        .HasColumnType("text")
+                        .HasColumnName("tray_body");
+
+                    b.Property<string>("TrayTitle")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("tray_title");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid?>("UpdatedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by_user_id");
+
+                    b.Property<int>("Version")
+                        .HasColumnType("integer")
+                        .HasColumnName("version");
+
+                    b.HasKey("Id")
+                        .HasName("pk_notification_template_versions");
+
+                    b.HasIndex("TemplateId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_notification_template_versions_one_draft_per_template")
+                        .HasFilter("status = 'draft'");
+
+                    b.HasIndex("TemplateId", "Version")
+                        .IsUnique()
+                        .HasDatabaseName("ix_notification_template_versions_template_id_version");
+
+                    b.ToTable("notification_template_versions", (string)null);
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.SharedPlatform.Notifications.Entities.TenantNotificationRule", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<int>("EnabledChannels")
+                        .HasColumnType("integer")
+                        .HasColumnName("enabled_channels");
+
+                    b.Property<string>("EventKey")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("event_key");
+
+                    b.Property<string>("RecipientRule")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("recipient_rule");
+
+                    b.Property<int>("Revision")
+                        .IsConcurrencyToken()
+                        .HasColumnType("integer")
+                        .HasColumnName("revision");
+
+                    b.Property<Guid?>("TemplateId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("template_id");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid?>("UpdatedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by_user_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_tenant_notification_rules");
+
+                    b.HasIndex("TemplateId")
+                        .HasDatabaseName("ix_tenant_notification_rules_template_id");
+
+                    b.HasIndex("TenantId", "EventKey")
+                        .IsUnique()
+                        .HasDatabaseName("ix_tenant_notification_rules_tenant_id_event_key");
+
+                    b.ToTable("tenant_notification_rules", (string)null);
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.SharedPlatform.PaymentGateway.Entities.PaymentGatewayConfig", b =>
@@ -15547,6 +15861,25 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasForeignKey("TenantSubscriptionId")
                         .OnDelete(DeleteBehavior.SetNull)
                         .HasConstraintName("fk_subscription_invoices_tenant_subscriptions_tenant_subscript");
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.SharedPlatform.Notifications.Entities.NotificationTemplateVersion", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.SharedPlatform.Notifications.Entities.NotificationTemplate", null)
+                        .WithMany()
+                        .HasForeignKey("TemplateId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_notification_template_versions_notification_templates_templ");
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.SharedPlatform.Notifications.Entities.TenantNotificationRule", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.SharedPlatform.Notifications.Entities.NotificationTemplate", null)
+                        .WithMany()
+                        .HasForeignKey("TemplateId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_tenant_notification_rules_notification_templates_template_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.SharedPlatform.PaymentGateway.Entities.PaymentGatewayConfig", b =>
