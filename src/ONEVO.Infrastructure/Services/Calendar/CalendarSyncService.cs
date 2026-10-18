@@ -3,6 +3,7 @@ using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Calendar.RepositoryInterfaces;
 using ONEVO.Application.Features.Calendar.ServiceInterfaces;
+using ONEVO.Application.Features.Calendar.Services;
 using ONEVO.Domain.Features.Calendar.Entities;
 
 namespace ONEVO.Infrastructure.Services.Calendar;
@@ -16,9 +17,13 @@ public sealed class CalendarSyncService(
     IMicrosoftGraphCalendarClient msClient,
     IEncryptionService encryption,
     IUnitOfWork unitOfWork,
-    ILogger<CalendarSyncService> logger)
+    ILogger<CalendarSyncService> logger,
+    ICalendarNotificationSender? notifications = null)
     : ICalendarSyncService
 {
+    // Links that turned into a two-way conflict during the current run (plan C1 P1-6).
+    private int _newConflicts;
+
     private static readonly TimeSpan SyncWindowPast = TimeSpan.FromDays(30);
     private static readonly TimeSpan SyncWindowFuture = TimeSpan.FromDays(180);
     private const int BatchLimitPerConnection = 200;
@@ -45,6 +50,7 @@ public sealed class CalendarSyncService(
         if (connection.Provider != CalendarExternalSources.GoogleCalendar && connection.Provider != CalendarExternalSources.OutlookCalendar)
             return;
 
+        _newConflicts = 0;
         var oauthProvider = connection.Provider == CalendarExternalSources.GoogleCalendar ? "google" : "microsoft";
 
         var accessToken = await tokenProvider.GetFreshAccessTokenAsync(connection, oauthProvider, ct);
@@ -84,9 +90,18 @@ public sealed class CalendarSyncService(
             connection.LastError = ex.Message;
             connection.LastSyncedAt = DateTimeOffset.UtcNow;
             if (connection.FailureCount >= ExternalCalendarConnectionStatuses.MaxConsecutiveFailures)
+            {
+                // The owner hears about it once, on the run that turns the connection Failed (plan C1 P1-6).
+                if (notifications is not null && connection.Status != ExternalCalendarConnectionStatuses.Failed)
+                    await notifications.NotifyConnectionProblemAsync(connection.TenantId, connection.UserId,
+                        CalendarProviderLabels.For(connection.Provider), "failed", ct);
                 connection.Status = ExternalCalendarConnectionStatuses.Failed;
+            }
         }
 
+        if (notifications is not null && _newConflicts > 0)
+            await notifications.NotifyConnectionProblemAsync(connection.TenantId, connection.UserId,
+                CalendarProviderLabels.For(connection.Provider), "sync_conflict", ct);
         connections.Update(connection);
         await unitOfWork.SaveChangesAsync(ct);
     }
@@ -203,6 +218,8 @@ public sealed class CalendarSyncService(
         localEvent.UpdatedAt = DateTimeOffset.UtcNow;
         events.Update(localEvent);
 
+        if (bothSidesChanged && link.SyncStatus != ExternalCalendarSyncStatuses.Conflict)
+            _newConflicts++;
         link.ExternalEtag = etag;
         link.LastSyncedAt = DateTimeOffset.UtcNow;
         link.SyncStatus = bothSidesChanged ? ExternalCalendarSyncStatuses.Conflict : ExternalCalendarSyncStatuses.Synced;

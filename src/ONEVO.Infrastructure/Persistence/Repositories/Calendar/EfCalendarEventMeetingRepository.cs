@@ -33,10 +33,17 @@ public class EfCalendarEventMeetingRepository : ICalendarEventMeetingRepository
                 && meeting.Provider == provider
                 && meeting.Status == CalendarEventMeetingStatuses.Active
                 && meeting.LastAttendanceSyncedAt == null
+                && meeting.AttendanceUnavailableAt == null
                 && calendarEvent.EndDate < now
             select meeting
         ).ToListAsync(ct);
     }
+
+    public async Task<DateTimeOffset?> GetEventEndAsync(Guid tenantId, Guid calendarEventId, CancellationToken ct = default) =>
+        await _db.PersonalCalendarEvents.AsNoTracking()
+            .Where(e => e.TenantId == tenantId && e.Id == calendarEventId)
+            .Select(e => (DateTimeOffset?)e.EndDate)
+            .FirstOrDefaultAsync(ct);
 
     public void Update(CalendarEventMeeting meeting) => _db.CalendarEventMeetings.Update(meeting);
 }

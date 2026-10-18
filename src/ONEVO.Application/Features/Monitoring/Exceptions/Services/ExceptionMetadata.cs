@@ -12,6 +12,8 @@ public sealed record ExceptionMetadata
 {
     public const string SourceFaceCheckOverride = "face_check_override";
     public const string SourceCheckInScan = "check_in_scan";
+    /// <summary>Clocked in without the required camera verification (inbox plan D-b).</summary>
+    public const string SourceCameraVerificationSkipped = "camera_verification_skipped";
 
     /// <summary>Where an identity case came from: <see cref="SourceFaceCheckOverride"/> or <see cref="SourceCheckInScan"/>.</summary>
     public string? Source { get; init; }

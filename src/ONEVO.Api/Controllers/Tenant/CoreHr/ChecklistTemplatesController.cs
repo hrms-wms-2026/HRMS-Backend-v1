@@ -26,7 +26,7 @@ public class ChecklistTemplatesController : ControllerBase
     /// <summary>List checklist templates for a company, optionally filtered by templateType,
     /// department, position, and inactive-inclusion.</summary>
     [HttpGet]
-    [RequirePermission("employees:read")]
+    [RequirePermission("employees:write")]
     public async Task<IActionResult> List(
         [FromQuery] string? templateType, [FromQuery] Guid legalEntityId, [FromQuery] Guid? departmentId, [FromQuery] Guid? positionId,
         [FromQuery] bool includeInactive = false, [FromQuery] int page = 1, [FromQuery] int pageSize = 25, CancellationToken ct = default)
@@ -37,7 +37,7 @@ public class ChecklistTemplatesController : ControllerBase
     }
 
     [HttpGet("{id:guid}")]
-    [RequirePermission("employees:read")]
+    [RequirePermission("employees:write")]
     public async Task<IActionResult> GetById(Guid id, CancellationToken ct = default)
     {
         var result = await _mediator.Send(new GetChecklistTemplateByIdQuery(id), ct);

@@ -15,8 +15,10 @@ public sealed class ZoomMeetingClient(HttpClient httpClient, ILogger<ZoomMeeting
     private const int MaxDurationMinutes = 1440;
 
     public async Task<ZoomMeetingDto> CreateMeetingAsync(
-        string accessToken, string subject, DateTimeOffset start, DateTimeOffset end, CancellationToken ct)
+        string accessToken, string subject, DateTimeOffset start, DateTimeOffset end, CancellationToken ct,
+        IReadOnlyList<string>? attendeeEmails = null)
     {
+        var attendees = (attendeeEmails ?? []).Where(e => !string.IsNullOrWhiteSpace(e)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         using var request = new HttpRequestMessage(HttpMethod.Post, "https://api.zoom.us/v2/users/me/meetings");
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
         var durationMinutes = Math.Clamp((int)(end - start).TotalMinutes, 1, MaxDurationMinutes);
@@ -30,7 +32,12 @@ public sealed class ZoomMeetingClient(HttpClient httpClient, ILogger<ZoomMeeting
             start_time = start.UtcDateTime.ToString("yyyy-MM-ddTHH:mm:ss", CultureInfo.InvariantCulture),
             duration = durationMinutes,
             timezone = "UTC",
-            settings = new { join_before_host = false, waiting_room = true }
+            settings = new
+            {
+                join_before_host = false,
+                waiting_room = true,
+                meeting_invitees = attendees.Select(e => new { email = e }).ToArray()
+            }
         });
         using var response = await httpClient.SendAsync(request, ct);
         await EnsureSuccessOrLogAsync(response, "create meeting", ct);

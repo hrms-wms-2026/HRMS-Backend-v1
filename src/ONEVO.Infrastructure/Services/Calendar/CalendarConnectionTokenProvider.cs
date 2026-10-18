@@ -4,6 +4,7 @@ using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Calendar.RepositoryInterfaces;
 using ONEVO.Application.Features.Calendar.ServiceInterfaces;
+using ONEVO.Application.Features.Calendar.Services;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformOAuthApps.ServiceInterfaces;
 using ONEVO.Domain.Features.Calendar.Entities;
 
@@ -15,7 +16,8 @@ public sealed class CalendarConnectionTokenProvider(
     IPlatformOAuthAppResolver appResolver,
     IEncryptionService encryption,
     IUnitOfWork unitOfWork,
-    ILogger<CalendarConnectionTokenProvider> logger)
+    ILogger<CalendarConnectionTokenProvider> logger,
+    ICalendarNotificationSender? notifications = null)
     : ICalendarConnectionTokenProvider
 {
     public async Task<string?> GetFreshAccessTokenAsync(ExternalCalendarConnection connection, string oauthProvider, CancellationToken ct)
@@ -56,6 +58,10 @@ public sealed class CalendarConnectionTokenProvider(
             if (isGrantFailure)
             {
                 logger.LogWarning(ex, "Token refresh for connection {ConnectionId} was rejected by the provider; marking reauth_required.", connection.Id);
+                // The owner hears about it once, when the connection first needs a new sign-in (plan C1 P1-6).
+                if (notifications is not null && connection.Status != ExternalCalendarConnectionStatuses.ReauthRequired)
+                    await notifications.NotifyConnectionProblemAsync(connection.TenantId, connection.UserId,
+                        CalendarProviderLabels.For(connection.Provider), "reauth_required", ct);
                 connection.Status = ExternalCalendarConnectionStatuses.ReauthRequired;
             }
             else

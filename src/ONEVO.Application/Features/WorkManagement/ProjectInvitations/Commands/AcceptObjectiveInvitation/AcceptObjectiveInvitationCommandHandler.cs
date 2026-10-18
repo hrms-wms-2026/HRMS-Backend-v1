@@ -9,6 +9,7 @@ using ONEVO.Application.Features.WorkManagement.Objectives.Services;
 using ONEVO.Application.Features.WorkManagement.ProjectInvitations.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
 using ONEVO.Domain.Features.WorkManagement.ProjectInvitations.Entities;
+using ONEVO.Application.Features.WorkManagement.Notifications.Services;
 
 namespace ONEVO.Application.Features.WorkManagement.ProjectInvitations.Commands.AcceptObjectiveInvitation;
 
@@ -134,6 +135,8 @@ public class AcceptObjectiveInvitationCommandHandler : IRequestHandler<AcceptObj
                 }
             }
 
+            await WorkNotificationEngine.EnqueueInboxChangedAsync(
+                _outboxWriter, tenantId, [invitation.InvitedById, invitation.InvitedEmployeeId], WorkNotificationEngine.InvitationInboxKind, invitation.Id, innerCt);
             await _unitOfWork.SaveChangesAsync(innerCt);
 
             return Result.Success();

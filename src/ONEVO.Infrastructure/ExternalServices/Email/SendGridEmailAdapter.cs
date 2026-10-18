@@ -64,7 +64,10 @@ public sealed class SendGridEmailAdapter : IEmailProviderAdapter
                 ? null
                 : new { email = options.ReplyToEmail },
             subject = request.Subject,
-            content
+            content,
+            attachments = request.Attachments is { Count: > 0 } files
+                ? files.Select(a => new { content = Convert.ToBase64String(a.Content), filename = a.FileName, type = a.ContentType, disposition = "attachment" }).ToArray()
+                : null
         };
 
         using var httpRequest = new HttpRequestMessage(HttpMethod.Post, MailSendUrl);

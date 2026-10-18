@@ -9,14 +9,21 @@ public record EmployeeDetailResponse(
     string? InvitationStatus,
     DateTimeOffset? InvitationExpiresAt,
     EmployeeListAttendanceSummaryResponse? AttendanceSummary = null,
-    IReadOnlyList<EmployeeDetailProjectMembership>? ProjectMemberships = null);
+    IReadOnlyList<EmployeeDetailProjectMembership>? ProjectMemberships = null,
+    /// <summary>The employee's tray app is connected right now (see IEmployeeOnlineStatusReader).</summary>
+    bool IsOnline = false,
+    /// <summary>The caller may resend/revoke this employee's open invitation (IEmployeeInvitationAccess).</summary>
+    bool CanManageInvitation = false);
 
 public record EmployeeDetailJobInformation(
     string EmployeeNumber, Guid? LegalEntityId, string? LegalEntityName, string? DepartmentName, string? PositionName,
     Guid? PositionId, string? ReportingManagerName, string EmploymentTypeLabel, string Status,
     DateOnly HireDate, DateOnly? ProbationEndDate, string? WorkModeLabel,
     string EmploymentTypeCode, Guid? WorkModeId, DateOnly? TerminationDate, Guid? ReportingManagerId = null,
-    string? Timezone = null);
+    string? Timezone = null,
+    // Position reserved for this employee by their onboarding invitation. The assignment stays
+    // "planned" (so PositionName is null) until they accept the invite and it is activated.
+    string? PendingPositionName = null);
 
 public record EmployeeDetailPersonalInformation(
     string FirstName, string LastName, string Email, string? Phone, DateOnly? DateOfBirth,

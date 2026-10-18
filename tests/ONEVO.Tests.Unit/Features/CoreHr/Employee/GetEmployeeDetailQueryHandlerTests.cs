@@ -1,6 +1,7 @@
 using Moq;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Invite.RepositoryInterfaces;
+using ONEVO.Application.Features.CoreHr.Employee.Access;
 using ONEVO.Application.Features.CoreHr.Employee.DTOs.Responses;
 using ONEVO.Application.Features.CoreHr.Employee.Models;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployeeDetail;
@@ -110,6 +111,38 @@ public sealed class GetEmployeeDetailQueryHandlerTests
         _profile.Verify(
             p => p.GetPrimaryBankDetailAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()),
             Times.Never);
+    }
+
+    [Theory]
+    [InlineData(false, "Design Lead")]
+    [InlineData(true, null)]
+    public async Task Handle_PendingInvite_ReportsTheReservedPositionAsPending(bool inviteAccepted, string? expected)
+    {
+        ArrangeVisibleEmployee();
+        var positionId = Guid.NewGuid();
+        _invitationTokenRepository
+            .Setup(r => r.GetLatestByEmployeeIdAsync(_tenantId, _employeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new InvitationToken
+            {
+                TenantId = _tenantId, EmployeeId = _employeeId, PositionId = positionId,
+                ExpiresAt = _now.AddHours(24), UsedAt = inviteAccepted ? _now.AddHours(-1) : null
+            });
+        var positions = new Mock<IPositionRepository>();
+        positions
+            .Setup(r => r.GetByIdAsync(_tenantId, positionId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Position { Id = positionId, TenantId = _tenantId, Name = "Design Lead" });
+
+        var handler = new GetEmployeeDetailQueryHandler(
+            _employeeRepository.Object, _scopeResolver.Object, _profile.Object, _invitationTokenRepository.Object,
+            _encryption.Object, _currentUser.Object, _clock.Object, _employmentTypes.Object, _legalEntities.Object,
+            _projectMembers.Object, positions.Object);
+
+        var result = await handler.Handle(new GetEmployeeDetailQuery(_employeeId), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        // The planned assignment only becomes the real position once the invite is accepted.
+        Assert.Null(result.Value!.JobInformation.PositionName);
+        Assert.Equal(expected, result.Value.JobInformation.PendingPositionName);
     }
 
     [Fact]
@@ -241,6 +274,56 @@ public sealed class GetEmployeeDetailQueryHandlerTests
             .ReturnsAsync((EmployeeListItemResponse?)null);
 
         var result = await CreateHandler().Handle(new GetEmployeeDetailQuery(_employeeId), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(403, result.StatusCode);
+    }
+
+    private GetEmployeeDetailQueryHandler CreateHandlerWithInvitationAccess(IEmployeeInvitationAccess access) =>
+        new(
+            _employeeRepository.Object, _scopeResolver.Object, _profile.Object, _invitationTokenRepository.Object,
+            _encryption.Object, _currentUser.Object, _clock.Object, _employmentTypes.Object, _legalEntities.Object,
+            _projectMembers.Object, invitationAccess: access);
+
+    private Mock<IEmployeeInvitationAccess> ArrangeOpenInviteOutsideCoverage(Guid inviterUserId, bool canManage)
+    {
+        ArrangeVisibleEmployee();
+        _currentUser.Setup(u => u.HasPermission("org:manage")).Returns(false);
+        _scopeResolver
+            .Setup(r => r.ResolveAsync(_tenantId, It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new EmployeeVisibilityScope(false, null, new HashSet<Guid>(), new HashSet<Guid>(), new HashSet<Guid>()));
+        _employeeRepository
+            .Setup(r => r.GetVisibleByIdAsync(
+                _tenantId, It.Is<EmployeeVisibilityScope>(s => !s.CanViewAllTenantEmployees), _employeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((EmployeeListItemResponse?)null);
+        var invitation = new InvitationToken { TenantId = _tenantId, EmployeeId = _employeeId, ExpiresAt = _now.AddHours(5) };
+        _invitationTokenRepository
+            .Setup(r => r.GetLatestByEmployeeIdAsync(_tenantId, _employeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(invitation);
+
+        var access = new Mock<IEmployeeInvitationAccess>();
+        access.Setup(a => a.ResolveInviterUserIdAsync(invitation, It.IsAny<Guid>(), It.IsAny<CancellationToken>())).ReturnsAsync(inviterUserId);
+        access.Setup(a => a.CanManageAsync(invitation, It.IsAny<Guid>(), It.IsAny<CancellationToken>())).ReturnsAsync(canManage);
+        return access;
+    }
+
+    [Fact]
+    public async Task Handle_PersonWhoAddedThePendingHire_CanOpenTheDetailWithoutCoverage_AndManageTheInvite()
+    {
+        var access = ArrangeOpenInviteOutsideCoverage(inviterUserId: _userId, canManage: true);
+
+        var result = await CreateHandlerWithInvitationAccess(access.Object).Handle(new GetEmployeeDetailQuery(_employeeId), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.True(result.Value!.CanManageInvitation);
+    }
+
+    [Fact]
+    public async Task Handle_SomeoneElsesPendingHireOutsideCoverage_StaysForbidden()
+    {
+        var access = ArrangeOpenInviteOutsideCoverage(inviterUserId: Guid.NewGuid(), canManage: false);
+
+        var result = await CreateHandlerWithInvitationAccess(access.Object).Handle(new GetEmployeeDetailQuery(_employeeId), CancellationToken.None);
 
         Assert.False(result.IsSuccess);
         Assert.Equal(403, result.StatusCode);

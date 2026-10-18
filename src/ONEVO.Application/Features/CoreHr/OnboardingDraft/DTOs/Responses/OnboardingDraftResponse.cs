@@ -24,4 +24,7 @@ public record OnboardingDraftResponse(
     string Version,
     Guid? ReportsToEmployeeId,
     string? ReportingManagerName,
-    string? ReportingManagerPositionName);
+    string? ReportingManagerPositionName,
+    bool? PhotoRequiredOverride = null,
+    bool? LocationCaptureOverride = null,
+    Guid? AvatarFileId = null);

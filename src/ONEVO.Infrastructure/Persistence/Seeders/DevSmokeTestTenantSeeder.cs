@@ -104,10 +104,10 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
     private static readonly DateOnly SmokeEmployeeHireDate = new(2025, 1, 1);
 
     // Local/dev-only seat policy for the smoke tenants. Not a production default: billing has
-    // not defined a real seat policy for these test tenants, so this is just enough headroom
-    // (Acme seeds 3 employees, Dapi seeds 1) for local onboarding finalization to proceed
-    // without SeatEntitlementService returning Undetermined.
+    // not defined a real seat policy for these test tenants. Dapi carries a larger tenant-specific
+    // minimum because its history/demo seeder operates across the tenant's full employee roster.
     private const int DevSmokeIncludedSeats = 25;
+    private const int DapiIncludedSeats = 50;
     private const bool DevSmokeOverageAllowed = false;
 
     private const string GitHubProvider = "github";
@@ -117,13 +117,13 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
 
     private static readonly IReadOnlyList<string> HrManagerPermissionCodes =
     [
-        "org:read", "org:manage", "employees:read", "employees:write", "roles:read",
+        "org:read", "org:manage", "employees:write", "roles:read",
         "calendar:read", "leave:read", "leave:manage", "leave:approve"
     ];
 
     private static readonly IReadOnlyList<string> WorkManagerPermissionCodes =
     [
-        "org:read", "employees:read", "projects:create"
+        "org:read", "projects:create"
     ];
 
     private readonly IServiceProvider _services;
@@ -763,6 +763,10 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
         DateTimeOffset now,
         CancellationToken ct)
     {
+        var includedSeats = tenantId == DapiTenantId
+            ? DapiIncludedSeats
+            : DevSmokeIncludedSeats;
+
         var plan = await db.SubscriptionPlans
             .FirstOrDefaultAsync(p => p.Code == "starter_51_200", ct);
         if (plan is null)
@@ -789,7 +793,7 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
                 CalculatedMonthlyPrice = 0m,
                 CalculatedAnnualPrice = 0m,
                 BillingCurrency = "USD",
-                IncludedSeats = DevSmokeIncludedSeats,
+                IncludedSeats = includedSeats,
                 OverageAllowed = DevSmokeOverageAllowed,
                 CreatedById = userId,
                 CreatedAt = now
@@ -804,10 +808,11 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
         // (e.g. from before the plan's module list was corrected) self-heals on the next
         // backend startup instead of being permanently stuck.
         subscription.SelectedModulesJson = plan.IncludedModulesJson ?? "[]";
-        // Only fill in a missing seat policy - never overwrite an explicit value someone (or a
-        // future seeder revision) already set, per the seeder's general "don't clobber owned
-        // records" pattern.
-        subscription.IncludedSeats ??= DevSmokeIncludedSeats;
+        // Preserve explicit higher limits. Dapi's development subscription is raised to the
+        // current demo minimum so an older 25-seat seeded row self-heals on startup.
+        if (subscription.IncludedSeats is null
+            || (tenantId == DapiTenantId && subscription.IncludedSeats < DapiIncludedSeats))
+            subscription.IncludedSeats = includedSeats;
         subscription.OverageAllowed ??= DevSmokeOverageAllowed;
         subscription.UpdatedAt = now;
     }

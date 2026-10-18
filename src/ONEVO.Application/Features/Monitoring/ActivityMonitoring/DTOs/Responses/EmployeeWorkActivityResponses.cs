@@ -18,7 +18,10 @@ public sealed record EmployeeAppUsageResponse(
     DateOnly To,
     bool ApplicationTrackingEnabled,
     int TotalMinutes,
-    IReadOnlyList<EmployeeAppUsageItem> Apps);
+    IReadOnlyList<EmployeeAppUsageItem> Apps)
+{
+    public IReadOnlyList<ONEVO.Application.Features.Monitoring.Meetings.RepositoryInterfaces.MeetingApplicationComplianceItem> MeetingCompliance { get; init; } = [];
+}
 
 public sealed record EmployeeIdlePeriod(DateTimeOffset Start, DateTimeOffset End, int Minutes);
 

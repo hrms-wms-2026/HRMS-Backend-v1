@@ -17,6 +17,9 @@ var builder = WebApplication.CreateBuilder(args);
 ConfigurationStartupValidator.ValidateRequiredLocalConfiguration(
     builder.Configuration,
     builder.Environment.EnvironmentName);
+ConfigurationStartupValidator.ValidateTrayJwtSecret(
+    builder.Configuration,
+    builder.Environment.EnvironmentName);
 
 // Development only: generates the local mkcert certificate if it's missing, before anything
 // that depends on the database, so a fresh clone doesn't need a separate manual cert-setup
@@ -67,6 +70,23 @@ builder.Services.AddSignalR();
 builder.Services.AddSingleton<
     ONEVO.Application.Features.Monitoring.Settings.ServiceInterfaces.ITrayPolicyRefreshNotifier,
     ONEVO.Api.Hubs.SignalRTrayPolicyRefreshNotifier>();
+// Inbox realtime: replaces Infrastructure's null publisher with the InboxHub-backed one.
+Microsoft.Extensions.DependencyInjection.Extensions.ServiceCollectionDescriptorExtensions.Replace(
+    builder.Services,
+    ServiceDescriptor.Scoped<
+        ONEVO.Application.Features.Conversations.Contracts.IInboxRealtimePublisher,
+        ONEVO.Api.Hubs.SignalRInboxRealtimePublisher>());
+builder.Services.AddSingleton<
+    ONEVO.Application.Features.Monitoring.TrayActivation.ServiceInterfaces.ITrayPushNotifier,
+    ONEVO.Api.Hubs.SignalRTrayPushNotifier>();
+builder.Services.AddSingleton<ONEVO.Api.Hubs.TrayConnectionTracker>();
+builder.Services.AddSingleton<
+    ONEVO.Application.Features.Monitoring.TrayActivation.ServiceInterfaces.ITrayConnectionPresence>(
+    sp => sp.GetRequiredService<ONEVO.Api.Hubs.TrayConnectionTracker>());
+builder.Services.AddSingleton<ONEVO.Api.Middleware.WebActivityTracker>();
+builder.Services.AddSingleton<
+    ONEVO.Application.Features.Monitoring.TrayActivation.ServiceInterfaces.IWebActivityPresence>(
+    sp => sp.GetRequiredService<ONEVO.Api.Middleware.WebActivityTracker>());
 builder.Services.AddApiSwagger();
 builder.Services.AddApiCors(builder.Configuration);
 builder.Services.AddHealthChecks()
@@ -117,6 +137,7 @@ app.UseAuthentication();
 // Middleware removed as part of cookie auth migration
 app.UseMiddleware<CsrfProtectionMiddleware>();
 app.UseMiddleware<TenantEnforcementMiddleware>();
+app.UseMiddleware<ONEVO.Api.Middleware.WebActivityTrackingMiddleware>();
 app.UseMiddleware<TrayPresenceEnforcementMiddleware>();
 
 app.UseMiddleware<PermissionVersionMiddleware>();
@@ -124,7 +145,10 @@ app.UseMiddleware<PermissionVersionMiddleware>();
 app.UseAuthorization();
 
 app.MapControllers();
-app.MapHub<ONEVO.Api.Hubs.AgentCommandsHub>("/hubs/agent-commands");
+// Close a tray connection when its device JWT expires — the live connection counts as presence.
+app.MapHub<ONEVO.Api.Hubs.AgentCommandsHub>("/hubs/agent-commands",
+    options => options.CloseOnAuthenticationExpiration = true);
+app.MapHub<ONEVO.Api.Hubs.InboxHub>("/hubs/inbox");
 // Liveness: process-only checks. Must NOT include dependency checks — a brief
 // DB outage should fail readiness, not liveness.
 app.MapHealthChecks("/health", new HealthCheckOptions

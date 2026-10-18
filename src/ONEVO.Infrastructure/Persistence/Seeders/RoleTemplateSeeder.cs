@@ -12,7 +12,7 @@ namespace ONEVO.Infrastructure.Persistence.Seeders;
 public sealed class RoleTemplateSeeder : IHostedService
 {
     public const string HrManagerPermissionCodesJson =
-        """["attendance:read","employees:read","leave:approve","leave:manage","leave:read"]""";
+        """["attendance:read","leave:approve","leave:manage","leave:read"]""";
 
     public static string[] HrManagerPermissionCodesForTest() =>
         JsonSerializer.Deserialize<string[]>(HrManagerPermissionCodesJson)!;

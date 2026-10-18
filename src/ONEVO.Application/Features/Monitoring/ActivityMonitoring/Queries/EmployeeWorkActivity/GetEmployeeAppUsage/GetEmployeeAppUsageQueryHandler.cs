@@ -7,6 +7,7 @@ using ONEVO.Application.Features.Monitoring.ActivityMonitoring.DTOs.Responses;
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.ServiceInterfaces;
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.Services;
 using ONEVO.Application.Features.Monitoring.AppUsage.RepositoryInterfaces;
+using ONEVO.Application.Features.Monitoring.Meetings.RepositoryInterfaces;
 
 namespace ONEVO.Application.Features.Monitoring.ActivityMonitoring.Queries.EmployeeWorkActivity.GetEmployeeAppUsage;
 
@@ -14,6 +15,7 @@ public sealed class GetEmployeeAppUsageQueryHandler(
     IEmployeeReadAccessGuard guard,
     IAppUsageSnapshotRepository apps,
     IMonitoringToggleResolver toggles,
+    IMeetingComplianceReadRepository meetingCompliance,
     ICurrentUser currentUser,
     IDateTimeProvider clock)
     : IRequestHandler<GetEmployeeAppUsageQuery, Result<EmployeeAppUsageResponse>>
@@ -43,8 +45,14 @@ public sealed class GetEmployeeAppUsageQueryHandler(
             ? Array.Empty<AppProcessSampleRow>()
             : await apps.GetSamplesForProcessesAsync(tenantId, request.EmployeeId, from, to, top, ct);
 
+        var compliance = await meetingCompliance.ListAsync(
+            tenantId, request.EmployeeId, from, to, ct);
+
         return Result<EmployeeAppUsageResponse>.Success(new EmployeeAppUsageResponse(
             p.From, p.To, true, totals.Sum(t => t.Samples),
-            EmployeeWorkActivityCalculator.AppUsage(totals, samples, EmployeeWorkActivityCalculator.TopApps)));
+            EmployeeWorkActivityCalculator.AppUsage(totals, samples, EmployeeWorkActivityCalculator.TopApps))
+        {
+            MeetingCompliance = compliance
+        });
     }
 }

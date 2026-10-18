@@ -127,7 +127,8 @@ public class ExceptionAlertRouterFactoryTests
     private ExceptionScopeResolver ScopeFor(ICurrentUser user) => new(
         user, _employees.Object,
         new EmployeeAuthorityResolver(user, _clock, _employees.Object, _assignments.Object,
-            _positions.Object, _closure.Object, _departments.Object, _permissions.Object));
+            _positions.Object, _closure.Object, _departments.Object, _permissions.Object),
+        new ONEVO.Tests.Unit.Features.Inbox.InMemoryInboxDecisionJournal());
 
     [Fact]
     public async Task BackgroundRouter_ResolvesReportingLineManager_WithoutASignedInUser()

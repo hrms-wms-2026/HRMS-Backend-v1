@@ -408,6 +408,8 @@ internal sealed class EmployeeAuthorityTestGraph
             => throw new NotImplementedException();
         public Task<IReadOnlyList<DomainPositionAssignment>> ListHistoryForEmployeeAsync(
             Guid tenantId, Guid employeeId, CancellationToken ct = default) => throw new NotImplementedException();
+        public Task<IReadOnlyList<ONEVO.Domain.Features.CoreHr.Entities.ReportingManagerChange>> ListReportingManagerChangesForEmployeeAsync(
+            Guid tenantId, Guid employeeId, CancellationToken ct = default) => throw new NotImplementedException();
         public Task<int> SaveChangesAsync(CancellationToken ct = default) => throw new NotImplementedException();
     }
 

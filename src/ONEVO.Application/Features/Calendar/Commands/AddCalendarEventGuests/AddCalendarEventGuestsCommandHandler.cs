@@ -67,7 +67,8 @@ public sealed class AddCalendarEventGuestsCommandHandler(
                 var organizerName = organizer is null ? "Someone" : $"{organizer.FirstName} {organizer.LastName}";
                 await notifications.NotifyGuestsAsync(
                     tenantId, existing.Title, existing.StartDate, existing.Location,
-                    newEmails, organizerName, existing.MeetingLink, innerCt);
+                    newEmails, organizerName, existing.MeetingLink, innerCt,
+                    CalendarEventIcs.For(existing.Id, existing.EndDate, existing.RecurrenceRule, DateTimeOffset.UtcNow));
 
                 await unitOfWork.SaveChangesAsync(innerCt);
             }

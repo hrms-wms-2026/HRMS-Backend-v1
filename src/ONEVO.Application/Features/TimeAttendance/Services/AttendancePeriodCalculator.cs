@@ -1,3 +1,4 @@
+using ONEVO.Domain.Features.TimeAttendance.Alerts;
 using ONEVO.Application.Features.TimeAttendance.DTOs.Responses;
 using ONEVO.Domain.Features.Leave.Request.Entities;
 using ONEVO.Domain.Features.TimeAttendance.Entities;
@@ -125,11 +126,24 @@ public static class AttendancePeriodCalculator
             else days.Add(new(d, "none"));
         }
 
+        // Alerts a reviewer excused (or converted to leave) stop counting; the day list still shows what happened.
+        absent = Keep(absent, data, AttendanceAlertSignals.AbsentDays);
+        late = Keep(late, data, AttendanceAlertSignals.LateClockIns);
+        early = Keep(early, data, AttendanceAlertSignals.EarlyClockOuts);
+        missing = Keep(missing, data, AttendanceAlertSignals.MissingClockOuts);
+        shortHours = Keep(shortHours, data, AttendanceAlertSignals.ShortHoursDays);
+        offDayWork = Keep(offDayWork, data, AttendanceAlertSignals.OffScheduleWork);
+
         return new AttendancePeriodClassification(
             w.Count, attended, late.Count, early.Count, missing.Count, absent.Count, leave,
             shortHours.Count, offDayWork.Count, leaveWork.Count, days,
             new AttendanceViolationDates(absent, late, early, missing, shortHours, offDayWork, leaveWork));
     }
+
+    private static List<DateOnly> Keep(List<DateOnly> dates, AttendancePeriodData data, string signal) =>
+        data.Excused is not null && data.Excused.TryGetValue(signal, out var excused) && excused.Count > 0
+            ? dates.Where(d => !excused.Contains(d)).ToList()
+            : dates;
 
     /// <summary>
     /// The Attendance card's per-day list: Classify's status for every day up to today (newest first),

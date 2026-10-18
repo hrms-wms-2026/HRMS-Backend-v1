@@ -59,6 +59,57 @@ public class EfCalendarEventRepository : ICalendarEventRepository
     public async Task AddParticipantsAsync(IReadOnlyList<CalendarEventParticipant> participants, CancellationToken ct = default)
         => await _db.CalendarEventParticipants.AddRangeAsync(participants, ct);
 
+    public async Task AddRsvpHistoryAsync(CalendarEventParticipantRsvpHistory entry, CancellationToken ct = default)
+        => await _db.CalendarEventParticipantRsvpHistory.AddAsync(entry, ct);
+
+    public async Task<IReadOnlyList<CalendarEvent>> ListWithParticipantsStartingBetweenAsync(
+        Guid tenantId, DateTimeOffset from, DateTimeOffset to, CancellationToken ct = default) =>
+        await _db.PersonalCalendarEvents.AsNoTracking()
+            .Where(e => e.TenantId == tenantId && e.StartDate >= from && e.StartDate < to && !e.IsRecurrenceCancelled
+                        && (e.Recurrence == CalendarRecurrences.None || e.RecurrenceParentId != null)
+                        // A moved occurrence keeps its series' participants.
+                        && _db.CalendarEventParticipants.Any(p => p.EventId == e.Id || p.EventId == e.RecurrenceParentId))
+            .ToListAsync(ct);
+
+    public async Task<IReadOnlyList<CalendarEvent>> ListRecurringMastersWithParticipantsAsync(
+        Guid tenantId, DateTimeOffset to, CancellationToken ct = default) =>
+        await _db.PersonalCalendarEvents.AsNoTracking()
+            .Where(e => e.TenantId == tenantId && e.Recurrence != CalendarRecurrences.None && e.RecurrenceParentId == null
+                        && e.RecurrenceRule != null && e.StartDate < to
+                        && _db.CalendarEventParticipants.Any(p => p.EventId == e.Id))
+            .ToListAsync(ct);
+
+    public async Task<IReadOnlySet<(Guid EventId, DateTimeOffset OccurrenceStart, Guid EmployeeId)>> ListSentRemindersAsync(
+        Guid tenantId, DateTimeOffset from, DateTimeOffset to, CancellationToken ct = default)
+    {
+        var rows = await _db.CalendarEventRemindersSent.AsNoTracking()
+            .Where(r => r.TenantId == tenantId && r.OccurrenceStart >= from && r.OccurrenceStart < to)
+            .Select(r => new { r.EventId, r.OccurrenceStart, r.EmployeeId })
+            .ToListAsync(ct);
+        return rows.Select(r => (r.EventId, r.OccurrenceStart, r.EmployeeId)).ToHashSet();
+    }
+
+    public async Task AddReminderLogsAsync(IReadOnlyList<CalendarEventReminderLog> logs, CancellationToken ct = default)
+        => await _db.CalendarEventRemindersSent.AddRangeAsync(logs, ct);
+
+    public async Task<IReadOnlyList<CalendarEventParticipantRsvpHistory>> ListRsvpHistoryAsync(
+        Guid tenantId, Guid employeeId, IReadOnlyCollection<Guid> eventIds, CancellationToken ct = default) =>
+        eventIds.Count == 0
+            ? []
+            : await _db.CalendarEventParticipantRsvpHistory.AsNoTracking()
+                .Where(h => h.TenantId == tenantId && h.EmployeeId == employeeId && eventIds.Contains(h.EventId))
+                .OrderBy(h => h.ChangedAt)
+                .ToListAsync(ct);
+
+    public async Task<IReadOnlyList<Guid>> ListParticipantEmployeeIdsInRangeAsync(
+        Guid tenantId, DateTimeOffset from, DateTimeOffset to, CancellationToken ct = default) =>
+        await (from p in _db.CalendarEventParticipants.AsNoTracking()
+               join e in _db.PersonalCalendarEvents.AsNoTracking() on p.EventId equals e.Id
+               where p.TenantId == tenantId
+                     && ((e.StartDate <= to && e.EndDate >= @from)
+                         || (e.Recurrence != CalendarRecurrences.None && e.RecurrenceParentId == null && e.StartDate <= to))
+               select p.EmployeeId).Distinct().ToListAsync(ct);
+
     public async Task<IReadOnlyDictionary<Guid, IReadOnlyList<CalendarEventParticipant>>> GetParticipantsForEventsAsync(
         Guid tenantId, IReadOnlyList<Guid> eventIds, CancellationToken ct = default)
     {

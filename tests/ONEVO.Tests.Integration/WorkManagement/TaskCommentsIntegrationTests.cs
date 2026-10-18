@@ -632,7 +632,9 @@ public sealed class TaskCommentsIntegrationTests : IClassFixture<TaskCommentsInt
     public async Task CommentAttachment_UploadedThenLinked_ServedThroughGetTaskFile()
     {
         var taskId = await _fixture.SeedTaskAsync();
-        var fileBytes = System.Text.Encoding.UTF8.GetBytes("comment attachment bytes");
+        // Real PDF magic bytes (%PDF) - SEC-13's signature check verifies actual content now.
+        var fileBytes = new byte[] { 0x25, 0x50, 0x44, 0x46 }
+            .Concat(System.Text.Encoding.UTF8.GetBytes("comment attachment bytes")).ToArray();
         var uploadResponse = await _fixture.SendPendingUploadAsync(_fixture.TenantA, "comment_attachment", "note.pdf", "application/pdf", fileBytes);
         uploadResponse.StatusCode.Should().Be(HttpStatusCode.Created, await uploadResponse.Content.ReadAsStringAsync());
         var fileId = (await TaskCommentsIntegrationTestsFixture.ReadJsonAsync(uploadResponse)).GetProperty("fileId").GetGuid();

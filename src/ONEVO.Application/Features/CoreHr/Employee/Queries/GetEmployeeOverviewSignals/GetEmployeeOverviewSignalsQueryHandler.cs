@@ -59,9 +59,24 @@ public sealed class GetEmployeeOverviewSignalsQueryHandler(
             : null);
         var approvals = await Safe("approvals", () => sender.Send(new GetEmployeeApprovalActivityQuery(employeeId, from, to), ct));
         var monitoring = await SafeValue("monitoring", () => MonitoringAsync(tenantId, employeeId, from, to, ct));
+        var meetings = await SafeValue("meetings", () => MeetingExceptionsAsync(tenantId, employeeId, from, to, ct));
 
-        var signals = EmployeeSignalCatalogue.Build(new EmployeeSignalInputs(attendance, discipline, work, approvals, monitoring));
+        var signals = EmployeeSignalCatalogue.Build(new EmployeeSignalInputs(attendance, discipline, work, approvals, monitoring, meetings?.Count));
         return Result<EmployeeOverviewSignalsResponse>.Success(new EmployeeOverviewSignalsResponse(from, to, signals));
+    }
+
+    private sealed record MeetingCount(int Count);
+
+    /// <summary>Open calendar meeting-exception cases (plan C2) - separate from monitoring and not behind the activity
+    /// monitoring toggle, but visible to the same people who may see exception cases.</summary>
+    private async Task<MeetingCount?> MeetingExceptionsAsync(Guid tenantId, Guid employeeId, DateOnly from, DateOnly to, CancellationToken ct)
+    {
+        var scope = await exceptionScope.ResolveAsync(forAction: false, [employeeId], ct);
+        if (scope?.CanSee(employeeId) != true)
+            return null;
+        var start = new DateTimeOffset(from.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero);
+        var end = new DateTimeOffset(to.AddDays(1).ToDateTime(TimeOnly.MinValue), TimeSpan.Zero);
+        return new MeetingCount(await exceptions.CountDetectedInRangeAsync(tenantId, employeeId, start, end, ct, calendar: true));
     }
 
     private async Task<EmployeeMonitoringSignalCounts?> MonitoringAsync(
