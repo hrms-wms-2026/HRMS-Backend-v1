@@ -132,6 +132,10 @@ Per-occurrence add/remove: `occurrence_task_id`, `attendee_kind`, `employee_id` 
 
 UNIQUE (`calendar_event_meeting_id`, `provider_session_id`). `session_start`, `session_end`. `occurrence_task_id` is nullable and **not unique**: one occurrence may have several sessions.
 
+**`meeting_action_items`** (new)
+
+`id`, `tenant_id`, `occurrence_task_id` FK → meeting_details(`task_id`), `task_id` **UNIQUE** FK → tasks (a task links to at most one occurrence), `created_by_employee_id`, `created_at`.
+
 **`job_leases`** (new, platform level, no RLS)
 
 `job_name` PK, `owner_instance_id`, `lease_until`, `heartbeat_at`.
