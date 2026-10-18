@@ -88,9 +88,30 @@ Outbox side: `outbox_messages` rows of type `notification_delivery` with `status
 
 ## Verification status (this branch)
 
-- Unit tests: catalog, renderer, versions/seeder, management/settings handlers, orchestrator, channel handlers.
-- Architecture tests: RLS policy coverage for `tenant_notification_rules` and `notification_deliveries`.
-- DI: `NotificationDependencyRegistrationTests` checks the new types against the real `AddApplication`/`AddInfrastructure` registrations.
-- Migration regression: `NotificationEventMigrationTests` (all migrated events, seeded copy validates).
-- **Not yet run**: PostgreSQL integration tests (Testcontainers needs Docker, which was unavailable),
-  applying the migration to a database, and an end-to-end send through a running API.
+Automated (CI-runnable):
+- Unit: catalog, renderer, versions/seeder, management/settings handlers, orchestrator, channel handlers, dispatcher
+  adapter, tray transport, DI registrations, and `NotificationEventMigrationTests` (one regression case per migrated event).
+- Architecture: RLS policy coverage for `tenant_notification_rules` and `notification_deliveries`.
+
+Release verification on 2026-10-18, against a scratch **copy** of the local dev database (`pg_dump` → new database;
+the dev database itself was only read). Email providers were deactivated in the copy and it had no email key:
+- All pending EF migrations, including `AddNotificationTemplateVersioningAndRouting`, applied cleanly.
+- Backfill: 41/41 existing templates got a published v1 with byte-identical in-app copy; event_key = code.
+- RLS forced on both tenant tables; all delivery/version/rule indexes present.
+- Active-version placeholder check: 40/41 valid; 1 orphan `work_approval_commented` (left by the dropped
+  approval-comments feature, no producer, not in the catalog - never sent; clean up separately).
+- API from this branch on the copy: seeder added the 17 missing defaults; a restart left templates and versions
+  unchanged (rerun is a no-op).
+- `NotificationReleaseSmokeTests` (run as the restricted `onevo_app` role): three-channel routing, in-transaction
+  inbox row with unchanged recipient/template code/click target, tray pending query, duplicate occurrence collapsed
+  to 3 deliveries, outbox reservations, reset -> in-app only, publish -> new wording for the next send only. PASS.
+- Background jobs raised real events through the orchestrator under RLS (`work_monitor_alert`,
+  `exception_alert_escalated`) with their inbox rows; the email delivery retried with `email_provider_unavailable`
+  while the in-app rows stayed delivered; the tray push message published.
+
+How to rerun the smoke test: restore a copy, migrate it, then run
+`NOTIF_SMOKE=1 NOTIF_SMOKE_TENANT_ID=<tenant> NOTIF_SMOKE_USER_ID=<user> ConnectionStrings__DefaultConnection=<copy, app role>
+dotnet test tests/ONEVO.Tests.Integration --filter NotificationReleaseSmokeTests` (plus the usual `.env` settings).
+
+Not verified here: Testcontainers integration suite (Docker unavailable), a real tray build against a running
+backend, browser walkthrough of the two UIs, and a real email provider send.
