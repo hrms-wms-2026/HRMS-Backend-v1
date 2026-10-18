@@ -159,7 +159,7 @@ public sealed class TeamsAttendanceSyncJob(IServiceProvider services, ILogger<Te
                 meeting.Id, tenantId, failure);
             meeting.AttendanceSyncFailedAt = now;
             meeting.AttendanceSyncError = failure;
-            meetings.Update(meeting);
+            meetings.UpdateAttendanceSync(meeting);
             await unitOfWork.SaveChangesAsync(ct);
             return;
         }
@@ -170,7 +170,7 @@ public sealed class TeamsAttendanceSyncJob(IServiceProvider services, ILogger<Te
                 return; // no report yet - the meeting stays due and is retried next run
             case CalendarAttendanceSyncOutcome.Unavailable:
                 meeting.AttendanceUnavailableAt = now;
-                meetings.Update(meeting);
+                meetings.UpdateAttendanceSync(meeting);
                 await unitOfWork.SaveChangesAsync(ct);
                 return;
         }
@@ -186,7 +186,7 @@ public sealed class TeamsAttendanceSyncJob(IServiceProvider services, ILogger<Te
         await attendances.AddRangeAsync(toAdd, ct);
 
         meeting.LastAttendanceSyncedAt = DateTimeOffset.UtcNow;
-        meetings.Update(meeting);
+        meetings.UpdateAttendanceSync(meeting);
         await unitOfWork.SaveChangesAsync(ct);
     }
 }

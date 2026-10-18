@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using ONEVO.Application.Common.Exceptions;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -128,26 +129,8 @@ public sealed class OutboxProcessor : BackgroundService
             }
             catch (Exception ex)
             {
-                message.AttemptCount++;
-                message.LastError = Truncate(ex.Message, 2000);
-
-                if (message.AttemptCount >= MaxAttempts)
-                {
-                    message.Status = OutboxMessageStatus.Failed;
-                    message.ProcessedAt = clock.UtcNow;
-                    _logger.LogError(ex,
-                        "Outbox message {MessageId} ({Type}) failed permanently after {Attempts} attempts.",
-                        message.Id, message.Type, message.AttemptCount);
-                }
-                else
-                {
-                    var delaySeconds = BaseRetryDelay.TotalSeconds * Math.Pow(2, message.AttemptCount - 1);
-                    var delay = TimeSpan.FromSeconds(Math.Min(delaySeconds, MaxRetryDelay.TotalSeconds));
-                    message.NextAttemptAt = clock.UtcNow.Add(delay);
-                    _logger.LogWarning(ex,
-                        "Outbox message {MessageId} ({Type}) attempt {Attempt} failed; next attempt at {NextAttempt}.",
-                        message.Id, message.Type, message.AttemptCount, message.NextAttemptAt);
-                }
+                ApplyFailure(message, ex, clock.UtcNow);
+                LogFailure(message, ex);
             }
 
             // Saved per-message, immediately after its own tenant context is active on the
@@ -168,6 +151,33 @@ public sealed class OutboxProcessor : BackgroundService
         var purged = await store.PurgeExpiredAsync(ct);
         if (purged > 0)
             _logger.LogInformation("Purged {Count} expired idempotency records.", purged);
+    }
+
+    /// <summary>Next state of a message whose handler threw: parked Failed at once on a permanent
+    /// failure or after MaxAttempts, otherwise retried with exponential backoff.</summary>
+    public static void ApplyFailure(OutboxMessage message, Exception ex, DateTimeOffset now)
+    {
+        message.AttemptCount++;
+        message.LastError = Truncate(ex.Message, 2000);
+        if (ex is OutboxPermanentFailureException || message.AttemptCount >= MaxAttempts)
+        {
+            message.Status = OutboxMessageStatus.Failed;
+            message.ProcessedAt = now;
+            return;
+        }
+
+        var delaySeconds = BaseRetryDelay.TotalSeconds * Math.Pow(2, message.AttemptCount - 1);
+        message.NextAttemptAt = now.Add(TimeSpan.FromSeconds(Math.Min(delaySeconds, MaxRetryDelay.TotalSeconds)));
+    }
+
+    private void LogFailure(OutboxMessage message, Exception ex)
+    {
+        if (message.Status == OutboxMessageStatus.Failed)
+            _logger.LogError(ex, "Outbox message {MessageId} ({Type}) failed permanently after {Attempts} attempts.",
+                message.Id, message.Type, message.AttemptCount);
+        else
+            _logger.LogWarning(ex, "Outbox message {MessageId} ({Type}) attempt {Attempt} failed; next attempt at {NextAttempt}.",
+                message.Id, message.Type, message.AttemptCount, message.NextAttemptAt);
     }
 
     private static string Truncate(string value, int max)

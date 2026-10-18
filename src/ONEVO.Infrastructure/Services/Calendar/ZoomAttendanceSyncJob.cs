@@ -160,7 +160,7 @@ public sealed class ZoomAttendanceSyncJob(IServiceProvider services, ILogger<Zoo
                 meeting.Id, tenantId, failure);
             meeting.AttendanceSyncFailedAt = now;
             meeting.AttendanceSyncError = failure;
-            meetings.Update(meeting);
+            meetings.UpdateAttendanceSync(meeting);
             await unitOfWork.SaveChangesAsync(ct);
             return;
         }
@@ -171,7 +171,7 @@ public sealed class ZoomAttendanceSyncJob(IServiceProvider services, ILogger<Zoo
                 return; // no report yet - the meeting stays due and is retried next run
             case CalendarAttendanceSyncOutcome.Unavailable:
                 meeting.AttendanceUnavailableAt = now;
-                meetings.Update(meeting);
+                meetings.UpdateAttendanceSync(meeting);
                 await unitOfWork.SaveChangesAsync(ct);
                 return;
         }
@@ -187,7 +187,7 @@ public sealed class ZoomAttendanceSyncJob(IServiceProvider services, ILogger<Zoo
         await attendances.AddRangeAsync(toAdd, ct);
 
         meeting.LastAttendanceSyncedAt = DateTimeOffset.UtcNow;
-        meetings.Update(meeting);
+        meetings.UpdateAttendanceSync(meeting);
         await unitOfWork.SaveChangesAsync(ct);
     }
 }

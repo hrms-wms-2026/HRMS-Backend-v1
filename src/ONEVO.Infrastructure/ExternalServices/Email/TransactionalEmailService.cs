@@ -53,6 +53,7 @@ public class TransactionalEmailService : IEmailService
             "updated" => "calendar_event_updated",
             "cancelled" => "calendar_event_cancelled",
             "removed" => "calendar_event_removed",
+            "link_removed" => "calendar_event_link_removed",
             _ => "calendar_event_invite",
         };
         var rendered = _renderer.Render(templateId, new

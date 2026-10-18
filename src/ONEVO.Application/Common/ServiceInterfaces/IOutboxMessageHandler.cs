@@ -46,4 +46,5 @@ public static class OutboxMessageTypes
     public const string CalendarEventInviteEmail = "calendar_event_invite_email";
     /// <summary>Re-run the calendar meeting-exception rules for some employees (plan C2 triggers).</summary>
     public const string CalendarIncidentEvaluate = "calendar_incident_evaluate";
+    public const string CalendarMeetingCancel = "calendar_meeting_cancel";
 }

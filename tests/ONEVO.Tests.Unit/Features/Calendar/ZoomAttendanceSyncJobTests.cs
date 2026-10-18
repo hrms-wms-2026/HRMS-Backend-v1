@@ -93,7 +93,7 @@ public sealed class ZoomAttendanceSyncJobTests
         attendancesRepoMock.Verify(a => a.AddRangeAsync(
             It.Is<IEnumerable<CalendarEventMeetingAttendance>>(records => records.Count() == 2),
             It.IsAny<CancellationToken>()), Times.Once);
-        meetingsRepoMock.Verify(m => m.Update(
+        meetingsRepoMock.Verify(m => m.UpdateAttendanceSync(
             It.Is<CalendarEventMeeting>(cm => cm.Id == meeting.Id && cm.LastAttendanceSyncedAt != null)), Times.Once);
     }
 
@@ -154,9 +154,9 @@ public sealed class ZoomAttendanceSyncJobTests
         // propagated, and the second meeting must still be synced.
         await job.RunOnceAsync(CancellationToken.None);
 
-        meetingsRepoMock.Verify(m => m.Update(
+        meetingsRepoMock.Verify(m => m.UpdateAttendanceSync(
             It.Is<CalendarEventMeeting>(cm => cm.Id == succeedingMeeting.Id && cm.LastAttendanceSyncedAt != null)), Times.Once);
-        meetingsRepoMock.Verify(m => m.Update(
+        meetingsRepoMock.Verify(m => m.UpdateAttendanceSync(
             It.Is<CalendarEventMeeting>(cm => cm.Id == failingMeeting.Id)), Times.Never);
     }
 
@@ -200,8 +200,8 @@ public sealed class ZoomAttendanceSyncJobTests
         await new ZoomAttendanceSyncJob(services.BuildServiceProvider(), NullLogger<ZoomAttendanceSyncJob>.Instance).RunOnceAsync(CancellationToken.None);
 
         // Never stamped as synced on an empty report: within the cutoff it stays due; after it, it is marked unavailable.
-        meetingsRepoMock.Verify(m => m.Update(It.Is<CalendarEventMeeting>(cm => cm.LastAttendanceSyncedAt != null)), Times.Never);
-        meetingsRepoMock.Verify(m => m.Update(It.Is<CalendarEventMeeting>(cm => cm.AttendanceUnavailableAt != null)), unavailable ? Times.Once() : Times.Never());
+        meetingsRepoMock.Verify(m => m.UpdateAttendanceSync(It.Is<CalendarEventMeeting>(cm => cm.LastAttendanceSyncedAt != null)), Times.Never);
+        meetingsRepoMock.Verify(m => m.UpdateAttendanceSync(It.Is<CalendarEventMeeting>(cm => cm.AttendanceUnavailableAt != null)), unavailable ? Times.Once() : Times.Never());
     }
 
     private static (Mock<ICalendarEventMeetingRepository> Meetings, Mock<IZoomMeetingClient> Client, ZoomAttendanceSyncJob Job, CalendarEventMeeting Meeting)
@@ -273,7 +273,7 @@ public sealed class ZoomAttendanceSyncJobTests
 
         await job.RunOnceAsync(CancellationToken.None);
 
-        meetings.Verify(m => m.Update(It.Is<CalendarEventMeeting>(cm =>
+        meetings.Verify(m => m.UpdateAttendanceSync(It.Is<CalendarEventMeeting>(cm =>
             cm.Id == meeting.Id && cm.AttendanceSyncFailedAt != null && cm.AttendanceSyncError == reason
             && cm.AttendanceUnavailableAt == null && cm.LastAttendanceSyncedAt == null)), Times.Once);
     }
@@ -293,6 +293,6 @@ public sealed class ZoomAttendanceSyncJobTests
 
         await job.RunOnceAsync(CancellationToken.None);
 
-        meetings.Verify(m => m.Update(It.IsAny<CalendarEventMeeting>()), Times.Never);
+        meetings.Verify(m => m.UpdateAttendanceSync(It.IsAny<CalendarEventMeeting>()), Times.Never);
     }
 }

@@ -20,6 +20,8 @@ public static class CalendarEventEmailKinds
     public const string Updated = "updated";
     public const string Cancelled = "cancelled";
     public const string Removed = "removed";
+    /// <summary>The online meeting link was removed; the event itself is unchanged (sent without an .ics).</summary>
+    public const string LinkRemoved = "link_removed";
 
     public static bool IsCancel(string kind) => kind is Cancelled or Removed;
 }
