@@ -80,6 +80,24 @@ public sealed class MyTeamDb
             tenantContext);
     }
 
+    /// <summary>A context resolved to this tenant, so the tenant query filter (and RLS) apply as in a request.</summary>
+    public ApplicationDbContext NewTenantContext(Guid? tenantId = null)
+    {
+        var tenantContext = new TenantContextAccessor();
+        tenantContext.Resolve(new ONEVO.Application.Common.ServiceInterfaces.TenantRegistryEntry(
+            tenantId ?? TenantId, "my-team", TenantStatus.Active, PlanCode: null));
+        var builder = new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseNpgsql(_connectionString)
+            .UseSnakeCaseNamingConvention()
+            .AddInterceptors(new TenantRlsInterceptor(tenantContext));
+        return new ApplicationDbContext(
+            builder.Options,
+            new AuditableEntityInterceptor(new AnonymousCurrentUser(), _clock),
+            new SoftDeleteInterceptor(_clock),
+            new DomainEventDispatchInterceptor(new NoOpPublisher()),
+            tenantContext);
+    }
+
     public Employee AddEmployee(ApplicationDbContext db, Guid? departmentId = null, Guid? legalEntityId = null, string? lastName = null)
     {
         var employee = new Employee

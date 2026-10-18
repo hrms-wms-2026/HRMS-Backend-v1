@@ -383,7 +383,13 @@ public class ApplicationDbContext : DbContext
                 isTenantFilterActiveProperty,
                 currentTenantIdProperty);
 
-            modelBuilder.Entity(entityType.ClrType).HasQueryFilter(composedFilter);
+            // An entity whose configuration declared named filters (WorkTask's ExcludeMeetings) gets the tenant filter
+            // by name too: anonymous and named filters are never mixed on one entity, and a caller can then ignore
+            // one named filter while keeping the other.
+            if (entityType.GetDeclaredQueryFilters().Any(f => f.Key is not null))
+                modelBuilder.Entity(entityType.ClrType).HasQueryFilter(WorkTaskQueryFilters.TenantScope, composedFilter);
+            else
+                modelBuilder.Entity(entityType.ClrType).HasQueryFilter(composedFilter);
         }
 
         base.OnModelCreating(modelBuilder);
