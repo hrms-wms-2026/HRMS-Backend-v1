@@ -73,7 +73,11 @@ public sealed class MeetingQueryFilterArchitectureTests
     public static readonly string[] ExcludeMeetingsIgnoreAllowList = [];
 
     /// <summary>Files whose raw SQL touches the tasks table, so it bypasses every EF query filter.</summary>
-    public static readonly string[] RawSqlOnTasksAllowList = [];
+    public static readonly string[] RawSqlOnTasksAllowList =
+    [
+        // Spec 5.6 occurrence insert: writes the meeting task itself (task_kind = meeting), never reads ordinary tasks.
+        "EfMeetingOccurrenceWriter.cs",
+    ];
 
     [Fact]
     public void NoBareIgnoreQueryFiltersOnWorkTasks_OutsideTheAllowList()
@@ -112,7 +116,7 @@ public sealed class MeetingQueryFilterArchitectureTests
     [Fact]
     public void RawSqlOnTasks_IsOnlyInAllowListedFiles()
     {
-        var rawSql = new Regex(@"(ExecuteSql\w*|SqlQuery\w*|FromSql\w*)\s*\(\s*\$?@?""""?""?[^;]*?\btasks\b", RegexOptions.IgnoreCase | RegexOptions.Singleline);
+        var rawSql = new Regex(@"(ExecuteSql\w*|SqlQuery\w*|FromSql\w*)\s*(<[^>]*>)?\s*\(\s*\$?@?""""?""?[^;]*?\btasks\b", RegexOptions.IgnoreCase | RegexOptions.Singleline);
         var offenders = SourceFiles()
             .Where(f => rawSql.IsMatch(File.ReadAllText(f)))
             .Select(Path.GetFileName)

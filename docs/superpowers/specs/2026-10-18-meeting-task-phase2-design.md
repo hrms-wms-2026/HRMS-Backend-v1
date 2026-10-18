@@ -1,7 +1,7 @@
 # Meetings as Tasks — Phase 2 Design
 
 - **Date:** 2026-10-18
-- **Status:** Architecture and business decisions frozen (2026-10-18). One SQL detail is still open until its integration tests run (§5.6).
+- **Status:** Frozen. Architecture and business decisions frozen 2026-10-18; the §5.6 SQL model verified on PostgreSQL 2026-10-19 by `MeetingOccurrenceWriterIntegrationTests` (8/8).
 - **Base:** `feature/meeting-phase0-port`: development's calendar Phase 0 (C0, C1, C2 exception engine, C3 Inbox) plus our ported Phase 0/1 work (0C link reliability, attendance failure classification, the E6b/E6c fix, Meeting category, Office project).
 - **Predecessor:** [2026-10-13-meeting-task-phase0-1-design.md](2026-10-13-meeting-task-phase0-1-design.md) §5. Where this spec differs from that one, this spec wins (§2.3).
 - **Timing:** implementation starts after go-live. Nothing in this spec ships before then.
@@ -321,26 +321,29 @@ The creator picks a module they are a member of (the default is the meeting's mo
 - **Generator** (hourly, `job_leases`, `Meetings:Background`): per series, one transaction with the series lock; window [now, now + 7 days]; no emails.
 - Rows beyond the window come only from a touch (edit, cancel or attendee override) or a one-off meeting.
 
-### 5.6 Concurrency-safe insert (PostgreSQL), the open item
+### 5.6 Concurrency-safe insert (PostgreSQL)
+
+**Verified 2026-10-19 by `MeetingOccurrenceWriterIntegrationTests` (8/8), repeated 3× without a failure.** Frozen.
 
 `UNIQUE (series_id, original_start)` is **NOT DEFERRABLE** so it can be an `ON CONFLICT` arbiter. No transient collision is possible because an occurrence's key never changes inside a series. Splits and moves only write into a **new, empty** series, with keys that are strictly increasing and distinct. A trigger rejects any same-series key change.
 
 ```sql
 SELECT pg_advisory_xact_lock(hashtextextended($tenant_id::text || ':' || $series_id::text, 0));
 WITH candidate AS (
-  SELECT $task_id::uuid AS id
+  -- $task_id = MeetingOccurrenceIds.For(series, original_start) (§5.5); a fresh id only if a remapped task already holds it
+  SELECT CASE WHEN EXISTS (SELECT 1 FROM tasks x WHERE x.id = $task_id) THEN gen_random_uuid() ELSE $task_id END AS id
   WHERE NOT EXISTS (SELECT 1 FROM meeting_details d WHERE d.series_id = $series_id AND d.original_start = $original_start)
     AND NOT EXISTS (SELECT 1 FROM meeting_occurrence_suppressions s WHERE s.series_id = $series_id AND s.original_start = $original_start)
 ), t AS (
   INSERT INTO tasks (id, tenant_id, task_kind, ...) SELECT id, $tenant_id, 'meeting', ... FROM candidate
-  ON CONFLICT (id) DO NOTHING RETURNING id
+  ON CONFLICT DO NOTHING RETURNING id  -- every unique index is an arbiter: a racing writer can meet ux_tasks_tenant_id_id first
 )
 INSERT INTO meeting_details (task_id, tenant_id, series_id, original_start, ...)
 SELECT id, $tenant_id, $series_id, $original_start, ... FROM t
 ON CONFLICT ON CONSTRAINT uq_meeting_details_series_original_start DO NOTHING;
 ```
 
-A meeting task left without details fails the deferred constraint trigger at commit, and the idempotent generator retries. Uniqueness therefore does not depend on the advisory lock.
+A meeting task left without details fails the deferred constraint trigger at commit, and the idempotent generator retries. Uniqueness therefore does not depend on the advisory lock. When nothing is inserted and the slot is neither taken nor suppressed, the task itself conflicted (e.g. a reused ShortId) and the writer throws instead of returning "already exists".
 
 **Verification (must pass before the SQL model is marked frozen):**
 1. `condeferrable = false`.
@@ -349,7 +352,7 @@ A meeting task left without details fails the deferred constraint trigger at com
 4. With the lock, nothing aborts.
 5. A split remap with a time shift keeps the task ids.
 6. A same-series key change raises.
-7. A time-changing "all events" edit forward-splits.
+7. A time-changing "all events" edit forward-splits. *(The handler behaviour belongs to Plan C; the SQL it relies on - a remap into an empty series with strictly increasing keys, rejecting anything else - is verified by `Remap_WithATimeShift_KeepsTaskIds` and `Remap_RejectsNonIncreasingStarts`.)*
 8. Suppression blocks the insert, including under concurrency.
 
 ### 5.7 Links (owner = series)

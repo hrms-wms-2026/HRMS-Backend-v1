@@ -298,6 +298,9 @@ public sealed class MyTeamDb
         return module.Id;
     }
 
+    /// <summary>The task category AddProject created for <paramref name="projectId"/>.</summary>
+    public Guid CategoryIdFor(Guid projectId) => _taskCategoryByProject[projectId];
+
     public void AddMember(ApplicationDbContext db, Guid projectId, Guid objectiveId, Guid employeeId)
         => db.ProjectMembers.Add(new ProjectMember
         {
