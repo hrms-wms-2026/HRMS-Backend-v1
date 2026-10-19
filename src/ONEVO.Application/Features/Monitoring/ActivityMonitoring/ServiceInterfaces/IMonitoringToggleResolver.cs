@@ -91,4 +91,16 @@ public interface IMonitoringToggleResolver
         Guid userId,
         Guid legalEntityId,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// The employee's own clock-in photo override (EmployeeMonitoringOverride.PhotoRequired),
+    /// or null when they inherit from whichever work mode applies. Lets callers that resolve a
+    /// work mode other than the employee's base one (e.g. today's approved work-area change)
+    /// still honor the per-employee setting.
+    /// </summary>
+    Task<bool?> GetPhotoRequiredOverrideAsync(
+        Guid tenantId,
+        Guid userId,
+        Guid legalEntityId,
+        CancellationToken ct = default) => Task.FromResult<bool?>(null);
 }

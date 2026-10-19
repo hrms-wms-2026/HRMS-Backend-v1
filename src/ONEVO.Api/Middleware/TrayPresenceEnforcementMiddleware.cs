@@ -53,12 +53,7 @@ public sealed class TrayPresenceEnforcementMiddleware
             return;
         }
 
-        var repository = context.RequestServices.GetRequiredService<ITrayActivationRepository>();
-        var clock = context.RequestServices.GetRequiredService<IDateTimeProvider>();
-        var device = await repository.FindLatestActiveDeviceForUserAsync(
-            userId, tenantContext.TenantId, context.RequestAborted);
-        var connected = device?.LastSeenAt is { } lastSeen
-            && lastSeen > clock.UtcNow.AddSeconds(-options.GracePeriodSeconds);
+        var connected = await IsTrayConnectedAsync(context, tenantContext.TenantId, userId, options);
 
         if (!connected)
         {
@@ -85,18 +80,33 @@ public sealed class TrayPresenceEnforcementMiddleware
         if (!Guid.TryParse(userId, out var parsedUserId))
             return;
 
-        var repository = context.RequestServices.GetRequiredService<ITrayActivationRepository>();
-        var clock = context.RequestServices.GetRequiredService<IDateTimeProvider>();
-        var device = await repository.FindLatestActiveDeviceForUserAsync(
-            parsedUserId, tenantContext.TenantId, context.RequestAborted);
-        var connected = device?.LastSeenAt is { } lastSeen
-            && lastSeen > clock.UtcNow.AddSeconds(-options.GracePeriodSeconds);
+        var connected = await IsTrayConnectedAsync(context, tenantContext.TenantId, parsedUserId, options);
         if (!connected)
         {
             var requirement = context.RequestServices.GetRequiredService<ITrayPresenceRequirementEvaluator>();
             if (await requirement.IsRequiredForCurrentUserAsync(context.RequestAborted))
                 logger.LogInformation("tray_presence_would_block");
         }
+    }
+
+    /// <summary>
+    /// A live agent-hub connection proves the tray is running without touching the database —
+    /// this check runs on every web request. Only users without one fall back to the device's
+    /// heartbeat-stamped LastSeenAt.
+    /// </summary>
+    private static async Task<bool> IsTrayConnectedAsync(
+        HttpContext context, Guid tenantId, Guid userId, TrayPresenceOptions options)
+    {
+        var livePresence = context.RequestServices.GetService<ITrayConnectionPresence>();
+        if (livePresence?.IsConnected(tenantId, userId) == true)
+            return true;
+
+        var repository = context.RequestServices.GetRequiredService<ITrayActivationRepository>();
+        var clock = context.RequestServices.GetRequiredService<IDateTimeProvider>();
+        var device = await repository.FindLatestActiveDeviceForUserAsync(
+            userId, tenantId, context.RequestAborted);
+        return device?.LastSeenAt is { } lastSeen
+            && lastSeen > clock.UtcNow.AddSeconds(-options.GracePeriodSeconds);
     }
 
     private static async Task WriteRequired(HttpContext context)

@@ -46,6 +46,29 @@ public class TransactionalEmailService : IEmailService
     public Task SendCalendarEventInviteAsync(string to, string recipientName, string eventTitle, DateTimeOffset startDateUtc, string? location, string organizerName, string? meetingLink = null, CancellationToken ct = default)
         => SendTemplateAsync(to, "calendar_event_invite", new { recipientName, eventTitle, startDateUtc, location, organizerName, meetingLink }, ct);
 
+    public Task SendCalendarEventEmailAsync(CalendarEventEmailMessage message, CancellationToken ct = default)
+    {
+        var templateId = message.Kind switch
+        {
+            "updated" => "calendar_event_updated",
+            "cancelled" => "calendar_event_cancelled",
+            "removed" => "calendar_event_removed",
+            _ => "calendar_event_invite",
+        };
+        var rendered = _renderer.Render(templateId, new
+        {
+            recipientName = message.RecipientName, eventTitle = message.EventTitle, startDateUtc = message.StartDateUtc,
+            location = message.Location, organizerName = message.OrganizerName, meetingLink = message.MeetingLink,
+        });
+        IReadOnlyList<EmailAttachment>? attachments = message.IcsContent is null
+            ? null
+            : [new EmailAttachment(
+                message.IcsMethod == "CANCEL" ? "cancel.ics" : "invite.ics",
+                $"text/calendar; method={message.IcsMethod ?? "REQUEST"}; charset=UTF-8",
+                System.Text.Encoding.UTF8.GetBytes(message.IcsContent))];
+        return SendInternalAsync(message.To, rendered.Subject, rendered.HtmlBody, rendered.TextBody, ct, attachments);
+    }
+
     public Task SendAdminPasswordChangedAsync(string to, CancellationToken ct = default)
         => SendTemplateAsync(to, "admin_password_changed", new { }, ct);
 
@@ -66,14 +89,16 @@ public class TransactionalEmailService : IEmailService
         string subject,
         string htmlBody,
         string? textBody,
-        CancellationToken ct)
+        CancellationToken ct,
+        IReadOnlyList<EmailAttachment>? attachments = null)
     {
         var request = new TransactionalEmailRequest(
             TenantId: null,
             RecipientEmail: to,
             Subject: subject,
             HtmlBody: htmlBody,
-            TextBody: textBody);
+            TextBody: textBody,
+            Attachments: attachments);
 
         var result = await _sender.SendAsync(request, ct);
         if (result.Success)

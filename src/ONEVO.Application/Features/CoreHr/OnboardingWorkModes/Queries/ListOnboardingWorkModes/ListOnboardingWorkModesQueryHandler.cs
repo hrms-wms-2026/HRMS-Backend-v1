@@ -33,6 +33,7 @@ public class ListOnboardingWorkModesQueryHandler
             _currentUser.TenantId, request.LegalEntityId, includeInactive: false, ct);
 
         return Result<IReadOnlyList<OnboardingWorkModeResponse>>.Success(
-            items.Select(w => new OnboardingWorkModeResponse(w.Id, w.Name)).ToList());
+            items.Select(w => new OnboardingWorkModeResponse(
+                w.Id, w.Name, w.PhotoRequired, w.SelfRegistersLocation, w.AllowsDailyLocationChoice)).ToList());
     }
 }

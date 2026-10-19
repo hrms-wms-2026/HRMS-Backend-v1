@@ -176,7 +176,7 @@ public class LeaveRequestSubmissionEvaluatorTests
     private static DateTimeOffset At(int year, int month, int day, int hour) =>
         new(year, month, day, hour, 0, 0, TimeSpan.Zero);
 
-    private sealed class Harness
+    internal sealed class Harness
     {
         public Guid TenantId { get; } = Guid.NewGuid();
         public Guid UserId { get; } = Guid.NewGuid();
@@ -187,7 +187,9 @@ public class LeaveRequestSubmissionEvaluatorTests
         public Mock<IDateTimeProvider> Clock { get; } = new();
         public Mock<ILeaveRequestRepository> Requests { get; } = new();
         public Mock<ILeaveApproverResolver> Approvers { get; } = new();
+        public Mock<IEmployeeRepository> Employees { get; } = new();
         public LeaveRequestSubmissionEvaluator Sut { get; }
+        public LeaveEntitlement Entitlement { get; }
 
         private Harness(decimal remainingHours, bool allowUnpaid, bool allowBackdated, bool workWindowSet)
         {
@@ -228,6 +230,7 @@ public class LeaveRequestSubmissionEvaluatorTests
                 CarriedForwardHours = 0m,
                 Source = LeaveEntitlementSources.Auto
             };
+            Entitlement = entitlement;
 
             var template = PreviewGenerateEntitlementsQueryHandlerTests.CreatePolicyAggregate(
                 TenantId, LegalEntityId, 20m, 5m);
@@ -250,7 +253,7 @@ public class LeaveRequestSubmissionEvaluatorTests
             Clock.SetupGet(x => x.Today).Returns(new DateOnly(2026, 8, 17));
             Clock.SetupGet(x => x.UtcNow).Returns(new DateTimeOffset(2026, 8, 17, 9, 0, 0, TimeSpan.Zero));
 
-            var employees = new Mock<IEmployeeRepository>();
+            var employees = Employees;
             employees.Setup(x => x.GetByUserIdAsync(TenantId, UserId, It.IsAny<CancellationToken>())).ReturnsAsync(Employee);
             employees.Setup(x => x.GetByIdAsync(TenantId, Employee.Id, It.IsAny<CancellationToken>())).ReturnsAsync(Employee);
 

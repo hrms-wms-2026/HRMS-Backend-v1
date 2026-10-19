@@ -46,21 +46,10 @@ public sealed class ListPendingLeaveApprovalsQueryHandler
         if (employee is null)
             return Result<IReadOnlyList<LeavePendingApprovalListItemResponse>>.NotFound(LeaveApprovalMessages.NoEmployee);
 
-        var rows = await _repository.ListPendingForApproverAsync(
-            _currentUser.TenantId, employee.Id,
-            new LeaveApprovalListFilter(query.Search, query.DepartmentId, query.LeaveTypeId, query.FromDate, query.ToDate), ct);
-
-        var actionable = new List<LeavePendingApprovalListItemResponse>();
-        foreach (var row in rows)
-        {
-            var state = await _repository.GetStateAsync(_currentUser.TenantId, row.Request.Id, ct);
-            if (state?.ApprovalMode is null)
-                continue;
-            var modeRows = state.Approvers.Select(x => new ApprovalModeRow(x.ApproverEmployeeId, x.SequenceOrder, x.Status)).ToList();
-            if (!LeaveApprovalModeEvaluator.IsActionable(state.ApprovalMode, modeRows, employee.Id))
-                continue;
-            actionable.Add(LeaveApprovalMapper.ToPendingListItem(row));
-        }
+        var actionable = (await LeavePendingApprovals.ListActionableAsync(_repository,
+                _currentUser.TenantId, employee.Id,
+                new LeaveApprovalListFilter(query.Search, query.DepartmentId, query.LeaveTypeId, query.FromDate, query.ToDate), ct))
+            .Select(x => LeaveApprovalMapper.ToPendingListItem(x.Row)).ToList();
 
         return Result<IReadOnlyList<LeavePendingApprovalListItemResponse>>.Success(actionable);
     }
@@ -114,7 +103,6 @@ public sealed class GetLeaveApprovalDetailQueryHandler
     private readonly IEmployeeRepository _employees;
     private readonly ILeaveApprovalRepository _repository;
     private readonly ILeaveRequestConflictProvider _conflicts;
-    private readonly LeaveForwardTargetResolver _forwardTargets;
     private readonly IDateTimeProvider _clock;
 
     public GetLeaveApprovalDetailQueryHandler(
@@ -122,7 +110,6 @@ public sealed class GetLeaveApprovalDetailQueryHandler
         IEmployeeRepository employees,
         ILeaveApprovalRepository repository,
         ILeaveRequestConflictProvider conflicts,
-        LeaveForwardTargetResolver forwardTargets,
         IDateTimeProvider clock)
     {
         _clock = clock;
@@ -130,7 +117,6 @@ public sealed class GetLeaveApprovalDetailQueryHandler
         _employees = employees;
         _repository = repository;
         _conflicts = conflicts;
-        _forwardTargets = forwardTargets;
     }
 
     public async Task<Result<LeaveApprovalDetailResponse>> Handle(GetLeaveApprovalDetailQuery query, CancellationToken ct)
@@ -176,17 +162,8 @@ public sealed class GetLeaveApprovalDetailQueryHandler
             && _currentUser.HasPermission("leave:approve")
             && LeaveDecisionChangeRules.CanChange(state, employee.Id, _clock.UtcNow);
 
-        var forwardTargetId = canDecide
-            ? await _forwardTargets.ResolveAsync(_currentUser.TenantId, state, employee!.Id, ct)
-            : null;
-
-        var approverIds = state.Approvers.Select(a => a.ApproverEmployeeId)
-            .Concat(forwardTargetId is { } id ? [id] : [])
-            .Distinct().ToList();
+        var approverIds = state.Approvers.Select(a => a.ApproverEmployeeId).Distinct().ToList();
         var approverPeople = await _employees.ListByIdsAsync(_currentUser.TenantId, approverIds, ct);
-        var forwardTo = forwardTargetId is { } targetId && approverPeople.TryGetValue(targetId, out var target)
-            ? new LeaveApprovalForwardTargetResponse(targetId, $"{target.FirstName} {target.LastName}".Trim())
-            : null;
 
         return Result<LeaveApprovalDetailResponse>.Success(new LeaveApprovalDetailResponse(
             state.Request.Id,
@@ -208,12 +185,10 @@ public sealed class GetLeaveApprovalDetailQueryHandler
                     ? $"{person.FirstName} {person.LastName}".Trim()
                     : string.Empty,
                 a.SequenceOrder, a.Status, a.Comment, a.DelegatedFromApproverId, a.DecidedAt)).ToList(),
-            state.InfoMessages.Select(m => new LeaveApprovalInfoMessageResponse(m.SenderEmployeeId, m.Message, m.CreatedAt)).ToList(),
             state.Request.ConflictSnapshotJson,
             warnings,
             remaining,
             canDecide,
-            forwardTo,
             canChangeDecision));
     }
 }

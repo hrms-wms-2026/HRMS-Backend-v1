@@ -7,7 +7,8 @@ namespace ONEVO.Application.Features.WorkManagement.Approvals.Services;
 /// read this, so the two can never disagree.</summary>
 public static class ApprovalRevertWindow
 {
-    public const int Minutes = 30;
+    /// <summary>The Inbox Standard's window (every inbox kind shares it).</summary>
+    public const int Minutes = ONEVO.Application.Features.Inbox.Revert.InboxRevertWindow.Minutes;
 
     /// <summary>True only for the viewer who decided this request, only while Approved/Rejected, only
     /// within Minutes of DecidedAt. Shared by WorkApprovalRequestMapper and GetApprovalDetailQueryHandler

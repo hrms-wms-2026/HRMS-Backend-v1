@@ -96,7 +96,7 @@ public sealed class AddCalendarEventGuestsCommandHandlerTests
         _notifications.Verify(n => n.NotifyGuestsAsync(
             TenantId, evt.Title, evt.StartDate, evt.Location,
             It.Is<IReadOnlyList<string>>(emails => emails.SequenceEqual(new[] { "guest@example.com", "other@example.com" })),
-            "Ada Owner", evt.MeetingLink, It.IsAny<CancellationToken>()), Times.Once);
+            "Ada Owner", evt.MeetingLink, It.IsAny<CancellationToken>(), It.IsAny<ONEVO.Application.Features.Calendar.Services.CalendarEventIcs?>()), Times.Once);
         _unitOfWork.Verify(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
 
@@ -112,7 +112,7 @@ public sealed class AddCalendarEventGuestsCommandHandlerTests
         _events.Verify(e => e.AddGuestsAsync(It.IsAny<IReadOnlyList<CalendarEventGuest>>(), It.IsAny<CancellationToken>()), Times.Never);
         _notifications.Verify(n => n.NotifyGuestsAsync(
             It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<DateTimeOffset>(), It.IsAny<string?>(),
-            It.IsAny<IReadOnlyList<string>>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
+            It.IsAny<IReadOnlyList<string>>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>(), It.IsAny<ONEVO.Application.Features.Calendar.Services.CalendarEventIcs?>()), Times.Never);
     }
 
     [Fact]

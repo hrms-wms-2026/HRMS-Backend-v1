@@ -38,6 +38,13 @@ public sealed class EmployeeVisibilityScopeMatcherTests
         Assert.True(EmployeeVisibilityScopeMatcher.Includes(scope, Emp, null, null, null)); // own alone is enough
     }
 
+    [Fact] public void Skip_level_employee_reached_by_coverage_expansion_is_included()
+    {
+        var scope = Scope() with { CoveredEmployeeIds = new HashSet<Guid> { Emp } };
+        Assert.True(EmployeeVisibilityScopeMatcher.Includes(scope, Emp, Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid()));
+        Assert.False(EmployeeVisibilityScopeMatcher.Includes(scope, Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid()));
+    }
+
     [Fact] public void No_scope_dimension_set_never_matches_anyone()
     {
         var scope = Scope();

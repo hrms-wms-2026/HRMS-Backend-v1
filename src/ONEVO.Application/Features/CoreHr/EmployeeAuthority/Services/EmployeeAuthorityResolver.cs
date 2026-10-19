@@ -120,8 +120,11 @@ public sealed class EmployeeAuthorityResolver : IEmployeeAuthorityResolver
             includesSelf = true;
         }
 
-        var hasPermission = await _permissionRepository.UserHasPermissionCodeAsync(
-            request.ActorUserId, request.RequiredPermission, now, cancellationToken);
+        // An empty RequiredPermission means relationship-only visibility (employee directory):
+        // the management coverage itself is the grant, no permission code is involved.
+        var hasPermission = string.IsNullOrEmpty(request.RequiredPermission)
+            || await _permissionRepository.UserHasPermissionCodeAsync(
+                request.ActorUserId, request.RequiredPermission, now, cancellationToken);
 
         if (hasPermission && actorEmployee is not null)
         {
@@ -152,8 +155,9 @@ public sealed class EmployeeAuthorityResolver : IEmployeeAuthorityResolver
         var tenantId = _currentUser.TenantId;
         var now = _clock.UtcNow;
 
-        var hasPermission = await _permissionRepository.UserHasPermissionCodeAsync(
-            request.ActorUserId, request.RequiredPermission, now, cancellationToken);
+        var hasPermission = string.IsNullOrEmpty(request.RequiredPermission)
+            || await _permissionRepository.UserHasPermissionCodeAsync(
+                request.ActorUserId, request.RequiredPermission, now, cancellationToken);
         if (!hasPermission)
             return false;
 

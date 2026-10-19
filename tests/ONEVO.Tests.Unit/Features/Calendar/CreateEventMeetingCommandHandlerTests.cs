@@ -106,7 +106,7 @@ public sealed class CreateEventMeetingCommandHandlerTests
             .ReturnsAsync(connection);
         _tokenProvider.Setup(t => t.GetFreshAccessTokenAsync(connection, "microsoft", It.IsAny<CancellationToken>()))
             .ReturnsAsync("access-token");
-        _teamsClient.Setup(t => t.CreateMeetingAsync("access-token", evt.Title, evt.StartDate, evt.EndDate, It.IsAny<CancellationToken>()))
+        _teamsClient.Setup(t => t.CreateMeetingAsync("access-token", evt.Title, evt.StartDate, evt.EndDate, It.IsAny<CancellationToken>(), It.IsAny<IReadOnlyList<string>?>()))
             .ReturnsAsync(new TeamsMeetingDto("graph-meeting-1", "https://teams.microsoft.com/l/meetup-join/abc", null, "123456"));
 
         var result = await BuildSut().Handle(new CreateEventMeetingCommand(EventId, CalendarEventMeetingProviders.MicrosoftTeams), CancellationToken.None);
@@ -120,7 +120,7 @@ public sealed class CreateEventMeetingCommandHandlerTests
         _notifications.Verify(n => n.NotifyMeetingLinkAddedAsync(
             TenantId, evt.Title, evt.StartDate, null,
             It.Is<IReadOnlyList<Guid>>(ids => ids.Contains(ParticipantEmployeeId)),
-            "Ada Owner", "https://teams.microsoft.com/l/meetup-join/abc", It.IsAny<CancellationToken>()), Times.Once);
+            "Ada Owner", "https://teams.microsoft.com/l/meetup-join/abc", It.IsAny<CancellationToken>(), It.IsAny<ONEVO.Application.Features.Calendar.Services.CalendarEventIcs?>()), Times.Once);
     }
 
     [Fact]
@@ -145,7 +145,7 @@ public sealed class CreateEventMeetingCommandHandlerTests
         _meetings.Setup(m => m.GetTrackedByCalendarEventAsync(TenantId, EventId, It.IsAny<CancellationToken>())).ReturnsAsync(cancelled);
         _connections.Setup(c => c.GetByTenantUserProviderAsync(TenantId, UserId, "zoom", It.IsAny<CancellationToken>())).ReturnsAsync(connection);
         _tokenProvider.Setup(t => t.GetFreshAccessTokenAsync(connection, "zoom", It.IsAny<CancellationToken>())).ReturnsAsync("zoom-token");
-        _zoomClient.Setup(z => z.CreateMeetingAsync("zoom-token", evt.Title, evt.StartDate, evt.EndDate, It.IsAny<CancellationToken>()))
+        _zoomClient.Setup(z => z.CreateMeetingAsync("zoom-token", evt.Title, evt.StartDate, evt.EndDate, It.IsAny<CancellationToken>(), It.IsAny<IReadOnlyList<string>?>()))
             .ReturnsAsync(new ZoomMeetingDto("zoom-42", "https://us05web.zoom.us/j/42", "https://us05web.zoom.us/s/42", "9876"));
 
         var result = await sut.Handle(new CreateEventMeetingCommand(EventId, CalendarEventMeetingProviders.Zoom), CancellationToken.None);
@@ -185,7 +185,7 @@ public sealed class CreateEventMeetingCommandHandlerTests
         result.IsSuccess.Should().BeFalse();
         result.StatusCode.Should().Be(409);
         result.Error.Should().Be("meeting_already_exists");
-        _zoomClient.Verify(z => z.CreateMeetingAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<DateTimeOffset>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()), Times.Never);
+        _zoomClient.Verify(z => z.CreateMeetingAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<DateTimeOffset>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>(), It.IsAny<IReadOnlyList<string>?>()), Times.Never);
         _meetings.Verify(m => m.AddAsync(It.IsAny<CalendarEventMeeting>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
@@ -207,7 +207,7 @@ public sealed class CreateEventMeetingCommandHandlerTests
             });
         _connections.Setup(c => c.GetByTenantUserProviderAsync(TenantId, UserId, "outlook_calendar", It.IsAny<CancellationToken>())).ReturnsAsync(connection);
         _tokenProvider.Setup(t => t.GetFreshAccessTokenAsync(connection, "microsoft", It.IsAny<CancellationToken>())).ReturnsAsync("access-token");
-        _teamsClient.Setup(t => t.CreateMeetingAsync("access-token", evt.Title, evt.StartDate, evt.EndDate, It.IsAny<CancellationToken>()))
+        _teamsClient.Setup(t => t.CreateMeetingAsync("access-token", evt.Title, evt.StartDate, evt.EndDate, It.IsAny<CancellationToken>(), It.IsAny<IReadOnlyList<string>?>()))
             .ReturnsAsync(new TeamsMeetingDto("graph-meeting-1", "https://teams.microsoft.com/l/meetup-join/abc", null, "123456"));
 
         var result = await sut.Handle(new CreateEventMeetingCommand(EventId, CalendarEventMeetingProviders.MicrosoftTeams), CancellationToken.None);
@@ -216,7 +216,7 @@ public sealed class CreateEventMeetingCommandHandlerTests
         _notifications.Verify(n => n.NotifyGuestsAsync(
             TenantId, evt.Title, evt.StartDate, evt.Location,
             It.Is<IReadOnlyList<string>>(emails => emails.Single() == "vendor@example.com"),
-            "Ada Owner", "https://teams.microsoft.com/l/meetup-join/abc", It.IsAny<CancellationToken>()), Times.Once);
+            "Ada Owner", "https://teams.microsoft.com/l/meetup-join/abc", It.IsAny<CancellationToken>(), It.IsAny<ONEVO.Application.Features.Calendar.Services.CalendarEventIcs?>()), Times.Once);
     }
 
     [Fact]
@@ -248,7 +248,7 @@ public sealed class CreateEventMeetingCommandHandlerTests
             .ReturnsAsync(connection);
         _tokenProvider.Setup(t => t.GetFreshAccessTokenAsync(connection, "zoom", It.IsAny<CancellationToken>()))
             .ReturnsAsync("access-token");
-        _zoomClient.Setup(z => z.CreateMeetingAsync("access-token", evt.Title, evt.StartDate, evt.EndDate, It.IsAny<CancellationToken>()))
+        _zoomClient.Setup(z => z.CreateMeetingAsync("access-token", evt.Title, evt.StartDate, evt.EndDate, It.IsAny<CancellationToken>(), It.IsAny<IReadOnlyList<string>?>()))
             .ReturnsAsync(new ZoomMeetingDto("987654321", "https://us05web.zoom.us/j/987654321", null, "123456"));
 
         var result = await BuildSut().Handle(new CreateEventMeetingCommand(EventId, CalendarEventMeetingProviders.Zoom), CancellationToken.None);
@@ -277,5 +277,93 @@ public sealed class CreateEventMeetingCommandHandlerTests
 
         result.IsSuccess.Should().BeFalse();
         result.Error.Should().Be("meeting_provider_not_connected");
+    }
+
+    private void VerifyHeldBackInvitesSentWithoutLink(Times times)
+    {
+        _notifications.Verify(n => n.EmailEventChangedAsync(TenantId, CalendarEventEmailKinds.Invite,
+            It.Is<CalendarEventIcs>(i => i.EventId == EventId), "Sprint planning", It.IsAny<DateTimeOffset>(), It.IsAny<string?>(), null,
+            It.Is<IReadOnlyList<Guid>>(ids => ids.Single() == ParticipantEmployeeId), It.IsAny<IReadOnlyList<string>>(), "Ada Owner",
+            It.IsAny<CancellationToken>()), times);
+        _notifications.Verify(n => n.NotifyMeetingLinkFailedAsync(TenantId, UserId, "Sprint planning", "Microsoft Teams", It.IsAny<CancellationToken>()), times);
+        _unitOfWork.Verify(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()), times);
+    }
+
+    [Fact]
+    public async Task Handle_HeldBackInvites_AreSentWithoutALink_AndTheOrganizerAlerted_WhenTheProviderIsNotConnected()
+    {
+        var sut = BuildSut();
+        _events.Setup(e => e.GetTrackedByIdForTenantAsync(TenantId, EventId, It.IsAny<CancellationToken>())).ReturnsAsync(MakeEvent());
+        _connections.Setup(c => c.GetByTenantUserProviderAsync(TenantId, UserId, "outlook_calendar", It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ExternalCalendarConnection?)null);
+
+        var result = await sut.Handle(new CreateEventMeetingCommand(EventId, CalendarEventMeetingProviders.MicrosoftTeams, InvitesHeldBack: true), CancellationToken.None);
+
+        result.Error.Should().Be("meeting_provider_not_connected");
+        VerifyHeldBackInvitesSentWithoutLink(Times.Once());
+    }
+
+    [Fact]
+    public async Task Handle_HeldBackInvites_AreSentWithoutALink_WhenTheProviderFailsToCreateTheMeeting()
+    {
+        var sut = BuildSut();
+        var connection = new ExternalCalendarConnection
+        {
+            Id = Guid.NewGuid(), Status = ExternalCalendarConnectionStatuses.Active, ScopesJson = "[\"Calendars.ReadWrite\",\"OnlineMeetings.ReadWrite\"]"
+        };
+        _events.Setup(e => e.GetTrackedByIdForTenantAsync(TenantId, EventId, It.IsAny<CancellationToken>())).ReturnsAsync(MakeEvent());
+        _connections.Setup(c => c.GetByTenantUserProviderAsync(TenantId, UserId, "outlook_calendar", It.IsAny<CancellationToken>())).ReturnsAsync(connection);
+        _tokenProvider.Setup(t => t.GetFreshAccessTokenAsync(connection, "microsoft", It.IsAny<CancellationToken>())).ReturnsAsync("access-token");
+        _teamsClient.Setup(t => t.CreateMeetingAsync("access-token", It.IsAny<string>(), It.IsAny<DateTimeOffset>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>(), It.IsAny<IReadOnlyList<string>?>()))
+            .ThrowsAsync(new HttpRequestException("Graph 503"));
+
+        var result = await sut.Handle(new CreateEventMeetingCommand(EventId, CalendarEventMeetingProviders.MicrosoftTeams, InvitesHeldBack: true), CancellationToken.None);
+
+        result.IsSuccess.Should().BeFalse();
+        result.StatusCode.Should().Be(502);
+        result.Error.Should().Be("meeting_creation_failed");
+        VerifyHeldBackInvitesSentWithoutLink(Times.Once());
+    }
+
+    [Fact]
+    public async Task Handle_AFailedLinkForAnEventWhoseInvitesWentOut_SendsNothingExtra()
+    {
+        var sut = BuildSut();
+        _events.Setup(e => e.GetTrackedByIdForTenantAsync(TenantId, EventId, It.IsAny<CancellationToken>())).ReturnsAsync(MakeEvent());
+        _connections.Setup(c => c.GetByTenantUserProviderAsync(TenantId, UserId, "outlook_calendar", It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ExternalCalendarConnection?)null);
+
+        await sut.Handle(new CreateEventMeetingCommand(EventId, CalendarEventMeetingProviders.MicrosoftTeams), CancellationToken.None);
+
+        VerifyHeldBackInvitesSentWithoutLink(Times.Never());
+    }
+
+    [Fact]
+    public async Task Handle_PassesTheEventsParticipantsAndGuestsToTheProviderAsAttendees()
+    {
+        var sut = BuildSut();
+        var evt = MakeEvent();
+        var connection = new ExternalCalendarConnection
+        {
+            Id = Guid.NewGuid(), Status = ExternalCalendarConnectionStatuses.Active, ScopesJson = "[\"Calendars.ReadWrite\",\"OnlineMeetings.ReadWrite\"]"
+        };
+        _events.Setup(e => e.GetTrackedByIdForTenantAsync(TenantId, EventId, It.IsAny<CancellationToken>())).ReturnsAsync(evt);
+        _events.Setup(e => e.GetGuestsForEventsAsync(TenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, IReadOnlyList<CalendarEventGuest>>
+            {
+                [EventId] = [new CalendarEventGuest { Id = Guid.NewGuid(), TenantId = TenantId, EventId = EventId, Email = "vendor@example.com" }]
+            });
+        _employees.Setup(e => e.GetByIdAsync(TenantId, ParticipantEmployeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Employee { Id = ParticipantEmployeeId, TenantId = TenantId, Email = "pat@acme.com" });
+        _connections.Setup(c => c.GetByTenantUserProviderAsync(TenantId, UserId, "outlook_calendar", It.IsAny<CancellationToken>())).ReturnsAsync(connection);
+        _tokenProvider.Setup(t => t.GetFreshAccessTokenAsync(connection, "microsoft", It.IsAny<CancellationToken>())).ReturnsAsync("access-token");
+        IReadOnlyList<string>? attendees = null;
+        _teamsClient.Setup(t => t.CreateMeetingAsync("access-token", evt.Title, evt.StartDate, evt.EndDate, It.IsAny<CancellationToken>(), It.IsAny<IReadOnlyList<string>?>()))
+            .Callback((string _, string _, DateTimeOffset _, DateTimeOffset _, CancellationToken _, IReadOnlyList<string>? a) => attendees = a)
+            .ReturnsAsync(new TeamsMeetingDto("graph-meeting-1", "https://teams.microsoft.com/l/meetup-join/abc", null, null));
+
+        await sut.Handle(new CreateEventMeetingCommand(EventId, CalendarEventMeetingProviders.MicrosoftTeams), CancellationToken.None);
+
+        attendees.Should().BeEquivalentTo(["pat@acme.com", "vendor@example.com"]);
     }
 }

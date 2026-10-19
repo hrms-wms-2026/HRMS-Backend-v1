@@ -276,6 +276,43 @@ public sealed class WorkAreaChangeRequestWorkflowTests
     }
 
     [Fact]
+    public async Task Approve_WithAnApproverChosenWorkMode_ApprovesThatModeAndRecordsWhatWasRequested()
+    {
+        var fixture = new Fixture(actingAsApprover: true);
+        var request = fixture.PendingRequest();
+        var otherModeId = Guid.NewGuid();
+        fixture.Requests.Setup(x => x.GetTrackedByIdAsync(fixture.TenantId, request.Id, It.IsAny<CancellationToken>())).ReturnsAsync(request);
+        fixture.WorkModes.Setup(x => x.GetByIdAsync(fixture.TenantId, otherModeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new WorkMode { Id = otherModeId, TenantId = fixture.TenantId, LegalEntityId = fixture.LegalEntityId, Name = "Field", IsActive = true });
+        var requestedName = request.RequestedWorkModeName;
+
+        var result = await fixture.Workflow.ApproveAsync(new ApproveWorkAreaChangeRequestCommand(request.Id, "ok", otherModeId), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue(result.Error);
+        request.Status.Should().Be(WorkAreaChangeRequest.StatusApproved);
+        request.RequestedWorkModeId.Should().Be(otherModeId);
+        request.ReviewComment.Should().Be($"Approved as Field (requested {requestedName}). ok");
+    }
+
+    [Fact]
+    public async Task Approve_WithAnInactiveApproverChosenWorkMode_IsRefusedAndNothingChanges()
+    {
+        var fixture = new Fixture(actingAsApprover: true);
+        var request = fixture.PendingRequest();
+        var retiredId = Guid.NewGuid();
+        fixture.Requests.Setup(x => x.GetTrackedByIdAsync(fixture.TenantId, request.Id, It.IsAny<CancellationToken>())).ReturnsAsync(request);
+        fixture.WorkModes.Setup(x => x.GetByIdAsync(fixture.TenantId, retiredId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new WorkMode { Id = retiredId, TenantId = fixture.TenantId, LegalEntityId = fixture.LegalEntityId, Name = "Retired", IsActive = false });
+        var requestedId = request.RequestedWorkModeId;
+
+        var result = await fixture.Workflow.ApproveAsync(new ApproveWorkAreaChangeRequestCommand(request.Id, null, retiredId), CancellationToken.None);
+
+        result.StatusCode.Should().Be(409);
+        request.Status.Should().Be(WorkAreaChangeRequest.StatusPending);
+        request.RequestedWorkModeId.Should().Be(requestedId);
+    }
+
+    [Fact]
     public async Task Approve_NoExistingAttendanceRow_OnlyChangesRequestAndDoesNotTouchAttendanceRepository()
     {
         var fixture = new Fixture(actingAsApprover: true);

@@ -866,6 +866,90 @@ public sealed class FinalizeOnboardingDraftCommandHandlerTests
             Times.Once);
     }
 
+    [Fact]
+    public async Task FinalizeAsync_Writes_Clock_In_Overrides_For_The_New_Employee_Only_When_Set()
+    {
+        var lookups = new Mock<IOnboardingWizardLookupService>();
+        ONEVO.Domain.Features.Monitoring.Settings.Entities.EmployeeMonitoringOverride? written = null;
+        lookups
+            .Setup(l => l.AddEmployeeOverrideAsync(
+                It.IsAny<ONEVO.Domain.Features.Monitoring.Settings.Entities.EmployeeMonitoringOverride>(), It.IsAny<CancellationToken>()))
+            .Callback<ONEVO.Domain.Features.Monitoring.Settings.Entities.EmployeeMonitoringOverride, CancellationToken>((o, _) => written = o)
+            .Returns(Task.CompletedTask);
+
+        var positionId = Guid.NewGuid();
+        var draft = ValidDraft(positionId: positionId);
+        draft.PhotoRequiredOverride = false;
+        SetupDraft(draft);
+        SetupPosition(positionId, departmentId: Guid.NewGuid());
+        _positionRepository
+            .Setup(r => r.GetAccessTemplateByPositionAsync(_tenantId, positionId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PositionAccessTemplate { Id = Guid.NewGuid(), TenantId = _tenantId, PositionId = positionId, RoleId = Guid.NewGuid(), RequiresApproval = false, IsActive = true });
+
+        var result = await CreateWriteService(lookups.Object).FinalizeAsync(_tenantId, _userId, draft.Id, CancellationToken.None);
+
+        Assert.True(result.IsSuccess, result.Error);
+        Assert.NotNull(written);
+        Assert.Equal(result.Value!.EmployeeId, written!.EmployeeId);
+        Assert.Equal(_tenantId, written.TenantId);
+        Assert.False(written.PhotoRequired);
+        // Untouched toggle stays null so it keeps inheriting from the policy chain.
+        Assert.Null(written.WorkLocationVerification);
+        Assert.Equal(_userId, written.SetById);
+    }
+
+    [Fact]
+    public async Task FinalizeAsync_Links_The_Draft_Profile_Photo_To_The_New_Employee()
+    {
+        var lookups = new Mock<IOnboardingWizardLookupService>();
+        var positionId = Guid.NewGuid();
+        var avatarFileId = Guid.NewGuid();
+        var draft = ValidDraft(positionId: positionId);
+        draft.AvatarFileId = avatarFileId;
+        SetupDraft(draft);
+        SetupPosition(positionId, departmentId: Guid.NewGuid());
+        _positionRepository
+            .Setup(r => r.GetAccessTemplateByPositionAsync(_tenantId, positionId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PositionAccessTemplate { Id = Guid.NewGuid(), TenantId = _tenantId, PositionId = positionId, RoleId = Guid.NewGuid(), RequiresApproval = false, IsActive = true });
+        lookups
+            .Setup(l => l.LinkDraftAvatarAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("storage down"));
+
+        var result = await CreateWriteService(lookups.Object).FinalizeAsync(_tenantId, _userId, draft.Id, CancellationToken.None);
+
+        // Linked to the created employee - and a photo failure never fails the onboarding.
+        Assert.True(result.IsSuccess, result.Error);
+        lookups.Verify(l => l.LinkDraftAvatarAsync(_tenantId, result.Value!.EmployeeId!.Value, avatarFileId, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task FinalizeAsync_Writes_No_Override_Row_When_Nothing_Was_Changed()
+    {
+        var lookups = new Mock<IOnboardingWizardLookupService>();
+        var positionId = Guid.NewGuid();
+        var draft = ValidDraft(positionId: positionId);
+        SetupDraft(draft);
+        SetupPosition(positionId, departmentId: Guid.NewGuid());
+        _positionRepository
+            .Setup(r => r.GetAccessTemplateByPositionAsync(_tenantId, positionId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PositionAccessTemplate { Id = Guid.NewGuid(), TenantId = _tenantId, PositionId = positionId, RoleId = Guid.NewGuid(), RequiresApproval = false, IsActive = true });
+
+        var result = await CreateWriteService(lookups.Object).FinalizeAsync(_tenantId, _userId, draft.Id, CancellationToken.None);
+
+        Assert.True(result.IsSuccess, result.Error);
+        lookups.Verify(l => l.AddEmployeeOverrideAsync(
+            It.IsAny<ONEVO.Domain.Features.Monitoring.Settings.Entities.EmployeeMonitoringOverride>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    private OnboardingDraftWriteService CreateWriteService(IOnboardingWizardLookupService lookups) => new(
+        _draftRepository.Object, _employeeRepository.Object, _userRepository.Object, _userRoleRepository.Object,
+        _positionRepository.Object, _positionAssignmentRepository.Object, _legalEntityRepository.Object,
+        _departmentRepository.Object, _employmentTypeRepository.Object, _workModeRepository.Object,
+        _seatEntitlementService.Object, _accessGrantRequestRepository.Object, _permissionRepository.Object, _checklistTemplateRepository.Object,
+        _checklistTaskRepository.Object, _invitationTokenRepository.Object, _tenantRepository.Object, _outboxWriter.Object,
+        _tokenGenerator.Object, _currentUser.Object, _clock.Object, _unitOfWork.Object,
+        workTaskProvisioner: null, wizardLookups: lookups);
+
     private void SetupPosition(Guid positionId, Guid departmentId)
     {
         var position = new Position { Id = positionId, TenantId = _tenantId, DepartmentId = departmentId, IsActive = true, MaxOccupancy = 5 };

@@ -50,30 +50,45 @@ public sealed class CreateEventMeetingCommandHandler(
             || connection.Status != ExternalCalendarConnectionStatuses.Active
             || !HasMeetingScope(connection.ScopesJson, requiredScope))
         {
-            return Result<CreateEventMeetingResult>.Conflict("meeting_provider_not_connected");
+            return await LinkFailedAsync(tenantId, existing, request, Result<CreateEventMeetingResult>.Conflict("meeting_provider_not_connected"), ct);
         }
 
         var accessToken = await tokenProvider.GetFreshAccessTokenAsync(connection, oauthProvider, ct);
         if (accessToken is null)
-            return Result<CreateEventMeetingResult>.Conflict("meeting_provider_not_connected");
+            return await LinkFailedAsync(tenantId, existing, request, Result<CreateEventMeetingResult>.Conflict("meeting_provider_not_connected"), ct);
 
-        string externalMeetingId, joinUrl;
-        string? organizerJoinUrl, passcode;
-        if (isZoom)
-        {
-            var dto = await zoomClient.CreateMeetingAsync(accessToken, existing.Title, existing.StartDate, existing.EndDate, ct);
-            (externalMeetingId, joinUrl, organizerJoinUrl, passcode) = (dto.ExternalMeetingId, dto.JoinUrl, dto.OrganizerJoinUrl, dto.PasscodeOrPin);
-        }
-        else
-        {
-            var dto = await teamsClient.CreateMeetingAsync(accessToken, existing.Title, existing.StartDate, existing.EndDate, ct);
-            (externalMeetingId, joinUrl, organizerJoinUrl, passcode) = (dto.ExternalMeetingId, dto.JoinUrl, dto.OrganizerJoinUrl, dto.PasscodeOrPin);
-        }
-
+        // The people invited to the event are added to the meeting too (plan C1 P2-3).
         var participantsByEvent = await events.GetParticipantsForEventsAsync(tenantId, [existing.Id], ct);
         var participantEmployeeIds = participantsByEvent.TryGetValue(existing.Id, out var p) ? p.Select(x => x.EmployeeId).ToList() : [];
         var guestsByEvent = await events.GetGuestsForEventsAsync(tenantId, [existing.Id], ct);
         var guestEmails = guestsByEvent.TryGetValue(existing.Id, out var g) ? g.Select(x => x.Email).ToList() : [];
+        var attendeeEmails = new List<string>(guestEmails);
+        foreach (var employeeId in participantEmployeeIds)
+        {
+            if (await employees.GetByIdAsync(tenantId, employeeId, ct) is { Email: { Length: > 0 } email })
+                attendeeEmails.Add(email);
+        }
+
+        string externalMeetingId, joinUrl;
+        string? organizerJoinUrl, passcode;
+        try
+        {
+            if (isZoom)
+            {
+                var dto = await zoomClient.CreateMeetingAsync(accessToken, existing.Title, existing.StartDate, existing.EndDate, ct, attendeeEmails);
+                (externalMeetingId, joinUrl, organizerJoinUrl, passcode) = (dto.ExternalMeetingId, dto.JoinUrl, dto.OrganizerJoinUrl, dto.PasscodeOrPin);
+            }
+            else
+            {
+                var dto = await teamsClient.CreateMeetingAsync(accessToken, existing.Title, existing.StartDate, existing.EndDate, ct, attendeeEmails);
+                (externalMeetingId, joinUrl, organizerJoinUrl, passcode) = (dto.ExternalMeetingId, dto.JoinUrl, dto.OrganizerJoinUrl, dto.PasscodeOrPin);
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            return await LinkFailedAsync(tenantId, existing, request, Result<CreateEventMeetingResult>.Failure("meeting_creation_failed", 502), ct);
+        }
+
         var organizerEmployee = await employees.GetDefaultForUserAsync(tenantId, currentUser.UserId, ct);
         var organizerName = organizerEmployee is null ? "Someone" : $"{organizerEmployee.FirstName} {organizerEmployee.LastName}";
 
@@ -112,19 +127,41 @@ public sealed class CreateEventMeetingCommandHandler(
             {
                 await notifications.NotifyMeetingLinkAddedAsync(
                     tenantId, existing.Title, existing.StartDate, existing.Location,
-                    participantEmployeeIds, organizerName, joinUrl, innerCt);
+                    participantEmployeeIds, organizerName, joinUrl, innerCt,
+                    CalendarEventIcs.For(existing.Id, existing.EndDate, existing.RecurrenceRule, DateTimeOffset.UtcNow));
             }
 
             if (guestEmails.Count > 0)
             {
                 await notifications.NotifyGuestsAsync(
                     tenantId, existing.Title, existing.StartDate, existing.Location,
-                    guestEmails, organizerName, joinUrl, innerCt);
+                    guestEmails, organizerName, joinUrl, innerCt,
+                    CalendarEventIcs.For(existing.Id, existing.EndDate, existing.RecurrenceRule, DateTimeOffset.UtcNow));
             }
 
             await unitOfWork.SaveChangesAsync(innerCt);
             return Result<CreateEventMeetingResult>.Success(new CreateEventMeetingResult(joinUrl));
         }, ct);
+    }
+
+    /// <summary>The Teams/Zoom link could not be created (plan C1 P1-5). When the event's invites were held back for it, they
+    /// go out now without a link (with their .ics) and the organizer is alerted; the failure is still returned.</summary>
+    private async Task<Result<CreateEventMeetingResult>> LinkFailedAsync(
+        Guid tenantId, CalendarEvent calendarEvent, CreateEventMeetingCommand request, Result<CreateEventMeetingResult> failure, CancellationToken ct)
+    {
+        if (!request.InvitesHeldBack)
+            return failure;
+        var participants = await events.GetParticipantsForEventsAsync(tenantId, [calendarEvent.Id], ct);
+        var employeeIds = participants is not null && participants.TryGetValue(calendarEvent.Id, out var list) ? list.Select(x => x.EmployeeId).ToList() : [];
+        var guestEmails = await CalendarEventAudience.GuestEmailsAsync(events, tenantId, calendarEvent.Id, ct);
+        var organizerName = await CalendarOrganizer.NameAsync(employees, tenantId, currentUser.UserId, ct);
+        await notifications.EmailEventChangedAsync(tenantId, CalendarEventEmailKinds.Invite,
+            CalendarEventIcs.For(calendarEvent.Id, calendarEvent.EndDate, calendarEvent.RecurrenceRule, DateTimeOffset.UtcNow),
+            calendarEvent.Title, calendarEvent.StartDate, calendarEvent.Location, null, employeeIds, guestEmails, organizerName, ct);
+        await notifications.NotifyMeetingLinkFailedAsync(tenantId, currentUser.UserId, calendarEvent.Title,
+            request.Provider == CalendarEventMeetingProviders.Zoom ? "Zoom" : "Microsoft Teams", ct);
+        await unitOfWork.SaveChangesAsync(ct);
+        return failure;
     }
 
     private static bool HasMeetingScope(string scopesJson, string requiredScope)

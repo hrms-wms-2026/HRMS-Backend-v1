@@ -87,4 +87,27 @@ public sealed class RemoveCalendarEventParticipantCommandHandlerTests
         _events.Verify(e => e.RemoveParticipant(participant), Times.Once);
         _unitOfWork.Verify(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
+
+    [Fact]
+    public async Task Handle_Removed_ParticipantIsToldInAppAndByEmail()
+    {
+        var notifications = new Mock<ONEVO.Application.Features.Calendar.Services.ICalendarNotificationSender>();
+        var employees = new Mock<ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces.IEmployeeRepository>();
+        employees.Setup(x => x.GetDefaultForUserAsync(TenantId, UserId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ONEVO.Domain.Features.CoreHr.Entities.Employee { Id = Guid.NewGuid(), TenantId = TenantId, UserId = UserId, FirstName = "Ada", LastName = "Owner" });
+        _events.Setup(e => e.GetTrackedByIdForTenantAsync(TenantId, EventId, It.IsAny<CancellationToken>())).ReturnsAsync(MakeEvent());
+        _events.Setup(e => e.GetTrackedParticipantAsync(TenantId, EventId, ParticipantEmployeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CalendarEventParticipant { Id = Guid.NewGuid(), TenantId = TenantId, EventId = EventId, EmployeeId = ParticipantEmployeeId });
+        BuildSut();
+        var sut = new RemoveCalendarEventParticipantCommandHandler(_currentUser.Object, _events.Object, _unitOfWork.Object, notifications.Object, employees.Object);
+
+        var result = await sut.Handle(new RemoveCalendarEventParticipantCommand(EventId, ParticipantEmployeeId), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        notifications.Verify(n => n.NotifyParticipantRemovedAsync(TenantId, ParticipantEmployeeId, "Sprint planning", "Ada Owner", It.IsAny<CancellationToken>()), Times.Once);
+        notifications.Verify(n => n.EmailEventChangedAsync(TenantId, ONEVO.Application.Features.Calendar.Services.CalendarEventEmailKinds.Removed,
+            It.Is<ONEVO.Application.Features.Calendar.Services.CalendarEventIcs>(i => i.EventId == EventId), "Sprint planning", It.IsAny<DateTimeOffset>(),
+            It.IsAny<string?>(), null, It.Is<IReadOnlyList<Guid>>(ids => ids.Single() == ParticipantEmployeeId), It.Is<IReadOnlyList<string>>(g => g.Count == 0),
+            "Ada Owner", It.IsAny<CancellationToken>()), Times.Once);
+    }
 }

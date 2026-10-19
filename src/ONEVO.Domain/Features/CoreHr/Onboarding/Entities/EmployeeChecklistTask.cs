@@ -32,6 +32,12 @@ public class EmployeeChecklistTask : ITenantOwnedEntity
     public bool IsBypassable { get; set; } = false;
     public string? BypassPenaltyDescription { get; set; }
     public string? Category { get; set; }
+    /// <summary>Rich-text description from the checklist template; becomes the Work task description.</summary>
+    public string? Description { get; set; }
+    /// <summary>WorkTaskPriorities value from the template; null = medium.</summary>
+    public string? Priority { get; set; }
+    /// <summary>JSON array of checklist-template attachment file ids, copied onto the Work task.</summary>
+    public string? AttachmentFileIdsJson { get; set; }
     public Guid? OffboardingRecordId { get; set; }
     public Guid? WorkTaskId { get; set; }
     public string Status { get; set; } = EmployeeChecklistTaskStatuses.Pending;

@@ -19,6 +19,7 @@ public class GetRoleByIdQueryHandler : IRequestHandler<GetRoleByIdQuery, Result<
     private readonly IRolePermissionRepository _rolePermissions;
     private readonly IPermissionRepository _permissions;
     private readonly ITenantPermissionCatalogService _permissionCatalog;
+    private readonly IModuleEntitlementService _entitlements;
     private readonly ICurrentUser _currentUser;
 
     public GetRoleByIdQueryHandler(
@@ -26,12 +27,14 @@ public class GetRoleByIdQueryHandler : IRequestHandler<GetRoleByIdQuery, Result<
         IRolePermissionRepository rolePermissions,
         IPermissionRepository permissions,
         ITenantPermissionCatalogService permissionCatalog,
+        IModuleEntitlementService entitlements,
         ICurrentUser currentUser)
     {
         _roles = roles;
         _rolePermissions = rolePermissions;
         _permissions = permissions;
         _permissionCatalog = permissionCatalog;
+        _entitlements = entitlements;
         _currentUser = currentUser;
     }
 
@@ -54,6 +57,10 @@ public class GetRoleByIdQueryHandler : IRequestHandler<GetRoleByIdQuery, Result<
         var permissions = permissionIds.Count == 0
             ? Array.Empty<Domain.Features.Auth.Entities.Permission>()
             : await _permissions.GetByIdsAsync(permissionIds, ct);
+
+        // Same rule as the role list count: only permissions the role actually grants.
+        var grantingModules = await RoleEffectivePermissions.GetGrantingModulesAsync(_entitlements, tenantId, ct);
+        permissions = RoleEffectivePermissions.Filter(permissions, grantingModules);
 
         var catalog = await _permissionCatalog.GetCatalogAsync(tenantId, ct);
         var dto = RoleMapper.ToDetailDto(role, permissions, RoleMapper.MapUniversalPermissions(catalog));

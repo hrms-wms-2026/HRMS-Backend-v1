@@ -40,6 +40,14 @@ public sealed record LeaveRequestEvaluation(
     decimal? TeamAbsencePercent,
     LeaveApproverResolution Approvers);
 
+/// <summary>Evaluation for an existing request (approver edits its dates, plan L1) or an approver-created backdated
+/// leave (alert convert-to-leave, plan E2). <see cref="ExcludeRequestId"/> leaves that request out of the overlap
+/// check; <see cref="ReleasedPendingHours"/> are its own reserved hours, added back to the balance it is checked
+/// against; <see cref="AllowBackdated"/> bypasses only AllowBackdatedRequests; <see cref="DocumentsOnFile"/> counts
+/// documents already attached (they satisfy the document rule and are not re-checked for availability).</summary>
+public sealed record LeaveEvaluationOverrides(
+    Guid? ExcludeRequestId = null, decimal ReleasedPendingHours = 0m, bool AllowBackdated = false, int DocumentsOnFile = 0);
+
 public sealed class LeaveRequestSubmissionEvaluator
 {
     private readonly IEmployeeRepository _employees;
@@ -92,7 +100,8 @@ public sealed class LeaveRequestSubmissionEvaluator
         DateTimeOffset endAt,
         string? reason,
         IReadOnlyList<Guid> fileRecordIds,
-        CancellationToken ct)
+        CancellationToken ct,
+        LeaveEvaluationOverrides? overrides = null)
     {
         var requester = await _employees.GetByUserIdAsync(tenantId, requesterUserId, ct);
         if (requester is null)
@@ -131,14 +140,17 @@ public sealed class LeaveRequestSubmissionEvaluator
         if (startDate.Year != endDate.Year)
             return Result<LeaveRequestEvaluation>.Failure(LeaveRequestMessages.CrossYear);
 
-        if (startDate < _clock.Today && !_options.AllowBackdatedRequests)
+        if (startDate < _clock.Today && !_options.AllowBackdatedRequests && overrides?.AllowBackdated != true)
             return Result<LeaveRequestEvaluation>.Failure(LeaveRequestMessages.StartInPast);
 
         var rangeDays = endDate.DayNumber - startDate.DayNumber + 1;
         if (rangeDays > _options.MaximumRequestRangeDays)
             return Result<LeaveRequestEvaluation>.Failure(LeaveRequestMessages.RangeExceeded);
 
-        if (await _requests.HasOverlappingPendingOrApprovedRequestAsync(tenantId, target.Id, startAt, endAt, ct))
+        var overlaps = overrides?.ExcludeRequestId is { } excluded
+            ? await _requests.HasOverlappingPendingOrApprovedRequestExceptAsync(tenantId, target.Id, startAt, endAt, excluded, ct)
+            : await _requests.HasOverlappingPendingOrApprovedRequestAsync(tenantId, target.Id, startAt, endAt, ct);
+        if (overlaps)
             return Result<LeaveRequestEvaluation>.Conflict(LeaveRequestMessages.Overlap);
 
         var leaveType = await _leaveTypes.GetByIdAsync(tenantId, leaveTypeId, ct);
@@ -204,7 +216,7 @@ public sealed class LeaveRequestSubmissionEvaluator
         var documentAfter = leaveType.DocumentRequiredAfterDays;
         var needsDocument = leaveType.RequiresDocument
             || (documentAfter is { } after && calculated.CountedShiftStartDates.Count > after);
-        if (needsDocument && fileRecordIds.Count == 0)
+        if (needsDocument && fileRecordIds.Count == 0 && (overrides?.DocumentsOnFile ?? 0) == 0)
         {
             return Result<LeaveRequestEvaluation>.Failure(
                 LeaveRequestMessages.DocumentRequired(leaveType.Name, documentAfter ?? 0));
@@ -216,7 +228,7 @@ public sealed class LeaveRequestSubmissionEvaluator
         var expiry = LeaveEntitlementPlanner.CarryExpiryFromPolicy(policy, leaveTypeId, startDate.Year);
         var carry = LeaveEntitlementMapper.EffectiveCarry(entitlement.CarriedForwardHours, expiry, _clock.Today);
         var currentRemaining = LeaveEntitlementMapper.Remaining(
-            entitlement.TotalHours, carry, entitlement.UsedHours, entitlement.PendingHours);
+            entitlement.TotalHours, carry, entitlement.UsedHours, entitlement.PendingHours - (overrides?.ReleasedPendingHours ?? 0m));
 
         decimal paidHours;
         decimal unpaidHours;

@@ -13,8 +13,10 @@ public sealed record ZoomAttendanceRecordDto(
 
 public interface IZoomMeetingClient
 {
+    /// <remarks><paramref name="attendeeEmails"/> are added to the meeting (plan C1 P2-3) so they are recognised when they join.</remarks>
     Task<ZoomMeetingDto> CreateMeetingAsync(
-        string accessToken, string subject, DateTimeOffset start, DateTimeOffset end, CancellationToken ct);
+        string accessToken, string subject, DateTimeOffset start, DateTimeOffset end, CancellationToken ct,
+        IReadOnlyList<string>? attendeeEmails = null);
     Task CancelMeetingAsync(string accessToken, string externalMeetingId, CancellationToken ct);
     Task<IReadOnlyList<ZoomAttendanceRecordDto>> GetAttendanceAsync(
         string accessToken, string externalMeetingId, CancellationToken ct);

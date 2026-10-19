@@ -12,5 +12,8 @@ public interface ICalendarEventMeetingRepository
     /// provider filter keeps the two jobs from racing on each other's rows.</summary>
     Task<IReadOnlyList<CalendarEventMeeting>> GetDueForAttendanceSyncAsync(Guid tenantId, string provider, CancellationToken ct = default);
 
+    /// <summary>The end of the meeting's event (null if the event is gone) - the attendance-report cutoff runs from it.</summary>
+    Task<DateTimeOffset?> GetEventEndAsync(Guid tenantId, Guid calendarEventId, CancellationToken ct = default);
+
     void Update(CalendarEventMeeting meeting);
 }

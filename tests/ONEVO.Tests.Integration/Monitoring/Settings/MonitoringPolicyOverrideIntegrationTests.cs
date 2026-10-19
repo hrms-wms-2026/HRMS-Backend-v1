@@ -662,7 +662,7 @@ public sealed class MonitoringPolicyOverrideIntegrationTests : IClassFixture<Mon
         }
 
         var minutes = await resolver.GetIdleThresholdMinutesAsync(tenantId, employeeId);
-        minutes.Should().Be(2, "the resolver's hardcoded safe default (MonitoringToggleResolution.DefaultIdleThresholdMinutes)");
+        minutes.Should().Be(15, "the resolver's hardcoded safe default (MonitoringToggleResolution.DefaultIdleThresholdMinutes)");
     }
 
     // ---------------------------------------------------------------------

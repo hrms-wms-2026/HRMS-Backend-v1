@@ -221,6 +221,26 @@ public class EfWorkTaskRepository : IWorkTaskRepository
         ).ToListAsync(ct);
     }
 
+    public async Task<IReadOnlyList<EmployeeTaskPeriodRow>> ListOpenForEmployeeAsync(
+        Guid tenantId, Guid employeeId, CancellationToken ct = default)
+    {
+        return await (
+            from t in _db.WorkTasks.AsNoTracking()
+            join s in _db.TaskStatuses.AsNoTracking() on t.StatusId equals s.Id
+            join p in _db.Projects.AsNoTracking() on t.ProjectId equals p.Id
+            join o in _db.Objectives.AsNoTracking() on t.ObjectiveId equals o.Id into objectives
+            from o in objectives.DefaultIfEmpty()
+            where t.TenantId == tenantId
+                  && _db.TaskAssignments.Any(a => a.TaskId == t.Id && a.EmployeeId == employeeId)
+                  && !s.MarksTaskComplete && t.ProgressPercent < 100
+            select new EmployeeTaskPeriodRow(
+                t.DueDate, t.CompletedAt, t.ProgressPercent, s.MarksTaskComplete, t.StoryPoints,
+                t.Id, t.Title, t.ProjectId, p.Name,
+                false,
+                t.ShortId, t.Priority, s.Name, s.Color, t.ObjectiveId, o != null ? o.Title : "")
+        ).ToListAsync(ct);
+    }
+
     public async Task<IReadOnlyList<EmployeeWorkTaskRow>> ListOpenDueByAsync(Guid tenantId, Guid employeeId, DateOnly dueOnOrBefore, CancellationToken ct = default)
     {
         return await (

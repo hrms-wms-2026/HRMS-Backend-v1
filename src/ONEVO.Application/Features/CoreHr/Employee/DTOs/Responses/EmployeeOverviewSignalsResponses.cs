@@ -28,4 +28,6 @@ public sealed record EmployeeSignalInputs(
     EmployeeAttendanceDisciplineResponse? Discipline,
     EmployeeWorkOverviewResponse? Work,
     EmployeeApprovalActivityResponse? Approvals,
-    EmployeeMonitoringSignalCounts? Monitoring);
+    EmployeeMonitoringSignalCounts? Monitoring,
+    // Open calendar meeting-exception cases; null when the viewer may not see them (plan C2).
+    int? MeetingExceptions = null);

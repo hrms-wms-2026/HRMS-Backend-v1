@@ -14,4 +14,7 @@ public record SaveOnboardingDraftRequest(
     Guid? SelectedTemplateId,
     string? EditedTasksJson,
     string LastSavedStep,
-    Guid? ReportsToEmployeeId = null);
+    Guid? ReportsToEmployeeId = null,
+    bool? PhotoRequiredOverride = null,
+    bool? LocationCaptureOverride = null,
+    Guid? AvatarFileId = null);

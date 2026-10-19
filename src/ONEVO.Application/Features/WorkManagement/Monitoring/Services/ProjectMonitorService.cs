@@ -75,9 +75,16 @@ public sealed class ProjectMonitorService : IProjectMonitorService
             opened.Add((alert, finding));
         }
 
+        var resolved = new List<MonitorAlert>();
         foreach (var (key, alert) in open)
-            if (!seen.Contains(key))
-                alert.ResolvedAt = now;
+        {
+            if (seen.Contains(key))
+                continue;
+            alert.ResolvedAt = now;
+            resolved.Add(alert);
+        }
+        if (resolved.Count > 0)
+            await InboxResolvedAsync(tenantId, projectId, snapshot, resolved, ct);
 
         // An achieved Module's alerts (and those of everything under it) are kept for display only -
         // nobody is asked to act on finished work, so they are never notified.
@@ -115,6 +122,21 @@ public sealed class ProjectMonitorService : IProjectMonitorService
             _ => false,
         };
 
+    /// <summary>A resolved alert moves to "resolved" in its recipients' Inbox (no bell notification).</summary>
+    private async Task InboxResolvedAsync(
+        Guid tenantId, Guid projectId, ProjectMonitorSnapshot snapshot, IReadOnlyList<MonitorAlert> resolved, CancellationToken ct)
+    {
+        var tree = await _hierarchy.LoadTreeAsync(tenantId, projectId, ct);
+        var project = await _projects.GetByIdForTenantAsync(tenantId, projectId, ct);
+        foreach (var alert in resolved)
+        {
+            var holder = await MonitorAlertRecipients.ResolveHolderAsync(
+                _hierarchy, tenantId, snapshot, tree, project?.LeadId, alert.TargetType, alert.TargetId, ct);
+            var people = new[] { holder ?? Guid.Empty, alert.SubjectEmployeeId ?? Guid.Empty };
+            await _notifications.InboxChangedAsync(tenantId, people, WorkNotificationEngine.MonitorAlertInboxKind, alert.Id, ct);
+        }
+    }
+
     private async Task NotifyAsync(Guid tenantId, Guid projectId, ProjectMonitorSnapshot snapshot,
         IReadOnlyList<(MonitorAlert Alert, MonitorFinding Finding)> opened, DateTimeOffset now, CancellationToken ct)
     {
@@ -123,37 +145,18 @@ public sealed class ProjectMonitorService : IProjectMonitorService
 
         foreach (var (alert, finding) in opened)
         {
-            var position = CreatorPosition(finding, snapshot, tree);
-            var recipient = position is { } positionId
-                ? await _hierarchy.FindActiveHolderAsync(tenantId, tree, positionId, Guid.Empty, ct)
-                : null;
-            recipient ??= project?.LeadId;
+            var recipient = await MonitorAlertRecipients.ResolveHolderAsync(
+                _hierarchy, tenantId, snapshot, tree, project?.LeadId, finding.TargetType, finding.TargetId, ct);
             if (recipient is null)
                 continue;
 
             await _notifications.NotifyAsync(new WorkNotificationEvent(
                 tenantId, projectId, Guid.Empty, WorkNotificationKinds.Alert,
                 WorkActionLabels.MonitorPrefix + finding.RuleCode, finding.TargetType, finding.TargetId, finding.TargetTitle,
-                ApprovalRequestId: null, [recipient.Value]), ct);
+                ApprovalRequestId: null, [recipient.Value], MonitorAlertId: alert.Id), ct);
             alert.NotifiedAt = now;
         }
     }
-
-    /// <summary>The Module whose owner holds the target's creator position: the stored creator
-    /// position, else the same defaults the approval engine uses (task → its Module, sprint → the root
-    /// Module, Module → its parent, or itself at the root).</summary>
-    private static Guid? CreatorPosition(MonitorFinding finding, ProjectMonitorSnapshot snapshot, ProjectModuleTree tree)
-        => finding.TargetType switch
-        {
-            MonitorTargetTypes.Task => snapshot.Tasks.FirstOrDefault(t => t.Id == finding.TargetId) is { } task
-                ? task.CreatorPositionModuleId ?? task.ModuleId
-                : null,
-            MonitorTargetTypes.Sprint => snapshot.Sprints.FirstOrDefault(s => s.Id == finding.TargetId)?.CreatorPositionModuleId
-                ?? tree.Root?.Id,
-            _ => snapshot.Modules.FirstOrDefault(m => m.Id == finding.TargetId) is { } module
-                ? module.CreatorPositionModuleId ?? module.ParentId ?? module.Id
-                : null,
-        };
 
     private static (Guid, string, Guid?) Key(MonitorFinding finding) => (finding.TargetId, finding.RuleCode, finding.SubjectEmployeeId);
 }

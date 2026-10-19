@@ -144,6 +144,11 @@ public interface IWorkTaskRepository
     Task<IReadOnlyList<EmployeeTaskPeriodRow>> ListForEmployeePeriodAsync(
         Guid tenantId, Guid employeeId, DateOnly from, DateOnly to, CancellationToken ct = default);
 
+    /// <summary>Every task assigned to this employee that is still open (status does not mark complete and
+    /// progress below 100), whatever its due date - the work to hand over when they leave. Same row shape
+    /// as ListForEmployeePeriodAsync; IsCarriedOver is always false.</summary>
+    Task<IReadOnlyList<EmployeeTaskPeriodRow>> ListOpenForEmployeeAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default);
+
     /// <summary>Assigned, not-completed (status does not mark complete and progress below 100)
     /// tasks with a due date on or before dueOnOrBefore - every overdue task plus the upcoming window.</summary>
     Task<IReadOnlyList<EmployeeWorkTaskRow>> ListOpenDueByAsync(Guid tenantId, Guid employeeId, DateOnly dueOnOrBefore, CancellationToken ct = default);

@@ -2,6 +2,7 @@ using Moq;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Invite.RepositoryInterfaces;
 using ONEVO.Application.Features.Auth.Login.ServiceInterfaces;
+using ONEVO.Application.Features.CoreHr.Employee.Access;
 using ONEVO.Application.Features.CoreHr.Employee.Commands.ResendEmployeeInvitation;
 using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.OnboardingDraft.OutboxHandlers;
@@ -24,6 +25,7 @@ public sealed class ResendEmployeeInvitationCommandHandlerTests
     private readonly Mock<IUnitOfWork> _unitOfWork = new();
     private readonly Mock<ICurrentUser> _currentUser = new();
     private readonly Mock<IDateTimeProvider> _clock = new();
+    private readonly Mock<IEmployeeInvitationAccess> _invitationAccess = new();
 
     private readonly Guid _tenantId = Guid.NewGuid();
     private readonly Guid _employeeId = Guid.NewGuid();
@@ -42,11 +44,15 @@ public sealed class ResendEmployeeInvitationCommandHandlerTests
         _tenantRepository
             .Setup(r => r.GetByIdAsync(_tenantId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Tenant { Id = _tenantId, Slug = "acme" });
+        _invitationAccess
+            .Setup(a => a.CanManageAsync(It.IsAny<InvitationToken>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
     }
 
     private ResendEmployeeInvitationCommandHandler CreateHandler() => new(
         _employeeRepository.Object, _invitationTokenRepository.Object, _tenantRepository.Object,
-        _outboxWriter.Object, _tokenGenerator.Object, _unitOfWork.Object, _currentUser.Object, _clock.Object);
+        _outboxWriter.Object, _tokenGenerator.Object, _unitOfWork.Object, _currentUser.Object, _clock.Object,
+        _invitationAccess.Object);
 
     private InvitationToken ExpiredUnacceptedInvitation() => new()
     {
@@ -197,5 +203,25 @@ public sealed class ResendEmployeeInvitationCommandHandlerTests
 
         Assert.NotNull(captured);
         Assert.Equal(reservedAssignmentId, captured!.PositionAssignmentId);
+    }
+
+    [Fact]
+    public async Task Handle_CallerIsNotInviterNorUserManager_ReturnsForbidden_AndDoesNotIssueNewToken()
+    {
+        var expired = ExpiredUnacceptedInvitation();
+        _invitationTokenRepository
+            .Setup(r => r.GetLatestByEmployeeIdAsync(_tenantId, _employeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(expired);
+        _invitationAccess
+            .Setup(a => a.CanManageAsync(expired, It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+
+        var result = await CreateHandler().Handle(new ResendEmployeeInvitationCommand(_employeeId), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(403, result.StatusCode);
+        Assert.Null(expired.RevokedAt);
+        _invitationTokenRepository.Verify(
+            r => r.AddAsync(It.IsAny<InvitationToken>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 }

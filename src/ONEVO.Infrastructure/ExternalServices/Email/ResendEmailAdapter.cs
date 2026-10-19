@@ -54,7 +54,10 @@ public sealed class ResendEmailAdapter : IEmailProviderAdapter
             subject = request.Subject,
             html = request.HtmlBody,
             text = string.IsNullOrWhiteSpace(request.TextBody) ? null : request.TextBody,
-            reply_to = string.IsNullOrWhiteSpace(options.ReplyToEmail) ? null : options.ReplyToEmail
+            reply_to = string.IsNullOrWhiteSpace(options.ReplyToEmail) ? null : options.ReplyToEmail,
+            attachments = request.Attachments is { Count: > 0 } files
+                ? files.Select(a => new { filename = a.FileName, content = Convert.ToBase64String(a.Content), content_type = a.ContentType }).ToArray()
+                : null
         };
 
         using var httpRequest = new HttpRequestMessage(HttpMethod.Post, SendEmailUrl);

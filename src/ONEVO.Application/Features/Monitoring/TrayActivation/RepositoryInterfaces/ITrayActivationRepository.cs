@@ -44,6 +44,12 @@ public interface ITrayActivationRepository
     Task UpdateDeviceLastSeenAsync(Guid deviceRegistrationId, DateTimeOffset lastSeenAt, CancellationToken ct);
     Task DeactivateDeviceAsync(Guid deviceRegistrationId, DateTimeOffset deactivatedAt, CancellationToken ct);
 
+    /// <summary>Undoes DeactivateDeviceAsync (an undone device-change approval). The revoked refresh tokens stay
+    /// revoked: the old device signs in again.</summary>
+    Task ReactivateDeviceAsync(Guid deviceRegistrationId, CancellationToken ct);
+
+    Task<TrayDeviceRegistration?> FindDeviceAsync(Guid deviceRegistrationId, Guid tenantId, CancellationToken ct);
+
     /// <summary>HR profile for display purposes only — returns null if the user has no linked Employee row yet.</summary>
     Task<TrayEmployeeProfile?> FindEmployeeProfileAsync(
         Guid userId, Guid tenantId, Guid? legalEntityId, CancellationToken ct);

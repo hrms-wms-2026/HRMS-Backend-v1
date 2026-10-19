@@ -33,7 +33,8 @@ public sealed class WorkAreaChangeRequestWorkflow(
     IUnitOfWork unitOfWork)
 {
     private const string ApprovalPermission = "attendance:approve";
-    private const string RelatedType = "work_area_change_request";
+    // The bell opens the Inbox item (inbox plan S4.2).
+    private static readonly string RelatedType = ONEVO.Application.Features.Inbox.Contracts.InboxNotificationNavigation.RelatedEntityType("attendance", "work_mode_change");
     private const string CreatedTemplate = "work_area_change_request_created";
     private const string DecidedTemplate = "work_area_change_request_decided";
     private const string CancelledTemplate = "work_area_change_request_cancelled";
@@ -121,7 +122,7 @@ public sealed class WorkAreaChangeRequestWorkflow(
 
     public Task<Result<WorkAreaChangeRequestResponse>> ApproveAsync(
         ApproveWorkAreaChangeRequestCommand command, CancellationToken ct)
-        => DecideAsync(command.Id, WorkAreaChangeRequest.StatusApproved, command.ReviewComment, ct);
+        => DecideAsync(command.Id, WorkAreaChangeRequest.StatusApproved, command.ReviewComment, ct, command.ApprovedWorkModeId);
 
     public Task<Result<WorkAreaChangeRequestResponse>> RejectAsync(
         RejectWorkAreaChangeRequestCommand command, CancellationToken ct)
@@ -245,7 +246,7 @@ public sealed class WorkAreaChangeRequestWorkflow(
     }
 
     private async Task<Result<WorkAreaChangeRequestResponse>> DecideAsync(
-        Guid id, string decision, string? reviewComment, CancellationToken ct)
+        Guid id, string decision, string? reviewComment, CancellationToken ct, Guid? approvedWorkModeId = null)
     {
         if (!currentUser.IsAuthenticated)
             return Result<WorkAreaChangeRequestResponse>.Forbidden("Authentication is required.");
@@ -286,10 +287,27 @@ public sealed class WorkAreaChangeRequestWorkflow(
                 if (!expected.IsSuccess || expected.Value is null)
                     return Result<WorkAreaChangeRequestResponse>.Conflict(expected.Error ?? "The expected work area could not be resolved.");
 
+                var note = string.IsNullOrWhiteSpace(reviewComment) ? null : reviewComment.Trim();
+                if (decision == WorkAreaChangeRequest.StatusApproved && approvedWorkModeId is { } modeId && modeId != request.RequestedWorkModeId)
+                {
+                    // Edit before approve: the same checks a new request's work mode passes.
+                    var mode = await workModes.GetByIdAsync(currentUser.TenantId, modeId, transactionCt);
+                    if (mode is null || !mode.IsActive)
+                        return Result<WorkAreaChangeRequestResponse>.Conflict("The selected work mode is not available.");
+                    if (mode.LegalEntityId != request.LegalEntityId)
+                        return Result<WorkAreaChangeRequestResponse>.Conflict("The selected work mode does not belong to this employee's company.");
+                    if (expected.Value.WorkModeId == modeId)
+                        return Result<WorkAreaChangeRequestResponse>.Conflict("The selected work mode is already planned for this date.");
+                    var changed = $"Approved as {mode.Name} (requested {request.RequestedWorkModeName})";
+                    note = note is null ? changed : $"{changed}. {note}";
+                    request.RequestedWorkModeId = mode.Id;
+                    request.RequestedWorkModeName = mode.Name;
+                }
+
                 request.Status = decision;
                 request.ReviewedById = currentUser.UserId;
                 request.ReviewedAt = dateTime.UtcNow;
-                request.ReviewComment = string.IsNullOrWhiteSpace(reviewComment) ? null : reviewComment.Trim();
+                request.ReviewComment = note;
 
                 if (decision == WorkAreaChangeRequest.StatusApproved)
                 {

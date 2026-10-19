@@ -145,7 +145,7 @@ public sealed class GetApprovalDetailQueryHandler : IRequestHandler<GetApprovalD
             };
         }
 
-        var lookup = new ApprovalFeedLookup(tree, project.Name, names, taskModules, new Dictionary<Guid, int>());
+        var lookup = new ApprovalFeedLookup(tree, project.Name, names, taskModules);
         var item = ApprovalFeedItemFactory.FromRequest(request, caller, lookup);
         var canEdit = item.CanDecide && ApprovalChangeSetBuilder.EditableActions.Contains(request.ActionType);
         var fields = ApprovalChangeSetBuilder.Build(
@@ -175,7 +175,7 @@ public sealed class GetApprovalDetailQueryHandler : IRequestHandler<GetApprovalD
         var tree = await _hierarchy.LoadTreeAsync(tenantId, invitation.ProjectId, ct);
         var names = await _identity.ResolveDisplayNamesByEmployeeIdAsync(
             tenantId, ApprovalFeedItemFactory.EmployeeIds(invitation).Distinct().ToList(), ct);
-        var lookup = new ApprovalFeedLookup(tree, project.Name, names, new Dictionary<Guid, Guid>(), new Dictionary<Guid, int>());
+        var lookup = new ApprovalFeedLookup(tree, project.Name, names, new Dictionary<Guid, Guid>());
         var item = ApprovalFeedItemFactory.FromInvitation(invitation, caller, lookup);
 
         var block = new ApprovalInvitationResponse(

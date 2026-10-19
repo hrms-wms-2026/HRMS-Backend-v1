@@ -58,6 +58,7 @@ public sealed class CreateCalendarEventCommandHandler(
                 Color = request.Color, Recurrence = request.Recurrence, RecurrenceRule = request.RecurrenceRule
             };
             await events.AddAsync(calendarEvent, innerCt);
+            var ics = CalendarEventIcs.For(calendarEvent.Id, calendarEvent.EndDate, calendarEvent.RecurrenceRule, DateTimeOffset.UtcNow);
 
             if (request.ParticipantEmployeeIds.Count > 0)
             {
@@ -72,7 +73,8 @@ public sealed class CreateCalendarEventCommandHandler(
                 var organizerName = callerEmployee is null ? "Someone" : $"{callerEmployee.FirstName} {callerEmployee.LastName}";
                 await notifications.NotifyParticipantsAddedAsync(
                     tenantId, calendarEvent.Title, calendarEvent.StartDate, calendarEvent.Location,
-                    request.ParticipantEmployeeIds, organizerName, innerCt, sendInviteEmail: !hasPendingMeeting);
+                    request.ParticipantEmployeeIds, organizerName, innerCt, sendInviteEmail: !hasPendingMeeting, ics: ics);
+                await notifications.QueueIncidentEvaluationAsync(tenantId, request.ParticipantEmployeeIds, innerCt);
             }
 
             if (guestEmails.Count > 0)
@@ -91,7 +93,7 @@ public sealed class CreateCalendarEventCommandHandler(
                     var guestOrganizerName = organizer is null ? "Someone" : $"{organizer.FirstName} {organizer.LastName}";
                     await notifications.NotifyGuestsAsync(
                         tenantId, calendarEvent.Title, calendarEvent.StartDate, calendarEvent.Location,
-                        guestEmails, guestOrganizerName, calendarEvent.MeetingLink, innerCt);
+                        guestEmails, guestOrganizerName, calendarEvent.MeetingLink, innerCt, ics);
                 }
             }
 

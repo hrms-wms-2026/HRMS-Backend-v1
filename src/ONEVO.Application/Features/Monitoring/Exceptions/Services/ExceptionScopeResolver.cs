@@ -1,4 +1,6 @@
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.Inbox.Contracts;
+using ONEVO.Application.Features.Inbox.Escalation;
 using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.EmployeeAuthority.Models;
 using ONEVO.Application.Features.CoreHr.EmployeeAuthority.ServiceInterfaces;
@@ -11,13 +13,20 @@ public sealed class ExceptionScopeResolver : IExceptionScopeResolver
     private readonly ICurrentUser _currentUser;
     private readonly IEmployeeRepository _employees;
     private readonly IEmployeeAuthorityResolver _authority;
+    private readonly IInboxDecisionJournal _journal;
+
+    // Calendar and monitoring cases both escalate up the approver chain (ReportingLineThenLogPolicy,
+    // ReportingLineThenHrPolicy), so whoever they reach may sit outside management coverage.
+    private static readonly (string Source, string Kind)[] EscalatedCaseKinds =
+        [("calendar", "meeting_exception"), ("monitoring", "exception_case")];
 
     public ExceptionScopeResolver(
-        ICurrentUser currentUser, IEmployeeRepository employees, IEmployeeAuthorityResolver authority)
+        ICurrentUser currentUser, IEmployeeRepository employees, IEmployeeAuthorityResolver authority, IInboxDecisionJournal journal)
     {
         _currentUser = currentUser;
         _employees = employees;
         _authority = authority;
+        _journal = journal;
     }
 
     public async Task<ExceptionScope?> ResolveAsync(
@@ -38,8 +47,11 @@ public sealed class ExceptionScopeResolver : IExceptionScopeResolver
         if (isHr)
             return new ExceptionScope(true, actor?.Id, Array.Empty<Guid>());
 
+        // Holding a case by escalation widens the reach of someone who may already review exceptions; it never stands
+        // in for the exception permissions themselves.
+        var held = actor is null ? [] : await HeldCasesAsync(actor.Id, ct);
         if (actor?.LegalEntityId is not Guid legalEntityId)
-            return new ExceptionScope(false, actor?.Id, Array.Empty<Guid>());
+            return new ExceptionScope(false, actor?.Id, Array.Empty<Guid>(), held);
 
         var permission = isManager ? ExceptionPermissions.ManagerReview : codePermission;
         var visibility = await _authority.ResolveVisibilityAsync(
@@ -70,6 +82,17 @@ public sealed class ExceptionScopeResolver : IExceptionScopeResolver
         // Company-wide / department coverage expands to every active employee, which re-introduces
         // the actor - strip them so a manager never works their own alert.
         ids.Remove(actor.Id);
-        return new ExceptionScope(false, actor.Id, ids.ToList());
+        return new ExceptionScope(false, actor.Id, ids.ToList(), held);
+    }
+
+    /// <summary>The calendar and monitoring cases whose latest escalation (not undone) went to this employee.</summary>
+    private async Task<IReadOnlyCollection<Guid>> HeldCasesAsync(Guid actorEmployeeId, CancellationToken ct)
+    {
+        var held = new List<Guid>();
+        foreach (var (source, kind) in EscalatedCaseKinds)
+            held.AddRange((await _journal.ListLatestEscalationsAsync(_currentUser.TenantId, source, kind, ct))
+                .Where(e => InboxEscalationJournal.EscalatedTo(e).Contains(actorEmployeeId))
+                .Select(e => e.ItemId));
+        return held;
     }
 }

@@ -18,6 +18,8 @@ public sealed class EmployeeChecklistTaskConfiguration : IEntityTypeConfiguratio
         builder.Property(x => x.IsBypassable).HasDefaultValue(false).IsRequired();
         builder.Property(x => x.BypassPenaltyDescription).HasMaxLength(500);
         builder.Property(x => x.Category).HasMaxLength(40);
+        builder.Property(x => x.Priority).HasMaxLength(20);
+        builder.Property(x => x.AttachmentFileIdsJson).HasColumnType("jsonb");
         builder.HasIndex(x => new { x.TenantId, x.OffboardingRecordId });
         builder.HasOne<ONEVO.Domain.Features.CoreHr.Entities.OffboardingRecord>().WithMany()
             .HasForeignKey(x => x.OffboardingRecordId).OnDelete(DeleteBehavior.Restrict);

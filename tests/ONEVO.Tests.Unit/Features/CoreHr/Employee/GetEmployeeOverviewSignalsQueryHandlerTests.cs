@@ -128,7 +128,9 @@ public sealed class GetEmployeeOverviewSignalsQueryHandlerTests
         result.IsSuccess.Should().BeTrue();
         result.Value!.Signals.Should().NotContain(s => s.Category == "monitoring");
         _notifications.Invocations.Should().BeEmpty();
-        _exceptions.Invocations.Should().BeEmpty();
+        // Meeting exceptions (calendar, plan C2) are not behind the activity-monitoring toggle; monitoring cases are.
+        _exceptions.Verify(e => e.CountDetectedInRangeAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<DateTimeOffset>(), It.IsAny<DateTimeOffset>(),
+            It.IsAny<CancellationToken>(), false), Times.Never);
     }
 
     [Fact]

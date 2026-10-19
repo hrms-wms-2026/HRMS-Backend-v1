@@ -16,7 +16,7 @@ namespace ONEVO.Api.Controllers.Tenant.CoreHr;
 public class EmployeeChecklistTasksController(IMediator mediator) : ControllerBase
 {
     [HttpGet]
-    [RequirePermission("employees:read")]
+    [RequireVisibleEmployee("employeeId")]
     public async Task<IActionResult> List(Guid employeeId, CancellationToken ct = default)
     {
         var result = await mediator.Send(new ListEmployeeChecklistTasksQuery(employeeId), ct);

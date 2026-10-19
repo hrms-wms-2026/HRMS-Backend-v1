@@ -58,5 +58,17 @@ public sealed class EfDeviceChangeRequestRepository(ApplicationDbContext db) : I
         return (items, totalCount);
     }
 
+    public async Task<IReadOnlyList<DeviceChangeRequest>> ListPendingWithoutLegalEntityAsync(Guid tenantId, CancellationToken ct = default)
+        => await db.DeviceChangeRequests.AsNoTracking()
+            .Where(r => r.TenantId == tenantId && r.LegalEntityId == null && r.Status == DeviceChangeRequest.StatusPending)
+            .OrderByDescending(r => r.RequestedAt)
+            .ToListAsync(ct);
+
+    public async Task<IReadOnlyList<DeviceChangeRequest>> ListForEmployeeAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default)
+        => await db.DeviceChangeRequests.AsNoTracking()
+            .Where(r => r.TenantId == tenantId && r.EmployeeId == employeeId)
+            .OrderByDescending(r => r.RequestedAt)
+            .ToListAsync(ct);
+
     public Task<int> SaveChangesAsync(CancellationToken ct = default) => db.SaveChangesAsync(ct);
 }

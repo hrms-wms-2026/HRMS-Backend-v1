@@ -16,7 +16,9 @@ public sealed record EmployeeListAttendanceSummaryResponse(
     int BreakUsedMinutes = 0,
     int? BreakAllowanceMinutes = null,
     int BreakOverageMinutes = 0,
-    bool IsOverBreakAllowance = false);
+    bool IsOverBreakAllowance = false,
+    // Open attendance alerts awaiting review (plan E1, D-a).
+    int OpenAlertCount = 0);
 
 public record EmployeeListItemResponse(
     Guid Id,
@@ -42,4 +44,11 @@ public record EmployeeListItemResponse(
     DateTimeOffset? InvitationExpiresAt = null,
     EmployeeListAttendanceSummaryResponse? AttendanceSummary = null,
     string? WorkModeLabel = null,
-    Guid? AvatarFileId = null);
+    Guid? AvatarFileId = null,
+    /// <summary>
+    /// True when PositionName/ReportingManager come from a still-planned assignment - an invited
+    /// employee who hasn't accepted yet. The seat is reserved but not active.
+    /// </summary>
+    bool PositionPending = false,
+    /// <summary>The employee's tray app is connected right now (see IEmployeeOnlineStatusReader).</summary>
+    bool IsOnline = false);

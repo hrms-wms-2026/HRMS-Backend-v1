@@ -116,4 +116,27 @@ public sealed class MicrosoftGraphMeetingClientTests
         Assert.Equal("ada@acme.com", record.ParticipantEmail);
         Assert.NotNull(record.LeftAt);
     }
+
+    [Fact]
+    public async Task CreateMeetingAsync_AddsTheInvitedPeopleAsAttendees()
+    {
+        string? body = null;
+        var handler = new StubHandler(request =>
+        {
+            body = request.Content!.ReadAsStringAsync().GetAwaiter().GetResult();
+            return new HttpResponseMessage(HttpStatusCode.Created)
+            {
+                Content = JsonContent.Create(new { id = "graph-meeting-1", joinWebUrl = "https://teams.microsoft.com/l/meetup-join/abc" })
+            };
+        });
+        var client = new MicrosoftGraphMeetingClient(new HttpClient(handler), NullLogger<MicrosoftGraphMeetingClient>.Instance);
+
+        await client.CreateMeetingAsync("access-token", "Sprint planning", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddHours(1),
+            CancellationToken.None, ["ada@acme.com", "ADA@acme.com", "vendor@example.com"]);
+
+        using var doc = System.Text.Json.JsonDocument.Parse(body!);
+        var attendees = doc.RootElement.GetProperty("participants").GetProperty("attendees").EnumerateArray()
+            .Select(a => (a.GetProperty("upn").GetString(), a.GetProperty("role").GetString())).ToList();
+        Assert.Equal(new[] { ("ada@acme.com", "attendee"), ("vendor@example.com", "attendee") }, attendees.Select(a => (a.Item1!, a.Item2!)));
+    }
 }

@@ -35,9 +35,9 @@ public class GetLegalEntityGeneralSettingsQueryHandler
         if (tenantId == Guid.Empty)
             return Result<LegalEntityGeneralSettingsResponse>.Forbidden("Tenant context missing.");
 
-        var hasManagementAccess = LegalEntityAccessPolicy.HasManagementAccess(_currentUser);
+        var hasReadAccess = LegalEntityAccessPolicy.HasReadAccess(_currentUser);
         var entity = await _legalEntities.GetAccessibleByIdAsync(
-            tenantId, request.LegalEntityId, _currentUser.UserId, hasManagementAccess, ct);
+            tenantId, request.LegalEntityId, _currentUser.UserId, hasReadAccess, ct);
         if (entity is null)
             return Result<LegalEntityGeneralSettingsResponse>.NotFound("Company not found.");
 

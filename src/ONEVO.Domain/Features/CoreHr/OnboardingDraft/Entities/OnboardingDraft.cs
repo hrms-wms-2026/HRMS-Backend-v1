@@ -17,6 +17,16 @@ public class OnboardingDraft : BaseEntity
 
     public Guid? WorkModeId { get; set; }
 
+    // Per-employee clock-in evidence overrides chosen in the wizard's Work setup step. Null =
+    // inherit from the work mode / monitoring policy chain. Copied into an
+    // EmployeeMonitoringOverride row on finalize, so they only ever affect this employee.
+    public bool? PhotoRequiredOverride { get; set; }
+    public bool? LocationCaptureOverride { get; set; }
+
+    // Profile photo picked on the wizard's Identity step: an uploaded-but-unlinked
+    // employee_avatar file. Linked to the employee as their avatar once finalize creates them.
+    public Guid? AvatarFileId { get; set; }
+
     // No enforced FK: checklist_templates does not exist in this codebase yet. Same limitation.
     public Guid? SelectedTemplateId { get; set; }
     public string? EditedTasksJson { get; set; }

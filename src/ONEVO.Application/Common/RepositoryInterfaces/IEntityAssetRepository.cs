@@ -12,6 +12,11 @@ public sealed record EntityAssetWithFile(
 public sealed record EntityAssetWithFileAndOwner(
     Guid OwnerId, Guid Id, Guid FileRecordId, string OriginalFileName, long FileSizeBytes, string ContentType, DateTimeOffset CreatedAt, string AssetPurpose);
 
+/// <summary>Single-owner listing that also carries the asset's MetadataJson (e.g. an employee
+/// document's user-given name and category).</summary>
+public sealed record EntityAssetWithFileAndMetadata(
+    Guid Id, Guid FileRecordId, string OriginalFileName, long FileSizeBytes, string ContentType, DateTimeOffset CreatedAt, string AssetPurpose, string? MetadataJson);
+
 public interface IEntityAssetRepository
 {
     Task AddAsync(EntityAsset asset, CancellationToken ct = default);
@@ -30,6 +35,10 @@ public interface IEntityAssetRepository
     /// callers are unaffected.</summary>
     Task<IReadOnlyList<EntityAssetWithFileAndOwner>> ListByOwnersAsync(
         Guid tenantId, string ownerType, IReadOnlyList<Guid> ownerIds, CancellationToken ct = default);
+
+    /// <summary>Like ListByOwnerAsync but includes MetadataJson, newest first.</summary>
+    Task<IReadOnlyList<EntityAssetWithFileAndMetadata>> ListWithMetadataByOwnerAsync(
+        Guid tenantId, string ownerType, Guid ownerId, CancellationToken ct = default);
 
     Task<EntityAsset?> GetByIdForTenantAsync(Guid tenantId, Guid id, CancellationToken ct = default);
 

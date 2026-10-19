@@ -60,6 +60,5 @@ public sealed record LeaveRequestListItemResponse(
     string Status,
     bool NoticePeriodMissed,
     string? ApprovedByName,
-    string? InfoQuestion,
     DateTimeOffset CreatedAt,
     DateTimeOffset? UpdatedAt);

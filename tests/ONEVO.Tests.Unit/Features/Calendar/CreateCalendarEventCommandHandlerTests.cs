@@ -77,7 +77,7 @@ public sealed class CreateCalendarEventCommandHandlerTests
         _notifications.Verify(x => x.NotifyParticipantsAddedAsync(
             TenantId, "Sprint Planning", Start, "Room 4",
             It.Is<IReadOnlyList<Guid>>(ids => ids.Count == 1 && ids[0] == participantId),
-            "Ada Owner", It.IsAny<CancellationToken>()), Times.Once);
+            "Ada Owner", It.IsAny<CancellationToken>(), null, true, It.IsAny<ONEVO.Application.Features.Calendar.Services.CalendarEventIcs?>()), Times.Once);
     }
 
     [Fact]
@@ -99,7 +99,7 @@ public sealed class CreateCalendarEventCommandHandlerTests
         _notifications.Verify(x => x.NotifyParticipantsAddedAsync(
             TenantId, "Sprint Planning", Start, "Room 4",
             It.Is<IReadOnlyList<Guid>>(ids => ids.Count == 1 && ids[0] == participantId),
-            "Ada Owner", It.IsAny<CancellationToken>(), null, false), Times.Once);
+            "Ada Owner", It.IsAny<CancellationToken>(), null, false, It.IsAny<ONEVO.Application.Features.Calendar.Services.CalendarEventIcs?>()), Times.Once);
     }
 
     [Fact]
@@ -117,7 +117,7 @@ public sealed class CreateCalendarEventCommandHandlerTests
         _events.Verify(x => x.AddGuestsAsync(It.IsAny<IReadOnlyList<CalendarEventGuest>>(), It.IsAny<CancellationToken>()), Times.Once);
         _notifications.Verify(x => x.NotifyGuestsAsync(
             It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<DateTimeOffset>(), It.IsAny<string?>(),
-            It.IsAny<IReadOnlyList<string>>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
+            It.IsAny<IReadOnlyList<string>>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>(), It.IsAny<ONEVO.Application.Features.Calendar.Services.CalendarEventIcs?>()), Times.Never);
     }
 
     [Fact]
@@ -135,7 +135,7 @@ public sealed class CreateCalendarEventCommandHandlerTests
         _notifications.Verify(x => x.NotifyParticipantsAddedAsync(
             TenantId, "Sprint Planning", Start, "Room 4",
             It.Is<IReadOnlyList<Guid>>(ids => ids.Count == 1 && ids[0] == participantId),
-            "Ada Owner", It.IsAny<CancellationToken>(), null, true), Times.Once);
+            "Ada Owner", It.IsAny<CancellationToken>(), null, true, It.IsAny<ONEVO.Application.Features.Calendar.Services.CalendarEventIcs?>()), Times.Once);
     }
 
     [Fact]
@@ -156,7 +156,7 @@ public sealed class CreateCalendarEventCommandHandlerTests
         _notifications.Verify(x => x.NotifyGuestsAsync(
             TenantId, "Vendor sync", Start, "Room 4",
             It.Is<IReadOnlyList<string>>(e => e.SequenceEqual(new[] { "vendor@example.com", "pm@example.com" })),
-            "Ada Owner", "https://us05web.zoom.us/j/1", It.IsAny<CancellationToken>()), Times.Once);
+            "Ada Owner", "https://us05web.zoom.us/j/1", It.IsAny<CancellationToken>(), It.IsAny<ONEVO.Application.Features.Calendar.Services.CalendarEventIcs?>()), Times.Once);
     }
 
     [Fact]
@@ -202,7 +202,7 @@ public sealed class CreateCalendarEventCommandHandlerTests
 
         _notifications.Verify(x => x.NotifyGuestsAsync(
             It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<DateTimeOffset>(), It.IsAny<string?>(),
-            It.IsAny<IReadOnlyList<string>>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
+            It.IsAny<IReadOnlyList<string>>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>(), It.IsAny<ONEVO.Application.Features.Calendar.Services.CalendarEventIcs?>()), Times.Never);
     }
 
     [Fact]
@@ -217,7 +217,7 @@ public sealed class CreateCalendarEventCommandHandlerTests
         Assert.True(result.IsSuccess);
         _notifications.Verify(x => x.NotifyParticipantsAddedAsync(
             It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<DateTimeOffset>(), It.IsAny<string?>(),
-            It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+            It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<string>(), It.IsAny<CancellationToken>(), null, true, It.IsAny<ONEVO.Application.Features.Calendar.Services.CalendarEventIcs?>()), Times.Never);
     }
 
     [Fact]

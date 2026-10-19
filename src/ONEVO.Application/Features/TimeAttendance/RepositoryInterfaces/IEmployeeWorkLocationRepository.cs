@@ -13,5 +13,8 @@ public interface IEmployeeWorkLocationRepository
 
     void Update(EmployeeWorkLocation location);
 
+    /// <summary>Removes the registered location (an undone location change that created it).</summary>
+    void Remove(EmployeeWorkLocation location);
+
     Task<int> SaveChangesAsync(CancellationToken ct = default);
 }

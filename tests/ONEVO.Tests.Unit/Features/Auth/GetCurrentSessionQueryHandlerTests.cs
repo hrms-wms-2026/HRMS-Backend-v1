@@ -4,6 +4,8 @@ using Moq;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Login.Queries.GetCurrentSession;
+using ONEVO.Application.Features.CoreHr.Employee.Models;
+using ONEVO.Application.Features.CoreHr.Employee.ServiceInterfaces;
 using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
@@ -23,6 +25,15 @@ public sealed class GetCurrentSessionQueryHandlerTests
         current.SetupGet(instance => instance.Permissions).Returns(new[] { "people.read" });
         current.SetupGet(instance => instance.SessionExpiresAt).Returns(expires);
         return current;
+    }
+
+    private static Mock<IEmployeeVisibilityScopeResolver> Scope(params Guid[] coveredPositionIds)
+    {
+        var scope = new Mock<IEmployeeVisibilityScopeResolver>();
+        scope.Setup(s => s.ResolveAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new EmployeeVisibilityScope(
+                false, null, coveredPositionIds.ToHashSet(), new HashSet<Guid>(), new HashSet<Guid>()));
+        return scope;
     }
 
     private static Mock<ITenantContext> MakeResolvedTenantContext(Guid tenantId, string slug = "acme")
@@ -77,7 +88,8 @@ public sealed class GetCurrentSessionQueryHandlerTests
             tenantContext.Object,
             entitlements.Object,
             tenants.Object,
-            employees.Object);
+            employees.Object,
+            Scope().Object);
 
         var result = await handler.Handle(new GetCurrentSessionQuery(), default);
 
@@ -88,6 +100,34 @@ public sealed class GetCurrentSessionQueryHandlerTests
         result.Value.Permissions.Should().Equal("people.read");
         result.Value.ActiveModules.Should().Equal("people");
         result.Value.ExpiresAt.Should().Be(expires);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Me_ManagesPeople_FollowsManagementCoverage(bool coversSomeone)
+    {
+        var tenantId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+        var current = MakeAuthenticatedCurrentUser(userId, tenantId, DateTimeOffset.UtcNow.AddMinutes(20));
+        var tenantContext = MakeResolvedTenantContext(tenantId);
+        var entitlements = new Mock<IModuleEntitlementService>();
+        entitlements
+            .Setup(instance => instance.GetActiveModuleKeysForTenantAsync(tenantId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<string>());
+        var tenants = new Mock<ITenantRepository>();
+        tenants
+            .Setup(instance => instance.GetByIdAsync(tenantId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Tenant { Id = tenantId, Slug = "acme", Name = "Acme Inc" });
+        var employees = MakeEmployees(tenantId, userId, employee: null);
+        var scope = coversSomeone ? Scope(Guid.NewGuid()) : Scope();
+
+        var handler = new GetCurrentSessionQueryHandler(
+            current.Object, tenantContext.Object, entitlements.Object, tenants.Object, employees.Object, scope.Object);
+        var result = await handler.Handle(new GetCurrentSessionQuery(), default);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.ManagesPeople.Should().Be(coversSomeone);
     }
 
     [Fact]
@@ -110,7 +150,7 @@ public sealed class GetCurrentSessionQueryHandlerTests
 
         var employees = MakeEmployees(tenantId, userId, employee: null);
         var handler = new GetCurrentSessionQueryHandler(
-            current.Object, tenantContext.Object, entitlements.Object, tenants.Object, employees.Object);
+            current.Object, tenantContext.Object, entitlements.Object, tenants.Object, employees.Object, Scope().Object);
 
         var result = await handler.Handle(new GetCurrentSessionQuery(), default);
 
@@ -134,7 +174,7 @@ public sealed class GetCurrentSessionQueryHandlerTests
         var employees = new Mock<IEmployeeRepository>();
 
         var handler = new GetCurrentSessionQueryHandler(
-            current.Object, tenantContext.Object, entitlements.Object, tenants.Object, employees.Object);
+            current.Object, tenantContext.Object, entitlements.Object, tenants.Object, employees.Object, Scope().Object);
 
         var result = await handler.Handle(new GetCurrentSessionQuery(), default);
 
@@ -166,7 +206,7 @@ public sealed class GetCurrentSessionQueryHandlerTests
 
         var employees = MakeEmployees(tenantId, userId, employee: null);
         var handler = new GetCurrentSessionQueryHandler(
-            current.Object, tenantContext.Object, entitlements.Object, tenants.Object, employees.Object);
+            current.Object, tenantContext.Object, entitlements.Object, tenants.Object, employees.Object, Scope().Object);
 
         var result = await handler.Handle(new GetCurrentSessionQuery(), default);
 
@@ -214,7 +254,7 @@ public sealed class GetCurrentSessionQueryHandlerTests
         });
 
         var handler = new GetCurrentSessionQueryHandler(
-            current.Object, tenantContext.Object, entitlements.Object, tenants.Object, employees.Object);
+            current.Object, tenantContext.Object, entitlements.Object, tenants.Object, employees.Object, Scope().Object);
 
         var result = await handler.Handle(new GetCurrentSessionQuery(), default);
 
@@ -244,7 +284,7 @@ public sealed class GetCurrentSessionQueryHandlerTests
         var employees = MakeEmployees(tenantId, userId, employee: null);
 
         var handler = new GetCurrentSessionQueryHandler(
-            current.Object, tenantContext.Object, entitlements.Object, tenants.Object, employees.Object);
+            current.Object, tenantContext.Object, entitlements.Object, tenants.Object, employees.Object, Scope().Object);
 
         var result = await handler.Handle(new GetCurrentSessionQuery(), default);
 

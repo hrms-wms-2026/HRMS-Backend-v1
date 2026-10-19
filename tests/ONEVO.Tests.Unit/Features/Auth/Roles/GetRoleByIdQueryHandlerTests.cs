@@ -21,6 +21,7 @@ public class GetRoleByIdQueryHandlerTests
     private readonly Mock<IRolePermissionRepository> _rolePermissions = new();
     private readonly Mock<IPermissionRepository> _permissions = new();
     private readonly Mock<ITenantPermissionCatalogService> _catalog = new();
+    private readonly Mock<IModuleEntitlementService> _entitlements = new();
     private readonly Mock<ICurrentUser> _currentUser = new();
 
     private static readonly Guid TenantId = Guid.Parse("11111111-1111-1111-1111-111111111111");
@@ -36,11 +37,14 @@ public class GetRoleByIdQueryHandlerTests
         _currentUser.SetupGet(c => c.TenantId).Returns(TenantId);
         _catalog.Setup(c => c.GetCatalogAsync(TenantId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(TestCatalog());
+        _entitlements.Setup(e => e.GetActiveModuleKeysForTenantAsync(TenantId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(["leave"]);
         return new GetRoleByIdQueryHandler(
             _roles.Object,
             _rolePermissions.Object,
             _permissions.Object,
             _catalog.Object,
+            _entitlements.Object,
             _currentUser.Object);
     }
 
@@ -66,6 +70,31 @@ public class GetRoleByIdQueryHandlerTests
         result.Value.Permissions.Should().ContainSingle()
             .Which.Code.Should().Be("leave:read");
         result.Value.UniversalPermissions.Should().ContainSingle().Which.Code.Should().Be("inbox:read");
+    }
+
+    [Fact]
+    public async Task Handle_OmitsPermissionsFromUnsubscribedModules_KeepsBaselineModules()
+    {
+        var roleId = Guid.NewGuid();
+        var role = new Role { Id = roleId, TenantId = TenantId, Name = "Owner", Description = "x", IsSystem = true };
+        var subscribed = new Permission { Id = Guid.NewGuid(), Code = "leave:read", Description = "View leave", Module = "leave" };
+        var baseline = new Permission { Id = Guid.NewGuid(), Code = "roles:read", Description = "View roles", Module = "roles" };
+        var unsubscribed = new Permission { Id = Guid.NewGuid(), Code = "payroll:read", Description = "View payroll", Module = "payroll" };
+
+        _roles.Setup(r => r.GetByIdForTenantAsync(TenantId, roleId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(role);
+        _rolePermissions.Setup(r => r.ListByRoleAsync(roleId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[] { subscribed, baseline, unsubscribed }
+                .Select(p => new RolePermission { RoleId = roleId, PermissionId = p.Id })
+                .ToArray());
+        _permissions.Setup(p => p.GetByIdsAsync(It.IsAny<IEnumerable<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[] { subscribed, baseline, unsubscribed });
+
+        var sut = BuildSut();
+        var result = await sut.Handle(new GetRoleByIdQuery(roleId), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.Permissions.Select(p => p.Code).Should().BeEquivalentTo("leave:read", "roles:read");
     }
 
     [Fact]

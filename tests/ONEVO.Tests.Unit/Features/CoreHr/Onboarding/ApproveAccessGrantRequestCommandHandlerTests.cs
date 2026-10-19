@@ -1,3 +1,4 @@
+using ONEVO.Application.Features.CoreHr.PositionAssignment.Models;
 using Moq;
 using ONEVO.Application.Common.Exceptions;
 using ONEVO.Application.Common.ServiceInterfaces;
@@ -389,6 +390,54 @@ public sealed class ApproveAccessGrantRequestCommandHandlerTests
         Assert.Equal(draftId, result.Value!.OnboardingDraftId);
         Assert.Equal("Approved", result.Value.PositionApprovalStatus);
         Assert.True(result.Value.InvitationQueued);
+    }
+
+    [Theory]
+    [InlineData("holder")]
+    [InlineData("cross_line")]
+    [InlineData("left_company")]
+    public async Task Handle_ReservesAssignment_WithTheWizardsReportingManager(string chosenState)
+    {
+        var reportsToPositionId = Guid.NewGuid();
+        var firstHolder = Guid.NewGuid();
+        var chosen = Guid.NewGuid();
+        var requestId = Guid.NewGuid();
+        var draftId = Guid.NewGuid();
+        var draft = ValidDraft(draftId);
+        draft.ReportsToEmployeeId = chosen;
+        _accessGrantRequestRepository.Setup(r => r.GetTrackedByIdAsync(_tenantId, requestId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ValidGrantRequest(requestId, draftId));
+        _draftRepository.Setup(r => r.GetTrackedAsync(_tenantId, draftId, It.IsAny<CancellationToken>())).ReturnsAsync(draft);
+        _positionRepository
+            .Setup(r => r.GetByIdForLegalEntityAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Position
+            {
+                Id = _positionId, TenantId = _tenantId, DepartmentId = _departmentId, IsActive = true, MaxOccupancy = 5,
+                ReportsToPositionId = reportsToPositionId
+            });
+        var holders = new List<PositionActiveHolder> { new(firstHolder, "A", "One", "a@test.dev", null), new(Guid.NewGuid(), "C", "Three", "c@test.dev", null) };
+        if (chosenState == "holder")
+            holders.Add(new(chosen, "B", "Two", "b@test.dev", null));
+        _positionAssignmentRepository
+            .Setup(r => r.GetActiveHoldersAsync(_tenantId, reportsToPositionId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<PositionActiveHolder>)holders);
+        if (chosenState != "left_company")
+        {
+            // Still employed in this company with an active seat - whether or not in the line above.
+            _employeeRepository.Setup(r => r.GetByIdAsync(_tenantId, chosen, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new EmployeeEntity { Id = chosen, TenantId = _tenantId, LegalEntityId = _legalEntityId });
+            _positionAssignmentRepository.Setup(r => r.GetActivePrimaryAsync(_tenantId, chosen, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new ONEVO.Domain.Features.CoreHr.Entities.PositionAssignment { Id = Guid.NewGuid(), EmployeeId = chosen, PositionId = Guid.NewGuid() });
+        }
+
+        var result = await CreateHandler().Handle(new ApproveAccessGrantRequestCommand(requestId), CancellationToken.None);
+
+        Assert.True(result.IsSuccess, result.Error);
+        // Kept while they're still employed (in or out of the line above); otherwise the wizard's
+        // own default - the first current holder of the position above.
+        var expected = chosenState == "left_company" ? firstHolder : chosen;
+        _positionAssignmentRepository.Verify(r => r.TryReservePositionAssignmentAsync(
+            _tenantId, It.IsAny<Guid>(), _positionId, It.IsAny<DateOnly>(), _userId, expected, It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]

@@ -1,3 +1,4 @@
+using ONEVO.Application.Features.Inbox.OutboxHandlers;
 using Moq;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
@@ -14,6 +15,8 @@ namespace ONEVO.Tests.Unit.Features.WorkManagement;
 
 public class RejectObjectiveInvitationCommandHandlerTests
 {
+    private readonly Mock<IOutboxWriter> _outbox = new();
+
     private static readonly Guid TenantId = Guid.NewGuid();
     private static readonly Guid InvitedUserId = Guid.NewGuid();
     private static readonly Guid InvitedEmployeeId = Guid.NewGuid();
@@ -59,7 +62,7 @@ public class RejectObjectiveInvitationCommandHandlerTests
         unitOfWork.Setup(x => x.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
 
         var handler = new RejectObjectiveInvitationCommandHandler(
-            currentUser.Object, identity.Object, invitations.Object, objectives.Object, unitOfWork.Object);
+            currentUser.Object, identity.Object, invitations.Object, objectives.Object, unitOfWork.Object, _outbox.Object);
         return (handler, invitations);
     }
 
@@ -72,6 +75,12 @@ public class RejectObjectiveInvitationCommandHandlerTests
 
         Assert.True(result.IsSuccess);
         invitations.Verify(x => x.Update(It.Is<ProjectMemberInvitation>(i => i.Status == ProjectInvitationStatuses.Declined)), Times.Once);
+        var outbox = _outbox;
+        outbox.Verify(x => x.EnqueueAsync(
+            OutboxMessageTypes.InboxChanged,
+            It.Is<InboxChangedPayload>(p => p.Source == "work" && p.Kind == "invitation" && p.Id == InvitationId
+                && p.EmployeeIds.Contains(InvitedEmployeeId)),
+            TenantId, It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]

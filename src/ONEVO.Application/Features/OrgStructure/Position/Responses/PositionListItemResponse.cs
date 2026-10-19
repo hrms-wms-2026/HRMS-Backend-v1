@@ -29,4 +29,7 @@ public record PositionListItemResponse(
     int AssignedCount,
     IReadOnlyList<PositionOccupantPreviewResponse> OccupantPreview,
     int RemainingAssignedCount,
-    bool RequiresApproval);
+    bool RequiresApproval,
+    // Seats reserved by pending onboarding invites (planned assignments); not occupants yet,
+    // but no longer free. Free seats = MaxOccupancy - AssignedCount - ReservedCount.
+    int ReservedCount = 0);

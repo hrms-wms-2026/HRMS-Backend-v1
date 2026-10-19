@@ -12,6 +12,15 @@ public interface ILeaveRequestRepository
         DateTimeOffset endAt,
         CancellationToken ct = default);
 
+    /// <summary>The same overlap check, ignoring one request (that request's own dates being edited).</summary>
+    Task<bool> HasOverlappingPendingOrApprovedRequestExceptAsync(
+        Guid tenantId,
+        Guid employeeId,
+        DateTimeOffset startAt,
+        DateTimeOffset endAt,
+        Guid excludeRequestId,
+        CancellationToken ct = default);
+
     Task<IReadOnlyList<LeaveRequestListRow>> ListOwnAsync(
         Guid tenantId,
         Guid employeeId,
@@ -69,8 +78,7 @@ public sealed record LeaveRequestListRow(
     LeaveRequest Request,
     string LeaveTypeName,
     string LeaveTypeCode,
-    string? ApprovedByName = null,
-    string? InfoQuestion = null);
+    string? ApprovedByName = null);
 
 public sealed record LeaveApprovalDelegateRow(
     Guid ApproverEmployeeId,

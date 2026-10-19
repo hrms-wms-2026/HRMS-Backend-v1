@@ -66,6 +66,30 @@ public class ExceptionAlertRouterTests
             ExceptionPermissions.RelatedEntityType, It.IsAny<Guid?>(), It.IsAny<CancellationToken>()), times);
 
     [Fact]
+    public async Task Detected_EnqueuesInboxChangedForTheReviewerAndTheSubject_WithTheAlert()
+    {
+        ManagerRoute(_managerUserId);
+        var inbox = new Mock<ONEVO.Application.Features.Inbox.Services.IInboxChangeNotifier>();
+        var order = new List<string>();
+        _notifications.Setup(n => n.SendTemplatedAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<string>(),
+                It.IsAny<IReadOnlyDictionary<string, string>>(), It.IsAny<string>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
+            .Callback(() => order.Add("alert")).Returns(Task.CompletedTask);
+        inbox.Setup(i => i.EnqueueAsync(It.IsAny<Guid>(), It.IsAny<IEnumerable<Guid>>(),
+                It.IsAny<ONEVO.Application.Features.Conversations.Contracts.ItemRef>(), It.IsAny<CancellationToken>()))
+            .Callback(() => order.Add("inbox")).Returns(Task.CompletedTask);
+        var exception = Case();
+
+        await new ExceptionAlertRouter(_authority.Object, _employees.Object, _permissions.Object, _notifications.Object, _clock.Object,
+            inbox: inbox.Object).NotifyDetectedAsync(exception, CancellationToken.None);
+
+        // Both are queued on the caller's unit of work; the caller's single SaveChanges commits them with the case.
+        order.Should().Equal("alert", "inbox");
+        inbox.Verify(i => i.EnqueueAsync(_tenantId, It.Is<IEnumerable<Guid>>(ids => ids.Contains(_employeeId) && ids.Count() == 2),
+            new ONEVO.Application.Features.Conversations.Contracts.ItemRef("monitoring", "exception_case", exception.Id),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
     public async Task Detected_GoesToReportingManager_ResolvedThroughAuthorityResolver()
     {
         ManagerRoute(_managerUserId);

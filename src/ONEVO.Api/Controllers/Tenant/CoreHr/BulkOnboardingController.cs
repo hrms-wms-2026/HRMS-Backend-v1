@@ -183,7 +183,7 @@ public class BulkOnboardingController : ControllerBase
     }
 
     [HttpGet("{id:guid}")]
-    [RequirePermission("employees:read")]
+    [RequirePermission("employees:write")]
     public async Task<IActionResult> GetById(Guid id, CancellationToken ct = default)
     {
         var result = await _mediator.Send(new GetBulkOnboardingBatchQuery(id), ct);

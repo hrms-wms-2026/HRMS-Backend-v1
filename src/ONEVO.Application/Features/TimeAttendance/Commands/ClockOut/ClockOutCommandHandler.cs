@@ -1,3 +1,4 @@
+using ONEVO.Application.Features.Monitoring.TrayActivation.ServiceInterfaces;
 using MediatR;
 using ONEVO.Application.Common.Exceptions;
 using ONEVO.Application.Common.Models;
@@ -14,7 +15,8 @@ public sealed class ClockOutCommandHandler(
     IAttendanceTodayStateService todayState,
     IAttendanceReadRepository attendance,
     IUnitOfWork unitOfWork,
-    ITaskClockingSessionRepository taskSessions)
+    ITaskClockingSessionRepository taskSessions,
+    ITrayPushNotifier? trayPush = null)
     : IRequestHandler<ClockOutCommand, Result<AttendanceTodayResponse>>
 {
     public async Task<Result<AttendanceTodayResponse>> Handle(
@@ -44,6 +46,11 @@ public sealed class ClockOutCommandHandler(
             return Result<AttendanceTodayResponse>.Conflict(
                 "Attendance for this work day was just updated by another request. Please refresh and try again.");
         }
+
+        // After commit, so the tray re-reads the committed state.
+        if (trayPush is not null)
+            await trayPush.NotifyUserAsync(
+                context.Employee.TenantId, context.Employee.UserId, TrayPushMessages.AttendanceChanged, ct);
 
         return await todayState.GetTodayAsync(context.Employee.TenantId, context.Employee.UserId, ct);
     }

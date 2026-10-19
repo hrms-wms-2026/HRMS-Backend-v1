@@ -23,6 +23,12 @@ public class EmployeeMonitoringOverride : ITenantOwnedEntity
     public bool? IdentityVerification { get; set; }
     public bool? Biometric { get; set; }
 
+    /// <summary>
+    /// Per-employee override of WorkMode.PhotoRequired (clock-in camera photo). Null = use the
+    /// work mode's own setting.
+    /// </summary>
+    public bool? PhotoRequired { get; set; }
+
     /// <summary>Per-employee override. Null = inherit from role/position/department/tenant.</summary>
     public int? IdleThresholdMinutes { get; set; }
 

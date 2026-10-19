@@ -344,6 +344,37 @@ public sealed class EfEmployeeRepositoryTests
     }
 
     [Fact]
+    public async Task ListVisibleAsync_AttendanceSummaryCountsOnlyTheEmployeesOpenAttendanceAlerts()
+    {
+        await using var db = BuildInMemoryDb();
+        var tenantId = Guid.NewGuid();
+        var legalEntityId = Guid.NewGuid();
+        var employee = NewEmployee(tenantId, "E-001");
+        employee.LegalEntityId = legalEntityId;
+        db.Employees.Add(employee);
+        db.EmploymentStatuses.Add(new EmploymentStatus { Id = 1, Code = "active", Label = "Active" });
+        db.LegalEntities.Add(WorkingLegalEntity(tenantId, legalEntityId));
+        ONEVO.Domain.Features.TimeAttendance.Alerts.AttendanceAlert Alert(Guid who, int day, string status) => new()
+        {
+            Id = Guid.NewGuid(), TenantId = tenantId, EmployeeId = who, WorkDate = new DateOnly(2026, 8, day),
+            SignalKey = ONEVO.Domain.Features.TimeAttendance.Alerts.AttendanceAlertSignals.AbsentDays, Status = status
+        };
+        db.AttendanceAlerts.AddRange(
+            Alert(employee.Id, 3, ONEVO.Domain.Features.TimeAttendance.Alerts.AttendanceAlertStatuses.Open),
+            Alert(employee.Id, 4, ONEVO.Domain.Features.TimeAttendance.Alerts.AttendanceAlertStatuses.Open),
+            Alert(employee.Id, 5, ONEVO.Domain.Features.TimeAttendance.Alerts.AttendanceAlertStatuses.Resolved),
+            Alert(Guid.NewGuid(), 3, ONEVO.Domain.Features.TimeAttendance.Alerts.AttendanceAlertStatuses.Open));
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var (items, _) = await new EfEmployeeRepository(db).ListVisibleAsync(
+            tenantId, EmployeeVisibilityScope.Unrestricted(), new EmployeeListFilter(null, null, legalEntityId, new[] { employee.Id }),
+            1, 25, CancellationToken.None, new EmployeeListAttendanceOptions(new DateTimeOffset(2026, 8, 21, 4, 0, 0, TimeSpan.Zero)));
+
+        Assert.Equal(2, Assert.Single(items).AttendanceSummary!.OpenAlertCount);
+    }
+
+    [Fact]
     public async Task ListVisibleAsync_MarksActiveEmployeeWithoutTodayRecordAfterLocalStart()
     {
         await using var db = BuildInMemoryDb();

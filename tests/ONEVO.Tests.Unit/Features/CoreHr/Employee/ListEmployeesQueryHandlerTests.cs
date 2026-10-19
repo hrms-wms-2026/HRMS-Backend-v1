@@ -6,6 +6,7 @@ using ONEVO.Application.Features.CoreHr.Employee.Queries.ListEmployees;
 using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.EmployeeAuthority.Models;
 using ONEVO.Application.Features.CoreHr.EmployeeAuthority.ServiceInterfaces;
+using ONEVO.Application.Features.Monitoring.TrayActivation.ServiceInterfaces;
 using EmployeeEntity = ONEVO.Domain.Features.CoreHr.Entities.Employee;
 using EntityAssetRepository = ONEVO.Application.Common.RepositoryInterfaces.IEntityAssetRepository;
 
@@ -70,6 +71,30 @@ public sealed class ListEmployeesQueryHandlerTests
             .ReturnsAsync(new EmployeeAuthorityVisibilityScope(_userId, legalEntityId, includesSelf, employeeIds));
 
     [Fact]
+    public async Task Handle_MarksOnlyEmployeesWhoseTrayIsConnectedAsOnline()
+    {
+        var online = Guid.NewGuid(); var offline = Guid.NewGuid();
+        SetupVisibility(_defaultLegalEntityId, true, online, offline);
+        _employeeRepository
+            .Setup(r => r.ListVisibleAsync(
+                It.IsAny<Guid>(), It.IsAny<EmployeeVisibilityScope>(), It.IsAny<EmployeeListFilter>(),
+                It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>(),
+                It.IsAny<EmployeeListAttendanceOptions>()))
+            .ReturnsAsync((new[] { Item(online, "On Line"), Item(offline, "Off Line") }, 2));
+        var reader = new Mock<IEmployeeOnlineStatusReader>();
+        reader
+            .Setup(r => r.GetOnlineEmployeeIdsAsync(_tenantId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new HashSet<Guid> { online });
+
+        var result = await new ListEmployeesQueryHandler(
+                _employeeRepository.Object, _authorityResolver.Object, _entityAssets.Object, _currentUser.Object, _dateTime.Object, reader.Object)
+            .Handle(new ListEmployeesQuery(null, null, null), CancellationToken.None);
+
+        Assert.True(result.Value!.Items.Single(i => i.Id == online).IsOnline);
+        Assert.False(result.Value!.Items.Single(i => i.Id == offline).IsOnline);
+    }
+
+    [Fact]
     public async Task Handle_PassesNewFiltersAndCanonicalSortToRepository()
     {
         SetupVisibility(_defaultLegalEntityId, true, Guid.NewGuid());
@@ -127,14 +152,14 @@ public sealed class ListEmployeesQueryHandlerTests
     }
 
     [Fact]
-    public async Task Handle_CallsResolver_WithEmployeeListReadPurposeAndEmployeesReadPermissionAndIncludeSelf()
+    public async Task Handle_CallsResolver_WithEmployeeListReadPurposeRelationshipOnlyAndIncludeSelf()
     {
         await CreateHandler().Handle(new ListEmployeesQuery(null, null, null), CancellationToken.None);
 
         _authorityResolver.Verify(r => r.ResolveVisibilityAsync(
             It.Is<EmployeeAuthorityVisibilityRequest>(req =>
                 req.ActorUserId == _userId
-                && req.RequiredPermission == "employees:read"
+                && req.RequiredPermission == EmployeeAuthorityVisibilityRequest.RelationshipOnly
                 && req.IncludeSelf
                 && req.Purpose == EmployeeAuthorityPurpose.EmployeeListRead),
             It.IsAny<CancellationToken>()));

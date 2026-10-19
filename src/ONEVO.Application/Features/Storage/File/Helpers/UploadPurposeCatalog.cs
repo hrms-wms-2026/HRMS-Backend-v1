@@ -10,6 +10,7 @@ public static class UploadPurposeCatalog
     public const string CompanyLogo = "company_logo";
     public const string EmployeeAvatar = "employee_avatar";
     public const string GenericDocument = "generic_document";
+    public const string EmployeeDocument = "employee_document";
     public const string LeaveSupportingDocument = "leave_supporting_document";
     public const string ProjectCover = "project_cover";
     public const string ProjectBanner = "project_banner";
@@ -21,6 +22,7 @@ public static class UploadPurposeCatalog
     public const string TaskDescriptionImage = "task_description_image";
     public const string CommentAttachment = "comment_attachment";
     public const string CommentDescriptionImage = "comment_description_image";
+    public const string ConversationAttachment = "conversation_attachment";
 
     private static readonly IReadOnlyList<string> ImageContentTypes = new[]
     {
@@ -84,6 +86,15 @@ public static class UploadPurposeCatalog
                 "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
             },
             new[] { ".pdf", ".png", ".jpg", ".jpeg", ".doc", ".docx" }),
+        [EmployeeDocument] = new UploadPurposeRule(
+            10 * 1024 * 1024,
+            new[]
+            {
+                "application/pdf", "image/png", "image/jpeg",
+                "application/msword",
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            },
+            new[] { ".pdf", ".png", ".jpg", ".jpeg", ".doc", ".docx" }),
         [LeaveSupportingDocument] = new UploadPurposeRule(
             25 * 1024 * 1024,
             new[]
@@ -97,7 +108,8 @@ public static class UploadPurposeCatalog
         [TaskAttachment] = new UploadPurposeRule(25 * 1024 * 1024, TaskAttachmentContentTypes, TaskAttachmentExtensions),
         [TaskDescriptionImage] = new UploadPurposeRule(5 * 1024 * 1024, ImageContentTypes, ImageExtensions),
         [CommentAttachment] = new UploadPurposeRule(25 * 1024 * 1024, TaskAttachmentContentTypes, TaskAttachmentExtensions),
-        [CommentDescriptionImage] = new UploadPurposeRule(5 * 1024 * 1024, ImageContentTypes, ImageExtensions)
+        [CommentDescriptionImage] = new UploadPurposeRule(5 * 1024 * 1024, ImageContentTypes, ImageExtensions),
+        [ConversationAttachment] = new UploadPurposeRule(25 * 1024 * 1024, TaskAttachmentContentTypes, TaskAttachmentExtensions)
     };
 
     public static IReadOnlyList<string> SupportedPurposes => Rules.Keys.ToList();

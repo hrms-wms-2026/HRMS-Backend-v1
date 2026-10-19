@@ -3,6 +3,7 @@ using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Calendar.RepositoryInterfaces;
+using ONEVO.Application.Features.Calendar.Services;
 
 namespace ONEVO.Application.Features.Calendar.Commands.RemoveCalendarEventParticipant;
 
@@ -14,7 +15,9 @@ public sealed record RemoveCalendarEventParticipantCommand(Guid EventId, Guid Em
 public sealed class RemoveCalendarEventParticipantCommandHandler(
     ICurrentUser currentUser,
     ICalendarEventRepository events,
-    IUnitOfWork unitOfWork)
+    IUnitOfWork unitOfWork,
+    ICalendarNotificationSender? notifications = null,
+    ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces.IEmployeeRepository? employees = null)
     : IRequestHandler<RemoveCalendarEventParticipantCommand, Result>
 {
     public async Task<Result> Handle(RemoveCalendarEventParticipantCommand request, CancellationToken ct)
@@ -35,6 +38,17 @@ public sealed class RemoveCalendarEventParticipantCommandHandler(
             return Result.NotFound("This employee is not a participant on this event.");
 
         events.RemoveParticipant(participant);
+
+        // The removed person hears about it in-app and by email (plan C1 P1-4); staged before the save that writes it.
+        if (notifications is not null)
+        {
+            var organizerName = await CalendarOrganizer.NameAsync(employees, tenantId, currentUser.UserId, ct);
+            await notifications.NotifyParticipantRemovedAsync(tenantId, participant.EmployeeId, existing.Title, organizerName, ct);
+            await notifications.EmailEventChangedAsync(tenantId, CalendarEventEmailKinds.Removed,
+                CalendarEventIcs.For(existing.Id, existing.EndDate, existing.RecurrenceRule, DateTimeOffset.UtcNow),
+                existing.Title, existing.StartDate, existing.Location, null, [participant.EmployeeId], [], organizerName, ct);
+            await notifications.QueueIncidentEvaluationAsync(tenantId, [participant.EmployeeId], ct);
+        }
         await unitOfWork.SaveChangesAsync(ct);
         return Result.Success();
     }

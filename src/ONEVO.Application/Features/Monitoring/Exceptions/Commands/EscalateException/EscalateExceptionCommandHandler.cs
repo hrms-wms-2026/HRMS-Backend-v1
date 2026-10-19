@@ -37,7 +37,7 @@ public class EscalateExceptionCommandHandler : IRequestHandler<EscalateException
         if (scope is null)
             return Result.Forbidden("You do not have permission to escalate exceptions.");
 
-        if (exception is null || !scope.CanSee(exception.EmployeeId))
+        if (exception is null || !scope.CanAct(exception.Id, exception.EmployeeId))
             return Result.NotFound("Exception not found.");
         if (exception.Status is ExceptionStatus.Resolved)
             return Result.Conflict("Exception is already resolved.");

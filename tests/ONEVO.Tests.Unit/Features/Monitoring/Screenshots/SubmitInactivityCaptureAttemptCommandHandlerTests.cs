@@ -152,6 +152,25 @@ public class SubmitInactivityCaptureAttemptCommandHandlerTests
             It.IsAny<string>(), It.IsAny<Stream>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
+    [Theory]
+    [InlineData(InactivityCaptureOutcomes.ConfirmedWorking)]
+    [InlineData(InactivityCaptureOutcomes.NotWorking)]
+    public async Task Handle_WorkingCheckAnswer_PersistsOutcome_WithoutUpload(string outcome)
+    {
+        InactivityCaptureAttempt? savedAttempt = null;
+        _attemptsRepo.Setup(r => r.Add(It.IsAny<InactivityCaptureAttempt>()))
+            .Callback<InactivityCaptureAttempt>(a => savedAttempt = a);
+
+        var result = await CreateHandler().Handle(MakeCommand(outcome), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        savedAttempt!.Outcome.Should().Be(outcome);
+        savedAttempt.EvidenceAssetId.Should().BeNull();
+        _fileStorage.Verify(f => f.UploadAsync(
+            It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<string>(),
+            It.IsAny<string>(), It.IsAny<Stream>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
     [Fact]
     public async Task Handle_AlreadyRecorded_ReturnsConflict()
     {

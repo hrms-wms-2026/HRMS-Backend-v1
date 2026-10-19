@@ -1,3 +1,4 @@
+using ONEVO.Infrastructure.Configuration;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.Extensions.Configuration;
@@ -109,11 +110,7 @@ internal static class AuthenticationExtensions
             .AddJwtBearer("TrayDeviceScheme", options =>
             {
                 var trayJwt = configuration.GetSection("TrayApp:Jwt");
-                var secret = trayJwt["Secret"]
-                    ?? throw new InvalidOperationException("TrayApp:Jwt:Secret is required.");
-                if (secret.Length < 32)
-                    throw new InvalidOperationException(
-                        "TrayApp:Jwt:Secret must be at least 32 characters.");
+                var secret = ConfigurationStartupValidator.RequireTrayJwtSecret(configuration);
 
                 var issuer = trayJwt["Issuer"] ?? "onevo-tray";
                 var audience = trayJwt["Audience"] ?? "onevo-tray-app";

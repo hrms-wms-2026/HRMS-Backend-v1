@@ -4,6 +4,7 @@ using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Calendar.Helpers;
 using ONEVO.Application.Features.Calendar.RepositoryInterfaces;
+using ONEVO.Application.Features.Calendar.Services;
 
 namespace ONEVO.Application.Features.Calendar.Commands.RemoveCalendarEventGuest;
 
@@ -14,7 +15,9 @@ public sealed record RemoveCalendarEventGuestCommand(Guid EventId, string Email)
 public sealed class RemoveCalendarEventGuestCommandHandler(
     ICurrentUser currentUser,
     ICalendarEventRepository events,
-    IUnitOfWork unitOfWork)
+    IUnitOfWork unitOfWork,
+    ICalendarNotificationSender? notifications = null,
+    ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces.IEmployeeRepository? employees = null)
     : IRequestHandler<RemoveCalendarEventGuestCommand, Result>
 {
     public async Task<Result> Handle(RemoveCalendarEventGuestCommand request, CancellationToken ct)
@@ -38,6 +41,15 @@ public sealed class RemoveCalendarEventGuestCommandHandler(
             return Result.NotFound("This guest is not invited to this event.");
 
         events.RemoveGuest(guest);
+
+        // A guest has no account: the removal reaches them by email, with a CANCEL .ics (plan C1 P1-4).
+        if (notifications is not null)
+        {
+            var organizerName = await CalendarOrganizer.NameAsync(employees, tenantId, currentUser.UserId, ct);
+            await notifications.EmailEventChangedAsync(tenantId, CalendarEventEmailKinds.Removed,
+                CalendarEventIcs.For(existing.Id, existing.EndDate, existing.RecurrenceRule, DateTimeOffset.UtcNow),
+                existing.Title, existing.StartDate, existing.Location, null, [], [guest.Email], organizerName, ct);
+        }
         await unitOfWork.SaveChangesAsync(ct);
         return Result.Success();
     }

@@ -20,7 +20,6 @@ public interface ILeaveApprovalRepository
         LeaveRequestAllListFilter filter,
         CancellationToken ct = default);
 
-    Task AddInfoMessageAsync(LeaveRequestInfoMessage message, CancellationToken ct = default);
 
     Task AddApproverAsync(LeaveRequestApprover approver, CancellationToken ct = default);
 
@@ -43,6 +42,26 @@ public interface ILeaveApprovalRepository
         IReadOnlyCollection<Guid> fileRecordIds,
         CancellationToken ct = default);
 
+    Task<int> CountDocumentsAsync(Guid tenantId, Guid requestId, CancellationToken ct = default);
+
+    /// <summary>Requests a user submitted on behalf of someone else, newest first.</summary>
+    Task<IReadOnlyList<LeaveRequest>> ListSubmittedOnBehalfAsync(Guid tenantId, Guid submitterUserId, CancellationToken ct = default);
+
+    Task<IReadOnlyDictionary<Guid, string>> ListLeaveTypeNamesAsync(Guid tenantId, IReadOnlyCollection<Guid> leaveTypeIds, CancellationToken ct = default);
+
+    /// <summary>Removes a pending approver row (undoing a forward). Saved with SaveChangesAsync.</summary>
+    void RemoveApprover(LeaveRequestApprover approver);
+
+    /// <summary>The request's active day allocations, tracked (edited approval replaces them).</summary>
+    Task<IReadOnlyList<LeaveRequestDayAllocation>> ListActiveAllocationsAsync(Guid tenantId, Guid requestId, CancellationToken ct = default);
+
+    Task AddAllocationsAsync(IReadOnlyCollection<LeaveRequestDayAllocation> allocations, CancellationToken ct = default);
+
+    /// <summary>Balance audit rows of this employee and leave type created after <paramref name="since"/>, oldest first
+    /// (what changed the balance after a decision - the Inbox revert checks it).</summary>
+    Task<IReadOnlyList<LeaveBalanceAudit>> ListBalanceAuditsSinceAsync(
+        Guid tenantId, Guid employeeId, Guid leaveTypeId, DateTimeOffset since, CancellationToken ct = default);
+
     Task SaveChangesAsync(CancellationToken ct = default);
 }
 
@@ -53,8 +72,7 @@ public sealed record LeaveApprovalState(
     string LeaveTypeName,
     string LeaveTypeCode,
     string? ApprovalMode,
-    IReadOnlyList<LeaveRequestApprover> Approvers,
-    IReadOnlyList<LeaveRequestInfoMessage> InfoMessages);
+    IReadOnlyList<LeaveRequestApprover> Approvers);
 
 public sealed record LeaveApprovalListFilter(
     string? Search,

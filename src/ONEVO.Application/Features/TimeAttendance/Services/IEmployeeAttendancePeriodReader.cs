@@ -15,7 +15,10 @@ public sealed record AttendancePeriodData(
     IReadOnlyList<LeaveRequest> ApprovedLeaves,
     DateTimeOffset RangeStartUtc,
     DateTimeOffset RangeEndUtc,
-    ExpectedWorkdays Workdays);
+    ExpectedWorkdays Workdays,
+    // Per alert signal, the dates whose alert was resolved as excused or converted to leave (plan E1).
+    // Null = nothing excused, as in the raw classification the alert materialiser runs on.
+    IReadOnlyDictionary<string, IReadOnlySet<DateOnly>>? Excused = null);
 
 public interface IEmployeeAttendancePeriodReader
 {

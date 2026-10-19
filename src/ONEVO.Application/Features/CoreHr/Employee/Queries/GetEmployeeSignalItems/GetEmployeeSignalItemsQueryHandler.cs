@@ -34,9 +34,19 @@ public sealed class GetEmployeeSignalItemsQueryHandler(
     IExceptionRepository exceptions,
     IExceptionScopeResolver exceptionScope,
     ICurrentUser currentUser,
-    IDateTimeProvider clock)
+    IDateTimeProvider clock,
+    ONEVO.Application.Features.Calendar.Exceptions.ICalendarIncidentRepository? incidents = null,
+    ONEVO.Application.Features.Monitoring.Exceptions.Services.ExceptionCaseRouting? caseRouting = null)
     : IRequestHandler<GetEmployeeSignalItemsQuery, Result<EmployeeSignalItemsResponse>>
 {
+    /// <summary>The exception cases of one employee are shown only to whoever they are routed to (their attendance
+    /// approver; HR only for monitoring cases of someone nobody can review) - the same rule as the Inbox.</summary>
+    private async Task<bool> ReviewsCasesAsync(
+        Guid tenantId, Guid employeeId, ONEVO.Application.Features.Monitoring.Exceptions.ServiceInterfaces.ExceptionScope? scope,
+        bool hrFallback, CancellationToken ct)
+        => scope?.CanSee(employeeId) == true
+           && (caseRouting is null || await caseRouting.ReviewsEmployeeAsync(tenantId, employeeId, scope, hrFallback, ct));
+
     public const int MaxItems = 50;
 
     private static readonly HashSet<string> AttendanceKeys =
@@ -85,7 +95,7 @@ public sealed class GetEmployeeSignalItemsQueryHandler(
                 if (!await toggles.IsEnabledForEmployeeAsync(tenantId, request.EmployeeId, MonitoringCapability.ActivityMonitoring, ct))
                     return Hidden();
                 var scope = await exceptionScope.ResolveAsync(forAction: false, [request.EmployeeId], ct);
-                if (scope?.CanSee(request.EmployeeId) != true)
+                if (!await ReviewsCasesAsync(tenantId, request.EmployeeId, scope, hrFallback: true, ct))
                     return Hidden();
                 var data = await reader.LoadAsync(tenantId, request.EmployeeId, legalEntityId, period.Value, ct);
                 var total = await exceptions.CountDetectedInRangeAsync(tenantId, request.EmployeeId, utcStart, utcEnd, ct);
@@ -94,6 +104,27 @@ public sealed class GetEmployeeSignalItemsQueryHandler(
                     "exception_case", c.Id.ToString(), LocalDate(c.DetectedAt, data.Timezone), c.Title, c.Description,
                     OccurredAt: c.DetectedAt)).ToList();
                 return Result<EmployeeSignalItemsResponse>.Success(new(request.Key, total, data.Timezone.Id, items));
+            }
+            case "meeting_exceptions":
+            {
+                // The meetings behind the open calendar meeting-exception cases (plan C2) - meeting facts only, never
+                // application names or activity samples.
+                var scope = await exceptionScope.ResolveAsync(forAction: false, [request.EmployeeId], ct);
+                if (!await ReviewsCasesAsync(tenantId, request.EmployeeId, scope, hrFallback: false, ct))
+                    return Hidden();
+                var data = await reader.LoadAsync(tenantId, request.EmployeeId, legalEntityId, period.Value, ct);
+                var total = await exceptions.CountDetectedInRangeAsync(tenantId, request.EmployeeId, utcStart, utcEnd, ct, calendar: true);
+                var cases = await exceptions.ListDetectedInRangeAsync(tenantId, request.EmployeeId, utcStart, utcEnd, MaxItems, ct, calendar: true);
+                var items = new List<EmployeeSignalItem>();
+                foreach (var c in cases)
+                {
+                    var rows = incidents is null ? [] : await incidents.ListForExceptionAsync(tenantId, c.Id, ct);
+                    items.AddRange(rows.Count == 0
+                        ? [new EmployeeSignalItem("meeting_incident", c.Id.ToString(), LocalDate(c.DetectedAt, data.Timezone), c.Title, c.Description, OccurredAt: c.DetectedAt)]
+                        : rows.Select(i => new EmployeeSignalItem("meeting_incident", i.Id.ToString(), LocalDate(i.OccurrenceStart, data.Timezone), c.Title,
+                            ONEVO.Application.Features.Calendar.Exceptions.CalendarIncidentEvidence.MeetingTitle(i.EvidenceJson), OccurredAt: i.OccurrenceStart)));
+                }
+                return Result<EmployeeSignalItemsResponse>.Success(new(request.Key, total, data.Timezone.Id, items.Take(MaxItems).ToList()));
             }
             case "overdue_tasks":
             {

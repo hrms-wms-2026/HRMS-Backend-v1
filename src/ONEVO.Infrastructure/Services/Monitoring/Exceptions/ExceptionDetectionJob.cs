@@ -14,12 +14,12 @@ using DomainException = ONEVO.Domain.Features.Monitoring.Exceptions.Entities.Exc
 
 namespace ONEVO.Infrastructure.Services.Monitoring.Exceptions;
 
-/// <summary>Nightly (23:30 UTC, 30 min after ActivityDailySummaryJob) multi-day pattern detection and escalation sweep.</summary>
+/// <summary>Nightly (23:30 UTC, 30 min after ActivityDailySummaryJob) multi-day pattern detection. Stale cases are
+/// escalated by the hourly InboxEscalationSweepJob.</summary>
 public sealed class ExceptionDetectionJob : BackgroundService
 {
     private static readonly TimeSpan CheckInterval = TimeSpan.FromMinutes(15);
     private static readonly TimeOnly TargetUtcTime = new(23, 30);
-    private static readonly TimeSpan EscalationThreshold = TimeSpan.FromDays(3);
 
     private readonly IServiceProvider _services;
     private readonly ILogger<ExceptionDetectionJob> _logger;
@@ -71,6 +71,8 @@ public sealed class ExceptionDetectionJob : BackgroundService
         var tenantContext = scope.ServiceProvider.GetRequiredService<IWritableTenantContext>();
         var clock = scope.ServiceProvider.GetRequiredService<IDateTimeProvider>();
         var alertRouters = scope.ServiceProvider.GetRequiredService<IExceptionAlertRouterFactory>();
+        // Optional so hosts and tests without the monitoring check-in services still run detection (inbox plan D-b).
+        var cameraSkipped = scope.ServiceProvider.GetService<CameraVerificationSkippedDetector>();
 
         // exceptions and activity_daily_summary are under FORCE row-level security. A
         // background scope defaults to system mode, which the tenant_isolation policy
@@ -83,9 +85,8 @@ public sealed class ExceptionDetectionJob : BackgroundService
             targetDate.ToDateTime(TimeOnly.MinValue), ct);
 
         var createdCount = 0;
-        var escalatedCount = 0;
 
-        // Grouped tenant-major so each tenant's creates and escalation sweep run - and save -
+        // Grouped tenant-major so each tenant's creates run - and save -
         // while that tenant's context is active on the connection, before switching to the
         // next tenant. A single batched SaveChangesAsync across tenants would flush every
         // tenant's changes under whichever tenant was switched to last, and every earlier
@@ -104,7 +105,6 @@ public sealed class ExceptionDetectionJob : BackgroundService
             // scope doesn't have - the factory pins the router to this tenant instead.
             var alerts = alertRouters.CreateForTenant(tenantId);
             var created = new List<DomainException>();
-            var tenantEscalated = 0;
 
             foreach (var (_, employeeId) in tenantGroup)
             {
@@ -172,6 +172,10 @@ public sealed class ExceptionDetectionJob : BackgroundService
                 }
             }
 
+            if (cameraSkipped is not null)
+                created.AddRange(await cameraSkipped.DetectAsync(
+                    tenantId, tenantGroup.Select(k => k.EmployeeId).Distinct().ToList(), targetDate, now, ct));
+
             // Cases and their in-app alerts go into the same SaveChanges, per tenant, while that
             // tenant's context is still active on the connection.
             foreach (var exception in created)
@@ -180,27 +184,16 @@ public sealed class ExceptionDetectionJob : BackgroundService
                 await NotifySafelyAsync(() => alerts.NotifyDetectedAsync(exception, ct), exception, ct);
             }
 
-            var stale = await exceptions.GetStaleOpenAsync(tenantId, now - EscalationThreshold, ct);
-            foreach (var open in stale)
-            {
-                open.Status = ExceptionStatus.Escalated;
-                open.EscalatedAt = now;
-                exceptions.Update(open);
-                await NotifySafelyAsync(() => alerts.NotifyEscalatedAsync(open, ct), open, ct);
-                tenantEscalated++;
-            }
-
-            var tenantCreated = created.Count;
-            if (tenantCreated > 0 || tenantEscalated > 0)
+            // The 3-day stale-case escalation runs in the hourly InboxEscalationSweepJob (inbox escalation standard).
+            if (created.Count > 0)
                 await exceptions.SaveChangesAsync(ct);
 
-            createdCount += tenantCreated;
-            escalatedCount += tenantEscalated;
+            createdCount += created.Count;
         }
 
         _logger.LogInformation(
-            "Exception detection finished. Date={Date} EmployeesScanned={Count} Created={Created} Escalated={Escalated}",
-            targetDate, keys.Count, createdCount, escalatedCount);
+            "Exception detection finished. Date={Date} EmployeesScanned={Count} Created={Created}",
+            targetDate, keys.Count, createdCount);
     }
 
     /// <summary>A failure working out who to alert must not stop the case itself being saved, or

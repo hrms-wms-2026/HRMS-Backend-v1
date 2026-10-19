@@ -10,7 +10,7 @@ public static class MonitoringFeatureTogglesMapper
     // and the existing bool defaults just above/below (all-false) are likewise inlined literals
     // rather than calls into MonitoringToggleResolution.Resolve(null,null,null,null,null) - same
     // precedent, same trade-off.
-    private const int DefaultIdleThresholdMinutes = 2;
+    private const int DefaultIdleThresholdMinutes = 15;
 
     /// <summary>
     /// Null entity (no row yet) maps to all-false defaults, IdleThresholdMinutes = the

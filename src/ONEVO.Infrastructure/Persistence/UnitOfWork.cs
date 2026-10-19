@@ -16,6 +16,11 @@ public sealed class UnitOfWork : IUnitOfWork
         Func<CancellationToken, Task<TResult>> operation,
         CancellationToken ct = default)
     {
+        // Re-entrant: inside an open transaction (e.g. the Inbox wrapping a module command that runs its own
+        // transaction, so the command and its journal row commit together) the operation joins that transaction.
+        if (_db.Database.CurrentTransaction is not null)
+            return await operation(ct);
+
         var executionStrategy = _db.Database.CreateExecutionStrategy();
         return await executionStrategy.ExecuteAsync(async () =>
         {

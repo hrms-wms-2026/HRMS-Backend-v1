@@ -26,8 +26,6 @@ public class LeaveApprovalsControllerArchitectureTests
         Assert.Equal("leave:approve", GetPermission(nameof(LeaveApprovalsController.ApprovalDetail)));
         Assert.Equal("leave:approve", GetPermission(nameof(LeaveApprovalsController.Approve)));
         Assert.Equal("leave:approve", GetPermission(nameof(LeaveApprovalsController.Reject)));
-        Assert.Equal("leave:approve", GetPermission(nameof(LeaveApprovalsController.RequestInfo)));
-        Assert.Equal("leave:read-own", GetPermission(nameof(LeaveApprovalsController.RespondInfo)));
         Assert.Equal("leave:approve", GetPermission(nameof(LeaveApprovalsController.BulkApprove)));
         Assert.Equal("leave:approve", GetPermission(nameof(LeaveApprovalsController.BulkReject)));
     }
@@ -47,8 +45,6 @@ public class LeaveApprovalsControllerArchitectureTests
         {
             typeof(ApproveLeaveRequestRequest),
             typeof(RejectLeaveRequestRequest),
-            typeof(RequestLeaveInformationRequest),
-            typeof(RespondLeaveInformationRequest),
             typeof(BulkApproveLeaveRequestsRequest),
             typeof(BulkRejectLeaveRequestsRequest)
         })

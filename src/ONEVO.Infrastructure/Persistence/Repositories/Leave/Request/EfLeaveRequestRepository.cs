@@ -37,6 +37,26 @@ public class EfLeaveRequestRepository : ILeaveRequestRepository
             ct);
     }
 
+    public async Task<bool> HasOverlappingPendingOrApprovedRequestExceptAsync(
+        Guid tenantId,
+        Guid employeeId,
+        DateTimeOffset startAt,
+        DateTimeOffset endAt,
+        Guid excludeRequestId,
+        CancellationToken ct = default)
+    {
+        return await _db.LeaveRequests.AsNoTracking().AnyAsync(
+            request =>
+                request.TenantId == tenantId &&
+                request.EmployeeId == employeeId &&
+                request.Id != excludeRequestId &&
+                (request.Status == LeaveRequestStatuses.Pending ||
+                 request.Status == LeaveRequestStatuses.Approved) &&
+                request.StartAt < endAt &&
+                request.EndAt > startAt,
+            ct);
+    }
+
     public async Task<IReadOnlyList<LeaveRequestListRow>> ListOwnAsync(
         Guid tenantId,
         Guid employeeId,
@@ -70,27 +90,11 @@ public class EfLeaveRequestRepository : ILeaveRequestRepository
             .OrderByDescending(x => x.request.CreatedAt)
             .ToListAsync(ct);
 
-        var infoIds = rows
-            .Where(x => x.request.Status == LeaveRequestStatuses.InformationRequested)
-            .Select(x => x.request.Id)
-            .ToList();
-        var questions = new Dictionary<Guid, string>();
-        if (infoIds.Count > 0)
-        {
-            var messages = await _db.LeaveRequestInfoMessages.AsNoTracking()
-                .Where(message => message.TenantId == tenantId && infoIds.Contains(message.LeaveRequestId))
-                .OrderByDescending(message => message.CreatedAt)
-                .ToListAsync(ct);
-            foreach (var message in messages)
-                questions.TryAdd(message.LeaveRequestId, message.Message);
-        }
-
         return rows.Select(x => new LeaveRequestListRow(
             x.request,
             x.leaveType.Name,
             x.leaveType.Code,
-            string.IsNullOrWhiteSpace(x.ApprovedByName) ? null : x.ApprovedByName,
-            questions.GetValueOrDefault(x.request.Id))).ToList();
+            string.IsNullOrWhiteSpace(x.ApprovedByName) ? null : x.ApprovedByName)).ToList();
     }
 
     public async Task<IReadOnlyList<LeaveApprovalDelegateRow>> ListActiveDelegatesAsync(
@@ -180,7 +184,9 @@ public class EfLeaveRequestRepository : ILeaveRequestRepository
         var executionStrategy = _db.Database.CreateExecutionStrategy();
         await executionStrategy.ExecuteAsync(async () =>
         {
+            // Joins a transaction the caller already opened (e.g. an approver-created leave inside an Inbox action).
             await using var transaction = _db.Database.IsRelational()
+                && _db.Database.CurrentTransaction is null
                 ? await _db.Database.BeginTransactionAsync(ct)
                 : null;
 

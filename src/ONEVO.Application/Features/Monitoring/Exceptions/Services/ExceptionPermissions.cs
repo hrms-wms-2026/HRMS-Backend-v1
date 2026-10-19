@@ -18,5 +18,6 @@ public static class ExceptionPermissions
 
     public const string DetectedTemplate = "exception_alert_detected";
     public const string EscalatedTemplate = "exception_alert_escalated";
-    public const string RelatedEntityType = "monitoring_exception";
+    /// <summary>The bell opens the Inbox item (inbox plan S4.2): inbox:monitoring:exception_case.</summary>
+    public const string RelatedEntityType = "inbox:monitoring:exception_case";
 }

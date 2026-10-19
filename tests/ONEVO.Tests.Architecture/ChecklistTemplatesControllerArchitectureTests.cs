@@ -69,11 +69,11 @@ public class ChecklistTemplatesControllerArchitectureTests
     }
 
     [Fact]
-    public void ReadActions_RequireEmployeesReadPermission()
+    public void ReadActions_RequireEmployeesWritePermission()
     {
-        Assert.Equal("employees:read", GetPermission(TemplatesControllerType.GetMethod(nameof(ChecklistTemplatesController.List))!));
-        Assert.Equal("employees:read", GetPermission(TemplatesControllerType.GetMethod(nameof(ChecklistTemplatesController.GetById))!));
-        Assert.Equal("employees:read", GetPermission(MatchesControllerType.GetMethod(nameof(OnboardingChecklistTemplatesController.Matches))!));
+        Assert.Equal("employees:write", GetPermission(TemplatesControllerType.GetMethod(nameof(ChecklistTemplatesController.List))!));
+        Assert.Equal("employees:write", GetPermission(TemplatesControllerType.GetMethod(nameof(ChecklistTemplatesController.GetById))!));
+        Assert.Equal("employees:write", GetPermission(MatchesControllerType.GetMethod(nameof(OnboardingChecklistTemplatesController.Matches))!));
     }
 
     [Theory]

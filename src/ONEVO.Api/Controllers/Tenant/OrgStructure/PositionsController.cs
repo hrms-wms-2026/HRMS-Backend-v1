@@ -1,3 +1,4 @@
+using ONEVO.Application.Features.OrgStructure.Queries.GetPositionPeopleChart;
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -8,6 +9,8 @@ using ONEVO.Application.Features.OrgStructure.Commands.CheckPositionArchive;
 using ONEVO.Application.Features.OrgStructure.Commands.CreatePosition;
 using ONEVO.Application.Features.OrgStructure.Commands.RestorePosition;
 using ONEVO.Application.Features.OrgStructure.Commands.UpdatePosition;
+using ONEVO.Application.Features.OrgStructure.Commands.MoveReportingLines;
+using ONEVO.Application.Features.OrgStructure.Commands.PreviewReportingLineMove;
 using ONEVO.Application.Features.OrgStructure.Queries.GetActiveHolders;
 using ONEVO.Application.Features.OrgStructure.Queries.GetPositionById;
 using ONEVO.Application.Features.OrgStructure.Queries.GetPositionTree;
@@ -66,6 +69,49 @@ public class PositionsController : ControllerBase
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
+    /// <summary>Person-level reporting chart: one card per position holder under the person
+    /// they actually report to (including one-off managers), plus vacant-position cards.</summary>
+    [HttpGet("people-chart")]
+    [RequirePermission("org:read")]
+    public async Task<IActionResult> PeopleChart(Guid legalEntityId, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new GetPositionPeopleChartQuery(legalEntityId), ct);
+        return result.IsSuccess
+            ? Ok(result.Value)
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Validates a reporting-branch move and returns its exact impact without saving it.</summary>
+    [HttpPost("people-chart/reporting-line/preview")]
+    [RequirePermission("org:manage")]
+    public async Task<IActionResult> PreviewReportingLineMove(
+        Guid legalEntityId,
+        [FromBody] ReportingLineMoveRequest request,
+        CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new PreviewReportingLineMoveCommand(
+            legalEntityId, request.SelectedEmployeeIds, request.NewManagerEmployeeId), ct);
+        return result.IsSuccess
+            ? Ok(result.Value)
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Moves the top-most selected reporting branches under a new manager atomically.
+    /// Relationships inside each moved branch are preserved.</summary>
+    [HttpPost("people-chart/reporting-line/move")]
+    [RequirePermission("org:manage")]
+    public async Task<IActionResult> MoveReportingLines(
+        Guid legalEntityId,
+        [FromBody] ReportingLineMoveRequest request,
+        CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new MoveReportingLinesCommand(
+            legalEntityId, request.SelectedEmployeeIds, request.NewManagerEmployeeId, request.Reason), ct);
+        return result.IsSuccess
+            ? Ok(result.Value)
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
     /// <summary>Get a single position by Legal Entity ID and Position ID.</summary>
     [HttpGet("{positionId:guid}")]
     [RequirePermission("org:read")]
@@ -91,7 +137,7 @@ public class PositionsController : ControllerBase
     {
         var result = await _mediator.Send(new GetActiveHoldersQuery(legalEntityId, positionId), ct);
         return result.IsSuccess
-            ? Ok(result.Value!.Select(h => new ActiveHolderViewModel(h.EmployeeId, h.FirstName, h.LastName, h.WorkEmail, h.AvatarFileId)).ToList())
+            ? Ok(result.Value!.Select(h => new ActiveHolderViewModel(h.EmployeeId, h.FirstName, h.LastName, h.WorkEmail, h.AvatarFileId, h.DepartmentName)).ToList())
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 

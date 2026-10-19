@@ -4,6 +4,7 @@ using ONEVO.Application.Features.Dashboard.Team.Abstractions;
 using ONEVO.Application.Features.Dashboard.Team.DTOs;
 using ONEVO.Application.Features.Leave.Approval.Helpers;
 using ONEVO.Application.Features.Leave.Approval.RepositoryInterfaces;
+using ONEVO.Application.Features.Leave.Approval.Services;
 
 namespace ONEVO.Application.Features.Dashboard.Team.Sources;
 
@@ -31,25 +32,9 @@ public sealed class LeaveApprovalTeamActionSource(
         if (employee is null)
             return new ActionSourceSummary(Key, Domain, ActionSourceSummary.StatusOk, 0, null, null, []);
 
-        var rows = await repository.ListPendingForApproverAsync(
-            currentUser.TenantId, employee.Id,
-            new LeaveApprovalListFilter(null, null, null, null, null, legalEntityId), ct);
-
-        var actionable = new List<(LeavePendingApprovalListRow Row, DateTimeOffset CreatedAt)>();
-        foreach (var row in rows)
-        {
-            var state = await repository.GetStateAsync(currentUser.TenantId, row.Request.Id, ct);
-            if (state?.ApprovalMode is null)
-                continue;
-
-            var modeRows = state.Approvers
-                .Select(a => new ApprovalModeRow(a.ApproverEmployeeId, a.SequenceOrder, a.Status))
-                .ToList();
-            if (!LeaveApprovalModeEvaluator.IsActionable(state.ApprovalMode, modeRows, employee.Id))
-                continue;
-
-            actionable.Add((row, row.Request.CreatedAt));
-        }
+        var actionable = (await LeavePendingApprovals.ListActionableAsync(repository,
+                currentUser.TenantId, employee.Id, new LeaveApprovalListFilter(null, null, null, null, null, legalEntityId), ct))
+            .Select(x => (x.Row, x.Row.Request.CreatedAt)).ToList();
 
         var ordered = actionable.OrderBy(x => x.CreatedAt).ToList();
         var oldest = ordered.Count > 0 ? ordered[0].CreatedAt : (DateTimeOffset?)null;

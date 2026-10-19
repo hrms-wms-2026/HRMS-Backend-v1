@@ -40,5 +40,7 @@ public sealed record ActionItemLink(string Kind, IReadOnlyDictionary<string, str
     public const string KindLeaveApproval = "leave.approval";
     public const string KindAttendanceApproval = "attendance.approval";
     public const string KindMonitoringException = "monitoring.exception";
+    /// <summary>A calendar meeting-exception case; params: exceptionId (opened in the Inbox, plan C2).</summary>
+    public const string KindCalendarMeetingException = "calendar.meeting_exception";
     public const string KindWorkRequest = "work.request";
 }

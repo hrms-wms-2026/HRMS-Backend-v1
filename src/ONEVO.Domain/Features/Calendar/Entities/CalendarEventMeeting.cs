@@ -28,6 +28,9 @@ public class CalendarEventMeeting : ITenantOwnedEntity
     public string? PasscodeOrPin { get; set; }
     public string Status { get; set; } = CalendarEventMeetingStatuses.Active;
     public DateTimeOffset? LastAttendanceSyncedAt { get; set; }
+    /// <summary>Set when the provider still had no attendance report
+    /// 24 h after the meeting ended (plan C0 P0-2): the meeting stops being retried and shows "attendance unavailable".</summary>
+    public DateTimeOffset? AttendanceUnavailableAt { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset? UpdatedAt { get; set; }
 }

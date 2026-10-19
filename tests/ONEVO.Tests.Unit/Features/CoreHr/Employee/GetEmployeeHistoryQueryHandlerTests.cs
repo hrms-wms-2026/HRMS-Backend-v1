@@ -46,6 +46,7 @@ public sealed class GetEmployeeHistoryQueryHandlerTests
                 _employeeId, "E-001", "Ada", "ada@test.dev", null, null, null, null, null, null, "full_time", "active", null, null)));
         ArrangeEmployee(new DateOnly(2024, 2, 1), null, null);
         ArrangeAssignments();
+        ArrangeManagerChanges();
         _positions.Setup(p => p.GetByIdsAsync(_tenantId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new[]
             {
@@ -79,6 +80,11 @@ public sealed class GetEmployeeHistoryQueryHandlerTests
 
     private void ArrangeAssignments(params PositionAssignmentEntity[] items) =>
         _assignments.Setup(a => a.ListHistoryForEmployeeAsync(_tenantId, _employeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(items);
+
+    private void ArrangeManagerChanges(params ReportingManagerChange[] items) =>
+        _assignments.Setup(a => a.ListReportingManagerChangesForEmployeeAsync(
+                _tenantId, _employeeId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(items);
 
     [Fact]
@@ -147,6 +153,29 @@ public sealed class GetEmployeeHistoryQueryHandlerTests
 
         result.Value!.Events.Should().NotContain(e => e.Kind == "manager_changed");
         result.Value.Events.Count(e => e.Kind == "position_changed").Should().Be(2);
+    }
+
+    [Fact]
+    public async Task Handle_EmitsAReportingManagerChangeWithoutCallingItAPositionTransfer()
+    {
+        ArrangeAssignments(Assignment(_juniorId, "2024-02-01", _managerA));
+        ArrangeManagerChanges(new ReportingManagerChange
+        {
+            Id = Guid.NewGuid(),
+            TenantId = _tenantId,
+            EmployeeId = _employeeId,
+            PreviousManagerEmployeeId = _managerA,
+            NewManagerEmployeeId = _managerB,
+            EffectiveAt = DateTimeOffset.Parse("2026-10-14T08:00:00Z"),
+            ChangeReason = "Team realignment"
+        });
+
+        var result = await CreateHandler().Handle(new GetEmployeeHistoryQuery(_employeeId), CancellationToken.None);
+
+        var manager = result.Value!.Events.Single(e => e.Kind == "manager_changed");
+        manager.Detail.Should().Be("Grace Hopper → Abitha Devendran (Team realignment)");
+        manager.Date.Should().Be(new DateOnly(2026, 10, 14));
+        result.Value.Events.Should().NotContain(e => e.Kind == "position_changed");
     }
 
     [Fact]

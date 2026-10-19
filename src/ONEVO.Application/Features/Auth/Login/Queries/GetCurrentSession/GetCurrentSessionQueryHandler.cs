@@ -3,6 +3,7 @@ using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Login.DTOs.Responses;
+using ONEVO.Application.Features.CoreHr.Employee.ServiceInterfaces;
 using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
 
 namespace ONEVO.Application.Features.Auth.Login.Queries.GetCurrentSession;
@@ -15,19 +16,22 @@ public sealed class GetCurrentSessionQueryHandler
     private readonly IModuleEntitlementService _entitlements;
     private readonly ITenantRepository _tenants;
     private readonly IEmployeeRepository _employees;
+    private readonly IEmployeeVisibilityScopeResolver _visibilityScope;
 
     public GetCurrentSessionQueryHandler(
         ICurrentUser currentUser,
         ITenantContext tenantContext,
         IModuleEntitlementService entitlements,
         ITenantRepository tenants,
-        IEmployeeRepository employees)
+        IEmployeeRepository employees,
+        IEmployeeVisibilityScopeResolver visibilityScope)
     {
         _currentUser = currentUser;
         _tenantContext = tenantContext;
         _entitlements = entitlements;
         _tenants = tenants;
         _employees = employees;
+        _visibilityScope = visibilityScope;
     }
 
     public async Task<Result<AuthSessionResponseDto>> Handle(
@@ -59,6 +63,12 @@ public sealed class GetCurrentSessionQueryHandler
                 .Where(part => !string.IsNullOrWhiteSpace(part)))
                 .Trim();
 
+        var scope = await _visibilityScope.ResolveAsync(_tenantContext.TenantId, _currentUser.UserId, ct);
+        var managesPeople = scope.CanViewAllTenantEmployees
+            || scope.CoveredPositionIds.Count > 0
+            || scope.CoveredDepartmentIds.Count > 0
+            || scope.CompanyWideLegalEntityIds.Count > 0;
+
         var response = new AuthSessionResponseDto(
             Authenticated: true,
             User: new CurrentUserDto(
@@ -75,7 +85,8 @@ public sealed class GetCurrentSessionQueryHandler
             // Slug comes from the already-resolved host context (ITenantContext), not the fresh
             // repository read - the repository lookup exists only because display name isn't on
             // ITenantContext.
-            Workspace: new WorkspaceResponseDto(_tenantContext.Slug!, tenant.Name));
+            Workspace: new WorkspaceResponseDto(_tenantContext.Slug!, tenant.Name),
+            ManagesPeople: managesPeople);
 
         return Result<AuthSessionResponseDto>.Success(response);
     }

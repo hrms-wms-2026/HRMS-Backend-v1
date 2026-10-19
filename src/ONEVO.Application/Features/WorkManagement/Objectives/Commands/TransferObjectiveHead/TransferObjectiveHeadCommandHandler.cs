@@ -13,6 +13,7 @@ using ONEVO.Application.Features.WorkManagement.ProjectInvitations.RepositoryInt
 using ONEVO.Domain.Features.WorkManagement.Approvals.Entities;
 using ONEVO.Domain.Features.WorkManagement.Objectives.Entities;
 using ONEVO.Domain.Features.WorkManagement.ProjectInvitations.Entities;
+using ONEVO.Application.Features.WorkManagement.Notifications.Services;
 
 namespace ONEVO.Application.Features.WorkManagement.Objectives.Commands.TransferObjectiveHead;
 
@@ -135,9 +136,11 @@ public class TransferObjectiveHeadCommandHandler : IRequestHandler<TransferObjec
                     ["inviteType"] = ProjectInvitationTypes.Leader
                 },
                 "project_member_invitation",
-                invitation.Id),
+                invitation.Id, EventId: Guid.NewGuid()),
             tenantId,
             ct);
+        await WorkNotificationEngine.EnqueueInboxChangedAsync(
+            _outboxWriter, tenantId, [invitation.InvitedById, invitation.InvitedEmployeeId], WorkNotificationEngine.InvitationInboxKind, invitation.Id, ct);
 
         await _unitOfWork.SaveChangesAsync(ct);
 

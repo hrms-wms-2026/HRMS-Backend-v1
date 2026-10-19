@@ -1,3 +1,4 @@
+using System.Text;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -55,6 +56,58 @@ public class ConfigurationStartupValidator : IHostedService
         {
             throw new InvalidOperationException(
                 $"Encryption:MasterKey must be at least {MinimumEncryptionMasterKeyLength} characters long.");
+        }
+    }
+
+    public const string TrayJwtSecretKey = "TrayApp:Jwt:Secret";
+
+    /// <summary>HS256 (the tray token algorithm) needs a key of at least 256 bits.</summary>
+    public const int MinimumTrayJwtSecretBytes = 32;
+
+    /// <summary>
+    /// The tray device-token signing/validation key, checked for presence and HS256 key size.
+    /// Used by both consumers (token issue + "TrayDeviceScheme" validation). Messages never
+    /// contain the value.
+    /// </summary>
+    public static string RequireTrayJwtSecret(IConfiguration configuration)
+    {
+        var secret = configuration[TrayJwtSecretKey];
+        if (string.IsNullOrWhiteSpace(secret))
+        {
+            throw new InvalidOperationException(
+                "TrayApp:Jwt:Secret is required. Set the TrayApp__Jwt__Secret environment variable.");
+        }
+
+        if (Encoding.UTF8.GetByteCount(secret) < MinimumTrayJwtSecretBytes)
+        {
+            throw new InvalidOperationException(
+                $"TrayApp:Jwt:Secret must be at least {MinimumTrayJwtSecretBytes} bytes for HS256 token signing.");
+        }
+
+        return secret;
+    }
+
+    /// <summary>
+    /// SEC-01 startup check. Outside Development/Test the API refuses to boot when the tray secret is
+    /// missing, too short for HS256, or a development placeholder — appsettings.Development.json ships a
+    /// self-labeled dev value anyone with the repo can sign tray tokens with. (Before this, a missing
+    /// secret only surfaced on the first tray request.) Development/Test keep the lazy per-consumer check.
+    /// </summary>
+    public static void ValidateTrayJwtSecret(
+        IConfiguration configuration,
+        string environmentName)
+    {
+        if (IsLocalValidationEnvironment(environmentName))
+        {
+            return;
+        }
+
+        var secret = RequireTrayJwtSecret(configuration);
+        if (secret.StartsWith("dev-only", StringComparison.OrdinalIgnoreCase) || IsMissingOrPlaceholder(secret))
+        {
+            throw new InvalidOperationException(
+                $"TrayApp:Jwt:Secret is a development placeholder in the '{environmentName}' environment. " +
+                "Set TrayApp__Jwt__Secret to a real random value (32+ bytes) from your secret store.");
         }
     }
 

@@ -12,7 +12,9 @@ public sealed record ExceptionListFilter(
     IReadOnlyCollection<Guid>? EmployeeIds,
     Guid? ExcludeEmployeeId,
     IReadOnlyCollection<ExceptionStatus>? Statuses = null,
-    bool ActiveOnly = false);
+    bool ActiveOnly = false,
+    // true = only calendar meeting-exception cases, false = only the rest (monitoring), null = both (plan C2).
+    bool? Calendar = null);
 
 public interface IExceptionRepository
 {
@@ -40,17 +42,22 @@ public interface IExceptionRepository
 
     Task<MonitoringException?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct);
 
+    /// <summary>The employee's open or acknowledged case of this type (tracked), for attaching new evidence to it
+    /// instead of opening a duplicate (calendar meeting exceptions, plan C2).</summary>
+    Task<MonitoringException?> GetOpenOrAcknowledgedAsync(Guid tenantId, Guid employeeId, ExceptionType type, CancellationToken ct);
+
     /// <summary>One employee's cases of a type detected in [from, to), oldest first.</summary>
     Task<IReadOnlyList<MonitoringException>> ListForEmployeeInRangeAsync(
         Guid tenantId, Guid employeeId, ExceptionType type, DateTimeOffset from, DateTimeOffset to, CancellationToken ct);
 
     /// <summary>Exception cases for this employee with fromUtc &lt;= DetectedAt &lt; toUtcExclusive, any status.</summary>
     Task<int> CountDetectedInRangeAsync(
-        Guid tenantId, Guid employeeId, DateTimeOffset fromUtc, DateTimeOffset toUtcExclusive, CancellationToken ct);
+        Guid tenantId, Guid employeeId, DateTimeOffset fromUtc, DateTimeOffset toUtcExclusive, CancellationToken ct, bool calendar = false);
 
-    /// <summary>The cases <see cref="CountDetectedInRangeAsync"/> counts, newest first, at most <paramref name="take"/>.</summary>
+    /// <summary>The cases <see cref="CountDetectedInRangeAsync"/> counts (open or acknowledged, not resolved or escalated),
+    /// newest first, at most <paramref name="take"/>.</summary>
     Task<IReadOnlyList<MonitoringException>> ListDetectedInRangeAsync(
-        Guid tenantId, Guid employeeId, DateTimeOffset fromUtc, DateTimeOffset toUtcExclusive, int take, CancellationToken ct);
+        Guid tenantId, Guid employeeId, DateTimeOffset fromUtc, DateTimeOffset toUtcExclusive, int take, CancellationToken ct, bool calendar = false);
 
     /// <summary>Distinct employees who have any exception case in the tenant - the candidate set a
     /// manager's approver scope is resolved over before listing.</summary>

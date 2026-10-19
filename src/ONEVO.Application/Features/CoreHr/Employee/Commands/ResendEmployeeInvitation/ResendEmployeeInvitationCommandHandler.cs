@@ -4,6 +4,7 @@ using ONEVO.Application.Common.Security;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Invite.RepositoryInterfaces;
 using ONEVO.Application.Features.Auth.Login.ServiceInterfaces;
+using ONEVO.Application.Features.CoreHr.Employee.Access;
 using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.OnboardingDraft.OutboxHandlers;
 using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
@@ -13,7 +14,8 @@ using IUnitOfWork = ONEVO.Application.Common.RepositoryInterfaces.IUnitOfWork;
 namespace ONEVO.Application.Features.CoreHr.Employee.Commands.ResendEmployeeInvitation;
 
 /// <summary>
-/// HR-triggered resend from the employee detail screen. Only usable once the previous invitation
+/// Resend from the employee detail screen or Settings > Users, allowed for the person who added
+/// the employee or users:manage (IEmployeeInvitationAccess). Only usable once the previous invitation
 /// has expired without being accepted - a still-pending invite should keep working via its
 /// original link, and an already-accepted or revoked one is a different situation the caller
 /// should not paper over by silently minting a new token. Revokes the stale token and creates a
@@ -35,6 +37,7 @@ public sealed class ResendEmployeeInvitationCommandHandler
     private readonly IUnitOfWork _unitOfWork;
     private readonly ICurrentUser _currentUser;
     private readonly IDateTimeProvider _clock;
+    private readonly IEmployeeInvitationAccess _invitationAccess;
 
     public ResendEmployeeInvitationCommandHandler(
         IEmployeeRepository employeeRepository,
@@ -44,7 +47,8 @@ public sealed class ResendEmployeeInvitationCommandHandler
         ISecureTokenGenerator tokenGenerator,
         IUnitOfWork unitOfWork,
         ICurrentUser currentUser,
-        IDateTimeProvider clock)
+        IDateTimeProvider clock,
+        IEmployeeInvitationAccess invitationAccess)
     {
         _employeeRepository = employeeRepository;
         _invitationTokenRepository = invitationTokenRepository;
@@ -54,6 +58,7 @@ public sealed class ResendEmployeeInvitationCommandHandler
         _unitOfWork = unitOfWork;
         _currentUser = currentUser;
         _clock = clock;
+        _invitationAccess = invitationAccess;
     }
 
     public async Task<Result<ResendEmployeeInvitationResponse>> Handle(
@@ -68,6 +73,10 @@ public sealed class ResendEmployeeInvitationCommandHandler
         var current = await _invitationTokenRepository.GetLatestByEmployeeIdAsync(tenantId, request.EmployeeId, ct);
         if (current is null)
             return Result<ResendEmployeeInvitationResponse>.Failure("No invitation has been sent to this employee.", 400);
+
+        if (!await _invitationAccess.CanManageAsync(current, employee.CreatedById, ct))
+            return Result<ResendEmployeeInvitationResponse>.Forbidden(
+                "Only the person who added this employee, or a user manager, can resend the invitation.");
 
         var now = _clock.UtcNow;
         if (current.UsedAt is not null)

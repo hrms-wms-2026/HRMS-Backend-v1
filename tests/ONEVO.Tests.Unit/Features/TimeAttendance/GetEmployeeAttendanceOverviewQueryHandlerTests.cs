@@ -67,6 +67,30 @@ public sealed class GetEmployeeAttendanceOverviewQueryHandlerTests
     }
 
     [Fact]
+    public async Task Handle_AnExcusedAbsence_DropsTheAbsentCount_ButTheDayStillShowsAbsent()
+    {
+        ArrangeData(Array.Empty<AttendanceRecord>());
+        var data = await _reader.Object.LoadAsync(_tenantId, _employeeId, _legalEntityId, new EmployeePeriod(Today, Today), CancellationToken.None);
+        var aug10 = new DateOnly(2026, 8, 10);
+        var before = (await CreateHandler().Handle(
+            new GetEmployeeAttendanceOverviewQuery(_employeeId, new DateOnly(2026, 8, 1), new DateOnly(2026, 8, 31)), CancellationToken.None)).Value!;
+        _reader.Setup(r => r.LoadAsync(_tenantId, _employeeId, _legalEntityId, It.IsAny<EmployeePeriod>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(data with
+            {
+                Excused = new Dictionary<string, IReadOnlySet<DateOnly>>
+                {
+                    [ONEVO.Domain.Features.TimeAttendance.Alerts.AttendanceAlertSignals.AbsentDays] = new HashSet<DateOnly> { aug10 }
+                }
+            });
+
+        var after = (await CreateHandler().Handle(
+            new GetEmployeeAttendanceOverviewQuery(_employeeId, new DateOnly(2026, 8, 1), new DateOnly(2026, 8, 31)), CancellationToken.None)).Value!;
+
+        after.Absent.Should().Be(before.Absent - 1);
+        after.Days.Single(d => d.Date == aug10).Status.Should().Be("absent");
+    }
+
+    [Fact]
     public async Task Handle_DoesNotRequireAnyModulePermission()
     {
         _user.Setup(u => u.HasPermission("attendance:read")).Returns(false);

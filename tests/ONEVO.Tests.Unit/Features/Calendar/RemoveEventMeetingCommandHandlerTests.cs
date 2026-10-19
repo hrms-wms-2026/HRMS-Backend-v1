@@ -170,4 +170,31 @@ public sealed class RemoveEventMeetingCommandHandlerTests
         _zoomClient.Verify(z => z.CancelMeetingAsync("access-token", "987654321", It.IsAny<CancellationToken>()), Times.Once);
         _teamsClient.Verify(t => t.CancelMeetingAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
+
+    [Fact]
+    public async Task Handle_LinkRemoved_ParticipantsAreTold()
+    {
+        var notifications = new Mock<ONEVO.Application.Features.Calendar.Services.ICalendarNotificationSender>();
+        var employees = new Mock<ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces.IEmployeeRepository>();
+        employees.Setup(x => x.GetDefaultForUserAsync(TenantId, UserId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ONEVO.Domain.Features.CoreHr.Entities.Employee { Id = Guid.NewGuid(), TenantId = TenantId, UserId = UserId, FirstName = "Ada", LastName = "Owner" });
+        var participantId = Guid.NewGuid();
+        var evt = new CalendarEvent { Id = EventId, TenantId = TenantId, CreatedById = UserId, Title = "Sync", MeetingLink = "https://zoom.us/j/111222333" };
+        _events.Setup(e => e.GetTrackedByIdForTenantAsync(TenantId, EventId, It.IsAny<CancellationToken>())).ReturnsAsync(evt);
+        _events.Setup(e => e.GetParticipantsForEventsAsync(TenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, IReadOnlyList<CalendarEventParticipant>>
+            {
+                [EventId] = [new CalendarEventParticipant { Id = Guid.NewGuid(), TenantId = TenantId, EventId = EventId, EmployeeId = participantId }]
+            });
+        _meetings.Setup(m => m.GetTrackedByCalendarEventAsync(TenantId, EventId, It.IsAny<CancellationToken>())).ReturnsAsync((CalendarEventMeeting?)null);
+        BuildSut();
+        var sut = new RemoveEventMeetingCommandHandler(_currentUser.Object, _events.Object, _meetings.Object, _connections.Object,
+            _tokenProvider.Object, _teamsClient.Object, _zoomClient.Object, _unitOfWork.Object, notifications.Object, employees.Object);
+
+        var result = await sut.Handle(new RemoveEventMeetingCommand(EventId), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        notifications.Verify(n => n.NotifyMeetingLinkRemovedAsync(TenantId, "Sync", It.Is<IReadOnlyList<Guid>>(ids => ids.Single() == participantId),
+            "Ada Owner", It.IsAny<CancellationToken>()), Times.Once);
+    }
 }

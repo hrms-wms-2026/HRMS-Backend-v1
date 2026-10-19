@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -5,7 +6,9 @@ using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.DeviceState.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.Notifications.RepositoryInterfaces;
+using ONEVO.Application.Features.Monitoring.TrayActivation.ServiceInterfaces;
 using ONEVO.Domain.Features.Monitoring.Notifications.Entities;
+using ONEVO.Infrastructure.Persistence;
 
 namespace ONEVO.Infrastructure.Services.Monitoring.Notifications;
 
@@ -89,6 +92,7 @@ public sealed class WellnessRuleEvaluatorJob : BackgroundService
                 new TenantRegistryEntry(tenant.Id, tenant.Slug, tenant.Status, PlanCode: null), ct);
 
             var tenantCreated = 0;
+            var notifiedEmployees = new HashSet<Guid>();
 
             foreach (var (tenantId, employeeId) in tenantGroup)
             {
@@ -110,6 +114,7 @@ public sealed class WellnessRuleEvaluatorJob : BackgroundService
                         CreatedAt = now
                     }, ct);
                     tenantCreated++;
+                    notifiedEmployees.Add(employeeId);
                 }
 
                 if (result.LongIdleTriggered
@@ -125,13 +130,17 @@ public sealed class WellnessRuleEvaluatorJob : BackgroundService
                         CreatedAt = now
                     }, ct);
                     tenantCreated++;
+                    notifiedEmployees.Add(employeeId);
                 }
             }
 
             // Flushed per tenant while that tenant's context is active - see
             // ActivityDailySummaryJob for why a single end-of-loop save is unsafe here.
             if (tenantCreated > 0)
+            {
                 await notifications.SaveChangesAsync(ct);
+                await PushToTraysAsync(scope.ServiceProvider, tenantGroup.Key, notifiedEmployees, ct);
+            }
 
             created += tenantCreated;
         }
@@ -139,5 +148,37 @@ public sealed class WellnessRuleEvaluatorJob : BackgroundService
         _logger.LogInformation(
             "Wellness rule evaluation finished. EmployeesScanned={Count} NotificationsCreated={Created}",
             keys.Count, created);
+    }
+
+    /// <summary>
+    /// Tells each affected employee's tray to fetch its new notification now (it only polls every
+    /// 15 minutes while it has a push connection). Runs inside the tenant's context, after the save.
+    /// </summary>
+    private async Task PushToTraysAsync(
+        IServiceProvider services, Guid tenantId, IReadOnlyCollection<Guid> employeeIds, CancellationToken ct)
+    {
+        var trayPush = services.GetService<ITrayPushNotifier>();
+        if (trayPush is null || employeeIds.Count == 0)
+            return;
+
+        try
+        {
+            var db = services.GetRequiredService<ApplicationDbContext>();
+            var userByEmployee = await db.Employees.AsNoTracking()
+                .Where(e => employeeIds.Contains(e.Id))
+                .Select(e => new { e.Id, e.UserId })
+                .ToDictionaryAsync(e => e.Id, e => e.UserId, ct);
+
+            foreach (var employeeId in employeeIds)
+            {
+                // No Employee row: the tray identity resolver stored the raw user id as EmployeeId.
+                var userId = userByEmployee.TryGetValue(employeeId, out var mapped) ? mapped : employeeId;
+                await trayPush.NotifyUserAsync(tenantId, userId, TrayPushMessages.NotificationsPending, ct);
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogWarning(ex, "Tray push for wellness notifications failed; trays will pick them up on their next poll.");
+        }
     }
 }

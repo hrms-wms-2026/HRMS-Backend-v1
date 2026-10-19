@@ -48,48 +48,6 @@ public sealed class RejectLeaveRequestCommandHandler
         _service.RejectAsync(request.RequestId, request.Reason, ct);
 }
 
-public sealed record RequestLeaveInformationCommand(Guid RequestId, string Question)
-    : IRequest<Result<LeaveApprovalDecisionResponse>>;
-
-public sealed class RequestLeaveInformationCommandValidator : AbstractValidator<RequestLeaveInformationCommand>
-{
-    public RequestLeaveInformationCommandValidator()
-    {
-        RuleFor(x => x.RequestId).NotEmpty();
-        RuleFor(x => x.Question).NotEmpty().MaximumLength(2000);
-    }
-}
-
-public sealed class RequestLeaveInformationCommandHandler
-    : IRequestHandler<RequestLeaveInformationCommand, Result<LeaveApprovalDecisionResponse>>
-{
-    private readonly LeaveApprovalDecisionService _service;
-    public RequestLeaveInformationCommandHandler(LeaveApprovalDecisionService service) => _service = service;
-    public Task<Result<LeaveApprovalDecisionResponse>> Handle(RequestLeaveInformationCommand request, CancellationToken ct) =>
-        _service.RequestInfoAsync(request.RequestId, request.Question, ct);
-}
-
-public sealed record ForwardLeaveRequestCommand(Guid RequestId, string? Note)
-    : IRequest<Result<LeaveApprovalDecisionResponse>>;
-
-public sealed class ForwardLeaveRequestCommandValidator : AbstractValidator<ForwardLeaveRequestCommand>
-{
-    public ForwardLeaveRequestCommandValidator()
-    {
-        RuleFor(x => x.RequestId).NotEmpty();
-        RuleFor(x => x.Note).MaximumLength(2000);
-    }
-}
-
-public sealed class ForwardLeaveRequestCommandHandler
-    : IRequestHandler<ForwardLeaveRequestCommand, Result<LeaveApprovalDecisionResponse>>
-{
-    private readonly LeaveApprovalDecisionService _service;
-    public ForwardLeaveRequestCommandHandler(LeaveApprovalDecisionService service) => _service = service;
-    public Task<Result<LeaveApprovalDecisionResponse>> Handle(ForwardLeaveRequestCommand request, CancellationToken ct) =>
-        _service.ForwardAsync(request.RequestId, request.Note, ct);
-}
-
 public sealed record ChangeLeaveDecisionCommand(Guid RequestId, string Decision, string? Comment)
     : IRequest<Result<LeaveApprovalDecisionResponse>>;
 
@@ -115,27 +73,6 @@ public sealed class ChangeLeaveDecisionCommandHandler
     public ChangeLeaveDecisionCommandHandler(LeaveApprovalDecisionService service) => _service = service;
     public Task<Result<LeaveApprovalDecisionResponse>> Handle(ChangeLeaveDecisionCommand request, CancellationToken ct) =>
         _service.ChangeDecisionAsync(request.RequestId, request.Decision, request.Comment, ct);
-}
-
-public sealed record RespondLeaveInformationCommand(Guid RequestId, string Message, IReadOnlyList<Guid> FileRecordIds)
-    : IRequest<Result<LeaveApprovalDecisionResponse>>;
-
-public sealed class RespondLeaveInformationCommandValidator : AbstractValidator<RespondLeaveInformationCommand>
-{
-    public RespondLeaveInformationCommandValidator()
-    {
-        RuleFor(x => x.RequestId).NotEmpty();
-        RuleFor(x => x.Message).NotEmpty().MaximumLength(2000);
-    }
-}
-
-public sealed class RespondLeaveInformationCommandHandler
-    : IRequestHandler<RespondLeaveInformationCommand, Result<LeaveApprovalDecisionResponse>>
-{
-    private readonly LeaveApprovalDecisionService _service;
-    public RespondLeaveInformationCommandHandler(LeaveApprovalDecisionService service) => _service = service;
-    public Task<Result<LeaveApprovalDecisionResponse>> Handle(RespondLeaveInformationCommand request, CancellationToken ct) =>
-        _service.RespondInfoAsync(request.RequestId, request.Message, request.FileRecordIds, ct);
 }
 
 public sealed record BulkApproveLeaveRequestsCommand(IReadOnlyList<Guid> RequestIds, string? Comment)

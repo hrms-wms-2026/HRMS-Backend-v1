@@ -171,4 +171,24 @@ public sealed class DeleteCalendarEventCommandHandlerTests
             TenantId, "Event", It.Is<IReadOnlyList<Guid>>(ids => ids.Count == 1 && ids[0] == participantId),
             "Ada Owner", It.IsAny<CancellationToken>()), Times.Once);
     }
+
+    [Fact]
+    public async Task Handle_Delete_EmailsParticipantsAndGuestsACancellation()
+    {
+        var sut = BuildSut();
+        var existing = new CalendarEvent { Id = EventId, TenantId = TenantId, CreatedById = UserId, Title = "Event", MeetingLink = "https://zoom.us/j/1" };
+        _events.Setup(x => x.GetTrackedByIdForTenantAsync(TenantId, EventId, It.IsAny<CancellationToken>())).ReturnsAsync(existing);
+        _events.Setup(x => x.GetGuestsForEventsAsync(TenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, IReadOnlyList<CalendarEventGuest>>
+            {
+                [EventId] = [new CalendarEventGuest { Id = Guid.NewGuid(), TenantId = TenantId, EventId = EventId, Email = "vendor@example.com" }]
+            });
+
+        await sut.Handle(new DeleteCalendarEventCommand(EventId), CancellationToken.None);
+
+        _notifications.Verify(x => x.EmailEventChangedAsync(TenantId, ONEVO.Application.Features.Calendar.Services.CalendarEventEmailKinds.Cancelled,
+            It.Is<ONEVO.Application.Features.Calendar.Services.CalendarEventIcs>(i => i.EventId == EventId), "Event", It.IsAny<DateTimeOffset>(),
+            It.IsAny<string?>(), null, It.IsAny<IReadOnlyList<Guid>>(), It.Is<IReadOnlyList<string>>(g => g.Single() == "vendor@example.com"),
+            "Ada Owner", It.IsAny<CancellationToken>()), Times.Once);
+    }
 }

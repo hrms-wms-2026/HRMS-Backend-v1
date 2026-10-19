@@ -128,7 +128,31 @@ public sealed class EfExceptionRepositoryTests
         var count = await new EfExceptionRepository(db).CountDetectedInRangeAsync(
             tenantId, employeeId, DayStart, DayStart.AddDays(1), CancellationToken.None);
 
+        // The resolved case no longer counts (inbox plan X1 count fix).
+        count.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task CountAndListDetectedInRange_OnlyCountOpenAndAcknowledgedCases()
+    {
+        await using var db = BuildInMemoryDb();
+        var tenantId = Guid.NewGuid();
+        var employeeId = Guid.NewGuid();
+        foreach (var status in Enum.GetValues<ExceptionStatus>())
+            db.Exceptions.Add(new DomainException
+            {
+                Id = Guid.NewGuid(), TenantId = tenantId, EmployeeId = employeeId, Type = ExceptionType.IdentityAnomaly,
+                Status = status, Title = status.ToString(), Description = "d", DetectedAt = DayStart.AddHours(2)
+            });
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+        var repository = new EfExceptionRepository(db);
+
+        var count = await repository.CountDetectedInRangeAsync(tenantId, employeeId, DayStart, DayStart.AddDays(1), CancellationToken.None);
+        var listed = await repository.ListDetectedInRangeAsync(tenantId, employeeId, DayStart, DayStart.AddDays(1), 10, CancellationToken.None);
+
         count.Should().Be(2);
+        listed.Select(e => e.Status).Should().BeEquivalentTo([ExceptionStatus.Open, ExceptionStatus.Acknowledged]);
     }
 
     private static ApplicationDbContext BuildInMemoryDb()

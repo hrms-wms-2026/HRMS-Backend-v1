@@ -26,7 +26,10 @@ public sealed class EmployeeOffboardingCoverageGuard(
         var isCovered =
             (activeAssignment is not null && scope.CoveredPositionIds.Contains(activeAssignment.PositionId))
             || (employee.DepartmentId is not null && scope.CoveredDepartmentIds.Contains(employee.DepartmentId.Value))
-            || (employee.LegalEntityId is not null && scope.CompanyWideLegalEntityIds.Contains(employee.LegalEntityId.Value));
+            || (employee.LegalEntityId is not null && scope.CompanyWideLegalEntityIds.Contains(employee.LegalEntityId.Value))
+            // Skip-level: the target sits in a covered position holder's reporting-line subtree
+            // or a descendant of a covered department - the same reach the Employees list grants.
+            || scope.CoveredEmployeeIds.Contains(employee.Id);
 
         return isCovered ? null : Result.Forbidden("You do not have management coverage over this employee.");
     }

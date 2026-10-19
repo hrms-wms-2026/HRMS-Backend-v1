@@ -1,3 +1,4 @@
+using ONEVO.Infrastructure.Configuration;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Security.Cryptography;
@@ -20,8 +21,7 @@ public class TrayTokenService : ITrayTokenService
     public TrayTokenService(IConfiguration configuration)
     {
         var section = configuration.GetSection("TrayApp:Jwt");
-        _secret = section["Secret"]
-            ?? throw new InvalidOperationException("TrayApp:Jwt:Secret is required.");
+        _secret = ConfigurationStartupValidator.RequireTrayJwtSecret(configuration);
         _issuer = section["Issuer"] ?? "onevo-tray";
         _audience = section["Audience"] ?? "onevo-tray-app";
     }

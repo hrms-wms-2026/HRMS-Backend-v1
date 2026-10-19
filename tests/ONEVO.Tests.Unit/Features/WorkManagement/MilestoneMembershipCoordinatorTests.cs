@@ -1,3 +1,4 @@
+using ONEVO.Application.Features.Inbox.OutboxHandlers;
 using Moq;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
@@ -406,6 +407,11 @@ public class MilestoneMembershipCoordinatorTests
         outbox.Verify(x => x.EnqueueAsync(
             OutboxMessageTypes.WorkNotification,
             It.Is<WorkNotificationPayload>(p => p.TemplateCode == "work_objective_invitation_created" && p.RecipientUserId == UserId),
+            TenantId, It.IsAny<CancellationToken>()), Times.Once);
+        outbox.Verify(x => x.EnqueueAsync(
+            OutboxMessageTypes.InboxChanged,
+            It.Is<InboxChangedPayload>(p => p.Source == "work" && p.Kind == "invitation" && p.Id == result.Value.Id
+                && p.EmployeeIds.Contains(EmployeeId) && p.EmployeeIds.Contains(RequestedById)),
             TenantId, It.IsAny<CancellationToken>()), Times.Once);
     }
 
