@@ -45,7 +45,7 @@ public interface IMeetingRepository
 
     Task<MeetingDetails?> GetDetailsTrackedAsync(Guid tenantId, Guid taskId, CancellationToken ct = default);
 
-    /// <summary>The meeting task itself (hidden from ordinary task queries by ExcludeMeetings).</summary>
+    /// <summary>The meeting task itself (meeting tasks are hidden from every ordinary task query).</summary>
     Task<WorkTask?> GetMeetingTaskTrackedAsync(Guid tenantId, Guid taskId, CancellationToken ct = default);
 
     /// <summary>The series' materialized occurrences that still follow its template: not started after
