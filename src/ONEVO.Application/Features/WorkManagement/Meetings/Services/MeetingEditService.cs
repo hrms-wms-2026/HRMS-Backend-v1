@@ -15,7 +15,8 @@ namespace ONEVO.Application.Features.WorkManagement.Meetings.Services;
 /// - "this": materialize if needed, edit the task and its details, detach it, keep its key;
 /// - "all": the series' non-key fields, applied to the series and every future, not-started, non-detached occurrence;
 /// - a started or past occurrence takes only notes (description, D19), audited, with no email.
-/// Time/rule changes of "all" and "following" are forward splits (Plan B Task 10).
+/// - "following", and a time or rule change of "all": a forward split (spec 5.5) at this occurrence, or at the first
+///   occurrence not started yet.
 /// </summary>
 public sealed class MeetingEditService
 {
@@ -28,10 +29,15 @@ public sealed class MeetingEditService
     private readonly IMeetingAccessResolver _access;
     private readonly IUnitOfWork _unitOfWork;
     private readonly IDateTimeProvider _clock;
+    private readonly IMeetingSeriesSplitter _splitter;
+    private readonly IMeetingRecurrence _recurrence;
 
     public MeetingEditService(IOptions<MeetingsOptions> options, IMeetingRepository meetings, IMeetingOccurrenceWriter writer,
-        IMeetingOccurrenceMaterializer materializer, IMeetingAccessResolver access, IUnitOfWork unitOfWork, IDateTimeProvider clock)
+        IMeetingOccurrenceMaterializer materializer, IMeetingAccessResolver access, IUnitOfWork unitOfWork, IDateTimeProvider clock,
+        IMeetingSeriesSplitter splitter, IMeetingRecurrence recurrence)
     {
+        _splitter = splitter;
+        _recurrence = recurrence;
         _options = options;
         _meetings = meetings;
         _writer = writer;
@@ -61,7 +67,7 @@ public sealed class MeetingEditService
                     return MeetingReadService.NotFound<MeetingEditResponse>();
                 var result = edit.Scope == MeetingScopes.This
                     ? await EditOccurrenceAsync(tenantId, callerEmployeeId, callerUserId, series, originalStart, edit, innerCt)
-                    : await EditSeriesAsync(tenantId, callerUserId, series, originalStart, edit, innerCt);
+                    : await EditSeriesAsync(tenantId, callerEmployeeId, callerUserId, series, originalStart, edit, innerCt);
                 if (result.IsSuccess)
                     await _unitOfWork.SaveChangesAsync(innerCt);
                 return result;
@@ -147,20 +153,19 @@ public sealed class MeetingEditService
         return Result<MeetingEditResponse>.Success(new MeetingEditResponse(series.Id, task.Id, Split: false));
     }
 
-    private async Task<Result<MeetingEditResponse>> EditSeriesAsync(Guid tenantId, Guid callerUserId, MeetingSeries series,
-        DateTimeOffset originalStart, EditMeetingRequest edit, CancellationToken ct)
+    private async Task<Result<MeetingEditResponse>> EditSeriesAsync(Guid tenantId, Guid callerEmployeeId, Guid callerUserId,
+        MeetingSeries series, DateTimeOffset originalStart, EditMeetingRequest edit, CancellationToken ct)
     {
         if (edit.Revision != series.Revision)
             return Changed();
-        var changesKey = edit.Start is not null || edit.DurationMinutes is not null || edit.IsAllDay is not null
-            || edit.Timezone is not null || edit.RecurrenceRule is not null;
-        if (edit.Scope == MeetingScopes.Following || changesKey)
-            return Result<MeetingEditResponse>.Failure(
-                "Changing the time or repeat rule of upcoming occurrences is not available yet.", 400, MeetingErrorCodes.ScopeInvalid);
         if (series.CancelledAt is not null)
             return Result<MeetingEditResponse>.Failure("This meeting was cancelled.", 409, MeetingErrorCodes.OccurrenceStarted);
         if (edit.Title is not null && (string.IsNullOrWhiteSpace(edit.Title) || edit.Title.Trim().Length > MeetingCreateValidator.MaxTitleLength))
             return Result<MeetingEditResponse>.Failure("A meeting needs a title.", 400, MeetingErrorCodes.TitleInvalid);
+        var changesKey = edit.Start is not null || edit.DurationMinutes is not null || edit.IsAllDay is not null
+            || edit.Timezone is not null || edit.RecurrenceRule is not null;
+        if (edit.Scope == MeetingScopes.Following || changesKey)
+            return await SplitAsync(tenantId, callerEmployeeId, callerUserId, series, originalStart, edit, ct);
 
         if (edit.Title is not null)
             series.Title = edit.Title.Trim();
@@ -185,6 +190,62 @@ public sealed class MeetingEditService
         var occurrence = await _meetings.GetDetailsAsync(tenantId, series.Id, originalStart, ct);
         return Result<MeetingEditResponse>.Success(new MeetingEditResponse(series.Id,
             occurrence?.TaskId ?? MeetingOccurrenceIds.For(series.Id, originalStart), Split: false));
+    }
+
+    /// <summary>"following": split at this occurrence; "all" with a time/rule change: at the first occurrence not started.
+    /// The new start keeps the edited occurrence's shift (edit.Start minus its original start) for every later one.</summary>
+    private async Task<Result<MeetingEditResponse>> SplitAsync(Guid tenantId, Guid callerEmployeeId, Guid callerUserId,
+        MeetingSeries series, DateTimeOffset originalStart, EditMeetingRequest edit, CancellationToken ct)
+    {
+        var now = _clock.UtcNow;
+        var key = originalStart.ToUniversalTime();
+        DateTimeOffset point;
+        if (edit.Scope == MeetingScopes.Following)
+        {
+            var details = await _meetings.GetDetailsAsync(tenantId, series.Id, key, ct);
+            if ((details?.StartAt ?? key) <= now)
+                return Result<MeetingEditResponse>.Failure(
+                    "This occurrence has started; change the ones after it.", 409, MeetingErrorCodes.OccurrenceStarted);
+            point = key;
+        }
+        else
+        {
+            DateTimeOffset? next = series.RecurrenceRule is null
+                ? (series.DtStart > now ? series.DtStart : null)
+                : _recurrence.Occurrences(series.RecurrenceRule, series.DtStart, series.Timezone, now, now.AddDays(400))
+                    .Select(o => (DateTimeOffset?)o).FirstOrDefault();
+            if (next is not { } first)
+                return Result<MeetingEditResponse>.Failure("No upcoming occurrence is left to change.", 409, MeetingErrorCodes.RecurrenceEmpty);
+            point = first;
+        }
+
+        var shift = edit.Start is { } start ? start.ToUniversalTime() - key : TimeSpan.Zero;
+        var consumed = series.RecurrenceRule is null
+            ? 0
+            : _recurrence.Occurrences(series.RecurrenceRule, series.DtStart, series.Timezone, series.DtStart, point).Count;
+        var rule = edit.RecurrenceRule ?? MeetingRules.Remaining(series.RecurrenceRule, consumed);
+        if (series.RecurrenceRule is not null && edit.RecurrenceRule is null && rule is null)
+            return Result<MeetingEditResponse>.Failure("No upcoming occurrence is left to change.", 409, MeetingErrorCodes.RecurrenceEmpty);
+        var template = new SeriesTemplate(edit.Title?.Trim() ?? series.Title, edit.Description?.Trim() ?? series.Description,
+            edit.Location?.Trim() ?? series.Location, edit.IsPrivate ?? series.IsPrivate, point + shift,
+            edit.DurationMinutes ?? series.DurationMinutes, edit.IsAllDay ?? series.IsAllDay, edit.Timezone ?? series.Timezone, rule);
+        if (template.DurationMinutes <= 0)
+            return Result<MeetingEditResponse>.Failure("A meeting must end after it starts.", 400, MeetingErrorCodes.InvalidTime);
+        if (template.DtStart <= now)
+            return Result<MeetingEditResponse>.Failure("A meeting must start in the future.", 400, MeetingErrorCodes.StartInPast);
+        var valid = _recurrence.Validate(template.RecurrenceRule, template.DtStart, template.Timezone);
+        if (!valid.IsSuccess)
+            return Result<MeetingEditResponse>.Failure(valid.Error!, valid.StatusCode ?? 400, valid.ErrorCode);
+
+        var split = await _splitter.SplitAsync(tenantId, series, point, MeetingSplitReasons.EditFollowing, template, null,
+            callerEmployeeId, callerUserId, ct);
+        if (!split.IsSuccess)
+            return Result<MeetingEditResponse>.Failure(split.Error!, split.StatusCode ?? 409, split.ErrorCode);
+        var target = split.Value!;
+        await _unitOfWork.SaveChangesAsync(ct);
+        var firstOccurrence = await _meetings.GetDetailsAsync(tenantId, target.Id, template.DtStart, ct);
+        return Result<MeetingEditResponse>.Success(new MeetingEditResponse(target.Id,
+            firstOccurrence?.TaskId ?? MeetingOccurrenceIds.For(target.Id, template.DtStart), Split: true));
     }
 
     private static Result<MeetingEditResponse> Changed()

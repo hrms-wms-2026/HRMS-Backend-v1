@@ -120,6 +120,32 @@ public sealed class EfMeetingRepository : IMeetingRepository
         return rows.Select(x => (x.d, x.t)).ToList();
     }
 
+    public async Task<IReadOnlyList<MeetingDetails>> ListOccurrencesFromAsync(Guid tenantId, Guid seriesId, DateTimeOffset from, CancellationToken ct = default)
+    {
+        var fromUtc = from.ToUniversalTime();
+        return await _db.MeetingDetails.AsNoTracking()
+            .Where(d => d.TenantId == tenantId && d.SeriesId == seriesId && d.OriginalStart >= fromUtc)
+            .OrderBy(d => d.OriginalStart).ToListAsync(ct);
+    }
+
+    public async Task<IReadOnlyList<MeetingOccurrenceSuppression>> ListSuppressionsFromAsync(
+        Guid tenantId, Guid seriesId, DateTimeOffset from, CancellationToken ct = default)
+    {
+        var fromUtc = from.ToUniversalTime();
+        return await _db.MeetingOccurrenceSuppressions.AsNoTracking()
+            .Where(s => s.TenantId == tenantId && s.SeriesId == seriesId && s.OriginalStart >= fromUtc)
+            .OrderBy(s => s.OriginalStart).ToListAsync(ct);
+    }
+
+    public async Task<bool> HasDependentsAsync(Guid tenantId, Guid occurrenceTaskId, CancellationToken ct = default)
+        => await _db.MeetingOccurrenceAttendees.AnyAsync(a => a.TenantId == tenantId && a.OccurrenceTaskId == occurrenceTaskId, ct)
+            || await _db.MeetingActionItems.AnyAsync(a => a.TenantId == tenantId && a.OccurrenceTaskId == occurrenceTaskId, ct)
+            || await _db.CalendarEventMeetingAttendances.AnyAsync(a => a.TenantId == tenantId && a.OccurrenceTaskId == occurrenceTaskId, ct);
+
+    public void AddSuppression(MeetingOccurrenceSuppression suppression) => _db.MeetingOccurrenceSuppressions.Add(suppression);
+
+    public void RemoveMeetingTask(WorkTask task) => _db.WorkTasks.Remove(task);
+
     public void AddEditLog(TaskEditLog log) => _db.TaskEditLogs.Add(log);
 
     public void AddSeries(MeetingSeries series) => _db.MeetingSeries.Add(series);

@@ -33,7 +33,8 @@ public sealed class MeetingTestServices
         Materializer = new MeetingOccurrenceMaterializer(Meetings, Writer,
             new MeetingTaskDefaults(new EfTaskCategoryRepository(db), new EfTaskStatusRepository(db)), Projects, Recurrence, UnitOfWork);
         Options = Microsoft.Extensions.Options.Options.Create(new MeetingsOptions { Create = true });
-        Edits = new MeetingEditService(Options, Meetings, Writer, Materializer, Access, UnitOfWork, clock);
+        Splitter = new MeetingSeriesSplitter(Meetings, Writer, Materializer, Recurrence, UnitOfWork, clock);
+        Edits = new MeetingEditService(Options, Meetings, Writer, Materializer, Access, UnitOfWork, clock, Splitter, Recurrence);
     }
 
     public ApplicationDbContext Db { get; }
@@ -46,5 +47,6 @@ public sealed class MeetingTestServices
     public MeetingAccessResolver Access { get; }
     public MeetingOccurrenceMaterializer Materializer { get; }
     public IOptions<MeetingsOptions> Options { get; }
+    public MeetingSeriesSplitter Splitter { get; }
     public MeetingEditService Edits { get; }
 }

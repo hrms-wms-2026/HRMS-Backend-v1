@@ -53,6 +53,20 @@ public interface IMeetingRepository
     Task<IReadOnlyList<(MeetingDetails Details, WorkTask Task)>> ListTemplateOccurrencesTrackedAsync(
         Guid tenantId, Guid seriesId, DateTimeOffset after, CancellationToken ct = default);
 
+    /// <summary>Every materialized occurrence of the series with original_start at or after <paramref name="from"/> (no tracking).</summary>
+    Task<IReadOnlyList<MeetingDetails>> ListOccurrencesFromAsync(Guid tenantId, Guid seriesId, DateTimeOffset from, CancellationToken ct = default);
+
+    Task<IReadOnlyList<MeetingOccurrenceSuppression>> ListSuppressionsFromAsync(Guid tenantId, Guid seriesId, DateTimeOffset from, CancellationToken ct = default);
+
+    /// <summary>True when the occurrence carries attendee overrides, action items or attendance rows - it must then be
+    /// cancelled, never deleted (spec 5.5).</summary>
+    Task<bool> HasDependentsAsync(Guid tenantId, Guid occurrenceTaskId, CancellationToken ct = default);
+
+    void AddSuppression(MeetingOccurrenceSuppression suppression);
+
+    /// <summary>Soft-deletes a meeting task (its meeting_details row stays, so the occurrence key stays taken).</summary>
+    void RemoveMeetingTask(WorkTask task);
+
     void AddEditLog(TaskEditLog log);
 
     void AddSeries(MeetingSeries series);
