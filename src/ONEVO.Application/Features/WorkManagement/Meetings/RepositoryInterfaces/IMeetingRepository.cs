@@ -19,6 +19,9 @@ public interface IMeetingRepository
 
     Task<IReadOnlyList<MeetingOccurrenceAttendee>> ListOverridesAsync(Guid tenantId, IReadOnlyCollection<Guid> occurrenceTaskIds, CancellationToken ct = default);
 
+    /// <summary>The series an approved meeting.create already produced (idempotent apply).</summary>
+    Task<MeetingSeries?> FindSeriesByApprovalRequestAsync(Guid tenantId, Guid approvalRequestId, CancellationToken ct = default);
+
     void AddSeries(MeetingSeries series);
     void AddParticipants(IEnumerable<CalendarEventParticipant> participants);
     void AddGuests(IEnumerable<CalendarEventGuest> guests);

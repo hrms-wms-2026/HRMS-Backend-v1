@@ -1,3 +1,4 @@
+using ONEVO.Application.Features.WorkManagement.Meetings.Contracts;
 using MediatR;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
@@ -55,6 +56,11 @@ public sealed class DecideWorkApprovalRequestCommandHandler
             return Result<WorkApprovalRequestResponse>.NotFound("Approval request not found.");
         if (request.Status != WorkApprovalRequestStatuses.Pending)
             return Result<WorkApprovalRequestResponse>.Conflict("This request has already been decided.");
+        // A meeting request is approved exactly as submitted: the approver saw that snapshot (meetings-as-tasks D5).
+        if (WorkActionTypes.IsMeeting(request.ActionType) && command.Decision == WorkApprovalDecision.Approve
+            && !string.IsNullOrWhiteSpace(command.EditedPayloadJson) && command.EditedPayloadJson != request.PayloadJson)
+            return Result<WorkApprovalRequestResponse>.Failure(
+                "A meeting request cannot be changed by the approver.", 409, MeetingErrorCodes.ApprovalNotEditable);
 
         if (command.Decision == WorkApprovalDecision.Cancel)
         {

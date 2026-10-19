@@ -40,6 +40,10 @@ public sealed class EfMeetingRepository : IMeetingRepository
                 .Where(a => a.TenantId == tenantId && occurrenceTaskIds.Contains(a.OccurrenceTaskId))
                 .ToListAsync(ct);
 
+    public async Task<MeetingSeries?> FindSeriesByApprovalRequestAsync(Guid tenantId, Guid approvalRequestId, CancellationToken ct = default)
+        => await _db.MeetingSeries.AsNoTracking()
+            .FirstOrDefaultAsync(s => s.TenantId == tenantId && s.ApprovalRequestId == approvalRequestId, ct);
+
     public void AddSeries(MeetingSeries series) => _db.MeetingSeries.Add(series);
 
     public void AddParticipants(IEnumerable<CalendarEventParticipant> participants) => _db.CalendarEventParticipants.AddRange(participants);

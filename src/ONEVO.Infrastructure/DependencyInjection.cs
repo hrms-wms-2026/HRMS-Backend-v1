@@ -418,6 +418,8 @@ public static class DependencyInjection
         services.AddScoped<ONEVO.Application.Features.WorkManagement.Meetings.Services.MeetingCreateValidator>();
         services.AddScoped<ONEVO.Application.Features.WorkManagement.Meetings.Services.IMeetingPlacementResolver,
             ONEVO.Application.Features.WorkManagement.Meetings.Services.MeetingPlacementResolver>();
+        services.AddScoped<ONEVO.Application.Features.WorkManagement.Meetings.Services.IMeetingSeriesFactory,
+            ONEVO.Application.Features.WorkManagement.Meetings.Services.MeetingSeriesFactory>();
         services.AddScoped<ONEVO.Application.Features.WorkManagement.Meetings.Services.IMeetingTaskDefaults,
             ONEVO.Application.Features.WorkManagement.Meetings.Services.MeetingTaskDefaults>();
         services.AddScoped<ONEVO.Application.Features.WorkManagement.Meetings.RepositoryInterfaces.IMeetingOccurrenceWriter,
@@ -581,6 +583,7 @@ public static class DependencyInjection
         services.TryAddSingleton<ONEVO.Application.Features.Conversations.Contracts.IInboxRealtimePublisher,
             ONEVO.Application.Features.Conversations.Services.NullInboxRealtimePublisher>();
         services.AddScoped<IApprovalActionApplier, ONEVO.Application.Features.WorkManagement.Tasks.Appliers.TaskCreateApplier>();
+        services.AddScoped<IApprovalActionApplier, ONEVO.Application.Features.WorkManagement.Meetings.Appliers.MeetingCreateApplier>();
         services.AddScoped<IApprovalActionApplier, ONEVO.Application.Features.WorkManagement.Tasks.Appliers.TaskEditApplier>();
         services.AddScoped<IApprovalActionApplier, ONEVO.Application.Features.WorkManagement.Tasks.Appliers.TaskDeleteApplier>();
         services.AddScoped<IApprovalActionApplier, ONEVO.Application.Features.WorkManagement.Tasks.Appliers.TaskStatusTemplateChangeApplier>();

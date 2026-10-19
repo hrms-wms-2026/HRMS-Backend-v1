@@ -91,3 +91,12 @@ public sealed record MeetingAttendeesResponse(int Added, IReadOnlyList<SkippedPa
 /// <param name="Status">"accepted" or "rejected".</param>
 /// <param name="OriginalStart">Set to answer for one occurrence the caller was added to individually.</param>
 public sealed record RespondToMeetingRequest(string Status, string? Reason, DateTimeOffset? OriginalStart);
+
+/// <summary>What the approver of a meeting.create sees, frozen at submit time (D5). Never the link, attendance or action items.</summary>
+public sealed record MeetingApprovalSnapshot(
+    string Title, string? Description, DateTimeOffset Start, int DurationMinutes, string Timezone, string RecurrenceSummary,
+    string OrganizerName, string ModulePath, IReadOnlyList<string> ParticipantNames, IReadOnlyList<string> GuestEmails,
+    string? Platform);
+
+/// <summary>The meeting.create approval payload: the full form, applied as submitted, and the approver's snapshot.</summary>
+public sealed record MeetingCreatePayload(CreateMeetingRequest Form, MeetingApprovalSnapshot Snapshot);
