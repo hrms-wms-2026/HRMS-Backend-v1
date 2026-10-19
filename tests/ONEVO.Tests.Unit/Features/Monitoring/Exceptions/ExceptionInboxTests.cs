@@ -361,4 +361,75 @@ public class ExceptionInboxTests
         (created.EmployeeId, created.Type, created.Status).Should().Be((skipped.Id, ExceptionType.IdentityAnomaly, ExceptionStatus.Open));
         ExceptionMetadata.Parse(created.MetadataJson).Source.Should().Be(ExceptionMetadata.SourceCameraVerificationSkipped);
     }
+
+    private static readonly DateTimeOffset MonthStart = new(2026, 10, 1, 0, 0, 0, TimeSpan.Zero);
+    private static readonly DateTimeOffset MonthEnd = new(2026, 11, 1, 0, 0, 0, TimeSpan.Zero);
+
+    [Fact]
+    public async Task ListPersonCases_QueriesTheSubjectAndRange_IncludingResolvedCases()
+    {
+        ExceptionListFilter? used = null;
+        _exceptions.Setup(x => x.GetListAsync(TenantId, It.IsAny<ExceptionListFilter>(), 1, It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .Callback((Guid _, ExceptionListFilter f, int _, int _, CancellationToken _) => used = f)
+            .ReturnsAsync(() => _cases.ToList());
+        Case(ExceptionStatus.Resolved);
+        Case(ExceptionStatus.Open);
+        ScopeIs(isHr: false, Subject);
+
+        var rows = await Provider().ListPersonCasesAsync(TenantId, Subject, InboxCategories.Alert, MonthStart, MonthEnd, Reviewer, default);
+
+        rows.Should().HaveCount(2);
+        rows.Select(r => r.Item.Status).Should().BeEquivalentTo("resolved", "open");
+        used!.EmployeeIds.Should().Equal(Subject);
+        used.ActiveOnly.Should().BeFalse();
+        used.Calendar.Should().BeFalse();
+        (used.DetectedFrom, used.DetectedTo).Should().Be((MonthStart, MonthEnd));
+    }
+
+    [Fact]
+    public async Task ListPersonCases_ExcludesCalendarTypes()
+    {
+        Case().Type = ExceptionType.MeetingNoShow;
+        ScopeIs(isHr: false, Subject);
+
+        (await Provider().ListPersonCasesAsync(TenantId, Subject, InboxCategories.Alert, MonthStart, MonthEnd, Reviewer, default))
+            .Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task ListPersonCases_RequestCategoryReturnsEmpty()
+    {
+        Case();
+
+        (await Provider().ListPersonCasesAsync(TenantId, Subject, InboxCategories.Request, MonthStart, MonthEnd, Reviewer, default))
+            .Should().BeEmpty();
+        _exceptions.Verify(x => x.GetListAsync(It.IsAny<Guid>(), It.IsAny<ExceptionListFilter>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ListPersonCases_CanOpenTrueInScope_FalseOutOfScope()
+    {
+        Case();
+        ScopeIs(isHr: false, Subject);
+        var inScope = await Provider().ListPersonCasesAsync(TenantId, Subject, InboxCategories.Alert, MonthStart, MonthEnd, Reviewer, default);
+        ScopeIs(isHr: false);
+        var outOfScope = await Provider().ListPersonCasesAsync(TenantId, Subject, InboxCategories.Alert, MonthStart, MonthEnd, Reviewer, default);
+
+        inScope.Single().CanOpen.Should().BeTrue();
+        outOfScope.Single().CanOpen.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task ListPersonCases_MapsAsInfoWithNoActions()
+    {
+        Case();
+        ScopeIs(isHr: false, Subject);
+        ApproverOf(Subject);
+
+        var row = (await Provider().ListPersonCasesAsync(TenantId, Subject, InboxCategories.Alert, MonthStart, MonthEnd, Reviewer, default)).Single();
+
+        row.Item.Direction.Should().Be(InboxDirections.Info);
+        row.Item.AvailableActions.Should().BeEmpty();
+        row.Item.RequestedBy!.Id.Should().Be(Subject);
+    }
 }

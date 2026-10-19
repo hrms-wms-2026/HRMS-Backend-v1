@@ -23,7 +23,7 @@ namespace ONEVO.Application.Features.Monitoring.Exceptions.Inbox;
 /// exception scope can still open a case by link, as info. The employee a case is about sees their own open cases as
 /// info - facts only (title, description, when, status), never the monitoring evidence (P10).
 /// </summary>
-public sealed class ExceptionInboxSourceProvider : IInboxSourceProvider
+public sealed class ExceptionInboxSourceProvider : IInboxSourceProvider, IInboxPersonCaseProvider
 {
     public const int ListLimit = 500;
 
@@ -77,6 +77,27 @@ public sealed class ExceptionInboxSourceProvider : IInboxSourceProvider
 
         var people = await PeopleAsync(tenantId, items.Select(i => i.Case.EmployeeId), ct);
         return items.Select(i => Item(i.Case, people, i.Direction, i.Actionable ? Actions(i.Case) : [])).ToList();
+    }
+
+    /// <summary>The subject's monitoring cases of any status, as info. CanOpen follows GetDetailAsync: the subject,
+    /// anyone in the exception scope, or someone added to the case's chat.</summary>
+    public async Task<IReadOnlyList<InboxPersonCase>> ListPersonCasesAsync(
+        Guid tenantId, Guid subjectEmployeeId, string category, DateTimeOffset from, DateTimeOffset to, Guid callerEmployeeId, CancellationToken ct)
+    {
+        if (category != InboxCategories.Alert)
+            return [];
+        var cases = (await _exceptions.GetListAsync(tenantId,
+                new ExceptionListFilter(null, null, [subjectEmployeeId], null, Calendar: false, DetectedFrom: from, DetectedTo: to), 1, ListLimit, ct))
+            .Where(e => !ExceptionInboxKinds.IsCalendarType(e.Type)).ToList();
+        if (cases.Count == 0)
+            return [];
+
+        var isSubject = subjectEmployeeId == callerEmployeeId;
+        var scope = isSubject ? null : await _scope.ResolveAsync(forAction: true, [subjectEmployeeId], ct);
+        var added = isSubject ? [] : (await _conversations.ListAddedSubjectsAsync(tenantId, callerEmployeeId, Source, ct)).ToHashSet();
+        var people = await PeopleAsync(tenantId, [subjectEmployeeId], ct);
+        return cases.Select(e => new InboxPersonCase(Item(e, people, InboxDirections.Info, []),
+            isSubject || scope?.CanAct(e.Id, e.EmployeeId) == true || added.Contains(new ItemRef(Source, ExceptionInboxKinds.Case, e.Id)))).ToList();
     }
 
     public async Task<IReadOnlyList<InboxFilterField>> GetFilterFieldsAsync(Guid tenantId, Guid callerEmployeeId, CancellationToken ct)
