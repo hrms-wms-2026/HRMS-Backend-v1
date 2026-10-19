@@ -26,6 +26,9 @@ public interface IMeetingRepository
     /// <summary>The series an approved meeting.create already produced (idempotent apply).</summary>
     Task<MeetingSeries?> FindSeriesByApprovalRequestAsync(Guid tenantId, Guid approvalRequestId, CancellationToken ct = default);
 
+    /// <summary>Recurring, not cancelled series - the generator's work list.</summary>
+    Task<IReadOnlyList<Guid>> ListActiveRecurringSeriesIdsAsync(Guid tenantId, CancellationToken ct = default);
+
     Task<IReadOnlyList<MeetingSeries>> ListSeriesAsync(Guid tenantId, IReadOnlyCollection<Guid> seriesIds, CancellationToken ct = default);
 
     /// <summary>Current participants of several series at once.</summary>

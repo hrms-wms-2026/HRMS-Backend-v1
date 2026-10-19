@@ -49,6 +49,11 @@ public sealed class EfMeetingRepository : IMeetingRepository
         => await _db.MeetingSeries.AsNoTracking()
             .FirstOrDefaultAsync(s => s.TenantId == tenantId && s.ApprovalRequestId == approvalRequestId, ct);
 
+    public async Task<IReadOnlyList<Guid>> ListActiveRecurringSeriesIdsAsync(Guid tenantId, CancellationToken ct = default)
+        => await _db.MeetingSeries.AsNoTracking()
+            .Where(s => s.TenantId == tenantId && s.RecurrenceRule != null && s.CancelledAt == null)
+            .OrderBy(s => s.CreatedAt).ThenBy(s => s.Id).Select(s => s.Id).ToListAsync(ct);
+
     public async Task<IReadOnlyList<MeetingSeries>> ListSeriesAsync(Guid tenantId, IReadOnlyCollection<Guid> seriesIds, CancellationToken ct = default)
         => await _db.MeetingSeries.AsNoTracking().Where(s => s.TenantId == tenantId && seriesIds.Contains(s.Id)).ToListAsync(ct);
 
