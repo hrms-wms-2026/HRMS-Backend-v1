@@ -42,6 +42,14 @@ public interface IMeetingRepository
     /// visibility filter: the caller notifies each occurrence's own attendees.</summary>
     Task<IReadOnlyList<MeetingOccurrenceRow>> ListStartingBetweenAsync(Guid tenantId, DateTimeOffset from, DateTimeOffset to, CancellationToken ct = default);
 
+    /// <summary>Non-cancelled series the employee organizes or is a (non-removed) series attendee of.</summary>
+    Task<IReadOnlyList<MeetingSeries>> ListSeriesForAttendeeAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default);
+
+    /// <summary>The (series, original start) keys already materialized - removed, cancelled or not - or suppressed in [from, to):
+    /// slots a calendar must not show as virtual occurrences.</summary>
+    Task<IReadOnlySet<(Guid SeriesId, DateTimeOffset OriginalStart)>> ListTakenSlotsAsync(Guid tenantId, IReadOnlyCollection<Guid> seriesIds,
+        DateTimeOffset from, DateTimeOffset to, CancellationToken ct = default);
+
     /// <summary>The materialized occurrences overlapping [from, to) that the caller may see (MeetingVisibility), by start.</summary>
     Task<IReadOnlyList<MeetingOccurrenceRow>> ListVisibleAsync(Guid tenantId, Guid callerEmployeeId, DateTimeOffset from, DateTimeOffset to,
         Guid? projectId, Guid? seriesId, CancellationToken ct = default);

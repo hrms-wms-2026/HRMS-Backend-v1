@@ -77,6 +77,27 @@ public sealed class EfMeetingRepository : IMeetingRepository
             .FirstOrDefaultAsync(ct);
     }
 
+    public async Task<IReadOnlyList<MeetingSeries>> ListSeriesForAttendeeAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default)
+        => await _db.MeetingSeries.AsNoTracking()
+            .Where(s => s.TenantId == tenantId && s.CancelledAt == null && (s.OrganizerEmployeeId == employeeId
+                || _db.CalendarEventParticipants.Any(p => p.MeetingSeriesId == s.Id && p.EmployeeId == employeeId && !p.IsDeleted)))
+            .ToListAsync(ct);
+
+    public async Task<IReadOnlySet<(Guid SeriesId, DateTimeOffset OriginalStart)>> ListTakenSlotsAsync(Guid tenantId,
+        IReadOnlyCollection<Guid> seriesIds, DateTimeOffset from, DateTimeOffset to, CancellationToken ct = default)
+    {
+        if (seriesIds.Count == 0)
+            return new HashSet<(Guid, DateTimeOffset)>();
+        var (fromUtc, toUtc) = (from.ToUniversalTime(), to.ToUniversalTime());
+        var materialized = await _db.MeetingDetails.AsNoTracking()
+            .Where(d => d.TenantId == tenantId && seriesIds.Contains(d.SeriesId) && d.OriginalStart >= fromUtc && d.OriginalStart < toUtc)
+            .Select(d => new { d.SeriesId, d.OriginalStart }).ToListAsync(ct);
+        var suppressed = await _db.MeetingOccurrenceSuppressions.AsNoTracking()
+            .Where(s => s.TenantId == tenantId && seriesIds.Contains(s.SeriesId) && s.OriginalStart >= fromUtc && s.OriginalStart < toUtc)
+            .Select(s => new { s.SeriesId, s.OriginalStart }).ToListAsync(ct);
+        return materialized.Concat(suppressed).Select(k => (k.SeriesId, k.OriginalStart.ToUniversalTime())).ToHashSet();
+    }
+
     public async Task<IReadOnlyList<MeetingOccurrenceRow>> ListStartingBetweenAsync(Guid tenantId, DateTimeOffset from, DateTimeOffset to,
         CancellationToken ct = default)
     {
