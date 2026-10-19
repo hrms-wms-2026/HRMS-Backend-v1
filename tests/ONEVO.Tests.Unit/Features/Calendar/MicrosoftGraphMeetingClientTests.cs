@@ -245,4 +245,102 @@ public sealed class MicrosoftGraphMeetingClientTests
             .Select(a => (a.GetProperty("upn").GetString(), a.GetProperty("role").GetString())).ToList();
         Assert.Equal(new[] { ("ada@acme.com", "attendee"), ("vendor@example.com", "attendee") }, attendees.Select(a => (a.Item1!, a.Item2!)));
     }
+
+    private static readonly DateTimeOffset From = new(2026, 11, 1, 0, 0, 0, TimeSpan.Zero);
+    private static readonly DateTimeOffset To = new(2026, 11, 30, 0, 0, 0, TimeSpan.Zero);
+
+    private static HttpResponseMessage Json(object body) => new(HttpStatusCode.OK) { Content = JsonContent.Create(body) };
+
+    [Fact]
+    public async Task Teams_ListSessions_ReturnsEveryReportInRange_WithIntervals()
+    {
+        var handler = new StubHandler(request => request.RequestUri!.AbsolutePath switch
+        {
+            "/v1.0/me/onlineMeetings/m-1/attendanceReports" => Json(new
+            {
+                value = new object[]
+                {
+                    new { id = "r-old", meetingStartDateTime = "2026-10-20T09:00:00Z", meetingEndDateTime = "2026-10-20T09:30:00Z" },
+                    new { id = "r-1", meetingStartDateTime = "2026-11-02T09:01:00Z", meetingEndDateTime = "2026-11-02T09:31:00Z" },
+                    new { id = "r-2", meetingStartDateTime = "2026-11-09T09:00:00Z", meetingEndDateTime = (string?)null },
+                }
+            }),
+            "/v1.0/me/onlineMeetings/m-1/attendanceReports/r-1/attendanceRecords" => Json(new
+            {
+                value = new object[]
+                {
+                    new
+                    {
+                        id = "rec-a", identity = new { id = "aad-a", displayName = "Asha", upn = "asha@contoso.example" },
+                        attendanceIntervals = new object[]
+                        {
+                            new { joinDateTime = "2026-11-02T09:01:00Z", leaveDateTime = "2026-11-02T09:10:00Z" },
+                            new { joinDateTime = "2026-11-02T09:15:00Z", leaveDateTime = (string?)null },
+                        }
+                    },
+                }
+            }),
+            "/v1.0/me/onlineMeetings/m-1/attendanceReports/r-2/attendanceRecords" => Json(new
+            {
+                value = new object[]
+                {
+                    new
+                    {
+                        identity = new { id = "aad-b", displayName = "Bo", upn = (string?)null },
+                        attendanceIntervals = new object[] { new { joinDateTime = "2026-11-09T09:00:00Z", leaveDateTime = "2026-11-09T09:20:00Z" } }
+                    },
+                }
+            }),
+            var path => throw new InvalidOperationException($"Unexpected {path}"),
+        });
+        IMeetingAttendanceSessionClient client = new MicrosoftGraphMeetingClient(new HttpClient(handler), NullLogger<MicrosoftGraphMeetingClient>.Instance);
+
+        var sessions = await client.ListSessionsAsync("t", "m-1", From, To, CancellationToken.None);
+
+        Assert.Equal("microsoft_teams", client.Provider);
+        Assert.Equal(["r-1", "r-2"], sessions.Select(s => s.ProviderSessionId));
+        var first = sessions[0];
+        Assert.Equal((new DateTimeOffset(2026, 11, 2, 9, 1, 0, TimeSpan.Zero), (DateTimeOffset?)new DateTimeOffset(2026, 11, 2, 9, 31, 0, TimeSpan.Zero)),
+            (first.Start, first.End));
+        Assert.Equal(2, first.Records.Count);
+        Assert.All(first.Records, r => Assert.Equal(("rec-a", "Asha", "asha@contoso.example"), (r.ParticipantKey, r.Name, r.Email)));
+        Assert.Null(first.Records[1].LeftAt);
+        Assert.Null(sessions[1].End);
+        Assert.Equal(("aad-b", (string?)null), (sessions[1].Records.Single().ParticipantKey, sessions[1].Records.Single().Email));
+    }
+
+    [Fact]
+    public async Task Teams_ListSessions_FollowsNextLink()
+    {
+        var handler = new StubHandler(request => request.RequestUri!.ToString() switch
+        {
+            "https://graph.microsoft.com/v1.0/me/onlineMeetings/m-1/attendanceReports" => Json(new Dictionary<string, object>
+            {
+                ["value"] = new object[] { new { id = "r-1", meetingStartDateTime = "2026-11-02T09:00:00Z", meetingEndDateTime = "2026-11-02T09:30:00Z" } },
+                ["@odata.nextLink"] = "https://graph.microsoft.com/v1.0/next-reports",
+            }),
+            "https://graph.microsoft.com/v1.0/next-reports" => Json(new
+            {
+                value = new object[] { new { id = "r-2", meetingStartDateTime = "2026-11-09T09:00:00Z", meetingEndDateTime = "2026-11-09T09:30:00Z" } }
+            }),
+            var url when url.EndsWith("/attendanceRecords", StringComparison.Ordinal) => Json(new { value = Array.Empty<object>() }),
+            var url => throw new InvalidOperationException($"Unexpected {url}"),
+        });
+        var client = new MicrosoftGraphMeetingClient(new HttpClient(handler), NullLogger<MicrosoftGraphMeetingClient>.Instance);
+
+        var sessions = await client.ListSessionsAsync("t", "m-1", From, To, CancellationToken.None);
+
+        Assert.Equal(["r-1", "r-2"], sessions.Select(s => s.ProviderSessionId));
+    }
+
+    [Fact]
+    public async Task Teams_ListSessions_AFailureIsAClassifiedProviderException()
+    {
+        var handler = new StubHandler(_ => new HttpResponseMessage(HttpStatusCode.ServiceUnavailable) { Content = new StringContent("{}") });
+        var client = new MicrosoftGraphMeetingClient(new HttpClient(handler), NullLogger<MicrosoftGraphMeetingClient>.Instance);
+
+        var ex = await Assert.ThrowsAsync<MeetingProviderException>(() => client.ListSessionsAsync("t", "m-1", From, To, CancellationToken.None));
+
+        Assert.Equal(MeetingProviderFailureKind.Ambiguous, ex.Kind);
+    }
 }

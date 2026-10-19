@@ -5,10 +5,11 @@ using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using ONEVO.Application.Features.Calendar.ServiceInterfaces;
 using ONEVO.Application.Features.Calendar.Services;
+using ONEVO.Domain.Features.Calendar.Entities;
 
 namespace ONEVO.Infrastructure.ExternalServices.Calendar;
 
-public sealed class MicrosoftGraphMeetingClient(HttpClient httpClient, ILogger<MicrosoftGraphMeetingClient> logger) : ITeamsMeetingClient
+public sealed class MicrosoftGraphMeetingClient(HttpClient httpClient, ILogger<MicrosoftGraphMeetingClient> logger) : ITeamsMeetingClient, IMeetingAttendanceSessionClient
 {
     public async Task<TeamsMeetingDto> CreateOrGetMeetingAsync(
         string accessToken, string externalId, string subject, DateTimeOffset start, DateTimeOffset end, CancellationToken ct,
@@ -88,6 +89,52 @@ public sealed class MicrosoftGraphMeetingClient(HttpClient httpClient, ILogger<M
 
     private const int MaxPages = 100;
 
+    public string Provider => CalendarEventMeetingProviders.MicrosoftTeams;
+
+    /// <summary>Every attendance report (one per held session) that started in [from, to], with its records' intervals -
+    /// for per-occurrence sync of a link reused across a series (spec 5.8).</summary>
+    public async Task<IReadOnlyList<ProviderAttendanceSession>> ListSessionsAsync(string accessToken, string externalMeetingId,
+        DateTimeOffset from, DateTimeOffset to, CancellationToken ct)
+    {
+        var reports = await GetAllPagesAsync(
+            accessToken, $"https://graph.microsoft.com/v1.0/me/onlineMeetings/{externalMeetingId}/attendanceReports",
+            "list attendance reports", ct, classified: true);
+        var sessions = new List<ProviderAttendanceSession>();
+        foreach (var report in reports)
+        {
+            if (DateOf(report, "meetingStartDateTime") is not { } start || start < from || start > to
+                || StringOf(report, "id") is not { } reportId)
+                continue;
+            var records = await GetAllPagesAsync(
+                accessToken,
+                $"https://graph.microsoft.com/v1.0/me/onlineMeetings/{externalMeetingId}/attendanceReports/{reportId}/attendanceRecords",
+                "list attendance records", ct, classified: true);
+            var rows = new List<ProviderAttendanceRecord>();
+            foreach (var record in records)
+            {
+                var identity = record.TryGetProperty("identity", out var i) && i.ValueKind == JsonValueKind.Object ? i : (JsonElement?)null;
+                var name = identity is { } id1 ? StringOf(id1, "displayName") : null;
+                var email = identity is { } id2 ? StringOf(id2, "upn") : null;
+                var key = StringOf(record, "id") ?? (identity is { } id3 ? StringOf(id3, "id") : null) ?? email?.ToLowerInvariant() ?? name;
+                if (key is null || !record.TryGetProperty("attendanceIntervals", out var intervals) || intervals.ValueKind != JsonValueKind.Array)
+                    continue;
+                foreach (var interval in intervals.EnumerateArray())
+                    if (DateOf(interval, "joinDateTime") is { } joined)
+                        rows.Add(new ProviderAttendanceRecord(key, name, email, joined, DateOf(interval, "leaveDateTime")));
+            }
+            sessions.Add(new ProviderAttendanceSession(reportId, start, DateOf(report, "meetingEndDateTime"), rows));
+        }
+        return sessions.OrderBy(s => s.Start).ToList();
+    }
+
+    private static string? StringOf(JsonElement element, string property)
+        => element.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.String && value.GetString() is { Length: > 0 } text
+            ? text : null;
+
+    private static DateTimeOffset? DateOf(JsonElement element, string property)
+        => element.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.String ? value.GetDateTimeOffset() : null;
+
+
     public async Task<IReadOnlyList<TeamsAttendanceRecordDto>> GetAttendanceAsync(
         string accessToken, string externalMeetingId, DateTimeOffset sessionStart, DateTimeOffset sessionEnd, CancellationToken ct)
     {
@@ -127,8 +174,11 @@ public sealed class MicrosoftGraphMeetingClient(HttpClient httpClient, ILogger<M
         return result;
     }
 
-    /// <summary>Every page of a Graph collection, following <c>@odata.nextLink</c>.</summary>
-    private async Task<List<JsonElement>> GetAllPagesAsync(string accessToken, string firstUrl, string operation, CancellationToken ct)
+    /// <summary>Every page of a Graph collection, following <c>@odata.nextLink</c>. <paramref name="classified"/> turns a
+    /// failure into a classified MeetingProviderException (the attendance sync's retry decision) instead of an
+    /// HttpRequestException.</summary>
+    private async Task<List<JsonElement>> GetAllPagesAsync(string accessToken, string firstUrl, string operation, CancellationToken ct,
+        bool classified = false)
     {
         var items = new List<JsonElement>();
         string? url = firstUrl;
@@ -139,8 +189,9 @@ public sealed class MicrosoftGraphMeetingClient(HttpClient httpClient, ILogger<M
 
             using var request = new HttpRequestMessage(HttpMethod.Get, url);
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
-            using var response = await httpClient.SendAsync(request, ct);
-            await EnsureSuccessOrLogAsync(response, operation, ct);
+            using var response = classified ? await SendClassifiedAsync(request, operation, ct) : await httpClient.SendAsync(request, ct);
+            if (!classified)
+                await EnsureSuccessOrLogAsync(response, operation, ct);
             await using var stream = await response.Content.ReadAsStreamAsync(ct);
             using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: ct);
             items.AddRange(doc.RootElement.GetProperty("value").EnumerateArray().Select(element => element.Clone()));

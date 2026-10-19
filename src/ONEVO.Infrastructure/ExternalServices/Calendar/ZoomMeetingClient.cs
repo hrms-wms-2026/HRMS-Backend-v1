@@ -6,15 +6,17 @@ using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using ONEVO.Application.Features.Calendar.ServiceInterfaces;
 using ONEVO.Application.Features.Calendar.Services;
+using ONEVO.Domain.Features.Calendar.Entities;
 
 namespace ONEVO.Infrastructure.ExternalServices.Calendar;
 
-public sealed class ZoomMeetingClient(HttpClient httpClient, ILogger<ZoomMeetingClient> logger) : IZoomMeetingClient
+public sealed class ZoomMeetingClient(HttpClient httpClient, ILogger<ZoomMeetingClient> logger) : IZoomMeetingClient, IMeetingAttendanceSessionClient
 {
     // Zoom rejects scheduled meetings longer than 1440 minutes (24 hours) with a 400. Clamping here
     // prevents a multi-day calendar event from turning into an uncaught HttpRequestException (500);
     // it does not attempt to solve what a genuinely multi-day Zoom meeting should look like.
     private const int MaxDurationMinutes = 1440;
+    private const int ZoomMissingScopeCode = 4711;
 
     public async Task<ZoomMeetingDto> CreateMeetingAsync(
         string accessToken, string subject, DateTimeOffset start, DateTimeOffset end, string correlationToken, CancellationToken ct,
@@ -180,6 +182,10 @@ public sealed class ZoomMeetingClient(HttpClient httpClient, ILogger<ZoomMeeting
         using (response)
         {
             await LogErrorBodyAsync(response, operation, ct);
+            // 4711: the token lacks a scope this call needs - retrying cannot help until the user reconnects.
+            if (await TryReadZoomErrorCodeAsync(response, ct) == ZoomMissingScopeCode)
+                throw new MeetingProviderException(MeetingProviderFailureKind.Permanent,
+                    $"Zoom {operation} returned {(int)response.StatusCode}: missing scope.", reason: MeetingProviderException.MissingScopeReason);
             throw new MeetingProviderException(
                 MeetingProviderException.Classify(response.StatusCode), $"Zoom {operation} returned {(int)response.StatusCode}.",
                 RetryAfterOf(response));
@@ -215,6 +221,84 @@ public sealed class ZoomMeetingClient(HttpClient httpClient, ILogger<ZoomMeeting
 
     private const int MaxAttendancePages = 100;
 
+    public string Provider => CalendarEventMeetingProviders.Zoom;
+
+    /// <summary>Every past instance (one per held session) that started in [from, to], with all of its participants' rows;
+    /// a session ends at its latest leave time (spec 5.8).</summary>
+    public async Task<IReadOnlyList<ProviderAttendanceSession>> ListSessionsAsync(string accessToken, string externalMeetingId,
+        DateTimeOffset from, DateTimeOffset to, CancellationToken ct)
+    {
+        using var instancesRequest = new HttpRequestMessage(HttpMethod.Get, $"https://api.zoom.us/v2/past_meetings/{externalMeetingId}/instances");
+        instancesRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+        using var instancesResponse = await SendClassifiedAsync(instancesRequest, "list past meeting instances", ct);
+        await using var instancesStream = await instancesResponse.Content.ReadAsStreamAsync(ct);
+        using var instancesDoc = await JsonDocument.ParseAsync(instancesStream, cancellationToken: ct);
+        var instances = instancesDoc.RootElement.TryGetProperty("meetings", out var m) && m.ValueKind == JsonValueKind.Array
+            ? m.EnumerateArray().Select(element => element.Clone()).ToList()
+            : [];
+
+        var sessions = new List<ProviderAttendanceSession>();
+        foreach (var instance in instances)
+        {
+            if (TextOf(instance, "uuid") is not { } uuid || !instance.TryGetProperty("start_time", out var s) || s.ValueKind != JsonValueKind.String)
+                continue;
+            var start = s.GetDateTimeOffset();
+            if (start < from || start > to)
+                continue;
+            var records = await ListParticipantsAsync(accessToken, uuid, ct);
+            sessions.Add(new ProviderAttendanceSession(uuid, start, records.Max(r => r.LeftAt), records));
+        }
+        return sessions.OrderBy(x => x.Start).ToList();
+    }
+
+    /// <summary>Every participant row of one past instance (all pages), each keyed participant_user_id ?? id ?? email ?? name.</summary>
+    private async Task<IReadOnlyList<ProviderAttendanceRecord>> ListParticipantsAsync(string accessToken, string uuid, CancellationToken ct)
+    {
+        var encodedUuid = EncodeUuid(uuid);
+        var result = new List<ProviderAttendanceRecord>();
+        string? pageToken = null;
+        for (var page = 1; ; page++)
+        {
+            if (page > MaxAttendancePages)
+                throw new MeetingProviderException(MeetingProviderFailureKind.Ambiguous, $"Zoom participants report exceeded {MaxAttendancePages} pages.");
+
+            var url = $"https://api.zoom.us/v2/past_meetings/{encodedUuid}/participants?page_size=300"
+                + (string.IsNullOrEmpty(pageToken) ? "" : $"&next_page_token={Uri.EscapeDataString(pageToken)}");
+            using var request = new HttpRequestMessage(HttpMethod.Get, url);
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+            using var response = await SendClassifiedAsync(request, "list past meeting participants", ct);
+            await using var stream = await response.Content.ReadAsStreamAsync(ct);
+            using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: ct);
+
+            if (doc.RootElement.TryGetProperty("participants", out var participants) && participants.ValueKind == JsonValueKind.Array)
+                foreach (var participant in participants.EnumerateArray())
+                {
+                    var name = TextOf(participant, "name");
+                    var email = TextOf(participant, "user_email");
+                    var key = TextOf(participant, "participant_user_id") ?? TextOf(participant, "id") ?? email?.ToLowerInvariant() ?? name;
+                    if (key is null || !participant.TryGetProperty("join_time", out var j) || j.ValueKind != JsonValueKind.String)
+                        continue;
+                    var left = participant.TryGetProperty("leave_time", out var l) && l.ValueKind == JsonValueKind.String
+                        ? l.GetDateTimeOffset() : (DateTimeOffset?)null;
+                    result.Add(new ProviderAttendanceRecord(key, name, email, j.GetDateTimeOffset(), left));
+                }
+
+            pageToken = TextOf(doc.RootElement, "next_page_token");
+            if (pageToken is null)
+                return result;
+        }
+    }
+
+    /// <summary>Zoom: a UUID that starts with '/' or contains '//' must be URL-encoded twice.</summary>
+    private static string EncodeUuid(string uuid)
+        => uuid.StartsWith('/') || uuid.Contains("//", StringComparison.Ordinal)
+            ? Uri.EscapeDataString(Uri.EscapeDataString(uuid))
+            : Uri.EscapeDataString(uuid);
+
+    private static string? TextOf(JsonElement element, string property)
+        => element.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.String && value.GetString() is { Length: > 0 } text
+            ? text : null;
+
     public async Task<IReadOnlyList<ZoomAttendanceRecordDto>> GetAttendanceAsync(
         string accessToken, string externalMeetingId, DateTimeOffset sessionStart, DateTimeOffset sessionEnd, CancellationToken ct)
     {
@@ -237,10 +321,7 @@ public sealed class ZoomMeetingClient(HttpClient httpClient, ILogger<ZoomMeeting
         if (picked is not { } index || instances[index].GetProperty("uuid").GetString() is not { Length: > 0 } uuid)
             return [];
 
-        // Zoom: a UUID that starts with '/' or contains '//' must be URL-encoded twice.
-        var encodedUuid = uuid.StartsWith('/') || uuid.Contains("//", StringComparison.Ordinal)
-            ? Uri.EscapeDataString(Uri.EscapeDataString(uuid))
-            : Uri.EscapeDataString(uuid);
+        var encodedUuid = EncodeUuid(uuid);
 
         var result = new List<ZoomAttendanceRecordDto>();
         string? pageToken = null;

@@ -16,11 +16,17 @@ public enum MeetingProviderFailureKind
 
 /// <summary>A Teams/Zoom meeting API call failed; <see cref="Kind"/> drives what the caller may do next (spec §3.2.2).</summary>
 public sealed class MeetingProviderException(
-    MeetingProviderFailureKind kind, string message, TimeSpan? retryAfter = null, Exception? innerException = null)
+    MeetingProviderFailureKind kind, string message, TimeSpan? retryAfter = null, Exception? innerException = null, string? reason = null)
     : Exception(message, innerException)
 {
+    /// <summary>Zoom's error code 4711: the token lacks a scope the call needs (the user must reconnect).</summary>
+    public const string MissingScopeReason = "missing_scope";
+
     public MeetingProviderFailureKind Kind { get; } = kind;
     public TimeSpan? RetryAfter { get; } = retryAfter;
+
+    /// <summary>A stable machine reason when the provider gave one (e.g. <see cref="MissingScopeReason"/>); otherwise null.</summary>
+    public string? Reason { get; } = reason;
 
     public static MeetingProviderFailureKind Classify(HttpStatusCode status) => (int)status switch
     {

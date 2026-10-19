@@ -748,6 +748,11 @@ public static class DependencyInjection
         services.AddHttpClient<IMicrosoftGraphCalendarClient, MicrosoftGraphCalendarClient>(client => { client.Timeout = TimeSpan.FromSeconds(30); });
         services.AddHttpClient<ITeamsMeetingClient, MicrosoftGraphMeetingClient>(client => { client.Timeout = TimeSpan.FromSeconds(30); });
         services.AddHttpClient<IZoomMeetingClient, ZoomMeetingClient>(client => { client.Timeout = TimeSpan.FromSeconds(30); });
+        // Per-occurrence attendance sync (meetings Phase 2, spec 5.8): one session client per provider, over the same typed clients.
+        services.AddTransient<ONEVO.Application.Features.Calendar.ServiceInterfaces.IMeetingAttendanceSessionClient>(
+            sp => (MicrosoftGraphMeetingClient)sp.GetRequiredService<ITeamsMeetingClient>());
+        services.AddTransient<ONEVO.Application.Features.Calendar.ServiceInterfaces.IMeetingAttendanceSessionClient>(
+            sp => (ZoomMeetingClient)sp.GetRequiredService<IZoomMeetingClient>());
         services.AddScoped<ICalendarConnectionTokenProvider, CalendarConnectionTokenProvider>();
         services.AddScoped<ICalendarSyncService, CalendarSyncService>();
         services.AddScoped<ONEVO.Application.Features.Calendar.Services.CalendarEventReminderService>();
