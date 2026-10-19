@@ -50,6 +50,11 @@ public static class MeetingErrorCodes
     public const string LinkNotUnresolved = "meeting_link_not_unresolved";         // cleanup-confirmed outside unresolved
     public const string MeetingCancelled = "meeting_cancelled";                    // a link for a cancelled series
 
+    // Attendance (409)
+    public const string AttendanceRecheckExpired = "attendance_recheck_expired";   // more than 7 days after the occurrence
+    public const string AttendanceCheckInProgress = "attendance_check_in_progress"; // a sync holds the link right now
+    public const string AttendanceNotApplicable = "attendance_not_applicable";     // no link, or the occurrence has not started
+
     // Read
     public const string NotFound = "meeting_not_found";                            // 404
 }

@@ -38,13 +38,22 @@ public interface IMeetingLinkRepository
     /// finalized, or is still inside its late-recheck window (the materialized half of the spec 5.7 "needed" rule).</summary>
     Task<bool> AnyOccurrenceNeedsLinkAsync(Guid tenantId, Guid linkId, DateTimeOffset now, TimeSpan lateRecheckWindow, CancellationToken ct = default);
 
-    /// <summary>Points the series' occurrences starting at or after <paramref name="fromStart"/> at the link (or at none);
-    /// runs at once (bulk update).</summary>
-    Task SetOccurrenceLinkAsync(Guid tenantId, Guid seriesId, Guid? linkId, DateTimeOffset fromStart, CancellationToken ct = default);
+    /// <summary>Points the series' occurrences starting at or after <paramref name="fromStart"/> at the link (or at none) and
+    /// restarts their attendance: pending at <paramref name="firstCheckpoint"/> after their end, or not_applicable without a
+    /// link. Runs at once (bulk update).</summary>
+    Task SetOccurrenceLinkAsync(Guid tenantId, Guid seriesId, Guid? linkId, DateTimeOffset fromStart, TimeSpan firstCheckpoint,
+        CancellationToken ct = default);
 
     /// <summary>Retry: provisioning_unknown or failed -> provisioning, same generation (runs at once). False = the link was
     /// in neither state any more (someone else claimed it).</summary>
     Task<bool> TryClaimRetryAsync(Guid tenantId, Guid linkId, DateTimeOffset now, CancellationToken ct = default);
+
+    /// <summary>Active series-owned links whose every reference is released: their provider cancel is parked until nothing
+    /// needs them (spec 5.7).</summary>
+    Task<IReadOnlyList<Guid>> ListParkedLinkIdsAsync(Guid tenantId, CancellationToken ct = default);
+
+    /// <summary>The series that referenced the link last (an unreleased reference first, else the latest released one).</summary>
+    Task<Guid?> GetLatestReferencingSeriesAsync(Guid tenantId, Guid linkId, CancellationToken ct = default);
 
     /// <summary>SELECT ... FOR UPDATE on the link row; the release decision runs under it. Needs a transaction.</summary>
     Task LockLinkAsync(Guid tenantId, Guid linkId, CancellationToken ct = default);

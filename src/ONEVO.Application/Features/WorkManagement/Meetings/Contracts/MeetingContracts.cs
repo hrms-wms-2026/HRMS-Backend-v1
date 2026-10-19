@@ -68,6 +68,11 @@ public sealed record MeetingSeriesLinkResponse(
     [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     MeetingLinkResponse? Link);
 
+/// <summary>An occurrence's attendance progress after a recheck (spec 5.8).</summary>
+/// <param name="Status">A MeetingAttendanceStatuses value.</param>
+/// <param name="LastError">Why the last check could not read the provider (provider_error, missing_scope, ...), if it failed.</param>
+public sealed record MeetingAttendanceStatusResponse(string Status, DateTimeOffset? NextCheckAt, DateTimeOffset? FinalizedAt, string? LastError);
+
 public sealed record MeetingPersonRef(Guid EmployeeId, string Name);
 
 /// <param name="Kind">"employee" or "guest".</param>

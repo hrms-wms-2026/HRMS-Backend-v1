@@ -19,7 +19,7 @@ Every error is ProblemDetails with a stable `code` extension:
 | 400 | Validation (`meeting_organizer_cannot_be_removed`, `meeting_response_invalid`, `meeting_title_invalid`, `meeting_platform_invalid`, `meeting_guest_email_invalid`, `meeting_invalid_time`, `meeting_start_in_past`, `meeting_invalid_timezone`, `meeting_recurrence_invalid`, `meeting_module_unavailable`, `meeting_scope_invalid`, `meeting_same_module`) |
 | 403 | You can see the meeting but may not do this (`meeting_organizer_required`, `meeting_module_member_required`, `meeting_calendar_write_required` for an Office meeting; an attendee trying an organizer action) |
 | 404 | `meeting_not_found`: the meeting does not exist **or you may not see it**. The body is identical either way. |
-| 409 | State or concurrency (`meeting_changed`, `meeting_occurrence_started`, `meeting_recurrence_empty`, `meeting_busy`, `meeting_nothing_to_move`, `meeting_office_not_ready`, `meeting_provider_not_connected`, `meetings_read_only`, `meeting_cancelled`, `meeting_link_exists`, `meeting_link_in_progress`, `meeting_link_status_unknown`, `meeting_link_unresolved`, `meeting_link_not_retryable`, `meeting_link_not_unresolved`, `approval_already_decided`, `meeting_approval_not_editable`, `bulk_invite_unavailable`) |
+| 409 | State or concurrency (`meeting_changed`, `meeting_occurrence_started`, `meeting_recurrence_empty`, `meeting_busy`, `meeting_nothing_to_move`, `meeting_office_not_ready`, `meeting_provider_not_connected`, `meetings_read_only`, `meeting_cancelled`, `meeting_link_exists`, `meeting_link_in_progress`, `meeting_link_status_unknown`, `meeting_link_unresolved`, `meeting_link_not_retryable`, `meeting_link_not_unresolved`, `attendance_recheck_expired`, `attendance_check_in_progress`, `attendance_not_applicable`, `approval_already_decided`, `meeting_approval_not_editable`, `bulk_invite_unavailable`) |
 | 503 | `meetings_disabled`: the feature flag is off |
 
 ## Endpoints
@@ -44,6 +44,7 @@ Every error is ProblemDetails with a stable `code` extension:
 | `POST /series/{seriesId}/link` | `MeetingLinkRequest` → `MeetingLinkResponse` (`provisioning`) | Organizer | 400 `meeting_platform_invalid`, 403, 404, 409 `meeting_link_exists` (send `regenerate: true` to replace it) / `meeting_link_in_progress` / `meeting_link_status_unknown` / `meeting_link_unresolved` / `meeting_provider_not_connected` / `meeting_cancelled` / `meeting_busy` / `meetings_read_only` |
 | `POST /series/{seriesId}/link/retry` | → `MeetingLinkResponse` | Organizer; only from `provisioning_unknown` or `failed`, same generation | 403, 404, 409 `meeting_link_not_retryable` / `meeting_link_in_progress` / `meeting_link_unresolved` / `meeting_provider_not_connected` / `meeting_cancelled` / `meetings_read_only` |
 | `DELETE /series/{seriesId}/link` | → 200 `MeetingLinkResponse`, or 204 when there was no link | Organizer | 403, 404, 409 `meeting_link_in_progress` / `meeting_link_status_unknown` / `meeting_link_unresolved` / `meeting_busy` / `meetings_read_only` |
+| `POST /series/{seriesId}/occurrences/{originalStart}/attendance/recheck` | → `MeetingAttendanceStatusResponse` | Organizer; up to 7 days after the occurrence ends | 403, 404, 409 `attendance_recheck_expired` / `attendance_check_in_progress` / `attendance_not_applicable` / `meetings_read_only` |
 | `POST /series/{seriesId}/link/cleanup-confirmed` | → 204 (`unresolved` → `cancelled`) | Organizer | 403, 404, 409 `meeting_link_not_unresolved` / `meetings_read_only` |
 
 **Approvals.** A `requested` meeting appears in the existing approval inbox as action `meeting.create` (or `meeting.move`):
@@ -98,6 +99,8 @@ Every error is ProblemDetails with a stable `code` extension:
 // MeetingLinkResponse (organizer only)
 { "linkId": "…", "provider": "microsoft_teams", "status": "provisioning|active|provisioning_unknown|failed|unresolved|cancelled|not_connected",
   "joinUrl": "https://…|null", "organizerJoinUrl": "https://…|null", "failureReason": null, "generation": 1, "releasePending": false }
+// MeetingAttendanceStatusResponse { "status": "pending|provisional|synced|attendance_unavailable|sync_failed|not_applicable",
+//   "nextCheckAt": "…|null", "finalizedAt": "…|null", "lastError": "provider_error|missing_scope|not_connected|reauth_required|null" }
 // MeetingSeriesLinkResponse: attendee { "joinUrl": "https://…|null" }; organizer { "joinUrl": "…", "link": MeetingLinkResponse|null }
 ```
 

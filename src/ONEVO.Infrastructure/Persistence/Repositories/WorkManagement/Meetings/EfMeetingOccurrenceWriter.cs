@@ -72,10 +72,11 @@ public sealed class EfMeetingOccurrenceWriter : IMeetingOccurrenceWriter
             ), details AS (
                 INSERT INTO meeting_details (task_id, tenant_id, series_id, original_start, start_at, end_at, is_all_day,
                                              location, is_private, is_detached, revision, calendar_event_meeting_id,
-                                             attendance_checkpoint)
+                                             attendance_checkpoint, attendance_status, attendance_next_check_at)
                 SELECT id, {d.TenantId}::uuid, {d.SeriesId}::uuid, {originalStart}::timestamptz, {startAt}::timestamptz,
                        {endAt}::timestamptz, {d.IsAllDay}::boolean, {d.Location}::text, {d.IsPrivate}::boolean, false, 0,
-                       {d.CalendarEventMeetingId}::uuid, 0
+                       {d.CalendarEventMeetingId}::uuid, 0, {d.AttendanceStatus}::text,
+                       {d.AttendanceNextCheckAt?.ToUniversalTime()}::timestamptz
                 FROM t
                 ON CONFLICT ON CONSTRAINT uq_meeting_details_series_original_start DO NOTHING
                 RETURNING task_id

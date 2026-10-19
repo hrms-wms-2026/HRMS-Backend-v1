@@ -6,7 +6,8 @@ public sealed record MeetingOccurrenceDraft(
     Guid TenantId, Guid SeriesId, Guid ProjectId, Guid ObjectiveId, Guid CategoryId, Guid StatusId,
     string ShortId, string Title, string? Description, Guid CreatedById,
     DateTimeOffset OriginalStart, DateTimeOffset StartAt, DateTimeOffset EndAt, bool IsAllDay,
-    string? Location, bool IsPrivate, Guid? CalendarEventMeetingId);
+    string? Location, bool IsPrivate, Guid? CalendarEventMeetingId,
+    string? AttendanceStatus = null, DateTimeOffset? AttendanceNextCheckAt = null);
 
 /// <summary>
 /// The concurrency-safe occurrence writes of meetings-as-tasks Phase 2 (spec 5.6). Every method needs an ambient

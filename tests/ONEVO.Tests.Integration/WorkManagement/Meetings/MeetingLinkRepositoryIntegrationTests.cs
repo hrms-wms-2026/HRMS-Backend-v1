@@ -122,7 +122,7 @@ public sealed class MeetingLinkRepositoryIntegrationTests
         }
 
         await using (var db = w.H.NewContext())
-            await new EfMeetingLinkRepository(db).SetOccurrenceLinkAsync(w.H.TenantId, w.Series.Id, linkId, Now.AddDays(2));
+            await new EfMeetingLinkRepository(db).SetOccurrenceLinkAsync(w.H.TenantId, w.Series.Id, linkId, Now.AddDays(2), TimeSpan.FromMinutes(30));
 
         await using var check = w.H.NewContext();
         var details = await check.MeetingDetails.ToDictionaryAsync(d => d.TaskId);

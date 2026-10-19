@@ -197,14 +197,14 @@ public sealed class SeriesMeetingLinkService
                     if (existing.Status == CalendarEventMeetingStatuses.Active && !request.Regenerate)
                         return Result<MeetingLinkResponse>.Failure("This meeting already has a link.", 409, MeetingErrorCodes.LinkExists);
                     // Its upcoming occurrences stop using the old link first, so they do not keep it "needed".
-                    await _links.SetOccurrenceLinkAsync(tenantId, seriesId, null, now, innerCt);
+                    await _links.SetOccurrenceLinkAsync(tenantId, seriesId, null, now, _options.Value.Attendance.Checkpoints[0], innerCt);
                     await ReleaseReferenceAsync(tenantId, series, existing.Id, now, innerCt);
                 }
 
                 var linkId = await _links.TryClaimForSeriesAsync(tenantId, seriesId, connection!.Id, request.Platform, invitesPending: false, now, innerCt)
                     ?? throw new InvalidOperationException($"Series {seriesId} still holds a link after its release.");
                 await _unitOfWork.SaveChangesAsync(innerCt);
-                await _links.SetOccurrenceLinkAsync(tenantId, seriesId, linkId, now, innerCt);
+                await _links.SetOccurrenceLinkAsync(tenantId, seriesId, linkId, now, _options.Value.Attendance.Checkpoints[0], innerCt);
                 await QueueProvisioningAsync(tenantId, linkId, seriesId, generation: 1, innerCt);
                 await _unitOfWork.SaveChangesAsync(innerCt);
                 return Result<MeetingLinkResponse>.Success(
@@ -271,7 +271,7 @@ public sealed class SeriesMeetingLinkService
                     return unsettled;
 
                 var now = _clock.UtcNow;
-                await _links.SetOccurrenceLinkAsync(tenantId, seriesId, null, now, innerCt);
+                await _links.SetOccurrenceLinkAsync(tenantId, seriesId, null, now, _options.Value.Attendance.Checkpoints[0], innerCt);
                 var (link, parked) = await ReleaseReferenceAsync(tenantId, series, existing.Id, now, innerCt);
                 // P1-4: nobody keeps a join link that no longer works for this meeting.
                 if (existing.Status == CalendarEventMeetingStatuses.Active)
@@ -315,6 +315,28 @@ public sealed class SeriesMeetingLinkService
         var (link, parked) = await ReleaseReferenceAsync(tenantId, series, active.Id, _clock.UtcNow, ct);
         return Describe(link, parked);
     }
+
+    /// <summary>A parked link (every reference released, the provider cancel waiting) whose last need has ended - attendance
+    /// finalized and the late-recheck window closed - is cancelled now and its provider cancel queued, under the link lock.
+    /// True when it was cancelled.</summary>
+    public Task<bool> CancelIfUnneededAsync(Guid tenantId, Guid linkId, CancellationToken ct)
+        => _unitOfWork.ExecuteInTransactionAsync(async innerCt =>
+        {
+            await _links.LockLinkAsync(tenantId, linkId, innerCt);
+            var link = await _links.GetTrackedAsync(tenantId, linkId, innerCt);
+            var now = _clock.UtcNow;
+            if (link is not { Status: CalendarEventMeetingStatuses.Active }
+                || (await _links.ListActiveReferencingSeriesAsync(tenantId, linkId, innerCt)).Count > 0
+                || await IsNeededAsync(tenantId, linkId, now, innerCt)
+                || await _links.GetLatestReferencingSeriesAsync(tenantId, linkId, innerCt) is not Guid seriesId
+                || await _meetings.GetSeriesAsync(tenantId, seriesId, innerCt) is not { } series)
+                return false;
+            link.Status = CalendarEventMeetingStatuses.Cancelled;
+            link.UpdatedAt = now;
+            await QueueProviderCancelAsync(tenantId, link, series, innerCt);
+            await _unitOfWork.SaveChangesAsync(innerCt);
+            return true;
+        }, ct);
 
     /// <summary>The spec 5.7 "needed" rule: an occurrence using the link that is upcoming, has an unfinalized attendance check
     /// or is inside its late-recheck window - or a series still referencing it with an upcoming (possibly virtual) slot.</summary>

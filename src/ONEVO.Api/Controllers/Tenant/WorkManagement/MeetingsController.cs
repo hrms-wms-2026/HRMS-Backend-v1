@@ -107,6 +107,10 @@ public sealed class MeetingsController : ControllerBase
     public async Task<IActionResult> ConfirmLinkCleanup(Guid seriesId, CancellationToken ct)
         => Respond(await _mediator.Send(new ConfirmMeetingLinkCleanupCommand(seriesId), ct), _ => NoContent());
 
+    [HttpPost("series/{seriesId:guid}/occurrences/{originalStart}/attendance/recheck")]
+    public async Task<IActionResult> RecheckAttendance(Guid seriesId, DateTimeOffset originalStart, CancellationToken ct)
+        => Respond(await _mediator.Send(new RecheckMeetingAttendanceCommand(seriesId, originalStart), ct), Ok);
+
     private IActionResult Respond<T>(Result<T> result, Func<T, IActionResult> onSuccess)
     {
         if (result.IsSuccess)

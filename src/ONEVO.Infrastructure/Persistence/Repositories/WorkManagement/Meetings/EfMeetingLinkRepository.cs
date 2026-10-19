@@ -85,12 +85,24 @@ public sealed class EfMeetingLinkRepository : IMeetingLinkRepository
             && (d.EndAt > at || d.AttendanceFinalizedAt == null || d.EndAt > recheckSince), ct);
     }
 
-    public async Task SetOccurrenceLinkAsync(Guid tenantId, Guid seriesId, Guid? linkId, DateTimeOffset fromStart, CancellationToken ct = default)
+    public async Task SetOccurrenceLinkAsync(Guid tenantId, Guid seriesId, Guid? linkId, DateTimeOffset fromStart, TimeSpan firstCheckpoint,
+        CancellationToken ct = default)
     {
         var from = fromStart.ToUniversalTime();
-        await _db.MeetingDetails
-            .Where(d => d.TenantId == tenantId && d.SeriesId == seriesId && d.StartAt >= from)
-            .ExecuteUpdateAsync(s => s.SetProperty(d => d.CalendarEventMeetingId, linkId), ct);
+        var occurrences = _db.MeetingDetails.Where(d => d.TenantId == tenantId && d.SeriesId == seriesId && d.StartAt >= from);
+        if (linkId is null)
+            await occurrences.ExecuteUpdateAsync(s => s
+                .SetProperty(d => d.CalendarEventMeetingId, (Guid?)null)
+                .SetProperty(d => d.AttendanceStatus, MeetingAttendanceStatuses.NotApplicable)
+                .SetProperty(d => d.AttendanceNextCheckAt, (DateTimeOffset?)null)
+                .SetProperty(d => d.AttendanceCheckpoint, 0), ct);
+        else
+            await occurrences.ExecuteUpdateAsync(s => s
+                .SetProperty(d => d.CalendarEventMeetingId, linkId)
+                .SetProperty(d => d.AttendanceStatus, MeetingAttendanceStatuses.Pending)
+                .SetProperty(d => d.AttendanceNextCheckAt, d => (DateTimeOffset?)(d.EndAt + firstCheckpoint))
+                .SetProperty(d => d.AttendanceCheckpoint, 0)
+                .SetProperty(d => d.AttendanceFinalizedAt, (DateTimeOffset?)null), ct);
     }
 
     public async Task<bool> TryClaimRetryAsync(Guid tenantId, Guid linkId, DateTimeOffset now, CancellationToken ct = default)
@@ -100,6 +112,20 @@ public sealed class EfMeetingLinkRepository : IMeetingLinkRepository
             WHERE tenant_id = {tenantId} AND id = {linkId}
               AND status IN ({CalendarEventMeetingStatuses.ProvisioningUnknown}, {CalendarEventMeetingStatuses.Failed})
             """, ct) == 1;
+
+    public async Task<IReadOnlyList<Guid>> ListParkedLinkIdsAsync(Guid tenantId, CancellationToken ct = default)
+        => await _db.CalendarEventMeetings.AsNoTracking()
+            .Where(m => m.TenantId == tenantId && m.OwnerKind == CalendarMeetingOwnerKinds.MeetingSeries
+                && m.Status == CalendarEventMeetingStatuses.Active
+                && _db.MeetingSeriesLinks.Any(l => l.CalendarEventMeetingId == m.Id)
+                && !_db.MeetingSeriesLinks.Any(l => l.CalendarEventMeetingId == m.Id && l.ReleasedAt == null))
+            .Select(m => m.Id).ToListAsync(ct);
+
+    public async Task<Guid?> GetLatestReferencingSeriesAsync(Guid tenantId, Guid linkId, CancellationToken ct = default)
+        => await _db.MeetingSeriesLinks.AsNoTracking()
+            .Where(l => l.TenantId == tenantId && l.CalendarEventMeetingId == linkId)
+            .OrderBy(l => l.ReleasedAt == null ? 0 : 1).ThenByDescending(l => l.ReleasedAt)
+            .Select(l => (Guid?)l.SeriesId).FirstOrDefaultAsync(ct);
 
     public async Task LockLinkAsync(Guid tenantId, Guid linkId, CancellationToken ct = default)
     {

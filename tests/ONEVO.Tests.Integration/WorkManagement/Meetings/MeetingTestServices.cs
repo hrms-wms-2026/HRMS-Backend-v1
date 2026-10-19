@@ -31,9 +31,10 @@ public sealed class MeetingTestServices
         Projects = new EfProjectRepository(db);
         Access = new MeetingAccessResolver(Meetings);
         Links = new EfMeetingLinkRepository(db);
-        Materializer = new MeetingOccurrenceMaterializer(Meetings, Writer,
-            new MeetingTaskDefaults(new EfTaskCategoryRepository(db), new EfTaskStatusRepository(db)), Projects, Recurrence, UnitOfWork, Links);
         Options = Microsoft.Extensions.Options.Options.Create(new MeetingsOptions { Create = true });
+        Materializer = new MeetingOccurrenceMaterializer(Meetings, Writer,
+            new MeetingTaskDefaults(new EfTaskCategoryRepository(db), new EfTaskStatusRepository(db)), Projects, Recurrence, UnitOfWork, Links,
+            Options);
         Notifier = new MeetingNotifier(new ONEVO.Application.Features.Calendar.Services.CalendarNotificationSender(
                 new ONEVO.Infrastructure.Services.SharedPlatform.Outbox.OutboxWriter(db, ONEVO.Tests.Integration.Calendar.CalendarNotificationDb.Encryption, clock),
                 new ONEVO.Infrastructure.Persistence.Repositories.CoreHr.EfEmployeeRepository(db)),
@@ -53,6 +54,24 @@ public sealed class MeetingTestServices
         => new(Links, Meetings, Writer, new ONEVO.Infrastructure.Persistence.Repositories.Calendar.EfExternalCalendarConnectionRepository(Db),
             provisioner, Notifier, Recurrence, new EfEmployeeRepository(Db), Outbox, UnitOfWork, Clock, Access,
             options is null ? Options : Microsoft.Extensions.Options.Options.Create(options));
+
+    /// <summary>The per-occurrence attendance sync over these services, with the given provider session client.</summary>
+    public MeetingAttendanceSyncService AttendanceSync(ONEVO.Application.Features.Calendar.ServiceInterfaces.IMeetingAttendanceSessionClient client,
+        MeetingsOptions? options = null)
+        => new(new EfMeetingAttendanceRepository(Db), Links, Meetings, Access,
+            new ONEVO.Infrastructure.Persistence.Repositories.Calendar.EfExternalCalendarConnectionRepository(Db), new TokenStub(), [client],
+            new ONEVO.Application.Features.Calendar.Services.CalendarNotificationSender(Outbox,
+                new ONEVO.Infrastructure.Persistence.Repositories.CoreHr.EfEmployeeRepository(Db)),
+            UnitOfWork, options is null ? Options : Microsoft.Extensions.Options.Options.Create(options), Clock);
+
+    /// <summary>Every connection has a fresh token.</summary>
+    private sealed class TokenStub : ONEVO.Application.Features.Calendar.ServiceInterfaces.ICalendarConnectionTokenProvider
+    {
+        public Task<string?> GetFreshAccessTokenAsync(ONEVO.Domain.Features.Calendar.Entities.ExternalCalendarConnection connection,
+            string oauthProvider, CancellationToken ct) => Task.FromResult<string?>("token");
+        public Task<string?> ForceRefreshAccessTokenAsync(ONEVO.Domain.Features.Calendar.Entities.ExternalCalendarConnection connection,
+            string oauthProvider, CancellationToken ct) => Task.FromResult<string?>("token");
+    }
 
     public ONEVO.Infrastructure.Services.SharedPlatform.Outbox.OutboxWriter Outbox => new(Db, ONEVO.Tests.Integration.Calendar.CalendarNotificationDb.Encryption, Clock);
 

@@ -142,4 +142,18 @@ public sealed class MeetingsControllerTests
 
         Assert.Equal(parked, first.Value);
     }
+
+    [Fact]
+    public async Task RecheckAttendance_PassesTheOccurrenceThrough()
+    {
+        RecheckMeetingAttendanceCommand? sent = null;
+        var status = new MeetingAttendanceStatusResponse("synced", null, Start.AddDays(1), null);
+        _mediator.Setup(m => m.Send(It.IsAny<RecheckMeetingAttendanceCommand>(), It.IsAny<CancellationToken>()))
+            .Callback((IRequest<Result<MeetingAttendanceStatusResponse>> c, CancellationToken _) => sent = (RecheckMeetingAttendanceCommand)c)
+            .ReturnsAsync(Result<MeetingAttendanceStatusResponse>.Success(status));
+
+        var result = Assert.IsType<OkObjectResult>(await Controller.RecheckAttendance(Series, Start, CancellationToken.None));
+
+        Assert.Equal((status, Series, Start), (result.Value, sent!.SeriesId, sent.OriginalStart));
+    }
 }

@@ -31,3 +31,20 @@ public class MeetingDetails : ITenantOwnedEntity
     public DateTimeOffset? AttendanceFinalizedAt { get; set; }
     public string? AttendanceLastError { get; set; }
 }
+
+/// <summary>An occurrence's attendance progress (spec 5.8). It only moves forward and never leaves <see cref="Synced"/>.</summary>
+public static class MeetingAttendanceStatuses
+{
+    /// <summary>The occurrence has a link; no provider session found yet.</summary>
+    public const string Pending = "pending";
+    /// <summary>Sessions found before the last checkpoint: later checks may still add rows.</summary>
+    public const string Provisional = "provisional";
+    /// <summary>Final: sessions found at or after the last checkpoint.</summary>
+    public const string Synced = "synced";
+    /// <summary>The provider answered but has no session for the occurrence.</summary>
+    public const string Unavailable = "attendance_unavailable";
+    /// <summary>The provider erred at the last checkpoint (the reason is kept).</summary>
+    public const string SyncFailed = "sync_failed";
+    /// <summary>The occurrence has no link.</summary>
+    public const string NotApplicable = "not_applicable";
+}
