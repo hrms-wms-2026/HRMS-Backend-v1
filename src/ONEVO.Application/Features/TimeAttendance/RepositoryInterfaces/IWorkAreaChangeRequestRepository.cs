@@ -28,5 +28,8 @@ public interface IWorkAreaChangeRequestRepository
     Task<WorkAreaChangeRequest?> GetApprovedForDateAsync(
         Guid tenantId, Guid legalEntityId, Guid employeeId, DateOnly date, CancellationToken ct = default);
 
+    /// <summary>The employee's requests of any status created in [from, to) - the inbox case history.</summary>
+    Task<IReadOnlyList<WorkAreaChangeRequest>> ListForEmployeeCreatedAsync(
+        Guid tenantId, Guid employeeId, DateTimeOffset from, DateTimeOffset to, CancellationToken ct = default);
     Task<int> SaveChangesAsync(CancellationToken ct = default);
 }

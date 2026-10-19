@@ -31,7 +31,7 @@ namespace ONEVO.Application.Features.TimeAttendance.Inbox;
 /// kind), only with attendance:approve - the permission the module endpoints require. Sent = the caller's own requests.
 /// Actions run the module's own commands; the Inbox adds the journal row, with the before-state the 30-minute undo needs.
 /// </summary>
-public sealed class AttendanceInboxSourceProvider : IInboxSourceProvider
+public sealed class AttendanceInboxSourceProvider : IInboxSourceProvider, IInboxPersonCaseProvider
 {
     public const int SentLimit = 200;
     public const int InboxLimit = 500;
@@ -245,6 +245,54 @@ public sealed class AttendanceInboxSourceProvider : IInboxSourceProvider
             new("work_date", "Day", true, items.Where(i => i.Facets.ContainsKey("work_date"))
                 .Select(i => i.Facets["work_date"][0]).Distinct().OrderByDescending(d => d, StringComparer.Ordinal).Select(d => Option(d, d)).ToList()),
         ];
+    }
+
+    // ---- person case history -------------------------------------------------------------------
+
+    /// <summary>The subject's alerts, or their requests of all four kinds, created in [from, to) and of any status, as
+    /// info. CanOpen follows GetDetailAsync: requester, current approver of a pending request, an attendance reader
+    /// covering them, or someone added to the chat.</summary>
+    public async Task<IReadOnlyList<InboxPersonCase>> ListPersonCasesAsync(
+        Guid tenantId, Guid subjectEmployeeId, string category, DateTimeOffset from, DateTimeOffset to, Guid callerEmployeeId, CancellationToken ct)
+    {
+        var added = (await _conversations.ListAddedSubjectsAsync(tenantId, callerEmployeeId, Source, ct)).ToHashSet();
+        if (category == InboxCategories.Alert)
+            return await _alerts.ListPersonCasesAsync(tenantId, subjectEmployeeId, from, to, callerEmployeeId, added, ct);
+        if (category != InboxCategories.Request)
+            return [];
+
+        var rows = new List<Row>();
+        rows.AddRange((await _corrections.ListForEmployeeCreatedAsync(tenantId, subjectEmployeeId, from, to, ct)).Select(CorrectionRow));
+        rows.AddRange((await _workAreas.ListForEmployeeCreatedAsync(tenantId, subjectEmployeeId, from, to, ct)).Select(WorkAreaRow));
+        rows.AddRange((await _locations.ListForEmployeeCreatedAsync(tenantId, subjectEmployeeId, from, to, ct)).Select(LocationRow));
+        rows.AddRange((await _devices.ListForEmployeeAsync(tenantId, subjectEmployeeId, ct))
+            .Where(d => d.RequestedAt >= from && d.RequestedAt < to).Select(d => DeviceRow(d, d.LegalEntityId)));
+        if (rows.Count == 0)
+            return [];
+
+        var people = await _employees.ListByIdsAsync(tenantId, [subjectEmployeeId], ct);
+        var isRequester = subjectEmployeeId == callerEmployeeId;
+        var approver = new Dictionary<(string, Guid?), bool>();
+        var reader = new Dictionary<Guid?, bool>();
+        var result = new List<InboxPersonCase>();
+        foreach (var row in rows)
+        {
+            var canOpen = isRequester || added.Contains(new ItemRef(Source, row.Kind, row.Id));
+            if (!canOpen && IsPending(row.Status))
+            {
+                if (!approver.TryGetValue((row.Kind, row.LegalEntityId), out var isApprover))
+                    approver[(row.Kind, row.LegalEntityId)] = isApprover = await IsExactApproverAsync(row, ct);
+                canOpen = isApprover;
+            }
+            if (!canOpen)
+            {
+                if (!reader.TryGetValue(row.LegalEntityId, out var covers))
+                    reader[row.LegalEntityId] = covers = await HrReaderCoversAsync(row, ct);
+                canOpen = covers;
+            }
+            result.Add(new InboxPersonCase(Item(row, people, InboxDirections.Info, pending: false, []), canOpen));
+        }
+        return result;
     }
 
     // ---- detail ---------------------------------------------------------------------------------

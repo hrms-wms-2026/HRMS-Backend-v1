@@ -1,3 +1,4 @@
+using ONEVO.Application.Features.Conversations.Contracts;
 using System.Text.Json;
 using MediatR;
 using ONEVO.Application.Common.Models;
@@ -101,6 +102,34 @@ public sealed class AttendanceAlertInbox
         foreach (var alert in own)
             items.TryAdd(alert.Id, Item(alert, people, InboxDirections.Info, pending: false, []));
         return items.Values.ToList();
+    }
+
+    /// <summary>The subject's alerts of any status detected in [from, to), as info. CanOpen follows GetDetailAsync: the
+    /// subject, their reviewer, an attendance reader covering them, or someone added to the alert's chat.</summary>
+    public async Task<IReadOnlyList<InboxPersonCase>> ListPersonCasesAsync(
+        Guid tenantId, Guid subjectEmployeeId, DateTimeOffset from, DateTimeOffset to, Guid callerEmployeeId,
+        IReadOnlySet<ItemRef> addedToChat, CancellationToken ct)
+    {
+        var alerts = await _alerts.ListForEmployeeDetectedAsync(tenantId, subjectEmployeeId, from, to, ct);
+        if (alerts.Count == 0)
+            return [];
+        var people = await _employees.ListByIdsAsync(tenantId, [subjectEmployeeId], ct);
+        var isSubject = subjectEmployeeId == callerEmployeeId;
+        // Reviewer / reader access depends only on the employee and legal entity, so one check per legal entity.
+        var access = new Dictionary<Guid?, bool>();
+        var rows = new List<InboxPersonCase>();
+        foreach (var alert in alerts)
+        {
+            var canOpen = isSubject || addedToChat.Contains(new ItemRef(AttendanceInboxKinds.Source, AttendanceInboxKinds.Alert, alert.Id));
+            if (!canOpen)
+            {
+                if (!access.TryGetValue(alert.LegalEntityId, out var allowed))
+                    access[alert.LegalEntityId] = allowed = await CanReviewAsync(alert, callerEmployeeId, ct) || await HrReaderCoversAsync(alert, ct);
+                canOpen = allowed;
+            }
+            rows.Add(new InboxPersonCase(Item(alert, people, InboxDirections.Info, pending: false, []), canOpen));
+        }
+        return rows;
     }
 
     private async Task<IReadOnlyCollection<Guid>> ScopeAsync(Guid legalEntityId, IEnumerable<Guid> candidates, CancellationToken ct)

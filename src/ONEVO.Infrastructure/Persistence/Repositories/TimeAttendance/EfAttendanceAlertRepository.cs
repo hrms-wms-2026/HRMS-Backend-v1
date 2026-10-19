@@ -56,4 +56,10 @@ public sealed class EfAttendanceAlertRepository : IAttendanceAlertRepository
     public void Remove(AttendanceAlert alert) => _db.AttendanceAlerts.Remove(alert);
 
     public Task SaveChangesAsync(CancellationToken ct) => _db.SaveChangesAsync(ct);
+
+    public Task<List<AttendanceAlert>> ListForEmployeeDetectedAsync(
+        Guid tenantId, Guid employeeId, DateTimeOffset from, DateTimeOffset to, CancellationToken ct) =>
+        _db.AttendanceAlerts.AsNoTracking()
+            .Where(a => a.TenantId == tenantId && a.EmployeeId == employeeId && a.DetectedAt >= from && a.DetectedAt < to)
+            .ToListAsync(ct);
 }

@@ -599,4 +599,93 @@ public class AttendanceInboxTests
         f.Authority.Verify(a => a.ResolveVisibilityAsync(It.Is<EmployeeAuthorityVisibilityRequest>(r =>
             r.RequiredPermission == "attendance:read" && r.LegalEntityId == f.LegalEntityId), It.IsAny<CancellationToken>()), Times.AtLeastOnce);
     }
+
+    private static readonly DateTimeOffset MonthStart = new(2026, 10, 1, 0, 0, 0, TimeSpan.Zero);
+    private static readonly DateTimeOffset MonthEnd = new(2026, 11, 1, 0, 0, 0, TimeSpan.Zero);
+
+    private static void PersonHistory(Fixture f, IReadOnlyList<AttendanceCorrection>? corrections = null,
+        IReadOnlyList<WorkAreaChangeRequest>? workAreas = null, IReadOnlyList<LocationChangeRequest>? locations = null,
+        IReadOnlyList<DeviceChangeRequest>? devices = null,
+        IReadOnlyList<ONEVO.Domain.Features.TimeAttendance.Alerts.AttendanceAlert>? alerts = null)
+    {
+        f.Corrections.Setup(x => x.ListForEmployeeCreatedAsync(f.TenantId, f.Worker.Id, MonthStart, MonthEnd, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(corrections ?? []);
+        f.WorkAreas.Setup(x => x.ListForEmployeeCreatedAsync(f.TenantId, f.Worker.Id, MonthStart, MonthEnd, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(workAreas ?? []);
+        f.Locations.Setup(x => x.ListForEmployeeCreatedAsync(f.TenantId, f.Worker.Id, MonthStart, MonthEnd, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(locations ?? []);
+        f.Devices.Setup(x => x.ListForEmployeeAsync(f.TenantId, f.Worker.Id, It.IsAny<CancellationToken>())).ReturnsAsync(devices ?? []);
+        f.Alerts.Setup(x => x.ListForEmployeeDetectedAsync(f.TenantId, f.Worker.Id, MonthStart, MonthEnd, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((alerts ?? []).ToList());
+    }
+
+    [Fact]
+    public async Task ListPersonCases_Request_ReturnsAllFourKindsInRange()
+    {
+        var f = new Fixture();
+        var inRange = MonthStart.AddDays(3);
+        PersonHistory(f,
+            corrections: [f.Correction()],
+            workAreas: [new WorkAreaChangeRequest { Id = Guid.NewGuid(), TenantId = f.TenantId, EmployeeId = f.Worker.Id, LegalEntityId = f.LegalEntityId, RequestedAt = inRange }],
+            locations: [new LocationChangeRequest { Id = Guid.NewGuid(), TenantId = f.TenantId, EmployeeId = f.Worker.Id, LegalEntityId = f.LegalEntityId, RequestedAt = inRange }],
+            devices: [
+                new DeviceChangeRequest { Id = Guid.NewGuid(), TenantId = f.TenantId, EmployeeId = f.Worker.Id, LegalEntityId = f.LegalEntityId, RequestedAt = inRange },
+                new DeviceChangeRequest { Id = Guid.NewGuid(), TenantId = f.TenantId, EmployeeId = f.Worker.Id, LegalEntityId = f.LegalEntityId, RequestedAt = MonthEnd.AddDays(2) }]);
+
+        f.Authority.Setup(a => a.ResolveApproverAsync(It.IsAny<EmployeeApprovalRouteRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<EmployeeApprovalRoute>.NotFound("no approver"));
+
+        var rows = await f.Provider().ListPersonCasesAsync(f.TenantId, f.Worker.Id, InboxCategories.Request, MonthStart, MonthEnd, f.Approver.Id, default);
+
+        rows.Select(r => r.Item.Kind).Should().BeEquivalentTo(
+            AttendanceInboxKinds.Correction, AttendanceInboxKinds.WorkModeChange, AttendanceInboxKinds.LocationChange, AttendanceInboxKinds.DeviceChange);
+        rows.Should().OnlyContain(r => r.Item.Direction == InboxDirections.Info && r.Item.AvailableActions.Count == 0);
+    }
+
+    [Fact]
+    public async Task ListPersonCases_Alert_ReturnsAlertsOnly()
+    {
+        var f = new Fixture();
+        var alert = f.Alert(f.Worker.Id);
+        PersonHistory(f, corrections: [f.Correction()], alerts: [alert]);
+
+        var rows = await f.Provider().ListPersonCasesAsync(f.TenantId, f.Worker.Id, InboxCategories.Alert, MonthStart, MonthEnd, f.Approver.Id, default);
+
+        rows.Should().ContainSingle().Which.Item.Id.Should().Be(alert.Id);
+        f.Corrections.Verify(x => x.ListForEmployeeCreatedAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<DateTimeOffset>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ListPersonCases_IncludesFinishedRequests()
+    {
+        var f = new Fixture();
+        PersonHistory(f, corrections: [f.Correction("approved"), f.Correction("rejected")]);
+
+        var rows = await f.Provider().ListPersonCasesAsync(f.TenantId, f.Worker.Id, InboxCategories.Request, MonthStart, MonthEnd, f.Approver.Id, default);
+
+        rows.Select(r => r.Item.Status).Should().BeEquivalentTo("approved", "rejected");
+    }
+
+    [Fact]
+    public async Task ListPersonCases_CanOpenFalseWithoutAuthority_TrueForTheApproverOfAPendingRequest()
+    {
+        var f = new Fixture();
+        var alert = f.Alert(f.Worker.Id);
+        PersonHistory(f, corrections: [f.Correction()], alerts: [alert]);
+        f.Authority.Setup(a => a.ResolveApproverAsync(It.IsAny<EmployeeApprovalRouteRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<EmployeeApprovalRoute>.Success(new EmployeeApprovalRoute(f.Approver.Id, f.ApproverUserId, Guid.NewGuid(),
+                "attendance:approve", EmployeeAuthorityPurpose.AttendanceCorrectionApproval, EmployeeApprovalRouteSource.ReportingLine, null)));
+        f.Scope.Add(f.Worker.Id);
+
+        var asApprover = await f.Provider().ListPersonCasesAsync(f.TenantId, f.Worker.Id, InboxCategories.Request, MonthStart, MonthEnd, f.Approver.Id, default);
+        var alertsAsReviewer = await f.Provider().ListPersonCasesAsync(f.TenantId, f.Worker.Id, InboxCategories.Alert, MonthStart, MonthEnd, f.Approver.Id, default);
+        f.CurrentUser.Setup(x => x.HasPermission("attendance:approve")).Returns(false);
+        var asNobody = await f.Provider().ListPersonCasesAsync(f.TenantId, f.Worker.Id, InboxCategories.Request, MonthStart, MonthEnd, f.Approver.Id, default);
+        var alertsAsNobody = await f.Provider().ListPersonCasesAsync(f.TenantId, f.Worker.Id, InboxCategories.Alert, MonthStart, MonthEnd, f.Approver.Id, default);
+
+        asApprover.Single().CanOpen.Should().BeTrue();
+        alertsAsReviewer.Single().CanOpen.Should().BeTrue();
+        asNobody.Single().CanOpen.Should().BeFalse();
+        alertsAsNobody.Single().CanOpen.Should().BeFalse();
+    }
 }
