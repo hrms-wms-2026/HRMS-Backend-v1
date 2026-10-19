@@ -30,20 +30,37 @@ public sealed class MeetingTestServices
         Recurrence = new IcalNetMeetingRecurrence();
         Projects = new EfProjectRepository(db);
         Access = new MeetingAccessResolver(Meetings);
-        Materializer = new MeetingOccurrenceMaterializer(Meetings, Writer,
-            new MeetingTaskDefaults(new EfTaskCategoryRepository(db), new EfTaskStatusRepository(db)), Projects, Recurrence, UnitOfWork);
-        Options = Microsoft.Extensions.Options.Options.Create(new MeetingsOptions { Create = true });
         Links = new EfMeetingLinkRepository(db);
+        Materializer = new MeetingOccurrenceMaterializer(Meetings, Writer,
+            new MeetingTaskDefaults(new EfTaskCategoryRepository(db), new EfTaskStatusRepository(db)), Projects, Recurrence, UnitOfWork, Links);
+        Options = Microsoft.Extensions.Options.Options.Create(new MeetingsOptions { Create = true });
         Notifier = new MeetingNotifier(new ONEVO.Application.Features.Calendar.Services.CalendarNotificationSender(
                 new ONEVO.Infrastructure.Services.SharedPlatform.Outbox.OutboxWriter(db, ONEVO.Tests.Integration.Calendar.CalendarNotificationDb.Encryption, clock),
                 new ONEVO.Infrastructure.Persistence.Repositories.CoreHr.EfEmployeeRepository(db)),
             Meetings, Links, new EfEmployeeRepository(db), clock);
-        Splitter = new MeetingSeriesSplitter(Meetings, Writer, Materializer, Recurrence, UnitOfWork, clock);
+        Splitter = new MeetingSeriesSplitter(Meetings, Writer, Materializer, Recurrence, UnitOfWork, clock, Links);
         Edits = new MeetingEditService(Options, Meetings, Writer, Materializer, Access, UnitOfWork, clock, Splitter, Recurrence, Notifier);
         Cancels = new MeetingCancelService(Options, Meetings, Writer, Materializer, Access, UnitOfWork, clock, Notifier);
         Attendees = new MeetingAttendeeService(Options, Meetings, Writer, Materializer, Access, new EfEmployeeRepository(db), UnitOfWork, clock, Notifier);
         Factory = new MeetingSeriesFactory(Meetings, Writer, new MeetingTaskDefaults(new EfTaskCategoryRepository(db), new EfTaskStatusRepository(db)),
-            Projects, new EfEmployeeRepository(db), Recurrence, UnitOfWork, clock, Materializer, Notifier);
+            Projects, new EfEmployeeRepository(db), Recurrence, UnitOfWork, clock, Materializer, Notifier,
+            new ONEVO.Infrastructure.Persistence.Repositories.Calendar.EfExternalCalendarConnectionRepository(db), Links, LinkService(new NoProvisioner()));
+    }
+
+    /// <summary>The series link service over these services, with the given provider seam.</summary>
+    public SeriesMeetingLinkService LinkService(ONEVO.Application.Features.Calendar.Services.IMeetingProvisioner provisioner)
+        => new(Links, Meetings, Writer, new ONEVO.Infrastructure.Persistence.Repositories.Calendar.EfExternalCalendarConnectionRepository(Db),
+            provisioner, Notifier, Recurrence, new EfEmployeeRepository(Db), Outbox, UnitOfWork, Clock);
+
+    public ONEVO.Infrastructure.Services.SharedPlatform.Outbox.OutboxWriter Outbox => new(Db, ONEVO.Tests.Integration.Calendar.CalendarNotificationDb.Encryption, Clock);
+
+    /// <summary>Provisioning is queued, never called, through the factory.</summary>
+    private sealed class NoProvisioner : ONEVO.Application.Features.Calendar.Services.IMeetingProvisioner
+    {
+        public Task<ONEVO.Application.Features.Calendar.Services.MeetingProvisioningOutcome> ProvisionAsync(
+            ONEVO.Application.Features.Calendar.Services.MeetingProvisioningRequest request, CancellationToken ct) => throw new NotSupportedException();
+        public Task<bool> ResolveForRemovalAsync(ONEVO.Application.Features.Calendar.Services.MeetingProvisioningRequest request, CancellationToken ct)
+            => throw new NotSupportedException();
     }
 
     public ApplicationDbContext Db { get; }

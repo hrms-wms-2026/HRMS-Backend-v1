@@ -37,10 +37,12 @@ public sealed class MeetingSeriesSplitter : IMeetingSeriesSplitter
     private readonly IMeetingRecurrence _recurrence;
     private readonly IUnitOfWork _unitOfWork;
     private readonly IDateTimeProvider _clock;
+    private readonly IMeetingLinkRepository _links;
 
     public MeetingSeriesSplitter(IMeetingRepository meetings, IMeetingOccurrenceWriter writer, IMeetingOccurrenceMaterializer materializer,
-        IMeetingRecurrence recurrence, IUnitOfWork unitOfWork, IDateTimeProvider clock)
+        IMeetingRecurrence recurrence, IUnitOfWork unitOfWork, IDateTimeProvider clock, IMeetingLinkRepository links)
     {
+        _links = links;
         _meetings = meetings;
         _writer = writer;
         _materializer = materializer;
@@ -107,6 +109,8 @@ public sealed class MeetingSeriesSplitter : IMeetingSeriesSplitter
         {
             Id = Guid.NewGuid(), TenantId = tenantId, MeetingSeriesId = target.Id, Email = g.Email, CreatedAt = now,
         }));
+        // The new series shares the link through an inherited reference: no provider call, no email (spec 5.5, 5.7).
+        await _links.AddInheritedReferenceAsync(tenantId, source.Id, target.Id, now, ct);
         await _unitOfWork.SaveChangesAsync(ct);   // the remap and the occurrence inserts are raw SQL against the new series
         await _writer.LockSeriesAsync(tenantId, target.Id, ct);
 

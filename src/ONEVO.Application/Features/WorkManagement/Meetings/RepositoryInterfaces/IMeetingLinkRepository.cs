@@ -15,6 +15,8 @@ public interface IMeetingLinkRepository
     /// <summary>The link behind the series' active (unreleased) reference, untracked; null when it has none.</summary>
     Task<CalendarEventMeeting?> GetActiveForSeriesAsync(Guid tenantId, Guid seriesId, CancellationToken ct = default);
 
+    Task<CalendarEventMeeting?> GetAsync(Guid tenantId, Guid linkId, CancellationToken ct = default);
+
     Task<CalendarEventMeeting?> GetTrackedAsync(Guid tenantId, Guid linkId, CancellationToken ct = default);
 
     /// <summary>Stages a provisioning link row (generation 1) and the series' <c>created</c> reference. The caller holds the

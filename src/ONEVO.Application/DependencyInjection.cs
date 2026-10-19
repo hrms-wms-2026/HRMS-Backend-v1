@@ -114,6 +114,7 @@ public static class DependencyInjection
         services.AddScoped<IOutboxMessageHandler, ONEVO.Application.Features.Inbox.OutboxHandlers.InboxChangedOutboxHandler>();
         services.AddScoped<IOutboxMessageHandler, ONEVO.Application.Features.Calendar.OutboxHandlers.CalendarEventInviteEmailOutboxHandler>();
         services.AddScoped<IOutboxMessageHandler, ONEVO.Application.Features.Calendar.OutboxHandlers.CalendarMeetingCancelOutboxHandler>();
+        services.AddScoped<IOutboxMessageHandler, ONEVO.Application.Features.WorkManagement.Meetings.OutboxHandlers.MeetingLinkProvisionOutboxHandler>();
         services.AddScoped<GetBulkOnboardingTemplateQueryHandler>();
 
         services.AddScoped<

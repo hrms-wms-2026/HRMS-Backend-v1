@@ -82,7 +82,7 @@ public sealed class MeetingLinkRepositoryIntegrationTests
         await using (var db = w.H.NewContext())
         {
             var links = new EfMeetingLinkRepository(db);
-            Assert.Equal([w.Series.Id, split.Id], (await links.ListActiveReferencingSeriesAsync(w.H.TenantId, linkId)).Order());
+            Assert.Equal(new[] { w.Series.Id, split.Id }.Order(), (await links.ListActiveReferencingSeriesAsync(w.H.TenantId, linkId)).Order());
             Assert.Equal(linkId, (await links.GetActiveForSeriesAsync(w.H.TenantId, split.Id))!.Id);
             Assert.Equal(linkId, await links.ReleaseAsync(w.H.TenantId, w.Series.Id, Now));
         }

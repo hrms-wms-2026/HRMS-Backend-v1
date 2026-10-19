@@ -1,6 +1,8 @@
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.Calendar.RepositoryInterfaces;
+using ONEVO.Application.Features.Calendar.Services;
 using ONEVO.Application.Features.WorkManagement.Meetings.Contracts;
 using ONEVO.Application.Features.WorkManagement.Meetings.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
@@ -38,12 +40,19 @@ public sealed class MeetingSeriesFactory : IMeetingSeriesFactory
     private readonly IDateTimeProvider _clock;
     private readonly IMeetingOccurrenceMaterializer _materializer;
     private readonly IMeetingNotifier _notifier;
+    private readonly IExternalCalendarConnectionRepository _connections;
+    private readonly IMeetingLinkRepository _links;
+    private readonly SeriesMeetingLinkService _linkService;
 
     public MeetingSeriesFactory(IMeetingRepository meetings, IMeetingOccurrenceWriter writer, IMeetingTaskDefaults defaults,
         IProjectRepository projects, IEmployeeRepository employees, IMeetingRecurrence recurrence, IUnitOfWork unitOfWork,
-        IDateTimeProvider clock, IMeetingOccurrenceMaterializer materializer, IMeetingNotifier notifier)
+        IDateTimeProvider clock, IMeetingOccurrenceMaterializer materializer, IMeetingNotifier notifier,
+        IExternalCalendarConnectionRepository connections, IMeetingLinkRepository links, SeriesMeetingLinkService linkService)
     {
         _notifier = notifier;
+        _connections = connections;
+        _links = links;
+        _linkService = linkService;
         _materializer = materializer;
         _meetings = meetings;
         _writer = writer;
@@ -106,6 +115,7 @@ public sealed class MeetingSeriesFactory : IMeetingSeriesFactory
         await _unitOfWork.SaveChangesAsync(ct);
 
         await _writer.LockSeriesAsync(tenantId, series.Id, ct);
+        var link = await ClaimLinkAsync(tenantId, series, organizerUserId, request.Platform, now, ct);
         var starts = (series.RecurrenceRule is null
                 ? [series.DtStart]
                 : _recurrence.Occurrences(series.RecurrenceRule, series.DtStart, series.Timezone, now, now + Window).Append(series.DtStart))
@@ -121,6 +131,23 @@ public sealed class MeetingSeriesFactory : IMeetingSeriesFactory
 
         await _notifier.InviteAsync(series, participantRows, guestRows, ct);
         return Result<MeetingCreatedResponse>.Success(
-            new MeetingCreatedResponse("created", series.Id, firstTaskId, approvalRequestId, skipped));
+            new MeetingCreatedResponse("created", series.Id, firstTaskId, approvalRequestId, skipped, link));
+    }
+
+    /// <summary>A chosen platform claims the series' link and queues its provisioning (after commit, spec 5.7); the invites
+    /// wait for the link. Without a usable connection the meeting is created without one and invited at once (P1-5).</summary>
+    private async Task<MeetingLinkResponse?> ClaimLinkAsync(Guid tenantId, MeetingSeries series, Guid organizerUserId, string? platform,
+        DateTimeOffset now, CancellationToken ct)
+    {
+        if (platform is null)
+            return null;
+        var connection = await _connections.GetByTenantUserProviderAsync(tenantId, organizerUserId, CalendarMeetingConnections.SourceFor(platform), ct);
+        if (!CalendarMeetingConnections.CanCreateMeetings(connection, platform))
+            return new MeetingLinkResponse(null, platform, CalendarMeetingLinkStates.NotConnected, null, null, CalendarMeetingLinkStates.NotConnected, 0);
+        var linkId = await _links.TryClaimForSeriesAsync(tenantId, series.Id, connection!.Id, platform, invitesPending: true, now, ct)
+            ?? throw new InvalidOperationException($"New series {series.Id} already holds a link.");
+        await _unitOfWork.SaveChangesAsync(ct);
+        await _linkService.QueueProvisioningAsync(tenantId, linkId, series.Id, generation: 1, ct);
+        return new MeetingLinkResponse(linkId, platform, CalendarEventMeetingStatuses.Provisioning, null, null, null, 1);
     }
 }

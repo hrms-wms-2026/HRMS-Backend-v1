@@ -37,9 +37,24 @@ public sealed record CreateMeetingRequest(
 public sealed record SkippedParticipant(Guid EmployeeId, string Reason);
 
 /// <param name="Outcome">"created" (direct) or "requested" (a meeting.create approval request).</param>
+/// <param name="Link">Set when a platform was chosen: the link's state right after create (usually "provisioning").</param>
 public sealed record MeetingCreatedResponse(
     string Outcome, Guid? SeriesId, Guid? FirstOccurrenceTaskId, Guid? ApprovalRequestId,
-    IReadOnlyList<SkippedParticipant> Skipped);
+    IReadOnlyList<SkippedParticipant> Skipped, MeetingLinkResponse? Link = null);
+
+/// <summary>Link states beyond the provider row's own statuses (CalendarEventMeetingStatuses).</summary>
+public static class CalendarMeetingLinkStates
+{
+    /// <summary>The organizer has no usable connection for the platform: the meeting exists without a link (P1-5).</summary>
+    public const string NotConnected = "not_connected";
+}
+
+/// <summary>A series' Teams/Zoom link as its organizer sees it (attendees only ever get <see cref="JoinUrl"/>).</summary>
+/// <param name="Status">A CalendarEventMeetingStatuses value, or <see cref="CalendarMeetingLinkStates.NotConnected"/>.</param>
+/// <param name="ReleasePending">The series let the link go but another series or an open attendance check still needs it,
+/// so the provider meeting is not cancelled yet.</param>
+public sealed record MeetingLinkResponse(Guid? LinkId, string Provider, string Status, string? JoinUrl, string? OrganizerJoinUrl,
+    string? FailureReason, int Generation, bool ReleasePending = false);
 
 public sealed record MeetingPersonRef(Guid EmployeeId, string Name);
 

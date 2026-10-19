@@ -26,6 +26,9 @@ public sealed class MeetingCreateValidator
         if (!recurrence.IsSuccess)
             return recurrence;
 
+        if (request.Platform is not null && !ONEVO.Application.Features.Calendar.Services.CalendarMeetingConnections.IsKnownProvider(request.Platform))
+            return Result.Failure("Choose Microsoft Teams or Zoom.", 400, MeetingErrorCodes.PlatformInvalid);
+
         foreach (var email in request.GuestEmails)
             if (!IsEmail(email))
                 return Result.Failure($"'{email}' is not a valid guest email.", 400, MeetingErrorCodes.GuestEmailInvalid);

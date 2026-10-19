@@ -40,12 +40,14 @@ public sealed class MeetingMoveService
     private readonly IMeetingRecurrence _recurrence;
     private readonly IUnitOfWork _unitOfWork;
     private readonly IDateTimeProvider _clock;
+    private readonly IMeetingLinkRepository _links;
 
     public MeetingMoveService(IOptions<MeetingsOptions> options, IMeetingRepository meetings, IMeetingOccurrenceWriter writer,
         IMeetingOccurrenceMaterializer materializer, IMeetingAccessResolver access, IMeetingPlacementResolver placements,
         IWorkApprovalEngine approvals, IMeetingSeriesSplitter splitter, IMeetingRecurrence recurrence, IUnitOfWork unitOfWork,
-        IDateTimeProvider clock)
+        IDateTimeProvider clock, IMeetingLinkRepository links)
     {
+        _links = links;
         _options = options;
         _meetings = meetings;
         _writer = writer;
@@ -160,6 +162,7 @@ public sealed class MeetingMoveService
             });
             task.ProjectId = move.ProjectId;
             task.ObjectiveId = move.ObjectiveId;
+            await _links.AddInheritedReferenceAsync(tenantId, series.Id, target.Id, now, ct);   // the moved occurrence keeps its link
             series.Revision++;
             series.UpdatedAt = now;
             await _unitOfWork.SaveChangesAsync(ct);

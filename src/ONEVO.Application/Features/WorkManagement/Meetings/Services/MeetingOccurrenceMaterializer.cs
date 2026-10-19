@@ -30,10 +30,12 @@ public sealed class MeetingOccurrenceMaterializer : IMeetingOccurrenceMaterializ
     private readonly IProjectRepository _projects;
     private readonly IMeetingRecurrence _recurrence;
     private readonly IUnitOfWork _unitOfWork;
+    private readonly IMeetingLinkRepository _links;
 
     public MeetingOccurrenceMaterializer(IMeetingRepository meetings, IMeetingOccurrenceWriter writer, IMeetingTaskDefaults defaults,
-        IProjectRepository projects, IMeetingRecurrence recurrence, IUnitOfWork unitOfWork)
+        IProjectRepository projects, IMeetingRecurrence recurrence, IUnitOfWork unitOfWork, IMeetingLinkRepository links)
     {
+        _links = links;
         _unitOfWork = unitOfWork;
         _meetings = meetings;
         _writer = writer;
@@ -55,12 +57,14 @@ public sealed class MeetingOccurrenceMaterializer : IMeetingOccurrenceMaterializ
         // The insert is raw SQL: rows this unit of work added (a Meeting category for an older project, a new series)
         // must be in the database first. Still inside the caller's transaction.
         await _unitOfWork.SaveChangesAsync(ct);
+        // Every occurrence uses the series' link (spec 4.2).
+        var linkId = (await _links.GetActiveForSeriesAsync(tenantId, series.Id, ct))?.Id;
 
         return await _writer.TryMaterializeAsync(new MeetingOccurrenceDraft(
             tenantId, series.Id, series.ProjectId, series.ObjectiveId, categoryId, statusId,
             $"{project.Identifier}-M{number}", series.Title, series.Description, createdByUserId,
             start, start, start.AddMinutes(series.DurationMinutes), series.IsAllDay, series.Location, series.IsPrivate,
-            CalendarEventMeetingId: null), ct);
+            CalendarEventMeetingId: linkId), ct);
     }
 
     public async Task<Result<Guid>> EnsureAsync(Guid tenantId, MeetingSeries series, DateTimeOffset originalStart, Guid createdByUserId, CancellationToken ct)

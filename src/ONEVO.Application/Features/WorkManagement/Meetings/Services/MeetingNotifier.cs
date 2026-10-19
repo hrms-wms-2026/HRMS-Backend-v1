@@ -51,6 +51,16 @@ public interface IMeetingNotifier
 
     /// <summary>The organizer's in-app notice that someone accepted or declined.</summary>
     Task RsvpAnsweredAsync(MeetingSeries series, string title, Guid responderEmployeeId, bool accepted, CancellationToken ct);
+
+    /// <summary>The series' new join link to every series attendee, keyed link:{linkId}:{generation}:{row}; while the
+    /// invites were held back this email is the invite (spec 5.7).</summary>
+    Task LinkReadyAsync(MeetingSeries series, CalendarEventMeeting link, CancellationToken ct);
+
+    /// <summary>The link went away for this series: keyed link-removed:{linkId}:{generation}:{row} to its attendees.</summary>
+    Task LinkRemovedAsync(MeetingSeries series, CalendarEventMeeting link, CancellationToken ct);
+
+    /// <summary>In-app notice to the organizer about the link (CalendarMeetingNoticeCodes).</summary>
+    Task NotifyOrganizerAsync(MeetingSeries series, string noticeCode, string provider, CancellationToken ct);
 }
 
 public sealed class MeetingNotifier : IMeetingNotifier
@@ -187,6 +197,32 @@ public sealed class MeetingNotifier : IMeetingNotifier
             return;
         var responder = people.TryGetValue(responderEmployeeId, out var r) ? $"{r.FirstName} {r.LastName}".Trim() : "Someone";
         await _sender.NotifyRsvpAnsweredAsync(series.TenantId, organizer.UserId, title, responder, accepted, ct);
+    }
+
+    public async Task LinkReadyAsync(MeetingSeries series, CalendarEventMeeting link, CancellationToken ct)
+    {
+        var (participants, guests) = await SeriesRecipientsAsync(series, row => CalendarEmailKeys.Link(link.Id, link.LinkGeneration, row), ct);
+        if (participants.Count == 0 && guests.Count == 0)
+            return;
+        await _sender.SendMeetingLinkAsync(series.TenantId, series.Title, series.DtStart, series.Location, participants, guests,
+            await OrganizerNameAsync(series, ct), link.JoinUrl, MeetingIcs.ForSeries(series, _clock.UtcNow), ct);
+    }
+
+    public async Task LinkRemovedAsync(MeetingSeries series, CalendarEventMeeting link, CancellationToken ct)
+    {
+        var (participants, guests) = await SeriesRecipientsAsync(series, row => CalendarEmailKeys.LinkRemoved(link.Id, link.LinkGeneration, row), ct);
+        if (participants.Count == 0 && guests.Count == 0)
+            return;
+        await _sender.SendMeetingLinkRemovedAsync(series.TenantId, series.Title, series.DtStart, series.Location, participants, guests,
+            await OrganizerNameAsync(series, ct), ct);
+    }
+
+    public async Task NotifyOrganizerAsync(MeetingSeries series, string noticeCode, string provider, CancellationToken ct)
+    {
+        var people = await _employees.ListByIdsAsync(series.TenantId, [series.OrganizerEmployeeId], ct);
+        if (people.TryGetValue(series.OrganizerEmployeeId, out var organizer) && organizer.UserId != Guid.Empty)
+            await _sender.NotifyOrganizerAboutMeetingAsync(series.TenantId, organizer.UserId, noticeCode, series.Title,
+                CalendarMeetingProviderNames.Display(provider), ct);
     }
 
     private static string? JoinUrl(CalendarEventMeeting? link)

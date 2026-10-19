@@ -60,7 +60,7 @@ public sealed class MeetingMoveIntegrationTests
     {
         var s = new MeetingTestServices(db, new MeetingTestClock(Now));
         return new MeetingMoveService(s.Options, s.Meetings, s.Writer, s.Materializer, s.Access, new PlacementStub(direct),
-            approvals ?? new ApprovalsStub(), s.Splitter, s.Recurrence, s.UnitOfWork, s.Clock);
+            approvals ?? new ApprovalsStub(), s.Splitter, s.Recurrence, s.UnitOfWork, s.Clock, s.Links);
     }
 
     [Fact]

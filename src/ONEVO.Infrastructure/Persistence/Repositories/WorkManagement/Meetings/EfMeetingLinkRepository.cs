@@ -17,6 +17,9 @@ public sealed class EfMeetingLinkRepository : IMeetingLinkRepository
                 l => l.CalendarEventMeetingId == m.Id && l.SeriesId == seriesId && l.ReleasedAt == null))
             .FirstOrDefaultAsync(ct);
 
+    public async Task<CalendarEventMeeting?> GetAsync(Guid tenantId, Guid linkId, CancellationToken ct = default)
+        => await _db.CalendarEventMeetings.AsNoTracking().FirstOrDefaultAsync(m => m.TenantId == tenantId && m.Id == linkId, ct);
+
     public async Task<CalendarEventMeeting?> GetTrackedAsync(Guid tenantId, Guid linkId, CancellationToken ct = default)
         => await _db.CalendarEventMeetings.FirstOrDefaultAsync(m => m.TenantId == tenantId && m.Id == linkId, ct);
 
