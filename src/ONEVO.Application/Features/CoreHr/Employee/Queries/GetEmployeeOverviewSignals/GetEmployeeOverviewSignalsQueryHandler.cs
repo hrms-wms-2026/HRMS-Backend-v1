@@ -35,9 +35,18 @@ public sealed class GetEmployeeOverviewSignalsQueryHandler(
     IExceptionScopeResolver exceptionScope,
     ICurrentUser currentUser,
     IDateTimeProvider clock,
-    ILogger<GetEmployeeOverviewSignalsQueryHandler> logger)
+    ILogger<GetEmployeeOverviewSignalsQueryHandler> logger,
+    ONEVO.Application.Features.Monitoring.Exceptions.Services.ExceptionCaseRouting? caseRouting = null)
     : IRequestHandler<GetEmployeeOverviewSignalsQuery, Result<EmployeeOverviewSignalsResponse>>
 {
+    /// <summary>The exception cases of one employee are shown only to whoever they are routed to (their attendance
+    /// approver; HR only for monitoring cases of someone nobody can review) - the same rule as the Inbox.</summary>
+    private async Task<bool> ReviewsCasesAsync(
+        Guid tenantId, Guid employeeId, ONEVO.Application.Features.Monitoring.Exceptions.ServiceInterfaces.ExceptionScope? scope,
+        bool hrFallback, CancellationToken ct)
+        => scope?.CanSee(employeeId) == true
+           && (caseRouting is null || await caseRouting.ReviewsEmployeeAsync(tenantId, employeeId, scope, hrFallback, ct));
+
     public async Task<Result<EmployeeOverviewSignalsResponse>> Handle(GetEmployeeOverviewSignalsQuery request, CancellationToken ct)
     {
         var tenantId = currentUser.TenantId;
@@ -72,7 +81,7 @@ public sealed class GetEmployeeOverviewSignalsQueryHandler(
     private async Task<MeetingCount?> MeetingExceptionsAsync(Guid tenantId, Guid employeeId, DateOnly from, DateOnly to, CancellationToken ct)
     {
         var scope = await exceptionScope.ResolveAsync(forAction: false, [employeeId], ct);
-        if (scope?.CanSee(employeeId) != true)
+        if (!await ReviewsCasesAsync(tenantId, employeeId, scope, hrFallback: false, ct))
             return null;
         var start = new DateTimeOffset(from.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero);
         var end = new DateTimeOffset(to.AddDays(1).ToDateTime(TimeOnly.MinValue), TimeSpan.Zero);
@@ -93,7 +102,7 @@ public sealed class GetEmployeeOverviewSignalsQueryHandler(
         // Exception cases are visible only to HR, the employee's managers/approvers and exceptions:*
         // holders - not to everyone with employees:read - so the count follows the same scope.
         var scope = await exceptionScope.ResolveAsync(forAction: false, [employeeId], ct);
-        int? cases = scope?.CanSee(employeeId) == true
+        int? cases = await ReviewsCasesAsync(tenantId, employeeId, scope, hrFallback: true, ct)
             ? await exceptions.CountDetectedInRangeAsync(tenantId, employeeId, start, end, ct)
             : null;
 

@@ -28,6 +28,17 @@ internal static partial class ConversationRules
         return (body, null);
     }
 
+    public const int ReplyExcerptLength = 120;
+    public const string ReplyTargetMissing = "The message you are replying to is not in this conversation.";
+    public const string ReplyTargetNotAllowed = "You cannot reply to that message.";
+
+    /// <summary>A message body as one line of plain text, cut to <paramref name="max"/> characters (a reply's quote).</summary>
+    public static string Excerpt(string bodyHtml, int max = ReplyExcerptLength)
+    {
+        var text = Whitespace().Replace(WebUtility.HtmlDecode(Tags().Replace(bodyHtml, " ")).Replace(' ', ' '), " ").Trim();
+        return text.Length <= max ? text : text[..(max - 1)].TrimEnd() + "…";
+    }
+
     public static int ClampPageSize(int take) => Math.Clamp(take <= 0 ? DefaultPageSize : take, 1, MaxPageSize);
 
     /// <summary>Realtime is best-effort: a publish failure is logged and never fails the request.</summary>
@@ -66,4 +77,7 @@ internal static partial class ConversationRules
 
     [GeneratedRegex("<(img|hr)[\\s>/]", RegexOptions.IgnoreCase)]
     private static partial Regex Embeds();
+
+    [GeneratedRegex(@"\s+")]
+    private static partial Regex Whitespace();
 }

@@ -1,12 +1,23 @@
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Calendar.OutboxHandlers;
+using ONEVO.Application.Features.Calendar.RepositoryInterfaces;
+using ONEVO.Domain.Features.Calendar.Entities;
 using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.OutboxHandlers;
 
 namespace ONEVO.Application.Features.Calendar.Services;
 
-public sealed class CalendarNotificationSender(IOutboxWriter outboxWriter, IEmployeeRepository employees) : ICalendarNotificationSender
+public sealed class CalendarNotificationSender(
+    IOutboxWriter outboxWriter,
+    IEmployeeRepository employees,
+    ICurrentUser? currentUser = null,
+    IExternalCalendarConnectionRepository? connections = null,
+    ICalendarEventRepository? events = null,
+    IExternalCalendarEventLinkRepository? links = null) : ICalendarNotificationSender
 {
+    // Per event in this request: true when Outlook sends the emails instead (see CalendarOutlookInvites).
+    private readonly Dictionary<Guid, bool> _outlookHandles = [];
+
     public async Task NotifyParticipantsAddedAsync(
         Guid tenantId, string eventTitle, DateTimeOffset startDate, string? location,
         IReadOnlyList<Guid> employeeIds, string organizerName, CancellationToken ct = default,
@@ -22,7 +33,7 @@ public sealed class CalendarNotificationSender(IOutboxWriter outboxWriter, IEmpl
                 new WorkNotificationPayload(
                     tenantId, employee.UserId, "calendar_event_participant_added",
                     new Dictionary<string, string> { ["organizerName"] = organizerName, ["eventTitle"] = eventTitle, ["eventDate"] = startDate.ToString("u") },
-                    "calendar_event", null),
+                    "calendar_event", null, EventId: Guid.NewGuid()),
                 tenantId, ct);
 
             if (!sendInviteEmail) continue;
@@ -211,11 +222,59 @@ public sealed class CalendarNotificationSender(IOutboxWriter outboxWriter, IEmpl
     private async Task EmailAsync(
         Guid tenantId, string email, string recipientName, string kind, string eventTitle, DateTimeOffset startDate, string? location,
         string organizerName, string? meetingLink, CalendarEventIcs? ics, CancellationToken ct)
-        => await outboxWriter.EnqueueAsync(
+    {
+        if (await OutlookSendsItAsync(tenantId, kind, ics, ct))
+            return;
+        await outboxWriter.EnqueueAsync(
             OutboxMessageTypes.CalendarEventInviteEmail,
             new CalendarEventInviteEmailPayload(tenantId, email, recipientName, eventTitle, startDate, location, organizerName, meetingLink,
                 kind, ics?.EventId, ics?.EndUtc, ics?.Sequence ?? 0, ics?.RecurrenceRule, ics?.RecurrenceId),
             tenantId, ct);
+    }
+
+    /// <summary>
+    /// True when the organizer (the caller - only they can change an event's audience) pushes this event to Outlook
+    /// with its attendees: Outlook emails the invite / update / removal itself, so ONEVO's email is skipped and the
+    /// push is queued to run right after commit instead of on the next 15-minute sync. Recurring events are never
+    /// pushed, and a cancellation only goes through Outlook when the event actually reached it.
+    /// </summary>
+    private async Task<bool> OutlookSendsItAsync(Guid tenantId, string kind, CalendarEventIcs? ics, CancellationToken ct)
+    {
+        if (ics is null || ics.RecurrenceRule is not null || ics.RecurrenceId is not null
+            || currentUser is not { IsAuthenticated: true } || connections is null || events is null || links is null)
+            return false;
+        if (_outlookHandles.TryGetValue(ics.EventId, out var known))
+            return known;
+
+        var handles = false;
+        var connection = await connections.GetByTenantUserProviderAsync(tenantId, currentUser.UserId, CalendarExternalSources.OutlookCalendar, ct);
+        if (connection is not null && CalendarOutlookInvites.PushesToOutlook(connection))
+        {
+            // Not found = being created in this same request (by the caller, as a manual event).
+            var calendarEvent = await events.GetByIdForTenantAsync(tenantId, ics.EventId, ct);
+            if (calendarEvent is null || (CalendarOutlookInvites.IsPushable(calendarEvent) && calendarEvent.CreatedById == currentUser.UserId))
+            {
+                if (kind == CalendarEventEmailKinds.Cancelled)
+                {
+                    var link = await links.GetTrackedByCalendarEventAndConnectionAsync(tenantId, ics.EventId, connection.Id, ct);
+                    if (link is not null)
+                    {
+                        await outboxWriter.EnqueueAsync(OutboxMessageTypes.CalendarOutlookPush,
+                            new CalendarOutlookPushPayload(tenantId, connection.Id, null, link.ExternalEventId), tenantId, ct);
+                        handles = true;
+                    }
+                }
+                else
+                {
+                    await outboxWriter.EnqueueAsync(OutboxMessageTypes.CalendarOutlookPush,
+                        new CalendarOutlookPushPayload(tenantId, connection.Id, ics.EventId), tenantId, ct);
+                    handles = true;
+                }
+            }
+        }
+        _outlookHandles[ics.EventId] = handles;
+        return handles;
+    }
 
     /// <summary>A keyed email is written once per key (ON CONFLICT inside the caller's transaction), so a
     /// retried operation can't email anyone twice; a null key sends an ordinary email.</summary>
@@ -230,7 +289,7 @@ public sealed class CalendarNotificationSender(IOutboxWriter outboxWriter, IEmpl
     private async Task InAppAsync(Guid tenantId, Guid userId, string templateCode, Dictionary<string, string> placeholders, CancellationToken ct)
         => await outboxWriter.EnqueueAsync(
             OutboxMessageTypes.WorkNotification,
-            new WorkNotificationPayload(tenantId, userId, templateCode, placeholders, "calendar_event", null),
+            new WorkNotificationPayload(tenantId, userId, templateCode, placeholders, "calendar_event", null, EventId: Guid.NewGuid()),
             tenantId, ct);
 
     private async Task NotifyInAppOnlyAsync(

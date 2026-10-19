@@ -1,7 +1,9 @@
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using ONEVO.Application.Common.RepositoryInterfaces;
+using ONEVO.Application.Features.SharedPlatform.Notifications.Catalog;
 using ONEVO.Domain.Features.SharedPlatform.Notifications.Entities;
 using ONEVO.Infrastructure.Persistence;
 
@@ -38,9 +40,11 @@ public class NotificationTemplateSeeder : IHostedService
 
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 
-    private async Task SeedAsync(INotificationRepository notifications, ApplicationDbContext db, CancellationToken ct)
+    /// <summary>Product-default notification copy. Seeding inserts only codes that are missing, so an
+    /// administrator's edits are never overwritten on restart.</summary>
+    public static IReadOnlyList<NotificationTemplate> DefaultTemplates()
     {
-        var templates = new List<NotificationTemplate>
+        return new List<NotificationTemplate>
         {
             new()
             {
@@ -161,12 +165,6 @@ public class NotificationTemplateSeeder : IHostedService
                 Id = Guid.NewGuid(), Code = "leave_request_rejected",
                 InAppTitleTemplate = "Leave rejected",
                 InAppBodyTemplate = "{{leaveTypeName}} from {{startDate}} to {{endDate}} was rejected. {{reason}}"
-            },
-            new()
-            {
-                Id = Guid.NewGuid(), Code = "leave_request_information_requested",
-                InAppTitleTemplate = "More information requested",
-                InAppBodyTemplate = "{{approverName}} requested more information for {{leaveTypeName}} from {{startDate}} to {{endDate}}."
             },
             new()
             {
@@ -406,26 +404,70 @@ public class NotificationTemplateSeeder : IHostedService
             }
 
         };
+    }
 
+    private async Task SeedAsync(INotificationRepository notifications, ApplicationDbContext db, CancellationToken ct)
+    {
+        var now = DateTimeOffset.UtcNow;
         var addedCount = 0;
-        foreach (var template in templates)
+        var versionedCount = 0;
+        foreach (var template in DefaultTemplates())
         {
-            var existing = await notifications.GetTemplateByCodeAsync(template.Code, ct);
-            if (existing is not null)
-                continue;
+            var existing = await db.NotificationTemplates.FirstOrDefaultAsync(t => t.Code == template.Code, ct);
+            if (existing is null)
+            {
+                template.EventKey = template.Code;
+                template.Name = NotificationEventCatalog.TryGet(template.Code, out var definition) ? definition.DisplayName : template.Code;
+                await notifications.AddTemplateRangeAsync(new[] { template }, ct);
+                AddPublishedFirstVersion(db, template, now);
+                addedCount++;
+            }
+            else if (existing.ActiveVersionId is null)
+            {
+                // A template created before versioning: freeze its current (possibly admin-edited) copy as v1.
+                // Never overwrite the copy itself.
+                if (string.IsNullOrEmpty(existing.EventKey))
+                    existing.EventKey = existing.Code;
+                if (string.IsNullOrEmpty(existing.Name))
+                    existing.Name = existing.Code;
+                AddPublishedFirstVersion(db, existing, now);
+                versionedCount++;
+            }
 
-            await notifications.AddTemplateRangeAsync(new[] { template }, ct);
-            addedCount++;
+            // The versioning migration could only name backfilled templates by their code; give them the
+            // catalog's readable name. Only a name still equal to the code is replaced - never template copy.
+            if (existing is not null && existing.Name == existing.Code
+                && NotificationEventCatalog.TryGet(existing.Code, out var known))
+            {
+                existing.Name = known.DisplayName;
+                versionedCount++;
+            }
         }
 
-        if (addedCount > 0)
+        if (addedCount + versionedCount > 0)
         {
             await db.SaveChangesAsync(ct);
-            _logger.LogInformation("Seeded {Count} new notification templates.", addedCount);
+            _logger.LogInformation(
+                "Seeded {Count} new notification templates; versioned or renamed {Versioned} existing ones.",
+                addedCount, versionedCount);
         }
         else
         {
             _logger.LogInformation("Notification templates already up to date — nothing to seed.");
         }
+    }
+
+    private static void AddPublishedFirstVersion(ApplicationDbContext db, NotificationTemplate template, DateTimeOffset now)
+    {
+        var version = NotificationTemplateVersion.CreateDraft(
+            template.Id, 1,
+            new NotificationTemplateContent(
+                template.InAppTitleTemplate, template.InAppBodyTemplate,
+                template.MailSubjectTemplate, EmailHtml: null, EmailCss: null, template.MailBodyTemplate,
+                TrayTitle: null, TrayBody: null, NotificationActionKeys.OpenRelated),
+            actorUserId: null, now);
+        version.Publish(actorUserId: null, now);
+        db.NotificationTemplateVersions.Add(version);
+        template.Activate(version, now);
     }
 }

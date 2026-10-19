@@ -161,7 +161,7 @@ public class MilestoneMembershipCoordinator : IMilestoneMembershipCoordinator
                     ["inviteType"] = ProjectInvitationTypes.Member
                 },
                 "project_member_invitation",
-                invitation.Id),
+                invitation.Id, EventId: Guid.NewGuid()),
             tenantId,
             ct);
         await WorkNotificationEngine.EnqueueInboxChangedAsync(

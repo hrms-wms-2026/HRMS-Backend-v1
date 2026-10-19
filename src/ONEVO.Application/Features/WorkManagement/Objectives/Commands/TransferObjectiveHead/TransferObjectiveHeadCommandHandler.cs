@@ -136,7 +136,7 @@ public class TransferObjectiveHeadCommandHandler : IRequestHandler<TransferObjec
                     ["inviteType"] = ProjectInvitationTypes.Leader
                 },
                 "project_member_invitation",
-                invitation.Id),
+                invitation.Id, EventId: Guid.NewGuid()),
             tenantId,
             ct);
         await WorkNotificationEngine.EnqueueInboxChangedAsync(

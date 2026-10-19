@@ -41,16 +41,22 @@ public sealed class EfMeetingComplianceReadRepository(ApplicationDbContext db) :
                 calendarEvent.Id,
                 calendarEvent.Title,
                 calendarEvent.StartDate,
-                calendarEvent.EndDate
+                calendarEvent.EndDate,
+                // Set when the meeting was created through ONEVO (Teams/Zoom); null for a pasted link.
+                Provider = db.CalendarEventMeetings
+                    .Where(m => m.TenantId == tenantId && m.CalendarEventId == calendarEvent.Id && m.Status == CalendarEventMeetingStatuses.Active)
+                    .Select(m => m.Provider)
+                    .FirstOrDefault()
             }).ToListAsync(ct);
 
         if (meetings.Count == 0)
             return [];
 
-        var normalizedProcesses = meetingProcesses.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var categoryStems = meetingProcesses.Select(MeetingProviderApplications.Stem).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var anyProviderMeeting = meetings.Any(m => MeetingProviderApplications.ProcessStemsFor(m.Provider) is not null);
         var sampleFrom = meetings.Min(x => x.StartDate);
         var sampleTo = meetings.Max(x => x.EndDate);
-        var samples = normalizedProcesses.Count == 0
+        var samples = categoryStems.Count == 0 && !anyProviderMeeting
             ? []
             : await db.AppUsageSnapshots.AsNoTracking()
                 .Where(x => x.TenantId == tenantId
@@ -66,9 +72,11 @@ public sealed class EfMeetingComplianceReadRepository(ApplicationDbContext db) :
             var startsAt = meeting.StartDate;
             var endsAt = meeting.EndDate;
             var durationSeconds = Math.Max(0, (int)Math.Ceiling((endsAt - startsAt).TotalSeconds));
+            // A meeting created through ONEVO counts only its own provider's app; a pasted link counts any Meeting-category app.
+            var stems = MeetingProviderApplications.ProcessStemsFor(meeting.Provider) ?? categoryStems;
             var matchingSamples = samples.Count(sample =>
                 sample.ProcessName is not null
-                && normalizedProcesses.Contains(GlobalApplication.NormalizeProcessName(sample.ProcessName))
+                && stems.Contains(MeetingProviderApplications.Stem(sample.ProcessName))
                 && sample.CapturedAt >= startsAt
                 && sample.CapturedAt < endsAt);
             var result = MeetingApplicationComplianceCalculator.Calculate(durationSeconds, matchingSamples);

@@ -7,8 +7,6 @@ public static class InboxJournalActions
 {
     public const string Approve = "approve";
     public const string Reject = "reject";
-    public const string Forward = "forward";
-    public const string RequestInfo = "request_info";
     public const string Acknowledge = "acknowledge";
     public const string Escalate = "escalate";
     public const string Cancel = "cancel";

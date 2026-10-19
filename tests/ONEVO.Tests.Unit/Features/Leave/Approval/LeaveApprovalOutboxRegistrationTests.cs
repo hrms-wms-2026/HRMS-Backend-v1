@@ -13,7 +13,6 @@ public sealed class LeaveApprovalOutboxRegistrationTests
     [Theory]
     [InlineData(OutboxMessageTypes.LeaveRequestApproved)]
     [InlineData(OutboxMessageTypes.LeaveRequestRejected)]
-    [InlineData(OutboxMessageTypes.LeaveInformationRequested)]
     [InlineData(OutboxMessageTypes.LeaveRequestCancelled)]
     public async Task EmailHandler_CompletesWithoutThrowing_ForEmptyPayload(string type)
     {

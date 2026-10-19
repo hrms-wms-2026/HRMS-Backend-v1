@@ -20,7 +20,6 @@ public interface ILeaveApprovalRepository
         LeaveRequestAllListFilter filter,
         CancellationToken ct = default);
 
-    Task AddInfoMessageAsync(LeaveRequestInfoMessage message, CancellationToken ct = default);
 
     Task AddApproverAsync(LeaveRequestApprover approver, CancellationToken ct = default);
 
@@ -73,8 +72,7 @@ public sealed record LeaveApprovalState(
     string LeaveTypeName,
     string LeaveTypeCode,
     string? ApprovalMode,
-    IReadOnlyList<LeaveRequestApprover> Approvers,
-    IReadOnlyList<LeaveRequestInfoMessage> InfoMessages);
+    IReadOnlyList<LeaveRequestApprover> Approvers);
 
 public sealed record LeaveApprovalListFilter(
     string? Search,

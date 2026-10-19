@@ -501,6 +501,10 @@ public class ApproveAccessGrantRequestCommandHandler
         if (saveResult is not null)
             return saveResult;
 
+        // Template attachments are copied only now that the Work tasks are committed.
+        if (_workTaskProvisioner is not null && checklistTasks.Count > 0)
+            await _workTaskProvisioner.CopyTemplateAttachmentsAsync(draft.TenantId, checklistTasks, _currentUser.UserId, ct);
+
         // Profile photo from the wizard - linked only now that the employee is committed, and
         // best effort (see OnboardingDraftWriteService).
         if (draft.AvatarFileId is Guid draftAvatarId && _wizardLookups is not null)

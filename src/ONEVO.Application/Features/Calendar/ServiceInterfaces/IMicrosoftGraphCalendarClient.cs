@@ -11,7 +11,8 @@ public sealed record GraphEventDto(
     string? Timezone,
     string? Location,
     bool IsCancelled,
-    bool IsPrivate);
+    bool IsPrivate,
+    IReadOnlyList<string>? AttendeeEmails = null);
 
 public sealed record GraphCalendarPage(IReadOnlyList<GraphEventDto> Events, string? NextDeltaLink);
 

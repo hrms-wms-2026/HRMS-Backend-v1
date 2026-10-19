@@ -12,4 +12,7 @@ public static class EntityAssetOwnerTypes
     /// <summary>An employee's own uploaded documents (CV, ID, certificates). Kept separate from
     /// Employee so the coverage-free avatar read policy never applies to them.</summary>
     public const string EmployeeDocument = "employee_document";
+    /// <summary>Attachments on a checklist template's tasks (owner = template id). Copied into the
+    /// real Work task's own attachments when the checklist is provisioned for an employee.</summary>
+    public const string ChecklistTemplate = "checklist_template";
 }

@@ -132,12 +132,14 @@ public class EfEmployeeRepository : IEmployeeRepository
             var coveredPositionIds = scope.CoveredPositionIds;
             var coveredDepartmentIds = scope.CoveredDepartmentIds;
             var companyWideLegalEntityIds = scope.CompanyWideLegalEntityIds;
+            var coveredEmployeeIds = scope.CoveredEmployeeIds;
 
             joined = joined.Where(row =>
                 (ownEmployeeId != null && row.e.Id == ownEmployeeId.Value)
                 || (row.position != null && coveredPositionIds.Contains(row.position.Id))
                 || (row.dept != null && coveredDepartmentIds.Contains(row.dept.Id))
-                || (row.legalEntity != null && companyWideLegalEntityIds.Contains(row.legalEntity.Id)));
+                || (row.legalEntity != null && companyWideLegalEntityIds.Contains(row.legalEntity.Id))
+                || coveredEmployeeIds.Contains(row.e.Id));
         }
 
         if (!string.IsNullOrWhiteSpace(filter.Search))
@@ -793,12 +795,14 @@ public class EfEmployeeRepository : IEmployeeRepository
             var coveredPositionIds = scope.CoveredPositionIds;
             var coveredDepartmentIds = scope.CoveredDepartmentIds;
             var companyWideLegalEntityIds = scope.CompanyWideLegalEntityIds;
+            var coveredEmployeeIds = scope.CoveredEmployeeIds;
 
             joined = joined.Where(row =>
                 (ownEmployeeId != null && row.e.Id == ownEmployeeId.Value)
                 || (row.position != null && coveredPositionIds.Contains(row.position.Id))
                 || (row.dept != null && coveredDepartmentIds.Contains(row.dept.Id))
-                || (row.legalEntity != null && companyWideLegalEntityIds.Contains(row.legalEntity.Id)));
+                || (row.legalEntity != null && companyWideLegalEntityIds.Contains(row.legalEntity.Id))
+                || coveredEmployeeIds.Contains(row.e.Id));
         }
 
         return await joined

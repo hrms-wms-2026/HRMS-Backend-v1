@@ -39,17 +39,6 @@ public class CancelLeaveRequestCommandHandlerTests
     }
 
     [Fact]
-    public async Task Handle_EmployeeCancelsInformationRequested_MarksApproverCancelled()
-    {
-        var harness = Harness.Create(LeaveRequestStatuses.InformationRequested, paidHours: 1m, pendingHours: 1m, usedHours: 0m);
-        harness.Approver.Status = LeaveRequestApproverStatuses.InformationRequested;
-        var result = await harness.Sut.Handle(new CancelLeaveRequestCommand(harness.Request.Id, null, null, null), CancellationToken.None);
-        result.IsSuccess.Should().BeTrue();
-        harness.Approver.Status.Should().Be(LeaveRequestApproverStatuses.Cancelled);
-        harness.Audits.Should().BeEmpty();
-    }
-
-    [Fact]
     public async Task Handle_EmployeeCannotCancelAnotherEmployeesRequest()
     {
         var harness = Harness.Create(LeaveRequestStatuses.Pending, ownerIsCaller: false);

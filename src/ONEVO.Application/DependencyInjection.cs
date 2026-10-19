@@ -98,11 +98,6 @@ public static class DependencyInjection
             new LeaveApprovalEmailOutboxHandler(
                 sp.GetRequiredService<IEmailService>(),
                 sp.GetRequiredService<IEmployeeRepository>(),
-                OutboxMessageTypes.LeaveInformationRequested));
-        services.AddScoped<IOutboxMessageHandler>(sp =>
-            new LeaveApprovalEmailOutboxHandler(
-                sp.GetRequiredService<IEmailService>(),
-                sp.GetRequiredService<IEmployeeRepository>(),
                 OutboxMessageTypes.LeaveRequestCancelled));
                 services.AddScoped<GitHubUserIntegrationAvailability>();
         services.AddScoped<
@@ -115,6 +110,7 @@ public static class DependencyInjection
         services.AddScoped<IOutboxMessageHandler, ONEVO.Application.Features.Calendar.OutboxHandlers.CalendarEventInviteEmailOutboxHandler>();
         services.AddScoped<IOutboxMessageHandler, ONEVO.Application.Features.Calendar.OutboxHandlers.CalendarMeetingCancelOutboxHandler>();
         services.AddScoped<IOutboxMessageHandler, ONEVO.Application.Features.WorkManagement.Meetings.OutboxHandlers.MeetingLinkProvisionOutboxHandler>();
+        services.AddScoped<IOutboxMessageHandler, ONEVO.Application.Features.Calendar.OutboxHandlers.CalendarOutlookPushOutboxHandler>();
         services.AddScoped<GetBulkOnboardingTemplateQueryHandler>();
 
         services.AddScoped<
@@ -124,6 +120,7 @@ public static class DependencyInjection
         services.AddScoped<
             ONEVO.Application.Features.Monitoring.Exceptions.ServiceInterfaces.IExceptionScopeResolver,
             ONEVO.Application.Features.Monitoring.Exceptions.Services.ExceptionScopeResolver>();
+        services.AddScoped<ONEVO.Application.Features.Monitoring.Exceptions.Services.ExceptionCaseRouting>();
         services.AddScoped<
             ONEVO.Application.Features.Monitoring.Exceptions.ServiceInterfaces.IExceptionAlertRouter,
             ONEVO.Application.Features.Monitoring.Exceptions.Services.ExceptionAlertRouter>();

@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
@@ -5,6 +6,7 @@ using ONEVO.Application.Features.WorkManagement.Notifications.Services;
 using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Tasks.Services;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.WorkManagement.Approvals.Entities;
 using ONEVO.Domain.Features.WorkManagement.Notifications.Entities;
@@ -24,6 +26,7 @@ public sealed class EmployeeChecklistWorkTaskProvisioner(
     ITaskAssignmentRepository assignments,
     IProjectMemberRepository members,
     IWorkNotificationEngine notifications,
+    ITaskAssetLinker assetLinker,
     ILogger<EmployeeChecklistWorkTaskProvisioner> logger) : IEmployeeChecklistWorkTaskProvisioner
 {
     public async Task<Result<OfficeProjectContext>> EnsureOfficeProjectAsync(
@@ -119,10 +122,12 @@ public sealed class EmployeeChecklistWorkTaskProvisioner(
                 CreatorPositionObjectiveId = office.ObjectiveId,
                 ShortId = $"OFFICE-{number}",
                 Title = $"{checklistTask.TaskTitle} — {employee.FirstName} {employee.LastName}".Trim(),
-                Description = $"{char.ToUpperInvariant(categoryKey[0]) + categoryKey[1..]} checklist for {employee.FirstName} {employee.LastName} ({employee.EmployeeNumber}).",
+                Description = string.IsNullOrWhiteSpace(checklistTask.Description)
+                    ? $"{char.ToUpperInvariant(categoryKey[0]) + categoryKey[1..]} checklist for {employee.FirstName} {employee.LastName} ({employee.EmployeeNumber})."
+                    : checklistTask.Description,
                 CategoryId = categoryId,
                 StatusId = office.ToDoStatusId,
-                Priority = WorkTaskPriorities.Medium,
+                Priority = string.IsNullOrWhiteSpace(checklistTask.Priority) ? WorkTaskPriorities.Medium : checklistTask.Priority,
                 DueDate = checklistTask.DueDate,
                 EstimatedHours = null,
                 SprintId = null,
@@ -172,5 +177,43 @@ public sealed class EmployeeChecklistWorkTaskProvisioner(
         }
 
         return Result<int>.Success(created);
+    }
+
+    public async Task CopyTemplateAttachmentsAsync(
+        Guid tenantId, IReadOnlyList<EmployeeChecklistTask> checklistTasks, Guid actingUserId,
+        CancellationToken ct = default)
+    {
+        foreach (var checklistTask in checklistTasks)
+        {
+            var templateFileIds = ParseFileIds(checklistTask.AttachmentFileIdsJson);
+            if (checklistTask.WorkTaskId is not { } workTaskId || templateFileIds.Count == 0)
+                continue;
+
+            try
+            {
+                await assetLinker.CopyChecklistTemplateFilesToTaskAsync(
+                    tenantId, actingUserId, templateFileIds, checklistTask.TemplateId, workTaskId, ct);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                // The checklist and its Work tasks are already committed; a missing attachment
+                // copy must not turn that into a failed request.
+                logger.LogWarning(ex, "Could not copy checklist template attachments to work task {WorkTaskId}.", workTaskId);
+            }
+        }
+    }
+
+    private static IReadOnlyList<Guid> ParseFileIds(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+            return Array.Empty<Guid>();
+        try
+        {
+            return JsonSerializer.Deserialize<List<Guid>>(json) ?? new List<Guid>();
+        }
+        catch (JsonException)
+        {
+            return Array.Empty<Guid>();
+        }
     }
 }
