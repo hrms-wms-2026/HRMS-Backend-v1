@@ -7,6 +7,8 @@ namespace ONEVO.Application.Features.WorkManagement.Meetings.Contracts;
 public static class MeetingErrorCodes
 {
     // Create (400 unless noted)
+    public const string TitleInvalid = "meeting_title_invalid";
+    public const string GuestEmailInvalid = "meeting_guest_email_invalid";
     public const string InvalidTime = "meeting_invalid_time";
     public const string StartInPast = "meeting_start_in_past";
     public const string InvalidTimezone = "meeting_invalid_timezone";
