@@ -10,4 +10,10 @@ public sealed record ChecklistTemplateTaskRequest(
     Guid? AssigneePositionId,
     int DueOffsetDays,
     int? Sequence,
-    bool IsRequired);
+    bool IsRequired,
+    bool IsBypassable = false,
+    string? BypassPenaltyDescription = null,
+    string? Category = null,
+    string? Description = null,
+    string? Priority = null,
+    IReadOnlyList<Guid>? AttachmentFileIds = null);

@@ -35,7 +35,16 @@ public class SelectOffboardingChecklistCommandHandler(
         if (record.Status != OffboardingRecordStatuses.Initiated)
             return Result.Conflict("A checklist has already been selected for this offboarding.");
 
-        var template = await checklistTemplateRepository.GetByIdAsync(tenantId, request.TemplateId, ct);
+        // No template: the offboarding goes ahead with no checklist tasks (e.g. none match the employee).
+        if (request.TemplateId is not { } templateId)
+        {
+            record.Status = OffboardingRecordStatuses.InProgress;
+            record.UpdatedAt = clock.UtcNow;
+            await offboardingRecordRepository.SaveChangesAsync(ct);
+            return Result.Success();
+        }
+
+        var template = await checklistTemplateRepository.GetByIdAsync(tenantId, templateId, ct);
         if (template is null || !template.IsActive || template.TemplateType != "offboarding")
             return Result.NotFound("The selected checklist template does not exist or is not an active offboarding template.");
 
@@ -71,6 +80,11 @@ public class SelectOffboardingChecklistCommandHandler(
         record.UpdatedAt = clock.UtcNow;
 
         await offboardingRecordRepository.SaveChangesAsync(ct);
+
+        // Template attachments are copied only now that the Work tasks are committed.
+        if (workTaskProvisioner is not null && tasks.Count > 0)
+            await workTaskProvisioner.CopyTemplateAttachmentsAsync(tenantId, tasks, currentUser.UserId, ct);
+
         return Result.Success();
     }
 }

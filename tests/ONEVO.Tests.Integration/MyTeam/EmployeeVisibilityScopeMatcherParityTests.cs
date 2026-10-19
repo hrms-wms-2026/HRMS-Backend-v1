@@ -72,6 +72,12 @@ public sealed class EmployeeVisibilityScopeMatcherParityTests
             // Own-with-overlap: both own AND department coverage name the same employee.
             new EmployeeVisibilityScope(false, ownWithOverlapId, new HashSet<Guid>(), new HashSet<Guid> { parentDept }, new HashSet<Guid>()),
             // A position covered here that only the EXPIRED assignment used to hold - must select nobody via that position.
+            // Skip-level: reached only through the resolver's coverage expansion (reporting-line
+            // subtree / descendant department), not through any raw coverage dimension.
+            new EmployeeVisibilityScope(false, null, new HashSet<Guid>(), new HashSet<Guid>(), new HashSet<Guid>())
+            {
+                CoveredEmployeeIds = new HashSet<Guid> { strangerId, noDeptId },
+            },
         };
 
         await using var read = helper.NewContext();

@@ -7,6 +7,7 @@ using ONEVO.Application.Features.CoreHr.Onboarding.Commands.ArchiveChecklistTemp
 using ONEVO.Application.Features.CoreHr.Onboarding.Commands.CreateChecklistTemplate;
 using ONEVO.Application.Features.CoreHr.Onboarding.Commands.UpdateChecklistTemplate;
 using ONEVO.Application.Features.CoreHr.Onboarding.Queries.GetChecklistTemplate;
+using ONEVO.Application.Features.CoreHr.Onboarding.Queries.GetChecklistTemplateFile;
 using ONEVO.Application.Features.CoreHr.Onboarding.Queries.ListChecklistTemplates;
 
 namespace ONEVO.Api.Controllers.Tenant.CoreHr;
@@ -44,6 +45,18 @@ public class ChecklistTemplatesController : ControllerBase
         return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
+    /// <summary>Downloads an attachment saved on one of this template's tasks.</summary>
+    [HttpGet("{id:guid}/files/{fileId:guid}")]
+    [RequirePermission("employees:write")]
+    public async Task<IActionResult> GetFile(Guid id, Guid fileId, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new GetChecklistTemplateFileQuery(id, fileId), ct);
+        if (!result.IsSuccess)
+            return Problem(result.Error, statusCode: result.StatusCode ?? 400);
+
+        return File(result.Value!.Content, result.Value!.ContentType);
+    }
+
     /// <summary>TenantId is always server-derived; the request body carries no tenant/company
     /// override beyond the explicit legalEntityId scope field.</summary>
     [HttpPost]
@@ -54,7 +67,8 @@ public class ChecklistTemplatesController : ControllerBase
         var command = new CreateChecklistTemplateCommand(
             request.Name, request.TemplateType, request.LegalEntityId, request.DepartmentId, request.PositionId,
             request.Tasks.Select(t => new CreateChecklistTemplateTaskInput(
-                t.Title, t.OwnerType, t.AssignedToId, t.AssigneePositionId, t.DueOffsetDays, t.Sequence, t.IsRequired)).ToList());
+                t.Title, t.OwnerType, t.AssignedToId, t.AssigneePositionId, t.DueOffsetDays, t.Sequence, t.IsRequired,
+                t.IsBypassable, t.BypassPenaltyDescription, t.Category, t.Description, t.Priority, t.AttachmentFileIds)).ToList());
 
         var result = await _mediator.Send(command, ct);
         return result.IsSuccess
@@ -69,7 +83,8 @@ public class ChecklistTemplatesController : ControllerBase
         var command = new UpdateChecklistTemplateCommand(
             id, request.Name, request.DepartmentId, request.PositionId,
             request.Tasks.Select(t => new UpdateChecklistTemplateTaskInput(
-                t.Title, t.OwnerType, t.AssignedToId, t.AssigneePositionId, t.DueOffsetDays, t.Sequence, t.IsRequired)).ToList());
+                t.Title, t.OwnerType, t.AssignedToId, t.AssigneePositionId, t.DueOffsetDays, t.Sequence, t.IsRequired,
+                t.IsBypassable, t.BypassPenaltyDescription, t.Category, t.Description, t.Priority, t.AttachmentFileIds)).ToList());
 
         var result = await _mediator.Send(command, ct);
         return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);

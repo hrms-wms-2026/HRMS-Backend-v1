@@ -1,5 +1,6 @@
 using FluentAssertions;
 using Moq;
+using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.Onboarding.Queries.GetChecklistTemplate;
 using ONEVO.Application.Features.CoreHr.Onboarding.Queries.ListChecklistTemplates;
@@ -21,7 +22,7 @@ public class GetAndListChecklistTemplateQueryHandlerTests
     public async Task GetById_UnknownTemplate_ReturnsNotFound()
     {
         _templateRepository.Setup(r => r.GetByIdAsync(_tenantId, It.IsAny<Guid>(), It.IsAny<CancellationToken>())).ReturnsAsync((ChecklistTemplateEntity?)null);
-        var handler = new GetChecklistTemplateByIdQueryHandler(_templateRepository.Object, _currentUser.Object);
+        var handler = new GetChecklistTemplateByIdQueryHandler(_templateRepository.Object, ChecklistTemplateTestDoubles.NoTemplateFiles(), _currentUser.Object);
 
         var result = await handler.Handle(new GetChecklistTemplateByIdQuery(Guid.NewGuid()), CancellationToken.None);
 
@@ -38,7 +39,7 @@ public class GetAndListChecklistTemplateQueryHandlerTests
             TasksJson = "[{\"title\":\"Complete profile\",\"ownerType\":\"employee\",\"dueOffsetDays\":1,\"isRequired\":true}]",
         };
         _templateRepository.Setup(r => r.GetByIdAsync(_tenantId, template.Id, It.IsAny<CancellationToken>())).ReturnsAsync(template);
-        var handler = new GetChecklistTemplateByIdQueryHandler(_templateRepository.Object, _currentUser.Object);
+        var handler = new GetChecklistTemplateByIdQueryHandler(_templateRepository.Object, ChecklistTemplateTestDoubles.NoTemplateFiles(), _currentUser.Object);
 
         var result = await handler.Handle(new GetChecklistTemplateByIdQuery(template.Id), CancellationToken.None);
 

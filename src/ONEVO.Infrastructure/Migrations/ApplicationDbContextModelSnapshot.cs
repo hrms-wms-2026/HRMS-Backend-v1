@@ -3303,6 +3303,10 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("assigned_to_id");
 
+                    b.Property<string>("AttachmentFileIdsJson")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("attachment_file_ids_json");
+
                     b.Property<string>("BypassPenaltyDescription")
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)")
@@ -3316,6 +3320,10 @@ namespace ONEVO.Infrastructure.Migrations
                     b.Property<DateTimeOffset?>("CompletedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("completed_at");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("text")
+                        .HasColumnName("description");
 
                     b.Property<DateOnly>("DueDate")
                         .HasColumnType("date")
@@ -3352,6 +3360,11 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasMaxLength(30)
                         .HasColumnType("character varying(30)")
                         .HasColumnName("owner_type");
+
+                    b.Property<string>("Priority")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("priority");
 
                     b.Property<int?>("Sequence")
                         .HasColumnType("integer")

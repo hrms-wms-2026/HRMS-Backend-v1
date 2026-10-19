@@ -223,6 +223,26 @@ public sealed class NotificationTemplateSeederTests : IDisposable
         Assert.Equal(version.Id, template.ActiveVersionId);
     }
 
+    [Fact]
+    public async Task SeedAsync_BackfilledTemplateNamedByItsCode_GetsTheCatalogDisplayName_AndKeepsItsCopy()
+    {
+        await RunSeederAsync();
+        await using (var arrange = CreateContext())
+        {
+            var t = await arrange.NotificationTemplates.SingleAsync(x => x.Code == "work_sprint_completed");
+            t.Name = t.Code; // what the AddNotificationTemplateVersioningAndRouting backfill writes
+            t.InAppBodyTemplate = "Admin-edited body";
+            await arrange.SaveChangesAsync();
+        }
+
+        await RunSeederAsync();
+
+        await using var assert = CreateContext();
+        var renamed = await assert.NotificationTemplates.SingleAsync(x => x.Code == "work_sprint_completed");
+        Assert.Equal("Work sprint completed", renamed.Name);
+        Assert.Equal("Admin-edited body", renamed.InAppBodyTemplate);
+    }
+
     private static NotificationTemplateContent Content(string title) =>
         new(title, "{{actorName}} body", null, null, null, null, null, null, "open_related");
 

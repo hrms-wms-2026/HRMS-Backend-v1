@@ -767,6 +767,10 @@ public class OnboardingDraftWriteService : IOnboardingDraftWriteService
         if (draft.AvatarFileId is Guid draftAvatarId && _wizardLookups is not null)
             await TryLinkDraftAvatarAsync(draft.TenantId, employeeId, draftAvatarId, ct);
 
+        // Template attachments are copied only now that the Work tasks are committed.
+        if (_workTaskProvisioner is not null && checklistTasks.Count > 0)
+            await _workTaskProvisioner.CopyTemplateAttachmentsAsync(draft.TenantId, checklistTasks, actingUserId, ct);
+
         return Result<FinalizeOnboardingDraftResponse>.Success(new FinalizeOnboardingDraftResponse(
             draft.Id, employeeId, draft.Status, draft.DraftReason,
             InvitationQueued: true, PositionApprovalPending: false, ChecklistTasksCreated: tasksCreated > 0,
