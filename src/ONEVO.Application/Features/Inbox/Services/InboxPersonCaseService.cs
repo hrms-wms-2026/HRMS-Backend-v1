@@ -32,11 +32,19 @@ public sealed class InboxPersonCaseService : IInboxPersonCaseService
     public async Task<IReadOnlyList<InboxPersonCase>> GetPersonCasesAsync(
         Guid tenantId, Guid callerEmployeeId, Guid employeeId, string category, DateTimeOffset from, DateTimeOffset to, CancellationToken ct)
     {
+        // Npgsql only accepts offset 0 for timestamptz parameters; the instant is unchanged.
+        var (fromUtc, toUtc) = (from.ToUniversalTime(), to.ToUniversalTime());
         var rows = new List<InboxPersonCase>();
         foreach (var provider in _providers)
-            rows.AddRange(await provider.ListPersonCasesAsync(tenantId, employeeId, category, from, to, callerEmployeeId, ct));
-        return rows.OrderByDescending(r => r.Item.CreatedAt).ToList();
+            rows.AddRange(await provider.ListPersonCasesAsync(tenantId, employeeId, category, fromUtc, toUtc, callerEmployeeId, ct));
+        return rows.Select(FactsOnly).OrderByDescending(r => r.Item.CreatedAt).ToList();
     }
+
+    /// <summary>A row the caller can't open keeps its facts (type, status, dates) and drops its detail (description,
+    /// requested location, facets), which only the case itself may show.</summary>
+    private static InboxPersonCase FactsOnly(InboxPersonCase row) => row.CanOpen
+        ? row
+        : row with { Item = row.Item with { Subtitle = null, Facets = new Dictionary<string, IReadOnlyList<string>>() } };
 
     public async Task<InboxPersonCaseMonths> GetPersonCaseMonthsAsync(
         Guid tenantId, Guid callerEmployeeId, Guid employeeId, string category, int year, int offsetMinutes, CancellationToken ct)

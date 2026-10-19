@@ -65,6 +65,8 @@ public class InboxPersonCaseServiceTests
         var (from, to) = (_monitoring.Calls[0].From, _monitoring.Calls[0].To);
         from.Should().Be(new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.FromMinutes(330)));
         to.Should().Be(new DateTimeOffset(2027, 1, 1, 0, 0, 0, TimeSpan.FromMinutes(330)));
+        // Npgsql only accepts offset 0 for timestamptz parameters.
+        (from.Offset, to.Offset).Should().Be((TimeSpan.Zero, TimeSpan.Zero));
     }
 
     [Fact]
@@ -97,12 +99,46 @@ public class InboxPersonCaseServiceTests
         => GetInboxPersonCasesQuery.Validate(category, From, To).Should().NotBeNull();
 
     [Fact]
-    public void Query_RejectsRangeOver31Days()
-        => GetInboxPersonCasesQuery.Validate(InboxCategories.Alert, From, From.AddDays(32)).Should().NotBeNull();
+    public void Query_RejectsRangeOver32Days()
+        => GetInboxPersonCasesQuery.Validate(InboxCategories.Alert, From, From.AddDays(33)).Should().NotBeNull();
 
     [Fact]
     public void Query_RejectsEmptyRange()
         => GetInboxPersonCasesQuery.Validate(InboxCategories.Alert, From, From).Should().NotBeNull();
+
+    [Fact]
+    public async Task GetPersonCasesAsync_PassesUtcBoundsToProviders()
+    {
+        var offset = TimeSpan.FromMinutes(330);
+        await Service().GetPersonCasesAsync(TenantId, Me, Subject, InboxCategories.Alert,
+            new DateTimeOffset(2026, 10, 1, 0, 0, 0, offset), new DateTimeOffset(2026, 11, 1, 0, 0, 0, offset), default);
+
+        var call = _monitoring.Calls.Single();
+        (call.From.Offset, call.To.Offset).Should().Be((TimeSpan.Zero, TimeSpan.Zero));
+        call.From.Should().Be(new DateTimeOffset(2026, 10, 1, 0, 0, 0, offset));
+    }
+
+    [Fact]
+    public async Task GetPersonCasesAsync_StripsDetailFromRowsTheCallerCannotOpen()
+    {
+        var locked = Case("monitoring", From.AddDays(2), canOpen: false);
+        locked = locked with { Item = locked.Item with { Subtitle = "lat 6.9, lng 79.8", Facets = new Dictionary<string, IReadOnlyList<string>> { ["x"] = ["y"] } } };
+        var open = Case("monitoring", From.AddDays(3));
+        open = open with { Item = open.Item with { Subtitle = "kept" } };
+        _monitoring.Cases.AddRange([locked, open]);
+
+        var rows = await Service().GetPersonCasesAsync(TenantId, Me, Subject, InboxCategories.Alert, From, To, default);
+
+        var lockedRow = rows.Single(r => !r.CanOpen).Item;
+        lockedRow.Subtitle.Should().BeNull();
+        lockedRow.Facets.Should().BeEmpty();
+        rows.Single(r => r.CanOpen).Item.Subtitle.Should().Be("kept");
+    }
+
+    [Fact]
+    public void Query_AcceptsALocalOctoberAcrossADaylightSavingShift()
+        => GetInboxPersonCasesQuery.Validate(InboxCategories.Alert,
+            new DateTimeOffset(2026, 9, 30, 23, 0, 0, TimeSpan.Zero), new DateTimeOffset(2026, 11, 1, 0, 0, 0, TimeSpan.Zero)).Should().BeNull();
 
     [Fact]
     public void Query_AcceptsOneMonth()

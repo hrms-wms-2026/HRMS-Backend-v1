@@ -5,11 +5,12 @@ using ONEVO.Application.Features.Inbox.Services;
 
 namespace ONEVO.Application.Features.Inbox.Queries.GetInboxPersonCases;
 
-/// <summary>One month (at most 31 days) of a person's alerts or requests, newest first.</summary>
+/// <summary>One local month (at most 32 days) of a person's alerts or requests, newest first.</summary>
 public sealed record GetInboxPersonCasesQuery(Guid EmployeeId, string Category, DateTimeOffset From, DateTimeOffset To)
     : IRequest<Result<IReadOnlyList<InboxPersonCase>>>
 {
-    public const int MaxRangeDays = 31;
+    /// <summary>A local month is up to 31 days plus a daylight-saving hour, so allow a day of slack.</summary>
+    public const int MaxRangeDays = 32;
     public const string BadCategoryMessage = "Category must be 'alert' or 'request'.";
 
     public static bool IsCategory(string category) => category is InboxCategories.Alert or InboxCategories.Request;
