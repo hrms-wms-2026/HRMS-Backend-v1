@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Options;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
@@ -17,7 +18,9 @@ public sealed record MeetingLinkProvisionPayload(Guid TenantId, Guid LinkId, Gui
 /// <summary>
 /// A series-owned Teams/Zoom link (spec 5.7) after its row is claimed: the provider call (the Phase 0 provisioner, with the
 /// link id as the correlation id), then the row's next state and who is told what - the same outcome table as calendar
-/// events (EventMeetingLinkService), for a series owner. Stateless.
+/// events (EventMeetingLinkService), for a series owner. Also the organizer's link endpoints (create or regenerate, retry,
+/// remove, cleanup confirmed) and the release rule: a series lets go of only its own reference, and the provider meeting is
+/// cancelled when the last reference goes and nothing still needs the link (spec 5.7). Stateless.
 /// </summary>
 public sealed class SeriesMeetingLinkService
 {
@@ -32,11 +35,16 @@ public sealed class SeriesMeetingLinkService
     private readonly IOutboxWriter _outbox;
     private readonly IUnitOfWork _unitOfWork;
     private readonly IDateTimeProvider _clock;
+    private readonly IMeetingAccessResolver _access;
+    private readonly IOptions<MeetingsOptions> _options;
 
     public SeriesMeetingLinkService(IMeetingLinkRepository links, IMeetingRepository meetings, IMeetingOccurrenceWriter writer,
         IExternalCalendarConnectionRepository connections, IMeetingProvisioner provisioner, IMeetingNotifier notifier,
-        IMeetingRecurrence recurrence, IEmployeeRepository employees, IOutboxWriter outbox, IUnitOfWork unitOfWork, IDateTimeProvider clock)
+        IMeetingRecurrence recurrence, IEmployeeRepository employees, IOutboxWriter outbox, IUnitOfWork unitOfWork, IDateTimeProvider clock,
+        IMeetingAccessResolver access, IOptions<MeetingsOptions> options)
     {
+        _access = access;
+        _options = options;
         _links = links;
         _meetings = meetings;
         _writer = writer;
@@ -139,6 +147,237 @@ public sealed class SeriesMeetingLinkService
             return Result<MeetingLinkResponse>.Success(Describe(link));
         }, CancellationToken.None);
     }
+
+    /// <summary>GET link: the join URL for every attendee while the link is active; the full state for the organizer only.</summary>
+    public async Task<Result<MeetingSeriesLinkResponse>> GetAsync(Guid tenantId, Guid callerEmployeeId, Guid seriesId, CancellationToken ct)
+    {
+        var access = await _access.ResolveForSeriesAsync(tenantId, callerEmployeeId, seriesId, ct);
+        if (access is null)
+            return MeetingReadService.NotFound<MeetingSeriesLinkResponse>();
+        var link = await _links.GetActiveForSeriesAsync(tenantId, seriesId, ct);
+        var joinUrl = link is { Status: CalendarEventMeetingStatuses.Active } && !string.IsNullOrEmpty(link.JoinUrl) ? link.JoinUrl : null;
+        return Result<MeetingSeriesLinkResponse>.Success(new MeetingSeriesLinkResponse(joinUrl,
+            access.Role == MeetingRoles.Organizer && link is not null ? Describe(link) : null));
+    }
+
+    /// <summary>POST link: a link for a series without a usable one; with Regenerate a new link for this series only - its
+    /// reference to the old link is released (other series keep it) and a new one is claimed. Provisioning is queued.</summary>
+    public async Task<Result<MeetingLinkResponse>> RegenerateAsync(Guid tenantId, Guid callerEmployeeId, Guid callerUserId, Guid seriesId,
+        MeetingLinkRequest request, CancellationToken ct)
+    {
+        if (MeetingGuard.CheckWritable<MeetingLinkResponse>(_options.Value) is { } blocked)
+            return blocked;
+        if (request.Platform is not (CalendarEventMeetingProviders.MicrosoftTeams or CalendarEventMeetingProviders.Zoom))
+            return Result<MeetingLinkResponse>.Failure("Choose Microsoft Teams or Zoom.", 400, MeetingErrorCodes.PlatformInvalid);
+        if (await OrganizerOnlyAsync<MeetingLinkResponse>(tenantId, callerEmployeeId, seriesId, ct) is { } denied)
+            return denied;
+        var connection = await _connections.GetByTenantUserProviderAsync(tenantId, callerUserId,
+            CalendarMeetingConnections.SourceFor(request.Platform), ct);
+        if (!CalendarMeetingConnections.CanCreateMeetings(connection, request.Platform))
+            return Result<MeetingLinkResponse>.Failure("Connect your calendar account to add an online meeting.", 409,
+                MeetingErrorCodes.ProviderNotConnected);
+
+        try
+        {
+            return await _unitOfWork.ExecuteInTransactionAsync(async innerCt =>
+            {
+                await _writer.LockSeriesAsync(tenantId, seriesId, innerCt);
+                var series = await _meetings.GetSeriesAsync(tenantId, seriesId, innerCt);
+                if (series is null)
+                    return MeetingReadService.NotFound<MeetingLinkResponse>();
+                if (series.CancelledAt is not null)
+                    return Result<MeetingLinkResponse>.Failure("This meeting is cancelled.", 409, MeetingErrorCodes.MeetingCancelled);
+
+                var now = _clock.UtcNow;
+                var existing = await _links.GetActiveForSeriesAsync(tenantId, seriesId, innerCt);
+                if (existing is not null)
+                {
+                    if (Unsettled<MeetingLinkResponse>(existing.Status) is { } unsettled)
+                        return unsettled;
+                    if (existing.Status == CalendarEventMeetingStatuses.Active && !request.Regenerate)
+                        return Result<MeetingLinkResponse>.Failure("This meeting already has a link.", 409, MeetingErrorCodes.LinkExists);
+                    // Its upcoming occurrences stop using the old link first, so they do not keep it "needed".
+                    await _links.SetOccurrenceLinkAsync(tenantId, seriesId, null, now, innerCt);
+                    await ReleaseReferenceAsync(tenantId, series, existing.Id, now, innerCt);
+                }
+
+                var linkId = await _links.TryClaimForSeriesAsync(tenantId, seriesId, connection!.Id, request.Platform, invitesPending: false, now, innerCt)
+                    ?? throw new InvalidOperationException($"Series {seriesId} still holds a link after its release.");
+                await _unitOfWork.SaveChangesAsync(innerCt);
+                await _links.SetOccurrenceLinkAsync(tenantId, seriesId, linkId, now, innerCt);
+                await QueueProvisioningAsync(tenantId, linkId, seriesId, generation: 1, innerCt);
+                await _unitOfWork.SaveChangesAsync(innerCt);
+                return Result<MeetingLinkResponse>.Success(
+                    new MeetingLinkResponse(linkId, request.Platform, CalendarEventMeetingStatuses.Provisioning, null, null, null, 1));
+            }, ct);
+        }
+        catch (MeetingBusyException)
+        {
+            return MeetingGuard.Busy<MeetingLinkResponse>();
+        }
+    }
+
+    /// <summary>POST link/retry: the same generation again, only from provisioning_unknown (recovery: adopt what the first
+    /// attempt may have created) or failed; the provider call runs in this request.</summary>
+    public async Task<Result<MeetingLinkResponse>> RetryAsync(Guid tenantId, Guid callerEmployeeId, Guid seriesId, CancellationToken ct)
+    {
+        if (MeetingGuard.CheckWritable<MeetingLinkResponse>(_options.Value) is { } blocked)
+            return blocked;
+        if (await OrganizerOnlyAsync<MeetingLinkResponse>(tenantId, callerEmployeeId, seriesId, ct) is { } denied)
+            return denied;
+        var link = await _links.GetActiveForSeriesAsync(tenantId, seriesId, ct);
+        if (link is null)
+            return Result<MeetingLinkResponse>.Failure("This meeting has no link to retry.", 409, MeetingErrorCodes.LinkNotRetryable);
+        if (link.Status is CalendarEventMeetingStatuses.Provisioning or CalendarEventMeetingStatuses.Unresolved)
+            return Unsettled<MeetingLinkResponse>(link.Status)!;
+        if (link.Status is not (CalendarEventMeetingStatuses.ProvisioningUnknown or CalendarEventMeetingStatuses.Failed))
+            return Result<MeetingLinkResponse>.Failure("This link cannot be retried.", 409, MeetingErrorCodes.LinkNotRetryable);
+        var series = await _meetings.GetSeriesAsync(tenantId, seriesId, ct);
+        if (series?.CancelledAt is not null)
+            return Result<MeetingLinkResponse>.Failure("This meeting is cancelled.", 409, MeetingErrorCodes.MeetingCancelled);
+
+        // Recovery must use the connection of the first attempt: createOrGet and the Zoom token are per organizer account.
+        var connection = await _connections.GetByIdForTenantAsync(tenantId, link.ExternalCalendarConnectionId, ct);
+        if (connection is null || !CalendarMeetingConnections.CanCreateMeetings(connection, link.Provider))
+            return Result<MeetingLinkResponse>.Failure("Connect your calendar account again to retry the link.", 409,
+                MeetingErrorCodes.ProviderNotConnected);
+        if (!await _links.TryClaimRetryAsync(tenantId, link.Id, _clock.UtcNow, ct))
+            return Unsettled<MeetingLinkResponse>(CalendarEventMeetingStatuses.Provisioning)!;
+        return await ProvisionAsync(tenantId, link.Id, seriesId, recovery: link.Status == CalendarEventMeetingStatuses.ProvisioningUnknown, ct);
+    }
+
+    /// <summary>DELETE link: this series lets go of its link - its upcoming occurrences lose it, its attendees are told the
+    /// link is gone, and the provider meeting is cancelled only if no other series or open attendance check still needs it
+    /// (otherwise the response says <c>releasePending</c>). Null when the series had no link.</summary>
+    public async Task<Result<MeetingLinkResponse?>> RemoveAsync(Guid tenantId, Guid callerEmployeeId, Guid seriesId, CancellationToken ct)
+    {
+        if (MeetingGuard.CheckWritable<MeetingLinkResponse?>(_options.Value) is { } blocked)
+            return blocked;
+        if (await OrganizerOnlyAsync<MeetingLinkResponse?>(tenantId, callerEmployeeId, seriesId, ct) is { } denied)
+            return denied;
+
+        try
+        {
+            return await _unitOfWork.ExecuteInTransactionAsync(async innerCt =>
+            {
+                await _writer.LockSeriesAsync(tenantId, seriesId, innerCt);
+                var series = await _meetings.GetSeriesAsync(tenantId, seriesId, innerCt);
+                if (series is null)
+                    return MeetingReadService.NotFound<MeetingLinkResponse?>();
+                var existing = await _links.GetActiveForSeriesAsync(tenantId, seriesId, innerCt);
+                if (existing is null)
+                    return Result<MeetingLinkResponse?>.Success(null);
+                if (Unsettled<MeetingLinkResponse?>(existing.Status) is { } unsettled)
+                    return unsettled;
+
+                var now = _clock.UtcNow;
+                await _links.SetOccurrenceLinkAsync(tenantId, seriesId, null, now, innerCt);
+                var (link, parked) = await ReleaseReferenceAsync(tenantId, series, existing.Id, now, innerCt);
+                // P1-4: nobody keeps a join link that no longer works for this meeting.
+                if (existing.Status == CalendarEventMeetingStatuses.Active)
+                    await _notifier.LinkRemovedAsync(series, link, innerCt);
+                await _unitOfWork.SaveChangesAsync(innerCt);
+                return Result<MeetingLinkResponse?>.Success(Describe(link, parked));
+            }, ct);
+        }
+        catch (MeetingBusyException)
+        {
+            return MeetingGuard.Busy<MeetingLinkResponse?>();
+        }
+    }
+
+    /// <summary>POST link/cleanup-confirmed: the organizer deleted the stray provider meeting; unresolved -> cancelled.</summary>
+    public async Task<Result<bool>> ConfirmCleanupAsync(Guid tenantId, Guid callerEmployeeId, Guid seriesId, CancellationToken ct)
+    {
+        if (MeetingGuard.CheckWritable<bool>(_options.Value) is { } blocked)
+            return blocked;
+        if (await OrganizerOnlyAsync<bool>(tenantId, callerEmployeeId, seriesId, ct) is { } denied)
+            return denied;
+        var active = await _links.GetActiveForSeriesAsync(tenantId, seriesId, ct);
+        var link = active is null ? null : await _links.GetTrackedAsync(tenantId, active.Id, ct);
+        if (link is null || link.Status != CalendarEventMeetingStatuses.Unresolved)
+            return Result<bool>.Failure("This link is not waiting for a cleanup.", 409, MeetingErrorCodes.LinkNotUnresolved);
+        link.Status = CalendarEventMeetingStatuses.Cancelled;
+        link.UpdatedAt = _clock.UtcNow;
+        await _unitOfWork.SaveChangesAsync(ct);
+        return Result<bool>.Success(true);
+    }
+
+    /// <summary>A cancelled or ended series lets go of its link reference, then the provider cancel decision (spec 5.7). Runs
+    /// inside the caller's transaction, which holds the series lock and has saved the cancellations (the "needed" rule reads
+    /// them); the caller saves. Null when the series held no reference.</summary>
+    public async Task<MeetingLinkResponse?> ReleaseAsync(Guid tenantId, Guid seriesId, CancellationToken ct)
+    {
+        var active = await _links.GetActiveForSeriesAsync(tenantId, seriesId, ct);
+        var series = active is null ? null : await _meetings.GetSeriesAsync(tenantId, seriesId, ct);
+        if (active is null || series is null)
+            return null;
+        var (link, parked) = await ReleaseReferenceAsync(tenantId, series, active.Id, _clock.UtcNow, ct);
+        return Describe(link, parked);
+    }
+
+    /// <summary>The spec 5.7 "needed" rule: an occurrence using the link that is upcoming, has an unfinalized attendance check
+    /// or is inside its late-recheck window - or a series still referencing it with an upcoming (possibly virtual) slot.</summary>
+    public async Task<bool> IsNeededAsync(Guid tenantId, Guid linkId, DateTimeOffset now, CancellationToken ct)
+    {
+        if (await _links.AnyOccurrenceNeedsLinkAsync(tenantId, linkId, now, _options.Value.Attendance.LateRecheckWindow, ct))
+            return true;
+        foreach (var seriesId in await _links.ListActiveReferencingSeriesAsync(tenantId, linkId, ct))
+            if (await _meetings.GetSeriesAsync(tenantId, seriesId, ct) is { } series && HasUpcoming(series))
+                return true;
+        return false;
+    }
+
+    /// <summary>True while the series is not cancelled and its rule still has an occurrence after now.</summary>
+    public bool HasUpcoming(MeetingSeries series)
+    {
+        var now = _clock.UtcNow;
+        return series.CancelledAt is null
+            && _recurrence.Occurrences(series.RecurrenceRule, series.DtStart, series.Timezone, now, now.AddDays(400)).Count > 0;
+    }
+
+    /// <summary>Under the link row lock: release the series' reference; when no reference is left and nothing needs the link,
+    /// an active link is cancelled and its provider meeting cancel queued. Parked = the provider cancel waits (the link stays
+    /// active for the other series or the attendance checks).</summary>
+    private async Task<(CalendarEventMeeting Link, bool Parked)> ReleaseReferenceAsync(Guid tenantId, MeetingSeries series, Guid linkId,
+        DateTimeOffset now, CancellationToken ct)
+    {
+        await _links.LockLinkAsync(tenantId, linkId, ct);
+        await _links.ReleaseAsync(tenantId, series.Id, now, ct);
+        var link = (await _links.GetTrackedAsync(tenantId, linkId, ct))!;
+        if (link.Status != CalendarEventMeetingStatuses.Active)
+            return (link, false);   // failed/cancelled: nothing exists remotely to cancel
+        if ((await _links.ListActiveReferencingSeriesAsync(tenantId, linkId, ct)).Count > 0 || await IsNeededAsync(tenantId, linkId, now, ct))
+            return (link, true);
+        link.Status = CalendarEventMeetingStatuses.Cancelled;
+        link.UpdatedAt = now;
+        await QueueProviderCancelAsync(tenantId, link, series, ct);
+        return (link, false);
+    }
+
+    /// <summary>409 for a link a write must not touch yet: provisioning, provisioning_unknown (retry first) or unresolved.</summary>
+    private static Result<T>? Unsettled<T>(string status) => status switch
+    {
+        CalendarEventMeetingStatuses.Provisioning
+            => Result<T>.Failure("The link is being created. Try again in a moment.", 409, MeetingErrorCodes.LinkInProgress),
+        CalendarEventMeetingStatuses.ProvisioningUnknown
+            => Result<T>.Failure("We could not confirm the link yet. Retry it first.", 409, MeetingErrorCodes.LinkStatusUnknown),
+        CalendarEventMeetingStatuses.Unresolved
+            => Result<T>.Failure("A provider meeting may still exist. Delete it there, then confirm.", 409, MeetingErrorCodes.LinkUnresolved),
+        _ => null,
+    };
+
+    /// <summary>404 for anyone who cannot see the series (one body), 403 for an attendee, null for the organizer.</summary>
+    private async Task<Result<T>?> OrganizerOnlyAsync<T>(Guid tenantId, Guid callerEmployeeId, Guid seriesId, CancellationToken ct)
+    {
+        var access = await _access.ResolveForSeriesAsync(tenantId, callerEmployeeId, seriesId, ct);
+        if (access is null)
+            return MeetingReadService.NotFound<T>();
+        return access.Role == MeetingRoles.Organizer
+            ? null
+            : Result<T>.Failure("Only the organizer can change this meeting.", 403, MeetingErrorCodes.OrganizerRequired);
+    }
+
 
     /// <summary>Keyed meeting-cancel:{linkId}:{generation} through the Phase 0 cancel handler (retries, parking, notice).</summary>
     public async Task QueueProviderCancelAsync(Guid tenantId, CalendarEventMeeting link, MeetingSeries series, CancellationToken ct)

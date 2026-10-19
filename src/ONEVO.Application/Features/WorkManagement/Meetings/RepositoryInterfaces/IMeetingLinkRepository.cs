@@ -42,6 +42,10 @@ public interface IMeetingLinkRepository
     /// runs at once (bulk update).</summary>
     Task SetOccurrenceLinkAsync(Guid tenantId, Guid seriesId, Guid? linkId, DateTimeOffset fromStart, CancellationToken ct = default);
 
+    /// <summary>Retry: provisioning_unknown or failed -> provisioning, same generation (runs at once). False = the link was
+    /// in neither state any more (someone else claimed it).</summary>
+    Task<bool> TryClaimRetryAsync(Guid tenantId, Guid linkId, DateTimeOffset now, CancellationToken ct = default);
+
     /// <summary>SELECT ... FOR UPDATE on the link row; the release decision runs under it. Needs a transaction.</summary>
     Task LockLinkAsync(Guid tenantId, Guid linkId, CancellationToken ct = default);
 }

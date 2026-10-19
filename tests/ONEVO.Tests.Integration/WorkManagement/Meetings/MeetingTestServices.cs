@@ -40,17 +40,19 @@ public sealed class MeetingTestServices
             Meetings, Links, new EfEmployeeRepository(db), clock);
         Splitter = new MeetingSeriesSplitter(Meetings, Writer, Materializer, Recurrence, UnitOfWork, clock, Links);
         Edits = new MeetingEditService(Options, Meetings, Writer, Materializer, Access, UnitOfWork, clock, Splitter, Recurrence, Notifier);
-        Cancels = new MeetingCancelService(Options, Meetings, Writer, Materializer, Access, UnitOfWork, clock, Notifier);
+        Cancels = new MeetingCancelService(Options, Meetings, Writer, Materializer, Access, UnitOfWork, clock, Notifier, LinkService(new NoProvisioner()));
         Attendees = new MeetingAttendeeService(Options, Meetings, Writer, Materializer, Access, new EfEmployeeRepository(db), UnitOfWork, clock, Notifier);
         Factory = new MeetingSeriesFactory(Meetings, Writer, new MeetingTaskDefaults(new EfTaskCategoryRepository(db), new EfTaskStatusRepository(db)),
             Projects, new EfEmployeeRepository(db), Recurrence, UnitOfWork, clock, Materializer, Notifier,
             new ONEVO.Infrastructure.Persistence.Repositories.Calendar.EfExternalCalendarConnectionRepository(db), Links, LinkService(new NoProvisioner()));
     }
 
-    /// <summary>The series link service over these services, with the given provider seam.</summary>
-    public SeriesMeetingLinkService LinkService(ONEVO.Application.Features.Calendar.Services.IMeetingProvisioner provisioner)
+    /// <summary>The series link service over these services, with the given provider seam (and meetings options).</summary>
+    public SeriesMeetingLinkService LinkService(ONEVO.Application.Features.Calendar.Services.IMeetingProvisioner provisioner,
+        MeetingsOptions? options = null)
         => new(Links, Meetings, Writer, new ONEVO.Infrastructure.Persistence.Repositories.Calendar.EfExternalCalendarConnectionRepository(Db),
-            provisioner, Notifier, Recurrence, new EfEmployeeRepository(Db), Outbox, UnitOfWork, Clock);
+            provisioner, Notifier, Recurrence, new EfEmployeeRepository(Db), Outbox, UnitOfWork, Clock, Access,
+            options is null ? Options : Microsoft.Extensions.Options.Options.Create(options));
 
     public ONEVO.Infrastructure.Services.SharedPlatform.Outbox.OutboxWriter Outbox => new(Db, ONEVO.Tests.Integration.Calendar.CalendarNotificationDb.Encryption, Clock);
 

@@ -89,4 +89,57 @@ public sealed class MeetingsControllerTests
         Assert.IsType<NoContentResult>(await Controller.RemoveSeriesGuest(Series, "client@example.com", CancellationToken.None));
         Assert.Equal((Series, "client@example.com"), (removed!.SeriesId, removed.Email));
     }
+
+    private static MeetingLinkResponse Link(bool releasePending = false)
+        => new(Guid.NewGuid(), "microsoft_teams", "active", "https://teams.example/j", null, null, 1, releasePending);
+
+    [Fact]
+    public async Task GetLink_And_CreateLink_MapToTheirRequests()
+    {
+        var view = new MeetingSeriesLinkResponse("https://teams.example/j", null);
+        _mediator.Setup(m => m.Send(It.Is<GetMeetingLinkQuery>(q => q.SeriesId == Series), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<MeetingSeriesLinkResponse>.Success(view));
+        CreateMeetingLinkCommand? sent = null;
+        var link = Link();
+        _mediator.Setup(m => m.Send(It.IsAny<CreateMeetingLinkCommand>(), It.IsAny<CancellationToken>()))
+            .Callback((IRequest<Result<MeetingLinkResponse>> c, CancellationToken _) => sent = (CreateMeetingLinkCommand)c)
+            .ReturnsAsync(Result<MeetingLinkResponse>.Success(link));
+
+        var got = Assert.IsType<OkObjectResult>(await Controller.GetLink(Series, CancellationToken.None));
+        var created = Assert.IsType<OkObjectResult>(await Controller.CreateLink(Series,
+            new MeetingLinkRequest("microsoft_teams", Regenerate: true), CancellationToken.None));
+
+        Assert.Equal((view, link), (got.Value, created.Value));
+        Assert.Equal((Series, "microsoft_teams", true), (sent!.SeriesId, sent.Request.Platform, sent.Request.Regenerate));
+    }
+
+    [Fact]
+    public async Task RetryLink_And_CleanupConfirmed_MapToTheirCommands()
+    {
+        var link = Link();
+        _mediator.Setup(m => m.Send(It.Is<RetryMeetingLinkCommand>(c => c.SeriesId == Series), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<MeetingLinkResponse>.Success(link));
+        _mediator.Setup(m => m.Send(It.Is<ConfirmMeetingLinkCleanupCommand>(c => c.SeriesId == Series), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<bool>.Failure("The link is not unresolved.", 409, MeetingErrorCodes.LinkNotUnresolved));
+
+        var retried = Assert.IsType<OkObjectResult>(await Controller.RetryLink(Series, CancellationToken.None));
+        var refused = Assert.IsType<ObjectResult>(await Controller.ConfirmLinkCleanup(Series, CancellationToken.None));
+
+        Assert.Equal(link, retried.Value);
+        Assert.Equal((409, MeetingErrorCodes.LinkNotUnresolved), (refused.StatusCode, ((ProblemDetails)refused.Value!).Extensions["code"]));
+    }
+
+    [Fact]
+    public async Task RemoveLink_IsOkWithTheParkedLink_OrNoContentWhenThereWasNone()
+    {
+        var parked = Link(releasePending: true);
+        _mediator.SetupSequence(m => m.Send(It.Is<RemoveMeetingLinkCommand>(c => c.SeriesId == Series), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<MeetingLinkResponse?>.Success(parked))
+            .ReturnsAsync(Result<MeetingLinkResponse?>.Success(null));
+
+        var first = Assert.IsType<OkObjectResult>(await Controller.RemoveLink(Series, CancellationToken.None));
+        Assert.IsType<NoContentResult>(await Controller.RemoveLink(Series, CancellationToken.None));
+
+        Assert.Equal(parked, first.Value);
+    }
 }

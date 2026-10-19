@@ -87,6 +87,26 @@ public sealed class MeetingsController : ControllerBase
     public async Task<IActionResult> Respond(Guid seriesId, [FromBody] RespondToMeetingRequest request, CancellationToken ct)
         => Respond(await _mediator.Send(new RespondToMeetingCommand(seriesId, request), ct), _ => NoContent());
 
+    [HttpGet("series/{seriesId:guid}/link")]
+    public async Task<IActionResult> GetLink(Guid seriesId, CancellationToken ct)
+        => Respond(await _mediator.Send(new GetMeetingLinkQuery(seriesId), ct), Ok);
+
+    [HttpPost("series/{seriesId:guid}/link")]
+    public async Task<IActionResult> CreateLink(Guid seriesId, [FromBody] MeetingLinkRequest request, CancellationToken ct)
+        => Respond(await _mediator.Send(new CreateMeetingLinkCommand(seriesId, request), ct), Ok);
+
+    [HttpPost("series/{seriesId:guid}/link/retry")]
+    public async Task<IActionResult> RetryLink(Guid seriesId, CancellationToken ct)
+        => Respond(await _mediator.Send(new RetryMeetingLinkCommand(seriesId), ct), Ok);
+
+    [HttpDelete("series/{seriesId:guid}/link")]
+    public async Task<IActionResult> RemoveLink(Guid seriesId, CancellationToken ct)
+        => Respond(await _mediator.Send(new RemoveMeetingLinkCommand(seriesId), ct), link => link is null ? NoContent() : Ok(link));
+
+    [HttpPost("series/{seriesId:guid}/link/cleanup-confirmed")]
+    public async Task<IActionResult> ConfirmLinkCleanup(Guid seriesId, CancellationToken ct)
+        => Respond(await _mediator.Send(new ConfirmMeetingLinkCleanupCommand(seriesId), ct), _ => NoContent());
+
     private IActionResult Respond<T>(Result<T> result, Func<T, IActionResult> onSuccess)
     {
         if (result.IsSuccess)

@@ -41,6 +41,15 @@ public static class MeetingErrorCodes
     public const string NothingToMove = "meeting_nothing_to_move";                // 409
     public const string SameModule = "meeting_same_module";                        // 400
 
+    // Link (409)
+    public const string LinkExists = "meeting_link_exists";                        // POST without regenerate: true
+    public const string LinkInProgress = "meeting_link_in_progress";               // provisioning right now
+    public const string LinkStatusUnknown = "meeting_link_status_unknown";         // provisioning_unknown: retry first
+    public const string LinkUnresolved = "meeting_link_unresolved";                // confirm the cleanup first
+    public const string LinkNotRetryable = "meeting_link_not_retryable";           // retry outside provisioning_unknown/failed
+    public const string LinkNotUnresolved = "meeting_link_not_unresolved";         // cleanup-confirmed outside unresolved
+    public const string MeetingCancelled = "meeting_cancelled";                    // a link for a cancelled series
+
     // Read
     public const string NotFound = "meeting_not_found";                            // 404
 }

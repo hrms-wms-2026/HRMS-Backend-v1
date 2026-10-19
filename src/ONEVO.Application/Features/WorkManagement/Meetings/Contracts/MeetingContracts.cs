@@ -56,6 +56,18 @@ public static class CalendarMeetingLinkStates
 public sealed record MeetingLinkResponse(Guid? LinkId, string Provider, string Status, string? JoinUrl, string? OrganizerJoinUrl,
     string? FailureReason, int Generation, bool ReleasePending = false);
 
+/// <summary>POST /series/{id}/link: a link for a series without one, or - with <paramref name="Regenerate"/> - a new link
+/// for this series in place of its active one.</summary>
+/// <param name="Platform">"microsoft_teams" or "zoom".</param>
+public sealed record MeetingLinkRequest(string Platform, bool Regenerate = false);
+
+/// <summary>GET /series/{id}/link. Attendees get only <see cref="JoinUrl"/> (set while the link is active); the organizer
+/// also gets <see cref="Link"/>. Both are null when the series has no link.</summary>
+public sealed record MeetingSeriesLinkResponse(
+    string? JoinUrl,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    MeetingLinkResponse? Link);
+
 public sealed record MeetingPersonRef(Guid EmployeeId, string Name);
 
 /// <param name="Kind">"employee" or "guest".</param>

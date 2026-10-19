@@ -24,11 +24,13 @@ public sealed class MeetingCancelService
     private readonly IUnitOfWork _unitOfWork;
     private readonly IDateTimeProvider _clock;
     private readonly IMeetingNotifier _notifier;
+    private readonly SeriesMeetingLinkService _links;
 
     public MeetingCancelService(IOptions<MeetingsOptions> options, IMeetingRepository meetings, IMeetingOccurrenceWriter writer,
         IMeetingOccurrenceMaterializer materializer, IMeetingAccessResolver access, IUnitOfWork unitOfWork, IDateTimeProvider clock,
-        IMeetingNotifier notifier)
+        IMeetingNotifier notifier, SeriesMeetingLinkService links)
     {
+        _links = links;
         _options = options;
         _meetings = meetings;
         _writer = writer;
@@ -103,6 +105,14 @@ public sealed class MeetingCancelService
                         await _notifier.SeriesCancelledAsync(series, innerCt);
                     else
                         await _notifier.SeriesUpdatedAsync(series, innerCt);
+
+                    // Spec 5.7: a series with nothing left to hold lets go of its link reference; the "needed" rule reads the
+                    // cancellations, so they are saved first.
+                    if (wholeSeries || !_links.HasUpcoming(series))
+                    {
+                        await _unitOfWork.SaveChangesAsync(innerCt);
+                        await _links.ReleaseAsync(tenantId, seriesId, innerCt);
+                    }
                 }
 
                 await _unitOfWork.SaveChangesAsync(innerCt);

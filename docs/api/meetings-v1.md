@@ -16,10 +16,10 @@ Every error is ProblemDetails with a stable `code` extension:
 
 | Status | Meaning |
 |---|---|
-| 400 | Validation (`meeting_organizer_cannot_be_removed`, `meeting_response_invalid`, `meeting_title_invalid`, `meeting_guest_email_invalid`, `meeting_invalid_time`, `meeting_start_in_past`, `meeting_invalid_timezone`, `meeting_recurrence_invalid`, `meeting_module_unavailable`, `meeting_scope_invalid`, `meeting_same_module`) |
+| 400 | Validation (`meeting_organizer_cannot_be_removed`, `meeting_response_invalid`, `meeting_title_invalid`, `meeting_platform_invalid`, `meeting_guest_email_invalid`, `meeting_invalid_time`, `meeting_start_in_past`, `meeting_invalid_timezone`, `meeting_recurrence_invalid`, `meeting_module_unavailable`, `meeting_scope_invalid`, `meeting_same_module`) |
 | 403 | You can see the meeting but may not do this (`meeting_organizer_required`, `meeting_module_member_required`, `meeting_calendar_write_required` for an Office meeting; an attendee trying an organizer action) |
 | 404 | `meeting_not_found`: the meeting does not exist **or you may not see it**. The body is identical either way. |
-| 409 | State or concurrency (`meeting_changed`, `meeting_occurrence_started`, `meeting_recurrence_empty`, `meeting_busy`, `meeting_nothing_to_move`, `meeting_office_not_ready`, `meeting_provider_not_connected`, `meetings_read_only`, `approval_already_decided`, `meeting_approval_not_editable`, `bulk_invite_unavailable`) |
+| 409 | State or concurrency (`meeting_changed`, `meeting_occurrence_started`, `meeting_recurrence_empty`, `meeting_busy`, `meeting_nothing_to_move`, `meeting_office_not_ready`, `meeting_provider_not_connected`, `meetings_read_only`, `meeting_cancelled`, `meeting_link_exists`, `meeting_link_in_progress`, `meeting_link_status_unknown`, `meeting_link_unresolved`, `meeting_link_not_retryable`, `meeting_link_not_unresolved`, `approval_already_decided`, `meeting_approval_not_editable`, `bulk_invite_unavailable`) |
 | 503 | `meetings_disabled`: the feature flag is off |
 
 ## Endpoints
@@ -40,6 +40,11 @@ Every error is ProblemDetails with a stable `code` extension:
 | `POST /series/{seriesId}/occurrences/{originalStart}/attendees` | `MeetingAttendeesRequest` → `MeetingAttendeesResponse` | Organizer | 403, 404, 409 `meeting_occurrence_started` |
 | `DELETE /series/{seriesId}/occurrences/{originalStart}/attendees/employees/{employeeId}` · `…/guests/{email}` | → 204 | Organizer | 403, 404 |
 | `POST /series/{seriesId}/respond` | `RespondToMeetingRequest` → 204 | Self (an attendee) | 400, 404 |
+| `GET /series/{seriesId}/link` | → `MeetingSeriesLinkResponse` (attendees: `joinUrl` only; organizer: also `link`) | Attendee | 404 |
+| `POST /series/{seriesId}/link` | `MeetingLinkRequest` → `MeetingLinkResponse` (`provisioning`) | Organizer | 400 `meeting_platform_invalid`, 403, 404, 409 `meeting_link_exists` (send `regenerate: true` to replace it) / `meeting_link_in_progress` / `meeting_link_status_unknown` / `meeting_link_unresolved` / `meeting_provider_not_connected` / `meeting_cancelled` / `meeting_busy` / `meetings_read_only` |
+| `POST /series/{seriesId}/link/retry` | → `MeetingLinkResponse` | Organizer; only from `provisioning_unknown` or `failed`, same generation | 403, 404, 409 `meeting_link_not_retryable` / `meeting_link_in_progress` / `meeting_link_unresolved` / `meeting_provider_not_connected` / `meeting_cancelled` / `meetings_read_only` |
+| `DELETE /series/{seriesId}/link` | → 200 `MeetingLinkResponse`, or 204 when there was no link | Organizer | 403, 404, 409 `meeting_link_in_progress` / `meeting_link_status_unknown` / `meeting_link_unresolved` / `meeting_busy` / `meetings_read_only` |
+| `POST /series/{seriesId}/link/cleanup-confirmed` | → 204 (`unresolved` → `cancelled`) | Organizer | 403, 404, 409 `meeting_link_not_unresolved` / `meetings_read_only` |
 
 **Approvals.** A `requested` meeting appears in the existing approval inbox as action `meeting.create` (or `meeting.move`):
 - It is decided with the existing approval endpoints.
@@ -88,6 +93,12 @@ Every error is ProblemDetails with a stable `code` extension:
 // MoveMeetingRequest   { "scope": "this|following", "projectId": "…", "objectiveId": "…" } → { "outcome": "moved|requested", "seriesId": "…", "approvalRequestId": null }
 // MeetingAttendeesRequest { "employeeIds": ["…"], "guestEmails": ["…"] } → { "added": 2, "skipped": [] }
 // RespondToMeetingRequest { "status": "accepted|rejected", "reason": "…", "originalStart": null }
+
+// MeetingLinkRequest { "platform": "microsoft_teams|zoom", "regenerate": false }
+// MeetingLinkResponse (organizer only)
+{ "linkId": "…", "provider": "microsoft_teams", "status": "provisioning|active|provisioning_unknown|failed|unresolved|cancelled|not_connected",
+  "joinUrl": "https://…|null", "organizerJoinUrl": "https://…|null", "failureReason": null, "generation": 1, "releasePending": false }
+// MeetingSeriesLinkResponse: attendee { "joinUrl": "https://…|null" }; organizer { "joinUrl": "…", "link": MeetingLinkResponse|null }
 ```
 
 ## Rules the UI relies on
@@ -96,5 +107,10 @@ Every error is ProblemDetails with a stable `code` extension:
 - **`canEdit`** is true only for the organizer before the occurrence ends. After it ends, the organizer may still edit `description` (minutes, D19) with `scope: "this"`; any other field returns `meeting_occurrence_started`.
 - **Declining** keeps access (D18). Only removal revokes it.
 - **Board, Work Tree and My Work** list `MeetingListItem`s for past, current and the next 7 days. Further-out occurrences exist only on the calendar (Plan C merges them into `GET /calendar`).
+- **Links** (spec 5.7) belong to a series. After a split both series share one link. Removing or regenerating a link, or
+  cancelling a series, affects only that series: the provider meeting is cancelled only when no series uses the link any
+  more and no attendance check still needs it. Until then a removal returns `releasePending: true`. Create returns the link
+  as `provisioning`; poll `GET …/link` until it is `active` (the link email to attendees is sent then). `provisioning_unknown`
+  → offer Retry; `unresolved` → ask the organizer to delete the meeting in Teams/Zoom, then `cleanup-confirmed`.
 - **Approval snapshot** (D5, `meeting.create` payload `snapshot`):
   `{ title, description, start, durationMinutes, timezone, recurrenceSummary, organizerName, modulePath, participantNames[], guestEmails[], platform }`.

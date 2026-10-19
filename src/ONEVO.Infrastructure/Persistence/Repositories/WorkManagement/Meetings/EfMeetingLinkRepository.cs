@@ -93,6 +93,14 @@ public sealed class EfMeetingLinkRepository : IMeetingLinkRepository
             .ExecuteUpdateAsync(s => s.SetProperty(d => d.CalendarEventMeetingId, linkId), ct);
     }
 
+    public async Task<bool> TryClaimRetryAsync(Guid tenantId, Guid linkId, DateTimeOffset now, CancellationToken ct = default)
+        => await _db.Database.ExecuteSqlInterpolatedAsync($"""
+            UPDATE calendar_event_meetings
+            SET status = {CalendarEventMeetingStatuses.Provisioning}, provisioning_started_at = {now}, updated_at = {now}
+            WHERE tenant_id = {tenantId} AND id = {linkId}
+              AND status IN ({CalendarEventMeetingStatuses.ProvisioningUnknown}, {CalendarEventMeetingStatuses.Failed})
+            """, ct) == 1;
+
     public async Task LockLinkAsync(Guid tenantId, Guid linkId, CancellationToken ct = default)
     {
         if (_db.Database.CurrentTransaction is null)
