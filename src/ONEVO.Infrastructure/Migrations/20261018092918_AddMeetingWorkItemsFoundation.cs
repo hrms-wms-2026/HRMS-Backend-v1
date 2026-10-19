@@ -23,6 +23,11 @@ namespace ONEVO.Infrastructure.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
+            // Every lock below is held until this one transaction commits (ALTER on the five calendar child tables is
+            // ACCESS EXCLUSIVE). Never queue behind a long reader and stall the app: give up after 10 s and let the deploy
+            // be retried off-peak (runbook).
+            migrationBuilder.Sql("SET LOCAL lock_timeout = '10s';");
+
             migrationBuilder.AlterColumn<Guid>(
                 name: "calendar_event_id",
                 table: "external_calendar_event_links",
@@ -653,8 +658,9 @@ namespace ONEVO.Infrastructure.Migrations
                         REFERENCES meeting_details (tenant_id, task_id) ON DELETE RESTRICT;
                 """);
 
-            // Exactly one owner per calendar child row. Existing tables: NOT VALID first, then VALIDATE (a scan without
-            // blocking writes for the whole check); every existing row has the legacy owner (preflight: 0 violations).
+            // Exactly one owner per calendar child row. Existing tables: NOT VALID, then VALIDATE as its own step - in this
+            // single transaction the tables stay locked until commit either way; every existing row has the legacy owner,
+            // so the scan cannot fail (preflight: 0 violations).
             migrationBuilder.Sql("""
                 ALTER TABLE calendar_event_participants ADD CONSTRAINT ck_calendar_event_participants_one_owner
                     CHECK (num_nonnulls(event_id, meeting_series_id) = 1) NOT VALID;
@@ -710,9 +716,13 @@ namespace ONEVO.Infrastructure.Migrations
                 """);
 
             // spec 4.1: a meeting task and its meeting_details row exist together, 1:1. Deferred to commit, and each check
-            // re-reads the current rows, so the pair may be written in either order within one transaction.
+            // re-reads the current rows, so the pair may be written in either order within one transaction. The functions
+            // run in admin RLS mode (a function-scoped SET, restored on return): under the caller's context a check that
+            // cannot see the rows - e.g. the tenant context switched before COMMIT - would pass instead of failing. They
+            // only look rows up by id and return nothing; the composite FKs keep each pair in one tenant.
             migrationBuilder.Sql("""
-                CREATE FUNCTION meeting_task_has_details() RETURNS trigger LANGUAGE plpgsql AS $$
+                CREATE FUNCTION meeting_task_has_details() RETURNS trigger LANGUAGE plpgsql
+                    SET app.tenant_context_mode = 'admin' AS $$
                 DECLARE
                     current_kind text;
                 BEGIN
@@ -740,7 +750,8 @@ namespace ONEVO.Infrastructure.Migrations
                     FOR EACH ROW WHEN (OLD.task_kind = 'meeting' AND NEW.task_kind IS DISTINCT FROM 'meeting')
                     EXECUTE FUNCTION meeting_task_has_details();
 
-                CREATE FUNCTION meeting_details_has_meeting_task() RETURNS trigger LANGUAGE plpgsql AS $$
+                CREATE FUNCTION meeting_details_has_meeting_task() RETURNS trigger LANGUAGE plpgsql
+                    SET app.tenant_context_mode = 'admin' AS $$
                 BEGIN
                     IF TG_OP = 'DELETE' THEN
                         IF EXISTS (SELECT 1 FROM tasks t WHERE t.id = OLD.task_id AND t.task_kind = 'meeting')
@@ -766,7 +777,8 @@ namespace ONEVO.Infrastructure.Migrations
             // spec 4.1: every meeting task's (project, module) equals its series' placement. Checked at commit from
             // whichever side changed: the task, its meeting_details row, or the series.
             migrationBuilder.Sql("""
-                CREATE FUNCTION meeting_placement_matches_series() RETURNS trigger LANGUAGE plpgsql AS $$
+                CREATE FUNCTION meeting_placement_matches_series() RETURNS trigger LANGUAGE plpgsql
+                    SET app.tenant_context_mode = 'admin' AS $$
                 DECLARE
                     target_series uuid;
                     target_task uuid;

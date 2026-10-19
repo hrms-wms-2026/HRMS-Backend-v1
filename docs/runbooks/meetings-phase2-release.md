@@ -41,8 +41,11 @@ P-1 (outbox claim fix)  →  Release A (this)  →  Release B (meeting core, Pla
 
 The normal deploy applies the migration (`DatabaseMigrationRunner`, as `onevo_migrator`).
 
-- It runs in one transaction.
-- It adds three unique indexes on existing tables (`tasks`, `objectives`, `calendar_event_meetings`) and validates four CHECKs. Expect short write locks on those tables. Deploy outside peak hours on large tenants.
+- **It runs in one transaction, and every lock is held until it commits.**
+  - The five calendar child tables (`calendar_event_participants`, `calendar_event_guests`, `calendar_event_meetings`, `calendar_event_meeting_attendances`, `external_calendar_event_links`) are altered first, under **ACCESS EXCLUSIVE**. While the migration runs, **reads and writes on them are blocked**: the calendar is unavailable.
+  - The unique indexes on `tasks` and `objectives` are built without `CONCURRENTLY`, so **task and module writes are blocked** until commit.
+  - Duration grows with the size of `tasks` and `objectives`. Deploy off-peak.
+- **`lock_timeout` is 10 s.** If a long-running reader holds one of those tables, the migration fails fast with `55P03 lock_not_available` instead of queueing every request behind it. Nothing is applied in that case. Retry the deploy when the reader is gone.
 
 After the deploy:
 - `SELECT migration_id FROM "__EFMigrationsHistory" ORDER BY migration_id DESC LIMIT 1;` returns `…_AddMeetingWorkItemsFoundation`.
@@ -61,4 +64,5 @@ After the deploy:
 - **Never work around the guard by deleting meeting rows.**
 - A rollback of A is possible only while no meeting data exists, e.g. right after deploying A, since every flag is off.
 - **Recovery once meetings exist:** switch `Meetings:ReadOnly` on. That keeps meeting data visible and blocks writes. Then fix forward. The other flags are switched off independently.
-- **Code-only rollback of A is safe.** The previous build runs against A's schema: the new columns are nullable or defaulted, and legacy rows keep their legacy owner.
+  - **Flag changes take effect after an app restart.** The `Meetings` options are read at startup, not reloaded.
+- **Code-only rollback of A** (redeploying the previous build against A's schema) is safe **only while no meeting rows exist**: the new columns are nullable or defaulted, and legacy rows keep their legacy owner. Once Release B writes series-owned rows, a pre-A build reads their null `event_id` as a non-null id and fails. From then on, roll forward only.

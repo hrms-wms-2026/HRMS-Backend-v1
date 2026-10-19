@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
@@ -250,6 +251,126 @@ public sealed class MeetingSchemaIntegrationTests
         Assert.Contains("meeting data exists", error.ToString());
         Assert.Equal(1L, await ScalarAsync(h, "SELECT count(*) FROM meeting_series"));
     }
+
+    [Fact]
+    public async Task PairingTrigger_StillChecks_WhenTheTenantContextChangesBeforeCommit()
+    {
+        var a = await MyTeamDb.CreateAsync();
+        var b = await a.AddTenantAsync();
+        MeetingPlacement at;
+        await using (var db = a.NewContext())
+        {
+            at = a.AddPlacement(db);
+            await db.SaveChangesAsync();
+        }
+
+        await using var connection = new NpgsqlConnection(a.ConnectionString);
+        await connection.OpenAsync();
+        await RunAsync(connection, "SET ROLE onevo_app");
+        try
+        {
+            await using var tx = await connection.BeginTransactionAsync();
+            await UseTenantAsync(connection, a.TenantId);
+            await RunAsync(connection, InsertMeetingTaskSql(Guid.NewGuid(), a, at));
+            // The commit-time check must not depend on what the session can see by then (spec 4.1 pairing, RLS).
+            await UseTenantAsync(connection, b.TenantId);
+
+            var error = await Assert.ThrowsAsync<PostgresException>(() => tx.CommitAsync());
+            Assert.Contains("trg_meeting_task_has_details", error.MessageText);
+        }
+        finally
+        {
+            await RunAsync(connection, "RESET ROLE");
+        }
+    }
+
+    [Fact]
+    public async Task AMeetingPairWrittenAsTheAppRoleInTenantMode_Commits()
+    {
+        var h = await MyTeamDb.CreateAsync();
+        MeetingPlacement at;
+        Guid seriesId;
+        await using (var db = h.NewContext())
+        {
+            at = h.AddPlacement(db);
+            seriesId = h.AddSeries(db, at).Id;
+            await db.SaveChangesAsync();
+        }
+        var taskId = Guid.NewGuid();
+
+        await using var connection = new NpgsqlConnection(h.ConnectionString);
+        await connection.OpenAsync();
+        await RunAsync(connection, "SET ROLE onevo_app");
+        try
+        {
+            await using var tx = await connection.BeginTransactionAsync();
+            await UseTenantAsync(connection, h.TenantId);
+            await RunAsync(connection, InsertMeetingTaskSql(taskId, h, at));
+            await RunAsync(connection, $"""
+                INSERT INTO meeting_details (task_id, tenant_id, series_id, original_start, start_at, end_at, is_all_day,
+                    is_private, is_detached, revision, attendance_checkpoint)
+                VALUES ('{taskId}', '{h.TenantId}', '{seriesId}', '2026-11-02T09:00:00Z', '2026-11-02T09:00:00Z',
+                    '2026-11-02T09:30:00Z', false, false, false, 0, 0)
+                """);
+            await tx.CommitAsync();
+        }
+        finally
+        {
+            await RunAsync(connection, "RESET ROLE");
+        }
+
+        Assert.Equal(1L, await ScalarAsync(h, $"SELECT count(*) FROM meeting_details WHERE task_id = '{taskId}'"));
+    }
+
+    [Fact]
+    public async Task Migration_FailsFast_WhenATableItLocksIsBusy()
+    {
+        var h = await MyTeamDb.CreateAsync();
+        await using (var db = h.NewContext())
+            await db.Database.GetService<IMigrator>().MigrateAsync(MigrationBeforeFoundation);
+
+        await using var holder = new NpgsqlConnection(h.ConnectionString);
+        await holder.OpenAsync();
+        await using (var hold = await holder.BeginTransactionAsync())
+        {
+            await RunAsync(holder, "LOCK TABLE calendar_event_participants IN ACCESS SHARE MODE");
+            using var giveUp = new CancellationTokenSource(TimeSpan.FromSeconds(45));
+            var clock = Stopwatch.StartNew();
+
+            await using (var db = h.NewContext())
+            {
+                var error = await Assert.ThrowsAnyAsync<Exception>(
+                    () => db.Database.GetService<IMigrator>().MigrateAsync(null, giveUp.Token));
+                Assert.True(InnermostPostgres(error) is { SqlState: PostgresErrorCodes.LockNotAvailable }, error.ToString());
+            }
+            Assert.True(clock.Elapsed < TimeSpan.FromSeconds(30), $"the migration queued for {clock.Elapsed} behind the lock");
+            await hold.RollbackAsync();
+        }
+
+        await using (var db = h.NewContext())
+            await db.Database.GetService<IMigrator>().MigrateAsync();
+        Assert.Equal(false, await ScalarAsync(h,
+            "SELECT condeferrable FROM pg_constraint WHERE conname = 'uq_meeting_details_series_original_start'"));
+    }
+
+    private static PostgresException? InnermostPostgres(Exception? error)
+    {
+        for (; error is not null; error = error.InnerException)
+            if (error is PostgresException postgres)
+                return postgres;
+        return null;
+    }
+
+    private static Task UseTenantAsync(NpgsqlConnection connection, Guid tenantId) => RunAsync(connection,
+        $"SELECT set_config('app.tenant_context_mode', 'tenant', true), set_config('app.current_tenant_id', '{tenantId}', true)");
+
+    private static string InsertMeetingTaskSql(Guid taskId, MyTeamDb h, MeetingPlacement at) => $"""
+        INSERT INTO tasks (id, tenant_id, task_kind, visibility_scope, project_id, objective_id, short_id, title,
+            category_id, status_id, priority, completed_hours, progress_percent, created_at, created_by_id, is_deleted)
+        VALUES ('{taskId}', '{h.TenantId}', 'meeting', 'module', '{at.ProjectId}', '{at.ObjectiveId}',
+            'M-{taskId:N}', 'Standup', '{h.CategoryIdFor(at.ProjectId)}', '{at.StatusId}', 'medium', 0, 0, now(),
+            '{at.OrganizerEmployeeId}', false)
+        """;
 
     private static async Task<object?> ScalarAsync(MyTeamDb h, string sql)
     {
