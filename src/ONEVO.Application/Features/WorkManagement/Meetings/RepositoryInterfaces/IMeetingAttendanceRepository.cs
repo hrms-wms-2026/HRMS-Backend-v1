@@ -32,6 +32,12 @@ public interface IMeetingAttendanceRepository
 
     void AddRecord(CalendarEventMeetingAttendance record);
 
+    /// <summary>The occurrence's attendance records, untracked.</summary>
+    Task<IReadOnlyList<CalendarEventMeetingAttendance>> ListOccurrenceRecordsAsync(Guid tenantId, Guid occurrenceTaskId, CancellationToken ct = default);
+
+    /// <summary>The link's sessions that fit no occurrence, oldest first, untracked.</summary>
+    Task<IReadOnlyList<MeetingAttendanceSession>> ListUnmatchedSessionsAsync(Guid tenantId, Guid linkId, CancellationToken ct = default);
+
     /// <summary>Employees by email, lower-cased: an employee's work email and the account email of each of their calendar
     /// connections (the C2 engine's identity rule). An email two employees share resolves to neither.</summary>
     Task<IReadOnlyDictionary<string, Guid>> ResolveEmployeesByEmailAsync(Guid tenantId, IReadOnlyCollection<string> emails,

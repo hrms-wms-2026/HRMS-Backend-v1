@@ -156,4 +156,16 @@ public sealed class MeetingsControllerTests
 
         Assert.Equal((status, Series, Start), (result.Value, sent!.SeriesId, sent.OriginalStart));
     }
+
+    [Fact]
+    public async Task GetAttendance_MapsToTheQuery()
+    {
+        var view = new MeetingAttendanceResponse("synced", "Recorded", [], null);
+        _mediator.Setup(m => m.Send(It.Is<GetMeetingAttendanceQuery>(q => q.SeriesId == Series && q.OriginalStart == Start), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<MeetingAttendanceResponse>.Success(view));
+
+        var result = Assert.IsType<OkObjectResult>(await Controller.GetAttendance(Series, Start, CancellationToken.None));
+
+        Assert.Equal(view, result.Value);
+    }
 }

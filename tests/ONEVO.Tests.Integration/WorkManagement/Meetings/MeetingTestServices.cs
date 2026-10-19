@@ -64,6 +64,9 @@ public sealed class MeetingTestServices
                 new ONEVO.Infrastructure.Persistence.Repositories.CoreHr.EfEmployeeRepository(Db)),
             UnitOfWork, options is null ? Options : Microsoft.Extensions.Options.Options.Create(options), Clock);
 
+    /// <summary>The occurrence attendance reads over these services.</summary>
+    public MeetingAttendanceReadService AttendanceReads => new(Meetings, Access, new EfMeetingAttendanceRepository(Db), Links, new EfEmployeeRepository(Db));
+
     /// <summary>Every connection has a fresh token.</summary>
     private sealed class TokenStub : ONEVO.Application.Features.Calendar.ServiceInterfaces.ICalendarConnectionTokenProvider
     {

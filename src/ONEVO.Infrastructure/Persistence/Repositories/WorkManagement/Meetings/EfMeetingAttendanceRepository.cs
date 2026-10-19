@@ -50,6 +50,16 @@ public sealed class EfMeetingAttendanceRepository : IMeetingAttendanceRepository
 
     public void AddRecord(CalendarEventMeetingAttendance record) => _db.CalendarEventMeetingAttendances.Add(record);
 
+    public async Task<IReadOnlyList<CalendarEventMeetingAttendance>> ListOccurrenceRecordsAsync(Guid tenantId, Guid occurrenceTaskId,
+        CancellationToken ct = default)
+        => await _db.CalendarEventMeetingAttendances.AsNoTracking()
+            .Where(a => a.TenantId == tenantId && a.OccurrenceTaskId == occurrenceTaskId).ToListAsync(ct);
+
+    public async Task<IReadOnlyList<MeetingAttendanceSession>> ListUnmatchedSessionsAsync(Guid tenantId, Guid linkId, CancellationToken ct = default)
+        => await _db.MeetingAttendanceSessions.AsNoTracking()
+            .Where(s => s.TenantId == tenantId && s.CalendarEventMeetingId == linkId && s.OccurrenceTaskId == null)
+            .OrderBy(s => s.SessionStart).ToListAsync(ct);
+
     public async Task<IReadOnlyDictionary<string, Guid>> ResolveEmployeesByEmailAsync(Guid tenantId, IReadOnlyCollection<string> emails,
         CancellationToken ct = default)
     {

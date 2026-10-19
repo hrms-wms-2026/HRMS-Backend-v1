@@ -73,6 +73,34 @@ public sealed record MeetingSeriesLinkResponse(
 /// <param name="LastError">Why the last check could not read the provider (provider_error, missing_scope, ...), if it failed.</param>
 public sealed record MeetingAttendanceStatusResponse(string Status, DateTimeOffset? NextCheckAt, DateTimeOffset? FinalizedAt, string? LastError);
 
+/// <summary>GET .../occurrences/{originalStart}/attendance (spec 5.8). Attendees get only their own row and no
+/// <see cref="Unmatched"/>.</summary>
+/// <param name="Status">A MeetingAttendanceStatuses value.</param>
+/// <param name="Display">"Unknown" (pending, attendance_unavailable, sync_failed), "Recorded" (provisional, synced) or
+/// "Not applicable" (no link).</param>
+/// <param name="Unmatched">Organizer only: sessions of the link that fit no occurrence.</param>
+public sealed record MeetingAttendanceResponse(string Status, string Display, IReadOnlyList<MeetingAttendanceRow> Rows,
+    IReadOnlyList<MeetingUnmatchedSession>? Unmatched);
+
+/// <param name="Kind">"employee" or "guest".</param>
+/// <param name="AttendedSeconds">The union of the person's intervals; null without any recorded join.</param>
+/// <param name="Outcome">"joined", "no_join_recorded" (only once synced - never "absent") or "unknown".</param>
+public sealed record MeetingAttendanceRow(string Kind, Guid? EmployeeId, string? Email, string DisplayName, int? AttendedSeconds, string Outcome);
+
+public sealed record MeetingUnmatchedSession(DateTimeOffset Start, DateTimeOffset? End);
+
+/// <summary>Values of <see cref="MeetingAttendanceRow.Outcome"/> and <see cref="MeetingAttendanceResponse.Display"/>.</summary>
+public static class MeetingAttendanceOutcomes
+{
+    public const string Joined = "joined";
+    public const string NoJoinRecorded = "no_join_recorded";
+    public const string Unknown = "unknown";
+
+    public const string DisplayUnknown = "Unknown";
+    public const string DisplayRecorded = "Recorded";
+    public const string DisplayNotApplicable = "Not applicable";
+}
+
 public sealed record MeetingPersonRef(Guid EmployeeId, string Name);
 
 /// <param name="Kind">"employee" or "guest".</param>

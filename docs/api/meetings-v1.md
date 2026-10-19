@@ -44,6 +44,7 @@ Every error is ProblemDetails with a stable `code` extension:
 | `POST /series/{seriesId}/link` | `MeetingLinkRequest` → `MeetingLinkResponse` (`provisioning`) | Organizer | 400 `meeting_platform_invalid`, 403, 404, 409 `meeting_link_exists` (send `regenerate: true` to replace it) / `meeting_link_in_progress` / `meeting_link_status_unknown` / `meeting_link_unresolved` / `meeting_provider_not_connected` / `meeting_cancelled` / `meeting_busy` / `meetings_read_only` |
 | `POST /series/{seriesId}/link/retry` | → `MeetingLinkResponse` | Organizer; only from `provisioning_unknown` or `failed`, same generation | 403, 404, 409 `meeting_link_not_retryable` / `meeting_link_in_progress` / `meeting_link_unresolved` / `meeting_provider_not_connected` / `meeting_cancelled` / `meetings_read_only` |
 | `DELETE /series/{seriesId}/link` | → 200 `MeetingLinkResponse`, or 204 when there was no link | Organizer | 403, 404, 409 `meeting_link_in_progress` / `meeting_link_status_unknown` / `meeting_link_unresolved` / `meeting_busy` / `meetings_read_only` |
+| `GET /series/{seriesId}/occurrences/{originalStart}/attendance` | → `MeetingAttendanceResponse` (organizer: every attendee + `unmatched`; attendee: own row only, `unmatched: null`) | Attendee | 404 |
 | `POST /series/{seriesId}/occurrences/{originalStart}/attendance/recheck` | → `MeetingAttendanceStatusResponse` | Organizer; up to 7 days after the occurrence ends | 403, 404, 409 `attendance_recheck_expired` / `attendance_check_in_progress` / `attendance_not_applicable` / `meetings_read_only` |
 | `POST /series/{seriesId}/link/cleanup-confirmed` | → 204 (`unresolved` → `cancelled`) | Organizer | 403, 404, 409 `meeting_link_not_unresolved` / `meetings_read_only` |
 
@@ -99,6 +100,12 @@ Every error is ProblemDetails with a stable `code` extension:
 // MeetingLinkResponse (organizer only)
 { "linkId": "…", "provider": "microsoft_teams", "status": "provisioning|active|provisioning_unknown|failed|unresolved|cancelled|not_connected",
   "joinUrl": "https://…|null", "organizerJoinUrl": "https://…|null", "failureReason": null, "generation": 1, "releasePending": false }
+// MeetingAttendanceResponse
+{ "status": "synced", "display": "Unknown|Recorded|Not applicable",
+  "rows": [ { "kind": "employee|guest", "employeeId": "…|null", "email": "…|null", "displayName": "Arjun M.",
+              "attendedSeconds": 900, "outcome": "joined|no_join_recorded|unknown" } ],
+  "unmatched": [ { "start": "…", "end": "…|null" } ] }   // organizer only; null for attendees
+// "no_join_recorded" only once synced; the API never says "absent".
 // MeetingAttendanceStatusResponse { "status": "pending|provisional|synced|attendance_unavailable|sync_failed|not_applicable",
 //   "nextCheckAt": "…|null", "finalizedAt": "…|null", "lastError": "provider_error|missing_scope|not_connected|reauth_required|null" }
 // MeetingSeriesLinkResponse: attendee { "joinUrl": "https://…|null" }; organizer { "joinUrl": "…", "link": MeetingLinkResponse|null }
