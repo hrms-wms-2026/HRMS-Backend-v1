@@ -75,6 +75,12 @@ Ships the meeting behaviour behind the same flags. Deploy Plans B and C together
   reconnects, their occurrences' attendance ends `sync_failed` with `lastError: "missing_scope"`; meetings and links work.
 - **Microsoft:** no new scope. Outlook copies of the organizer's occurrences use the existing `Calendars.ReadWrite`.
 
+**Known limitation - one provider meeting per series.** A series reuses one Teams/Zoom meeting, scheduled at its next
+occurrence. Zoom expires a scheduled meeting's ID 30 days after its scheduled time or last start, so a series with gaps
+longer than 30 days (monthly, quarterly) can end up with a link Zoom no longer accepts while ONEVO still shows it active.
+Weekly and fortnightly series keep it alive. Workaround: the organizer regenerates the link
+(`POST …/link` with `regenerate: true`). Teams meeting links expire only after long inactivity.
+
 **Flags.**
 
 - `Meetings:Background` runs both jobs (one instance at a time).

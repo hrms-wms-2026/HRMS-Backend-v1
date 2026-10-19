@@ -121,4 +121,21 @@ public sealed class MeetingIncidentEngineIntegrationTests
         Assert.Equal(CalendarReportState.Unavailable, Assert.Single(views, v => v.EventId == w.Tasks[0]).Report);
         Assert.Equal(CalendarReportState.NoOnlineMeeting, Assert.Single(views, v => v.EventId == w.Tasks[1]).Report);
     }
+
+    [Fact]
+    public async Task ARescheduledOccurrence_KeepsItsIncidentKey_WhileTheRulesSeeItsNewTime()
+    {
+        var w = await SeedAsync();
+        await using (var db = w.H.NewContext())
+        {
+            var edit = await new MeetingTestServices(db, new MeetingTestClock(Now)).Edits.EditAsync(w.H.TenantId, w.Organizer, w.OrganizerUser,
+                w.SeriesId, Week(0), new EditMeetingRequest(MeetingScopes.This, 0, null, null, null, null, Week(0).AddHours(3), null, null, null, null),
+                CancellationToken.None);
+            Assert.True(edit.IsSuccess, edit.Error);
+        }
+
+        var moved = Assert.Single(await ViewsAsync(w, w.Attendee, Now), v => v.EventId == w.Tasks[0]);
+
+        Assert.Equal((Week(0).AddHours(3), Week(0)), (moved.Start, moved.OccurrenceKey));
+    }
 }

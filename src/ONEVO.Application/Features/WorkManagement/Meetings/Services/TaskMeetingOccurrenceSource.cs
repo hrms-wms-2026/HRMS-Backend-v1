@@ -67,7 +67,9 @@ public sealed class TaskMeetingOccurrenceSource : IEmployeeMeetingOccurrenceSour
                 d.TaskId, d.StartAt, d.EndAt, d.IsPrivate ? PrivateTitle : row.Title, d.IsAllDay, d.CancelledAt is not null, isOrganizer,
                 peopleCount, s.OrganizerEmployeeId, managerId is not null && s.OrganizerEmployeeId == managerId,
                 me?.Response ?? CalendarEventParticipantStatuses.Accepted, changes, ReplacementAttended: false,
-                state, spans, agent.TryGetValue((d.TaskId, d.StartAt), out var ratio) ? ratio : null));
+                state, spans, agent.TryGetValue((d.TaskId, d.StartAt), out var ratio) ? ratio : null,
+                // The incident key keeps the occurrence's original start, so a reschedule records no second incident.
+                KeyStart: d.OriginalStart));
         }
         return views;
     }
