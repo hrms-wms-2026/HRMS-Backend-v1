@@ -1,3 +1,4 @@
+using ONEVO.Application.Features.WorkManagement.Meetings.RepositoryInterfaces;
 using System.Text.Json;
 using Moq;
 using ONEVO.Application.Common.Models;
@@ -99,7 +100,7 @@ public class TaskStatusChangeRequestHandlerTests
         _currentUser.Object, _identity.Object, _projects.Object, _statuses.Object, _access.Object,
         _approvals.Object, _unitOfWork.Object);
 
-    private TaskStatusTemplateChangeApplier Applier() => new(_currentUser.Object, _statuses.Object, _tasks.Object, _sweeper.Object);
+    private TaskStatusTemplateChangeApplier Applier() => new(_currentUser.Object, _statuses.Object, _tasks.Object, _sweeper.Object, new Mock<IMeetingRepository>().Object);
 
     private static WorkApprovalRequest TemplateRequest(TaskStatusChangeSet changes, Guid? requestedBy = null) => new()
     {

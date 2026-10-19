@@ -88,6 +88,11 @@ public interface IMeetingRepository
     void RemoveGuest(CalendarEventGuest guest);
     void AddRsvpHistory(CalendarEventParticipantRsvpHistory row);
 
+    /// <summary>Moves every meeting task of the project off <paramref name="fromStatusId"/> onto <paramref name="toStatusId"/>.
+    /// A meeting's status_id is only a placeholder (its status is derived, D10), so a status that only meetings use can
+    /// still be deleted (final-review I7). Runs immediately (bulk update).</summary>
+    Task RepointPlaceholderStatusAsync(Guid tenantId, Guid projectId, Guid fromStatusId, Guid toStatusId, CancellationToken ct = default);
+
     void AddEditLog(TaskEditLog log);
 
     void AddSeries(MeetingSeries series);

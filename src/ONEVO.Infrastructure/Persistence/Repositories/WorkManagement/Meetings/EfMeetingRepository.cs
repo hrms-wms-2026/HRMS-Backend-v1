@@ -195,6 +195,11 @@ public sealed class EfMeetingRepository : IMeetingRepository
 
     public void AddRsvpHistory(CalendarEventParticipantRsvpHistory row) => _db.CalendarEventParticipantRsvpHistory.Add(row);
 
+    public async Task RepointPlaceholderStatusAsync(Guid tenantId, Guid projectId, Guid fromStatusId, Guid toStatusId, CancellationToken ct = default)
+        => await _db.WorkTasks.IgnoreQueryFilters(ExcludeMeetingsOnly)
+            .Where(t => t.TenantId == tenantId && t.ProjectId == projectId && t.StatusId == fromStatusId && t.TaskKind == WorkTaskKinds.Meeting)
+            .ExecuteUpdateAsync(s => s.SetProperty(t => t.StatusId, toStatusId), ct);
+
     public void AddEditLog(TaskEditLog log) => _db.TaskEditLogs.Add(log);
 
     public void AddSeries(MeetingSeries series) => _db.MeetingSeries.Add(series);

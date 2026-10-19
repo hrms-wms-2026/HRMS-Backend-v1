@@ -1,3 +1,4 @@
+using ONEVO.Application.Features.WorkManagement.Meetings.RepositoryInterfaces;
 using Moq;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
@@ -64,7 +65,7 @@ public class DeleteTaskStatusCommandHandlerTests
         unitOfWork.Setup(x => x.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
 
 
-        var handler = new DeleteTaskStatusCommandHandler(currentUser.Object, identity.Object, objectives.Object, projects.Object, statuses.Object, tasks.Object, unitOfWork.Object, new Mock<ITaskStatusChangeRequestConflictSweeper>().Object);
+        var handler = new DeleteTaskStatusCommandHandler(currentUser.Object, identity.Object, objectives.Object, projects.Object, statuses.Object, tasks.Object, unitOfWork.Object, new Mock<ITaskStatusChangeRequestConflictSweeper>().Object, new Mock<IMeetingRepository>().Object);
         return (handler, statuses);
     }
 
