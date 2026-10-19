@@ -28,6 +28,8 @@ public static class MeetingErrorCodes
 
     // Edit (409 unless noted)
     public const string OrganizerRequired = "meeting_organizer_required";          // 403: an attendee tried an organizer action
+    public const string OrganizerCannotBeRemoved = "meeting_organizer_cannot_be_removed"; // 400
+    public const string ResponseInvalid = "meeting_response_invalid";              // 400
     public const string Changed = "meeting_changed";
     public const string OccurrenceStarted = "meeting_occurrence_started";
     public const string ScopeInvalid = "meeting_scope_invalid";                    // 400

@@ -425,6 +425,7 @@ public static class DependencyInjection
             ONEVO.Application.Features.WorkManagement.Meetings.Services.MeetingSeriesSplitter>();
         services.AddScoped<ONEVO.Application.Features.WorkManagement.Meetings.Services.MeetingEditService>();
         services.AddScoped<ONEVO.Application.Features.WorkManagement.Meetings.Services.MeetingCancelService>();
+        services.AddScoped<ONEVO.Application.Features.WorkManagement.Meetings.Services.MeetingAttendeeService>();
         services.AddScoped<ONEVO.Application.Features.WorkManagement.Meetings.Services.IMeetingSeriesFactory,
             ONEVO.Application.Features.WorkManagement.Meetings.Services.MeetingSeriesFactory>();
         services.AddScoped<ONEVO.Application.Features.WorkManagement.Meetings.Services.IMeetingTaskDefaults,

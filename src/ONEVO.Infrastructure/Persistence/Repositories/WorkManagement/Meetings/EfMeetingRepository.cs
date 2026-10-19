@@ -146,6 +146,50 @@ public sealed class EfMeetingRepository : IMeetingRepository
 
     public void RemoveMeetingTask(WorkTask task) => _db.WorkTasks.Remove(task);
 
+    // IgnoreQueryFilters() drops the soft-delete half of the composed filter on purpose (a removed participant is revived,
+    // like EfCalendarEventRepository.GetRemovedParticipantsAsync); tenant scoping is kept by the explicit TenantId predicate.
+    public async Task<CalendarEventParticipant?> GetSeriesParticipantTrackedIncludingRemovedAsync(
+        Guid tenantId, Guid seriesId, Guid employeeId, CancellationToken ct = default)
+        => await _db.CalendarEventParticipants.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(p => p.TenantId == tenantId && p.MeetingSeriesId == seriesId && p.EmployeeId == employeeId, ct);
+
+    public async Task<CalendarEventGuest?> GetSeriesGuestTrackedAsync(Guid tenantId, Guid seriesId, string email, CancellationToken ct = default)
+    {
+        var key = email.Trim().ToLowerInvariant();
+        return await _db.CalendarEventGuests
+            .FirstOrDefaultAsync(g => g.TenantId == tenantId && g.MeetingSeriesId == seriesId && g.Email.ToLower() == key, ct);
+    }
+
+    public async Task<MeetingOccurrenceAttendee?> GetOverrideTrackedAsync(
+        Guid tenantId, Guid occurrenceTaskId, Guid? employeeId, string? email, CancellationToken ct = default)
+    {
+        var key = email?.Trim().ToLowerInvariant();
+        return await _db.MeetingOccurrenceAttendees.FirstOrDefaultAsync(a => a.TenantId == tenantId && a.OccurrenceTaskId == occurrenceTaskId
+            && (employeeId != null ? a.EmployeeId == employeeId : a.Email != null && a.Email.ToLower() == key), ct);
+    }
+
+    public async Task DeleteFutureOverridesAsync(Guid tenantId, Guid seriesId, Guid? employeeId, string? email, string change,
+        DateTimeOffset after, CancellationToken ct = default)
+    {
+        var afterUtc = after.ToUniversalTime();
+        var key = email?.Trim().ToLowerInvariant();
+        await _db.MeetingOccurrenceAttendees
+            .Where(a => a.TenantId == tenantId && a.Change == change
+                && (employeeId != null ? a.EmployeeId == employeeId : a.Email != null && a.Email.ToLower() == key)
+                && _db.MeetingDetails.Any(d => d.TaskId == a.OccurrenceTaskId && d.SeriesId == seriesId && d.StartAt > afterUtc))
+            .ExecuteDeleteAsync(ct);
+    }
+
+    public void AddOverride(MeetingOccurrenceAttendee row) => _db.MeetingOccurrenceAttendees.Add(row);
+
+    public void RemoveOverride(MeetingOccurrenceAttendee row) => _db.MeetingOccurrenceAttendees.Remove(row);
+
+    public void RemoveParticipant(CalendarEventParticipant participant) => _db.CalendarEventParticipants.Remove(participant);
+
+    public void RemoveGuest(CalendarEventGuest guest) => _db.CalendarEventGuests.Remove(guest);
+
+    public void AddRsvpHistory(CalendarEventParticipantRsvpHistory row) => _db.CalendarEventParticipantRsvpHistory.Add(row);
+
     public void AddEditLog(TaskEditLog log) => _db.TaskEditLogs.Add(log);
 
     public void AddSeries(MeetingSeries series) => _db.MeetingSeries.Add(series);

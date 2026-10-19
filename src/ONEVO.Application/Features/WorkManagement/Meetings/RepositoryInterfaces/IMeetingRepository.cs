@@ -67,6 +67,24 @@ public interface IMeetingRepository
     /// <summary>Soft-deletes a meeting task (its meeting_details row stays, so the occurrence key stays taken).</summary>
     void RemoveMeetingTask(WorkTask task);
 
+    /// <summary>The series participant row for this employee, including a removed (soft-deleted) one to revive.</summary>
+    Task<CalendarEventParticipant?> GetSeriesParticipantTrackedIncludingRemovedAsync(Guid tenantId, Guid seriesId, Guid employeeId, CancellationToken ct = default);
+
+    Task<CalendarEventGuest?> GetSeriesGuestTrackedAsync(Guid tenantId, Guid seriesId, string email, CancellationToken ct = default);
+
+    /// <summary>This person's override on one occurrence (at most one exists).</summary>
+    Task<MeetingOccurrenceAttendee?> GetOverrideTrackedAsync(Guid tenantId, Guid occurrenceTaskId, Guid? employeeId, string? email, CancellationToken ct = default);
+
+    /// <summary>Deletes this person's <paramref name="change"/> overrides on the series' occurrences starting after
+    /// <paramref name="after"/>.</summary>
+    Task DeleteFutureOverridesAsync(Guid tenantId, Guid seriesId, Guid? employeeId, string? email, string change, DateTimeOffset after, CancellationToken ct = default);
+
+    void AddOverride(MeetingOccurrenceAttendee row);
+    void RemoveOverride(MeetingOccurrenceAttendee row);
+    void RemoveParticipant(CalendarEventParticipant participant);
+    void RemoveGuest(CalendarEventGuest guest);
+    void AddRsvpHistory(CalendarEventParticipantRsvpHistory row);
+
     void AddEditLog(TaskEditLog log);
 
     void AddSeries(MeetingSeries series);

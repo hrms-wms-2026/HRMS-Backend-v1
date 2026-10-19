@@ -36,6 +36,7 @@ public sealed class MeetingTestServices
         Splitter = new MeetingSeriesSplitter(Meetings, Writer, Materializer, Recurrence, UnitOfWork, clock);
         Edits = new MeetingEditService(Options, Meetings, Writer, Materializer, Access, UnitOfWork, clock, Splitter, Recurrence);
         Cancels = new MeetingCancelService(Options, Meetings, Writer, Materializer, Access, UnitOfWork, clock);
+        Attendees = new MeetingAttendeeService(Options, Meetings, Writer, Materializer, Access, new EfEmployeeRepository(db), UnitOfWork, clock);
     }
 
     public ApplicationDbContext Db { get; }
@@ -51,4 +52,5 @@ public sealed class MeetingTestServices
     public MeetingSeriesSplitter Splitter { get; }
     public MeetingEditService Edits { get; }
     public MeetingCancelService Cancels { get; }
+    public MeetingAttendeeService Attendees { get; }
 }
