@@ -54,7 +54,7 @@ public sealed class MeetingEditService
             return blocked;
         if (edit.Scope is not (MeetingScopes.This or MeetingScopes.All or MeetingScopes.Following))
             return Result<MeetingEditResponse>.Failure("Choose this, following or all occurrences.", 400, MeetingErrorCodes.ScopeInvalid);
-        if (await OrganizerCheckAsync<MeetingEditResponse>(tenantId, callerEmployeeId, seriesId, originalStart, ct) is { } denied)
+        if (await MeetingGuard.OrganizerOnlyAsync<MeetingEditResponse>(_access, tenantId, callerEmployeeId, seriesId, originalStart, ct) is { } denied)
             return denied;
 
         try
@@ -77,17 +77,6 @@ public sealed class MeetingEditService
         {
             return MeetingGuard.Busy<MeetingEditResponse>();
         }
-    }
-
-    /// <summary>404 for anyone who cannot see the occurrence; 403 for an attendee; null for the organizer.</summary>
-    internal async Task<Result<T>?> OrganizerCheckAsync<T>(Guid tenantId, Guid callerEmployeeId, Guid seriesId, DateTimeOffset originalStart, CancellationToken ct)
-    {
-        var access = await _access.ResolveForOccurrenceAsync(tenantId, callerEmployeeId, seriesId, originalStart, ct);
-        if (access is null)
-            return MeetingReadService.NotFound<T>();
-        return access.Role == MeetingRoles.Organizer
-            ? null
-            : Result<T>.Failure("Only the organizer can change this meeting.", 403, MeetingErrorCodes.OrganizerRequired);
     }
 
     private async Task<Result<MeetingEditResponse>> EditOccurrenceAsync(Guid tenantId, Guid callerEmployeeId, Guid callerUserId,

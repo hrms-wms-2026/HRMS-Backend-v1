@@ -20,6 +20,18 @@ public static class MeetingGuard
     public static Result<T> Busy<T>()
         => Result<T>.Failure("This meeting is being changed by someone else. Try again.", 409, MeetingErrorCodes.Busy);
 
+    /// <summary>404 for anyone who cannot see the occurrence (one body), 403 for an attendee, null for the organizer.</summary>
+    public static async Task<Result<T>?> OrganizerOnlyAsync<T>(IMeetingAccessResolver access, Guid tenantId, Guid callerEmployeeId,
+        Guid seriesId, DateTimeOffset originalStart, CancellationToken ct)
+    {
+        var resolved = await access.ResolveForOccurrenceAsync(tenantId, callerEmployeeId, seriesId, originalStart, ct);
+        if (resolved is null)
+            return MeetingReadService.NotFound<T>();
+        return resolved.Role == MeetingRoles.Organizer
+            ? null
+            : Result<T>.Failure("Only the organizer can change this meeting.", 403, MeetingErrorCodes.OrganizerRequired);
+    }
+
     /// <summary>PostgreSQL's lock_not_available (lock_timeout expired).</summary>
     public const string LockNotAvailableSqlState = "55P03";
 }

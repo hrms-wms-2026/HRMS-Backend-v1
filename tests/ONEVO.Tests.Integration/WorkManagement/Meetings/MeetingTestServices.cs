@@ -35,6 +35,7 @@ public sealed class MeetingTestServices
         Options = Microsoft.Extensions.Options.Options.Create(new MeetingsOptions { Create = true });
         Splitter = new MeetingSeriesSplitter(Meetings, Writer, Materializer, Recurrence, UnitOfWork, clock);
         Edits = new MeetingEditService(Options, Meetings, Writer, Materializer, Access, UnitOfWork, clock, Splitter, Recurrence);
+        Cancels = new MeetingCancelService(Options, Meetings, Writer, Materializer, Access, UnitOfWork, clock);
     }
 
     public ApplicationDbContext Db { get; }
@@ -49,4 +50,5 @@ public sealed class MeetingTestServices
     public IOptions<MeetingsOptions> Options { get; }
     public MeetingSeriesSplitter Splitter { get; }
     public MeetingEditService Edits { get; }
+    public MeetingCancelService Cancels { get; }
 }
