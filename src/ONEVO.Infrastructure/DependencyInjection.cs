@@ -426,6 +426,7 @@ public static class DependencyInjection
         services.AddScoped<ONEVO.Application.Features.WorkManagement.Meetings.Services.MeetingEditService>();
         services.AddScoped<ONEVO.Application.Features.WorkManagement.Meetings.Services.MeetingCancelService>();
         services.AddScoped<ONEVO.Application.Features.WorkManagement.Meetings.Services.MeetingAttendeeService>();
+        services.AddScoped<ONEVO.Application.Features.WorkManagement.Meetings.Services.MeetingMoveService>();
         services.AddScoped<ONEVO.Application.Features.WorkManagement.Meetings.Services.IMeetingSeriesFactory,
             ONEVO.Application.Features.WorkManagement.Meetings.Services.MeetingSeriesFactory>();
         services.AddScoped<ONEVO.Application.Features.WorkManagement.Meetings.Services.IMeetingTaskDefaults,
@@ -592,6 +593,7 @@ public static class DependencyInjection
             ONEVO.Application.Features.Conversations.Services.NullInboxRealtimePublisher>();
         services.AddScoped<IApprovalActionApplier, ONEVO.Application.Features.WorkManagement.Tasks.Appliers.TaskCreateApplier>();
         services.AddScoped<IApprovalActionApplier, ONEVO.Application.Features.WorkManagement.Meetings.Appliers.MeetingCreateApplier>();
+        services.AddScoped<IApprovalActionApplier, ONEVO.Application.Features.WorkManagement.Meetings.Appliers.MeetingMoveApplier>();
         services.AddScoped<IApprovalActionApplier, ONEVO.Application.Features.WorkManagement.Tasks.Appliers.TaskEditApplier>();
         services.AddScoped<IApprovalActionApplier, ONEVO.Application.Features.WorkManagement.Tasks.Appliers.TaskDeleteApplier>();
         services.AddScoped<IApprovalActionApplier, ONEVO.Application.Features.WorkManagement.Tasks.Appliers.TaskStatusTemplateChangeApplier>();
