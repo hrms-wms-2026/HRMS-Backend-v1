@@ -264,7 +264,7 @@ public sealed class MeetingAttendanceSyncIntegrationTests
         {
             await using var db = w.H.NewContext();
             var s = new MeetingTestServices(db, new MeetingTestClock(at));
-            var parked = await s.Links.ListParkedLinkIdsAsync(w.H.TenantId);
+            var parked = await s.Links.ListReleaseCandidateLinkIdsAsync(w.H.TenantId);
             var cancelled = false;
             foreach (var id in parked)
                 cancelled |= await s.LinkService(new ProvisionerStub()).CancelIfUnneededAsync(w.H.TenantId, id, CancellationToken.None);
@@ -282,6 +282,68 @@ public sealed class MeetingAttendanceSyncIntegrationTests
         Assert.False(whileNeeded.Cancelled);
         Assert.False(insideRecheckWindow.Cancelled);
         Assert.True(afterIt.Cancelled);
+        await using var check = w.H.NewContext();
+        Assert.Equal(CalendarEventMeetingStatuses.Cancelled, (await check.CalendarEventMeetings.SingleAsync(m => m.Id == w.LinkId)).Status);
+        Assert.Single(await check.Set<OutboxMessage>().Where(m => m.DeduplicationKey == $"meeting-cancel:{w.LinkId}:1").ToListAsync());
+    }
+
+    [Fact]
+    public async Task SubMicrosecondJoinTimes_AreUpsertedAcrossEveryCheckpoint()
+    {
+        // Microsoft Graph reports 100 ns precision (e.g. ...27.6027225Z); PostgreSQL keeps microseconds.
+        var w = await SeedAsync();
+        var joined = Week(0).AddTicks(276_027_225);
+        var stub = new SessionsStub
+        {
+            Answer = (_, _) => [new ProviderAttendanceSession("r-0", Week(0).AddTicks(12_345_678), Week(0).AddMinutes(30).AddTicks(3),
+                [new ProviderAttendanceRecord("a", "Someone", w.AttendeeEmail, joined, joined.AddMinutes(20).AddTicks(7))])],
+        };
+
+        var outcomes = new List<MeetingAttendanceSyncOutcome>();
+        foreach (var after in new[] { TimeSpan.FromMinutes(30), TimeSpan.FromHours(2), TimeSpan.FromHours(24) })
+            outcomes.Add(await SyncAsync(w, stub, End(0) + after));
+
+        Assert.All(outcomes, o => Assert.Equal(MeetingAttendanceSyncOutcome.Synced, o));
+        Assert.Equal(MeetingAttendanceStatuses.Synced, (await DetailsAsync(w, 0)).AttendanceStatus);
+        await using var check = w.H.NewContext();
+        Assert.Single(await check.CalendarEventMeetingAttendances.ToListAsync());
+        Assert.Single(await check.MeetingAttendanceSessions.ToListAsync());
+    }
+
+    [Fact]
+    public async Task CancellingTheNewSeriesAfterASplit_CancelsTheProviderMeeting_OnceTheOldSeriesHasNothingLeft()
+    {
+        var w = await SeedAsync();
+        // "This and following" from week 1: the old series keeps week 0 only and still references the link.
+        await using (var db = w.H.NewContext())
+        {
+            var edit = await new MeetingTestServices(db, new MeetingTestClock(Now)).Edits.EditAsync(w.H.TenantId, w.Organizer, w.OrganizerUser,
+                w.SeriesId, Week(1), new EditMeetingRequest(MeetingScopes.Following, 0, "Weekly sync v2", null, null, null, null, null, null, null, null),
+                CancellationToken.None);
+            Assert.True(edit.IsSuccess, edit.Error);
+        }
+        Guid split;
+        await using (var db = w.H.NewContext())
+            split = (await db.MeetingSeries.SingleAsync(s => s.SplitFromSeriesId == w.SeriesId)).Id;
+        var stub = new SessionsStub { Answer = (_, _) => [Session("r-0", Week(0), Rec("a", w.AttendeeEmail, Week(0), 20))] };
+        foreach (var after in new[] { TimeSpan.FromMinutes(30), TimeSpan.FromHours(2), TimeSpan.FromHours(24) })
+            await SyncAsync(w, stub, End(0) + after);   // week 0 held and settled
+
+        // The organizer cancels the meeting they see - the new series - before week 1.
+        await using (var db = w.H.NewContext())
+        {
+            var cancelled = await new MeetingTestServices(db, new MeetingTestClock(End(0).AddDays(2))).Cancels.CancelAsync(
+                w.H.TenantId, w.Organizer, w.OrganizerUser, split, Week(1), MeetingScopes.All, CancellationToken.None);
+            Assert.True(cancelled.IsSuccess, cancelled.Error);
+        }
+        // Week 0's recheck window closes; the job's release check then cancels the provider meeting.
+        await using (var db = w.H.NewContext())
+        {
+            var s = new MeetingTestServices(db, new MeetingTestClock(End(0).AddDays(8)));
+            foreach (var id in await s.Links.ListReleaseCandidateLinkIdsAsync(w.H.TenantId))
+                await s.LinkService(new ProvisionerStub()).CancelIfUnneededAsync(w.H.TenantId, id, CancellationToken.None);
+        }
+
         await using var check = w.H.NewContext();
         Assert.Equal(CalendarEventMeetingStatuses.Cancelled, (await check.CalendarEventMeetings.SingleAsync(m => m.Id == w.LinkId)).Status);
         Assert.Single(await check.Set<OutboxMessage>().Where(m => m.DeduplicationKey == $"meeting-cancel:{w.LinkId}:1").ToListAsync());

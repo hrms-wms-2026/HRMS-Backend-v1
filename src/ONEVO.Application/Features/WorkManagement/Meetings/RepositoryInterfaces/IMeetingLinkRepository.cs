@@ -48,9 +48,9 @@ public interface IMeetingLinkRepository
     /// in neither state any more (someone else claimed it).</summary>
     Task<bool> TryClaimRetryAsync(Guid tenantId, Guid linkId, DateTimeOffset now, CancellationToken ct = default);
 
-    /// <summary>Active series-owned links whose every reference is released: their provider cancel is parked until nothing
-    /// needs them (spec 5.7).</summary>
-    Task<IReadOnlyList<Guid>> ListParkedLinkIdsAsync(Guid tenantId, CancellationToken ct = default);
+    /// <summary>Active series-owned links that have a reference: the candidates the release check (spec 5.7 "needed" rule)
+    /// looks at on every attendance-job run.</summary>
+    Task<IReadOnlyList<Guid>> ListReleaseCandidateLinkIdsAsync(Guid tenantId, CancellationToken ct = default);
 
     /// <summary>The series that referenced the link last (an unreleased reference first, else the latest released one).</summary>
     Task<Guid?> GetLatestReferencingSeriesAsync(Guid tenantId, Guid linkId, CancellationToken ct = default);

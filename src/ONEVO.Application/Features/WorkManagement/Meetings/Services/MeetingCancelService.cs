@@ -69,6 +69,9 @@ public sealed class MeetingCancelService
                     return Result<bool>.Success(true);
                 if (scope != MeetingScopes.All && (existing?.StartAt ?? key) <= now)
                     return Result<bool>.Failure("This occurrence has already started.", 409, MeetingErrorCodes.OccurrenceStarted);
+                // A one-off meeting has no other occurrence: cancelling "this" one cancels the meeting (and releases its link).
+                if (scope == MeetingScopes.This && series.RecurrenceRule is null)
+                    scope = MeetingScopes.All;
 
                 if (scope == MeetingScopes.This)
                 {

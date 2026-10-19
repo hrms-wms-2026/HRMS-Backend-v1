@@ -113,12 +113,11 @@ public sealed class EfMeetingLinkRepository : IMeetingLinkRepository
               AND status IN ({CalendarEventMeetingStatuses.ProvisioningUnknown}, {CalendarEventMeetingStatuses.Failed})
             """, ct) == 1;
 
-    public async Task<IReadOnlyList<Guid>> ListParkedLinkIdsAsync(Guid tenantId, CancellationToken ct = default)
+    public async Task<IReadOnlyList<Guid>> ListReleaseCandidateLinkIdsAsync(Guid tenantId, CancellationToken ct = default)
         => await _db.CalendarEventMeetings.AsNoTracking()
             .Where(m => m.TenantId == tenantId && m.OwnerKind == CalendarMeetingOwnerKinds.MeetingSeries
                 && m.Status == CalendarEventMeetingStatuses.Active
-                && _db.MeetingSeriesLinks.Any(l => l.CalendarEventMeetingId == m.Id)
-                && !_db.MeetingSeriesLinks.Any(l => l.CalendarEventMeetingId == m.Id && l.ReleasedAt == null))
+                && _db.MeetingSeriesLinks.Any(l => l.CalendarEventMeetingId == m.Id))
             .Select(m => m.Id).ToListAsync(ct);
 
     public async Task<Guid?> GetLatestReferencingSeriesAsync(Guid tenantId, Guid linkId, CancellationToken ct = default)

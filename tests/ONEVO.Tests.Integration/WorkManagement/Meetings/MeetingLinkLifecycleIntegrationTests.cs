@@ -41,7 +41,7 @@ public sealed class MeetingLinkLifecycleIntegrationTests
         Guid SeriesId, Guid LinkId);
 
     /// <summary>A weekly Teams meeting from <see cref="First"/> whose link is active.</summary>
-    private static async Task<World> SeedAsync()
+    private static async Task<World> SeedAsync(string? rule = "FREQ=WEEKLY")
     {
         var h = await MyTeamDb.CreateAsync();
         Guid organizerId, organizerUser, attendee, outsider;
@@ -69,7 +69,7 @@ public sealed class MeetingLinkLifecycleIntegrationTests
             var result = await s.UnitOfWork.ExecuteInTransactionAsync(ct => s.Factory.CreateDirectAsync(h.TenantId, organizerId, organizerUser,
                 new ONEVO.Application.Features.WorkManagement.Meetings.Services.MeetingPlacement(at.ProjectId, at.ObjectiveId, false, true),
                 new CreateMeetingRequest(at.ProjectId, at.ObjectiveId, "Design review", null, null, false, First, 30, false, "UTC",
-                    "FREQ=WEEKLY", [attendee], ["client@example.com"], CalendarEventMeetingProviders.MicrosoftTeams),
+                    rule, [attendee], ["client@example.com"], CalendarEventMeetingProviders.MicrosoftTeams),
                 MeetingCreationPaths.Direct, null, ct));
             Assert.True(result.IsSuccess, result.Error);
             created = result.Value!;
@@ -301,4 +301,23 @@ public sealed class MeetingLinkLifecycleIntegrationTests
     }
 
     private static (int? Status, string? Code) Of<T>(Result<T> result) => (result.StatusCode, result.ErrorCode);
+
+    [Fact]
+    public async Task CancellingAOneOffMeetingWithScopeThis_CancelsTheMeetingAndItsProviderMeeting()
+    {
+        var w = await SeedAsync(rule: null);
+
+        await using (var db = w.H.NewContext())
+        {
+            var cancelled = await new MeetingTestServices(db, new MeetingTestClock(Now)).Cancels.CancelAsync(
+                w.H.TenantId, w.Organizer, w.OrganizerUser, w.SeriesId, First, MeetingScopes.This, CancellationToken.None);
+            Assert.True(cancelled.IsSuccess, cancelled.Error);
+        }
+
+        await using var check = w.H.NewContext();
+        Assert.NotNull((await check.MeetingSeries.SingleAsync(s => s.Id == w.SeriesId)).CancelledAt);
+        Assert.Equal([$"meeting-cancel:{w.LinkId}:1"], await KeysAsync(w.H, "meeting-cancel:"));
+        // The attendees get a cancel of the whole meeting (series key), not of an occurrence of a series that never recurred.
+        Assert.NotEmpty(await KeysAsync(w.H, $"cancel:{w.SeriesId}:series:"));
+    }
 }

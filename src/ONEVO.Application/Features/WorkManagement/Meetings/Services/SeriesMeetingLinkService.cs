@@ -316,9 +316,9 @@ public sealed class SeriesMeetingLinkService
         return Describe(link, parked);
     }
 
-    /// <summary>A parked link (every reference released, the provider cancel waiting) whose last need has ended - attendance
-    /// finalized and the late-recheck window closed - is cancelled now and its provider cancel queued, under the link lock.
-    /// True when it was cancelled.</summary>
+    /// <summary>An active series link whose last need has ended (no referencing series with an upcoming slot, attendance
+    /// finalized, the late-recheck window closed) is cancelled now and its provider cancel queued, under the link lock - a
+    /// parked release, or the old half of a split whose other half was cancelled. True when it was cancelled.</summary>
     public Task<bool> CancelIfUnneededAsync(Guid tenantId, Guid linkId, CancellationToken ct)
         => _unitOfWork.ExecuteInTransactionAsync(async innerCt =>
         {
@@ -326,7 +326,6 @@ public sealed class SeriesMeetingLinkService
             var link = await _links.GetTrackedAsync(tenantId, linkId, innerCt);
             var now = _clock.UtcNow;
             if (link is not { Status: CalendarEventMeetingStatuses.Active }
-                || (await _links.ListActiveReferencingSeriesAsync(tenantId, linkId, innerCt)).Count > 0
                 || await IsNeededAsync(tenantId, linkId, now, innerCt)
                 || await _links.GetLatestReferencingSeriesAsync(tenantId, linkId, innerCt) is not Guid seriesId
                 || await _meetings.GetSeriesAsync(tenantId, seriesId, innerCt) is not { } series)
@@ -369,7 +368,9 @@ public sealed class SeriesMeetingLinkService
         var link = (await _links.GetTrackedAsync(tenantId, linkId, ct))!;
         if (link.Status != CalendarEventMeetingStatuses.Active)
             return (link, false);   // failed/cancelled: nothing exists remotely to cancel
-        if ((await _links.ListActiveReferencingSeriesAsync(tenantId, linkId, ct)).Count > 0 || await IsNeededAsync(tenantId, linkId, now, ct))
+        // IsNeededAsync covers every series still holding a reference (an upcoming slot keeps it), so a series that only
+        // ended - e.g. the old half of a split - does not hold the provider meeting open.
+        if (await IsNeededAsync(tenantId, linkId, now, ct))
             return (link, true);
         link.Status = CalendarEventMeetingStatuses.Cancelled;
         link.UpdatedAt = now;

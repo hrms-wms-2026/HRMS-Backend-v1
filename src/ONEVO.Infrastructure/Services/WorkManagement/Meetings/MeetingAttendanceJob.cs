@@ -16,7 +16,7 @@ namespace ONEVO.Infrastructure.Services.WorkManagement.Meetings;
 /// <summary>
 /// Every 15 minutes (spec 5.8): when Meetings:Background is on and this instance holds the <c>meetings.attendance</c> lease,
 /// syncs each tenant's due series links (<see cref="MeetingAttendanceSyncService"/>) under that tenant's own context, then
-/// cancels parked links nothing needs any more (spec 5.7). One link failing never stops the rest; three failures in a row
+/// cancels the series links nothing needs any more (spec 5.7). One link failing never stops the rest; three failures in a row
 /// for the same link raise an error-level alert. A lost lease ends the run.
 /// </summary>
 public sealed class MeetingAttendanceJob(IServiceProvider services, IOptions<MeetingsOptions> options, IDateTimeProvider clock,
@@ -112,7 +112,7 @@ public sealed class MeetingAttendanceJob(IServiceProvider services, IOptions<Mee
 
         var links = provider.GetRequiredService<IMeetingLinkRepository>();
         var linkService = provider.GetRequiredService<SeriesMeetingLinkService>();
-        foreach (var linkId in await links.ListParkedLinkIdsAsync(tenantId, ct))
+        foreach (var linkId in await links.ListReleaseCandidateLinkIdsAsync(tenantId, ct))
         {
             try
             {
@@ -121,7 +121,7 @@ public sealed class MeetingAttendanceJob(IServiceProvider services, IOptions<Mee
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 unitOfWork.ClearTracking();
-                logger.LogWarning(ex, "Releasing parked meeting link {LinkId} (tenant {TenantId}) failed; retried next run.", linkId, tenantId);
+                logger.LogWarning(ex, "Releasing meeting link {LinkId} (tenant {TenantId}) failed; retried next run.", linkId, tenantId);
             }
         }
     }

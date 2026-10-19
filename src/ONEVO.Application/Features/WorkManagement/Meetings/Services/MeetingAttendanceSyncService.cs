@@ -284,6 +284,13 @@ public sealed class MeetingAttendanceSyncService
     private async Task RecordAsync(Guid tenantId, CalendarEventMeeting link, IReadOnlyList<ProviderAttendanceSession> fetched,
         DateTimeOffset from, DateTimeOffset to, CancellationToken ct)
     {
+        // Microsoft Graph reports 100 ns precision, PostgreSQL stores microseconds: compare and store what the database keeps,
+        // or a record's (session, participant, joined at) key never matches its stored row on the next checkpoint.
+        fetched = fetched.Select(s => s with
+        {
+            Start = Stored(s.Start), End = s.End is { } e ? Stored(e) : null,
+            Records = s.Records.Select(r => r with { JoinedAt = Stored(r.JoinedAt), LeftAt = r.LeftAt is { } l ? Stored(l) : null }).ToList(),
+        }).ToList();
         var now = _clock.UtcNow;
         var known = (await _attendance.ListSessionsTrackedAsync(tenantId, link.Id, ct)).ToDictionary(s => s.ProviderSessionId, StringComparer.Ordinal);
         var rows = new Dictionary<string, MeetingAttendanceSession>(StringComparer.Ordinal);
@@ -370,6 +377,13 @@ public sealed class MeetingAttendanceSyncService
         }
         if (employees.Count > 0)
             await _notifications.QueueIncidentEvaluationAsync(tenantId, employees, ct);
+    }
+
+    /// <summary>The instant as a timestamptz column keeps it: UTC, whole microseconds.</summary>
+    private static DateTimeOffset Stored(DateTimeOffset value)
+    {
+        var utc = value.ToUniversalTime();
+        return utc.AddTicks(-(utc.Ticks % 10));
     }
 
     private static DateTimeOffset Min(DateTimeOffset a, DateTimeOffset b) => a < b ? a : b;
