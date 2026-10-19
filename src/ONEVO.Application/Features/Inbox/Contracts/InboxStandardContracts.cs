@@ -37,3 +37,24 @@ public interface IInboxBulkActionProvider
     Task<IReadOnlyList<(ItemRef Ref, Result<InboxActionResult> Result)>?> ExecuteBulkAsync(
         Guid tenantId, string kind, string action, IReadOnlyList<Guid> ids, JsonElement body, Guid callerEmployeeId, CancellationToken ct);
 }
+
+/// <summary>One row of a person's case history. <see cref="CanOpen"/> = the caller's GetDetailAsync would return it;
+/// rows the caller can't open are still listed (facts only) for accountability.</summary>
+public sealed record InboxPersonCase(InboxItem Item, bool CanOpen);
+
+public sealed record InboxPersonCaseMonth(int Month, int Count);
+
+public sealed record InboxPersonCaseMonths(DateOnly? HireDate, IReadOnlyList<InboxPersonCaseMonth> Months);
+
+/// <summary>Optional, beside <see cref="IInboxSourceProvider"/>: sources whose items are about one person (exceptions,
+/// leave, attendance) list that person's history. Sources about a project or an HR process don't implement it.</summary>
+public interface IInboxPersonCaseProvider
+{
+    string Source { get; }
+
+    /// <summary>Items in <paramref name="category"/> about <paramref name="subjectEmployeeId"/> created in [from, to),
+    /// mapped with direction Info and no actions, whatever their status.</summary>
+    Task<IReadOnlyList<InboxPersonCase>> ListPersonCasesAsync(
+        Guid tenantId, Guid subjectEmployeeId, string category, DateTimeOffset from, DateTimeOffset to,
+        Guid callerEmployeeId, CancellationToken ct);
+}

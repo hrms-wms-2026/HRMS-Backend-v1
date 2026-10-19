@@ -12,7 +12,9 @@ using ONEVO.Application.Features.Inbox.Queries.GetInboxFilters;
 using ONEVO.Application.Features.Inbox.Queries.GetInboxHistory;
 using ONEVO.Application.Features.Inbox.Queries.GetInboxItemDetail;
 using ONEVO.Application.Features.Inbox.Queries.GetInboxKinds;
+using ONEVO.Application.Features.Inbox.Queries.GetInboxPersonCases;
 using ONEVO.Application.Features.Inbox.Queries.ListInboxItems;
+using ONEVO.Api.Filters;
 
 namespace ONEVO.Api.Controllers.Tenant.Inbox;
 
@@ -82,6 +84,21 @@ public class InboxController : ControllerBase
         [FromQuery] DateTimeOffset? from, [FromQuery] DateTimeOffset? to, [FromQuery] string? source, [FromQuery] string? kind,
         [FromQuery] int page = 1, [FromQuery] int pageSize = 25, CancellationToken ct = default)
         => ToResult(await _mediator.Send(new GetInboxHistoryQuery(new InboxHistoryQuery(from, to, source, kind, page, pageSize)), ct));
+
+    /// <summary>A person's alerts or requests created in [from, to) - the ticket details' Past cases. Anyone who can see
+    /// the person sees every row; rows they couldn't open come back with canOpen = false.</summary>
+    [HttpGet("people/{employeeId:guid}/cases")]
+    [RequireVisibleEmployee("employeeId")]
+    public async Task<IActionResult> PersonCases(
+        Guid employeeId, [FromQuery] string category, [FromQuery] DateTimeOffset from, [FromQuery] DateTimeOffset to, CancellationToken ct)
+        => ToResult(await _mediator.Send(new GetInboxPersonCasesQuery(employeeId, category ?? "", from, to), ct));
+
+    /// <summary>Months of <paramref name="year"/> (viewer's UTC offset) that hold the person's history, plus the hire date.</summary>
+    [HttpGet("people/{employeeId:guid}/cases/months")]
+    [RequireVisibleEmployee("employeeId")]
+    public async Task<IActionResult> PersonCaseMonths(
+        Guid employeeId, [FromQuery] string category, [FromQuery] int year, [FromQuery] int offsetMinutes, CancellationToken ct)
+        => ToResult(await _mediator.Send(new GetInboxPersonCaseMonthsQuery(employeeId, category ?? "", year, offsetMinutes), ct));
 
     /// <summary>One action over many items (only kinds that declare Bulk). Returns which succeeded and which failed.</summary>
     [HttpPost("bulk")]

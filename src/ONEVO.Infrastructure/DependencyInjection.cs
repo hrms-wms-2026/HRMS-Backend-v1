@@ -535,6 +535,7 @@ public static class DependencyInjection
         // Inbox router: fans out to every registered IInboxSourceProvider (one per module).
         services.AddScoped<ONEVO.Application.Features.Inbox.Services.IInboxRouter, ONEVO.Application.Features.Inbox.Services.InboxRouter>();
         services.AddScoped<ONEVO.Application.Features.Inbox.Services.InboxCallerResolver>();
+        services.AddScoped<ONEVO.Application.Features.Inbox.Services.IInboxPersonCaseService, ONEVO.Application.Features.Inbox.Services.InboxPersonCaseService>();
         // Inbox Standard: kind descriptors (each module adds its own with services.AddInboxKind), the decision
         // journal, the merged Steps timeline. Reverters register as IInboxDecisionReverter per (source, kind).
         services.AddSingleton<ONEVO.Application.Features.Inbox.Contracts.IInboxKindRegistry, ONEVO.Application.Features.Inbox.Contracts.InboxKindRegistry>();
