@@ -1,3 +1,4 @@
+using ONEVO.Domain.Features.Calendar.Entities;
 using ONEVO.Domain.Features.WorkManagement.Meetings.Entities;
 using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
 using ONEVO.Infrastructure.Persistence;
@@ -50,5 +51,28 @@ public static class MeetingSeed
         };
         db.MeetingDetails.Add(details);
         return (task, details);
+    }
+
+    public static CalendarEventParticipant AddSeriesParticipant(this MyTeamDb h, ApplicationDbContext db, MeetingSeries series,
+        Guid employeeId, string response = CalendarEventParticipantStatuses.Pending)
+    {
+        var participant = new CalendarEventParticipant
+        {
+            Id = Guid.NewGuid(), TenantId = h.TenantId, MeetingSeriesId = series.Id, EmployeeId = employeeId, ResponseStatus = response,
+        };
+        db.CalendarEventParticipants.Add(participant);
+        return participant;
+    }
+
+    public static MeetingOccurrenceAttendee AddEmployeeOverride(this MyTeamDb h, ApplicationDbContext db, Guid occurrenceTaskId,
+        Guid employeeId, string change)
+    {
+        var row = new MeetingOccurrenceAttendee
+        {
+            Id = Guid.NewGuid(), TenantId = h.TenantId, OccurrenceTaskId = occurrenceTaskId,
+            AttendeeKind = MeetingAttendeeKinds.Employee, EmployeeId = employeeId, Change = change,
+        };
+        db.MeetingOccurrenceAttendees.Add(row);
+        return row;
     }
 }
