@@ -72,6 +72,14 @@ public interface ICalendarNotificationSender
         Guid tenantId, string kind, CalendarEventIcs ics, string eventTitle, DateTimeOffset startDate, string? location, string? meetingLink,
         IReadOnlyList<Guid> employeeIds, IReadOnlyList<string> guestEmails, string organizerName, CancellationToken ct = default);
 
+    /// <summary>Keyed version of <see cref="EmailEventChangedAsync"/>: one email per recipient key (see
+    /// <see cref="CalendarEmailKeys"/>), with its .ics, so a retried change emails nobody twice. Needs the caller's
+    /// transaction. Meetings-as-tasks Phase 2 sends every update, cancellation and removal this way.</summary>
+    Task EmailEventChangedKeyedAsync(
+        Guid tenantId, string kind, CalendarEventIcs ics, string eventTitle, DateTimeOffset startDate, string? location, string? meetingLink,
+        IReadOnlyList<CalendarParticipantRecipient> participants, IReadOnlyList<CalendarGuestRecipient> guests, string organizerName,
+        CancellationToken ct = default);
+
     /// <summary>In-app notification to the nominee that they were nominated to replace a participant (P1-4).</summary>
     Task NotifyNomineeAsync(Guid tenantId, Guid nomineeUserId, string eventTitle, string responderName, CancellationToken ct = default);
 

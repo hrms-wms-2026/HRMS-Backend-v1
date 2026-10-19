@@ -219,4 +219,24 @@ public sealed class CalendarNotificationSenderTests
                 && p.Placeholders["provider"] == "Zoom"),
             TenantId, It.IsAny<CancellationToken>()), Times.Once);
     }
+
+    [Fact]
+    public async Task EmailEventChangedKeyed_EnqueuesOneKeyedMessagePerRecipient_WithTheKindAndIcs()
+    {
+        var sut = BuildSut();
+        var ics = new CalendarEventIcs(Guid.NewGuid(), DateTimeOffset.UtcNow.AddHours(1), 42, RecurrenceId: DateTimeOffset.UtcNow);
+
+        await sut.EmailEventChangedKeyedAsync(TenantId, CalendarEventEmailKinds.Cancelled, ics, "Standup", DateTimeOffset.UtcNow, "Room 4", null,
+            [new CalendarParticipantRecipient(EmployeeId, "cancel:a:1:p")], [new CalendarGuestRecipient("guest@example.com", "cancel:a:1:g")],
+            "Ada Owner", CancellationToken.None);
+
+        _outbox.Verify(x => x.EnqueueKeyedAsync(OutboxMessageTypes.CalendarEventInviteEmail,
+            It.Is<CalendarEventInviteEmailPayload>(p => p.ToEmail == "ada@example.com" && p.Kind == CalendarEventEmailKinds.Cancelled
+                && p.EventId == ics.EventId && p.Sequence == 42 && p.RecurrenceId == ics.RecurrenceId),
+            "cancel:a:1:p", TenantId, It.IsAny<CancellationToken>()), Times.Once);
+        _outbox.Verify(x => x.EnqueueKeyedAsync(OutboxMessageTypes.CalendarEventInviteEmail,
+            It.Is<CalendarEventInviteEmailPayload>(p => p.ToEmail == "guest@example.com"), "cancel:a:1:g", TenantId, It.IsAny<CancellationToken>()), Times.Once);
+        _outbox.Verify(x => x.EnqueueAsync(OutboxMessageTypes.CalendarEventInviteEmail, It.IsAny<CalendarEventInviteEmailPayload>(),
+            It.IsAny<Guid?>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
 }

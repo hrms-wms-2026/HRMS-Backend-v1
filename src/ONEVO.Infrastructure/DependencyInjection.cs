@@ -435,6 +435,10 @@ public static class DependencyInjection
             ONEVO.Application.Features.WorkManagement.Meetings.Services.MeetingTaskDefaults>();
         services.AddScoped<ONEVO.Application.Features.WorkManagement.Meetings.RepositoryInterfaces.IMeetingOccurrenceWriter,
             ONEVO.Infrastructure.Persistence.Repositories.WorkManagement.Meetings.EfMeetingOccurrenceWriter>();
+        services.AddScoped<ONEVO.Application.Features.WorkManagement.Meetings.Services.IMeetingNotifier,
+            ONEVO.Application.Features.WorkManagement.Meetings.Services.MeetingNotifier>();
+        services.AddScoped<ONEVO.Application.Features.WorkManagement.Meetings.RepositoryInterfaces.IMeetingLinkRepository,
+            ONEVO.Infrastructure.Persistence.Repositories.WorkManagement.Meetings.EfMeetingLinkRepository>();
         services.AddScoped<ONEVO.Infrastructure.Persistence.Repositories.Calendar.EfCalendarEventRepository>();
         services.AddScoped<ONEVO.Application.Features.Calendar.RepositoryInterfaces.ICalendarEventRepository>(
             sp => sp.GetRequiredService<ONEVO.Infrastructure.Persistence.Repositories.Calendar.EfCalendarEventRepository>());

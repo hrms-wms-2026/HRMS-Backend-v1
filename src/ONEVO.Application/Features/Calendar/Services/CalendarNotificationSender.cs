@@ -126,6 +126,29 @@ public sealed class CalendarNotificationSender(IOutboxWriter outboxWriter, IEmpl
             await EmailAsync(tenantId, email, email.Split('@')[0], kind, eventTitle, startDate, location, organizerName, meetingLink, ics, ct);
     }
 
+    public async Task EmailEventChangedKeyedAsync(
+        Guid tenantId, string kind, CalendarEventIcs ics, string eventTitle, DateTimeOffset startDate, string? location, string? meetingLink,
+        IReadOnlyList<CalendarParticipantRecipient> participants, IReadOnlyList<CalendarGuestRecipient> guests, string organizerName,
+        CancellationToken ct = default)
+    {
+        foreach (var recipient in participants)
+        {
+            var employee = await employees.GetByIdAsync(tenantId, recipient.EmployeeId, ct);
+            if (employee is null || string.IsNullOrWhiteSpace(employee.Email)) continue;
+            await KeyedEmailAsync(tenantId, ChangePayload(tenantId, employee.Email, $"{employee.FirstName} {employee.LastName}", kind,
+                eventTitle, startDate, location, organizerName, meetingLink, ics), recipient.EmailKey, ct);
+        }
+        foreach (var guest in guests)
+            await KeyedEmailAsync(tenantId, ChangePayload(tenantId, guest.Email, guest.Email.Split('@')[0], kind, eventTitle, startDate,
+                location, organizerName, meetingLink, ics), guest.EmailKey, ct);
+    }
+
+    private static CalendarEventInviteEmailPayload ChangePayload(
+        Guid tenantId, string email, string name, string kind, string eventTitle, DateTimeOffset startDate, string? location,
+        string organizerName, string? meetingLink, CalendarEventIcs ics)
+        => new(tenantId, email, name, eventTitle, startDate, location, organizerName, meetingLink,
+            kind, ics.EventId, ics.EndUtc, ics.Sequence, ics.RecurrenceRule, ics.RecurrenceId);
+
     public async Task NotifyEventUpdatedAsync(
         Guid tenantId, string eventTitle, IReadOnlyList<Guid> employeeIds, string organizerName, CancellationToken ct = default)
         => await NotifyInAppOnlyAsync(tenantId, "calendar_event_updated", eventTitle, employeeIds, organizerName, ct);
