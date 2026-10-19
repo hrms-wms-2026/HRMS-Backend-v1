@@ -10,8 +10,11 @@ using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.ProjectWorkGraph.DTOs.Responses;
 using ONEVO.Application.Features.WorkManagement.ProjectWorkGraph.Queries.GetProjectWorkGraph;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Tasks.Services;
 using ONEVO.Domain.Features.WorkManagement.Objectives.Entities;
 using ONEVO.Domain.Features.WorkManagement.Projects.Entities;
+using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
+using TaskStatusEntity = ONEVO.Domain.Features.WorkManagement.Tasks.Entities.TaskStatus;
 
 namespace ONEVO.Tests.Unit.Features.WorkManagement;
 
@@ -24,6 +27,8 @@ public sealed class GetProjectWorkGraphQueryHandlerTests
     private readonly Mock<IObjectiveRepository> _objectives = new();
     private readonly Mock<IWorkTaskRepository> _tasks = new();
     private readonly Mock<IDateTimeProvider> _clock = new();
+    private readonly Mock<ITaskAccessResolver> _access = new();
+    private readonly Mock<ITaskStatusRepository> _statuses = new();
 
     private static readonly DateOnly Today = new(2026, 10, 19);
     private readonly Guid _tenantId = Guid.NewGuid();
@@ -32,6 +37,9 @@ public sealed class GetProjectWorkGraphQueryHandlerTests
     private readonly Guid _projectId = Guid.NewGuid();
     private readonly Guid _rootId = Guid.NewGuid();
     private readonly Guid _childId = Guid.NewGuid();
+    private readonly Guid _openStatusId = Guid.NewGuid();
+    private readonly Guid _activeStatusId = Guid.NewGuid();
+    private readonly Guid _doneStatusId = Guid.NewGuid();
 
     public GetProjectWorkGraphQueryHandlerTests()
     {
@@ -53,11 +61,23 @@ public sealed class GetProjectWorkGraphQueryHandlerTests
         _tasks.Setup(t => t.CountByObjectivesAsync(_tenantId, It.IsAny<IReadOnlyCollection<Guid>>(), Today, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Dictionary<Guid, WorkTaskCounts>());
         _clock.SetupGet(c => c.Today).Returns(Today);
+        _tasks.Setup(t => t.GetByProjectAsync(_tenantId, _projectId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<WorkTask>());
+        // The resolver's own rules are tested elsewhere; here it lets everything through unless a test says not.
+        _access.Setup(a => a.FilterViewableTasksAsync(_tenantId, _userId, _callerEmployeeId, It.IsAny<IReadOnlyList<WorkTask>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Guid _, Guid _, Guid _, IReadOnlyList<WorkTask> tasks, CancellationToken _) => tasks);
+        _statuses.Setup(r => r.GetByIdsForTenantAsync(_tenantId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[]
+            {
+                new TaskStatusEntity { Id = _openStatusId, TenantId = _tenantId, ProjectId = _projectId, Name = "To Do", Category = TaskStatusCategories.NotStarted },
+                new TaskStatusEntity { Id = _activeStatusId, TenantId = _tenantId, ProjectId = _projectId, Name = "In Progress", Category = TaskStatusCategories.Active },
+                new TaskStatusEntity { Id = _doneStatusId, TenantId = _tenantId, ProjectId = _projectId, Name = "Done", Category = TaskStatusCategories.Done }
+            });
     }
 
     private GetProjectWorkGraphQueryHandler CreateHandler() =>
         new(_currentUser.Object, _identity.Object, _projects.Object, _members.Object,
-            _objectives.Object, _tasks.Object, _clock.Object);
+            _objectives.Object, _tasks.Object, _clock.Object, _access.Object, _statuses.Object);
 
     private Project Proj() =>
         new() { Id = _projectId, TenantId = _tenantId, Name = "Hardware integration portal", Identifier = "HIP", IsActive = true };
@@ -79,6 +99,27 @@ public sealed class GetProjectWorkGraphQueryHandlerTests
             AllocatedHours = allocated,
             CompletedHours = completed
         };
+
+    private WorkTask Task(string title, Guid objectiveId, Guid statusId, Guid? parentTaskId = null,
+        DateOnly? due = null, string visibility = WorkTaskVisibilityScopes.Module) =>
+        new()
+        {
+            Id = Guid.NewGuid(),
+            TenantId = _tenantId,
+            ProjectId = _projectId,
+            ObjectiveId = objectiveId,
+            ParentTaskId = parentTaskId,
+            StatusId = statusId,
+            ShortId = "HIP-" + title.Length,
+            Title = title,
+            Priority = "high",
+            DueDate = due,
+            VisibilityScope = visibility
+        };
+
+    private void ArrangeTasks(params WorkTask[] tasks) =>
+        _tasks.Setup(t => t.GetByProjectAsync(_tenantId, _projectId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(tasks);
 
     private void ArrangeTree(params Objective[] objectives) =>
         _objectives.Setup(o => o.GetTreeByProjectIdAsync(_tenantId, _projectId, It.IsAny<CancellationToken>()))
@@ -168,5 +209,109 @@ public sealed class GetProjectWorkGraphQueryHandlerTests
         Assert.Single(result.Value!.Nodes);
         Assert.Empty(result.Value!.Links);
         Assert.Equal(0, result.Value!.HiddenTaskCount);
+    }
+
+    [Fact]
+    public async Task Handle_AddsOpenTasksOfEachModule_AsTaskNodes()
+    {
+        ArrangeTree(Obj(_rootId, "Root", null, isDefault: true));
+        ArrangeTasks(Task("Fix timeout", _rootId, _activeStatusId), Task("Write docs", _rootId, _openStatusId),
+            Task("Shipped", _rootId, _doneStatusId));
+
+        var result = await Run();
+
+        var tasks = result.Value!.Nodes.Where(n => n.Kind == WorkGraphNodeKinds.Task).ToList();
+        Assert.Equal(2, tasks.Count);
+        Assert.Contains(tasks, n => n.Label == "Fix timeout" && n.Status == TaskStatusCategories.Active && n.Task!.StatusName == "In Progress");
+        Assert.Contains(tasks, n => n.Label == "Write docs" && n.Status == TaskStatusCategories.NotStarted);
+        Assert.DoesNotContain(tasks, n => n.Label == "Shipped");
+    }
+
+    [Fact]
+    public async Task Handle_ExcludesSubtasks_WhenTaskHasAParentTask()
+    {
+        ArrangeTree(Obj(_rootId, "Root", null, isDefault: true));
+        var parent = Task("Parent", _rootId, _activeStatusId);
+        ArrangeTasks(parent, Task("Child step", _rootId, _activeStatusId, parentTaskId: parent.Id));
+
+        var result = await Run();
+
+        var task = Assert.Single(result.Value!.Nodes, n => n.Kind == WorkGraphNodeKinds.Task);
+        Assert.Equal("Parent", task.Label);
+    }
+
+    [Fact]
+    public async Task Handle_ExcludesPrivateTasks_TheCallerIsNotAssignedTo()
+    {
+        ArrangeTree(Obj(_rootId, "Root", null, isDefault: true));
+        var visible = Task("Visible", _rootId, _activeStatusId);
+        var hidden = Task("Secret", _rootId, _activeStatusId, visibility: WorkTaskVisibilityScopes.Assignees);
+        ArrangeTasks(visible, hidden);
+        _access.Setup(a => a.FilterViewableTasksAsync(_tenantId, _userId, _callerEmployeeId, It.IsAny<IReadOnlyList<WorkTask>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Guid _, Guid _, Guid _, IReadOnlyList<WorkTask> tasks, CancellationToken _) =>
+                tasks.Where(t => t.Id != hidden.Id).ToList());
+
+        var result = await Run();
+
+        var task = Assert.Single(result.Value!.Nodes, n => n.Kind == WorkGraphNodeKinds.Task);
+        Assert.Equal("Visible", task.Label);
+    }
+
+    [Fact]
+    public async Task Handle_DoesNotCountExcludedPrivateTasks_TowardHiddenTaskCount()
+    {
+        ArrangeTree(Obj(_rootId, "Root", null, isDefault: true));
+        var open = Enumerable.Range(0, GetProjectWorkGraphQueryHandler.MaxTaskNodes)
+            .Select(i => Task($"Task {i}", _rootId, _activeStatusId)).ToList();
+        var secret = Task("Secret", _rootId, _activeStatusId, visibility: WorkTaskVisibilityScopes.Assignees);
+        ArrangeTasks(open.Append(secret).ToArray());
+        _access.Setup(a => a.FilterViewableTasksAsync(_tenantId, _userId, _callerEmployeeId, It.IsAny<IReadOnlyList<WorkTask>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Guid _, Guid _, Guid _, IReadOnlyList<WorkTask> tasks, CancellationToken _) =>
+                tasks.Where(t => t.Id != secret.Id).ToList());
+
+        var result = await Run();
+
+        Assert.Equal(GetProjectWorkGraphQueryHandler.MaxTaskNodes, result.Value!.Nodes.Count(n => n.Kind == WorkGraphNodeKinds.Task));
+        Assert.Equal(0, result.Value!.HiddenTaskCount);
+    }
+
+    [Fact]
+    public async Task Handle_CapsTaskNodesAtMaxTaskNodes_AndReportsTheRestAsHidden()
+    {
+        ArrangeTree(Obj(_rootId, "Root", null, isDefault: true));
+        ArrangeTasks(Enumerable.Range(0, GetProjectWorkGraphQueryHandler.MaxTaskNodes + 3)
+            .Select(i => Task($"Task {i}", _rootId, _activeStatusId)).ToArray());
+
+        var result = await Run();
+
+        Assert.Equal(GetProjectWorkGraphQueryHandler.MaxTaskNodes, result.Value!.Nodes.Count(n => n.Kind == WorkGraphNodeKinds.Task));
+        Assert.Equal(3, result.Value!.HiddenTaskCount);
+    }
+
+    [Fact]
+    public async Task Handle_LinksEachTaskToItsModule_WithHasTaskKind()
+    {
+        ArrangeTree(Obj(_rootId, "Root", null, isDefault: true), Obj(_childId, "Child", _rootId));
+        var task = Task("Pair over BLE", _childId, _openStatusId);
+        ArrangeTasks(task);
+
+        var result = await Run();
+
+        Assert.Contains(result.Value!.Links, l =>
+            l.Source == $"module:{_childId}" && l.Target == $"task:{task.Id}" && l.Kind == WorkGraphLinkKinds.HasTask);
+    }
+
+    [Fact]
+    public async Task Handle_SetsIsOverdue_WhenDueDateIsBeforeToday()
+    {
+        ArrangeTree(Obj(_rootId, "Root", null, isDefault: true));
+        ArrangeTasks(Task("Late", _rootId, _activeStatusId, due: Today.AddDays(-1)),
+            Task("Due today", _rootId, _activeStatusId, due: Today));
+
+        var result = await Run();
+
+        var tasks = result.Value!.Nodes.Where(n => n.Kind == WorkGraphNodeKinds.Task).ToDictionary(n => n.Label);
+        Assert.True(tasks["Late"].Task!.IsOverdue);
+        Assert.False(tasks["Due today"].Task!.IsOverdue);
     }
 }

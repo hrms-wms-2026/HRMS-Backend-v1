@@ -9,13 +9,15 @@ using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfa
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.ProjectWorkGraph.DTOs.Responses;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Tasks.Services;
+using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
 
 namespace ONEVO.Application.Features.WorkManagement.ProjectWorkGraph.Queries.GetProjectWorkGraph;
 
 /// <summary>
 /// Builds the project-centred work graph: every active objective of the project as a module node,
-/// parent-to-child "contains" links, and (from Task 2 of the plan) the project's open top-level
-/// tasks. Access mirrors GetObjectiveTreeQueryHandler exactly - every active project member sees
+/// parent-to-child "contains" links, and the project's open top-level tasks hanging off their module
+/// by "has_task" links (the kind the explorer groups task cards by). Access mirrors GetObjectiveTreeQueryHandler exactly - every active project member sees
 /// the full module tree, so this query invents no visibility rule of its own.
 /// Modules carry no Role: it is viewer-relative ("do I own this") and says nothing useful in a
 /// project-rooted picture, where the owner is on the node's own label and in the detail panel.
@@ -33,12 +35,16 @@ public class GetProjectWorkGraphQueryHandler : IRequestHandler<GetProjectWorkGra
     private readonly IObjectiveRepository _objectives;
     private readonly IWorkTaskRepository _tasks;
     private readonly IDateTimeProvider _clock;
+    private readonly ITaskAccessResolver _taskAccess;
+    private readonly ITaskStatusRepository _statuses;
 
     public GetProjectWorkGraphQueryHandler(
         ICurrentUser currentUser, ICallerIdentityResolver identity, IProjectRepository projects,
         IProjectMemberRepository members, IObjectiveRepository objectives, IWorkTaskRepository tasks,
-        IDateTimeProvider clock)
+        IDateTimeProvider clock, ITaskAccessResolver taskAccess, ITaskStatusRepository statuses)
     {
+        _taskAccess = taskAccess;
+        _statuses = statuses;
         _currentUser = currentUser;
         _identity = identity;
         _projects = projects;
@@ -112,6 +118,57 @@ public class GetProjectWorkGraphQueryHandler : IRequestHandler<GetProjectWorkGra
                 links.Add(new WorkGraphLink($"module:{parentId}", $"module:{objective.Id}", WorkGraphLinkKinds.Contains));
         }
 
-        return Result<ProjectWorkGraphResponse>.Success(new ProjectWorkGraphResponse(nodes, links, 0));
+        var (taskNodes, taskLinks, hidden) = await BuildTaskNodesAsync(
+            tenantId, project.Id, callerEmployeeId.Value, presentIds, today, ct);
+        nodes.AddRange(taskNodes);
+        links.AddRange(taskLinks);
+
+        return Result<ProjectWorkGraphResponse>.Success(new ProjectWorkGraphResponse(nodes, links, hidden));
+    }
+
+    /// <summary>
+    /// Open (not started / active) top-level tasks of the drawn modules. Subtasks are left out, as
+    /// they are from the tree's counts and progress. Visibility is applied BEFORE the cap, so a
+    /// private task the caller may not see is simply absent - never drawn, never counted as hidden.
+    /// </summary>
+    private async Task<(List<WorkGraphNode> Nodes, List<WorkGraphLink> Links, int Hidden)> BuildTaskNodesAsync(
+        Guid tenantId, Guid projectId, Guid callerEmployeeId, IReadOnlySet<Guid> moduleIds, DateOnly today,
+        CancellationToken ct)
+    {
+        var topLevel = (await _tasks.GetByProjectAsync(tenantId, projectId, ct))
+            .Where(t => t.ParentTaskId is null && moduleIds.Contains(t.ObjectiveId))
+            .ToList();
+        if (topLevel.Count == 0)
+            return (new List<WorkGraphNode>(), new List<WorkGraphLink>(), 0);
+
+        var statuses = (await _statuses.GetByIdsForTenantAsync(
+                tenantId, topLevel.Select(t => t.StatusId).Distinct().ToList(), ct))
+            .ToDictionary(s => s.Id);
+        var open = topLevel
+            .Where(t => statuses.TryGetValue(t.StatusId, out var s)
+                        && (s.Category == TaskStatusCategories.NotStarted || s.Category == TaskStatusCategories.Active))
+            .ToList();
+
+        var viewable = await _taskAccess.FilterViewableTasksAsync(tenantId, _currentUser.UserId, callerEmployeeId, open, ct);
+        var drawn = viewable
+            .OrderBy(t => statuses[t.StatusId].Category)
+            .ThenBy(t => t.ShortId)
+            .Take(MaxTaskNodes)
+            .ToList();
+
+        var nodes = new List<WorkGraphNode>(drawn.Count);
+        var links = new List<WorkGraphLink>(drawn.Count);
+        foreach (var task in drawn)
+        {
+            var status = statuses[task.StatusId];
+            var taskNodeId = $"task:{task.Id}";
+            nodes.Add(new WorkGraphNode(taskNodeId, WorkGraphNodeKinds.Task, task.Title, task.ShortId,
+                Status: status.Category, ProjectId: task.ProjectId, ObjectiveId: task.ObjectiveId, TaskId: task.Id,
+                Task: new WorkGraphTaskDetails(task.DueDate, status.Name, task.Priority,
+                    task.DueDate is { } due && due < today)));
+            links.Add(new WorkGraphLink($"module:{task.ObjectiveId}", taskNodeId, WorkGraphLinkKinds.HasTask));
+        }
+
+        return (nodes, links, viewable.Count - drawn.Count);
     }
 }
