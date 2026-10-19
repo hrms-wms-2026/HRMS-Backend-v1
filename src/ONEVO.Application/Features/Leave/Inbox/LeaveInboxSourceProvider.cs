@@ -30,7 +30,7 @@ namespace ONEVO.Application.Features.Leave.Inbox;
 /// was added to (read-only). Every action runs the Leave module's own commands - the Inbox adds the journal row (same
 /// transaction) and, for request/respond info, the tagged chat message (plan D-d).
 /// </summary>
-public sealed class LeaveInboxSourceProvider : IInboxSourceProvider, IInboxBulkActionProvider
+public sealed class LeaveInboxSourceProvider : IInboxSourceProvider, IInboxBulkActionProvider, IInboxPersonCaseProvider
 {
     public const int DecidedHistoryDays = 90;
     public const int DecidedHistoryLimit = 500;
@@ -126,6 +126,35 @@ public sealed class LeaveInboxSourceProvider : IInboxSourceProvider, IInboxBulkA
                 items.TryAdd(subject.Id, Item(ListRow.Of(state), InboxDirections.Info, pending: false, []));
         }
         return items.Values.ToList();
+    }
+
+    /// <summary>The subject's leave requests created in [from, to), of any status, as info. CanOpen follows
+    /// GetDetailAsync: requester (or who submitted it for them), an approver at any step, leave:read, or added to the chat.</summary>
+    public async Task<IReadOnlyList<InboxPersonCase>> ListPersonCasesAsync(
+        Guid tenantId, Guid subjectEmployeeId, string category, DateTimeOffset from, DateTimeOffset to, Guid callerEmployeeId, CancellationToken ct)
+    {
+        if (category != InboxCategories.Request)
+            return [];
+        var rows = await _requests.ListOwnAsync(tenantId, subjectEmployeeId,
+            new LeaveRequestListFilter(null, null, null, null, CreatedFrom: from, CreatedTo: to), ct);
+        if (rows.Count == 0)
+            return [];
+
+        var caller = await _employees.GetByIdAsync(tenantId, callerEmployeeId, ct);
+        var subject = (await _employees.ListByIdsAsync(tenantId, [subjectEmployeeId], ct)).GetValueOrDefault(subjectEmployeeId);
+        var approvers = await _requests.ListApproverEmployeeIdsAsync(tenantId, rows.Select(r => r.Request.Id).ToList(), ct);
+        var added = (await _conversations.ListAddedSubjectsAsync(tenantId, callerEmployeeId, Source, ct)).ToHashSet();
+        var reader = _currentUser.HasPermission(LeaveReadPermission);
+        return rows.Select(row =>
+        {
+            var request = row.Request;
+            var canOpen = reader
+                || request.EmployeeId == callerEmployeeId
+                || (caller is not null && request.SubmittedOnBehalfOfBy == caller.UserId)
+                || approvers.GetValueOrDefault(request.Id)?.Contains(callerEmployeeId) == true
+                || added.Contains(new ItemRef(Source, LeaveInboxKinds.Request, request.Id));
+            return new InboxPersonCase(Item(ListRow.Of(request, subject, null, row.LeaveTypeName), InboxDirections.Info, pending: false, []), canOpen);
+        }).ToList();
     }
 
     public async Task<IReadOnlyList<InboxFilterField>> GetFilterFieldsAsync(Guid tenantId, Guid callerEmployeeId, CancellationToken ct)

@@ -502,4 +502,59 @@ public class LeaveInboxTests
         result.StatusCode.Should().Be(409);
         result.Error.Should().Contain("can no longer cover");
     }
+
+    // ---- person case history ------------------------------------------------------------------
+
+    private static readonly DateTimeOffset HistoryFrom = new(2026, 8, 1, 0, 0, 0, TimeSpan.Zero);
+    private static readonly DateTimeOffset HistoryTo = new(2026, 9, 1, 0, 0, 0, TimeSpan.Zero);
+
+    private static LeaveRequest Own(ProviderFixture f, string status) => new()
+    {
+        Id = Guid.NewGuid(), TenantId = f.TenantId, EmployeeId = f.Requester.Id, LeaveTypeId = f.LeaveTypeId,
+        StartAt = At(18, 9), EndAt = At(18, 18), TotalHours = 8m, Status = status, CreatedAt = At(10, 9),
+    };
+
+    private static void History(ProviderFixture f, IReadOnlyList<LeaveRequest> requests, Guid? approverOfAll = null)
+    {
+        f.Requests.Setup(x => x.ListOwnAsync(f.TenantId, f.Requester.Id,
+                It.Is<LeaveRequestListFilter>(l => l.CreatedFrom == HistoryFrom && l.CreatedTo == HistoryTo), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(requests.Select(r => new LeaveRequestListRow(r, "Annual Leave", "AL")).ToList());
+        f.Requests.Setup(x => x.ListApproverEmployeeIdsAsync(f.TenantId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(requests.ToDictionary(r => r.Id, r => (IReadOnlyList<Guid>)(approverOfAll is { } a ? [a] : [])));
+    }
+
+    [Fact]
+    public async Task ListPersonCases_ReturnsAllStatusesInRange()
+    {
+        var f = new ProviderFixture();
+        History(f, [Own(f, "pending"), Own(f, "approved"), Own(f, "rejected"), Own(f, "cancelled")]);
+
+        var rows = await f.Provider().ListPersonCasesAsync(f.TenantId, f.Requester.Id, InboxCategories.Request, HistoryFrom, HistoryTo, f.First.Id, default);
+
+        rows.Select(r => r.Item.Status).Should().BeEquivalentTo("pending", "approved", "rejected", "cancelled");
+        rows.Should().OnlyContain(r => r.Item.Direction == InboxDirections.Info && r.Item.AvailableActions.Count == 0);
+    }
+
+    [Fact]
+    public async Task ListPersonCases_AlertCategoryReturnsEmpty()
+    {
+        var f = new ProviderFixture();
+        History(f, [Own(f, "pending")]);
+
+        (await f.Provider().ListPersonCasesAsync(f.TenantId, f.Requester.Id, InboxCategories.Alert, HistoryFrom, HistoryTo, f.First.Id, default))
+            .Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task ListPersonCases_CanOpenTrueForApprover_FalseForUninvolved()
+    {
+        var f = new ProviderFixture();
+        History(f, [Own(f, "approved")], approverOfAll: f.First.Id);
+
+        var asApprover = await f.Provider().ListPersonCasesAsync(f.TenantId, f.Requester.Id, InboxCategories.Request, HistoryFrom, HistoryTo, f.First.Id, default);
+        var asUninvolved = await f.Provider().ListPersonCasesAsync(f.TenantId, f.Requester.Id, InboxCategories.Request, HistoryFrom, HistoryTo, f.Second.Id, default);
+
+        asApprover.Single().CanOpen.Should().BeTrue();
+        asUninvolved.Single().CanOpen.Should().BeFalse();
+    }
 }
