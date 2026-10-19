@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Microsoft.Extensions.Options;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Approvals.Services;
@@ -25,6 +26,7 @@ public sealed class MeetingCreateApplier : IApprovalActionApplier
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
     private static readonly HashSet<int> ActiveStatuses = [EmploymentStatusIds.Active, EmploymentStatusIds.OnLeave];
 
+    private readonly IOptions<MeetingsOptions> _options;
     private readonly IMeetingSeriesFactory _factory;
     private readonly IMeetingRepository _meetings;
     private readonly IEmployeeRepository _employees;
@@ -32,9 +34,10 @@ public sealed class MeetingCreateApplier : IApprovalActionApplier
     private readonly IMilestoneMembershipCoordinator _membership;
     private readonly IDateTimeProvider _clock;
 
-    public MeetingCreateApplier(IMeetingSeriesFactory factory, IMeetingRepository meetings, IEmployeeRepository employees,
+    public MeetingCreateApplier(IOptions<MeetingsOptions> options, IMeetingSeriesFactory factory, IMeetingRepository meetings, IEmployeeRepository employees,
         IObjectiveRepository objectives, IMilestoneMembershipCoordinator membership, IDateTimeProvider clock)
     {
+        _options = options;
         _factory = factory;
         _meetings = meetings;
         _employees = employees;
@@ -47,6 +50,9 @@ public sealed class MeetingCreateApplier : IApprovalActionApplier
 
     public async Task<ApplyOutcome> ApplyAsync(ApprovalApplyContext context, CancellationToken ct)
     {
+        // Meetings:ReadOnly is the recovery switch: an approved request stays pending until writes are allowed again.
+        if (MeetingGuard.CheckWritable<bool>(_options.Value) is { } blocked)
+            return ApplyOutcome.Invalid(blocked.Error!);
         var request = context.Request;
         var form = JsonSerializer.Deserialize<MeetingCreatePayload>(context.PayloadJson, Json)?.Form;
         if (form?.ProjectId is not Guid projectId || form.ObjectiveId is not Guid objectiveId)

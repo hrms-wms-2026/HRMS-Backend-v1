@@ -18,7 +18,7 @@ public interface IMeetingOccurrenceMaterializer
     Task<Guid?> MaterializeAsync(Guid tenantId, MeetingSeries series, DateTimeOffset originalStart, Guid createdByUserId, CancellationToken ct);
 
     /// <summary>The occurrence's task id: the existing one, or a new one when the series' rule fires there and no
-    /// suppression covers it; 404 meeting_not_found otherwise.</summary>
+    /// suppression covers it; 404 meeting_not_found otherwise (also for a soft-deleted occurrence).</summary>
     Task<Result<Guid>> EnsureAsync(Guid tenantId, MeetingSeries series, DateTimeOffset originalStart, Guid createdByUserId, CancellationToken ct);
 }
 
@@ -67,7 +67,9 @@ public sealed class MeetingOccurrenceMaterializer : IMeetingOccurrenceMaterializ
     {
         var key = originalStart.ToUniversalTime();
         if (await _meetings.GetDetailsAsync(tenantId, series.Id, key, ct) is { } existing)
-            return Result<Guid>.Success(existing.TaskId);
+            return await _meetings.IsOccurrenceRemovedAsync(tenantId, existing.TaskId, ct)
+                ? MeetingReadService.NotFound<Guid>()
+                : Result<Guid>.Success(existing.TaskId);
 
         var fires = _recurrence.Occurrences(series.RecurrenceRule, series.DtStart, series.Timezone, key, key.AddSeconds(1)).Contains(key);
         if (!fires || await _meetings.IsSuppressedAsync(tenantId, series.Id, key, ct))

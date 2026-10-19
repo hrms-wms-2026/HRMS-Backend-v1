@@ -42,6 +42,10 @@ public interface IMeetingRepository
     Task<IReadOnlyList<MeetingOccurrenceRow>> ListVisibleAsync(Guid tenantId, Guid callerEmployeeId, DateTimeOffset from, DateTimeOffset to,
         Guid? projectId, Guid? seriesId, CancellationToken ct = default);
 
+    /// <summary>True when the occurrence's task was soft-deleted (a split surplus): the occurrence is gone, though its
+    /// meeting_details row keeps the key taken.</summary>
+    Task<bool> IsOccurrenceRemovedAsync(Guid tenantId, Guid occurrenceTaskId, CancellationToken ct = default);
+
     Task<bool> IsSuppressedAsync(Guid tenantId, Guid seriesId, DateTimeOffset originalStart, CancellationToken ct = default);
 
     Task<MeetingSeries?> GetSeriesTrackedAsync(Guid tenantId, Guid seriesId, CancellationToken ct = default);
@@ -56,7 +60,8 @@ public interface IMeetingRepository
     Task<IReadOnlyList<(MeetingDetails Details, WorkTask Task)>> ListTemplateOccurrencesTrackedAsync(
         Guid tenantId, Guid seriesId, DateTimeOffset after, CancellationToken ct = default);
 
-    /// <summary>Every materialized occurrence of the series with original_start at or after <paramref name="from"/> (no tracking).</summary>
+    /// <summary>Every materialized occurrence of the series with original_start at or after <paramref name="from"/> (no
+    /// tracking); soft-deleted ones are left out.</summary>
     Task<IReadOnlyList<MeetingDetails>> ListOccurrencesFromAsync(Guid tenantId, Guid seriesId, DateTimeOffset from, CancellationToken ct = default);
 
     Task<IReadOnlyList<MeetingOccurrenceSuppression>> ListSuppressionsFromAsync(Guid tenantId, Guid seriesId, DateTimeOffset from, CancellationToken ct = default);

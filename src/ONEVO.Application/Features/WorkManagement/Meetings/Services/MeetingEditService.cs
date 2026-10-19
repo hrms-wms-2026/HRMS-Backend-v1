@@ -93,10 +93,11 @@ public sealed class MeetingEditService
             return Changed();
 
         var now = _clock.UtcNow;
-        if (now >= details.StartAt || details.CancelledAt is not null || series.CancelledAt is not null)
+        var cancelled = details.CancelledAt is not null || MeetingStatusCalculator.CancelledWithSeries(details, series);
+        if (now >= details.StartAt || cancelled || series.CancelledAt is not null)
         {
             var onlyNotes = edit is { Title: null, Location: null, IsPrivate: null, Start: null, DurationMinutes: null, IsAllDay: null }
-                && edit.Description is not null && details.CancelledAt is null && series.CancelledAt is null && now >= details.StartAt;
+                && edit.Description is not null && !cancelled && now >= details.StartAt;
             if (!onlyNotes)
                 return Result<MeetingEditResponse>.Failure(
                     "This occurrence has started; only its notes can still change.", 409, MeetingErrorCodes.OccurrenceStarted);

@@ -38,6 +38,17 @@ public sealed class MeetingStatusAndAttendeesTests
     }
 
     [Fact]
+    public void ASeriesCancellation_LeavesOccurrencesThatHadAlreadyStarted()
+    {
+        // Final-review I3: cancelling "all" after ten weeks never rewrites the ten meetings that happened.
+        var (past, series) = Meeting(seriesCancelled: Start.AddDays(3));
+        var (inProgress, _) = Meeting(seriesCancelled: Start.AddMinutes(10));
+
+        Assert.Equal(MeetingStatuses.Completed, MeetingStatusCalculator.Of(past, series, Start.AddDays(4)));
+        Assert.Equal(MeetingStatuses.Completed, MeetingStatusCalculator.Of(inProgress, new MeetingSeries { CancelledAt = Start.AddMinutes(10) }, Start.AddHours(1)));
+    }
+
+    [Fact]
     public void Attendees_AreTheSeriesMinusRemovesPlusAdds()
     {
         Guid alice = Guid.NewGuid(), bob = Guid.NewGuid(), carol = Guid.NewGuid(), gone = Guid.NewGuid();

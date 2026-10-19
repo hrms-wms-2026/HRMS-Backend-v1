@@ -12,6 +12,10 @@ public sealed class EfMeetingRepository : IMeetingRepository
     // or the access resolver ignore that one filter (tenant scoping stays).
     private static readonly string[] ExcludeMeetingsOnly = [WorkTaskQueryFilters.ExcludeMeetings];
 
+    // Also drops the soft-delete half of TenantScope: only for placeholder re-pointing, which must reach removed meeting
+    // tasks too because a status stays undeletable while any task - deleted or not - references it. Tenant re-applied by hand.
+    private static readonly string[] ExcludeMeetingsAndTenantScope = [WorkTaskQueryFilters.ExcludeMeetings, WorkTaskQueryFilters.TenantScope];
+
     private readonly ApplicationDbContext _db;
 
     public EfMeetingRepository(ApplicationDbContext db) => _db = db;
@@ -88,6 +92,9 @@ public sealed class EfMeetingRepository : IMeetingRepository
         return await Rows(occurrences.OrderBy(d => d.StartAt)).ToListAsync(ct);
     }
 
+    public async Task<bool> IsOccurrenceRemovedAsync(Guid tenantId, Guid occurrenceTaskId, CancellationToken ct = default)
+        => !await _db.WorkTasks.IgnoreQueryFilters(ExcludeMeetingsOnly).AnyAsync(t => t.TenantId == tenantId && t.Id == occurrenceTaskId, ct);
+
     public async Task<bool> IsSuppressedAsync(Guid tenantId, Guid seriesId, DateTimeOffset originalStart, CancellationToken ct = default)
     {
         var key = originalStart.ToUniversalTime();
@@ -128,8 +135,10 @@ public sealed class EfMeetingRepository : IMeetingRepository
     public async Task<IReadOnlyList<MeetingDetails>> ListOccurrencesFromAsync(Guid tenantId, Guid seriesId, DateTimeOffset from, CancellationToken ct = default)
     {
         var fromUtc = from.ToUniversalTime();
+        // A soft-deleted occurrence (split surplus) is gone: its row only keeps the key taken.
         return await _db.MeetingDetails.AsNoTracking()
-            .Where(d => d.TenantId == tenantId && d.SeriesId == seriesId && d.OriginalStart >= fromUtc)
+            .Where(d => d.TenantId == tenantId && d.SeriesId == seriesId && d.OriginalStart >= fromUtc
+                && _db.WorkTasks.IgnoreQueryFilters(ExcludeMeetingsOnly).Any(t => t.Id == d.TaskId))
             .OrderBy(d => d.OriginalStart).ToListAsync(ct);
     }
 
@@ -196,7 +205,7 @@ public sealed class EfMeetingRepository : IMeetingRepository
     public void AddRsvpHistory(CalendarEventParticipantRsvpHistory row) => _db.CalendarEventParticipantRsvpHistory.Add(row);
 
     public async Task RepointPlaceholderStatusAsync(Guid tenantId, Guid projectId, Guid fromStatusId, Guid toStatusId, CancellationToken ct = default)
-        => await _db.WorkTasks.IgnoreQueryFilters(ExcludeMeetingsOnly)
+        => await _db.WorkTasks.IgnoreQueryFilters(ExcludeMeetingsAndTenantScope)
             .Where(t => t.TenantId == tenantId && t.ProjectId == projectId && t.StatusId == fromStatusId && t.TaskKind == WorkTaskKinds.Meeting)
             .ExecuteUpdateAsync(s => s.SetProperty(t => t.StatusId, toStatusId), ct);
 
