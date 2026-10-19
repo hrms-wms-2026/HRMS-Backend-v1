@@ -31,7 +31,7 @@ public static class NotificationEventCatalog
         "attendance_correction_request_created", "attendance_correction_request_decided", "attendance_correction_request_cancelled",
         "work_area_change_request_created", "work_area_change_request_decided", "work_area_change_request_cancelled",
         // Leave
-        "leave_request_approved", "leave_request_rejected", "leave_request_information_requested", "leave_request_next_approval_required",
+        "leave_request_approved", "leave_request_rejected", "leave_request_next_approval_required",
         "leave_request_cancelled_by_employee", "leave_request_cancelled_by_hr", "leave_request_partially_cancelled", "leave_request_decision_undone",
         // Calendar
         "calendar_event_participant_added", "calendar_event_updated", "calendar_event_cancelled", "calendar_event_resolution_requested",
@@ -50,7 +50,7 @@ public static class NotificationEventCatalog
     /// </summary>
     private static readonly HashSet<string> ProducerSendsOwnEmail = new(StringComparer.Ordinal)
     {
-        "leave_request_approved", "leave_request_rejected", "leave_request_information_requested",
+        "leave_request_approved", "leave_request_rejected",
         "leave_request_cancelled_by_employee", "leave_request_cancelled_by_hr", "leave_request_partially_cancelled",
         "calendar_event_participant_added", "calendar_event_updated", "calendar_event_cancelled",
         "calendar_event_participant_removed", "calendar_event_meeting_link_removed",
@@ -80,7 +80,6 @@ public static class NotificationEventCatalog
         Shared("conversation_mentioned", "conversations", "Conversation mentioned", [V("actorName"), V("itemTitle")]),
         Shared("leave_request_approved", "leave", "Leave request approved", [V("leaveTypeName"), V("startDate"), V("endDate")]),
         Shared("leave_request_rejected", "leave", "Leave request rejected", [V("leaveTypeName"), V("startDate"), V("endDate"), V("reason")]),
-        Shared("leave_request_information_requested", "leave", "Leave request information requested", [V("approverName"), V("leaveTypeName"), V("startDate"), V("endDate")]),
         Shared("leave_request_next_approval_required", "leave", "Leave request next approval required", [V("employeeName"), V("leaveTypeName"), V("startDate"), V("endDate")]),
         Shared("leave_request_cancelled_by_employee", "leave", "Leave request cancelled by employee", [V("employeeName"), V("leaveTypeName"), V("startDate"), V("endDate")]),
         Shared("leave_request_cancelled_by_hr", "leave", "Leave request cancelled by hr", [V("cancelledByName"), V("leaveTypeName"), V("startDate"), V("endDate"), V("reason")]),

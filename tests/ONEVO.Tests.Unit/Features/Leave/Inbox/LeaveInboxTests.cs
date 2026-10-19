@@ -38,14 +38,6 @@ public class LeaveInboxTests
 {
     private static DateTimeOffset At(int day, int hour) => new(2026, 8, day, hour, 0, 0, TimeSpan.Zero);
 
-    private static LeaveForwardTargetResolver NoForwardTarget()
-    {
-        var approvers = new Mock<ILeaveApproverResolver>();
-        approvers.Setup(a => a.ResolveAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<DateOnly>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new LeaveApproverResolution([]));
-        return new LeaveForwardTargetResolver(approvers.Object);
-    }
-
     private static LeaveApprovalState State(
         Employee employee, LeaveEntitlement? entitlement, Guid leaveTypeId, string mode, params LeaveRequestApprover[] approvers)
     {
@@ -55,7 +47,7 @@ public class LeaveInboxTests
             LeaveTypeId = leaveTypeId, StartAt = At(18, 9), EndAt = At(18, 18), TotalHours = 8m, PaidHours = 8m,
             Status = LeaveRequestStatuses.Pending, CreatedAt = At(10, 9),
         };
-        return new LeaveApprovalState(request, entitlement, employee, "Annual Leave", "AL", mode, approvers.ToList(), []);
+        return new LeaveApprovalState(request, entitlement, employee, "Annual Leave", "AL", mode, approvers.ToList());
     }
 
     private static LeaveRequestApprover Approver(Guid requestId, Guid employeeId, int sequence, string status = LeaveRequestApproverStatuses.Pending)
@@ -161,7 +153,6 @@ public class LeaveInboxTests
         employees.Setup(x => x.GetByUserIdAsync(f.Harness.TenantId, f.Harness.UserId, It.IsAny<CancellationToken>())).ReturnsAsync(approver);
         var decisions = new LeaveApprovalDecisionService(f.CurrentUser.Object, f.Harness.Clock.Object, employees.Object, f.Repository.Object,
             Mock.Of<IOutboxWriter>(), Mock.Of<INotificationDispatcher>(), Mock.Of<ILeaveRequestConflictProvider>(),
-            NoForwardTarget(),
             Options.Create(new LeaveApprovalOptions()));
         var uow = new FakeUnitOfWork();
         var handler = new ApproveEditedLeaveRequestCommandHandler(f.CurrentUser.Object, employees.Object, f.Repository.Object,
@@ -192,7 +183,6 @@ public class LeaveInboxTests
         public Mock<ISender> Sender { get; } = new();
         public InMemoryInboxDecisionJournal Journal { get; } = new();
         public FakeUnitOfWork UnitOfWork { get; } = new();
-        public Mock<IConversationPoster> Poster { get; } = new();
         public Mock<IConversationRepository> Conversations { get; } = new();
         public List<LeaveApprovalState> States { get; } = new();
 
@@ -231,8 +221,7 @@ public class LeaveInboxTests
 
         public LeaveInboxSourceProvider Provider() => new(
             CurrentUser.Object, Employees.Object, Approvals.Object, Requests.Object,
-            NoForwardTarget(),
-            Sender.Object, Journal, UnitOfWork, Poster.Object, Conversations.Object, new FakeDateTimeProvider { UtcNow = At(15, 9) });
+            Sender.Object, Journal, UnitOfWork, Conversations.Object, new FakeDateTimeProvider { UtcNow = At(15, 9) });
     }
 
     [Fact]
@@ -246,17 +235,6 @@ public class LeaveInboxTests
 
         forFirst.Should().ContainSingle(i => i.Id == state.Request.Id && i.Direction == InboxDirections.Received && i.IsPending);
         forSecond.Should().BeEmpty();
-    }
-
-    [Fact]
-    public async Task After_a_forward_the_new_approver_sees_the_request_and_the_old_one_does_not()
-    {
-        var f = new ProviderFixture();
-        var state = f.Add(LeaveApprovalModes.AnyOne, (f.First, LeaveRequestApproverStatuses.Forwarded), (f.Second, LeaveRequestApproverStatuses.Pending));
-
-        (await f.Provider().ListAsync(f.TenantId, new InboxQuery(), f.Second.Id, default))
-            .Should().ContainSingle(i => i.Id == state.Request.Id && i.IsPending);
-        (await f.Provider().ListAsync(f.TenantId, new InboxQuery(), f.First.Id, default)).Should().BeEmpty();
     }
 
     [Fact]
@@ -291,34 +269,8 @@ public class LeaveInboxTests
         asAdded.Should().NotBeNull();
         asAdded!.Item.AvailableActions.Should().BeEmpty();
         asAdded.ChangeSet.Should().OnlyContain(c => !c.Editable);
-        asApprover!.Item.AvailableActions.Select(a => a.Key).Should().Contain(["approve", "reject", "request_info"]);
+        asApprover!.Item.AvailableActions.Select(a => a.Key).Should().Contain(["approve", "reject"]);
         asApprover.ChangeSet.Where(c => c.Editable).Select(c => c.Field).Should().Equal("startAt", "endAt");
-    }
-
-    [Fact]
-    public async Task Ask_for_information_runs_the_leave_command_posts_the_question_into_the_chat_and_journals_it()
-    {
-        var f = new ProviderFixture();
-        var state = f.Add(LeaveApprovalModes.AnyOne, (f.First, LeaveRequestApproverStatuses.Pending));
-        f.Sender.Setup(s => s.Send(It.Is<RequestLeaveInformationCommand>(c => c.RequestId == state.Request.Id && c.Question == "Which dates exactly?"),
-                It.IsAny<CancellationToken>()))
-            .Callback(() => state.Request.Status = LeaveRequestStatuses.InformationRequested)
-            .ReturnsAsync(Result<LeaveApprovalDecisionResponse>.Success(null!));
-        var published = false;
-        f.Poster.Setup(p => p.PostAsync(f.TenantId, new ItemRef("leave", "request", state.Request.Id), f.First.Id, "Which dates exactly?",
-                ConversationMessageTags.InfoRequest, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(() => () => { published = true; return Task.CompletedTask; });
-
-        var result = await f.Provider().ExecuteActionAsync(f.TenantId, "request", state.Request.Id, "request_info",
-            JsonSerializer.SerializeToElement(new { comment = "Which dates exactly?" }), f.First.Id, default);
-
-        result.IsSuccess.Should().BeTrue(result.Error);
-        published.Should().BeTrue("the chat message is announced after the commit");
-        var row = f.Journal.Entries.Should().ContainSingle().Subject;
-        (row.Action, row.ActorEmployeeId).Should().Be(("request_info", f.First.Id));
-        LeaveDecisionSnapshot.Parse(row.BeforeJson)!.Status.Should().Be(LeaveRequestStatuses.Pending);
-        LeaveDecisionSnapshot.Parse(row.AfterJson)!.Status.Should().Be(LeaveRequestStatuses.InformationRequested);
-        result.Value!.AffectedEmployeeIds.Should().BeEquivalentTo([f.Requester.Id, f.First.Id]);
     }
 
     [Fact]
@@ -360,17 +312,22 @@ public class LeaveInboxTests
     }
 
     [Fact]
-    public async Task Replying_to_an_information_request_needs_the_employee_self_service_permission()
+    public async Task Only_the_requester_can_cancel_from_the_inbox_even_with_leave_manage()
     {
         var f = new ProviderFixture();
-        var state = f.Add(LeaveApprovalModes.AnyOne, (f.First, LeaveRequestApproverStatuses.InformationRequested));
-        f.CurrentUser.Setup(x => x.HasPermission("leave:read-own")).Returns(false);
+        var state = f.Add(LeaveApprovalModes.AnyOne, (f.First, LeaveRequestApproverStatuses.Pending));
+        f.CurrentUser.Setup(x => x.HasPermission("leave:manage")).Returns(true);
 
-        var result = await f.Provider().ExecuteActionAsync(f.TenantId, "request", state.Request.Id, "respond_info",
-            JsonSerializer.SerializeToElement(new { comment = "here" }), f.Requester.Id, default);
+        var asApprover = await f.Provider().GetDetailAsync(f.TenantId, "request", state.Request.Id, f.First.Id, default);
+        var asRequester = await f.Provider().GetDetailAsync(f.TenantId, "request", state.Request.Id, f.Requester.Id, default);
+        var approverCancel = await f.Provider().ExecuteActionAsync(f.TenantId, "request", state.Request.Id, "cancel",
+            JsonSerializer.SerializeToElement(new { comment = "no" }), f.First.Id, default);
 
-        result.StatusCode.Should().Be(403);
+        asApprover!.Item.AvailableActions.Select(a => a.Key).Should().NotContain("cancel");
+        asRequester!.Item.AvailableActions.Select(a => a.Key).Should().Contain("cancel");
+        approverCancel.StatusCode.Should().Be(403);
         f.Sender.Invocations.Should().BeEmpty();
+        f.Journal.Entries.Should().BeEmpty();
     }
 
     [Fact]
@@ -544,26 +501,5 @@ public class LeaveInboxTests
 
         result.StatusCode.Should().Be(409);
         result.Error.Should().Contain("can no longer cover");
-    }
-
-    [Fact]
-    public async Task Undoing_a_forward_removes_the_added_approver_unless_they_already_acted()
-    {
-        var f = new RevertFixture();
-        var target = new LeaveRequestApprover { Id = Guid.NewGuid(), LeaveRequestId = f.State.Request.Id, ApproverEmployeeId = Guid.NewGuid(),
-            SequenceOrder = 1, Status = LeaveRequestApproverStatuses.Pending };
-        f.Decide(LeaveInboxActions.Forward, s =>
-        {
-            s.Approvers[0].Status = LeaveRequestApproverStatuses.Forwarded;
-            ((List<LeaveRequestApprover>)s.Approvers).Add(target);
-        });
-
-        target.Status = LeaveRequestApproverStatuses.Approved;
-        (await f.Revert()).Error.Should().Be(LeaveDecisionReverter.ForwardActed);
-
-        target.Status = LeaveRequestApproverStatuses.Pending;
-        (await f.Revert()).IsSuccess.Should().BeTrue();
-        f.Approvals.Verify(x => x.RemoveApprover(target), Times.Once);
-        f.State.Approvers[0].Status.Should().Be(LeaveRequestApproverStatuses.Pending);
     }
 }

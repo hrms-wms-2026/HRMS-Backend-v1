@@ -71,100 +71,6 @@ public class LeaveApprovalDecisionServiceTests
     }
 
     [Fact]
-    public async Task RequestInfoAsync_PausesRequestAndKeepsPendingBalanceReserved()
-    {
-        var harness = Harness.Create(LeaveRequestStatuses.Pending, paidHours: 2m, pendingHours: 2m, usedHours: 1m);
-        var result = await harness.Sut.RequestInfoAsync(harness.Request.Id, "Need certificate", CancellationToken.None);
-        result.IsSuccess.Should().BeTrue();
-        harness.Request.Status.Should().Be(LeaveRequestStatuses.InformationRequested);
-        harness.Approver.Status.Should().Be(LeaveRequestApproverStatuses.InformationRequested);
-        harness.Entitlement.PendingHours.Should().Be(2m);
-    }
-
-    [Fact]
-    public async Task RespondInfoAsync_ResumesRequestForSameApprover()
-    {
-        var harness = Harness.Create(LeaveRequestStatuses.InformationRequested, paidHours: 1m, pendingHours: 1m, usedHours: 0m);
-        harness.Approver.Status = LeaveRequestApproverStatuses.InformationRequested;
-        harness.Employee.Id = harness.Request.EmployeeId;
-        var result = await harness.Sut.RespondInfoAsync(harness.Request.Id, "Attached", [], CancellationToken.None);
-        result.IsSuccess.Should().BeTrue();
-        harness.Request.Status.Should().Be(LeaveRequestStatuses.Pending);
-        harness.Approver.Status.Should().Be(LeaveRequestApproverStatuses.Pending);
-        harness.InfoMessages.Should().ContainSingle();
-    }
-
-    [Fact]
-    public async Task ForwardAsync_HandsTheRequestToTheNextApproverAndKeepsItPending()
-    {
-        var harness = Harness.Create(LeaveRequestStatuses.Pending);
-        var managerId = Guid.NewGuid();
-        harness.ForwardTarget = managerId;
-
-        var result = await harness.Sut.ForwardAsync(harness.Request.Id, "  Long leave, please decide  ", CancellationToken.None);
-
-        result.IsSuccess.Should().BeTrue();
-        harness.Request.Status.Should().Be(LeaveRequestStatuses.Pending);
-        harness.Approver.Status.Should().Be(LeaveRequestApproverStatuses.Forwarded);
-        harness.Approver.Comment.Should().Be("Long leave, please decide");
-        harness.Approver.DecidedAt.Should().NotBeNull();
-        harness.AddedApprovers.Should().ContainSingle(a =>
-            a.ApproverEmployeeId == managerId &&
-            a.Status == LeaveRequestApproverStatuses.Pending &&
-            a.SequenceOrder == harness.Approver.SequenceOrder &&
-            a.LeaveRequestId == harness.Request.Id);
-    }
-
-    [Fact]
-    public async Task ForwardAsync_WhenNobodyIsAbove_ReturnsConflictAndChangesNothing()
-    {
-        var harness = Harness.Create(LeaveRequestStatuses.Pending);
-        harness.ForwardTarget = null;
-
-        var result = await harness.Sut.ForwardAsync(harness.Request.Id, null, CancellationToken.None);
-
-        result.StatusCode.Should().Be(409);
-        harness.Approver.Status.Should().Be(LeaveRequestApproverStatuses.Pending);
-        harness.AddedApprovers.Should().BeEmpty();
-    }
-
-    [Fact]
-    public async Task ForwardAsync_WhenTargetIsTheRequester_ReturnsConflict()
-    {
-        var harness = Harness.Create(LeaveRequestStatuses.Pending);
-        harness.ForwardTarget = harness.Request.EmployeeId;
-
-        var result = await harness.Sut.ForwardAsync(harness.Request.Id, null, CancellationToken.None);
-
-        result.StatusCode.Should().Be(409);
-        harness.AddedApprovers.Should().BeEmpty();
-    }
-
-    [Fact]
-    public async Task ForwardAsync_WhenCallerIsNotTheActionableApprover_ReturnsForbidden()
-    {
-        var harness = Harness.Create(LeaveRequestStatuses.Pending, otherApprover: true);
-        harness.ForwardTarget = Guid.NewGuid();
-
-        var result = await harness.Sut.ForwardAsync(harness.Request.Id, null, CancellationToken.None);
-
-        result.StatusCode.Should().Be(403);
-        harness.AddedApprovers.Should().BeEmpty();
-    }
-
-    [Fact]
-    public async Task ForwardAsync_WhenRequestIsFinal_ReturnsConflict()
-    {
-        var harness = Harness.Create(LeaveRequestStatuses.Approved);
-        harness.ForwardTarget = Guid.NewGuid();
-
-        var result = await harness.Sut.ForwardAsync(harness.Request.Id, null, CancellationToken.None);
-
-        result.StatusCode.Should().Be(409);
-        harness.AddedApprovers.Should().BeEmpty();
-    }
-
-    [Fact]
     public async Task ChangeDecision_ApprovedToRejected_GivesTheUsedHoursBack()
     {
         var harness = Harness.Create(LeaveRequestStatuses.Approved, paidHours: 8m, pendingHours: 0m, usedHours: 8m);
@@ -262,9 +168,7 @@ public class LeaveApprovalDecisionServiceTests
         public LeaveEntitlement Entitlement { get; }
         public Employee Employee { get; }
         public List<LeaveBalanceAudit> Audits { get; } = [];
-        public List<LeaveRequestInfoMessage> InfoMessages { get; } = [];
         public List<LeaveRequestApprover> AddedApprovers { get; } = [];
-        public Guid? ForwardTarget { get; set; }
         public LeaveApprovalDecisionService Sut { get; }
 
         private Harness(string status, bool otherApprover, bool selfApprove, decimal paidHours, decimal pendingHours, decimal usedHours)
@@ -350,12 +254,9 @@ public class LeaveApprovalDecisionServiceTests
                         LastName = "Nair",
                         HireDate = new DateOnly(2024, 1, 1)
                     },
-                    "Annual Leave", "AL", LeaveApprovalModes.AnyOne, [Approver], InfoMessages));
+                    "Annual Leave", "AL", LeaveApprovalModes.AnyOne, [Approver]));
             repo.Setup(x => x.AddBalanceAuditAsync(It.IsAny<LeaveBalanceAudit>(), It.IsAny<CancellationToken>()))
                 .Callback<LeaveBalanceAudit, CancellationToken>((a, _) => Audits.Add(a))
-                .Returns(Task.CompletedTask);
-            repo.Setup(x => x.AddInfoMessageAsync(It.IsAny<LeaveRequestInfoMessage>(), It.IsAny<CancellationToken>()))
-                .Callback<LeaveRequestInfoMessage, CancellationToken>((m, _) => InfoMessages.Add(m))
                 .Returns(Task.CompletedTask);
             repo.Setup(x => x.AreAvailableFileRecordsAsync(tenantId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(true);
@@ -377,12 +278,6 @@ public class LeaveApprovalDecisionServiceTests
                     It.IsAny<Guid?>(),
                     It.IsAny<CancellationToken>()))
                 .Returns(Task.CompletedTask);
-            outbox.Setup(x => x.EnqueueAsync(
-                    It.IsAny<string>(),
-                    It.IsAny<LeaveInformationRequestedPayload>(),
-                    It.IsAny<Guid?>(),
-                    It.IsAny<CancellationToken>()))
-                .Returns(Task.CompletedTask);
             var notifications = new Mock<INotificationDispatcher>();
             notifications.Setup(x => x.SendTemplatedAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<IReadOnlyDictionary<string, string>>(), It.IsAny<string?>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
                 .Returns(Task.CompletedTask);
@@ -390,16 +285,9 @@ public class LeaveApprovalDecisionServiceTests
             conflicts.Setup(x => x.ListConflictsAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<DateOnly>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync([]);
 
-            var approverResolver = new Mock<ILeaveApproverResolver>();
-            approverResolver.Setup(x => x.ResolveAsync(tenantId, Employee.Id, It.IsAny<DateOnly>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
-                .ReturnsAsync(() => new LeaveApproverResolution(ForwardTarget is { } target
-                    ? [new LeaveApproverResolutionRow(target, 1, null)]
-                    : []));
-
             Sut = new LeaveApprovalDecisionService(
                 currentUser.Object, clock.Object, employees.Object, repo.Object,
                 outbox.Object, notifications.Object, conflicts.Object,
-                new LeaveForwardTargetResolver(approverResolver.Object),
                 Options.Create(new LeaveApprovalOptions { AllowSelfApproval = false }));
         }
 

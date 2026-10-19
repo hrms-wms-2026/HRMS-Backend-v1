@@ -34,7 +34,7 @@ public class NotificationEventMigrationTests
     /// catalog must not offer a second, orchestrator email.</summary>
     private static readonly string[] ProducerSendsOwnEmail =
     [
-        "leave_request_approved", "leave_request_rejected", "leave_request_information_requested",
+        "leave_request_approved", "leave_request_rejected",
         "leave_request_cancelled_by_employee", "leave_request_cancelled_by_hr", "leave_request_partially_cancelled",
         "calendar_event_participant_added", "calendar_event_updated", "calendar_event_cancelled",
         "calendar_event_participant_removed", "calendar_event_meeting_link_removed"

@@ -45,28 +45,24 @@ public sealed class LeaveInboxSourceProvider : IInboxSourceProvider, IInboxBulkA
     private readonly IEmployeeRepository _employees;
     private readonly ILeaveApprovalRepository _approvals;
     private readonly ILeaveRequestRepository _requests;
-    private readonly LeaveForwardTargetResolver _forward;
     private readonly ISender _sender;
     private readonly IInboxDecisionJournal _journal;
     private readonly IUnitOfWork _unitOfWork;
-    private readonly IConversationPoster _poster;
     private readonly IConversationRepository _conversations;
     private readonly IDateTimeProvider _clock;
 
     public LeaveInboxSourceProvider(
         ICurrentUser currentUser, IEmployeeRepository employees, ILeaveApprovalRepository approvals, ILeaveRequestRepository requests,
-        LeaveForwardTargetResolver forward, ISender sender, IInboxDecisionJournal journal, IUnitOfWork unitOfWork,
-        IConversationPoster poster, IConversationRepository conversations, IDateTimeProvider clock)
+        ISender sender, IInboxDecisionJournal journal, IUnitOfWork unitOfWork,
+        IConversationRepository conversations, IDateTimeProvider clock)
     {
         _currentUser = currentUser;
         _employees = employees;
         _approvals = approvals;
         _requests = requests;
-        _forward = forward;
         _sender = sender;
         _journal = journal;
         _unitOfWork = unitOfWork;
-        _poster = poster;
         _conversations = conversations;
         _clock = clock;
     }
@@ -166,14 +162,13 @@ public sealed class LeaveInboxSourceProvider : IInboxSourceProvider, IInboxBulkA
 
         var actions = new List<InboxAction>();
         if (actionable)
-            actions.AddRange(await ReceivedActionsWithForwardAsync(tenantId, state, caller.Id, ct));
+            actions.AddRange(ReceivedActions());
         else if (isApprover && _currentUser.HasPermission(LeaveApprovePermission)
                  && LeaveDecisionChangeRules.CanChange(state, caller.Id, _clock.UtcNow))
             actions.Add(new InboxAction(LeaveInboxActions.ChangeDecision, "Change decision", "neutral", NeedsComment: true, NeedsPayload: true));
+        // Only the requester can cancel from the Inbox; approvers decide (approve/reject/change decision).
         if (isRequester)
             actions.AddRange(SentActions(state.Request, caller.Id));
-        else if (_currentUser.HasPermission(LeaveManagePermission) && IsCancellable(state.Request))
-            actions.Add(new InboxAction(LeaveInboxActions.Cancel, "Cancel leave", "danger", NeedsComment: true, NeedsPayload: false));
 
         var direction = actionable || isApprover ? InboxDirections.Received : isRequester ? InboxDirections.Sent : InboxDirections.Info;
         var item = Item(ListRow.Of(state), direction, actionable || (isRequester && IsOpen(state.Request)), actions);
@@ -196,8 +191,6 @@ public sealed class LeaveInboxSourceProvider : IInboxSourceProvider, IInboxBulkA
         // The Inbox calls the Leave commands directly, so it must hold the same permission the Leave endpoints require.
         if (!MayRun(action))
             return Result<InboxActionResult>.Forbidden(MissingPermission);
-        var subject = new ItemRef(Source, kind, id);
-        Func<Task>? afterCommit = null;
         if (action == LeaveInboxActions.Cancel)
             return await CancelAsync(tenantId, id, comment, BodyString(body, "effectiveDate"), callerEmployeeId, ct);
 
@@ -215,33 +208,15 @@ public sealed class LeaveInboxSourceProvider : IInboxSourceProvider, IInboxBulkA
                 ? await _sender.Send(new ApproveEditedLeaveRequestCommand(id, newRange.StartAt, newRange.EndAt, comment), t)
                 : await _sender.Send(new ApproveLeaveRequestCommand(id, comment), t),
             LeaveInboxActions.Reject => async t => await _sender.Send(new RejectLeaveRequestCommand(id, comment ?? string.Empty), t),
-            LeaveInboxActions.Forward => async t => await _sender.Send(new ForwardLeaveRequestCommand(id, comment), t),
             LeaveInboxActions.ChangeDecision => async t =>
                 await _sender.Send(new ChangeLeaveDecisionCommand(id, BodyString(body, "decision") ?? string.Empty, comment), t),
-            LeaveInboxActions.RequestInfo => async t =>
-            {
-                var r = await _sender.Send(new RequestLeaveInformationCommand(id, comment ?? string.Empty), t);
-                if (r.IsSuccess)
-                    afterCommit = await _poster.PostAsync(tenantId, subject, callerEmployeeId, comment!, ConversationMessageTags.InfoRequest, t);
-                return r;
-            },
-            LeaveInboxActions.RespondInfo => async t =>
-            {
-                var r = await _sender.Send(new RespondLeaveInformationCommand(id, comment ?? string.Empty, []), t);
-                if (r.IsSuccess)
-                    afterCommit = await _poster.PostAsync(tenantId, subject, callerEmployeeId, comment!, ConversationMessageTags.InfoResponse, t);
-                return r;
-            },
             _ => null,
         };
 
         if (run is null)
             return Result<InboxActionResult>.UnprocessableEntity(UnknownAction);
 
-        var outcome = await JournaledAsync(tenantId, id, action, callerEmployeeId, comment, beforeJson, run, ct);
-        if (outcome.IsSuccess && afterCommit is not null)
-            await afterCommit();
-        return outcome;
+        return await JournaledAsync(tenantId, id, action, callerEmployeeId, comment, beforeJson, run, ct);
     }
 
     public async Task<IReadOnlyList<(ItemRef Ref, Result<InboxActionResult> Result)>?> ExecuteBulkAsync(
@@ -290,6 +265,8 @@ public sealed class LeaveInboxSourceProvider : IInboxSourceProvider, IInboxBulkA
         var before = await _approvals.GetStateAsync(tenantId, id, ct);
         if (before is null)
             return Result<InboxActionResult>.NotFound("Leave request not found.");
+        if (before.Request.EmployeeId != callerEmployeeId)
+            return Result<InboxActionResult>.Forbidden("Only the requester can cancel this leave request.");
         DateOnly? effective = DateOnly.TryParse(effectiveDate, CultureInfo.InvariantCulture, out var date) ? date : null;
         var beforeJson = LeaveDecisionSnapshot.Of(before).ToJson();
         return await JournaledAsync(tenantId, id, LeaveInboxActions.Cancel, callerEmployeeId, reason, beforeJson, async t =>
@@ -345,9 +322,8 @@ public sealed class LeaveInboxSourceProvider : IInboxSourceProvider, IInboxBulkA
     /// <summary>The permission each Leave endpoint requires (LeaveApprovalsController / LeaveRequestsController).</summary>
     private bool MayRun(string action) => action switch
     {
-        LeaveInboxActions.Approve or LeaveInboxActions.Reject or LeaveInboxActions.RequestInfo or LeaveInboxActions.Forward
+        LeaveInboxActions.Approve or LeaveInboxActions.Reject
             or LeaveInboxActions.ChangeDecision => _currentUser.HasPermission(LeaveApprovePermission),
-        LeaveInboxActions.RespondInfo => _currentUser.HasPermission(LeaveReadOwnPermission),
         LeaveInboxActions.Cancel => _currentUser.HasPermission(LeaveReadOwnPermission) || _currentUser.HasPermission(LeaveManagePermission),
         _ => true,
     };
@@ -358,37 +334,21 @@ public sealed class LeaveInboxSourceProvider : IInboxSourceProvider, IInboxBulkA
         => state.Approvers.Select(a => a.ApproverEmployeeId).Append(state.Request.EmployeeId).Distinct().ToList();
 
     private static bool IsOpen(LeaveRequest request)
-        => request.Status is LeaveRequestStatuses.Pending or LeaveRequestStatuses.InformationRequested;
+        => request.Status == LeaveRequestStatuses.Pending;
 
     private bool IsCancellable(LeaveRequest request)
-        => request.Status is LeaveRequestStatuses.Pending or LeaveRequestStatuses.InformationRequested or LeaveRequestStatuses.Approved
+        => request.Status is LeaveRequestStatuses.Pending or LeaveRequestStatuses.Approved
            && request.EndAt > _clock.UtcNow;
 
     private static List<InboxAction> ReceivedActions() =>
     [
         new(LeaveInboxActions.Approve, "Approve", "primary", NeedsComment: false, NeedsPayload: false),
         new(LeaveInboxActions.Reject, "Reject", "danger", NeedsComment: true, NeedsPayload: false),
-        new(LeaveInboxActions.RequestInfo, "Ask for information", "neutral", NeedsComment: true, NeedsPayload: false),
     ];
-
-    private async Task<List<InboxAction>> ReceivedActionsWithForwardAsync(Guid tenantId, LeaveApprovalState state, Guid caller, CancellationToken ct)
-    {
-        var actions = ReceivedActions();
-        if (await _forward.ResolveAsync(tenantId, state, caller, ct) is { } target)
-        {
-            var person = await _employees.GetByIdAsync(tenantId, target, ct);
-            var name = person is null ? "your manager" : $"{person.FirstName} {person.LastName}".Trim();
-            actions.Add(new InboxAction(LeaveInboxActions.Forward, $"Send to {name}", "neutral", NeedsComment: false, NeedsPayload: false,
-                new Dictionary<string, string> { ["forwardTo"] = name, ["forwardToId"] = target.ToString() }));
-        }
-        return actions;
-    }
 
     private List<InboxAction> SentActions(LeaveRequest request, Guid caller)
     {
         var actions = new List<InboxAction>();
-        if (request.Status == LeaveRequestStatuses.InformationRequested && request.EmployeeId == caller)
-            actions.Add(new InboxAction(LeaveInboxActions.RespondInfo, "Reply", "primary", NeedsComment: true, NeedsPayload: false));
         if (IsCancellable(request))
             actions.Add(new InboxAction(LeaveInboxActions.Cancel, "Cancel request", "danger", NeedsComment: true, NeedsPayload: false));
         return actions;
@@ -402,7 +362,7 @@ public sealed class LeaveInboxSourceProvider : IInboxSourceProvider, IInboxBulkA
         public static ListRow Of(LeaveApprovalState state) => new(
             state.Request, $"{state.Employee.FirstName} {state.Employee.LastName}".Trim(), state.Employee.LegalEntityId,
             state.Employee.DepartmentId, state.LeaveTypeName,
-            state.Approvers.Where(a => a.Status is LeaveRequestApproverStatuses.Pending or LeaveRequestApproverStatuses.InformationRequested)
+            state.Approvers.Where(a => a.Status == LeaveRequestApproverStatuses.Pending)
                 .OrderBy(a => a.SequenceOrder).Select(a => (Guid?)a.ApproverEmployeeId).FirstOrDefault());
 
         public static ListRow Of(LeaveRequest request, ONEVO.Domain.Features.CoreHr.Entities.Employee? employee, string? employeeName, string typeName)
@@ -477,7 +437,6 @@ public sealed class LeaveInboxSourceProvider : IInboxSourceProvider, IInboxBulkA
             paidHours = state.Request.PaidHours,
             unpaidHours = state.Request.UnpaidHours,
             approvalMode = state.ApprovalMode,
-            infoMessages = state.InfoMessages.Select(m => new { m.SenderEmployeeId, m.Message, m.CreatedAt }),
         }, new JsonSerializerOptions(JsonSerializerDefaults.Web));
     }
 
@@ -496,8 +455,6 @@ public sealed class LeaveInboxSourceProvider : IInboxSourceProvider, IInboxBulkA
             {
                 LeaveRequestApproverStatuses.Approved => "Approved",
                 LeaveRequestApproverStatuses.Rejected => "Rejected",
-                LeaveRequestApproverStatuses.Forwarded => "Forwarded",
-                LeaveRequestApproverStatuses.InformationRequested => "Asked for information",
                 LeaveRequestApproverStatuses.Skipped => "Skipped",
                 LeaveRequestApproverStatuses.Cancelled => "Cancelled",
                 _ => "Waiting for approval",
@@ -506,9 +463,8 @@ public sealed class LeaveInboxSourceProvider : IInboxSourceProvider, IInboxBulkA
                 label += $" (delegate for {Name(from)})";
             var stepState = row.Status switch
             {
-                LeaveRequestApproverStatuses.Pending or LeaveRequestApproverStatuses.InformationRequested
-                    => row.ApproverEmployeeId == currentApprover || row.Status == LeaveRequestApproverStatuses.InformationRequested
-                        ? InboxStepStates.Current : InboxStepStates.Upcoming,
+                LeaveRequestApproverStatuses.Pending
+                    => row.ApproverEmployeeId == currentApprover ? InboxStepStates.Current : InboxStepStates.Upcoming,
                 _ => InboxStepStates.Done,
             };
             steps.Add(new InboxStep($"approver:{row.Id}", label, new InboxPerson(row.ApproverEmployeeId, Name(row.ApproverEmployeeId)),

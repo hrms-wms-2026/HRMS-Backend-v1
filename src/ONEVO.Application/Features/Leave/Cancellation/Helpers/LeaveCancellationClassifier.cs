@@ -33,7 +33,7 @@ public sealed class LeaveCancellationClassifier
         if (endDate < businessDate)
             return Result<LeaveCancellationClassification>.Conflict(LeaveCancellationMessages.PeriodPassed);
 
-        if (status is LeaveRequestStatuses.Pending or LeaveRequestStatuses.InformationRequested)
+        if (status == LeaveRequestStatuses.Pending)
         {
             return Result<LeaveCancellationClassification>.Success(
                 new LeaveCancellationClassification(LeaveCancellationKind.PendingStyle, businessDate, null));

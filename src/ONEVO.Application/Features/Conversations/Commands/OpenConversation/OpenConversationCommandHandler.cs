@@ -64,6 +64,13 @@ public sealed class OpenConversationCommandHandler : IRequestHandler<OpenConvers
         if (await EnsureBaseRowsAsync(tenantId, context, ct))
             context = await _access.AuthorizeAsync(tenantId, conversation, subjectInfo, caller.Value, ct) ?? context;
 
+        if (subjectInfo.EvidenceAt is { } evidenceAt)
+            await _conversations.AddMessageIfMissingAsync(new ConversationMessage
+            {
+                Id = EvidenceMessageId(conversation.Id), TenantId = tenantId, ConversationId = conversation.Id,
+                Kind = ConversationMessageKinds.Evidence, BodyHtml = string.Empty, CreatedById = _currentUser.UserId, CreatedAt = evidenceAt
+            }, ct);
+
         var page = await _conversations.ListMessagesAsync(tenantId, conversation.Id, before: null, ConversationRules.DefaultPageSize + 1, ct);
         var hasMore = page.Count > ConversationRules.DefaultPageSize;
         var messages = page.Take(ConversationRules.DefaultPageSize).Reverse().ToList();
@@ -75,6 +82,13 @@ public sealed class OpenConversationCommandHandler : IRequestHandler<OpenConvers
             hasMore,
             context.RowOf(caller.Value)?.LastReadAt,
             subjectInfo.SubjectEmployeeId));
+    }
+
+    /// <summary>One evidence marker per conversation: its id is derived from the conversation's, so concurrent opens agree.</summary>
+    public static Guid EvidenceMessageId(Guid conversationId)
+    {
+        var hash = System.Security.Cryptography.MD5.HashData(System.Text.Encoding.UTF8.GetBytes($"conversation-evidence:{conversationId:N}"));
+        return new Guid(hash);
     }
 
     /// <summary>Gives each current base participant a row (it holds their read marker). True if any was added.</summary>

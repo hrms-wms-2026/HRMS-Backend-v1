@@ -285,7 +285,6 @@ public static class DependencyInjection
         services.AddScoped<
             ONEVO.Application.Features.Leave.Approval.RepositoryInterfaces.ILeaveApprovalRepository,
             ONEVO.Infrastructure.Persistence.Repositories.Leave.Approval.EfLeaveApprovalRepository>();
-        services.AddScoped<ONEVO.Application.Features.Leave.Approval.Services.LeaveForwardTargetResolver>();
         services.AddScoped<ONEVO.Application.Features.Leave.Approval.Commands.LeaveApprovalDecisionService>();
         services.AddScoped<ONEVO.Application.Features.Leave.Approval.Services.LeaveRequestRangeEditor>();
         // Monitoring exception cases in the Inbox (plan X1).
@@ -293,6 +292,8 @@ public static class DependencyInjection
         services.AddScoped<ONEVO.Application.Features.Monitoring.Exceptions.Inbox.ExceptionCaseActions>();
         services.AddScoped<ONEVO.Application.Features.Inbox.Contracts.IInboxSourceProvider, ONEVO.Application.Features.Monitoring.Exceptions.Inbox.ExceptionInboxSourceProvider>();
         services.AddScoped<ONEVO.Application.Features.Conversations.Contracts.IConversationSubjectResolver, ONEVO.Application.Features.Monitoring.Exceptions.Inbox.ExceptionConversationSubjectResolver>();
+        // A reviewer's reply on an open monitoring or calendar case acknowledges it.
+        services.AddScoped<ONEVO.Application.Features.Conversations.Contracts.IConversationReplyHook, ONEVO.Application.Features.Monitoring.Exceptions.Inbox.ExceptionCaseReplyAcknowledger>();
         services.AddScoped<ONEVO.Application.Features.Inbox.Revert.IInboxDecisionReverter, ONEVO.Application.Features.Monitoring.Exceptions.Inbox.ExceptionCaseReverter>();
         // Calendar meeting-exception cases in the Inbox (plan C3).
         services.AddInboxKind(ONEVO.Application.Features.Calendar.Inbox.CalendarInboxKinds.Descriptor);
@@ -351,6 +352,14 @@ public static class DependencyInjection
         services.AddScoped<ONEVO.Application.Features.CoreHr.BulkOnboarding.Commands.ValidateBulkOnboardingBatch.IBulkOnboardingValidationRunner,
             ONEVO.Application.Features.CoreHr.BulkOnboarding.Commands.ValidateBulkOnboardingBatch.BulkOnboardingValidationRunner>();
         services.AddScoped<IAccessGrantRequestRepository, EfAccessGrantRequestRepository>();
+        services.AddScoped<ISeatIncreaseRequestRepository, EfSeatIncreaseRequestRepository>();
+        services.AddScoped<IOnboardingInboxRepository, EfOnboardingInboxRepository>();
+        services.AddScoped<ONEVO.Application.Features.CoreHr.Onboarding.Services.OnboardingApprovers>();
+        // Position access and seat increase approvals in the Inbox.
+        foreach (var kind in ONEVO.Application.Features.CoreHr.Onboarding.Inbox.OnboardingInboxKinds.Descriptors)
+            services.AddInboxKind(kind);
+        services.AddScoped<ONEVO.Application.Features.Inbox.Contracts.IInboxSourceProvider, ONEVO.Application.Features.CoreHr.Onboarding.Inbox.OnboardingInboxSourceProvider>();
+        services.AddScoped<ONEVO.Application.Features.Conversations.Contracts.IConversationSubjectResolver, ONEVO.Application.Features.CoreHr.Onboarding.Inbox.OnboardingConversationSubjectResolver>();
         services.AddScoped<IChecklistTemplateRepository, EfChecklistTemplateRepository>();
         services.AddScoped<IEmployeeChecklistTaskRepository, EfEmployeeChecklistTaskRepository>();
         services.AddScoped<IOfficeProjectProvisioner, ONEVO.Infrastructure.Services.CoreHr.OfficeProjectProvisioner>();
@@ -521,7 +530,6 @@ public static class DependencyInjection
             ONEVO.Application.Features.Conversations.Services.ConversationAccess>();
         services.AddScoped<ONEVO.Application.Features.Conversations.Services.ConversationResponseBuilder>();
         services.AddScoped<ONEVO.Application.Features.Conversations.Services.ConversationNotifier>();
-        services.AddScoped<ONEVO.Application.Features.Conversations.Services.IConversationPoster, ONEVO.Application.Features.Conversations.Services.ConversationPoster>();
         services.AddScoped<ONEVO.Application.Features.Conversations.Services.IConversationUnreadCounts,
             ONEVO.Application.Features.Conversations.Services.ConversationUnreadCounts>();
         // Inbox router: fans out to every registered IInboxSourceProvider (one per module).

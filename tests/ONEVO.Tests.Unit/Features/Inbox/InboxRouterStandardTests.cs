@@ -73,7 +73,7 @@ public partial class InboxRouterTests
         _leave.Items.AddRange([LeaveItem(mine, "mine"), LeaveItem(overtaken, "overtaken")]);
         var now = T0.AddHours(1);
         var decision = _journal.Add(TenantId, new ItemRef("leave", "request", mine), InboxJournalActions.Approve, Me, now.AddMinutes(-10));
-        _journal.Add(TenantId, new ItemRef("leave", "request", overtaken), InboxJournalActions.Forward, Me, now.AddMinutes(-10));
+        _journal.Add(TenantId, new ItemRef("leave", "request", overtaken), InboxJournalActions.Reject, Me, now.AddMinutes(-10));
         _journal.Add(TenantId, new ItemRef("leave", "request", overtaken), InboxJournalActions.Approve, Other, now.AddMinutes(-5));
 
         var page = await Router().ListAsync(TenantId, Me, new InboxQuery(), default);

@@ -14,7 +14,7 @@ public sealed class ListMyLeaveRequestsQueryHandler
     : IRequestHandler<ListMyLeaveRequestsQuery, Result<IReadOnlyList<LeaveRequestListItemResponse>>>
 {
     private static readonly string[] AllowedStatuses =
-        [LeaveRequestStatuses.Pending, LeaveRequestStatuses.Approved, LeaveRequestStatuses.Rejected, LeaveRequestStatuses.Cancelled, LeaveRequestStatuses.InformationRequested];
+        [LeaveRequestStatuses.Pending, LeaveRequestStatuses.Approved, LeaveRequestStatuses.Rejected, LeaveRequestStatuses.Cancelled];
 
     private readonly ICurrentUser _currentUser;
     private readonly IEmployeeRepository _employees;
@@ -53,6 +53,6 @@ public sealed class ListMyLeaveRequestsQueryHandler
 
         return Result<IReadOnlyList<LeaveRequestListItemResponse>>.Success(
             rows.Select(row => LeaveRequestMapper.ToListItem(
-                row.Request, row.LeaveTypeName, row.LeaveTypeCode, row.ApprovedByName, row.InfoQuestion)).ToList());
+                row.Request, row.LeaveTypeName, row.LeaveTypeCode, row.ApprovedByName)).ToList());
     }
 }

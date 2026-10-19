@@ -96,8 +96,8 @@ public static class CalendarIncidentExclusions
 }
 
 /// <summary>CAL-ATT-NOSHOW: accepted or pending, the meeting ended and the employee never joined (provider) or used a
-/// meeting app for less than half of it (agent, "estimated"). Immediate (high) when the reporting manager organised it or
-/// it is a 1:1.</summary>
+/// meeting app for less than half of it (agent, "estimated"). Every no-show opens a case (the rule is immediate); severity
+/// is high when the reporting manager organised it or it is a 1:1.</summary>
 public sealed class NoShowRule : ICalendarIncidentRule
 {
     public string Code => CalendarRuleCodes.NoShow;

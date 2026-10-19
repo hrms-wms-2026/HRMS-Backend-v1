@@ -8,7 +8,6 @@ public static class CalendarExceptionDefaults
     public const int LateJoinMinutes = 10;
     public const int EarlyLeaveMinutes = 15;
     public const decimal MinAttendanceRatio = 0.50m;
-    public const int NoShowCount = 3;
     public const int LateCount = 5;
     public const int EarlyLeaveCount = 5;
     public const int NoResponseCount = 5;
@@ -58,8 +57,10 @@ public static class CalendarRuleCatalog
 
     public static readonly IReadOnlyDictionary<string, CalendarRuleSpec> Specs = new[]
     {
-        new CalendarRuleSpec(CalendarRuleCodes.NoShow, ExceptionType.MeetingNoShow, "Missed meetings",
-            CalendarExceptionDefaults.NoShowCount, CalendarExceptionDefaults.LongWindowDays, Medium),
+        // Immediate: one missed meeting (accepted or unanswered, then absent per the Teams/Zoom report or the desktop
+        // app usage) opens a case. Further misses attach to the open case.
+        new CalendarRuleSpec(CalendarRuleCodes.NoShow, ExceptionType.MeetingNoShow, "Missed meeting",
+            0, CalendarExceptionDefaults.LongWindowDays, Medium),
         new CalendarRuleSpec(CalendarRuleCodes.Late, ExceptionType.MeetingLateJoin, "Joins meetings late",
             CalendarExceptionDefaults.LateCount, CalendarExceptionDefaults.LongWindowDays, Low),
         new CalendarRuleSpec(CalendarRuleCodes.Early, ExceptionType.MeetingEarlyLeave, "Leaves meetings early",

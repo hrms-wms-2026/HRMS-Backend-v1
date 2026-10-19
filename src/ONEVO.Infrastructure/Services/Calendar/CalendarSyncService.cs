@@ -4,6 +4,7 @@ using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Calendar.RepositoryInterfaces;
 using ONEVO.Application.Features.Calendar.ServiceInterfaces;
 using ONEVO.Application.Features.Calendar.Services;
+using IEmployeeRepository = ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces.IEmployeeRepository;
 using ONEVO.Domain.Features.Calendar.Entities;
 
 namespace ONEVO.Infrastructure.Services.Calendar;
@@ -18,7 +19,8 @@ public sealed class CalendarSyncService(
     IEncryptionService encryption,
     IUnitOfWork unitOfWork,
     ILogger<CalendarSyncService> logger,
-    ICalendarNotificationSender? notifications = null)
+    ICalendarNotificationSender? notifications = null,
+    IEmployeeRepository? employees = null)
     : ICalendarSyncService
 {
     // Links that turned into a two-way conflict during the current run (plan C1 P1-6).
@@ -196,6 +198,18 @@ public sealed class CalendarSyncService(
         if (localEvent is null)
             return;
 
+        // Our own push coming back through the delta feed (new etag, same content). Touching the event here would
+        // bump UpdatedAt, the next push would PATCH it again, and Outlook would re-send its attendees an update
+        // every run - so only the etag moves.
+        if (localEvent.Title == displayTitle && localEvent.StartDate == start && localEvent.EndDate == end
+            && localEvent.IsAllDay == isAllDay && (localEvent.Location ?? "") == (displayLocation ?? ""))
+        {
+            link.ExternalEtag = etag;
+            link.LastSyncedAt = DateTimeOffset.UtcNow;
+            links.Update(link);
+            return;
+        }
+
         // Two-way conflict check: both sides changed since the last successful sync -> pull wins,
         // flag the link as conflict for later admin visibility (no resolution UI in this pass).
         // Deliberately compares against LastSuccessfulSyncAt, not LastSyncedAt: LastSyncedAt
@@ -262,12 +276,7 @@ public sealed class CalendarSyncService(
             }
             else
             {
-                var dto = new GraphEventDto(existingLink?.ExternalEventId ?? string.Empty, existingLink?.ExternalEtag, localEvent.Title,
-                    localEvent.Description, localEvent.StartDate, localEvent.EndDate, localEvent.IsAllDay, localEvent.Timezone, localEvent.Location, false, localEvent.IsPrivate);
-                var pushed = existingLink is null
-                    ? await msClient.CreateEventAsync(accessToken, dto, ct)
-                    : await msClient.UpdateEventAsync(accessToken, existingLink.ExternalEventId, dto, ct);
-                await UpsertOutboundLinkAsync(connection, localEvent.Id, existingLink, pushed.Id, pushed.Etag, calendarId, ct);
+                await PushToOutlookAsync(connection, accessToken, localEvent, existingLink, calendarId, ct);
             }
         }
 
@@ -286,6 +295,75 @@ public sealed class CalendarSyncService(
         // watermark must be normalized before the caller persists it, even though it represents the
         // same instant either way.
         return (lastPushed.UpdatedAt ?? lastPushed.CreatedAt).ToUniversalTime();
+    }
+
+    public async Task PushOutlookEventAsync(Guid tenantId, Guid connectionId, Guid calendarEventId, CancellationToken ct)
+    {
+        var connection = await connections.GetTrackedByIdForTenantAsync(tenantId, connectionId, ct);
+        if (connection is null || !CalendarOutlookInvites.PushesToOutlook(connection))
+            return;
+        var localEvent = await events.GetByIdForTenantAsync(tenantId, calendarEventId, ct);
+        if (localEvent is null || !CalendarOutlookInvites.IsPushable(localEvent) || localEvent.CreatedById != connection.UserId)
+            return;
+
+        var accessToken = await tokenProvider.GetFreshAccessTokenAsync(connection, "microsoft", ct);
+        if (accessToken is null)
+            return; // refresh failed - already marked ReauthRequired and saved.
+
+        var existingLink = await links.GetTrackedByCalendarEventAndConnectionAsync(tenantId, localEvent.Id, connection.Id, ct);
+        await PushToOutlookAsync(connection, accessToken, localEvent, existingLink, connection.ExternalCalendarId ?? connection.ExternalAccountEmail, ct);
+        await unitOfWork.SaveChangesAsync(ct);
+    }
+
+    public async Task DeleteOutlookEventAsync(Guid tenantId, Guid connectionId, string externalEventId, CancellationToken ct)
+    {
+        var connection = await connections.GetTrackedByIdForTenantAsync(tenantId, connectionId, ct);
+        if (connection is null || connection.Provider != CalendarExternalSources.OutlookCalendar)
+            return;
+        var accessToken = await tokenProvider.GetFreshAccessTokenAsync(connection, "microsoft", ct);
+        if (accessToken is null)
+            return;
+        await msClient.DeleteEventAsync(accessToken, externalEventId, ct);
+    }
+
+    private async Task PushToOutlookAsync(
+        ExternalCalendarConnection connection, string accessToken, CalendarEvent localEvent, ExternalCalendarEventLink? existingLink,
+        string calendarId, CancellationToken ct)
+    {
+        var attendees = await AttendeeEmailsAsync(connection, localEvent.Id, ct);
+        // Outlook's own invite carries only the body, so the join link has to travel in it.
+        var description = string.IsNullOrWhiteSpace(localEvent.MeetingLink)
+            ? localEvent.Description
+            : $"{localEvent.Description}{(string.IsNullOrWhiteSpace(localEvent.Description) ? "" : "\n\n")}Join: {localEvent.MeetingLink}";
+        var dto = new GraphEventDto(existingLink?.ExternalEventId ?? string.Empty, existingLink?.ExternalEtag, localEvent.Title,
+            description, localEvent.StartDate, localEvent.EndDate, localEvent.IsAllDay, localEvent.Timezone, localEvent.Location, false,
+            localEvent.IsPrivate, attendees);
+        var pushed = existingLink is null
+            ? await msClient.CreateEventAsync(accessToken, dto, ct)
+            : await msClient.UpdateEventAsync(accessToken, existingLink.ExternalEventId, dto, ct);
+        await UpsertOutboundLinkAsync(connection, localEvent.Id, existingLink, pushed.Id, pushed.Etag, calendarId, ct);
+    }
+
+    // Participants (by their employee email) plus external guests, minus the organizer's own mailbox.
+    // Null when employees can't be resolved, so a PATCH leaves Outlook's attendee list as it is.
+    private async Task<IReadOnlyList<string>?> AttendeeEmailsAsync(ExternalCalendarConnection connection, Guid eventId, CancellationToken ct)
+    {
+        if (employees is null)
+            return null;
+        var emails = new List<string>();
+        var participants = await events.GetParticipantsForEventsAsync(connection.TenantId, [eventId], ct);
+        if (participants.TryGetValue(eventId, out var list))
+            foreach (var participant in list)
+            {
+                var employee = await employees.GetByIdAsync(connection.TenantId, participant.EmployeeId, ct);
+                if (!string.IsNullOrWhiteSpace(employee?.Email))
+                    emails.Add(employee.Email);
+            }
+        emails.AddRange(await CalendarEventAudience.GuestEmailsAsync(events, connection.TenantId, eventId, ct));
+        return emails
+            .Where(e => !string.Equals(e, connection.ExternalAccountEmail, StringComparison.OrdinalIgnoreCase))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
     }
 
     private async Task UpsertOutboundLinkAsync(ExternalCalendarConnection connection, Guid calendarEventId, ExternalCalendarEventLink? existingLink, string externalEventId, string? etag, string calendarId, CancellationToken ct)

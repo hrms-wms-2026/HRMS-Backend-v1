@@ -90,27 +90,11 @@ public class EfLeaveRequestRepository : ILeaveRequestRepository
             .OrderByDescending(x => x.request.CreatedAt)
             .ToListAsync(ct);
 
-        var infoIds = rows
-            .Where(x => x.request.Status == LeaveRequestStatuses.InformationRequested)
-            .Select(x => x.request.Id)
-            .ToList();
-        var questions = new Dictionary<Guid, string>();
-        if (infoIds.Count > 0)
-        {
-            var messages = await _db.LeaveRequestInfoMessages.AsNoTracking()
-                .Where(message => message.TenantId == tenantId && infoIds.Contains(message.LeaveRequestId))
-                .OrderByDescending(message => message.CreatedAt)
-                .ToListAsync(ct);
-            foreach (var message in messages)
-                questions.TryAdd(message.LeaveRequestId, message.Message);
-        }
-
         return rows.Select(x => new LeaveRequestListRow(
             x.request,
             x.leaveType.Name,
             x.leaveType.Code,
-            string.IsNullOrWhiteSpace(x.ApprovedByName) ? null : x.ApprovedByName,
-            questions.GetValueOrDefault(x.request.Id))).ToList();
+            string.IsNullOrWhiteSpace(x.ApprovedByName) ? null : x.ApprovedByName)).ToList();
     }
 
     public async Task<IReadOnlyList<LeaveApprovalDelegateRow>> ListActiveDelegatesAsync(

@@ -503,7 +503,7 @@ public class AttendanceInboxTests
             UpdatedAt = Now,
         };
         f.LeaveApprovals.Setup(x => x.GetStateAsync(f.TenantId, leave.Id, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(() => new ONEVO.Application.Features.Leave.Approval.RepositoryInterfaces.LeaveApprovalState(leave, null, f.Worker, "Annual", "AL", "any_one", [], []));
+            .ReturnsAsync(() => new ONEVO.Application.Features.Leave.Approval.RepositoryInterfaces.LeaveApprovalState(leave, null, f.Worker, "Annual", "AL", "any_one", []));
         f.Sender.Setup(s => s.Send(It.IsAny<ONEVO.Application.Features.Leave.Approval.Commands.CreateApproverBackdatedLeaveCommand>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result<Guid>.Success(leave.Id));
         ONEVO.Application.Features.Leave.Cancellation.Commands.CancelLeaveRequestCommand? cancel = null;
@@ -543,7 +543,7 @@ public class AttendanceInboxTests
             UpdatedAt = Now.AddTicks(3), // the in-memory value the save interceptor set (100 ns precision)
         };
         f.LeaveApprovals.Setup(x => x.GetStateAsync(f.TenantId, leave.Id, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(() => new ONEVO.Application.Features.Leave.Approval.RepositoryInterfaces.LeaveApprovalState(leave, null, f.Worker, "Annual", "AL", "any_one", [], []));
+            .ReturnsAsync(() => new ONEVO.Application.Features.Leave.Approval.RepositoryInterfaces.LeaveApprovalState(leave, null, f.Worker, "Annual", "AL", "any_one", []));
         f.Sender.Setup(s => s.Send(It.IsAny<ONEVO.Application.Features.Leave.Approval.Commands.CreateApproverBackdatedLeaveCommand>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result<Guid>.Success(leave.Id));
         f.Sender.Setup(s => s.Send(It.IsAny<ONEVO.Application.Features.Leave.Cancellation.Commands.CancelLeaveRequestCommand>(), It.IsAny<CancellationToken>()))

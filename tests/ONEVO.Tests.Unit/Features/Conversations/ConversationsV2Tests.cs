@@ -357,12 +357,99 @@ public class ConversationsV2Tests
         await OpenedWithThirdAddedByApprover();
 
         (await PostAs(Approver, tag: ConversationMessageTags.Justification)).StatusCode.Should().Be(403);
-        (await PostAs(Subject, tag: ConversationMessageTags.InfoRequest)).StatusCode.Should().Be(422);
+        (await PostAs(Subject, tag: "info_request")).StatusCode.Should().Be(422);
         var justified = await PostAs(Subject, "<p>I was in a client meeting</p>", tag: ConversationMessageTags.Justification);
 
         justified.IsSuccess.Should().BeTrue();
         justified.Value!.Tag.Should().Be(ConversationMessageTags.Justification);
         (await OpenAs(Approver)).Value!.SubjectEmployeeId.Should().Be(Subject);
+    }
+
+    // ---- Replies ---------------------------------------------------------------------------------
+
+    private Task<Result<ConversationMessageResponse>> ReplyAs(Guid caller, Guid replyTo, string body = "<p>reply</p>")
+    {
+        Caller(caller);
+        return new PostConversationMessageCommandHandler(
+                _currentUser.Object, _identity.Object, Access(), _repo, _uow, Notifier(), Builder(), _realtime.Object,
+                NullLogger<PostConversationMessageCommandHandler>.Instance, _files.Object)
+            .Handle(new PostConversationMessageCommand(_conversationId, body, null, null, null, replyTo), default);
+    }
+
+    [Fact]
+    public async Task A_reply_carries_a_short_plain_quote_of_the_message_it_answers()
+    {
+        await OpenAs(Subject);
+        var original = (await PostAs(Subject, "<p>I was <b>on a call</b> at 9.</p>")).Value!;
+
+        var reply = await ReplyAs(Approver, original.Id);
+
+        reply.IsSuccess.Should().BeTrue(reply.Error);
+        reply.Value!.ReplyTo.Should().NotBeNull();
+        reply.Value.ReplyTo!.Id.Should().Be(original.Id);
+        reply.Value.ReplyTo.AuthorName.Should().Be("Sam");
+        reply.Value.ReplyTo.Excerpt.Should().Be("I was on a call at 9.");
+        _repo.Messages.Single(m => m.Id == reply.Value.Id).ReplyToMessageId.Should().Be(original.Id);
+    }
+
+    [Fact]
+    public async Task Listing_shows_the_quote_as_it_is_now_after_the_original_is_deleted()
+    {
+        await OpenAs(Subject);
+        var original = (await PostAs(Subject, "<p>first</p>")).Value!;
+        await ReplyAs(Approver, original.Id);
+        (await DeleteAs(Subject, original.Id)).IsSuccess.Should().BeTrue();
+
+        var opened = (await OpenAs(Approver)).Value!;
+
+        var reply = opened.Messages.Single(m => m.ReplyTo is not null);
+        reply.ReplyTo!.IsDeleted.Should().BeTrue();
+        reply.ReplyTo.Excerpt.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task A_reply_to_a_message_of_another_conversation_or_a_system_message_is_rejected()
+    {
+        await OpenAs(Subject);
+        var elsewhere = new ConversationMessage
+        {
+            Id = Guid.NewGuid(), TenantId = TenantId, ConversationId = Guid.NewGuid(), AuthorEmployeeId = Subject,
+            Kind = ConversationMessageKinds.Text, BodyHtml = "<p>other chat</p>", CreatedAt = DateTimeOffset.UtcNow
+        };
+        var system = new ConversationMessage
+        {
+            Id = Guid.NewGuid(), TenantId = TenantId, ConversationId = _conversationId,
+            Kind = ConversationMessageKinds.System, BodyHtml = "Hema was added", CreatedAt = DateTimeOffset.UtcNow
+        };
+        _repo.Messages.AddRange([elsewhere, system]);
+
+        (await ReplyAs(Subject, elsewhere.Id)).Error.Should().Be("The message you are replying to is not in this conversation.");
+        (await ReplyAs(Subject, system.Id)).Error.Should().Be("You cannot reply to that message.");
+    }
+
+    [Fact]
+    public async Task An_item_with_evidence_gets_one_empty_evidence_message_at_its_time_that_is_never_unread()
+    {
+        var detectedAt = DateTimeOffset.UtcNow.AddHours(-3);
+        _resolver.Subject = _resolver.Subject! with { EvidenceAt = detectedAt };
+
+        await OpenAs(Subject);
+        await OpenAs(Approver);
+        await PostAs(Subject, "<p>I can explain</p>");
+
+        var evidence = _repo.Messages.Where(m => m.Kind == ConversationMessageKinds.Evidence).ToList();
+        evidence.Should().ContainSingle();
+        evidence[0].BodyHtml.Should().BeEmpty();
+        evidence[0].AuthorEmployeeId.Should().BeNull();
+        evidence[0].CreatedAt.Should().Be(detectedAt);
+        evidence[0].Id.Should().Be(OpenConversationCommandHandler.EvidenceMessageId(_conversationId));
+
+        var unread = await _repo.CountUnreadAsync(TenantId, Approver, [Item]);
+        unread[Item].Should().Be(1);
+
+        var reply = await ReplyAs(Approver, evidence[0].Id, "<p>The photo looks fine to me</p>");
+        reply.Value!.ReplyTo!.Kind.Should().Be(ConversationMessageKinds.Evidence);
+        reply.Value.ReplyTo.Excerpt.Should().BeEmpty();
     }
 
     private sealed class Resolver : IConversationSubjectResolver

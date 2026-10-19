@@ -71,7 +71,9 @@ public sealed class WorkConversationSubjectResolver : IConversationSubjectResolv
             .Concat(deciders)
             .Append(request.DecidedByEmployeeId ?? Guid.Empty)
             .Where(p => p != Guid.Empty).Distinct().ToList();
-        return new ConversationSubject(people, $"{WorkInboxItemMapper.TypeLabel(request.ActionType)}: {request.TargetTitle}", request.ProjectId);
+        // The requested changes sit in the chat where the request was made, so people can reply to them.
+        return new ConversationSubject(people, $"{WorkInboxItemMapper.TypeLabel(request.ActionType)}: {request.TargetTitle}", request.ProjectId,
+            EvidenceAt: request.CreatedAt);
     }
 
     private async Task<ConversationSubject?> InvitationAsync(Guid tenantId, Guid id, CancellationToken ct)

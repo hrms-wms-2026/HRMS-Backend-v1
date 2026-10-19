@@ -45,10 +45,7 @@ public static class LeaveRequestApproverStatuses
     public const string Approved = "approved";
     public const string Rejected = "rejected";
     public const string Skipped = "skipped";
-    public const string InformationRequested = "information_requested";
     public const string Cancelled = "cancelled";
-    /// <summary>The approver handed the request up to their own manager, who now decides alone.</summary>
-    public const string Forwarded = "forwarded";
 }
 
 public static class LeaveRequestDayAllocationStatuses
@@ -63,7 +60,6 @@ public static class LeaveRequestStatuses
     public const string Approved = "approved";
     public const string Rejected = "rejected";
     public const string Cancelled = "cancelled";
-    public const string InformationRequested = "information_requested";
 }
 
 public static class LeaveBalanceChangeTypes
