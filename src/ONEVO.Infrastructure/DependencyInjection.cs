@@ -773,6 +773,9 @@ public static class DependencyInjection
             services.AddSingleton(typeof(ONEVO.Application.Features.Calendar.Exceptions.ICalendarIncidentRule), rule);
         services.AddScoped<ONEVO.Application.Features.Calendar.Exceptions.CalendarCaseService>();
         services.AddScoped<ONEVO.Application.Features.Calendar.Exceptions.CalendarIncidentEngine>();
+        // Task meetings feed the same C2 rules as calendar events (meetings Phase 2, spec 10).
+        services.AddScoped<ONEVO.Application.Features.Calendar.Exceptions.IEmployeeMeetingOccurrenceSource,
+            ONEVO.Application.Features.WorkManagement.Meetings.Services.TaskMeetingOccurrenceSource>();
         services.AddScoped<ONEVO.Application.Common.ServiceInterfaces.IOutboxMessageHandler, ONEVO.Application.Features.Calendar.OutboxHandlers.CalendarIncidentEvaluateOutboxHandler>();
         services.AddScoped<ONEVO.Application.Features.Inbox.Escalation.IInboxEscalationSweepSource, ONEVO.Application.Features.Calendar.Exceptions.CalendarExceptionEscalationSweepSource>();
         services.AddHostedService<ONEVO.Infrastructure.Services.Calendar.CalendarIncidentJob>();
