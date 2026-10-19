@@ -416,6 +416,8 @@ public static class DependencyInjection
         services.AddSingleton<ONEVO.Application.Features.WorkManagement.Meetings.Services.IMeetingRecurrence,
             Services.WorkManagement.Meetings.IcalNetMeetingRecurrence>();
         services.AddScoped<ONEVO.Application.Features.WorkManagement.Meetings.Services.MeetingCreateValidator>();
+        services.AddScoped<ONEVO.Application.Features.WorkManagement.Meetings.Services.IMeetingPlacementResolver,
+            ONEVO.Application.Features.WorkManagement.Meetings.Services.MeetingPlacementResolver>();
         services.AddScoped<ONEVO.Application.Features.WorkManagement.Meetings.Services.IMeetingTaskDefaults,
             ONEVO.Application.Features.WorkManagement.Meetings.Services.MeetingTaskDefaults>();
         services.AddScoped<ONEVO.Application.Features.WorkManagement.Meetings.RepositoryInterfaces.IMeetingOccurrenceWriter,

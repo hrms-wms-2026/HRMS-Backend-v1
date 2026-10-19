@@ -103,6 +103,10 @@ public class EfProjectRepository : IProjectRepository
         return values[0];
     }
 
+    public async Task<Project?> GetOfficeProjectAsync(Guid tenantId, CancellationToken ct = default)
+        => await _db.Projects.AsNoTracking()
+            .FirstOrDefaultAsync(p => p.TenantId == tenantId && p.SystemPurpose == ProjectSystemPurposes.Office, ct);
+
     public async Task<long> IncrementAndGetNextMeetingNumberAsync(Guid tenantId, Guid projectId, CancellationToken ct = default)
     {
         var values = await _db.Database.SqlQuery<long>($@"

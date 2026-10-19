@@ -14,6 +14,7 @@ public static class MeetingErrorCodes
     public const string InvalidTimezone = "meeting_invalid_timezone";
     public const string RecurrenceInvalid = "meeting_recurrence_invalid";
     public const string ModuleMemberRequired = "meeting_module_member_required";   // 403
+    public const string CalendarWriteRequired = "meeting_calendar_write_required"; // 403, Office meetings
     public const string ModuleUnavailable = "meeting_module_unavailable";
     public const string OfficeNotReady = "meeting_office_not_ready";               // 409, triggers a reconcile
     public const string ProviderNotConnected = "meeting_provider_not_connected";   // 409
