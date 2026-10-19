@@ -56,6 +56,40 @@ After the deploy:
 - `SELECT migration_id FROM "__EFMigrationsHistory" ORDER BY migration_id DESC LIMIT 1;` returns `…_AddMeetingWorkItemsFoundation`.
 - Re-running the preflight now reports `already applied`.
 
+## Release B (Plans B + C)
+
+Ships the meeting behaviour behind the same flags. Deploy Plans B and C together; switch `Meetings:Create` on only after both are live.
+
+| Piece | What it is |
+|---|---|
+| Migration `AddProjectMeetingNumber` | `projects.next_meeting_number` (short ids `{Identifier}-M{n}`) |
+| Migration `AddExternalLinkPushedFingerprint` | `external_calendar_event_links.pushed_fingerprint` (nullable): the organizer's external calendar copy of an occurrence is re-pushed only when it changes |
+| `MeetingOccurrenceGeneratorJob` | Hourly, lease `meetings.occurrence-generator` |
+| `MeetingAttendanceJob` | Every 15 min, lease `meetings.attendance`: per-occurrence attendance at 30m / 2h / 24h after each occurrence, one retry 72 h after an unavailable/failed last check; also cancels parked links nothing needs any more |
+| Notification catalog | `calendar_event_meeting_link_unknown`, `calendar_event_meeting_unresolved`, `calendar_event_meeting_cancel_failed` are orchestrator-owned calendar events (in-app; tenants may route them) |
+
+**Provider scopes - before switching `Meetings:Create` on.**
+
+- **Zoom:** add `meeting:read:list_past_instances` and `meeting:read:list_past_participants` to the Zoom Marketplace app
+  (both are in the platform's default Zoom scopes). Existing Zoom connections must **reconnect** to get them. Until a user
+  reconnects, their occurrences' attendance ends `sync_failed` with `lastError: "missing_scope"`; meetings and links work.
+- **Microsoft:** no new scope. Outlook copies of the organizer's occurrences use the existing `Calendars.ReadWrite`.
+
+**Flags.**
+
+- `Meetings:Background` runs both jobs (one instance at a time).
+- `Meetings:ReadOnly` also blocks every link write (create/regenerate, retry, remove, cleanup-confirmed) and the
+  attendance recheck with 409 `meetings_read_only`; reads keep working. Background attendance sync keeps running.
+
+**Checks after the deploy.**
+
+- `SELECT migration_id FROM "__EFMigrationsHistory" ORDER BY migration_id DESC LIMIT 1;` returns `…_AddExternalLinkPushedFingerprint`.
+- With `Meetings:Background` on, the logs show `MeetingAttendanceJob` runs; an error-level line
+  `Meeting attendance sync for link … failed 3 times in a row` needs a look (usually a lost connection or scope).
+
+**Rollback of B.** `AddExternalLinkPushedFingerprint` is additive (nullable column); its `Down()` drops it. Once
+meetings exist, recover with `Meetings:ReadOnly` and fix forward, as for A.
+
 ## Rollback rules
 
 **Never roll back below Release A once meeting rows exist.**

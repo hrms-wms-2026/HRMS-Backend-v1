@@ -4,7 +4,9 @@ The frontend contract for meetings-as-tasks Phase 2. Source of truth: `src/ONEVO
 
 - Auth: tenant JWT (`TenantPolicy`). JSON is camelCase. Times are ISO-8601 with an offset; the server returns UTC.
 - An occurrence is addressed as `{seriesId}` + `{originalStart}` (its UTC start before any edit, e.g. `2026-11-02T09:00:00Z`). This works whether or not the occurrence is materialized yet. `GET /occurrences/{taskId}` also exists for board links.
-- `link` (Teams/Zoom) and `attendance` fields are **added by Plan C**. Plan B responses do not carry them yet.
+- Plan C adds the Teams/Zoom link (`…/link`) and per-occurrence attendance (`…/attendance`) as their own endpoints, and
+  task meetings on `GET /api/v1/calendar` and the conflict check (see **Calendar** below). Occurrence and series
+  responses are unchanged.
 
 ## Errors
 
@@ -110,6 +112,17 @@ Every error is ProblemDetails with a stable `code` extension:
 //   "nextCheckAt": "…|null", "finalizedAt": "…|null", "lastError": "provider_error|missing_scope|not_connected|reauth_required|null" }
 // MeetingSeriesLinkResponse: attendee { "joinUrl": "https://…|null" }; organizer { "joinUrl": "…", "link": MeetingLinkResponse|null }
 ```
+
+## Calendar (`GET /api/v1/calendar`, `POST /api/v1/calendar/check-conflicts`)
+
+- Task meetings appear next to calendar events as `CalendarEventItem`s with `itemKind: "meeting"`, `meetingSeriesId`,
+  `meetingTaskId` (null for an occurrence that is not materialized yet) and `meetingStatus`. `id` is the occurrence's task
+  id - for a virtual occurrence, the id it will get when it is materialized - and `originalStart` its key. Cancelled
+  occurrences, cancelled series and moved-away slots are not listed. Open a meeting item with
+  `GET /meetings/series/{meetingSeriesId}/occurrences/{originalStart}`.
+- Only meetings you organize or attend are listed; `hasConflict` counts them.
+- The conflict check includes the participants' task meetings. A meeting you cannot see comes back as
+  `{ "conflictingEventId": "00000000-…", "conflictingEventTitle": "Busy", "isBusyOnly": true }` with its time only.
 
 ## Rules the UI relies on
 
