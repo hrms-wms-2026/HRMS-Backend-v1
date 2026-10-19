@@ -1,4 +1,3 @@
-using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
 using ONEVO.Domain.Features.SharedPlatform.Jobs.Entities;
 using ONEVO.Domain.Features.WorkManagement.Meetings.Entities;
@@ -82,32 +81,27 @@ public sealed class MeetingQueryFilterArchitectureTests
     [Fact]
     public void NoBareIgnoreQueryFiltersOnWorkTasks_OutsideTheAllowList()
     {
-        var offenders = new List<string>();
-        foreach (var file in SourceFiles())
-        {
-            var statements = Statements(File.ReadAllText(file));
-            foreach (var (statement, member) in statements)
-            {
-                if (!statement.Contains("WorkTasks") || !statement.Contains(".IgnoreQueryFilters()"))
-                    continue;
-                var name = Path.GetFileName(file);
-                if (BareIgnoreAllowList.Contains(name) || BareIgnoreAllowList.Contains($"{name}#{member}"))
-                    continue;
-                offenders.Add($"{name}#{member}");
-            }
-        }
+        var offenders = SourceFiles()
+            .SelectMany(file => MeetingQueryGuardScanner.MembersWithBareWorkTaskIgnore(File.ReadAllText(file))
+                .Select(member => (Name: Path.GetFileName(file), Member: member)))
+            .Where(site => !BareIgnoreAllowList.Contains(site.Name) && !BareIgnoreAllowList.Contains($"{site.Name}#{site.Member}"))
+            .Select(site => $"{site.Name}#{site.Member}")
+            .ToList();
 
         Assert.Empty(offenders);
     }
+
+    /// <summary>The files that declare the filter or compose it with the tenant filter; everything else that names it
+    /// must apply MeetingVisibility.</summary>
+    private static readonly string[] ExcludeMeetingsDeclarations = ["WorkTask.cs", "WorkTaskConfiguration.cs", "ApplicationDbContext.cs"];
 
     [Fact]
     public void IgnoringExcludeMeetings_IsOnlyInAllowListedFiles()
     {
         var offenders = SourceFiles()
-            .Where(f => File.ReadAllText(f) is var s
-                && (s.Contains("IgnoreQueryFilters([WorkTaskQueryFilters.ExcludeMeetings") || s.Contains("\"ExcludeMeetings\"")))
+            .Where(f => MeetingQueryGuardScanner.MentionsExcludeMeetings(File.ReadAllText(f)))
             .Select(Path.GetFileName)
-            .Where(name => name is not "WorkTask.cs" && !ExcludeMeetingsIgnoreAllowList.Contains(name))
+            .Where(name => !ExcludeMeetingsDeclarations.Contains(name) && !ExcludeMeetingsIgnoreAllowList.Contains(name))
             .ToList();
 
         Assert.Empty(offenders);
@@ -116,9 +110,8 @@ public sealed class MeetingQueryFilterArchitectureTests
     [Fact]
     public void RawSqlOnTasks_IsOnlyInAllowListedFiles()
     {
-        var rawSql = new Regex(@"(ExecuteSql\w*|SqlQuery\w*|FromSql\w*)\s*(<[^>]*>)?\s*\(\s*\$?@?""""?""?[^;]*?\btasks\b", RegexOptions.IgnoreCase | RegexOptions.Singleline);
         var offenders = SourceFiles()
-            .Where(f => rawSql.IsMatch(File.ReadAllText(f)))
+            .Where(f => MeetingQueryGuardScanner.HasRawSqlOnTasks(File.ReadAllText(f)))
             .Select(Path.GetFileName)
             .Where(name => !RawSqlOnTasksAllowList.Contains(name))
             .ToList();
@@ -131,26 +124,6 @@ public sealed class MeetingQueryFilterArchitectureTests
             .Where(f => !f.Contains($"{Path.DirectorySeparatorChar}Migrations{Path.DirectorySeparatorChar}")
                 && !f.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}")
                 && !f.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}"));
-
-    /// <summary>Each ';'-terminated statement with the name of the member it sits in (the last "Name(" seen on a
-    /// line starting with "public"/"private"/"internal"/"protected").</summary>
-    private static IEnumerable<(string Statement, string Member)> Statements(string source)
-    {
-        var member = "";
-        var current = new System.Text.StringBuilder();
-        foreach (var line in source.Split('\n'))
-        {
-            var match = Regex.Match(line, @"^\s*(public|private|internal|protected)\b[^=(]*?\b(\w+)\s*(<[^>]*>)?\s*\(");
-            if (match.Success)
-                member = match.Groups[2].Value;
-            current.Append(line).Append('\n');
-            if (line.Contains(';'))
-            {
-                yield return (current.ToString(), member);
-                current.Clear();
-            }
-        }
-    }
 
     private static string FindRepositoryPath(params string[] segments)
     {
