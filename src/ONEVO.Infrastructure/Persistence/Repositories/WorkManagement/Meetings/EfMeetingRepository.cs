@@ -39,4 +39,10 @@ public sealed class EfMeetingRepository : IMeetingRepository
             : await _db.MeetingOccurrenceAttendees.AsNoTracking()
                 .Where(a => a.TenantId == tenantId && occurrenceTaskIds.Contains(a.OccurrenceTaskId))
                 .ToListAsync(ct);
+
+    public void AddSeries(MeetingSeries series) => _db.MeetingSeries.Add(series);
+
+    public void AddParticipants(IEnumerable<CalendarEventParticipant> participants) => _db.CalendarEventParticipants.AddRange(participants);
+
+    public void AddGuests(IEnumerable<CalendarEventGuest> guests) => _db.CalendarEventGuests.AddRange(guests);
 }

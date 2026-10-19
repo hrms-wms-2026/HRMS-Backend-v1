@@ -18,4 +18,8 @@ public interface IMeetingRepository
     Task<IReadOnlyList<CalendarEventGuest>> ListSeriesGuestsAsync(Guid tenantId, Guid seriesId, CancellationToken ct = default);
 
     Task<IReadOnlyList<MeetingOccurrenceAttendee>> ListOverridesAsync(Guid tenantId, IReadOnlyCollection<Guid> occurrenceTaskIds, CancellationToken ct = default);
+
+    void AddSeries(MeetingSeries series);
+    void AddParticipants(IEnumerable<CalendarEventParticipant> participants);
+    void AddGuests(IEnumerable<CalendarEventGuest> guests);
 }

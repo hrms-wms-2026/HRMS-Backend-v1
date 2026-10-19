@@ -25,8 +25,17 @@ public sealed class EfMeetingOccurrenceWriter : IMeetingOccurrenceWriter
     public async Task LockSeriesAsync(Guid tenantId, Guid seriesId, CancellationToken ct)
     {
         RequireTransaction(nameof(LockSeriesAsync));
-        await _db.Database.ExecuteSqlInterpolatedAsync(
-            $"SELECT pg_advisory_xact_lock(hashtextextended({tenantId.ToString()}::text || ':' || {seriesId.ToString()}::text, 0))", ct);
+        // Wait at most 5 s for the lock (spec 7 meeting_busy); LOCAL ends with this transaction.
+        await _db.Database.ExecuteSqlRawAsync("SET LOCAL lock_timeout = '5s'", ct);
+        try
+        {
+            await _db.Database.ExecuteSqlInterpolatedAsync(
+                $"SELECT pg_advisory_xact_lock(hashtextextended({tenantId.ToString()}::text || ':' || {seriesId.ToString()}::text, 0))", ct);
+        }
+        catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.LockNotAvailable)
+        {
+            throw new MeetingBusyException(seriesId, ex);
+        }
     }
 
     public async Task<Guid?> TryMaterializeAsync(MeetingOccurrenceDraft d, CancellationToken ct)
