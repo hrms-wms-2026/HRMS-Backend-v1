@@ -69,6 +69,7 @@ public class OnboardingDraftWriteService : IOnboardingDraftWriteService
     private readonly IUnitOfWork _unitOfWork;
     private readonly IEmployeeChecklistWorkTaskProvisioner? _workTaskProvisioner;
     private readonly IOnboardingWizardLookupService? _wizardLookups;
+    private readonly ISeatIncreaseRequestRepository? _seatIncreaseRequests;
 
     public OnboardingDraftWriteService(
         IOnboardingDraftRepository draftRepository,
@@ -94,8 +95,10 @@ public class OnboardingDraftWriteService : IOnboardingDraftWriteService
         IDateTimeProvider clock,
         IUnitOfWork unitOfWork,
         IEmployeeChecklistWorkTaskProvisioner? workTaskProvisioner = null,
-        IOnboardingWizardLookupService? wizardLookups = null)
+        IOnboardingWizardLookupService? wizardLookups = null,
+        ISeatIncreaseRequestRepository? seatIncreaseRequests = null)
     {
+        _seatIncreaseRequests = seatIncreaseRequests;
         _draftRepository = draftRepository;
         _employeeRepository = employeeRepository;
         _userRepository = userRepository;
@@ -314,8 +317,47 @@ public class OnboardingDraftWriteService : IOnboardingDraftWriteService
                 "This draft was just updated by someone else. Please refresh and try again.");
         }
 
+        // A position that needs approval skips the seat check above, but approving it still needs a free seat.
+        if (status == OnboardingDraftStatus.WaitingForSeat
+            || (status == OnboardingDraftStatus.WaitingForPositionApproval && _seatIncreaseRequests is not null
+                && (await _seatEntitlementService.EvaluateAsync(tenantId, ct)).Status == SeatDecisionStatus.Blocked))
+            await RequestSeatIncreaseAsync(draft, actingUserId, ct);
+
         var response = await _draftRepository.GetResponseByIdAsync(tenantId, draft.Id, ct);
         return Result<OnboardingDraftResponse>.Success(response!);
+    }
+
+    /// <summary>A draft waiting for a seat asks the billing managers for one (seat increase request in their Inbox). One
+    /// pending request covers everyone waiting (wizard and bulk alike), so a second waiting draft adds nothing here - the
+    /// request counts the waiting people when it is shown and approved. Best effort: the draft is already saved.</summary>
+    private async Task RequestSeatIncreaseAsync(OnboardingDraftEntity draft, Guid actingUserId, CancellationToken ct)
+    {
+        if (_seatIncreaseRequests is null)
+            return;
+        try
+        {
+            if (await _seatIncreaseRequests.AnyPendingAsync(draft.TenantId, ct))
+                return;
+            var seats = await _seatEntitlementService.EvaluateAsync(draft.TenantId, ct);
+            await _seatIncreaseRequests.AddAsync(new SeatIncreaseRequest
+            {
+                Id = Guid.NewGuid(),
+                TenantId = draft.TenantId,
+                OnboardingDraftId = draft.Id,
+                RequestedSeats = 1,
+                SeatsAtRequest = seats.PurchasedSeats,
+                Status = SeatIncreaseRequestStatus.Pending,
+                Reason = "All included seats are in use.",
+                RequestedByUserId = actingUserId,
+                RequestedAt = _clock.UtcNow,
+            }, ct);
+            await _seatIncreaseRequests.SaveChangesAsync(ct);
+        }
+        catch (Exception) when (!ct.IsCancellationRequested)
+        {
+            // A racing duplicate (unique pending-per-draft index) or any other failure must not fail the saved draft.
+            _unitOfWork.ClearTracking();
+        }
     }
 
     public async Task<Result<FinalizeOnboardingDraftResponse>> FinalizeAsync(
@@ -424,7 +466,11 @@ public class OnboardingDraftWriteService : IOnboardingDraftWriteService
 
         if (requiresApproval && !bypassApproval)
         {
-            return await FinalizeWithPendingApprovalAsync(draft, accessTemplate!, position!, actingUserId, ct);
+            var pending = await FinalizeWithPendingApprovalAsync(draft, accessTemplate!, position!, actingUserId, ct);
+            if (pending.IsSuccess && _seatIncreaseRequests is not null
+                && (await _seatEntitlementService.EvaluateAsync(tenantId, ct)).Status == SeatDecisionStatus.Blocked)
+                await RequestSeatIncreaseAsync(draft, actingUserId, ct);
+            return pending;
         }
 
         return await FinalizeImmediatelyAsync(draft, accessTemplate, position, employmentTypeId.Value, actingUserId, bypassApproval, ct);
@@ -504,6 +550,7 @@ public class OnboardingDraftWriteService : IOnboardingDraftWriteService
             var saveResult = await PersistChangesAsync(ct);
             if (saveResult is not null)
                 return saveResult;
+            await RequestSeatIncreaseAsync(draft, actingUserId, ct);
 
             return Result<FinalizeOnboardingDraftResponse>.Conflict("No seat is available to finalize this onboarding.");
         }

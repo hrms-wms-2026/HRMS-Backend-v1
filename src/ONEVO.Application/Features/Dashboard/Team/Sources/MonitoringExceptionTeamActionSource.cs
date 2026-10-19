@@ -4,6 +4,7 @@ using ONEVO.Application.Features.Dashboard.Team.Abstractions;
 using ONEVO.Application.Features.Dashboard.Team.DTOs;
 using ONEVO.Application.Features.Monitoring.Exceptions.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.Exceptions.ServiceInterfaces;
+using ONEVO.Application.Features.Monitoring.Exceptions.Services;
 using ONEVO.Domain.Features.Monitoring.Exceptions.Entities;
 
 namespace ONEVO.Application.Features.Dashboard.Team.Sources;
@@ -16,12 +17,14 @@ namespace ONEVO.Application.Features.Dashboard.Team.Sources;
 /// together); Acknowledged is reported separately as inProgressCount, never mixed into
 /// pendingCount. Ordered by EscalatedAt ?? DetectedAt, oldest first. Deliberately NOT filtered by
 /// legal entity: an HR-unrestricted scope (IsHr) spans the whole tenant by design (spec §8.2
-/// "Rules" / AC-11) - the card subtitle communicates this, not a predicate change here.</summary>
+/// "Rules" / AC-11) - the card subtitle communicates this, not a predicate change here. Like the Inbox, only the cases
+/// routed to the caller count (<see cref="ExceptionCaseRouting"/>) - wide coverage or HR alone shows nothing.</summary>
 public sealed class MonitoringExceptionTeamActionSource(
     ICurrentUser currentUser,
     IExceptionScopeResolver scopeResolver,
     IExceptionRepository exceptions,
-    IEmployeeRepository employees)
+    IEmployeeRepository employees,
+    ExceptionCaseRouting? routing = null)
     : ITeamActionSource
 {
     private static readonly IReadOnlyCollection<ExceptionStatus> ActionableStatuses =
@@ -57,7 +60,17 @@ public sealed class MonitoringExceptionTeamActionSource(
             ExceptionStatus.Acknowledged, Type: null, scopedEmployeeIds, scope.ActorEmployeeId, Calendar: false);
 
         var actionableRows = await exceptions.GetListAsync(tenantId, actionableFilter, 1, int.MaxValue, ct);
-        var inProgressCount = await exceptions.GetListTotalCountAsync(tenantId, inProgressFilter, ct);
+        int inProgressCount;
+        if (routing is null)
+            inProgressCount = await exceptions.GetListTotalCountAsync(tenantId, inProgressFilter, ct);
+        else
+        {
+            var routed = await routing.RoutedCasesAsync(tenantId, actionableRows, scope, hrFallback: true, ct);
+            actionableRows = actionableRows.Where(e => routed.Contains(e.Id)).ToList();
+            var inProgressRows = await exceptions.GetListAsync(tenantId, inProgressFilter, 1, int.MaxValue, ct);
+            var routedInProgress = await routing.RoutedCasesAsync(tenantId, inProgressRows, scope, hrFallback: true, ct);
+            inProgressCount = inProgressRows.Count(e => routedInProgress.Contains(e.Id));
+        }
 
         if (actionableRows.Count == 0)
             return new ActionSourceSummary(Key, Domain, ActionSourceSummary.StatusOk, 0, inProgressCount, null, []);

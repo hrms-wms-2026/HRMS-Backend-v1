@@ -48,8 +48,7 @@ public sealed class EfLeaveCalendarRepository : ILeaveCalendarRepository
                 && (
                     request.Status == LeaveRequestStatuses.Approved
                     || (filter.IncludeTentativeBlocks
-                        && (request.Status == LeaveRequestStatuses.Pending
-                            || request.Status == LeaveRequestStatuses.InformationRequested))
+                        && request.Status == LeaveRequestStatuses.Pending)
                     || (request.Status == LeaveRequestStatuses.Cancelled
                         && request.PartialCancelEffectiveDate != null
                         && request.PartialCancelEffectiveDate > filter.MonthStart))

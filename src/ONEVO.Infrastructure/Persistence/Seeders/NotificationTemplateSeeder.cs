@@ -168,12 +168,6 @@ public class NotificationTemplateSeeder : IHostedService
             },
             new()
             {
-                Id = Guid.NewGuid(), Code = "leave_request_information_requested",
-                InAppTitleTemplate = "More information requested",
-                InAppBodyTemplate = "{{approverName}} requested more information for {{leaveTypeName}} from {{startDate}} to {{endDate}}."
-            },
-            new()
-            {
                 Id = Guid.NewGuid(), Code = "leave_request_next_approval_required",
                 InAppTitleTemplate = "Leave approval required",
                 InAppBodyTemplate = "{{employeeName}} requested {{leaveTypeName}} from {{startDate}} to {{endDate}}."

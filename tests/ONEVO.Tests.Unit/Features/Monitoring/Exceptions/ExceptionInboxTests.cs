@@ -7,10 +7,13 @@ using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Conversations.Contracts;
 using ONEVO.Application.Features.Conversations.RepositoryInterfaces;
+using ONEVO.Application.Features.CoreHr.EmployeeAuthority.Models;
+using ONEVO.Application.Features.CoreHr.EmployeeAuthority.ServiceInterfaces;
 using ONEVO.Application.Features.Inbox.Contracts;
 using ONEVO.Application.Features.Inbox.Escalation;
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.ServiceInterfaces;
 using ONEVO.Application.Features.Monitoring.CheckIn.RepositoryInterfaces;
+using ONEVO.Application.Features.Monitoring.Exceptions.Commands.AcknowledgeException;
 using ONEVO.Application.Features.Monitoring.Exceptions.Commands.EscalateException;
 using ONEVO.Application.Features.Monitoring.Exceptions.Commands.ResolveException;
 using ONEVO.Application.Features.Monitoring.Exceptions.Inbox;
@@ -38,6 +41,7 @@ public class ExceptionInboxTests
     private static readonly Guid Reviewer = Guid.NewGuid();
     private static readonly Guid Subject = Guid.NewGuid();
     private static readonly Guid Stranger = Guid.NewGuid();
+    private static readonly Guid LegalEntity = Guid.NewGuid();
     private static readonly DateTimeOffset Now = new(2026, 10, 14, 10, 0, 0, TimeSpan.Zero);
 
     private readonly Mock<IExceptionRepository> _exceptions = new();
@@ -45,6 +49,7 @@ public class ExceptionInboxTests
     private readonly Mock<IEmployeeRepository> _employees = new();
     private readonly Mock<ISender> _sender = new();
     private readonly Mock<IConversationRepository> _conversations = new();
+    private readonly Mock<IEmployeeAuthorityResolver> _authority = new();
     private readonly InMemoryInboxDecisionJournal _journal = new();
     private readonly Mock<IInboxEscalationRecorder> _recorder = new();
     private readonly Mock<IInboxEscalationPolicy> _policy = new();
@@ -57,7 +62,11 @@ public class ExceptionInboxTests
         _exceptions.Setup(x => x.GetByIdAsync(TenantId, It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((Guid _, Guid id, CancellationToken _) => _cases.FirstOrDefault(c => c.Id == id));
         _employees.Setup(x => x.ListByIdsAsync(TenantId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new Dictionary<Guid, Employee> { [Subject] = new() { Id = Subject, FirstName = "Sam" } });
+            .ReturnsAsync(new Dictionary<Guid, Employee> { [Subject] = new() { Id = Subject, FirstName = "Sam", LegalEntityId = LegalEntity } });
+        ApproverOf();
+        _authority.Setup(a => a.ResolveApproverAsync(It.IsAny<EmployeeApprovalRouteRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<EmployeeApprovalRoute>.Success(new EmployeeApprovalRoute(Stranger, Guid.NewGuid(), Guid.NewGuid(),
+                "attendance:approve", EmployeeAuthorityPurpose.ExceptionAlertReview, EmployeeApprovalRouteSource.ReportingLine, null)));
         _conversations.Setup(x => x.ListAddedSubjectsAsync(TenantId, It.IsAny<Guid>(), "monitoring", It.IsAny<CancellationToken>())).ReturnsAsync([]);
         _policy.Setup(p => p.AppliesTo("monitoring", It.IsAny<string>())).Returns(true);
     }
@@ -77,17 +86,24 @@ public class ExceptionInboxTests
         => _scope.Setup(s => s.ResolveAsync(It.IsAny<bool>(), It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ExceptionScope(isHr, Reviewer, employees));
 
+    /// <summary>The employees the caller is the exact attendance approver of.</summary>
+    private void ApproverOf(params Guid[] employees)
+        => _authority.Setup(a => a.ResolveApprovalInboxScopeAsync(It.IsAny<EmployeeApprovalInboxScopeRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((EmployeeApprovalInboxScopeRequest r, CancellationToken _) => r.CandidateEmployeeIds.Where(employees.Contains).ToList());
+
     private ExceptionCaseActions Actions() => new(_sender.Object, _exceptions.Object, _journal, _recorder.Object,
         new InboxEscalationPolicyRegistry([_policy.Object]), new FakeUnitOfWork(), new FakeDateTimeProvider { UtcNow = Now });
 
     private ExceptionInboxSourceProvider Provider()
-        => new(_exceptions.Object, _scope.Object, _employees.Object, _sender.Object, Actions(), _conversations.Object);
+        => new(_exceptions.Object, _scope.Object, _employees.Object, _sender.Object, Actions(), _conversations.Object,
+            new ExceptionCaseRouting(_employees.Object, _authority.Object, _journal));
 
     [Fact]
-    public async Task A_manager_receives_cases_in_their_scope_and_someone_without_scope_sees_nothing()
+    public async Task A_manager_receives_the_cases_they_are_the_approver_for_and_someone_without_scope_sees_nothing()
     {
         var mine = Case();
         ScopeIs(isHr: false, Subject);
+        ApproverOf(Subject);
 
         var asManager = await Provider().ListAsync(TenantId, new InboxQuery(), Reviewer, default);
         _scope.Setup(s => s.ResolveAsync(It.IsAny<bool>(), It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
@@ -100,16 +116,52 @@ public class ExceptionInboxTests
     }
 
     [Fact]
-    public async Task HR_receives_escalated_cases_and_sees_the_others_as_info()
+    public async Task Coverage_alone_does_not_put_a_case_in_the_inbox_of_someone_above()
     {
-        var open = Case();
-        var escalated = Case(ExceptionStatus.Escalated);
+        Case();
+        ScopeIs(isHr: false, Subject);
+
+        var items = await Provider().ListAsync(TenantId, new InboxQuery(), Reviewer, default);
+
+        items.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task HR_only_receives_cases_nobody_else_can_review_not_every_case()
+    {
+        var routine = Case();
+        var escalatedBeforeTheJournal = Case(ExceptionStatus.Escalated);
         ScopeIs(isHr: true);
 
         var items = await Provider().ListAsync(TenantId, new InboxQuery(), Reviewer, default);
 
-        items.Single(i => i.Id == escalated.Id).Direction.Should().Be(InboxDirections.Received);
-        items.Single(i => i.Id == open.Id).Direction.Should().Be(InboxDirections.Info);
+        items.Should().ContainSingle(i => i.Id == escalatedBeforeTheJournal.Id && i.Direction == InboxDirections.Received);
+        items.Should().NotContain(i => i.Id == routine.Id);
+    }
+
+    [Fact]
+    public async Task HR_receives_the_cases_of_employees_with_no_attendance_approver()
+    {
+        var orphan = Case();
+        ScopeIs(isHr: true);
+        _authority.Setup(a => a.ResolveApproverAsync(It.IsAny<EmployeeApprovalRouteRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<EmployeeApprovalRoute>.UnprocessableEntity("No eligible approver was found for this employee and action."));
+
+        var items = await Provider().ListAsync(TenantId, new InboxQuery(), Reviewer, default);
+
+        items.Should().ContainSingle(i => i.Id == orphan.Id && i.Direction == InboxDirections.Received);
+    }
+
+    [Fact]
+    public async Task Whoever_a_case_was_escalated_to_receives_it()
+    {
+        var held = Case(ExceptionStatus.Escalated);
+        _scope.Setup(s => s.ResolveAsync(It.IsAny<bool>(), It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ExceptionScope(false, Reviewer, [], [held.Id]));
+
+        var items = await Provider().ListAsync(TenantId, new InboxQuery(), Reviewer, default);
+
+        items.Should().ContainSingle(i => i.Id == held.Id && i.Direction == InboxDirections.Received && i.AvailableActions.Count > 0);
     }
 
     [Fact]
@@ -142,6 +194,52 @@ public class ExceptionInboxTests
         var row = _journal.Entries.Should().ContainSingle().Subject;
         row.Action.Should().Be("resolve:excused");
         ExceptionStateSnapshot.Parse(row.BeforeJson)!.Status.Should().Be("Open");
+    }
+
+    [Fact]
+    public async Task A_reviewer_replying_on_an_open_case_acknowledges_it()
+    {
+        var c = Case();
+        _sender.Setup(s => s.Send(It.Is<AcknowledgeExceptionCommand>(a => a.ExceptionId == c.Id), It.IsAny<CancellationToken>()))
+            .Callback(() => { c.Status = ExceptionStatus.Acknowledged; c.AcknowledgedAt = Now; })
+            .ReturnsAsync(Result.Success());
+
+        var affected = await new ExceptionCaseReplyAcknowledger(_exceptions.Object, Actions())
+            .OnReplyAsync(TenantId, new ItemRef("monitoring", "exception_case", c.Id), Reviewer, default);
+
+        affected.Should().BeEquivalentTo([Subject, Reviewer]);
+        _journal.Entries.Should().ContainSingle().Which.Action.Should().Be("acknowledge");
+    }
+
+    [Theory]
+    [InlineData(ExceptionStatus.Acknowledged, false)]
+    [InlineData(ExceptionStatus.Escalated, false)]
+    [InlineData(ExceptionStatus.Open, true)]
+    public async Task A_reply_leaves_the_case_alone_when_it_is_not_open_or_comes_from_the_employee_it_is_about(
+        ExceptionStatus status, bool fromSubject)
+    {
+        var c = Case(status);
+
+        var affected = await new ExceptionCaseReplyAcknowledger(_exceptions.Object, Actions())
+            .OnReplyAsync(TenantId, new ItemRef("monitoring", "exception_case", c.Id), fromSubject ? Subject : Reviewer, default);
+
+        affected.Should().BeNull();
+        _sender.Invocations.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task A_reply_from_someone_the_module_refuses_stays_just_a_message()
+    {
+        var c = Case();
+        _sender.Setup(s => s.Send(It.IsAny<AcknowledgeExceptionCommand>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result.NotFound("Exception not found."));
+
+        var affected = await new ExceptionCaseReplyAcknowledger(_exceptions.Object, Actions())
+            .OnReplyAsync(TenantId, new ItemRef("monitoring", "exception_case", c.Id), Stranger, default);
+
+        affected.Should().BeNull();
+        c.Status.Should().Be(ExceptionStatus.Open);
+        _journal.Entries.Should().BeEmpty();
     }
 
     [Fact]

@@ -1,5 +1,7 @@
 using Moq;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.Auth.Invite.RepositoryInterfaces;
+using ONEVO.Domain.Features.Auth.Entities;
 using ONEVO.Application.Features.CoreHr.Employee.Access;
 using ONEVO.Application.Features.CoreHr.Employee.DTOs.Responses;
 using ONEVO.Application.Features.CoreHr.Employee.Models;
@@ -20,6 +22,8 @@ public class EmployeeViewAccessTests
     private readonly Mock<CommonEmployeeRepo> _employees = new();
     private readonly Mock<VisibleEmployeeRepo> _visibleEmployees = new();
     private readonly Mock<IEmployeeVisibilityScopeResolver> _scopeResolver = new();
+    private readonly Mock<IInvitationTokenRepository> _invitations = new();
+    private readonly Mock<IEmployeeInvitationAccess> _invitationAccess = new();
     private readonly EmployeeVisibilityScope _scope;
 
     public EmployeeViewAccessTests()
@@ -38,7 +42,48 @@ public class EmployeeViewAccessTests
     }
 
     private EmployeeViewAccess Sut() =>
-        new(_employees.Object, _visibleEmployees.Object, _scopeResolver.Object, _currentUser.Object);
+        new(_employees.Object, _visibleEmployees.Object, _scopeResolver.Object,
+            _invitations.Object, _invitationAccess.Object, _currentUser.Object);
+
+    private Guid AddInvitedEmployee(Guid inviterUserId, DateTimeOffset? usedAt = null, DateTimeOffset? revokedAt = null)
+    {
+        var id = Guid.NewGuid();
+        var createdById = Guid.NewGuid();
+        var invitation = new InvitationToken { TenantId = _tenantId, EmployeeId = id, UsedAt = usedAt, RevokedAt = revokedAt };
+        _employees.Setup(r => r.GetByIdAsync(_tenantId, id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new EmployeeEntity { Id = id, TenantId = _tenantId, CreatedById = createdById });
+        _invitations.Setup(r => r.GetLatestByEmployeeIdAsync(_tenantId, id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(invitation);
+        _invitationAccess.Setup(a => a.ResolveInviterUserIdAsync(invitation, createdById, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(inviterUserId);
+        return id;
+    }
+
+    [Fact]
+    public async Task OpenInviteYouSent_IsVisible_WithoutCoverage()
+    {
+        // A just-invited employee's position is still "planned", so no reporting line reaches
+        // them; the inviter must still be able to open them (detail page + widgets).
+        var invited = AddInvitedEmployee(_userId);
+
+        Assert.True(await Sut().CanViewAsync(invited));
+    }
+
+    [Fact]
+    public async Task OpenInviteSomeoneElseSent_IsNotVisible()
+    {
+        var invited = AddInvitedEmployee(Guid.NewGuid());
+
+        Assert.False(await Sut().CanViewAsync(invited));
+    }
+
+    [Fact]
+    public async Task AcceptedInviteYouSent_FallsBackToCoverage()
+    {
+        var accepted = AddInvitedEmployee(_userId, usedAt: DateTimeOffset.UtcNow);
+
+        Assert.False(await Sut().CanViewAsync(accepted));
+    }
 
     private void MakeVisible(Guid employeeId, string status = "active") =>
         _visibleEmployees.Setup(r => r.GetVisibleByIdAsync(_tenantId, _scope, employeeId, It.IsAny<CancellationToken>()))

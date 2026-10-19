@@ -17,16 +17,13 @@ namespace ONEVO.Application.Features.Leave.Inbox;
 /// approve - the request back to pending, the hours from used back to reserved, approver rows as they were, an
 /// approver's date edit undone; blocked once the leave has started, the entitlement was recalculated or adjusted by
 /// hand, or the request was (partly) cancelled since. Reject - back to pending with the hours reserved again; blocked
-/// when the balance can no longer cover them. Forward - the added approver row removed; blocked once that approver
-/// acted. Ask for information - back to pending; blocked once the employee answered.
+/// when the balance can no longer cover them.
 /// </summary>
 public sealed class LeaveDecisionReverter : InboxDecisionReverterBase
 {
     public const string AlreadyStarted = "This leave has already started, so the approval can no longer be undone.";
     public const string BalanceChanged = "The leave balance was recalculated or adjusted after this decision, so it can no longer be undone.";
     public const string ChangedSince = "This request changed after your decision (for example it was cancelled), so it can no longer be undone.";
-    public const string ForwardActed = "The person you forwarded this to has already acted on it.";
-    public const string InfoAnswered = "The employee has already answered your question.";
     public const string NotUndoable = "This kind of decision cannot be undone from the Inbox.";
     public const string UndoneTemplate = "leave_request_decision_undone";
 
@@ -86,15 +83,6 @@ public sealed class LeaveDecisionReverter : InboxDecisionReverterBase
                 return state.Request.PaidHours > 0m && remaining < state.Request.PaidHours
                     ? Result.Conflict($"The balance can no longer cover this request ({remaining:0.##} h left).")
                     : Result.Success();
-            case LeaveInboxActions.Forward:
-                var added = AddedRows(before, after).ToList();
-                return added.Any(id => state.Approvers.FirstOrDefault(a => a.Id == id)?.Status != LeaveRequestApproverStatuses.Pending)
-                    ? Result.Conflict(ForwardActed)
-                    : Result.Success();
-            case LeaveInboxActions.RequestInfo:
-                return state.Request.Status == LeaveRequestStatuses.InformationRequested
-                    ? Result.Success()
-                    : Result.Conflict(InfoAnswered);
             default:
                 return Result.UnprocessableEntity(NotUndoable);
         }

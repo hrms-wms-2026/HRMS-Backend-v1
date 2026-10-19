@@ -74,7 +74,7 @@ internal sealed class InMemoryConversationRepository : IConversationRepository
             if (row is null) continue;
             var lastRead = row.LastReadAt;
             var count = Messages.Count(m => m.ConversationId == conversation.Id && m.AuthorEmployeeId != employeeId
-                && (lastRead == null || m.CreatedAt > lastRead));
+                && m.Kind != ConversationMessageKinds.Evidence && (lastRead == null || m.CreatedAt > lastRead));
             if (count > 0) result[subject] = count;
         }
         return Task.FromResult<IReadOnlyDictionary<ItemRef, int>>(result);
@@ -92,6 +92,19 @@ internal sealed class InMemoryConversationRepository : IConversationRepository
         => Task.FromResult<IReadOnlyList<ConversationMessage>>(Messages
             .Where(m => m.TenantId == tenantId && m.ConversationId == conversationId && m.Kind == ConversationMessageKinds.System)
             .OrderBy(m => m.CreatedAt).ToList());
+
+    public Task<IReadOnlyList<ConversationMessage>> ListMessagesByIdAsync(
+        Guid tenantId, Guid conversationId, IReadOnlyCollection<Guid> messageIds, CancellationToken ct = default)
+        => Task.FromResult<IReadOnlyList<ConversationMessage>>(Messages
+            .Where(m => m.TenantId == tenantId && m.ConversationId == conversationId && messageIds.Contains(m.Id)).ToList());
+
+    public Task<bool> AddMessageIfMissingAsync(ConversationMessage message, CancellationToken ct = default)
+    {
+        if (Messages.Any(m => m.Id == message.Id))
+            return Task.FromResult(false);
+        Messages.Add(message);
+        return Task.FromResult(true);
+    }
 
     public Task<ConversationMessage?> GetMessageAsync(Guid tenantId, Guid messageId, CancellationToken ct = default)
         => Task.FromResult(Messages.FirstOrDefault(m => m.TenantId == tenantId && m.Id == messageId));

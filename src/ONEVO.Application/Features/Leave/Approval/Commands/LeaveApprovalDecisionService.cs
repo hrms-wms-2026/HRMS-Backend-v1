@@ -26,7 +26,6 @@ public sealed class LeaveApprovalDecisionService
     private readonly IOutboxWriter _outbox;
     private readonly INotificationDispatcher _notifications;
     private readonly ILeaveRequestConflictProvider _conflicts;
-    private readonly LeaveForwardTargetResolver _forwardTargets;
     private readonly LeaveApprovalOptions _options;
 
     public LeaveApprovalDecisionService(
@@ -37,7 +36,6 @@ public sealed class LeaveApprovalDecisionService
         IOutboxWriter outbox,
         INotificationDispatcher notifications,
         ILeaveRequestConflictProvider conflicts,
-        LeaveForwardTargetResolver forwardTargets,
         IOptions<LeaveApprovalOptions> options)
     {
         _currentUser = currentUser;
@@ -47,7 +45,6 @@ public sealed class LeaveApprovalDecisionService
         _outbox = outbox;
         _notifications = notifications;
         _conflicts = conflicts;
-        _forwardTargets = forwardTargets;
         _options = options.Value;
     }
 
@@ -95,82 +92,6 @@ public sealed class LeaveApprovalDecisionService
             ["reason"] = reason.Trim()
         }, ct);
 
-        await _repository.SaveChangesAsync(ct);
-        return Result<LeaveApprovalDecisionResponse>.Success(await MapAsync(state, 0m, ct));
-    }
-
-    public async Task<Result<LeaveApprovalDecisionResponse>> RequestInfoAsync(Guid requestId, string question, CancellationToken ct)
-    {
-        var loaded = await LoadAsync(requestId, requireActionableApprover: true, ct);
-        if (!loaded.IsSuccess)
-            return Result<LeaveApprovalDecisionResponse>.Failure(loaded.Error!, loaded.StatusCode ?? 400);
-
-        var (state, currentEmployee, approverRow) = loaded.Value!;
-        state.Request.Status = LeaveRequestStatuses.InformationRequested;
-        state.Request.UpdatedAt = _clock.UtcNow;
-        approverRow!.Status = LeaveRequestApproverStatuses.InformationRequested;
-        approverRow.Comment = question.Trim();
-        approverRow.DecidedAt = null;
-
-        await _repository.AddInfoMessageAsync(new LeaveRequestInfoMessage
-        {
-            Id = Guid.NewGuid(),
-            TenantId = _currentUser.TenantId,
-            LeaveRequestId = state.Request.Id,
-            SenderEmployeeId = currentEmployee.Id,
-            Message = question.Trim(),
-            CreatedAt = _clock.UtcNow
-        }, ct);
-
-        await _outbox.EnqueueAsync(OutboxMessageTypes.LeaveInformationRequested, new LeaveInformationRequestedPayload(
-            _currentUser.TenantId, state.Request.Id, state.Request.EmployeeId, state.Request.LeaveTypeId,
-            state.Request.StartAt, state.Request.EndAt, currentEmployee.Id, question.Trim()), _currentUser.TenantId, ct);
-
-        var approverName = LeaveEntitlementName(currentEmployee);
-        await NotifyEmployeeAsync(state, "leave_request_information_requested", new Dictionary<string, string>
-        {
-            ["approverName"] = approverName,
-            ["leaveTypeName"] = state.LeaveTypeName,
-            ["startDate"] = state.Request.StartAt.ToString("yyyy-MM-dd"),
-            ["endDate"] = state.Request.EndAt.ToString("yyyy-MM-dd")
-        }, ct);
-
-        await _repository.SaveChangesAsync(ct);
-        return Result<LeaveApprovalDecisionResponse>.Success(await MapAsync(state, 0m, ct));
-    }
-
-    /// <summary>
-    /// Hands the request up to the approver's own manager (see LeaveForwardTargetResolver): the
-    /// caller's row becomes forwarded and the target takes over the same slot as a pending approver.
-    /// The request itself stays pending, so approval-mode evaluation is unchanged.
-    /// </summary>
-    public async Task<Result<LeaveApprovalDecisionResponse>> ForwardAsync(Guid requestId, string? note, CancellationToken ct)
-    {
-        var loaded = await LoadAsync(requestId, requireActionableApprover: true, ct);
-        if (!loaded.IsSuccess)
-            return Result<LeaveApprovalDecisionResponse>.Failure(loaded.Error!, loaded.StatusCode ?? 400);
-
-        var (state, currentEmployee, approverRow) = loaded.Value!;
-        var targetId = await _forwardTargets.ResolveAsync(_currentUser.TenantId, state, currentEmployee.Id, ct);
-        if (targetId is null)
-            return Result<LeaveApprovalDecisionResponse>.Conflict(LeaveApprovalMessages.NoForwardTarget);
-
-        approverRow!.Status = LeaveRequestApproverStatuses.Forwarded;
-        approverRow.Comment = string.IsNullOrWhiteSpace(note) ? null : note.Trim();
-        approverRow.DecidedAt = _clock.UtcNow;
-        state.Request.UpdatedAt = _clock.UtcNow;
-
-        await _repository.AddApproverAsync(new LeaveRequestApprover
-        {
-            Id = Guid.NewGuid(),
-            TenantId = _currentUser.TenantId,
-            LeaveRequestId = state.Request.Id,
-            ApproverEmployeeId = targetId.Value,
-            SequenceOrder = approverRow.SequenceOrder,
-            Status = LeaveRequestApproverStatuses.Pending
-        }, ct);
-
-        await NotifyApproverAsync(targetId.Value, state, ct);
         await _repository.SaveChangesAsync(ct);
         return Result<LeaveApprovalDecisionResponse>.Success(await MapAsync(state, 0m, ct));
     }
@@ -369,56 +290,6 @@ public sealed class LeaveApprovalDecisionService
         return Result<LeaveApprovalDecisionResponse>.Success(await MapAsync(state, paidMoved, ct));
     }
 
-    public async Task<Result<LeaveApprovalDecisionResponse>> RespondInfoAsync(
-        Guid requestId, string message, IReadOnlyList<Guid> fileRecordIds, CancellationToken ct)
-    {
-        var loaded = await LoadAsync(requestId, requireActionableApprover: false, ct);
-        if (!loaded.IsSuccess)
-            return Result<LeaveApprovalDecisionResponse>.Failure(loaded.Error!, loaded.StatusCode ?? 400);
-
-        var (state, currentEmployee, _) = loaded.Value!;
-        if (state.Request.EmployeeId != currentEmployee.Id)
-            return Result<LeaveApprovalDecisionResponse>.Forbidden(LeaveApprovalMessages.NotYours);
-        if (state.Request.Status != LeaveRequestStatuses.InformationRequested)
-            return Result<LeaveApprovalDecisionResponse>.Conflict(LeaveApprovalMessages.NotWaitingInfo);
-
-        var paused = state.Approvers.SingleOrDefault(row => row.Status == LeaveRequestApproverStatuses.InformationRequested);
-        if (paused is null)
-            return Result<LeaveApprovalDecisionResponse>.Conflict(LeaveApprovalMessages.NoPausedApprover);
-
-        if (!await _repository.AreAvailableFileRecordsAsync(_currentUser.TenantId, fileRecordIds, ct))
-            return Result<LeaveApprovalDecisionResponse>.Failure(LeaveApprovalMessages.FileNotAvailable);
-
-        if (fileRecordIds.Count > 0)
-        {
-            await _repository.AddDocumentsAsync(fileRecordIds.Distinct().Select(id => new LeaveRequestDocument
-            {
-                Id = Guid.NewGuid(),
-                TenantId = _currentUser.TenantId,
-                LeaveRequestId = state.Request.Id,
-                FileRecordId = id
-            }).ToList(), ct);
-        }
-
-        state.Request.Status = LeaveRequestStatuses.Pending;
-        state.Request.UpdatedAt = _clock.UtcNow;
-        paused.Status = LeaveRequestApproverStatuses.Pending;
-
-        await _repository.AddInfoMessageAsync(new LeaveRequestInfoMessage
-        {
-            Id = Guid.NewGuid(),
-            TenantId = _currentUser.TenantId,
-            LeaveRequestId = state.Request.Id,
-            SenderEmployeeId = currentEmployee.Id,
-            Message = message.Trim(),
-            CreatedAt = _clock.UtcNow
-        }, ct);
-
-        await NotifyApproverAsync(paused.ApproverEmployeeId, state, ct);
-        await _repository.SaveChangesAsync(ct);
-        return Result<LeaveApprovalDecisionResponse>.Success(await MapAsync(state, 0m, ct));
-    }
-
     private async Task<Result<LeaveApprovalDecisionResponse>> DecideAsync(Guid requestId, string? comment, CancellationToken ct)
     {
         var loaded = await LoadAsync(requestId, requireActionableApprover: true, ct);
@@ -561,7 +432,7 @@ public sealed class LeaveApprovalDecisionService
         var currentState = state.Approvers
             .OrderBy(x => x.SequenceOrder)
             .Select(x => x.Status)
-            .FirstOrDefault(status => status is LeaveRequestApproverStatuses.Pending or LeaveRequestApproverStatuses.InformationRequested)
+            .FirstOrDefault(status => status == LeaveRequestApproverStatuses.Pending)
             ?? state.Request.Status;
         return LeaveApprovalMapper.ToDecision(state.Request, paidMoved, remaining, currentState, warnings);
     }

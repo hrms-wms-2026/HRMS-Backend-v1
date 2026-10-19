@@ -22,9 +22,7 @@ public sealed class LeaveCalendarRequestProjector
         foreach (var row in rows)
         {
             var request = row.Request;
-            var isTentative =
-                request.Status == LeaveRequestStatuses.Pending ||
-                request.Status == LeaveRequestStatuses.InformationRequested;
+            var isTentative = request.Status == LeaveRequestStatuses.Pending;
 
             if (isTentative && !includeTentativeBlocks)
                 continue;

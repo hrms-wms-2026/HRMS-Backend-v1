@@ -23,16 +23,6 @@ public sealed record LeaveRequestRejectedPayload(
     Guid RejectedByEmployeeId,
     string Reason);
 
-public sealed record LeaveInformationRequestedPayload(
-    Guid TenantId,
-    Guid LeaveRequestId,
-    Guid EmployeeId,
-    Guid LeaveTypeId,
-    DateTimeOffset StartAt,
-    DateTimeOffset EndAt,
-    Guid RequestedByEmployeeId,
-    string Question);
-
 public sealed class NoOpLeaveApprovalSideEffectOutboxHandler : ONEVO.Application.Common.ServiceInterfaces.IOutboxMessageHandler
 {
     public NoOpLeaveApprovalSideEffectOutboxHandler(string type) => Type = type;

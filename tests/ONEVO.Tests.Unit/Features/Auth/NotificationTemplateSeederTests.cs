@@ -70,7 +70,6 @@ public sealed class NotificationTemplateSeederTests : IDisposable
         Assert.Contains("work_sprint_achieved", codes);
         Assert.Contains("leave_request_approved", codes);
         Assert.Contains("leave_request_rejected", codes);
-        Assert.Contains("leave_request_information_requested", codes);
         Assert.Contains("leave_request_next_approval_required", codes);
         Assert.Contains("leave_request_cancelled_by_employee", codes);
         Assert.Contains("leave_request_cancelled_by_hr", codes);
@@ -87,7 +86,7 @@ public sealed class NotificationTemplateSeederTests : IDisposable
         Assert.Contains("exception_alert_escalated", codes);
         Assert.Contains("conversation_member_added", codes);
         Assert.Contains("conversation_mentioned", codes);
-        Assert.Equal(57, codes.Count);
+        Assert.Equal(56, codes.Count);
         var expectedCodes = new[]
         {
             "work_task_creation_request_created",
@@ -110,7 +109,6 @@ public sealed class NotificationTemplateSeederTests : IDisposable
             "conversation_mentioned",
             "leave_request_approved",
             "leave_request_rejected",
-            "leave_request_information_requested",
             "leave_request_next_approval_required",
             "leave_request_cancelled_by_employee",
             "leave_request_cancelled_by_hr",

@@ -50,11 +50,6 @@ public class EfLeaveApprovalRepository : ILeaveApprovalRepository
             .ThenBy(x => x.Id)
             .ToListAsync(ct);
 
-        var messages = await _db.LeaveRequestInfoMessages.AsNoTracking()
-            .Where(x => x.TenantId == tenantId && x.LeaveRequestId == request.Id)
-            .OrderBy(x => x.CreatedAt)
-            .ToListAsync(ct);
-
         string? approvalMode = null;
         if (employee.LegalEntityId is Guid legalEntityId)
         {
@@ -71,8 +66,7 @@ public class EfLeaveApprovalRepository : ILeaveApprovalRepository
             leaveType.Name,
             leaveType.Code,
             approvalMode,
-            approvers,
-            messages);
+            approvers);
     }
 
     public async Task<IReadOnlyList<LeavePendingApprovalListRow>> ListPendingForApproverAsync(
@@ -189,12 +183,6 @@ public class EfLeaveApprovalRepository : ILeaveApprovalRepository
             approverNames.TryGetValue(x.request.Id, out var names) ? names : [])).ToList();
     }
 
-    public Task AddInfoMessageAsync(LeaveRequestInfoMessage message, CancellationToken ct = default)
-    {
-        _db.LeaveRequestInfoMessages.Add(message);
-        return Task.CompletedTask;
-    }
-
     public Task AddApproverAsync(LeaveRequestApprover approver, CancellationToken ct = default)
     {
         _db.LeaveRequestApprovers.Add(approver);
@@ -212,9 +200,7 @@ public class EfLeaveApprovalRepository : ILeaveApprovalRepository
         string[] acted =
         [
             LeaveRequestApproverStatuses.Approved,
-            LeaveRequestApproverStatuses.Rejected,
-            LeaveRequestApproverStatuses.Forwarded,
-            LeaveRequestApproverStatuses.InformationRequested
+            LeaveRequestApproverStatuses.Rejected
         ];
 
         var query =

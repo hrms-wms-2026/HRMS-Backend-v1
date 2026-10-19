@@ -73,7 +73,7 @@ public class InboxDecisionReverterBaseTests
     [Fact]
     public async Task Only_the_items_latest_decision_can_be_undone()
     {
-        _journal.Add(TenantId, Item, InboxJournalActions.Forward, Me, Now.AddMinutes(-10));
+        _journal.Add(TenantId, Item, InboxJournalActions.Reject, Me, Now.AddMinutes(-10));
         _journal.Add(TenantId, Item, InboxJournalActions.Approve, Other, Now.AddMinutes(-5));
 
         var result = await Reverter().RevertAsync(TenantId, Item, Me, null, default);
