@@ -74,6 +74,45 @@ public sealed class JobLeaseIntegrationTests
     }
 
     [Fact]
+    public async Task ALeaseTakenOverAndReleased_CannotBeRenewedByItsOldHolder()
+    {
+        var (h, a, b) = await CreateAsync();
+        Assert.True(await a.TryAcquireAsync(Job, TimeSpan.FromSeconds(1), CancellationToken.None));
+        var deadline = DateTime.UtcNow.AddSeconds(15);
+        while ((bool)(await ScalarAsync(h, $"SELECT lease_until >= now() FROM job_leases WHERE job_name = '{Job}'"))!)
+        {
+            Assert.True(DateTime.UtcNow < deadline, "the 1 s lease never expired");
+            await Task.Delay(200);
+        }
+        Assert.True(await b.TryAcquireAsync(Job, TimeSpan.FromMinutes(1), CancellationToken.None));
+        await b.ReleaseAsync(Job, CancellationToken.None);
+
+        // A stalled past its lease, B ran and finished: A must learn it lost the lease, not silently carry on (spec 7).
+        Assert.False(await a.RenewAsync(Job, TimeSpan.FromMinutes(1), CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task RenewAsync_ByTheHolder_ExtendsTheLease()
+    {
+        var (h, a, b) = await CreateAsync();
+        Assert.True(await a.TryAcquireAsync(Job, TimeSpan.FromMinutes(1), CancellationToken.None));
+        var first = await LeaseUntilAsync(h);
+
+        Assert.True(await a.RenewAsync(Job, TimeSpan.FromMinutes(5), CancellationToken.None));
+        Assert.False(await b.RenewAsync(Job, TimeSpan.FromMinutes(5), CancellationToken.None));
+        Assert.True(await LeaseUntilAsync(h) > first);
+    }
+
+    [Fact]
+    public void InstanceId_FitsTheColumn_EvenWithALongHostName()
+    {
+        var id = JobLeaseService.BuildInstanceId(new string('k', 63), 4194304, Guid.NewGuid());
+
+        Assert.True(id.Length <= 100, $"{id.Length} characters");
+        Assert.StartsWith(new string('k', 40) + ":4194304:", id);
+    }
+
+    [Fact]
     public async Task Release_ByNonHolder_DoesNothing()
     {
         var (h, a, b) = await CreateAsync();

@@ -17,7 +17,28 @@ public sealed class JobLeaseService : IJobLeaseService
     public JobLeaseService(IServiceScopeFactory scopes, string? instanceId = null)
     {
         _scopes = scopes;
-        InstanceId = instanceId ?? $"{Environment.MachineName}:{Environment.ProcessId}:{Guid.NewGuid():N}";
+        InstanceId = instanceId ?? BuildInstanceId(Environment.MachineName, Environment.ProcessId, Guid.NewGuid());
+    }
+
+    /// <summary>"{host}:{pid}:{guid}" within owner_instance_id's 100 characters: host names (63 in Kubernetes) are cut
+    /// to 40; the guid alone keeps the id unique.</summary>
+    public static string BuildInstanceId(string machineName, int processId, Guid id)
+        => $"{(machineName.Length > 40 ? machineName[..40] : machineName)}:{processId}:{id:N}";
+
+    public async Task<bool> RenewAsync(string jobName, TimeSpan ttl, CancellationToken ct)
+    {
+        if (ttl <= TimeSpan.Zero)
+            throw new ArgumentOutOfRangeException(nameof(ttl), "A lease must last a positive time.");
+
+        await using var scope = _scopes.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var renewed = await db.Database.SqlQuery<int>($"""
+            UPDATE job_leases
+            SET lease_until = now() + make_interval(secs => {ttl.TotalSeconds}), heartbeat_at = now()
+            WHERE job_name = {jobName} AND owner_instance_id = {InstanceId} AND lease_until >= now()
+            RETURNING 1 AS "Value"
+            """).ToListAsync(ct);
+        return renewed.Count == 1;
     }
 
     public string InstanceId { get; }

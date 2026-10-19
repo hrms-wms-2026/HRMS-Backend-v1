@@ -343,7 +343,7 @@ SELECT id, $tenant_id, $series_id, $original_start, ... FROM t
 ON CONFLICT ON CONSTRAINT uq_meeting_details_series_original_start DO NOTHING;
 ```
 
-A meeting task left without details fails the deferred constraint trigger at commit, and the idempotent generator retries. Uniqueness therefore does not depend on the advisory lock. When nothing is inserted and the slot is neither taken nor suppressed, the task itself conflicted (e.g. a reused ShortId) and the writer throws instead of returning "already exists".
+A meeting task left without details fails the deferred constraint trigger at commit, and the idempotent generator retries. Uniqueness therefore does not depend on the advisory lock. **Correctness does:** a generator locks the series, re-reads it (rule, UNTIL, cancellation) and only then writes; a split takes the same lock, so a slot the series no longer has is never materialized. Every write runs inside a transaction; a writer whose task lost the details race gets `MeetingOccurrenceRaceLostException` at once (retryable) instead of a failure at COMMIT. When nothing is inserted and the slot is neither taken nor suppressed, the task itself conflicted (e.g. a reused ShortId) and the writer throws instead of returning "already exists".
 
 **Verification (must pass before the SQL model is marked frozen):**
 1. `condeferrable = false`.

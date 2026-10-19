@@ -11,6 +11,11 @@ public interface IJobLeaseService
     /// (newly acquired or renewed); false while another instance holds an unexpired lease.</summary>
     Task<bool> TryAcquireAsync(string jobName, TimeSpan ttl, CancellationToken ct);
 
+    /// <summary>True only while this instance still holds an unexpired lease, which it extends to now + ttl. False means
+    /// the lease was lost (it expired, and possibly another instance ran meanwhile): stop the job (spec 7). Unlike
+    /// <see cref="TryAcquireAsync"/>, it never re-acquires an expired lease.</summary>
+    Task<bool> RenewAsync(string jobName, TimeSpan ttl, CancellationToken ct);
+
     /// <summary>Ends the lease at once so another instance can take it; does nothing unless this instance holds it.</summary>
     Task ReleaseAsync(string jobName, CancellationToken ct);
 

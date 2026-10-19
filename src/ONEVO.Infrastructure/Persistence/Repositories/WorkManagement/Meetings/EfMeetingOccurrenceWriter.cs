@@ -23,11 +23,15 @@ public sealed class EfMeetingOccurrenceWriter : IMeetingOccurrenceWriter
     public EfMeetingOccurrenceWriter(ApplicationDbContext db) => _db = db;
 
     public async Task LockSeriesAsync(Guid tenantId, Guid seriesId, CancellationToken ct)
-        => await _db.Database.ExecuteSqlInterpolatedAsync(
+    {
+        RequireTransaction(nameof(LockSeriesAsync));
+        await _db.Database.ExecuteSqlInterpolatedAsync(
             $"SELECT pg_advisory_xact_lock(hashtextextended({tenantId.ToString()}::text || ':' || {seriesId.ToString()}::text, 0))", ct);
+    }
 
     public async Task<Guid?> TryMaterializeAsync(MeetingOccurrenceDraft d, CancellationToken ct)
     {
+        RequireTransaction(nameof(TryMaterializeAsync));
         var originalStart = d.OriginalStart.ToUniversalTime();
         var startAt = d.StartAt.ToUniversalTime();
         var endAt = d.EndAt.ToUniversalTime();
@@ -67,11 +71,21 @@ public sealed class EfMeetingOccurrenceWriter : IMeetingOccurrenceWriter
                 ON CONFLICT ON CONSTRAINT uq_meeting_details_series_original_start DO NOTHING
                 RETURNING task_id
             )
-            SELECT task_id AS "Value" FROM details
+            -- The details id when the pair went in; Guid.Empty when a task went in but its details row lost the race to a
+            -- concurrent writer (only possible on the fresh-id path); no row when nothing was inserted.
+            SELECT v AS "Value"
+            FROM (SELECT COALESCE((SELECT task_id FROM details),
+                                  CASE WHEN EXISTS (SELECT 1 FROM t) THEN '00000000-0000-0000-0000-000000000000'::uuid END) AS v) r
+            WHERE v IS NOT NULL
             """).ToListAsync(ct); // not composed: a data-modifying WITH must stay top-level
 
         if (inserted.Count == 1)
+        {
+            // The orphan task would fail the deferred pairing trigger at COMMIT anyway; say so now, retryably.
+            if (inserted[0] == Guid.Empty)
+                throw new MeetingOccurrenceRaceLostException(d.SeriesId, originalStart);
             return inserted[0];
+        }
 
         // Nothing inserted. Legitimate only when the slot is taken or suppressed (a racing writer's row is committed by
         // now - ON CONFLICT waited for it); anything else is a task-side conflict such as a reused ShortId.
@@ -92,6 +106,7 @@ public sealed class EfMeetingOccurrenceWriter : IMeetingOccurrenceWriter
         IReadOnlyList<(Guid TaskId, DateTimeOffset NewOriginalStart, DateTimeOffset NewStartAt, DateTimeOffset NewEndAt)> mapping,
         CancellationToken ct)
     {
+        RequireTransaction(nameof(RemapIntoSeriesAsync));
         if (mapping.Count == 0)
             return;
         // Strictly increasing, distinct keys in an empty target: no row can ever collide with another mid-statement,
@@ -102,6 +117,8 @@ public sealed class EfMeetingOccurrenceWriter : IMeetingOccurrenceWriter
         if (mapping.Select(m => m.TaskId).Distinct().Count() != mapping.Count)
             throw new InvalidOperationException("Each occurrence can be remapped only once.");
 
+        // Splits and moves write the target under its series lock, so the emptiness check below holds until commit.
+        await LockSeriesAsync(tenantId, targetSeriesId, ct);
         var targetHasRows = await _db.Database.SqlQuery<bool>(
             $"SELECT EXISTS (SELECT 1 FROM meeting_details WHERE series_id = {targetSeriesId}::uuid) AS \"Value\"").ToListAsync(ct);
         if (targetHasRows.Single())
@@ -131,5 +148,13 @@ public sealed class EfMeetingOccurrenceWriter : IMeetingOccurrenceWriter
         var updated = await _db.Database.ExecuteSqlRawAsync(sql.ToString(), parameters, ct);
         if (updated != mapping.Count)
             throw new InvalidOperationException($"Remap updated {updated} of {mapping.Count} occurrences; every task must be a meeting occurrence of this tenant.");
+    }
+
+    // The series lock is transaction-scoped and an orphaned task only fails at COMMIT: outside a transaction neither
+    // guarantee holds, so every write is refused there.
+    private void RequireTransaction(string operation)
+    {
+        if (_db.Database.CurrentTransaction is null)
+            throw new InvalidOperationException($"{operation} must run inside a database transaction.");
     }
 }
