@@ -24,6 +24,11 @@ P-1 (outbox claim fix)  →  Release A (this)  →  Release B (meeting core, Pla
 - **P-1** is branch `fix/outbox-concurrency`, migration `AddOutboxClaimLease`. It may ship before or with A. Release A itself does not need it.
 - **`Meetings:BulkInvite` needs P-1.** With the flag on and P-1 missing (no `outbox_messages.locked_by`), the app refuses to start: `Meetings:BulkInvite needs the outbox claim fix (P-1)`.
 - Release B only starts after A is live everywhere.
+- **Release B = Plans B + C together.** Plan B (meeting core: `/meetings` API, approval, splits, moves, the 7-day generator)
+  sends no invites, links or attendance; Plan C adds them. Keep `Meetings:Create` **off** until Plan C is deployed too.
+  Plan B adds migration `AddProjectMeetingNumber` (`projects.next_meeting_number`, existing projects start at 1).
+- `Meetings:Background` turns on the hourly generator. It runs on one instance at a time (`job_leases`) and can be
+  switched on before `Meetings:Create`: with no meetings it does nothing.
 
 ## Before deploying
 
