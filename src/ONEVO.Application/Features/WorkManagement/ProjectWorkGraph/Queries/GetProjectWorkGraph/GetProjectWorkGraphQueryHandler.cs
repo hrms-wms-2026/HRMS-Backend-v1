@@ -8,6 +8,7 @@ using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.ProjectWorkGraph.DTOs.Responses;
+using ONEVO.Application.Features.WorkManagement.Sprints.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.Services;
 using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
@@ -16,15 +17,19 @@ namespace ONEVO.Application.Features.WorkManagement.ProjectWorkGraph.Queries.Get
 
 /// <summary>
 /// Builds the project-centred work graph: every active objective of the project as a module node,
-/// parent-to-child "contains" links, and the project's open top-level tasks hanging off their module
-/// by "has_task" links (the kind the explorer groups task cards by). Access mirrors GetObjectiveTreeQueryHandler exactly - every active project member sees
+/// parent-to-child "contains" links, the sprints that hold those modules' tasks (module -> sprint
+/// "contains", the Tree tab's own rule: a module shows the sprints containing its tasks), and the
+/// top-level tasks of every status hanging off their sprint, or their module when in no sprint, by
+/// "has_task" links (the kind the explorer groups task cards by). The client shows tasks only on
+/// hover. Access mirrors GetObjectiveTreeQueryHandler exactly - every active project member sees
 /// the full module tree, so this query invents no visibility rule of its own.
 /// Modules carry no Role: it is viewer-relative ("do I own this") and says nothing useful in a
 /// project-rooted picture, where the owner is on the node's own label and in the detail panel.
 /// </summary>
 public class GetProjectWorkGraphQueryHandler : IRequestHandler<GetProjectWorkGraphQuery, Result<ProjectWorkGraphResponse>>
 {
-    public const int MaxTaskNodes = 60;
+    /// <summary>Tasks are drawn only on hover, so a larger set than the employee graph's 60 stays readable.</summary>
+    public const int MaxTaskNodes = 200;
     /// <summary>Members listed per module (with avatars); the full count is sent separately.</summary>
     public const int MaxModuleMembers = 8;
 
@@ -37,12 +42,15 @@ public class GetProjectWorkGraphQueryHandler : IRequestHandler<GetProjectWorkGra
     private readonly IDateTimeProvider _clock;
     private readonly ITaskAccessResolver _taskAccess;
     private readonly ITaskStatusRepository _statuses;
+    private readonly ISprintRepository _sprints;
 
     public GetProjectWorkGraphQueryHandler(
         ICurrentUser currentUser, ICallerIdentityResolver identity, IProjectRepository projects,
         IProjectMemberRepository members, IObjectiveRepository objectives, IWorkTaskRepository tasks,
-        IDateTimeProvider clock, ITaskAccessResolver taskAccess, ITaskStatusRepository statuses)
+        IDateTimeProvider clock, ITaskAccessResolver taskAccess, ITaskStatusRepository statuses,
+        ISprintRepository sprints)
     {
+        _sprints = sprints;
         _taskAccess = taskAccess;
         _statuses = statuses;
         _currentUser = currentUser;
@@ -126,10 +134,13 @@ public class GetProjectWorkGraphQueryHandler : IRequestHandler<GetProjectWorkGra
         return Result<ProjectWorkGraphResponse>.Success(new ProjectWorkGraphResponse(nodes, links, hidden));
     }
 
+
     /// <summary>
-    /// Open (not started / active) top-level tasks of the drawn modules. Subtasks are left out, as
-    /// they are from the tree's counts and progress. Visibility is applied BEFORE the cap, so a
-    /// private task the caller may not see is simply absent - never drawn, never counted as hidden.
+    /// Top-level tasks of the drawn modules, every status, plus the sprints that hold them.
+    /// Subtasks are left out, as they are from the tree's counts and progress. Visibility is applied
+    /// BEFORE anything else is derived: a private task the caller may not see is simply absent - never
+    /// drawn, never counted as hidden, and never the reason a sprint appears. Sprints come from the
+    /// whole viewable set (not the capped one), so a sprint never vanishes because its tasks were capped.
     /// </summary>
     private async Task<(List<WorkGraphNode> Nodes, List<WorkGraphLink> Links, int Hidden)> BuildTaskNodesAsync(
         Guid tenantId, Guid projectId, Guid callerEmployeeId, IReadOnlySet<Guid> moduleIds, DateOnly today,
@@ -144,31 +155,55 @@ public class GetProjectWorkGraphQueryHandler : IRequestHandler<GetProjectWorkGra
         var statuses = (await _statuses.GetByIdsForTenantAsync(
                 tenantId, topLevel.Select(t => t.StatusId).Distinct().ToList(), ct))
             .ToDictionary(s => s.Id);
-        var open = topLevel
-            .Where(t => statuses.TryGetValue(t.StatusId, out var s)
-                        && (s.Category == TaskStatusCategories.NotStarted || s.Category == TaskStatusCategories.Active))
-            .ToList();
+        var known = topLevel.Where(t => statuses.ContainsKey(t.StatusId)).ToList();
+        var viewable = await _taskAccess.FilterViewableTasksAsync(tenantId, _currentUser.UserId, callerEmployeeId, known, ct);
 
-        var viewable = await _taskAccess.FilterViewableTasksAsync(tenantId, _currentUser.UserId, callerEmployeeId, open, ct);
+        var nodes = new List<WorkGraphNode>();
+        var links = new List<WorkGraphLink>();
+
+        var sprintIds = viewable.Where(t => t.SprintId is not null).Select(t => t.SprintId!.Value).ToHashSet();
+        var sprintsById = sprintIds.Count == 0
+            ? new Dictionary<Guid, Domain.Features.WorkManagement.Sprints.Entities.Sprint>()
+            : (await _sprints.GetByProjectAsync(tenantId, projectId, ct))
+                .Where(s => sprintIds.Contains(s.Id))
+                .ToDictionary(s => s.Id);
+        foreach (var sprint in sprintsById.Values.OrderBy(s => s.Name))
+            nodes.Add(new WorkGraphNode($"sprint:{sprint.Id}", WorkGraphNodeKinds.Sprint, sprint.Name,
+                Status: sprint.Status, ProjectId: sprint.ProjectId));
+        foreach (var (moduleId, sprintId) in viewable
+                     .Where(t => t.SprintId is { } id && sprintsById.ContainsKey(id))
+                     .Select(t => (t.ObjectiveId, t.SprintId!.Value))
+                     .Distinct())
+            links.Add(new WorkGraphLink($"module:{moduleId}", $"sprint:{sprintId}", WorkGraphLinkKinds.Contains));
+
         var drawn = viewable
-            .OrderBy(t => statuses[t.StatusId].Category)
+            .OrderBy(t => StatusRank(statuses[t.StatusId].Category))
             .ThenBy(t => t.ShortId)
             .Take(MaxTaskNodes)
             .ToList();
-
-        var nodes = new List<WorkGraphNode>(drawn.Count);
-        var links = new List<WorkGraphLink>(drawn.Count);
         foreach (var task in drawn)
         {
             var status = statuses[task.StatusId];
             var taskNodeId = $"task:{task.Id}";
+            var isDone = status.Category == TaskStatusCategories.Done;
             nodes.Add(new WorkGraphNode(taskNodeId, WorkGraphNodeKinds.Task, task.Title, task.ShortId,
                 Status: status.Category, ProjectId: task.ProjectId, ObjectiveId: task.ObjectiveId, TaskId: task.Id,
                 Task: new WorkGraphTaskDetails(task.DueDate, status.Name, task.Priority,
-                    task.DueDate is { } due && due < today)));
-            links.Add(new WorkGraphLink($"module:{task.ObjectiveId}", taskNodeId, WorkGraphLinkKinds.HasTask));
+                    !isDone && task.DueDate is { } due && due < today)));
+            var parent = task.SprintId is { } sid && sprintsById.ContainsKey(sid)
+                ? $"sprint:{sid}"
+                : $"module:{task.ObjectiveId}";
+            links.Add(new WorkGraphLink(parent, taskNodeId, WorkGraphLinkKinds.HasTask));
         }
 
         return (nodes, links, viewable.Count - drawn.Count);
     }
+
+    /// <summary>Work in flight first, then work not started, then finished work.</summary>
+    private static int StatusRank(string category) => category switch
+    {
+        TaskStatusCategories.Active => 0,
+        TaskStatusCategories.NotStarted => 1,
+        _ => 2
+    };
 }

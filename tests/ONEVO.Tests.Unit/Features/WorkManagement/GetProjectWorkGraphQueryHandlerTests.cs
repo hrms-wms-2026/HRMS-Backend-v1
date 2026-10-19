@@ -9,10 +9,12 @@ using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfa
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.ProjectWorkGraph.DTOs.Responses;
 using ONEVO.Application.Features.WorkManagement.ProjectWorkGraph.Queries.GetProjectWorkGraph;
+using ONEVO.Application.Features.WorkManagement.Sprints.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.Services;
 using ONEVO.Domain.Features.WorkManagement.Objectives.Entities;
 using ONEVO.Domain.Features.WorkManagement.Projects.Entities;
+using ONEVO.Domain.Features.WorkManagement.Sprints.Entities;
 using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
 using TaskStatusEntity = ONEVO.Domain.Features.WorkManagement.Tasks.Entities.TaskStatus;
 
@@ -29,6 +31,7 @@ public sealed class GetProjectWorkGraphQueryHandlerTests
     private readonly Mock<IDateTimeProvider> _clock = new();
     private readonly Mock<ITaskAccessResolver> _access = new();
     private readonly Mock<ITaskStatusRepository> _statuses = new();
+    private readonly Mock<ISprintRepository> _sprints = new();
 
     private static readonly DateOnly Today = new(2026, 10, 19);
     private readonly Guid _tenantId = Guid.NewGuid();
@@ -66,6 +69,8 @@ public sealed class GetProjectWorkGraphQueryHandlerTests
         // The resolver's own rules are tested elsewhere; here it lets everything through unless a test says not.
         _access.Setup(a => a.FilterViewableTasksAsync(_tenantId, _userId, _callerEmployeeId, It.IsAny<IReadOnlyList<WorkTask>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((Guid _, Guid _, Guid _, IReadOnlyList<WorkTask> tasks, CancellationToken _) => tasks);
+        _sprints.Setup(r => r.GetByProjectAsync(_tenantId, _projectId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<Sprint>());
         _statuses.Setup(r => r.GetByIdsForTenantAsync(_tenantId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new[]
             {
@@ -77,7 +82,7 @@ public sealed class GetProjectWorkGraphQueryHandlerTests
 
     private GetProjectWorkGraphQueryHandler CreateHandler() =>
         new(_currentUser.Object, _identity.Object, _projects.Object, _members.Object,
-            _objectives.Object, _tasks.Object, _clock.Object, _access.Object, _statuses.Object);
+            _objectives.Object, _tasks.Object, _clock.Object, _access.Object, _statuses.Object, _sprints.Object);
 
     private Project Proj() =>
         new() { Id = _projectId, TenantId = _tenantId, Name = "Hardware integration portal", Identifier = "HIP", IsActive = true };
@@ -101,7 +106,7 @@ public sealed class GetProjectWorkGraphQueryHandlerTests
         };
 
     private WorkTask Task(string title, Guid objectiveId, Guid statusId, Guid? parentTaskId = null,
-        DateOnly? due = null, string visibility = WorkTaskVisibilityScopes.Module) =>
+        DateOnly? due = null, string visibility = WorkTaskVisibilityScopes.Module, Guid? sprintId = null) =>
         new()
         {
             Id = Guid.NewGuid(),
@@ -114,8 +119,16 @@ public sealed class GetProjectWorkGraphQueryHandlerTests
             Title = title,
             Priority = "high",
             DueDate = due,
-            VisibilityScope = visibility
+            VisibilityScope = visibility,
+            SprintId = sprintId
         };
+
+    private Sprint Sprint(string name, string status) =>
+        new() { Id = Guid.NewGuid(), TenantId = _tenantId, ProjectId = _projectId, Name = name, Status = status };
+
+    private void ArrangeSprints(params Sprint[] sprints) =>
+        _sprints.Setup(r => r.GetByProjectAsync(_tenantId, _projectId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(sprints);
 
     private void ArrangeTasks(params WorkTask[] tasks) =>
         _tasks.Setup(t => t.GetByProjectAsync(_tenantId, _projectId, It.IsAny<CancellationToken>()))
@@ -212,7 +225,7 @@ public sealed class GetProjectWorkGraphQueryHandlerTests
     }
 
     [Fact]
-    public async Task Handle_AddsOpenTasksOfEachModule_AsTaskNodes()
+    public async Task Handle_AddsTasksOfEachModule_IncludingCompletedOnes_WithTheirStatus()
     {
         ArrangeTree(Obj(_rootId, "Root", null, isDefault: true));
         ArrangeTasks(Task("Fix timeout", _rootId, _activeStatusId), Task("Write docs", _rootId, _openStatusId),
@@ -221,10 +234,10 @@ public sealed class GetProjectWorkGraphQueryHandlerTests
         var result = await Run();
 
         var tasks = result.Value!.Nodes.Where(n => n.Kind == WorkGraphNodeKinds.Task).ToList();
-        Assert.Equal(2, tasks.Count);
+        Assert.Equal(3, tasks.Count);
         Assert.Contains(tasks, n => n.Label == "Fix timeout" && n.Status == TaskStatusCategories.Active && n.Task!.StatusName == "In Progress");
         Assert.Contains(tasks, n => n.Label == "Write docs" && n.Status == TaskStatusCategories.NotStarted);
-        Assert.DoesNotContain(tasks, n => n.Label == "Shipped");
+        Assert.Contains(tasks, n => n.Label == "Shipped" && n.Status == TaskStatusCategories.Done);
     }
 
     [Fact]
@@ -313,5 +326,103 @@ public sealed class GetProjectWorkGraphQueryHandlerTests
         var tasks = result.Value!.Nodes.Where(n => n.Kind == WorkGraphNodeKinds.Task).ToDictionary(n => n.Label);
         Assert.True(tasks["Late"].Task!.IsOverdue);
         Assert.False(tasks["Due today"].Task!.IsOverdue);
+    }
+
+    [Fact]
+    public async Task Handle_AddsSprintNodes_ForSprintsContainingViewableTasks_WithTheirStatus()
+    {
+        ArrangeTree(Obj(_rootId, "Root", null, isDefault: true));
+        var active = Sprint("Sprint 7", SprintStatuses.Active);
+        var unused = Sprint("Empty sprint", SprintStatuses.Draft);
+        ArrangeSprints(active, unused);
+        ArrangeTasks(Task("In sprint", _rootId, _activeStatusId, sprintId: active.Id));
+
+        var result = await Run();
+
+        var sprint = Assert.Single(result.Value!.Nodes, n => n.Kind == WorkGraphNodeKinds.Sprint);
+        Assert.Equal($"sprint:{active.Id}", sprint.Id);
+        Assert.Equal("Sprint 7", sprint.Label);
+        Assert.Equal(SprintStatuses.Active, sprint.Status);
+    }
+
+    [Fact]
+    public async Task Handle_LinksModuleToSprint_ForEachModuleWithTasksInIt()
+    {
+        ArrangeTree(Obj(_rootId, "Root", null, isDefault: true), Obj(_childId, "Child", _rootId));
+        var shared = Sprint("Shared", SprintStatuses.Active);
+        ArrangeSprints(shared);
+        ArrangeTasks(Task("Root work", _rootId, _activeStatusId, sprintId: shared.Id),
+            Task("Child work", _childId, _openStatusId, sprintId: shared.Id),
+            Task("More child work", _childId, _openStatusId, sprintId: shared.Id));
+
+        var result = await Run();
+
+        var sprintLinks = result.Value!.Links
+            .Where(l => l.Target == $"sprint:{shared.Id}" && l.Kind == WorkGraphLinkKinds.Contains)
+            .Select(l => l.Source).OrderBy(s => s).ToList();
+        Assert.Equal(new[] { $"module:{_childId}", $"module:{_rootId}" }.OrderBy(s => s), sprintLinks);
+    }
+
+    [Fact]
+    public async Task Handle_HangsATaskInASprintOffTheSprint_AndOtherTasksOffTheModule()
+    {
+        ArrangeTree(Obj(_rootId, "Root", null, isDefault: true));
+        var sprint = Sprint("Sprint 7", SprintStatuses.Active);
+        ArrangeSprints(sprint);
+        var inSprint = Task("In sprint", _rootId, _activeStatusId, sprintId: sprint.Id);
+        var loose = Task("Loose", _rootId, _activeStatusId);
+        ArrangeTasks(inSprint, loose);
+
+        var result = await Run();
+
+        var hasTask = result.Value!.Links.Where(l => l.Kind == WorkGraphLinkKinds.HasTask).ToList();
+        Assert.Contains(hasTask, l => l.Source == $"sprint:{sprint.Id}" && l.Target == $"task:{inSprint.Id}");
+        Assert.Contains(hasTask, l => l.Source == $"module:{_rootId}" && l.Target == $"task:{loose.Id}");
+        Assert.DoesNotContain(hasTask, l => l.Source == $"module:{_rootId}" && l.Target == $"task:{inSprint.Id}");
+    }
+
+    [Fact]
+    public async Task Handle_IncludesCompletedTasks_WithDoneStatus()
+    {
+        ArrangeTree(Obj(_rootId, "Root", null, isDefault: true));
+        ArrangeTasks(Task("Shipped", _rootId, _doneStatusId));
+
+        var result = await Run();
+
+        var task = Assert.Single(result.Value!.Nodes, n => n.Kind == WorkGraphNodeKinds.Task);
+        Assert.Equal(TaskStatusCategories.Done, task.Status);
+    }
+
+    [Fact]
+    public async Task Handle_OrdersDrawnTasks_ActiveThenNotStartedThenDone_BeforeCapping()
+    {
+        ArrangeTree(Obj(_rootId, "Root", null, isDefault: true));
+        var done = Enumerable.Range(0, GetProjectWorkGraphQueryHandler.MaxTaskNodes)
+            .Select(i => Task($"Done {i}", _rootId, _doneStatusId));
+        ArrangeTasks(done.Append(Task("Todo", _rootId, _openStatusId)).Append(Task("Doing", _rootId, _activeStatusId)).ToArray());
+
+        var result = await Run();
+
+        var labels = result.Value!.Nodes.Where(n => n.Kind == WorkGraphNodeKinds.Task).Select(n => n.Label).ToList();
+        Assert.Equal("Doing", labels[0]);
+        Assert.Equal("Todo", labels[1]);
+        Assert.Equal(2, result.Value!.HiddenTaskCount);
+    }
+
+    [Fact]
+    public async Task Handle_DoesNotDeriveSprintsFromPrivateTasksTheCallerCannotSee()
+    {
+        ArrangeTree(Obj(_rootId, "Root", null, isDefault: true));
+        var secretSprint = Sprint("Secret sprint", SprintStatuses.Active);
+        ArrangeSprints(secretSprint);
+        var secret = Task("Secret", _rootId, _activeStatusId, visibility: WorkTaskVisibilityScopes.Assignees, sprintId: secretSprint.Id);
+        ArrangeTasks(secret);
+        _access.Setup(a => a.FilterViewableTasksAsync(_tenantId, _userId, _callerEmployeeId, It.IsAny<IReadOnlyList<WorkTask>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Guid _, Guid _, Guid _, IReadOnlyList<WorkTask> tasks, CancellationToken _) =>
+                tasks.Where(t => t.Id != secret.Id).ToList());
+
+        var result = await Run();
+
+        Assert.DoesNotContain(result.Value!.Nodes, n => n.Kind == WorkGraphNodeKinds.Sprint);
     }
 }
