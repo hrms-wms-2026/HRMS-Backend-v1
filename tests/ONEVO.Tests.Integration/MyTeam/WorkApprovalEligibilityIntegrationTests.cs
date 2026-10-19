@@ -117,7 +117,7 @@ public sealed class WorkApprovalEligibilityIntegrationTests
     public async Task HrSourcedApproval_IsUnaffectedByAnyHierarchyOwnershipChange()
     {
         var helper = await MyTeamDb.CreateAsync();
-        Guid hrApproverId, unrelatedOwnerId, moduleId;
+        Guid hrApproverId, unrelatedOwnerId, moduleId, requestId;
         await using (var seed = helper.NewContext())
         {
             var requester = helper.AddEmployee(seed);
@@ -130,18 +130,31 @@ public sealed class WorkApprovalEligibilityIntegrationTests
             helper.AddMember(seed, project, moduleId, unrelatedOwner.Id);
             await seed.SaveChangesAsync();
 
-            seed.WorkApprovalRequests.Add(new WorkApprovalRequest
+            var request = new WorkApprovalRequest
             {
                 Id = Guid.NewGuid(), TenantId = helper.TenantId, ProjectId = project, ActionType = WorkActionTypes.TaskCreate,
                 TargetType = WorkTargetTypes.Task, TargetTitle = "New task", PositionObjectiveId = null,
                 ApproverSource = WorkApprovalSources.Hr, ApproverEmployeeId = hrApprover.Id,
                 RequestedByEmployeeId = requester.Id, Status = WorkApprovalRequestStatuses.Pending,
-            });
+            };
+            requestId = request.Id;
+            seed.WorkApprovalRequests.Add(request);
             await seed.SaveChangesAsync();
         }
 
         await using (var beforeDb = helper.NewContext())
             (await Leadership(helper, beforeDb).HasPendingWorkApprovalsAsync(helper.TenantId, hrApproverId, helper.LegalEntityId)).Should().BeTrue();
+
+        // WM-04 fix (2026-10-12): hrApprover owns ZERO modules at this point (only unrelatedOwner
+        // does) - before the fix, ListDecidableAcrossLedProjectsAsync's owned-module early return
+        // meant this HR-sourced row never appeared in the *content* even though the gate (above)
+        // correctly said "you have something pending". Content must not disagree with the gate.
+        await using (var beforeContentDb = helper.NewContext())
+        {
+            var beforeContent = await Eligibility(helper, beforeContentDb).ListDecidableAcrossLedProjectsAsync(
+                helper.TenantId, hrApproverId, helper.LegalEntityId, MyTeamApprovalActionTypes.All);
+            beforeContent.Should().ContainSingle(r => r.Id == requestId);
+        }
 
         // Transfer the unrelated module's ownership - must have zero effect on the HR-sourced row.
         await using (var transfer = helper.NewContext())
@@ -151,9 +164,15 @@ public sealed class WorkApprovalEligibilityIntegrationTests
             await transfer.SaveChangesAsync();
         }
 
-        await using var afterDb = helper.NewContext();
-        (await Leadership(helper, afterDb).HasPendingWorkApprovalsAsync(helper.TenantId, hrApproverId, helper.LegalEntityId)).Should().BeTrue(
-            "the HR-sourced row was already true for hrApprover before the transfer - an unrelated hierarchy change must not flip it");
+        await using (var afterDb = helper.NewContext())
+            (await Leadership(helper, afterDb).HasPendingWorkApprovalsAsync(helper.TenantId, hrApproverId, helper.LegalEntityId)).Should().BeTrue(
+                "the HR-sourced row was already true for hrApprover before the transfer - an unrelated hierarchy change must not flip it");
+
+        await using var afterContentDb = helper.NewContext();
+        var afterContent = await Eligibility(helper, afterContentDb).ListDecidableAcrossLedProjectsAsync(
+            helper.TenantId, hrApproverId, helper.LegalEntityId, MyTeamApprovalActionTypes.All);
+        afterContent.Should().ContainSingle(r => r.Id == requestId,
+            "now hrApprover also owns the transferred module, but that must not duplicate or drop the HR-sourced row");
     }
 
     [Fact]

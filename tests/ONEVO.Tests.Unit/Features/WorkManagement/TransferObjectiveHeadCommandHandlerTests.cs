@@ -1,3 +1,4 @@
+using ONEVO.Application.Features.Inbox.OutboxHandlers;
 using Moq;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.OutboxHandlers;
@@ -167,6 +168,10 @@ public class TransferObjectiveHeadCommandHandlerTests
                 && p.RelatedEntityType == "project_member_invitation"
                 && p.RecipientUserId == K.NewHeadUser
                 && p.Placeholders["inviteType"] == ProjectInvitationTypes.Leader),
+            K.TenantId, It.IsAny<CancellationToken>()), Times.Once);
+        kit.Outbox.Verify(x => x.EnqueueAsync(
+            OutboxMessageTypes.InboxChanged,
+            It.Is<InboxChangedPayload>(p => p.Kind == "invitation" && p.EmployeeIds.Contains(K.NewHead)),
             K.TenantId, It.IsAny<CancellationToken>()), Times.Once);
         kit.VerifyEngineNeverCalled();
     }

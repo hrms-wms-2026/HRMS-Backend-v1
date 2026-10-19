@@ -31,5 +31,4 @@ public sealed record ApprovalFeedItemResponse(
     DateTimeOffset? DecidedAt,
     bool CanDecide,
     bool CanCancel,
-    int CommentCount,
     string? Summary);

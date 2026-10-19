@@ -19,7 +19,12 @@ public sealed record TransactionalEmailRequest(
     string? TextBody,
     Guid? EmailDeliveryLogId = null,
     Guid? NotificationTemplateId = null,
-    Guid? OutboxMessageId = null);
+    Guid? OutboxMessageId = null,
+    IReadOnlyList<EmailAttachment>? Attachments = null);
+
+/// <summary>A file sent with an email (e.g. a calendar .ics). <see cref="ContentType"/> may carry parameters
+/// ("text/calendar; method=REQUEST").</summary>
+public sealed record EmailAttachment(string FileName, string ContentType, byte[] Content);
 
 /// <summary>
 /// Outcome of a transactional email send attempt. Contains no secret fields:

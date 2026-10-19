@@ -545,7 +545,10 @@ public sealed class TaskAttachmentsIntegrationTests : IClassFixture<TaskAttachme
     [Fact]
     public async Task PendingUpload_ThenCreateTaskWithAttachment_ThenGetById_ShowsAttachment_ThenFileIsDownloadable()
     {
-        var fileBytes = Encoding.UTF8.GetBytes("hello attachment world");
+        // Real PDF magic bytes (%PDF) - SEC-13's signature check verifies the actual content
+        // against the declared ".pdf" extension, so fake text content is no longer accepted here.
+        var fileBytes = new byte[] { 0x25, 0x50, 0x44, 0x46 }
+            .Concat(Encoding.UTF8.GetBytes("hello attachment world")).ToArray();
         var uploadResponse = await _fixture.SendPendingUploadAsync(
             _fixture.TenantA, "task_attachment", "notes.pdf", "application/pdf", fileBytes);
         uploadResponse.StatusCode.Should().Be(HttpStatusCode.Created, await uploadResponse.Content.ReadAsStringAsync());
@@ -611,7 +614,9 @@ public sealed class TaskAttachmentsIntegrationTests : IClassFixture<TaskAttachme
     [Fact]
     public async Task GetFile_UnlinkedFileNotOwnedByCaller_Returns404()
     {
-        var fileBytes = Encoding.UTF8.GetBytes("owned by tenant A's owner only");
+        // Real PDF magic bytes (%PDF) - see the signature-check note above.
+        var fileBytes = new byte[] { 0x25, 0x50, 0x44, 0x46 }
+            .Concat(Encoding.UTF8.GetBytes("owned by tenant A's owner only")).ToArray();
         var uploadResponse = await _fixture.SendPendingUploadAsync(
             _fixture.TenantA, "task_attachment", "private.pdf", "application/pdf", fileBytes);
         uploadResponse.StatusCode.Should().Be(HttpStatusCode.Created);

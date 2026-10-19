@@ -9,6 +9,7 @@ using ONEVO.Application.Features.CoreHr.Offboarding.Commands.SelectOffboardingCh
 using ONEVO.Application.Features.CoreHr.Offboarding.Commands.StartOffboarding;
 using ONEVO.Application.Features.CoreHr.Offboarding.Queries.GetOffboarding;
 using ONEVO.Application.Features.CoreHr.Offboarding.Queries.ListOffboardingChecklistMatches;
+using ONEVO.Application.Features.WorkManagement.EmployeeOverview.Queries.GetEmployeeOpenWorkTasks;
 
 namespace ONEVO.Api.Controllers.Tenant.CoreHr;
 
@@ -32,7 +33,7 @@ public class EmployeeOffboardingController(IMediator mediator) : ControllerBase
     }
 
     [HttpGet]
-    [RequirePermission("employees:read")]
+    [RequireVisibleEmployee("employeeId")]
     public async Task<IActionResult> Get(Guid employeeId, CancellationToken ct = default)
     {
         var result = await mediator.Send(new GetOffboardingQuery(employeeId), ct);
@@ -40,10 +41,20 @@ public class EmployeeOffboardingController(IMediator mediator) : ControllerBase
     }
 
     [HttpGet("checklist-matches")]
-    [RequirePermission("employees:read")]
+    [RequireVisibleEmployee("employeeId")]
     public async Task<IActionResult> GetChecklistMatches(Guid employeeId, CancellationToken ct = default)
     {
         var result = await mediator.Send(new ListOffboardingChecklistMatchesQuery(employeeId), ct);
+        return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Open work tasks still assigned to the employee (any due date), for the Track Exit Work step.</summary>
+    [HttpGet("open-work-tasks")]
+    [RequireVisibleEmployee("employeeId")]
+    [RequireAnyModule("worksync_foundation", "projects", "objectives_milestones", "tasks", "boards", "planning_sprints")]
+    public async Task<IActionResult> GetOpenWorkTasks(Guid employeeId, CancellationToken ct = default)
+    {
+        var result = await mediator.Send(new GetEmployeeOpenWorkTasksQuery(employeeId), ct);
         return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 

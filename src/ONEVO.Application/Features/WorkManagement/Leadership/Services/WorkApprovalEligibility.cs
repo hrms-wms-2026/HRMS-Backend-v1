@@ -47,18 +47,25 @@ public sealed class WorkApprovalEligibility(
     public async Task<IReadOnlyList<WorkApprovalRequest>> ListDecidableAcrossLedProjectsAsync(
         Guid tenantId, Guid employeeId, Guid legalEntityId, IReadOnlySet<string> actionTypes, CancellationToken ct = default)
     {
-        var owned = await objectives.ListActiveOwnedIdsAsync(tenantId, employeeId, legalEntityId, ct);
-        if (owned.Count == 0)
-            return Array.Empty<WorkApprovalRequest>();
-
-        var projectIds = owned.Select(o => o.ProjectId).Distinct().ToList();
-        var projectsWithPending = await requests.ListProjectsWithPendingAsync(tenantId, projectIds, actionTypes, ct);
-        if (projectsWithPending.Count == 0)
-            return Array.Empty<WorkApprovalRequest>();
-
         var decidable = new List<WorkApprovalRequest>();
-        foreach (var projectId in projectsWithPending)
-            decidable.AddRange(await ListDecidableAsync(tenantId, projectId, employeeId, actionTypes, ct));
-        return decidable;
+
+        // HR-sourced approvals are resolved once at submit time (ApproverEmployeeId is final and
+        // never re-checked against a tree, per WorkApprovalDecisionRules.CanDecide) and carry no
+        // module-ownership requirement - the capability gate (HasPendingForHrApproverAsync) already
+        // reflects this. Without this call, an HR-sourced approver who owns zero modules anywhere
+        // was invisible here even though the gate correctly flagged them as having something
+        // pending (WM-04 fix, 2026-10-12 - see docs/superpowers/plans/next/2026-10-12-pre-uat-audit-wm-sec-findings.md).
+        decidable.AddRange(await requests.ListPendingForHrApproverAsync(tenantId, employeeId, actionTypes, ct));
+
+        var owned = await objectives.ListActiveOwnedIdsAsync(tenantId, employeeId, legalEntityId, ct);
+        if (owned.Count > 0)
+        {
+            var projectIds = owned.Select(o => o.ProjectId).Distinct().ToList();
+            var projectsWithPending = await requests.ListProjectsWithPendingAsync(tenantId, projectIds, actionTypes, ct);
+            foreach (var projectId in projectsWithPending)
+                decidable.AddRange(await ListDecidableAsync(tenantId, projectId, employeeId, actionTypes, ct));
+        }
+
+        return decidable.Count <= 1 ? decidable : decidable.GroupBy(r => r.Id).Select(g => g.First()).ToList();
     }
 }

@@ -402,6 +402,11 @@ public class TenantIsolationArchitectureTests
             // soft-deleted sprint to restore it when an approved sprint.delete is reverted, while
             // preserving tenant scoping with an explicit TenantId predicate in EfSprintRepository.
             "EfSprintRepository.cs",
+            // Development/test demo seeder idempotency check: a demo task soft-deleted from the
+            // app is still in the table, so the default is_deleted filter would hide it and the
+            // re-insert would hit pk_tasks. The bypass retains an explicit
+            // TenantId == DapiTenantId predicate in DapiDueTodayTaskSeeder.
+            "DapiDueTodayTaskSeeder.cs",
         };
 
         var srcDirectory = FindSrcDirectory();

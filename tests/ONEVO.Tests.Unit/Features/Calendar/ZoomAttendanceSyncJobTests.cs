@@ -154,4 +154,46 @@ public sealed class ZoomAttendanceSyncJobTests
         meetingsRepoMock.Verify(m => m.Update(
             It.Is<CalendarEventMeeting>(cm => cm.Id == failingMeeting.Id)), Times.Never);
     }
+
+    [Theory]
+    [InlineData(2, false)]
+    [InlineData(25, true)]
+    public async Task RunOnceAsync_EmptyReport_IsRetriedUntilTheCutoffThenMarkedUnavailable(int hoursSinceEnd, bool unavailable)
+    {
+        var services = new ServiceCollection();
+        var tenantRepoMock = new Mock<ITenantRepository>();
+        tenantRepoMock.Setup(t => t.ListAsync(TenantStatus.Active, null, 0, 100, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<Tenant> { MakeTenant() });
+        tenantRepoMock.Setup(t => t.ListAsync(TenantStatus.Active, null, 100, 100, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<Tenant>());
+        var meeting = MakeMeeting();
+        var connection = MakeConnection(meeting.ExternalCalendarConnectionId);
+        var meetingsRepoMock = new Mock<ICalendarEventMeetingRepository>();
+        meetingsRepoMock.Setup(m => m.GetDueForAttendanceSyncAsync(TenantId, CalendarEventMeetingProviders.Zoom, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<CalendarEventMeeting> { meeting });
+        meetingsRepoMock.Setup(m => m.GetEventEndAsync(TenantId, meeting.CalendarEventId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(DateTimeOffset.UtcNow.AddHours(-hoursSinceEnd));
+        var connectionsRepoMock = new Mock<IExternalCalendarConnectionRepository>();
+        connectionsRepoMock.Setup(c => c.GetByIdForTenantAsync(TenantId, connection.Id, It.IsAny<CancellationToken>())).ReturnsAsync(connection);
+        var tokenProviderMock = new Mock<ICalendarConnectionTokenProvider>();
+        tokenProviderMock.Setup(t => t.GetFreshAccessTokenAsync(connection, "zoom", It.IsAny<CancellationToken>())).ReturnsAsync("access-token");
+        var clientMock = new Mock<IZoomMeetingClient>();
+        clientMock.Setup(t => t.GetAttendanceAsync("access-token", "graph-meeting-1", It.IsAny<CancellationToken>())).ReturnsAsync(new List<ZoomAttendanceRecordDto>());
+        var attendancesRepoMock = new Mock<ICalendarEventMeetingAttendanceRepository>();
+        services.AddSingleton(tenantRepoMock.Object);
+        services.AddSingleton(meetingsRepoMock.Object);
+        services.AddSingleton(connectionsRepoMock.Object);
+        services.AddSingleton(tokenProviderMock.Object);
+        services.AddSingleton(clientMock.Object);
+        services.AddSingleton(attendancesRepoMock.Object);
+        services.AddSingleton(Mock.Of<IUnitOfWork>());
+        services.AddSingleton(Mock.Of<IWritableTenantContext>());
+        services.AddSingleton(Mock.Of<ITenantContextSwitcher>());
+
+        await new ZoomAttendanceSyncJob(services.BuildServiceProvider(), NullLogger<ZoomAttendanceSyncJob>.Instance).RunOnceAsync(CancellationToken.None);
+
+        // Never stamped as synced on an empty report: within the cutoff it stays due; after it, it is marked unavailable.
+        meetingsRepoMock.Verify(m => m.Update(It.Is<CalendarEventMeeting>(cm => cm.LastAttendanceSyncedAt != null)), Times.Never);
+        meetingsRepoMock.Verify(m => m.Update(It.Is<CalendarEventMeeting>(cm => cm.AttendanceUnavailableAt != null)), unavailable ? Times.Once() : Times.Never());
+    }
 }

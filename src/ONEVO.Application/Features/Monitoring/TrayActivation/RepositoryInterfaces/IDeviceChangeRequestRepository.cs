@@ -18,5 +18,11 @@ public interface IDeviceChangeRequestRepository
         Guid tenantId, Guid legalEntityId, IReadOnlyCollection<Guid> employeeIds,
         int skip, int take, CancellationToken ct = default);
 
+    /// <summary>Pending requests with no legal entity of their own (plan D-c: they are scoped through the employee's).</summary>
+    Task<IReadOnlyList<DeviceChangeRequest>> ListPendingWithoutLegalEntityAsync(Guid tenantId, CancellationToken ct = default);
+
+    /// <summary>The employee's own device-change requests, newest first (the Inbox Sent list).</summary>
+    Task<IReadOnlyList<DeviceChangeRequest>> ListForEmployeeAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default);
+
     Task<int> SaveChangesAsync(CancellationToken ct = default);
 }

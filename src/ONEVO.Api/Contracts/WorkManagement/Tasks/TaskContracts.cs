@@ -29,6 +29,8 @@ public sealed record DuplicateTaskRequest(
 
 public sealed record ConvertTaskToSubtaskRequest(Guid NewParentTaskId);
 
+// RequiresApproval/ApproverId below: dead fields, round-tripped for backward compatibility only -
+// see TaskStatus.RequiresApproval's doc comment (WM-01, docs/superpowers/plans/next/2026-10-12-pre-uat-audit-wm-sec-findings.md).
 public sealed record EditTaskStatusRequest(
     string Name, int DisplayOrder, bool RequiresApproval, Guid? ApproverId, string Visibility,
     string Category, string Color);
@@ -72,6 +74,7 @@ public sealed record WorkTaskViewModel(
     IReadOnlyList<Guid> SubtaskAssigneeEmployeeIds, DateTimeOffset CreatedAt,
     bool HasPendingApproval = false);
 
+// RequiresApproval/ApproverId below: dead fields - see TaskStatus.RequiresApproval's doc comment (WM-01).
 public sealed record TaskStatusViewModel(
     Guid Id, string Name, int DisplayOrder, bool RequiresApproval,
     Guid? ApproverId, bool MarksTaskComplete, string Visibility,

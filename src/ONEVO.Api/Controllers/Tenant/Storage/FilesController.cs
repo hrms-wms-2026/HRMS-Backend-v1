@@ -54,7 +54,9 @@ public sealed class FilesController : ControllerBase
         {
             Response.Headers.CacheControl = "private, max-age=900";
             Response.Headers.ETag = download.ETag;
-            Response.Headers.Vary = "Cookie";
+            // Origin too: an <img> load (no Origin, so no CORS headers) must not be reused from the
+            // browser cache for a later XHR/fetch of the same URL, which needs the CORS headers.
+            Response.Headers.Vary = "Cookie, Origin";
             Response.Headers["X-Content-Type-Options"] = "nosniff";
         }
 

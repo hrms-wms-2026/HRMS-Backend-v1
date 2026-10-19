@@ -11,6 +11,7 @@ using ONEVO.Application.Features.WorkManagement.ProjectInvitations.Mappers;
 using ONEVO.Application.Features.WorkManagement.ProjectInvitations.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
 using ONEVO.Domain.Features.WorkManagement.ProjectInvitations.Entities;
+using ONEVO.Application.Features.WorkManagement.Notifications.Services;
 
 namespace ONEVO.Application.Features.WorkManagement.Projects.Commands.AddProjectMember;
 
@@ -113,9 +114,11 @@ public class AddProjectMemberCommandHandler : IRequestHandler<AddProjectMemberCo
                     ["projectName"] = project.Name
                 },
                 "project_member_invitation",
-                invitation.Id),
+                invitation.Id, EventId: Guid.NewGuid()),
             tenantId,
             ct);
+        await WorkNotificationEngine.EnqueueInboxChangedAsync(
+            _outboxWriter, tenantId, [invitation.InvitedById, invitation.InvitedEmployeeId], WorkNotificationEngine.InvitationInboxKind, invitation.Id, ct);
 
         await _unitOfWork.SaveChangesAsync(ct);
 

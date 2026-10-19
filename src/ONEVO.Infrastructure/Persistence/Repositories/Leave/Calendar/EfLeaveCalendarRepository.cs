@@ -61,12 +61,14 @@ public sealed class EfLeaveCalendarRepository : ILeaveCalendarRepository
             var coveredPositionIds = scope.CoveredPositionIds;
             var coveredDepartmentIds = scope.CoveredDepartmentIds;
             var companyWideLegalEntityIds = scope.CompanyWideLegalEntityIds;
+            var coveredEmployeeIds = scope.CoveredEmployeeIds;
 
             query = query.Where(row =>
                 (ownEmployeeId != null && row.employee.Id == ownEmployeeId.Value)
                 || (row.primaryAssignment != null && coveredPositionIds.Contains(row.primaryAssignment.PositionId))
                 || (row.department != null && coveredDepartmentIds.Contains(row.department.Id))
-                || (row.legalEntity != null && companyWideLegalEntityIds.Contains(row.legalEntity.Id)));
+                || (row.legalEntity != null && companyWideLegalEntityIds.Contains(row.legalEntity.Id))
+                || coveredEmployeeIds.Contains(row.employee.Id));
         }
 
         if (filter.DepartmentId is { } departmentId)

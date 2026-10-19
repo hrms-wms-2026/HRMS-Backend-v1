@@ -147,6 +147,31 @@ public class ProjectMonitorServiceTests
     }
 
     [Fact]
+    public async Task ProblemGone_RefreshesTheAlertInItsRecipientsInbox_WithoutABellNotification()
+    {
+        OverCapacityModule(allocated: 100m);
+        var existing = OpenAlert(MonitorRuleCodes.ModuleOverCapacity);
+        _open.Add(existing);
+
+        await Service().EvaluateProjectAsync(TenantId, ProjectId, Mon5);
+
+        _notifications.Verify(x => x.InboxChangedAsync(TenantId,
+            It.Is<IReadOnlyCollection<Guid>>(ids => ids.Contains(RootOwner)), "monitor_alert", existing.Id, It.IsAny<CancellationToken>()), Times.Once);
+        _notifications.Verify(x => x.NotifyAsync(It.IsAny<WorkNotificationEvent>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task NewProblem_CarriesTheAlertIdSoItsInboxItemRefreshes()
+    {
+        OverCapacityModule();
+
+        await Service().EvaluateProjectAsync(TenantId, ProjectId, Mon5);
+
+        var alert = Assert.Single(_added);
+        _notifications.Verify(x => x.NotifyAsync(It.Is<WorkNotificationEvent>(e => e.MonitorAlertId == alert.Id), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
     public async Task NoActiveHolder_FallsBackToTheProjectLead()
     {
         OverCapacityModule();
@@ -172,5 +197,48 @@ public class ProjectMonitorServiceTests
         _notifications.Verify(x => x.NotifyAsync(It.Is<WorkNotificationEvent>(e =>
             e.ActionType == "monitor.task_overdue" && e.TargetType == MonitorTargetTypes.Task
             && e.RecipientEmployeeIds.SequenceEqual(new[] { RootOwner })), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    // WM-05 regression guard (audit 2026-10-11): overdue sprints notify, they are never
+    // auto-completed. These two tests pin that behavior so a future change here is a deliberate,
+    // reviewed diff rather than an accidental regression - see
+    // docs/superpowers/plans/next/2026-10-12-pre-uat-audit-wm-sec-findings.md.
+
+    [Fact]
+    public void Constructor_HasNoSprintWriteDependency()
+    {
+        // ProjectMonitorService must stay structurally incapable of mutating a Sprint: no
+        // ISprintRepository/ISprintWriteService/IWorkTaskRepository in its dependency list.
+        var parameterTypeNames = typeof(ProjectMonitorService)
+            .GetConstructors().Single().GetParameters()
+            .Select(p => p.ParameterType.Name);
+
+        Assert.DoesNotContain("ISprintRepository", parameterTypeNames);
+        Assert.DoesNotContain("ISprintWriteService", parameterTypeNames);
+        Assert.DoesNotContain("IWorkTaskRepository", parameterTypeNames);
+    }
+
+    [Fact]
+    public async Task OverdueActiveSprintWithOpenTasks_OpensAnAlertAndNotifiesOnce_NeverChangesSprintStatus()
+    {
+        var sprintId = Guid.NewGuid();
+        var sprint = new MonitorSprint(sprintId, RootId, "Sprint 1", "active", new DateOnly(2026, 9, 28));
+        _snapshots.Setup(x => x.LoadAsync(TenantId, ProjectId, It.IsAny<CancellationToken>())).ReturnsAsync(new ProjectMonitorSnapshot(
+            ProjectId, WorkCalendar.Default, [], [sprint],
+            [new MonitorTask(Guid.NewGuid(), ModuleId, RootId, sprintId, "Unfinished", null, null, 0m, false, 0m, [])]));
+
+        var opened = await Service().EvaluateProjectAsync(TenantId, ProjectId, Mon5);
+
+        Assert.Equal(1, opened);
+        var alert = Assert.Single(_added);
+        Assert.Equal(MonitorRuleCodes.SprintOverdue, alert.RuleCode);
+        Assert.Equal(MonitorTargetTypes.Sprint, alert.TargetType);
+        _notifications.Verify(x => x.NotifyAsync(It.Is<WorkNotificationEvent>(e =>
+            e.Kind == WorkNotificationKinds.Alert && e.ActionType == "monitor.sprint_overdue"
+            && e.TargetId == sprintId && e.RecipientEmployeeIds.SequenceEqual(new[] { RootOwner })),
+            It.IsAny<CancellationToken>()), Times.Once);
+        // The sprint's own Status is never read back or asserted mutated - there is no dependency
+        // through which this service could write it (see Constructor_HasNoSprintWriteDependency).
+        Assert.Equal("active", sprint.Status);
     }
 }

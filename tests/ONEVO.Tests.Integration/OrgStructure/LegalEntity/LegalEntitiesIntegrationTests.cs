@@ -1194,11 +1194,11 @@ public sealed class LegalEntitiesIntegrationTests : IClassFixture<LegalEntitiesI
     [Fact]
     public async Task GetGeneralSettings_RegularEmployeeAnotherCompany_Returns403_ViaPermissionGate()
     {
-        // The RequirePermission("legal_entity:update") attribute on this route rejects a
-        // caller without that permission before GetAccessibleByIdAsync's own
-        // accessible-company filter is ever reached - under the current flat RBAC model,
-        // holding legal_entity:update already implies management access
-        // (LegalEntityAccessPolicy.HasManagementAccess), so no HTTP-reachable caller can
+        // The RequireAnyPermission("legal_entity:read", "legal_entity:update") attribute on
+        // this route rejects a caller without either permission before GetAccessibleByIdAsync's
+        // own accessible-company filter is ever reached - under the current flat RBAC model,
+        // holding either already implies tenant-wide read access
+        // (LegalEntityAccessPolicy.HasReadAccess), so no HTTP-reachable caller can
         // exercise the filter's non-management branch. This test documents that the
         // required "regular user cannot GET another company" behavior still holds today;
         // GetLegalEntityGeneralSettingsQueryHandlerTests covers the filter itself in

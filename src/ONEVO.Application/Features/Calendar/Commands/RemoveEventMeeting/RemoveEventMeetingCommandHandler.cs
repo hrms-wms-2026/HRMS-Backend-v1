@@ -3,6 +3,7 @@ using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Calendar.RepositoryInterfaces;
+using ONEVO.Application.Features.Calendar.Services;
 using ONEVO.Application.Features.Calendar.ServiceInterfaces;
 using ONEVO.Domain.Features.Calendar.Entities;
 
@@ -16,7 +17,9 @@ public sealed class RemoveEventMeetingCommandHandler(
     ICalendarConnectionTokenProvider tokenProvider,
     ITeamsMeetingClient teamsClient,
     IZoomMeetingClient zoomClient,
-    IUnitOfWork unitOfWork)
+    IUnitOfWork unitOfWork,
+    ICalendarNotificationSender? notifications = null,
+    ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces.IEmployeeRepository? employees = null)
     : IRequestHandler<RemoveEventMeetingCommand, Result>
 {
     public async Task<Result> Handle(RemoveEventMeetingCommand request, CancellationToken ct)
@@ -46,6 +49,7 @@ public sealed class RemoveEventMeetingCommandHandler(
             {
                 existing.MeetingLink = null;
                 events.Update(existing);
+                await NotifyLinkRemovedAsync(tenantId, existing, ct);
                 await unitOfWork.SaveChangesAsync(ct);
             }
             return Result.Success();
@@ -66,8 +70,22 @@ public sealed class RemoveEventMeetingCommandHandler(
         meetings.Update(meeting);
         existing.MeetingLink = null;
         events.Update(existing);
+        await NotifyLinkRemovedAsync(tenantId, existing, ct);
         await unitOfWork.SaveChangesAsync(ct);
         return Result.Success();
+    }
+
+    /// <summary>Participants are told the join link is gone (plan C1 P1-4); staged before the save that writes it.</summary>
+    private async Task NotifyLinkRemovedAsync(Guid tenantId, CalendarEvent calendarEvent, CancellationToken ct)
+    {
+        if (notifications is null)
+            return;
+        var participants = await events.GetParticipantsForEventsAsync(tenantId, [calendarEvent.Id], ct);
+        var employeeIds = participants is not null && participants.TryGetValue(calendarEvent.Id, out var list) ? list.Select(p => p.EmployeeId).ToList() : [];
+        if (employeeIds.Count == 0)
+            return;
+        var organizerName = await CalendarOrganizer.NameAsync(employees, tenantId, currentUser.UserId, ct);
+        await notifications.NotifyMeetingLinkRemovedAsync(tenantId, calendarEvent.Title, employeeIds, organizerName, ct);
     }
 
     private async Task CancelRemoteMeetingAsync(Guid tenantId, CalendarEventMeeting meeting, CancellationToken ct)

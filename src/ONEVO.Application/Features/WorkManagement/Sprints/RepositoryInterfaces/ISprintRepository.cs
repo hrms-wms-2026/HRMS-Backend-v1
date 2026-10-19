@@ -23,4 +23,8 @@ public interface ISprintRepository
 
     void Update(Sprint sprint);
     void Remove(Sprint sprint);
+
+    /// <summary>Saves tracked changes; translates a stale Sprint.Status write (two concurrent
+    /// Start/Complete/Achieve/Edit/Delete requests racing) into <see cref="ONEVO.Application.Common.Exceptions.ConcurrencyConflictException"/>.</summary>
+    Task<int> SaveChangesAsync(CancellationToken ct = default);
 }

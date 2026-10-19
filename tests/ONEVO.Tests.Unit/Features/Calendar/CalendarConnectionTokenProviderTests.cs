@@ -82,4 +82,25 @@ public sealed class CalendarConnectionTokenProviderTests
         Assert.Equal(ExternalCalendarConnectionStatuses.ReauthRequired, connection.Status);
         _connections.Verify(c => c.Update(connection), Times.Once);
     }
+
+    [Theory]
+    [InlineData(ExternalCalendarConnectionStatuses.Active, true)]
+    [InlineData(ExternalCalendarConnectionStatuses.ReauthRequired, false)]
+    public async Task GetFreshAccessTokenAsync_ARefreshThatNewlyNeedsReauth_TellsTheConnectionOwner(string priorStatus, bool notified)
+    {
+        var notifications = new Mock<ONEVO.Application.Features.Calendar.Services.ICalendarNotificationSender>();
+        var connection = new ExternalCalendarConnection
+        {
+            Id = Guid.NewGuid(), TenantId = Guid.NewGuid(), UserId = Guid.NewGuid(), Provider = CalendarExternalSources.OutlookCalendar,
+            RefreshTokenEncrypted = [9], ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(-1), Status = priorStatus,
+        };
+        _appResolver.Setup(a => a.GetActiveAppForProviderAsync("microsoft", It.IsAny<CancellationToken>())).ReturnsAsync((ResolvedPlatformOAuthApp?)null);
+        var sut = new CalendarConnectionTokenProvider(_connections.Object, _tokenExchange.Object, _appResolver.Object, _encryption.Object, _unitOfWork.Object,
+            NullLogger<CalendarConnectionTokenProvider>.Instance, notifications.Object);
+
+        await sut.GetFreshAccessTokenAsync(connection, "microsoft", CancellationToken.None);
+
+        notifications.Verify(n => n.NotifyConnectionProblemAsync(connection.TenantId, connection.UserId, "Outlook Calendar", "reauth_required", It.IsAny<CancellationToken>()),
+            notified ? Times.Once() : Times.Never());
+    }
 }

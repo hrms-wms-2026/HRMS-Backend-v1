@@ -3,8 +3,27 @@ using ONEVO.Domain.Common;
 namespace ONEVO.Domain.Features.Monitoring.Exceptions.Entities;
 
 /// <summary>Stored by name (string column), so new values are appended without a migration.
-/// IdentityAnomaly is raised in real time from the tray face checks, not by the nightly job.</summary>
-public enum ExceptionType { SustainedLowActivity, AttendanceIrregularity, UnusualActivityPattern, IdentityAnomaly }
+/// IdentityAnomaly is raised in real time from the tray face checks, not by the nightly job. The Meeting* values are
+/// calendar meeting-exception cases (plan C2, <see cref="CalendarExceptionTypes"/>).</summary>
+public enum ExceptionType
+{
+    SustainedLowActivity, AttendanceIrregularity, UnusualActivityPattern, IdentityAnomaly,
+    MeetingNoShow, MeetingLateJoin, MeetingEarlyLeave, MeetingRsvp, MeetingConflict, MeetingOverload,
+}
+
+/// <summary>The calendar meeting-exception case types: reviewed through the calendar source, kept out of every
+/// monitoring count, list and escalation.</summary>
+public static class CalendarExceptionTypes
+{
+    public static readonly IReadOnlySet<ExceptionType> All = new HashSet<ExceptionType>
+    {
+        ExceptionType.MeetingNoShow, ExceptionType.MeetingLateJoin, ExceptionType.MeetingEarlyLeave,
+        ExceptionType.MeetingRsvp, ExceptionType.MeetingConflict, ExceptionType.MeetingOverload,
+    };
+
+    public static bool IsCalendar(ExceptionType type) => All.Contains(type);
+}
+
 public enum ExceptionStatus { Open, Acknowledged, Resolved, Escalated }
 
 /// <summary>
@@ -31,4 +50,17 @@ public class Exception : ITenantOwnedEntity
     public Guid? EscalatedById { get; set; }
     /// <summary>What the reviewer found, written when they resolve or escalate the case.</summary>
     public string? ResolutionNote { get; set; }
+    /// <summary>How a resolved case ended (<see cref="ExceptionOutcomes"/>): excused (it stops counting) or confirmed.</summary>
+    public string? Outcome { get; set; }
+}
+
+/// <summary>How a resolved exception case ended.</summary>
+public static class ExceptionOutcomes
+{
+    /// <summary>The employee's explanation was accepted.</summary>
+    public const string Excused = "excused";
+    /// <summary>The reviewer confirmed the problem.</summary>
+    public const string Confirmed = "confirmed";
+
+    public static bool IsValid(string? outcome) => outcome is Excused or Confirmed;
 }

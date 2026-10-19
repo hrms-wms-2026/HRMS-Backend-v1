@@ -14,4 +14,11 @@ public static class LegalEntityAccessPolicy
 {
     public static bool HasManagementAccess(ICurrentUser currentUser)
         => currentUser.HasPermission("legal_entity:update") || currentUser.HasPermission("legal_entity:delete");
+
+    /// <summary>
+    /// Tenant-wide read-only access to a company's General Settings. Used only by the
+    /// General Settings read; the company selector list keeps using HasManagementAccess.
+    /// </summary>
+    public static bool HasReadAccess(ICurrentUser currentUser)
+        => HasManagementAccess(currentUser) || currentUser.HasPermission("legal_entity:read");
 }

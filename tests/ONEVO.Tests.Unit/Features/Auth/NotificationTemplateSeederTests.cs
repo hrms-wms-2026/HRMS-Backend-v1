@@ -75,17 +75,19 @@ public sealed class NotificationTemplateSeederTests : IDisposable
         Assert.Contains("leave_request_cancelled_by_employee", codes);
         Assert.Contains("leave_request_cancelled_by_hr", codes);
         Assert.Contains("leave_request_partially_cancelled", codes);
+        Assert.Contains("leave_request_decision_undone", codes);
         Assert.Contains("face_verification_override", codes);
         Assert.Contains("work_task_status_change_request_created", codes);
         Assert.Contains("work_task_status_change_request_decided", codes);
         Assert.Contains("work_activity_recorded", codes);
         Assert.Contains("work_approval_requested", codes);
         Assert.Contains("work_approval_decided", codes);
-        Assert.Contains("work_approval_commented", codes);
         Assert.Contains("work_monitor_alert", codes);
         Assert.Contains("exception_alert_detected", codes);
         Assert.Contains("exception_alert_escalated", codes);
-        Assert.Equal(41, codes.Count);
+        Assert.Contains("conversation_member_added", codes);
+        Assert.Contains("conversation_mentioned", codes);
+        Assert.Equal(57, codes.Count);
         var expectedCodes = new[]
         {
             "work_task_creation_request_created",
@@ -103,8 +105,9 @@ public sealed class NotificationTemplateSeederTests : IDisposable
             "work_activity_recorded",
             "work_approval_requested",
             "work_approval_decided",
-            "work_approval_commented",
             "work_monitor_alert",
+            "conversation_member_added",
+            "conversation_mentioned",
             "leave_request_approved",
             "leave_request_rejected",
             "leave_request_information_requested",
@@ -128,7 +131,22 @@ public sealed class NotificationTemplateSeederTests : IDisposable
             "calendar_event_updated",
             "calendar_event_cancelled",
             "calendar_event_resolution_requested",
-            "calendar_event_replacement_nominated"
+            "calendar_event_replacement_nominated",
+            "calendar_event_rsvp_accepted",
+            "calendar_event_rsvp_rejected",
+            "calendar_event_replacement_nominee",
+            "calendar_event_participant_removed",
+            "calendar_event_meeting_link_removed",
+            "calendar_event_meeting_link_failed",
+            "calendar_connection_reauth_required",
+            "calendar_connection_failed",
+            "calendar_connection_sync_conflict",
+            "calendar_event_reminder",
+            "calendar_exception_detected",
+            "calendar_exception_raised_for_you",
+            "calendar_exception_escalated",
+            "work_monitor_alert_escalated",
+            "leave_request_decision_undone"
         };
 
         Assert.Equal(
@@ -136,6 +154,95 @@ public sealed class NotificationTemplateSeederTests : IDisposable
             codes.OrderBy(x => x));
 
         Assert.Equal(codes.Count, codes.Distinct(StringComparer.Ordinal).Count());
+    }
+
+    [Fact]
+    public async Task SeedAsync_NewTemplates_GetAPublishedActiveFirstVersion()
+    {
+        await RunSeederAsync();
+
+        await using var assert = CreateContext();
+        var template = await assert.NotificationTemplates.SingleAsync(t => t.Code == "work_approval_requested");
+        var versions = await assert.NotificationTemplateVersions.Where(v => v.TemplateId == template.Id).ToListAsync();
+
+        var version = Assert.Single(versions);
+        Assert.Equal(NotificationTemplateVersionStatus.Published, version.Status);
+        Assert.Equal(version.Id, template.ActiveVersionId);
+        Assert.Equal("work_approval_requested", template.EventKey);
+        Assert.Equal(template.InAppBodyTemplate, version.InAppBody);
+    }
+
+    [Fact]
+    public async Task SeedAsync_Rerun_LeavesEditedDraftsAndPublishedVersionsUnchanged()
+    {
+        await RunSeederAsync();
+
+        Guid templateId;
+        await using (var edit = CreateContext())
+        {
+            var template = await edit.NotificationTemplates.SingleAsync(t => t.Code == "work_approval_requested");
+            templateId = template.Id;
+            var published = NotificationTemplateVersion.CreateDraft(template.Id, 2, Content("Admin wording"), null, _clock.UtcNow);
+            published.Publish(null, _clock.UtcNow);
+            edit.NotificationTemplateVersions.Add(published);
+            template.Activate(published, _clock.UtcNow);
+            edit.NotificationTemplateVersions.Add(
+                NotificationTemplateVersion.CreateDraft(template.Id, 3, Content("Draft in progress"), null, _clock.UtcNow));
+            await edit.SaveChangesAsync();
+        }
+
+        var before = await SnapshotAsync(templateId);
+        await RunSeederAsync();
+        var after = await SnapshotAsync(templateId);
+
+        Assert.Equal(before, after);
+        await using var assert = CreateContext();
+        Assert.Equal("Admin wording", (await assert.NotificationTemplates.SingleAsync(t => t.Id == templateId)).InAppTitleTemplate);
+    }
+
+    [Fact]
+    public async Task SeedAsync_PreVersioningTemplate_IsFrozenAsV1WithoutChangingItsCopy()
+    {
+        await using (var arrange = CreateContext())
+        {
+            arrange.NotificationTemplates.Add(new NotificationTemplate
+            {
+                Id = Guid.NewGuid(), Code = "work_sprint_completed",
+                InAppTitleTemplate = "Edited title", InAppBodyTemplate = "Edited body"
+            });
+            await arrange.SaveChangesAsync();
+        }
+
+        await RunSeederAsync();
+
+        await using var assert = CreateContext();
+        var template = await assert.NotificationTemplates.SingleAsync(t => t.Code == "work_sprint_completed");
+        var version = await assert.NotificationTemplateVersions.SingleAsync(v => v.TemplateId == template.Id);
+        Assert.Equal("Edited body", template.InAppBodyTemplate);
+        Assert.Equal("Edited body", version.InAppBody);
+        Assert.Equal(version.Id, template.ActiveVersionId);
+    }
+
+    private static NotificationTemplateContent Content(string title) =>
+        new(title, "{{actorName}} body", null, null, null, null, null, null, "open_related");
+
+    private async Task RunSeederAsync()
+    {
+        await using var seedDb = CreateContext();
+        var services = new ServiceCollection();
+        services.AddScoped(_ => seedDb);
+        services.AddScoped<INotificationRepository>(_ => new EfNotificationRepository(seedDb));
+        var sp = services.BuildServiceProvider();
+        await new NotificationTemplateSeeder(sp, NullLogger<NotificationTemplateSeeder>.Instance).StartAsync(CancellationToken.None);
+    }
+
+    private async Task<string> SnapshotAsync(Guid templateId)
+    {
+        await using var db = CreateContext();
+        var t = await db.NotificationTemplates.AsNoTracking().SingleAsync(x => x.Id == templateId);
+        var versions = await db.NotificationTemplateVersions.AsNoTracking()
+            .Where(v => v.TemplateId == templateId).OrderBy(v => v.Version).ToListAsync();
+        return System.Text.Json.JsonSerializer.Serialize(new { t.InAppTitleTemplate, t.InAppBodyTemplate, t.ActiveVersionId, t.UpdatedAt, versions });
     }
 
     private ApplicationDbContext CreateContext()

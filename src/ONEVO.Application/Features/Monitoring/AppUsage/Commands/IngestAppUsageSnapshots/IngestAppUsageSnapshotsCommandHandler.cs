@@ -5,6 +5,7 @@ using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.Helpers;
 using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
+using ONEVO.Application.Features.DevPlatform.AppCatalog.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.ServiceInterfaces;
 using ONEVO.Application.Features.Monitoring.AppUsage.Mappers;
 using ONEVO.Application.Features.Monitoring.AppUsage.RepositoryInterfaces;
@@ -25,6 +26,7 @@ public class IngestAppUsageSnapshotsCommandHandler
     private readonly IDateTimeProvider _clock;
     private readonly IUnitOfWork _unitOfWork;
     private readonly ILogger<IngestAppUsageSnapshotsCommandHandler> _logger;
+    private readonly IGlobalApplicationRepository _globalApplications;
 
     public IngestAppUsageSnapshotsCommandHandler(
         IAppUsageSnapshotRepository snapshots,
@@ -35,6 +37,7 @@ public class IngestAppUsageSnapshotsCommandHandler
         ITrayEmployeeIdentityResolver employeeIdentity,
         IDateTimeProvider clock,
         IUnitOfWork unitOfWork,
+        IGlobalApplicationRepository globalApplications,
         ILogger<IngestAppUsageSnapshotsCommandHandler> logger)
     {
         _snapshots = snapshots;
@@ -45,6 +48,7 @@ public class IngestAppUsageSnapshotsCommandHandler
         _employeeIdentity = employeeIdentity;
         _clock = clock;
         _unitOfWork = unitOfWork;
+        _globalApplications = globalApplications;
         _logger = logger;
     }
 

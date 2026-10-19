@@ -57,6 +57,46 @@ public sealed class AttendancePeriodCalculatorViolationDatesTests
     }
 
     [Fact]
+    public void Classify_LeavesOutDaysWhoseAlertWasExcused_PerSignal_AndNothingElseChanges()
+    {
+        var d3 = new DateOnly(2026, 8, 3); var d4 = new DateOnly(2026, 8, 4); var d7 = new DateOnly(2026, 8, 7);
+        var raw = Data(null, new(), Array.Empty<LeaveRequest>(),
+            Rec(d3, "2026-08-03T03:30:00+00:00", "2026-08-03T12:00:00+00:00", 480, 300),
+            Rec(d4, "2026-08-04T04:15:00+00:00", "2026-08-04T12:00:00+00:00"));
+        var baseline = AttendancePeriodCalculator.Classify(raw);
+
+        var excused = raw with
+        {
+            Excused = new Dictionary<string, IReadOnlySet<DateOnly>>
+            {
+                ["absent_days"] = new HashSet<DateOnly> { d7 },
+                ["late_clock_ins"] = new HashSet<DateOnly> { d4 },
+                // An excused late day does not hide the short-hours day of another date.
+                ["short_hours_days"] = new HashSet<DateOnly> { d4 },
+            }
+        };
+        var c = AttendancePeriodCalculator.Classify(excused);
+
+        c.Absent.Should().Be(baseline.Absent - 1);
+        c.Dates.Absent.Should().NotContain(d7);
+        c.Late.Should().Be(baseline.Late - 1);
+        c.ShortHours.Should().Be(baseline.ShortHours);
+        c.Attended.Should().Be(baseline.Attended);
+        c.Days.Should().BeEquivalentTo(baseline.Days, "the day list still shows what happened");
+    }
+
+    [Fact]
+    public void Classify_WithNoResolutions_IsIdenticalToTheClassificationWithoutTheLookup()
+    {
+        var d4 = new DateOnly(2026, 8, 4);
+        var raw = Data(null, new(), Array.Empty<LeaveRequest>(), Rec(d4, "2026-08-04T04:15:00+00:00", "2026-08-04T12:00:00+00:00"));
+
+        var withEmpty = AttendancePeriodCalculator.Classify(raw with { Excused = new Dictionary<string, IReadOnlySet<DateOnly>>() });
+
+        withEmpty.Should().BeEquivalentTo(AttendancePeriodCalculator.Classify(raw));
+    }
+
+    [Fact]
     public void OverBreakDays_ListsOnlyDaysStrictlyOverTheAllowance()
     {
         var d3 = new DateOnly(2026, 8, 3); var d4 = new DateOnly(2026, 8, 4); var d5 = new DateOnly(2026, 8, 5);
