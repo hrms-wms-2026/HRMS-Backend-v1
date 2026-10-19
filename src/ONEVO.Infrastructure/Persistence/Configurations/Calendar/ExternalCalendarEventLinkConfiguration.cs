@@ -16,6 +16,7 @@ public class ExternalCalendarEventLinkConfiguration : IEntityTypeConfiguration<E
         builder.Property(l => l.ExternalCalendarId).HasMaxLength(255).IsRequired();
         builder.Property(l => l.ExternalEventId).HasMaxLength(255).IsRequired();
         builder.Property(l => l.ExternalEtag).HasMaxLength(255);
+        builder.Property(l => l.PushedFingerprint).HasMaxLength(64);
         builder.Property(l => l.SyncDirection).HasMaxLength(20).IsRequired();
         builder.Property(l => l.SyncStatus).HasMaxLength(20).IsRequired();
 

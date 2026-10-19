@@ -2105,6 +2105,11 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("character varying(30)")
                         .HasColumnName("provider");
 
+                    b.Property<string>("PushedFingerprint")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("pushed_fingerprint");
+
                     b.Property<string>("SyncDirection")
                         .IsRequired()
                         .HasMaxLength(20)

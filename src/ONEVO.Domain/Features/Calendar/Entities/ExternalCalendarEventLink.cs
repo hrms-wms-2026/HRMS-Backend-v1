@@ -33,6 +33,9 @@ public class ExternalCalendarEventLink : ITenantOwnedEntity
     public string SyncStatus { get; set; } = ExternalCalendarSyncStatuses.Pending;
     public DateTimeOffset? LastSyncedAt { get; set; }
     public string? LastError { get; set; }
+    /// <summary>A pushed meeting occurrence's content fingerprint at its last push (meetings Phase 2, spec 5.10): the occurrence is
+    /// pushed again only when its fingerprint changes. Null on calendar-event links.</summary>
+    public string? PushedFingerprint { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset? UpdatedAt { get; set; }
 }

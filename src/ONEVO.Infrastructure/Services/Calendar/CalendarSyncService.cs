@@ -1,9 +1,12 @@
+using System.Security.Cryptography;
+using System.Text;
 using Microsoft.Extensions.Logging;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Calendar.RepositoryInterfaces;
 using ONEVO.Application.Features.Calendar.ServiceInterfaces;
 using ONEVO.Application.Features.Calendar.Services;
+using ONEVO.Application.Features.WorkManagement.Meetings.RepositoryInterfaces;
 using IEmployeeRepository = ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces.IEmployeeRepository;
 using ONEVO.Domain.Features.Calendar.Entities;
 
@@ -20,7 +23,8 @@ public sealed class CalendarSyncService(
     IUnitOfWork unitOfWork,
     ILogger<CalendarSyncService> logger,
     ICalendarNotificationSender? notifications = null,
-    IEmployeeRepository? employees = null)
+    IEmployeeRepository? employees = null,
+    IMeetingRepository? meetings = null)
     : ICalendarSyncService
 {
     // Links that turned into a two-way conflict during the current run (plan C1 P1-6).
@@ -72,7 +76,10 @@ public sealed class CalendarSyncService(
             // this same field is the "since" cursor PushAsync reads on the next run.
             DateTimeOffset? pushWatermark = null;
             if (connection.SyncDirection is CalendarSyncDirections.PushOnly or CalendarSyncDirections.TwoWay)
+            {
                 pushWatermark = await PushAsync(connection, accessToken, ct);
+                await PushMeetingOccurrencesAsync(connection, accessToken, ct);
+            }
 
             connection.LastSyncedAt = DateTimeOffset.UtcNow;
             connection.LastSuccessfulSyncAt = pushWatermark ?? DateTimeOffset.UtcNow;
@@ -300,6 +307,121 @@ public sealed class CalendarSyncService(
         // same instant either way.
         return (lastPushed.UpdatedAt ?? lastPushed.CreatedAt).ToUniversalTime();
     }
+
+    /// <summary>
+    /// The organizer's meeting occurrences (meetings Phase 2, spec 5.10) onto this connection's calendar: a copy of each
+    /// materialized occurrence in the sync window, linked by MeetingTaskId - created once, updated only when its content
+    /// fingerprint changes, deleted when the occurrence is cancelled or removed. Occurrences of meetings someone else organizes
+    /// are never pushed. ONEVO sends the invitations, so the copy carries no attendees. At most BatchLimitPerConnection
+    /// changes per run; the rest still differ on the next run. The calendar-event watermark is not involved.
+    /// </summary>
+    private async Task PushMeetingOccurrencesAsync(ExternalCalendarConnection connection, string accessToken, CancellationToken ct)
+    {
+        if (meetings is null || employees is null)
+            return;
+        var organizer = await employees.GetDefaultForUserAsync(connection.TenantId, connection.UserId, ct);
+        if (organizer is null)
+            return;
+        var now = DateTimeOffset.UtcNow;
+        var rows = await meetings.ListOrganizerOccurrencesAsync(connection.TenantId, organizer.Id, now.Subtract(SyncWindowPast), now.Add(SyncWindowFuture), ct);
+        var linked = (await links.ListTrackedMeetingLinksAsync(connection.TenantId, connection.Id, ct)).ToDictionary(l => l.MeetingTaskId!.Value);
+        var calendarId = connection.ExternalCalendarId ?? connection.ExternalAccountEmail;
+
+        // Linked occurrences outside the window keep their copy unless they were cancelled or removed meanwhile.
+        var inWindow = rows.Select(r => r.Details.TaskId).ToHashSet();
+        var outside = linked.Keys.Where(id => !inWindow.Contains(id)).ToList();
+        var stillThere = (await meetings.ListOccurrencesByTaskIdsAsync(connection.TenantId, outside, ct))
+            .Where(r => r.Details.CancelledAt is null).Select(r => r.Details.TaskId).ToHashSet();
+        var gone = outside.Where(id => !stillThere.Contains(id)).Select(id => linked[id]).ToList();
+
+        var changes = 0;
+        foreach (var link in gone)
+        {
+            if (changes++ >= BatchLimitPerConnection)
+                return;
+            await DeleteRemoteAsync(connection, accessToken, calendarId, link, ct);
+        }
+        foreach (var row in rows)
+        {
+            var d = row.Details;
+            linked.TryGetValue(d.TaskId, out var link);
+            if (d.CancelledAt is not null)
+            {
+                if (link is null)
+                    continue;
+                if (changes++ >= BatchLimitPerConnection)
+                    return;
+                await DeleteRemoteAsync(connection, accessToken, calendarId, link, ct);
+                continue;
+            }
+
+            // A private meeting shows as busy time only on the organizer's external calendar.
+            var title = d.IsPrivate ? "Busy" : row.Title;
+            var description = d.IsPrivate ? null : row.Description;
+            var location = d.IsPrivate ? null : d.Location;
+            var fingerprint = Fingerprint(title, description, d.StartAt, d.EndAt, d.IsAllDay, location, d.IsPrivate);
+            if (link?.PushedFingerprint == fingerprint)
+                continue;
+            if (changes++ >= BatchLimitPerConnection)
+                return;
+
+            string externalId;
+            string? etag;
+            if (connection.Provider == CalendarExternalSources.GoogleCalendar)
+            {
+                var dto = new GoogleCalendarEventDto(link?.ExternalEventId ?? string.Empty, link?.ExternalEtag, title, description, d.StartAt, d.EndAt,
+                    d.IsAllDay, null, location, false, d.IsPrivate);
+                var pushed = link is null
+                    ? await googleClient.InsertEventAsync(accessToken, calendarId, dto, ct)
+                    : await googleClient.PatchEventAsync(accessToken, calendarId, link.ExternalEventId, dto, ct);
+                (externalId, etag) = (pushed.Id, pushed.Etag);
+            }
+            else
+            {
+                var dto = new GraphEventDto(link?.ExternalEventId ?? string.Empty, link?.ExternalEtag, title, description, d.StartAt, d.EndAt,
+                    d.IsAllDay, null, location, false, d.IsPrivate, AttendeeEmails: null);
+                var pushed = link is null
+                    ? await msClient.CreateEventAsync(accessToken, dto, ct)
+                    : await msClient.UpdateEventAsync(accessToken, link.ExternalEventId, dto, ct);
+                (externalId, etag) = (pushed.Id, pushed.Etag);
+            }
+
+            if (link is null)
+            {
+                await links.AddAsync(new ExternalCalendarEventLink
+                {
+                    Id = Guid.NewGuid(), TenantId = connection.TenantId, MeetingTaskId = d.TaskId, ExternalCalendarConnectionId = connection.Id,
+                    Provider = connection.Provider, ExternalCalendarId = calendarId, ExternalEventId = externalId, ExternalEtag = etag,
+                    SyncDirection = ExternalCalendarLinkDirections.Outbound, SyncStatus = ExternalCalendarSyncStatuses.Synced,
+                    PushedFingerprint = fingerprint, LastSyncedAt = now, CreatedAt = now,
+                }, ct);
+                continue;
+            }
+            link.ExternalEventId = externalId;
+            link.ExternalEtag = etag;
+            link.PushedFingerprint = fingerprint;
+            link.LastSyncedAt = now;
+            link.UpdatedAt = now;
+            link.SyncStatus = ExternalCalendarSyncStatuses.Synced;
+            links.Update(link);
+        }
+    }
+
+    private async Task DeleteRemoteAsync(ExternalCalendarConnection connection, string accessToken, string calendarId, ExternalCalendarEventLink link,
+        CancellationToken ct)
+    {
+        if (connection.Provider == CalendarExternalSources.GoogleCalendar)
+            await googleClient.DeleteEventAsync(accessToken, calendarId, link.ExternalEventId, ct);
+        else
+            await msClient.DeleteEventAsync(accessToken, link.ExternalEventId, ct);
+        links.Remove(link);
+    }
+
+    /// <summary>What the external copy shows, hashed: a change to any of it re-pushes the occurrence.</summary>
+    private static string Fingerprint(string title, string? description, DateTimeOffset start, DateTimeOffset end, bool isAllDay, string? location,
+        bool isPrivate)
+        => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(string.Join('\u001f', title, description ?? "",
+            start.ToUniversalTime().ToString("O"), end.ToUniversalTime().ToString("O"), isAllDay, location ?? "", isPrivate))));
 
     public async Task PushOutlookEventAsync(Guid tenantId, Guid connectionId, Guid calendarEventId, CancellationToken ct)
     {

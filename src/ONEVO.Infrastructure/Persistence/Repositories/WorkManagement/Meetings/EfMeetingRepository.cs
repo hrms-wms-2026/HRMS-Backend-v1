@@ -77,6 +77,21 @@ public sealed class EfMeetingRepository : IMeetingRepository
             .FirstOrDefaultAsync(ct);
     }
 
+    public async Task<IReadOnlyList<MeetingOccurrenceRow>> ListOrganizerOccurrencesAsync(Guid tenantId, Guid organizerEmployeeId,
+        DateTimeOffset from, DateTimeOffset to, CancellationToken ct = default)
+    {
+        var (fromUtc, toUtc) = (from.ToUniversalTime(), to.ToUniversalTime());
+        return await Rows(_db.MeetingDetails
+                .Where(d => d.TenantId == tenantId && d.StartAt < toUtc && d.EndAt > fromUtc
+                    && _db.MeetingSeries.Any(s => s.Id == d.SeriesId && s.OrganizerEmployeeId == organizerEmployeeId))
+                .OrderBy(d => d.StartAt))
+            .ToListAsync(ct);
+    }
+
+    public async Task<IReadOnlyList<MeetingOccurrenceRow>> ListOccurrencesByTaskIdsAsync(Guid tenantId, IReadOnlyCollection<Guid> taskIds,
+        CancellationToken ct = default)
+        => taskIds.Count == 0 ? [] : await Rows(_db.MeetingDetails.Where(d => d.TenantId == tenantId && taskIds.Contains(d.TaskId))).ToListAsync(ct);
+
     public async Task<IReadOnlyList<MeetingSeries>> ListSeriesForAttendeeAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default)
         => await _db.MeetingSeries.AsNoTracking()
             .Where(s => s.TenantId == tenantId && s.CancelledAt == null && (s.OrganizerEmployeeId == employeeId
