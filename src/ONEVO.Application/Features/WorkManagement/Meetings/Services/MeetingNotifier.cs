@@ -26,9 +26,10 @@ public static class MeetingIcs
 public interface IMeetingNotifier
 {
     /// <summary>Invites to newly added series attendees - held back while the series' link is being provisioned (the link
-    /// email then doubles as the invite, spec 5.7).</summary>
+    /// email then doubles as the invite, spec 5.7). <paramref name="reinvited"/> maps a revived participant row to the moment it
+    /// was removed, so the re-invite is a new email.</summary>
     Task InviteAsync(MeetingSeries series, IReadOnlyList<CalendarEventParticipant> participants, IReadOnlyList<CalendarEventGuest> guests,
-        CancellationToken ct);
+        CancellationToken ct, IReadOnlyDictionary<Guid, DateTimeOffset>? reinvited = null);
 
     /// <summary>Invites to people added to one occurrence only.</summary>
     Task InviteToOccurrenceAsync(MeetingSeries series, MeetingDetails occurrence, string title, IReadOnlyList<MeetingOccurrenceAttendee> added,
@@ -71,7 +72,7 @@ public sealed class MeetingNotifier : IMeetingNotifier
     }
 
     public async Task InviteAsync(MeetingSeries series, IReadOnlyList<CalendarEventParticipant> participants,
-        IReadOnlyList<CalendarEventGuest> guests, CancellationToken ct)
+        IReadOnlyList<CalendarEventGuest> guests, CancellationToken ct, IReadOnlyDictionary<Guid, DateTimeOffset>? reinvited = null)
     {
         var link = await _links.GetActiveForSeriesAsync(series.TenantId, series.Id, ct);
         if (link is { InvitesPending: true })
@@ -85,7 +86,8 @@ public sealed class MeetingNotifier : IMeetingNotifier
             await _sender.NotifyParticipantsAddedAsync(series.TenantId, series.Title, series.DtStart, series.Location,
                 invitees.Select(p => p.EmployeeId).ToList(), organizer, ct, joinUrl, sendInviteEmail: false);
         await _sender.SendMeetingLinkAsync(series.TenantId, series.Title, series.DtStart, series.Location,
-            invitees.Select(p => new CalendarParticipantRecipient(p.EmployeeId, CalendarEmailKeys.Invite(p.Id))).ToList(),
+            invitees.Select(p => new CalendarParticipantRecipient(p.EmployeeId, reinvited is not null && reinvited.TryGetValue(p.Id, out var removedAt)
+                ? CalendarEmailKeys.ReInvite(p.Id, removedAt) : CalendarEmailKeys.Invite(p.Id))).ToList(),
             guests.Select(g => new CalendarGuestRecipient(g.Email, CalendarEmailKeys.Invite(g.Id))).ToList(),
             organizer, joinUrl, MeetingIcs.ForSeries(series, _clock.UtcNow), ct);
     }
@@ -166,7 +168,7 @@ public sealed class MeetingNotifier : IMeetingNotifier
             return;
         var organizer = await OrganizerNameAsync(series, ct);
         var now = _clock.UtcNow;
-        var key = CalendarEmailKeys.Cancel(series.Id, occurrence?.OriginalStart, rowId);
+        var key = CalendarEmailKeys.Removed(series.Id, occurrence?.OriginalStart, rowId, now);
         IReadOnlyList<CalendarParticipantRecipient> participants = employeeId is Guid id ? [new CalendarParticipantRecipient(id, key)] : [];
         IReadOnlyList<CalendarGuestRecipient> guests = employeeId is null && email is not null ? [new CalendarGuestRecipient(email, key)] : [];
         if (employeeId is Guid removed)

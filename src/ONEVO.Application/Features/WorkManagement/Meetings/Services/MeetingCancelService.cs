@@ -23,9 +23,11 @@ public sealed class MeetingCancelService
     private readonly IMeetingAccessResolver _access;
     private readonly IUnitOfWork _unitOfWork;
     private readonly IDateTimeProvider _clock;
+    private readonly IMeetingNotifier _notifier;
 
     public MeetingCancelService(IOptions<MeetingsOptions> options, IMeetingRepository meetings, IMeetingOccurrenceWriter writer,
-        IMeetingOccurrenceMaterializer materializer, IMeetingAccessResolver access, IUnitOfWork unitOfWork, IDateTimeProvider clock)
+        IMeetingOccurrenceMaterializer materializer, IMeetingAccessResolver access, IUnitOfWork unitOfWork, IDateTimeProvider clock,
+        IMeetingNotifier notifier)
     {
         _options = options;
         _meetings = meetings;
@@ -34,6 +36,7 @@ public sealed class MeetingCancelService
         _access = access;
         _unitOfWork = unitOfWork;
         _clock = clock;
+        _notifier = notifier;
     }
 
     public async Task<Result<bool>> CancelAsync(Guid tenantId, Guid callerEmployeeId, Guid callerUserId, Guid seriesId,
@@ -73,6 +76,8 @@ public sealed class MeetingCancelService
                     var details = (await _meetings.GetDetailsTrackedAsync(tenantId, ensured.Value, innerCt))!;
                     details.CancelledAt = now;
                     details.Revision++;
+                    var task = (await _meetings.GetMeetingTaskTrackedAsync(tenantId, ensured.Value, innerCt))!;
+                    await _notifier.OccurrenceCancelledAsync(series, details, task.Title, innerCt);
                 }
                 else
                 {
@@ -85,12 +90,19 @@ public sealed class MeetingCancelService
                         details.CancelledAt = now;
                         details.Revision++;
                     }
-                    if (scope == MeetingScopes.All || series.RecurrenceRule is null || key <= series.DtStart)
+                    var wholeSeries = scope == MeetingScopes.All || series.RecurrenceRule is null || key <= series.DtStart;
+                    if (wholeSeries)
                         series.CancelledAt = now;
                     else
-                        series.RecurrenceRule = MeetingRules.WithUntil(series.RecurrenceRule, key.AddSeconds(-1));
+                        series.RecurrenceRule = MeetingRules.WithUntil(series.RecurrenceRule!, key.AddSeconds(-1));
                     series.Revision++;
                     series.UpdatedAt = now;
+                    // "This and following" short of the whole series is an update to the series' end (its UNTIL): a CANCEL on
+                    // the series UID would also take the past meetings out of people's calendars.
+                    if (wholeSeries)
+                        await _notifier.SeriesCancelledAsync(series, innerCt);
+                    else
+                        await _notifier.SeriesUpdatedAsync(series, innerCt);
                 }
 
                 await _unitOfWork.SaveChangesAsync(innerCt);

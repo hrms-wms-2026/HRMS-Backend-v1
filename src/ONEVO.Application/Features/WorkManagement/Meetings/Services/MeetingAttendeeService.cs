@@ -29,11 +29,13 @@ public sealed class MeetingAttendeeService
     private readonly IEmployeeRepository _employees;
     private readonly IUnitOfWork _unitOfWork;
     private readonly IDateTimeProvider _clock;
+    private readonly IMeetingNotifier _notifier;
 
     public MeetingAttendeeService(IOptions<MeetingsOptions> options, IMeetingRepository meetings, IMeetingOccurrenceWriter writer,
         IMeetingOccurrenceMaterializer materializer, IMeetingAccessResolver access, IEmployeeRepository employees, IUnitOfWork unitOfWork,
-        IDateTimeProvider clock)
+        IDateTimeProvider clock, IMeetingNotifier notifier)
     {
+        _notifier = notifier;
         _options = options;
         _meetings = meetings;
         _writer = writer;
@@ -50,6 +52,9 @@ public sealed class MeetingAttendeeService
         {
             var (active, skipped) = await SplitActiveAsync(tenantId, request.EmployeeIds, ct);
             var added = 0;
+            var invitedPeople = new List<CalendarEventParticipant>();
+            var invitedGuests = new List<CalendarEventGuest>();
+            var reinvited = new Dictionary<Guid, DateTimeOffset>();
             foreach (var employeeId in active)
             {
                 var existing = await _meetings.GetSeriesParticipantTrackedIncludingRemovedAsync(tenantId, series.Id, employeeId, ct);
@@ -57,6 +62,8 @@ public sealed class MeetingAttendeeService
                     continue;
                 if (existing is not null)
                 {
+                    reinvited[existing.Id] = existing.DeletedAt ?? now;
+                    invitedPeople.Add(existing);
                     existing.IsDeleted = false;
                     existing.DeletedAt = null;
                     existing.ResponseStatus = CalendarEventParticipantStatuses.Pending;
@@ -65,10 +72,12 @@ public sealed class MeetingAttendeeService
                 }
                 else
                 {
-                    _meetings.AddParticipants([new CalendarEventParticipant
+                    var participant = new CalendarEventParticipant
                     {
                         Id = Guid.NewGuid(), TenantId = tenantId, MeetingSeriesId = series.Id, EmployeeId = employeeId,
-                    }]);
+                    };
+                    _meetings.AddParticipants([participant]);
+                    invitedPeople.Add(participant);
                 }
                 await _meetings.DeleteFutureOverridesAsync(tenantId, series.Id, employeeId, null, MeetingAttendeeChanges.Remove, now, ct);
                 added++;
@@ -77,10 +86,13 @@ public sealed class MeetingAttendeeService
             {
                 if (await _meetings.GetSeriesGuestTrackedAsync(tenantId, series.Id, email, ct) is not null)
                     continue;
-                _meetings.AddGuests([new CalendarEventGuest { Id = Guid.NewGuid(), TenantId = tenantId, MeetingSeriesId = series.Id, Email = email, CreatedAt = now }]);
+                var guest = new CalendarEventGuest { Id = Guid.NewGuid(), TenantId = tenantId, MeetingSeriesId = series.Id, Email = email, CreatedAt = now };
+                _meetings.AddGuests([guest]);
+                invitedGuests.Add(guest);
                 await _meetings.DeleteFutureOverridesAsync(tenantId, series.Id, null, email, MeetingAttendeeChanges.Remove, now, ct);
                 added++;
             }
+            await _notifier.InviteAsync(series, invitedPeople, invitedGuests, ct, reinvited);
             return Result<MeetingAttendeesResponse>.Success(new MeetingAttendeesResponse(added, skipped));
         }, ct);
 
@@ -91,7 +103,10 @@ public sealed class MeetingAttendeeService
                 return Result<bool>.Failure("The organizer cannot be removed from their meeting.", 400, MeetingErrorCodes.OrganizerCannotBeRemoved);
             var participant = await _meetings.GetSeriesParticipantTrackedIncludingRemovedAsync(tenantId, series.Id, employeeId, ct);
             if (participant is { IsDeleted: false })
+            {
                 _meetings.RemoveParticipant(participant);
+                await _notifier.RemovedAsync(series, null, series.Title, participant.Id, employeeId, null, ct);
+            }
             await _meetings.DeleteFutureOverridesAsync(tenantId, series.Id, employeeId, null, MeetingAttendeeChanges.Add, now, ct);
             return Result<bool>.Success(true);
         }, ct);
@@ -100,7 +115,10 @@ public sealed class MeetingAttendeeService
         => SeriesWriteAsync(tenantId, caller, seriesId, async (series, now) =>
         {
             if (await _meetings.GetSeriesGuestTrackedAsync(tenantId, series.Id, email, ct) is { } guest)
+            {
                 _meetings.RemoveGuest(guest);
+                await _notifier.RemovedAsync(series, null, series.Title, guest.Id, null, guest.Email, ct);
+            }
             await _meetings.DeleteFutureOverridesAsync(tenantId, series.Id, null, email, MeetingAttendeeChanges.Add, now, ct);
             return Result<bool>.Success(true);
         }, ct);
@@ -113,13 +131,25 @@ public sealed class MeetingAttendeeService
             var seriesPeople = (await _meetings.ListSeriesParticipantsAsync(tenantId, series.Id, ct)).Where(p => !p.IsDeleted)
                 .Select(p => p.EmployeeId).ToHashSet();
             var added = 0;
+            var newRows = new List<MeetingOccurrenceAttendee>();
             foreach (var employeeId in active)
-                if (await SetOverrideAsync(tenantId, taskId, employeeId, null, seriesPeople.Contains(employeeId), add: true, ct))
+                if (await SetOverrideAsync(tenantId, taskId, employeeId, null, seriesPeople.Contains(employeeId), add: true, ct) is { } row)
+                {
                     added++;
+                    newRows.Add(row);
+                }
             var seriesGuests = (await _meetings.ListSeriesGuestsAsync(tenantId, series.Id, ct)).Select(g => g.Email.ToLowerInvariant()).ToHashSet();
             foreach (var email in MeetingCreateValidator.NormalizeGuests(request.GuestEmails))
-                if (await SetOverrideAsync(tenantId, taskId, null, email, seriesGuests.Contains(email.ToLowerInvariant()), add: true, ct))
+                if (await SetOverrideAsync(tenantId, taskId, null, email, seriesGuests.Contains(email.ToLowerInvariant()), add: true, ct) is { } row)
+                {
                     added++;
+                    newRows.Add(row);
+                }
+            if (newRows.Count > 0)
+            {
+                var (details, title) = await OccurrenceAsync(tenantId, taskId, ct);
+                await _notifier.InviteToOccurrenceAsync(series, details, title, newRows, ct);
+            }
             return Result<MeetingAttendeesResponse>.Success(new MeetingAttendeesResponse(added, skipped));
         }, ct);
 
@@ -129,8 +159,12 @@ public sealed class MeetingAttendeeService
         {
             if (employeeId == series.OrganizerEmployeeId)
                 return Result<bool>.Failure("The organizer cannot be removed from their meeting.", 400, MeetingErrorCodes.OrganizerCannotBeRemoved);
-            var inSeries = (await _meetings.ListSeriesParticipantsAsync(tenantId, series.Id, ct)).Any(p => p.EmployeeId == employeeId && !p.IsDeleted);
-            await SetOverrideAsync(tenantId, taskId, employeeId, null, inSeries, add: false, ct);
+            var seriesRow = (await _meetings.ListSeriesParticipantsAsync(tenantId, series.Id, ct)).FirstOrDefault(p => p.EmployeeId == employeeId && !p.IsDeleted);
+            if (await SetOverrideAsync(tenantId, taskId, employeeId, null, seriesRow is not null, add: false, ct) is { } row)
+            {
+                var (details, title) = await OccurrenceAsync(tenantId, taskId, ct);
+                await _notifier.RemovedAsync(series, details, title, row.Id, employeeId, null, ct);
+            }
             return Result<bool>.Success(true);
         }, ct);
 
@@ -138,8 +172,12 @@ public sealed class MeetingAttendeeService
         DateTimeOffset originalStart, string email, CancellationToken ct)
         => OccurrenceWriteAsync(tenantId, caller, callerUserId, seriesId, originalStart, async (series, taskId, _) =>
         {
-            var inSeries = await _meetings.GetSeriesGuestTrackedAsync(tenantId, series.Id, email, ct) is not null;
-            await SetOverrideAsync(tenantId, taskId, null, email.Trim(), inSeries, add: false, ct);
+            var seriesGuest = await _meetings.GetSeriesGuestTrackedAsync(tenantId, series.Id, email, ct);
+            if (await SetOverrideAsync(tenantId, taskId, null, email.Trim(), seriesGuest is not null, add: false, ct) is { } row)
+            {
+                var (details, title) = await OccurrenceAsync(tenantId, taskId, ct);
+                await _notifier.RemovedAsync(series, details, title, row.Id, null, email.Trim(), ct);
+            }
             return Result<bool>.Success(true);
         }, ct);
 
@@ -156,12 +194,16 @@ public sealed class MeetingAttendeeService
 
         return await _unitOfWork.ExecuteInTransactionAsync(async innerCt =>
         {
+            var changed = false;
+            string? title = null;
             if (request.OriginalStart is { } start)
             {
                 var details = await _meetings.GetDetailsAsync(tenantId, seriesId, start, innerCt);
                 var add = details is null ? null : await _meetings.GetOverrideTrackedAsync(tenantId, details.TaskId, caller, null, innerCt);
                 if (add is not { Change: MeetingAttendeeChanges.Add })
                     return MeetingReadService.NotFound<bool>();
+                changed = add.ResponseStatus != request.Status;
+                title = (await _meetings.GetMeetingTaskTrackedAsync(tenantId, details!.TaskId, innerCt))?.Title;
                 _meetings.AddRsvpHistory(History(tenantId, add.Id, details!.TaskId, caller, add.ResponseStatus, request.Status, reason, now));
                 add.ResponseStatus = request.Status;
                 add.ResponseReason = reason;
@@ -171,11 +213,14 @@ public sealed class MeetingAttendeeService
                 var participant = await _meetings.GetSeriesParticipantTrackedIncludingRemovedAsync(tenantId, seriesId, caller, innerCt);
                 if (participant is not { IsDeleted: false })
                     return MeetingReadService.NotFound<bool>();
+                changed = participant.ResponseStatus != request.Status;
                 _meetings.AddRsvpHistory(History(tenantId, participant.Id, seriesId, caller, participant.ResponseStatus, request.Status, reason, now));
                 participant.ResponseStatus = request.Status;
                 participant.ResponseReason = reason;
                 participant.RespondedAt = now;
             }
+            if (changed && await _meetings.GetSeriesAsync(tenantId, seriesId, innerCt) is { } series)
+                await _notifier.RsvpAnsweredAsync(series, title ?? series.Title, caller, request.Status == CalendarEventParticipantStatuses.Accepted, innerCt);
             await _unitOfWork.SaveChangesAsync(innerCt);
             return Result<bool>.Success(true);
         }, ct);
@@ -191,33 +236,38 @@ public sealed class MeetingAttendeeService
 
     /// <summary>Makes one person present (add) or absent (remove) on one occurrence with the fewest rows: an override
     /// that already says so is kept, one that says the opposite is removed when the series already gives that answer.
-    /// True when something changed.</summary>
-    private async Task<bool> SetOverrideAsync(Guid tenantId, Guid taskId, Guid? employeeId, string? email, bool inSeries, bool add, CancellationToken ct)
+    /// The row that made the change - the one added, or the one removed when that alone did it; null when nothing changed.</summary>
+    private async Task<MeetingOccurrenceAttendee?> SetOverrideAsync(Guid tenantId, Guid taskId, Guid? employeeId, string? email, bool inSeries,
+        bool add, CancellationToken ct)
     {
         var existing = await _meetings.GetOverrideTrackedAsync(tenantId, taskId, employeeId, email, ct);
         var wanted = add ? MeetingAttendeeChanges.Add : MeetingAttendeeChanges.Remove;
         if (existing is not null)
         {
             if (existing.Change == wanted)
-                return false;
+                return null;
             _meetings.RemoveOverride(existing);
             await _unitOfWork.SaveChangesAsync(ct);   // one row per person: the replacement may follow
             if (inSeries == add)
-                return true;
+                return existing;
         }
         else if (inSeries == add)
-            return false;
+            return null;
 
-        _meetings.AddOverride(new MeetingOccurrenceAttendee
+        var row = new MeetingOccurrenceAttendee
         {
             Id = Guid.NewGuid(), TenantId = tenantId, OccurrenceTaskId = taskId,
             AttendeeKind = employeeId is not null ? MeetingAttendeeKinds.Employee : MeetingAttendeeKinds.Guest,
             EmployeeId = employeeId, Email = email, Change = wanted,
             ResponseStatus = add && employeeId is not null ? CalendarEventParticipantStatuses.Pending : null,
             CreatedAt = _clock.UtcNow,
-        });
-        return true;
+        };
+        _meetings.AddOverride(row);
+        return row;
     }
+
+    private async Task<(MeetingDetails Details, string Title)> OccurrenceAsync(Guid tenantId, Guid taskId, CancellationToken ct)
+        => ((await _meetings.GetDetailsTrackedAsync(tenantId, taskId, ct))!, (await _meetings.GetMeetingTaskTrackedAsync(tenantId, taskId, ct))!.Title);
 
     private async Task<(List<Guid> Active, List<SkippedParticipant> Skipped)> SplitActiveAsync(Guid tenantId, IEnumerable<Guid> ids, CancellationToken ct)
     {

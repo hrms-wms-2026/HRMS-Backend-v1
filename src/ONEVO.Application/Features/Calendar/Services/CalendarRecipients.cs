@@ -28,6 +28,11 @@ public static class CalendarEmailKeys
     public static string Cancel(Guid eventId, DateTimeOffset? occurrenceStart, Guid rowId) =>
         $"cancel:{eventId}:{(occurrenceStart is { } start ? start.UtcTicks.ToString(CultureInfo.InvariantCulture) : "series")}:{rowId}";
 
+    /// <summary>One removal of one person (a series, or with <paramref name="occurrenceStart"/> one occurrence): the moment
+    /// makes a later removal of the same row - after a re-add - a new email, and keeps it apart from the cancel keys.</summary>
+    public static string Removed(Guid ownerId, DateTimeOffset? occurrenceStart, Guid rowId, DateTimeOffset removedAt) =>
+        $"removed:{ownerId}:{(occurrenceStart is { } start ? start.UtcTicks.ToString(CultureInfo.InvariantCulture) : "series")}:{rowId}:{removedAt.UtcTicks.ToString(CultureInfo.InvariantCulture)}";
+
     public static string Link(Guid meetingId, int generation, Guid rowId) =>
         $"link:{meetingId}:{generation.ToString(CultureInfo.InvariantCulture)}:{rowId}";
 

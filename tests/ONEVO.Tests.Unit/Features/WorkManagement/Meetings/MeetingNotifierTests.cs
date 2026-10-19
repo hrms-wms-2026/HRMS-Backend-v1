@@ -164,7 +164,7 @@ public sealed class MeetingNotifierTests
 
         _sender.Verify(s => s.EmailEventChangedKeyedAsync(Tenant, CalendarEventEmailKinds.Removed, It.IsAny<CalendarEventIcs>(), "Weekly sync",
             Start, "Room 4", null,
-            It.Is<IReadOnlyList<CalendarParticipantRecipient>>(p => p.Single().EmailKey == CalendarEmailKeys.Cancel(_series.Id, null, _attendeeRow.Id)),
+            It.Is<IReadOnlyList<CalendarParticipantRecipient>>(p => p.Single().EmailKey == CalendarEmailKeys.Removed(_series.Id, null, _attendeeRow.Id, Now)),
             It.Is<IReadOnlyList<CalendarGuestRecipient>>(g => g.Count == 0), "Ada Lead", It.IsAny<CancellationToken>()), Times.Once);
         _sender.Verify(s => s.NotifyParticipantRemovedAsync(Tenant, _attendeeRow.EmployeeId, "Weekly sync", "Ada Lead", It.IsAny<CancellationToken>()), Times.Once);
     }

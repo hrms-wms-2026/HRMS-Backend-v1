@@ -33,10 +33,17 @@ public sealed class MeetingTestServices
         Materializer = new MeetingOccurrenceMaterializer(Meetings, Writer,
             new MeetingTaskDefaults(new EfTaskCategoryRepository(db), new EfTaskStatusRepository(db)), Projects, Recurrence, UnitOfWork);
         Options = Microsoft.Extensions.Options.Options.Create(new MeetingsOptions { Create = true });
+        Links = new EfMeetingLinkRepository(db);
+        Notifier = new MeetingNotifier(new ONEVO.Application.Features.Calendar.Services.CalendarNotificationSender(
+                new ONEVO.Infrastructure.Services.SharedPlatform.Outbox.OutboxWriter(db, ONEVO.Tests.Integration.Calendar.CalendarNotificationDb.Encryption, clock),
+                new ONEVO.Infrastructure.Persistence.Repositories.CoreHr.EfEmployeeRepository(db)),
+            Meetings, Links, new EfEmployeeRepository(db), clock);
         Splitter = new MeetingSeriesSplitter(Meetings, Writer, Materializer, Recurrence, UnitOfWork, clock);
-        Edits = new MeetingEditService(Options, Meetings, Writer, Materializer, Access, UnitOfWork, clock, Splitter, Recurrence);
-        Cancels = new MeetingCancelService(Options, Meetings, Writer, Materializer, Access, UnitOfWork, clock);
-        Attendees = new MeetingAttendeeService(Options, Meetings, Writer, Materializer, Access, new EfEmployeeRepository(db), UnitOfWork, clock);
+        Edits = new MeetingEditService(Options, Meetings, Writer, Materializer, Access, UnitOfWork, clock, Splitter, Recurrence, Notifier);
+        Cancels = new MeetingCancelService(Options, Meetings, Writer, Materializer, Access, UnitOfWork, clock, Notifier);
+        Attendees = new MeetingAttendeeService(Options, Meetings, Writer, Materializer, Access, new EfEmployeeRepository(db), UnitOfWork, clock, Notifier);
+        Factory = new MeetingSeriesFactory(Meetings, Writer, new MeetingTaskDefaults(new EfTaskCategoryRepository(db), new EfTaskStatusRepository(db)),
+            Projects, new EfEmployeeRepository(db), Recurrence, UnitOfWork, clock, Materializer, Notifier);
     }
 
     public ApplicationDbContext Db { get; }
@@ -53,4 +60,7 @@ public sealed class MeetingTestServices
     public MeetingEditService Edits { get; }
     public MeetingCancelService Cancels { get; }
     public MeetingAttendeeService Attendees { get; }
+    public MeetingSeriesFactory Factory { get; }
+    public EfMeetingLinkRepository Links { get; }
+    public MeetingNotifier Notifier { get; }
 }

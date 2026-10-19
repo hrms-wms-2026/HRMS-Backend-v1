@@ -37,11 +37,13 @@ public sealed class MeetingSeriesFactory : IMeetingSeriesFactory
     private readonly IUnitOfWork _unitOfWork;
     private readonly IDateTimeProvider _clock;
     private readonly IMeetingOccurrenceMaterializer _materializer;
+    private readonly IMeetingNotifier _notifier;
 
     public MeetingSeriesFactory(IMeetingRepository meetings, IMeetingOccurrenceWriter writer, IMeetingTaskDefaults defaults,
         IProjectRepository projects, IEmployeeRepository employees, IMeetingRecurrence recurrence, IUnitOfWork unitOfWork,
-        IDateTimeProvider clock, IMeetingOccurrenceMaterializer materializer)
+        IDateTimeProvider clock, IMeetingOccurrenceMaterializer materializer, IMeetingNotifier notifier)
     {
+        _notifier = notifier;
         _materializer = materializer;
         _meetings = meetings;
         _writer = writer;
@@ -88,16 +90,18 @@ public sealed class MeetingSeriesFactory : IMeetingSeriesFactory
             CreatedAt = now, CreatedById = organizerUserId,
         };
         _meetings.AddSeries(series);
-        _meetings.AddParticipants(attendees.Prepend(organizerEmployeeId).Select(id => new CalendarEventParticipant
+        var participantRows = attendees.Prepend(organizerEmployeeId).Select(id => new CalendarEventParticipant
         {
             Id = Guid.NewGuid(), TenantId = tenantId, MeetingSeriesId = series.Id, EmployeeId = id,
             ResponseStatus = id == organizerEmployeeId ? CalendarEventParticipantStatuses.Accepted : CalendarEventParticipantStatuses.Pending,
             RespondedAt = id == organizerEmployeeId ? now : null,
-        }));
-        _meetings.AddGuests(MeetingCreateValidator.NormalizeGuests(request.GuestEmails).Select(email => new CalendarEventGuest
+        }).ToList();
+        var guestRows = MeetingCreateValidator.NormalizeGuests(request.GuestEmails).Select(email => new CalendarEventGuest
         {
             Id = Guid.NewGuid(), TenantId = tenantId, MeetingSeriesId = series.Id, Email = email, CreatedAt = now,
-        }));
+        }).ToList();
+        _meetings.AddParticipants(participantRows);
+        _meetings.AddGuests(guestRows);
         // The occurrence insert is raw SQL that references the series row.
         await _unitOfWork.SaveChangesAsync(ct);
 
@@ -115,6 +119,7 @@ public sealed class MeetingSeriesFactory : IMeetingSeriesFactory
                 firstTaskId = taskId;
         }
 
+        await _notifier.InviteAsync(series, participantRows, guestRows, ct);
         return Result<MeetingCreatedResponse>.Success(
             new MeetingCreatedResponse("created", series.Id, firstTaskId, approvalRequestId, skipped));
     }

@@ -30,13 +30,16 @@ public sealed class MeetingEditService
     private readonly IUnitOfWork _unitOfWork;
     private readonly IDateTimeProvider _clock;
     private readonly IMeetingSeriesSplitter _splitter;
+    private readonly IMeetingNotifier _notifier;
     private readonly IMeetingRecurrence _recurrence;
 
     public MeetingEditService(IOptions<MeetingsOptions> options, IMeetingRepository meetings, IMeetingOccurrenceWriter writer,
         IMeetingOccurrenceMaterializer materializer, IMeetingAccessResolver access, IUnitOfWork unitOfWork, IDateTimeProvider clock,
-        IMeetingSeriesSplitter splitter, IMeetingRecurrence recurrence)
+        IMeetingSeriesSplitter splitter, IMeetingRecurrence recurrence,
+        IMeetingNotifier notifier)
     {
         _splitter = splitter;
+        _notifier = notifier;
         _recurrence = recurrence;
         _options = options;
         _meetings = meetings;
@@ -140,6 +143,7 @@ public sealed class MeetingEditService
         }
         details.IsDetached = true;
         details.Revision++;
+        await _notifier.OccurrenceUpdatedAsync(series, details, task.Title, ct);
         return Result<MeetingEditResponse>.Success(new MeetingEditResponse(series.Id, task.Id, Split: false));
     }
 
@@ -177,6 +181,7 @@ public sealed class MeetingEditService
             details.Revision++;
         }
 
+        await _notifier.SeriesUpdatedAsync(series, ct);
         var occurrence = await _meetings.GetDetailsAsync(tenantId, series.Id, originalStart, ct);
         return Result<MeetingEditResponse>.Success(new MeetingEditResponse(series.Id,
             occurrence?.TaskId ?? MeetingOccurrenceIds.For(series.Id, originalStart), Split: false));
@@ -233,6 +238,9 @@ public sealed class MeetingEditService
             return Result<MeetingEditResponse>.Failure(split.Error!, split.StatusCode ?? 409, split.ErrorCode);
         var target = split.Value!;
         await _unitOfWork.SaveChangesAsync(ct);
+        // The old series now ends before the point (its UNTIL); the rest arrives as a new series with its own UID.
+        await _notifier.SeriesUpdatedAsync(series, ct);
+        await _notifier.SeriesUpdatedAsync(target, ct);
         var firstOccurrence = await _meetings.GetDetailsAsync(tenantId, target.Id, template.DtStart, ct);
         return Result<MeetingEditResponse>.Success(new MeetingEditResponse(target.Id,
             firstOccurrence?.TaskId ?? MeetingOccurrenceIds.For(target.Id, template.DtStart), Split: true));

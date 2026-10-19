@@ -24,7 +24,7 @@ public sealed class MeetingCreateIntegrationTests
     private static MeetingSeriesFactory Factory(ApplicationDbContext db) => new(
         new EfMeetingRepository(db), new EfMeetingOccurrenceWriter(db), new MeetingTaskDefaults(new EfTaskCategoryRepository(db), new EfTaskStatusRepository(db)),
         new EfProjectRepository(db), new EfEmployeeRepository(db), new IcalNetMeetingRecurrence(), new UnitOfWork(db), new FixedClock(Now),
-        new MeetingTestServices(db, new FixedClock(Now)).Materializer);
+        new MeetingTestServices(db, new FixedClock(Now)).Materializer, new MeetingTestServices(db, new FixedClock(Now)).Notifier);
 
     private static CreateMeetingRequest Request(MeetingPlacement at, IReadOnlyList<Guid> people, string? rule = null,
         IReadOnlyList<string>? guests = null)
