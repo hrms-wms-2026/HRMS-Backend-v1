@@ -38,6 +38,10 @@ public interface IMeetingRepository
 
     Task<MeetingOccurrenceRow?> GetOccurrenceAsync(Guid tenantId, Guid seriesId, DateTimeOffset originalStart, CancellationToken ct = default);
 
+    /// <summary>Every materialized, non-cancelled occurrence starting in [from, to), by start - the start reminders' input. No
+    /// visibility filter: the caller notifies each occurrence's own attendees.</summary>
+    Task<IReadOnlyList<MeetingOccurrenceRow>> ListStartingBetweenAsync(Guid tenantId, DateTimeOffset from, DateTimeOffset to, CancellationToken ct = default);
+
     /// <summary>The materialized occurrences overlapping [from, to) that the caller may see (MeetingVisibility), by start.</summary>
     Task<IReadOnlyList<MeetingOccurrenceRow>> ListVisibleAsync(Guid tenantId, Guid callerEmployeeId, DateTimeOffset from, DateTimeOffset to,
         Guid? projectId, Guid? seriesId, CancellationToken ct = default);

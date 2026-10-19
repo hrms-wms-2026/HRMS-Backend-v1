@@ -77,6 +77,17 @@ public sealed class EfMeetingRepository : IMeetingRepository
             .FirstOrDefaultAsync(ct);
     }
 
+    public async Task<IReadOnlyList<MeetingOccurrenceRow>> ListStartingBetweenAsync(Guid tenantId, DateTimeOffset from, DateTimeOffset to,
+        CancellationToken ct = default)
+    {
+        var fromUtc = from.ToUniversalTime();
+        var toUtc = to.ToUniversalTime();
+        return await Rows(_db.MeetingDetails
+                .Where(d => d.TenantId == tenantId && d.CancelledAt == null && d.StartAt >= fromUtc && d.StartAt < toUtc)
+                .OrderBy(d => d.StartAt))
+            .ToListAsync(ct);
+    }
+
     public async Task<IReadOnlyList<MeetingOccurrenceRow>> ListVisibleAsync(Guid tenantId, Guid callerEmployeeId, DateTimeOffset from,
         DateTimeOffset to, Guid? projectId, Guid? seriesId, CancellationToken ct = default)
     {
