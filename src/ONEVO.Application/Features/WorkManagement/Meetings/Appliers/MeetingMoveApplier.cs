@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Microsoft.Extensions.Options;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Approvals.Services;
 using ONEVO.Application.Features.WorkManagement.Meetings.Contracts;
@@ -17,14 +18,16 @@ public sealed class MeetingMoveApplier : IApprovalActionApplier
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
+    private readonly IOptions<MeetingsOptions> _options;
     private readonly MeetingMoveService _moves;
     private readonly IMeetingRepository _meetings;
     private readonly IEmployeeRepository _employees;
     private readonly IMilestoneMembershipCoordinator _membership;
 
-    public MeetingMoveApplier(MeetingMoveService moves, IMeetingRepository meetings, IEmployeeRepository employees,
+    public MeetingMoveApplier(IOptions<MeetingsOptions> options, MeetingMoveService moves, IMeetingRepository meetings, IEmployeeRepository employees,
         IMilestoneMembershipCoordinator membership)
     {
+        _options = options;
         _moves = moves;
         _meetings = meetings;
         _employees = employees;
@@ -35,6 +38,8 @@ public sealed class MeetingMoveApplier : IApprovalActionApplier
 
     public async Task<ApplyOutcome> ApplyAsync(ApprovalApplyContext context, CancellationToken ct)
     {
+        if (MeetingGuard.CheckWritable<bool>(_options.Value) is { } blocked)
+            return ApplyOutcome.Invalid(blocked.Error!);
         var request = context.Request;
         var move = JsonSerializer.Deserialize<MeetingMovePayload>(context.PayloadJson, Json);
         if (move is null)

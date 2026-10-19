@@ -18,8 +18,9 @@ public interface IMeetingSeriesSplitter
     /// Spec 5.5 forward split at <paramref name="splitAt"/>, in the caller's transaction, with the caller holding the
     /// source series lock (and having re-read it). The source ends just before the point (its past is untouched); a new
     /// series carries the rest with the template, copied attendees (RSVPs reset when the time or length changes) and the
-    /// mapped suppressions; materialized occurrences move across keeping their task ids; surplus ones are cancelled when
-    /// they carry overrides, action items or attendance, else soft-deleted; missing ones in the 7-day window are created.
+    /// mapped suppressions; materialized occurrences move across keeping their task ids (a rescheduled one keeps its own
+    /// time, shifted with its slot); surplus ones are cancelled when they carry overrides, action items or attendance, else
+    /// soft-deleted; missing ones in the 7-day window are created. Occurrences that have started are never touched.
     /// A <paramref name="newPlacement"/> (a move) re-places the moved tasks.
     /// </summary>
     Task<Result<MeetingSeries>> SplitAsync(Guid tenantId, MeetingSeries source, DateTimeOffset splitAt, string reason,
@@ -69,6 +70,11 @@ public sealed class MeetingSeriesSplitter : IMeetingSeriesSplitter
         if (newExpansion.Count == 0)
             return Result<MeetingSeries>.Failure("The new repeat rule has no occurrences.", 409, MeetingErrorCodes.RecurrenceEmpty);
         var plan = MeetingSplitPlan.Create(oldExpansion, materialized.Select(d => d.OriginalStart), suppressed.Select(s => s.OriginalStart), newExpansion);
+        // Forward-only: an occurrence that has already started (one rescheduled earlier than its slot) stays where it is,
+        // untouched; its new slot is suppressed so the new series never schedules that meeting a second time.
+        var started = materialized.Where(d => d.StartAt <= now).Select(d => d.OriginalStart).ToHashSet();
+        var remaps = plan.Remaps.Where(r => !started.Contains(r.OldKey)).ToList();
+        var keptStarted = plan.Remaps.Where(r => started.Contains(r.OldKey)).ToList();
 
         // 1. The old series ends just before the point.
         if (source.RecurrenceRule is not null)
@@ -104,13 +110,20 @@ public sealed class MeetingSeriesSplitter : IMeetingSeriesSplitter
         await _unitOfWork.SaveChangesAsync(ct);   // the remap and the occurrence inserts are raw SQL against the new series
         await _writer.LockSeriesAsync(tenantId, target.Id, ct);
 
-        // 3. Materialized occurrences move across, keeping their task ids; non-detached ones take the new template.
+        // 3. Materialized occurrences move across, keeping their task ids; non-detached ones take the new template. A
+        //    rescheduled (detached) one keeps its own time and length, moved by as much as its slot moved.
         var byKey = materialized.ToDictionary(d => d.OriginalStart);
         var length = TimeSpan.FromMinutes(template.DurationMinutes);
-        if (plan.Remaps.Count > 0)
-            await _writer.RemapIntoSeriesAsync(tenantId, target.Id,
-                plan.Remaps.Select(r => (byKey[r.OldKey].TaskId, r.NewKey, r.NewKey, r.NewKey + length)).ToList(), ct);
-        foreach (var (oldKey, _) in plan.Remaps)
+        if (remaps.Count > 0)
+            await _writer.RemapIntoSeriesAsync(tenantId, target.Id, remaps.Select(r =>
+            {
+                var old = byKey[r.OldKey];
+                var moved = r.NewKey - r.OldKey;
+                return old.IsDetached
+                    ? (old.TaskId, r.NewKey, old.StartAt + moved, old.EndAt + moved)
+                    : (old.TaskId, r.NewKey, r.NewKey, r.NewKey + length);
+            }).ToList(), ct);
+        foreach (var (oldKey, _) in remaps)
         {
             var old = byKey[oldKey];
             var task = (await _meetings.GetMeetingTaskTrackedAsync(tenantId, old.TaskId, ct))!;
@@ -131,7 +144,7 @@ public sealed class MeetingSeriesSplitter : IMeetingSeriesSplitter
         }
 
         // 4. Surplus: cancelled when something hangs off it, otherwise soft-deleted (its key stays taken).
-        foreach (var key in plan.Surplus)
+        foreach (var key in plan.Surplus.Where(k => !started.Contains(k)))
         {
             var old = byKey[key];
             if (await _meetings.HasDependentsAsync(tenantId, old.TaskId, ct))
@@ -148,8 +161,14 @@ public sealed class MeetingSeriesSplitter : IMeetingSeriesSplitter
                 SeriesId = target.Id, OriginalStart = newKey, TenantId = tenantId, Reason = suppressionsByKey[oldKey].Reason,
                 MovedToTaskId = suppressionsByKey[oldKey].MovedToTaskId, CreatedByEmployeeId = actorEmployeeId, CreatedAt = now,
             });
+        foreach (var (oldKey, newKey) in keptStarted)
+            _meetings.AddSuppression(new MeetingOccurrenceSuppression
+            {
+                SeriesId = target.Id, OriginalStart = newKey, TenantId = tenantId, Reason = MeetingSuppressionReasons.MovedSingle,
+                MovedToTaskId = byKey[oldKey].TaskId, CreatedByEmployeeId = actorEmployeeId, CreatedAt = now,
+            });
         if (source.RecurrenceRule is null)
-            foreach (var (oldKey, _) in plan.Remaps)
+            foreach (var (oldKey, _) in remaps)
                 _meetings.AddSuppression(new MeetingOccurrenceSuppression
                 {
                     SeriesId = source.Id, OriginalStart = oldKey, TenantId = tenantId, Reason = MeetingSuppressionReasons.MovedSingle,
@@ -157,7 +176,7 @@ public sealed class MeetingSeriesSplitter : IMeetingSeriesSplitter
                 });
 
         // 6. Missing occurrences inside the 7-day window.
-        var taken = plan.Remaps.Select(r => r.NewKey).Concat(plan.SuppressionCopies.Select(c => c.NewKey)).ToHashSet();
+        var taken = plan.Remaps.Select(r => r.NewKey).Concat(plan.SuppressionCopies.Select(c => c.NewKey)).ToHashSet();   // kept-started slots included
         foreach (var key in newExpansion.Where(k => k >= now && k < now + MeetingSeriesFactory.Window && !taken.Contains(k)))
             await _materializer.MaterializeAsync(tenantId, target, key, actorUserId, ct);
 

@@ -44,8 +44,18 @@ public sealed class MeetingRecurrenceAndValidationTests
         => AssertCode(Recurrence.Validate(rule, Now.AddDays(1), "UTC"), MeetingErrorCodes.RecurrenceInvalid);
 
     [Fact]
+    public void AStartOffTheRepeatPattern_IsInvalid()
+    {
+        // Final-review M1: 2026-10-05 is a Monday; a Tuesday-only rule would otherwise add an extra first meeting.
+        var monday = new DateTimeOffset(2026, 10, 5, 9, 0, 0, TimeSpan.Zero);
+
+        AssertCode(Recurrence.Validate("FREQ=WEEKLY;BYDAY=TU;COUNT=2", monday, "UTC"), MeetingErrorCodes.RecurrenceInvalid);
+        Assert.True(Recurrence.Validate("FREQ=WEEKLY;BYDAY=MO;COUNT=2", monday, "UTC").IsSuccess);
+    }
+
+    [Fact]
     public void AnOpenEndedWeeklyRule_IsValid()
-        => Assert.True(Recurrence.Validate("FREQ=WEEKLY;BYDAY=MO", Now.AddDays(1), "Asia/Colombo").IsSuccess);
+        => Assert.True(Recurrence.Validate("FREQ=WEEKLY;BYDAY=MO", new DateTimeOffset(2026, 10, 5, 9, 0, 0, TimeSpan.FromHours(5.5)), "Asia/Colombo").IsSuccess);
 
     [Fact]
     public void UnknownTimezone_IsInvalid()

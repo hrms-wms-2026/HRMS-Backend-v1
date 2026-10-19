@@ -45,8 +45,15 @@ public sealed class IcalNetMeetingRecurrence : IMeetingRecurrence
                 .GetOccurrences(new CalDateTime(dtStart.UtcDateTime))
                 .TakeWhile(o => o.Period.StartTime.AsUtc < dtStart.UtcDateTime.AddYears(1))
                 .Take(IMeetingRecurrence.MaxOccurrences + 1)
-                .Count();
-            return firstYear is 0 or > IMeetingRecurrence.MaxOccurrences ? Invalid() : Result.Success();
+                .Select(o => o.Period.StartTime.AsUtc)
+                .ToList();
+            if (firstYear.Count is 0 or > IMeetingRecurrence.MaxOccurrences)
+                return Invalid();
+            // The first meeting must be on the pattern: Ical.Net leaves an off-pattern DTSTART out of the expansion, so
+            // it would be an extra meeting that COUNT and series edits never see.
+            return firstYear[0] == dtStart.UtcDateTime
+                ? Result.Success()
+                : Result.Failure("The first meeting must fall on the repeat pattern.", 400, MeetingErrorCodes.RecurrenceInvalid);
         }
         catch (Exception ex) when (ex is ArgumentException or FormatException or InvalidOperationException)
         {

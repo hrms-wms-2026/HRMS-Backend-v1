@@ -72,6 +72,37 @@ public sealed class MeetingPlaceholderStatusIntegrationTests
     }
 
     [Fact]
+    public async Task AStatusHeldOnlyByASoftDeletedMeetingTask_CanBeDeleted()
+    {
+        // A split soft-deletes a surplus occurrence (final-review I2); the status check counts deleted tasks too.
+        var h = await MyTeamDb.CreateAsync();
+        MeetingPlacement at;
+        Guid meetingOnly, meetingTask;
+        await using (var db = h.NewContext())
+        {
+            at = h.AddPlacement(db);
+            meetingOnly = h.AddStatus(db, at.ProjectId, marksComplete: false);
+            h.AddStatus(db, at.ProjectId, marksComplete: true);
+            (await db.TaskStatuses.FindAsync(meetingOnly))!.DisplayOrder = 7;
+            var (task, _) = h.AddOccurrence(db, h.AddSeries(db, at), at);
+            task.StatusId = meetingOnly;
+            task.IsDeleted = true;
+            task.DeletedAt = DateTimeOffset.UtcNow;
+            meetingTask = task.Id;
+            await db.SaveChangesAsync();
+        }
+
+        await using (var db = h.NewContext())
+        {
+            var result = await Handler(db, h.TenantId, at.OrganizerEmployeeId).Handle(new DeleteTaskStatusCommand(meetingOnly), CancellationToken.None);
+            Assert.True(result.IsSuccess, result.Error);
+        }
+
+        await using var check = h.NewContext();
+        Assert.Equal(at.StatusId, (await check.WorkTasks.IgnoreQueryFilters().SingleAsync(t => t.Id == meetingTask)).StatusId);
+    }
+
+    [Fact]
     public async Task AStatusAnOrdinaryTaskUses_IsStillProtected()
     {
         var h = await MyTeamDb.CreateAsync();
