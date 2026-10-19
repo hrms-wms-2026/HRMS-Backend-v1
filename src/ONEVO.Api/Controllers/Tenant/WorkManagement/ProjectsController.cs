@@ -17,6 +17,7 @@ using ONEVO.Application.Features.WorkManagement.Projects.Queries.GetProjectBanne
 using ONEVO.Application.Features.WorkManagement.Projects.Queries.GetProjectById;
 using ONEVO.Application.Features.WorkManagement.Projects.Queries.GetProjectLogo;
 using ONEVO.Application.Features.WorkManagement.Projects.Queries.ListProjects;
+using ONEVO.Application.Features.WorkManagement.ProjectWorkGraph.Queries.GetProjectWorkGraph;
 using ONEVO.Application.Features.WorkManagement.Approvals.Queries.GetWorkApprovalHistory;
 
 namespace ONEVO.Api.Controllers.Tenant.WorkManagement;
@@ -148,6 +149,16 @@ public class ProjectsController : ControllerBase
         return result.IsSuccess
             ? Ok(result.Value!.ToViewModel())
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Project Network graph: the project's modules (objectives) and open top-level tasks as
+    /// nodes/links, in the same shape as the employee work-graph. Membership-scoped like the objective
+    /// tree; see GetProjectWorkGraphQueryHandler.</summary>
+    [HttpGet("{id:guid}/work-graph")]
+    public async Task<IActionResult> GetWorkGraph(Guid id, CancellationToken ct)
+    {
+        var result = await _mediator.Send(new GetProjectWorkGraphQuery(id), ct);
+        return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
     /// <summary>Streams a Project's cover/logo image. Requires active project membership. 404 if no logo is set.</summary>
