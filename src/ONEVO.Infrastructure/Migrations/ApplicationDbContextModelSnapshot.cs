@@ -13506,6 +13506,10 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("character varying(200)")
                         .HasColumnName("name");
 
+                    b.Property<long>("NextMeetingNumber")
+                        .HasColumnType("bigint")
+                        .HasColumnName("next_meeting_number");
+
                     b.Property<long>("NextTaskNumber")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("bigint")

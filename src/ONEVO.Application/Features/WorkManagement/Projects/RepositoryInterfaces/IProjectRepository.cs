@@ -47,6 +47,10 @@ public interface IProjectRepository
     /// </summary>
     Task<long> IncrementAndGetNextTaskNumberAsync(Guid tenantId, Guid projectId, CancellationToken ct = default);
 
+    /// <summary>Atomically increments projects.next_meeting_number and returns the value for the next meeting
+    /// occurrence's ShortId ({Identifier}-M{n}).</summary>
+    Task<long> IncrementAndGetNextMeetingNumberAsync(Guid tenantId, Guid projectId, CancellationToken ct = default);
+
     Task<IReadOnlyList<Project>> ListByIdsAsync(Guid tenantId, IReadOnlyCollection<Guid> projectIds, CancellationToken ct = default);
 
     /// <summary>Tenant-unscoped (admin mode) - active, not-achieved projects of every tenant, for the

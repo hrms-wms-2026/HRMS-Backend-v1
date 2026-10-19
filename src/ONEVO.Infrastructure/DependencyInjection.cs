@@ -409,6 +409,8 @@ public static class DependencyInjection
                 configuration.GetSection(ONEVO.Application.Features.WorkManagement.Meetings.MeetingsOptions.Section), options))
             .ValidateOnStart();
         services.AddHostedService<Services.WorkManagement.Meetings.MeetingsStartupCheck>();
+        services.AddScoped<ONEVO.Application.Features.WorkManagement.Meetings.Services.IMeetingTaskDefaults,
+            ONEVO.Application.Features.WorkManagement.Meetings.Services.MeetingTaskDefaults>();
         services.AddScoped<ONEVO.Application.Features.WorkManagement.Meetings.RepositoryInterfaces.IMeetingOccurrenceWriter,
             ONEVO.Infrastructure.Persistence.Repositories.WorkManagement.Meetings.EfMeetingOccurrenceWriter>();
         services.AddScoped<ONEVO.Infrastructure.Persistence.Repositories.Calendar.EfCalendarEventRepository>();

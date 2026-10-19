@@ -103,6 +103,21 @@ public class EfProjectRepository : IProjectRepository
         return values[0];
     }
 
+    public async Task<long> IncrementAndGetNextMeetingNumberAsync(Guid tenantId, Guid projectId, CancellationToken ct = default)
+    {
+        var values = await _db.Database.SqlQuery<long>($@"
+            UPDATE projects
+            SET next_meeting_number = next_meeting_number + 1
+            WHERE tenant_id = {tenantId} AND id = {projectId}
+            RETURNING (next_meeting_number - 1) AS ""Value""
+        ").ToListAsync(ct);
+
+        if (values.Count == 0)
+            throw new InvalidOperationException("Project not found when allocating a meeting number.");
+
+        return values[0];
+    }
+
     public async Task<IReadOnlyList<Project>> ListByIdsAsync(Guid tenantId, IReadOnlyCollection<Guid> projectIds, CancellationToken ct = default)
     {
         if (projectIds.Count == 0)
