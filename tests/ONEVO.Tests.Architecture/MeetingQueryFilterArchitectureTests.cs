@@ -69,7 +69,11 @@ public sealed class MeetingQueryFilterArchitectureTests
     ];
 
     /// <summary>Files that ignore ExcludeMeetings; each must also apply MeetingVisibility.ForCaller (spec 5.1).</summary>
-    public static readonly string[] ExcludeMeetingsIgnoreAllowList = [];
+    public static readonly string[] ExcludeMeetingsIgnoreAllowList =
+    [
+        // Meeting reads: every query here is behind MeetingVisibility or IMeetingAccessResolver (Plan B Task 8).
+        "EfMeetingRepository.cs",
+    ];
 
     /// <summary>Files whose raw SQL touches the tasks table, so it bypasses every EF query filter.</summary>
     public static readonly string[] RawSqlOnTasksAllowList =

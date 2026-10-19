@@ -412,6 +412,9 @@ public class TenantIsolationArchitectureTests
             // has no is_deleted filter, so it is restored rather than re-added), while preserving
             // tenant scoping with an explicit TenantId predicate in OfficeProjectReconciler.
             "OfficeProjectReconciler.cs",
+            // Meetings-as-tasks reads: IgnoreQueryFilters([ExcludeMeetings]) only - the named meeting filter, never
+            // the tenant filter - behind MeetingVisibility or IMeetingAccessResolver, in EfMeetingRepository.
+            "EfMeetingRepository.cs",
         };
 
         var srcDirectory = FindSrcDirectory();
