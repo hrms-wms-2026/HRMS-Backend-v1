@@ -96,7 +96,9 @@ public sealed class SeriesMeetingLinkService
             var link = await _links.GetTrackedAsync(tenantId, linkId, innerCt);
             if (link is null || link.Status != CalendarEventMeetingStatuses.Provisioning || link.LinkGeneration != snapshot.LinkGeneration)
                 return link is null ? MeetingReadService.NotFound<MeetingLinkResponse>() : Result<MeetingLinkResponse>.Success(Describe(link));
-            var current = await _meetings.GetSeriesAsync(tenantId, seriesId, innerCt);
+            // A split during the call shares the link: every open series that references it gets the outcome.
+            var open = await OpenReferencingSeriesAsync(tenantId, linkId, innerCt);
+            var current = open.FirstOrDefault(s => s.Id == seriesId) ?? open.FirstOrDefault();
             var now = _clock.UtcNow;
             link.UpdatedAt = now;
 
@@ -110,17 +112,18 @@ public sealed class SeriesMeetingLinkService
                 link.FailureReason = null;
                 link.ProvisioningStartedAt = null;
                 link.InvitesPending = false;
-                if (current is null || current.CancelledAt is not null)
+                if (current is null)
                 {
-                    // Cancelled during the call: nobody gets a link to it, and the new remote meeting goes away.
+                    // Every series using it was cancelled during the call: nobody gets a link, the new remote meeting goes away.
                     link.Status = CalendarEventMeetingStatuses.Cancelled;
-                    await QueueProviderCancelAsync(tenantId, link, current ?? series, innerCt);
+                    await QueueProviderCancelAsync(tenantId, link, series, innerCt);
                     await _unitOfWork.SaveChangesAsync(innerCt);
                     return Result<MeetingLinkResponse>.Success(Describe(link));
                 }
                 link.Status = CalendarEventMeetingStatuses.Active;
                 await _unitOfWork.SaveChangesAsync(innerCt);
-                await _notifier.LinkReadyAsync(current, link, innerCt);
+                foreach (var referencing in open)
+                    await _notifier.LinkReadyAsync(referencing, link, innerCt);
                 await _unitOfWork.SaveChangesAsync(innerCt);
                 return Result<MeetingLinkResponse>.Success(Describe(link));
             }
@@ -133,13 +136,11 @@ public sealed class SeriesMeetingLinkService
             var heldBack = link.InvitesPending;
             link.InvitesPending = false;
             await _unitOfWork.SaveChangesAsync(innerCt);
-            if (current is { CancelledAt: null })
+            if (current is not null)
             {
-                // P1-5: nobody may be left uninvited because the link did not happen - once.
+                // P1-5: nobody may be left uninvited because the link did not happen - once (invites are keyed per row).
                 if (heldBack)
-                    await _notifier.InviteAsync(current,
-                        (await _meetings.ListSeriesParticipantsAsync(tenantId, seriesId, innerCt)).Where(p => !p.IsDeleted).ToList(),
-                        await _meetings.ListSeriesGuestsAsync(tenantId, seriesId, innerCt), innerCt);
+                    await SendHeldBackInvitesAsync(tenantId, open, innerCt);
                 await _notifier.NotifyOrganizerAsync(current,
                     ambiguous ? CalendarMeetingNoticeCodes.LinkUnknown : CalendarMeetingNoticeCodes.LinkFailed, link.Provider, innerCt);
             }
@@ -154,7 +155,7 @@ public sealed class SeriesMeetingLinkService
         var access = await _access.ResolveForSeriesAsync(tenantId, callerEmployeeId, seriesId, ct);
         if (access is null)
             return MeetingReadService.NotFound<MeetingSeriesLinkResponse>();
-        var link = await _links.GetActiveForSeriesAsync(tenantId, seriesId, ct);
+        var link = await SettleStaleAsync(tenantId, await _links.GetActiveForSeriesAsync(tenantId, seriesId, ct), ct);
         var joinUrl = link is { Status: CalendarEventMeetingStatuses.Active } && !string.IsNullOrEmpty(link.JoinUrl) ? link.JoinUrl : null;
         return Result<MeetingSeriesLinkResponse>.Success(new MeetingSeriesLinkResponse(joinUrl,
             access.Role == MeetingRoles.Organizer && link is not null ? Describe(link) : null));
@@ -176,6 +177,7 @@ public sealed class SeriesMeetingLinkService
         if (!CalendarMeetingConnections.CanCreateMeetings(connection, request.Platform))
             return Result<MeetingLinkResponse>.Failure("Connect your calendar account to add an online meeting.", 409,
                 MeetingErrorCodes.ProviderNotConnected);
+        await SettleStaleAsync(tenantId, await _links.GetActiveForSeriesAsync(tenantId, seriesId, ct), ct);
 
         try
         {
@@ -225,7 +227,7 @@ public sealed class SeriesMeetingLinkService
             return blocked;
         if (await OrganizerOnlyAsync<MeetingLinkResponse>(tenantId, callerEmployeeId, seriesId, ct) is { } denied)
             return denied;
-        var link = await _links.GetActiveForSeriesAsync(tenantId, seriesId, ct);
+        var link = await SettleStaleAsync(tenantId, await _links.GetActiveForSeriesAsync(tenantId, seriesId, ct), ct);
         if (link is null)
             return Result<MeetingLinkResponse>.Failure("This meeting has no link to retry.", 409, MeetingErrorCodes.LinkNotRetryable);
         if (link.Status is CalendarEventMeetingStatuses.Provisioning or CalendarEventMeetingStatuses.Unresolved)
@@ -255,6 +257,7 @@ public sealed class SeriesMeetingLinkService
             return blocked;
         if (await OrganizerOnlyAsync<MeetingLinkResponse?>(tenantId, callerEmployeeId, seriesId, ct) is { } denied)
             return denied;
+        await SettleStaleAsync(tenantId, await _links.GetActiveForSeriesAsync(tenantId, seriesId, ct), ct);
 
         try
         {
@@ -401,6 +404,57 @@ public sealed class SeriesMeetingLinkService
             : Result<T>.Failure("Only the organizer can change this meeting.", 403, MeetingErrorCodes.OrganizerRequired);
     }
 
+
+    /// <summary>How long a claim may stay provisioning before its request or message is presumed dead (as legacy links).</summary>
+    public static readonly TimeSpan StaleAfter = TimeSpan.FromMinutes(5);
+
+    /// <summary>A link still provisioning <see cref="StaleAfter"/> after its claim - the provision message died or was parked -
+    /// becomes provisioning_unknown so Retry and Remove can settle it; the held-back invites go out (once) and the organizer
+    /// is told. Returns the link as it now stands (null when it is gone).</summary>
+    public async Task<CalendarEventMeeting?> RecoverStaleProvisioningAsync(Guid tenantId, Guid linkId, CancellationToken ct)
+    {
+        var now = _clock.UtcNow;
+        if (!await _links.TryMarkStaleProvisioningUnknownAsync(tenantId, linkId, now - StaleAfter, now, ct))
+            return await _links.GetAsync(tenantId, linkId, ct);
+        return await _unitOfWork.ExecuteInTransactionAsync(async innerCt =>
+        {
+            var link = (await _links.GetTrackedAsync(tenantId, linkId, innerCt))!;
+            var open = await OpenReferencingSeriesAsync(tenantId, linkId, innerCt);
+            if (link.InvitesPending)
+            {
+                // Saved first: the notifier holds invites back while the stored link still says they are pending.
+                link.InvitesPending = false;
+                await _unitOfWork.SaveChangesAsync(innerCt);
+                await SendHeldBackInvitesAsync(tenantId, open, innerCt);
+            }
+            if (open.FirstOrDefault() is { } series)
+                await _notifier.NotifyOrganizerAsync(series, CalendarMeetingNoticeCodes.LinkUnknown, link.Provider, innerCt);
+            await _unitOfWork.SaveChangesAsync(innerCt);
+            return link;
+        }, CancellationToken.None);
+    }
+
+    /// <summary>The snapshot after the stale-provisioning recovery, when it applies.</summary>
+    private async Task<CalendarEventMeeting?> SettleStaleAsync(Guid tenantId, CalendarEventMeeting? link, CancellationToken ct)
+        => link is { Status: CalendarEventMeetingStatuses.Provisioning, ProvisioningStartedAt: { } started } && started < _clock.UtcNow - StaleAfter
+            ? await RecoverStaleProvisioningAsync(tenantId, link.Id, ct)
+            : link;
+
+    /// <summary>The non-cancelled series that still hold a reference to the link (after a split, more than one).</summary>
+    private async Task<IReadOnlyList<MeetingSeries>> OpenReferencingSeriesAsync(Guid tenantId, Guid linkId, CancellationToken ct)
+    {
+        var ids = await _links.ListActiveReferencingSeriesAsync(tenantId, linkId, ct);
+        return ids.Count == 0 ? [] : (await _meetings.ListSeriesAsync(tenantId, ids, ct)).Where(s => s.CancelledAt is null).ToList();
+    }
+
+    /// <summary>The invites held back while the link was being provisioned, to every open referencing series.</summary>
+    private async Task SendHeldBackInvitesAsync(Guid tenantId, IReadOnlyList<MeetingSeries> open, CancellationToken ct)
+    {
+        foreach (var series in open)
+            await _notifier.InviteAsync(series,
+                (await _meetings.ListSeriesParticipantsAsync(tenantId, series.Id, ct)).Where(p => !p.IsDeleted).ToList(),
+                await _meetings.ListSeriesGuestsAsync(tenantId, series.Id, ct), ct);
+    }
 
     /// <summary>Keyed meeting-cancel:{linkId}:{generation} through the Phase 0 cancel handler (retries, parking, notice).</summary>
     public async Task QueueProviderCancelAsync(Guid tenantId, CalendarEventMeeting link, MeetingSeries series, CancellationToken ct)

@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using ONEVO.Application.Common.Models;
+using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Calendar.Services;
 using ONEVO.Application.Features.WorkManagement.Meetings;
 using ONEVO.Application.Features.WorkManagement.Meetings.Contracts;
@@ -40,8 +41,8 @@ public sealed class MeetingLinkLifecycleIntegrationTests
     private sealed record World(MyTeamDb H, MeetingPlacement At, Guid Organizer, Guid OrganizerUser, Guid Attendee, Guid Outsider,
         Guid SeriesId, Guid LinkId);
 
-    /// <summary>A weekly Teams meeting from <see cref="First"/> whose link is active.</summary>
-    private static async Task<World> SeedAsync(string? rule = "FREQ=WEEKLY")
+    /// <summary>A weekly Teams meeting from <see cref="First"/> whose link is active (or still provisioning).</summary>
+    private static async Task<World> SeedAsync(string? rule = "FREQ=WEEKLY", bool provision = true)
     {
         var h = await MyTeamDb.CreateAsync();
         Guid organizerId, organizerUser, attendee, outsider;
@@ -74,12 +75,13 @@ public sealed class MeetingLinkLifecycleIntegrationTests
             Assert.True(result.IsSuccess, result.Error);
             created = result.Value!;
         }
-        await using (var db = h.NewContext())
-        {
-            var provisioned = await new MeetingTestServices(db, new MeetingTestClock(Now)).LinkService(new ProvisionerStub(Created()))
-                .ProvisionAsync(h.TenantId, created.Link!.LinkId!.Value, created.SeriesId!.Value, recovery: false, CancellationToken.None);
-            Assert.Equal(CalendarEventMeetingStatuses.Active, provisioned.Value!.Status);
-        }
+        if (provision)
+            await using (var db = h.NewContext())
+            {
+                var provisioned = await new MeetingTestServices(db, new MeetingTestClock(Now)).LinkService(new ProvisionerStub(Created()))
+                    .ProvisionAsync(h.TenantId, created.Link!.LinkId!.Value, created.SeriesId!.Value, recovery: false, CancellationToken.None);
+                Assert.Equal(CalendarEventMeetingStatuses.Active, provisioned.Value!.Status);
+            }
         return new World(h, at, organizerId, organizerUser, attendee, outsider, created.SeriesId!.Value, created.Link.LinkId.Value);
     }
 
@@ -319,5 +321,55 @@ public sealed class MeetingLinkLifecycleIntegrationTests
         Assert.Equal([$"meeting-cancel:{w.LinkId}:1"], await KeysAsync(w.H, "meeting-cancel:"));
         // The attendees get a cancel of the whole meeting (series key), not of an occurrence of a series that never recurred.
         Assert.NotEmpty(await KeysAsync(w.H, $"cancel:{w.SeriesId}:series:"));
+    }
+
+    private static async Task<ONEVO.Application.Common.Models.Result<MeetingLinkResponse>> ProvisionAtAsync(World w, DateTimeOffset at,
+        IMeetingProvisioner provisioner)
+    {
+        await using var db = w.H.NewContext();
+        return await new MeetingTestServices(db, new MeetingTestClock(at)).LinkService(provisioner)
+            .ProvisionAsync(w.H.TenantId, w.LinkId, w.SeriesId, recovery: false, CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task AStaleProvisioningLink_BecomesUnknown_SendsTheHeldBackInvites_AndCanBeRetried()
+    {
+        var w = await SeedAsync(provision: false);   // the provision message never ran (parked, crashed)
+        Assert.Empty(await KeysAsync(w.H, "invite:"));
+
+        ONEVO.Application.Common.Models.Result<MeetingSeriesLinkResponse> read;
+        await using (var db = w.H.NewContext())
+            read = await new MeetingTestServices(db, new MeetingTestClock(Now.AddMinutes(6))).LinkService(new ProvisionerStub(Created()))
+                .GetAsync(w.H.TenantId, w.Organizer, w.SeriesId, CancellationToken.None);
+        ONEVO.Application.Common.Models.Result<MeetingLinkResponse> retried;
+        var provisioner = new ProvisionerStub(Created("9"));
+        await using (var db = w.H.NewContext())
+            retried = await new MeetingTestServices(db, new MeetingTestClock(Now.AddMinutes(7))).LinkService(provisioner)
+                .RetryAsync(w.H.TenantId, w.Organizer, w.SeriesId, CancellationToken.None);
+
+        Assert.Equal(CalendarEventMeetingStatuses.ProvisioningUnknown, read.Value!.Link!.Status);
+        Assert.Equal(2, (await KeysAsync(w.H, "invite:")).Count);   // the attendee and the guest, once
+        Assert.True(provisioner.Calls.Single().Recovery);
+        Assert.Equal(CalendarEventMeetingStatuses.Active, retried.Value!.Status);
+        await using var check = w.H.NewContext();
+        Assert.Contains(await check.Set<OutboxMessage>().AsNoTracking().Where(m => m.Type == OutboxMessageTypes.WorkNotification).ToListAsync(),
+            m => ONEVO.Tests.Integration.Calendar.CalendarNotificationDb.Encryption.Decrypt(m.EncryptedPayload).Contains(CalendarMeetingNoticeCodes.LinkUnknown));
+    }
+
+    [Fact]
+    public async Task ASplitWhileTheLinkIsProvisioning_EmailsTheLinkToBothSeries_AndCancellingTheOldOneKeepsIt()
+    {
+        var w = await SeedAsync(provision: false);
+        var split = await SplitAsync(w);
+        await CancelAllAsync(w, w.SeriesId, First);
+
+        var result = await ProvisionAtAsync(w, Now.AddSeconds(5), new ProvisionerStub(Created()));
+
+        Assert.Equal(CalendarEventMeetingStatuses.Active, result.Value!.Status);
+        Assert.Empty(await KeysAsync(w.H, "meeting-cancel:"));
+        await using var check = w.H.NewContext();
+        var rows = await check.CalendarEventParticipants.Where(p => p.MeetingSeriesId == split && p.EmployeeId == w.Attendee).Select(p => p.Id).ToListAsync();
+        var linkKeys = await KeysAsync(w.H, "link:");
+        Assert.Contains(CalendarEmailKeys.Link(w.LinkId, 1, rows.Single()), linkKeys);
     }
 }

@@ -29,6 +29,8 @@ public sealed class CalendarSyncService(
 {
     // Links that turned into a two-way conflict during the current run (plan C1 P1-6).
     private int _newConflicts;
+    // Meeting-occurrence copies the pull of this run saw deleted remotely: the push creates them again.
+    private readonly HashSet<Guid> _remotelyDeletedMeetingLinks = [];
 
     private static readonly TimeSpan SyncWindowPast = TimeSpan.FromDays(30);
     private static readonly TimeSpan SyncWindowFuture = TimeSpan.FromDays(180);
@@ -58,6 +60,7 @@ public sealed class CalendarSyncService(
             return;
 
         _newConflicts = 0;
+        _remotelyDeletedMeetingLinks.Clear();
         var oauthProvider = connection.Provider == CalendarExternalSources.GoogleCalendar ? "google" : "microsoft";
 
         var accessToken = await tokenProvider.GetFreshAccessTokenAsync(connection, oauthProvider, ct);
@@ -165,7 +168,12 @@ public sealed class CalendarSyncService(
         // A pulled-back copy of a meeting occurrence we pushed (spec 5.10): the occurrence is the source of truth, so the
         // pull never creates, updates or deletes anything for it.
         if (link is { CalendarEventId: null })
+        {
+            // ... except that a copy the organizer deleted in their calendar is pushed again (the occurrence still exists).
+            if (isCancelled)
+                _remotelyDeletedMeetingLinks.Add(link.Id);
             return;
+        }
 
         if (isCancelled)
         {
@@ -339,19 +347,23 @@ public sealed class CalendarSyncService(
         {
             if (changes++ >= BatchLimitPerConnection)
                 return;
-            await DeleteRemoteAsync(connection, accessToken, calendarId, link, ct);
+            await IsolatedAsync(link, () => DeleteRemoteAsync(connection, accessToken, calendarId, link, ct));
         }
         foreach (var row in rows)
         {
             var d = row.Details;
             linked.TryGetValue(d.TaskId, out var link);
+            var deletedRemotely = link is not null && _remotelyDeletedMeetingLinks.Contains(link.Id);
             if (d.CancelledAt is not null)
             {
                 if (link is null)
                     continue;
                 if (changes++ >= BatchLimitPerConnection)
                     return;
-                await DeleteRemoteAsync(connection, accessToken, calendarId, link, ct);
+                if (deletedRemotely)
+                    links.Remove(link);
+                else
+                    await IsolatedAsync(link, () => DeleteRemoteAsync(connection, accessToken, calendarId, link, ct));
                 continue;
             }
 
@@ -360,31 +372,21 @@ public sealed class CalendarSyncService(
             var description = d.IsPrivate ? null : row.Description;
             var location = d.IsPrivate ? null : d.Location;
             var fingerprint = Fingerprint(title, description, d.StartAt, d.EndAt, d.IsAllDay, location, d.IsPrivate);
-            if (link?.PushedFingerprint == fingerprint)
+            if (link?.PushedFingerprint == fingerprint && !deletedRemotely)
                 continue;
             if (changes++ >= BatchLimitPerConnection)
                 return;
 
-            string externalId;
-            string? etag;
-            if (connection.Provider == CalendarExternalSources.GoogleCalendar)
+            (string Id, string? Etag)? pushedCopy = null;
+            await IsolatedAsync(link, async () =>
             {
-                var dto = new GoogleCalendarEventDto(link?.ExternalEventId ?? string.Empty, link?.ExternalEtag, title, description, d.StartAt, d.EndAt,
-                    d.IsAllDay, null, location, false, d.IsPrivate);
-                var pushed = link is null
-                    ? await googleClient.InsertEventAsync(accessToken, calendarId, dto, ct)
-                    : await googleClient.PatchEventAsync(accessToken, calendarId, link.ExternalEventId, dto, ct);
-                (externalId, etag) = (pushed.Id, pushed.Etag);
-            }
-            else
-            {
-                var dto = new GraphEventDto(link?.ExternalEventId ?? string.Empty, link?.ExternalEtag, title, description, d.StartAt, d.EndAt,
-                    d.IsAllDay, null, location, false, d.IsPrivate, AttendeeEmails: null);
-                var pushed = link is null
-                    ? await msClient.CreateEventAsync(accessToken, dto, ct)
-                    : await msClient.UpdateEventAsync(accessToken, link.ExternalEventId, dto, ct);
-                (externalId, etag) = (pushed.Id, pushed.Etag);
-            }
+                var existingId = deletedRemotely ? null : link?.ExternalEventId;
+                pushedCopy = await PushCopyAsync(connection, accessToken, calendarId, existingId, link?.ExternalEtag,
+                    title, description, d, location, ct);
+            });
+            if (pushedCopy is not { } pushedValue)
+                continue;
+            var (externalId, etag) = pushedValue;
 
             if (link is null)
             {
@@ -407,14 +409,74 @@ public sealed class CalendarSyncService(
         }
     }
 
+    /// <summary>Creates the copy, or updates it in place; a copy that no longer exists remotely (404/410) is created again.</summary>
+    private async Task<(string Id, string? Etag)> PushCopyAsync(ExternalCalendarConnection connection, string accessToken, string calendarId,
+        string? existingId, string? etag, string title, string? description, ONEVO.Domain.Features.WorkManagement.Meetings.Entities.MeetingDetails d,
+        string? location, CancellationToken ct)
+    {
+        if (connection.Provider == CalendarExternalSources.GoogleCalendar)
+        {
+            var dto = new GoogleCalendarEventDto(existingId ?? string.Empty, etag, title, description, d.StartAt, d.EndAt, d.IsAllDay, null,
+                location, false, d.IsPrivate);
+            if (existingId is not null)
+                try
+                {
+                    var patched = await googleClient.PatchEventAsync(accessToken, calendarId, existingId, dto, ct);
+                    return (patched.Id, patched.Etag);
+                }
+                catch (HttpRequestException ex) when (IsGone(ex)) { }
+            var inserted = await googleClient.InsertEventAsync(accessToken, calendarId, dto with { Id = string.Empty, Etag = null }, ct);
+            return (inserted.Id, inserted.Etag);
+        }
+
+        var graphDto = new GraphEventDto(existingId ?? string.Empty, etag, title, description, d.StartAt, d.EndAt, d.IsAllDay, null, location, false,
+            d.IsPrivate, AttendeeEmails: null);
+        if (existingId is not null)
+            try
+            {
+                var updated = await msClient.UpdateEventAsync(accessToken, existingId, graphDto, ct);
+                return (updated.Id, updated.Etag);
+            }
+            catch (HttpRequestException ex) when (IsGone(ex)) { }
+        var created = await msClient.CreateEventAsync(accessToken, graphDto with { Id = string.Empty, Etag = null }, ct);
+        return (created.Id, created.Etag);
+    }
+
+    /// <summary>Deletes the copy and its link; a copy already gone remotely (404/410) counts as deleted.</summary>
     private async Task DeleteRemoteAsync(ExternalCalendarConnection connection, string accessToken, string calendarId, ExternalCalendarEventLink link,
         CancellationToken ct)
     {
-        if (connection.Provider == CalendarExternalSources.GoogleCalendar)
-            await googleClient.DeleteEventAsync(accessToken, calendarId, link.ExternalEventId, ct);
-        else
-            await msClient.DeleteEventAsync(accessToken, link.ExternalEventId, ct);
+        try
+        {
+            if (connection.Provider == CalendarExternalSources.GoogleCalendar)
+                await googleClient.DeleteEventAsync(accessToken, calendarId, link.ExternalEventId, ct);
+            else
+                await msClient.DeleteEventAsync(accessToken, link.ExternalEventId, ct);
+        }
+        catch (HttpRequestException ex) when (IsGone(ex)) { }
         links.Remove(link);
+    }
+
+    private static bool IsGone(HttpRequestException ex) => ex.StatusCode is System.Net.HttpStatusCode.NotFound or System.Net.HttpStatusCode.Gone;
+
+    /// <summary>One occurrence's push failing (a provider error on that copy) must not stop the rest of the sync: it is logged,
+    /// recorded on its link, and retried next run because its fingerprint still differs.</summary>
+    private async Task IsolatedAsync(ExternalCalendarEventLink? link, Func<Task> push)
+    {
+        try
+        {
+            await push();
+        }
+        catch (Exception ex) when (ex is HttpRequestException or MeetingProviderException)
+        {
+            logger.LogWarning(ex, "Pushing a meeting occurrence copy failed (link {LinkId}); retried next run.", link?.Id);
+            if (link is not null)
+            {
+                link.SyncStatus = ExternalCalendarSyncStatuses.Failed;
+                link.LastError = ex.Message;
+                links.Update(link);
+            }
+        }
     }
 
     /// <summary>What the external copy shows, hashed: a change to any of it re-pushes the occurrence.</summary>

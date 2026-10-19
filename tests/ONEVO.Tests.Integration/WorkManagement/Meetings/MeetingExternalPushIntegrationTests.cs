@@ -38,14 +38,20 @@ public sealed class MeetingExternalPushIntegrationTests
             return Task.FromResult(created);
         }
 
+        public HashSet<string> MissingRemotely { get; } = [];
+
         public Task<GraphEventDto> UpdateEventAsync(string accessToken, string eventId, GraphEventDto @event, CancellationToken ct)
         {
+            if (MissingRemotely.Contains(eventId))
+                throw new HttpRequestException("Not found", null, System.Net.HttpStatusCode.NotFound);
             Updated.Add((eventId, @event));
             return Task.FromResult(@event with { Id = eventId, Etag = "e2" });
         }
 
         public Task DeleteEventAsync(string accessToken, string eventId, CancellationToken ct)
         {
+            if (MissingRemotely.Contains(eventId))
+                throw new HttpRequestException("Gone", null, System.Net.HttpStatusCode.Gone);
             Deleted.Add(eventId);
             return Task.CompletedTask;
         }
@@ -220,5 +226,42 @@ public sealed class MeetingExternalPushIntegrationTests
         await SyncAsync(w, connection, graph);
 
         Assert.Empty(graph.Created);
+    }
+
+    [Fact]
+    public async Task ACopyTheOrganizerDeletedRemotely_IsRecreated_AndTheSyncKeepsWorking()
+    {
+        var w = await SeedAsync();
+        var connection = await OrganizerConnectionAsync(w);
+        var graph = new GraphStub();
+        await SyncAsync(w, connection, graph);
+        var links = await LinksAsync(w);
+        var deleted = links.Single(l => l.MeetingTaskId == w.Tasks[0]).ExternalEventId;
+        var edited = links.Single(l => l.MeetingTaskId == w.Tasks[1]).ExternalEventId;
+        var cancelled = links.Single(l => l.MeetingTaskId == w.Tasks[2]).ExternalEventId;
+        // Deleted in Outlook: the pull reports week 0's copy cancelled; weeks 1 and 2 are gone too, unseen by the pull.
+        graph.Remote.RemoveAll(e => e.Id != deleted);
+        graph.Remote[0] = graph.Remote[0] with { IsCancelled = true };
+        graph.PullReturnsRemote = true;
+        graph.MissingRemotely.UnionWith([edited, cancelled]);
+        await EditThisAsync(w, 1, new EditMeetingRequest(MeetingScopes.This, 0, "Week 1 retitled", null, null, null, null, null, null, null, null));
+        await using (var db = w.H.NewContext())
+        {
+            var c = await new MeetingTestServices(db, new MeetingTestClock(Now)).Cancels.CancelAsync(
+                w.H.TenantId, w.Organizer, w.OrganizerUser, w.SeriesId, Week(2), MeetingScopes.This, CancellationToken.None);
+            Assert.True(c.IsSuccess, c.Error);
+        }
+
+        await SyncAsync(w, connection, graph);
+
+        // Week 0 and week 1 are pushed again as new copies; week 2's copy is already gone, so its link just goes.
+        Assert.Equal(5, graph.Created.Count);
+        Assert.Contains(graph.Created, e => e.Title == "Week 1 retitled");
+        var after = await LinksAsync(w);
+        Assert.Equal(new[] { w.Tasks[0], w.Tasks[1] }.Order(), after.Select(l => l.MeetingTaskId!.Value).Order());
+        Assert.DoesNotContain(after, l => l.ExternalEventId == deleted || l.ExternalEventId == edited);
+        await using var check = w.H.NewContext();
+        var state = await check.ExternalCalendarConnections.AsNoTracking().SingleAsync(c => c.Id == connection);
+        Assert.Equal((0, (string?)null), (state.FailureCount, state.LastError));
     }
 }

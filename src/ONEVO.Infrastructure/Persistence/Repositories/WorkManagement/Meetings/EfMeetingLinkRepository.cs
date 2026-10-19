@@ -105,6 +105,24 @@ public sealed class EfMeetingLinkRepository : IMeetingLinkRepository
                 .SetProperty(d => d.AttendanceFinalizedAt, (DateTimeOffset?)null), ct);
     }
 
+    public async Task<bool> TryMarkStaleProvisioningUnknownAsync(Guid tenantId, Guid linkId, DateTimeOffset staleBefore, DateTimeOffset now,
+        CancellationToken ct = default)
+        => await _db.Database.ExecuteSqlInterpolatedAsync($"""
+            UPDATE calendar_event_meetings
+            SET status = {CalendarEventMeetingStatuses.ProvisioningUnknown}, failure_reason = 'timeout_or_server_error', updated_at = {now}
+            WHERE tenant_id = {tenantId} AND id = {linkId} AND owner_kind = {CalendarMeetingOwnerKinds.MeetingSeries}
+              AND status = {CalendarEventMeetingStatuses.Provisioning} AND provisioning_started_at < {staleBefore}
+            """, ct) == 1;
+
+    public async Task<IReadOnlyList<Guid>> ListStaleProvisioningLinkIdsAsync(Guid tenantId, DateTimeOffset staleBefore, CancellationToken ct = default)
+    {
+        var before = staleBefore.ToUniversalTime();
+        return await _db.CalendarEventMeetings.AsNoTracking()
+            .Where(m => m.TenantId == tenantId && m.OwnerKind == CalendarMeetingOwnerKinds.MeetingSeries
+                && m.Status == CalendarEventMeetingStatuses.Provisioning && m.ProvisioningStartedAt < before)
+            .Select(m => m.Id).ToListAsync(ct);
+    }
+
     public async Task<bool> TryClaimRetryAsync(Guid tenantId, Guid linkId, DateTimeOffset now, CancellationToken ct = default)
         => await _db.Database.ExecuteSqlInterpolatedAsync($"""
             UPDATE calendar_event_meetings

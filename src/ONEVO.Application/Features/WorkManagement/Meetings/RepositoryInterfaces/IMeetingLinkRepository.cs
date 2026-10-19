@@ -44,6 +44,14 @@ public interface IMeetingLinkRepository
     Task SetOccurrenceLinkAsync(Guid tenantId, Guid seriesId, Guid? linkId, DateTimeOffset fromStart, TimeSpan firstCheckpoint,
         CancellationToken ct = default);
 
+    /// <summary>provisioning claimed before <paramref name="staleBefore"/> -> provisioning_unknown (its request or message
+    /// died); runs at once. False when it was no longer such a row.</summary>
+    Task<bool> TryMarkStaleProvisioningUnknownAsync(Guid tenantId, Guid linkId, DateTimeOffset staleBefore, DateTimeOffset now,
+        CancellationToken ct = default);
+
+    /// <summary>Series-owned links still provisioning since before <paramref name="staleBefore"/>.</summary>
+    Task<IReadOnlyList<Guid>> ListStaleProvisioningLinkIdsAsync(Guid tenantId, DateTimeOffset staleBefore, CancellationToken ct = default);
+
     /// <summary>Retry: provisioning_unknown or failed -> provisioning, same generation (runs at once). False = the link was
     /// in neither state any more (someone else claimed it).</summary>
     Task<bool> TryClaimRetryAsync(Guid tenantId, Guid linkId, DateTimeOffset now, CancellationToken ct = default);

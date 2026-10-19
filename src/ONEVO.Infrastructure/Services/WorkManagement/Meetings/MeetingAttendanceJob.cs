@@ -112,6 +112,19 @@ public sealed class MeetingAttendanceJob(IServiceProvider services, IOptions<Mee
 
         var links = provider.GetRequiredService<IMeetingLinkRepository>();
         var linkService = provider.GetRequiredService<SeriesMeetingLinkService>();
+        // A link whose provision message died stays provisioning: recover it (fallback invites, organizer notice).
+        foreach (var linkId in await links.ListStaleProvisioningLinkIdsAsync(tenantId, clock.UtcNow - SeriesMeetingLinkService.StaleAfter, ct))
+        {
+            try
+            {
+                await linkService.RecoverStaleProvisioningAsync(tenantId, linkId, ct);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                unitOfWork.ClearTracking();
+                logger.LogWarning(ex, "Recovering stale meeting link {LinkId} (tenant {TenantId}) failed; retried next run.", linkId, tenantId);
+            }
+        }
         foreach (var linkId in await links.ListReleaseCandidateLinkIdsAsync(tenantId, ct))
         {
             try
