@@ -36,11 +36,13 @@ public sealed class MeetingSeriesFactory : IMeetingSeriesFactory
     private readonly IMeetingRecurrence _recurrence;
     private readonly IUnitOfWork _unitOfWork;
     private readonly IDateTimeProvider _clock;
+    private readonly IMeetingOccurrenceMaterializer _materializer;
 
     public MeetingSeriesFactory(IMeetingRepository meetings, IMeetingOccurrenceWriter writer, IMeetingTaskDefaults defaults,
         IProjectRepository projects, IEmployeeRepository employees, IMeetingRecurrence recurrence, IUnitOfWork unitOfWork,
-        IDateTimeProvider clock)
+        IDateTimeProvider clock, IMeetingOccurrenceMaterializer materializer)
     {
+        _materializer = materializer;
         _meetings = meetings;
         _writer = writer;
         _defaults = defaults;
@@ -60,7 +62,6 @@ public sealed class MeetingSeriesFactory : IMeetingSeriesFactory
         var defaults = await _defaults.ResolveAsync(tenantId, project.Id, organizerUserId, ct);
         if (!defaults.IsSuccess)
             return Result<MeetingCreatedResponse>.Failure(defaults.Error!, defaults.StatusCode ?? 400, defaults.ErrorCode);
-        var (categoryId, statusId) = defaults.Value;
 
         var invited = request.ParticipantEmployeeIds.Where(id => id != organizerEmployeeId).Distinct().ToList();
         var found = await _employees.ListByIdsAsync(tenantId, invited, ct);
@@ -109,12 +110,7 @@ public sealed class MeetingSeriesFactory : IMeetingSeriesFactory
         Guid? firstTaskId = null;
         foreach (var start in starts)
         {
-            var number = await _projects.IncrementAndGetNextMeetingNumberAsync(tenantId, project.Id, ct);
-            var taskId = await _writer.TryMaterializeAsync(new MeetingOccurrenceDraft(
-                tenantId, series.Id, series.ProjectId, series.ObjectiveId, categoryId, statusId,
-                $"{project.Identifier}-M{number}", series.Title, series.Description, organizerUserId,
-                start, start, start.AddMinutes(series.DurationMinutes), series.IsAllDay, series.Location, series.IsPrivate,
-                CalendarEventMeetingId: null), ct);
+            var taskId = await _materializer.MaterializeAsync(tenantId, series, start, organizerUserId, ct);
             if (start == series.DtStart)
                 firstTaskId = taskId;
         }

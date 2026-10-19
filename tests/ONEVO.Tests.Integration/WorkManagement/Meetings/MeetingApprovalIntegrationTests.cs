@@ -56,7 +56,8 @@ public sealed class MeetingApprovalIntegrationTests
         var clock = new FixedClock(Now);
         var factory = new MeetingSeriesFactory(new EfMeetingRepository(db), new EfMeetingOccurrenceWriter(db),
             new MeetingTaskDefaults(new EfTaskCategoryRepository(db), new EfTaskStatusRepository(db)), new EfProjectRepository(db),
-            new EfEmployeeRepository(db), new IcalNetMeetingRecurrence(), new UnitOfWork(db), clock);
+            new EfEmployeeRepository(db), new IcalNetMeetingRecurrence(), new UnitOfWork(db), clock,
+            new MeetingTestServices(db, clock).Materializer);
         var applier = new MeetingCreateApplier(factory, new EfMeetingRepository(db), new EfEmployeeRepository(db),
             new EfObjectiveRepository(db), membership, clock);
         var request = await db.WorkApprovalRequests.SingleAsync(r => r.Id == w.Request.Id);

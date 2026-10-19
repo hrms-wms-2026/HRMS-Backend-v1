@@ -17,7 +17,7 @@ Every error is ProblemDetails with a stable `code` extension:
 | Status | Meaning |
 |---|---|
 | 400 | Validation (`meeting_title_invalid`, `meeting_guest_email_invalid`, `meeting_invalid_time`, `meeting_start_in_past`, `meeting_invalid_timezone`, `meeting_recurrence_invalid`, `meeting_module_unavailable`, `meeting_scope_invalid`, `meeting_same_module`) |
-| 403 | You can see the meeting but may not do this (`meeting_module_member_required`, `meeting_calendar_write_required` for an Office meeting; an attendee trying an organizer action) |
+| 403 | You can see the meeting but may not do this (`meeting_organizer_required`, `meeting_module_member_required`, `meeting_calendar_write_required` for an Office meeting; an attendee trying an organizer action) |
 | 404 | `meeting_not_found`: the meeting does not exist **or you may not see it**. The body is identical either way. |
 | 409 | State or concurrency (`meeting_changed`, `meeting_occurrence_started`, `meeting_recurrence_empty`, `meeting_busy`, `meeting_nothing_to_move`, `meeting_office_not_ready`, `meeting_provider_not_connected`, `meetings_read_only`, `approval_already_decided`, `meeting_approval_not_editable`, `bulk_invite_unavailable`) |
 | 503 | `meetings_disabled`: the feature flag is off |

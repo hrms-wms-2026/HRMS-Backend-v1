@@ -419,6 +419,9 @@ public static class DependencyInjection
         services.AddScoped<ONEVO.Application.Features.WorkManagement.Meetings.Services.IMeetingPlacementResolver,
             ONEVO.Application.Features.WorkManagement.Meetings.Services.MeetingPlacementResolver>();
         services.AddScoped<ONEVO.Application.Features.WorkManagement.Meetings.Services.MeetingReadService>();
+        services.AddScoped<ONEVO.Application.Features.WorkManagement.Meetings.Services.IMeetingOccurrenceMaterializer,
+            ONEVO.Application.Features.WorkManagement.Meetings.Services.MeetingOccurrenceMaterializer>();
+        services.AddScoped<ONEVO.Application.Features.WorkManagement.Meetings.Services.MeetingEditService>();
         services.AddScoped<ONEVO.Application.Features.WorkManagement.Meetings.Services.IMeetingSeriesFactory,
             ONEVO.Application.Features.WorkManagement.Meetings.Services.MeetingSeriesFactory>();
         services.AddScoped<ONEVO.Application.Features.WorkManagement.Meetings.Services.IMeetingTaskDefaults,

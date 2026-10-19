@@ -1,5 +1,6 @@
 using ONEVO.Domain.Features.Calendar.Entities;
 using ONEVO.Domain.Features.WorkManagement.Meetings.Entities;
+using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
 
 namespace ONEVO.Application.Features.WorkManagement.Meetings.RepositoryInterfaces;
 
@@ -39,6 +40,20 @@ public interface IMeetingRepository
         Guid? projectId, Guid? seriesId, CancellationToken ct = default);
 
     Task<bool> IsSuppressedAsync(Guid tenantId, Guid seriesId, DateTimeOffset originalStart, CancellationToken ct = default);
+
+    Task<MeetingSeries?> GetSeriesTrackedAsync(Guid tenantId, Guid seriesId, CancellationToken ct = default);
+
+    Task<MeetingDetails?> GetDetailsTrackedAsync(Guid tenantId, Guid taskId, CancellationToken ct = default);
+
+    /// <summary>The meeting task itself (hidden from ordinary task queries by ExcludeMeetings).</summary>
+    Task<WorkTask?> GetMeetingTaskTrackedAsync(Guid tenantId, Guid taskId, CancellationToken ct = default);
+
+    /// <summary>The series' materialized occurrences that still follow its template: not started after
+    /// <paramref name="after"/>, not detached, not cancelled - with their tasks, tracked.</summary>
+    Task<IReadOnlyList<(MeetingDetails Details, WorkTask Task)>> ListTemplateOccurrencesTrackedAsync(
+        Guid tenantId, Guid seriesId, DateTimeOffset after, CancellationToken ct = default);
+
+    void AddEditLog(TaskEditLog log);
 
     void AddSeries(MeetingSeries series);
     void AddParticipants(IEnumerable<CalendarEventParticipant> participants);

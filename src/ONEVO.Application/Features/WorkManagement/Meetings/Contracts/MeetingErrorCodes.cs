@@ -27,6 +27,7 @@ public static class MeetingErrorCodes
     public const string ApprovalNotEditable = "meeting_approval_not_editable";
 
     // Edit (409 unless noted)
+    public const string OrganizerRequired = "meeting_organizer_required";          // 403: an attendee tried an organizer action
     public const string Changed = "meeting_changed";
     public const string OccurrenceStarted = "meeting_occurrence_started";
     public const string ScopeInvalid = "meeting_scope_invalid";                    // 400

@@ -98,6 +98,30 @@ public sealed class EfMeetingRepository : IMeetingRepository
             d => d.TaskId, t => t.Id,
             (d, t) => new MeetingOccurrenceRow(d, t.ShortId, t.Title, t.Description, t.ProjectId, t.ObjectiveId));
 
+    public async Task<MeetingSeries?> GetSeriesTrackedAsync(Guid tenantId, Guid seriesId, CancellationToken ct = default)
+        => await _db.MeetingSeries.FirstOrDefaultAsync(s => s.TenantId == tenantId && s.Id == seriesId, ct);
+
+    public async Task<MeetingDetails?> GetDetailsTrackedAsync(Guid tenantId, Guid taskId, CancellationToken ct = default)
+        => await _db.MeetingDetails.FirstOrDefaultAsync(d => d.TenantId == tenantId && d.TaskId == taskId, ct);
+
+    public async Task<WorkTask?> GetMeetingTaskTrackedAsync(Guid tenantId, Guid taskId, CancellationToken ct = default)
+        => await _db.WorkTasks.IgnoreQueryFilters(ExcludeMeetingsOnly)
+            .FirstOrDefaultAsync(t => t.TenantId == tenantId && t.Id == taskId && t.TaskKind == WorkTaskKinds.Meeting, ct);
+
+    public async Task<IReadOnlyList<(MeetingDetails Details, WorkTask Task)>> ListTemplateOccurrencesTrackedAsync(
+        Guid tenantId, Guid seriesId, DateTimeOffset after, CancellationToken ct = default)
+    {
+        var afterUtc = after.ToUniversalTime();
+        var rows = await _db.MeetingDetails
+            .Where(d => d.TenantId == tenantId && d.SeriesId == seriesId && d.StartAt > afterUtc && !d.IsDetached && d.CancelledAt == null)
+            .Join(_db.WorkTasks.IgnoreQueryFilters(ExcludeMeetingsOnly), d => d.TaskId, t => t.Id, (d, t) => new { d, t })
+            .OrderBy(x => x.d.StartAt)
+            .ToListAsync(ct);
+        return rows.Select(x => (x.d, x.t)).ToList();
+    }
+
+    public void AddEditLog(TaskEditLog log) => _db.TaskEditLogs.Add(log);
+
     public void AddSeries(MeetingSeries series) => _db.MeetingSeries.Add(series);
 
     public void AddParticipants(IEnumerable<CalendarEventParticipant> participants) => _db.CalendarEventParticipants.AddRange(participants);
