@@ -57,6 +57,8 @@ public class AttendanceInboxTests
         public Mock<ONEVO.Application.Features.Leave.Approval.RepositoryInterfaces.ILeaveApprovalRepository> LeaveApprovals { get; } = new();
         public List<ONEVO.Domain.Features.TimeAttendance.Alerts.AttendanceAlert> OpenAlerts { get; } = new();
         public List<ONEVO.Domain.Features.TimeAttendance.Alerts.AttendanceAlert> OwnAlerts { get; } = new();
+        public Dictionary<Guid, ONEVO.Domain.Features.TimeAttendance.Alerts.AttendanceAlertDeduction> DeductionRows { get; } = new();
+        public Mock<ONEVO.Application.Features.TimeAttendance.Alerts.IAttendanceAlertDeductionRepository> DeductionRepo { get; } = new();
 
         public Fixture()
         {
@@ -98,6 +100,11 @@ public class AttendanceInboxTests
                 .ReturnsAsync(() => OwnAlerts.ToList());
             Alerts.Setup(x => x.GetByIdAsync(TenantId, It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync((Guid _, Guid id, CancellationToken _) => OpenAlerts.Concat(OwnAlerts).FirstOrDefault(a => a.Id == id));
+            DeductionRepo.Setup(x => x.GetByAlertAsync(TenantId, It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync((Guid _, Guid id, CancellationToken _) => DeductionRows.GetValueOrDefault(id));
+            DeductionRepo.Setup(x => x.ListByAlertsAsync(TenantId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync((Guid _, IReadOnlyCollection<Guid> ids, CancellationToken _) =>
+                    DeductionRows.Where(d => ids.Contains(d.Key)).ToDictionary(d => d.Key, d => d.Value));
         }
 
         public Mock<IConversationRepository> Conversations()
@@ -114,7 +121,9 @@ public class AttendanceInboxTests
 
         public AttendanceAlertInbox AlertInbox() => new(
             CurrentUser.Object, Employees.Object, Authority.Object, Alerts.Object, Entitlements.Object, LeaveApprovals.Object, Sender.Object,
-            Journal, new FakeUnitOfWork(), Clock);
+            Journal, new FakeUnitOfWork(), Clock,
+            new ONEVO.Application.Features.TimeAttendance.Alerts.AttendanceDeductionService(DeductionRepo.Object, Entitlements.Object, LeaveApprovals.Object, Clock),
+            DeductionRepo.Object);
 
         public ONEVO.Domain.Features.TimeAttendance.Alerts.AttendanceAlert Alert(Guid employeeId, string signal = ONEVO.Domain.Features.TimeAttendance.Alerts.AttendanceAlertSignals.AbsentDays) => new()
         {
@@ -741,5 +750,69 @@ public class AttendanceInboxTests
 
         rows.Single(r => r.Item.Status == "pending").Item.IsPending.Should().BeTrue();
         rows.Single(r => r.Item.Status == "approved").Item.IsPending.Should().BeFalse();
+    }
+
+    // ---- late/early deductions --------------------------------------------------------------------
+
+    private static (ONEVO.Domain.Features.TimeAttendance.Alerts.AttendanceAlert Alert, ONEVO.Domain.Features.Leave.Entitlement.Entities.LeaveEntitlement Entitlement)
+        ChargedLateAlert(Fixture f)
+    {
+        var alert = f.Alert(f.Worker.Id, ONEVO.Domain.Features.TimeAttendance.Alerts.AttendanceAlertSignals.LateClockIns);
+        f.OpenAlerts.Add(alert);
+        f.Scope.Add(f.Worker.Id);
+        var typeId = Guid.NewGuid();
+        var entitlement = new ONEVO.Domain.Features.Leave.Entitlement.Entities.LeaveEntitlement
+            { Id = Guid.NewGuid(), TenantId = f.TenantId, EmployeeId = f.Worker.Id, LeaveTypeId = typeId, Year = 2026, TotalHours = 80m, UsedHours = 0.5m };
+        f.Entitlements.Setup(e => e.GetTrackedByEmployeeTypeYearAsync(f.TenantId, f.Worker.Id, typeId, 2026, It.IsAny<CancellationToken>())).ReturnsAsync(entitlement);
+        f.LeaveApprovals.Setup(a => a.ListLeaveTypeNamesAsync(f.TenantId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, string> { [typeId] = "Annual Leave" });
+        f.DeductionRows[alert.Id] = new ONEVO.Domain.Features.TimeAttendance.Alerts.AttendanceAlertDeduction
+        {
+            Id = Guid.NewGuid(), TenantId = f.TenantId, EmployeeId = f.Worker.Id, AlertId = alert.Id, LeaveTypeId = typeId, Year = 2026,
+            Minutes = 30, Multiplier = 1m, Hours = 0.5m, Status = ONEVO.Domain.Features.TimeAttendance.Alerts.AttendanceAlertDeductionStatuses.Charged,
+        };
+        return (alert, entitlement);
+    }
+
+    [Fact]
+    public async Task Excuse_RefundsTheDeductionImmediately()
+    {
+        var f = new Fixture();
+        var (alert, entitlement) = ChargedLateAlert(f);
+
+        var result = await f.Provider().ExecuteActionAsync(f.TenantId, AttendanceInboxKinds.Alert, alert.Id, AttendanceInboxActions.Resolve,
+            Body(new { outcome = "excused" }), f.Approver.Id, default);
+
+        result.IsSuccess.Should().BeTrue(result.Error);
+        f.DeductionRows[alert.Id].Status.Should().Be(ONEVO.Domain.Features.TimeAttendance.Alerts.AttendanceAlertDeductionStatuses.Refunded);
+        entitlement.UsedHours.Should().Be(0m);
+        f.LeaveApprovals.Verify(a => a.AddBalanceAuditAsync(It.Is<ONEVO.Domain.Features.Leave.BalanceAudit.Entities.LeaveBalanceAudit>(x =>
+            x.ChangeType == "adjustment" && x.HoursChanged == 0.5m), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Confirm_KeepsTheDeduction()
+    {
+        var f = new Fixture();
+        var (alert, entitlement) = ChargedLateAlert(f);
+
+        (await f.Provider().ExecuteActionAsync(f.TenantId, AttendanceInboxKinds.Alert, alert.Id, AttendanceInboxActions.Resolve,
+            Body(new { outcome = "confirmed" }), f.Approver.Id, default)).IsSuccess.Should().BeTrue();
+
+        f.DeductionRows[alert.Id].Status.Should().Be(ONEVO.Domain.Features.TimeAttendance.Alerts.AttendanceAlertDeductionStatuses.Charged);
+        entitlement.UsedHours.Should().Be(0.5m);
+    }
+
+    [Fact]
+    public async Task Detail_ShowsLateByAndDeductedFacts()
+    {
+        var f = new Fixture();
+        var (alert, _) = ChargedLateAlert(f);
+
+        var detail = await f.Provider().GetDetailAsync(f.TenantId, AttendanceInboxKinds.Alert, alert.Id, f.Approver.Id, default);
+
+        detail!.Facts.Should().Equal(new InboxFact("Late by", "30 min"), new InboxFact("Deducted", "0.5 h from Annual Leave"));
+        detail.ChangeSet.Single(c => c.Field == "outcome").Options!.Single(o => o.Value == "excused").Label
+            .Should().Be("Excused - stop counting it and refund the deduction");
     }
 }

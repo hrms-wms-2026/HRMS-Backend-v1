@@ -1,3 +1,4 @@
+using System.Globalization;
 using ONEVO.Application.Features.Conversations.Contracts;
 using System.Text.Json;
 using MediatR;
@@ -59,8 +60,11 @@ public sealed class AttendanceAlertInbox
     public AttendanceAlertInbox(
         ICurrentUser currentUser, IEmployeeRepository employees, IEmployeeAuthorityResolver authority, IAttendanceAlertRepository alerts,
         ILeaveEntitlementRepository entitlements, ILeaveApprovalRepository leaveApprovals, ISender sender, IInboxDecisionJournal journal,
-        IUnitOfWork unitOfWork, IDateTimeProvider clock)
+        IUnitOfWork unitOfWork, IDateTimeProvider clock,
+        AttendanceDeductionService? deductions = null, IAttendanceAlertDeductionRepository? deductionRows = null)
     {
+        _deductions = deductions;
+        _deductionRows = deductionRows;
         _currentUser = currentUser;
         _employees = employees;
         _authority = authority;
@@ -72,6 +76,9 @@ public sealed class AttendanceAlertInbox
         _unitOfWork = unitOfWork;
         _clock = clock;
     }
+
+    private readonly AttendanceDeductionService? _deductions;
+    private readonly IAttendanceAlertDeductionRepository? _deductionRows;
 
     public static string SignalLabel(string signal) => SignalLabels.GetValueOrDefault(signal, "Attendance alert");
 
@@ -187,9 +194,11 @@ public sealed class AttendanceAlertInbox
             actionable ? [ResolveAction(alert)] : []);
 
         var isAbsence = alert.SignalKey == AttendanceAlertSignals.AbsentDays;
+        var deduction = _deductionRows is null ? null : (await _deductionRows.ListByAlertsAsync(tenantId, [alert.Id], ct)).GetValueOrDefault(alert.Id);
+        var charged = deduction?.Status == AttendanceAlertDeductionStatuses.Charged;
         IReadOnlyList<InboxFilterOption> outcomes =
         [
-            new(AttendanceAlertResolveOutcomes.Excused, "Excused - stop counting it"),
+            new(AttendanceAlertResolveOutcomes.Excused, charged ? "Excused - stop counting it and refund the deduction" : "Excused - stop counting it"),
             new(AttendanceAlertResolveOutcomes.Confirmed, "Confirmed - keep counting it"),
             .. isAbsence ? [new InboxFilterOption(AttendanceAlertResolveOutcomes.ConvertToLeave, "Convert to leave")] : Array.Empty<InboxFilterOption>(),
         ];
@@ -212,7 +221,28 @@ public sealed class AttendanceAlertInbox
         }, Web);
         var payload = actionable ? JsonSerializer.Serialize(new { outcome = AttendanceAlertResolveOutcomes.Confirmed }, Web) : null;
         return new InboxItemDetail(item, Steps(alert, people), $"{SignalLabel(alert.SignalKey)} · {alert.WorkDate:dd MMM yyyy}",
-            changes, null, null, null, payload, extra);
+            changes, null, null, null, payload, extra, await DeductionFactsAsync(tenantId, alert, deduction, ct));
+    }
+
+    /// <summary>What a late/early alert cost under the clock-in policy: the minutes and the leave charged (or that the
+    /// charge is pending / was refunded). Null when the day was never charged.</summary>
+    private async Task<IReadOnlyList<InboxFact>?> DeductionFactsAsync(
+        Guid tenantId, AttendanceAlert alert, AttendanceAlertDeduction? deduction, CancellationToken ct)
+    {
+        if (deduction is null)
+            return null;
+        var type = (await _leaveApprovals.ListLeaveTypeNamesAsync(tenantId, [deduction.LeaveTypeId], ct)).GetValueOrDefault(deduction.LeaveTypeId, "leave");
+        var amount = string.Create(CultureInfo.InvariantCulture, $"{deduction.Hours:0.##} h from {type}");
+        return
+        [
+            new(alert.SignalKey == AttendanceAlertSignals.EarlyClockOuts ? "Left early by" : "Late by", $"{deduction.Minutes} min"),
+            deduction.Status switch
+            {
+                AttendanceAlertDeductionStatuses.Charged => new InboxFact("Deducted", amount),
+                AttendanceAlertDeductionStatuses.Pending => new InboxFact("Deduction pending", amount),
+                _ => new InboxFact("Refunded", amount),
+            },
+        ];
     }
 
     /// <summary>The leave types the employee holds an entitlement for in that year; the leave command still runs every
@@ -277,6 +307,9 @@ public sealed class AttendanceAlertInbox
                 alert.ResolvedByEmployeeId = callerEmployeeId;
                 alert.ResolvedAt = now;
                 alert.UpdatedAt = now;
+                // Excusing (or converting) stops the day counting, so its late/early deduction is refunded now.
+                if (_deductions is not null && AttendanceAlertOutcomes.StopsCounting(stored))
+                    await _deductions.ReconcileAsync(tenantId, alert, null, callerEmployeeId, t);
                 var leaveUpdatedAt = alert.ConvertedLeaveRequestId is Guid leaveId
                     ? (await _leaveApprovals.GetStateAsync(tenantId, leaveId, t))?.Request.UpdatedAt
                     : null;
