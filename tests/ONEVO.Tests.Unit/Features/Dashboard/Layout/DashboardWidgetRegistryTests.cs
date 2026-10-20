@@ -93,6 +93,15 @@ public sealed class DashboardWidgetRegistryTests
     }
 
     [Fact]
+    public void Desktop_default_layout_is_a_copy_not_the_shared_array()
+    {
+        var first = DashboardWidgetRegistry.DefaultLayout(DashboardKeys.MyWork, Breakpoints.Desktop);
+
+        Assert.False(first is (string, GridRect)[]);
+        Assert.NotSame(first, DashboardWidgetRegistry.DefaultLayout(DashboardKeys.MyWork, Breakpoints.Desktop));
+    }
+
+    [Fact]
     public void Default_size_is_default_rect_or_min_size()
     {
         Assert.Equal((6, 4), DashboardWidgetRegistry.DefaultSize("my-tasks"));

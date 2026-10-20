@@ -82,7 +82,7 @@ public static class DashboardWidgetRegistry
     {
         if (breakpoint == Breakpoints.Desktop)
         {
-            return desktop;
+            return desktop.ToList();
         }
 
         var columns = Breakpoints.Columns(breakpoint);

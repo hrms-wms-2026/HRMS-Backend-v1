@@ -11,8 +11,10 @@ public static class DashboardGrid
     public const string UnknownWidget = "UNKNOWN_WIDGET";
     public const string DuplicateWidget = "DUPLICATE_WIDGET";
 
+    public const int MaxRows = 200;
+
     public static bool Overlaps(GridRect a, GridRect b) =>
-        a.X < b.X + b.W && b.X < a.X + a.W && a.Y < b.Y + b.H && b.Y < a.Y + a.H;
+        (long)a.X < (long)b.X + b.W && (long)b.X < (long)a.X + a.W && (long)a.Y < (long)b.Y + b.H && (long)b.Y < (long)a.Y + a.H;
 
     public static IReadOnlyList<string> Validate(IReadOnlyList<(string Key, GridRect Rect)> items, string breakpoint)
     {
@@ -36,7 +38,7 @@ public static class DashboardGrid
                 continue;
             }
 
-            if (rect.X < 0 || rect.Y < 0 || rect.W < 1 || rect.H < 1 || rect.X + rect.W > columns)
+            if (rect.X < 0 || rect.Y < 0 || rect.W < 1 || rect.H < 1 || rect.X >= columns || rect.W > columns - rect.X || rect.H > MaxRows - rect.Y)
             {
                 errors.Add(OutOfBounds);
                 continue;
@@ -66,10 +68,21 @@ public static class DashboardGrid
         return errors.Distinct().ToList();
     }
 
+
     public static GridRect AutoPlace(IEnumerable<GridRect> occupied, int w, int h, int columns)
     {
+        if (w < 1 || h < 1 || w > columns)
+        {
+            throw new ArgumentOutOfRangeException(nameof(w), "Widget size must be at least 1x1 and fit within the column count.");
+        }
+
+        if (h > MaxRows)
+        {
+            throw new ArgumentOutOfRangeException(nameof(h), "Widget height exceeds the maximum row count.");
+        }
+
         var taken = occupied.ToList();
-        for (var y = 0; ; y++)
+        for (var y = 0; y + h <= MaxRows; y++)
         {
             for (var x = 0; x <= columns - w; x++)
             {
@@ -80,6 +93,8 @@ public static class DashboardGrid
                 }
             }
         }
+
+        throw new InvalidOperationException($"No free slot within {MaxRows} rows.");
     }
 
     public static IReadOnlyList<(string Key, GridRect Rect)> Compact(IReadOnlyList<(string Key, GridRect Rect)> items)
@@ -87,19 +102,19 @@ public static class DashboardGrid
         var placed = new List<(string Key, GridRect Rect)>();
         foreach (var (key, rect) in items.OrderBy(i => i.Rect.Y).ThenBy(i => i.Rect.X))
         {
-            var current = rect;
-            while (current.Y > 0)
+            // Lowest free Y: the highest bottom edge among already-placed items that share columns and sit above.
+            long floor = 0;
+            foreach (var (_, p) in placed)
             {
-                var up = current with { Y = current.Y - 1 };
-                if (placed.Any(p => Overlaps(p.Rect, up)))
+                var shareColumns = (long)p.X < (long)rect.X + rect.W && (long)rect.X < (long)p.X + p.W;
+                var bottom = (long)p.Y + p.H;
+                if (shareColumns && bottom <= rect.Y && bottom > floor)
                 {
-                    break;
+                    floor = bottom;
                 }
-
-                current = up;
             }
 
-            placed.Add((key, current));
+            placed.Add((key, rect with { Y = (int)Math.Min(floor, rect.Y) }));
         }
 
         return placed;

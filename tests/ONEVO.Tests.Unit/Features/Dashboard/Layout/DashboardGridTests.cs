@@ -80,6 +80,64 @@ public sealed class DashboardGridTests
         Assert.Equal(new GridRect(0, 0, 3, 4), result.Single(r => r.Key == "a").Rect);
     }
 
+    [Theory]
+    [InlineData(int.MaxValue, 0, 2, 3)]
+    [InlineData(12, 0, 3, 3)]
+    [InlineData(-1, 0, 3, 3)]
+    [InlineData(0, -5, 3, 3)]
+    [InlineData(0, 0, int.MaxValue, 3)]
+    [InlineData(0, 0, 3, int.MaxValue)]
+    [InlineData(2, int.MaxValue, 3, 3)]
+    [InlineData(0, 198, 3, 3)]
+    public void Overflowing_or_out_of_range_rects_are_out_of_bounds(int x, int y, int w, int h)
+    {
+        var errors = DashboardGrid.Validate([("quick-actions", new GridRect(x, y, w, h))], Breakpoints.Desktop);
+
+        Assert.Contains("OUT_OF_BOUNDS", errors);
+    }
+
+    [Fact]
+    public void Rect_ending_exactly_at_max_rows_is_valid()
+    {
+        var errors = DashboardGrid.Validate([("quick-actions", new GridRect(0, DashboardGrid.MaxRows - 3, 3, 3))], Breakpoints.Desktop);
+
+        Assert.Empty(errors);
+    }
+
+    [Fact]
+    public void Overlaps_is_overflow_safe()
+    {
+        Assert.False(DashboardGrid.Overlaps(new GridRect(int.MaxValue, 0, 2, 2), new GridRect(0, 0, 3, 3)));
+        Assert.True(DashboardGrid.Overlaps(new GridRect(int.MaxValue, 0, 2, 2), new GridRect(int.MaxValue, 1, 1, 1)));
+    }
+
+    [Theory]
+    [InlineData(0, 1, 12)]
+    [InlineData(3, 0, 12)]
+    [InlineData(13, 1, 12)]
+    [InlineData(3, -1, 12)]
+    public void AutoPlace_rejects_invalid_sizes(int w, int h, int columns)
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => DashboardGrid.AutoPlace([], w, h, columns));
+    }
+
+    [Fact]
+    public void AutoPlace_throws_when_no_slot_within_max_rows()
+    {
+        var full = new GridRect(0, 0, 12, DashboardGrid.MaxRows);
+
+        Assert.Throws<InvalidOperationException>(() => DashboardGrid.AutoPlace([full], 3, 3, 12));
+    }
+
+    [Fact]
+    public void Compact_is_correct_for_tall_layouts_and_overflowing_input()
+    {
+        var result = DashboardGrid.Compact([("a", new GridRect(0, 190, 3, 3)), ("b", new GridRect(int.MaxValue, int.MaxValue, 2, 2))]);
+
+        Assert.Equal(0, result.Single(r => r.Key == "a").Rect.Y);
+        Assert.Equal(0, result.Single(r => r.Key == "b").Rect.Y);
+    }
+
     [Fact]
     public void Compact_never_creates_overlap()
     {
