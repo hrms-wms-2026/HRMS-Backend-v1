@@ -36,6 +36,9 @@ public sealed class EmployeeLeavePolicyCommandHandler
     public async Task<Result> Handle(SetEmployeeLeavePolicyCommand request, CancellationToken ct)
     {
         var tenantId = _currentUser.TenantId;
+        if (await IsOwnRecordWithoutManageAsync(tenantId, request.EmployeeId, ct))
+            return Result.Forbidden(OwnRecordMessage);
+
         var policy = await _policies.GetTrackedAsync(tenantId, request.PolicyId, ct);
         if (policy is null || !policy.IsActive)
             return Result.NotFound("Leave policy not found.");
@@ -70,6 +73,9 @@ public sealed class EmployeeLeavePolicyCommandHandler
     public async Task<Result> Handle(ResetEmployeeLeavePolicyCommand request, CancellationToken ct)
     {
         var tenantId = _currentUser.TenantId;
+        if (await IsOwnRecordWithoutManageAsync(tenantId, request.EmployeeId, ct))
+            return Result.Forbidden(OwnRecordMessage);
+
         var current = await CurrentOverrideAsync(tenantId, request.EmployeeId, request.LeaveTypeId, ct);
         if (current is null)
             return Result.Success();
@@ -78,6 +84,14 @@ public sealed class EmployeeLeavePolicyCommandHandler
         await _policies.SaveChangesAsync(ct);
         return Result.Success();
     }
+
+    private const string OwnRecordMessage = "You cannot change your own leave policy.";
+
+    /// <summary>leave:create lets a manager set other people's policies; only leave:manage may set
+    /// one's own, so nobody can hand themselves a more generous policy.</summary>
+    private async Task<bool> IsOwnRecordWithoutManageAsync(Guid tenantId, Guid employeeId, CancellationToken ct) =>
+        !_currentUser.HasPermission("leave:manage")
+        && await _policies.IsUsersOwnEmployeeAsync(tenantId, employeeId, _currentUser.UserId, ct);
 
     private async Task<Domain.Features.Leave.Policy.Entities.LeavePolicyAssignment?> CurrentOverrideAsync(
         Guid tenantId, Guid employeeId, Guid leaveTypeId, CancellationToken ct) =>

@@ -18,6 +18,7 @@ internal sealed class FakeLeavePolicyRepository : ILeavePolicyRepository
     public List<LeavePolicyAssignment> Assignments { get; } = [];
     public Dictionary<(string Kind, Guid Id), string> Targets { get; } = new();
     public int SaveCount { get; private set; }
+    public HashSet<Guid> OwnEmployeeIds { get; } = [];
 
     private readonly List<Action> _pending = [];
 
@@ -75,6 +76,9 @@ internal sealed class FakeLeavePolicyRepository : ILeavePolicyRepository
     public Task<IReadOnlyDictionary<Guid, string>> GetUserNamesAsync(
         Guid tenantId, IReadOnlyCollection<Guid> userIds, CancellationToken ct = default) =>
         Task.FromResult<IReadOnlyDictionary<Guid, string>>(new Dictionary<Guid, string>());
+
+    public Task<bool> IsUsersOwnEmployeeAsync(Guid tenantId, Guid employeeId, Guid userId, CancellationToken ct = default) =>
+        Task.FromResult(OwnEmployeeIds.Contains(employeeId));
 
     public void AddPolicy(LeavePolicy policy) => _pending.Add(() => Policies.Add(policy));
 

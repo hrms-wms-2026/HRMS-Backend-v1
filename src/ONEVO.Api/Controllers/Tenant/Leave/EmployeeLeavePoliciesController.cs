@@ -23,6 +23,7 @@ public class EmployeeLeavePoliciesController : ControllerBase
     }
 
     [HttpGet]
+    [RequireAnyPermission("leave:read", "leave:read-own", "leave:read-team", "leave:manage", "leave:create")]
     [RequireVisibleEmployee("employeeId")]
     public async Task<IActionResult> List(Guid employeeId, CancellationToken ct = default)
     {

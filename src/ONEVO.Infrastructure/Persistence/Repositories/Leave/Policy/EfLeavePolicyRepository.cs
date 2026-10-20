@@ -137,6 +137,9 @@ public class EfLeavePolicyRepository : ILeavePolicyRepository
         return rows.GroupBy(r => r.UserId).ToDictionary(g => g.Key, g => $"{g.First().FirstName} {g.First().LastName}".Trim());
     }
 
+    public Task<bool> IsUsersOwnEmployeeAsync(Guid tenantId, Guid employeeId, Guid userId, CancellationToken ct = default) =>
+        _db.Employees.AsNoTracking().AnyAsync(e => e.TenantId == tenantId && e.Id == employeeId && e.UserId == userId, ct);
+
     public void AddPolicy(LeavePolicy policy) => _db.LeavePolicies.Add(policy);
 
     public void AddVersion(LeavePolicyVersion version, IReadOnlyList<LeavePolicyBlackoutPeriod> blackouts)

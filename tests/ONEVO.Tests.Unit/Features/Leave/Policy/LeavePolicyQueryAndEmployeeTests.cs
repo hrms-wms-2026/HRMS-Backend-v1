@@ -152,6 +152,33 @@ public class LeavePolicyQueryAndEmployeeTests
     }
 
     [Fact]
+    public async Task Leave_create_holder_cannot_change_their_own_policy()
+    {
+        var policy = _h.SeedPolicy("Annual", _h.AnnualTypeId);
+        _h.Repository.OwnEmployeeIds.Add(_h.EmployeeId);
+        _h.CurrentUser.Setup(x => x.HasPermission("leave:manage")).Returns(false);
+
+        var set = await EmployeeSut().Handle(new SetEmployeeLeavePolicyCommand(_h.EmployeeId, _h.AnnualTypeId, policy.Id), CancellationToken.None);
+        var reset = await EmployeeSut().Handle(new ResetEmployeeLeavePolicyCommand(_h.EmployeeId, _h.AnnualTypeId), CancellationToken.None);
+
+        set.StatusCode.Should().Be(403);
+        reset.StatusCode.Should().Be(403);
+        _h.Repository.Assignments.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Leave_manage_holder_can_change_their_own_policy()
+    {
+        var policy = _h.SeedPolicy("Annual", _h.AnnualTypeId);
+        _h.Repository.OwnEmployeeIds.Add(_h.EmployeeId);
+        _h.CurrentUser.Setup(x => x.HasPermission("leave:manage")).Returns(true);
+
+        var set = await EmployeeSut().Handle(new SetEmployeeLeavePolicyCommand(_h.EmployeeId, _h.AnnualTypeId, policy.Id), CancellationToken.None);
+
+        set.IsSuccess.Should().BeTrue();
+    }
+
+    [Fact]
     public async Task ResetEmployeePolicy_end_dates_override_only()
     {
         var company = _h.SeedPolicy("Annual - company", _h.AnnualTypeId, _h.Company);

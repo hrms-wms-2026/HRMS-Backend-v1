@@ -45,6 +45,9 @@ public interface ILeavePolicyRepository
     Task<IReadOnlyDictionary<Guid, string>> GetUserNamesAsync(
         Guid tenantId, IReadOnlyCollection<Guid> userIds, CancellationToken ct = default);
 
+    /// <summary>True when the employee record belongs to the given user.</summary>
+    Task<bool> IsUsersOwnEmployeeAsync(Guid tenantId, Guid employeeId, Guid userId, CancellationToken ct = default);
+
     void AddPolicy(LeavePolicy policy);
 
     void AddVersion(LeavePolicyVersion version, IReadOnlyList<LeavePolicyBlackoutPeriod> blackouts);
