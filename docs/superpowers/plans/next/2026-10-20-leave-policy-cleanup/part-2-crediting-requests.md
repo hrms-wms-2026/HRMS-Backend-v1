@@ -18,10 +18,13 @@
 - A month **counts** for an employee if their eligibility date is on or before the 15th of that month (or earlier). Months before that don't count.
 - Year period: all counting months of the year are credited at once on 1 Jan (or on the eligibility date if later), each worth `AmountHours / 12`.
 - Month period: each counting month is credited on its 1st (or on the eligibility date, for the eligibility month), worth `AmountHours`.
-- Each month is valued by the version resolved for it: past/current months by the version in force on that month's credit date; for year-period, months still in the future are valued by the version in force on the as-of date. A new version or a new assignment therefore re-values only the remaining months — the balance can go up **or down** (designer's call, recorded in the spec).
+- **Credits are attributed to months.** Every accrual ledger row carries `Year`, `CoversFromMonth`, `CoversToMonth` (1–12); its hours are spread evenly over those months. "Credited for month m" = Σ over accrual rows covering m of `HoursChanged / (CoversTo − CoversFrom + 1)`.
+- **Past months are frozen.** A month `m < AsOf.Month` that already has any credit coverage is never re-valued. A past month with **no** coverage (job was down, employee newly eligible) is credited once, valued by the policy resolved on that month's credit date — because assignments and versions are dated (Part 1), a policy assigned in October resolves to nothing for January, so there is no backfill.
+- **Current and future months are re-valued.** Month-period: the current month (once due) is valued by the policy resolved on its credit date. Year-period: the current and remaining months are valued by the policy resolved on `AsOf`. So a new version or a new assignment changes only the current month onward — the balance can go up **or down** (designer's call, recorded in the spec).
+- Known limitation (accepted): `Employee.DepartmentId` has no history, so catching up an *uncovered* past month uses the current department.
 - Rounding: 2 decimal places, `MidpointRounding.AwayFromZero`, applied to each written ledger delta only.
 - Carry at year end: remaining = credited + effective carry − used (pending stays pending). Positive remaining is capped by `CarryForwardCapHours` (excess → `forfeiture` row); negative remaining carries in full with no cap/expiry. Expiry: carried positive hours expire on 1 Jan + `CarryForwardExpiryMonths` (forfeiture row on that day).
-- Manual adjustments (`ChangeType = adjustment`, no policy version) are never touched by crediting.
+- Only accrual rows **with** `CoversFromMonth` count as policy credits. `adjustment` rows (request deductions/cancellations, manual adjustments) and month-less accrual rows (manual entitlements) are never counted or touched by crediting. If the year's `LeaveEntitlement.Source = manual`, crediting skips that employee/type (`SkipReason = "Manual entitlement"`) — same as today's Generate.
 - `LeaveRequestOptions.AllowUnpaidSplitWhenBalanceShort` is deleted (and from both appsettings files).
 
 ## Review Focus
@@ -37,13 +40,13 @@
 ### Task 1: Ledger and entitlement columns + spec note
 
 **Files:**
-- Modify: `src/ONEVO.Domain/Features/Leave/BalanceAudit/Entities/LeaveBalanceAudit.cs` — add `Guid? LeavePolicyId`, `Guid? LeavePolicyVersionId`, `int? Year`.
+- Modify: `src/ONEVO.Domain/Features/Leave/BalanceAudit/Entities/LeaveBalanceAudit.cs` — add `Guid? LeavePolicyId`, `Guid? LeavePolicyVersionId`, `int? Year`, `int? CoversFromMonth`, `int? CoversToMonth` (check constraint 1–12, from ≤ to, both null or both set).
 - Modify: `src/ONEVO.Domain/Features/Leave/Entitlement/Entities/LeaveEntitlement.cs` — add `Guid? LeavePolicyId`, `Guid? LeavePolicyVersionId`, `uint xmin` concurrency token configured like other entities that use one (search `IsRowVersion()`/`xmin` in Configurations).
 - Modify: `src/ONEVO.Domain/Features/Leave/Request/Entities/LeaveRequest.cs` — add `Guid? LeavePolicyVersionId`, `decimal ExceedsBalanceByHours` (default 0).
-- Modify: the three EF configurations; create migration `LeaveLedgerPolicyVersion`. In `Up`, for every current-year `leave_entitlements` row insert one `leave_balance_audits` row `change_type = 'adjustment'`, `hours_changed = total_hours`, `reason = 'Opening balance (policy cleanup)'`, `year = <current year>` so existing balances survive as manual adjustments.
-- Test: `tests/ONEVO.Tests.Unit/Features/Leave/Entitlement/EfLeaveEntitlementRepositoryTests.cs` or nearest existing repository test — `Concurrent_update_throws_DbUpdateConcurrencyException`.
+- Modify: the three EF configurations; create migration `LeaveLedgerPolicyVersion`. In `Up`, mark today's balances as already credited so the first credit run writes nothing extra: for every `leave_entitlements` row with `source = 'auto'`, set its year's existing `accrual` audit rows (the ones today's Generate wrote) to `year = <entitlement year>`, `covers_from_month = 1`, `covers_to_month = 12`, and `leave_policy_id`/`leave_policy_version_id` = the migrated v1 of the policy now resolving for that employee's legal entity and leave type (null if none). If an auto entitlement has `total_hours` but no accrual row, insert one accrual row with those values and `reason = 'Opening balance (policy cleanup)'`. Leave manual-source entitlements and all non-accrual rows untouched.
+- Test: `tests/ONEVO.Tests.Unit/Features/Leave/Entitlement/EfLeaveEntitlementRepositoryTests.cs` or nearest existing repository test — `Concurrent_update_throws_DbUpdateConcurrencyException`; audit configuration test `Covers_months_must_be_both_set_or_both_null`.
 
-- [ ] **Step 1:** write the concurrency test. **Step 2:** run — fail. **Step 3:** implement + migration, `dotnet ef database update`. **Step 4:** run — PASS. **Step 5:** commit `feat(leave): ledger rows and requests carry policy version`.
+- [ ] **Step 1:** write the tests. **Step 2:** run — fail. **Step 3:** implement + migration, `dotnet ef database update`. **Step 4:** run — PASS. **Step 5:** commit `feat(leave): ledger rows and requests carry policy version`.
 
 ### Task 2: Credit calculator (pure)
 
@@ -58,16 +61,17 @@
   public sealed record LeaveMonthPolicy(int Month, LeavePolicyVersion Version, Guid PolicyId); // Month 1..12
   public sealed record LeaveCreditInput(int Year, DateOnly HireDate, DateOnly? ProbationEndDate, DateOnly AsOf,
       IReadOnlyList<LeaveMonthPolicy> MonthPolicies); // months with no policy are simply absent
-  public sealed record LeaveCreditResult(decimal ExpectedCreditedHours, DateOnly? EligibleFrom, Guid? CurrentPolicyId, Guid? CurrentVersionId);
+  public sealed record LeaveMonthValue(int Month, decimal Hours, Guid PolicyId, Guid VersionId, DateOnly CreditDate);
   public static class LeaveCreditCalculator
   {
       public static DateOnly EligibilityDate(LeavePolicyVersion version, DateOnly hireDate, DateOnly? probationEndDate);
-      public static LeaveCreditResult Calculate(LeaveCreditInput input);
+      // Months that are due as of AsOf, each with its value. Unrounded.
+      public static IReadOnlyList<LeaveMonthValue> DueMonths(LeaveCreditInput input);
   }
   ```
-  The caller (Task 3) builds `MonthPolicies` with the resolver: month m resolved on `max(1st of m, hire date)` if that is ≤ `AsOf`, otherwise on `AsOf`. Eligibility is evaluated per month with that month's version (its `EligibleFrom`).
+  The caller (Task 3) builds `MonthPolicies` per the Global Constraints resolution rule (past uncovered month → resolve on its credit date; current/future → as described there). Eligibility is evaluated per month with that month's version (its `EligibleFrom`). Due = month-period: `CreditDate <= AsOf`; year-period: all counting months once the year's credit date (1 Jan, or eligibility date if later) `<= AsOf`.
 
-- [ ] **Step 1: Failing tests** (all `Year = 2026`, hire 2025-01-01 unless stated):
+- [ ] **Step 1: Failing tests** (all `Year = 2026`, hire 2025-01-01 unless stated; "→ N" means Σ `Hours` of `DueMonths` = N):
   - `Year_period_full_year_on_jan_1` — 112 h/year, asOf 2026-01-01 → 112.
   - `Month_period_credits_only_reached_months` — 8 h/month, asOf 2026-03-01 → 24; asOf 2026-02-28 → 16.
   - `Hire_on_15th_counts_month` — hire 2026-04-15, 8 h/month, asOf 2026-04-15 → 8; `Hire_on_16th_skips_month` — hire 2026-04-16, asOf 2026-04-30 → 0, asOf 2026-05-01 → 8.
@@ -104,10 +108,10 @@
       Task ExpireCarryAsync(Guid tenantId, int year, DateOnly asOf, CancellationToken ct);
   }
   ```
-  `CreditAsync`: already-credited = sum of the year's `accrual` rows for (employee, type). Delta = round(expected − alreadyCredited). If delta ≠ 0: upsert `LeaveEntitlement` (TotalHours += delta, set policy/version ids from `CurrentPolicyId/CurrentVersionId`) and add a ledger row `ChangeType = accrual`, `HoursChanged = delta`, `BalanceAfter`, `Year`, policy/version ids, `Reason` = `"Credit for <Mon yyyy>"` (month period) / `"Yearly credit"` / `"Policy change: <policy> v<n> from <date>"` when a version/assignment change caused it. Save per tenant once; on `DbUpdateConcurrencyException` reload and retry once.
-  `SkipReason` values (reuse/extend `LeaveEntitlementMessages`): `"No hire date"`, `"No policy assigned"`, `"Not eligible yet"`.
+  `CreditAsync`, per (employee, leave type): load the year's month-attributed accrual rows → per-month credited amounts. For each due month from `DueMonths`: skip if frozen (month < `asOf.Month` and already covered); otherwise delta_m = value − credited_m. Group consecutive months with the same version and same sign into one ledger row (`ChangeType = accrual`, `HoursChanged` = round(Σ delta), `CoversFromMonth`/`CoversToMonth`, `Year`, policy/version ids, `BalanceAfter`, `Reason` = `"Credit for <Mon yyyy>"` / `"Yearly credit"` / `"Policy change: <policy> v<n>"` when re-valuing already-covered months). Skip rows whose rounded hours are 0. Update `LeaveEntitlement` (TotalHours += Σ, policy/version ids of the current month's value). Save per tenant once; on `DbUpdateConcurrencyException` reload and retry once.
+  `SkipReason` values (reuse/extend `LeaveEntitlementMessages`): `"No hire date"`, `"No policy assigned"`, `"Not eligible yet"`, `"Manual entitlement"`.
 
-- [ ] **Step 1: Failing tests** (fake repositories + fake resolver): `Second_run_same_day_writes_nothing`; `Version_raise_writes_positive_delta_with_version_id`; `Version_lower_writes_negative_delta_used_hours_unchanged`; `Manual_adjustment_rows_are_not_counted_as_credited`; `Dry_run_writes_nothing_but_returns_expected`; `Close_year_caps_positive_carry_and_forfeits_excess` (remaining 50, cap 40 → carry 40, forfeit 10); `Close_year_without_cap_carries_all`; `Close_year_carries_negative_in_full`; `Close_year_twice_is_idempotent`; `Expire_carry_forfeits_on_expiry_date_only_once`.
+- [ ] **Step 1: Failing tests** (fake repositories + fake resolver honouring assignment/version dates): `Second_run_same_day_writes_nothing`; `Override_added_in_october_leaves_jan_sep_unchanged` (month-period 8 h → override 12 h from 2026-10-15: run 2026-10-20 writes nothing — October was valued on its 1 Oct credit date; run 2026-11-01 credits November at 12; Jan–Oct total stays 80); `Existing_policy_assigned_in_october_does_not_backfill` (year-period 120 h assigned to department from 2026-10-01, run 2026-10-01: credits Oct–Dec = 30 only); `Department_move_in_july_leaves_jan_jun_unchanged` (Jan–Jun covered under old department policy; employee now in a department with a different policy; run 2026-07-05: Jan–Jun untouched); `Missed_job_days_catch_up_uncovered_past_month` (no row for September, run 2026-10-02: September credited at its own version); `Post_migration_first_credit_writes_nothing_until_next_month` (migrated rows cover 1–12 for an auto entitlement: run 2026-10-21 writes nothing for year-period; for month-period also nothing because all months are covered); `Manual_source_entitlement_is_skipped`; `Version_raise_writes_positive_delta_with_version_id`; `Version_lower_writes_negative_delta_used_hours_unchanged`; `Manual_adjustment_rows_are_not_counted_as_credited`; `Dry_run_writes_nothing_but_returns_expected`; `Close_year_caps_positive_carry_and_forfeits_excess` (remaining 50, cap 40 → carry 40, forfeit 10); `Close_year_without_cap_carries_all`; `Close_year_carries_negative_in_full`; `Close_year_twice_is_idempotent`; `Expire_carry_forfeits_on_expiry_date_only_once`.
 - [ ] **Step 2:** run — fail. **Step 3:** implement. **Step 4:** run — PASS. **Step 5:** commit `feat(leave): idempotent credit service and year close`.
 
 ### Task 4: Daily job + entitlement commands rewired

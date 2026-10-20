@@ -135,8 +135,10 @@ Resolution for employee E and leave type T (as of date D):
 5. else none → E cannot request T and gets no entitlement for T.
 
 Resolution returns the policy plus its source level, used by the employee screen.
-Assignments are not effective-dated themselves (builder's call: changing an assignment
-takes effect from the change; past credits keep their recorded version).
+Assignments are dated (`EffectiveFrom`, `EffectiveTo`; revised during planning): replacing,
+resetting or unassigning end-dates the old row instead of deleting it, so resolving a
+past date always gives the same answer. Credited months before the current month are
+frozen and never re-valued.
 
 Conflict UX: assigning a policy to a target that already has a different policy for
 that leave type returns a conflict listing the existing policy; the UI asks to confirm
