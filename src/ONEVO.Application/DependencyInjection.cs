@@ -38,6 +38,10 @@ public static class DependencyInjection
         services.AddValidatorsFromAssembly(assembly);
 
         services.AddScoped<
+            ONEVO.Application.Features.Dashboard.Layout.Access.IDashboardWidgetAccess,
+            ONEVO.Application.Features.Dashboard.Layout.Access.DashboardWidgetAccess>();
+
+        services.AddScoped<
             ONEVO.Application.Features.Monitoring.TrayActivation.ServiceInterfaces.ITrayPresenceRequirementEvaluator,
             ONEVO.Application.Features.Monitoring.TrayActivation.Services.TrayPresenceRequirementEvaluator>();
         services.AddScoped<
