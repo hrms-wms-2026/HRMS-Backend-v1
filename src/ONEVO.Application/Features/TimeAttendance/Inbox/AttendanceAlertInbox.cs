@@ -116,15 +116,17 @@ public sealed class AttendanceAlertInbox
         var people = await _employees.ListByIdsAsync(tenantId, [subjectEmployeeId], ct);
         var isSubject = subjectEmployeeId == callerEmployeeId;
         // Reviewer / reader access depends only on the employee and legal entity, so one check per legal entity.
-        var access = new Dictionary<Guid?, bool>();
+        // Keyed by legal entity; Guid.Empty stands for "none" (Dictionary keys can't be null).
+        var access = new Dictionary<Guid, bool>();
         var rows = new List<InboxPersonCase>();
         foreach (var alert in alerts)
         {
             var canOpen = isSubject || addedToChat.Contains(new ItemRef(AttendanceInboxKinds.Source, AttendanceInboxKinds.Alert, alert.Id));
             if (!canOpen)
             {
-                if (!access.TryGetValue(alert.LegalEntityId, out var allowed))
-                    access[alert.LegalEntityId] = allowed = await CanReviewAsync(alert, callerEmployeeId, ct) || await HrReaderCoversAsync(alert, ct);
+                var key = alert.LegalEntityId ?? Guid.Empty;
+                if (!access.TryGetValue(key, out var allowed))
+                    access[key] = allowed = await CanReviewAsync(alert, callerEmployeeId, ct) || await HrReaderCoversAsync(alert, ct);
                 canOpen = allowed;
             }
             rows.Add(new InboxPersonCase(Item(alert, people, InboxDirections.Info, pending: false, []), canOpen));

@@ -272,22 +272,23 @@ public sealed class AttendanceInboxSourceProvider : IInboxSourceProvider, IInbox
 
         var people = await _employees.ListByIdsAsync(tenantId, [subjectEmployeeId], ct);
         var isRequester = subjectEmployeeId == callerEmployeeId;
-        var approver = new Dictionary<(string, Guid?), bool>();
-        var reader = new Dictionary<Guid?, bool>();
+        // Keyed by legal entity; Guid.Empty stands for "none" (Dictionary keys can't be null).
+        var approver = new Dictionary<(string, Guid), bool>();
+        var reader = new Dictionary<Guid, bool>();
         var result = new List<InboxPersonCase>();
         foreach (var row in rows)
         {
             var canOpen = isRequester || added.Contains(new ItemRef(Source, row.Kind, row.Id));
             if (!canOpen && IsPending(row.Status))
             {
-                if (!approver.TryGetValue((row.Kind, row.LegalEntityId), out var isApprover))
-                    approver[(row.Kind, row.LegalEntityId)] = isApprover = await IsExactApproverAsync(row, ct);
+                if (!approver.TryGetValue((row.Kind, row.LegalEntityId ?? Guid.Empty), out var isApprover))
+                    approver[(row.Kind, row.LegalEntityId ?? Guid.Empty)] = isApprover = await IsExactApproverAsync(row, ct);
                 canOpen = isApprover;
             }
             if (!canOpen)
             {
-                if (!reader.TryGetValue(row.LegalEntityId, out var covers))
-                    reader[row.LegalEntityId] = covers = await HrReaderCoversAsync(row, ct);
+                if (!reader.TryGetValue(row.LegalEntityId ?? Guid.Empty, out var covers))
+                    reader[row.LegalEntityId ?? Guid.Empty] = covers = await HrReaderCoversAsync(row, ct);
                 canOpen = covers;
             }
             result.Add(new InboxPersonCase(Item(row, people, InboxDirections.Info, pending: false, []), canOpen));

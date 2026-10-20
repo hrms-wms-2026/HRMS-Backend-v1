@@ -688,4 +688,23 @@ public class AttendanceInboxTests
         asNobody.Single().CanOpen.Should().BeFalse();
         alertsAsNobody.Single().CanOpen.Should().BeFalse();
     }
+
+    [Fact]
+    public async Task ListPersonCases_HandlesRowsWithoutALegalEntity()
+    {
+        var f = new Fixture();
+        var alert = f.Alert(f.Worker.Id);
+        alert.LegalEntityId = null;
+        PersonHistory(f,
+            devices: [new DeviceChangeRequest { Id = Guid.NewGuid(), TenantId = f.TenantId, EmployeeId = f.Worker.Id, LegalEntityId = null, RequestedAt = MonthStart.AddDays(1) }],
+            alerts: [alert]);
+        f.Authority.Setup(a => a.ResolveApproverAsync(It.IsAny<EmployeeApprovalRouteRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<EmployeeApprovalRoute>.NotFound("no approver"));
+
+        var requests = await f.Provider().ListPersonCasesAsync(f.TenantId, f.Worker.Id, InboxCategories.Request, MonthStart, MonthEnd, f.Approver.Id, default);
+        var alerts = await f.Provider().ListPersonCasesAsync(f.TenantId, f.Worker.Id, InboxCategories.Alert, MonthStart, MonthEnd, f.Approver.Id, default);
+
+        requests.Should().ContainSingle();
+        alerts.Should().ContainSingle();
+    }
 }
