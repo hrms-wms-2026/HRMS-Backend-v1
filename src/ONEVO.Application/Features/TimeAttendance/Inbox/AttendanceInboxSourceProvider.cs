@@ -291,7 +291,7 @@ public sealed class AttendanceInboxSourceProvider : IInboxSourceProvider, IInbox
                     reader[row.LegalEntityId ?? Guid.Empty] = covers = await HrReaderCoversAsync(row, ct);
                 canOpen = covers;
             }
-            result.Add(new InboxPersonCase(Item(row, people, InboxDirections.Info, pending: false, []), canOpen));
+            result.Add(new InboxPersonCase(Item(row, people, InboxDirections.Info, pending: IsPending(row.Status), []), canOpen));
         }
         return result;
     }

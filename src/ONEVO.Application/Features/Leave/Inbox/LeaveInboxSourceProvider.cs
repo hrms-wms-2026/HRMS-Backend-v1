@@ -153,7 +153,7 @@ public sealed class LeaveInboxSourceProvider : IInboxSourceProvider, IInboxBulkA
                 || (caller is not null && request.SubmittedOnBehalfOfBy == caller.UserId)
                 || approvers.GetValueOrDefault(request.Id)?.Contains(callerEmployeeId) == true
                 || added.Contains(new ItemRef(Source, LeaveInboxKinds.Request, request.Id));
-            return new InboxPersonCase(Item(ListRow.Of(request, subject, null, row.LeaveTypeName), InboxDirections.Info, pending: false, []), canOpen);
+            return new InboxPersonCase(Item(ListRow.Of(request, subject, null, row.LeaveTypeName), InboxDirections.Info, pending: IsOpen(request), []), canOpen);
         }).ToList();
     }
 

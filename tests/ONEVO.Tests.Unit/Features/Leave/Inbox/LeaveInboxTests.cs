@@ -557,4 +557,16 @@ public class LeaveInboxTests
         asApprover.Single().CanOpen.Should().BeTrue();
         asUninvolved.Single().CanOpen.Should().BeFalse();
     }
+
+    [Fact]
+    public async Task ListPersonCases_PendingRequestsStayLive()
+    {
+        var f = new ProviderFixture();
+        History(f, [Own(f, "pending"), Own(f, "approved")]);
+
+        var rows = await f.Provider().ListPersonCasesAsync(f.TenantId, f.Requester.Id, InboxCategories.Request, HistoryFrom, HistoryTo, f.First.Id, default);
+
+        rows.Single(r => r.Item.Status == "pending").Item.IsPending.Should().BeTrue();
+        rows.Single(r => r.Item.Status == "approved").Item.IsPending.Should().BeFalse();
+    }
 }

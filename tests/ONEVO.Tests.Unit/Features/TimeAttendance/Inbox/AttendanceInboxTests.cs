@@ -615,8 +615,8 @@ public class AttendanceInboxTests
         f.Locations.Setup(x => x.ListForEmployeeCreatedAsync(f.TenantId, f.Worker.Id, MonthStart, MonthEnd, It.IsAny<CancellationToken>()))
             .ReturnsAsync(locations ?? []);
         f.Devices.Setup(x => x.ListForEmployeeAsync(f.TenantId, f.Worker.Id, It.IsAny<CancellationToken>())).ReturnsAsync(devices ?? []);
-        f.Alerts.Setup(x => x.ListForEmployeeDetectedAsync(f.TenantId, f.Worker.Id, MonthStart, MonthEnd, It.IsAny<CancellationToken>()))
-            .ReturnsAsync((alerts ?? []).ToList());
+        f.Alerts.Setup(x => x.ListForEmployeeAsync(f.TenantId, f.Worker.Id, It.IsAny<DateOnly>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Guid _, Guid _, DateOnly from, DateOnly to, CancellationToken _) => (alerts ?? []).Where(a => a.WorkDate >= from && a.WorkDate <= to).ToList());
     }
 
     [Fact]
@@ -706,5 +706,40 @@ public class AttendanceInboxTests
 
         requests.Should().ContainSingle();
         alerts.Should().ContainSingle();
+    }
+
+    [Fact]
+    public async Task ListPersonCases_Alert_IsDatedAndBucketedByWorkDate_AndOpenAlertsStayLive()
+    {
+        var f = new Fixture();
+        var open = f.Alert(f.Worker.Id);                       // work date 9 Oct, detected 10 Oct
+        var resolved = f.Alert(f.Worker.Id);
+        resolved.WorkDate = new DateOnly(2026, 10, 2);
+        resolved.Status = "resolved";
+        var september = f.Alert(f.Worker.Id);
+        september.WorkDate = new DateOnly(2026, 9, 25);        // detected in October, about September
+        PersonHistory(f, alerts: [open, resolved, september]);
+
+        var rows = await f.Provider().ListPersonCasesAsync(f.TenantId, f.Worker.Id, InboxCategories.Alert, MonthStart, MonthEnd, f.Approver.Id, default);
+
+        rows.Select(r => r.Item.Id).Should().BeEquivalentTo([open.Id, resolved.Id]);
+        var openRow = rows.Single(r => r.Item.Id == open.Id).Item;
+        openRow.CreatedAt.Should().Be(new DateTimeOffset(2026, 10, 9, 12, 0, 0, TimeSpan.Zero));
+        openRow.IsPending.Should().BeTrue();
+        rows.Single(r => r.Item.Id == resolved.Id).Item.IsPending.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task ListPersonCases_Request_PendingRowsStayLive()
+    {
+        var f = new Fixture();
+        PersonHistory(f, corrections: [f.Correction(), f.Correction("approved")]);
+        f.Authority.Setup(a => a.ResolveApproverAsync(It.IsAny<EmployeeApprovalRouteRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<EmployeeApprovalRoute>.NotFound("no approver"));
+
+        var rows = await f.Provider().ListPersonCasesAsync(f.TenantId, f.Worker.Id, InboxCategories.Request, MonthStart, MonthEnd, f.Approver.Id, default);
+
+        rows.Single(r => r.Item.Status == "pending").Item.IsPending.Should().BeTrue();
+        rows.Single(r => r.Item.Status == "approved").Item.IsPending.Should().BeFalse();
     }
 }

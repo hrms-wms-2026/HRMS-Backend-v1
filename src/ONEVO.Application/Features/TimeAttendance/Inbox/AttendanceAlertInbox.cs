@@ -104,13 +104,17 @@ public sealed class AttendanceAlertInbox
         return items.Values.ToList();
     }
 
-    /// <summary>The subject's alerts of any status detected in [from, to), as info. CanOpen follows GetDetailAsync: the
+    /// <summary>The subject's alerts of any status whose work day falls in [from, to), as info: an alert is about its work
+    /// day, not the (often batched) detection run, so the row is dated - and bucketed - at <see cref="WorkDayAnchor"/>. CanOpen follows GetDetailAsync: the
     /// subject, their reviewer, an attendance reader covering them, or someone added to the alert's chat.</summary>
     public async Task<IReadOnlyList<InboxPersonCase>> ListPersonCasesAsync(
         Guid tenantId, Guid subjectEmployeeId, DateTimeOffset from, DateTimeOffset to, Guid callerEmployeeId,
         IReadOnlySet<ItemRef> addedToChat, CancellationToken ct)
     {
-        var alerts = await _alerts.ListForEmployeeDetectedAsync(tenantId, subjectEmployeeId, from, to, ct);
+        // A day either side, then the exact cut on the anchor instant.
+        var alerts = (await _alerts.ListForEmployeeAsync(tenantId, subjectEmployeeId,
+                DateOnly.FromDateTime(from.UtcDateTime).AddDays(-1), DateOnly.FromDateTime(to.UtcDateTime).AddDays(1), ct))
+            .Where(a => WorkDayAnchor(a.WorkDate) >= from && WorkDayAnchor(a.WorkDate) < to).ToList();
         if (alerts.Count == 0)
             return [];
         var people = await _employees.ListByIdsAsync(tenantId, [subjectEmployeeId], ct);
@@ -129,10 +133,14 @@ public sealed class AttendanceAlertInbox
                     access[key] = allowed = await CanReviewAsync(alert, callerEmployeeId, ct) || await HrReaderCoversAsync(alert, ct);
                 canOpen = allowed;
             }
-            rows.Add(new InboxPersonCase(Item(alert, people, InboxDirections.Info, pending: false, []), canOpen));
+            var item = Item(alert, people, InboxDirections.Info, pending: alert.Status == AttendanceAlertStatuses.Open, []);
+            rows.Add(new InboxPersonCase(item with { CreatedAt = WorkDayAnchor(alert.WorkDate) }, canOpen));
         }
         return rows;
     }
+
+    /// <summary>Noon UTC of the work day: the same calendar day in every viewer offset from -12h to +12h.</summary>
+    public static DateTimeOffset WorkDayAnchor(DateOnly workDate) => new(workDate.ToDateTime(new TimeOnly(12, 0)), TimeSpan.Zero);
 
     private async Task<IReadOnlyCollection<Guid>> ScopeAsync(Guid legalEntityId, IEnumerable<Guid> candidates, CancellationToken ct)
     {

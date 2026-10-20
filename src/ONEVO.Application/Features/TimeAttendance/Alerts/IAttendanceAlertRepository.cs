@@ -18,9 +18,6 @@ public interface IAttendanceAlertRepository : IAttendanceAlertResolutionLookup
     /// <summary>Every live alert (open and resolved) of one employee whose work date is in [from, to]; tracked.</summary>
     Task<List<AttendanceAlert>> ListForEmployeeAsync(Guid tenantId, Guid employeeId, DateOnly from, DateOnly to, CancellationToken ct);
 
-    /// <summary>The employee's alerts of any status detected in [from, to) - the inbox case history.</summary>
-    Task<List<AttendanceAlert>> ListForEmployeeDetectedAsync(Guid tenantId, Guid employeeId, DateTimeOffset from, DateTimeOffset to, CancellationToken ct);
-
     Task<AttendanceAlert?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct);
 
     Task<AttendanceAlert?> FindOpenAsync(Guid tenantId, Guid employeeId, DateOnly workDate, string signalKey, CancellationToken ct);
