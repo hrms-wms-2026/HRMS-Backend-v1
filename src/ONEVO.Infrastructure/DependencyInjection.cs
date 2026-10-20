@@ -235,6 +235,7 @@ public static class DependencyInjection
         services.AddScoped<
             ONEVO.Application.Features.Leave.Policy.Services.ILeavePolicyResolver,
             ONEVO.Application.Features.Leave.Policy.Services.LeavePolicyResolver>();
+        services.AddScoped<ONEVO.Application.Features.Leave.Policy.Services.LeavePolicyAssignmentService>();
         services.AddScoped<
             ONEVO.Application.Features.Leave.Entitlement.RepositoryInterfaces.ILeaveEntitlementRepository,
             ONEVO.Infrastructure.Persistence.Repositories.Leave.Entitlement.EfLeaveEntitlementRepository>();
