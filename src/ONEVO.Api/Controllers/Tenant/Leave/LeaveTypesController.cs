@@ -49,12 +49,9 @@ public class LeaveTypesController : ControllerBase
     {
         var result = await _mediator.Send(
             new CreateLeaveTypeCommand(
-                request.Name, request.Code, request.Description, request.Category,
-                request.IsPaid, request.RequiresApproval, request.RequiresDocument,
-                request.DocumentRequiredAfterDays, request.AcceptedDocumentTypes,
-                request.MaxConsecutiveDays, request.DefaultDaysPerYear,
-                request.CarryForwardAllowed, request.MaxCarryForwardDays, request.CarryForwardExpiryMonths,
-                request.ProRataForNewJoiners, request.ApplicableGender, request.MinimumNoticeDays),
+                request.Name, request.Code, request.Description, request.Color,
+                request.IsPaid, request.ApplicableGender, request.RequiresDocument,
+                request.DocumentRequiredAfterHours, request.AcceptedDocumentTypes),
             ct);
 
         return result.IsSuccess
@@ -69,12 +66,9 @@ public class LeaveTypesController : ControllerBase
     {
         var result = await _mediator.Send(
             new UpdateLeaveTypeCommand(
-                leaveTypeId, request.Name, request.Description, request.Category,
-                request.IsPaid, request.RequiresApproval, request.RequiresDocument,
-                request.DocumentRequiredAfterDays, request.AcceptedDocumentTypes,
-                request.MaxConsecutiveDays, request.DefaultDaysPerYear,
-                request.CarryForwardAllowed, request.MaxCarryForwardDays, request.CarryForwardExpiryMonths,
-                request.ProRataForNewJoiners, request.ApplicableGender, request.MinimumNoticeDays),
+                leaveTypeId, request.Name, request.Description, request.Color,
+                request.IsPaid, request.ApplicableGender, request.RequiresDocument,
+                request.DocumentRequiredAfterHours, request.AcceptedDocumentTypes),
             ct);
 
         return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);

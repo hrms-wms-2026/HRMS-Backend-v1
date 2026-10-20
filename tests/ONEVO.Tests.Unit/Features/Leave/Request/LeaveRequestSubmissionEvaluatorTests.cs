@@ -117,7 +117,7 @@ public class LeaveRequestSubmissionEvaluatorTests
     public async Task Evaluate_WhenNoticePeriodMissed_SucceedsWithWarning()
     {
         var harness = Harness.Create();
-        harness.LeaveType.MinimumNoticeDays = 10;
+        harness.Policy.MinimumNoticeDays = 10;
         var result = await harness.EvaluateDefaultAsync();
 
         result.IsSuccess.Should().BeTrue();
@@ -130,11 +130,34 @@ public class LeaveRequestSubmissionEvaluatorTests
     {
         var harness = Harness.Create();
         harness.LeaveType.RequiresDocument = true;
-        harness.LeaveType.DocumentRequiredAfterDays = 0;
+        harness.LeaveType.DocumentRequiredAfterHours = null;
         var result = await harness.EvaluateDefaultAsync();
 
         result.IsSuccess.Should().BeFalse();
         result.Error.Should().Contain("supporting document");
+    }
+
+    [Fact]
+    public async Task Evaluate_WhenRequestIsWithinDocumentFreeHours_Succeeds()
+    {
+        var harness = Harness.Create();
+        harness.LeaveType.RequiresDocument = true;
+        harness.LeaveType.DocumentRequiredAfterHours = 100m;
+        var result = await harness.EvaluateDefaultAsync();
+
+        result.IsSuccess.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Evaluate_WhenRequestExceedsDocumentFreeHours_Fails()
+    {
+        var harness = Harness.Create();
+        harness.LeaveType.RequiresDocument = true;
+        harness.LeaveType.DocumentRequiredAfterHours = 1m;
+        var result = await harness.EvaluateDefaultAsync();
+
+        result.IsSuccess.Should().BeFalse();
+        result.Error.Should().Contain("more than 1 hours");
     }
 
     [Fact]
@@ -184,6 +207,7 @@ public class LeaveRequestSubmissionEvaluatorTests
         public Guid LegalEntityId { get; } = Guid.NewGuid();
         public Employee Employee { get; }
         public LeaveType LeaveType { get; }
+        public LeavePolicy Policy { get; private set; } = null!;
         public Mock<IDateTimeProvider> Clock { get; } = new();
         public Mock<ILeaveRequestRepository> Requests { get; } = new();
         public Mock<ILeaveApproverResolver> Approvers { get; } = new();
@@ -212,7 +236,6 @@ public class LeaveRequestSubmissionEvaluatorTests
                 Name = "Annual Leave",
                 Code = "AL",
                 IsPaid = true,
-                RequiresApproval = true,
                 IsActive = true,
                 ApplicableGender = LeaveGenderRestrictions.All
             };
@@ -234,6 +257,7 @@ public class LeaveRequestSubmissionEvaluatorTests
 
             var template = PreviewGenerateEntitlementsQueryHandlerTests.CreatePolicyAggregate(
                 TenantId, LegalEntityId, 20m, 5m);
+            Policy = template.Policy;
             var policy = new LeavePolicyAggregate(
                 template.Policy,
                 [new LeavePolicyLeaveTypeWithType(

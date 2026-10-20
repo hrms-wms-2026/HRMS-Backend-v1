@@ -251,9 +251,6 @@ public static class DependencyInjection
             .ValidateOnStart();
         services.AddOptions<ONEVO.Application.Features.Leave.Calendar.Options.LeaveCalendarOptions>()
             .Bind(configuration.GetSection(ONEVO.Application.Features.Leave.Calendar.Options.LeaveCalendarOptions.SectionName))
-            .Validate(options =>
-                ONEVO.Application.Features.Leave.Calendar.Options.LeaveCalendarOptions.AreColorsValid(options.TypeCategoryColors),
-                "Leave:Calendar:TypeCategoryColors must contain #RRGGBB hex colors.")
             .ValidateOnStart();
         services.AddScoped<
             ONEVO.Application.Features.Leave.Request.RepositoryInterfaces.ILeaveRequestRepository,

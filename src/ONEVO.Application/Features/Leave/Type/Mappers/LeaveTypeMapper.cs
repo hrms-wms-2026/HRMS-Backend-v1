@@ -5,25 +5,18 @@ namespace ONEVO.Application.Features.Leave.Type.Mappers;
 
 public static class LeaveTypeMapper
 {
-    public static LeaveTypeResponse ToResponse(LeaveTypeEntity entity) => new(
+    public static LeaveTypeResponse ToResponse(LeaveTypeEntity entity, int policyCount = 0) => new(
         entity.Id,
         entity.Name,
         entity.Code,
         entity.Description,
-        entity.Category,
+        entity.Color,
         entity.IsPaid,
-        entity.RequiresApproval,
-        entity.RequiresDocument,
-        entity.DocumentRequiredAfterDays,
-        entity.AcceptedDocumentTypes,
-        entity.MaxConsecutiveDays,
-        entity.DefaultDaysPerYear,
-        entity.CarryForwardAllowed,
-        entity.MaxCarryForwardDays,
-        entity.CarryForwardExpiryMonths,
-        entity.ProRataForNewJoiners,
         entity.ApplicableGender,
-        entity.MinimumNoticeDays,
+        entity.RequiresDocument,
+        entity.DocumentRequiredAfterHours,
+        entity.AcceptedDocumentTypes,
         entity.IsActive,
-        entity.CreatedAt);
+        entity.CreatedAt,
+        policyCount);
 }

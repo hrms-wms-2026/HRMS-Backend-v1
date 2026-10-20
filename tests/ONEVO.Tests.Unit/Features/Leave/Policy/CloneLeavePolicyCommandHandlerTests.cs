@@ -72,7 +72,6 @@ public class CloneLeavePolicyCommandHandlerTests
                 TenantId = _tenantId,
                 Name = "Annual Leave",
                 Code = "ANNUAL",
-                DefaultDaysPerYear = 20m,
                 IsActive = true
             }]);
         _repoMock.Setup(r => r.ListActiveLegalEntitiesByIdsAsync(_tenantId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))

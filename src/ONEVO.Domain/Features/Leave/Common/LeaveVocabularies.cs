@@ -1,19 +1,5 @@
 namespace ONEVO.Domain.Features.Leave.Common;
 
-public static class LeaveTypeCategories
-{
-    public const string Annual = "annual";
-    public const string Sick = "sick";
-    public const string Maternity = "maternity";
-    public const string Paternity = "paternity";
-    public const string Compassionate = "compassionate";
-    public const string Unpaid = "unpaid";
-    public const string Custom = "custom";
-
-    public static readonly string[] All =
-        [Annual, Sick, Maternity, Paternity, Compassionate, Unpaid, Custom];
-}
-
 public static class LeaveGenderRestrictions
 {
     public const string All = "all";

@@ -105,9 +105,9 @@ public sealed class DapiLeaveSampleSeeder : IHostedService
         if (workHours <= 0m)
             workHours = 8m;
 
-        await EnsureTypeAsync(db, AnnualTypeId, "Annual Leave", "ANNUAL", LeaveTypeCategories.Annual, 14m, now, ct);
-        await EnsureTypeAsync(db, SickTypeId, "Sick Leave", "SICK", LeaveTypeCategories.Sick, 10m, now, ct);
-        await EnsureTypeAsync(db, CasualTypeId, "Casual Leave", "CASUAL", LeaveTypeCategories.Custom, 5m, now, ct);
+        await EnsureTypeAsync(db, AnnualTypeId, "Annual Leave", "ANNUAL", "#2563EB", now, ct);
+        await EnsureTypeAsync(db, SickTypeId, "Sick Leave", "SICK", "#16A34A", now, ct);
+        await EnsureTypeAsync(db, CasualTypeId, "Casual Leave", "CASUAL", "#475569", now, ct);
 
         var policy = await db.LeavePolicies.FirstOrDefaultAsync(p => p.Id == PolicyId, ct);
         if (policy is null)
@@ -215,8 +215,7 @@ public sealed class DapiLeaveSampleSeeder : IHostedService
         Guid id,
         string name,
         string code,
-        string category,
-        decimal days,
+        string color,
         DateTimeOffset now,
         CancellationToken ct)
     {
@@ -229,10 +228,8 @@ public sealed class DapiLeaveSampleSeeder : IHostedService
             TenantId = DapiTenantId,
             Name = name,
             Code = code,
-            Category = category,
+            Color = color,
             IsPaid = true,
-            RequiresApproval = true,
-            DefaultDaysPerYear = days,
             ApplicableGender = LeaveGenderRestrictions.All,
             AcceptedDocumentTypes = [],
             IsActive = true,

@@ -88,6 +88,6 @@ public sealed class EfLeaveCalendarRepository : ILeaveCalendarRepository
             row.legalEntity?.Name,
             row.leaveType.Name,
             row.leaveType.Code,
-            row.leaveType.Category)).ToList();
+            row.leaveType.Color)).ToList();
     }
 }

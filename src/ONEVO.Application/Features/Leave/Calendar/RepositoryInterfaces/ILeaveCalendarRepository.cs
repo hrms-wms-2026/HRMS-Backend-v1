@@ -27,4 +27,4 @@ public sealed record LeaveCalendarRequestRow(
     string? LegalEntityName,
     string LeaveTypeName,
     string LeaveTypeCode,
-    string LeaveTypeCategory);
+    string LeaveTypeColor);

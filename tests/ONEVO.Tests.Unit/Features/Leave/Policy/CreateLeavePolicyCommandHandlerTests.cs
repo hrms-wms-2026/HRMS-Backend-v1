@@ -34,7 +34,6 @@ public class CreateLeavePolicyCommandHandlerTests
                 TenantId = _tenantId,
                 Name = "Annual Leave",
                 Code = "ANNUAL",
-                DefaultDaysPerYear = 20m,
                 IsActive = true
             }]);
         _repoMock.Setup(r => r.ListActiveLegalEntitiesByIdsAsync(_tenantId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
@@ -85,23 +84,6 @@ public class CreateLeavePolicyCommandHandlerTests
             It.Is<IReadOnlyCollection<LeavePolicyLegalEntity>>(assignments => assignments.Single().LegalEntityId == _legalEntityId),
             It.Is<IReadOnlyCollection<Guid>>(ids => ids.Count == 0),
             It.IsAny<CancellationToken>()), Times.Once);
-    }
-
-    [Fact]
-    public async Task Handle_MonthlyAccrualAboveLeaveTypeLimit_Returns400()
-    {
-        var handler = new CreateLeavePolicyCommandHandler(
-            _repoMock.Object, _currentUserMock.Object, _dateTimeProviderMock.Object);
-
-        var result = await handler.Handle(ValidCommand() with
-        {
-            AccrualMethod = LeaveAccrualMethods.Monthly,
-            LeaveTypes = [new LeavePolicyTypeRuleInput(_leaveTypeId, 0m, 2m, null, null)]
-        }, CancellationToken.None);
-
-        Assert.False(result.IsSuccess);
-        Assert.Equal(400, result.StatusCode);
-        Assert.Contains("Monthly accrual", result.Error);
     }
 
     [Fact]

@@ -179,8 +179,7 @@ public sealed class MyTeamDb
         db.LeaveTypes.Add(new LeaveType
         {
             Id = id, TenantId = TenantId, Name = "Annual", Code = $"AN{Guid.NewGuid():N}"[..8],
-            Category = LeaveTypeCategories.Annual, IsPaid = true, RequiresApproval = true,
-            DefaultDaysPerYear = 10m, ApplicableGender = LeaveGenderRestrictions.All,
+            IsPaid = true, ApplicableGender = LeaveGenderRestrictions.All,
         });
         return id;
     }

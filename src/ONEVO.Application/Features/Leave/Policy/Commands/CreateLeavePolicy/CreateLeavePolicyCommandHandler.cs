@@ -45,18 +45,6 @@ public class CreateLeavePolicyCommandHandler : IRequestHandler<CreateLeavePolicy
         if (activeLeaveTypes.Count != requestedLeaveTypeIds.Length)
             return Result<LeavePolicyResponse>.NotFound("The selected leave type no longer exists.");
 
-        var leaveTypeById = activeLeaveTypes.ToDictionary(x => x.Id);
-        foreach (var rule in request.LeaveTypes)
-        {
-            var annualEntitlement = ToAnnualEntitlement(request.AccrualMethod, rule);
-            var leaveType = leaveTypeById[rule.LeaveTypeId];
-            if (request.AccrualMethod == LeaveAccrualMethods.Monthly && annualEntitlement > leaveType.DefaultDaysPerYear)
-            {
-                return Result<LeavePolicyResponse>.Failure(
-                    $"Monthly accrual ({rule.MonthlyAccrualDays:0.#} x 12 = {annualEntitlement:0.#} days) exceeds the leave type's annual limit of {leaveType.DefaultDaysPerYear:0.#} days");
-            }
-        }
-
         var requestedLegalEntityIds = request.LegalEntityIds.Distinct().ToArray();
         var legalEntities = await _policies.ListActiveLegalEntitiesByIdsAsync(tenantId, requestedLegalEntityIds, ct);
         if (legalEntities.Count != requestedLegalEntityIds.Length)

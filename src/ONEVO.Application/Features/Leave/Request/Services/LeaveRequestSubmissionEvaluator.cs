@@ -213,13 +213,13 @@ public sealed class LeaveRequestSubmissionEvaluator
         if (_options.RequireReason && string.IsNullOrWhiteSpace(reason))
             return Result<LeaveRequestEvaluation>.Failure("A reason is required for this leave request.");
 
-        var documentAfter = leaveType.DocumentRequiredAfterDays;
+        var documentAfter = leaveType.DocumentRequiredAfterHours;
         var needsDocument = leaveType.RequiresDocument
-            || (documentAfter is { } after && calculated.CountedShiftStartDates.Count > after);
+            && (documentAfter is not { } after || calculated.TotalHours > after);
         if (needsDocument && fileRecordIds.Count == 0 && (overrides?.DocumentsOnFile ?? 0) == 0)
         {
             return Result<LeaveRequestEvaluation>.Failure(
-                LeaveRequestMessages.DocumentRequired(leaveType.Name, documentAfter ?? 0));
+                LeaveRequestMessages.DocumentRequired(leaveType.Name, documentAfter));
         }
 
         if (!await _requests.AreAvailableFileRecordsAsync(tenantId, fileRecordIds, ct))
@@ -249,26 +249,18 @@ public sealed class LeaveRequestSubmissionEvaluator
         }
 
         var warnings = new List<LeaveRequestWarningResponse>();
-        var noticeDays = Math.Max(leaveType.MinimumNoticeDays, policy.Policy.MinimumNoticeDays);
+        var noticeDays = policy.Policy.MinimumNoticeDays;
         var noticeMissed = noticeDays > 0 && startDate < _clock.Today.AddDays(noticeDays);
         if (noticeMissed)
             warnings.Add(new LeaveRequestWarningResponse("notice_period_missed", LeaveRequestMessages.NoticeMissed(noticeDays)));
 
-        var maxConsecutive = leaveType.MaxConsecutiveDays ?? policy.Policy.MaxConsecutiveDays;
+        var maxConsecutive = policy.Policy.MaxConsecutiveDays;
         if (maxConsecutive is { } limit && calculated.CountedShiftStartDates.Count > limit)
             warnings.Add(new LeaveRequestWarningResponse("max_consecutive_days", LeaveRequestMessages.MaxConsecutive(limit)));
 
-        LeaveApproverResolution approvers;
-        if (leaveType.RequiresApproval)
-        {
-            approvers = await _approvers.ResolveAsync(tenantId, target.Id, startDate, endDate, ct);
-            if (approvers.Approvers.Count == 0)
-                return Result<LeaveRequestEvaluation>.Failure(LeaveRequestMessages.NoApprover);
-        }
-        else
-        {
-            approvers = new LeaveApproverResolution([]);
-        }
+        var approvers = await _approvers.ResolveAsync(tenantId, target.Id, startDate, endDate, ct);
+        if (approvers.Approvers.Count == 0)
+            return Result<LeaveRequestEvaluation>.Failure(LeaveRequestMessages.NoApprover);
 
         var calendarConflicts = await _conflicts.ListConflictsAsync(tenantId, target.Id, startDate, endDate, ct);
         var teamWarning = await _teamAbsence.BuildWarningAsync(
