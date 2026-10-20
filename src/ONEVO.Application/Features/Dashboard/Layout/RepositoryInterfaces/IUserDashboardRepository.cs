@@ -10,6 +10,12 @@ public interface IUserDashboardRepository
     /// <summary>A dashboard by id with widgets and layouts (tracked); ownership is the caller's check.</summary>
     Task<UserDashboard?> GetByIdAsync(Guid tenantId, Guid dashboardId, CancellationToken ct = default);
 
+    /// <summary>
+    /// The dashboard that holds the given widget instance, with widgets and layouts (tracked), or null.
+    /// Ownership is the caller's check.
+    /// </summary>
+    Task<UserDashboard?> GetByWidgetIdAsync(Guid tenantId, Guid widgetId, CancellationToken ct = default);
+
     /// <summary>The user's dashboards without widgets or layouts.</summary>
     Task<IReadOnlyList<UserDashboard>> ListForUserAsync(Guid tenantId, Guid userId, CancellationToken ct = default);
 

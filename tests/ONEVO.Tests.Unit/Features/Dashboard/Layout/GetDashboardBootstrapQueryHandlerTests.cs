@@ -1,6 +1,7 @@
 using Moq;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Dashboard.Layout.Access;
+using ONEVO.Application.Features.Dashboard.Layout.Data;
 using ONEVO.Application.Features.Dashboard.Layout.DTOs;
 using ONEVO.Application.Features.Dashboard.Layout.Grid;
 using ONEVO.Application.Features.Dashboard.Layout.Queries.GetDashboardBootstrap;
@@ -23,13 +24,25 @@ public sealed class GetDashboardBootstrapQueryHandlerTests
     private readonly Mock<IUserDashboardRepository> _repo = new();
     private readonly Mock<IDashboardWidgetAccess> _access = new();
     private readonly Mock<ICurrentUser> _user = new();
+    private readonly Mock<IWidgetDataOrchestrator> _orchestrator = new();
+    private readonly List<IReadOnlyList<string>> _loadedKeys = [];
+    private readonly Dictionary<string, (WidgetDataStateDto State, object? Data)> _widgetData = new();
 
     private GetDashboardBootstrapQueryHandler Handler()
     {
         _user.SetupGet(u => u.TenantId).Returns(TenantId);
         _user.SetupGet(u => u.UserId).Returns(UserId);
         _user.SetupGet(u => u.IsAuthenticated).Returns(true);
-        return new GetDashboardBootstrapQueryHandler(_repo.Object, _access.Object, _user.Object);
+        _orchestrator
+            .Setup(o => o.LoadAsync(It.IsAny<IReadOnlyList<string>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<string> keys, CancellationToken _) =>
+            {
+                _loadedKeys.Add(keys);
+                return keys.Distinct().ToDictionary(
+                    k => k,
+                    k => _widgetData.TryGetValue(k, out var v) ? v : (new WidgetDataStateDto("client", null, null), (object?)null));
+            });
+        return new GetDashboardBootstrapQueryHandler(_repo.Object, _access.Object, _user.Object, _orchestrator.Object);
     }
 
     private UserDashboard Seed(string key, long version = 1, Guid? owner = null)
@@ -73,9 +86,32 @@ public sealed class GetDashboardBootstrapQueryHandlerTests
         Assert.All(dto.Widgets, w => Assert.True(w.Size.MaxW <= 6 && w.Size.MinW <= 6));
         Assert.All(dto.Widgets, w =>
         {
-            Assert.Equal("not_loaded", w.DataState.Status);
+            Assert.Equal("client", w.DataState.Status);
             Assert.Null(w.Data);
         });
+    }
+
+    [Fact]
+    public async Task Fills_widget_data_from_orchestrator_for_visible_widgets_only()
+    {
+        var d = Seed(DashboardKeys.MyWork);
+        Allow(DashboardKeys.MyWork, PlainEmployeeWork);
+        var payload = new object();
+        var fetchedAt = new DateTimeOffset(2026, 10, 20, 9, 0, 0, TimeSpan.Zero);
+        _widgetData["my-tasks"] = (new WidgetDataStateDto("success", fetchedAt, null), payload);
+        _widgetData["active-projects"] = (new WidgetDataStateDto("error", fetchedAt, "FORBIDDEN"), null);
+
+        var result = await Handler().Handle(new GetDashboardBootstrapQuery(d.Id, "desktop"), default);
+
+        var keys = Assert.Single(_loadedKeys);
+        Assert.DoesNotContain("action-center", keys);
+        Assert.Equal(result.Value!.Widgets.Select(w => w.WidgetKey).OrderBy(k => k), keys.OrderBy(k => k));
+        var tasks = Assert.Single(result.Value.Widgets, w => w.WidgetKey == "my-tasks");
+        Assert.Equal(new WidgetDataStateDto("success", fetchedAt, null), tasks.DataState);
+        Assert.Same(payload, tasks.Data);
+        var projects = Assert.Single(result.Value.Widgets, w => w.WidgetKey == "active-projects");
+        Assert.Equal(new WidgetDataStateDto("error", fetchedAt, "FORBIDDEN"), projects.DataState);
+        Assert.Null(projects.Data);
     }
 
     [Fact]
@@ -173,6 +209,7 @@ public sealed class GetDashboardBootstrapQueryHandlerTests
         var w = Assert.Single(result.Value!.Widgets, x => x.WidgetKey == "retired-widget");
         Assert.Equal("error", w.DataState.Status);
         Assert.Equal("UNSUPPORTED_WIDGET", w.DataState.Error);
+        Assert.DoesNotContain("retired-widget", Assert.Single(_loadedKeys));
     }
 
     [Fact]

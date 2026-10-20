@@ -2,6 +2,7 @@ using MediatR;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Dashboard.Layout.Access;
+using ONEVO.Application.Features.Dashboard.Layout.Data;
 using ONEVO.Application.Features.Dashboard.Layout.DTOs;
 using ONEVO.Application.Features.Dashboard.Layout.Grid;
 using ONEVO.Application.Features.Dashboard.Layout.Registry;
@@ -14,7 +15,8 @@ namespace ONEVO.Application.Features.Dashboard.Layout.Queries.GetDashboardBootst
 public sealed class GetDashboardBootstrapQueryHandler(
     IUserDashboardRepository dashboards,
     IDashboardWidgetAccess access,
-    ICurrentUser currentUser)
+    ICurrentUser currentUser,
+    IWidgetDataOrchestrator widgetData)
     : IRequestHandler<GetDashboardBootstrapQuery, Result<DashboardBootstrapDto>>
 {
     public const int RowHeight = 96;
@@ -73,8 +75,12 @@ public sealed class GetDashboardBootstrapQueryHandler(
                 version = dashboard.LayoutVersion;
         }
 
+        // Bounded, concurrent provider loads; a failing provider becomes that widget's error state.
+        var data = await widgetData.LoadAsync(
+            visible.Where(w => DashboardWidgetRegistry.Get(w.WidgetKey) is not null).Select(w => w.WidgetKey).ToList(), ct);
+
         var widgets = visible
-            .Select(w => ToDto(w, final[w.Id], columns))
+            .Select(w => ToDto(w, final[w.Id], columns, data))
             .OrderBy(w => w.Layout.Y).ThenBy(w => w.Layout.X)
             .ToList();
 
@@ -146,7 +152,9 @@ public sealed class GetDashboardBootstrapQueryHandler(
         return (Math.Min(w, columns), dh);
     }
 
-    private static BootstrapWidgetDto ToDto(DashboardWidget widget, GridRect rect, int columns)
+    private static BootstrapWidgetDto ToDto(
+        DashboardWidget widget, GridRect rect, int columns,
+        IReadOnlyDictionary<string, (WidgetDataStateDto State, object? Data)> data)
     {
         var def = DashboardWidgetRegistry.Get(widget.WidgetKey);
         if (def is null)
@@ -154,12 +162,15 @@ public sealed class GetDashboardBootstrapQueryHandler(
             return new BootstrapWidgetDto(
                 widget.Id, widget.WidgetKey, widget.WidgetKey, rect,
                 new WidgetSizeDto(1, 1, columns, DashboardGrid.MaxRows),
-                new WidgetDataStateDto("error", null, UnsupportedWidget), null);
+                new WidgetDataStateDto(WidgetDataStatus.Error, null, UnsupportedWidget), null);
         }
 
+        var loaded = data.TryGetValue(widget.WidgetKey, out var value)
+            ? value
+            : (State: new WidgetDataStateDto(WidgetDataStatus.NotLoaded, null, null), Data: (object?)null);
         return new BootstrapWidgetDto(
             widget.Id, widget.WidgetKey, def.Title, rect,
             new WidgetSizeDto(Math.Min(def.MinW, columns), def.MinH, Math.Min(def.MaxW, columns), def.MaxH),
-            new WidgetDataStateDto("not_loaded", null, null), null);
+            loaded.State, loaded.Data);
     }
 }

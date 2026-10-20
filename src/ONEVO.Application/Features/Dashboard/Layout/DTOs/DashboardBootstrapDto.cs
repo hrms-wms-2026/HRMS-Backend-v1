@@ -19,6 +19,9 @@ public sealed record BootstrapWidgetDto(
     WidgetDataStateDto DataState,
     object? Data);
 
+/// <summary>Refresh endpoint body; Payload is the mirrored endpoint's response body (same view model).</summary>
+public sealed record WidgetDataResponseDto(Guid InstanceId, string Status, DateTimeOffset FetchedAt, object? Payload);
+
 public sealed record DashboardBootstrapDto(
     Guid Id,
     string Key,

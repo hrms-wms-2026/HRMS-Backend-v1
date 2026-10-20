@@ -7,6 +7,8 @@ using ONEVO.Application.Common.Models;
 using ONEVO.Application.Features.Dashboard.Layout.Commands.AddDashboardWidget;
 using ONEVO.Application.Features.Dashboard.Layout.Commands.RemoveDashboardWidget;
 using ONEVO.Application.Features.Dashboard.Layout.Commands.SaveDashboardLayout;
+using ONEVO.Application.Features.Dashboard.Layout.DTOs;
+using ONEVO.Application.Features.Dashboard.Layout.Queries.GetWidgetData;
 using ONEVO.Application.Features.Dashboard.Layout.Services;
 using Xunit;
 
@@ -89,5 +91,39 @@ public sealed class DashboardLayoutControllerTests
         var obj = Assert.IsType<ObjectResult>(result);
         Assert.Equal(201, obj.StatusCode);
         Assert.Same(dto, obj.Value);
+    }
+
+    [Fact]
+    public async Task Widget_data_returns_200_with_payload()
+    {
+        var (controller, mediator) = Create();
+        var instanceId = Guid.NewGuid();
+        var dto = new WidgetDataResponseDto(instanceId, "success", DateTimeOffset.UtcNow, new { tasks = Array.Empty<object>() });
+        mediator.Setup(m => m.Send(It.Is<GetWidgetDataQuery>(q => q.InstanceId == instanceId), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<WidgetDataResponseDto>.Success(dto));
+
+        var result = await controller.WidgetData(instanceId, default);
+
+        Assert.Same(dto, Assert.IsType<OkObjectResult>(result).Value);
+    }
+
+    [Fact]
+    public async Task Widget_data_without_provider_exposes_code()
+    {
+        var (controller, mediator) = Create();
+        mediator.Setup(m => m.Send(It.IsAny<GetWidgetDataQuery>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<WidgetDataResponseDto>.NotFound("NO_PROVIDER"));
+
+        var problem = Problem(await controller.WidgetData(Guid.NewGuid(), default), 404);
+
+        Assert.Equal("NO_PROVIDER", problem.Extensions["code"]);
+    }
+
+    [Fact]
+    public void Widget_data_route_is_absolute()
+    {
+        var method = typeof(DashboardLayoutController).GetMethod(nameof(DashboardLayoutController.WidgetData))!;
+        var get = (HttpGetAttribute)Attribute.GetCustomAttribute(method, typeof(HttpGetAttribute))!;
+        Assert.Equal("/api/v1/dashboard-widgets/{instanceId:guid}/data", get.Template);
     }
 }

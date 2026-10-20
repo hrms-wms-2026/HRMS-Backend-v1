@@ -18,6 +18,10 @@ public class EfUserDashboardRepository : IUserDashboardRepository
     public Task<UserDashboard?> GetByIdAsync(Guid tenantId, Guid dashboardId, CancellationToken ct = default)
         => WithChildren().FirstOrDefaultAsync(d => d.TenantId == tenantId && d.Id == dashboardId, ct);
 
+    public Task<UserDashboard?> GetByWidgetIdAsync(Guid tenantId, Guid widgetId, CancellationToken ct = default)
+        => WithChildren().FirstOrDefaultAsync(
+            d => d.TenantId == tenantId && d.Widgets.Any(w => w.Id == widgetId), ct);
+
     public async Task<IReadOnlyList<UserDashboard>> ListForUserAsync(Guid tenantId, Guid userId, CancellationToken ct = default)
         => await _db.UserDashboards.AsNoTracking()
             .Where(d => d.TenantId == tenantId && d.UserId == userId)

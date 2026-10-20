@@ -10,13 +10,14 @@ using ONEVO.Application.Features.Dashboard.Layout.Commands.SaveDashboardLayout;
 using ONEVO.Application.Features.Dashboard.Layout.Queries.GetAvailableWidgets;
 using ONEVO.Application.Features.Dashboard.Layout.Queries.GetDashboardBootstrap;
 using ONEVO.Application.Features.Dashboard.Layout.Queries.GetMyDashboards;
+using ONEVO.Application.Features.Dashboard.Layout.Queries.GetWidgetData;
 using ONEVO.Application.Features.Dashboard.Layout.Registry;
 
 namespace ONEVO.Api.Controllers.Tenant.Dashboard;
 
 /// <summary>
 /// Customizable dashboard layouts (My Work / My Team). Ownership and widget visibility are enforced
-/// in the handlers; the data endpoint for widget instances is added separately.
+/// in the handlers. Widget data comes inline with bootstrap and from the per-widget refresh action.
 /// </summary>
 [ApiController]
 [Route("api/v1/dashboards")]
@@ -83,6 +84,14 @@ public sealed partial class DashboardLayoutController(IMediator mediator) : Cont
         return result.IsSuccess ? Ok(new { layoutVersion = result.Value }) : Error(result.Error, result.StatusCode);
     }
 
+    /// <summary>Refreshes one widget instance's data; absolute route outside the dashboards prefix.</summary>
+    [HttpGet("/api/v1/dashboard-widgets/{instanceId:guid}/data")]
+    public async Task<IActionResult> WidgetData(Guid instanceId, CancellationToken ct = default)
+    {
+        var result = await mediator.Send(new GetWidgetDataQuery(instanceId), ct);
+        return result.IsSuccess ? Ok(result.Value) : Error(result.Error, result.StatusCode);
+    }
+
     /// <summary>
     /// Standard problem+json (title/status/detail) plus machine-readable extensions the client reads:
     /// code (first error code), codes (all codes) and currentVersion on version conflicts.
@@ -114,6 +123,8 @@ public sealed partial class DashboardLayoutController(IMediator mediator) : Cont
         StatusCodes.Status404NotFound => "Not Found",
         StatusCodes.Status409Conflict => "Conflict",
         StatusCodes.Status422UnprocessableEntity => "Unprocessable Entity",
+        StatusCodes.Status500InternalServerError => "Widget data failed.",
+        StatusCodes.Status504GatewayTimeout => "Widget data timed out.",
         _ => "Dashboard request failed.",
     };
 
