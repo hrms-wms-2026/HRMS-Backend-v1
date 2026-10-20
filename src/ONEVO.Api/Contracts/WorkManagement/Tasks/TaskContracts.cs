@@ -6,7 +6,9 @@ namespace ONEVO.Api.Contracts.WorkManagement.Tasks;
 public sealed record CreateTaskRequest(
     string Title, string? Description, Guid CategoryId, string Priority,
     DateOnly? DueDate, decimal? EstimatedHours, int? StoryPoints, Guid? SprintId,
-    IReadOnlyList<Guid>? AttachmentFileIds = null);
+    IReadOnlyList<Guid>? AttachmentFileIds = null,
+    /// <summary>The meeting occurrence this task is raised from (an action item, spec 5.4). Null = an ordinary task.</summary>
+    Guid? SourceMeetingOccurrenceId = null);
 
 public sealed record EditTaskRequest(
     string Title, string? Description, string Priority,

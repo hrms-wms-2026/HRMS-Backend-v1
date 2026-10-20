@@ -115,6 +115,14 @@ public sealed class MeetingsController : ControllerBase
     public async Task<IActionResult> RecheckAttendance(Guid seriesId, DateTimeOffset originalStart, CancellationToken ct)
         => Respond(await _mediator.Send(new RecheckMeetingAttendanceCommand(seriesId, originalStart), ct), Ok);
 
+    [HttpGet("occurrences/{taskId:guid}/action-items")]
+    public async Task<IActionResult> GetActionItems(Guid taskId, CancellationToken ct)
+        => Respond(await _mediator.Send(new GetMeetingActionItemsQuery(taskId), ct), Ok);
+
+    [HttpDelete("occurrences/{taskId:guid}/action-items/{actionTaskId:guid}")]
+    public async Task<IActionResult> UnlinkActionItem(Guid taskId, Guid actionTaskId, CancellationToken ct)
+        => Respond(await _mediator.Send(new UnlinkMeetingActionItemCommand(taskId, actionTaskId), ct), _ => NoContent());
+
     private IActionResult Respond<T>(Result<T> result, Func<T, IActionResult> onSuccess)
     {
         if (result.IsSuccess)

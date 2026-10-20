@@ -16,6 +16,15 @@ public class EfWorkTaskRepository : IWorkTaskRepository
     public async Task<WorkTask?> GetByIdForTenantAsync(Guid tenantId, Guid id, CancellationToken ct = default)
         => await _db.WorkTasks.AsNoTracking().FirstOrDefaultAsync(t => t.TenantId == tenantId && t.Id == id, ct);
 
+    public async Task<IReadOnlyList<WorkTask>> GetByIdsForTenantAsync(Guid tenantId, IReadOnlyCollection<Guid> ids, CancellationToken ct = default)
+    {
+        if (ids.Count == 0)
+            return Array.Empty<WorkTask>();
+        return await _db.WorkTasks.AsNoTracking()
+            .Where(t => t.TenantId == tenantId && ids.Contains(t.Id))
+            .ToListAsync(ct);
+    }
+
     public async Task<WorkTask?> GetTrackedByIdForTenantAsync(Guid tenantId, Guid id, CancellationToken ct = default)
         => await _db.WorkTasks.FirstOrDefaultAsync(t => t.TenantId == tenantId && t.Id == id, ct);
 

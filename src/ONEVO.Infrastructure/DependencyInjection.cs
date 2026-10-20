@@ -455,6 +455,10 @@ public static class DependencyInjection
             ONEVO.Application.Features.WorkManagement.Meetings.Services.MeetingNotifier>();
         services.AddScoped<ONEVO.Application.Features.WorkManagement.Meetings.RepositoryInterfaces.IMeetingLinkRepository,
             ONEVO.Infrastructure.Persistence.Repositories.WorkManagement.Meetings.EfMeetingLinkRepository>();
+        // Action items (Plan D, spec 5.4): the link between a meeting occurrence and the ordinary task raised from it.
+        services.AddScoped<ONEVO.Application.Features.WorkManagement.Meetings.RepositoryInterfaces.IMeetingActionItemRepository,
+            ONEVO.Infrastructure.Persistence.Repositories.WorkManagement.Meetings.EfMeetingActionItemRepository>();
+        services.AddScoped<ONEVO.Application.Features.WorkManagement.Meetings.Services.MeetingActionItemService>();
         services.AddScoped<ONEVO.Infrastructure.Persistence.Repositories.Calendar.EfCalendarEventRepository>();
         services.AddScoped<ONEVO.Application.Features.Calendar.RepositoryInterfaces.ICalendarEventRepository>(
             sp => sp.GetRequiredService<ONEVO.Infrastructure.Persistence.Repositories.Calendar.EfCalendarEventRepository>());

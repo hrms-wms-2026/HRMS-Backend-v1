@@ -1,11 +1,14 @@
 using System.Text.Json;
 using MediatR;
+using Microsoft.Extensions.Options;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Approvals.Services;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Hierarchy;
+using ONEVO.Application.Features.WorkManagement.Meetings;
+using ONEVO.Application.Features.WorkManagement.Meetings.Services;
 using ONEVO.Application.Features.WorkManagement.Notifications.Services;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Objectives.Services;
@@ -33,12 +36,16 @@ public class CreateTaskCommandHandler : IRequestHandler<CreateTaskCommand, Resul
     private readonly IWorkHierarchyService _hierarchy;
     private readonly IWorkApprovalEngine _approvals;
     private readonly IWorkNotificationEngine _notifications;
+    private readonly IOptions<MeetingsOptions> _meetingsOptions;
+    private readonly MeetingActionItemService _actionItems;
 
     public CreateTaskCommandHandler(
         ICurrentUser currentUser, ICallerIdentityResolver identity, IObjectiveRepository objectives,
         IUnitOfWork unitOfWork, IMilestoneMembershipCoordinator membership, ITaskAssetLinker assetLinker,
         ITaskWriteService writes, IWorkHierarchyService hierarchy, IWorkApprovalEngine approvals,
-        IWorkNotificationEngine notifications)
+        IWorkNotificationEngine notifications,
+        IOptions<MeetingsOptions> meetingsOptions,
+        MeetingActionItemService actionItems)
     {
         _currentUser = currentUser;
         _identity = identity;
@@ -50,6 +57,8 @@ public class CreateTaskCommandHandler : IRequestHandler<CreateTaskCommand, Resul
         _hierarchy = hierarchy;
         _approvals = approvals;
         _notifications = notifications;
+        _meetingsOptions = meetingsOptions;
+        _actionItems = actionItems;
     }
 
     public async Task<Result<TaskWriteOutcome>> Handle(CreateTaskCommand request, CancellationToken ct)
@@ -72,7 +81,20 @@ public class CreateTaskCommandHandler : IRequestHandler<CreateTaskCommand, Resul
             return Result<TaskWriteOutcome>.Forbidden("Only members of this module can change its tasks.");
 
         var input = new TaskCreateInput(objective.Id, request.Title.Trim(), request.Description?.Trim(), request.CategoryId,
-            request.Priority, request.DueDate, request.EstimatedHours, request.StoryPoints, request.SprintId);
+            request.Priority, request.DueDate, request.EstimatedHours, request.StoryPoints, request.SprintId,
+            request.SourceMeetingOccurrenceId);
+
+        // An action item is a meeting write too: the Plan B flags gate it (R4), and the source must be an
+        // occurrence the caller can see - an invisible or gone source is a 404 and nothing is created.
+        if (request.SourceMeetingOccurrenceId is Guid sourceOccurrenceId)
+        {
+            if (MeetingGuard.CheckWritable<bool>(_meetingsOptions.Value) is { } blocked)
+                return Result<TaskWriteOutcome>.Failure(blocked.Error!, blocked.StatusCode ?? 409, blocked.ErrorCode);
+
+            var source = await _actionItems.ValidateSourceAsync(tenantId, callerEmployeeId.Value, sourceOccurrenceId, ct);
+            if (!source.IsSuccess)
+                return Result<TaskWriteOutcome>.Failure(source.Error!, source.StatusCode ?? 404, source.ErrorCode);
+        }
 
         var validation = await _writes.ValidateCreateAsync(tenantId, input, ct);
         if (!validation.IsSuccess)
@@ -105,6 +127,10 @@ public class CreateTaskCommandHandler : IRequestHandler<CreateTaskCommand, Resul
             if (!created.IsSuccess)
                 return Result<TaskWriteOutcome>.Failure(created.Error!, created.StatusCode ?? 400);
             var task = created.Value!;
+
+            // The action-item link is written with the task, in the same transaction (spec 5.4).
+            if (request.SourceMeetingOccurrenceId is Guid sourceOccurrenceId)
+                await _actionItems.LinkAsync(tenantId, sourceOccurrenceId, task.Id, callerEmployeeId.Value, innerCt);
 
             await _notifications.NotifyAsync(new WorkNotificationEvent(
                 tenantId, objective.ProjectId, callerEmployeeId.Value, WorkNotificationKinds.Direct,

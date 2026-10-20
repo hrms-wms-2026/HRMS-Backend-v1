@@ -1,5 +1,6 @@
 using System.Text.Json;
 using ONEVO.Application.Features.WorkManagement.Approvals.Services;
+using ONEVO.Application.Features.WorkManagement.Meetings.Services;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Objectives.Services;
 using ONEVO.Application.Features.WorkManagement.Tasks.DTOs;
@@ -20,12 +21,15 @@ public sealed class TaskCreateApplier : IApprovalActionApplier
     private readonly ITaskWriteService _writes;
     private readonly IObjectiveRepository _objectives;
     private readonly IMilestoneMembershipCoordinator _membership;
+    private readonly MeetingActionItemService _actionItems;
 
-    public TaskCreateApplier(ITaskWriteService writes, IObjectiveRepository objectives, IMilestoneMembershipCoordinator membership)
+    public TaskCreateApplier(ITaskWriteService writes, IObjectiveRepository objectives, IMilestoneMembershipCoordinator membership,
+        MeetingActionItemService? actionItems = null)
     {
         _writes = writes;
         _objectives = objectives;
         _membership = membership;
+        _actionItems = actionItems;
     }
 
     public string ActionType => WorkActionTypes.TaskCreate;
@@ -49,6 +53,13 @@ public sealed class TaskCreateApplier : IApprovalActionApplier
             input, input.ObjectiveId, ct);
         if (!created.IsSuccess)
             return ApplyOutcome.Invalid(created.Error ?? "The task could not be created.");
+
+        // The action-item link is written when the request is applied, never when it is filed (spec 5.4).
+        // A no-op link (the occurrence was cancelled or removed meanwhile) is not a failure: the task is
+        // still created, and the apply still succeeds (Review Focus 2).
+        if (input.SourceMeetingOccurrenceId is Guid sourceOccurrenceId && _actionItems is not null)
+            await _actionItems.LinkAsync(request.TenantId, sourceOccurrenceId, created.Value!.Id,
+                request.RequestedByEmployeeId, ct);
 
         request.TargetId = created.Value!.Id;   // links the approved request to the task it produced
         return ApplyOutcome.Applied();
