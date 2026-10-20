@@ -12904,6 +12904,73 @@ namespace ONEVO.Infrastructure.Migrations
                     b.ToTable("wm_notification_log", (string)null);
                 });
 
+            modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Objectives.Entities.ModuleHourSummary", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<decimal>("CompletedHours")
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("completed_hours");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("CreatedById")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by_id");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("deleted_at");
+
+                    b.Property<DateOnly?>("EarliestOpenDueDate")
+                        .HasColumnType("date")
+                        .HasColumnName("earliest_open_due_date");
+
+                    b.Property<decimal>("InProgressHours")
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("in_progress_hours");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_deleted");
+
+                    b.Property<decimal>("NotStartedHours")
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("not_started_hours");
+
+                    b.Property<Guid>("ProjectId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("project_id");
+
+                    b.Property<int>("TaskCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("task_count");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<int>("UnestimatedTaskCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("unestimated_task_count");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_wm_module_hour_summaries");
+
+                    b.HasIndex("TenantId", "ProjectId")
+                        .HasDatabaseName("ix_wm_module_hour_summaries_tenant_id_project_id");
+
+                    b.ToTable("wm_module_hour_summaries", (string)null);
+                });
+
             modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Objectives.Entities.Objective", b =>
                 {
                     b.Property<Guid>("Id")
