@@ -815,4 +815,21 @@ public class AttendanceInboxTests
         detail.ChangeSet.Single(c => c.Field == "outcome").Options!.Single(o => o.Value == "excused").Label
             .Should().Be("Excused - stop counting it and refund the deduction");
     }
+
+    [Fact]
+    public async Task Alerts_AreDatedByTheirWorkDay_NotTheDetectionRun_TheStepKeepsDetection()
+    {
+        var f = new Fixture();
+        var alert = f.Alert(f.Worker.Id, ONEVO.Domain.Features.TimeAttendance.Alerts.AttendanceAlertSignals.LateClockIns); // work day 9 Oct, detected 10 Oct
+        f.OpenAlerts.Add(alert);
+        f.Scope.Add(f.Worker.Id);
+        var workDay = new DateTimeOffset(2026, 10, 9, 12, 0, 0, TimeSpan.Zero);
+
+        var item = (await f.Provider().ListAsync(f.TenantId, new InboxQuery(Category: [InboxCategories.Alert]), f.Approver.Id, default)).Single();
+        var detail = await f.Provider().GetDetailAsync(f.TenantId, AttendanceInboxKinds.Alert, alert.Id, f.Approver.Id, default);
+
+        (item.CreatedAt, item.UpdatedAt).Should().Be((workDay, workDay));
+        detail!.Item.CreatedAt.Should().Be(workDay);
+        detail.Steps.Single(s => s.Key == "detected").At.Should().Be(alert.DetectedAt);
+    }
 }

@@ -141,7 +141,7 @@ public sealed class AttendanceAlertInbox
                 canOpen = allowed;
             }
             var item = Item(alert, people, InboxDirections.Info, pending: alert.Status == AttendanceAlertStatuses.Open, []);
-            rows.Add(new InboxPersonCase(item with { CreatedAt = WorkDayAnchor(alert.WorkDate) }, canOpen));
+            rows.Add(new InboxPersonCase(item, canOpen));
         }
         return rows;
     }
@@ -371,7 +371,8 @@ public sealed class AttendanceAlertInbox
             AttendanceInboxKinds.Source, AttendanceInboxKinds.Alert, alert.Id, InboxCategories.Alert, alert.SignalKey,
             $"{SignalLabel(alert.SignalKey)} - {name}", alert.WorkDate.ToString("dd MMM yyyy"), alert.Outcome ?? alert.Status, direction,
             alert.Severity, "legal_entity", alert.LegalEntityId ?? employee?.LegalEntityId, null, new InboxPerson(alert.EmployeeId, name), null,
-            alert.DetectedAt, alert.ResolvedAt ?? alert.UpdatedAt ?? alert.DetectedAt, actions, 0, pending, facets);
+            // Dated by the work day it is about, not the (often batched) detection run; the Detected step keeps that.
+            WorkDayAnchor(alert.WorkDate), alert.ResolvedAt ?? WorkDayAnchor(alert.WorkDate), actions, 0, pending, facets);
     }
 
     private static IReadOnlyList<InboxStep> Steps(AttendanceAlert alert, IReadOnlyDictionary<Guid, Employee> people)
