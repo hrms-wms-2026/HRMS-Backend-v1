@@ -1,3 +1,5 @@
+using ONEVO.Application.Features.Dashboard.Layout.Grid;
+
 namespace ONEVO.Application.Features.Dashboard.Layout.Registry;
 
 /// <summary>Code-defined widget catalog. Sizes are desktop (12 columns).</summary>
@@ -28,4 +30,84 @@ public static class DashboardWidgetRegistry
 
     public static IReadOnlyList<WidgetDefinition> ForDashboard(string dashboardKey) =>
         Definitions.Where(d => d.DashboardKey == dashboardKey).ToList();
+
+    // Desktop default placements. Widgets absent here are in the catalog but not placed by default.
+    private static readonly (string Key, GridRect Rect)[] MyWorkDefaults =
+    [
+        ("today-at-a-glance", new GridRect(0, 0, 3, 4)),
+        ("action-center", new GridRect(3, 0, 6, 4)),
+        ("quick-actions", new GridRect(9, 0, 3, 4)),
+        ("todays-schedule", new GridRect(0, 4, 6, 4)),
+        ("today-total-time", new GridRect(6, 4, 3, 4)),
+        ("active-projects", new GridRect(9, 4, 3, 4)),
+        ("my-tasks", new GridRect(0, 8, 6, 4)),
+        ("work-pattern", new GridRect(0, 12, 12, 4)),
+    ];
+
+    private static readonly (string Key, GridRect Rect)[] MyTeamDefaults =
+    [
+        ("team-status", new GridRect(0, 0, 8, 6)),
+        ("team-quick-actions", new GridRect(8, 0, 4, 4)),
+        ("team-progress", new GridRect(8, 4, 4, 6)),
+    ];
+
+    private static IReadOnlyList<(string Key, GridRect Rect)> DesktopDefaults(string dashboardKey) => dashboardKey switch
+    {
+        DashboardKeys.MyWork => MyWorkDefaults,
+        DashboardKeys.MyTeam => MyTeamDefaults,
+        _ => [],
+    };
+
+    public static IReadOnlyList<(string Key, GridRect Rect)> DefaultLayout(string dashboardKey, string breakpoint) =>
+        Derive(DesktopDefaults(dashboardKey), breakpoint);
+
+    /// <summary>Default W x H for a newly added widget: its default-layout desktop rect, else its minimum size.</summary>
+    public static (int W, int H) DefaultSize(string key)
+    {
+        var def = Get(key) ?? throw new ArgumentException($"Unknown widget '{key}'.", nameof(key));
+        foreach (var (k, rect) in DesktopDefaults(def.DashboardKey))
+        {
+            if (k == key)
+            {
+                return (rect.W, rect.H);
+            }
+        }
+
+        return (def.MinW, def.MinH);
+    }
+
+    /// <summary>Derives a tablet/mobile layout from a desktop layout. Desktop is returned unchanged.</summary>
+    public static IReadOnlyList<(string Key, GridRect Rect)> Derive(
+        IReadOnlyList<(string Key, GridRect Rect)> desktop, string breakpoint)
+    {
+        if (breakpoint == Breakpoints.Desktop)
+        {
+            return desktop;
+        }
+
+        var columns = Breakpoints.Columns(breakpoint);
+        var ordered = desktop.OrderBy(i => i.Rect.Y).ThenBy(i => i.Rect.X).ToList();
+        var result = new List<(string Key, GridRect Rect)>();
+
+        if (breakpoint == Breakpoints.Mobile)
+        {
+            var y = 0;
+            foreach (var (key, rect) in ordered)
+            {
+                result.Add((key, new GridRect(0, y, columns, rect.H)));
+                y += rect.H;
+            }
+
+            return result;
+        }
+
+        foreach (var (key, rect) in ordered)
+        {
+            var minW = Get(key) is { } def ? Math.Min(def.MinW, columns) : 1;
+            var w = Math.Max(rect.W >= 6 ? 6 : 3, minW);
+            result.Add((key, DashboardGrid.AutoPlace(result.Select(r => r.Rect), w, rect.H, columns)));
+        }
+
+        return result;
+    }
 }
