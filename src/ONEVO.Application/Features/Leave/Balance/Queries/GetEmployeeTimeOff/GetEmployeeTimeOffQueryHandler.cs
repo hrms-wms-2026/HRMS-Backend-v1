@@ -6,7 +6,7 @@ using ONEVO.Application.Features.CoreHr.Employee.ServiceInterfaces;
 using ONEVO.Application.Features.Leave.Balance.DTOs.Responses;
 using ONEVO.Application.Features.Leave.Balance.Helpers;
 using ONEVO.Application.Features.Leave.Entitlement.RepositoryInterfaces;
-using ONEVO.Application.Features.Leave.Policy.RepositoryInterfaces;
+using ONEVO.Application.Features.Leave.Policy.Services;
 using ONEVO.Application.Features.Leave.Request.RepositoryInterfaces;
 
 namespace ONEVO.Application.Features.Leave.Balance.Queries.GetEmployeeTimeOff;
@@ -14,7 +14,7 @@ namespace ONEVO.Application.Features.Leave.Balance.Queries.GetEmployeeTimeOff;
 public sealed class GetEmployeeTimeOffQueryHandler(
     IEmployeeReadAccessGuard guard,
     ILeaveEntitlementRepository entitlements,
-    ILeavePolicyRepository policies,
+    ILeavePolicyResolver policies,
     ILeaveRequestReadRepository leaveRequests,
     ICurrentUser currentUser,
     IDateTimeProvider clock)

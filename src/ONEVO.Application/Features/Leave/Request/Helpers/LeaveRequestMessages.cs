@@ -25,6 +25,12 @@ public static class LeaveRequestMessages
             ? $"A supporting document is required for {leaveTypeName} requests of more than {hours:0.##} hours"
             : $"A supporting document is required for {leaveTypeName} requests";
 
+    public static string BelowMinimumHours(decimal hours) =>
+        $"Leave request must be at least {hours:0.##} hours.";
+
+    public static string AboveMaximumHours(decimal hours) =>
+        $"Leave request can be at most {hours:0.##} hours.";
+
     public static string NoticeMissed(int noticeDays) =>
         $"This request does not meet the minimum notice period of {noticeDays} days. Your manager will be informed.";
 

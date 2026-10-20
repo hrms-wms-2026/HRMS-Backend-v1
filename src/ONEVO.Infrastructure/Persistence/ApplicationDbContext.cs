@@ -265,9 +265,9 @@ public class ApplicationDbContext : DbContext
     // Leave Management
     public DbSet<LeaveType> LeaveTypes => Set<LeaveType>();
     public DbSet<LeavePolicy> LeavePolicies => Set<LeavePolicy>();
-    public DbSet<LeavePolicyLeaveType> LeavePolicyLeaveTypes => Set<LeavePolicyLeaveType>();
+    public DbSet<LeavePolicyVersion> LeavePolicyVersions => Set<LeavePolicyVersion>();
     public DbSet<LeavePolicyBlackoutPeriod> LeavePolicyBlackoutPeriods => Set<LeavePolicyBlackoutPeriod>();
-    public DbSet<LeavePolicyLegalEntity> LeavePolicyLegalEntities => Set<LeavePolicyLegalEntity>();
+    public DbSet<LeavePolicyAssignment> LeavePolicyAssignments => Set<LeavePolicyAssignment>();
     public DbSet<LeaveEntitlement> LeaveEntitlements => Set<LeaveEntitlement>();
     public DbSet<LeaveRequest> LeaveRequests => Set<LeaveRequest>();
     public DbSet<LeaveRequestApprover> LeaveRequestApprovers => Set<LeaveRequestApprover>();

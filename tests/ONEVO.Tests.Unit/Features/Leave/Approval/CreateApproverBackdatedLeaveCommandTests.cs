@@ -66,7 +66,7 @@ public sealed class CreateApproverBackdatedLeaveCommandTests
         {
             var policies = new Mock<ILeavePolicyRepository>();
             policies.Setup(x => x.ListActiveLegalEntitiesByIdsAsync(Harness.TenantId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
-                .ReturnsAsync([PreviewGenerateEntitlementsQueryHandlerTests.CreateLegalEntity(Harness.TenantId, Harness.LegalEntityId)]);
+                .ReturnsAsync([LeaveTestData.CreateLegalEntity(Harness.TenantId, Harness.LegalEntityId)]);
             return new(CurrentUser.Object, Harness.Clock.Object, Harness.Employees.Object, policies.Object, Harness.Sut,
                 Harness.Requests.Object, new LeaveRequestDayAllocationBuilder(), Approvals.Object, Outbox.Object, Notifications.Object, UnitOfWork);
         }

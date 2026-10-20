@@ -4,7 +4,7 @@ using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Leave.Balance.DTOs.Responses;
 using ONEVO.Application.Features.Leave.Balance.Helpers;
 using ONEVO.Application.Features.Leave.Entitlement.RepositoryInterfaces;
-using ONEVO.Application.Features.Leave.Policy.RepositoryInterfaces;
+using ONEVO.Application.Features.Leave.Policy.Services;
 
 namespace ONEVO.Application.Features.Leave.Balance.Queries.ListAllBalances;
 
@@ -14,13 +14,13 @@ public class ListAllBalancesQueryHandler
     private readonly ICurrentUser _currentUser;
     private readonly IDateTimeProvider _dateTimeProvider;
     private readonly ILeaveEntitlementRepository _entitlements;
-    private readonly ILeavePolicyRepository _policies;
+    private readonly ILeavePolicyResolver _policies;
 
     public ListAllBalancesQueryHandler(
         ICurrentUser currentUser,
         IDateTimeProvider dateTimeProvider,
         ILeaveEntitlementRepository entitlements,
-        ILeavePolicyRepository policies)
+        ILeavePolicyResolver policies)
     {
         _currentUser = currentUser;
         _dateTimeProvider = dateTimeProvider;

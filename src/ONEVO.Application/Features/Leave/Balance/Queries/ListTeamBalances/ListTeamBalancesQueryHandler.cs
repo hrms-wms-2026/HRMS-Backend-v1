@@ -7,7 +7,7 @@ using ONEVO.Application.Features.Leave.Balance.DTOs.Responses;
 using ONEVO.Application.Features.Leave.Balance.Helpers;
 using ONEVO.Application.Features.Leave.Entitlement.Helpers;
 using ONEVO.Application.Features.Leave.Entitlement.RepositoryInterfaces;
-using ONEVO.Application.Features.Leave.Policy.RepositoryInterfaces;
+using ONEVO.Application.Features.Leave.Policy.Services;
 
 namespace ONEVO.Application.Features.Leave.Balance.Queries.ListTeamBalances;
 
@@ -19,7 +19,7 @@ public class ListTeamBalancesQueryHandler
     private readonly IEmployeeRepository _employees;
     private readonly IEmployeeHierarchyClosureRepository _hierarchy;
     private readonly ILeaveEntitlementRepository _entitlements;
-    private readonly ILeavePolicyRepository _policies;
+    private readonly ILeavePolicyResolver _policies;
 
     public ListTeamBalancesQueryHandler(
         ICurrentUser currentUser,
@@ -27,7 +27,7 @@ public class ListTeamBalancesQueryHandler
         IEmployeeRepository employees,
         IEmployeeHierarchyClosureRepository hierarchy,
         ILeaveEntitlementRepository entitlements,
-        ILeavePolicyRepository policies)
+        ILeavePolicyResolver policies)
     {
         _currentUser = currentUser;
         _dateTimeProvider = dateTimeProvider;

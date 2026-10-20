@@ -7,6 +7,7 @@ using ONEVO.Application.Features.Leave.Calendar.Services;
 using ONEVO.Application.Features.Leave.Entitlement.Helpers;
 using ONEVO.Application.Features.Leave.Entitlement.RepositoryInterfaces;
 using ONEVO.Application.Features.Leave.Policy.RepositoryInterfaces;
+using ONEVO.Application.Features.Leave.Policy.Services;
 using ONEVO.Application.Features.Leave.Request.Helpers;
 using ONEVO.Application.Features.Leave.Request.Options;
 using ONEVO.Application.Features.Leave.Request.RepositoryInterfaces;
@@ -126,6 +127,39 @@ public class LeaveRequestSubmissionEvaluatorTests
     }
 
     [Fact]
+    public async Task No_policy_rejects()
+    {
+        var harness = Harness.Create();
+        harness.PolicyResolved = false;
+        var result = await harness.EvaluateDefaultAsync();
+
+        result.IsSuccess.Should().BeFalse();
+        result.Error.Should().Be(LeaveRequestMessages.NoEntitlement);
+    }
+
+    [Fact]
+    public async Task Min_request_hours_enforced()
+    {
+        var harness = Harness.Create();
+        harness.Policy.MinRequestHours = 100m;
+        var result = await harness.EvaluateDefaultAsync();
+
+        result.IsSuccess.Should().BeFalse();
+        result.Error.Should().Be(LeaveRequestMessages.BelowMinimumHours(100m));
+    }
+
+    [Fact]
+    public async Task Max_request_hours_enforced()
+    {
+        var harness = Harness.Create();
+        harness.Policy.MaxRequestHours = 1m;
+        var result = await harness.EvaluateDefaultAsync();
+
+        result.IsSuccess.Should().BeFalse();
+        result.Error.Should().Be(LeaveRequestMessages.AboveMaximumHours(1m));
+    }
+
+    [Fact]
     public async Task Evaluate_WhenDocumentRequiredAndMissing_Fails()
     {
         var harness = Harness.Create();
@@ -207,7 +241,9 @@ public class LeaveRequestSubmissionEvaluatorTests
         public Guid LegalEntityId { get; } = Guid.NewGuid();
         public Employee Employee { get; }
         public LeaveType LeaveType { get; }
-        public LeavePolicy Policy { get; private set; } = null!;
+        public LeavePolicyVersion Policy { get; private set; } = null!;
+        public Mock<ILeavePolicyResolver> Resolver { get; } = new();
+        public bool PolicyResolved { get; set; } = true;
         public Mock<IDateTimeProvider> Clock { get; } = new();
         public Mock<ILeaveRequestRepository> Requests { get; } = new();
         public Mock<ILeaveApproverResolver> Approvers { get; } = new();
@@ -255,24 +291,8 @@ public class LeaveRequestSubmissionEvaluatorTests
             };
             Entitlement = entitlement;
 
-            var template = PreviewGenerateEntitlementsQueryHandlerTests.CreatePolicyAggregate(
-                TenantId, LegalEntityId, 20m, 5m);
-            Policy = template.Policy;
-            var policy = new LeavePolicyAggregate(
-                template.Policy,
-                [new LeavePolicyLeaveTypeWithType(
-                    new LeavePolicyLeaveType
-                    {
-                        Id = Guid.NewGuid(),
-                        TenantId = TenantId,
-                        LeavePolicyId = template.Policy.Id,
-                        LeaveTypeId = LeaveTypeId,
-                        AnnualEntitlementDays = 20m
-                    },
-                    "Annual Leave",
-                    "AL")],
-                template.BlackoutPeriods,
-                template.LegalEntities);
+            var resolved = LeaveTestData.CreateResolvedPolicy(TenantId, LeaveTypeId, LegalEntityId);
+            Policy = resolved.Version;
 
             Clock.SetupGet(x => x.Today).Returns(new DateOnly(2026, 8, 17));
             Clock.SetupGet(x => x.UtcNow).Returns(new DateTimeOffset(2026, 8, 17, 9, 0, 0, TimeSpan.Zero));
@@ -288,11 +308,11 @@ public class LeaveRequestSubmissionEvaluatorTests
             entitlements.Setup(x => x.GetTrackedByEmployeeTypeYearAsync(TenantId, Employee.Id, LeaveTypeId, 2026, It.IsAny<CancellationToken>()))
                 .ReturnsAsync(entitlement);
 
-            var legalEntity = PreviewGenerateEntitlementsQueryHandlerTests.CreateLegalEntity(
+            var legalEntity = LeaveTestData.CreateLegalEntity(
                 TenantId, LegalEntityId, workWindowSet);
             var policies = new Mock<ILeavePolicyRepository>();
-            policies.Setup(x => x.ListActiveAggregatesByLegalEntityIdsAsync(TenantId, It.IsAny<IReadOnlyCollection<Guid>>(), 2026, It.IsAny<CancellationToken>()))
-                .ReturnsAsync(new Dictionary<Guid, LeavePolicyAggregate> { [LegalEntityId] = policy });
+            Resolver.Setup(x => x.ResolveAsync(TenantId, Employee.Id, LeaveTypeId, It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(() => PolicyResolved ? resolved : null);
             policies.Setup(x => x.ListActiveLegalEntitiesByIdsAsync(TenantId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync([legalEntity]);
 
@@ -326,6 +346,7 @@ public class LeaveRequestSubmissionEvaluatorTests
                 leaveTypes.Object,
                 entitlements.Object,
                 policies.Object,
+                Resolver.Object,
                 Requests.Object,
                 new LeaveRequestHourCalculator(),
                 holidays.Object,
