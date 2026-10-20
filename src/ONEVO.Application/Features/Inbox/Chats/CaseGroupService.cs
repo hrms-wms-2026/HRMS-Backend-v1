@@ -125,6 +125,17 @@ public sealed class CaseGroupService : ICaseGroupService
 /// <summary>The case card message of an item in a chat, and its "resolved" line.</summary>
 public static class CaseCards
 {
+    /// <summary>Statuses that end a case, across the modules. "Not pending" is not enough: IsPending is per viewer (a
+    /// step-1 approver sees a two-step request as not pending on them while step 2 is still open).</summary>
+    private static readonly HashSet<string> ClosedStatuses = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "approved", "rejected", "cancelled", "canceled", "resolved", "declined", "expired", "accepted", "charged", "stale", "skipped",
+        "withdrawn", "closed", "revoked", "completed", "dismissed", "outdated",
+    };
+
+    /// <summary>The case itself is over (decided, closed, cancelled), whoever looks at it.</summary>
+    public static bool IsClosed(string status) => ClosedStatuses.Contains(status);
+
     public static string Key(ItemRef item) => $"{item.Source}:{item.Kind}:{item.Id:N}";
 
     public static Guid CardId(Guid conversationOrPairId, ItemRef item)

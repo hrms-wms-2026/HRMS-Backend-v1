@@ -94,6 +94,9 @@ public interface IConversationRepository
     Task<IReadOnlyDictionary<Guid, ConversationMessage>> LatestSystemEventsAsync(
         Guid tenantId, IReadOnlyCollection<Guid> conversationIds, IReadOnlyCollection<string> eventTypes, CancellationToken ct = default);
 
+    /// <summary>Removes a system-written message (a case's "resolved" line after an undo) when it exists.</summary>
+    Task DeleteMessageIfExistsAsync(Guid tenantId, Guid messageId, CancellationToken ct = default);
+
     /// <summary>Moves LastMessageAt forward to <paramref name="at"/> (never back) and saves.</summary>
     Task TouchAsync(Guid tenantId, Guid conversationId, DateTimeOffset at, CancellationToken ct = default);
 }

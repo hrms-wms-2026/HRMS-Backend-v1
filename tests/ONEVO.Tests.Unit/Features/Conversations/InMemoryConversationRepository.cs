@@ -190,6 +190,12 @@ internal sealed class InMemoryConversationRepository : IConversationRepository
             .GroupBy(m => m.ConversationId)
             .ToDictionary(g => g.Key, g => g.OrderByDescending(m => m.CreatedAt).First()));
 
+    public Task DeleteMessageIfExistsAsync(Guid tenantId, Guid messageId, CancellationToken ct = default)
+    {
+        Messages.RemoveAll(m => m.Id == messageId && m.AuthorEmployeeId == null);
+        return Task.CompletedTask;
+    }
+
     public Task TouchAsync(Guid tenantId, Guid conversationId, DateTimeOffset at, CancellationToken ct = default)
     {
         var c = Conversations.FirstOrDefault(x => x.Id == conversationId);

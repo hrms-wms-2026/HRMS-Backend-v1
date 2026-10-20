@@ -92,6 +92,63 @@ public class InboxChatProjectorTests
     }
 
     [Fact]
+    public async Task A_step_one_approver_seeing_an_open_two_step_request_adds_no_resolved_line()
+    {
+        var id = Guid.NewGuid();
+        await Project(Manager, Leave(id, InboxDirections.Received, Manager, pending: true));
+
+        // Step 1 approved: not pending on the manager any more, but the request itself is still pending (step 2).
+        await Project(Manager, Leave(id, InboxDirections.Received, Hr, pending: false, status: "pending"));
+
+        _repo.Messages.Should().NotContain(m => m.SystemEventJson != null && m.SystemEventJson.StartsWith("{\"type\":\"case_resolved\""));
+    }
+
+    [Fact]
+    public async Task An_undone_decision_takes_the_resolved_line_away_again()
+    {
+        var id = Guid.NewGuid();
+        await Project(Manager, Leave(id, InboxDirections.Received, Manager, pending: false, status: "approved"));
+        _repo.Messages.Should().Contain(m => m.BodyHtml == "Request approved");
+
+        await Project(Manager, Leave(id, InboxDirections.Received, Manager, pending: true));
+
+        _repo.Messages.Should().NotContain(m => m.BodyHtml == "Request approved");
+        Cards.Should().ContainSingle();
+    }
+
+    [Fact]
+    public async Task An_escalation_moves_the_case_to_its_group_with_an_escalation_line()
+    {
+        var id = Guid.NewGuid();
+        var item = new ItemRef("leave", "request", id);
+        await Project(Manager, Leave(id, InboxDirections.Received, Manager, pending: true));
+        var dm = _repo.Conversations.Single();
+
+        var clock = new Mock<IDateTimeProvider>();
+        clock.Setup(c => c.UtcNow).Returns(Now.AddMinutes(5));
+        var identity = new Mock<ICallerIdentityResolver>();
+        identity.Setup(i => i.ResolveIdentitiesByEmployeeIdAsync(TenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Guid _, IReadOnlyList<Guid> ids, CancellationToken _) => ids.ToDictionary(x => x, x => new EmployeeIdentityDto("Anita Hr", null)));
+        var services = new Mock<IServiceProvider>();
+        services.Setup(s => s.GetService(typeof(ICaseGroupService)))
+            .Returns(new CaseGroupService(_repo, _access.Object, identity.Object, clock.Object));
+        var recorder = new ONEVO.Application.Features.Inbox.Escalation.InboxEscalationRecorder(
+            Mock.Of<IInboxDecisionJournal>(), _repo, identity.Object, Mock.Of<ONEVO.Application.Common.RepositoryInterfaces.IUnitOfWork>(),
+            clock.Object, services.Object);
+
+        await recorder.RecordAsync(TenantId, new ONEVO.Application.Features.Inbox.Escalation.EscalationRecord(
+            item, new ONEVO.Application.Features.Inbox.Escalation.EscalationTarget.Employees([new(Guid.NewGuid(), Hr)]), Manager, null, [Manager]),
+            CancellationToken.None);
+
+        var group = _repo.Conversations.Single(c => c.SubjectSource == "leave");
+        var lines = _repo.Messages.Where(m => m.ConversationId == group.Id).Select(m => m.BodyHtml).ToList();
+        lines.Should().Contain(["Group started for Annual leave - Priya", "Escalated to Anita Hr"]);
+        _repo.Messages.Should().Contain(m => m.ConversationId == group.Id && m.Kind == ConversationMessageKinds.Case);
+        _repo.Messages.Should().Contain(m => m.ConversationId == dm.Id && m.BodyHtml.StartsWith("Continued in a group"));
+        _repo.Participants.Where(p => p.ConversationId == group.Id).Select(p => p.EmployeeId).Should().Contain([Priya, Manager, Hr]);
+    }
+
+    [Fact]
     public async Task The_next_approver_joins_the_case_group_instead_of_a_new_1on1_card()
     {
         var id = Guid.NewGuid();

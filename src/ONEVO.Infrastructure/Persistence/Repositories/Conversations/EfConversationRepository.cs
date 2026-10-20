@@ -347,6 +347,11 @@ public class EfConversationRepository : IConversationRepository
             .ToDictionary(g => g.Key, g => g.OrderByDescending(m => m.CreatedAt).First());
     }
 
+    public async Task DeleteMessageIfExistsAsync(Guid tenantId, Guid messageId, CancellationToken ct = default)
+        => await _db.ConversationMessages
+            .Where(m => m.TenantId == tenantId && m.Id == messageId && m.AuthorEmployeeId == null)
+            .ExecuteDeleteAsync(ct);
+
     public async Task TouchAsync(Guid tenantId, Guid conversationId, DateTimeOffset at, CancellationToken ct = default)
         => await _db.Conversations
             .Where(c => c.TenantId == tenantId && c.Id == conversationId && (c.LastMessageAt == null || c.LastMessageAt < at))

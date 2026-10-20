@@ -86,12 +86,15 @@ public sealed class InboxChatProjector : IInboxChatProjector
         {
             var pair = PeopleChatNames.DirectSubjectId(caller, c.Other);
             var cardId = CaseCards.CardId(pair, c.Ref);
+            var closed = CaseCards.IsClosed(c.Item.Status);
 
             // In the case's group already: the group is where it is worked on, and where it is closed.
             if (groupByItem.TryGetValue(c.Ref, out var group) && groupMarkers.ContainsKey(group.Id))
             {
                 result[c.Ref] = group.Id;
-                if (!c.Item.IsPending && !existing.Contains(CaseCards.ResolvedId(group.Id, c.Ref)))
+                if (!closed && existing.Contains(CaseCards.ResolvedId(group.Id, c.Ref)))
+                    await ReopenAsync(tenantId, c.Ref, CaseCards.ResolvedId(group.Id, c.Ref), ct);
+                if (closed && !existing.Contains(CaseCards.ResolvedId(group.Id, c.Ref)))
                 {
                     await AddResolvedAsync(tenantId, group.Id, CaseCards.ResolvedId(group.Id, c.Ref), c.Item, ct);
                     // The 1-on-1 chats that carried the card get the line too, under their "Continued in a group".
@@ -111,7 +114,9 @@ public sealed class InboxChatProjector : IInboxChatProjector
             {
                 var chat = directByPair.GetValueOrDefault(pair) ?? await _people.GetOrCreateDirectAsync(tenantId, caller, c.Other, ct);
                 result[c.Ref] = chat.Id;
-                if (!c.Item.IsPending && !existing.Contains(CaseCards.ResolvedId(pair, c.Ref)))
+                if (!closed && existing.Contains(CaseCards.ResolvedId(pair, c.Ref)))
+                    await ReopenAsync(tenantId, c.Ref, CaseCards.ResolvedId(pair, c.Ref), ct);
+                if (closed && !existing.Contains(CaseCards.ResolvedId(pair, c.Ref)))
                     await AddResolvedAsync(tenantId, chat.Id, CaseCards.ResolvedId(pair, c.Ref), c.Item, ct);
                 continue;
             }
@@ -141,7 +146,7 @@ public sealed class InboxChatProjector : IInboxChatProjector
                 CreatedAt = c.Item.CreatedAt,
             }, ct);
             await _conversations.TouchAsync(tenantId, direct.Id, c.Item.CreatedAt, ct);
-            if (!c.Item.IsPending)
+            if (closed)
                 await AddResolvedAsync(tenantId, direct.Id, CaseCards.ResolvedId(pair, c.Ref), c.Item, ct);
             result[c.Ref] = direct.Id;
         }
@@ -166,6 +171,21 @@ public sealed class InboxChatProjector : IInboxChatProjector
             CreatedAt = at.AddTicks(1),
         }, ct);
         await _conversations.TouchAsync(tenantId, conversationId, at.AddTicks(1), ct);
+    }
+
+    /// <summary>A decision was undone (the case is open again): its "resolved" lines go, in the group and in every
+    /// 1-on-1 chat that carries its card.</summary>
+    private async Task ReopenAsync(Guid tenantId, ItemRef item, Guid knownLineId, CancellationToken ct)
+    {
+        await _conversations.DeleteMessageIfExistsAsync(tenantId, knownLineId, ct);
+        foreach (var card in await _conversations.ListCaseCardsAsync(tenantId, item, ct))
+        {
+            var chat = await _conversations.GetByIdAsync(tenantId, card.ConversationId, ct);
+            if (chat is null)
+                continue;
+            var key = chat.SubjectSource == ConversationSources.Direct ? chat.SubjectId : chat.Id;
+            await _conversations.DeleteMessageIfExistsAsync(tenantId, CaseCards.ResolvedId(key, item), ct);
+        }
     }
 
     private static string Humanize(string status) => status.Replace('_', ' ').ToLowerInvariant();
