@@ -379,7 +379,7 @@ public class ConversationHandlersTests
     public async Task People_search_returns_active_colleagues_with_avatars_but_not_the_caller()
     {
         var directory = new Mock<IConversationPeopleDirectory>();
-        directory.Setup(d => d.SearchActiveAsync(TenantId, "pri", 21, It.IsAny<CancellationToken>()))
+        directory.Setup(d => d.SearchActiveInLegalEntityOfAsync(TenantId, It.IsAny<Guid>(), "pri", 21, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new[] { Third, Requester });
         var handler = new SearchConversationPeopleQueryHandler(_currentUser.Object, _identity.Object, directory.Object);
 

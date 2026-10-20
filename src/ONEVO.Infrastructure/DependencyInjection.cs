@@ -539,6 +539,16 @@ public static class DependencyInjection
         services.AddScoped<ONEVO.Application.Features.Conversations.Services.ConversationNotifier>();
         services.AddScoped<ONEVO.Application.Features.Conversations.Services.IConversationUnreadCounts,
             ONEVO.Application.Features.Conversations.Services.ConversationUnreadCounts>();
+        // People chats: 1-on-1 chats and named groups (their own conversation sources), case cards placed into them.
+        services.AddScoped<ONEVO.Application.Features.Conversations.Contracts.IConversationSubjectResolver,
+            ONEVO.Application.Features.Conversations.Services.DirectConversationSubjectResolver>();
+        services.AddScoped<ONEVO.Application.Features.Conversations.Contracts.IConversationSubjectResolver,
+            ONEVO.Application.Features.Conversations.Services.GroupConversationSubjectResolver>();
+        services.AddScoped<ONEVO.Application.Features.Conversations.Services.IPeopleChatService,
+            ONEVO.Application.Features.Conversations.Services.PeopleChatService>();
+        services.AddScoped<ONEVO.Application.Features.Inbox.Chats.ICaseGroupService, ONEVO.Application.Features.Inbox.Chats.CaseGroupService>();
+        services.AddScoped<ONEVO.Application.Features.Inbox.Chats.IInboxChatProjector, ONEVO.Application.Features.Inbox.Chats.InboxChatProjector>();
+        services.AddScoped<ONEVO.Application.Features.Inbox.Chats.IInboxChatService, ONEVO.Application.Features.Inbox.Chats.InboxChatService>();
         // Inbox router: fans out to every registered IInboxSourceProvider (one per module).
         services.AddScoped<ONEVO.Application.Features.Inbox.Services.IInboxRouter, ONEVO.Application.Features.Inbox.Services.InboxRouter>();
         services.AddScoped<ONEVO.Application.Features.Inbox.Services.InboxCallerResolver>();

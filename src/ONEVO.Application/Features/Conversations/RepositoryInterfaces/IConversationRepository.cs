@@ -68,4 +68,35 @@ public interface IConversationRepository
 
     void Update(Conversation conversation);
     void UpdateParticipant(ConversationParticipant participant);
+
+    // ---- People chats (the inbox's chat list) -------------------------------------------------------------
+
+    /// <summary>Every conversation the employee is an active member of (has a row, not removed, not left), with their
+    /// read marker and the conversation's latest message (null when it has none).</summary>
+    Task<IReadOnlyList<MemberConversation>> ListMemberConversationsAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default);
+
+    /// <summary>Per conversation: messages not written by the employee and newer than their LastReadAt.</summary>
+    Task<IReadOnlyDictionary<Guid, int>> CountUnreadByConversationAsync(
+        Guid tenantId, Guid employeeId, IReadOnlyCollection<Guid> conversationIds, CancellationToken ct = default);
+
+    /// <summary>Per conversation: its active members' employee ids (rows only - not the subject's live base people).</summary>
+    Task<IReadOnlyDictionary<Guid, IReadOnlyList<Guid>>> ListActiveMemberIdsAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> conversationIds, CancellationToken ct = default);
+
+    /// <summary>Which of the given message ids exist (the deterministic ids of case cards and their lines).</summary>
+    Task<IReadOnlySet<Guid>> ListExistingMessageIdsAsync(Guid tenantId, IReadOnlyCollection<Guid> messageIds, CancellationToken ct = default);
+
+    /// <summary>The case cards posted for one inbox item, in any conversation (oldest first).</summary>
+    Task<IReadOnlyList<ConversationMessage>> ListCaseCardsAsync(Guid tenantId, ItemRef item, CancellationToken ct = default);
+
+    /// <summary>Per conversation: its latest system message whose event type is one of <paramref name="eventTypes"/>
+    /// (a group's current name, a case group's marker).</summary>
+    Task<IReadOnlyDictionary<Guid, ConversationMessage>> LatestSystemEventsAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> conversationIds, IReadOnlyCollection<string> eventTypes, CancellationToken ct = default);
+
+    /// <summary>Moves LastMessageAt forward to <paramref name="at"/> (never back) and saves.</summary>
+    Task TouchAsync(Guid tenantId, Guid conversationId, DateTimeOffset at, CancellationToken ct = default);
 }
+
+/// <summary>One of an employee's conversations for the chat list.</summary>
+public sealed record MemberConversation(Conversation Conversation, DateTimeOffset? LastReadAt, ConversationMessage? LatestMessage);

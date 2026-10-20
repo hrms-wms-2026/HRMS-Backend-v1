@@ -147,6 +147,57 @@ internal sealed class InMemoryConversationRepository : IConversationRepository
     public void Update(Conversation conversation) { }
     public void UpdateParticipant(ConversationParticipant participant) { }
 
+    public Task<IReadOnlyList<MemberConversation>> ListMemberConversationsAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default)
+        => Task.FromResult<IReadOnlyList<MemberConversation>>(Participants
+            .Where(p => p.TenantId == tenantId && p.EmployeeId == employeeId && p.RemovedAt == null && p.LeftAt == null)
+            .Select(p => Conversations.First(c => c.Id == p.ConversationId) is var c
+                ? new MemberConversation(c, p.LastReadAt, Messages
+                    .Where(m => m.ConversationId == c.Id && m.Kind != ConversationMessageKinds.Evidence)
+                    .OrderByDescending(m => m.CreatedAt).FirstOrDefault())
+                : null!)
+            .ToList());
+
+    public Task<IReadOnlyDictionary<Guid, int>> CountUnreadByConversationAsync(
+        Guid tenantId, Guid employeeId, IReadOnlyCollection<Guid> conversationIds, CancellationToken ct = default)
+        => Task.FromResult<IReadOnlyDictionary<Guid, int>>(conversationIds.ToDictionary(id => id, id =>
+        {
+            var row = Participants.FirstOrDefault(p => p.ConversationId == id && p.EmployeeId == employeeId);
+            return Messages.Count(m => m.ConversationId == id && m.AuthorEmployeeId != employeeId && m.Kind != ConversationMessageKinds.Evidence
+                && (row?.LastReadAt is null || m.CreatedAt > row.LastReadAt));
+        }));
+
+    public Task<IReadOnlyDictionary<Guid, IReadOnlyList<Guid>>> ListActiveMemberIdsAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> conversationIds, CancellationToken ct = default)
+        => Task.FromResult<IReadOnlyDictionary<Guid, IReadOnlyList<Guid>>>(Participants
+            .Where(p => conversationIds.Contains(p.ConversationId) && p.RemovedAt == null && p.LeftAt == null)
+            .GroupBy(p => p.ConversationId)
+            .ToDictionary(g => g.Key, g => (IReadOnlyList<Guid>)g.Select(p => p.EmployeeId).ToList()));
+
+    public Task<IReadOnlySet<Guid>> ListExistingMessageIdsAsync(Guid tenantId, IReadOnlyCollection<Guid> messageIds, CancellationToken ct = default)
+        => Task.FromResult<IReadOnlySet<Guid>>(Messages.Where(m => messageIds.Contains(m.Id)).Select(m => m.Id).ToHashSet());
+
+    public Task<IReadOnlyList<ConversationMessage>> ListCaseCardsAsync(Guid tenantId, ItemRef item, CancellationToken ct = default)
+        => Task.FromResult<IReadOnlyList<ConversationMessage>>(Messages
+            .Where(m => m.Kind == ConversationMessageKinds.Case && m.SystemEventJson != null && m.SystemEventJson.Contains(item.Id.ToString())
+                && m.SystemEventJson.Contains($"\"source\":\"{item.Source}\"") && m.SystemEventJson.Contains($"\"kind\":\"{item.Kind}\""))
+            .OrderBy(m => m.CreatedAt).ToList());
+
+    public Task<IReadOnlyDictionary<Guid, ConversationMessage>> LatestSystemEventsAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> conversationIds, IReadOnlyCollection<string> eventTypes, CancellationToken ct = default)
+        => Task.FromResult<IReadOnlyDictionary<Guid, ConversationMessage>>(Messages
+            .Where(m => conversationIds.Contains(m.ConversationId) && m.Kind == ConversationMessageKinds.System && m.SystemEventJson != null
+                && eventTypes.Any(t => m.SystemEventJson.StartsWith("{\"type\":\"" + t + "\"", StringComparison.Ordinal)))
+            .GroupBy(m => m.ConversationId)
+            .ToDictionary(g => g.Key, g => g.OrderByDescending(m => m.CreatedAt).First()));
+
+    public Task TouchAsync(Guid tenantId, Guid conversationId, DateTimeOffset at, CancellationToken ct = default)
+    {
+        var c = Conversations.FirstOrDefault(x => x.Id == conversationId);
+        if (c is not null && (c.LastMessageAt is null || c.LastMessageAt < at))
+            c.LastMessageAt = at;
+        return Task.CompletedTask;
+    }
+
     private static bool Matches(Conversation c, ItemRef subject)
         => c.SubjectSource == subject.Source && c.SubjectKind == subject.Kind && c.SubjectId == subject.Id;
 }

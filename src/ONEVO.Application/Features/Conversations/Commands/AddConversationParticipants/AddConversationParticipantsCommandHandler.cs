@@ -62,6 +62,9 @@ public sealed class AddConversationParticipantsCommandHandler
         var context = await _access.LoadAsync(tenantId, command.ConversationId, caller.Value, ct);
         if (context is null)
             return Result<IReadOnlyList<ConversationParticipantResponse>>.NotFound(ConversationRules.NotFoundMessage);
+        // A 1-on-1 chat stays between its two people: adding someone starts a group (or the case's own group).
+        if (context.Subject.Source == ConversationSources.Direct)
+            return Result<IReadOnlyList<ConversationParticipantResponse>>.UnprocessableEntity(ConversationRules.DirectChatAddMessage);
 
         var toAdd = (command.EmployeeIds ?? []).Where(id => id != Guid.Empty).Distinct()
             .Where(id => !context.ParticipantIds.Contains(id)).ToList();

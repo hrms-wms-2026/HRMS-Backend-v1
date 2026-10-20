@@ -8,6 +8,7 @@ internal static partial class ConversationRules
 {
     public const string NotFoundMessage = "Conversation not found.";
     public const string NoEmployeeMessage = "No employee record for the current user.";
+    public const string DirectChatAddMessage = "A 1-on-1 chat stays between two people. Start a group to add more.";
     public const int MaxBodyLength = 10_000;
     public const int DefaultPageSize = 50;
     public const int MaxPageSize = 100;
