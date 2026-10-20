@@ -6,6 +6,7 @@ using ONEVO.Application.Features.Dashboard.Layout.DTOs;
 using ONEVO.Application.Features.Dashboard.Layout.Grid;
 using ONEVO.Application.Features.Dashboard.Layout.Registry;
 using ONEVO.Application.Features.Dashboard.Layout.RepositoryInterfaces;
+using ONEVO.Application.Features.Dashboard.Layout.Services;
 using ONEVO.Domain.Features.Dashboard.Entities;
 
 namespace ONEVO.Application.Features.Dashboard.Layout.Queries.GetDashboardBootstrap;
@@ -38,9 +39,7 @@ public sealed class GetDashboardBootstrapQueryHandler(
         var capabilitiesUnavailable = await access.CapabilitiesUnavailableAsync(ct);
 
         // Allowed registry widgets, plus retired/unknown keys which render as an error placeholder.
-        var visible = dashboard.Widgets
-            .Where(w => allowed.Contains(w.WidgetKey) || DashboardWidgetRegistry.Get(w.WidgetKey) is null)
-            .ToList();
+        var visible = DashboardLayoutSupport.VisibleWidgets(dashboard, allowed);
 
         var final = ResolveRects(visible, breakpoint, columns);
 
