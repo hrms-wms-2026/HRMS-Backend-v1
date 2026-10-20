@@ -259,4 +259,32 @@ public sealed class AttendanceAlertMaterializerDeductionTests
             new DomainEventDispatchInterceptor(new Mock<MediatR.IPublisher>().Object),
             new Mock<ITenantContext>().Object);
     }
+
+    [Fact]
+    public void Deduction_HasAConcurrencyToken_SoOverlappingRunsCannotChargeTwice()
+    {
+        var property = _db.Model.FindEntityType(typeof(AttendanceAlertDeduction))!.FindProperty("xmin");
+
+        property.Should().NotBeNull();
+        property!.IsConcurrencyToken.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task RowsRemovedThenReAdded_DoNotRechargeDaysBeforeTheNewStamp()
+    {
+        _policy = Policy();
+        ArrangeDays(15, Late45(Aug4));
+        await Run();
+        _db.ChangeTracker.Clear();
+        _policy = null; // the admin removed every row: refund
+        await Run();
+        _db.ChangeTracker.Clear();
+
+        _policy = Policy(rulesChangedAt: DateTimeOffset.Parse("2026-08-10T00:00:00+00:00")); // rows re-added later
+        await Run();
+
+        (await DeductionFor(Aug4, AttendanceAlertSignals.LateClockIns))!.Status.Should().Be(AttendanceAlertDeductionStatuses.Refunded);
+        _audits.Should().HaveCount(2);
+        _entitlement.UsedHours.Should().Be(0m);
+    }
 }

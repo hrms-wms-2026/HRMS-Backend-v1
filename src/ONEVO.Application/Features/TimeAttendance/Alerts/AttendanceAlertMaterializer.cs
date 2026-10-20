@@ -166,7 +166,11 @@ public sealed class AttendanceAlertMaterializer : IAttendanceAlertMaterializer
                 if (!policies.TryGetValue(alert.WorkDate, out var policy))
                     policies[alert.WorkDate] = policy = await _policies.ResolveAsync(tenantId, employeeId, entityId, alert.WorkDate, ct);
                 var rule = ClockInPolicyRules.Match(policy, minutes);
-                if (rule is not null && (charged.ContainsKey(alert.Id) || Chargeable(policy, alert.WorkDate)))
+                // A live (charged/pending) deduction keeps tracking its day; a refunded one is charged again only where a
+                // new charge would be allowed, so re-adding removed rows never back-charges.
+                var live = charged.TryGetValue(alert.Id, out var existingDeduction)
+                    && existingDeduction.Status != AttendanceAlertDeductionStatuses.Refunded;
+                if (rule is not null && (live || Chargeable(policy, alert.WorkDate)))
                     target = new DeductionTarget(minutes, rule);
             }
             if (target is null && !charged.ContainsKey(alert.Id))

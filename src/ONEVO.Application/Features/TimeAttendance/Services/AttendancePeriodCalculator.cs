@@ -213,7 +213,8 @@ public static class AttendancePeriodCalculator
         if (record.ScheduledStart is not TimeOnly scheduledStart || record.ScheduledEnd is not TimeOnly scheduledEnd)
             return (TimeSpan.Zero, TimeSpan.Zero);
         var start = LocalInstant(record.Date, scheduledStart, data.Timezone);
-        var end = LocalInstant(record.Date, scheduledEnd, data.Timezone);
+        // An overnight shift (22:00-06:00) ends on the next day.
+        var end = LocalInstant(scheduledEnd <= scheduledStart ? record.Date.AddDays(1) : record.Date, scheduledEnd, data.Timezone);
 
         // Leaves may chain (09:00-10:00 then 10:00-11:00), so keep moving the edges until they settle.
         for (var moved = true; moved && start < end;)

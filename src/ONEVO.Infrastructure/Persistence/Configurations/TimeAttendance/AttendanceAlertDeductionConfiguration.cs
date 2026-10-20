@@ -13,6 +13,10 @@ public class AttendanceAlertDeductionConfiguration : IEntityTypeConfiguration<At
         builder.Property(d => d.Status).HasMaxLength(20).IsRequired();
         builder.Property(d => d.Multiplier).HasPrecision(6, 2);
         builder.Property(d => d.Hours).HasPrecision(10, 2);
+        // Two overlapping job runs must not both charge the same row: the second save fails and rolls back.
+        builder.Property<uint>("xmin")
+            .HasColumnName("xmin").HasColumnType("xid")
+            .ValueGeneratedOnAddOrUpdate().IsConcurrencyToken();
 
         // One deduction per alert: re-runs update it, never add a second charge.
         builder.HasIndex(d => new { d.TenantId, d.AlertId })

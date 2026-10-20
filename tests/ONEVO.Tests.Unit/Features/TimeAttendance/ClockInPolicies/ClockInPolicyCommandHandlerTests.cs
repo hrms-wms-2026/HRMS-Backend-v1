@@ -191,7 +191,7 @@ public class ClockInPolicyCommandHandlerTests
         var existing = new ClockInPolicyEntity
         {
             Id = Guid.NewGuid(), TenantId = _tenantId, LegalEntityId = _legalEntityId, Name = "Old",
-            ScopeType = ClockInPolicyEntity.ScopeFullCompany, EffectiveFrom = new DateOnly(2026, 1, 1),
+            ScopeType = ClockInPolicyEntity.ScopeFullCompany, EffectiveFrom = new DateOnly(2026, 8, 21),
             NotificationRecipientResolver = ClockInPolicyEntity.NotificationManagementCoverageOwner, IsActive = true,
             CreatedById = _userId, CreatedAt = _now, UpdatedAt = _now,
             DeductionRulesChangedAt = new DateTimeOffset(2026, 3, 1, 0, 0, 0, TimeSpan.Zero),
@@ -233,6 +233,32 @@ public class ClockInPolicyCommandHandlerTests
     {
         var (existing, handler, typeId) = UpdateFixture();
         existing.DeductionRulesChangedAt = null;
+
+        await handler.Handle(ValidUpdateCommand(existing.Id) with { LateDeductionRules = [new LateDeductionRuleInput(15, 1m, typeId)] },
+            CancellationToken.None);
+
+        Assert.Equal(_now, existing.DeductionRulesChangedAt);
+    }
+
+    [Fact]
+    public async Task Update_MovesRulesChangedAt_WhenCoverageWidens()
+    {
+        var (existing, handler, typeId) = UpdateFixture();
+
+        await handler.Handle(ValidUpdateCommand(existing.Id) with
+        {
+            EffectiveFrom = new DateOnly(2026, 6, 1),
+            LateDeductionRules = [new LateDeductionRuleInput(15, 1m, typeId)],
+        }, CancellationToken.None);
+
+        Assert.Equal(_now, existing.DeductionRulesChangedAt);
+    }
+
+    [Fact]
+    public async Task Update_MovesRulesChangedAt_WhenReactivated()
+    {
+        var (existing, handler, typeId) = UpdateFixture();
+        existing.IsActive = false;
 
         await handler.Handle(ValidUpdateCommand(existing.Id) with { LateDeductionRules = [new LateDeductionRuleInput(15, 1m, typeId)] },
             CancellationToken.None);

@@ -93,4 +93,17 @@ public sealed class AttendanceLateEarlyPolicyTests
         c.ShortHours.Should().Be(0);
         c.Dates.ShortHours.Should().BeEmpty();
     }
+
+    [Fact]
+    public void OvernightShift_LateAndEarlyStillMeasured()
+    {
+        var record = new AttendanceRecord
+        {
+            Id = Guid.NewGuid(), Date = Day, ExpectedWorkingDay = true,
+            ScheduledStart = new TimeOnly(22, 0), ScheduledEnd = new TimeOnly(6, 0),
+            ActualStart = At(22, 30), ActualEnd = At(22, 30).AddHours(6.5), // 22:30 -> 05:00 next day
+        };
+
+        AttendancePeriodCalculator.MissingMinutes(record, Data(record)).Should().Be((30, 60));
+    }
 }
