@@ -78,14 +78,14 @@ public sealed class EfInboxDecisionJournalTests : IDisposable
         {
             var journal = new EfInboxDecisionJournal(db);
             await journal.RecordAsync(Entry(item, InboxJournalActions.Approve, 20));
-            await journal.RecordAsync(Entry(item, InboxJournalActions.Forward, 5));
+            await journal.RecordAsync(Entry(item, InboxJournalActions.Reject, 5));
             await journal.RecordAsync(Entry(new ItemRef("leave", "request", Guid.NewGuid()), InboxJournalActions.Reject, 30));
             await journal.RecordAsync(Entry(item, InboxJournalActions.Reject, 40, tenant: Guid.NewGuid()));
         }
 
         await using var read = CreateContext();
         var reader = new EfInboxDecisionJournal(read);
-        (await reader.ListForItemAsync(TenantId, item)).Select(e => e.Action).Should().Equal("forward", "approve");
+        (await reader.ListForItemAsync(TenantId, item)).Select(e => e.Action).Should().Equal("reject", "approve");
         (await reader.LatestAsync(TenantId, item))!.Action.Should().Be("approve");
     }
 

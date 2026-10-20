@@ -248,6 +248,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<ChecklistTemplate> ChecklistTemplates => Set<ChecklistTemplate>();
     public DbSet<EmployeeChecklistTask> EmployeeChecklistTasks => Set<EmployeeChecklistTask>();
     public DbSet<AccessGrantRequest> AccessGrantRequests => Set<AccessGrantRequest>();
+    public DbSet<SeatIncreaseRequest> SeatIncreaseRequests => Set<SeatIncreaseRequest>();
     public DbSet<OffboardingRecord> OffboardingRecords => Set<OffboardingRecord>();
     public DbSet<OffboardingTaskBypassRequest> OffboardingTaskBypassRequests => Set<OffboardingTaskBypassRequest>();
 
@@ -273,7 +274,6 @@ public class ApplicationDbContext : DbContext
     public DbSet<LeaveRequestDocument> LeaveRequestDocuments => Set<LeaveRequestDocument>();
     public DbSet<LeaveApprovalDelegate> LeaveApprovalDelegates => Set<LeaveApprovalDelegate>();
     public DbSet<LeaveBalanceAudit> LeaveBalanceAudits => Set<LeaveBalanceAudit>();
-    public DbSet<LeaveRequestInfoMessage> LeaveRequestInfoMessages => Set<LeaveRequestInfoMessage>();
     public DbSet<LeaveRequestDayAllocation> LeaveRequestDayAllocations => Set<LeaveRequestDayAllocation>();
 
     // Time & Attendance - Work Mode (per-legal-entity, Guid-keyed)

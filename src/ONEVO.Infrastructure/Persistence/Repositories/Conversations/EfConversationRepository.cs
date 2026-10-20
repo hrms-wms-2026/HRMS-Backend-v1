@@ -86,6 +86,48 @@ public class EfConversationRepository : IConversationRepository
         return await query.OrderByDescending(m => m.CreatedAt).ThenByDescending(m => m.Id).Take(take).ToListAsync(ct);
     }
 
+    public async Task<IReadOnlyList<ConversationMessage>> ListMessagesByIdAsync(
+        Guid tenantId, Guid conversationId, IReadOnlyCollection<Guid> messageIds, CancellationToken ct = default)
+    {
+        if (messageIds.Count == 0)
+            return [];
+        var ids = messageIds.ToList();
+        return await _db.ConversationMessages.AsNoTracking()
+            .Where(m => m.TenantId == tenantId && m.ConversationId == conversationId && ids.Contains(m.Id))
+            .ToListAsync(ct);
+    }
+
+    public async Task<bool> AddMessageIfMissingAsync(ConversationMessage message, CancellationToken ct = default)
+    {
+        // The auditing interceptor stamps CreatedAt with "now" on insert; this row's time is its place in the chat.
+        var placedAt = message.CreatedAt;
+        var inserted = false;
+        if (!await _db.ConversationMessages.AnyAsync(m => m.Id == message.Id, ct))
+        {
+            _db.ConversationMessages.Add(message);
+            try
+            {
+                await _db.SaveChangesAsync(ct);
+                inserted = true;
+            }
+            catch (DbUpdateException)
+            {
+                // Lost the race on the primary key: the row exists, which is the goal.
+                _db.Entry(message).State = EntityState.Detached;
+                if (!await _db.ConversationMessages.AsNoTracking().AnyAsync(m => m.Id == message.Id, ct))
+                    throw;
+            }
+        }
+
+        // Also puts back rows saved before this fix at the interceptor's time.
+        await _db.ConversationMessages
+            .Where(m => m.Id == message.Id && m.CreatedAt != placedAt)
+            .ExecuteUpdateAsync(set => set.SetProperty(m => m.CreatedAt, placedAt), ct);
+        if (inserted)
+            _db.Entry(message).State = EntityState.Detached;
+        return inserted;
+    }
+
     public async Task<IReadOnlyDictionary<Guid, IReadOnlyList<Guid>>> ListMentionsAsync(
         Guid tenantId, IReadOnlyCollection<Guid> messageIds, CancellationToken ct = default)
     {
@@ -127,6 +169,7 @@ public class EfConversationRepository : IConversationRepository
                 join p in _db.ConversationParticipants.AsNoTracking() on m.ConversationId equals p.ConversationId
                 where m.TenantId == tenantId && conversationIds.Contains(m.ConversationId) && p.EmployeeId == employeeId
                     && p.RemovedAt == null && p.LeftAt == null
+                    && m.Kind != ConversationMessageKinds.Evidence
                     && (m.AuthorEmployeeId == null || m.AuthorEmployeeId != employeeId)
                     && (p.LastReadAt == null || m.CreatedAt > p.LastReadAt)
                 group m by m.ConversationId into g

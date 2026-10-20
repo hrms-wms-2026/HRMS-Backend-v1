@@ -56,16 +56,11 @@ public sealed record LeaveApprovalDetailResponse(
     string Status,
     string? Reason,
     IReadOnlyList<LeaveApprovalApproverResponse> Approvers,
-    IReadOnlyList<LeaveApprovalInfoMessageResponse> InfoMessages,
     string? SubmissionConflictSnapshotJson,
     IReadOnlyList<LeaveApprovalWarningResponse> CurrentWarnings,
     decimal RemainingHours,
     bool CanDecide,
-    LeaveApprovalForwardTargetResponse? ForwardTo,
     bool CanChangeDecision);
-
-/// <summary>Who "Send to my manager" would hand the request to; null when the caller can't forward.</summary>
-public sealed record LeaveApprovalForwardTargetResponse(Guid EmployeeId, string Name);
 
 public sealed record LeaveApprovalHistoryItemResponse(
     Guid RequestId,
@@ -88,11 +83,6 @@ public sealed record LeaveApprovalApproverResponse(
     string? Comment,
     Guid? DelegatedFromApproverId,
     DateTimeOffset? DecidedAt);
-
-public sealed record LeaveApprovalInfoMessageResponse(
-    Guid SenderEmployeeId,
-    string Message,
-    DateTimeOffset CreatedAt);
 
 public sealed record LeaveApprovalBulkResultResponse(
     IReadOnlyList<LeaveApprovalBulkItemResponse> Items,

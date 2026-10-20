@@ -18,7 +18,8 @@ namespace ONEVO.Api.Controllers.Tenant.Conversations;
 
 public sealed record OpenConversationRequest(string Source, string Kind, Guid Id);
 public sealed record PostConversationMessageRequest(
-    string BodyHtml, IReadOnlyList<Guid>? MentionEmployeeIds, IReadOnlyList<Guid>? AttachmentFileIds = null, string? Tag = null);
+    string BodyHtml, IReadOnlyList<Guid>? MentionEmployeeIds, IReadOnlyList<Guid>? AttachmentFileIds = null, string? Tag = null,
+    Guid? ReplyToMessageId = null);
 public sealed record EditConversationMessageRequest(string BodyHtml, IReadOnlyList<Guid>? MentionEmployeeIds);
 public sealed record ReactToConversationMessageRequest(string Emoji);
 public sealed record AddConversationParticipantsRequest(IReadOnlyList<Guid> EmployeeIds);
@@ -50,7 +51,7 @@ public class ConversationsController : ControllerBase
     [HttpPost("{id:guid}/messages")]
     public async Task<IActionResult> Post(Guid id, [FromBody] PostConversationMessageRequest body, CancellationToken ct)
         => ToResult(await _mediator.Send(
-            new PostConversationMessageCommand(id, body.BodyHtml, body.MentionEmployeeIds, body.AttachmentFileIds, body.Tag), ct));
+            new PostConversationMessageCommand(id, body.BodyHtml, body.MentionEmployeeIds, body.AttachmentFileIds, body.Tag, body.ReplyToMessageId), ct));
 
     /// <summary>The author edits their own message; the previous text is kept for the investigation export.</summary>
     [HttpPut("{id:guid}/messages/{messageId:guid}")]

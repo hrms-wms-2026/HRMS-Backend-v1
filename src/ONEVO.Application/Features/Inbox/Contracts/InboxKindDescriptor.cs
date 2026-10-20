@@ -14,8 +14,6 @@ public enum InboxCapabilities
     Escalate = 16,
     Resolve = 32,
     Cancel = 64,
-    Forward = 128,
-    RequestInfo = 256,
     SubjectParticipates = 512,
 }
 

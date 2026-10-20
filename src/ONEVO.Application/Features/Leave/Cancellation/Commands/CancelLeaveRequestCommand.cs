@@ -141,7 +141,7 @@ public sealed class CancelLeaveRequestCommandHandler
         _repository.SetExpectedVersion(state.Request, command.ExpectedVersion);
 
         var openApproverIds = state.Approvers
-            .Where(a => a.Status is LeaveRequestApproverStatuses.Pending or LeaveRequestApproverStatuses.InformationRequested)
+            .Where(a => a.Status == LeaveRequestApproverStatuses.Pending)
             .Select(a => a.ApproverEmployeeId)
             .ToHashSet();
 
@@ -177,7 +177,7 @@ public sealed class CancelLeaveRequestCommandHandler
             }
 
             foreach (var approver in state.Approvers.Where(a =>
-                a.Status is LeaveRequestApproverStatuses.Pending or LeaveRequestApproverStatuses.InformationRequested))
+                a.Status == LeaveRequestApproverStatuses.Pending))
             {
                 approver.Status = LeaveRequestApproverStatuses.Cancelled;
                 approver.DecidedAt = now;

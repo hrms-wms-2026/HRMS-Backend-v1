@@ -15,10 +15,10 @@ public sealed class ExceptionScopeResolver : IExceptionScopeResolver
     private readonly IEmployeeAuthorityResolver _authority;
     private readonly IInboxDecisionJournal _journal;
 
-    // Calendar cases escalate up the reporting line (Calendar.Inbox.ReportingLineThenLogPolicy), so whoever they reach may sit
-    // outside management coverage; monitoring cases escalate within coverage / HR and need no holder grant.
-    private const string CalendarSource = "calendar";
-    private const string CalendarCaseKind = "meeting_exception";
+    // Calendar and monitoring cases both escalate up the approver chain (ReportingLineThenLogPolicy,
+    // ReportingLineThenHrPolicy), so whoever they reach may sit outside management coverage.
+    private static readonly (string Source, string Kind)[] EscalatedCaseKinds =
+        [("calendar", "meeting_exception"), ("monitoring", "exception_case")];
 
     public ExceptionScopeResolver(
         ICurrentUser currentUser, IEmployeeRepository employees, IEmployeeAuthorityResolver authority, IInboxDecisionJournal journal)
@@ -49,7 +49,7 @@ public sealed class ExceptionScopeResolver : IExceptionScopeResolver
 
         // Holding a case by escalation widens the reach of someone who may already review exceptions; it never stands
         // in for the exception permissions themselves.
-        var held = actor is null ? [] : await HeldCalendarCasesAsync(actor.Id, ct);
+        var held = actor is null ? [] : await HeldCasesAsync(actor.Id, ct);
         if (actor?.LegalEntityId is not Guid legalEntityId)
             return new ExceptionScope(false, actor?.Id, Array.Empty<Guid>(), held);
 
@@ -85,10 +85,14 @@ public sealed class ExceptionScopeResolver : IExceptionScopeResolver
         return new ExceptionScope(false, actor.Id, ids.ToList(), held);
     }
 
-    /// <summary>The calendar cases whose latest escalation (not undone) went to this employee.</summary>
-    private async Task<IReadOnlyCollection<Guid>> HeldCalendarCasesAsync(Guid actorEmployeeId, CancellationToken ct)
-        => (await _journal.ListLatestEscalationsAsync(_currentUser.TenantId, CalendarSource, CalendarCaseKind, ct))
-            .Where(e => InboxEscalationJournal.EscalatedTo(e).Contains(actorEmployeeId))
-            .Select(e => e.ItemId)
-            .ToList();
+    /// <summary>The calendar and monitoring cases whose latest escalation (not undone) went to this employee.</summary>
+    private async Task<IReadOnlyCollection<Guid>> HeldCasesAsync(Guid actorEmployeeId, CancellationToken ct)
+    {
+        var held = new List<Guid>();
+        foreach (var (source, kind) in EscalatedCaseKinds)
+            held.AddRange((await _journal.ListLatestEscalationsAsync(_currentUser.TenantId, source, kind, ct))
+                .Where(e => InboxEscalationJournal.EscalatedTo(e).Contains(actorEmployeeId))
+                .Select(e => e.ItemId));
+        return held;
+    }
 }

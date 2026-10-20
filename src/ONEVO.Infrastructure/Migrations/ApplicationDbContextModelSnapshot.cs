@@ -2245,6 +2245,10 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("character varying(20)")
                         .HasColumnName("kind");
 
+                    b.Property<Guid?>("ReplyToMessageId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("reply_to_message_id");
+
                     b.Property<string>("SystemEventJson")
                         .HasMaxLength(2000)
                         .HasColumnType("character varying(2000)")
@@ -4113,6 +4117,84 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasDatabaseName("ix_reporting_manager_changes_tenant_employee_effective_at");
 
                     b.ToTable("reporting_manager_changes", (string)null);
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.CoreHr.Entities.SeatIncreaseRequest", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset?>("DecidedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("decided_at");
+
+                    b.Property<Guid?>("DecidedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("decided_by_user_id");
+
+                    b.Property<string>("DecisionNote")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("decision_note");
+
+                    b.Property<Guid?>("OnboardingDraftId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("onboarding_draft_id");
+
+                    b.Property<string>("Reason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("reason");
+
+                    b.Property<DateTimeOffset>("RequestedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("requested_at");
+
+                    b.Property<Guid>("RequestedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("requested_by_user_id");
+
+                    b.Property<int>("RequestedSeats")
+                        .HasColumnType("integer")
+                        .HasColumnName("requested_seats");
+
+                    b.Property<int?>("SeatsAtRequest")
+                        .HasColumnType("integer")
+                        .HasColumnName("seats_at_request");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("status");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_seat_increase_requests");
+
+                    b.HasIndex("DecidedByUserId")
+                        .HasDatabaseName("ix_seat_increase_requests_decided_by_user_id");
+
+                    b.HasIndex("OnboardingDraftId")
+                        .HasDatabaseName("ix_seat_increase_requests_onboarding_draft_id");
+
+                    b.HasIndex("RequestedByUserId")
+                        .HasDatabaseName("ix_seat_increase_requests_requested_by_user_id");
+
+                    b.HasIndex("TenantId", "OnboardingDraftId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_seat_increase_requests_tenant_id_onboarding_draft_id")
+                        .HasFilter("status = 'pending' AND onboarding_draft_id IS NOT NULL");
+
+                    b.HasIndex("TenantId", "Status")
+                        .HasDatabaseName("ix_seat_increase_requests_tenant_id_status");
+
+                    b.ToTable("seat_increase_requests", (string)null);
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.DevPlatform.AppCatalog.Entities.GlobalApplication", b =>
@@ -6525,50 +6607,6 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasDatabaseName("ix_leave_request_documents_tenant_request");
 
                     b.ToTable("leave_request_documents", (string)null);
-                });
-
-            modelBuilder.Entity("ONEVO.Domain.Features.Leave.Request.Entities.LeaveRequestInfoMessage", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("id");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at");
-
-                    b.Property<Guid>("LeaveRequestId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("leave_request_id");
-
-                    b.Property<string>("Message")
-                        .IsRequired()
-                        .HasMaxLength(2000)
-                        .HasColumnType("character varying(2000)")
-                        .HasColumnName("message");
-
-                    b.Property<Guid>("SenderEmployeeId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("sender_employee_id");
-
-                    b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("tenant_id");
-
-                    b.HasKey("Id")
-                        .HasName("pk_leave_request_info_messages");
-
-                    b.HasIndex("LeaveRequestId")
-                        .HasDatabaseName("ix_leave_request_info_messages_leave_request_id");
-
-                    b.HasIndex("SenderEmployeeId")
-                        .HasDatabaseName("ix_leave_request_info_messages_sender_employee_id");
-
-                    b.HasIndex("TenantId", "LeaveRequestId", "CreatedAt")
-                        .HasDatabaseName("ix_leave_request_info_messages_tenant_request_created");
-
-                    b.ToTable("leave_request_info_messages", (string)null);
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.Leave.Type.Entities.LeaveType", b =>
@@ -15190,6 +15228,28 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasConstraintName("fk_reporting_manager_changes_employees_previous_manager_employ");
                 });
 
+            modelBuilder.Entity("ONEVO.Domain.Features.CoreHr.Entities.SeatIncreaseRequest", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("DecidedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_seat_increase_requests_users_decided_by_user_id");
+
+                    b.HasOne("ONEVO.Domain.Features.CoreHr.Entities.OnboardingDraft", null)
+                        .WithMany()
+                        .HasForeignKey("OnboardingDraftId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_seat_increase_requests_onboarding_drafts_onboarding_draft_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("RequestedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_seat_increase_requests_users_requested_by_user_id");
+                });
+
             modelBuilder.Entity("ONEVO.Domain.Features.DevPlatform.Compliance.Entities.LegalDocumentVersion", b =>
                 {
                     b.HasOne("ONEVO.Domain.Features.DevPlatform.PlatformAccess.Entities.PlatformUser", null)
@@ -15619,23 +15679,6 @@ namespace ONEVO.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_leave_request_documents_leave_requests_leave_request_id");
-                });
-
-            modelBuilder.Entity("ONEVO.Domain.Features.Leave.Request.Entities.LeaveRequestInfoMessage", b =>
-                {
-                    b.HasOne("ONEVO.Domain.Features.Leave.Request.Entities.LeaveRequest", null)
-                        .WithMany()
-                        .HasForeignKey("LeaveRequestId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired()
-                        .HasConstraintName("fk_leave_request_info_messages_leave_requests_leave_request_id");
-
-                    b.HasOne("ONEVO.Domain.Features.CoreHr.Entities.Employee", null)
-                        .WithMany()
-                        .HasForeignKey("SenderEmployeeId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired()
-                        .HasConstraintName("fk_leave_request_info_messages_employees_sender_employee_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.Monitoring.CheckIn.Entities.EmployeeCheckIn", b =>

@@ -9,10 +9,11 @@ using ONEVO.Application.Features.Monitoring.Exceptions.Services;
 namespace ONEVO.Application.Features.Monitoring.Exceptions.Inbox;
 
 /// <summary>
-/// Monitoring exception cases (the existing routing, moved here unchanged from ExceptionAlertRouter):
-/// a new case goes to the subject's reporting manager (exceptions' manager review through the employee
-/// authority resolver), or to HR when nobody above them can review; escalation always goes to HR.
-/// The subject employee is never a reviewer of their own case.
+/// Monitoring exception cases: a new case goes to the subject's attendance approver (attendance:approve through the
+/// employee authority resolver), or to HR when nobody can review them. An escalation goes one level up the same
+/// approver chain - the attendance approver of whoever holds the case now (the subject's approver when no holder is
+/// known, e.g. the SLA sweep) - and only reaches HR when there is nobody above. The subject employee is never a
+/// reviewer of their own case.
 /// </summary>
 public sealed class ReportingLineThenHrPolicy : IInboxEscalationPolicy
 {
@@ -48,19 +49,41 @@ public sealed class ReportingLineThenHrPolicy : IInboxEscalationPolicy
     public async Task<EscalationTarget> InitialAsync(Guid tenantId, EscalationContext context, CancellationToken ct)
     {
         var subject = await SubjectAsync(tenantId, context, ct);
-        if (subject?.LegalEntityId is Guid legalEntityId)
-        {
-            var route = await _authorityFor(tenantId).ResolveApproverAsync(
-                new EmployeeApprovalRouteRequest(
-                    subject.Id, legalEntityId, ExceptionPermissions.ManagerReview, EmployeeAuthorityPurpose.ExceptionAlertReview), ct);
-            if (route.IsSuccess && route.Value is { } approver && approver.ApproverUserId != subject.UserId)
-                return new EscalationTarget.Employees([new EscalationRecipient(approver.ApproverUserId, approver.ApproverEmployeeId)]);
-        }
+        if (subject is not null && await ApproverOfAsync(tenantId, subject, ct) is { } approver && approver.UserId != subject.UserId)
+            return new EscalationTarget.Employees([approver]);
         return await HrAsync(tenantId, subject, ct);
     }
 
     public async Task<EscalationTarget> NextAsync(Guid tenantId, EscalationContext context, CancellationToken ct)
-        => await HrAsync(tenantId, await SubjectAsync(tenantId, context, ct), ct);
+    {
+        var subject = await SubjectAsync(tenantId, context, ct);
+        if (subject is null)
+            return await HrAsync(tenantId, null, ct);
+
+        // Who holds the case now: the given holder, else the reviewer it was first routed to.
+        var holderId = context.CurrentHolderEmployeeIds.FirstOrDefault();
+        if (holderId == Guid.Empty)
+            holderId = (await ApproverOfAsync(tenantId, subject, ct))?.EmployeeId ?? Guid.Empty;
+        if (holderId != Guid.Empty && await _employees.GetByIdAsync(tenantId, holderId, ct) is { } holder
+            && await ApproverOfAsync(tenantId, holder, ct) is { } next
+            && next.EmployeeId != subject.Id && next.EmployeeId != holder.Id && !context.CurrentHolderEmployeeIds.Contains(next.EmployeeId!.Value))
+            return new EscalationTarget.Employees([next]);
+        return await HrAsync(tenantId, subject, ct);
+    }
+
+    /// <summary>The employee's attendance approver (attendance:approve route), or null.</summary>
+    private async Task<EscalationRecipient?> ApproverOfAsync(
+        Guid tenantId, ONEVO.Domain.Features.CoreHr.Entities.Employee employee, CancellationToken ct)
+    {
+        if (employee.LegalEntityId is not Guid legalEntityId)
+            return null;
+        var route = await _authorityFor(tenantId).ResolveApproverAsync(
+            new EmployeeApprovalRouteRequest(
+                employee.Id, legalEntityId, ExceptionPermissions.ManagerReview, EmployeeAuthorityPurpose.ExceptionAlertReview), ct);
+        return route.IsSuccess && route.Value is { } approver
+            ? new EscalationRecipient(approver.ApproverUserId, approver.ApproverEmployeeId)
+            : null;
+    }
 
     private async Task<ONEVO.Domain.Features.CoreHr.Entities.Employee?> SubjectAsync(
         Guid tenantId, EscalationContext context, CancellationToken ct)

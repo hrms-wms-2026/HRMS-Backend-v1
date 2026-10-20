@@ -83,12 +83,23 @@ public class InboxEscalationPolicyTests
     }
 
     [Fact]
-    public async Task Monitoring_escalation_always_goes_to_HR_and_is_log_only_when_there_is_no_HR()
+    public async Task Monitoring_escalation_goes_one_level_up_the_approver_chain_not_to_every_HR_user()
+    {
+        var policy = Monitoring();
+
+        EmployeesOf(await policy.NextAsync(TenantId, Context("monitoring", _manager.Id), default)).Should().Equal(_director.Id);
+        // No holder known (SLA sweep): the subject's own approver is taken as the holder.
+        EmployeesOf(await policy.NextAsync(TenantId, Context("monitoring"), default)).Should().Equal(_director.Id);
+        _permissions.VerifyNoOtherCalls();
+    }
+
+    [Fact]
+    public async Task Monitoring_escalation_reaches_HR_only_at_the_top_and_is_log_only_when_there_is_no_HR()
     {
         _permissions.Setup(p => p.ListUserIdsWithPermissionCodeAsync(TenantId, ExceptionPermissions.HrReview, It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync([]);
 
-        var target = await Monitoring().NextAsync(TenantId, Context("monitoring", _manager.Id), default);
+        var target = await Monitoring().NextAsync(TenantId, Context("monitoring", _director.Id), default);
 
         target.Should().BeOfType<EscalationTarget.LogOnly>();
     }

@@ -35,12 +35,14 @@ public sealed class EditConversationMessageCommandHandler
     private readonly ConversationNotifier _notifier;
     private readonly IInboxRealtimePublisher _realtime;
     private readonly ILogger<EditConversationMessageCommandHandler> _logger;
+    private readonly ConversationResponseBuilder? _responses;
 
     public EditConversationMessageCommandHandler(
         ICurrentUser currentUser, ICallerIdentityResolver identity, IConversationAccess access, IConversationRepository conversations,
         IUnitOfWork unitOfWork, ConversationNotifier notifier, IInboxRealtimePublisher realtime,
-        ILogger<EditConversationMessageCommandHandler> logger)
+        ILogger<EditConversationMessageCommandHandler> logger, ConversationResponseBuilder? responses = null)
     {
+        _responses = responses;
         _currentUser = currentUser;
         _identity = identity;
         _access = access;
@@ -112,7 +114,10 @@ public sealed class EditConversationMessageCommandHandler
 
         // The live update replaces the whole message on screen, so it carries the reactions too.
         var reactions = (await _conversations.ListReactionsAsync(caller.TenantId, [message.Id], ct)).GetValueOrDefault(message.Id);
-        var response = ConversationResponseBuilder.Message(message, previousMentions.Union(newMentions).ToList(), author, attachments, reactions);
+        // An edit keeps the quote it was posted with.
+        var replyTo = _responses is null ? null : await _responses.ReplyPreviewAsync(caller.TenantId, message, ct);
+        var response = ConversationResponseBuilder.Message(
+            message, previousMentions.Union(newMentions).ToList(), author, attachments, reactions, replyTo);
         await ConversationRules.PublishSafelyAsync(
             () => _realtime.MessageUpdatedAsync(caller.TenantId, context.ParticipantIds, context.Conversation.Id, response, ct),
             _logger, "messageUpdated");

@@ -72,7 +72,8 @@ public sealed class ExportInboxItemQueryHandler : IRequestHandler<ExportInboxIte
         var conversation = await _conversations.GetBySubjectAsync(caller.TenantId, item, ct);
         var messages = conversation is null
             ? []
-            : (await _conversations.ListMessagesAsync(caller.TenantId, conversation.Id, null, MaxMessages, ct)).Reverse().ToList();
+            : (await _conversations.ListMessagesAsync(caller.TenantId, conversation.Id, null, MaxMessages, ct))
+                .Where(m => m.Kind != ConversationMessageKinds.Evidence).Reverse().ToList();
         var ids = messages.Select(m => m.Id).ToList();
         var revisions = await _conversations.ListRevisionsAsync(caller.TenantId, ids, ct);
         var attachments = await _conversations.ListAttachmentsAsync(caller.TenantId, ids, ct);

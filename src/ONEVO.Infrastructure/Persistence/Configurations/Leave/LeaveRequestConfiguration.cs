@@ -80,27 +80,6 @@ public class LeaveApprovalDelegateConfiguration : IEntityTypeConfiguration<Leave
     }
 }
 
-public class LeaveRequestInfoMessageConfiguration : IEntityTypeConfiguration<LeaveRequestInfoMessage>
-{
-    public void Configure(EntityTypeBuilder<LeaveRequestInfoMessage> builder)
-    {
-        builder.ToTable("leave_request_info_messages");
-        builder.HasKey(x => x.Id);
-        builder.Property(x => x.Message).HasMaxLength(2000).IsRequired();
-        builder.HasIndex(x => new { x.TenantId, x.LeaveRequestId, x.CreatedAt })
-            .HasDatabaseName("ix_leave_request_info_messages_tenant_request_created");
-
-        builder.HasOne<LeaveRequest>()
-            .WithMany()
-            .HasForeignKey(x => x.LeaveRequestId)
-            .OnDelete(DeleteBehavior.Cascade);
-        builder.HasOne<Employee>()
-            .WithMany()
-            .HasForeignKey(x => x.SenderEmployeeId)
-            .OnDelete(DeleteBehavior.Restrict);
-    }
-}
-
 public class LeaveRequestDayAllocationConfiguration : IEntityTypeConfiguration<LeaveRequestDayAllocation>
 {
     public void Configure(EntityTypeBuilder<LeaveRequestDayAllocation> builder)

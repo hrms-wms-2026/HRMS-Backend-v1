@@ -40,6 +40,14 @@ public interface IConversationRepository
     /// <summary>The conversation's system messages (people added/removed, …), oldest first - the item's Steps show them.</summary>
     Task<IReadOnlyList<ConversationMessage>> ListSystemMessagesAsync(Guid tenantId, Guid conversationId, CancellationToken ct = default);
 
+    /// <summary>The given messages of one conversation (any page), untracked - the targets of replies.</summary>
+    Task<IReadOnlyList<ConversationMessage>> ListMessagesByIdAsync(
+        Guid tenantId, Guid conversationId, IReadOnlyCollection<Guid> messageIds, CancellationToken ct = default);
+
+    /// <summary>Inserts and saves the message unless a row with its id exists (concurrency-safe), and keeps the row at the
+    /// message's CreatedAt (its place in the chat). True when inserted.</summary>
+    Task<bool> AddMessageIfMissingAsync(ConversationMessage message, CancellationToken ct = default);
+
     /// <summary>Tracked, for edit/delete.</summary>
     Task<ConversationMessage?> GetMessageAsync(Guid tenantId, Guid messageId, CancellationToken ct = default);
     void UpdateMessage(ConversationMessage message);

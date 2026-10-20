@@ -35,14 +35,17 @@ public sealed class PostConversationMessageCommandHandler
     private readonly ILogger<PostConversationMessageCommandHandler> _logger;
     private readonly IFileStorageService? _files;
     private readonly IEnumerable<IConversationActivityListener>? _listeners;
+    private readonly IReadOnlyList<IConversationReplyHook> _replyHooks;
 
     public PostConversationMessageCommandHandler(
         ICurrentUser currentUser, ICallerIdentityResolver identity, IConversationAccess access,
         IConversationRepository conversations, IUnitOfWork unitOfWork, ConversationNotifier notifier,
         ConversationResponseBuilder responses, IInboxRealtimePublisher realtime,
         ILogger<PostConversationMessageCommandHandler> logger, IFileStorageService? files = null,
-        IEnumerable<IConversationActivityListener>? listeners = null)
+        IEnumerable<IConversationActivityListener>? listeners = null,
+        IEnumerable<IConversationReplyHook>? replyHooks = null)
     {
+        _replyHooks = replyHooks?.ToList() ?? [];
         _currentUser = currentUser;
         _identity = identity;
         _access = access;
@@ -87,11 +90,21 @@ public sealed class PostConversationMessageCommandHandler
         if (mentionIds.Any(id => !context.ParticipantIds.Contains(id)))
             return Result<ConversationMessageResponse>.UnprocessableEntity("You can only mention people in this conversation.");
 
+        if (command.ReplyToMessageId is { } replyTo)
+        {
+            var target = (await _conversations.ListMessagesByIdAsync(tenantId, context.Conversation.Id, [replyTo], ct)).FirstOrDefault();
+            if (target is null)
+                return Result<ConversationMessageResponse>.UnprocessableEntity(ConversationRules.ReplyTargetMissing);
+            if (target.Kind == ConversationMessageKinds.System)
+                return Result<ConversationMessageResponse>.UnprocessableEntity(ConversationRules.ReplyTargetNotAllowed);
+        }
+
         var now = DateTimeOffset.UtcNow;
         var message = new ConversationMessage
         {
             Id = Guid.NewGuid(), TenantId = tenantId, ConversationId = context.Conversation.Id, AuthorEmployeeId = caller,
-            Kind = ConversationMessageKinds.Text, BodyHtml = body!, Tag = tag, CreatedById = _currentUser.UserId, CreatedAt = now
+            Kind = ConversationMessageKinds.Text, BodyHtml = body!, Tag = tag, ReplyToMessageId = command.ReplyToMessageId,
+            CreatedById = _currentUser.UserId, CreatedAt = now
         };
 
         var attachments = new List<ConversationMessageAttachment>();
@@ -136,12 +149,34 @@ public sealed class PostConversationMessageCommandHandler
             return true;
         }, ct);
 
-        var response = ConversationResponseBuilder.Message(message, mentionIds, author, attachments);
+        // A new message has no reactions yet; it carries its quote when it is a reply.
+        var response = ConversationResponseBuilder.Message(message, mentionIds, author, attachments,
+            replyTo: await _responses.ReplyPreviewAsync(tenantId, message, ct));
         await ConversationRules.PublishSafelyAsync(
             () => _realtime.MessageCreatedAsync(tenantId, context.ParticipantIds, context.Conversation.Id, response, ct),
             _logger, "messageCreated");
         await ConversationRules.NotifyActivityAsync(_listeners, tenantId, context.Subject, caller.Value,
             ConversationActivities.MessagePosted, _logger, ct);
+        await RunReplyHooksAsync(tenantId, context.Subject, caller.Value, ct);
         return Result<ConversationMessageResponse>.Success(response);
+    }
+
+    /// <summary>The message is already saved: a hook that fails is logged and never fails the post.</summary>
+    private async Task RunReplyHooksAsync(Guid tenantId, ItemRef subject, Guid author, CancellationToken ct)
+    {
+        foreach (var hook in _replyHooks)
+        {
+            try
+            {
+                if (await hook.OnReplyAsync(tenantId, subject, author, ct) is { Count: > 0 } affected)
+                    await ConversationRules.PublishSafelyAsync(
+                        () => _realtime.InboxChangedAsync(tenantId, affected, subject, ct), _logger, "inboxChanged");
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                _logger.LogWarning(ex, "Reply hook {Hook} failed for {Source}/{Kind} {ItemId}",
+                    hook.GetType().Name, subject.Source, subject.Kind, subject.Id);
+            }
+        }
     }
 }

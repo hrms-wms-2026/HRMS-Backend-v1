@@ -15,7 +15,7 @@ public static class LeaveInboxKinds
     public static readonly InboxKindDescriptor Descriptor = new(
         Source, Request, "Leave request", InboxCategories.Request,
         InboxCapabilities.Chat | InboxCapabilities.EditBeforeApprove | InboxCapabilities.Revert | InboxCapabilities.Bulk
-        | InboxCapabilities.Cancel | InboxCapabilities.Forward | InboxCapabilities.RequestInfo,
+        | InboxCapabilities.Cancel,
         Renderer);
 }
 
@@ -23,9 +23,6 @@ public static class LeaveInboxActions
 {
     public const string Approve = "approve";
     public const string Reject = "reject";
-    public const string RequestInfo = "request_info";
-    public const string RespondInfo = "respond_info";
-    public const string Forward = "forward";
     public const string ChangeDecision = "change_decision";
     public const string Cancel = "cancel";
 }
