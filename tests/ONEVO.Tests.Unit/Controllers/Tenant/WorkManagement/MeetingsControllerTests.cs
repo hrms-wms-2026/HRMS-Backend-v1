@@ -158,6 +158,38 @@ public sealed class MeetingsControllerTests
     }
 
     [Fact]
+    public async Task GetActionItems_MapsToTheQuery_AndAnInvisibleOccurrenceIs404WithItsCode()
+    {
+        var view = new MeetingActionItemView(Guid.NewGuid(), "ACT-1", "Send the report", "Open", Guid.NewGuid(),
+            Guid.NewGuid(), Guid.NewGuid(), Start);
+        _mediator.Setup(m => m.Send(It.Is<GetMeetingActionItemsQuery>(q => q.OccurrenceTaskId == Series), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<IReadOnlyList<MeetingActionItemView>>.Success([view]));
+        _mediator.Setup(m => m.Send(It.Is<GetMeetingActionItemsQuery>(q => q.OccurrenceTaskId != Series), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<IReadOnlyList<MeetingActionItemView>>.Failure("Meeting not found.", 404, MeetingErrorCodes.NotFound));
+
+        var ok = Assert.IsType<OkObjectResult>(await Controller.GetActionItems(Series, CancellationToken.None));
+        var notFound = Assert.IsType<ObjectResult>(await Controller.GetActionItems(Guid.NewGuid(), CancellationToken.None));
+
+        Assert.Equal(new[] { view }, (IReadOnlyList<MeetingActionItemView>)ok.Value!);
+        Assert.Equal((404, MeetingErrorCodes.NotFound), (notFound.StatusCode, ((ProblemDetails)notFound.Value!).Extensions["code"]));
+    }
+
+    [Fact]
+    public async Task UnlinkActionItem_IsNoContent_AndAnOrganizerOnlyFailureKeepsItsCode()
+    {
+        var taskId = Guid.NewGuid();
+        _mediator.Setup(m => m.Send(It.Is<UnlinkMeetingActionItemCommand>(c => c.OccurrenceTaskId == Series && c.ActionTaskId == taskId), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<bool>.Success(true));
+        _mediator.Setup(m => m.Send(It.Is<UnlinkMeetingActionItemCommand>(c => c.OccurrenceTaskId == Series && c.ActionTaskId != taskId), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<bool>.Failure("Only the organizer can change this meeting.", 403, MeetingErrorCodes.OrganizerRequired));
+
+        Assert.IsType<NoContentResult>(await Controller.UnlinkActionItem(Series, taskId, CancellationToken.None));
+        var refused = Assert.IsType<ObjectResult>(await Controller.UnlinkActionItem(Series, Guid.NewGuid(), CancellationToken.None));
+
+        Assert.Equal((403, MeetingErrorCodes.OrganizerRequired), (refused.StatusCode, ((ProblemDetails)refused.Value!).Extensions["code"]));
+    }
+
+    [Fact]
     public async Task GetAttendance_MapsToTheQuery()
     {
         var view = new MeetingAttendanceResponse("synced", "Recorded", [], null);
