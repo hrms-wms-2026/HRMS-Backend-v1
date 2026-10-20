@@ -74,14 +74,21 @@ public class EfUserDashboardRepository : IUserDashboardRepository
     private IQueryable<UserDashboard> WithChildren()
         => _db.UserDashboards.Include(d => d.Widgets).ThenInclude(w => w.Layouts);
 
-    private static void AssignMissingIds(UserDashboard dashboard)
+    /// <summary>Assigns missing ids and propagates the dashboard's TenantId to children that have none.</summary>
+    public static void PrepareGraph(UserDashboard dashboard)
     {
         if (dashboard.Id == Guid.Empty) dashboard.Id = Guid.NewGuid();
         foreach (var widget in dashboard.Widgets)
         {
             if (widget.Id == Guid.Empty) widget.Id = Guid.NewGuid();
+            if (widget.TenantId == Guid.Empty) widget.TenantId = dashboard.TenantId;
             foreach (var layout in widget.Layouts)
+            {
                 if (layout.Id == Guid.Empty) layout.Id = Guid.NewGuid();
+                if (layout.TenantId == Guid.Empty) layout.TenantId = dashboard.TenantId;
+            }
         }
     }
+
+    private static void AssignMissingIds(UserDashboard dashboard) => PrepareGraph(dashboard);
 }

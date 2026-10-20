@@ -40,6 +40,7 @@ public static class DependencyInjection
         services.AddScoped<
             ONEVO.Application.Features.Dashboard.Layout.Access.IDashboardWidgetAccess,
             ONEVO.Application.Features.Dashboard.Layout.Access.DashboardWidgetAccess>();
+        services.AddScoped<ONEVO.Application.Features.Dashboard.Layout.Services.DashboardSeeder>();
 
         services.AddScoped<
             ONEVO.Application.Features.Monitoring.TrayActivation.ServiceInterfaces.ITrayPresenceRequirementEvaluator,
