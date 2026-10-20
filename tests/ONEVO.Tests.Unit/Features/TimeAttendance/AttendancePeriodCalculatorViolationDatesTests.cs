@@ -41,7 +41,7 @@ public sealed class AttendancePeriodCalculatorViolationDatesTests
 
         var c = AttendancePeriodCalculator.Classify(data);
 
-        c.Dates.ShortHours.Should().Equal(d3);
+        c.Dates.ShortHours.Should().BeEmpty(); // short hours is retired
         c.Dates.Late.Should().Equal(d4);
         c.Dates.EarlyDepartures.Should().Equal(d5);
         c.Dates.MissingClockOuts.Should().Equal(d6);
