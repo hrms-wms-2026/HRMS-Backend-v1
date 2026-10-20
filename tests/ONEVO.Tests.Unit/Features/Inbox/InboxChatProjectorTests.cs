@@ -171,6 +171,35 @@ public class InboxChatProjectorTests
     }
 
     [Fact]
+    public async Task The_badge_counts_unread_in_1on1_chats_groups_and_case_groups_but_not_hidden_item_chats()
+    {
+        Guid Chat(string source, Guid subjectId)
+        {
+            var c = new Conversation { Id = Guid.NewGuid(), TenantId = TenantId, SubjectSource = source, SubjectKind = source, SubjectId = subjectId };
+            _repo.Conversations.Add(c);
+            _repo.Participants.Add(new ConversationParticipant { Id = Guid.NewGuid(), TenantId = TenantId, ConversationId = c.Id, EmployeeId = Manager });
+            return c.Id;
+        }
+        void Unread(Guid chat, int count, string? json = null)
+        {
+            for (var i = 0; i < count; i++)
+                _repo.Messages.Add(new ConversationMessage
+                {
+                    Id = Guid.NewGuid(), TenantId = TenantId, ConversationId = chat, AuthorEmployeeId = json is null ? Priya : null,
+                    Kind = json is null ? ConversationMessageKinds.Text : ConversationMessageKinds.System, SystemEventJson = json, CreatedAt = Now,
+                });
+        }
+        Unread(Chat(ConversationSources.Direct, Guid.NewGuid()), 2);
+        Unread(Chat(ConversationSources.Group, Guid.NewGuid()), 1);
+        Unread(Chat("leave", Guid.NewGuid()), 5); // an old per-item chat: not listed, not counted
+        Unread(Chat("monitoring", Guid.NewGuid()), 1, "{\"type\":\"case_group\",\"title\":\"Face check\"}");
+
+        var total = await new ConversationUnreadCounts(_repo).TotalInChatsAsync(TenantId, Manager, CancellationToken.None);
+
+        total.Should().Be(4);
+    }
+
+    [Fact]
     public async Task Watchers_and_alerts_without_a_holder_place_nothing_from_the_subjects_side()
     {
         await Project(Priya, Leave(Guid.NewGuid(), InboxDirections.Info, holder: null, pending: true));

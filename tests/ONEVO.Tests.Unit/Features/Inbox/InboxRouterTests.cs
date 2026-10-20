@@ -181,8 +181,8 @@ public partial class InboxRouterTests
             Item("work", "open alert", 4, pending: true, category: InboxCategories.Alert, direction: InboxDirections.Info),
             Item("work", "achieved alert", 5, pending: false, category: InboxCategories.Alert, direction: InboxDirections.Info),
         ]);
-        _unread.Setup(u => u.GetAsync(TenantId, Me, It.IsAny<IReadOnlyCollection<ItemRef>>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new Dictionary<ItemRef, int> { [new ItemRef("work", unreadItem.Kind, unreadItem.Id)] = 2 });
+        // The badge's unread count is every chat the inbox lists (1-on-1s, groups, case groups), not only item chats.
+        _unread.Setup(u => u.TotalInChatsAsync(TenantId, Me, It.IsAny<CancellationToken>())).ReturnsAsync(2);
 
         var counts = await Router().GetCountsAsync(TenantId, Me, default);
 

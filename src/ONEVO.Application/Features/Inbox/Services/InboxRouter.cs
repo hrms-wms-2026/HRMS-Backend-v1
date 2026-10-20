@@ -117,12 +117,11 @@ public sealed class InboxRouter : IInboxRouter
     public async Task<InboxCounts> GetCountsAsync(Guid tenantId, Guid callerEmployeeId, CancellationToken ct)
     {
         var items = await CollectAsync(tenantId, callerEmployeeId, new InboxQuery(), ct);
-        var unread = await _unread.GetAsync(tenantId, callerEmployeeId, items.Select(Ref).ToList(), ct);
         var needsMe = items.Where(i => i.IsPending
             && (i.Category == InboxCategories.Alert || (i.Category == InboxCategories.Request && i.Direction == InboxDirections.Received))).ToList();
         return new InboxCounts(
             PendingReceived: items.Count(i => i.IsPending && i.Category == InboxCategories.Request && i.Direction == InboxDirections.Received),
-            UnreadMessages: unread.Values.Sum(),
+            UnreadMessages: await _unread.TotalInChatsAsync(tenantId, callerEmployeeId, ct),
             OpenAlerts: items.Count(i => i.IsPending && i.Category == InboxCategories.Alert),
             BySource: needsMe.GroupBy(i => i.Source).ToDictionary(g => g.Key, g => g.Count()),
             ByKind: needsMe.GroupBy(i => $"{i.Source}:{i.Kind}").ToDictionary(g => g.Key, g => g.Count()));
