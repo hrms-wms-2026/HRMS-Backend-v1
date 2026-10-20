@@ -329,6 +329,8 @@ public class ApplicationDbContext : DbContext
         => Set<ONEVO.Domain.Features.Conversations.Entities.ConversationMessageAttachment>();
     public DbSet<ONEVO.Domain.Features.TimeAttendance.Alerts.AttendanceAlert> AttendanceAlerts
         => Set<ONEVO.Domain.Features.TimeAttendance.Alerts.AttendanceAlert>();
+    public DbSet<ONEVO.Domain.Features.TimeAttendance.Alerts.AttendanceAlertDeduction> AttendanceAlertDeductions
+        => Set<ONEVO.Domain.Features.TimeAttendance.Alerts.AttendanceAlertDeduction>();
     public DbSet<ONEVO.Domain.Features.Inbox.Entities.InboxDecisionJournalEntry> InboxDecisionJournal
         => Set<ONEVO.Domain.Features.Inbox.Entities.InboxDecisionJournalEntry>();
     public DbSet<ONEVO.Domain.Features.Conversations.Entities.ConversationMessageMention> ConversationMessageMentions
