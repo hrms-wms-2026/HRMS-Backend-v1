@@ -338,6 +338,12 @@ public class ApplicationDbContext : DbContext
     public DbSet<WorkNotificationLog> WorkNotificationLogs => Set<WorkNotificationLog>();
     public DbSet<MonitorAlert> MonitorAlerts => Set<MonitorAlert>();
     public DbSet<ModuleHourSummary> ModuleHourSummaries => Set<ModuleHourSummary>();
+    public DbSet<ONEVO.Domain.Features.Dashboard.Entities.UserDashboard> UserDashboards
+        => Set<ONEVO.Domain.Features.Dashboard.Entities.UserDashboard>();
+    public DbSet<ONEVO.Domain.Features.Dashboard.Entities.DashboardWidget> DashboardWidgets
+        => Set<ONEVO.Domain.Features.Dashboard.Entities.DashboardWidget>();
+    public DbSet<ONEVO.Domain.Features.Dashboard.Entities.DashboardWidgetLayout> DashboardWidgetLayouts
+        => Set<ONEVO.Domain.Features.Dashboard.Entities.DashboardWidgetLayout>();
     public DbSet<TaskEditLog> TaskEditLogs => Set<TaskEditLog>();
     public DbSet<TaskStatusChangeLog> TaskStatusChangeLogs => Set<TaskStatusChangeLog>();
     public DbSet<TaskClockingSession> TaskClockingSessions => Set<TaskClockingSession>();
