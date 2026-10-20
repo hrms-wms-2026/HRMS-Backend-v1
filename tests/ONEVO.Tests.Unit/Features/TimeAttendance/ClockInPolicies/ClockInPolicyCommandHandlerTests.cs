@@ -229,6 +229,18 @@ public class ClockInPolicyCommandHandlerTests
     }
 
     [Fact]
+    public async Task Update_StampsRulesThatWereNeverStamped_EvenWithoutAChange()
+    {
+        var (existing, handler, typeId) = UpdateFixture();
+        existing.DeductionRulesChangedAt = null;
+
+        await handler.Handle(ValidUpdateCommand(existing.Id) with { LateDeductionRules = [new LateDeductionRuleInput(15, 1m, typeId)] },
+            CancellationToken.None);
+
+        Assert.Equal(_now, existing.DeductionRulesChangedAt);
+    }
+
+    [Fact]
     public async Task Create_SetsRulesChangedAt_WhenRulesExist()
     {
         ClockInPolicyEntity? saved = null;
