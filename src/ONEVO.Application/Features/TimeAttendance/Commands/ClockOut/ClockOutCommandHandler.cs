@@ -98,10 +98,8 @@ public sealed class ClockOutCommandHandler(
         record.ActualEnd = context.UtcNow;
         record.BreakMinutes = completedBreakMinutes;
         record.WorkedMinutes = workedMinutes;
-        record.Status = context.Schedule.RequiredWorkMinutes is int requiredMinutes
-            && workedMinutes < requiredMinutes
-            ? AttendanceRecord.StatusShortHours
-            : AttendanceRecord.StatusClockedOut;
+        // Short hours is retired: missing time is judged as late/early/over-break under the clock-in policy.
+        record.Status = AttendanceRecord.StatusClockedOut;
         record.UpdatedAt = context.UtcNow;
 
         await attendance.SaveChangesAsync(ct);

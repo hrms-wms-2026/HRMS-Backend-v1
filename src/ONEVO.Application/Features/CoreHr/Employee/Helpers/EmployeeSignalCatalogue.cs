@@ -36,9 +36,6 @@ public static class EmployeeSignalCatalogue
         if (d is not null)
             Add("early_clock_outs", 5, "warning", "attendance", d.EarlyClockOuts, "count", a?.Present,
                 $"{d.EarlyClockOuts} early clock-{S(d.EarlyClockOuts, "out", "outs")}", "Left before scheduled end");
-        if (a is not null)
-            Add("short_hours_days", 6, "warning", "attendance", a.ShortHours, "days", a.Present,
-                $"{a.ShortHours} short-hours {S(a.ShortHours, "day", "days")}", "Worked less than the required hours");
         if (d?.LocationViolations is int loc)
             Add("location_violations", 7, "warning", "attendance", loc, "count", null,
                 $"{loc} outside-location {S(loc, "alert", "alerts")}", "Clocked in away from the work location");

@@ -142,7 +142,6 @@ public sealed class GetEmployeeSignalItemsQueryHandlerTests
     [InlineData("missing_clock_outs")]
     [InlineData("late_clock_ins")]
     [InlineData("early_clock_outs")]
-    [InlineData("short_hours_days")]
     [InlineData("off_schedule_work")]
     public async Task AttendanceKeys_TotalEqualsTheClassifierCountBehindTheSignal(string key)
     {

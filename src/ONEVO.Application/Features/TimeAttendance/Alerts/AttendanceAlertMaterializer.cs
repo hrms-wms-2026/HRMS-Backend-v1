@@ -61,7 +61,6 @@ public sealed class AttendanceAlertMaterializer : IAttendanceAlertMaterializer
         Days(dates.Absent, AttendanceAlertSignals.AbsentDays);
         Days(dates.Late, AttendanceAlertSignals.LateClockIns);
         Days(dates.EarlyDepartures, AttendanceAlertSignals.EarlyClockOuts);
-        Days(dates.ShortHours, AttendanceAlertSignals.ShortHoursDays);
         Days(dates.WorkedOnNonWorkingDay, AttendanceAlertSignals.OffScheduleWork);
         Days(dates.MissingClockOuts, AttendanceAlertSignals.MissingClockOuts);
 
