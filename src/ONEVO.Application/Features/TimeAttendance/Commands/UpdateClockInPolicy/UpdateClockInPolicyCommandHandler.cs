@@ -91,6 +91,13 @@ public class UpdateClockInPolicyCommandHandler
 
         ClockInPolicyMapper.ApplyScope(policy, request.Scope);
 
+        // Days before the rows last changed are never newly charged, so only a real change moves the stamp
+        // (the rows are recreated on every save, so compare their content, not their ids).
+        if (!ClockInPolicyRules.SameRows(policy.LateDeductionRules.Where(r => r.IsActive)
+                .Select(r => (r.LateArrivalMinute, r.Multiplier, r.TimeOffTypeId)),
+            request.LateDeductionRules.Select(r => (r.LateArrivalMinute, r.Multiplier, r.TimeOffTypeId))))
+            policy.DeductionRulesChangedAt = now;
+
         policy.LateDeductionRules.Clear();
         foreach (var rule in request.LateDeductionRules.OrderBy(r => r.LateArrivalMinute))
         {

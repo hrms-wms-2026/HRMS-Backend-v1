@@ -11756,6 +11756,10 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("created_by_id");
 
+                    b.Property<DateTimeOffset?>("DeductionRulesChangedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("deduction_rules_changed_at");
+
                     b.PrimitiveCollection<Guid[]>("DepartmentIds")
                         .HasColumnType("uuid[]")
                         .HasColumnName("department_ids");

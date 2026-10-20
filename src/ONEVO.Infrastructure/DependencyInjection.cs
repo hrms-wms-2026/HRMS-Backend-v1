@@ -194,6 +194,7 @@ public static class DependencyInjection
         services.AddScoped<ILegalEntityRepository>(sp => sp.GetRequiredService<EfLegalEntityRepository>());
         services.AddScoped<IDepartmentRepository, EfDepartmentRepository>();
         services.AddScoped<IClockInPolicyRepository, EfClockInPolicyRepository>();
+        services.AddScoped<ONEVO.Application.Features.TimeAttendance.Services.IEmployeeClockInPolicyResolver, ONEVO.Application.Features.TimeAttendance.Services.EmployeeClockInPolicyResolver>();
         services.AddScoped<IAttendanceReadRepository, EfAttendanceReadRepository>();
         services.AddScoped<ONEVO.Infrastructure.Persistence.Repositories.TimeAttendance.EfAttendanceAlertRepository>();
         services.AddScoped<ONEVO.Application.Features.TimeAttendance.Alerts.IAttendanceAlertRepository>(sp => sp.GetRequiredService<ONEVO.Infrastructure.Persistence.Repositories.TimeAttendance.EfAttendanceAlertRepository>());
