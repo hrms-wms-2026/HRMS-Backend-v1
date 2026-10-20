@@ -49,6 +49,17 @@ Every error is ProblemDetails with a stable `code` extension:
 | `GET /series/{seriesId}/occurrences/{originalStart}/attendance` | → `MeetingAttendanceResponse` (organizer: every attendee + `unmatched`; attendee: own row only, `unmatched: null`) | Attendee | 404 |
 | `POST /series/{seriesId}/occurrences/{originalStart}/attendance/recheck` | → `MeetingAttendanceStatusResponse` | Organizer; up to 7 days after the occurrence ends | 403, 404, 409 `attendance_recheck_expired` / `attendance_check_in_progress` / `attendance_not_applicable` / `meetings_read_only` |
 | `POST /series/{seriesId}/link/cleanup-confirmed` | → 204 (`unresolved` → `cancelled`) | Organizer | 403, 404, 409 `meeting_link_not_unresolved` / `meetings_read_only` |
+| `GET /occurrences/{taskId}/action-items` | → `MeetingActionItemView[]` (the linked tasks the caller may see under the ordinary task rules) | Attendee | 404 `meeting_not_found` |
+| `DELETE /occurrences/{taskId}/action-items/{actionTaskId}` | → 204 (the link is removed; the task itself stays) | The link's creator or the organizer | 403 `meeting_organizer_required`, 404 `meeting_not_found`, 409 `meetings_read_only` |
+
+**Action items.** An action item is an ordinary task raised from a meeting occurrence (spec 5.4). It is created with the ordinary task route:
+
+```
+POST /api/v1/work/objectives/{objectiveId}/tasks
+{ "title": "...", "categoryId": "...", "priority": "medium", "sourceMeetingOccurrenceId": "<occurrence task id>" }
+```
+
+`sourceMeetingOccurrenceId` is optional and null for every ordinary task. When it is set, the occurrence must be one the caller can see and that still exists - otherwise the create is 404 `meeting_not_found` and nothing is written. The creator picks a module they are a member of (the default is the meeting's module); the module's existing create rules apply. The task and its link are written in one transaction; when the create goes through approval instead, the link is written when the approval is applied.
 
 **Approvals.** A `requested` meeting appears in the existing approval inbox as action `meeting.create` (or `meeting.move`):
 - It is decided with the existing approval endpoints.
