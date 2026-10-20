@@ -1,4 +1,8 @@
+using System.Reflection;
 using System.Text.RegularExpressions;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using ONEVO.Api.Controllers.Tenant.Dashboard;
 using Xunit;
 
 namespace ONEVO.Tests.Architecture;
@@ -26,6 +30,17 @@ public class CustomizableDashboardArchitectureTests
 
         foreach (var table in DashboardTables)
             Assert.Contains(table, covered);
+    }
+
+    [Fact]
+    public void Dashboard_layout_controller_requires_tenant_policy()
+    {
+        var type = typeof(DashboardLayoutController);
+        Assert.Equal("TenantPolicy", type.GetCustomAttribute<AuthorizeAttribute>()?.Policy);
+        Assert.Equal("api/v1/dashboards", type.GetCustomAttribute<RouteAttribute>()?.Template);
+        Assert.NotNull(type.GetCustomAttribute<ApiControllerAttribute>());
+        Assert.True(type.GetCustomAttribute<ResponseCacheAttribute>()?.NoStore);
+        Assert.Empty(type.GetMethods().Where(m => m.GetCustomAttribute<AllowAnonymousAttribute>() is not null));
     }
 
     private static string ReadMigrationSource(string migrationName)
