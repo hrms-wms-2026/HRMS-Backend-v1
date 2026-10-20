@@ -159,9 +159,9 @@ and the call is repeated with `replace = true`.
   `(newAmount − oldAmount) × remainingMonths / 12` (remaining includes the effective
   month), one audit row.
 - **New version, month period:** credits on/after `EffectiveFrom` use the new amount.
-- **Assignment change mid-year:** builder's call — the employee's new resolved policy
-  applies from the next credit; for year-period policies apply the same
-  difference-for-remaining-months adjustment. Already-credited hours are never removed.
+- **Assignment change mid-year (designer's call, revised during planning):** any change
+  — a new version or a new assignment — re-values the remaining months of the year under
+  the new rules; this can raise or lower the balance. Used hours are never touched.
 - **Carry forward at year end:** carry = remaining hours, capped by
   `CarryForwardCapHours` if set; excess forfeited (audit row). If
   `CarryForwardExpiryMonths` set, carried hours expire on 1 Jan + N months (forfeiture
