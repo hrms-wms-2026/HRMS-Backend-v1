@@ -7,6 +7,18 @@ namespace ONEVO.Application.Features.WorkManagement.Meetings.RepositoryInterface
 /// <summary>A materialized occurrence with the task fields it shows (title and agenda live on the task, spec 4.2).</summary>
 public sealed record MeetingOccurrenceRow(MeetingDetails Details, string ShortId, string Title, string? Description, Guid ProjectId, Guid ObjectiveId);
 
+/// <summary>
+/// One of the employee's own task-meeting occurrences, as the monitoring compliance view reads it (spec D17): the
+/// occurrence's time, its title, whether it is private, and the provider of the link it uses.
+/// <para>
+/// It is an effective attendee of the occurrence (a series participant without a "remove" override for it, or an
+/// occurrence "add") and has not declined it, and the occurrence's link is active - otherwise the occurrence has
+/// no provider application to measure.
+/// </para>
+/// </summary>
+public sealed record MeetingTaskComplianceOccurrence(
+    Guid TaskId, DateTimeOffset StartAt, DateTimeOffset EndAt, string Title, bool IsPrivate, string? Provider);
+
 /// <summary>Reads and writes of meeting series, occurrences and their attendees (meetings-as-tasks Phase 2). Occurrence
 /// inserts and remaps go through <see cref="IMeetingOccurrenceWriter"/>. Never calls SaveChangesAsync.</summary>
 public interface IMeetingRepository
@@ -49,6 +61,13 @@ public interface IMeetingRepository
 
     /// <summary>The occurrences with these task ids that still exist (a removed one is absent).</summary>
     Task<IReadOnlyList<MeetingOccurrenceRow>> ListOccurrencesByTaskIdsAsync(Guid tenantId, IReadOnlyCollection<Guid> taskIds, CancellationToken ct = default);
+
+    /// <summary>The employee's own task-meeting occurrences overlapping [from, to) that the monitoring compliance view
+    /// may measure: an effective attendee who has not declined, with an active provider link. Never a cancelled or a
+    /// removed (split-surplus) occurrence; never a legacy calendar event. The title is the meeting's real title - the
+    /// caller masks it for a private meeting (spec D17).</summary>
+    Task<IReadOnlyList<MeetingTaskComplianceOccurrence>> ListEmployeeTaskMeetingsAsync(Guid tenantId, Guid employeeId,
+        DateTimeOffset from, DateTimeOffset to, CancellationToken ct = default);
 
     /// <summary>Non-cancelled series the employee organizes or is a (non-removed) series attendee of.</summary>
     Task<IReadOnlyList<MeetingSeries>> ListSeriesForAttendeeAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default);

@@ -189,6 +189,67 @@ public sealed class EfMeetingRepository : IMeetingRepository
             .OrderBy(d => d.OriginalStart).ToListAsync(ct);
     }
 
+    public async Task<IReadOnlyList<MeetingTaskComplianceOccurrence>> ListEmployeeTaskMeetingsAsync(
+        Guid tenantId, Guid employeeId, DateTimeOffset from, DateTimeOffset to, CancellationToken ct = default)
+    {
+        var fromUtc = from.ToUniversalTime();
+        var toUtc = to.ToUniversalTime();
+
+        // The occurrences the employee effectively attends: a series participant (a removed one is filtered out)
+        // without a "remove" override for that occurrence, or an occurrence "add". The task join ignores the meeting
+        // filter (only this file may) and keeps the tenant filter, so a removed occurrence (a split surplus) is gone.
+        var candidates = await (
+            from d in _db.MeetingDetails.AsNoTracking()
+            join t in _db.WorkTasks.IgnoreQueryFilters(ExcludeMeetingsOnly) on d.TaskId equals t.Id
+            join m in _db.CalendarEventMeetings.AsNoTracking() on d.CalendarEventMeetingId equals m.Id
+            where d.TenantId == tenantId
+                  && t.TenantId == tenantId
+                  && d.CancelledAt == null
+                  && d.StartAt < toUtc && d.EndAt > fromUtc
+                  && m.TenantId == tenantId && m.Status == CalendarEventMeetingStatuses.Active
+                  && (_db.CalendarEventParticipants.Any(p => p.MeetingSeriesId == d.SeriesId && p.EmployeeId == employeeId && !p.IsDeleted)
+                      ? !_db.MeetingOccurrenceAttendees.Any(a => a.OccurrenceTaskId == d.TaskId
+                          && a.AttendeeKind == MeetingAttendeeKinds.Employee && a.EmployeeId == employeeId
+                          && a.Change == MeetingAttendeeChanges.Remove)
+                      : _db.MeetingOccurrenceAttendees.Any(a => a.OccurrenceTaskId == d.TaskId
+                          && a.AttendeeKind == MeetingAttendeeKinds.Employee && a.EmployeeId == employeeId
+                          && a.Change == MeetingAttendeeChanges.Add))
+            orderby d.StartAt
+            select new { d.TaskId, d.SeriesId, d.StartAt, d.EndAt, d.IsPrivate, t.Title, m.Provider })
+            .ToListAsync(ct);
+
+        if (candidates.Count == 0)
+            return [];
+
+        // The RSVP that decides a decline: the occurrence's own answer when the occurrence carries one, else the
+        // series answer. Two batched reads, not one per occurrence.
+        var seriesIds = candidates.Select(c => c.SeriesId).Distinct().ToList();
+        var taskIds = candidates.Select(c => c.TaskId).ToList();
+        var participants = await _db.CalendarEventParticipants.AsNoTracking()
+            .Where(p => p.TenantId == tenantId && p.MeetingSeriesId != null && seriesIds.Contains(p.MeetingSeriesId.Value))
+            .ToListAsync(ct);
+        var overrides = await _db.MeetingOccurrenceAttendees.AsNoTracking()
+            .Where(a => a.TenantId == tenantId && taskIds.Contains(a.OccurrenceTaskId))
+            .ToListAsync(ct);
+
+        var result = new List<MeetingTaskComplianceOccurrence>();
+        foreach (var c in candidates)
+        {
+            var own = overrides.FirstOrDefault(a => a.OccurrenceTaskId == c.TaskId
+                && a.AttendeeKind == MeetingAttendeeKinds.Employee && a.EmployeeId == employeeId);
+            var series = participants.FirstOrDefault(p => p.MeetingSeriesId == c.SeriesId && p.EmployeeId == employeeId);
+            // A "remove" override means the employee is not an attendee of this occurrence at all.
+            if (own is { Change: MeetingAttendeeChanges.Remove })
+                continue;
+            var response = own?.ResponseStatus ?? series?.ResponseStatus;
+            if (response == CalendarEventParticipantStatuses.Rejected)
+                continue;   // a declined occurrence has no meeting application to measure
+
+            result.Add(new MeetingTaskComplianceOccurrence(c.TaskId, c.StartAt, c.EndAt, c.Title, c.IsPrivate, c.Provider));
+        }
+        return result;
+    }
+
     public async Task<IReadOnlyList<MeetingOccurrenceSuppression>> ListSuppressionsFromAsync(
         Guid tenantId, Guid seriesId, DateTimeOffset from, CancellationToken ct = default)
     {

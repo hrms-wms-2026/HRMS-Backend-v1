@@ -10,6 +10,7 @@ using ONEVO.Application.Features.Monitoring.Meetings.RepositoryInterfaces;
 using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
 using ONEVO.Application.Features.TimeAttendance.Services;
 using ONEVO.Domain.Features.Calendar.Entities;
+using ONEVO.Domain.Features.WorkManagement.Meetings.Entities;
 using CoreEmployeeRepository = ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces.IEmployeeRepository;
 
 namespace ONEVO.Application.Features.Calendar.Exceptions;
@@ -107,7 +108,7 @@ public sealed class CalendarIncidentEngine(
     }
 
     /// <summary>What the rules, the evidence and the reviewer may see of a meeting's title: a private event stays private.</summary>
-    public static string DisplayTitle(CalendarEvent e) => e.IsPrivate ? "Private meeting" : e.Title;
+    public static string DisplayTitle(CalendarEvent e) => e.IsPrivate ? MeetingPrivacy.MaskedTitle : e.Title;
 
     /// <summary>Whether the provider report can be used for this occurrence, and the employee's matched rows in it. A
     /// recurring series shares one meeting: its report counts for an occurrence only when it was synced after that

@@ -13,8 +13,6 @@ namespace ONEVO.Application.Features.WorkManagement.Meetings.Services;
 /// </summary>
 public sealed class TaskMeetingOccurrenceSource : IEmployeeMeetingOccurrenceSource
 {
-    private const string PrivateTitle = "Private meeting";
-
     private readonly IMeetingRepository _meetings;
     private readonly ICalendarEventRepository _events;
     private readonly IMeetingAttendanceRepository _attendance;
@@ -64,7 +62,7 @@ public sealed class TaskMeetingOccurrenceSource : IEmployeeMeetingOccurrenceSour
             var (state, spans) = await ReportAsync(tenantId, d, employee.Id, identities, ct);
 
             views.Add(new CalendarMeetingView(
-                d.TaskId, d.StartAt, d.EndAt, d.IsPrivate ? PrivateTitle : row.Title, d.IsAllDay, d.CancelledAt is not null, isOrganizer,
+                d.TaskId, d.StartAt, d.EndAt, d.IsPrivate ? MeetingPrivacy.MaskedTitle : row.Title, d.IsAllDay, d.CancelledAt is not null, isOrganizer,
                 peopleCount, s.OrganizerEmployeeId, managerId is not null && s.OrganizerEmployeeId == managerId,
                 me?.Response ?? CalendarEventParticipantStatuses.Accepted, changes, ReplacementAttended: false,
                 state, spans, agent.TryGetValue((d.TaskId, d.StartAt), out var ratio) ? ratio : null,

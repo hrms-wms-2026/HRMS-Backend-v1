@@ -32,8 +32,6 @@ public sealed class EmployeeMeetingAttendanceService
     /// <summary>The longest window the endpoint serves; a longer one is a 400 (spec 5.1).</summary>
     public const int MaxWindowDays = 92;
 
-    private const string PrivateTitle = "Private meeting";
-
     private readonly IMeetingRepository _meetings;
     private readonly IMeetingAttendanceRepository _attendance;
     private readonly IEmployeeRepository _employees;
@@ -97,7 +95,7 @@ public sealed class EmployeeMeetingAttendanceService
 
             items.Add(new EmployeeMeetingAttendanceItem(
                 occurrence.TaskId, occurrence.StartAt, occurrence.EndAt,
-                masked ? PrivateTitle : row.Title,
+                masked ? MeetingPrivacy.MaskedTitle : row.Title,
                 masked ? null : organizerName,
                 status,
                 DisplayOf(status),
