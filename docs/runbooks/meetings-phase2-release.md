@@ -96,6 +96,28 @@ Weekly and fortnightly series keep it alive. Workaround: the organizer regenerat
 **Rollback of B.** `AddExternalLinkPushedFingerprint` is additive (nullable column); its `Down()` drops it. Once
 meetings exist, recover with `Meetings:ReadOnly` and fix forward, as for A.
 
+## Pacing calendar invite emails (`Email:MaxPerSecond`)
+
+Plan D Task 3. A bulk invite fans one event out to many people, and each of them gets a calendar email.
+`Email:MaxPerSecond` caps how many of those emails may **start** within any rolling second.
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `Email:MaxPerSecond` | `0` | At most this many calendar invite emails per rolling second. `0` = unlimited. |
+
+- **The cap is per app instance, not cluster-wide.** Each instance keeps its own sliding window, so the total
+  rate against the provider is the limit times the instance count. Set it to the **provider's limit divided by
+  the instance count** - e.g. a provider limit of 100/s on three instances means `Email:MaxPerSecond` of 33.
+- The setting is read at startup, like every other `Email:*` setting: **a change takes effect after a restart.**
+- A **negative** value stops the app at startup, and the error names `Email:MaxPerSecond`. It is not clamped
+  to 0, because "unlimited" is the opposite of what a negative number was meant to say.
+- `0` (unlimited) is the shipped default. It is a deployment setting, not a code default, because only the
+  operator knows the provider's limit and the instance count.
+- The limit applies to **calendar invite emails** (the invite, update, cancellation and removal emails the
+  calendar outbox handler sends). It does not pace password resets, onboarding invites or invoices.
+- When a send is over the limit the outbox handler waits before sending; the message stays pending in the
+  outbox and is not lost. A restart during the wait simply re-sends it later.
+
 ## Rollback rules
 
 **Never roll back below Release A once meeting rows exist.**
