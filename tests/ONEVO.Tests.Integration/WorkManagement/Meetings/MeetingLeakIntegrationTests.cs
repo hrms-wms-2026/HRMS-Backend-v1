@@ -204,7 +204,7 @@ public sealed class MeetingLeakIntegrationTests
 
         Assert.Equal(1, (await tasks.CountByObjectivesAsync(w.H.TenantId, [w.At.ObjectiveId], today))[w.At.ObjectiveId].Total);
         Assert.Equal(1, (await tasks.CountByProjectsAsync(w.H.TenantId, [w.At.ProjectId], today))[w.At.ProjectId].Total);
-        Assert.Single(await tasks.ListTopLevelProgressRowsAsync(w.H.TenantId, [w.At.ObjectiveId]));
+        Assert.Single(await tasks.GetMyTaskProgressRowsAsync(w.H.TenantId, w.At.OrganizerEmployeeId));
         Assert.Single(await tasks.ListTopLevelOverdueAsync(w.H.TenantId, [w.At.ObjectiveId], today, take: 10));
     }
 
