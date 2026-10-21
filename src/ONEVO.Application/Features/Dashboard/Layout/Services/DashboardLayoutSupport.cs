@@ -55,6 +55,50 @@ public static class DashboardLayoutSupport
         row.X = rect.X; row.Y = rect.Y; row.W = rect.W; row.H = rect.H;
     }
 
+    /// <summary>
+    /// The permission-variant rects for the visible widgets when the allowed set selects a variant and every visible
+    /// widget's stored rect for this breakpoint still equals the full default (the user never customized it); else null.
+    /// </summary>
+    public static Dictionary<Guid, GridRect>? VariantRects(
+        string dashboardKey, List<DashboardWidget> visible, IReadOnlySet<string> allowed, string breakpoint)
+    {
+        if (visible.Count == 0 || !DashboardWidgetRegistry.HasVariant(dashboardKey, allowed))
+            return null;
+
+        var full = DashboardWidgetRegistry.DefaultLayout(dashboardKey, breakpoint).ToDictionary(i => i.Key, i => i.Rect);
+        foreach (var widget in visible)
+        {
+            if (!full.TryGetValue(widget.WidgetKey, out var defaultRect) || Rect(widget, breakpoint) != defaultRect)
+                return null;
+        }
+
+        var variant = DashboardWidgetRegistry.DefaultLayoutFor(dashboardKey, allowed, breakpoint)
+            .ToDictionary(i => i.Key, i => i.Rect);
+        if (visible.Any(w => !variant.ContainsKey(w.WidgetKey)))
+            return null;
+
+        // Compact in case the user removed a default widget without moving the others.
+        var compacted = DashboardGrid.Compact(visible.Select(w => (w.Id.ToString(), variant[w.WidgetKey])).ToList());
+        return compacted.ToDictionary(c => Guid.Parse(c.Key), c => c.Rect);
+    }
+
+    /// <summary>
+    /// Persists the permission variant on every untouched breakpoint (visible widgets only) so a following Add/Remove
+    /// builds on the no-gap layout instead of the stored full default. Breakpoints the user customized are left alone.
+    /// </summary>
+    public static void MaterializeVariants(UserDashboard dashboard, List<DashboardWidget> visible, IReadOnlySet<string> allowed)
+    {
+        foreach (var breakpoint in Breakpoints.All)
+        {
+            var variant = VariantRects(dashboard.DashboardKey, visible, allowed, breakpoint);
+            if (variant is null)
+                continue;
+
+            foreach (var widget in visible)
+                SetRect(widget, breakpoint, variant[widget.Id], dashboard.TenantId);
+        }
+    }
+
     /// <summary>Removes a widget and its layout rows explicitly (children are not cascade-soft-deleted).</summary>
     public static void RemoveWidget(UserDashboard dashboard, DashboardWidget widget)
     {

@@ -31,6 +31,7 @@ public sealed class RemoveDashboardWidgetCommandHandler(
         if (widget is null)
             return Result<long>.NotFound("Widget not found.");
 
+        DashboardLayoutSupport.MaterializeVariants(dashboard, visible, allowed);
         visible.Remove(widget);
         DashboardLayoutSupport.RemoveWidget(dashboard, widget);
         DashboardLayoutSupport.CompactVisible(visible);

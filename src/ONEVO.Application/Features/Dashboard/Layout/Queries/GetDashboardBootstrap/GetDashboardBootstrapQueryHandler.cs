@@ -45,7 +45,7 @@ public sealed class GetDashboardBootstrapQueryHandler(
 
         // An untouched default layout is shown as the viewer's permission variant (spec 6.2) so a hidden gated widget
         // leaves no hole. Display only: the stored full default stays intact so a later-allowed widget gets its slot.
-        var variant = VariantRects(dashboard.DashboardKey, visible, allowed, breakpoint);
+        var variant = DashboardLayoutSupport.VariantRects(dashboard.DashboardKey, visible, allowed, breakpoint);
         var final = variant ?? ResolveRects(visible, breakpoint, columns);
 
         var changed = false;
@@ -96,34 +96,6 @@ public sealed class GetDashboardBootstrapQueryHandler(
             dashboard.Id, dashboard.DashboardKey, title, version,
             new GridSpecDto(breakpoint, columns, RowHeight, Gap),
             widgets, hasGated, capabilitiesUnavailable));
-    }
-
-    /// <summary>
-    /// The permission-variant rects for the visible widgets when the allowed set selects a variant and every visible
-    /// widget's stored rect for this breakpoint still equals the full default (the user never customized it); else null.
-    /// </summary>
-    private static Dictionary<Guid, GridRect>? VariantRects(
-        string dashboardKey, List<DashboardWidget> visible, IReadOnlySet<string> allowed, string breakpoint)
-    {
-        if (visible.Count == 0 || !DashboardWidgetRegistry.HasVariant(dashboardKey, allowed))
-            return null;
-
-        var full = DashboardWidgetRegistry.DefaultLayout(dashboardKey, breakpoint).ToDictionary(i => i.Key, i => i.Rect);
-        foreach (var widget in visible)
-        {
-            if (!full.TryGetValue(widget.WidgetKey, out var defaultRect)
-                || DashboardLayoutSupport.Rect(widget, breakpoint) != defaultRect)
-                return null;
-        }
-
-        var variant = DashboardWidgetRegistry.DefaultLayoutFor(dashboardKey, allowed, breakpoint)
-            .ToDictionary(i => i.Key, i => i.Rect);
-        if (visible.Any(w => !variant.ContainsKey(w.WidgetKey)))
-            return null;
-
-        // Compact in case the user removed a default widget without moving the others.
-        var compacted = DashboardGrid.Compact(visible.Select(w => (w.Id.ToString(), variant[w.WidgetKey])).ToList());
-        return compacted.ToDictionary(c => Guid.Parse(c.Key), c => c.Rect);
     }
 
     /// <summary>Keeps valid non-overlapping stored rects, auto-places the rest, then gravity-compacts.</summary>

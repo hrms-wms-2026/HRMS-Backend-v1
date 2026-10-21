@@ -38,6 +38,7 @@ public sealed class AddDashboardWidgetCommandHandler(
 
         var visible = DashboardLayoutSupport.VisibleWidgets(dashboard, allowed);
         var tenantId = dashboard.TenantId;
+        DashboardLayoutSupport.MaterializeVariants(dashboard, visible, allowed);
 
         // A caller-supplied desktop rect is honoured only when valid and free of visible widgets;
         // otherwise the widget is auto-placed at its default size (Ruling 5).
