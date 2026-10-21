@@ -4,6 +4,13 @@ public static class DashboardKeys
 {
     public const string MyWork = "my-work";
     public const string MyTeam = "my-team";
+
+    public static string Title(string dashboardKey) => dashboardKey switch
+    {
+        MyWork => "My Work",
+        MyTeam => "My Team",
+        _ => dashboardKey,
+    };
 }
 
 public static class Breakpoints

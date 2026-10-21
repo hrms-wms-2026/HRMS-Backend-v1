@@ -106,6 +106,14 @@ public static class DashboardWidgetRegistry
         string dashboardKey, IReadOnlySet<string> allowedKeys, string breakpoint) =>
         Derive(VariantDesktop(dashboardKey, allowedKeys) ?? DesktopDefaults(dashboardKey), breakpoint);
 
+    /// <summary>Tablet width (6 columns) for a widget whose desktop width is <paramref name="desktopW"/> (Ruling 2).</summary>
+    public static int TabletWidth(WidgetDefinition? def, int desktopW)
+    {
+        var columns = Breakpoints.Columns(Breakpoints.Tablet);
+        var minW = def is null ? 1 : Math.Min(def.MinW, columns);
+        return Math.Max(desktopW >= 6 ? 6 : 3, minW);
+    }
+
     private static IReadOnlyList<(string Key, GridRect Rect)> DesktopDefaults(string dashboardKey) => dashboardKey switch
     {
         DashboardKeys.MyWork => MyWorkDefaults,
@@ -158,8 +166,7 @@ public static class DashboardWidgetRegistry
 
         foreach (var (key, rect) in ordered)
         {
-            var minW = Get(key) is { } def ? Math.Min(def.MinW, columns) : 1;
-            var w = Math.Max(rect.W >= 6 ? 6 : 3, minW);
+            var w = TabletWidth(Get(key), rect.W);
             result.Add((key, DashboardGrid.AutoPlace(result.Select(r => r.Rect), w, rect.H, columns)));
         }
 

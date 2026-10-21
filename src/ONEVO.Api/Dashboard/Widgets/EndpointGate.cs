@@ -11,8 +11,8 @@ namespace ONEVO.Api.Dashboard.Widgets;
 /// provider re-checks exactly what the endpoint checks (providers bypass MVC filters). Evaluates
 /// <see cref="RequirePermissionAttribute"/> (all), <see cref="RequireAnyPermissionAttribute"/> (one of each
 /// set) and <see cref="RequireAnyModuleAttribute"/> (one active module of each set) with the same services
-/// the filters use. Any other authorization filter or policy is rejected at construction, so a gate can never
-/// be silently skipped.
+/// the filters use. Any other authorization filter, filter factory (ServiceFilter/TypeFilter) or policy is
+/// rejected at construction, so a gate can never be silently skipped.
 /// </summary>
 public sealed class EndpointGate
 {
@@ -60,6 +60,10 @@ public sealed class EndpointGate
                 case RequireAnyModuleAttribute m:
                     modules.Add(m.ModuleKeys);
                     break;
+                case IFilterFactory factory:
+                    // ServiceFilter/TypeFilter (and similar) create their filter at runtime; it could be an auth gate.
+                    throw new NotSupportedException(
+                        $"{controller.Name}.{actionName} has filter factory {factory.GetType().Name}, which widget providers cannot mirror.");
                 case IAuthorizationFilter or IAsyncAuthorizationFilter:
                     throw new NotSupportedException(
                         $"{controller.Name}.{actionName} has authorization filter {attribute.GetType().Name}, which widget providers cannot mirror.");

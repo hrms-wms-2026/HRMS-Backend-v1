@@ -43,6 +43,13 @@ public sealed class EndpointGateTests
     }
 
     [Fact]
+    public void Filter_factory_attribute_is_rejected()
+    {
+        Assert.Throws<NotSupportedException>(() =>
+            EndpointGate.For<GatedTestController>(nameof(GatedTestController.FactoryFiltered)));
+    }
+
+    [Fact]
     public void Unknown_policy_is_rejected()
     {
         Assert.Throws<NotSupportedException>(() =>
@@ -132,6 +139,10 @@ public sealed class EndpointGateTests
         [HttpGet("admin")]
         [Authorize(Policy = "AdminPolicy")]
         public IActionResult AdminOnly() => Ok();
+
+        [HttpGet("factory")]
+        [ServiceFilter(typeof(object))]
+        public IActionResult FactoryFiltered() => Ok();
 
         [HttpGet("combined")]
         [RequirePermission("a:read")]

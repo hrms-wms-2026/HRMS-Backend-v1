@@ -29,12 +29,14 @@ public sealed class GetMyDashboardsQueryHandlerTests
         var user = User(true);
         var repo = new Mock<IUserDashboardRepository>();
         var store = new Dictionary<string, UserDashboard>();
+        repo.Setup(r => r.ListForUserAsync(TenantId, UserId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(() => store.Values.ToList());
         repo.Setup(r => r.GetAsync(TenantId, UserId, It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((Guid _, Guid _, string key, CancellationToken _) => store.GetValueOrDefault(key));
         repo.Setup(r => r.TryAddAsync(It.IsAny<UserDashboard>(), It.IsAny<CancellationToken>()))
             .Callback<UserDashboard, CancellationToken>((d, _) => { d.Id = Guid.NewGuid(); store[d.DashboardKey] = d; })
             .ReturnsAsync(true);
-        var handler = new GetMyDashboardsQueryHandler(new DashboardSeeder(repo.Object, user.Object), user.Object);
+        var handler = new GetMyDashboardsQueryHandler(new DashboardSeeder(repo.Object, user.Object), repo.Object, user.Object);
 
         var result = await handler.Handle(new GetMyDashboardsQuery(), default);
 
@@ -60,6 +62,8 @@ public sealed class GetMyDashboardsQueryHandlerTests
         };
         var reads = new Dictionary<string, int>();
         var repo = new Mock<IUserDashboardRepository>();
+        repo.Setup(r => r.ListForUserAsync(TenantId, UserId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<UserDashboard>());
         repo.Setup(r => r.GetAsync(TenantId, UserId, It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((Guid _, Guid _, string key, CancellationToken _) =>
             {
@@ -67,7 +71,7 @@ public sealed class GetMyDashboardsQueryHandlerTests
                 return reads[key] == 1 ? null : winners[key];
             });
         repo.Setup(r => r.TryAddAsync(It.IsAny<UserDashboard>(), It.IsAny<CancellationToken>())).ReturnsAsync(false);
-        var handler = new GetMyDashboardsQueryHandler(new DashboardSeeder(repo.Object, user.Object), user.Object);
+        var handler = new GetMyDashboardsQueryHandler(new DashboardSeeder(repo.Object, user.Object), repo.Object, user.Object);
 
         var result = await handler.Handle(new GetMyDashboardsQuery(), default);
 
@@ -77,11 +81,54 @@ public sealed class GetMyDashboardsQueryHandlerTests
     }
 
     [Fact]
+    public async Task Existing_dashboards_are_listed_without_loading_full_graphs()
+    {
+        var user = User(true);
+        var repo = new Mock<IUserDashboardRepository>(MockBehavior.Strict);
+        var team = new UserDashboard { Id = Guid.NewGuid(), DashboardKey = DashboardKeys.MyTeam, LayoutVersion = 3 };
+        var work = new UserDashboard { Id = Guid.NewGuid(), DashboardKey = DashboardKeys.MyWork, LayoutVersion = 7 };
+        repo.Setup(r => r.ListForUserAsync(TenantId, UserId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<UserDashboard> { team, work });
+        var handler = new GetMyDashboardsQueryHandler(new DashboardSeeder(repo.Object, user.Object), repo.Object, user.Object);
+
+        var result = await handler.Handle(new GetMyDashboardsQuery(), default);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal([work.Id, team.Id], result.Value!.Select(d => d.Id));
+        Assert.Equal([7L, 3L], result.Value!.Select(d => d.LayoutVersion));
+        Assert.Equal(["My Work", "My Team"], result.Value!.Select(d => d.Title));
+        repo.Verify(r => r.ListForUserAsync(TenantId, UserId, It.IsAny<CancellationToken>()), Times.Once);
+        repo.VerifyNoOtherCalls();
+    }
+
+    [Fact]
+    public async Task Only_missing_dashboard_is_seeded()
+    {
+        var user = User(true);
+        var repo = new Mock<IUserDashboardRepository>();
+        var work = new UserDashboard { Id = Guid.NewGuid(), DashboardKey = DashboardKeys.MyWork, LayoutVersion = 5 };
+        repo.Setup(r => r.ListForUserAsync(TenantId, UserId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<UserDashboard> { work });
+        repo.Setup(r => r.TryAddAsync(It.IsAny<UserDashboard>(), It.IsAny<CancellationToken>()))
+            .Callback<UserDashboard, CancellationToken>((d, _) => d.Id = Guid.NewGuid())
+            .ReturnsAsync(true);
+        var handler = new GetMyDashboardsQueryHandler(new DashboardSeeder(repo.Object, user.Object), repo.Object, user.Object);
+
+        var result = await handler.Handle(new GetMyDashboardsQuery(), default);
+
+        Assert.Equal(["my-work", "my-team"], result.Value!.Select(d => d.Key));
+        Assert.Equal(work.Id, result.Value![0].Id);
+        repo.Verify(r => r.GetAsync(TenantId, UserId, DashboardKeys.MyWork, It.IsAny<CancellationToken>()), Times.Never);
+        repo.Verify(r => r.TryAddAsync(It.Is<UserDashboard>(d => d.DashboardKey == DashboardKeys.MyTeam), It.IsAny<CancellationToken>()), Times.Once);
+        repo.Verify(r => r.TryAddAsync(It.Is<UserDashboard>(d => d.DashboardKey == DashboardKeys.MyWork), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
     public async Task Unauthenticated_is_forbidden()
     {
         var user = User(false);
         var repo = new Mock<IUserDashboardRepository>();
-        var handler = new GetMyDashboardsQueryHandler(new DashboardSeeder(repo.Object, user.Object), user.Object);
+        var handler = new GetMyDashboardsQueryHandler(new DashboardSeeder(repo.Object, user.Object), repo.Object, user.Object);
 
         var result = await handler.Handle(new GetMyDashboardsQuery(), default);
 

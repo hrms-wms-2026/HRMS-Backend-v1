@@ -205,4 +205,24 @@ public sealed class DashboardWidgetRegistryTests
                 DashboardWidgetRegistry.DefaultLayoutFor(DashboardKeys.MyTeam, statusOnly, breakpoint));
         }
     }
+
+    [Fact]
+    public void Tablet_width_rule_is_shared()
+    {
+        var progress = DashboardWidgetRegistry.Get("team-progress")!;
+        var tasks = DashboardWidgetRegistry.Get("my-tasks")!;
+
+        Assert.Equal(4, DashboardWidgetRegistry.TabletWidth(progress, 4));
+        Assert.Equal(6, DashboardWidgetRegistry.TabletWidth(progress, 8));
+        Assert.Equal(3, DashboardWidgetRegistry.TabletWidth(tasks, 3));
+        Assert.Equal(6, DashboardWidgetRegistry.TabletWidth(tasks, 12));
+        Assert.Equal(3, DashboardWidgetRegistry.TabletWidth(null, 2));
+    }
+
+    [Fact]
+    public void Dashboard_titles_come_from_DashboardKeys()
+    {
+        Assert.Equal("My Work", DashboardKeys.Title(DashboardKeys.MyWork));
+        Assert.Equal("My Team", DashboardKeys.Title(DashboardKeys.MyTeam));
+    }
 }

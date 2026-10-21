@@ -91,7 +91,7 @@ public sealed class GetDashboardBootstrapQueryHandler(
             || allowed.Contains(DashboardWidgetAccess.TeamStatus)
             || allowed.Contains(DashboardWidgetAccess.TeamProgress);
 
-        var title = dashboard.DashboardKey == DashboardKeys.MyTeam ? "My Team" : "My Work";
+        var title = DashboardKeys.Title(dashboard.DashboardKey);
         return Result<DashboardBootstrapDto>.Success(new DashboardBootstrapDto(
             dashboard.Id, dashboard.DashboardKey, title, version,
             new GridSpecDto(breakpoint, columns, RowHeight, Gap),
@@ -177,7 +177,7 @@ public sealed class GetDashboardBootstrapQueryHandler(
         var w = breakpoint switch
         {
             Breakpoints.Mobile => columns,
-            Breakpoints.Tablet => Math.Max(dw >= 6 ? 6 : 3, Math.Min(def.MinW, columns)),
+            Breakpoints.Tablet => DashboardWidgetRegistry.TabletWidth(def, dw),
             _ => dw,
         };
         return (Math.Min(w, columns), dh);

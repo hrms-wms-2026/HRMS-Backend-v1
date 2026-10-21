@@ -74,7 +74,7 @@ public sealed class AddDashboardWidgetCommandHandler(
                 var w = breakpoint switch
                 {
                     Breakpoints.Mobile => columns,
-                    Breakpoints.Tablet => Math.Max(desktopW >= 6 ? 6 : 3, Math.Min(def.MinW, columns)),
+                    Breakpoints.Tablet => DashboardWidgetRegistry.TabletWidth(def, desktopW),
                     _ => desktopW,
                 };
                 rect = DashboardGrid.AutoPlace(occupied, Math.Min(w, columns), desktopH, columns);
