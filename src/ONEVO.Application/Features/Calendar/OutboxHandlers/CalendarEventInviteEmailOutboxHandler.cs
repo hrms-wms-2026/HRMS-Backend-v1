@@ -29,11 +29,16 @@ public sealed class CalendarEventInviteEmailOutboxHandler : IOutboxMessageHandle
 {
     private readonly IEmailService _emailService;
     private readonly IDateTimeProvider? _clock;
+    private readonly IEmailRateLimiter? _rateLimiter;
 
-    public CalendarEventInviteEmailOutboxHandler(IEmailService emailService, IDateTimeProvider? clock = null)
+    public CalendarEventInviteEmailOutboxHandler(
+        IEmailService emailService,
+        IDateTimeProvider? clock = null,
+        IEmailRateLimiter? rateLimiter = null)
     {
         _emailService = emailService;
         _clock = clock;
+        _rateLimiter = rateLimiter;
     }
 
     public string Type => OutboxMessageTypes.CalendarEventInviteEmail;
@@ -53,6 +58,11 @@ public sealed class CalendarEventInviteEmailOutboxHandler : IOutboxMessageHandle
                 _clock?.UtcNow ?? DateTimeOffset.UtcNow);
             method = CalendarEventEmailKinds.IsCancel(payload.Kind) ? "CANCEL" : "REQUEST";
         }
+
+        // A bulk invite fans one event out to many people; the limiter keeps that burst inside the
+        // provider's rate limit (Plan D Task 3, Email:MaxPerSecond).
+        if (_rateLimiter is not null)
+            await _rateLimiter.WaitAsync(ct);
 
         await _emailService.SendCalendarEventEmailAsync(new CalendarEventEmailMessage(
             payload.ToEmail, payload.RecipientName, payload.Kind, payload.EventTitle, payload.StartDateUtc, payload.Location,

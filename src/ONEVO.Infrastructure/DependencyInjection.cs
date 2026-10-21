@@ -1006,6 +1006,16 @@ public static class DependencyInjection
         services.AddScoped<ITransactionalEmailSender, PlatformKeyTransactionalEmailSender>();
         services.AddScoped<IEmailService, TransactionalEmailService>();
 
+        // -- Email: outbound pacing (Plan D Task 3) ------------------------------
+        // Email:MaxPerSecond caps how many calendar invite emails may start per rolling second, per
+        // instance. 0 (the default) means unlimited. The limiter is a singleton: the window is shared by
+        // every send in this process, so a scoped limiter would reset on every scope.
+        services.Configure<EmailRateOptions>(configuration.GetSection(EmailRateOptions.SectionName));
+        services.AddSingleton<Microsoft.Extensions.Options.IValidateOptions<EmailRateOptions>, EmailRateOptionsValidator>();
+        services.AddOptions<EmailRateOptions>().ValidateOnStart();
+        services.TryAddSingleton(TimeProvider.System);
+        services.AddSingleton<IEmailRateLimiter, TokenBucketEmailRateLimiter>();
+
         services.AddScoped<IEncryptionService, AesEncryptionService>();
 
         // -- My Team dashboard: Approvals & Exceptions action sources (spec §8.2/§9.4) --
