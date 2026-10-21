@@ -53,6 +53,25 @@ Every error is ProblemDetails with a stable `code` extension:
 | `DELETE /occurrences/{taskId}/action-items/{actionTaskId}` | → 204 (the link is removed; the task itself stays) | The link's creator or the organizer | 403 `meeting_organizer_required`, 404 `meeting_not_found`, 409 `meetings_read_only` |
 | `POST /bulk-preview` | `MeetingBulkPreviewRequest` → `MeetingBulkPreviewResponse` | The meeting's own gate: a module member for a new meeting, the organizer for an existing series | 400 `meeting_platform_invalid`, 403 `meeting_module_member_required` / `meeting_organizer_required` / `meeting_calendar_write_required`, 404 `meeting_not_found`, 409 `bulk_invite_unavailable` (the `Meetings:BulkInvite` flag is off) |
 
+**Reporting-line attendance view.** The employee's own meeting attendance, shown on the employee profile
+(spec 5.1, D16, D17). It lives on its own route, outside the meetings prefix:
+
+```
+GET /api/v1/employees/{employeeId}/meeting-attendance?from=&to=
+```
+
+- The window defaults to the last 30 days and may not be longer than 92 days; a longer window is
+  400 `meeting_invalid_time`.
+- Who may see it: the employee themself, or a manager in their **current** reporting line (any level up).
+  Nobody else - not HR, not the project owner, not a manager the employee has left. Anybody else gets
+  404 `meeting_not_found`, the same body as an employee who does not exist.
+- Rows are the employee's own materialized, non-cancelled occurrences where they are an effective attendee,
+  that have ended, inside the window, newest first. Legacy calendar events are not included.
+- A private occurrence is masked for a manager caller: its title becomes `"Private meeting"` and the organizer
+  is not named. The employee themself sees the real title.
+- `outcome` is `joined` / `no_join_recorded` / `unknown` - the API never says "absent". `attendedSeconds` is
+  null unless the employee joined.
+
 **Action items.** An action item is an ordinary task raised from a meeting occurrence (spec 5.4). It is created with the ordinary task route:
 
 ```
@@ -148,6 +167,14 @@ still active.
 // MeetingAttendanceStatusResponse { "status": "pending|provisional|synced|attendance_unavailable|sync_failed|not_applicable",
 //   "nextCheckAt": "…|null", "finalizedAt": "…|null", "lastError": "provider_error|missing_scope|not_connected|reauth_required|null" }
 // MeetingSeriesLinkResponse: attendee { "joinUrl": "https://…|null" }; organizer { "joinUrl": "…", "link": MeetingLinkResponse|null }
+
+// EmployeeMeetingAttendanceResponse (GET /api/v1/employees/{employeeId}/meeting-attendance)
+{ "items": [ { "occurrenceTaskId": "…", "startAt": "2026-11-02T03:30:00Z", "endAt": "2026-11-02T04:00:00Z",
+               "title": "Weekly delivery sync", "organizerName": "Priya K.|null",
+               "status": "pending|provisional|synced|attendance_unavailable|sync_failed|not_applicable",
+               "display": "Unknown|Recorded|Not applicable",
+               "outcome": "joined|no_join_recorded|unknown", "attendedSeconds": 900 } ] }
+// "title": "Private meeting" and "organizerName": null for a private occurrence seen by a manager.
 ```
 
 ## Calendar (`GET /api/v1/calendar`, `POST /api/v1/calendar/check-conflicts`)

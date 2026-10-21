@@ -62,6 +62,12 @@ public class EfEmployeeRepository : IEmployeeRepository
         // on the common interface; the query itself is shared with that repository.
         => await EmployeeHierarchyClosureQueries.ListDirectReportEmployeeIdsAsync(_db, tenantId, managerEmployeeId, ct);
 
+    public async Task<IReadOnlyList<Guid>> ListAncestorChainEmployeeIdsAsync(
+        Guid tenantId, Guid employeeId, CancellationToken ct = default)
+        // The materialized reporting-line closure, read through the common interface for the same reason as
+        // the direct reports above (My Team spec section 10).
+        => await EmployeeHierarchyClosureQueries.ListAncestorChainEmployeeIdsAsync(_db, tenantId, employeeId, ct);
+
     public async Task<IReadOnlyList<Employee>> ListActiveByLegalEntityAsync(
         Guid tenantId,
         Guid? legalEntityId,

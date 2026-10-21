@@ -25,4 +25,16 @@ internal static class EmployeeHierarchyClosureQueries
             .Select(c => c.DescendantEmployeeId)
             .ToListAsync(ct);
     }
+
+    /// <summary>The employee's upward reporting chain, nearest manager first (closure depth ascending).</summary>
+    public static async Task<IReadOnlyList<Guid>> ListAncestorChainEmployeeIdsAsync(
+        ApplicationDbContext db, Guid tenantId, Guid employeeId, CancellationToken ct = default)
+    {
+        return await db.EmployeeHierarchyClosures
+            .AsNoTracking()
+            .Where(c => c.TenantId == tenantId && c.DescendantEmployeeId == employeeId)
+            .OrderBy(c => c.Depth)
+            .Select(c => c.AncestorEmployeeId)
+            .ToListAsync(ct);
+    }
 }

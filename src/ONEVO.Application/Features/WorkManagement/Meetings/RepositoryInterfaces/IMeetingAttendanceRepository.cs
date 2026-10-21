@@ -35,6 +35,13 @@ public interface IMeetingAttendanceRepository
     /// <summary>The occurrence's attendance records, untracked.</summary>
     Task<IReadOnlyList<CalendarEventMeetingAttendance>> ListOccurrenceRecordsAsync(Guid tenantId, Guid occurrenceTaskId, CancellationToken ct = default);
 
+    /// <summary>The employee's own occurrences in [from, to] that have ended by <paramref name="now"/> and where they
+    /// are an effective employee attendee (the series attendees minus that occurrence's "remove" overrides plus its
+    /// "add" overrides), newest first, each with the employee's own attendance intervals. Legacy calendar events are
+    /// never in it.</summary>
+    Task<IReadOnlyList<EmployeeMeetingOccurrence>> ListEmployeeOccurrencesAsync(Guid tenantId, Guid employeeId, DateTimeOffset from,
+        DateTimeOffset to, DateTimeOffset now, CancellationToken ct = default);
+
     /// <summary>The link's sessions that fit no occurrence, oldest first, untracked.</summary>
     Task<IReadOnlyList<MeetingAttendanceSession>> ListUnmatchedSessionsAsync(Guid tenantId, Guid linkId, CancellationToken ct = default);
 
@@ -47,3 +54,9 @@ public interface IMeetingAttendanceRepository
     /// Needs a transaction.</summary>
     Task<bool> TryLockLinkSyncAsync(Guid tenantId, Guid linkId, CancellationToken ct = default);
 }
+
+/// <summary>One occurrence of the reporting-line attendance view, with the employee's own attendance intervals
+/// (the provider's join/leave pairs for that occurrence).</summary>
+public sealed record EmployeeMeetingOccurrence(
+    Guid TaskId, Guid SeriesId, DateTimeOffset StartAt, DateTimeOffset EndAt, bool IsPrivate, string? AttendanceStatus,
+    IReadOnlyList<(DateTimeOffset Joined, DateTimeOffset? Left)> Intervals);

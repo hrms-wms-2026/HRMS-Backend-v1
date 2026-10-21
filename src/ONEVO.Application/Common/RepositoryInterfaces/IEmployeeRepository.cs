@@ -32,6 +32,14 @@ public interface IEmployeeRepository
     Task<IReadOnlyList<Guid>> ListDirectReportEmployeeIdsAsync(
         Guid tenantId, Guid managerEmployeeId, CancellationToken ct = default);
 
+    /// <summary>The employee's upward reporting chain, nearest manager first: every manager above them in the
+    /// <em>current</em> reporting line. Used by the reporting-line meeting attendance view to decide who may
+    /// see an employee's attendance summary (spec 5.1, D16). The reporting-line closure is read here, and not
+    /// through IEmployeeHierarchyClosureRepository: WorkManagement may never reference the raw coverage
+    /// tables (My Team spec section 10), so the read is exposed on the common interface instead.</summary>
+    Task<IReadOnlyList<Guid>> ListAncestorChainEmployeeIdsAsync(
+        Guid tenantId, Guid employeeId, CancellationToken ct = default);
+
     Task<IReadOnlyList<Employee>> ListActiveByLegalEntityAsync(
         Guid tenantId,
         Guid? legalEntityId,

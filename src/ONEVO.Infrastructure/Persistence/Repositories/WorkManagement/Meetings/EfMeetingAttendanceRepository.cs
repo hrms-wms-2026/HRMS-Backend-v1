@@ -55,6 +55,44 @@ public sealed class EfMeetingAttendanceRepository : IMeetingAttendanceRepository
         => await _db.CalendarEventMeetingAttendances.AsNoTracking()
             .Where(a => a.TenantId == tenantId && a.OccurrenceTaskId == occurrenceTaskId).ToListAsync(ct);
 
+    public async Task<IReadOnlyList<EmployeeMeetingOccurrence>> ListEmployeeOccurrencesAsync(Guid tenantId, Guid employeeId,
+        DateTimeOffset from, DateTimeOffset to, DateTimeOffset now, CancellationToken ct = default)
+    {
+        var (fromUtc, toUtc, nowUtc) = (from.ToUniversalTime(), to.ToUniversalTime(), now.ToUniversalTime());
+
+        // The occurrences the employee effectively attends: a series participant (a removed one is filtered out)
+        // without a "remove" override for that occurrence, or an occurrence "add".
+        var attended = await _db.MeetingDetails.AsNoTracking()
+            .Where(d => d.TenantId == tenantId && d.CancelledAt == null && d.StartAt >= fromUtc && d.StartAt <= toUtc && d.EndAt <= nowUtc
+                && (_db.CalendarEventParticipants.Any(p => p.MeetingSeriesId == d.SeriesId && p.EmployeeId == employeeId && !p.IsDeleted)
+                    ? !_db.MeetingOccurrenceAttendees.Any(a => a.OccurrenceTaskId == d.TaskId
+                        && a.AttendeeKind == MeetingAttendeeKinds.Employee && a.EmployeeId == employeeId
+                        && a.Change == MeetingAttendeeChanges.Remove)
+                    : _db.MeetingOccurrenceAttendees.Any(a => a.OccurrenceTaskId == d.TaskId
+                        && a.AttendeeKind == MeetingAttendeeKinds.Employee && a.EmployeeId == employeeId
+                        && a.Change == MeetingAttendeeChanges.Add)))
+            .OrderByDescending(d => d.StartAt)
+            .ToListAsync(ct);
+
+        if (attended.Count == 0)
+            return [];
+
+        var taskIds = attended.Select(d => d.TaskId).ToList();
+        var records = await _db.CalendarEventMeetingAttendances.AsNoTracking()
+            .Where(a => a.TenantId == tenantId && a.EmployeeId == employeeId && a.OccurrenceTaskId != null
+                && taskIds.Contains(a.OccurrenceTaskId.Value))
+            .ToListAsync(ct);
+
+        var byOccurrence = records
+            .GroupBy(r => r.OccurrenceTaskId!.Value)
+            .ToDictionary(g => g.Key, g => (IReadOnlyList<(DateTimeOffset, DateTimeOffset?)>)g
+                .Select(r => (r.JoinedAt, r.LeftAt)).ToList());
+
+        return attended.Select(d => new EmployeeMeetingOccurrence(
+            d.TaskId, d.SeriesId, d.StartAt, d.EndAt, d.IsPrivate, d.AttendanceStatus,
+            byOccurrence.TryGetValue(d.TaskId, out var intervals) ? intervals : [])).ToList();
+    }
+
     public async Task<IReadOnlyList<MeetingAttendanceSession>> ListUnmatchedSessionsAsync(Guid tenantId, Guid linkId, CancellationToken ct = default)
         => await _db.MeetingAttendanceSessions.AsNoTracking()
             .Where(s => s.TenantId == tenantId && s.CalendarEventMeetingId == linkId && s.OccurrenceTaskId == null)

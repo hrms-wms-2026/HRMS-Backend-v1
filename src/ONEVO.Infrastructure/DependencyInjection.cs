@@ -461,6 +461,9 @@ public static class DependencyInjection
         services.AddScoped<ONEVO.Application.Features.WorkManagement.Meetings.Services.MeetingActionItemService>();
         // Bulk invite preview (Plan D, spec 5.2 / D8): a department or a manager's direct reports expanded into a snapshot.
         services.AddScoped<ONEVO.Application.Features.WorkManagement.Meetings.Services.MeetingBulkInviteService>();
+        // Reporting-line attendance view (Plan D, spec D16 / D17): the employee's own attendance summary, seen by
+        // the employee and by their managers in the current reporting line.
+        services.AddScoped<ONEVO.Application.Features.WorkManagement.Meetings.Services.EmployeeMeetingAttendanceService>();
         services.AddScoped<ONEVO.Infrastructure.Persistence.Repositories.Calendar.EfCalendarEventRepository>();
         services.AddScoped<ONEVO.Application.Features.Calendar.RepositoryInterfaces.ICalendarEventRepository>(
             sp => sp.GetRequiredService<ONEVO.Infrastructure.Persistence.Repositories.Calendar.EfCalendarEventRepository>());
