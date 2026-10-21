@@ -255,8 +255,12 @@ public sealed class UserDashboardRepositoryTests : IClassFixture<UserDashboardRe
         a.LayoutVersion.Should().Be(1);
         b.LayoutVersion.Should().Be(1);
 
-        a.Widgets[0].Layouts.First().Y += 20;
-        b.Widgets[0].Layouts.First().Y += 30;
+        var layoutId = a.Widgets[0].Layouts.First().Id;
+        var original = a.Widgets[0].Layouts.First().Y;
+        var yA = original + 20;
+        var yB = original + 30;
+        a.Widgets.SelectMany(w => w.Layouts).Single(l => l.Id == layoutId).Y = yA;
+        b.Widgets.SelectMany(w => w.Layouts).Single(l => l.Id == layoutId).Y = yB;
 
         var resultA = await repoA.SaveWithVersionAsync(a, 1);
         var resultB = await repoB.SaveWithVersionAsync(b, 1);
@@ -272,7 +276,9 @@ public sealed class UserDashboardRepositoryTests : IClassFixture<UserDashboardRe
         // The loser's tracker was cleared, so a re-read in the same context returns the fresh state.
         var fresh = (await repoB.GetAsync(tenantId, userId, Key))!;
         fresh.LayoutVersion.Should().Be(2);
-        fresh.Widgets[0].Layouts.Should().Contain(l => l.Y == a.Widgets[0].Layouts.First().Y);
+        var freshLayout = fresh.Widgets.SelectMany(w => w.Layouts).Single(l => l.Id == layoutId);
+        freshLayout.Y.Should().Be(yA);
+        freshLayout.Y.Should().NotBe(yB);
     }
 
     [Fact]
