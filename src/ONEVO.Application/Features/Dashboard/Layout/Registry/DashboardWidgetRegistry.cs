@@ -61,6 +61,51 @@ public static class DashboardWidgetRegistry
         ("team-progress", new GridRect(8, 4, 4, 6)),
     ];
 
+    // Permission variants (spec 6.2): when a gated widget is not allowed, an untouched default layout is shown with
+    // the remaining widgets rearranged so no hole is left. Display only; seeding and Reset store the full default.
+    private static readonly (string Key, GridRect Rect)[] MyWorkWithoutActionCenter =
+    [
+        ("today-at-a-glance", new GridRect(0, 0, 3, 4)),
+        ("today-total-time", new GridRect(3, 0, 3, 4)),
+        ("active-projects", new GridRect(6, 0, 3, 4)),
+        ("quick-actions", new GridRect(9, 0, 3, 4)),
+        ("todays-schedule", new GridRect(0, 4, 6, 4)),
+        ("my-tasks", new GridRect(6, 4, 6, 4)),
+        ("work-pattern", new GridRect(0, 8, 12, 4)),
+    ];
+
+    private static readonly (string Key, GridRect Rect)[] MyTeamWithoutTeamStatus =
+    [
+        ("team-progress", new GridRect(0, 0, 8, 6)),
+        ("team-quick-actions", new GridRect(8, 0, 4, 4)),
+    ];
+
+    private static readonly (string Key, GridRect Rect)[] MyTeamQuickActionsOnly =
+    [
+        ("team-quick-actions", new GridRect(8, 0, 4, 4)),
+    ];
+
+    private static (string Key, GridRect Rect)[]? VariantDesktop(string dashboardKey, IReadOnlySet<string> allowedKeys) =>
+        dashboardKey switch
+        {
+            DashboardKeys.MyWork when !allowedKeys.Contains("action-center") => MyWorkWithoutActionCenter,
+            DashboardKeys.MyTeam when !allowedKeys.Contains("team-status") =>
+                allowedKeys.Contains("team-progress") ? MyTeamWithoutTeamStatus : MyTeamQuickActionsOnly,
+            _ => null,
+        };
+
+    /// <summary>True when the allowed set selects a permission-variant default layout for the dashboard.</summary>
+    public static bool HasVariant(string dashboardKey, IReadOnlySet<string> allowedKeys) =>
+        VariantDesktop(dashboardKey, allowedKeys) is not null;
+
+    /// <summary>
+    /// The default layout a viewer with the given allowed widgets sees: the permission variant when one is selected,
+    /// otherwise the full default. Tablet/mobile are derived from the variant's desktop layout.
+    /// </summary>
+    public static IReadOnlyList<(string Key, GridRect Rect)> DefaultLayoutFor(
+        string dashboardKey, IReadOnlySet<string> allowedKeys, string breakpoint) =>
+        Derive(VariantDesktop(dashboardKey, allowedKeys) ?? DesktopDefaults(dashboardKey), breakpoint);
+
     private static IReadOnlyList<(string Key, GridRect Rect)> DesktopDefaults(string dashboardKey) => dashboardKey switch
     {
         DashboardKeys.MyWork => MyWorkDefaults,

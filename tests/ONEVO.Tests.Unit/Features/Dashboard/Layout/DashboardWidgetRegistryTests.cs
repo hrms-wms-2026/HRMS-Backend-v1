@@ -118,4 +118,91 @@ public sealed class DashboardWidgetRegistryTests
         Assert.Equal(4, tablet.Single(i => i.Key == "team-progress").Rect.W);
         Assert.Equal(6, tablet.Single(i => i.Key == "team-status").Rect.W);
     }
+    private static readonly string[] AllWork =
+        DashboardWidgetRegistry.ForDashboard(DashboardKeys.MyWork).Select(d => d.Key).ToArray();
+
+    public static TheoryData<string, string[]> VariantCases() => new()
+    {
+        { DashboardKeys.MyWork, AllWork.Where(k => k != "action-center").ToArray() },
+        { DashboardKeys.MyTeam, ["team-quick-actions", "team-progress"] },
+        { DashboardKeys.MyTeam, ["team-quick-actions"] },
+    };
+
+    [Theory]
+    [MemberData(nameof(VariantCases))]
+    public void Every_variant_is_valid_on_all_breakpoints_and_respects_min_max(string dashboard, string[] allowed)
+    {
+        var set = new HashSet<string>(allowed);
+        Assert.True(DashboardWidgetRegistry.HasVariant(dashboard, set));
+        foreach (var breakpoint in Breakpoints.All)
+        {
+            var layout = DashboardWidgetRegistry.DefaultLayoutFor(dashboard, set, breakpoint);
+
+            Assert.NotEmpty(layout);
+            Assert.Empty(DashboardGrid.Validate(layout, breakpoint));
+            Assert.All(layout, i => Assert.Contains(i.Key, allowed));
+            Assert.Equal(
+                DashboardWidgetRegistry.Derive(DashboardWidgetRegistry.DefaultLayoutFor(dashboard, set, Breakpoints.Desktop), breakpoint),
+                layout);
+        }
+
+        foreach (var (key, rect) in DashboardWidgetRegistry.DefaultLayoutFor(dashboard, set, Breakpoints.Desktop))
+        {
+            var def = DashboardWidgetRegistry.Get(key)!;
+            Assert.InRange(rect.W, def.MinW, def.MaxW);
+            Assert.InRange(rect.H, def.MinH, def.MaxH);
+        }
+    }
+
+    [Fact]
+    public void My_work_without_action_center_variant_matches_ruling()
+    {
+        var layout = DashboardWidgetRegistry.DefaultLayoutFor(
+            DashboardKeys.MyWork, new HashSet<string>(AllWork.Where(k => k != "action-center")), Breakpoints.Desktop);
+
+        Assert.Equal(
+            [
+                ("today-at-a-glance", new GridRect(0, 0, 3, 4)),
+                ("today-total-time", new GridRect(3, 0, 3, 4)),
+                ("active-projects", new GridRect(6, 0, 3, 4)),
+                ("quick-actions", new GridRect(9, 0, 3, 4)),
+                ("todays-schedule", new GridRect(0, 4, 6, 4)),
+                ("my-tasks", new GridRect(6, 4, 6, 4)),
+                ("work-pattern", new GridRect(0, 8, 12, 4)),
+            ],
+            layout);
+    }
+
+    [Fact]
+    public void My_team_variants_match_ruling()
+    {
+        Assert.Equal(
+            [("team-progress", new GridRect(0, 0, 8, 6)), ("team-quick-actions", new GridRect(8, 0, 4, 4))],
+            DashboardWidgetRegistry.DefaultLayoutFor(
+                DashboardKeys.MyTeam, new HashSet<string> { "team-quick-actions", "team-progress" }, Breakpoints.Desktop));
+        Assert.Equal(
+            [("team-quick-actions", new GridRect(8, 0, 4, 4))],
+            DashboardWidgetRegistry.DefaultLayoutFor(
+                DashboardKeys.MyTeam, new HashSet<string> { "team-quick-actions" }, Breakpoints.Desktop));
+    }
+
+    [Fact]
+    public void Full_permissions_select_no_variant_and_return_full_default()
+    {
+        var team = new HashSet<string> { "team-quick-actions", "team-status", "team-progress" };
+        var statusOnly = new HashSet<string> { "team-quick-actions", "team-status" };
+
+        Assert.False(DashboardWidgetRegistry.HasVariant(DashboardKeys.MyWork, new HashSet<string>(AllWork)));
+        Assert.False(DashboardWidgetRegistry.HasVariant(DashboardKeys.MyTeam, team));
+        Assert.False(DashboardWidgetRegistry.HasVariant(DashboardKeys.MyTeam, statusOnly));
+        foreach (var breakpoint in Breakpoints.All)
+        {
+            Assert.Equal(
+                DashboardWidgetRegistry.DefaultLayout(DashboardKeys.MyWork, breakpoint),
+                DashboardWidgetRegistry.DefaultLayoutFor(DashboardKeys.MyWork, new HashSet<string>(AllWork), breakpoint));
+            Assert.Equal(
+                DashboardWidgetRegistry.DefaultLayout(DashboardKeys.MyTeam, breakpoint),
+                DashboardWidgetRegistry.DefaultLayoutFor(DashboardKeys.MyTeam, statusOnly, breakpoint));
+        }
+    }
 }

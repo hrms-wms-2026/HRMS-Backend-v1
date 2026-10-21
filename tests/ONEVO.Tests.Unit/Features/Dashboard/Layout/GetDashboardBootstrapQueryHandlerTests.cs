@@ -125,25 +125,124 @@ public sealed class GetDashboardBootstrapQueryHandlerTests
         Assert.Equal(404, result.StatusCode);
     }
 
+    private static void SetDesktop(UserDashboard d, string key, GridRect r)
+    {
+        var row = d.Widgets.Single(w => w.WidgetKey == key).Layouts.Single(l => l.Breakpoint == "desktop");
+        row.X = r.X; row.Y = r.Y; row.W = r.W; row.H = r.H;
+    }
+
+    private static List<(string, int, int, int, int)> Snapshot(UserDashboard d) =>
+        d.Widgets.SelectMany(w => w.Layouts.Select(l => (w.WidgetKey + "/" + l.Breakpoint, l.X, l.Y, l.W, l.H)))
+            .OrderBy(t => t.Item1).ToList();
+
     [Fact]
-    public async Task Hidden_action_center_leaves_no_hole_after_compaction()
+    public async Task Plain_employee_untouched_my_work_has_no_hole()
     {
         var d = Seed(DashboardKeys.MyWork);
         Allow(DashboardKeys.MyWork, PlainEmployeeWork);
 
         var result = await Handler().Handle(new GetDashboardBootstrapQuery(d.Id, "desktop"), default);
 
-        var byKey = result.Value!.Widgets.ToDictionary(w => w.WidgetKey);
-        Assert.Equal(4, byKey["todays-schedule"].Layout.Y);
-        Assert.Equal(0, byKey["today-total-time"].Layout.Y);
+        var byKey = result.Value!.Widgets.ToDictionary(w => w.WidgetKey, w => w.Layout);
+        Assert.Equal(7, byKey.Count);
+        Assert.Equal(new GridRect(0, 0, 3, 4), byKey["today-at-a-glance"]);
+        Assert.Equal(new GridRect(3, 0, 3, 4), byKey["today-total-time"]);
+        Assert.Equal(new GridRect(6, 0, 3, 4), byKey["active-projects"]);
+        Assert.Equal(new GridRect(9, 0, 3, 4), byKey["quick-actions"]);
+        Assert.Equal(new GridRect(0, 4, 6, 4), byKey["todays-schedule"]);
+        Assert.Equal(new GridRect(6, 4, 6, 4), byKey["my-tasks"]);
+        Assert.Equal(new GridRect(0, 8, 12, 4), byKey["work-pattern"]);
+        for (var y = 0; y < 4; y++)
+            for (var x = 0; x < 12; x++)
+                Assert.Contains(byKey.Values, r => x >= r.X && x < r.X + r.W && y >= r.Y && y < r.Y + r.H);
+    }
+
+    [Theory]
+    [InlineData("desktop")]
+    [InlineData("tablet")]
+    [InlineData("mobile")]
+    public async Task Variant_is_not_persisted(string breakpoint)
+    {
+        var d = Seed(DashboardKeys.MyWork);
+        Allow(DashboardKeys.MyWork, PlainEmployeeWork);
+        var before = Snapshot(d);
+
+        var result = await Handler().Handle(new GetDashboardBootstrapQuery(d.Id, breakpoint), default);
+
+        var variant = DashboardWidgetRegistry.DefaultLayoutFor(DashboardKeys.MyWork, new HashSet<string>(PlainEmployeeWork), breakpoint)
+            .ToDictionary(i => i.Key, i => i.Rect);
+        Assert.All(result.Value!.Widgets, w => Assert.Equal(variant[w.WidgetKey], w.Layout));
+        _repo.Verify(r => r.SaveWithVersionAsync(It.IsAny<UserDashboard>(), It.IsAny<long>(), It.IsAny<CancellationToken>()), Times.Never);
+        Assert.Equal(before, Snapshot(d));
+        Assert.Equal(1, result.Value.LayoutVersion);
+    }
+
+    [Fact]
+    public async Task Lead_without_team_status_gets_team_progress_wide()
+    {
+        var d = Seed(DashboardKeys.MyTeam);
+        Allow(DashboardKeys.MyTeam, ["team-quick-actions", "team-progress"]);
+
+        var result = await Handler().Handle(new GetDashboardBootstrapQuery(d.Id, "desktop"), default);
+
+        var byKey = result.Value!.Widgets.ToDictionary(w => w.WidgetKey, w => w.Layout);
+        Assert.Equal(2, byKey.Count);
+        Assert.Equal(new GridRect(0, 0, 8, 6), byKey["team-progress"]);
+        Assert.Equal(new GridRect(8, 0, 4, 4), byKey["team-quick-actions"]);
+        _repo.Verify(r => r.SaveWithVersionAsync(It.IsAny<UserDashboard>(), It.IsAny<long>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task My_team_without_both_gated_keeps_quick_actions_in_right_column()
+    {
+        var d = Seed(DashboardKeys.MyTeam);
+        Allow(DashboardKeys.MyTeam, ["team-quick-actions"]);
+
+        var result = await Handler().Handle(new GetDashboardBootstrapQuery(d.Id, "desktop"), default);
+
+        Assert.Equal(new GridRect(8, 0, 4, 4), Assert.Single(result.Value!.Widgets).Layout);
+    }
+
+    [Fact]
+    public async Task Customized_layout_keeps_stored_rects()
+    {
+        var d = Seed(DashboardKeys.MyWork);
+        // Customized: my-tasks moved into the right half of its row.
+        SetDesktop(d, "my-tasks", new GridRect(6, 8, 6, 4));
+        Allow(DashboardKeys.MyWork, PlainEmployeeWork);
+
+        var result = await Handler().Handle(new GetDashboardBootstrapQuery(d.Id, "desktop"), default);
+
+        var byKey = result.Value!.Widgets.ToDictionary(w => w.WidgetKey, w => w.Layout);
+        // Not the variant: stored columns are kept, only gravity compaction applies (as before).
+        Assert.Equal(new GridRect(6, 0, 3, 4), byKey["today-total-time"]);
+        Assert.Equal(new GridRect(9, 4, 3, 4), byKey["active-projects"]);
+        Assert.Equal(new GridRect(6, 8, 6, 4), byKey["my-tasks"]);
+        Assert.Equal(new GridRect(9, 0, 3, 4), byKey["quick-actions"]);
         _repo.Verify(r => r.SaveWithVersionAsync(d, 1, It.IsAny<CancellationToken>()), Times.Once);
-        Assert.Equal(2, result.Value.LayoutVersion);
+    }
+
+    [Fact]
+    public async Task Action_center_returning_gets_its_default_slot_on_untouched_layout()
+    {
+        var d = Seed(DashboardKeys.MyWork);
+        Allow(DashboardKeys.MyWork, PlainEmployeeWork);
+        await Handler().Handle(new GetDashboardBootstrapQuery(d.Id, "desktop"), default);
+
+        Allow(DashboardKeys.MyWork, PlainEmployeeWork.Append("action-center"));
+        var result = await Handler().Handle(new GetDashboardBootstrapQuery(d.Id, "desktop"), default);
+
+        var full = DashboardWidgetRegistry.DefaultLayout(DashboardKeys.MyWork, "desktop").ToDictionary(i => i.Key, i => i.Rect);
+        Assert.Equal(8, result.Value!.Widgets.Count);
+        Assert.Equal(new GridRect(3, 0, 6, 4), result.Value.Widgets.Single(w => w.WidgetKey == "action-center").Layout);
+        Assert.All(result.Value.Widgets, w => Assert.Equal(full[w.WidgetKey], w.Layout));
     }
 
     [Fact]
     public async Task Hidden_widget_that_becomes_allowed_is_reinserted_without_overlap()
     {
         var d = Seed(DashboardKeys.MyWork);
+        SetDesktop(d, "my-tasks", new GridRect(6, 8, 6, 4));
         Allow(DashboardKeys.MyWork, PlainEmployeeWork);
         await Handler().Handle(new GetDashboardBootstrapQuery(d.Id, "desktop"), default);
 
