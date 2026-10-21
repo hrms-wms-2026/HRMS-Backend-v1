@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Options;
+using ONEVO.Domain.Features.Calendar.Entities;
 
 namespace ONEVO.Application.Features.WorkManagement.Meetings;
 
@@ -18,6 +19,18 @@ public sealed class MeetingsOptions
     public bool ReadOnly { get; init; }
     public MeetingAttendanceOptions Attendance { get; init; } = new();
 
+    /// <summary>
+    /// The provider's meeting size, per provider - above it the organizer sees a warning (spec 5.2, D8).
+    /// A warning, never a cap: the organizer may still invite everyone. The keys are the configuration
+    /// keys "MicrosoftTeams" and "Zoom"; the lookup is case-insensitive.
+    /// </summary>
+    public IReadOnlyDictionary<string, int> ProviderCapacityWarning { get; init; } =
+        new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
+        {
+            [MeetingProviderCapacityKeys.MicrosoftTeams] = 1000,
+            [MeetingProviderCapacityKeys.Zoom] = 300,
+        };
+
     /// <summary>Binds the "Meetings" section onto <paramref name="target"/>. A configured checkpoint list replaces the
     /// default one: the configuration binder alone would append it to the defaults.</summary>
     public static void BindFrom(IConfigurationSection meetings, MeetingsOptions target)
@@ -27,6 +40,24 @@ public sealed class MeetingsOptions
         if (configured is { Length: > 0 })
             target.Attendance.Checkpoints = configured;
     }
+}
+
+/// <summary>
+/// The keys of "Meetings:ProviderCapacityWarning": "MicrosoftTeams" and "Zoom". A provider constant
+/// ("microsoft_teams", "zoom") is mapped onto its configuration key; the lookup accepts either spelling.
+/// </summary>
+public static class MeetingProviderCapacityKeys
+{
+    public const string MicrosoftTeams = "MicrosoftTeams";
+    public const string Zoom = "Zoom";
+
+    /// <summary>The configuration key for a provider ("microsoft_teams" → "MicrosoftTeams").</summary>
+    public static string For(string provider) => provider switch
+    {
+        CalendarEventMeetingProviders.MicrosoftTeams => MicrosoftTeams,
+        CalendarEventMeetingProviders.Zoom => Zoom,
+        _ => provider,
+    };
 }
 
 /// <summary>"Meetings:Attendance" (spec 5.8).</summary>
@@ -77,6 +108,10 @@ public sealed class MeetingsOptionsValidator : IValidateOptions<MeetingsOptions>
         RequirePositive(attendance.MatchWindowBefore, nameof(MeetingAttendanceOptions.MatchWindowBefore));
         RequirePositive(attendance.LateRecheckWindow, nameof(MeetingAttendanceOptions.LateRecheckWindow));
         RequirePositive(attendance.FailedRetryAfter, nameof(MeetingAttendanceOptions.FailedRetryAfter));
+
+        foreach (var (provider, limit) in options.ProviderCapacityWarning)
+            if (limit <= 0)
+                failures.Add($"{MeetingsOptions.Section}:{nameof(MeetingsOptions.ProviderCapacityWarning)}:{provider} must be positive.");
 
         return failures.Count == 0 ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(failures);
 

@@ -18,6 +18,20 @@ public interface IEmployeeRepository
     Task<IReadOnlyDictionary<Guid, Employee>> ListByIdsAsync(
         Guid tenantId, IReadOnlyCollection<Guid> employeeIds, CancellationToken ct = default);
 
+    /// <summary>Every employee in the given departments, in ONE query - the department's own employees only,
+    /// not its sub-departments'. Used by the meetings bulk invite preview to expand a picked department
+    /// (spec 5.2, D8). No employment-status filter: the caller decides who counts as active.</summary>
+    Task<IReadOnlyList<Employee>> ListByDepartmentIdsAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> departmentIds, CancellationToken ct = default);
+
+    /// <summary>The manager's direct reports - the employees whose reporting line points straight at
+    /// them. Used by the meetings bulk invite preview to expand "a manager's team" (spec 5.2, D8).
+    /// The reporting-line closure is read here, and not through
+    /// IEmployeeHierarchyClosureRepository: WorkManagement may never reference the raw coverage
+    /// tables (My Team spec section 10), so the read is exposed on the common interface instead.</summary>
+    Task<IReadOnlyList<Guid>> ListDirectReportEmployeeIdsAsync(
+        Guid tenantId, Guid managerEmployeeId, CancellationToken ct = default);
+
     Task<IReadOnlyList<Employee>> ListActiveByLegalEntityAsync(
         Guid tenantId,
         Guid? legalEntityId,

@@ -143,6 +143,17 @@ public class EfDepartmentRepository : IDepartmentRepository
         return result;
     }
 
+    public async Task<IReadOnlyDictionary<Guid, Department>> GetByIdsAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> departmentIds, CancellationToken ct = default)
+    {
+        if (departmentIds.Count == 0)
+            return new Dictionary<Guid, Department>();
+        var rows = await _db.Departments.AsNoTracking()
+            .Where(department => department.TenantId == tenantId && departmentIds.Contains(department.Id))
+            .ToListAsync(ct);
+        return rows.ToDictionary(department => department.Id);
+    }
+
     public async Task<Department?> GetByIdForLegalEntityAsync(
         Guid tenantId, Guid legalEntityId, Guid departmentId, CancellationToken ct = default)
     {

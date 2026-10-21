@@ -123,6 +123,10 @@ public sealed class MeetingsController : ControllerBase
     public async Task<IActionResult> UnlinkActionItem(Guid taskId, Guid actionTaskId, CancellationToken ct)
         => Respond(await _mediator.Send(new UnlinkMeetingActionItemCommand(taskId, actionTaskId), ct), _ => NoContent());
 
+    [HttpPost("bulk-preview")]
+    public async Task<IActionResult> BulkPreview([FromBody] MeetingBulkPreviewRequest request, CancellationToken ct)
+        => Respond(await _mediator.Send(new MeetingBulkPreviewQuery(request), ct), Ok);
+
     private IActionResult Respond<T>(Result<T> result, Func<T, IActionResult> onSuccess)
     {
         if (result.IsSuccess)

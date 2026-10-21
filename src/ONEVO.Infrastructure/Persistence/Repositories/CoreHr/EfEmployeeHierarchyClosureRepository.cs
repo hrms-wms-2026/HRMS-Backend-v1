@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.EmployeeHierarchyClosure.RepositoryInterfaces;
 using ONEVO.Domain.Features.CoreHr.Entities;
+using ONEVO.Infrastructure.Persistence.Repositories;
 
 namespace ONEVO.Infrastructure.Persistence.Repositories.CoreHr;
 
@@ -18,13 +19,7 @@ public class EfEmployeeHierarchyClosureRepository : IEmployeeHierarchyClosureRep
 
     public async Task<IReadOnlyList<Guid>> GetDirectReportEmployeeIdsAsync(
         Guid tenantId, Guid managerEmployeeId, CancellationToken ct = default)
-    {
-        return await _db.EmployeeHierarchyClosures
-            .AsNoTracking()
-            .Where(c => c.TenantId == tenantId && c.AncestorEmployeeId == managerEmployeeId && c.Depth == 1)
-            .Select(c => c.DescendantEmployeeId)
-            .ToListAsync(ct);
-    }
+        => await EmployeeHierarchyClosureQueries.ListDirectReportEmployeeIdsAsync(_db, tenantId, managerEmployeeId, ct);
 
     public async Task<Guid?> GetDirectManagerEmployeeIdAsync(
         Guid tenantId, Guid employeeId, CancellationToken ct = default)
