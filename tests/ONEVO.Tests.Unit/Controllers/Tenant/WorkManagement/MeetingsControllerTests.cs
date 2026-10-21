@@ -200,4 +200,35 @@ public sealed class MeetingsControllerTests
 
         Assert.Equal(view, result.Value);
     }
+
+    [Fact]
+    public async Task BulkPreview_MapsToTheQuery()
+    {
+        var request = new MeetingBulkPreviewRequest(null, null, [], [], [], null, "zoom");
+        MeetingBulkPreviewQuery? sent = null;
+        var preview = new MeetingBulkPreviewResponse([new MeetingBulkPerson(Guid.NewGuid(), "Arjun M.", null, null)],
+            1, 0, 0, 0, null);
+        _mediator.Setup(m => m.Send(It.IsAny<MeetingBulkPreviewQuery>(), It.IsAny<CancellationToken>()))
+            .Callback((IRequest<Result<MeetingBulkPreviewResponse>> q, CancellationToken _) => sent = (MeetingBulkPreviewQuery)q)
+            .ReturnsAsync(Result<MeetingBulkPreviewResponse>.Success(preview));
+
+        var ok = Assert.IsType<OkObjectResult>(await Controller.BulkPreview(request, CancellationToken.None));
+
+        Assert.Equal(preview, ok.Value);
+        Assert.Equal(request, sent!.Request);
+    }
+
+    [Fact]
+    public async Task BulkPreview_TheFlagOffFailureKeepsItsCode()
+    {
+        var request = new MeetingBulkPreviewRequest(null, null, [], [], [], null, "zoom");
+        _mediator.Setup(m => m.Send(It.IsAny<MeetingBulkPreviewQuery>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<MeetingBulkPreviewResponse>.Failure(
+                "Bulk inviting is not available yet.", 409, MeetingErrorCodes.BulkInviteUnavailable));
+
+        var problem = Assert.IsType<ObjectResult>(await Controller.BulkPreview(request, CancellationToken.None));
+
+        Assert.Equal((409, MeetingErrorCodes.BulkInviteUnavailable),
+            (problem.StatusCode, ((ProblemDetails)problem.Value!).Extensions["code"]));
+    }
 }

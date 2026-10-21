@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Configuration;
 using ONEVO.Application.Features.WorkManagement.Meetings;
+using ONEVO.Domain.Features.Calendar.Entities;
 using Xunit;
 
 namespace ONEVO.Tests.Unit.Features.WorkManagement.Meetings;
@@ -77,5 +78,45 @@ public sealed class MeetingsOptionsValidatorTests
             Assert.True(result.Failed);
             Assert.Contains($"Meetings:Attendance:{window}", result.FailureMessage);
         }
+    }
+
+    [Fact]
+    public void ANonPositiveProviderCapacity_Fails()
+    {
+        var options = new MeetingsOptions
+        {
+            ProviderCapacityWarning = new Dictionary<string, int> { [MeetingProviderCapacityKeys.Zoom] = 0 },
+        };
+
+        var result = Validator.Validate(null, options);
+
+        Assert.True(result.Failed);
+        Assert.Contains("Meetings:ProviderCapacityWarning", result.FailureMessage);
+    }
+
+    [Fact]
+    public void TheProviderConstant_FindsItsConfigurationKey()
+    {
+        // The request carries the provider constant ("microsoft_teams"); the configuration is keyed by
+        // "MicrosoftTeams". Without the mapping the Teams limit would never be found.
+        Assert.Equal(MeetingProviderCapacityKeys.MicrosoftTeams,
+            MeetingProviderCapacityKeys.For(CalendarEventMeetingProviders.MicrosoftTeams));
+        Assert.Equal(MeetingProviderCapacityKeys.Zoom, MeetingProviderCapacityKeys.For(CalendarEventMeetingProviders.Zoom));
+    }
+
+    [Fact]
+    public void BindingTheAppsettingsSection_BindsTheProviderCapacities()
+    {
+        // The binder has to fill a read-only dictionary: if it silently left the defaults in place,
+        // the configured limits would never reach the preview.
+        var configuration = new ConfigurationBuilder()
+            .AddJsonFile(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "ONEVO.Api", "appsettings.json"))
+            .Build();
+        var options = new MeetingsOptions();
+
+        MeetingsOptions.BindFrom(configuration.GetSection(MeetingsOptions.Section), options);
+
+        Assert.Equal(1000, options.ProviderCapacityWarning[MeetingProviderCapacityKeys.MicrosoftTeams]);
+        Assert.Equal(300, options.ProviderCapacityWarning[MeetingProviderCapacityKeys.Zoom]);
     }
 }

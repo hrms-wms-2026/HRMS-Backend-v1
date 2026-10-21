@@ -600,6 +600,9 @@ internal sealed class EmployeeAuthorityTestGraph
         public Task<IReadOnlyList<ONEVO.Domain.Features.OrgStructure.Entities.Department>> ListByLegalEntityAsync(
             Guid tenantId, Guid legalEntityId, bool includeInactive, CancellationToken ct = default)
             => throw new NotImplementedException();
+        public Task<IReadOnlyDictionary<Guid, ONEVO.Domain.Features.OrgStructure.Entities.Department>> GetByIdsAsync(
+            Guid tenantId, IReadOnlyCollection<Guid> departmentIds, CancellationToken ct = default)
+            => throw new NotImplementedException();
         public Task<DepartmentPage> ListPageByLegalEntityAsync(
             Guid tenantId, Guid legalEntityId, string? search, bool includeInactive, Guid? parentDepartmentId,
             DepartmentSortBy sortBy, SortDirection sortDirection, int page, int pageSize, CancellationToken ct = default)
