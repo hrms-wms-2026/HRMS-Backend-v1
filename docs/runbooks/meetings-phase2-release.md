@@ -145,6 +145,38 @@ exceed it.
 - The shipped defaults are the providers' own published limits. They are a **deployment setting**: an operator
   whose tenant has a lower contractual limit lowers the value before switching `Meetings:BulkInvite` on.
 
+## Team Progress excludes meeting occurrences
+
+Plan D Task 7. A meeting occurrence is an ordinary row in `tasks` (`task_kind = 'meeting'`) plus a 1:1
+`meeting_details` row. EF Core hides those rows from every ordinary task query through the named
+`ExcludeMeetings` query filter, but `wm_refresh_module_hour_summary(uuid)` - the function that
+maintains the `wm_module_hour_summaries` table Team Progress reads - is raw SQL and never saw that
+filter. Every meeting occurrence therefore inflated `task_count` and `unestimated_task_count` (a
+meeting occurrence carries no estimate, so it landed in the "unestimated" bucket) and moved
+`earliest_open_due_date`.
+
+Migration `20261021181949_ExcludeMeetingTasksFromModuleHourSummaries` corrects the function:
+
+| Piece | What it is |
+|---|---|
+| The function body | The only functional change is one added join predicate, `AND t.task_kind IS DISTINCT FROM 'meeting'`. It corrects `task_count`, `unestimated_task_count`, `earliest_open_due_date` and - through the same join - the three hour buckets. The tenant scope (`t.tenant_id = o.tenant_id`) and the top-level / not-deleted scope are unchanged, so tenant isolation and the existing hour calculations are preserved. |
+| The UPDATE trigger | PostgreSQL has no `ALTER TRIGGER ... WHEN`, so `trg_tasks_module_hour_summary_update` is dropped and recreated with `OR OLD.task_kind IS DISTINCT FROM NEW.task_kind` added to its watched columns. Re-kinding a task now recomputes its module. |
+| The backfill | Every Module's summary row is recomputed on apply, so already-inflated counts are corrected in the same deploy. The summary table is derived state and is fully recomputable from `tasks` at any time. |
+
+- **SQL-only.** No entity, `DbContext`, configuration, repository or service file changes, and the EF
+  model snapshot does not change.
+- **It is a no-op where `wm_module_hour_summaries` does not exist** - a branch with no module-hour
+  summaries has nothing to correct. Where the table *does* exist the correction is always applied,
+  and the migration fails loudly rather than silently skipping if the schema it depends on is not what
+  it expects.
+- **Rollback.** `Down()` restores the pre-fix function body and the pre-fix trigger `WHEN` clause
+  verbatim, then re-runs the backfill so the rows match the restored definition. No data is lost.
+- **Checks after the deploy.**
+  - `SELECT migration_id FROM "__EFMigrationsHistory" ORDER BY migration_id DESC LIMIT 1;` returns
+    `20261021181949_ExcludeMeetingTasksFromModuleHourSummaries`.
+  - `SELECT pg_get_functiondef(p.oid) FROM pg_proc p WHERE p.proname = 'wm_refresh_module_hour_summary';`
+    contains `task_kind IS DISTINCT FROM 'meeting'`.
+
 ## Rollback rules
 
 **Never roll back below Release A once meeting rows exist.**
