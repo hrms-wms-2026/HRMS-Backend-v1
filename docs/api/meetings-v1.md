@@ -51,6 +51,7 @@ Every error is ProblemDetails with a stable `code` extension:
 | `POST /series/{seriesId}/link/cleanup-confirmed` | → 204 (`unresolved` → `cancelled`) | Organizer | 403, 404, 409 `meeting_link_not_unresolved` / `meetings_read_only` |
 | `GET /occurrences/{taskId}/action-items` | → `MeetingActionItemView[]` (the linked tasks the caller may see under the ordinary task rules) | Attendee | 404 `meeting_not_found` |
 | `DELETE /occurrences/{taskId}/action-items/{actionTaskId}` | → 204 (the link is removed; the task itself stays) | The link's creator or the organizer | 403 `meeting_organizer_required`, 404 `meeting_not_found`, 409 `meetings_read_only` |
+| `POST /bulk-preview` | `MeetingBulkPreviewRequest` → `MeetingBulkPreviewResponse` | The meeting's own gate: a module member for a new meeting, the organizer for an existing series | 400 `meeting_platform_invalid`, 403 `meeting_module_member_required` / `meeting_organizer_required` / `meeting_calendar_write_required`, 404 `meeting_not_found`, 409 `bulk_invite_unavailable` (the `Meetings:BulkInvite` flag is off) |
 
 **Action items.** An action item is an ordinary task raised from a meeting occurrence (spec 5.4). It is created with the ordinary task route:
 
@@ -60,6 +61,31 @@ POST /api/v1/work/objectives/{objectiveId}/tasks
 ```
 
 `sourceMeetingOccurrenceId` is optional and null for every ordinary task. When it is set, the occurrence must be one the caller can see and that still exists - otherwise the create is 404 `meeting_not_found` and nothing is written. The creator picks a module they are a member of (the default is the meeting's module); the module's existing create rules apply. The task and its link are written in one transaction; when the create goes through approval instead, the link is written when the approval is applied.
+
+**Bulk invite preview.** The organizer picks whole departments, managers' teams and individual people, and the
+preview expands them into one list of people before anything is invited (spec 5.2, D8). It is a preview only -
+it writes nothing; the form then submits the explicit employee ids it shows, and the create re-validates who is
+still active.
+
+- A department expands to its **own** employees; its sub-departments are not expanded.
+- A manager expands to their **direct reports** only.
+- "Active" is the same as everywhere else in Meetings: working, or on leave. Anyone else - and anyone with no
+  employee record - is counted in `inactiveExcluded`.
+- `alreadyInvited` counts the people already on the meeting (the organizer, and the series' participants when
+  `seriesId` is set). They are not returned in `people`, so the frontend never adds them twice.
+- `selected` is every id the organizer picked, before dedup; `duplicatesRemoved` is the repeats.
+- Above the provider's capacity (`Meetings:ProviderCapacityWarning`) the response carries a **warning only** -
+  there is no cap, and the organizer may go ahead.
+
+```jsonc
+// MeetingBulkPreviewRequest
+{ "projectId": "…|null", "objectiveId": "…|null", "departmentIds": ["…"], "managerEmployeeIds": ["…"],
+  "employeeIds": ["…"], "seriesId": "…|null", "platform": "zoom" }
+// → MeetingBulkPreviewResponse
+{ "people": [ { "employeeId": "…", "name": "Arjun M.", "email": "arjun@example.com", "departmentName": "Engineering" } ],
+  "selected": 320, "duplicatesRemoved": 4, "inactiveExcluded": 12, "alreadyInvited": 1,
+  "capacityWarning": "This meeting will have 304 people; Zoom meetings support up to 300." }
+```
 
 **Approvals.** A `requested` meeting appears in the existing approval inbox as action `meeting.create` (or `meeting.move`):
 - It is decided with the existing approval endpoints.
