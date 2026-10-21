@@ -40,6 +40,9 @@ public sealed class DapiHistorySeeder : IHostedService
     internal static readonly Guid DapiTenantId = Guid.Parse("6b0874ab-71db-401f-859f-bdd50c1317fb");
     internal static readonly Guid DapiOwnerUserId = Guid.Parse("cd49a0c2-e978-4055-b8be-7d46a3727e94");
     internal static readonly Guid DapiLegalEntityId = Guid.Parse("57fecfe8-1c1e-4a82-be4b-2c8451436420");
+    /// <summary>Gets no seeded attendance (records, presence, breaks), so Clock In / Clock Out can be tried live as
+    /// this person; earlier seeded rows for them are removed. Their leave and monitoring history stay.</summary>
+    internal const string ClockInTesterEmail = "tharmi.rajendran@dapi.test";
 
     internal static readonly DateOnly[] SeedMonthStarts =
     [
@@ -251,9 +254,15 @@ public sealed class DapiHistorySeeder : IHostedService
         var existingAuditIds = await ExistingIdsAsync(
             db.LeaveBalanceAudits.Where(x => x.TenantId == DapiTenantId).Select(x => x.Id), ct);
 
+        var clockInTester = employees.FirstOrDefault(
+            e => string.Equals(e.Email, ClockInTesterEmail, StringComparison.OrdinalIgnoreCase));
+        if (clockInTester is not null)
+            await RemoveSeededAttendanceAsync(db, clockInTester.Id, allDates, ct);
+
         for (var index = 0; index < employees.Count; index++)
         {
             var employee = employees[index];
+            var seedsAttendance = employee.Id != clockInTester?.Id;
             var status = (index % 6) switch
             {
                 1 => LeaveRequestStatuses.Rejected,
@@ -284,18 +293,19 @@ public sealed class DapiHistorySeeder : IHostedService
                 var isWorkingDay = date.DayOfWeek is not DayOfWeek.Saturday and not DayOfWeek.Sunday;
                 var isApprovedLeave = plan.Status == LeaveRequestStatuses.Approved && plan.Date == date;
 
-                SeedAttendance(
-                    db,
-                    employee.Id,
-                    workModeId,
-                    workModeName,
-                    index,
-                    date,
-                    isWorkingDay,
-                    isApprovedLeave,
-                    attendanceKeys,
-                    presenceKeys,
-                    existingBreakIds);
+                if (seedsAttendance)
+                    SeedAttendance(
+                        db,
+                        employee.Id,
+                        workModeId,
+                        workModeName,
+                        index,
+                        date,
+                        isWorkingDay,
+                        isApprovedLeave,
+                        attendanceKeys,
+                        presenceKeys,
+                        existingBreakIds);
 
                 if (isWorkingDay && !isApprovedLeave)
                 {
@@ -885,6 +895,23 @@ public sealed class DapiHistorySeeder : IHostedService
                 CreatedBy = DapiOwnerUserId
             });
         }
+    }
+
+    /// <summary>Deletes only the rows this seeder wrote (deterministic ids) - attendance the person clocks live stays.</summary>
+    private static async Task RemoveSeededAttendanceAsync(
+        ApplicationDbContext db, Guid employeeId, IReadOnlyList<DateOnly> dates, CancellationToken ct)
+    {
+        var attendanceIds = dates.Select(d => SeedId($"attendance:{employeeId:N}:{d:yyyy-MM-dd}")).ToList();
+        var presenceIds = dates.Select(d => SeedId($"presence:{employeeId:N}:{d:yyyy-MM-dd}")).ToList();
+        var breakIds = dates.Select(d => SeedId($"break:{employeeId:N}:{d:yyyy-MM-dd}")).ToList();
+        await db.BreakRecords.Where(b => breakIds.Contains(b.Id)).ExecuteDeleteAsync(ct);
+        // A correction filed against a seeded day keeps that day (it points at the row).
+        await db.PresenceSessions
+            .Where(p => presenceIds.Contains(p.Id) && !db.AttendanceCorrections.Any(c => c.PresenceSessionId == p.Id))
+            .ExecuteDeleteAsync(ct);
+        await db.AttendanceRecords
+            .Where(a => attendanceIds.Contains(a.Id) && !db.AttendanceCorrections.Any(c => c.AttendanceRecordId == a.Id))
+            .ExecuteDeleteAsync(ct);
     }
 
     /// <summary>Who the leave route picks for this employee's leave on that day; null when it finds nobody.</summary>
