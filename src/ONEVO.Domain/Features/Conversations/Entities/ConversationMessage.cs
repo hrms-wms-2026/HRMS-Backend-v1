@@ -14,10 +14,12 @@ public static class ConversationMessageKinds
     public const string Case = "case";
 }
 
-/// <summary>Labels on a text message: justification is the subject employee's own explanation on an alert or case.</summary>
+/// <summary>Labels on a text message: justification is the subject employee's own explanation on an alert or case;
+/// forwarded is a copy of a message someone passed on from another chat.</summary>
 public static class ConversationMessageTags
 {
     public const string Justification = "justification";
+    public const string Forwarded = "forwarded";
 }
 
 public class ConversationMessage : BaseEntity

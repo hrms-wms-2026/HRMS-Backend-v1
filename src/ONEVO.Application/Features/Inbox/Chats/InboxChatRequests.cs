@@ -1,6 +1,7 @@
 using MediatR;
 using Microsoft.Extensions.Logging;
 using ONEVO.Application.Common.Models;
+using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Features.Conversations.Commands.AddConversationParticipants;
 using ONEVO.Application.Features.Conversations.Contracts;
 using ONEVO.Application.Features.Conversations.RepositoryInterfaces;
@@ -25,6 +26,8 @@ public sealed record SetChatFavoriteCommand(Guid ConversationId, bool Favorite) 
 /// <summary>Sends a copy of a case card into chats the caller is in (WhatsApp-style forward). Everyone there sees it; only
 /// the people the case's module lets act get its actions, since each viewer's card loads their own view of it.</summary>
 public sealed record ForwardCaseCommand(string Source, string Kind, Guid Id, IReadOnlyList<Guid> ConversationIds) : IRequest<Result<int>>;
+/// <summary>Sends a copy of a chat message (its text and files) into chats the caller is in, labelled "forwarded".</summary>
+public sealed record ForwardMessageCommand(Guid MessageId, IReadOnlyList<Guid> ConversationIds) : IRequest<Result<int>>;
 /// <summary>Moves a case from the 1-on-1 chat to its own group and adds people to it.</summary>
 public sealed record StartCaseGroupCommand(string Source, string Kind, Guid Id, IReadOnlyList<Guid> EmployeeIds) : IRequest<Result<InboxChatRef>>;
 
@@ -36,6 +39,7 @@ public sealed class InboxChatHandlers :
     IRequestHandler<RenameGroupChatCommand, Result>,
     IRequestHandler<SetChatFavoriteCommand, Result>,
     IRequestHandler<ForwardCaseCommand, Result<int>>,
+    IRequestHandler<ForwardMessageCommand, Result<int>>,
     IRequestHandler<StartCaseGroupCommand, Result<InboxChatRef>>
 {
     public const string NotFoundMessage = "Chat not found.";
@@ -53,14 +57,16 @@ public sealed class InboxChatHandlers :
     private readonly IInboxRealtimePublisher _realtime;
     private readonly ISender _sender;
     private readonly IInboxRouter _router;
+    private readonly IUnitOfWork _unitOfWork;
     private readonly ILogger<InboxChatHandlers> _logger;
 
     public InboxChatHandlers(
         InboxCallerResolver callers, IInboxChatService chats, IPeopleChatService people, ICaseGroupService caseGroups,
         IConversationAccess access, IConversationRepository conversations, ICallerIdentityResolver identity,
         IMilestoneMembershipCoordinator membership, IInboxRealtimePublisher realtime, ISender sender, ILogger<InboxChatHandlers> logger,
-        IInboxRouter router)
+        IInboxRouter router, IUnitOfWork unitOfWork)
     {
+        _unitOfWork = unitOfWork;
         _callers = callers;
         _chats = chats;
         _people = people;
@@ -193,6 +199,60 @@ public sealed class InboxChatHandlers :
             await _conversations.AddMessageIfMissingAsync(card, ct);
             await _conversations.TouchAsync(caller.TenantId, context.Conversation.Id, now, ct);
             var message = ConversationResponseBuilder.Message(card, [], author);
+            await ConversationRules.PublishSafelyAsync(
+                () => _realtime.MessageCreatedAsync(caller.TenantId, context.ParticipantIds, context.Conversation.Id, message, ct), _logger, "messageCreated");
+        }
+        return Result<int>.Success(contexts.Count);
+    }
+
+    public async Task<Result<int>> Handle(ForwardMessageCommand command, CancellationToken ct)
+    {
+        if (await _callers.ResolveAsync(ct) is not { } caller)
+            return Result<int>.Forbidden(InboxCallerResolver.NoEmployeeMessage);
+        var targets = (command.ConversationIds ?? []).Where(id => id != Guid.Empty).Distinct().ToList();
+        if (targets.Count == 0)
+            return Result<int>.UnprocessableEntity("Pick at least one chat.");
+        // Only a live text message from a chat the caller is in.
+        var source = await _conversations.GetMessageAsync(caller.TenantId, command.MessageId, ct);
+        if (source is null || source.IsRetracted || source.Kind != ConversationMessageKinds.Text
+            || await _access.LoadAsync(caller.TenantId, source.ConversationId, caller.EmployeeId, ct) is null)
+            return Result<int>.NotFound("Message not found.");
+
+        var contexts = new List<ConversationContext>();
+        foreach (var conversationId in targets)
+        {
+            var context = await _access.LoadAsync(caller.TenantId, conversationId, caller.EmployeeId, ct);
+            if (context is null)
+                return Result<int>.NotFound(NotFoundMessage);
+            contexts.Add(context);
+        }
+
+        var files = (await _conversations.ListAttachmentsAsync(caller.TenantId, [source.Id], ct)).GetValueOrDefault(source.Id) ?? [];
+        var author = (await _identity.ResolveIdentitiesByEmployeeIdAsync(caller.TenantId, [caller.EmployeeId], ct)).GetValueOrDefault(caller.EmployeeId);
+        foreach (var context in contexts)
+        {
+            var now = DateTimeOffset.UtcNow;
+            // A copy, not a link: it reads the same wherever it went, and its files open through the new chat's access.
+            var copy = new ConversationMessage
+            {
+                Id = Guid.NewGuid(), TenantId = caller.TenantId, ConversationId = context.Conversation.Id, AuthorEmployeeId = caller.EmployeeId,
+                Kind = ConversationMessageKinds.Text, BodyHtml = source.BodyHtml, Tag = ConversationMessageTags.Forwarded, CreatedAt = now,
+            };
+            var attachments = files.Select(f => new ConversationMessageAttachment
+            {
+                Id = Guid.NewGuid(), TenantId = caller.TenantId, MessageId = copy.Id, FileRecordId = f.FileRecordId,
+                FileName = f.FileName, ContentType = f.ContentType, SizeBytes = f.SizeBytes, CreatedAt = now,
+            }).ToList();
+            await _unitOfWork.ExecuteInTransactionAsync(async innerCt =>
+            {
+                await _conversations.AddMessageAsync(copy, [], innerCt);
+                await _conversations.AddAttachmentsAsync(attachments, innerCt);
+                context.Conversation.LastMessageAt = now;
+                _conversations.Update(context.Conversation);
+                await _unitOfWork.SaveChangesAsync(innerCt);
+                return true;
+            }, ct);
+            var message = ConversationResponseBuilder.Message(copy, [], author, attachments);
             await ConversationRules.PublishSafelyAsync(
                 () => _realtime.MessageCreatedAsync(caller.TenantId, context.ParticipantIds, context.Conversation.Id, message, ct), _logger, "messageCreated");
         }
