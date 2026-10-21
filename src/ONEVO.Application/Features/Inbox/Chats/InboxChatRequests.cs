@@ -20,6 +20,8 @@ public sealed record GetInboxChatForItemQuery(string Source, string Kind, Guid I
 public sealed record OpenDirectChatCommand(Guid EmployeeId) : IRequest<Result<InboxChatRef>>;
 public sealed record CreateGroupChatCommand(string Name, IReadOnlyList<Guid> EmployeeIds) : IRequest<Result<InboxChatRef>>;
 public sealed record RenameGroupChatCommand(Guid ConversationId, string Name) : IRequest<Result>;
+/// <summary>Pins a chat to the top of its section in the caller's own inbox (or unpins it).</summary>
+public sealed record SetChatFavoriteCommand(Guid ConversationId, bool Favorite) : IRequest<Result>;
 /// <summary>Moves a case from the 1-on-1 chat to its own group and adds people to it.</summary>
 public sealed record StartCaseGroupCommand(string Source, string Kind, Guid Id, IReadOnlyList<Guid> EmployeeIds) : IRequest<Result<InboxChatRef>>;
 
@@ -29,6 +31,7 @@ public sealed class InboxChatHandlers :
     IRequestHandler<OpenDirectChatCommand, Result<InboxChatRef>>,
     IRequestHandler<CreateGroupChatCommand, Result<InboxChatRef>>,
     IRequestHandler<RenameGroupChatCommand, Result>,
+    IRequestHandler<SetChatFavoriteCommand, Result>,
     IRequestHandler<StartCaseGroupCommand, Result<InboxChatRef>>
 {
     public const string NotFoundMessage = "Chat not found.";
@@ -132,6 +135,17 @@ public sealed class InboxChatHandlers :
         var message = ConversationResponseBuilder.Message(line, [], author: null);
         await ConversationRules.PublishSafelyAsync(
             () => _realtime.MessageCreatedAsync(caller.TenantId, context.ParticipantIds, context.Conversation.Id, message, ct), _logger, "messageCreated");
+        return Result.Success();
+    }
+
+    public async Task<Result> Handle(SetChatFavoriteCommand command, CancellationToken ct)
+    {
+        if (await _callers.ResolveAsync(ct) is not { } caller)
+            return Result.Forbidden(InboxCallerResolver.NoEmployeeMessage);
+        // Only a chat the caller is in can be pinned.
+        if (await _access.LoadAsync(caller.TenantId, command.ConversationId, caller.EmployeeId, ct) is null)
+            return Result.NotFound(NotFoundMessage);
+        await _conversations.SetFavoriteAsync(caller.TenantId, caller.EmployeeId, command.ConversationId, command.Favorite, ct);
         return Result.Success();
     }
 

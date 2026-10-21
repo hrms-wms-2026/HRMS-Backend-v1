@@ -94,6 +94,12 @@ public interface IConversationRepository
     Task<IReadOnlyDictionary<Guid, ConversationMessage>> LatestSystemEventsAsync(
         Guid tenantId, IReadOnlyCollection<Guid> conversationIds, IReadOnlyCollection<string> eventTypes, CancellationToken ct = default);
 
+    /// <summary>The chats the employee pinned (their favorites).</summary>
+    Task<IReadOnlySet<Guid>> ListFavoriteConversationIdsAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default);
+
+    /// <summary>Pins (or unpins) a chat for the employee and saves; repeating either is a no-op.</summary>
+    Task SetFavoriteAsync(Guid tenantId, Guid employeeId, Guid conversationId, bool favorite, CancellationToken ct = default);
+
     /// <summary>Removes a system-written message (a case's "resolved" line after an undo) when it exists.</summary>
     Task DeleteMessageIfExistsAsync(Guid tenantId, Guid messageId, CancellationToken ct = default);
 

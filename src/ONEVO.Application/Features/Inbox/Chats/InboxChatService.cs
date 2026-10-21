@@ -29,7 +29,7 @@ public sealed record InboxChatRow(
     Guid ConversationId, string Source, string Kind, Guid SubjectId, string Type, string Title,
     Guid? OtherEmployeeId, Guid? AvatarFileId, int MemberCount,
     string? Preview, DateTimeOffset? LastMessageAt, int Unread,
-    IReadOnlyList<InboxChatPendingItem> Pending, InboxChatPendingItem? CaseItem);
+    IReadOnlyList<InboxChatPendingItem> Pending, InboxChatPendingItem? CaseItem, bool IsFavorite = false);
 
 public interface IInboxChatService
 {
@@ -128,6 +128,7 @@ public sealed partial class InboxChatService : IInboxChatService
         var ids = shown.Select(m => m.Conversation.Id).ToList();
         var memberIds = await _conversations.ListActiveMemberIdsAsync(tenantId, ids, ct);
         var unread = await _conversations.CountUnreadByConversationAsync(tenantId, caller, ids, ct);
+        var favorites = await _conversations.ListFavoriteConversationIdsAsync(tenantId, caller, ct);
 
         var others = shown.Where(m => m.Conversation.SubjectSource == ConversationSources.Direct)
             .Select(m => memberIds.GetValueOrDefault(m.Conversation.Id)?.FirstOrDefault(id => id != caller) ?? Guid.Empty)
@@ -146,15 +147,17 @@ public sealed partial class InboxChatService : IInboxChatService
                     var other = memberIds.GetValueOrDefault(c.Id)?.FirstOrDefault(id => id != caller);
                     var person = other is { } o ? people.GetValueOrDefault(o) : null;
                     return new InboxChatRow(c.Id, c.SubjectSource, c.SubjectKind, c.SubjectId, InboxChatTypes.Direct, person?.Name ?? "Former colleague",
-                        other, person?.AvatarFileId, count, preview, m.LatestMessage?.CreatedAt ?? c.LastMessageAt, unread.GetValueOrDefault(c.Id), rowPending, null);
+                        other, person?.AvatarFileId, count, preview, m.LatestMessage?.CreatedAt ?? c.LastMessageAt, unread.GetValueOrDefault(c.Id), rowPending, null,
+                        favorites.Contains(c.Id));
                 }
                 if (c.SubjectSource == ConversationSources.Group)
                     return new InboxChatRow(c.Id, c.SubjectSource, c.SubjectKind, c.SubjectId, InboxChatTypes.Group, PeopleChatNames.GroupName(names.GetValueOrDefault(c.Id)),
-                        null, null, count, preview, m.LatestMessage?.CreatedAt ?? c.LastMessageAt, unread.GetValueOrDefault(c.Id), rowPending, null);
+                        null, null, count, preview, m.LatestMessage?.CreatedAt ?? c.LastMessageAt, unread.GetValueOrDefault(c.Id), rowPending, null,
+                        favorites.Contains(c.Id));
                 var title = MarkerTitle(markers.GetValueOrDefault(c.Id)) ?? "Case";
                 return new InboxChatRow(c.Id, c.SubjectSource, c.SubjectKind, c.SubjectId, InboxChatTypes.Case, title,
                     null, null, count, preview, m.LatestMessage?.CreatedAt ?? c.LastMessageAt, unread.GetValueOrDefault(c.Id), rowPending,
-                    new InboxChatPendingItem(c.SubjectSource, c.SubjectKind, c.SubjectId, title));
+                    new InboxChatPendingItem(c.SubjectSource, c.SubjectKind, c.SubjectId, title), favorites.Contains(c.Id));
             })
             .OrderByDescending(r => r.Pending.Count > 0)
             .ThenByDescending(r => r.LastMessageAt ?? DateTimeOffset.MinValue)

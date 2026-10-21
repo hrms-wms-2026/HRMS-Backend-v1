@@ -19,6 +19,23 @@ public class ConversationConfiguration : IEntityTypeConfiguration<Conversation>
     }
 }
 
+public class ConversationFavoriteConfiguration : IEntityTypeConfiguration<ConversationFavorite>
+{
+    public void Configure(EntityTypeBuilder<ConversationFavorite> builder)
+    {
+        builder.ToTable("conversation_favorites");
+        builder.HasKey(f => f.Id);
+
+        builder.HasIndex(f => new { f.EmployeeId, f.ConversationId })
+            .IsUnique()
+            .HasDatabaseName("ux_conversation_favorites_employee_id_conversation_id");
+        builder.HasIndex(f => new { f.TenantId, f.EmployeeId })
+            .HasDatabaseName("ix_conversation_favorites_tenant_id_employee_id");
+
+        builder.HasOne<Conversation>().WithMany().HasForeignKey(f => f.ConversationId).OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
 public class ConversationParticipantConfiguration : IEntityTypeConfiguration<ConversationParticipant>
 {
     public void Configure(EntityTypeBuilder<ConversationParticipant> builder)

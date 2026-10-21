@@ -190,6 +190,20 @@ internal sealed class InMemoryConversationRepository : IConversationRepository
             .GroupBy(m => m.ConversationId)
             .ToDictionary(g => g.Key, g => g.OrderByDescending(m => m.CreatedAt).First()));
 
+    public List<ConversationFavorite> Favorites { get; } = new();
+
+    public Task<IReadOnlySet<Guid>> ListFavoriteConversationIdsAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default)
+        => Task.FromResult<IReadOnlySet<Guid>>(Favorites.Where(f => f.TenantId == tenantId && f.EmployeeId == employeeId)
+            .Select(f => f.ConversationId).ToHashSet());
+
+    public Task SetFavoriteAsync(Guid tenantId, Guid employeeId, Guid conversationId, bool favorite, CancellationToken ct = default)
+    {
+        Favorites.RemoveAll(f => f.EmployeeId == employeeId && f.ConversationId == conversationId);
+        if (favorite)
+            Favorites.Add(new ConversationFavorite { Id = Guid.NewGuid(), TenantId = tenantId, EmployeeId = employeeId, ConversationId = conversationId });
+        return Task.CompletedTask;
+    }
+
     public Task DeleteMessageIfExistsAsync(Guid tenantId, Guid messageId, CancellationToken ct = default)
     {
         Messages.RemoveAll(m => m.Id == messageId && m.AuthorEmployeeId == null);

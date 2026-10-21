@@ -8,6 +8,7 @@ namespace ONEVO.Api.Controllers.Tenant.Inbox;
 public sealed record OpenDirectChatRequest(Guid EmployeeId);
 public sealed record CreateGroupChatRequest(string Name, IReadOnlyList<Guid> EmployeeIds);
 public sealed record RenameGroupChatRequest(string Name);
+public sealed record SetChatFavoriteRequest(bool Favorite);
 public sealed record StartCaseGroupRequest(string Source, string Kind, Guid Id, IReadOnlyList<Guid>? EmployeeIds);
 
 /// <summary>The inbox as chats: 1-on-1 chats with anyone in the legal entity, named groups, and the dedicated group
@@ -44,6 +45,14 @@ public class InboxChatsController : ControllerBase
     public async Task<IActionResult> RenameGroup(Guid conversationId, [FromBody] RenameGroupChatRequest body, CancellationToken ct)
     {
         var result = await _mediator.Send(new RenameGroupChatCommand(conversationId, body.Name), ct);
+        return result.IsSuccess ? NoContent() : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Pins (or unpins) one of the caller's chats to the top of its section, for them only.</summary>
+    [HttpPut("{conversationId:guid}/favorite")]
+    public async Task<IActionResult> SetFavorite(Guid conversationId, [FromBody] SetChatFavoriteRequest body, CancellationToken ct)
+    {
+        var result = await _mediator.Send(new SetChatFavoriteCommand(conversationId, body.Favorite), ct);
         return result.IsSuccess ? NoContent() : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 

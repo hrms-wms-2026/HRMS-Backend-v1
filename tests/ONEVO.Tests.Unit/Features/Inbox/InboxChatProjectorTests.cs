@@ -200,6 +200,28 @@ public class InboxChatProjectorTests
     }
 
     [Fact]
+    public async Task A_favorite_comes_back_on_its_chat_row_for_that_person_only()
+    {
+        await Project(Manager, Leave(Guid.NewGuid(), InboxDirections.Received, Manager, pending: true));
+        var chat = _repo.Conversations.Single();
+        await _repo.SetFavoriteAsync(TenantId, Manager, chat.Id, favorite: true);
+
+        var router = new Mock<ONEVO.Application.Features.Inbox.Services.IInboxRouter>();
+        router.Setup(r => r.ListAsync(TenantId, It.IsAny<Guid>(), It.IsAny<InboxQuery>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new InboxPage([], 0, 1, 100));
+        var identity = new Mock<ICallerIdentityResolver>();
+        identity.Setup(i => i.ResolveIdentitiesByEmployeeIdAsync(TenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, EmployeeIdentityDto>());
+        var service = new InboxChatService(router.Object, _projector, _repo, identity.Object);
+
+        (await service.ListAsync(TenantId, Manager, CancellationToken.None)).Single().IsFavorite.Should().BeTrue();
+        (await service.ListAsync(TenantId, Priya, CancellationToken.None)).Single().IsFavorite.Should().BeFalse();
+
+        await _repo.SetFavoriteAsync(TenantId, Manager, chat.Id, favorite: false);
+        (await service.ListAsync(TenantId, Manager, CancellationToken.None)).Single().IsFavorite.Should().BeFalse();
+    }
+
+    [Fact]
     public async Task Watchers_and_alerts_without_a_holder_place_nothing_from_the_subjects_side()
     {
         await Project(Priya, Leave(Guid.NewGuid(), InboxDirections.Info, holder: null, pending: true));

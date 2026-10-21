@@ -347,6 +347,37 @@ public class EfConversationRepository : IConversationRepository
             .ToDictionary(g => g.Key, g => g.OrderByDescending(m => m.CreatedAt).First());
     }
 
+    public async Task<IReadOnlySet<Guid>> ListFavoriteConversationIdsAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default)
+        => (await _db.ConversationFavorites.AsNoTracking()
+                .Where(f => f.TenantId == tenantId && f.EmployeeId == employeeId)
+                .Select(f => f.ConversationId)
+                .ToListAsync(ct))
+            .ToHashSet();
+
+    public async Task SetFavoriteAsync(Guid tenantId, Guid employeeId, Guid conversationId, bool favorite, CancellationToken ct = default)
+    {
+        if (!favorite)
+        {
+            await _db.ConversationFavorites
+                .Where(f => f.TenantId == tenantId && f.EmployeeId == employeeId && f.ConversationId == conversationId)
+                .ExecuteDeleteAsync(ct);
+            return;
+        }
+        if (await _db.ConversationFavorites.AnyAsync(f => f.EmployeeId == employeeId && f.ConversationId == conversationId, ct))
+            return;
+        var row = new ConversationFavorite { Id = Guid.NewGuid(), TenantId = tenantId, EmployeeId = employeeId, ConversationId = conversationId };
+        _db.ConversationFavorites.Add(row);
+        try
+        {
+            await _db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException)
+        {
+            // Lost a race on the (employee, conversation) unique index: it is pinned, which is the goal.
+            _db.Entry(row).State = EntityState.Detached;
+        }
+    }
+
     public async Task DeleteMessageIfExistsAsync(Guid tenantId, Guid messageId, CancellationToken ct = default)
         => await _db.ConversationMessages
             .Where(m => m.TenantId == tenantId && m.Id == messageId && m.AuthorEmployeeId == null)
