@@ -144,6 +144,9 @@ public static class CaseCards
     public static Guid ResolvedId(Guid conversationId, ItemRef item)
         => PeopleChatNames.DeterministicId($"case-resolved:{conversationId:N}:{Key(item)}");
 
-    public static string CardJson(ItemRef item, string title)
-        => JsonSerializer.Serialize(new { type = "case", source = item.Source, kind = item.Kind, id = item.Id, title });
+    /// <summary>The card's event JSON. <paramref name="forwarded"/>: a copy someone sent into another chat.</summary>
+    public static string CardJson(ItemRef item, string title, bool forwarded = false)
+        => forwarded
+            ? JsonSerializer.Serialize(new { type = "case", source = item.Source, kind = item.Kind, id = item.Id, title, forwarded = true })
+            : JsonSerializer.Serialize(new { type = "case", source = item.Source, kind = item.Kind, id = item.Id, title });
 }

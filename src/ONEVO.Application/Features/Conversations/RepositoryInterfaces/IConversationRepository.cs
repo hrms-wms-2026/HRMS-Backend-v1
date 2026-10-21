@@ -86,7 +86,8 @@ public interface IConversationRepository
     /// <summary>Which of the given message ids exist (the deterministic ids of case cards and their lines).</summary>
     Task<IReadOnlySet<Guid>> ListExistingMessageIdsAsync(Guid tenantId, IReadOnlyCollection<Guid> messageIds, CancellationToken ct = default);
 
-    /// <summary>The case cards posted for one inbox item, in any conversation (oldest first).</summary>
+    /// <summary>The case cards placed for one inbox item, in any conversation (oldest first). Forwarded copies (cards with an
+    /// author) are not included.</summary>
     Task<IReadOnlyList<ConversationMessage>> ListCaseCardsAsync(Guid tenantId, ItemRef item, CancellationToken ct = default);
 
     /// <summary>Per conversation: its latest system message whose event type is one of <paramref name="eventTypes"/>

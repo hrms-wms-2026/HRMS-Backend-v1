@@ -319,10 +319,11 @@ public class EfConversationRepository : IConversationRepository
 
     public async Task<IReadOnlyList<ConversationMessage>> ListCaseCardsAsync(Guid tenantId, ItemRef item, CancellationToken ct = default)
     {
-        // A card's event JSON carries the item's id; the kind filter keeps the text match to card rows only.
+        // A card's event JSON carries the item's id; the kind filter keeps the text match to card rows only. Cards
+        // someone forwarded (they have an author) are copies in other chats, not where the case is worked on.
         var id = item.Id.ToString();
         var cards = await _db.ConversationMessages.AsNoTracking()
-            .Where(m => m.TenantId == tenantId && m.Kind == ConversationMessageKinds.Case && m.SystemEventJson != null
+            .Where(m => m.TenantId == tenantId && m.Kind == ConversationMessageKinds.Case && m.AuthorEmployeeId == null && m.SystemEventJson != null
                 && m.SystemEventJson.Contains(id))
             .OrderBy(m => m.CreatedAt)
             .ToListAsync(ct);

@@ -200,6 +200,24 @@ public class InboxChatProjectorTests
     }
 
     [Fact]
+    public async Task A_forwarded_copy_elsewhere_does_not_make_the_reviewer_a_next_approver()
+    {
+        var id = Guid.NewGuid();
+        var item = new ItemRef("leave", "request", id);
+        // Someone forwarded the request into another chat before the reviewer opened their inbox.
+        _repo.Messages.Add(new ConversationMessage
+        {
+            Id = Guid.NewGuid(), TenantId = TenantId, ConversationId = Guid.NewGuid(), AuthorEmployeeId = Hr,
+            Kind = ConversationMessageKinds.Case, SystemEventJson = CaseCards.CardJson(item, "Annual leave - Priya", forwarded: true), CreatedAt = Now,
+        });
+
+        await Project(Manager, Leave(id, InboxDirections.Received, Manager, pending: true));
+
+        _repo.Conversations.Should().ContainSingle(c => c.SubjectSource == ConversationSources.Direct);
+        _repo.Conversations.Should().NotContain(c => c.SubjectSource == "leave");
+    }
+
+    [Fact]
     public async Task A_favorite_comes_back_on_its_chat_row_for_that_person_only()
     {
         await Project(Manager, Leave(Guid.NewGuid(), InboxDirections.Received, Manager, pending: true));

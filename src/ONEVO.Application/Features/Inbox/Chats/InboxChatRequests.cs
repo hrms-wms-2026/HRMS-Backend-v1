@@ -22,6 +22,9 @@ public sealed record CreateGroupChatCommand(string Name, IReadOnlyList<Guid> Emp
 public sealed record RenameGroupChatCommand(Guid ConversationId, string Name) : IRequest<Result>;
 /// <summary>Pins a chat to the top of its section in the caller's own inbox (or unpins it).</summary>
 public sealed record SetChatFavoriteCommand(Guid ConversationId, bool Favorite) : IRequest<Result>;
+/// <summary>Sends a copy of a case card into chats the caller is in (WhatsApp-style forward). Everyone there sees it; only
+/// the people the case's module lets act get its actions, since each viewer's card loads their own view of it.</summary>
+public sealed record ForwardCaseCommand(string Source, string Kind, Guid Id, IReadOnlyList<Guid> ConversationIds) : IRequest<Result<int>>;
 /// <summary>Moves a case from the 1-on-1 chat to its own group and adds people to it.</summary>
 public sealed record StartCaseGroupCommand(string Source, string Kind, Guid Id, IReadOnlyList<Guid> EmployeeIds) : IRequest<Result<InboxChatRef>>;
 
@@ -32,6 +35,7 @@ public sealed class InboxChatHandlers :
     IRequestHandler<CreateGroupChatCommand, Result<InboxChatRef>>,
     IRequestHandler<RenameGroupChatCommand, Result>,
     IRequestHandler<SetChatFavoriteCommand, Result>,
+    IRequestHandler<ForwardCaseCommand, Result<int>>,
     IRequestHandler<StartCaseGroupCommand, Result<InboxChatRef>>
 {
     public const string NotFoundMessage = "Chat not found.";
@@ -48,12 +52,14 @@ public sealed class InboxChatHandlers :
     private readonly IMilestoneMembershipCoordinator _membership;
     private readonly IInboxRealtimePublisher _realtime;
     private readonly ISender _sender;
+    private readonly IInboxRouter _router;
     private readonly ILogger<InboxChatHandlers> _logger;
 
     public InboxChatHandlers(
         InboxCallerResolver callers, IInboxChatService chats, IPeopleChatService people, ICaseGroupService caseGroups,
         IConversationAccess access, IConversationRepository conversations, ICallerIdentityResolver identity,
-        IMilestoneMembershipCoordinator membership, IInboxRealtimePublisher realtime, ISender sender, ILogger<InboxChatHandlers> logger)
+        IMilestoneMembershipCoordinator membership, IInboxRealtimePublisher realtime, ISender sender, ILogger<InboxChatHandlers> logger,
+        IInboxRouter router)
     {
         _callers = callers;
         _chats = chats;
@@ -65,6 +71,7 @@ public sealed class InboxChatHandlers :
         _membership = membership;
         _realtime = realtime;
         _sender = sender;
+        _router = router;
         _logger = logger;
     }
 
@@ -147,6 +154,49 @@ public sealed class InboxChatHandlers :
             return Result.NotFound(NotFoundMessage);
         await _conversations.SetFavoriteAsync(caller.TenantId, caller.EmployeeId, command.ConversationId, command.Favorite, ct);
         return Result.Success();
+    }
+
+    public async Task<Result<int>> Handle(ForwardCaseCommand command, CancellationToken ct)
+    {
+        if (await _callers.ResolveAsync(ct) is not { } caller)
+            return Result<int>.Forbidden(InboxCallerResolver.NoEmployeeMessage);
+        var targets = (command.ConversationIds ?? []).Where(id => id != Guid.Empty).Distinct().ToList();
+        if (targets.Count == 0)
+            return Result<int>.UnprocessableEntity("Pick at least one chat.");
+        // Only someone who can see the case may pass it on.
+        var detail = await _router.GetDetailAsync(caller.TenantId, caller.EmployeeId, command.Source, command.Kind, command.Id, ct);
+        if (!detail.IsSuccess)
+            return Result<int>.NotFound(NotFoundMessage);
+        var item = new ItemRef(command.Source, command.Kind, command.Id);
+        var title = detail.Value!.Item.Title;
+        var author = (await _identity.ResolveIdentitiesByEmployeeIdAsync(caller.TenantId, [caller.EmployeeId], ct)).GetValueOrDefault(caller.EmployeeId);
+
+        var contexts = new List<ConversationContext>();
+        foreach (var conversationId in targets)
+        {
+            // Into chats the caller is in only.
+            var context = await _access.LoadAsync(caller.TenantId, conversationId, caller.EmployeeId, ct);
+            if (context is null)
+                return Result<int>.NotFound(NotFoundMessage);
+            contexts.Add(context);
+        }
+
+        foreach (var context in contexts)
+        {
+            var now = DateTimeOffset.UtcNow;
+            var card = new ConversationMessage
+            {
+                Id = Guid.NewGuid(), TenantId = caller.TenantId, ConversationId = context.Conversation.Id, AuthorEmployeeId = caller.EmployeeId,
+                Kind = ConversationMessageKinds.Case, BodyHtml = System.Net.WebUtility.HtmlEncode(title),
+                SystemEventJson = CaseCards.CardJson(item, title, forwarded: true), CreatedAt = now,
+            };
+            await _conversations.AddMessageIfMissingAsync(card, ct);
+            await _conversations.TouchAsync(caller.TenantId, context.Conversation.Id, now, ct);
+            var message = ConversationResponseBuilder.Message(card, [], author);
+            await ConversationRules.PublishSafelyAsync(
+                () => _realtime.MessageCreatedAsync(caller.TenantId, context.ParticipantIds, context.Conversation.Id, message, ct), _logger, "messageCreated");
+        }
+        return Result<int>.Success(contexts.Count);
     }
 
     public async Task<Result<InboxChatRef>> Handle(StartCaseGroupCommand command, CancellationToken ct)

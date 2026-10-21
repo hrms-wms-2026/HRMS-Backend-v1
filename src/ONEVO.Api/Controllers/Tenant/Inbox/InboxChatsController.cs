@@ -9,6 +9,7 @@ public sealed record OpenDirectChatRequest(Guid EmployeeId);
 public sealed record CreateGroupChatRequest(string Name, IReadOnlyList<Guid> EmployeeIds);
 public sealed record RenameGroupChatRequest(string Name);
 public sealed record SetChatFavoriteRequest(bool Favorite);
+public sealed record ForwardCaseRequest(string Source, string Kind, Guid Id, IReadOnlyList<Guid> ConversationIds);
 public sealed record StartCaseGroupRequest(string Source, string Kind, Guid Id, IReadOnlyList<Guid>? EmployeeIds);
 
 /// <summary>The inbox as chats: 1-on-1 chats with anyone in the legal entity, named groups, and the dedicated group
@@ -55,6 +56,11 @@ public class InboxChatsController : ControllerBase
         var result = await _mediator.Send(new SetChatFavoriteCommand(conversationId, body.Favorite), ct);
         return result.IsSuccess ? NoContent() : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
+
+    /// <summary>Forwards a case card into chats the caller is in. Returns how many chats got it.</summary>
+    [HttpPost("forward")]
+    public async Task<IActionResult> Forward([FromBody] ForwardCaseRequest body, CancellationToken ct)
+        => ToResult(await _mediator.Send(new ForwardCaseCommand(body.Source, body.Kind, body.Id, body.ConversationIds ?? []), ct));
 
     /// <summary>Moves a case to its own group (created once) and adds people to it.</summary>
     [HttpPost("case-group")]

@@ -178,7 +178,7 @@ internal sealed class InMemoryConversationRepository : IConversationRepository
 
     public Task<IReadOnlyList<ConversationMessage>> ListCaseCardsAsync(Guid tenantId, ItemRef item, CancellationToken ct = default)
         => Task.FromResult<IReadOnlyList<ConversationMessage>>(Messages
-            .Where(m => m.Kind == ConversationMessageKinds.Case && m.SystemEventJson != null && m.SystemEventJson.Contains(item.Id.ToString())
+            .Where(m => m.Kind == ConversationMessageKinds.Case && m.AuthorEmployeeId == null && m.SystemEventJson != null && m.SystemEventJson.Contains(item.Id.ToString())
                 && m.SystemEventJson.Contains($"\"source\":\"{item.Source}\"") && m.SystemEventJson.Contains($"\"kind\":\"{item.Kind}\""))
             .OrderBy(m => m.CreatedAt).ToList());
 
