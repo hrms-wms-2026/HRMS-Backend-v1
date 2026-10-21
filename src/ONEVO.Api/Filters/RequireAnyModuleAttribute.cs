@@ -17,6 +17,9 @@ public sealed class RequireAnyModuleAttribute : Attribute, IAsyncAuthorizationFi
     public RequireAnyModuleAttribute(params string[] moduleKeys)
         => _moduleKeys = moduleKeys;
 
+    /// <summary>The module keys of which at least one must be active (read by dashboard widget providers).</summary>
+    public IReadOnlyList<string> ModuleKeys => _moduleKeys;
+
     public async Task OnAuthorizationAsync(AuthorizationFilterContext context)
     {
         var currentUser = context.HttpContext.RequestServices.GetService<ICurrentUser>();

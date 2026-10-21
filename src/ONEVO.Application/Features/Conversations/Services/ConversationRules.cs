@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
+using ONEVO.Application.Features.Conversations.Contracts;
 
 namespace ONEVO.Application.Features.Conversations.Services;
 
@@ -11,6 +12,14 @@ internal static partial class ConversationRules
     public const int MaxBodyLength = 10_000;
     public const int DefaultPageSize = 50;
     public const int MaxPageSize = 100;
+    /// <summary>How long after sending its author may still edit or delete a message.</summary>
+    public const int EditWindowMinutes = 30;
+    public const string EditWindowClosed = "A message can only be changed within 30 minutes of sending it.";
+    public const int MaxEmojiLength = 32;
+
+    /// <summary>Whether the author may still edit or delete the message at <paramref name="now"/>.</summary>
+    public static bool WithinEditWindow(DateTimeOffset createdAt, DateTimeOffset now)
+        => now <= createdAt.AddMinutes(EditWindowMinutes);
 
     /// <summary>Trimmed HTML, or the validation error. The frontend renders messages through its HTML
     /// sanitizer; as defense in depth, active content (script-capable tags, inline event handlers and
@@ -51,6 +60,24 @@ internal static partial class ConversationRules
         catch (Exception ex)
         {
             logger.LogWarning(ex, "Inbox realtime publish failed ({What}).", what);
+        }
+    }
+
+    /// <summary>Tells every activity listener, after the chat change committed; a listener failure is logged, never thrown.</summary>
+    public static async Task NotifyActivityAsync(
+        IEnumerable<IConversationActivityListener>? listeners, Guid tenantId, ItemRef subject, Guid actorEmployeeId, string activity,
+        ILogger logger, CancellationToken ct)
+    {
+        foreach (var listener in listeners ?? [])
+        {
+            try
+            {
+                await listener.OnActivityAsync(tenantId, subject, actorEmployeeId, activity, ct);
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Conversation activity listener failed ({Activity}).", activity);
+            }
         }
     }
 

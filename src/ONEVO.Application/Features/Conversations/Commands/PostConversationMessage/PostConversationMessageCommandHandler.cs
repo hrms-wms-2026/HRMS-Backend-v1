@@ -34,6 +34,7 @@ public sealed class PostConversationMessageCommandHandler
     private readonly IInboxRealtimePublisher _realtime;
     private readonly ILogger<PostConversationMessageCommandHandler> _logger;
     private readonly IFileStorageService? _files;
+    private readonly IEnumerable<IConversationActivityListener>? _listeners;
     private readonly IReadOnlyList<IConversationReplyHook> _replyHooks;
 
     public PostConversationMessageCommandHandler(
@@ -41,6 +42,7 @@ public sealed class PostConversationMessageCommandHandler
         IConversationRepository conversations, IUnitOfWork unitOfWork, ConversationNotifier notifier,
         ConversationResponseBuilder responses, IInboxRealtimePublisher realtime,
         ILogger<PostConversationMessageCommandHandler> logger, IFileStorageService? files = null,
+        IEnumerable<IConversationActivityListener>? listeners = null,
         IEnumerable<IConversationReplyHook>? replyHooks = null)
     {
         _replyHooks = replyHooks?.ToList() ?? [];
@@ -54,6 +56,7 @@ public sealed class PostConversationMessageCommandHandler
         _realtime = realtime;
         _logger = logger;
         _files = files;
+        _listeners = listeners;
     }
 
     public async Task<Result<ConversationMessageResponse>> Handle(PostConversationMessageCommand command, CancellationToken ct)
@@ -146,11 +149,14 @@ public sealed class PostConversationMessageCommandHandler
             return true;
         }, ct);
 
+        // A new message has no reactions yet; it carries its quote when it is a reply.
         var response = ConversationResponseBuilder.Message(message, mentionIds, author, attachments,
-            await _responses.ReplyPreviewAsync(tenantId, message, ct));
+            replyTo: await _responses.ReplyPreviewAsync(tenantId, message, ct));
         await ConversationRules.PublishSafelyAsync(
             () => _realtime.MessageCreatedAsync(tenantId, context.ParticipantIds, context.Conversation.Id, response, ct),
             _logger, "messageCreated");
+        await ConversationRules.NotifyActivityAsync(_listeners, tenantId, context.Subject, caller.Value,
+            ConversationActivities.MessagePosted, _logger, ct);
         await RunReplyHooksAsync(tenantId, context.Subject, caller.Value, ct);
         return Result<ConversationMessageResponse>.Success(response);
     }

@@ -11,7 +11,8 @@ using ONEVO.Domain.Features.Conversations.Entities;
 
 namespace ONEVO.Application.Features.Conversations.Commands.DeleteConversationMessage;
 
-/// <summary>The author deletes their own text message. The chat shows "Message deleted"; the full body is kept in the
+/// <summary>The author deletes their own text message within <see cref="ConversationRules.EditWindowMinutes"/> minutes of
+/// sending it. The chat shows "Message deleted"; the full body is kept in the
 /// revisions (investigation evidence) and the attachments stop being downloadable.</summary>
 public sealed record DeleteConversationMessageCommand(Guid ConversationId, Guid MessageId) : IRequest<Result>;
 
@@ -55,8 +56,10 @@ public sealed class DeleteConversationMessageCommandHandler : IRequestHandler<De
             return Result.Forbidden(NotAuthor);
         if (message.IsRetracted)
             return Result.Success();
-
         var now = DateTimeOffset.UtcNow;
+        if (!ConversationRules.WithinEditWindow(message.CreatedAt, now))
+            return Result.UnprocessableEntity(ConversationRules.EditWindowClosed);
+
         await _conversations.AddRevisionAsync(new ConversationMessageRevision
         {
             Id = Guid.NewGuid(), TenantId = caller.TenantId, MessageId = message.Id, BodyHtml = message.BodyHtml, RevisedAt = now,
