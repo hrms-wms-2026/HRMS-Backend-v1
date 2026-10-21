@@ -118,6 +118,33 @@ Plan D Task 3. A bulk invite fans one event out to many people, and each of them
 - When a send is over the limit the outbox handler waits before sending; the message stays pending in the
   outbox and is not lost. A restart during the wait simply re-sends it later.
 
+## Provider capacity warnings (`Meetings:ProviderCapacityWarning`)
+
+Plan D Task 2. A bulk invite can name hundreds of people. The provider's own meeting-size limit is the ceiling
+the operator knows about, so the platform carries it as a setting and warns the organizer when the meeting would
+exceed it.
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `Meetings:ProviderCapacityWarning:MicrosoftTeams` | `1000` | The Microsoft Teams meeting size above which the organizer sees a warning. |
+| `Meetings:ProviderCapacityWarning:Zoom` | `300` | The Zoom meeting size above which the organizer sees a warning. |
+
+- **The warning is advisory, never a hard cap.** Nothing is blocked, nobody is dropped and nobody is refused:
+  the preview returns **everyone** and adds a `capacityWarning` to the response - "This meeting will have 304
+  people; Zoom meetings support up to 300." The organizer may go ahead and invite everyone. The platform does
+  not enforce the provider's limit; the provider may reject or degrade the meeting itself.
+- The warning is raised for the **requested platform** only. A preview without a platform never warns.
+- The size compared against the limit is the people in the meeting: the previewed people **plus** the people
+  already invited (the organizer, and the series' participants when the preview is for an existing series).
+- The keys are `MicrosoftTeams` and `Zoom`; the lookup is **case-insensitive** and also accepts the provider
+  constant (`microsoft_teams`, `zoom`).
+- The setting is read at startup, like every other `Meetings:*` setting: **a change takes effect after a restart.**
+- A **zero or negative** value stops the app at startup, and the error names the key
+  (`Meetings:ProviderCapacityWarning:<provider> must be positive.`). It is not clamped, because "no limit" is the
+  opposite of what a zero was meant to say.
+- The shipped defaults are the providers' own published limits. They are a **deployment setting**: an operator
+  whose tenant has a lower contractual limit lowers the value before switching `Meetings:BulkInvite` on.
+
 ## Rollback rules
 
 **Never roll back below Release A once meeting rows exist.**

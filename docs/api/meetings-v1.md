@@ -52,6 +52,7 @@ Every error is ProblemDetails with a stable `code` extension:
 | `GET /occurrences/{taskId}/action-items` | → `MeetingActionItemView[]` (the linked tasks the caller may see under the ordinary task rules) | Attendee | 404 `meeting_not_found` |
 | `DELETE /occurrences/{taskId}/action-items/{actionTaskId}` | → 204 (the link is removed; the task itself stays) | The link's creator or the organizer | 403 `meeting_organizer_required`, 404 `meeting_not_found`, 409 `meetings_read_only` |
 | `POST /bulk-preview` | `MeetingBulkPreviewRequest` → `MeetingBulkPreviewResponse` | The meeting's own gate: a module member for a new meeting, the organizer for an existing series | 400 `meeting_platform_invalid`, 403 `meeting_module_member_required` / `meeting_organizer_required` / `meeting_calendar_write_required`, 404 `meeting_not_found`, 409 `bulk_invite_unavailable` (the `Meetings:BulkInvite` flag is off) |
+| `GET /api/v1/employees/{employeeId}/meeting-attendance?from=&to=` | → `EmployeeMeetingAttendanceResponse` | The employee themself, or a manager in their **current** reporting line. Nobody else. | 400 `meeting_invalid_time` (a window longer than 92 days), 404 `meeting_not_found` |
 
 **Reporting-line attendance view.** The employee's own meeting attendance, shown on the employee profile
 (spec 5.1, D16, D17). It lives on its own route, outside the meetings prefix:
@@ -83,9 +84,14 @@ POST /api/v1/work/objectives/{objectiveId}/tasks
 
 **Bulk invite preview.** The organizer picks whole departments, managers' teams and individual people, and the
 preview expands them into one list of people before anything is invited (spec 5.2, D8). It is a preview only -
-it writes nothing; the form then submits the explicit employee ids it shows, and the create re-validates who is
-still active.
+it writes nothing.
 
+- **The preview is a snapshot.** It shows the people as they are at the moment of the preview. The form then
+  submits the **explicit employee ids the preview showed** (`employeeIds` on the create request), never the
+  groups: a group would be re-expanded later and could resolve to a different set of people.
+- **The create re-validates the selected employees.** Anyone who stopped being active between the preview and
+  the save is **skipped**, not invited: the create answers `skipped: [ { "employeeId": "…", "reason": "inactive" } ]`
+  and invites everybody else. The preview is a snapshot, not a reservation.
 - A department expands to its **own** employees; its sub-departments are not expanded.
 - A manager expands to their **direct reports** only.
 - "Active" is the same as everywhere else in Meetings: working, or on leave. Anyone else - and anyone with no
@@ -93,8 +99,10 @@ still active.
 - `alreadyInvited` counts the people already on the meeting (the organizer, and the series' participants when
   `seriesId` is set). They are not returned in `people`, so the frontend never adds them twice.
 - `selected` is every id the organizer picked, before dedup; `duplicatesRemoved` is the repeats.
-- Above the provider's capacity (`Meetings:ProviderCapacityWarning`) the response carries a **warning only** -
-  there is no cap, and the organizer may go ahead.
+- Above the provider's capacity the response carries a **warning only** - there is no cap, and the organizer may
+  go ahead. The limits are configured under `Meetings:ProviderCapacityWarning`, keyed by provider:
+  `MicrosoftTeams` (default **1000**) and `Zoom` (default **300**). The warning is raised when the meeting's
+  size - the previewed people plus the people already invited - is above the limit for the requested `platform`.
 
 ```jsonc
 // MeetingBulkPreviewRequest
@@ -110,6 +118,27 @@ still active.
 - It is decided with the existing approval endpoints.
 - The payload cannot be edited (`canEditPayload: false`), and a revert returns 409.
 - The approver sees only the snapshot below.
+
+**Monitoring compliance.** The Work & Activity "Application usage" card of an employee profile
+(`GET /api/v1/employees/{id}/work-activity/app-usage`) carries a `meetingCompliance` array: every meeting of
+**that employee** in the period - the legacy calendar events and the task-meeting occurrences - with the share of
+the meeting the meeting application was used for (spec D17).
+
+- `eventId` is the legacy calendar event's id, or the occurrence's task id for a task meeting.
+- `title` is the meeting's title, or **`"Private meeting"`** when it is private. A private meeting is listed,
+  never named: its title, organizer, agenda, participants and link are hidden.
+- `isPrivate` is `true` for a private meeting. The usage numbers of a private meeting are **unchanged** - only
+  the title is masked.
+- `startsAt` / `endsAt` are the meeting's bounds, `requiredSeconds` the seconds a compliant meeting needs
+  (half the meeting), `meetingApplicationSeconds` the seconds the meeting application was actually used for,
+  `usagePercentage` the share in percent (0..100) and `isCompliant` whether the used seconds reach the required
+  ones.
+- A meeting is only measured when it has a provider link (`calendar_event_meetings.status = 'active'`); a meeting
+  without one has no meeting application to measure, so it is not listed.
+- A **declined** or **removed** attendee has no row: a declined occurrence had no meeting application to use, so
+  measuring it would report a false 0%.
+- The view is the employee's own: it never shows another employee's meetings, and it is behind the employee
+  visibility rule (403 for an employee the caller may not view).
 
 ## Bodies
 
@@ -175,6 +204,12 @@ still active.
                "display": "Unknown|Recorded|Not applicable",
                "outcome": "joined|no_join_recorded|unknown", "attendedSeconds": 900 } ] }
 // "title": "Private meeting" and "organizerName": null for a private occurrence seen by a manager.
+
+// MeetingApplicationComplianceItem (GET /api/v1/employees/{id}/work-activity/app-usage → meetingCompliance)
+{ "eventId": "…", "title": "Weekly delivery sync|Private meeting", "startsAt": "2026-11-02T03:30:00Z",
+  "endsAt": "2026-11-02T04:00:00Z", "requiredSeconds": 900, "meetingApplicationSeconds": 900,
+  "usagePercentage": 100.0, "isCompliant": true, "isPrivate": false }
+// "title" is "Private meeting" and "isPrivate" is true for a private meeting; the numbers never change.
 ```
 
 ## Calendar (`GET /api/v1/calendar`, `POST /api/v1/calendar/check-conflicts`)
