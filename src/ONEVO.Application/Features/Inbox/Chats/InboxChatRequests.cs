@@ -212,11 +212,16 @@ public sealed class InboxChatHandlers :
         var targets = (command.ConversationIds ?? []).Where(id => id != Guid.Empty).Distinct().ToList();
         if (targets.Count == 0)
             return Result<int>.UnprocessableEntity("Pick at least one chat.");
-        // Only a live text message from a chat the caller is in.
+        // Only a live text message from a 1-on-1 chat or named group the caller is in. A case's own conversation (an
+        // investigation, a request thread) is limited to the people the case's module allows, so its messages stay there.
         var source = await _conversations.GetMessageAsync(caller.TenantId, command.MessageId, ct);
-        if (source is null || source.IsRetracted || source.Kind != ConversationMessageKinds.Text
-            || await _access.LoadAsync(caller.TenantId, source.ConversationId, caller.EmployeeId, ct) is null)
+        if (source is null || source.IsRetracted || source.Kind != ConversationMessageKinds.Text)
             return Result<int>.NotFound("Message not found.");
+        var sourceContext = await _access.LoadAsync(caller.TenantId, source.ConversationId, caller.EmployeeId, ct);
+        if (sourceContext is null)
+            return Result<int>.NotFound("Message not found.");
+        if (!ConversationSources.IsPeopleChat(sourceContext.Conversation.SubjectSource))
+            return Result<int>.UnprocessableEntity("Messages in a case's group can't be forwarded.");
 
         var contexts = new List<ConversationContext>();
         foreach (var conversationId in targets)
