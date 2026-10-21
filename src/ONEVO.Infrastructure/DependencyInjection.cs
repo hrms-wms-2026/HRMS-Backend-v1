@@ -439,6 +439,7 @@ public static class DependencyInjection
         services.AddScoped<IWorkNotificationLogRepository>(sp => sp.GetRequiredService<EfWorkNotificationLogRepository>());
         services.AddScoped<IMonitorAlertRepository, EfMonitorAlertRepository>();
         services.AddScoped<IModuleHourSummaryRepository, EfModuleHourSummaryRepository>();
+        services.AddScoped<ONEVO.Application.Features.WorkManagement.Leadership.RepositoryInterfaces.ILedProgressReadRepository, EfLedProgressReadRepository>();
         services.AddScoped<ONEVO.Application.Features.Dashboard.Layout.RepositoryInterfaces.IUserDashboardRepository, ONEVO.Infrastructure.Persistence.Repositories.Dashboard.EfUserDashboardRepository>();
         services.AddScoped<EfTaskEditLogRepository>();
         services.AddScoped<ITaskEditLogRepository>(sp => sp.GetRequiredService<EfTaskEditLogRepository>());
