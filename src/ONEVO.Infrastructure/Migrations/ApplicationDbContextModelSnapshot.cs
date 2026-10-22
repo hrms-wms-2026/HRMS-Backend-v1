@@ -2194,6 +2194,61 @@ namespace ONEVO.Infrastructure.Migrations
                     b.ToTable("conversations", (string)null);
                 });
 
+            modelBuilder.Entity("ONEVO.Domain.Features.Conversations.Entities.ConversationFavorite", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("ConversationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("conversation_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("CreatedById")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by_id");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("deleted_at");
+
+                    b.Property<Guid>("EmployeeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("employee_id");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_deleted");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_conversation_favorites");
+
+                    b.HasIndex("ConversationId")
+                        .HasDatabaseName("ix_conversation_favorites_conversation_id");
+
+                    b.HasIndex("EmployeeId", "ConversationId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_conversation_favorites_employee_id_conversation_id");
+
+                    b.HasIndex("TenantId", "EmployeeId")
+                        .HasDatabaseName("ix_conversation_favorites_tenant_id_employee_id");
+
+                    b.ToTable("conversation_favorites", (string)null);
+                });
+
             modelBuilder.Entity("ONEVO.Domain.Features.Conversations.Entities.ConversationMessage", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2274,6 +2329,58 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasDatabaseName("ix_conversation_messages_conversation_id_created_at");
 
                     b.ToTable("conversation_messages", (string)null);
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.Conversations.Entities.ConversationMessageHide", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("CreatedById")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by_id");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("deleted_at");
+
+                    b.Property<Guid>("EmployeeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("employee_id");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_deleted");
+
+                    b.Property<Guid>("MessageId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("message_id");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_conversation_message_hides");
+
+                    b.HasIndex("MessageId", "EmployeeId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_conversation_message_hides_message_id_employee_id");
+
+                    b.HasIndex("TenantId", "EmployeeId")
+                        .HasDatabaseName("ix_conversation_message_hides_tenant_id_employee_id");
+
+                    b.ToTable("conversation_message_hides", (string)null);
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.Conversations.Entities.ConversationMessageAttachment", b =>
@@ -6119,6 +6226,14 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("character varying(20)")
                         .HasColumnName("change_type");
 
+                    b.Property<int?>("CoversFromMonth")
+                        .HasColumnType("integer")
+                        .HasColumnName("covers_from_month");
+
+                    b.Property<int?>("CoversToMonth")
+                        .HasColumnType("integer")
+                        .HasColumnName("covers_to_month");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
@@ -6134,6 +6249,14 @@ namespace ONEVO.Infrastructure.Migrations
                     b.Property<decimal>("HoursChanged")
                         .HasColumnType("numeric(8,2)")
                         .HasColumnName("hours_changed");
+
+                    b.Property<Guid?>("LeavePolicyId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("leave_policy_id");
+
+                    b.Property<Guid?>("LeavePolicyVersionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("leave_policy_version_id");
 
                     b.Property<Guid>("LeaveTypeId")
                         .HasColumnType("uuid")
@@ -6152,6 +6275,10 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("tenant_id");
 
+                    b.Property<int?>("Year")
+                        .HasColumnType("integer")
+                        .HasColumnName("year");
+
                     b.HasKey("Id")
                         .HasName("pk_leave_balance_audits");
 
@@ -6167,7 +6294,13 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasIndex("TenantId", "EmployeeId", "LeaveTypeId")
                         .HasDatabaseName("ix_leave_balance_audits_tenant_employee_type");
 
-                    b.ToTable("leave_balance_audits", (string)null);
+                    b.HasIndex("TenantId", "EmployeeId", "LeaveTypeId", "Year")
+                        .HasDatabaseName("ix_leave_balance_audits_tenant_employee_type_year");
+
+                    b.ToTable("leave_balance_audits", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_leave_balance_audits_covers_months", "(covers_from_month IS NULL AND covers_to_month IS NULL) OR (covers_from_month BETWEEN 1 AND 12 AND covers_to_month BETWEEN covers_from_month AND 12)");
+                        });
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.Leave.Entitlement.Entities.LeaveEntitlement", b =>
@@ -6188,6 +6321,14 @@ namespace ONEVO.Infrastructure.Migrations
                     b.Property<Guid>("EmployeeId")
                         .HasColumnType("uuid")
                         .HasColumnName("employee_id");
+
+                    b.Property<Guid?>("LeavePolicyId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("leave_policy_id");
+
+                    b.Property<Guid?>("LeavePolicyVersionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("leave_policy_version_id");
 
                     b.Property<Guid>("LeaveTypeId")
                         .HasColumnType("uuid")
@@ -6227,6 +6368,12 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("year");
 
+                    b.Property<uint?>("xmin")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
                     b.HasKey("Id")
                         .HasName("pk_leave_entitlements");
 
@@ -6250,93 +6397,28 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
-                    b.Property<int?>("AccrualAfterNMonths")
-                        .HasColumnType("integer")
-                        .HasColumnName("accrual_after_n_months");
-
-                    b.Property<string>("AccrualMethod")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
-                        .HasColumnName("accrual_method");
-
-                    b.Property<string>("AccrualStart")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
-                        .HasColumnName("accrual_start");
-
-                    b.Property<string>("ApprovalMode")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
-                        .HasColumnName("approval_mode");
-
-                    b.Property<string>("Country")
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
-                        .HasColumnName("country");
-
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
 
                     b.Property<string>("Description")
-                        .HasColumnType("text")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
                         .HasColumnName("description");
-
-                    b.Property<DateOnly>("EffectiveFrom")
-                        .HasColumnType("date")
-                        .HasColumnName("effective_from");
-
-                    b.Property<decimal?>("FirstYearReducedPercent")
-                        .HasColumnType("numeric(5,2)")
-                        .HasColumnName("first_year_reduced_percent");
 
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean")
                         .HasColumnName("is_active");
 
-                    b.Property<string>("JobLevel")
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
-                        .HasColumnName("job_level");
-
-                    b.Property<int?>("MaxConsecutiveDays")
-                        .HasColumnType("integer")
-                        .HasColumnName("max_consecutive_days");
-
-                    b.Property<decimal?>("MaxTeamAbsencePercent")
-                        .HasColumnType("numeric(5,2)")
-                        .HasColumnName("max_team_absence_percent");
-
-                    b.Property<decimal>("MinDaysPerRequest")
-                        .HasColumnType("numeric(5,1)")
-                        .HasColumnName("min_days_per_request");
-
-                    b.Property<int>("MinimumNoticeDays")
-                        .HasColumnType("integer")
-                        .HasColumnName("minimum_notice_days");
-
-                    b.Property<int>("MinimumTenureMonths")
-                        .HasColumnType("integer")
-                        .HasColumnName("minimum_tenure_months");
+                    b.Property<Guid>("LeaveTypeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("leave_type_id");
 
                     b.Property<string>("Name")
                         .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)")
                         .HasColumnName("name");
-
-                    b.Property<bool>("ProbationRestriction")
-                        .HasColumnType("boolean")
-                        .HasColumnName("probation_restriction");
-
-                    b.Property<string>("ProrationMethod")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
-                        .HasColumnName("proration_method");
 
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uuid")
@@ -6346,17 +6428,91 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("updated_at");
 
-                    b.Property<int>("Version")
-                        .HasColumnType("integer")
-                        .HasColumnName("version");
-
                     b.HasKey("Id")
                         .HasName("pk_leave_policies");
+
+                    b.HasIndex("LeaveTypeId")
+                        .HasDatabaseName("ix_leave_policies_leave_type_id");
 
                     b.HasIndex("TenantId")
                         .HasDatabaseName("ix_leave_policies_tenant_id");
 
+                    b.HasIndex("TenantId", "LeaveTypeId")
+                        .HasDatabaseName("ix_leave_policies_tenant_leave_type");
+
                     b.ToTable("leave_policies", (string)null);
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.Leave.Policy.Entities.LeavePolicyAssignment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<DateOnly>("EffectiveFrom")
+                        .HasColumnType("date")
+                        .HasColumnName("effective_from");
+
+                    b.Property<DateOnly?>("EffectiveTo")
+                        .HasColumnType("date")
+                        .HasColumnName("effective_to");
+
+                    b.Property<Guid?>("EndedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("ended_by");
+
+                    b.Property<Guid>("LeavePolicyId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("leave_policy_id");
+
+                    b.Property<Guid>("LeaveTypeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("leave_type_id");
+
+                    b.Property<Guid>("TargetId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("target_id");
+
+                    b.Property<string>("TargetKind")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("target_kind");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_leave_policy_assignments");
+
+                    b.HasIndex("LeavePolicyId")
+                        .HasDatabaseName("ix_leave_policy_assignments_leave_policy_id");
+
+                    b.HasIndex("LeaveTypeId")
+                        .HasDatabaseName("ix_leave_policy_assignments_leave_type_id");
+
+                    b.HasIndex("TenantId", "LeavePolicyId")
+                        .HasDatabaseName("ix_leave_policy_assignments_tenant_policy");
+
+                    b.HasIndex("TenantId", "TargetKind", "TargetId")
+                        .HasDatabaseName("ix_leave_policy_assignments_tenant_target");
+
+                    b.HasIndex("TenantId", "TargetKind", "TargetId", "LeaveTypeId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_leave_policy_assignments_open_target_leave_type")
+                        .HasFilter("effective_to IS NULL");
+
+                    b.ToTable("leave_policy_assignments", (string)null);
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.Leave.Policy.Entities.LeavePolicyBlackoutPeriod", b =>
@@ -6370,9 +6526,9 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("date")
                         .HasColumnName("end_date");
 
-                    b.Property<Guid>("LeavePolicyId")
+                    b.Property<Guid>("LeavePolicyVersionId")
                         .HasColumnType("uuid")
-                        .HasColumnName("leave_policy_id");
+                        .HasColumnName("leave_policy_version_id");
 
                     b.Property<string>("Reason")
                         .HasMaxLength(200)
@@ -6390,104 +6546,111 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasKey("Id")
                         .HasName("pk_leave_policy_blackout_periods");
 
-                    b.HasIndex("LeavePolicyId")
-                        .HasDatabaseName("ix_leave_policy_blackout_periods_leave_policy_id");
+                    b.HasIndex("LeavePolicyVersionId")
+                        .HasDatabaseName("ix_leave_policy_blackout_periods_leave_policy_version_id");
 
-                    b.HasIndex("TenantId", "LeavePolicyId")
-                        .HasDatabaseName("ix_leave_policy_blackout_periods_tenant_policy");
+                    b.HasIndex("TenantId", "LeavePolicyVersionId")
+                        .HasDatabaseName("ix_leave_policy_blackout_periods_tenant_version");
 
                     b.ToTable("leave_policy_blackout_periods", (string)null);
                 });
 
-            modelBuilder.Entity("ONEVO.Domain.Features.Leave.Policy.Entities.LeavePolicyLeaveType", b =>
+            modelBuilder.Entity("ONEVO.Domain.Features.Leave.Policy.Entities.LeavePolicyVersion", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
-                    b.Property<decimal>("AnnualEntitlementDays")
-                        .HasColumnType("numeric(5,1)")
-                        .HasColumnName("annual_entitlement_days");
+                    b.Property<decimal>("AmountHours")
+                        .HasColumnType("numeric(7,2)")
+                        .HasColumnName("amount_hours");
+
+                    b.Property<string>("AmountPeriod")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)")
+                        .HasColumnName("amount_period");
+
+                    b.Property<string>("ApprovalMode")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("approval_mode");
+
+                    b.Property<decimal?>("CarryForwardCapHours")
+                        .HasColumnType("numeric(7,2)")
+                        .HasColumnName("carry_forward_cap_hours");
 
                     b.Property<int?>("CarryForwardExpiryMonths")
                         .HasColumnType("integer")
                         .HasColumnName("carry_forward_expiry_months");
 
-                    b.Property<decimal?>("CarryForwardMaxDays")
-                        .HasColumnType("numeric(5,1)")
-                        .HasColumnName("carry_forward_max_days");
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
 
-                    b.Property<Guid>("LeavePolicyId")
+                    b.Property<Guid?>("CreatedBy")
                         .HasColumnType("uuid")
-                        .HasColumnName("leave_policy_id");
+                        .HasColumnName("created_by");
 
-                    b.Property<Guid>("LeaveTypeId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("leave_type_id");
-
-                    b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("tenant_id");
-
-                    b.HasKey("Id")
-                        .HasName("pk_leave_policy_leave_types");
-
-                    b.HasIndex("LeavePolicyId")
-                        .HasDatabaseName("ix_leave_policy_leave_types_leave_policy_id");
-
-                    b.HasIndex("LeaveTypeId")
-                        .HasDatabaseName("ix_leave_policy_leave_types_leave_type_id");
-
-                    b.HasIndex("TenantId", "LeavePolicyId", "LeaveTypeId")
-                        .IsUnique()
-                        .HasDatabaseName("ix_leave_policy_leave_types_tenant_policy_type");
-
-                    b.ToTable("leave_policy_leave_types", (string)null);
-                });
-
-            modelBuilder.Entity("ONEVO.Domain.Features.Leave.Policy.Entities.LeavePolicyLegalEntity", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("id");
-
-                    b.Property<DateOnly>("EffectiveDate")
+                    b.Property<DateOnly>("EffectiveFrom")
                         .HasColumnType("date")
-                        .HasColumnName("effective_date");
+                        .HasColumnName("effective_from");
 
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("boolean")
-                        .HasColumnName("is_active");
+                    b.Property<int?>("EligibleAfterMonths")
+                        .HasColumnType("integer")
+                        .HasColumnName("eligible_after_months");
+
+                    b.Property<string>("EligibleFrom")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("eligible_from");
 
                     b.Property<Guid>("LeavePolicyId")
                         .HasColumnType("uuid")
                         .HasColumnName("leave_policy_id");
 
-                    b.Property<Guid>("LegalEntityId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("legal_entity_id");
+                    b.Property<decimal?>("MaxRequestHours")
+                        .HasColumnType("numeric(7,2)")
+                        .HasColumnName("max_request_hours");
+
+                    b.Property<decimal?>("MaxTeamAbsencePercent")
+                        .HasColumnType("numeric(5,2)")
+                        .HasColumnName("max_team_absence_percent");
+
+                    b.Property<decimal>("MinRequestHours")
+                        .HasColumnType("numeric(7,2)")
+                        .HasColumnName("min_request_hours");
+
+                    b.Property<int>("MinimumNoticeDays")
+                        .HasColumnType("integer")
+                        .HasColumnName("minimum_notice_days");
 
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uuid")
                         .HasColumnName("tenant_id");
 
+                    b.Property<int>("VersionNumber")
+                        .HasColumnType("integer")
+                        .HasColumnName("version_number");
+
                     b.HasKey("Id")
-                        .HasName("pk_leave_policy_legal_entities");
+                        .HasName("pk_leave_policy_versions");
 
-                    b.HasIndex("LeavePolicyId")
-                        .HasDatabaseName("ix_leave_policy_legal_entities_leave_policy_id");
+                    b.HasIndex("TenantId")
+                        .HasDatabaseName("ix_leave_policy_versions_tenant_id");
 
-                    b.HasIndex("LegalEntityId")
-                        .HasDatabaseName("ix_leave_policy_legal_entities_legal_entity_id");
-
-                    b.HasIndex("TenantId", "LegalEntityId")
+                    b.HasIndex("LeavePolicyId", "EffectiveFrom")
                         .IsUnique()
-                        .HasDatabaseName("ix_leave_policy_legal_entities_tenant_legal_entity_active")
-                        .HasFilter("is_active = true");
+                        .HasDatabaseName("ix_leave_policy_versions_policy_effective_from");
 
-                    b.ToTable("leave_policy_legal_entities", (string)null);
+                    b.HasIndex("LeavePolicyId", "VersionNumber")
+                        .IsUnique()
+                        .HasDatabaseName("ix_leave_policy_versions_policy_version_number");
+
+                    b.ToTable("leave_policy_versions", (string)null);
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.Leave.Request.Entities.LeaveApprovalDelegate", b =>
@@ -6566,6 +6729,14 @@ namespace ONEVO.Infrastructure.Migrations
                     b.Property<DateTimeOffset>("EndAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("end_at");
+
+                    b.Property<decimal>("ExceedsBalanceByHours")
+                        .HasColumnType("numeric(8,2)")
+                        .HasColumnName("exceeds_balance_by_hours");
+
+                    b.Property<Guid?>("LeavePolicyVersionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("leave_policy_version_id");
 
                     b.Property<Guid>("LeaveTypeId")
                         .HasColumnType("uuid")
@@ -6817,41 +6988,31 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("character varying(10)")
                         .HasColumnName("applicable_gender");
 
-                    b.Property<bool>("CarryForwardAllowed")
-                        .HasColumnType("boolean")
-                        .HasColumnName("carry_forward_allowed");
-
-                    b.Property<int?>("CarryForwardExpiryMonths")
-                        .HasColumnType("integer")
-                        .HasColumnName("carry_forward_expiry_months");
-
-                    b.Property<string>("Category")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
-                        .HasColumnName("category");
-
                     b.Property<string>("Code")
                         .IsRequired()
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)")
                         .HasColumnName("code");
 
+                    b.Property<string>("Color")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(9)
+                        .HasColumnType("character varying(9)")
+                        .HasDefaultValue("#3B82F6")
+                        .HasColumnName("color");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
-
-                    b.Property<decimal>("DefaultDaysPerYear")
-                        .HasColumnType("numeric(5,1)")
-                        .HasColumnName("default_days_per_year");
 
                     b.Property<string>("Description")
                         .HasColumnType("text")
                         .HasColumnName("description");
 
-                    b.Property<int?>("DocumentRequiredAfterDays")
-                        .HasColumnType("integer")
-                        .HasColumnName("document_required_after_days");
+                    b.Property<decimal?>("DocumentRequiredAfterHours")
+                        .HasColumnType("numeric(7,2)")
+                        .HasColumnName("document_required_after_hours");
 
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean")
@@ -6861,31 +7022,11 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("boolean")
                         .HasColumnName("is_paid");
 
-                    b.Property<decimal?>("MaxCarryForwardDays")
-                        .HasColumnType("numeric(5,1)")
-                        .HasColumnName("max_carry_forward_days");
-
-                    b.Property<int?>("MaxConsecutiveDays")
-                        .HasColumnType("integer")
-                        .HasColumnName("max_consecutive_days");
-
-                    b.Property<int>("MinimumNoticeDays")
-                        .HasColumnType("integer")
-                        .HasColumnName("minimum_notice_days");
-
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)")
                         .HasColumnName("name");
-
-                    b.Property<bool>("ProRataForNewJoiners")
-                        .HasColumnType("boolean")
-                        .HasColumnName("pro_rata_for_new_joiners");
-
-                    b.Property<bool>("RequiresApproval")
-                        .HasColumnType("boolean")
-                        .HasColumnName("requires_approval");
 
                     b.Property<bool>("RequiresDocument")
                         .HasColumnType("boolean")
@@ -7755,6 +7896,66 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasDatabaseName("ix_monitoring_notifications_tenant_employee_type_created");
 
                     b.ToTable("monitoring_notifications", (string)null);
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.Monitoring.PermissionConsent.Entities.MonitoringPermissionConsent", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("AcceptedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("accepted_at");
+
+                    b.Property<bool>("AppTracking")
+                        .HasColumnType("boolean")
+                        .HasColumnName("app_tracking");
+
+                    b.Property<bool>("CameraAccess")
+                        .HasColumnType("boolean")
+                        .HasColumnName("camera_access");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("DeviceRegistrationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("device_registration_id");
+
+                    b.Property<Guid>("EmployeeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("employee_id");
+
+                    b.Property<bool>("KeyboardMouse")
+                        .HasColumnType("boolean")
+                        .HasColumnName("keyboard_mouse");
+
+                    b.Property<bool>("LocationAccess")
+                        .HasColumnType("boolean")
+                        .HasColumnName("location_access");
+
+                    b.Property<bool>("Notifications")
+                        .HasColumnType("boolean")
+                        .HasColumnName("notifications");
+
+                    b.Property<bool>("ScreenMonitoring")
+                        .HasColumnType("boolean")
+                        .HasColumnName("screen_monitoring");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_monitoring_permission_consents");
+
+                    b.HasIndex("TenantId", "EmployeeId", "AcceptedAt")
+                        .HasDatabaseName("ix_monitoring_permission_consents_tenant_employee_accepted");
+
+                    b.ToTable("monitoring_permission_consents", (string)null);
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.Monitoring.Screenshots.Entities.AgentCommand", b =>
@@ -11601,6 +11802,108 @@ namespace ONEVO.Infrastructure.Migrations
                     b.ToTable("attendance_alerts", (string)null);
                 });
 
+            modelBuilder.Entity("ONEVO.Domain.Features.TimeAttendance.Alerts.AttendanceAlertDeduction", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("AlertId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("alert_id");
+
+                    b.Property<Guid?>("ChargeAuditId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("charge_audit_id");
+
+                    b.Property<DateTimeOffset?>("ChargedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("charged_at");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("CreatedById")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by_id");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("deleted_at");
+
+                    b.Property<Guid>("EmployeeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("employee_id");
+
+                    b.Property<decimal>("Hours")
+                        .HasPrecision(10, 2)
+                        .HasColumnType("numeric(10,2)")
+                        .HasColumnName("hours");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_deleted");
+
+                    b.Property<Guid>("LeaveTypeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("leave_type_id");
+
+                    b.Property<int>("Minutes")
+                        .HasColumnType("integer")
+                        .HasColumnName("minutes");
+
+                    b.Property<decimal>("Multiplier")
+                        .HasPrecision(6, 2)
+                        .HasColumnType("numeric(6,2)")
+                        .HasColumnName("multiplier");
+
+                    b.Property<Guid?>("RefundAuditId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("refund_audit_id");
+
+                    b.Property<DateTimeOffset?>("RefundedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("refunded_at");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("status");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<int>("Year")
+                        .HasColumnType("integer")
+                        .HasColumnName("year");
+
+                    b.Property<uint>("xmin")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_attendance_alert_deductions");
+
+                    b.HasIndex("TenantId", "AlertId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_attendance_alert_deductions_tenant_alert");
+
+                    b.HasIndex("TenantId", "EmployeeId", "Status")
+                        .HasDatabaseName("ix_attendance_alert_deductions_tenant_employee_status");
+
+                    b.ToTable("attendance_alert_deductions", (string)null);
+                });
+
             modelBuilder.Entity("ONEVO.Domain.Features.TimeAttendance.Entities.AttendanceCorrection", b =>
                 {
                     b.Property<Guid>("Id")
@@ -12000,6 +12303,10 @@ namespace ONEVO.Infrastructure.Migrations
                     b.Property<Guid>("CreatedById")
                         .HasColumnType("uuid")
                         .HasColumnName("created_by_id");
+
+                    b.Property<DateTimeOffset?>("DeductionRulesChangedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("deduction_rules_changed_at");
 
                     b.PrimitiveCollection<Guid[]>("DepartmentIds")
                         .HasColumnType("uuid[]")
@@ -15131,6 +15438,16 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasConstraintName("fk_personal_calendar_events_recurrence_parent_id");
                 });
 
+            modelBuilder.Entity("ONEVO.Domain.Features.Conversations.Entities.ConversationFavorite", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.Conversations.Entities.Conversation", null)
+                        .WithMany()
+                        .HasForeignKey("ConversationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_conversation_favorites_conversations_conversation_id");
+                });
+
             modelBuilder.Entity("ONEVO.Domain.Features.Conversations.Entities.ConversationMessage", b =>
                 {
                     b.HasOne("ONEVO.Domain.Features.Conversations.Entities.Conversation", null)
@@ -15159,6 +15476,16 @@ namespace ONEVO.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_conversation_message_mentions_conversation_messages_message");
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.Conversations.Entities.ConversationMessageHide", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.Conversations.Entities.ConversationMessage", null)
+                        .WithMany()
+                        .HasForeignKey("MessageId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_conversation_message_hides_conversation_messages_message_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.Conversations.Entities.ConversationMessageReaction", b =>
@@ -15836,48 +16163,51 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasConstraintName("fk_leave_entitlements_leave_types_leave_type_id");
                 });
 
-            modelBuilder.Entity("ONEVO.Domain.Features.Leave.Policy.Entities.LeavePolicyBlackoutPeriod", b =>
+            modelBuilder.Entity("ONEVO.Domain.Features.Leave.Policy.Entities.LeavePolicy", b =>
                 {
-                    b.HasOne("ONEVO.Domain.Features.Leave.Policy.Entities.LeavePolicy", null)
+                    b.HasOne("ONEVO.Domain.Features.Leave.Type.Entities.LeaveType", null)
                         .WithMany()
-                        .HasForeignKey("LeavePolicyId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .HasForeignKey("LeaveTypeId")
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
-                        .HasConstraintName("fk_leave_policy_blackout_periods_leave_policies_leave_policy_id");
+                        .HasConstraintName("fk_leave_policies_leave_types_leave_type_id");
                 });
 
-            modelBuilder.Entity("ONEVO.Domain.Features.Leave.Policy.Entities.LeavePolicyLeaveType", b =>
+            modelBuilder.Entity("ONEVO.Domain.Features.Leave.Policy.Entities.LeavePolicyAssignment", b =>
                 {
                     b.HasOne("ONEVO.Domain.Features.Leave.Policy.Entities.LeavePolicy", null)
                         .WithMany()
                         .HasForeignKey("LeavePolicyId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
-                        .HasConstraintName("fk_leave_policy_leave_types_leave_policies_leave_policy_id");
+                        .HasConstraintName("fk_leave_policy_assignments_leave_policies_leave_policy_id");
 
                     b.HasOne("ONEVO.Domain.Features.Leave.Type.Entities.LeaveType", null)
                         .WithMany()
                         .HasForeignKey("LeaveTypeId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
-                        .HasConstraintName("fk_leave_policy_leave_types_leave_types_leave_type_id");
+                        .HasConstraintName("fk_leave_policy_assignments_leave_types_leave_type_id");
                 });
 
-            modelBuilder.Entity("ONEVO.Domain.Features.Leave.Policy.Entities.LeavePolicyLegalEntity", b =>
+            modelBuilder.Entity("ONEVO.Domain.Features.Leave.Policy.Entities.LeavePolicyBlackoutPeriod", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.Leave.Policy.Entities.LeavePolicyVersion", null)
+                        .WithMany()
+                        .HasForeignKey("LeavePolicyVersionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_leave_policy_blackout_periods_leave_policy_versions_leave_p");
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.Leave.Policy.Entities.LeavePolicyVersion", b =>
                 {
                     b.HasOne("ONEVO.Domain.Features.Leave.Policy.Entities.LeavePolicy", null)
                         .WithMany()
                         .HasForeignKey("LeavePolicyId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
-                        .HasConstraintName("fk_leave_policy_legal_entities_leave_policies_leave_policy_id");
-
-                    b.HasOne("ONEVO.Domain.Features.OrgStructure.Entities.LegalEntity", null)
-                        .WithMany()
-                        .HasForeignKey("LegalEntityId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired()
-                        .HasConstraintName("fk_leave_policy_legal_entities_legal_entities_legal_entity_id");
+                        .HasConstraintName("fk_leave_policy_versions_leave_policies_leave_policy_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.Leave.Request.Entities.LeaveApprovalDelegate", b =>

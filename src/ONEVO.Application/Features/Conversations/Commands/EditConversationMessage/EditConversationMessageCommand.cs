@@ -13,7 +13,7 @@ using ONEVO.Domain.Features.Conversations.Entities;
 namespace ONEVO.Application.Features.Conversations.Commands.EditConversationMessage;
 
 /// <summary>The author rewrites their own text message within <see cref="ConversationRules.EditWindowMinutes"/> minutes
-/// of sending it (not once deleted). The previous body is kept as
+/// of sending it (even when read, but not once deleted). The previous body is kept as
 /// a revision; only people mentioned for the first time are notified.</summary>
 public sealed record EditConversationMessageCommand(
     Guid ConversationId, Guid MessageId, string BodyHtml, IReadOnlyList<Guid>? MentionEmployeeIds)

@@ -102,4 +102,10 @@ public sealed class EfLocationChangeRequestRepository(ApplicationDbContext db) :
             throw new UniqueConstraintConflictException(ex);
         }
     }
+
+    public async Task<IReadOnlyList<LocationChangeRequest>> ListForEmployeeCreatedAsync(
+        Guid tenantId, Guid employeeId, DateTimeOffset from, DateTimeOffset to, CancellationToken ct = default)
+        => await db.LocationChangeRequests.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.EmployeeId == employeeId && x.RequestedAt >= from && x.RequestedAt < to)
+            .ToListAsync(ct);
 }

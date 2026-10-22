@@ -26,6 +26,15 @@ public sealed class NullInboxRealtimePublisher : IInboxRealtimePublisher
         Guid tenantId, IReadOnlyCollection<Guid> recipientEmployeeIds, Guid conversationId, Guid messageId, CancellationToken ct = default)
         => Task.CompletedTask;
 
+    public Task ParticipantReadAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> recipientEmployeeIds, Guid conversationId, Guid employeeId,
+        DateTimeOffset readAt, CancellationToken ct = default)
+        => Task.CompletedTask;
+
+    public Task MessageHiddenAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> recipientEmployeeIds, Guid conversationId, Guid messageId, CancellationToken ct = default)
+        => Task.CompletedTask;
+
     public Task ParticipantRemovedAsync(
         Guid tenantId, IReadOnlyCollection<Guid> recipientEmployeeIds, Guid conversationId, Guid employeeId, CancellationToken ct = default)
         => Task.CompletedTask;

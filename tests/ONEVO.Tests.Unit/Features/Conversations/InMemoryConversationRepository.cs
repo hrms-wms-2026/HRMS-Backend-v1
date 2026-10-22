@@ -12,6 +12,7 @@ internal sealed class InMemoryConversationRepository : IConversationRepository
     public List<ConversationMessageRevision> Revisions { get; } = new();
     public List<ConversationMessageAttachment> Attachments { get; } = new();
     public List<ConversationMessageMention> Mentions { get; } = new();
+    public List<ConversationMessageHide> MessageHides { get; } = new();
     public List<ConversationMessageReaction> Reactions { get; } = new();
 
     public Task<Conversation?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct = default)
@@ -56,6 +57,14 @@ internal sealed class InMemoryConversationRepository : IConversationRepository
             .OrderByDescending(m => m.CreatedAt).ThenByDescending(m => m.Id)
             .Take(take).ToList());
 
+    public Task<IReadOnlyList<ConversationMessage>> ListVisibleMessagesAsync(
+        Guid tenantId, Guid conversationId, Guid employeeId, DateTimeOffset? before, int take, CancellationToken ct = default)
+        => Task.FromResult<IReadOnlyList<ConversationMessage>>(Messages
+            .Where(m => m.TenantId == tenantId && m.ConversationId == conversationId && (before == null || m.CreatedAt < before)
+                && MessageHides.All(h => h.MessageId != m.Id || h.EmployeeId != employeeId))
+            .OrderByDescending(m => m.CreatedAt).ThenByDescending(m => m.Id)
+            .Take(take).ToList());
+
     public Task<IReadOnlyDictionary<Guid, IReadOnlyList<Guid>>> ListMentionsAsync(
         Guid tenantId, IReadOnlyCollection<Guid> messageIds, CancellationToken ct = default)
         => Task.FromResult<IReadOnlyDictionary<Guid, IReadOnlyList<Guid>>>(Mentions
@@ -75,7 +84,8 @@ internal sealed class InMemoryConversationRepository : IConversationRepository
             if (row is null) continue;
             var lastRead = row.LastReadAt;
             var count = Messages.Count(m => m.ConversationId == conversation.Id && m.AuthorEmployeeId != employeeId
-                && m.Kind != ConversationMessageKinds.Evidence && (lastRead == null || m.CreatedAt > lastRead));
+                && m.Kind != ConversationMessageKinds.Evidence && (lastRead == null || m.CreatedAt > lastRead)
+                && MessageHides.All(h => h.MessageId != m.Id || h.EmployeeId != employeeId));
             if (count > 0) result[subject] = count;
         }
         return Task.FromResult<IReadOnlyDictionary<ItemRef, int>>(result);
@@ -143,6 +153,17 @@ internal sealed class InMemoryConversationRepository : IConversationRepository
         return Task.CompletedTask;
     }
 
+    public Task HideMessageForEmployeeAsync(ConversationMessageHide hide, CancellationToken ct = default)
+    {
+        if (MessageHides.All(h => h.MessageId != hide.MessageId || h.EmployeeId != hide.EmployeeId))
+            MessageHides.Add(hide);
+        return Task.CompletedTask;
+    }
+
+    public Task<bool> IsMessageHiddenForEmployeeAsync(
+        Guid tenantId, Guid messageId, Guid employeeId, CancellationToken ct = default)
+        => Task.FromResult(MessageHides.Any(h => h.TenantId == tenantId && h.MessageId == messageId && h.EmployeeId == employeeId));
+
     public Task<IReadOnlyList<ConversationMessageRevision>> ListRevisionsAsync(
         Guid tenantId, IReadOnlyCollection<Guid> messageIds, CancellationToken ct = default)
         => Task.FromResult<IReadOnlyList<ConversationMessageRevision>>(Revisions
@@ -166,6 +187,80 @@ internal sealed class InMemoryConversationRepository : IConversationRepository
 
     public void Update(Conversation conversation) { }
     public void UpdateParticipant(ConversationParticipant participant) { }
+
+    public Task<IReadOnlyList<MemberConversation>> ListMemberConversationsAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default)
+        => Task.FromResult<IReadOnlyList<MemberConversation>>(Participants
+            .Where(p => p.TenantId == tenantId && p.EmployeeId == employeeId && p.RemovedAt == null && p.LeftAt == null)
+            .Select(p => Conversations.First(c => c.Id == p.ConversationId) is var c
+                ? new MemberConversation(c, p.LastReadAt, Messages
+                    .Where(m => m.ConversationId == c.Id && m.Kind != ConversationMessageKinds.Evidence)
+                    .Where(m => MessageHides.All(h => h.MessageId != m.Id || h.EmployeeId != employeeId))
+                    .OrderByDescending(m => m.CreatedAt).FirstOrDefault())
+                : null!)
+            .ToList());
+
+    public Task<IReadOnlyDictionary<Guid, int>> CountUnreadByConversationAsync(
+        Guid tenantId, Guid employeeId, IReadOnlyCollection<Guid> conversationIds, CancellationToken ct = default, bool textOnly = false)
+        => Task.FromResult<IReadOnlyDictionary<Guid, int>>(conversationIds.ToDictionary(id => id, id =>
+        {
+            var row = Participants.FirstOrDefault(p => p.ConversationId == id && p.EmployeeId == employeeId);
+            return Messages.Count(m => m.ConversationId == id && m.AuthorEmployeeId != employeeId && m.Kind != ConversationMessageKinds.Evidence
+                && (!textOnly || m.Kind == ConversationMessageKinds.Text)
+                && (row?.LastReadAt is null || m.CreatedAt > row.LastReadAt)
+                && MessageHides.All(h => h.MessageId != m.Id || h.EmployeeId != employeeId));
+        }));
+
+    public Task<IReadOnlyDictionary<Guid, IReadOnlyList<Guid>>> ListActiveMemberIdsAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> conversationIds, CancellationToken ct = default)
+        => Task.FromResult<IReadOnlyDictionary<Guid, IReadOnlyList<Guid>>>(Participants
+            .Where(p => conversationIds.Contains(p.ConversationId) && p.RemovedAt == null && p.LeftAt == null)
+            .GroupBy(p => p.ConversationId)
+            .ToDictionary(g => g.Key, g => (IReadOnlyList<Guid>)g.Select(p => p.EmployeeId).ToList()));
+
+    public Task<IReadOnlySet<Guid>> ListExistingMessageIdsAsync(Guid tenantId, IReadOnlyCollection<Guid> messageIds, CancellationToken ct = default)
+        => Task.FromResult<IReadOnlySet<Guid>>(Messages.Where(m => messageIds.Contains(m.Id)).Select(m => m.Id).ToHashSet());
+
+    public Task<IReadOnlyList<ConversationMessage>> ListCaseCardsAsync(Guid tenantId, ItemRef item, CancellationToken ct = default)
+        => Task.FromResult<IReadOnlyList<ConversationMessage>>(Messages
+            .Where(m => m.Kind == ConversationMessageKinds.Case && m.AuthorEmployeeId == null && m.SystemEventJson != null && m.SystemEventJson.Contains(item.Id.ToString())
+                && m.SystemEventJson.Contains($"\"source\":\"{item.Source}\"") && m.SystemEventJson.Contains($"\"kind\":\"{item.Kind}\""))
+            .OrderBy(m => m.CreatedAt).ToList());
+
+    public Task<IReadOnlyDictionary<Guid, ConversationMessage>> LatestSystemEventsAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> conversationIds, IReadOnlyCollection<string> eventTypes, CancellationToken ct = default)
+        => Task.FromResult<IReadOnlyDictionary<Guid, ConversationMessage>>(Messages
+            .Where(m => conversationIds.Contains(m.ConversationId) && m.Kind == ConversationMessageKinds.System && m.SystemEventJson != null
+                && eventTypes.Any(t => m.SystemEventJson.StartsWith("{\"type\":\"" + t + "\"", StringComparison.Ordinal)))
+            .GroupBy(m => m.ConversationId)
+            .ToDictionary(g => g.Key, g => g.OrderByDescending(m => m.CreatedAt).First()));
+
+    public List<ConversationFavorite> Favorites { get; } = new();
+
+    public Task<IReadOnlySet<Guid>> ListFavoriteConversationIdsAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default)
+        => Task.FromResult<IReadOnlySet<Guid>>(Favorites.Where(f => f.TenantId == tenantId && f.EmployeeId == employeeId)
+            .Select(f => f.ConversationId).ToHashSet());
+
+    public Task SetFavoriteAsync(Guid tenantId, Guid employeeId, Guid conversationId, bool favorite, CancellationToken ct = default)
+    {
+        Favorites.RemoveAll(f => f.EmployeeId == employeeId && f.ConversationId == conversationId);
+        if (favorite)
+            Favorites.Add(new ConversationFavorite { Id = Guid.NewGuid(), TenantId = tenantId, EmployeeId = employeeId, ConversationId = conversationId });
+        return Task.CompletedTask;
+    }
+
+    public Task DeleteMessageIfExistsAsync(Guid tenantId, Guid messageId, CancellationToken ct = default)
+    {
+        Messages.RemoveAll(m => m.Id == messageId && m.AuthorEmployeeId == null);
+        return Task.CompletedTask;
+    }
+
+    public Task TouchAsync(Guid tenantId, Guid conversationId, DateTimeOffset at, CancellationToken ct = default)
+    {
+        var c = Conversations.FirstOrDefault(x => x.Id == conversationId);
+        if (c is not null && (c.LastMessageAt is null || c.LastMessageAt < at))
+            c.LastMessageAt = at;
+        return Task.CompletedTask;
+    }
 
     private static bool Matches(Conversation c, ItemRef subject)
         => c.SubjectSource == subject.Source && c.SubjectKind == subject.Kind && c.SubjectId == subject.Id;

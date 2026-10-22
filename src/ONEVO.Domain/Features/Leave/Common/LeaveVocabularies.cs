@@ -1,19 +1,5 @@
 namespace ONEVO.Domain.Features.Leave.Common;
 
-public static class LeaveTypeCategories
-{
-    public const string Annual = "annual";
-    public const string Sick = "sick";
-    public const string Maternity = "maternity";
-    public const string Paternity = "paternity";
-    public const string Compassionate = "compassionate";
-    public const string Unpaid = "unpaid";
-    public const string Custom = "custom";
-
-    public static readonly string[] All =
-        [Annual, Sick, Maternity, Paternity, Compassionate, Unpaid, Custom];
-}
-
 public static class LeaveGenderRestrictions
 {
     public const string All = "all";
@@ -35,8 +21,9 @@ public static class LeaveApprovalModes
     public const string AnyOne = "any_one";
     public const string AllMustApprove = "all_must_approve";
     public const string InOrder = "in_order";
+    public const string None = "none";
 
-    public static readonly string[] All = [AnyOne, AllMustApprove, InOrder];
+    public static readonly string[] All = [AnyOne, AllMustApprove, InOrder, None];
 }
 
 public static class LeaveRequestApproverStatuses
@@ -71,34 +58,35 @@ public static class LeaveBalanceChangeTypes
     public const string Adjustment = "adjustment";
 }
 
-public static class LeaveAccrualStarts
-{
-    public const string Immediately = "immediately";
-    public const string AfterProbation = "after_probation";
-    public const string AfterNMonths = "after_n_months";
-
-    public static readonly string[] All = [Immediately, AfterProbation, AfterNMonths];
-}
-
-public static class LeaveAccrualMethods
-{
-    public const string Annual = "annual";
-    public const string Monthly = "monthly";
-    public const string Daily = "daily";
-
-    public static readonly string[] All = [Annual, Monthly, Daily];
-}
-
-public static class LeaveProrationMethods
-{
-    public const string CalendarDays = "calendar_days";
-    public const string WorkingDays = "working_days";
-
-    public static readonly string[] All = [CalendarDays, WorkingDays];
-}
-
 public static class LeaveEntitlementSources
 {
     public const string Auto = "auto";
     public const string Manual = "manual";
+}
+
+public static class LeaveAmountPeriods
+{
+    public const string Month = "month";
+    public const string Year = "year";
+
+    public static readonly string[] All = [Month, Year];
+}
+
+public static class LeaveEligibility
+{
+    public const string Immediately = "immediately";
+    public const string AfterProbation = "after_probation";
+    public const string AfterMonths = "after_months";
+
+    public static readonly string[] All = [Immediately, AfterProbation, AfterMonths];
+}
+
+public static class LeavePolicyTargetKinds
+{
+    public const string LegalEntity = "legal_entity";
+    public const string Department = "department";
+    public const string Position = "position";
+    public const string Employee = "employee";
+
+    public static readonly string[] All = [LegalEntity, Department, Position, Employee];
 }

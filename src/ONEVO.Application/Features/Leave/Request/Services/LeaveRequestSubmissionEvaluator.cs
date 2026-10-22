@@ -10,6 +10,7 @@ using ONEVO.Application.Features.Leave.Entitlement.Helpers;
 using ONEVO.Application.Features.Leave.Entitlement.Mappers;
 using ONEVO.Application.Features.Leave.Entitlement.RepositoryInterfaces;
 using ONEVO.Application.Features.Leave.Policy.RepositoryInterfaces;
+using ONEVO.Application.Features.Leave.Policy.Services;
 using ONEVO.Application.Features.Leave.Request.DTOs.Responses;
 using ONEVO.Application.Features.Leave.Request.Helpers;
 using ONEVO.Application.Features.Leave.Request.Options;
@@ -27,10 +28,12 @@ public sealed record LeaveRequestEvaluation(
     Employee TargetEmployee,
     LeaveType LeaveType,
     LeaveEntitlement Entitlement,
-    LeavePolicyAggregate Policy,
+    Guid PolicyVersionId,
+    string ApprovalMode,
     decimal TotalHours,
     decimal PaidHours,
     decimal UnpaidHours,
+    decimal ExceedsBalanceByHours,
     IReadOnlyList<DateOnly> CountedDates,
     IReadOnlyList<decimal> HoursByDate,
     decimal CurrentRemaining,
@@ -54,6 +57,7 @@ public sealed class LeaveRequestSubmissionEvaluator
     private readonly ILeaveTypeRepository _leaveTypes;
     private readonly ILeaveEntitlementRepository _entitlements;
     private readonly ILeavePolicyRepository _policies;
+    private readonly ILeavePolicyResolver _resolver;
     private readonly ILeaveRequestRepository _requests;
     private readonly LeaveRequestHourCalculator _hourCalculator;
     private readonly ILeaveCalendarHolidayProvider _holidays;
@@ -68,6 +72,7 @@ public sealed class LeaveRequestSubmissionEvaluator
         ILeaveTypeRepository leaveTypes,
         ILeaveEntitlementRepository entitlements,
         ILeavePolicyRepository policies,
+        ILeavePolicyResolver resolver,
         ILeaveRequestRepository requests,
         LeaveRequestHourCalculator hourCalculator,
         ILeaveCalendarHolidayProvider holidays,
@@ -81,6 +86,7 @@ public sealed class LeaveRequestSubmissionEvaluator
         _leaveTypes = leaveTypes;
         _entitlements = entitlements;
         _policies = policies;
+        _resolver = resolver;
         _requests = requests;
         _hourCalculator = hourCalculator;
         _holidays = holidays;
@@ -163,18 +169,25 @@ public sealed class LeaveRequestSubmissionEvaluator
             return Result<LeaveRequestEvaluation>.Failure(LeaveRequestMessages.GenderRestricted);
         }
 
-        var policies = await _policies.ListActiveAggregatesByLegalEntityIdsAsync(
-            tenantId, [legalEntityId], startDate.Year, ct);
-        if (!policies.TryGetValue(legalEntityId, out var policy)
-            || policy.LeaveTypes.All(t => t.Rule.LeaveTypeId != leaveTypeId))
-        {
+        var policy = await _resolver.ResolveAsync(tenantId, target.Id, leaveTypeId, startDate, ct);
+        if (policy is null)
             return Result<LeaveRequestEvaluation>.Failure(LeaveRequestMessages.NoEntitlement);
-        }
+        var rules = policy.Version;
 
         var entitlement = await _entitlements.GetTrackedByEmployeeTypeYearAsync(
             tenantId, target.Id, leaveTypeId, startDate.Year, ct);
-        if (entitlement is null)
-            return Result<LeaveRequestEvaluation>.Failure(LeaveRequestMessages.NoEntitlement);
+        entitlement ??= new LeaveEntitlement
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenantId,
+            EmployeeId = target.Id,
+            LeaveTypeId = leaveTypeId,
+            Year = startDate.Year,
+            Source = LeaveEntitlementSources.Auto,
+            LeavePolicyId = policy.PolicyId,
+            LeavePolicyVersionId = rules.Id,
+            CreatedAt = _clock.UtcNow
+        };
 
         IReadOnlyCollection<int> workingDays;
         try
@@ -200,79 +213,66 @@ public sealed class LeaveRequestSubmissionEvaluator
         if (calculated.TotalHours == 0m)
             return Result<LeaveRequestEvaluation>.Failure(LeaveRequestMessages.NoWorkingDays);
 
-        var minHours = policy.Policy.MinDaysPerRequest * workDayHours;
-        if (policy.Policy.MinDaysPerRequest > 0 && calculated.TotalHours < minHours)
-        {
-            return Result<LeaveRequestEvaluation>.Failure(
-                $"Leave request must be at least {policy.Policy.MinDaysPerRequest:0.#} days.");
-        }
+        if (rules.MinRequestHours > 0m && calculated.TotalHours < rules.MinRequestHours)
+            return Result<LeaveRequestEvaluation>.Failure(LeaveRequestMessages.BelowMinimumHours(rules.MinRequestHours));
 
-        if (policy.BlackoutPeriods.Any(p => p.StartDate <= endDate && p.EndDate >= startDate))
+        if (rules.MaxRequestHours is { } maxHours && calculated.TotalHours > maxHours)
+            return Result<LeaveRequestEvaluation>.Failure(LeaveRequestMessages.AboveMaximumHours(maxHours));
+
+        if (policy.Blackouts.Any(p => p.StartDate <= endDate && p.EndDate >= startDate))
             return Result<LeaveRequestEvaluation>.Failure(LeaveRequestMessages.Blackout);
 
         if (_options.RequireReason && string.IsNullOrWhiteSpace(reason))
             return Result<LeaveRequestEvaluation>.Failure("A reason is required for this leave request.");
 
-        var documentAfter = leaveType.DocumentRequiredAfterDays;
+        var documentAfter = leaveType.DocumentRequiredAfterHours;
         var needsDocument = leaveType.RequiresDocument
-            || (documentAfter is { } after && calculated.CountedShiftStartDates.Count > after);
+            && (documentAfter is not { } after || calculated.TotalHours > after);
         if (needsDocument && fileRecordIds.Count == 0 && (overrides?.DocumentsOnFile ?? 0) == 0)
         {
             return Result<LeaveRequestEvaluation>.Failure(
-                LeaveRequestMessages.DocumentRequired(leaveType.Name, documentAfter ?? 0));
+                LeaveRequestMessages.DocumentRequired(leaveType.Name, documentAfter));
         }
 
         if (!await _requests.AreAvailableFileRecordsAsync(tenantId, fileRecordIds, ct))
             return Result<LeaveRequestEvaluation>.Failure(LeaveRequestMessages.FileNotAvailable);
 
-        var expiry = LeaveEntitlementPlanner.CarryExpiryFromPolicy(policy, leaveTypeId, startDate.Year);
+        var carryPolicy = await _resolver.ResolveAsync(
+            tenantId, target.Id, leaveTypeId, LeaveCarryExpiry.ResolutionDate(startDate.Year), ct);
+        var expiry = LeaveCarryExpiry.For(carryPolicy, startDate.Year);
         var carry = LeaveEntitlementMapper.EffectiveCarry(entitlement.CarriedForwardHours, expiry, _clock.Today);
         var currentRemaining = LeaveEntitlementMapper.Remaining(
             entitlement.TotalHours, carry, entitlement.UsedHours, entitlement.PendingHours - (overrides?.ReleasedPendingHours ?? 0m));
 
         decimal paidHours;
         decimal unpaidHours;
+        decimal exceedsBalanceByHours;
         if (!leaveType.IsPaid)
         {
             paidHours = 0m;
             unpaidHours = calculated.TotalHours;
+            exceedsBalanceByHours = 0m;
         }
         else
         {
-            paidHours = Math.Min(calculated.TotalHours, Math.Max(0m, currentRemaining));
-            unpaidHours = calculated.TotalHours - paidHours;
-            if (unpaidHours > 0m && !_options.AllowUnpaidSplitWhenBalanceShort)
-            {
-                return Result<LeaveRequestEvaluation>.Failure(
-                    LeaveRequestMessages.InsufficientBalance(currentRemaining, leaveType.Name));
-            }
+            paidHours = calculated.TotalHours;
+            unpaidHours = 0m;
+            exceedsBalanceByHours = Math.Max(0m, calculated.TotalHours - currentRemaining);
         }
 
         var warnings = new List<LeaveRequestWarningResponse>();
-        var noticeDays = Math.Max(leaveType.MinimumNoticeDays, policy.Policy.MinimumNoticeDays);
+        var noticeDays = rules.MinimumNoticeDays;
         var noticeMissed = noticeDays > 0 && startDate < _clock.Today.AddDays(noticeDays);
         if (noticeMissed)
             warnings.Add(new LeaveRequestWarningResponse("notice_period_missed", LeaveRequestMessages.NoticeMissed(noticeDays)));
 
-        var maxConsecutive = leaveType.MaxConsecutiveDays ?? policy.Policy.MaxConsecutiveDays;
-        if (maxConsecutive is { } limit && calculated.CountedShiftStartDates.Count > limit)
-            warnings.Add(new LeaveRequestWarningResponse("max_consecutive_days", LeaveRequestMessages.MaxConsecutive(limit)));
-
-        LeaveApproverResolution approvers;
-        if (leaveType.RequiresApproval)
-        {
-            approvers = await _approvers.ResolveAsync(tenantId, target.Id, startDate, endDate, ct);
-            if (approvers.Approvers.Count == 0)
-                return Result<LeaveRequestEvaluation>.Failure(LeaveRequestMessages.NoApprover);
-        }
-        else
-        {
-            approvers = new LeaveApproverResolution([]);
-        }
+        var approvers = await _approvers.ResolveAsync(tenantId, target.Id, startDate, endDate, ct);
+        if (rules.ApprovalMode != LeaveApprovalModes.None && approvers.Approvers.Count == 0)
+            return Result<LeaveRequestEvaluation>.Failure(LeaveRequestMessages.NoApprover);
 
         var calendarConflicts = await _conflicts.ListConflictsAsync(tenantId, target.Id, startDate, endDate, ct);
         var teamWarning = await _teamAbsence.BuildWarningAsync(
-            tenantId, target.Id, startDate, endDate, policy.Policy.MaxTeamAbsencePercent, ct);
+            tenantId, target.Id, startDate, endDate, rules.MaxTeamAbsencePercent, ct);
         if (teamWarning is not null)
             warnings.Add(new LeaveRequestWarningResponse("team_absence", teamWarning.Message));
 
@@ -280,10 +280,12 @@ public sealed class LeaveRequestSubmissionEvaluator
             target,
             leaveType,
             entitlement,
-            policy,
+            rules.Id,
+            rules.ApprovalMode,
             calculated.TotalHours,
             paidHours,
             unpaidHours,
+            exceedsBalanceByHours,
             calculated.CountedShiftStartDates,
             calculated.HoursByShiftStartDate,
             currentRemaining,

@@ -17,9 +17,15 @@ public class LeaveBalanceAuditConfiguration : IEntityTypeConfiguration<LeaveBala
         builder.Property(a => a.HoursChanged).HasColumnType("numeric(8,2)");
         builder.Property(a => a.BalanceAfter).HasColumnType("numeric(8,2)");
         builder.Property(a => a.Reason).HasMaxLength(500);
+        builder.ToTable(t => t.HasCheckConstraint(
+            "ck_leave_balance_audits_covers_months",
+            "(covers_from_month IS NULL AND covers_to_month IS NULL) OR " +
+            "(covers_from_month BETWEEN 1 AND 12 AND covers_to_month BETWEEN covers_from_month AND 12)"));
 
         builder.HasIndex(a => new { a.TenantId, a.EmployeeId, a.LeaveTypeId })
             .HasDatabaseName("ix_leave_balance_audits_tenant_employee_type");
+        builder.HasIndex(a => new { a.TenantId, a.EmployeeId, a.LeaveTypeId, a.Year })
+            .HasDatabaseName("ix_leave_balance_audits_tenant_employee_type_year");
 
         builder.HasOne<Employee>().WithMany().HasForeignKey(a => a.EmployeeId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne<LeaveType>().WithMany().HasForeignKey(a => a.LeaveTypeId).OnDelete(DeleteBehavior.Restrict);

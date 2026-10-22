@@ -18,7 +18,10 @@ public sealed record AttendancePeriodData(
     ExpectedWorkdays Workdays,
     // Per alert signal, the dates whose alert was resolved as excused or converted to leave (plan E1).
     // Null = nothing excused, as in the raw classification the alert materialiser runs on.
-    IReadOnlyDictionary<string, IReadOnlySet<DateOnly>>? Excused = null);
+    IReadOnlyDictionary<string, IReadOnlySet<DateOnly>>? Excused = null,
+    // The employee's clock-in policy threshold: a day is late/early only from this many minutes (the policy's first
+    // deduction row). 0 = no policy rows: any lateness counts, as before.
+    int LateEarlyThresholdMinutes = 0);
 
 public interface IEmployeeAttendancePeriodReader
 {

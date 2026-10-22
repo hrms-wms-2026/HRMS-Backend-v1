@@ -1,23 +1,27 @@
 using MediatR;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.Helpers;
 using ONEVO.Application.Features.CoreHr.Employee.ServiceInterfaces;
 using ONEVO.Application.Features.Leave.Balance.DTOs.Responses;
 using ONEVO.Application.Features.Leave.Balance.Helpers;
 using ONEVO.Application.Features.Leave.Entitlement.RepositoryInterfaces;
-using ONEVO.Application.Features.Leave.Policy.RepositoryInterfaces;
+using ONEVO.Application.Features.Leave.Policy.Services;
 using ONEVO.Application.Features.Leave.Request.RepositoryInterfaces;
+using ONEVO.Application.Features.Leave.Type.RepositoryInterfaces;
 
 namespace ONEVO.Application.Features.Leave.Balance.Queries.GetEmployeeTimeOff;
 
 public sealed class GetEmployeeTimeOffQueryHandler(
     IEmployeeReadAccessGuard guard,
     ILeaveEntitlementRepository entitlements,
-    ILeavePolicyRepository policies,
+    ILeavePolicyResolver policies,
     ILeaveRequestReadRepository leaveRequests,
     ICurrentUser currentUser,
-    IDateTimeProvider clock)
+    IDateTimeProvider clock,
+    IEmployeeRepository? employees = null,
+    ILeaveTypeRepository? leaveTypes = null)
     : IRequestHandler<GetEmployeeTimeOffQuery, Result<EmployeeTimeOffResponse>>
 {
     private const int UpcomingWindowDays = 90;
@@ -39,8 +43,11 @@ public sealed class GetEmployeeTimeOffQueryHandler(
             tenantId,
             new LeaveEntitlementListFilter(year, request.EmployeeId, null, null, null, null, null, null),
             ct);
-        var mapped = await LeaveBalanceMapping.MapAsync(
-            policies, tenantId, year, DateOnly.FromDateTime(clock.UtcNow.UtcDateTime), rows, ct);
+        var asOf = DateOnly.FromDateTime(clock.UtcNow.UtcDateTime);
+        if (employees is not null && leaveTypes is not null)
+            rows = await LeaveBalanceMapping.IncludeResolvedZeroRowsAsync(
+                policies, leaveTypes, employees, tenantId, year, asOf, [request.EmployeeId], rows, ct);
+        var mapped = await LeaveBalanceMapping.MapAsync(policies, tenantId, year, asOf, rows, ct);
 
         var balances = mapped
             .Select(b => new EmployeeTimeOffBalance(

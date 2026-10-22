@@ -61,6 +61,12 @@ public sealed class ExceptionAlertRouter : IExceptionAlertRouter
         await SendAsync(exception, employee, ExceptionPermissions.EscalatedTemplate, UserIds(target), ct);
     }
 
+    public async Task NotifyEscalatedToAsync(MonitoringException exception, IReadOnlyList<Guid> userIds, CancellationToken ct)
+    {
+        var employee = await _employees.GetByIdAsync(exception.TenantId, exception.EmployeeId, ct);
+        await SendAsync(exception, employee, ExceptionPermissions.EscalatedTemplate, userIds, ct);
+    }
+
     private static EscalationContext Context(MonitoringException exception)
         => new(new ItemRef(ReportingLineThenHrPolicy.Source, "exception_case", exception.Id), exception.Type.ToString(), [],
             exception.EmployeeId, null, null);

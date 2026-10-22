@@ -266,6 +266,10 @@ public sealed class ListEmployeesQueryHandlerAuthorityResolverIntegrationTests
     /// flows through the handler into the repository filter, end to end.</summary>
     private sealed class FakeListEmployeesRepository : IEmployeeRepository
     {
+        public Task<IReadOnlyDictionary<Guid, string>> ListPositionNamesAsync(
+            Guid tenantId, IReadOnlyCollection<Guid> employeeIds, CancellationToken ct = default)
+            => Task.FromResult<IReadOnlyDictionary<Guid, string>>(new Dictionary<Guid, string>());
+
         public Dictionary<Guid, EmployeeListItemResponse> Employees { get; } = new();
         public Dictionary<Guid, EmployeeEntity?> DefaultEmployeeByUser { get; } = new();
 

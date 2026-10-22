@@ -131,8 +131,6 @@ public class EfLeaveEntitlementRepositoryTests
         TenantId = tenantId,
         Name = name,
         Code = code,
-        Category = LeaveTypeCategories.Annual,
-        DefaultDaysPerYear = 20m,
         IsActive = true
     };
 }

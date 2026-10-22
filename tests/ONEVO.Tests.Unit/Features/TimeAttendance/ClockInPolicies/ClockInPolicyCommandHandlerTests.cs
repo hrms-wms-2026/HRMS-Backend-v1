@@ -185,6 +185,101 @@ public class ClockInPolicyCommandHandlerTests
         Assert.True(existing.IsActive);
     }
 
+    private (ClockInPolicyEntity Existing, UpdateClockInPolicyCommandHandler Handler, Guid TypeId) UpdateFixture()
+    {
+        var typeId = Guid.NewGuid();
+        var existing = new ClockInPolicyEntity
+        {
+            Id = Guid.NewGuid(), TenantId = _tenantId, LegalEntityId = _legalEntityId, Name = "Old",
+            ScopeType = ClockInPolicyEntity.ScopeFullCompany, EffectiveFrom = new DateOnly(2026, 8, 21),
+            NotificationRecipientResolver = ClockInPolicyEntity.NotificationManagementCoverageOwner, IsActive = true,
+            CreatedById = _userId, CreatedAt = _now, UpdatedAt = _now,
+            DeductionRulesChangedAt = new DateTimeOffset(2026, 3, 1, 0, 0, 0, TimeSpan.Zero),
+        };
+        existing.LateDeductionRules.Add(new ONEVO.Domain.Features.TimeAttendance.Entities.ClockInLateDeductionRule
+        {
+            Id = Guid.NewGuid(), ClockInPolicyId = existing.Id, LateArrivalMinute = 15, Multiplier = 1m, TimeOffTypeId = typeId, IsActive = true,
+        });
+        _policies.Setup(p => p.GetTrackedByIdForLegalEntityAsync(_tenantId, _legalEntityId, existing.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(existing);
+        return (existing, new UpdateClockInPolicyCommandHandler(
+            _policies.Object, _legalEntities.Object, _scopeMembership.Object, _currentUser.Object, _clock.Object), typeId);
+    }
+
+    [Fact]
+    public async Task Update_KeepsRulesChangedAt_WhenOnlyNameChanges()
+    {
+        var (existing, handler, typeId) = UpdateFixture();
+
+        await handler.Handle(ValidUpdateCommand(existing.Id) with { Name = "Renamed", LateDeductionRules = [new LateDeductionRuleInput(15, 1m, typeId)] },
+            CancellationToken.None);
+
+        Assert.Equal(new DateTimeOffset(2026, 3, 1, 0, 0, 0, TimeSpan.Zero), existing.DeductionRulesChangedAt);
+    }
+
+    [Fact]
+    public async Task Update_SetsRulesChangedAt_WhenAMultiplierChanges()
+    {
+        var (existing, handler, typeId) = UpdateFixture();
+
+        await handler.Handle(ValidUpdateCommand(existing.Id) with { LateDeductionRules = [new LateDeductionRuleInput(15, 2m, typeId)] },
+            CancellationToken.None);
+
+        Assert.Equal(_now, existing.DeductionRulesChangedAt);
+    }
+
+    [Fact]
+    public async Task Update_StampsRulesThatWereNeverStamped_EvenWithoutAChange()
+    {
+        var (existing, handler, typeId) = UpdateFixture();
+        existing.DeductionRulesChangedAt = null;
+
+        await handler.Handle(ValidUpdateCommand(existing.Id) with { LateDeductionRules = [new LateDeductionRuleInput(15, 1m, typeId)] },
+            CancellationToken.None);
+
+        Assert.Equal(_now, existing.DeductionRulesChangedAt);
+    }
+
+    [Fact]
+    public async Task Update_MovesRulesChangedAt_WhenCoverageWidens()
+    {
+        var (existing, handler, typeId) = UpdateFixture();
+
+        await handler.Handle(ValidUpdateCommand(existing.Id) with
+        {
+            EffectiveFrom = new DateOnly(2026, 6, 1),
+            LateDeductionRules = [new LateDeductionRuleInput(15, 1m, typeId)],
+        }, CancellationToken.None);
+
+        Assert.Equal(_now, existing.DeductionRulesChangedAt);
+    }
+
+    [Fact]
+    public async Task Update_MovesRulesChangedAt_WhenReactivated()
+    {
+        var (existing, handler, typeId) = UpdateFixture();
+        existing.IsActive = false;
+
+        await handler.Handle(ValidUpdateCommand(existing.Id) with { LateDeductionRules = [new LateDeductionRuleInput(15, 1m, typeId)] },
+            CancellationToken.None);
+
+        Assert.Equal(_now, existing.DeductionRulesChangedAt);
+    }
+
+    [Fact]
+    public async Task Create_SetsRulesChangedAt_WhenRulesExist()
+    {
+        ClockInPolicyEntity? saved = null;
+        _policies.Setup(p => p.AddAsync(It.IsAny<ClockInPolicyEntity>(), It.IsAny<CancellationToken>()))
+            .Callback<ClockInPolicyEntity, CancellationToken>((p, _) => saved = p).Returns(Task.CompletedTask);
+        var handler = new CreateClockInPolicyCommandHandler(
+            _policies.Object, _legalEntities.Object, _scopeMembership.Object, _currentUser.Object, _clock.Object);
+
+        await handler.Handle(ValidCreateCommand(), CancellationToken.None);
+
+        Assert.Equal(_now, saved!.DeductionRulesChangedAt);
+    }
+
     private CreateClockInPolicyCommand ValidCreateCommand()
         => new(
             _legalEntityId,

@@ -13,6 +13,9 @@ public interface IExceptionAlertRouter
 
     /// <summary>A case that was escalated (manually or by the nightly sweep): HR.</summary>
     Task NotifyEscalatedAsync(MonitoringException exception, CancellationToken ct);
+
+    /// <summary>A case escalated by hand to the people picked in the escalate dialog.</summary>
+    Task NotifyEscalatedToAsync(MonitoringException exception, IReadOnlyList<Guid> userIds, CancellationToken ct);
 }
 
 /// <summary>

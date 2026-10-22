@@ -242,6 +242,10 @@ internal sealed class EmployeeAuthorityTestGraph
 
     private sealed class FakeEmployeeRepository : IEmployeeRepository
     {
+        public Task<IReadOnlyDictionary<Guid, string>> ListPositionNamesAsync(
+            Guid tenantId, IReadOnlyCollection<Guid> employeeIds, CancellationToken ct = default)
+            => Task.FromResult<IReadOnlyDictionary<Guid, string>>(new Dictionary<Guid, string>());
+
         private readonly EmployeeAuthorityTestGraph _graph;
         public FakeEmployeeRepository(EmployeeAuthorityTestGraph graph) => _graph = graph;
 

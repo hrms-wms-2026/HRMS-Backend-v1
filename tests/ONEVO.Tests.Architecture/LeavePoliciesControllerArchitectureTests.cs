@@ -31,21 +31,31 @@ public class LeavePoliciesControllerArchitectureTests
     [Fact]
     public void ReadActions_RequireLeaveRead()
     {
-        Assert.Equal("leave:read", GetPermission(nameof(LeavePoliciesController.List)));
-        Assert.Equal("leave:read", GetPermission(nameof(LeavePoliciesController.Get)));
+        Assert.Equal("leave:read", GetPermission(ControllerType, nameof(LeavePoliciesController.List)));
+        Assert.Equal("leave:read", GetPermission(ControllerType, nameof(LeavePoliciesController.Get)));
     }
 
-    [Fact]
-    public void MutatingActions_RequireLeaveManage()
-    {
-        Assert.Equal("leave:manage", GetPermission(nameof(LeavePoliciesController.Create)));
-        Assert.Equal("leave:manage", GetPermission(nameof(LeavePoliciesController.Clone)));
-    }
+    [Theory]
+    [InlineData(nameof(LeavePoliciesController.Create))]
+    [InlineData(nameof(LeavePoliciesController.UpdateDetails))]
+    [InlineData(nameof(LeavePoliciesController.AddVersion))]
+    [InlineData(nameof(LeavePoliciesController.DeleteVersion))]
+    [InlineData(nameof(LeavePoliciesController.SetAssignments))]
+    [InlineData(nameof(LeavePoliciesController.Activate))]
+    [InlineData(nameof(LeavePoliciesController.Deactivate))]
+    [InlineData(nameof(LeavePoliciesController.Clone))]
+    public void MutatingActions_RequireLeaveManage(string action) =>
+        Assert.Equal("leave:manage", GetPermission(ControllerType, action));
 
     [Fact]
     public void RequestContracts_DoNotExposeTenantId()
     {
-        foreach (var contractType in new[] { typeof(CreateLeavePolicyRequest), typeof(CloneLeavePolicyRequest) })
+        foreach (var contractType in new[]
+                 {
+                     typeof(CreateLeavePolicyRequest), typeof(CloneLeavePolicyRequest), typeof(AddLeavePolicyVersionRequest),
+                     typeof(SetLeavePolicyAssignmentsRequest), typeof(UpdateLeavePolicyDetailsRequest),
+                     typeof(SetEmployeeLeavePolicyRequest)
+                 })
         {
             var names = contractType.GetProperties().Select(p => p.Name);
             Assert.DoesNotContain(names, n => string.Equals(n, "TenantId", StringComparison.OrdinalIgnoreCase));
@@ -60,9 +70,29 @@ public class LeavePoliciesControllerArchitectureTests
         Assert.Equal("IMediator", parameter.ParameterType.Name);
     }
 
-    private static string GetPermission(string methodName)
+    [Theory]
+    [InlineData(nameof(EmployeeLeavePoliciesController.Set))]
+    [InlineData(nameof(EmployeeLeavePoliciesController.Reset))]
+    public void EmployeeOverrides_RequireLeaveManageOrCreate_AndVisibleEmployee(string action)
     {
-        var method = ControllerType.GetMethod(methodName);
+        var method = typeof(EmployeeLeavePoliciesController).GetMethod(action)!;
+        var any = method.GetCustomAttribute<RequireAnyPermissionAttribute>();
+        Assert.NotNull(any);
+        var permissions = (string[])typeof(RequireAnyPermissionAttribute)
+            .GetField("_permissions", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(any)!;
+        Assert.Equal(["leave:manage", "leave:create"], permissions);
+        Assert.NotNull(method.GetCustomAttribute<RequireVisibleEmployeeAttribute>());
+    }
+
+    [Fact]
+    public void EmployeePolicyList_RequiresVisibleEmployee() =>
+        Assert.NotNull(typeof(EmployeeLeavePoliciesController)
+            .GetMethod(nameof(EmployeeLeavePoliciesController.List))!
+            .GetCustomAttribute<RequireVisibleEmployeeAttribute>());
+
+    private static string GetPermission(Type controller, string methodName)
+    {
+        var method = controller.GetMethod(methodName);
         var attribute = method!.GetCustomAttribute<RequirePermissionAttribute>();
         Assert.NotNull(attribute);
 

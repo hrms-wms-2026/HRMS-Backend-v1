@@ -1,13 +1,10 @@
 using MediatR;
-using ONEVO.Application.Common.Exceptions;
 using ONEVO.Application.Common.Models;
+using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Leave.Entitlement.DTOs.Responses;
-using ONEVO.Application.Features.Leave.Entitlement.Helpers;
-using ONEVO.Application.Features.Leave.Entitlement.RepositoryInterfaces;
-using ONEVO.Domain.Features.Leave.BalanceAudit.Entities;
-using ONEVO.Domain.Features.Leave.Common;
-using ONEVO.Domain.Features.Leave.Entitlement.Entities;
+using ONEVO.Application.Features.Leave.Entitlement.Services;
+using ONEVO.Application.Features.Leave.Type.RepositoryInterfaces;
 
 namespace ONEVO.Application.Features.Leave.Entitlement.Commands.GenerateEntitlements;
 
@@ -15,20 +12,20 @@ public class GenerateEntitlementsCommandHandler
     : IRequestHandler<GenerateEntitlementsCommand, Result<LeaveEntitlementGenerationResultResponse>>
 {
     private readonly ICurrentUser _currentUser;
-    private readonly IDateTimeProvider _dateTimeProvider;
-    private readonly LeaveEntitlementPlanner _planner;
-    private readonly ILeaveEntitlementRepository _entitlements;
+    private readonly IDateTimeProvider _clock;
+    private readonly IEmployeeRepository _employees;
+    private readonly ILeaveTypeRepository _leaveTypes;
+    private readonly ILeaveCreditService _credits;
 
     public GenerateEntitlementsCommandHandler(
-        ICurrentUser currentUser,
-        IDateTimeProvider dateTimeProvider,
-        LeaveEntitlementPlanner planner,
-        ILeaveEntitlementRepository entitlements)
+        ICurrentUser currentUser, IDateTimeProvider clock, IEmployeeRepository employees,
+        ILeaveTypeRepository leaveTypes, ILeaveCreditService credits)
     {
         _currentUser = currentUser;
-        _dateTimeProvider = dateTimeProvider;
-        _planner = planner;
-        _entitlements = entitlements;
+        _clock = clock;
+        _employees = employees;
+        _leaveTypes = leaveTypes;
+        _credits = credits;
     }
 
     public async Task<Result<LeaveEntitlementGenerationResultResponse>> Handle(
@@ -40,84 +37,34 @@ public class GenerateEntitlementsCommandHandler
             return Result<LeaveEntitlementGenerationResultResponse>.Forbidden("Tenant context missing.");
 
         var tenantId = _currentUser.TenantId;
-        var now = _dateTimeProvider.UtcNow;
-        var asOfDate = DateOnly.FromDateTime(now.UtcDateTime);
-        var plan = await _planner.PlanAsync(tenantId, request.Year, request.LegalEntityId, asOfDate, ct);
+        var employees = await _employees.ListActiveByLegalEntityAsync(tenantId, request.LegalEntityId, ct);
+        var outcomes = await _credits.CreditAsync(tenantId, employees.Select(e => e.Id).ToList(), request.Year,
+            DateOnly.FromDateTime(_clock.UtcNow.UtcDateTime), false, _currentUser.UserId, ct);
+        var mapped = await MapAsync(tenantId, employees, outcomes, ct);
+        return Result<LeaveEntitlementGenerationResultResponse>.Success(new(
+            request.Year, mapped.Lines.Count, mapped.Skipped.Count, 0, mapped.Lines, mapped.Skipped, []));
+    }
 
-        if (plan.Lines.Count > 0)
+    private async Task<(IReadOnlyList<LeaveEntitlementGenerationLineResponse> Lines,
+        IReadOnlyList<LeaveEntitlementGenerationSkipResponse> Skipped)> MapAsync(
+        Guid tenantId, IReadOnlyList<ONEVO.Domain.Features.CoreHr.Entities.Employee> employees,
+        IReadOnlyList<LeaveCreditOutcome> outcomes, CancellationToken ct)
+    {
+        var types = (await _leaveTypes.ListAsync(tenantId, true, ct)).ToDictionary(t => t.Id);
+        var employeeMap = employees.ToDictionary(e => e.Id);
+        var lines = outcomes.Where(x => x.SkipReason is null).Select(x =>
         {
-            var writeSets = plan.Lines.Select(line =>
-            {
-                var entitlement = new LeaveEntitlement
-                {
-                    Id = Guid.NewGuid(),
-                    TenantId = tenantId,
-                    EmployeeId = line.EmployeeId,
-                    LeaveTypeId = line.LeaveTypeId,
-                    Year = request.Year,
-                    TotalHours = line.TotalHours,
-                    UsedHours = 0m,
-                    PendingHours = 0m,
-                    CarriedForwardHours = line.CarriedForwardHours,
-                    Source = LeaveEntitlementSources.Auto,
-                    CreatedAt = now
-                };
-
-                var audits = new List<LeaveBalanceAudit>
-                {
-                    new()
-                    {
-                        Id = Guid.NewGuid(),
-                        TenantId = tenantId,
-                        EmployeeId = line.EmployeeId,
-                        LeaveTypeId = line.LeaveTypeId,
-                        ChangeType = LeaveBalanceChangeTypes.Accrual,
-                        HoursChanged = line.TotalHours + line.CarriedForwardHours,
-                        BalanceAfter = line.TotalHours + line.CarriedForwardHours,
-                        Reason = "Generated from active leave policy",
-                        CreatedAt = now,
-                        CreatedBy = _currentUser.UserId
-                    }
-                };
-
-                if (line.ForfeitedHours > 0m)
-                {
-                    audits.Add(new LeaveBalanceAudit
-                    {
-                        Id = Guid.NewGuid(),
-                        TenantId = tenantId,
-                        EmployeeId = line.EmployeeId,
-                        LeaveTypeId = line.LeaveTypeId,
-                        ChangeType = LeaveBalanceChangeTypes.Forfeiture,
-                        HoursChanged = -line.ForfeitedHours,
-                        BalanceAfter = line.TotalHours + line.CarriedForwardHours,
-                        Reason = "Carry-forward cap applied during generation",
-                        CreatedAt = now,
-                        CreatedBy = _currentUser.UserId
-                    });
-                }
-
-                return new LeaveEntitlementWriteSet(entitlement, audits);
-            }).ToList();
-
-            try
-            {
-                await _entitlements.AddGeneratedAsync(writeSets, ct);
-            }
-            catch (UniqueConstraintConflictException)
-            {
-                return Result<LeaveEntitlementGenerationResultResponse>.Conflict(
-                    LeaveEntitlementMessages.DuplicateEmployeeTypeYear);
-            }
-        }
-
-        return Result<LeaveEntitlementGenerationResultResponse>.Success(new LeaveEntitlementGenerationResultResponse(
-            plan.Year,
-            plan.Lines.Count,
-            plan.Skipped.Count,
-            0,
-            plan.Lines,
-            plan.Skipped,
-            []));
+            var employee = employeeMap[x.EmployeeId];
+            return new LeaveEntitlementGenerationLineResponse(
+                x.EmployeeId, employee.EmployeeNumber, $"{employee.FirstName} {employee.LastName}".Trim(),
+                x.LeaveTypeId, types.GetValueOrDefault(x.LeaveTypeId)?.Name ?? string.Empty,
+                x.ExpectedCreditedHours, 0m, x.ExpectedCreditedHours, false, 0m, null, null);
+        }).ToList();
+        var skipped = outcomes.Where(x => x.SkipReason is not null).Select(x =>
+            new LeaveEntitlementGenerationSkipResponse(x.EmployeeId,
+                employeeMap.TryGetValue(x.EmployeeId, out var employee)
+                    ? $"{employee.FirstName} {employee.LastName}".Trim() : null,
+                x.SkipReason!)).ToList();
+        return (lines, skipped);
     }
 }

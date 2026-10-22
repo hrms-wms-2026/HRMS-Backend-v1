@@ -1,186 +1,131 @@
-using Moq;
-using ONEVO.Application.Common.ServiceInterfaces;
+using FluentAssertions;
+using FluentValidation.TestHelper;
+using ONEVO.Application.Features.Leave.Policy.Commands.Common;
 using ONEVO.Application.Features.Leave.Policy.Commands.CreateLeavePolicy;
-using ONEVO.Application.Features.Leave.Policy.RepositoryInterfaces;
+using ONEVO.Application.Features.Leave.Policy.Services;
 using ONEVO.Domain.Features.Leave.Common;
-using ONEVO.Domain.Features.Leave.Policy.Entities;
-using ONEVO.Domain.Features.Leave.Type.Entities;
-using ONEVO.Domain.Features.OrgStructure.Entities;
 using Xunit;
 
 namespace ONEVO.Tests.Unit.Features.Leave.Policy;
 
 public class CreateLeavePolicyCommandHandlerTests
 {
-    private readonly Mock<ILeavePolicyRepository> _repoMock = new();
-    private readonly Mock<ICurrentUser> _currentUserMock = new();
-    private readonly Mock<IDateTimeProvider> _dateTimeProviderMock = new();
-    private readonly Guid _tenantId = Guid.NewGuid();
-    private readonly Guid _leaveTypeId = Guid.NewGuid();
-    private readonly Guid _legalEntityId = Guid.NewGuid();
-    private readonly DateTimeOffset _now = new(2026, 8, 21, 12, 0, 0, TimeSpan.Zero);
+    private readonly PolicyTestHarness _h = new();
 
-    public CreateLeavePolicyCommandHandlerTests()
+    private CreateLeavePolicyCommandHandler Sut() => new(
+        _h.Repository, _h.CurrentUser.Object, _h.Clock.Object,
+        new LeavePolicyAssignmentService(_h.Repository, _h.UnitOfWork, _h.Clock.Object));
+
+    private CreateLeavePolicyCommand Command(
+        IReadOnlyList<LeavePolicyAssignmentInput>? assignments = null, bool replace = false, Guid? leaveTypeId = null,
+        string name = "Annual - standard") =>
+        new(leaveTypeId ?? _h.AnnualTypeId, name, "desc",
+            PolicyTestHarness.Rules(blackouts: [new LeavePolicyBlackoutInput(new DateOnly(2026, 12, 20), new DateOnly(2026, 12, 31), "Year end")]),
+            assignments ?? [_h.Company], replace);
+
+    [Fact]
+    public async Task Create_writes_policy_v1_and_assignments()
     {
-        _currentUserMock.Setup(c => c.IsAuthenticated).Returns(true);
-        _currentUserMock.Setup(c => c.TenantId).Returns(_tenantId);
-        _dateTimeProviderMock.Setup(d => d.UtcNow).Returns(_now);
-        _repoMock.Setup(r => r.ExistsByNameAsync(_tenantId, "LK Policy", null, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(false);
-        _repoMock.Setup(r => r.ListActiveLeaveTypesByIdsAsync(_tenantId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync([new LeaveType
-            {
-                Id = _leaveTypeId,
-                TenantId = _tenantId,
-                Name = "Annual Leave",
-                Code = "ANNUAL",
-                DefaultDaysPerYear = 20m,
-                IsActive = true
-            }]);
-        _repoMock.Setup(r => r.ListActiveLegalEntitiesByIdsAsync(_tenantId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync([new LegalEntity
-            {
-                Id = _legalEntityId,
-                TenantId = _tenantId,
-                Name = "Acme Lanka",
-                CountryCode = "LKA",
-                CurrencyCode = "LKR",
-                IsActive = true
-            }]);
-        _repoMock.Setup(r => r.ListActiveAssignmentConflictsAsync(_tenantId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync([]);
-        _repoMock.Setup(r => r.GetAggregateByIdAsync(_tenantId, It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
-            .Returns((Guid tenantId, Guid policyId, CancellationToken _) =>
-            {
-                var policy = new LeavePolicy
-                {
-                    Id = policyId,
-                    TenantId = tenantId,
-                    Name = "LK Policy",
-                    Country = "LK",
-                    AccrualMethod = LeaveAccrualMethods.Annual,
-                    AccrualStart = LeaveAccrualStarts.Immediately,
-                    ProrationMethod = LeaveProrationMethods.CalendarDays,
-                    ApprovalMode = LeaveApprovalModes.AnyOne,
-                    EffectiveFrom = new DateOnly(2026, 1, 1)
-                };
-                return Task.FromResult<LeavePolicyAggregate?>(new LeavePolicyAggregate(policy, [], [], []));
-            });
+        var result = await Sut().Handle(Command([_h.Company, _h.Sales]), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        var policyId = result.Value!.PolicyId!.Value;
+        var policy = _h.Repository.Policies.Single(p => p.Id == policyId);
+        policy.LeaveTypeId.Should().Be(_h.AnnualTypeId);
+        var version = _h.Repository.Versions.Single(v => v.LeavePolicyId == policyId);
+        version.VersionNumber.Should().Be(1);
+        version.EffectiveFrom.Should().Be(PolicyTestHarness.Today);
+        version.AmountHours.Should().Be(8m);
+        version.AmountPeriod.Should().Be(LeaveAmountPeriods.Month);
+        version.CreatedBy.Should().Be(_h.UserId);
+        _h.Repository.Blackouts.Should().ContainSingle(b => b.LeavePolicyVersionId == version.Id && b.Reason == "Year end");
+        _h.Repository.Assignments.Where(a => a.LeavePolicyId == policyId).Should().HaveCount(2)
+            .And.OnlyContain(a => a.EffectiveFrom == PolicyTestHarness.Today && a.EffectiveTo == null
+                && a.LeaveTypeId == _h.AnnualTypeId);
     }
 
     [Fact]
-    public async Task Handle_ValidCommand_CreatesPolicyAggregate()
+    public async Task Create_rejects_inactive_leave_type()
     {
-        var handler = new CreateLeavePolicyCommandHandler(
-            _repoMock.Object, _currentUserMock.Object, _dateTimeProviderMock.Object);
+        var result = await Sut().Handle(Command(leaveTypeId: _h.InactiveTypeId), CancellationToken.None);
 
-        var result = await handler.Handle(ValidCommand(), CancellationToken.None);
-
-        Assert.True(result.IsSuccess);
-        Assert.Equal("LK Policy", result.Value!.Name);
-        _repoMock.Verify(r => r.AddAggregateWithReplacementAsync(
-            It.Is<LeavePolicy>(p => p.TenantId == _tenantId && p.Name == "LK Policy"),
-            It.Is<IReadOnlyCollection<LeavePolicyLeaveType>>(rules => rules.Single().AnnualEntitlementDays == 20m),
-            It.IsAny<IReadOnlyCollection<LeavePolicyBlackoutPeriod>>(),
-            It.Is<IReadOnlyCollection<LeavePolicyLegalEntity>>(assignments => assignments.Single().LegalEntityId == _legalEntityId),
-            It.Is<IReadOnlyCollection<Guid>>(ids => ids.Count == 0),
-            It.IsAny<CancellationToken>()), Times.Once);
+        result.IsSuccess.Should().BeFalse();
+        result.StatusCode.Should().Be(404);
+        _h.Repository.Policies.Should().BeEmpty();
     }
 
     [Fact]
-    public async Task Handle_MonthlyAccrualAboveLeaveTypeLimit_Returns400()
+    public async Task Create_returns_conflict_when_target_already_has_policy_for_type()
     {
-        var handler = new CreateLeavePolicyCommandHandler(
-            _repoMock.Object, _currentUserMock.Object, _dateTimeProviderMock.Object);
+        var existing = _h.SeedPolicy("Annual - sales", _h.AnnualTypeId, _h.Sales);
 
-        var result = await handler.Handle(ValidCommand() with
-        {
-            AccrualMethod = LeaveAccrualMethods.Monthly,
-            LeaveTypes = [new LeavePolicyTypeRuleInput(_leaveTypeId, 0m, 2m, null, null)]
-        }, CancellationToken.None);
+        var result = await Sut().Handle(Command([_h.Company, _h.Sales]), CancellationToken.None);
 
-        Assert.False(result.IsSuccess);
-        Assert.Equal(400, result.StatusCode);
-        Assert.Contains("Monthly accrual", result.Error);
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.PolicyId.Should().BeNull();
+        result.Value.Conflicts.Should().ContainSingle().Which.Should().Be(new LeavePolicyAssignmentConflict(
+            LeavePolicyTargetKinds.Department, _h.SalesId, "Sales", existing.Id, "Annual - sales"));
+        _h.Repository.Policies.Should().ContainSingle();
+        _h.Repository.SaveCount.Should().Be(0);
     }
 
     [Fact]
-    public async Task Handle_MissingLeaveType_Returns404()
+    public async Task Same_target_with_a_policy_for_another_leave_type_is_not_a_conflict()
     {
-        _repoMock.Setup(r => r.ListActiveLeaveTypesByIdsAsync(_tenantId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync([]);
-        var handler = new CreateLeavePolicyCommandHandler(
-            _repoMock.Object, _currentUserMock.Object, _dateTimeProviderMock.Object);
+        _h.SeedPolicy("Sick - sales", _h.SickTypeId, _h.Sales);
 
-        var result = await handler.Handle(ValidCommand(), CancellationToken.None);
+        var result = await Sut().Handle(Command([_h.Sales]), CancellationToken.None);
 
-        Assert.False(result.IsSuccess);
-        Assert.Equal(404, result.StatusCode);
-        Assert.Equal("The selected leave type no longer exists.", result.Error);
+        result.Value!.PolicyId.Should().NotBeNull();
+        result.Value.Conflicts.Should().BeEmpty();
     }
 
     [Fact]
-    public async Task Handle_ExistingActiveLegalEntityAssignment_NotConfirmed_Returns409()
+    public async Task Create_with_replace_ends_existing_assignment_yesterday_and_adds_new_from_today()
     {
-        _repoMock.Setup(r => r.ListActiveAssignmentConflictsAsync(_tenantId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync([new LeavePolicyLegalEntityConflict(_legalEntityId, "Acme Lanka", Guid.NewGuid(), "Old Policy")]);
-        var handler = new CreateLeavePolicyCommandHandler(
-            _repoMock.Object, _currentUserMock.Object, _dateTimeProviderMock.Object);
+        var existing = _h.SeedPolicy("Annual - sales", _h.AnnualTypeId, _h.Sales);
 
-        var result = await handler.Handle(ValidCommand(), CancellationToken.None);
+        var result = await Sut().Handle(Command([_h.Sales], replace: true), CancellationToken.None);
 
-        Assert.False(result.IsSuccess);
-        Assert.Equal(409, result.StatusCode);
-        Assert.Contains("Acme Lanka", result.Error);
-        _repoMock.Verify(r => r.AddAggregateWithReplacementAsync(
-            It.IsAny<LeavePolicy>(),
-            It.IsAny<IReadOnlyCollection<LeavePolicyLeaveType>>(),
-            It.IsAny<IReadOnlyCollection<LeavePolicyBlackoutPeriod>>(),
-            It.IsAny<IReadOnlyCollection<LeavePolicyLegalEntity>>(),
-            It.IsAny<IReadOnlyCollection<Guid>>(),
-            It.IsAny<CancellationToken>()), Times.Never);
+        result.Value!.PolicyId.Should().NotBeNull();
+        var old = _h.Repository.Assignments.Single(a => a.LeavePolicyId == existing.Id);
+        old.EffectiveTo.Should().Be(PolicyTestHarness.Today.AddDays(-1));
+        old.EndedBy.Should().Be(_h.UserId);
+        _h.Repository.Assignments.Should().ContainSingle(a =>
+            a.LeavePolicyId == result.Value.PolicyId && a.TargetId == _h.SalesId && a.EffectiveTo == null);
     }
 
     [Fact]
-    public async Task Handle_ExistingActiveLegalEntityAssignment_Confirmed_Replaces()
+    public async Task Create_rejects_unknown_target()
     {
-        _repoMock.Setup(r => r.ListActiveAssignmentConflictsAsync(_tenantId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync([new LeavePolicyLegalEntityConflict(_legalEntityId, "Acme Lanka", Guid.NewGuid(), "Old Policy")]);
-        var handler = new CreateLeavePolicyCommandHandler(
-            _repoMock.Object, _currentUserMock.Object, _dateTimeProviderMock.Object);
+        var unknown = new LeavePolicyAssignmentInput(LeavePolicyTargetKinds.Department, Guid.NewGuid());
 
-        var result = await handler.Handle(ValidCommand() with { ConfirmReplaceExistingLegalEntityAssignments = true }, CancellationToken.None);
+        var result = await Sut().Handle(Command([unknown]), CancellationToken.None);
 
-        Assert.True(result.IsSuccess);
-        _repoMock.Verify(r => r.AddAggregateWithReplacementAsync(
-            It.IsAny<LeavePolicy>(),
-            It.IsAny<IReadOnlyCollection<LeavePolicyLeaveType>>(),
-            It.IsAny<IReadOnlyCollection<LeavePolicyBlackoutPeriod>>(),
-            It.IsAny<IReadOnlyCollection<LeavePolicyLegalEntity>>(),
-            It.Is<IReadOnlyCollection<Guid>>(ids => ids.Single() == _legalEntityId),
-            It.IsAny<CancellationToken>()), Times.Once);
+        result.IsSuccess.Should().BeFalse();
+        result.StatusCode.Should().Be(400);
+        _h.Repository.Policies.Should().BeEmpty();
     }
 
-    private CreateLeavePolicyCommand ValidCommand() => new(
-        "LK Policy",
-        "Sri Lanka annual leave policy",
-        "LK",
-        null,
-        LeaveAccrualMethods.Annual,
-        LeaveAccrualStarts.Immediately,
-        null,
-        LeaveProrationMethods.CalendarDays,
-        false,
-        0,
-        null,
-        7,
-        14,
-        0.5m,
-        20m,
-        LeaveApprovalModes.AnyOne,
-        new DateOnly(2026, 1, 1),
-        [new LeavePolicyTypeRuleInput(_leaveTypeId, 20m, null, 5m, 3)],
-        [],
-        [_legalEntityId],
-        false);
+    [Fact]
+    public async Task Create_rejects_duplicate_name()
+    {
+        _h.SeedPolicy("Annual - standard", _h.AnnualTypeId);
+
+        var result = await Sut().Handle(Command(), CancellationToken.None);
+
+        result.StatusCode.Should().Be(409);
+    }
+
+    [Fact]
+    public void Validator_requires_name_and_rejects_employee_level_and_duplicate_targets()
+    {
+        var validator = new CreateLeavePolicyCommandValidator();
+
+        validator.TestValidate(Command(name: "")).ShouldHaveValidationErrorFor(x => x.Name);
+        validator.TestValidate(Command([new LeavePolicyAssignmentInput(LeavePolicyTargetKinds.Employee, _h.EmployeeId)]))
+            .ShouldHaveValidationErrorFor(x => x.Assignments);
+        validator.TestValidate(Command([_h.Sales, _h.Sales])).ShouldHaveValidationErrorFor(x => x.Assignments);
+        validator.TestValidate(Command()).ShouldNotHaveAnyValidationErrors();
+    }
 }

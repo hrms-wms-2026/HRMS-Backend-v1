@@ -1,8 +1,11 @@
 using MediatR;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Conversations.RepositoryInterfaces;
+using ONEVO.Application.Features.Conversations.Contracts;
 using ONEVO.Application.Features.Conversations.Services;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Domain.Features.Conversations.Entities;
@@ -16,16 +19,21 @@ public sealed class MarkConversationReadCommandHandler : IRequestHandler<MarkCon
     private readonly IConversationAccess _access;
     private readonly IConversationRepository _conversations;
     private readonly IUnitOfWork _unitOfWork;
+    private readonly IInboxRealtimePublisher _realtime;
+    private readonly ILogger<MarkConversationReadCommandHandler> _logger;
 
     public MarkConversationReadCommandHandler(
         ICurrentUser currentUser, ICallerIdentityResolver identity, IConversationAccess access,
-        IConversationRepository conversations, IUnitOfWork unitOfWork)
+        IConversationRepository conversations, IUnitOfWork unitOfWork, IInboxRealtimePublisher realtime,
+        ILogger<MarkConversationReadCommandHandler>? logger = null)
     {
         _currentUser = currentUser;
         _identity = identity;
         _access = access;
         _conversations = conversations;
         _unitOfWork = unitOfWork;
+        _realtime = realtime;
+        _logger = logger ?? NullLogger<MarkConversationReadCommandHandler>.Instance;
     }
 
     public async Task<Result> Handle(MarkConversationReadCommand command, CancellationToken ct)
@@ -57,6 +65,9 @@ public sealed class MarkConversationReadCommandHandler : IRequestHandler<MarkCon
                 JoinReason = ConversationJoinReasons.Base, AddedAt = now, LastReadAt = now, CreatedById = _currentUser.UserId
             }, ct);
         }
+        await ConversationRules.PublishSafelyAsync(
+            () => _realtime.ParticipantReadAsync(tenantId, context.ParticipantIds, context.Conversation.Id, caller.Value, now, ct),
+            _logger, "participantRead");
         return Result.Success();
     }
 }

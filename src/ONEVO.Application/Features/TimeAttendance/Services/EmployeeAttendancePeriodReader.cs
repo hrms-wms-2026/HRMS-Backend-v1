@@ -16,7 +16,8 @@ public sealed class EmployeeAttendancePeriodReader(
     IDateTimeProvider clock,
     IEmployeeRepository employees,
     ICalendarEventRepository calendarEvents,
-    IAttendanceAlertResolutionLookup? alertResolutions = null) : IEmployeeAttendancePeriodReader
+    IAttendanceAlertResolutionLookup? alertResolutions = null,
+    IEmployeeClockInPolicyResolver? policies = null) : IEmployeeAttendancePeriodReader
 {
     // A 366-day period has at most 366 attendance rows.
     private const int MaxRecords = 400;
@@ -66,8 +67,13 @@ public sealed class EmployeeAttendancePeriodReader(
         var excused = alertResolutions is null ? null
             : await alertResolutions.ExcusedDatesAsync(tenantId, employeeId, period.From, period.To, ct);
 
+        // The clock-in policy's first deduction row is the late/early threshold (0 = any lateness, as before).
+        var threshold = policies is not null && legalEntityId is Guid policyEntityId
+            ? ClockInPolicyRules.ThresholdMinutes(await policies.ResolveAsync(tenantId, employeeId, policyEntityId, period.To, ct))
+            : 0;
+
         return new AttendancePeriodData(
             records, timezone, now, clock.Today, legalEntity?.BreakDurationMinutes,
-            breakMinutesByDate, leaves, rangeStart, rangeEnd, workdays, excused);
+            breakMinutesByDate, leaves, rangeStart, rangeEnd, workdays, excused, threshold);
     }
 }

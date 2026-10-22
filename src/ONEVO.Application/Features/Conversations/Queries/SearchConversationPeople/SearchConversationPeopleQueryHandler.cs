@@ -34,7 +34,7 @@ public sealed class SearchConversationPeopleQueryHandler
             return Result<IReadOnlyList<ConversationPersonResponse>>.Forbidden(ConversationRules.NoEmployeeMessage);
 
         // One extra, so leaving the caller out still fills a page.
-        var ids = (await _directory.SearchActiveAsync(tenantId, query.Search?.Trim(), PageSize + 1, ct))
+        var ids = (await _directory.SearchActiveInLegalEntityOfAsync(tenantId, caller.Value, query.Search?.Trim(), PageSize + 1, ct))
             .Where(id => id != caller.Value).Take(PageSize).ToList();
         if (ids.Count == 0)
             return Result<IReadOnlyList<ConversationPersonResponse>>.Success([]);

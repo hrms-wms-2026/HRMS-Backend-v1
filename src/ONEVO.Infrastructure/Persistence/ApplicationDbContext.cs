@@ -130,6 +130,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<ONEVO.Domain.Features.DevPlatform.AppCatalog.Entities.GlobalApplication> GlobalApplications => Set<ONEVO.Domain.Features.DevPlatform.AppCatalog.Entities.GlobalApplication>();
     public DbSet<ONEVO.Domain.Features.Monitoring.Biometrics.Entities.BiometricEnrollmentAttempt> BiometricEnrollmentAttempts => Set<ONEVO.Domain.Features.Monitoring.Biometrics.Entities.BiometricEnrollmentAttempt>();
     public DbSet<ONEVO.Domain.Features.Monitoring.Biometrics.Entities.BiometricProfile> BiometricProfiles => Set<ONEVO.Domain.Features.Monitoring.Biometrics.Entities.BiometricProfile>();
+    public DbSet<ONEVO.Domain.Features.Monitoring.PermissionConsent.Entities.MonitoringPermissionConsent> MonitoringPermissionConsents => Set<ONEVO.Domain.Features.Monitoring.PermissionConsent.Entities.MonitoringPermissionConsent>();
     public DbSet<MonitoringNotification> MonitoringNotifications => Set<MonitoringNotification>();
 
     // Monitoring - Feature toggles & overrides
@@ -265,9 +266,9 @@ public class ApplicationDbContext : DbContext
     // Leave Management
     public DbSet<LeaveType> LeaveTypes => Set<LeaveType>();
     public DbSet<LeavePolicy> LeavePolicies => Set<LeavePolicy>();
-    public DbSet<LeavePolicyLeaveType> LeavePolicyLeaveTypes => Set<LeavePolicyLeaveType>();
+    public DbSet<LeavePolicyVersion> LeavePolicyVersions => Set<LeavePolicyVersion>();
     public DbSet<LeavePolicyBlackoutPeriod> LeavePolicyBlackoutPeriods => Set<LeavePolicyBlackoutPeriod>();
-    public DbSet<LeavePolicyLegalEntity> LeavePolicyLegalEntities => Set<LeavePolicyLegalEntity>();
+    public DbSet<LeavePolicyAssignment> LeavePolicyAssignments => Set<LeavePolicyAssignment>();
     public DbSet<LeaveEntitlement> LeaveEntitlements => Set<LeaveEntitlement>();
     public DbSet<LeaveRequest> LeaveRequests => Set<LeaveRequest>();
     public DbSet<LeaveRequestApprover> LeaveRequestApprovers => Set<LeaveRequestApprover>();
@@ -321,14 +322,20 @@ public class ApplicationDbContext : DbContext
         => Set<ONEVO.Domain.Features.Conversations.Entities.Conversation>();
     public DbSet<ONEVO.Domain.Features.Conversations.Entities.ConversationParticipant> ConversationParticipants
         => Set<ONEVO.Domain.Features.Conversations.Entities.ConversationParticipant>();
+    public DbSet<ONEVO.Domain.Features.Conversations.Entities.ConversationFavorite> ConversationFavorites
+        => Set<ONEVO.Domain.Features.Conversations.Entities.ConversationFavorite>();
     public DbSet<ONEVO.Domain.Features.Conversations.Entities.ConversationMessage> ConversationMessages
         => Set<ONEVO.Domain.Features.Conversations.Entities.ConversationMessage>();
     public DbSet<ONEVO.Domain.Features.Conversations.Entities.ConversationMessageRevision> ConversationMessageRevisions
         => Set<ONEVO.Domain.Features.Conversations.Entities.ConversationMessageRevision>();
+    public DbSet<ONEVO.Domain.Features.Conversations.Entities.ConversationMessageHide> ConversationMessageHides
+        => Set<ONEVO.Domain.Features.Conversations.Entities.ConversationMessageHide>();
     public DbSet<ONEVO.Domain.Features.Conversations.Entities.ConversationMessageAttachment> ConversationMessageAttachments
         => Set<ONEVO.Domain.Features.Conversations.Entities.ConversationMessageAttachment>();
     public DbSet<ONEVO.Domain.Features.TimeAttendance.Alerts.AttendanceAlert> AttendanceAlerts
         => Set<ONEVO.Domain.Features.TimeAttendance.Alerts.AttendanceAlert>();
+    public DbSet<ONEVO.Domain.Features.TimeAttendance.Alerts.AttendanceAlertDeduction> AttendanceAlertDeductions
+        => Set<ONEVO.Domain.Features.TimeAttendance.Alerts.AttendanceAlertDeduction>();
     public DbSet<ONEVO.Domain.Features.Inbox.Entities.InboxDecisionJournalEntry> InboxDecisionJournal
         => Set<ONEVO.Domain.Features.Inbox.Entities.InboxDecisionJournalEntry>();
     public DbSet<ONEVO.Domain.Features.Conversations.Entities.ConversationMessageMention> ConversationMessageMentions
