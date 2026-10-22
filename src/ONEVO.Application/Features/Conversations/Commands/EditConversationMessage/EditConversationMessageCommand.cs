@@ -12,7 +12,8 @@ using ONEVO.Domain.Features.Conversations.Entities;
 
 namespace ONEVO.Application.Features.Conversations.Commands.EditConversationMessage;
 
-/// <summary>The author rewrites their own text message within 15 minutes (even when read, but not once deleted). The previous body is kept as
+/// <summary>The author rewrites their own text message within <see cref="ConversationRules.EditWindowMinutes"/> minutes
+/// of sending it (even when read, but not once deleted). The previous body is kept as
 /// a revision; only people mentioned for the first time are notified.</summary>
 public sealed record EditConversationMessageCommand(
     Guid ConversationId, Guid MessageId, string BodyHtml, IReadOnlyList<Guid>? MentionEmployeeIds)
@@ -25,8 +26,6 @@ public sealed class EditConversationMessageCommandHandler
     public const string NotAuthor = "Only the author can edit this message.";
     public const string NotEditable = "Only text messages can be edited.";
     public const string AlreadyDeleted = "This message was deleted.";
-    public const string EditWindowExpired = "Messages can only be edited within 15 minutes of sending.";
-    private static readonly TimeSpan EditWindow = TimeSpan.FromMinutes(15);
 
     private readonly ICurrentUser _currentUser;
     private readonly ICallerIdentityResolver _identity;
@@ -71,8 +70,8 @@ public sealed class EditConversationMessageCommandHandler
             return Result<ConversationMessageResponse>.UnprocessableEntity(NotEditable);
         if (message.IsRetracted)
             return Result<ConversationMessageResponse>.Conflict(AlreadyDeleted);
-        if (DateTimeOffset.UtcNow - message.CreatedAt > EditWindow)
-            return Result<ConversationMessageResponse>.Conflict(EditWindowExpired);
+        if (!ConversationRules.WithinEditWindow(message.CreatedAt, DateTimeOffset.UtcNow))
+            return Result<ConversationMessageResponse>.UnprocessableEntity(ConversationRules.EditWindowClosed);
 
         var attachments = (await _conversations.ListAttachmentsAsync(caller.TenantId, [message.Id], ct)).GetValueOrDefault(message.Id);
         var (body, error) = ConversationRules.ValidateBody(command.BodyHtml, allowEmpty: attachments is { Count: > 0 });
@@ -113,9 +112,12 @@ public sealed class EditConversationMessageCommandHandler
             return true;
         }, ct);
 
+        // The live update replaces the whole message on screen, so it carries the reactions too.
+        var reactions = (await _conversations.ListReactionsAsync(caller.TenantId, [message.Id], ct)).GetValueOrDefault(message.Id);
         // An edit keeps the quote it was posted with.
         var replyTo = _responses is null ? null : await _responses.ReplyPreviewAsync(caller.TenantId, message, ct);
-        var response = ConversationResponseBuilder.Message(message, previousMentions.Union(newMentions).ToList(), author, attachments, replyTo);
+        var response = ConversationResponseBuilder.Message(
+            message, previousMentions.Union(newMentions).ToList(), author, attachments, reactions, replyTo);
         await ConversationRules.PublishSafelyAsync(
             () => _realtime.MessageUpdatedAsync(caller.TenantId, context.ParticipantIds, context.Conversation.Id, response, ct),
             _logger, "messageUpdated");

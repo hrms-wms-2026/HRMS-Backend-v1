@@ -13,6 +13,7 @@ internal sealed class InMemoryConversationRepository : IConversationRepository
     public List<ConversationMessageAttachment> Attachments { get; } = new();
     public List<ConversationMessageMention> Mentions { get; } = new();
     public List<ConversationMessageHide> MessageHides { get; } = new();
+    public List<ConversationMessageReaction> Reactions { get; } = new();
 
     public Task<Conversation?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct = default)
         => Task.FromResult(Conversations.FirstOrDefault(c => c.TenantId == tenantId && c.Id == id));
@@ -126,6 +127,25 @@ internal sealed class InMemoryConversationRepository : IConversationRepository
         Mentions.AddRange(mentions);
         return Task.CompletedTask;
     }
+
+    public Task<ConversationMessageReaction?> GetReactionAsync(Guid tenantId, Guid messageId, Guid employeeId, CancellationToken ct = default)
+        => Task.FromResult(Reactions.FirstOrDefault(r => r.TenantId == tenantId && r.MessageId == messageId && r.EmployeeId == employeeId));
+
+    public Task AddReactionAsync(ConversationMessageReaction reaction, CancellationToken ct = default)
+    {
+        Reactions.Add(reaction);
+        return Task.CompletedTask;
+    }
+
+    public void RemoveReaction(ConversationMessageReaction reaction) => Reactions.Remove(reaction);
+
+    public Task<IReadOnlyDictionary<Guid, IReadOnlyList<ConversationMessageReaction>>> ListReactionsAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> messageIds, CancellationToken ct = default)
+        => Task.FromResult<IReadOnlyDictionary<Guid, IReadOnlyList<ConversationMessageReaction>>>(Reactions
+            .Where(r => r.TenantId == tenantId && messageIds.Contains(r.MessageId))
+            .OrderBy(r => r.UpdatedAt ?? r.CreatedAt)
+            .GroupBy(r => r.MessageId)
+            .ToDictionary(g => g.Key, g => (IReadOnlyList<ConversationMessageReaction>)g.ToList()));
 
     public Task AddRevisionAsync(ConversationMessageRevision revision, CancellationToken ct = default)
     {

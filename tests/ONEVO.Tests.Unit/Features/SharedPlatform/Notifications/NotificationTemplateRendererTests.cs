@@ -137,6 +137,26 @@ public class NotificationTemplateRendererTests
         result.Content!.EmailHtml.Should().Contain("href=\"https://app.onevo.test/inbox?a=1&amp;b=2\"");
     }
 
+    /// <summary>The platform editor's "Use starter layout" (notification-template-editor.ts) must always publish.</summary>
+    [Fact]
+    public void AdminStarterLayout_IsAccepted_AndInlined()
+    {
+        const string html = "<div class=\"wrapper\"><div class=\"card\"><p class=\"brand\">ONEVO</p><h2>Approval needed</h2>"
+            + "<p>{{actorName}} asked about &quot;{{targetTitle}}&quot;</p>"
+            + "<p class=\"footer\">You are receiving this because of your notification settings in ONEVO.</p></div></div>";
+        const string css = ".wrapper { background-color: #f4f6fb; padding: 24px; font-family: Arial, Helvetica, sans-serif; }\n"
+            + ".card { background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 24px; }\n"
+            + ".brand { color: #4f46e5; font-weight: bold; font-size: 13px; letter-spacing: 1px; margin: 0 0 12px; }\n"
+            + "h2 { color: #0f172a; font-size: 20px; margin: 0 0 12px; }\n"
+            + "p { color: #334155; font-size: 14px; line-height: 1.5; }\n"
+            + ".footer { color: #94a3b8; font-size: 12px; margin-top: 24px; }";
+
+        var result = _renderer.Render(Content(html: html, css: css), Event, Vars());
+
+        result.IsSuccess.Should().BeTrue(string.Join("; ", result.Errors));
+        result.Content!.EmailHtml.Should().Contain("background-color: #ffffff").And.Contain("Priya asked about");
+    }
+
     [Fact]
     public void Render_FallsBackToInAppCopyForEmptyChannels()
     {

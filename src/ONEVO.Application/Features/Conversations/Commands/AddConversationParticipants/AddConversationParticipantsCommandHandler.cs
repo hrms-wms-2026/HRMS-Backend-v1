@@ -30,12 +30,13 @@ public sealed class AddConversationParticipantsCommandHandler
     private readonly ConversationResponseBuilder _responses;
     private readonly IInboxRealtimePublisher _realtime;
     private readonly ILogger<AddConversationParticipantsCommandHandler> _logger;
+    private readonly IEnumerable<IConversationActivityListener>? _listeners;
 
     public AddConversationParticipantsCommandHandler(
         ICurrentUser currentUser, ICallerIdentityResolver identity, IConversationAccess access,
         IConversationRepository conversations, IUnitOfWork unitOfWork, IMilestoneMembershipCoordinator membership,
         ConversationNotifier notifier, ConversationResponseBuilder responses, IInboxRealtimePublisher realtime,
-        ILogger<AddConversationParticipantsCommandHandler> logger)
+        ILogger<AddConversationParticipantsCommandHandler> logger, IEnumerable<IConversationActivityListener>? listeners = null)
     {
         _currentUser = currentUser;
         _identity = identity;
@@ -47,6 +48,7 @@ public sealed class AddConversationParticipantsCommandHandler
         _responses = responses;
         _realtime = realtime;
         _logger = logger;
+        _listeners = listeners;
     }
 
     public async Task<Result<IReadOnlyList<ConversationParticipantResponse>>> Handle(
@@ -117,6 +119,8 @@ public sealed class AddConversationParticipantsCommandHandler
         }
         await ConversationRules.PublishSafelyAsync(
             () => _realtime.InboxChangedAsync(tenantId, toAdd, context.Subject, ct), _logger, "inboxChanged");
+        await ConversationRules.NotifyActivityAsync(_listeners, tenantId, context.Subject, caller.Value,
+            ConversationActivities.MemberAdded, _logger, ct);
 
         return Result<IReadOnlyList<ConversationParticipantResponse>>.Success(responses);
     }

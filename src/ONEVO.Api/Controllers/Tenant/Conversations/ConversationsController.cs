@@ -10,6 +10,7 @@ using ONEVO.Application.Features.Conversations.Queries.GetConversationAttachment
 using ONEVO.Application.Features.Conversations.Commands.MarkConversationRead;
 using ONEVO.Application.Features.Conversations.Commands.OpenConversation;
 using ONEVO.Application.Features.Conversations.Commands.PostConversationMessage;
+using ONEVO.Application.Features.Conversations.Commands.ReactToConversationMessage;
 using ONEVO.Application.Features.Conversations.Queries.ListConversationMessages;
 using ONEVO.Application.Features.Conversations.Queries.SearchConversationPeople;
 
@@ -20,6 +21,7 @@ public sealed record PostConversationMessageRequest(
     string BodyHtml, IReadOnlyList<Guid>? MentionEmployeeIds, IReadOnlyList<Guid>? AttachmentFileIds = null, string? Tag = null,
     Guid? ReplyToMessageId = null);
 public sealed record EditConversationMessageRequest(string BodyHtml, IReadOnlyList<Guid>? MentionEmployeeIds);
+public sealed record ReactToConversationMessageRequest(string Emoji);
 public sealed record AddConversationParticipantsRequest(IReadOnlyList<Guid> EmployeeIds);
 
 /// <summary>The group chat of an inbox item. Sender and receiver are base members; any member can add
@@ -63,6 +65,16 @@ public class ConversationsController : ControllerBase
         => ToNoContent(await _mediator.Send(new DeleteConversationMessageCommand(id, messageId, forEveryone), ct));
 
     /// <summary>Downloads a chat attachment through the conversation access check (never a public URL).</summary>
+    /// <summary>Sets the caller's one reaction on the message (replacing an earlier one).</summary>
+    [HttpPut("{id:guid}/messages/{messageId:guid}/reaction")]
+    public async Task<IActionResult> React(Guid id, Guid messageId, [FromBody] ReactToConversationMessageRequest body, CancellationToken ct)
+        => ToResult(await _mediator.Send(new ReactToConversationMessageCommand(id, messageId, body.Emoji), ct));
+
+    /// <summary>Removes the caller's reaction on the message.</summary>
+    [HttpDelete("{id:guid}/messages/{messageId:guid}/reaction")]
+    public async Task<IActionResult> Unreact(Guid id, Guid messageId, CancellationToken ct)
+        => ToResult(await _mediator.Send(new ReactToConversationMessageCommand(id, messageId, null), ct));
+
     [HttpGet("{id:guid}/attachments/{attachmentId:guid}")]
     public async Task<IActionResult> Attachment(Guid id, Guid attachmentId, CancellationToken ct)
     {

@@ -47,6 +47,7 @@ public sealed class ConversationResponseBuilder
         var ids = messages.Select(m => m.Id).ToList();
         var mentions = await _conversations.ListMentionsAsync(tenantId, ids, ct);
         var attachments = await _conversations.ListAttachmentsAsync(tenantId, ids, ct);
+        var reactions = await _conversations.ListReactionsAsync(tenantId, ids, ct);
         var quoted = await QuotedAsync(tenantId, messages, ct);
         var authorIds = messages.Concat(quoted.Values)
             .Where(m => m.AuthorEmployeeId.HasValue).Select(m => m.AuthorEmployeeId!.Value).Distinct().ToList();
@@ -55,7 +56,7 @@ public sealed class ConversationResponseBuilder
             : await _identity.ResolveIdentitiesByEmployeeIdAsync(tenantId, authorIds, ct);
         return messages.Select(m => Message(m, mentions.GetValueOrDefault(m.Id) ?? [],
             m.AuthorEmployeeId is { } author ? authors.GetValueOrDefault(author) : null,
-            attachments.GetValueOrDefault(m.Id),
+            attachments.GetValueOrDefault(m.Id), reactions.GetValueOrDefault(m.Id),
             m.ReplyToMessageId is { } target && quoted.TryGetValue(target, out var q) ? ReplyPreview(q, authors) : null)).ToList();
     }
 
@@ -71,10 +72,11 @@ public sealed class ConversationResponseBuilder
         return ReplyPreview(q, authors);
     }
 
-    /// <summary>A deleted message is returned as a placeholder: no body, mentions or attachments.</summary>
+    /// <summary>A deleted message is returned as a placeholder: no body, mentions, attachments or reactions.</summary>
     public static ConversationMessageResponse Message(
         ConversationMessage message, IReadOnlyList<Guid> mentionEmployeeIds, EmployeeIdentityDto? author,
-        IReadOnlyList<ConversationMessageAttachment>? attachments = null, ConversationReplyPreviewResponse? replyTo = null)
+        IReadOnlyList<ConversationMessageAttachment>? attachments = null, IReadOnlyList<ConversationMessageReaction>? reactions = null,
+        ConversationReplyPreviewResponse? replyTo = null)
     {
         var deleted = message.IsRetracted;
         return new(message.Id, message.ConversationId, message.AuthorEmployeeId,
@@ -85,6 +87,7 @@ public sealed class ConversationResponseBuilder
             deleted || attachments is null
                 ? []
                 : attachments.Select(a => new ConversationAttachmentResponse(a.Id, a.FileName, a.ContentType, a.SizeBytes)).ToList(),
+            deleted || reactions is null ? [] : Reactions(reactions),
             deleted ? null : replyTo);
     }
 
@@ -113,4 +116,14 @@ public sealed class ConversationResponseBuilder
         var excerpt = deleted || quoted.Kind == ConversationMessageKinds.Evidence ? string.Empty : ConversationRules.Excerpt(quoted.BodyHtml);
         return new ConversationReplyPreviewResponse(quoted.Id, quoted.AuthorEmployeeId, name, quoted.Kind, excerpt, deleted);
     }
+
+    /// <summary>Grouped by emoji, in the order each emoji was first used (a replaced reaction counts from when it changed).</summary>
+    public static IReadOnlyList<ConversationReactionResponse> Reactions(IReadOnlyList<ConversationMessageReaction> reactions)
+        => reactions.OrderBy(ReactedAt)
+            .GroupBy(r => r.Emoji)
+            .Select(g => new ConversationReactionResponse(g.Key, g.Select(r => r.EmployeeId).ToList()))
+            .ToList();
+
+    /// <summary>When the person reacted with their current emoji.</summary>
+    public static DateTimeOffset ReactedAt(ConversationMessageReaction reaction) => reaction.UpdatedAt ?? reaction.CreatedAt;
 }

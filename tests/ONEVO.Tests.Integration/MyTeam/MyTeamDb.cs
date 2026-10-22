@@ -249,7 +249,8 @@ public sealed class MyTeamDb
         return (project.Id, root.Id);
     }
 
-    public Guid AddModule(ApplicationDbContext db, Guid projectId, Guid parentObjectiveId, Guid ownerEmployeeId, bool achieved = false)
+    public Guid AddModule(ApplicationDbContext db, Guid projectId, Guid parentObjectiveId, Guid ownerEmployeeId, bool achieved = false,
+        decimal allocatedHours = 0)
     {
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
         var module = new Objective
@@ -257,6 +258,7 @@ public sealed class MyTeamDb
             Id = Guid.NewGuid(), TenantId = TenantId, ProjectId = projectId, ParentObjectiveId = parentObjectiveId,
             Title = $"Module {Guid.NewGuid():N}"[..14], OwnerId = ownerEmployeeId, ReportingManagerId = ownerEmployeeId,
             IsActive = true, IsAchieved = achieved, StartDate = today.AddMonths(-1), EndDate = today.AddMonths(2),
+            AllocatedHours = allocatedHours,
         };
         db.Objectives.Add(module);
         return module.Id;
@@ -283,14 +285,14 @@ public sealed class MyTeamDb
     }
 
     public WorkTask AddTask(ApplicationDbContext db, Guid projectId, Guid objectiveId, Guid statusId, int progress, DateOnly? due,
-        Guid? parentTaskId = null, Guid? assigneeEmployeeId = null)
+        Guid? parentTaskId = null, Guid? assigneeEmployeeId = null, decimal? estimatedHours = null)
     {
         var task = new WorkTask
         {
             Id = Guid.NewGuid(), TenantId = TenantId, ProjectId = projectId, ObjectiveId = objectiveId, ParentTaskId = parentTaskId,
             ShortId = $"T-{Guid.NewGuid():N}"[..8], Title = $"Task {Guid.NewGuid():N}"[..12],
             CategoryId = _taskCategoryByProject[projectId], StatusId = statusId, Priority = WorkTaskPriorities.Medium,
-            DueDate = due, ProgressPercent = progress,
+            DueDate = due, ProgressPercent = progress, EstimatedHours = estimatedHours,
         };
         db.WorkTasks.Add(task);
         if (assigneeEmployeeId is Guid assignee)

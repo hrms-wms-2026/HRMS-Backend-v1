@@ -414,13 +414,22 @@ public class NotificationTemplateSeeder : IHostedService
                 AddPublishedFirstVersion(db, existing, now);
                 versionedCount++;
             }
+
+            // The versioning migration could only name backfilled templates by their code; give them the
+            // catalog's readable name. Only a name still equal to the code is replaced - never template copy.
+            if (existing is not null && existing.Name == existing.Code
+                && NotificationEventCatalog.TryGet(existing.Code, out var known))
+            {
+                existing.Name = known.DisplayName;
+                versionedCount++;
+            }
         }
 
         if (addedCount + versionedCount > 0)
         {
             await db.SaveChangesAsync(ct);
             _logger.LogInformation(
-                "Seeded {Count} new notification templates; created first versions for {Versioned} existing ones.",
+                "Seeded {Count} new notification templates; versioned or renamed {Versioned} existing ones.",
                 addedCount, versionedCount);
         }
         else
