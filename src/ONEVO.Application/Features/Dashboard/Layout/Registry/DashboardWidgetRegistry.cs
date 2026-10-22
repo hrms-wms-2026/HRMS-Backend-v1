@@ -29,7 +29,7 @@ public static class DashboardWidgetRegistry
         new("wellbeing", DashboardKeys.MyWork, "Wellbeing", "Wellbeing insights for you.", 3, 3, 6, 4, true),
         new("team-status", DashboardKeys.MyTeam, "Team status", "Who in your team is working, away or off.", 6, 4, 12, 8, true),
         new("team-quick-actions", DashboardKeys.MyTeam, "Team quick actions", "Shortcuts for managing your team.", 3, 3, 6, 4, false),
-        new("team-progress", DashboardKeys.MyTeam, "Team progress", "Estimated hours progress across your team.", 4, 4, 12, 8, true),
+        new("team-progress", DashboardKeys.MyTeam, "Team progress", "Estimated hours progress across your team.", 2, 2, 12, 8, true),
         new("team-attendance", DashboardKeys.MyTeam, "Team attendance", "Attendance across your team by week or month.", 3, 3, 12, 8, true),
     ];
 

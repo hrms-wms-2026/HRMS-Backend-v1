@@ -9,6 +9,8 @@ using ONEVO.Application.Features.WorkManagement.Hierarchy;
 using ONEVO.Application.Features.WorkManagement.Leadership.Queries.GetLedEmployeeHours;
 using ONEVO.Application.Features.WorkManagement.Leadership.Queries.GetLedPeriodProgress;
 using ONEVO.Application.Features.WorkManagement.Leadership.Queries.GetLedProgressTasks;
+using ONEVO.Application.Features.WorkManagement.Leadership.Queries.GetLedWeeklyCompletion;
+using ONEVO.Application.Features.WorkManagement.Leadership.Queries.GetLedWorkProgress;
 using ONEVO.Application.Features.WorkManagement.Leadership.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Leadership.Services;
 using ONEVO.Application.Features.WorkManagement.Objectives.Services;
@@ -26,7 +28,7 @@ using CommonEfEmployeeRepository = ONEVO.Infrastructure.Persistence.Repositories
 namespace ONEVO.Tests.Integration.MyTeam;
 
 /// <summary>Team Progress detail endpoints (led-progress/employees, led-progress/tasks,
-/// led-progress/period) against real PostgreSQL. Requires Docker (Testcontainers PostgreSQL).</summary>
+/// led-progress/period, led-progress/weekly-completion) against real PostgreSQL. Requires Docker (Testcontainers PostgreSQL).</summary>
 public sealed class LedProgressDetailIntegrationTests
 {
     // Wednesday: ISO week = Mon 2026-10-19 .. Sun 2026-10-25; month = 2026-10-01 .. 2026-10-31.
@@ -72,6 +74,10 @@ public sealed class LedProgressDetailIntegrationTests
 
     private static GetLedPeriodProgressQueryHandler PeriodHandler(ApplicationDbContext db, Guid tenantId, Guid userId) => new(
         new StubUser(tenantId, userId), new FixedClock(), new EfEmployeeRepository(db), WorkLeadership(db), new EfLedProgressReadRepository(db));
+
+    private static GetLedWeeklyCompletionQueryHandler WeeklyHandler(ApplicationDbContext db, Guid tenantId, Guid userId) => new(
+        new StubUser(tenantId, userId), new FixedClock(), new EfEmployeeRepository(db), WorkLeadership(db),
+        new EfProjectRepository(db), new EfLedProgressReadRepository(db));
 
     private sealed record Seeded(
         MyTeamDb Db, Guid LeadUserId, Guid OutsiderUserId, Guid ProjectId, Guid OtherProjectId, Guid ModuleId, Guid SubId,
@@ -528,5 +534,163 @@ public sealed class LedProgressDetailIntegrationTests
 
         after.Should().Be(before);
         afterTasks.Should().Be(beforeTasks);
+    }
+
+    private static async Task<LedWeeklyCompletionResponse> Weekly(Seeded s, GetLedWeeklyCompletionQuery query, Guid? userId = null)
+    {
+        await using var db = s.Db.NewContext();
+        var result = await WeeklyHandler(db, s.Db.TenantId, userId ?? s.LeadUserId).Handle(query, default);
+        result.IsSuccess.Should().BeTrue();
+        return result.Value!;
+    }
+
+    private static DateTimeOffset Utc(int year, int month, int day, int hour = 12, int minute = 0, int second = 0)
+        => new(year, month, day, hour, minute, second, TimeSpan.Zero);
+
+    /// <summary>
+    /// On top of the base seed (done but undated: t1 5h, t2 2h, t9 1h in Sub) adds tasks with a
+    /// CompletedAt. The 10-week span is Mon 17 Aug .. Sun 25 Oct 2026 (week 9 = current).
+    ///   cNow     Done 3h         21 Oct 10:00        week 9
+    ///   cMonday  Doing 100% 2h   19 Oct 00:00:00     week 9 (first instant of the week)
+    ///   cSunday  Done 4h         18 Oct 23:59:59     week 8 (last instant of the previous week)
+    ///   cFirst   Done no estim.  17 Aug 00:00        week 0 (0 h, still counted)
+    ///   cBefore  Done 9h         16 Aug 23:00        before the span - not counted anywhere
+    ///   reopened Doing 0% 6h     20 Oct              completed then reopened: not done -> excluded
+    ///   cSub     Done 1.5h (Sub) 30 Sep              week 6
+    ///   subtask  Done 50h        21 Oct, child of cNow - subtasks never count
+    ///   foreign  Done 99h        21 Oct, in the outsider's project - out of the lead's scope
+    /// </summary>
+    private static async Task<Seeded> SeedWithCompletionsAsync()
+    {
+        var s = await SeedAsync();
+        await using var db = s.Db.NewContext();
+        var doing = await db.TaskStatuses.Where(st => st.ProjectId == s.ProjectId && !st.MarksTaskComplete).Select(st => st.Id).FirstAsync();
+        var done = await db.TaskStatuses.Where(st => st.ProjectId == s.ProjectId && st.MarksTaskComplete).Select(st => st.Id).FirstAsync();
+        var tasks = new Dictionary<string, Guid>(s.Tasks);
+        WorkTask Add(string key, Guid objective, Guid status, int progress, decimal? hours, DateTimeOffset completedAt,
+            Guid? parent = null, Guid? project = null)
+        {
+            var task = s.Db.AddTask(db, project ?? s.ProjectId, objective, status, progress, null, parent, s.AliceId, hours);
+            task.ShortId = $"TP-{key}";
+            task.Title = $"{key} title";
+            task.CompletedAt = completedAt;
+            tasks[key] = task.Id;
+            return task;
+        }
+
+        var now = Add("cNow", s.ModuleId, done, 0, 3, Utc(2026, 10, 21, 10));
+        Add("cMonday", s.ModuleId, doing, 100, 2, Utc(2026, 10, 19, 0));
+        Add("cSunday", s.ModuleId, done, 0, 4, Utc(2026, 10, 18, 23, 59, 59));
+        Add("cFirst", s.ModuleId, done, 0, null, Utc(2026, 8, 17, 0));
+        Add("cBefore", s.ModuleId, done, 0, 9, Utc(2026, 8, 16, 23));
+        Add("reopened", s.ModuleId, doing, 0, 6, Utc(2026, 10, 20));
+        Add("cSub", s.SubId, done, 0, 1.5m, Utc(2026, 9, 30));
+        Add("subtask-done", s.ModuleId, done, 0, 50, Utc(2026, 10, 21), parent: now.Id);
+
+        var otherRoot = await db.Objectives.Where(o => o.ProjectId == s.OtherProjectId && o.ParentObjectiveId == null).Select(o => o.Id).FirstAsync();
+        var otherDone = s.Db.AddStatus(db, s.OtherProjectId, true);
+        Add("foreign-done", otherRoot, otherDone, 0, 99, Utc(2026, 10, 21), project: s.OtherProjectId);
+
+        await db.SaveChangesAsync();
+        return s with { Tasks = tasks };
+    }
+
+    [Fact]
+    public async Task Weekly_completion_buckets_done_tasks_by_completed_at_utc_week()
+    {
+        var s = await SeedWithCompletionsAsync();
+
+        var r = await Weekly(s, new GetLedWeeklyCompletionQuery());
+
+        r.Weeks.Should().HaveCount(10);
+        (r.Weeks[0].WeekStart, r.Weeks[0].WeekEnd).Should().Be((new DateOnly(2026, 8, 17), new DateOnly(2026, 8, 23)));
+        (r.Weeks[^1].WeekStart, r.Weeks[^1].WeekEnd).Should().Be((new DateOnly(2026, 10, 19), new DateOnly(2026, 10, 25)));
+        r.Weeks.Select(w => (w.CompletedHours, w.CompletedTaskCount)).Should().Equal(
+            (0m, 1),   // 17 Aug: cFirst, no estimate
+            (0m, 0), (0m, 0), (0m, 0), (0m, 0), (0m, 0),
+            (1.5m, 1), // 28 Sep: cSub
+            (0m, 0),
+            (4m, 1),   // 12 Oct: cSunday 23:59:59
+            (5m, 2));  // 19 Oct: cNow + cMonday 00:00 - not reopened, subtask or the foreign task
+
+        (r.UndatedCompletedHours, r.UndatedCompletedTaskCount).Should().Be((8m, 3), "t1, t2, t9 are done with no CompletedAt");
+    }
+
+    [Fact]
+    public async Task Weekly_completion_allocation_matches_led_progress_and_follows_the_filters()
+    {
+        var s = await SeedWithCompletionsAsync();
+
+        LedWorkProgressResponse ledProgress;
+        await using (var db = s.Db.NewContext())
+        {
+            var handler = new GetLedWorkProgressQueryHandler(
+                new StubUser(s.Db.TenantId, s.LeadUserId), new FixedClock(), new EfEmployeeRepository(db), WorkLeadership(db),
+                new EfWorkTaskRepository(db), new EfModuleHourSummaryRepository(db), new EfProjectRepository(db));
+            ledProgress = (await handler.Handle(new GetLedWorkProgressQuery(), default)).Value!;
+        }
+
+        var all = await Weekly(s, new GetLedWeeklyCompletionQuery());
+        all.AllocatedHours.Should().Be(ledProgress.Hours.AllocatedHours).And.Be(100m);
+
+        var sub = await Weekly(s, new GetLedWeeklyCompletionQuery(ObjectiveId: s.SubId));
+        sub.AllocatedHours.Should().Be(40m);
+        sub.Weeks.Sum(w => w.CompletedHours).Should().Be(1.5m);
+        (sub.UndatedCompletedHours, sub.UndatedCompletedTaskCount).Should().Be((1m, 1));
+
+        var project = await Weekly(s, new GetLedWeeklyCompletionQuery(ProjectId: s.ProjectId, Weeks: 2));
+        (project.Weeks.Count, project.AllocatedHours).Should().Be((2, 100m));
+        project.Weeks.Select(w => w.CompletedHours).Should().Equal(4m, 5m);
+
+        var foreign = await Weekly(s, new GetLedWeeklyCompletionQuery(ProjectId: s.OtherProjectId));
+        foreign.Weeks.Should().HaveCount(10).And.OnlyContain(w => w.CompletedHours == 0 && w.CompletedTaskCount == 0);
+        (foreign.AllocatedHours, foreign.UndatedCompletedTaskCount).Should().Be((0m, 0));
+    }
+
+    [Fact]
+    public async Task Weekly_completion_never_crosses_scope_or_tenant()
+    {
+        var s = await SeedWithCompletionsAsync();
+
+        // The outsider leads only their own project: just the foreign 99 h task, this week.
+        var outsider = await Weekly(s, new GetLedWeeklyCompletionQuery(), s.OutsiderUserId);
+        (outsider.Weeks[^1].CompletedHours, outsider.Weeks[^1].CompletedTaskCount).Should().Be((99m, 1));
+        outsider.Weeks.Take(9).Sum(w => w.CompletedTaskCount).Should().Be(0);
+        outsider.UndatedCompletedTaskCount.Should().Be(0);
+
+        // Tenant predicate in the repository itself: same Module ids, another tenant -> nothing.
+        await using var db = s.Db.NewContext();
+        var rows = await new EfLedProgressReadRepository(db).GetCompletionsByDayAsync(
+            Guid.NewGuid(), new[] { s.ModuleId, s.SubId },
+            LedCompletionWeeks.Span(LedCompletionWeeks.Windows(FixedToday, 10)));
+        (rows.Days.Count, rows.UndatedHours, rows.UndatedTaskCount).Should().Be((0, 0m, 0));
+    }
+
+    [Fact]
+    public async Task Weekly_completion_command_count_does_not_grow_with_the_task_population()
+    {
+        var s = await SeedWithCompletionsAsync();
+
+        async Task<int> CountAsync()
+        {
+            var counter = new CountingDbCommandInterceptor();
+            await using var db = s.Db.NewContext(counter);
+            await WeeklyHandler(db, s.Db.TenantId, s.LeadUserId).Handle(new GetLedWeeklyCompletionQuery(), default);
+            return counter.Count;
+        }
+
+        var before = await CountAsync();
+        await using (var db = s.Db.NewContext())
+        {
+            var done = await db.TaskStatuses.Where(st => st.ProjectId == s.ProjectId && st.MarksTaskComplete).Select(st => st.Id).FirstAsync();
+            for (var i = 0; i < 30; i++)
+            {
+                var task = s.Db.AddTask(db, s.ProjectId, s.ModuleId, done, 0, null, assigneeEmployeeId: s.AliceId, estimatedHours: 1);
+                task.CompletedAt = i % 3 == 0 ? null : Utc(2026, 10, 21).AddDays(-i * 2);
+            }
+            await db.SaveChangesAsync();
+        }
+
+        (await CountAsync()).Should().Be(before);
     }
 }

@@ -68,6 +68,16 @@ public sealed record LedPeriodTotalsRow(
     public static readonly LedPeriodTotalsRow Zero = new(0, 0, 0, 0, 0, 0, 0, 0, 0);
 }
 
+/// <summary>Done tasks completed on one UTC calendar day: summed estimates (null = 0) and count.</summary>
+public sealed record LedCompletionDayRow(DateOnly Day, decimal Hours, int TaskCount);
+
+/// <summary>Weekly-completion source rows: done tasks per CompletedAt UTC date inside the requested
+/// span, plus the done tasks with no CompletedAt at all (closed by progress, or seeded).</summary>
+public sealed record LedCompletionRows(IReadOnlyList<LedCompletionDayRow> Days, decimal UndatedHours, int UndatedTaskCount)
+{
+    public static readonly LedCompletionRows Empty = new([], 0, 0);
+}
+
 public sealed record LedPagedRows<T>(IReadOnlyList<T> Rows, int TotalCount);
 
 /// <summary>Team Progress detail reads (My Team spec §8.3). Top-level, non-deleted tasks of the given
@@ -86,4 +96,9 @@ public interface ILedProgressReadRepository
     /// <summary>Team totals of the tasks due inside <paramref name="dueWindow"/>, in one grouped query.</summary>
     Task<LedPeriodTotalsRow> GetPeriodTotalsAsync(
         Guid tenantId, IReadOnlyCollection<Guid> objectiveIds, LedDueWindow dueWindow, CancellationToken ct = default);
+
+    /// <summary>Done tasks (same rule as the buckets above) grouped by their CompletedAt UTC date
+    /// inside <paramref name="span"/> (inclusive), plus the undated done totals - one grouped query.</summary>
+    Task<LedCompletionRows> GetCompletionsByDayAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> objectiveIds, LedDueWindow span, CancellationToken ct = default);
 }

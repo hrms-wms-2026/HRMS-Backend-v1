@@ -54,6 +54,25 @@ public sealed record LedPeriodProgressResponse(
     int NotStartedTaskCount,
     int UnestimatedTaskCount);
 
+/// <summary>One ISO week (Monday..Sunday, serialized yyyy-MM-dd) of the weekly-completion chart:
+/// estimated hours (null estimate = 0) and count of the in-scope top-level tasks that are done now
+/// and whose CompletedAt UTC date falls in the week.</summary>
+public sealed record LedWeeklyCompletionWeek(
+    DateOnly WeekStart,
+    DateOnly WeekEnd,
+    decimal CompletedHours,
+    int CompletedTaskCount);
+
+/// <summary>GET led-progress/weekly-completion. Weeks are oldest first, the last is the current
+/// (partial) week, all present even at 0. AllocatedHours is the (narrowed) led scope's allocation -
+/// the same number as led-progress's hours.allocatedHours when unfiltered. Undated* are done tasks
+/// with no CompletedAt: reported, never guessed into a week.</summary>
+public sealed record LedWeeklyCompletionResponse(
+    IReadOnlyList<LedWeeklyCompletionWeek> Weeks,
+    decimal AllocatedHours,
+    decimal UndatedCompletedHours,
+    int UndatedCompletedTaskCount);
+
 /// <param name="Status">completed | inProgress | notStarted (same classification as wm_module_hour_summaries).</param>
 /// <param name="StatusName">The task's configured status name.</param>
 public sealed record LedProgressTaskItem(

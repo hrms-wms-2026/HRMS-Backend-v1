@@ -5,6 +5,7 @@ using ONEVO.Api.Filters;
 using ONEVO.Application.Features.WorkManagement.Leadership.Queries.GetLedEmployeeHours;
 using ONEVO.Application.Features.WorkManagement.Leadership.Queries.GetLedPeriodProgress;
 using ONEVO.Application.Features.WorkManagement.Leadership.Queries.GetLedProgressTasks;
+using ONEVO.Application.Features.WorkManagement.Leadership.Queries.GetLedWeeklyCompletion;
 using ONEVO.Application.Features.WorkManagement.Leadership.Queries.GetLedWorkProgress;
 
 namespace ONEVO.Api.Controllers.Tenant.WorkManagement;
@@ -79,6 +80,22 @@ public sealed class WorkLeadershipController(IMediator mediator) : ControllerBas
         CancellationToken ct = default)
     {
         var result = await mediator.Send(new GetLedPeriodProgressQuery(period, projectId, objectiveId), ct);
+        return result.IsSuccess
+            ? Ok(result.Value)
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Team Progress weekly-completion chart: estimated hours of the led-scope tasks
+    /// completed in each of the last <paramref name="weeks"/> ISO weeks (UTC, oldest first, current
+    /// week last), the done tasks with no completion date, and the scope's allocation. weeks=1..26.</summary>
+    [HttpGet("led-progress/weekly-completion")]
+    public async Task<IActionResult> LedProgressWeeklyCompletion(
+        [FromQuery] int weeks = 10,
+        [FromQuery] Guid? projectId = null,
+        [FromQuery] Guid? objectiveId = null,
+        CancellationToken ct = default)
+    {
+        var result = await mediator.Send(new GetLedWeeklyCompletionQuery(weeks, projectId, objectiveId), ct);
         return result.IsSuccess
             ? Ok(result.Value)
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);

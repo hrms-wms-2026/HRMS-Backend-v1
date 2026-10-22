@@ -36,6 +36,30 @@ public sealed class DashboardGridTests
     }
 
     [Fact]
+    public void Team_progress_min_is_2x2_and_layouts_stored_under_older_minimums_stay_valid()
+    {
+        var def = DashboardWidgetRegistry.Get("team-progress")!;
+        Assert.Equal((2, 2, 12, 8), (def.MinW, def.MinH, def.MaxW, def.MaxH));
+
+        foreach (var breakpoint in new[] { Breakpoints.Desktop, Breakpoints.Tablet })
+        {
+            Assert.Empty(DashboardGrid.Validate([("team-progress", new GridRect(0, 0, 2, 2))], breakpoint));
+            Assert.Empty(DashboardGrid.Validate([("team-progress", new GridRect(0, 0, 3, 3))], breakpoint));
+            Assert.Empty(DashboardGrid.Validate([("team-progress", new GridRect(0, 0, 4, 4))], breakpoint));
+            Assert.Contains("SIZE_NOT_ALLOWED", DashboardGrid.Validate([("team-progress", new GridRect(0, 0, 1, 2))], breakpoint));
+            Assert.Contains("SIZE_NOT_ALLOWED", DashboardGrid.Validate([("team-progress", new GridRect(0, 0, 2, 1))], breakpoint));
+        }
+
+        // Every default layout (stored for users who never customised) still validates.
+        foreach (var breakpoint in new[] { Breakpoints.Desktop, Breakpoints.Tablet })
+        {
+            var defaults = DashboardWidgetRegistry.DefaultLayout(DashboardKeys.MyTeam, breakpoint)
+                .Select(i => (i.Key, i.Rect)).ToList();
+            Assert.Empty(DashboardGrid.Validate(defaults, breakpoint));
+        }
+    }
+
+    [Fact]
     public void Unknown_and_duplicate_widgets_rejected()
     {
         var errors = DashboardGrid.Validate(

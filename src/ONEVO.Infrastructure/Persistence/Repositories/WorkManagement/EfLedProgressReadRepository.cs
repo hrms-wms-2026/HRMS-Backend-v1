@@ -284,6 +284,39 @@ public sealed class EfLedProgressReadRepository(ApplicationDbContext db) : ILedP
                 totals.CompletedCount, totals.InProgressCount, totals.NotStartedCount, totals.UnestimatedCount);
     }
 
+    public async Task<LedCompletionRows> GetCompletionsByDayAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> objectiveIds, LedDueWindow span, CancellationToken ct = default)
+    {
+        if (objectiveIds.Count == 0)
+            return LedCompletionRows.Empty;
+
+        var ids = objectiveIds.ToList();
+        // [first Monday 00:00 UTC, day after the last Sunday 00:00 UTC). Offset zero: Npgsql only
+        // accepts UTC DateTimeOffset parameters for timestamptz.
+        var spanStart = new DateTimeOffset(span.From.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero);
+        var toExclusive = new DateTimeOffset(span.To.AddDays(1).ToDateTime(TimeOnly.MinValue), TimeSpan.Zero);
+
+        // One grouped query: done tasks in the span keyed by CompletedAt's UTC date, plus the
+        // undated done tasks under a null key.
+        var groups = await (
+            from t in db.WorkTasks.AsNoTracking()
+            where t.TenantId == tenantId && t.ParentTaskId == null && ids.Contains(t.ObjectiveId)
+            join s in db.TaskStatuses.AsNoTracking() on t.StatusId equals s.Id
+            where s.MarksTaskComplete || t.ProgressPercent >= 100
+            where t.CompletedAt == null || (t.CompletedAt >= spanStart && t.CompletedAt < toExclusive)
+            group t by t.CompletedAt == null ? (DateOnly?)null : DateOnly.FromDateTime(t.CompletedAt.Value.UtcDateTime) into g
+            select new { Day = g.Key, Hours = g.Sum(x => x.EstimatedHours ?? 0m), Count = g.Count() }
+        ).ToListAsync(ct);
+
+        var undated = groups.FirstOrDefault(g => g.Day is null);
+        var days = groups
+            .Where(g => g.Day is not null)
+            .Select(g => new LedCompletionDayRow(g.Day!.Value, g.Hours, g.Count))
+            .OrderBy(d => d.Day)
+            .ToList();
+        return new LedCompletionRows(days, undated?.Hours ?? 0m, undated?.Count ?? 0);
+    }
+
     private static IQueryable<TaskListRow> SortTasks(IQueryable<TaskListRow> query, LedProgressTaskSort sort, bool descending)
     {
         IOrderedQueryable<TaskListRow> ordered = sort switch

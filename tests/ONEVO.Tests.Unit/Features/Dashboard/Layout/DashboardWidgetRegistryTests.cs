@@ -118,7 +118,7 @@ public sealed class DashboardWidgetRegistryTests
     {
         var tablet = DashboardWidgetRegistry.DefaultLayout(DashboardKeys.MyTeam, Breakpoints.Tablet);
 
-        Assert.Equal(4, tablet.Single(i => i.Key == "team-progress").Rect.W);
+        Assert.Equal(3, tablet.Single(i => i.Key == "team-progress").Rect.W);
         Assert.Equal(6, tablet.Single(i => i.Key == "team-status").Rect.W);
     }
     private static readonly string[] AllWork =
@@ -215,7 +215,7 @@ public sealed class DashboardWidgetRegistryTests
         var progress = DashboardWidgetRegistry.Get("team-progress")!;
         var tasks = DashboardWidgetRegistry.Get("my-tasks")!;
 
-        Assert.Equal(4, DashboardWidgetRegistry.TabletWidth(progress, 4));
+        Assert.Equal(3, DashboardWidgetRegistry.TabletWidth(progress, 4));
         Assert.Equal(6, DashboardWidgetRegistry.TabletWidth(progress, 8));
         Assert.Equal(3, DashboardWidgetRegistry.TabletWidth(tasks, 3));
         Assert.Equal(6, DashboardWidgetRegistry.TabletWidth(tasks, 12));
