@@ -112,6 +112,16 @@ public sealed class DapiLeaveSampleSeeder : IHostedService
         await EnsurePolicyAsync(db, SickTypeId, "Sick Leave · Dapi standard", 10m * workHours, workHours, now, ct);
         await EnsurePolicyAsync(db, CasualTypeId, "Casual Leave · Dapi standard", 5m * workHours, workHours, now, ct);
 
+        var policyVersions = await (
+            from policy in db.LeavePolicies
+            join version in db.LeavePolicyVersions on policy.Id equals version.LeavePolicyId
+            where policy.TenantId == DapiTenantId && version.EffectiveFrom <= new DateOnly(SeedYear, 12, 31)
+            orderby version.EffectiveFrom descending
+            select new { policy.LeaveTypeId, PolicyId = policy.Id, VersionId = version.Id })
+            .ToListAsync(ct);
+        var policyByType = policyVersions.GroupBy(x => x.LeaveTypeId)
+            .ToDictionary(g => g.Key, g => g.First());
+
         var typeHours = new (Guid TypeId, decimal Days)[]
         {
             (AnnualTypeId, 14m),
@@ -140,6 +150,7 @@ public sealed class DapiLeaveSampleSeeder : IHostedService
                 var hours = decimal.Round(days * workHours, 2, MidpointRounding.AwayFromZero);
                 var entitlementId = WorkManagementDapiDemoSeeder.DeterministicGuid(
                     $"dapi-leave:entitlement:{employeeId:N}:{typeId:N}:{SeedYear}");
+                policyByType.TryGetValue(typeId, out var policy);
                 db.LeaveEntitlements.Add(new LeaveEntitlement
                 {
                     Id = entitlementId,
@@ -152,6 +163,8 @@ public sealed class DapiLeaveSampleSeeder : IHostedService
                     PendingHours = 0m,
                     CarriedForwardHours = 0m,
                     Source = LeaveEntitlementSources.Auto,
+                    LeavePolicyId = policy?.PolicyId,
+                    LeavePolicyVersionId = policy?.VersionId,
                     CreatedAt = now
                 });
                 db.LeaveBalanceAudits.Add(new LeaveBalanceAudit
@@ -165,6 +178,11 @@ public sealed class DapiLeaveSampleSeeder : IHostedService
                     HoursChanged = hours,
                     BalanceAfter = hours,
                     Reason = "Generated from Dapi standard leave policies",
+                    LeavePolicyId = policy?.PolicyId,
+                    LeavePolicyVersionId = policy?.VersionId,
+                    Year = SeedYear,
+                    CoversFromMonth = 1,
+                    CoversToMonth = 12,
                     CreatedAt = now,
                     CreatedBy = DapiOwnerUserId
                 });

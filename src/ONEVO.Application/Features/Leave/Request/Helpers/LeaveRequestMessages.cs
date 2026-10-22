@@ -13,7 +13,7 @@ public static class LeaveRequestMessages
     public const string EndAtNotAfterStartAt = "Leave end must be after leave start.";
     public const string NoApprover = "No approver found in your reporting line. Please contact HR";
     public const string GenderRestricted = "This leave type is not available for the employee's gender.";
-    public const string NoEntitlement = "No active entitlement and policy were found for this employee, leave type, and year.";
+    public const string NoEntitlement = "No leave policy covers this leave type for you.";
     public const string FileNotAvailable = "A supporting document is not available for this request.";
     public const string RangeExceeded = "Leave request date range exceeds the configured maximum.";
 

@@ -103,6 +103,23 @@ public class ConversationMessageRevisionConfiguration : IEntityTypeConfiguration
     }
 }
 
+public class ConversationMessageHideConfiguration : IEntityTypeConfiguration<ConversationMessageHide>
+{
+    public void Configure(EntityTypeBuilder<ConversationMessageHide> builder)
+    {
+        builder.ToTable("conversation_message_hides");
+        builder.HasKey(h => h.Id);
+        builder.Property(h => h.MessageId).IsRequired();
+        builder.Property(h => h.EmployeeId).IsRequired();
+        builder.HasIndex(h => new { h.MessageId, h.EmployeeId })
+            .IsUnique()
+            .HasDatabaseName("ux_conversation_message_hides_message_id_employee_id");
+        builder.HasIndex(h => new { h.TenantId, h.EmployeeId })
+            .HasDatabaseName("ix_conversation_message_hides_tenant_id_employee_id");
+        builder.HasOne<ConversationMessage>().WithMany().HasForeignKey(h => h.MessageId).OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
 public class ConversationMessageAttachmentConfiguration : IEntityTypeConfiguration<ConversationMessageAttachment>
 {
     public void Configure(EntityTypeBuilder<ConversationMessageAttachment> builder)

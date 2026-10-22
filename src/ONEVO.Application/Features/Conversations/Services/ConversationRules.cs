@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
+using ONEVO.Domain.Features.Conversations.Entities;
 
 namespace ONEVO.Application.Features.Conversations.Services;
 
@@ -41,6 +42,17 @@ internal static partial class ConversationRules
     }
 
     public static int ClampPageSize(int take) => Math.Clamp(take <= 0 ? DefaultPageSize : take, 1, MaxPageSize);
+
+    /// <summary>True once any current participant other than the author has advanced their read marker past the message.</summary>
+    public static bool HasBeenReadByAnother(ConversationContext context, ConversationMessage message)
+    {
+        if (message.AuthorEmployeeId is not { } author)
+            return true;
+        return context.ParticipantIds
+            .Where(id => id != author)
+            .Select(context.RowOf)
+            .Any(row => row?.LastReadAt >= message.CreatedAt);
+    }
 
     /// <summary>Realtime is best-effort: a publish failure is logged and never fails the request.</summary>
     public static async Task PublishSafelyAsync(Func<Task> publish, ILogger logger, string what)

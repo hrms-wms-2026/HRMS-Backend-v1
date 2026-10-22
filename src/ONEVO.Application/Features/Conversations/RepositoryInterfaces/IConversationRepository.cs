@@ -23,6 +23,10 @@ public interface IConversationRepository
     Task<IReadOnlyList<ConversationMessage>> ListMessagesAsync(
         Guid tenantId, Guid conversationId, DateTimeOffset? before, int take, CancellationToken ct = default);
 
+    /// <summary>Newest first, excluding messages hidden only for <paramref name="employeeId"/>.</summary>
+    Task<IReadOnlyList<ConversationMessage>> ListVisibleMessagesAsync(
+        Guid tenantId, Guid conversationId, Guid employeeId, DateTimeOffset? before, int take, CancellationToken ct = default);
+
     Task<IReadOnlyDictionary<Guid, IReadOnlyList<Guid>>> ListMentionsAsync(
         Guid tenantId, IReadOnlyCollection<Guid> messageIds, CancellationToken ct = default);
 
@@ -57,6 +61,9 @@ public interface IConversationRepository
 
     /// <summary>Adds (does not save) one audit row of a message.</summary>
     Task AddRevisionAsync(ConversationMessageRevision revision, CancellationToken ct = default);
+    /// <summary>Hides one message only for one participant. Repeating the request is a no-op.</summary>
+    Task HideMessageForEmployeeAsync(ConversationMessageHide hide, CancellationToken ct = default);
+    Task<bool> IsMessageHiddenForEmployeeAsync(Guid tenantId, Guid messageId, Guid employeeId, CancellationToken ct = default);
     /// <summary>Every revision of the given messages, oldest first (investigation export only).</summary>
     Task<IReadOnlyList<ConversationMessageRevision>> ListRevisionsAsync(Guid tenantId, IReadOnlyCollection<Guid> messageIds, CancellationToken ct = default);
 
@@ -75,9 +82,10 @@ public interface IConversationRepository
     /// read marker and the conversation's latest message (null when it has none).</summary>
     Task<IReadOnlyList<MemberConversation>> ListMemberConversationsAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default);
 
-    /// <summary>Per conversation: messages not written by the employee and newer than their LastReadAt.</summary>
+    /// <summary>Per conversation: messages not written by the employee and newer than their LastReadAt. <paramref name="textOnly"/>
+    /// counts only people's text messages (the chat list adds the open cases itself, so case cards would count twice).</summary>
     Task<IReadOnlyDictionary<Guid, int>> CountUnreadByConversationAsync(
-        Guid tenantId, Guid employeeId, IReadOnlyCollection<Guid> conversationIds, CancellationToken ct = default);
+        Guid tenantId, Guid employeeId, IReadOnlyCollection<Guid> conversationIds, CancellationToken ct = default, bool textOnly = false);
 
     /// <summary>Per conversation: its active members' employee ids (rows only - not the subject's live base people).</summary>
     Task<IReadOnlyDictionary<Guid, IReadOnlyList<Guid>>> ListActiveMemberIdsAsync(

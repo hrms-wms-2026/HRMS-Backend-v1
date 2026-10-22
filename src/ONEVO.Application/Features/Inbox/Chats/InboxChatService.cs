@@ -127,7 +127,8 @@ public sealed partial class InboxChatService : IInboxChatService
             .ToList();
         var ids = shown.Select(m => m.Conversation.Id).ToList();
         var memberIds = await _conversations.ListActiveMemberIdsAsync(tenantId, ids, ct);
-        var unread = await _conversations.CountUnreadByConversationAsync(tenantId, caller, ids, ct);
+        // Text messages only: the badge adds the open cases (pending) on top, so a case card must not count twice.
+        var unread = await _conversations.CountUnreadByConversationAsync(tenantId, caller, ids, ct, textOnly: true);
         var favorites = await _conversations.ListFavoriteConversationIdsAsync(tenantId, caller, ct);
 
         var others = shown.Where(m => m.Conversation.SubjectSource == ConversationSources.Direct)

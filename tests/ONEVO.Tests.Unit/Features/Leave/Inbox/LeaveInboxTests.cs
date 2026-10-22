@@ -113,18 +113,16 @@ public class LeaveInboxTests
     }
 
     [Fact]
-    public async Task An_edited_range_that_breaks_a_leave_rule_is_refused_with_its_message_and_nothing_changes()
+    public async Task An_edited_range_may_exceed_balance_and_is_not_silently_split()
     {
         var f = new EditFixture(remaining: 8m); // only this request's own 8 h are available
 
         var result = await f.Editor().ApplyAsync(f.State, At(18, 9), At(19, 18), "x", default, allowLonger: true);
 
-        result.StatusCode.Should().Be(422);
-        result.Error.Should().Contain("balance", "the evaluator's own insufficient-balance message is returned");
-        (f.State.Request.StartAt, f.State.Request.EndAt, f.State.Request.PaidHours).Should().Be((At(18, 9), At(18, 18), 8m));
-        f.Harness.Entitlement.PendingHours.Should().Be(8m);
-        f.AddedAllocations.Should().BeEmpty();
-        f.Audits.Should().BeEmpty();
+        result.IsSuccess.Should().BeTrue(result.Error);
+        f.State.Request.PaidHours.Should().BeGreaterThan(8m);
+        f.State.Request.UnpaidHours.Should().Be(0m);
+        f.Harness.Entitlement.PendingHours.Should().Be(f.State.Request.PaidHours);
     }
 
     [Fact]
@@ -238,6 +236,43 @@ public class LeaveInboxTests
     }
 
     [Fact]
+    public async Task Pending_over_balance_request_is_a_warning_with_a_fact_and_no_zero_unpaid_row()
+    {
+        var f = new ProviderFixture();
+        var state = f.Add(LeaveApprovalModes.AnyOne, (f.First, LeaveRequestApproverStatuses.Pending));
+        state.Request.ExceedsBalanceByHours = 24m;
+
+        var item = (await f.Provider().ListAsync(f.TenantId, new InboxQuery(), f.First.Id, default)).Single();
+        var detail = await f.Provider().GetDetailAsync(
+            f.TenantId, LeaveInboxKinds.Request, state.Request.Id, f.First.Id, default);
+
+        item.Severity.Should().Be("warning");
+        detail!.Facts.Should().ContainSingle().Which.Should().Be(
+            new InboxFact("Over balance", "24 h — balance goes negative if approved"));
+        detail.ChangeSet.Should().Contain(x => x.Field == "balance");
+        detail.ChangeSet.Should().NotContain(x => x.Field == "unpaid_hours");
+    }
+
+    [Theory]
+    [InlineData(LeaveRequestStatuses.Pending, 0)]
+    [InlineData(LeaveRequestStatuses.Approved, 24)]
+    public async Task Non_over_balance_or_non_pending_request_has_no_warning_fact(
+        string status,
+        decimal excess)
+    {
+        var f = new ProviderFixture();
+        var state = f.Add(LeaveApprovalModes.AnyOne, (f.First, LeaveRequestApproverStatuses.Pending));
+        state.Request.Status = status;
+        state.Request.ExceedsBalanceByHours = excess;
+
+        var detail = await f.Provider().GetDetailAsync(
+            f.TenantId, LeaveInboxKinds.Request, state.Request.Id, f.First.Id, default);
+
+        detail!.Item.Severity.Should().BeNull();
+        detail.Facts.Should().BeNull();
+    }
+
+    [Fact]
     public async Task Sent_includes_requests_submitted_on_someones_behalf()
     {
         var f = new ProviderFixture();
@@ -301,12 +336,9 @@ public class LeaveInboxTests
 
         var listed = await f.Provider().ListAsync(f.TenantId, new InboxQuery(), f.First.Id, default);
         var approve = await f.Provider().ExecuteActionAsync(f.TenantId, "request", state.Request.Id, "approve", null, f.First.Id, default);
-        var bulk = await f.Provider().ExecuteBulkAsync(f.TenantId, "request", "approve", [state.Request.Id],
-            JsonSerializer.SerializeToElement(new { }), f.First.Id, default);
 
         listed.Should().BeEmpty();
         approve.StatusCode.Should().Be(403);
-        bulk!.Should().OnlyContain(r => r.Result.StatusCode == 403);
         f.Sender.Invocations.Should().BeEmpty();
         f.Journal.Entries.Should().BeEmpty();
     }

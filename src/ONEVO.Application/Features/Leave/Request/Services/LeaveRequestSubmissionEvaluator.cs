@@ -28,10 +28,12 @@ public sealed record LeaveRequestEvaluation(
     Employee TargetEmployee,
     LeaveType LeaveType,
     LeaveEntitlement Entitlement,
-    ResolvedLeavePolicy Policy,
+    Guid PolicyVersionId,
+    string ApprovalMode,
     decimal TotalHours,
     decimal PaidHours,
     decimal UnpaidHours,
+    decimal ExceedsBalanceByHours,
     IReadOnlyList<DateOnly> CountedDates,
     IReadOnlyList<decimal> HoursByDate,
     decimal CurrentRemaining,
@@ -174,8 +176,18 @@ public sealed class LeaveRequestSubmissionEvaluator
 
         var entitlement = await _entitlements.GetTrackedByEmployeeTypeYearAsync(
             tenantId, target.Id, leaveTypeId, startDate.Year, ct);
-        if (entitlement is null)
-            return Result<LeaveRequestEvaluation>.Failure(LeaveRequestMessages.NoEntitlement);
+        entitlement ??= new LeaveEntitlement
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenantId,
+            EmployeeId = target.Id,
+            LeaveTypeId = leaveTypeId,
+            Year = startDate.Year,
+            Source = LeaveEntitlementSources.Auto,
+            LeavePolicyId = policy.PolicyId,
+            LeavePolicyVersionId = rules.Id,
+            CreatedAt = _clock.UtcNow
+        };
 
         IReadOnlyCollection<int> workingDays;
         try
@@ -234,20 +246,18 @@ public sealed class LeaveRequestSubmissionEvaluator
 
         decimal paidHours;
         decimal unpaidHours;
+        decimal exceedsBalanceByHours;
         if (!leaveType.IsPaid)
         {
             paidHours = 0m;
             unpaidHours = calculated.TotalHours;
+            exceedsBalanceByHours = 0m;
         }
         else
         {
-            paidHours = Math.Min(calculated.TotalHours, Math.Max(0m, currentRemaining));
-            unpaidHours = calculated.TotalHours - paidHours;
-            if (unpaidHours > 0m && !_options.AllowUnpaidSplitWhenBalanceShort)
-            {
-                return Result<LeaveRequestEvaluation>.Failure(
-                    LeaveRequestMessages.InsufficientBalance(currentRemaining, leaveType.Name));
-            }
+            paidHours = calculated.TotalHours;
+            unpaidHours = 0m;
+            exceedsBalanceByHours = Math.Max(0m, calculated.TotalHours - currentRemaining);
         }
 
         var warnings = new List<LeaveRequestWarningResponse>();
@@ -257,7 +267,7 @@ public sealed class LeaveRequestSubmissionEvaluator
             warnings.Add(new LeaveRequestWarningResponse("notice_period_missed", LeaveRequestMessages.NoticeMissed(noticeDays)));
 
         var approvers = await _approvers.ResolveAsync(tenantId, target.Id, startDate, endDate, ct);
-        if (approvers.Approvers.Count == 0)
+        if (rules.ApprovalMode != LeaveApprovalModes.None && approvers.Approvers.Count == 0)
             return Result<LeaveRequestEvaluation>.Failure(LeaveRequestMessages.NoApprover);
 
         var calendarConflicts = await _conflicts.ListConflictsAsync(tenantId, target.Id, startDate, endDate, ct);
@@ -270,10 +280,12 @@ public sealed class LeaveRequestSubmissionEvaluator
             target,
             leaveType,
             entitlement,
-            policy,
+            rules.Id,
+            rules.ApprovalMode,
             calculated.TotalHours,
             paidHours,
             unpaidHours,
+            exceedsBalanceByHours,
             calculated.CountedShiftStartDates,
             calculated.HoursByShiftStartDate,
             currentRemaining,

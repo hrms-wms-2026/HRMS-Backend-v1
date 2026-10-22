@@ -11,7 +11,9 @@ using ONEVO.Application.Features.Inbox.Contracts;
 using ONEVO.Application.Features.Leave.Approval.Commands;
 using ONEVO.Application.Features.Leave.Approval.RepositoryInterfaces;
 using ONEVO.Application.Features.Leave.Entitlement.RepositoryInterfaces;
+using ONEVO.Application.Features.CoreHr.Employee.Helpers;
 using ONEVO.Application.Features.TimeAttendance.Alerts;
+using ONEVO.Application.Features.TimeAttendance.Services;
 using ONEVO.Domain.Features.Inbox.Entities;
 using ONEVO.Domain.Features.TimeAttendance.Alerts;
 using Employee = ONEVO.Domain.Features.CoreHr.Entities.Employee;
@@ -61,8 +63,10 @@ public sealed class AttendanceAlertInbox
         ICurrentUser currentUser, IEmployeeRepository employees, IEmployeeAuthorityResolver authority, IAttendanceAlertRepository alerts,
         ILeaveEntitlementRepository entitlements, ILeaveApprovalRepository leaveApprovals, ISender sender, IInboxDecisionJournal journal,
         IUnitOfWork unitOfWork, IDateTimeProvider clock,
-        AttendanceDeductionService? deductions = null, IAttendanceAlertDeductionRepository? deductionRows = null)
+        AttendanceDeductionService? deductions = null, IAttendanceAlertDeductionRepository? deductionRows = null,
+        IEmployeeAttendancePeriodReader? periods = null)
     {
+        _periods = periods;
         _deductions = deductions;
         _deductionRows = deductionRows;
         _currentUser = currentUser;
@@ -79,6 +83,7 @@ public sealed class AttendanceAlertInbox
 
     private readonly AttendanceDeductionService? _deductions;
     private readonly IAttendanceAlertDeductionRepository? _deductionRows;
+    private readonly IEmployeeAttendancePeriodReader? _periods;
 
     public static string SignalLabel(string signal) => SignalLabels.GetValueOrDefault(signal, "Attendance alert");
 
@@ -208,6 +213,8 @@ public sealed class AttendanceAlertInbox
             new("work_date", "Day", null, alert.WorkDate.ToString("yyyy-MM-dd"), "date"),
             new("outcome", "Outcome", null, alert.Outcome ?? AttendanceAlertResolveOutcomes.Confirmed, "select", actionable, null, outcomes),
         };
+        // Right after "Day": the clock time that made it late/early, the expected one and by how much.
+        changes.InsertRange(2, await ClockTimesAsync(tenantId, alert, ct));
         if (isAbsence && actionable)
             changes.Add(new("leaveTypeId", "Leave type (convert to leave)", null, null, "select", true, null,
                 await LeaveTypeOptionsAsync(tenantId, alert, ct)));
@@ -223,6 +230,42 @@ public sealed class AttendanceAlertInbox
         return new InboxItemDetail(item, Steps(alert, people), $"{SignalLabel(alert.SignalKey)} · {alert.WorkDate:dd MMM yyyy}",
             changes, null, null, null, payload, extra, await DeductionFactsAsync(tenantId, alert, deduction, ct));
     }
+
+    /// <summary>A late clock-in's actual and expected clock-in and how late it was (an early clock-out: the clock-out),
+    /// read from that day's attendance in the employee's time zone. Empty for other signals or when the day has no record.</summary>
+    private async Task<IReadOnlyList<InboxChange>> ClockTimesAsync(Guid tenantId, AttendanceAlert alert, CancellationToken ct)
+    {
+        var late = alert.SignalKey == AttendanceAlertSignals.LateClockIns;
+        if (_periods is null || (!late && alert.SignalKey != AttendanceAlertSignals.EarlyClockOuts))
+            return [];
+        var data = await _periods.LoadAsync(tenantId, alert.EmployeeId, alert.LegalEntityId, new EmployeePeriod(alert.WorkDate, alert.WorkDate), ct);
+        var record = data.Records.FirstOrDefault(r => r.Date == alert.WorkDate);
+        var day = AttendancePeriodCalculator.DayDetails(data).FirstOrDefault(d => d.Date == alert.WorkDate);
+        if (record is null || day is null)
+            return [];
+        var (lateMinutes, earlyMinutes) = AttendancePeriodCalculator.MissingMinutes(record, data);
+        var actual = late ? day.ClockInLocal : day.ClockOutLocal;
+        var expected = late ? day.ScheduledStart : day.ScheduledEnd;
+        var minutes = late ? lateMinutes : earlyMinutes;
+        var changes = new List<InboxChange>();
+        if (actual is not null)
+            changes.Add(new(late ? "clock_in" : "clock_out", late ? "Clocked in" : "Clocked out", null, Clock(actual)));
+        if (expected is not null)
+            changes.Add(new(late ? "expected_in" : "expected_out", "Expected", null, Clock(expected)));
+        if (minutes > 0)
+            changes.Add(new("minutes", late ? "Late by" : "Left early by", null, Duration(minutes)));
+        return changes;
+    }
+
+    /// <summary>"09:12" → "9:12 AM".</summary>
+    private static string Clock(string hhmm)
+        => TimeOnly.TryParseExact(hhmm, "HH:mm", CultureInfo.InvariantCulture, DateTimeStyles.None, out var time)
+            ? time.ToString("h:mm tt", CultureInfo.InvariantCulture)
+            : hhmm;
+
+    private static string Duration(int minutes) => minutes < 60
+        ? $"{minutes} min"
+        : minutes % 60 == 0 ? $"{minutes / 60} h" : $"{minutes / 60} h {minutes % 60} min";
 
     /// <summary>What a late/early alert cost under the clock-in policy: the minutes and the leave charged (or that the
     /// charge is pending / was refunded). Null when the day was never charged.</summary>

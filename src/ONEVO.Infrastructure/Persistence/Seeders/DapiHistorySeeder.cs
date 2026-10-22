@@ -320,7 +320,8 @@ public sealed class DapiHistorySeeder : IHostedService
                         existingDeviceStateIds);
                 }
 
-                if (isWorkingDay)
+                // The clock-in tester's face checks are their own - seeded passes would reset their retry count.
+                if (isWorkingDay && seedsAttendance)
                 {
                     SeedVerificationAttempts(
                         db,
@@ -904,7 +905,12 @@ public sealed class DapiHistorySeeder : IHostedService
         var attendanceIds = dates.Select(d => SeedId($"attendance:{employeeId:N}:{d:yyyy-MM-dd}")).ToList();
         var presenceIds = dates.Select(d => SeedId($"presence:{employeeId:N}:{d:yyyy-MM-dd}")).ToList();
         var breakIds = dates.Select(d => SeedId($"break:{employeeId:N}:{d:yyyy-MM-dd}")).ToList();
+        string[] faceKeys = ["clock_in", "clock_in-failed", "clock_in-overridden", "clock_out"];
+        var faceIds = dates
+            .SelectMany(d => faceKeys.Select(k => SeedId($"face:{employeeId:N}:{d:yyyy-MM-dd}:{k}")))
+            .ToList();
         await db.BreakRecords.Where(b => breakIds.Contains(b.Id)).ExecuteDeleteAsync(ct);
+        await db.FaceVerificationAttempts.Where(f => faceIds.Contains(f.Id)).ExecuteDeleteAsync(ct);
         // A correction filed against a seeded day keeps that day (it points at the row).
         await db.PresenceSessions
             .Where(p => presenceIds.Contains(p.Id) && !db.AttendanceCorrections.Any(c => c.PresenceSessionId == p.Id))

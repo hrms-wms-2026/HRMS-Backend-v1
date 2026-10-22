@@ -111,7 +111,7 @@ public class ExceptionInboxTests
         var asStranger = await Provider().ListAsync(TenantId, new InboxQuery(), Stranger, default);
 
         asManager.Select(i => (i.Id, i.Direction)).Should().Equal((mine.Id, InboxDirections.Received));
-        asManager[0].AvailableActions.Select(a => a.Key).Should().Equal("acknowledge", "resolve", "escalate");
+        asManager[0].AvailableActions.Select(a => a.Key).Should().Equal("resolve", "escalate");
         asStranger.Should().BeEmpty();
     }
 
@@ -275,6 +275,41 @@ public class ExceptionInboxTests
             x.ActorEmployeeId == Reviewer && x.Note == "please check" && x.BeforeJson!.Contains("\"Open\"")
             && ((EscalationTarget.Employees)x.Target).Recipients.Single().EmployeeId == hr), It.IsAny<CancellationToken>()), Times.Once);
         _journal.Entries.Should().BeEmpty("the recorder writes the escalation's journal row");
+    }
+
+    [Fact]
+    public async Task Escalate_to_a_picked_person_routes_and_notifies_only_them_and_refuses_someone_without_the_permission()
+    {
+        var c = Case();
+        var (hrUser, hrEmployee, outsiderEmployee) = (Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
+        var permissions = new Mock<ONEVO.Application.Features.Auth.Permission.RepositoryInterfaces.IPermissionRepository>();
+        permissions.Setup(p => p.ListUserIdsWithPermissionCodeAsync(TenantId, It.IsAny<string>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Guid _, string code, DateTimeOffset _, CancellationToken _) => code == ExceptionPermissions.HrReview ? [hrUser] : []);
+        var employees = new Mock<ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces.IEmployeeRepository>();
+        employees.Setup(e => e.GetDefaultForUserAsync(TenantId, hrUser, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Employee { Id = hrEmployee, FirstName = "Hana", LastName = "Perera" });
+        employees.Setup(e => e.ListPositionNamesAsync(TenantId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, string> { [hrEmployee] = "HR Manager" });
+        _policy.Setup(p => p.NextAsync(TenantId, It.IsAny<EscalationContext>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new EscalationTarget.LogOnly("top"));
+        _sender.Setup(s => s.Send(It.IsAny<EscalateExceptionCommand>(), It.IsAny<CancellationToken>()))
+            .Callback(() => c.Status = ExceptionStatus.Escalated).ReturnsAsync(Result.Success());
+        _recorder.Setup(r => r.RecordAsync(TenantId, It.IsAny<EscalationRecord>(), It.IsAny<CancellationToken>())).ReturnsAsync([Reviewer, hrEmployee]);
+        var actions = new ExceptionCaseActions(_sender.Object, _exceptions.Object, _journal, _recorder.Object,
+            new InboxEscalationPolicyRegistry([_policy.Object]), new FakeUnitOfWork(), new FakeDateTimeProvider { UtcNow = Now },
+            null, permissions.Object, employees.Object);
+        var item = new ItemRef("monitoring", "exception_case", c.Id);
+
+        var refused = await actions.RunAsync(TenantId, item, "escalate",
+            JsonSerializer.SerializeToElement(new { targetEmployeeId = outsiderEmployee }), Reviewer, default);
+        var picked = await actions.RunAsync(TenantId, item, "escalate",
+            JsonSerializer.SerializeToElement(new { comment = "HR please", targetEmployeeId = hrEmployee }), Reviewer, default);
+
+        refused.IsSuccess.Should().BeFalse();
+        picked.IsSuccess.Should().BeTrue(picked.Error);
+        _sender.Verify(s => s.Send(It.Is<EscalateExceptionCommand>(x => x.NotifyUserIds!.Single() == hrUser), It.IsAny<CancellationToken>()), Times.Once);
+        _recorder.Verify(r => r.RecordAsync(TenantId, It.Is<EscalationRecord>(x =>
+            ((EscalationTarget.Employees)x.Target).Recipients.Single().EmployeeId == hrEmployee), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]

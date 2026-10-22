@@ -130,6 +130,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<ONEVO.Domain.Features.DevPlatform.AppCatalog.Entities.GlobalApplication> GlobalApplications => Set<ONEVO.Domain.Features.DevPlatform.AppCatalog.Entities.GlobalApplication>();
     public DbSet<ONEVO.Domain.Features.Monitoring.Biometrics.Entities.BiometricEnrollmentAttempt> BiometricEnrollmentAttempts => Set<ONEVO.Domain.Features.Monitoring.Biometrics.Entities.BiometricEnrollmentAttempt>();
     public DbSet<ONEVO.Domain.Features.Monitoring.Biometrics.Entities.BiometricProfile> BiometricProfiles => Set<ONEVO.Domain.Features.Monitoring.Biometrics.Entities.BiometricProfile>();
+    public DbSet<ONEVO.Domain.Features.Monitoring.PermissionConsent.Entities.MonitoringPermissionConsent> MonitoringPermissionConsents => Set<ONEVO.Domain.Features.Monitoring.PermissionConsent.Entities.MonitoringPermissionConsent>();
     public DbSet<MonitoringNotification> MonitoringNotifications => Set<MonitoringNotification>();
 
     // Monitoring - Feature toggles & overrides
@@ -327,6 +328,8 @@ public class ApplicationDbContext : DbContext
         => Set<ONEVO.Domain.Features.Conversations.Entities.ConversationMessage>();
     public DbSet<ONEVO.Domain.Features.Conversations.Entities.ConversationMessageRevision> ConversationMessageRevisions
         => Set<ONEVO.Domain.Features.Conversations.Entities.ConversationMessageRevision>();
+    public DbSet<ONEVO.Domain.Features.Conversations.Entities.ConversationMessageHide> ConversationMessageHides
+        => Set<ONEVO.Domain.Features.Conversations.Entities.ConversationMessageHide>();
     public DbSet<ONEVO.Domain.Features.Conversations.Entities.ConversationMessageAttachment> ConversationMessageAttachments
         => Set<ONEVO.Domain.Features.Conversations.Entities.ConversationMessageAttachment>();
     public DbSet<ONEVO.Domain.Features.TimeAttendance.Alerts.AttendanceAlert> AttendanceAlerts

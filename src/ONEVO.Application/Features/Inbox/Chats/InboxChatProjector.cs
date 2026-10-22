@@ -4,7 +4,9 @@ using ONEVO.Application.Features.Conversations.Contracts;
 using ONEVO.Application.Features.Conversations.RepositoryInterfaces;
 using ONEVO.Application.Features.Conversations.Services;
 using ONEVO.Application.Features.Inbox.Contracts;
+using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Domain.Features.Conversations.Entities;
+using ONEVO.Domain.Features.Inbox.Entities;
 
 namespace ONEVO.Application.Features.Inbox.Chats;
 
@@ -32,9 +34,15 @@ public sealed class InboxChatProjector : IInboxChatProjector
     private readonly IConversationRepository _conversations;
     private readonly IPeopleChatService _people;
     private readonly ICaseGroupService _caseGroups;
+    private readonly IInboxDecisionJournal? _journal;
+    private readonly ICallerIdentityResolver? _identity;
 
-    public InboxChatProjector(IConversationRepository conversations, IPeopleChatService people, ICaseGroupService caseGroups)
+    public InboxChatProjector(
+        IConversationRepository conversations, IPeopleChatService people, ICaseGroupService caseGroups,
+        IInboxDecisionJournal? journal = null, ICallerIdentityResolver? identity = null)
     {
+        _journal = journal;
+        _identity = identity;
         _conversations = conversations;
         _people = people;
         _caseGroups = caseGroups;
@@ -153,12 +161,16 @@ public sealed class InboxChatProjector : IInboxChatProjector
         return result;
     }
 
-    /// <summary>"Case resolved" (alerts, cases) or "Request approved/rejected/..." (requests), placed at the item's last
-    /// change - its decision.</summary>
+    /// <summary>What was decided and by whom - "Annual Leave approved by Maya Fernando", "Late clock-in kept on record by
+    /// Maya Fernando" - from the item's latest journal decision (a decision made outside the Inbox has none, so the line
+    /// says what without who). Placed at the item's last change - its decision.</summary>
     private async Task AddResolvedAsync(Guid tenantId, Guid conversationId, Guid lineId, InboxItem item, CancellationToken ct)
     {
         var at = item.UpdatedAt < item.CreatedAt ? item.CreatedAt : item.UpdatedAt;
-        var body = item.Category == InboxCategories.Request ? $"Request {Humanize(item.Status)}" : "Case resolved";
+        var decision = await DecisionAsync(tenantId, item, ct);
+        var what = What(item);
+        var verb = item.Category == InboxCategories.Request ? Humanize(item.Status) : OutcomeLabel(decision.Outcome);
+        var body = $"{what} {verb}" + (decision.ByName is { } name ? $" by {name}" : "");
         await _conversations.AddMessageIfMissingAsync(new ConversationMessage
         {
             Id = lineId, TenantId = tenantId, ConversationId = conversationId, Kind = ConversationMessageKinds.System,
@@ -166,7 +178,8 @@ public sealed class InboxChatProjector : IInboxChatProjector
             SystemEventJson = JsonSerializer.Serialize(new
             {
                 type = PeopleChatEvents.CaseResolved, source = item.Source, kind = item.Kind, id = item.Id, title = item.Title,
-                status = item.Status, category = item.Category,
+                status = item.Status, category = item.Category, what, by = decision.By, byName = decision.ByName,
+                outcome = decision.Outcome, comment = decision.Comment, summary = Summary(item),
             }),
             CreatedAt = at.AddTicks(1),
         }, ct);
@@ -189,6 +202,51 @@ public sealed class InboxChatProjector : IInboxChatProjector
     }
 
     private static string Humanize(string status) => status.Replace('_', ' ').ToLowerInvariant();
+
+    /// <summary>The item's type without the person ("Annual Leave - Priya" → "Annual Leave"): the chat already says who.</summary>
+    private static string What(InboxItem item)
+    {
+        var cut = item.Title.LastIndexOf(" - ", StringComparison.Ordinal);
+        return cut > 0 ? item.Title[..cut] : item.Title;
+    }
+
+    /// <summary>The item's one-line summary under the decision ("Sick Leave · 15 Sep – 15 Sep · 8 h"), kept short: the line's
+    /// event JSON is capped at 2000 characters.</summary>
+    private static string? Summary(InboxItem item)
+        => item.Subtitle is { Length: > 200 } full ? full[..200].TrimEnd() + "…" : item.Subtitle;
+
+    /// <summary>A resolved alert's outcome in the Resolve dialog's words.</summary>
+    private static string OutcomeLabel(string? outcome) => outcome switch
+    {
+        "excused" => "cleared - no issue",
+        "confirmed" => "kept on record",
+        "convert_to_leave" => "counted as leave",
+        null or "" => "resolved",
+        _ => $"resolved - {Humanize(outcome)}",
+    };
+
+    private const int NoteMax = 300;
+
+    private sealed record Decision(Guid? By, string? ByName, string? Outcome, string? Comment);
+
+    /// <summary>Who made the item's latest decision, its outcome ("resolve:excused") and note.</summary>
+    private async Task<Decision> DecisionAsync(Guid tenantId, InboxItem item, CancellationToken ct)
+    {
+        if (_journal is null
+            || await _journal.LatestAsync(tenantId, new ItemRef(item.Source, item.Kind, item.Id), ct) is not { } entry
+            || entry.Action is InboxJournalActions.Escalate or InboxJournalActions.Revert)
+            return new Decision(null, null, null, null);
+        var outcome = entry.Action.StartsWith(InboxJournalActions.ResolvePrefix, StringComparison.Ordinal)
+            ? entry.Action[InboxJournalActions.ResolvePrefix.Length..]
+            : null;
+        Guid? by = entry.ActorEmployeeId == Guid.Empty ? null : entry.ActorEmployeeId;
+        var name = by is { } actor && _identity is not null
+            ? (await _identity.ResolveIdentitiesByEmployeeIdAsync(tenantId, [actor], ct)).GetValueOrDefault(actor)?.Name
+            : null;
+        // The line's event JSON is capped at 2000 characters; the note is a pointer, the full one is in the ticket's steps.
+        var comment = entry.Comment is { Length: > NoteMax } full ? full[..NoteMax].TrimEnd() + "…" : entry.Comment;
+        return new Decision(by, name, outcome, comment);
+    }
 
     private sealed record Candidate(InboxItem Item, ItemRef Ref, Guid Other, bool IsHolder);
 }

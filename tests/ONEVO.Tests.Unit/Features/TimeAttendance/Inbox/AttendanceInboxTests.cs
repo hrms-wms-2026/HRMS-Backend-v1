@@ -119,11 +119,14 @@ public class AttendanceInboxTests
             Attendance.Object, WorkLocations.Object, Tray.Object, Mock.Of<IWorkModeRepository>(), Mock.Of<ILegalEntityRepository>(),
             Sender.Object, Journal, new FakeUnitOfWork(), Conversations().Object, Clock, AlertInbox());
 
+        /// <summary>The day's attendance for late/early clock times; unset = the card shows none.</summary>
+        public ONEVO.Application.Features.TimeAttendance.Services.IEmployeeAttendancePeriodReader? Periods { get; set; }
+
         public AttendanceAlertInbox AlertInbox() => new(
             CurrentUser.Object, Employees.Object, Authority.Object, Alerts.Object, Entitlements.Object, LeaveApprovals.Object, Sender.Object,
             Journal, new FakeUnitOfWork(), Clock,
             new ONEVO.Application.Features.TimeAttendance.Alerts.AttendanceDeductionService(DeductionRepo.Object, Entitlements.Object, LeaveApprovals.Object, Clock),
-            DeductionRepo.Object);
+            DeductionRepo.Object, Periods);
 
         public ONEVO.Domain.Features.TimeAttendance.Alerts.AttendanceAlert Alert(Guid employeeId, string signal = ONEVO.Domain.Features.TimeAttendance.Alerts.AttendanceAlertSignals.AbsentDays) => new()
         {
@@ -831,5 +834,38 @@ public class AttendanceInboxTests
         (item.CreatedAt, item.UpdatedAt).Should().Be((workDay, workDay));
         detail!.Item.CreatedAt.Should().Be(workDay);
         detail.Steps.Single(s => s.Key == "detected").At.Should().Be(alert.DetectedAt);
+    }
+
+    [Fact]
+    public async Task A_late_clock_in_shows_when_they_clocked_in_what_was_expected_and_how_late()
+    {
+        var f = new Fixture();
+        var alert = f.Alert(f.Worker.Id, ONEVO.Domain.Features.TimeAttendance.Alerts.AttendanceAlertSignals.LateClockIns); // work day 9 Oct (Fri)
+        f.OpenAlerts.Add(alert);
+        f.Scope.Add(f.Worker.Id);
+        var day = alert.WorkDate;
+        // 09:00 shift in UTC+5:30; clocked in 04:15 UTC = 09:45 local.
+        var record = new AttendanceRecord
+        {
+            Id = Guid.NewGuid(), TenantId = f.TenantId, EmployeeId = f.Worker.Id, Date = day, ExpectedWorkingDay = true,
+            ScheduledStart = new TimeOnly(9, 0), ScheduledEnd = new TimeOnly(17, 30),
+            ActualStart = DateTimeOffset.Parse("2026-10-09T04:15:00+00:00"), ActualEnd = DateTimeOffset.Parse("2026-10-09T12:00:00+00:00"),
+        };
+        var today = new DateOnly(2026, 10, 14);
+        var periods = new Mock<ONEVO.Application.Features.TimeAttendance.Services.IEmployeeAttendancePeriodReader>();
+        periods.Setup(p => p.LoadAsync(f.TenantId, f.Worker.Id, alert.LegalEntityId, It.IsAny<ONEVO.Application.Features.CoreHr.Employee.Helpers.EmployeePeriod>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ONEVO.Application.Features.TimeAttendance.Services.AttendancePeriodData(
+                [record], TimeZoneInfo.CreateCustomTimeZone("t", TimeSpan.FromHours(5.5), "t", "t"), Now, today, null, new Dictionary<DateOnly, int>(),
+                Array.Empty<ONEVO.Domain.Features.Leave.Request.Entities.LeaveRequest>(), DateTimeOffset.Parse("2026-10-08T18:30:00+00:00"),
+                DateTimeOffset.Parse("2026-10-09T18:30:00+00:00"),
+                ONEVO.Application.Features.TimeAttendance.Services.ExpectedWorkdayCalendar.Build(
+                    new HashSet<int> { 1, 2, 3, 4, 5 }, new HashSet<DateOnly>(), day, day, day, null, today)));
+        f.Periods = periods.Object;
+
+        var detail = await f.Provider().GetDetailAsync(f.TenantId, AttendanceInboxKinds.Alert, alert.Id, f.Approver.Id, default);
+
+        detail!.ChangeSet.Select(c => (c.Field, c.Label, c.After)).Should().ContainInOrder(
+            ("clock_in", "Clocked in", "9:45 AM"), ("expected_in", "Expected", "9:00 AM"), ("minutes", "Late by", "45 min"));
+        detail.ChangeSet.Select(c => c.Field).Should().StartWith(["signal", "work_date", "clock_in"]);
     }
 }

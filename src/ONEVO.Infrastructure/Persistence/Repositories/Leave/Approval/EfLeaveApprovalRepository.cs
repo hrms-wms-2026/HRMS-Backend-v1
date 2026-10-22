@@ -50,9 +50,20 @@ public class EfLeaveApprovalRepository : ILeaveApprovalRepository
             .ThenBy(x => x.Id)
             .ToListAsync(ct);
 
-        var policy = await _policies.ResolveAsync(
-            tenantId, employee.Id, request.LeaveTypeId, DateOnly.FromDateTime(request.StartAt.UtcDateTime), ct);
-        var approvalMode = policy?.Version.ApprovalMode;
+        string? approvalMode;
+        if (request.LeavePolicyVersionId is { } versionId)
+        {
+            approvalMode = await _db.LeavePolicyVersions.AsNoTracking()
+                .Where(v => v.TenantId == tenantId && v.Id == versionId)
+                .Select(v => v.ApprovalMode)
+                .SingleOrDefaultAsync(ct);
+        }
+        else
+        {
+            var policy = await _policies.ResolveAsync(
+                tenantId, employee.Id, request.LeaveTypeId, DateOnly.FromDateTime(request.StartAt.UtcDateTime), ct);
+            approvalMode = policy?.Version.ApprovalMode;
+        }
 
         return new LeaveApprovalState(
             request,

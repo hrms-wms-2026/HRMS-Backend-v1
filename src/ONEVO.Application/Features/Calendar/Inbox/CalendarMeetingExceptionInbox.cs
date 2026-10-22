@@ -30,7 +30,7 @@ public static class CalendarInboxKinds
     public static readonly InboxKindDescriptor Descriptor = new(
         Source, MeetingException, "Meeting exception", InboxCategories.Alert,
         InboxCapabilities.Chat | InboxCapabilities.Resolve | InboxCapabilities.Escalate | InboxCapabilities.Revert
-        | InboxCapabilities.Bulk | InboxCapabilities.SubjectParticipates,
+        | InboxCapabilities.SubjectParticipates,
         Renderer);
 
     /// <summary>The only evidence keys an incident may show (meeting facts). Anything else - e.g. a desktop-agent usage

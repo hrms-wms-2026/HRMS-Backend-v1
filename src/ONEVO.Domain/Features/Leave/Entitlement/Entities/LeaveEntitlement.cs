@@ -15,6 +15,8 @@ public class LeaveEntitlement : ITenantOwnedEntity
     public decimal CarriedForwardHours { get; set; }
     public string Source { get; set; } = Common.LeaveEntitlementSources.Auto;
     public string? ManualReason { get; set; }
+    public Guid? LeavePolicyId { get; set; }
+    public Guid? LeavePolicyVersionId { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? UpdatedAt { get; set; }
 }

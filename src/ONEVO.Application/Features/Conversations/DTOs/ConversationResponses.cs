@@ -3,7 +3,8 @@ namespace ONEVO.Application.Features.Conversations.DTOs;
 /// <summary>JoinReason: "base" (requester/approver/subject, resolved from the item), "viewer" (sees the item from
 /// their own scope), or "added" (added by another participant). Removed and departed people are not listed.</summary>
 public sealed record ConversationParticipantResponse(
-    Guid EmployeeId, string Name, Guid? AvatarFileId, string JoinReason, Guid? AddedByEmployeeId, DateTimeOffset? AddedAt);
+    Guid EmployeeId, string Name, Guid? AvatarFileId, string JoinReason, Guid? AddedByEmployeeId, DateTimeOffset? AddedAt,
+    DateTimeOffset? LastReadAt = null);
 
 public sealed record ConversationAttachmentResponse(Guid Id, string FileName, string ContentType, long SizeBytes);
 

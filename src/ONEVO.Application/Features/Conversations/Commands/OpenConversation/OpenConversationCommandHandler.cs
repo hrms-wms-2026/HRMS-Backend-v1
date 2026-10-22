@@ -71,7 +71,8 @@ public sealed class OpenConversationCommandHandler : IRequestHandler<OpenConvers
                 Kind = ConversationMessageKinds.Evidence, BodyHtml = string.Empty, CreatedById = _currentUser.UserId, CreatedAt = evidenceAt
             }, ct);
 
-        var page = await _conversations.ListMessagesAsync(tenantId, conversation.Id, before: null, ConversationRules.DefaultPageSize + 1, ct);
+        var page = await _conversations.ListVisibleMessagesAsync(
+            tenantId, conversation.Id, caller.Value, before: null, ConversationRules.DefaultPageSize + 1, ct);
         var hasMore = page.Count > ConversationRules.DefaultPageSize;
         var messages = page.Take(ConversationRules.DefaultPageSize).Reverse().ToList();
 

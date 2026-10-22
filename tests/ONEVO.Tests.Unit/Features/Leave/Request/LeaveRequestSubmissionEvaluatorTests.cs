@@ -81,24 +81,74 @@ public class LeaveRequestSubmissionEvaluatorTests
     }
 
     [Fact]
-    public async Task Evaluate_WhenBalanceShortAndUnpaidSplitDisabled_Fails()
+    public async Task Evaluate_WhenBalanceShort_AllowsPaidRequestAndFlagsExcess()
     {
         var harness = Harness.Create(remainingHours: 8m, allowUnpaid: false);
         var result = await harness.EvaluateDefaultAsync(end: At(2026, 8, 20, 18));
 
-        result.IsSuccess.Should().BeFalse();
-        result.Error.Should().Contain("Insufficient balance");
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.PaidHours.Should().Be(24m);
+        result.Value.UnpaidHours.Should().Be(0m);
+        result.Value.ExceedsBalanceByHours.Should().Be(16m);
     }
 
     [Fact]
-    public async Task Evaluate_WhenBalanceShortAndUnpaidSplitEnabled_SplitsPaidAndUnpaid()
+    public async Task Evaluate_LegacyUnpaidSplitFlag_DoesNotSplitPaidLeave()
     {
         var harness = Harness.Create(remainingHours: 8m, allowUnpaid: true);
         var result = await harness.EvaluateDefaultAsync(end: At(2026, 8, 20, 18));
 
         result.IsSuccess.Should().BeTrue();
+        result.Value!.PaidHours.Should().Be(24m);
+        result.Value.UnpaidHours.Should().Be(0m);
+        result.Value.ExceedsBalanceByHours.Should().Be(16m);
+    }
+
+    [Fact]
+    public async Task Missing_entitlement_row_counts_as_zero_available_for_paid_leave()
+    {
+        var harness = Harness.Create();
+        harness.Entitlements.Setup(x => x.GetTrackedByEmployeeTypeYearAsync(
+                harness.TenantId, harness.Employee.Id, harness.LeaveTypeId, 2026, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((LeaveEntitlement?)null);
+
+        var result = await harness.EvaluateDefaultAsync();
+
+        result.IsSuccess.Should().BeTrue(result.Error);
         result.Value!.PaidHours.Should().Be(8m);
-        result.Value.UnpaidHours.Should().Be(16m);
+        result.Value.ExceedsBalanceByHours.Should().Be(8m);
+        result.Value.Entitlement.TotalHours.Should().Be(0m);
+        result.Value.Entitlement.Source.Should().Be(LeaveEntitlementSources.Auto);
+    }
+
+    [Fact]
+    public async Task Unpaid_type_never_flags_an_over_balance_request()
+    {
+        var harness = Harness.Create(remainingHours: 0m);
+        harness.LeaveType.IsPaid = false;
+
+        var result = await harness.EvaluateDefaultAsync();
+
+        result.IsSuccess.Should().BeTrue(result.Error);
+        result.Value!.PaidHours.Should().Be(0m);
+        result.Value.UnpaidHours.Should().Be(8m);
+        result.Value.ExceedsBalanceByHours.Should().Be(0m);
+    }
+
+    [Fact]
+    public async Task Approval_mode_none_does_not_require_an_approver()
+    {
+        var harness = Harness.Create();
+        harness.Policy.ApprovalMode = LeaveApprovalModes.None;
+        harness.Approvers.Setup(x => x.ResolveAsync(harness.TenantId, harness.Employee.Id,
+                It.IsAny<DateOnly>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new LeaveApproverResolution([]));
+
+        var result = await harness.EvaluateDefaultAsync();
+
+        result.IsSuccess.Should().BeTrue(result.Error);
+        result.Value!.ApprovalMode.Should().Be(LeaveApprovalModes.None);
+        result.Value.Approvers.Approvers.Should().BeEmpty();
     }
 
     [Fact]
@@ -248,6 +298,7 @@ public class LeaveRequestSubmissionEvaluatorTests
         public Mock<ILeaveRequestRepository> Requests { get; } = new();
         public Mock<ILeaveApproverResolver> Approvers { get; } = new();
         public Mock<IEmployeeRepository> Employees { get; } = new();
+        public Mock<ILeaveEntitlementRepository> Entitlements { get; } = new();
         public LeaveRequestSubmissionEvaluator Sut { get; }
         public LeaveEntitlement Entitlement { get; }
 
@@ -304,8 +355,7 @@ public class LeaveRequestSubmissionEvaluatorTests
             var leaveTypes = new Mock<ILeaveTypeRepository>();
             leaveTypes.Setup(x => x.GetByIdAsync(TenantId, LeaveTypeId, It.IsAny<CancellationToken>())).ReturnsAsync(LeaveType);
 
-            var entitlements = new Mock<ILeaveEntitlementRepository>();
-            entitlements.Setup(x => x.GetTrackedByEmployeeTypeYearAsync(TenantId, Employee.Id, LeaveTypeId, 2026, It.IsAny<CancellationToken>()))
+            Entitlements.Setup(x => x.GetTrackedByEmployeeTypeYearAsync(TenantId, Employee.Id, LeaveTypeId, 2026, It.IsAny<CancellationToken>()))
                 .ReturnsAsync(entitlement);
 
             var legalEntity = LeaveTestData.CreateLegalEntity(
@@ -344,7 +394,7 @@ public class LeaveRequestSubmissionEvaluatorTests
             Sut = new LeaveRequestSubmissionEvaluator(
                 employees.Object,
                 leaveTypes.Object,
-                entitlements.Object,
+                Entitlements.Object,
                 policies.Object,
                 Resolver.Object,
                 Requests.Object,
@@ -357,7 +407,6 @@ public class LeaveRequestSubmissionEvaluatorTests
                 Options.Create(new LeaveRequestOptions
                 {
                     AllowBackdatedRequests = allowBackdated,
-                    AllowUnpaidSplitWhenBalanceShort = allowUnpaid,
                     MaximumRequestRangeDays = 3660
                 }));
         }

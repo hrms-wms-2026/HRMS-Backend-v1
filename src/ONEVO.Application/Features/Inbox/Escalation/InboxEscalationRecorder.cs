@@ -13,14 +13,18 @@ using ONEVO.Domain.Features.Inbox.Entities;
 namespace ONEVO.Application.Features.Inbox.Escalation;
 
 /// <summary>An escalation the module has already applied (status, its own notifications), to be recorded the
-/// standard way. <see cref="ActorEmployeeId"/> is null for the SLA sweep.</summary>
+/// standard way. <see cref="ActorEmployeeId"/> is null for the SLA sweep. <see cref="SubjectEmployeeId"/> (the person the
+/// case is about): when set and the case has no group yet, it goes to that person's 1-on-1 chat with each new reviewer
+/// instead of starting a group.</summary>
 public sealed record EscalationRecord(
     ItemRef Item, EscalationTarget Target, Guid? ActorEmployeeId, string? Note,
-    IReadOnlyCollection<Guid> PreviousHolderEmployeeIds, string? BeforeJson = null, string? AfterJson = null);
+    IReadOnlyCollection<Guid> PreviousHolderEmployeeIds, string? BeforeJson = null, string? AfterJson = null,
+    Guid? SubjectEmployeeId = null);
 
 /// <summary>
 /// The inbox half of every escalation (plan S2.4), whichever module owns the item: a journal row, the case moves from
-/// the 1-on-1 chat to its own group (created when missing, with the people already on it), the new reviewers join that
+/// the 1-on-1 chat to its own group (created when missing, with the people already on it - or, with a SubjectEmployeeId
+/// and no group yet, to the subject's 1-on-1 chat with each new reviewer), the new reviewers join that
 /// group as viewers, and a system message says who it went to ("Escalated to X", or that nobody is above and it was
 /// logged) - an escalation line, never "X added Y". Runs inside the provider's transaction; returns who must refresh their inbox
 /// (previous holders + new reviewers) for the provider's <see cref="InboxActionResult"/>.
@@ -77,6 +81,15 @@ public sealed class InboxEscalationRecorder : IInboxEscalationRecorder
         }, ct);
 
         var caseGroups = _services?.GetService(typeof(ICaseGroupService)) as ICaseGroupService;
+        // No group yet: the case moves to the requester's 1-on-1 chat with the new reviewer, not to a new group.
+        if (record.SubjectEmployeeId is { } subjectId && targets.Count > 0 && caseGroups is not null
+            && await caseGroups.FindAsync(tenantId, record.Item, ct) is null)
+        {
+            await caseGroups.PlaceEscalationInDirectChatsAsync(tenantId, record.Item, subjectId, targets, record.ActorEmployeeId, record.Note, ct);
+            await _unitOfWork.SaveChangesAsync(ct);
+            return record.PreviousHolderEmployeeIds.Concat(targets).Append(subjectId).Distinct().ToList();
+        }
+
         var conversation = (caseGroups is null ? null : await caseGroups.EnsureAsync(tenantId, record.Item, record.ActorEmployeeId, ct))
             ?? await _conversations.GetBySubjectAsync(tenantId, record.Item, ct)
             ?? await _conversations.GetOrCreateAsync(new Conversation

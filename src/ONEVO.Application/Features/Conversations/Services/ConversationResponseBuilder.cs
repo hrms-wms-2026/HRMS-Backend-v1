@@ -28,13 +28,14 @@ public sealed class ConversationResponseBuilder
             var row = context.RowOf(id);
             var reason = context.JoinReasonOf(id);
             return Participant(id, people.GetValueOrDefault(id), reason,
-                reason == ConversationJoinReasons.Base ? null : row?.AddedByEmployeeId, row?.AddedAt);
+                reason == ConversationJoinReasons.Base ? null : row?.AddedByEmployeeId, row?.AddedAt, row?.LastReadAt);
         }).ToList();
     }
 
     public static ConversationParticipantResponse Participant(
-        Guid employeeId, EmployeeIdentityDto? identity, string joinReason, Guid? addedBy, DateTimeOffset? addedAt)
-        => new(employeeId, identity?.Name ?? FallbackName, identity?.AvatarFileId, joinReason, addedBy, addedAt);
+        Guid employeeId, EmployeeIdentityDto? identity, string joinReason, Guid? addedBy, DateTimeOffset? addedAt,
+        DateTimeOffset? lastReadAt = null)
+        => new(employeeId, identity?.Name ?? FallbackName, identity?.AvatarFileId, joinReason, addedBy, addedAt, lastReadAt);
 
     /// <summary>Messages in the order given, with their mentions, attachments, authors and the messages they reply to
     /// (fetched by id, as a quoted message may be outside the loaded page).</summary>

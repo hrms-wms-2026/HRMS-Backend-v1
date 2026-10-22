@@ -89,7 +89,7 @@ public sealed class CalendarInboxTests
         var received = (await Provider().ListAsync(TenantId, new InboxQuery(), _manager, default)).Single();
         (received.Source, received.Kind, received.Direction, received.Severity).Should().Be(("calendar", "meeting_exception", InboxDirections.Received, "medium"));
         received.AvailableActions.Select(a => a.Key).Should().Equal(
-            ExceptionCaseInboxActions.Acknowledge, ExceptionCaseInboxActions.Resolve, ExceptionCaseInboxActions.Escalate);
+            ExceptionCaseInboxActions.Resolve, ExceptionCaseInboxActions.Escalate);
 
         var own = (await Provider().ListAsync(TenantId, new InboxQuery(), _subject.Id, default)).Single();
         (own.Direction, own.AvailableActions.Count).Should().Be((InboxDirections.Info, 0));

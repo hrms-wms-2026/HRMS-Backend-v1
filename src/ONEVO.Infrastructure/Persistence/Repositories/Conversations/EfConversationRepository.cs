@@ -86,6 +86,19 @@ public class EfConversationRepository : IConversationRepository
         return await query.OrderByDescending(m => m.CreatedAt).ThenByDescending(m => m.Id).Take(take).ToListAsync(ct);
     }
 
+    public async Task<IReadOnlyList<ConversationMessage>> ListVisibleMessagesAsync(
+        Guid tenantId, Guid conversationId, Guid employeeId, DateTimeOffset? before, int take, CancellationToken ct = default)
+    {
+        var hiddenIds = _db.ConversationMessageHides
+            .Where(h => h.TenantId == tenantId && h.EmployeeId == employeeId)
+            .Select(h => h.MessageId);
+        var query = _db.ConversationMessages.AsNoTracking()
+            .Where(m => m.TenantId == tenantId && m.ConversationId == conversationId && !hiddenIds.Contains(m.Id));
+        if (before is { } cutoff)
+            query = query.Where(m => m.CreatedAt < cutoff);
+        return await query.OrderByDescending(m => m.CreatedAt).ThenByDescending(m => m.Id).Take(take).ToListAsync(ct);
+    }
+
     public async Task<IReadOnlyList<ConversationMessage>> ListMessagesByIdAsync(
         Guid tenantId, Guid conversationId, IReadOnlyCollection<Guid> messageIds, CancellationToken ct = default)
     {
@@ -172,6 +185,7 @@ public class EfConversationRepository : IConversationRepository
                     && m.Kind != ConversationMessageKinds.Evidence
                     && (m.AuthorEmployeeId == null || m.AuthorEmployeeId != employeeId)
                     && (p.LastReadAt == null || m.CreatedAt > p.LastReadAt)
+                    && !_db.ConversationMessageHides.Any(h => h.MessageId == m.Id && h.EmployeeId == employeeId)
                 group m by m.ConversationId into g
                 select new { ConversationId = g.Key, Count = g.Count() })
             .ToListAsync(ct);
@@ -212,6 +226,19 @@ public class EfConversationRepository : IConversationRepository
 
     public async Task AddRevisionAsync(ConversationMessageRevision revision, CancellationToken ct = default)
         => await _db.ConversationMessageRevisions.AddAsync(revision, ct);
+
+    public async Task HideMessageForEmployeeAsync(ConversationMessageHide hide, CancellationToken ct = default)
+    {
+        var exists = await _db.ConversationMessageHides.AnyAsync(
+            h => h.MessageId == hide.MessageId && h.EmployeeId == hide.EmployeeId, ct);
+        if (!exists)
+            await _db.ConversationMessageHides.AddAsync(hide, ct);
+    }
+
+    public Task<bool> IsMessageHiddenForEmployeeAsync(
+        Guid tenantId, Guid messageId, Guid employeeId, CancellationToken ct = default)
+        => _db.ConversationMessageHides.AnyAsync(
+            h => h.TenantId == tenantId && h.MessageId == messageId && h.EmployeeId == employeeId, ct);
 
     public async Task<IReadOnlyList<ConversationMessageRevision>> ListRevisionsAsync(
         Guid tenantId, IReadOnlyCollection<Guid> messageIds, CancellationToken ct = default)
@@ -262,7 +289,8 @@ public class EfConversationRepository : IConversationRepository
                     Conversation = c,
                     p.LastReadAt,
                     Latest = _db.ConversationMessages
-                        .Where(m => m.ConversationId == c.Id && m.Kind != ConversationMessageKinds.Evidence)
+                        .Where(m => m.ConversationId == c.Id && m.Kind != ConversationMessageKinds.Evidence
+                            && !_db.ConversationMessageHides.Any(h => h.MessageId == m.Id && h.EmployeeId == employeeId))
                         .OrderByDescending(m => m.CreatedAt).ThenByDescending(m => m.Id)
                         .FirstOrDefault(),
                 })
@@ -271,7 +299,7 @@ public class EfConversationRepository : IConversationRepository
     }
 
     public async Task<IReadOnlyDictionary<Guid, int>> CountUnreadByConversationAsync(
-        Guid tenantId, Guid employeeId, IReadOnlyCollection<Guid> conversationIds, CancellationToken ct = default)
+        Guid tenantId, Guid employeeId, IReadOnlyCollection<Guid> conversationIds, CancellationToken ct = default, bool textOnly = false)
     {
         if (conversationIds.Count == 0)
             return new Dictionary<Guid, int>();
@@ -282,8 +310,10 @@ public class EfConversationRepository : IConversationRepository
                 where m.TenantId == tenantId && ids.Contains(m.ConversationId) && p.EmployeeId == employeeId
                     && p.RemovedAt == null && p.LeftAt == null
                     && m.Kind != ConversationMessageKinds.Evidence
+                    && (!textOnly || m.Kind == ConversationMessageKinds.Text)
                     && (m.AuthorEmployeeId == null || m.AuthorEmployeeId != employeeId)
                     && (p.LastReadAt == null || m.CreatedAt > p.LastReadAt)
+                    && !_db.ConversationMessageHides.Any(h => h.MessageId == m.Id && h.EmployeeId == employeeId)
                 group m by m.ConversationId into g
                 select new { ConversationId = g.Key, Count = g.Count() })
             .ToListAsync(ct);

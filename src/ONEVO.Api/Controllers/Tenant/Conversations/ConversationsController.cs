@@ -56,10 +56,11 @@ public class ConversationsController : ControllerBase
     public async Task<IActionResult> Edit(Guid id, Guid messageId, [FromBody] EditConversationMessageRequest body, CancellationToken ct)
         => ToResult(await _mediator.Send(new EditConversationMessageCommand(id, messageId, body.BodyHtml, body.MentionEmployeeIds), ct));
 
-    /// <summary>The author deletes their own message (shown as "Message deleted").</summary>
+    /// <summary>Deletes for everyone while unread, or hides the message only for the caller.</summary>
     [HttpDelete("{id:guid}/messages/{messageId:guid}")]
-    public async Task<IActionResult> DeleteMessage(Guid id, Guid messageId, CancellationToken ct)
-        => ToNoContent(await _mediator.Send(new DeleteConversationMessageCommand(id, messageId), ct));
+    public async Task<IActionResult> DeleteMessage(
+        Guid id, Guid messageId, [FromQuery] bool forEveryone = true, CancellationToken ct = default)
+        => ToNoContent(await _mediator.Send(new DeleteConversationMessageCommand(id, messageId, forEveryone), ct));
 
     /// <summary>Downloads a chat attachment through the conversation access check (never a public URL).</summary>
     [HttpGet("{id:guid}/attachments/{attachmentId:guid}")]

@@ -88,7 +88,33 @@ public class InboxChatProjectorTests
 
         var resolved = _repo.Messages.Where(m => m.SystemEventJson?.StartsWith("{\"type\":\"case_resolved\"") == true).ToList();
         resolved.Should().ContainSingle();
-        resolved[0].BodyHtml.Should().Be("Request approved");
+        resolved[0].BodyHtml.Should().Be("Annual leave approved");
+    }
+
+    [Fact]
+    public async Task The_resolved_line_names_who_decided_from_the_journal_with_the_note()
+    {
+        var id = Guid.NewGuid();
+        var journal = new InMemoryInboxDecisionJournal();
+        await journal.RecordAsync(new ONEVO.Domain.Features.Inbox.Entities.InboxDecisionJournalEntry
+        {
+            Id = Guid.NewGuid(), TenantId = TenantId, Source = "leave", Kind = "request", ItemId = id, Action = "reject",
+            ActorEmployeeId = Hr, Comment = "Team is short", DecidedAt = Now, CreatedAt = Now,
+        });
+        var clock = new Mock<IDateTimeProvider>();
+        clock.Setup(c => c.UtcNow).Returns(Now);
+        var identity = new Mock<ICallerIdentityResolver>();
+        identity.Setup(i => i.ResolveIdentitiesByEmployeeIdAsync(TenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Guid _, IReadOnlyList<Guid> ids, CancellationToken _) => ids.ToDictionary(x => x, x => new EmployeeIdentityDto("Anita Hr", null)));
+        var projector = new InboxChatProjector(_repo, new PeopleChatService(_repo, clock.Object),
+            new CaseGroupService(_repo, _access.Object, identity.Object, clock.Object), journal, identity.Object);
+
+        await projector.ProjectAsync(TenantId, Manager, [Leave(id, InboxDirections.Received, Manager, pending: false, status: "rejected")], [],
+            CancellationToken.None);
+
+        var line = _repo.Messages.Single(m => m.SystemEventJson?.StartsWith("{\"type\":\"case_resolved\"") == true);
+        line.BodyHtml.Should().Be("Annual leave rejected by Anita Hr");
+        line.SystemEventJson.Should().Contain("\"byName\":\"Anita Hr\"").And.Contain("\"comment\":\"Team is short\"");
     }
 
     [Fact]
@@ -108,11 +134,11 @@ public class InboxChatProjectorTests
     {
         var id = Guid.NewGuid();
         await Project(Manager, Leave(id, InboxDirections.Received, Manager, pending: false, status: "approved"));
-        _repo.Messages.Should().Contain(m => m.BodyHtml == "Request approved");
+        _repo.Messages.Should().Contain(m => m.BodyHtml == "Annual leave approved");
 
         await Project(Manager, Leave(id, InboxDirections.Received, Manager, pending: true));
 
-        _repo.Messages.Should().NotContain(m => m.BodyHtml == "Request approved");
+        _repo.Messages.Should().NotContain(m => m.BodyHtml == "Annual leave approved");
         Cards.Should().ContainSingle();
     }
 
@@ -146,6 +172,44 @@ public class InboxChatProjectorTests
         _repo.Messages.Should().Contain(m => m.ConversationId == group.Id && m.Kind == ConversationMessageKinds.Case);
         _repo.Messages.Should().Contain(m => m.ConversationId == dm.Id && m.BodyHtml.StartsWith("Continued in a group"));
         _repo.Participants.Where(p => p.ConversationId == group.Id).Select(p => p.EmployeeId).Should().Contain([Priya, Manager, Hr]);
+    }
+
+    [Fact]
+    public async Task An_escalation_with_no_group_goes_to_the_requesters_1on1_chat_with_the_new_approver()
+    {
+        var id = Guid.NewGuid();
+        var item = new ItemRef("leave", "request", id);
+        await Project(Manager, Leave(id, InboxDirections.Received, Manager, pending: true));
+        var managerDm = _repo.Conversations.Single();
+
+        var clock = new Mock<IDateTimeProvider>();
+        clock.Setup(c => c.UtcNow).Returns(Now.AddMinutes(5));
+        var identity = new Mock<ICallerIdentityResolver>();
+        identity.Setup(i => i.ResolveIdentitiesByEmployeeIdAsync(TenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Guid _, IReadOnlyList<Guid> ids, CancellationToken _) =>
+                ids.ToDictionary(x => x, x => new EmployeeIdentityDto(x == Hr ? "Anita Hr" : "Mark Manager", null)));
+        var services = new Mock<IServiceProvider>();
+        services.Setup(s => s.GetService(typeof(ICaseGroupService)))
+            .Returns(new CaseGroupService(_repo, _access.Object, identity.Object, clock.Object, new PeopleChatService(_repo, clock.Object)));
+        var recorder = new ONEVO.Application.Features.Inbox.Escalation.InboxEscalationRecorder(
+            Mock.Of<IInboxDecisionJournal>(), _repo, identity.Object, Mock.Of<ONEVO.Application.Common.RepositoryInterfaces.IUnitOfWork>(),
+            clock.Object, services.Object);
+
+        await recorder.RecordAsync(TenantId, new ONEVO.Application.Features.Inbox.Escalation.EscalationRecord(
+            item, new ONEVO.Application.Features.Inbox.Escalation.EscalationTarget.Employees([new(Guid.NewGuid(), Hr)]), Manager, "On leave",
+            [Manager], SubjectEmployeeId: Priya), CancellationToken.None);
+
+        _repo.Conversations.Should().NotContain(c => c.SubjectSource == "leave", "no group is started");
+        var hrDm = _repo.Conversations.Single(c => c.Id != managerDm.Id);
+        Cards.Should().Contain(c => c.ConversationId == hrDm.Id);
+        _repo.Messages.Should().Contain(m => m.ConversationId == hrDm.Id && m.BodyHtml == "Escalated to Anita Hr by Mark Manager: On leave"
+            && m.AuthorEmployeeId == null);
+        _repo.Messages.Should().Contain(m => m.ConversationId == managerDm.Id && m.BodyHtml.StartsWith("Escalated to Anita Hr"));
+
+        // HR's own chat-list load finds the card where it already is, and does not start a group either.
+        var placed = await Project(Hr, Leave(id, InboxDirections.Received, Hr, pending: true));
+        placed[item].Should().Be(hrDm.Id);
+        _repo.Conversations.Should().NotContain(c => c.SubjectSource == "leave");
     }
 
     [Fact]

@@ -41,7 +41,8 @@ public static class LeaveRequestMapper
             request.NoticePeriodMissed,
             approvedByName,
             request.CreatedAt,
-            request.UpdatedAt);
+            request.UpdatedAt,
+            request.ExceedsBalanceByHours);
 
     public static string ToConflictSnapshotJson(
         IReadOnlyList<LeaveRequestWarningResponse> warnings,
@@ -80,5 +81,6 @@ public static class LeaveRequestMapper
             approvers.Select(a => new LeaveRequestApproverResponse(
                 a.ApproverEmployeeId, string.Empty, a.SequenceOrder, a.Status, a.DelegatedFromApproverId)).ToList(),
             snapshot,
-            request.CreatedAt);
+            request.CreatedAt,
+            request.ExceedsBalanceByHours);
 }

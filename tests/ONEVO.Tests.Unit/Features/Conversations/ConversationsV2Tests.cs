@@ -136,12 +136,12 @@ public class ConversationsV2Tests
             .Handle(new EditConversationMessageCommand(_conversationId, messageId, body, mentions), default);
     }
 
-    private Task<Result> DeleteAs(Guid caller, Guid messageId)
+    private Task<Result> DeleteAs(Guid caller, Guid messageId, bool forEveryone = true)
     {
         Caller(caller);
         return new DeleteConversationMessageCommandHandler(_currentUser.Object, _identity.Object, Access(), _repo, _uow, _realtime.Object,
                 NullLogger<DeleteConversationMessageCommandHandler>.Instance)
-            .Handle(new DeleteConversationMessageCommand(_conversationId, messageId), default);
+            .Handle(new DeleteConversationMessageCommand(_conversationId, messageId, forEveryone), default);
     }
 
     private Task<Result<ConversationMessagesPageResponse>> ListAs(Guid caller)
@@ -321,6 +321,52 @@ public class ConversationsV2Tests
         (await EditAs(Subject, posted.Id, "<p>again</p>")).StatusCode.Should().Be(409);
     }
 
+    [Fact]
+    public async Task Once_another_participant_has_read_a_message_it_cannot_be_deleted_for_everyone_but_can_be_hidden_for_self()
+    {
+        await OpenedWithThirdAddedByApprover();
+        var posted = (await PostAs(Subject, "<p>keep for everyone</p>")).Value!;
+        _repo.Participants.Single(p => p.EmployeeId == Approver).LastReadAt = posted.CreatedAt.AddSeconds(1);
+
+        var globalDelete = await DeleteAs(Subject, posted.Id);
+        var selfDelete = await DeleteAs(Subject, posted.Id, forEveryone: false);
+
+        globalDelete.StatusCode.Should().Be(409);
+        globalDelete.Error.Should().Be(DeleteConversationMessageCommandHandler.AlreadyRead);
+        selfDelete.IsSuccess.Should().BeTrue(selfDelete.Error);
+        (await ListAs(Subject)).Value!.Items.Should().NotContain(m => m.Id == posted.Id);
+        (await ListAs(Approver)).Value!.Items.Should().Contain(m => m.Id == posted.Id && !m.IsDeleted);
+        var subjectChat = (await _repo.ListMemberConversationsAsync(TenantId, Subject)).Single(c => c.Conversation.Id == _conversationId);
+        subjectChat.LatestMessage?.Id.Should().NotBe(posted.Id, "a message hidden for me must not remain in my chat-list preview");
+    }
+
+    [Fact]
+    public async Task A_message_can_still_be_edited_within_15_minutes_after_another_participant_reads_it()
+    {
+        await OpenedWithThirdAddedByApprover();
+        var posted = (await PostAs(Subject, "<p>typo</p>")).Value!;
+        _repo.Participants.Single(p => p.EmployeeId == Approver).LastReadAt = posted.CreatedAt.AddSeconds(1);
+
+        var edited = await EditAs(Subject, posted.Id, "<p>corrected</p>");
+
+        edited.IsSuccess.Should().BeTrue(edited.Error);
+        edited.Value!.BodyHtml.Should().Be("<p>corrected</p>");
+        edited.Value.EditedAt.Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task A_message_cannot_be_edited_after_15_minutes_even_when_it_is_unread()
+    {
+        await OpenedWithThirdAddedByApprover();
+        var posted = (await PostAs(Subject, "<p>old typo</p>")).Value!;
+        _repo.Messages.Single(m => m.Id == posted.Id).CreatedAt = DateTimeOffset.UtcNow.AddMinutes(-16);
+
+        var edited = await EditAs(Subject, posted.Id, "<p>too late</p>");
+
+        edited.StatusCode.Should().Be(409);
+        edited.Error.Should().Be(EditConversationMessageCommandHandler.EditWindowExpired);
+    }
+
     // ---- attachments ------------------------------------------------------------------------
 
     [Fact]
@@ -393,18 +439,20 @@ public class ConversationsV2Tests
     }
 
     [Fact]
-    public async Task Listing_shows_the_quote_as_it_is_now_after_the_original_is_deleted()
+    public async Task A_replied_to_message_is_seen_so_it_can_only_be_deleted_for_the_author()
     {
         await OpenAs(Subject);
         var original = (await PostAs(Subject, "<p>first</p>")).Value!;
         await ReplyAs(Approver, original.Id);
-        (await DeleteAs(Subject, original.Id)).IsSuccess.Should().BeTrue();
+        var globalDelete = await DeleteAs(Subject, original.Id);
+        (await DeleteAs(Subject, original.Id, forEveryone: false)).IsSuccess.Should().BeTrue();
 
         var opened = (await OpenAs(Approver)).Value!;
 
+        globalDelete.StatusCode.Should().Be(409);
         var reply = opened.Messages.Single(m => m.ReplyTo is not null);
-        reply.ReplyTo!.IsDeleted.Should().BeTrue();
-        reply.ReplyTo.Excerpt.Should().BeEmpty();
+        reply.ReplyTo!.IsDeleted.Should().BeFalse();
+        reply.ReplyTo.Excerpt.Should().Be("first");
     }
 
     [Fact]

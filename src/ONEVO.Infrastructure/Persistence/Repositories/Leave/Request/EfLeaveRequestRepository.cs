@@ -209,6 +209,9 @@ public class EfLeaveRequestRepository : ILeaveRequestRepository
             writeSet.Entitlement.PendingHours = targetPendingHours;
             writeSet.Entitlement.UpdatedAt = _clock.UtcNow;
 
+            if (_db.Entry(writeSet.Entitlement).State == EntityState.Detached)
+                await _db.LeaveEntitlements.AddAsync(writeSet.Entitlement, ct);
+
             await _db.LeaveRequests.AddAsync(writeSet.Request, ct);
             await _db.LeaveRequestApprovers.AddRangeAsync(writeSet.Approvers, ct);
             await _db.LeaveRequestDocuments.AddRangeAsync(writeSet.Documents, ct);

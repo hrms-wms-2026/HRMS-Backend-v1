@@ -12,6 +12,7 @@ internal sealed class InMemoryConversationRepository : IConversationRepository
     public List<ConversationMessageRevision> Revisions { get; } = new();
     public List<ConversationMessageAttachment> Attachments { get; } = new();
     public List<ConversationMessageMention> Mentions { get; } = new();
+    public List<ConversationMessageHide> MessageHides { get; } = new();
 
     public Task<Conversation?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct = default)
         => Task.FromResult(Conversations.FirstOrDefault(c => c.TenantId == tenantId && c.Id == id));
@@ -55,6 +56,14 @@ internal sealed class InMemoryConversationRepository : IConversationRepository
             .OrderByDescending(m => m.CreatedAt).ThenByDescending(m => m.Id)
             .Take(take).ToList());
 
+    public Task<IReadOnlyList<ConversationMessage>> ListVisibleMessagesAsync(
+        Guid tenantId, Guid conversationId, Guid employeeId, DateTimeOffset? before, int take, CancellationToken ct = default)
+        => Task.FromResult<IReadOnlyList<ConversationMessage>>(Messages
+            .Where(m => m.TenantId == tenantId && m.ConversationId == conversationId && (before == null || m.CreatedAt < before)
+                && MessageHides.All(h => h.MessageId != m.Id || h.EmployeeId != employeeId))
+            .OrderByDescending(m => m.CreatedAt).ThenByDescending(m => m.Id)
+            .Take(take).ToList());
+
     public Task<IReadOnlyDictionary<Guid, IReadOnlyList<Guid>>> ListMentionsAsync(
         Guid tenantId, IReadOnlyCollection<Guid> messageIds, CancellationToken ct = default)
         => Task.FromResult<IReadOnlyDictionary<Guid, IReadOnlyList<Guid>>>(Mentions
@@ -74,7 +83,8 @@ internal sealed class InMemoryConversationRepository : IConversationRepository
             if (row is null) continue;
             var lastRead = row.LastReadAt;
             var count = Messages.Count(m => m.ConversationId == conversation.Id && m.AuthorEmployeeId != employeeId
-                && m.Kind != ConversationMessageKinds.Evidence && (lastRead == null || m.CreatedAt > lastRead));
+                && m.Kind != ConversationMessageKinds.Evidence && (lastRead == null || m.CreatedAt > lastRead)
+                && MessageHides.All(h => h.MessageId != m.Id || h.EmployeeId != employeeId));
             if (count > 0) result[subject] = count;
         }
         return Task.FromResult<IReadOnlyDictionary<ItemRef, int>>(result);
@@ -123,6 +133,17 @@ internal sealed class InMemoryConversationRepository : IConversationRepository
         return Task.CompletedTask;
     }
 
+    public Task HideMessageForEmployeeAsync(ConversationMessageHide hide, CancellationToken ct = default)
+    {
+        if (MessageHides.All(h => h.MessageId != hide.MessageId || h.EmployeeId != hide.EmployeeId))
+            MessageHides.Add(hide);
+        return Task.CompletedTask;
+    }
+
+    public Task<bool> IsMessageHiddenForEmployeeAsync(
+        Guid tenantId, Guid messageId, Guid employeeId, CancellationToken ct = default)
+        => Task.FromResult(MessageHides.Any(h => h.TenantId == tenantId && h.MessageId == messageId && h.EmployeeId == employeeId));
+
     public Task<IReadOnlyList<ConversationMessageRevision>> ListRevisionsAsync(
         Guid tenantId, IReadOnlyCollection<Guid> messageIds, CancellationToken ct = default)
         => Task.FromResult<IReadOnlyList<ConversationMessageRevision>>(Revisions
@@ -153,17 +174,20 @@ internal sealed class InMemoryConversationRepository : IConversationRepository
             .Select(p => Conversations.First(c => c.Id == p.ConversationId) is var c
                 ? new MemberConversation(c, p.LastReadAt, Messages
                     .Where(m => m.ConversationId == c.Id && m.Kind != ConversationMessageKinds.Evidence)
+                    .Where(m => MessageHides.All(h => h.MessageId != m.Id || h.EmployeeId != employeeId))
                     .OrderByDescending(m => m.CreatedAt).FirstOrDefault())
                 : null!)
             .ToList());
 
     public Task<IReadOnlyDictionary<Guid, int>> CountUnreadByConversationAsync(
-        Guid tenantId, Guid employeeId, IReadOnlyCollection<Guid> conversationIds, CancellationToken ct = default)
+        Guid tenantId, Guid employeeId, IReadOnlyCollection<Guid> conversationIds, CancellationToken ct = default, bool textOnly = false)
         => Task.FromResult<IReadOnlyDictionary<Guid, int>>(conversationIds.ToDictionary(id => id, id =>
         {
             var row = Participants.FirstOrDefault(p => p.ConversationId == id && p.EmployeeId == employeeId);
             return Messages.Count(m => m.ConversationId == id && m.AuthorEmployeeId != employeeId && m.Kind != ConversationMessageKinds.Evidence
-                && (row?.LastReadAt is null || m.CreatedAt > row.LastReadAt));
+                && (!textOnly || m.Kind == ConversationMessageKinds.Text)
+                && (row?.LastReadAt is null || m.CreatedAt > row.LastReadAt)
+                && MessageHides.All(h => h.MessageId != m.Id || h.EmployeeId != employeeId));
         }));
 
     public Task<IReadOnlyDictionary<Guid, IReadOnlyList<Guid>>> ListActiveMemberIdsAsync(

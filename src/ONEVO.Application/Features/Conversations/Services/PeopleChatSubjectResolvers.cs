@@ -59,6 +59,8 @@ public static class PeopleChatEvents
     public const string CaseResolved = "case_resolved";
     /// <summary>A later approver of a multi-step request joined the case group.</summary>
     public const string NextApprover = "next_approver";
+    /// <summary>A case was escalated; {"by", "to"}. Same type the escalation recorder writes in a case group.</summary>
+    public const string Escalated = "escalated";
 
     public static readonly IReadOnlyList<string> GroupNameEvents = [GroupCreated, GroupRenamed];
 }

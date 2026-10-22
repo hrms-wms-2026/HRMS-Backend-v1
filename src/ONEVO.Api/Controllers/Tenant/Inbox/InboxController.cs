@@ -4,7 +4,6 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
 using ONEVO.Application.Features.Inbox.Commands.ExecuteInboxAction;
-using ONEVO.Application.Features.Inbox.Commands.ExecuteInboxBulkAction;
 using ONEVO.Application.Features.Inbox.Contracts;
 using ONEVO.Application.Features.Inbox.Queries.GetInboxCounts;
 using ONEVO.Application.Features.Inbox.Queries.ExportInboxItem;
@@ -99,11 +98,6 @@ public class InboxController : ControllerBase
     public async Task<IActionResult> PersonCaseMonths(
         Guid employeeId, [FromQuery] string category, [FromQuery] int year, [FromQuery] int offsetMinutes, CancellationToken ct)
         => ToResult(await _mediator.Send(new GetInboxPersonCaseMonthsQuery(employeeId, category ?? "", year, offsetMinutes), ct));
-
-    /// <summary>One action over many items (only kinds that declare Bulk). Returns which succeeded and which failed.</summary>
-    [HttpPost("bulk")]
-    public async Task<IActionResult> Bulk([FromBody] InboxBulkRequest request, CancellationToken ct)
-        => ToResult(await _mediator.Send(new ExecuteInboxBulkActionCommand(request), ct));
 
     /// <summary>The investigation bundle (HTML): detail, steps, journal, full chat with edits and deletions, attachments.</summary>
     [HttpGet("{source}/{kind}/{id:guid}/export")]

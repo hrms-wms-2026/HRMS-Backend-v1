@@ -13,11 +13,12 @@ namespace ONEVO.Application.Features.Conversations.Commands.DeleteConversationMe
 
 /// <summary>The author deletes their own text message. The chat shows "Message deleted"; the full body is kept in the
 /// revisions (investigation evidence) and the attachments stop being downloadable.</summary>
-public sealed record DeleteConversationMessageCommand(Guid ConversationId, Guid MessageId) : IRequest<Result>;
+public sealed record DeleteConversationMessageCommand(Guid ConversationId, Guid MessageId, bool ForEveryone = true) : IRequest<Result>;
 
 public sealed class DeleteConversationMessageCommandHandler : IRequestHandler<DeleteConversationMessageCommand, Result>
 {
     public const string NotAuthor = "Only the author can delete this message.";
+    public const string AlreadyRead = "This message has already been seen. You can only delete it for yourself.";
 
     private readonly ICurrentUser _currentUser;
     private readonly ICallerIdentityResolver _identity;
@@ -51,10 +52,27 @@ public sealed class DeleteConversationMessageCommandHandler : IRequestHandler<De
         var message = await _conversations.GetMessageAsync(caller.TenantId, command.MessageId, ct);
         if (message is null || message.ConversationId != context.Conversation.Id)
             return Result.NotFound("Message not found.");
-        if (message.AuthorEmployeeId != caller.EmployeeId || message.Kind != ConversationMessageKinds.Text)
+        if (message.Kind != ConversationMessageKinds.Text)
+            return Result.Forbidden(NotAuthor);
+        if (!command.ForEveryone)
+        {
+            await _conversations.HideMessageForEmployeeAsync(new ConversationMessageHide
+            {
+                Id = Guid.NewGuid(), TenantId = caller.TenantId, MessageId = message.Id, EmployeeId = caller.EmployeeId,
+                CreatedById = caller.UserId, CreatedAt = DateTimeOffset.UtcNow
+            }, ct);
+            await _unitOfWork.SaveChangesAsync(ct);
+            await ConversationRules.PublishSafelyAsync(
+                () => _realtime.MessageHiddenAsync(caller.TenantId, [caller.EmployeeId], context.Conversation.Id, message.Id, ct),
+                _logger, "messageHidden");
+            return Result.Success();
+        }
+        if (message.AuthorEmployeeId != caller.EmployeeId)
             return Result.Forbidden(NotAuthor);
         if (message.IsRetracted)
             return Result.Success();
+        if (ConversationRules.HasBeenReadByAnother(context, message))
+            return Result.Conflict(AlreadyRead);
 
         var now = DateTimeOffset.UtcNow;
         await _conversations.AddRevisionAsync(new ConversationMessageRevision

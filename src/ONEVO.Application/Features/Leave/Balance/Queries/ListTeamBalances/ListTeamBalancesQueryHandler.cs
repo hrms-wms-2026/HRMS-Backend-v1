@@ -8,6 +8,7 @@ using ONEVO.Application.Features.Leave.Balance.Helpers;
 using ONEVO.Application.Features.Leave.Entitlement.Helpers;
 using ONEVO.Application.Features.Leave.Entitlement.RepositoryInterfaces;
 using ONEVO.Application.Features.Leave.Policy.Services;
+using ONEVO.Application.Features.Leave.Type.RepositoryInterfaces;
 
 namespace ONEVO.Application.Features.Leave.Balance.Queries.ListTeamBalances;
 
@@ -20,6 +21,7 @@ public class ListTeamBalancesQueryHandler
     private readonly IEmployeeHierarchyClosureRepository _hierarchy;
     private readonly ILeaveEntitlementRepository _entitlements;
     private readonly ILeavePolicyResolver _policies;
+    private readonly ILeaveTypeRepository? _leaveTypes;
 
     public ListTeamBalancesQueryHandler(
         ICurrentUser currentUser,
@@ -27,7 +29,8 @@ public class ListTeamBalancesQueryHandler
         IEmployeeRepository employees,
         IEmployeeHierarchyClosureRepository hierarchy,
         ILeaveEntitlementRepository entitlements,
-        ILeavePolicyResolver policies)
+        ILeavePolicyResolver policies,
+        ILeaveTypeRepository? leaveTypes = null)
     {
         _currentUser = currentUser;
         _dateTimeProvider = dateTimeProvider;
@@ -35,6 +38,7 @@ public class ListTeamBalancesQueryHandler
         _hierarchy = hierarchy;
         _entitlements = entitlements;
         _policies = policies;
+        _leaveTypes = leaveTypes;
     }
 
     public async Task<Result<IReadOnlyList<LeaveBalanceResponse>>> Handle(
@@ -58,6 +62,22 @@ public class ListTeamBalancesQueryHandler
             ct);
 
         var asOfDate = DateOnly.FromDateTime(_dateTimeProvider.UtcNow.UtcDateTime);
+        if (_leaveTypes is not null)
+        {
+            var people = await _employees.ListByIdsAsync(tenantId, reportIds, ct);
+            var eligibleIds = people.Values
+                .Where(e => request.DepartmentId is null || e.DepartmentId == request.DepartmentId)
+                .Where(e => string.IsNullOrWhiteSpace(request.Search)
+                    || e.EmployeeNumber.Contains(request.Search, StringComparison.OrdinalIgnoreCase)
+                    || e.FirstName.Contains(request.Search, StringComparison.OrdinalIgnoreCase)
+                    || e.LastName.Contains(request.Search, StringComparison.OrdinalIgnoreCase))
+                .Select(e => e.Id).ToList();
+            rows = await LeaveBalanceMapping.IncludeResolvedZeroRowsAsync(
+                _policies, _leaveTypes, _employees, tenantId, request.Year,
+                asOfDate, eligibleIds, rows, ct);
+            if (request.LeaveTypeId is { } leaveTypeId)
+                rows = rows.Where(r => r.Entitlement.LeaveTypeId == leaveTypeId).ToList();
+        }
         return Result<IReadOnlyList<LeaveBalanceResponse>>.Success(
             await LeaveBalanceMapping.MapAsync(_policies, tenantId, request.Year, asOfDate, rows, ct));
     }

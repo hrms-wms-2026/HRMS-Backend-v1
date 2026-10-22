@@ -6,8 +6,6 @@ public sealed class LeaveRequestOptions
 
     public bool AllowBackdatedRequests { get; init; }
 
-    public bool AllowUnpaidSplitWhenBalanceShort { get; init; }
-
     public bool RequireReason { get; init; }
 
     public int MaximumRequestRangeDays { get; init; }

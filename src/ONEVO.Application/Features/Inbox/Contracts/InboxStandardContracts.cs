@@ -22,22 +22,6 @@ public sealed record InboxHistoryPage(IReadOnlyList<InboxHistoryEntry> Items, in
 public sealed record InboxHistoryQuery(
     DateTimeOffset? From = null, DateTimeOffset? To = null, string? Source = null, string? Kind = null, int Page = 1, int PageSize = 25);
 
-/// <summary>POST /inbox/bulk. <see cref="Outcome"/> is for "resolve".</summary>
-public sealed record InboxBulkRequest(string Action, IReadOnlyList<ItemRef> Items, string? Comment = null, string? Outcome = null);
-
-public sealed record InboxBulkFailure(ItemRef Ref, string Message);
-
-public sealed record InboxBulkResult(IReadOnlyList<ItemRef> Succeeded, IReadOnlyList<InboxBulkFailure> Failed);
-
-/// <summary>A provider that can run one action over many of its items in a single module call (Leave groups
-/// into its existing bulk approve/reject commands). Providers without it get one action per item.</summary>
-public interface IInboxBulkActionProvider
-{
-    /// <summary>Null = this provider does not batch this (kind, action); the router falls back to per-item.</summary>
-    Task<IReadOnlyList<(ItemRef Ref, Result<InboxActionResult> Result)>?> ExecuteBulkAsync(
-        Guid tenantId, string kind, string action, IReadOnlyList<Guid> ids, JsonElement body, Guid callerEmployeeId, CancellationToken ct);
-}
-
 /// <summary>One row of a person's case history. <see cref="CanOpen"/> = the caller's GetDetailAsync would return it;
 /// rows the caller can't open are still listed (facts only) for accountability.</summary>
 public sealed record InboxPersonCase(InboxItem Item, bool CanOpen);

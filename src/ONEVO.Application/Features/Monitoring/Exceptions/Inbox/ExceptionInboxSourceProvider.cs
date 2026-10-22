@@ -141,7 +141,8 @@ public sealed class ExceptionInboxSourceProvider : IInboxSourceProvider, IInboxP
         if (inScope && await _sender.Send(new GetExceptionEvidenceQuery(id), ct) is { IsSuccess: true } loaded)
             evidence = JsonSerializer.Serialize(loaded.Value, Web);
         var direction = canAct ? InboxDirections.Received : InboxDirections.Info;
-        return new InboxItemDetail(Item(exception, people, direction, canAct ? Actions(exception) : []), Steps(exception), exception.Title,
+        var actions = canAct ? await WithEscalationTargetsAsync(tenantId, exception, Actions(exception), callerEmployeeId, ct) : [];
+        return new InboxItemDetail(Item(exception, people, direction, actions), Steps(exception), exception.Title,
             [], exception.Description, Facts(exception), null, null, evidence);
     }
 
@@ -161,11 +162,35 @@ public sealed class ExceptionInboxSourceProvider : IInboxSourceProvider, IInboxP
         return list.Count == 0 ? new Dictionary<Guid, Employee>() : await _employees.ListByIdsAsync(tenantId, list, ct);
     }
 
+    /// <summary>The escalate dialog's preview (detail only - it costs a few lookups): "escalateTo" names who the policy
+    /// picks, "escalateCandidates" (JSON) everyone the caller may pick instead.</summary>
+    private async Task<IReadOnlyList<InboxAction>> WithEscalationTargetsAsync(
+        Guid tenantId, MonitoringException exception, IReadOnlyList<InboxAction> actions, Guid callerEmployeeId, CancellationToken ct)
+    {
+        if (actions.All(a => a.Key != ExceptionCaseInboxActions.Escalate))
+            return actions;
+        var candidates = await _actions.EscalationCandidatesAsync(
+            tenantId, new ItemRef(Source, ExceptionInboxKinds.Case, exception.Id), exception, callerEmployeeId, ct);
+        var defaults = candidates.Where(c => c.IsDefault).ToList();
+        var escalateTo = defaults.Count switch
+        {
+            0 => "",
+            1 => defaults[0].Name,
+            _ => defaults.All(d => d.Role == "HR") ? $"HR ({defaults.Count} people)" : $"{defaults.Count} people",
+        };
+        var meta = new Dictionary<string, string>
+        {
+            ["escalateTo"] = escalateTo,
+            ["escalateCandidates"] = JsonSerializer.Serialize(
+                candidates.Select(c => new { c.EmployeeId, c.Name, c.Position, c.AvatarFileId, c.IsDefault }), Web),
+        };
+        return actions.Select(a => a.Key == ExceptionCaseInboxActions.Escalate ? a with { Meta = meta } : a).ToList();
+    }
+
     public static IReadOnlyList<InboxAction> Actions(MonitoringException exception)
     {
+        // No manual Acknowledge: an open case either gets resolved, escalated by hand, or escalates itself when its SLA runs out.
         var actions = new List<InboxAction>();
-        if (exception.Status == ExceptionStatus.Open)
-            actions.Add(new InboxAction(ExceptionCaseInboxActions.Acknowledge, "Acknowledge", "neutral", NeedsComment: false, NeedsPayload: false));
         if (exception.Status != ExceptionStatus.Resolved)
             actions.Add(new InboxAction(ExceptionCaseInboxActions.Resolve, "Resolve", "primary", NeedsComment: true, NeedsPayload: true,
                 new Dictionary<string, string> { ["outcomes"] = $"{ExceptionOutcomes.Excused},{ExceptionOutcomes.Confirmed}" }));

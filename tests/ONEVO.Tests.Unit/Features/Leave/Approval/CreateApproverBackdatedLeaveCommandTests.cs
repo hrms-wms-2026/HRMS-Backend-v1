@@ -108,11 +108,12 @@ public sealed class CreateApproverBackdatedLeaveCommandTests
     public async Task Every_other_leave_rule_still_applies_and_nothing_is_written_when_one_fails()
     {
         var f = new Fixture(remaining: 2m);
+        f.Harness.Policy.MaxRequestHours = 1m;
 
         var result = await f.Run();
 
         result.StatusCode.Should().Be(422);
-        result.Error.Should().Contain("balance");
+        result.Error.Should().Contain("at most");
         f.Written.Should().BeEmpty();
         f.Audits.Should().BeEmpty();
         f.Messages.Should().BeEmpty();

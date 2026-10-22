@@ -81,7 +81,7 @@ public class ConversationHandlersTests
     private AddConversationParticipantsCommandHandler Add() => new(
         _currentUser.Object, _identity.Object, Access(), _repo, _uow, _membership.Object, Notifier(), Builder(), _realtime.Object,
         NullLogger<AddConversationParticipantsCommandHandler>.Instance);
-    private MarkConversationReadCommandHandler MarkRead() => new(_currentUser.Object, _identity.Object, Access(), _repo, _uow);
+    private MarkConversationReadCommandHandler MarkRead() => new(_currentUser.Object, _identity.Object, Access(), _repo, _uow, _realtime.Object);
     private ListConversationMessagesQueryHandler List() => new(_currentUser.Object, _identity.Object, Access(), _repo, Builder());
     private ConversationUnreadCounts Unread() => new(_repo);
 

@@ -7,6 +7,7 @@ using ONEVO.Application.Features.Leave.Balance.Helpers;
 using ONEVO.Application.Features.Leave.Entitlement.Helpers;
 using ONEVO.Application.Features.Leave.Entitlement.RepositoryInterfaces;
 using ONEVO.Application.Features.Leave.Policy.Services;
+using ONEVO.Application.Features.Leave.Type.RepositoryInterfaces;
 
 namespace ONEVO.Application.Features.Leave.Balance.Queries.GetMyBalances;
 
@@ -18,19 +19,22 @@ public class GetMyBalancesQueryHandler
     private readonly IEmployeeRepository _employees;
     private readonly ILeaveEntitlementRepository _entitlements;
     private readonly ILeavePolicyResolver _policies;
+    private readonly ILeaveTypeRepository? _leaveTypes;
 
     public GetMyBalancesQueryHandler(
         ICurrentUser currentUser,
         IDateTimeProvider dateTimeProvider,
         IEmployeeRepository employees,
         ILeaveEntitlementRepository entitlements,
-        ILeavePolicyResolver policies)
+        ILeavePolicyResolver policies,
+        ILeaveTypeRepository? leaveTypes = null)
     {
         _currentUser = currentUser;
         _dateTimeProvider = dateTimeProvider;
         _employees = employees;
         _entitlements = entitlements;
         _policies = policies;
+        _leaveTypes = leaveTypes;
     }
 
     public async Task<Result<IReadOnlyList<LeaveBalanceResponse>>> Handle(
@@ -51,6 +55,10 @@ public class GetMyBalancesQueryHandler
             ct);
 
         var asOfDate = DateOnly.FromDateTime(_dateTimeProvider.UtcNow.UtcDateTime);
+        if (_leaveTypes is not null)
+            rows = await LeaveBalanceMapping.IncludeResolvedZeroRowsAsync(
+                _policies, _leaveTypes, _employees, _currentUser.TenantId, request.Year,
+                asOfDate, [employee.Id], rows, ct);
         return Result<IReadOnlyList<LeaveBalanceResponse>>.Success(
             await LeaveBalanceMapping.MapAsync(_policies, _currentUser.TenantId, request.Year, asOfDate, rows, ct));
     }
