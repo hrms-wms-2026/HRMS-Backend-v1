@@ -16,6 +16,25 @@ namespace ONEVO.Tests.Integration.WorkManagement.Meetings;
 public sealed class MeetingSchemaIntegrationTests
 {
     private const string MigrationBeforeFoundation = "20261018080913_AddMeetingProvisioningState";
+    private const string Foundation = "20261018092918_AddMeetingWorkItemsFoundation";
+
+    /// <summary>Runs AddMeetingWorkItemsFoundation's own Down (or Up) script against the test's database. Migrating the
+    /// database itself below the foundation would also roll back every later migration, and some of those are one-way
+    /// (e.g. LeavePolicyPerTypeVersionsAssignments), so these tests exercise only this migration's SQL.</summary>
+    private static async Task RunFoundationAsync(MyTeamDb h, bool down, CancellationToken ct = default)
+    {
+        string script;
+        await using (var db = h.NewContext())
+        {
+            var migrator = db.Database.GetService<IMigrator>();
+            script = down ? migrator.GenerateScript(Foundation, MigrationBeforeFoundation)
+                : migrator.GenerateScript(MigrationBeforeFoundation, Foundation);
+        }
+        await using var connection = new NpgsqlConnection(h.ConnectionString);
+        await connection.OpenAsync(ct);
+        await using var command = new NpgsqlCommand(script, connection) { CommandTimeout = 120 };
+        await command.ExecuteNonQueryAsync(ct);
+    }
 
     private static readonly string[] MeetingTables =
     [
@@ -224,10 +243,8 @@ public sealed class MeetingSchemaIntegrationTests
             await db.SaveChangesAsync();
         }
 
-        await using (var db = h.NewContext())
-            await db.Database.GetService<IMigrator>().MigrateAsync(MigrationBeforeFoundation);
-        await using (var db = h.NewContext())
-            await db.Database.GetService<IMigrator>().MigrateAsync();
+        await RunFoundationAsync(h, down: true);
+        await RunFoundationAsync(h, down: false);
 
         foreach (var check in OwnerChecks)
             Assert.Equal(true, await ScalarAsync(h, $"SELECT convalidated FROM pg_constraint WHERE conname = '{check}'"));
@@ -244,9 +261,7 @@ public sealed class MeetingSchemaIntegrationTests
             await db.SaveChangesAsync();
         }
 
-        await using var migrate = h.NewContext();
-        var error = await Assert.ThrowsAnyAsync<Exception>(
-            () => migrate.Database.GetService<IMigrator>().MigrateAsync(MigrationBeforeFoundation));
+        var error = await Assert.ThrowsAnyAsync<Exception>(() => RunFoundationAsync(h, down: true));
 
         Assert.Contains("meeting data exists", error.ToString());
         Assert.Equal(1L, await ScalarAsync(h, "SELECT count(*) FROM meeting_series"));
@@ -326,8 +341,7 @@ public sealed class MeetingSchemaIntegrationTests
     public async Task Migration_FailsFast_WhenATableItLocksIsBusy()
     {
         var h = await MyTeamDb.CreateAsync();
-        await using (var db = h.NewContext())
-            await db.Database.GetService<IMigrator>().MigrateAsync(MigrationBeforeFoundation);
+        await RunFoundationAsync(h, down: true);
 
         await using var holder = new NpgsqlConnection(h.ConnectionString);
         await holder.OpenAsync();
@@ -337,18 +351,13 @@ public sealed class MeetingSchemaIntegrationTests
             using var giveUp = new CancellationTokenSource(TimeSpan.FromSeconds(45));
             var clock = Stopwatch.StartNew();
 
-            await using (var db = h.NewContext())
-            {
-                var error = await Assert.ThrowsAnyAsync<Exception>(
-                    () => db.Database.GetService<IMigrator>().MigrateAsync(null, giveUp.Token));
-                Assert.True(InnermostPostgres(error) is { SqlState: PostgresErrorCodes.LockNotAvailable }, error.ToString());
-            }
+            var error = await Assert.ThrowsAnyAsync<Exception>(() => RunFoundationAsync(h, down: false, giveUp.Token));
+            Assert.True(InnermostPostgres(error) is { SqlState: PostgresErrorCodes.LockNotAvailable }, error.ToString());
             Assert.True(clock.Elapsed < TimeSpan.FromSeconds(30), $"the migration queued for {clock.Elapsed} behind the lock");
             await hold.RollbackAsync();
         }
 
-        await using (var db = h.NewContext())
-            await db.Database.GetService<IMigrator>().MigrateAsync();
+        await RunFoundationAsync(h, down: false);
         Assert.Equal(false, await ScalarAsync(h,
             "SELECT condeferrable FROM pg_constraint WHERE conname = 'uq_meeting_details_series_original_start'"));
     }
