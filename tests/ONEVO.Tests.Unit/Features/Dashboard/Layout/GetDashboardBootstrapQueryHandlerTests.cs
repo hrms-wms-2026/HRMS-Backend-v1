@@ -145,14 +145,14 @@ public sealed class GetDashboardBootstrapQueryHandlerTests
 
         var byKey = result.Value!.Widgets.ToDictionary(w => w.WidgetKey, w => w.Layout);
         Assert.Equal(7, byKey.Count);
-        Assert.Equal(new GridRect(0, 0, 3, 4), byKey["today-at-a-glance"]);
-        Assert.Equal(new GridRect(3, 0, 3, 4), byKey["today-total-time"]);
-        Assert.Equal(new GridRect(6, 0, 3, 4), byKey["active-projects"]);
+        Assert.Equal(new GridRect(0, 0, 6, 4), byKey["today-at-a-glance"]);
+        Assert.Equal(new GridRect(6, 0, 3, 4), byKey["today-total-time"]);
         Assert.Equal(new GridRect(9, 0, 3, 4), byKey["quick-actions"]);
         Assert.Equal(new GridRect(0, 4, 6, 4), byKey["todays-schedule"]);
-        Assert.Equal(new GridRect(6, 4, 6, 4), byKey["my-tasks"]);
-        Assert.Equal(new GridRect(0, 8, 12, 4), byKey["work-pattern"]);
-        for (var y = 0; y < 4; y++)
+        Assert.Equal(new GridRect(6, 4, 6, 4), byKey["active-projects"]);
+        Assert.Equal(new GridRect(0, 8, 6, 4), byKey["my-tasks"]);
+        Assert.Equal(new GridRect(0, 12, 12, 4), byKey["work-pattern"]);
+        for (var y = 0; y < 8; y++)
             for (var x = 0; x < 12; x++)
                 Assert.Contains(byKey.Values, r => x >= r.X && x < r.X + r.W && y >= r.Y && y < r.Y + r.H);
     }
@@ -234,7 +234,7 @@ public sealed class GetDashboardBootstrapQueryHandlerTests
 
         var full = DashboardWidgetRegistry.DefaultLayout(DashboardKeys.MyWork, "desktop").ToDictionary(i => i.Key, i => i.Rect);
         Assert.Equal(8, result.Value!.Widgets.Count);
-        Assert.Equal(new GridRect(3, 0, 6, 4), result.Value.Widgets.Single(w => w.WidgetKey == "action-center").Layout);
+        Assert.Equal(new GridRect(4, 0, 5, 4), result.Value.Widgets.Single(w => w.WidgetKey == "action-center").Layout);
         Assert.All(result.Value.Widgets, w => Assert.Equal(full[w.WidgetKey], w.Layout));
     }
 
