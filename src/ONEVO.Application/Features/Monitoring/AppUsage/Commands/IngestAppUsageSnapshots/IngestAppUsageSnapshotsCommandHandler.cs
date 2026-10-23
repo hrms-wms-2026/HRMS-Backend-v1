@@ -127,6 +127,10 @@ public class IngestAppUsageSnapshotsCommandHandler
         if (entities.Count > 0)
         {
             await _snapshots.AddRangeAsync(entities, cancellationToken);
+            await _globalApplications.RecordObservedAsync(
+                entities.Where(x => x.ProcessName is not null).Select(x => x.ProcessName!),
+                now,
+                cancellationToken);
             await _unitOfWork.SaveChangesAsync(cancellationToken);
         }
 
