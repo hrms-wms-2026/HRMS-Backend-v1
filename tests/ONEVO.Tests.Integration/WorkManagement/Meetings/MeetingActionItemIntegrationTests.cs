@@ -222,6 +222,70 @@ public sealed class MeetingActionItemIntegrationTests
     }
 
     [Fact]
+    public async Task ApproverCannotRepointTheSourceMeeting_ApplyIsInvalid_AndWritesNothing()
+    {
+        // The requester's source was checked when they filed it; an approver editing it to another meeting would attach
+        // the task to a meeting neither of them may see.
+        var w = await SeedAsync();
+        var unrelatedOccurrenceId = await SeedUnrelatedMeetingAsync(w);
+
+        await using (var db = w.H.NewContext())
+        {
+            var requestId = await FileRequestAsync(w, db, w.OccurrenceTaskId);
+            var outcome = await ApplyAsync(w, db, requestId, approverPayloadJson: PayloadFor(w, unrelatedOccurrenceId));
+
+            Assert.Equal(ApplyOutcomeKind.Invalid, outcome.Kind);
+        }
+
+        await using var check = w.H.NewContext();
+        Assert.Equal(0, await check.MeetingActionItems.CountAsync());
+        Assert.Equal(0, await check.WorkTasks.CountAsync(t => t.TaskKind != WorkTaskKinds.Meeting));
+    }
+
+    [Fact]
+    public async Task ApprovedRequest_WhoseRequesterCannotSeeTheSource_CreatesTheTaskWithoutALink()
+    {
+        // The requester may have been removed from the meeting while the request waited; the link is re-checked for them
+        // at apply time, like a removed occurrence (no link, the task is still created).
+        var w = await SeedAsync();
+        Guid outsiderId;
+        await using (var db = w.H.NewContext())
+        {
+            var outsider = w.H.AddEmployee(db);
+            w.H.AddMember(db, w.ProjectId, w.RootModuleId, outsider.Id);
+            await db.SaveChangesAsync();
+            outsiderId = outsider.Id;
+        }
+
+        await using (var db = w.H.NewContext())
+        {
+            var outcome = await ApplyAsync(w, db, await FileRequestAsync(w, db, w.OccurrenceTaskId, outsiderId));
+            Assert.Equal(ApplyOutcomeKind.Applied, outcome.Kind);
+        }
+
+        await using var check = w.H.NewContext();
+        Assert.Equal(0, await check.MeetingActionItems.CountAsync());
+        Assert.Equal(1, await check.WorkTasks.CountAsync(t => t.TaskKind != WorkTaskKinds.Meeting));
+    }
+
+    [Fact]
+    public async Task ApproverReformattingThePayload_KeepsTheSameSource_AndLinks()
+    {
+        // Only a different source is refused: an approver payload that differs in formatting or other fields still links.
+        var w = await SeedAsync();
+        await using (var db = w.H.NewContext())
+        {
+            var requestId = await FileRequestAsync(w, db, w.OccurrenceTaskId);
+            var edited = JsonSerializer.Serialize(new TaskCreateInput(w.RootModuleId, "Action item (renamed)", null, w.CategoryId,
+                WorkTaskPriorities.High, null, null, null, null, w.OccurrenceTaskId), new JsonSerializerOptions(JsonSerializerDefaults.Web));
+            Assert.Equal(ApplyOutcomeKind.Applied, (await ApplyAsync(w, db, requestId, edited)).Kind);
+        }
+
+        await using var check = w.H.NewContext();
+        Assert.Equal(1, await check.MeetingActionItems.CountAsync());
+    }
+
+    [Fact]
     public async Task ActionItems_HiddenTaskIsNotListedOrCounted()
     {
         var w = await SeedAsync();
@@ -434,16 +498,14 @@ public sealed class MeetingActionItemIntegrationTests
     }
 
     /// <summary>Files a pending task.create approval request for a removed occurrence, and returns its id.</summary>
-    private static async Task<Guid> FileRequestAsync(World w, ApplicationDbContext db, Guid sourceOccurrenceId)
+    private static async Task<Guid> FileRequestAsync(World w, ApplicationDbContext db, Guid sourceOccurrenceId, Guid? requesterEmployeeId = null)
     {
-        var payload = new TaskCreateInput(w.RootModuleId, "Action item", null, w.CategoryId, WorkTaskPriorities.Medium,
-            null, null, null, null, sourceOccurrenceId);
         var request = new WorkApprovalRequest
         {
             Id = Guid.NewGuid(), TenantId = w.H.TenantId, ProjectId = w.ProjectId, ActionType = WorkActionTypes.TaskCreate,
-            TargetType = WorkTargetTypes.Task, TargetTitle = payload.Title, ApproverSource = WorkApprovalSources.Hierarchy,
-            ApproverEmployeeId = w.Organizer, RequestedByEmployeeId = w.Organizer,
-            PayloadJson = JsonSerializer.Serialize(payload, new JsonSerializerOptions(JsonSerializerDefaults.Web)),
+            TargetType = WorkTargetTypes.Task, TargetTitle = "Action item", ApproverSource = WorkApprovalSources.Hierarchy,
+            ApproverEmployeeId = w.Organizer, RequestedByEmployeeId = requesterEmployeeId ?? w.Organizer,
+            PayloadJson = PayloadFor(w, sourceOccurrenceId),
             Status = WorkApprovalRequestStatuses.Pending, CreatedAt = DateTimeOffset.UtcNow,
         };
         db.WorkApprovalRequests.Add(request);
@@ -451,16 +513,33 @@ public sealed class MeetingActionItemIntegrationTests
         return request.Id;
     }
 
-    private static async Task<ApplyOutcome> ApplyAsync(World w, ApplicationDbContext db, Guid requestId)
+    private static string PayloadFor(World w, Guid sourceOccurrenceId)
+        => JsonSerializer.Serialize(new TaskCreateInput(w.RootModuleId, "Action item", null, w.CategoryId, WorkTaskPriorities.Medium,
+            null, null, null, null, sourceOccurrenceId), new JsonSerializerOptions(JsonSerializerDefaults.Web));
+
+    private static async Task<ApplyOutcome> ApplyAsync(World w, ApplicationDbContext db, Guid requestId, string? approverPayloadJson = null)
     {
         var applier = new TaskCreateApplier(Writes(db), new EfObjectiveRepository(db), Membership(db), ActionItems(db, w));
         var request = await db.WorkApprovalRequests.SingleAsync(r => r.Id == requestId);
         return await new UnitOfWork(db).ExecuteInTransactionAsync(async ct =>
         {
-            var outcome = await applier.ApplyAsync(new ApprovalApplyContext(request, request.PayloadJson, w.Organizer), ct);
+            var outcome = await applier.ApplyAsync(
+                new ApprovalApplyContext(request, approverPayloadJson ?? request.PayloadJson, w.Organizer), ct);
             await db.SaveChangesAsync(ct);
             return outcome;
         });
+    }
+
+    /// <summary>A private meeting in the same project that nobody in the world but its own organizer attends.</summary>
+    private static async Task<Guid> SeedUnrelatedMeetingAsync(World w)
+    {
+        await using var db = w.H.NewContext();
+        var stranger = w.H.AddEmployee(db);
+        var at = new MeetingPlacement(stranger.Id, w.ProjectId, w.RootModuleId, w.StatusId);
+        var series = w.H.AddSeries(db, at, First);
+        var (occurrence, _) = w.H.AddOccurrence(db, series, at, First);
+        await db.SaveChangesAsync();
+        return occurrence.Id;
     }
 
     private sealed class CurrentUserStub(Guid tenantId, Guid userId) : ICurrentUser
