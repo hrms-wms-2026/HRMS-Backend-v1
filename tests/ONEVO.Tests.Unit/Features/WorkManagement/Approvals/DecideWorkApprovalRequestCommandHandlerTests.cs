@@ -57,6 +57,7 @@ public class DecideWorkApprovalRequestCommandHandlerTests
             RequestedByEmployeeId = Requester, PayloadJson = "{\"title\":\"old\"}", Status = WorkApprovalRequestStatuses.Pending
         };
         _requests.Setup(x => x.GetTrackedByIdForTenantAsync(TenantId, _request.Id, It.IsAny<CancellationToken>())).ReturnsAsync(_request);
+        _requests.Setup(x => x.LockIfPendingAsync(TenantId, _request.Id, It.IsAny<CancellationToken>())).ReturnsAsync(true);
         _applier.SetupGet(x => x.ActionType).Returns(WorkActionTypes.TaskEdit);
         _appliers.Setup(x => x.Find(WorkActionTypes.TaskEdit)).Returns(_applier.Object);
     }
@@ -220,6 +221,52 @@ public class DecideWorkApprovalRequestCommandHandlerTests
         Caller(A);
         _request.Status = WorkApprovalRequestStatuses.Approved;
         (await Build().Handle(Cmd(_request.Id, WorkApprovalDecision.Reject), default)).StatusCode.Should().Be(409);
+    }
+
+    [Theory]
+    [InlineData(WorkApprovalDecision.Approve)]
+    [InlineData(WorkApprovalDecision.Reject)]
+    public async Task ConcurrentDecisionWonTheRow_Returns409_AndAppliesNothing(WorkApprovalDecision decision)
+    {
+        // The request read as pending, but another decider committed first: the row lock finds it no longer pending.
+        Caller(A);
+        _requests.Setup(x => x.LockIfPendingAsync(TenantId, _request.Id, It.IsAny<CancellationToken>())).ReturnsAsync(false);
+
+        var result = await Build().Handle(Cmd(_request.Id, decision), default);
+
+        result.StatusCode.Should().Be(409);
+        _applier.Verify(x => x.ApplyAsync(It.IsAny<ApprovalApplyContext>(), It.IsAny<CancellationToken>()), Times.Never);
+        _request.Status.Should().Be(WorkApprovalRequestStatuses.Pending);
+        _uow.SaveCallCount.Should().Be(0);
+        _notifications.Verify(x => x.NotifyAsync(It.IsAny<WorkNotificationEvent>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ConcurrentCancelLostTheRow_Returns409()
+    {
+        Caller(Requester);
+        _requests.Setup(x => x.LockIfPendingAsync(TenantId, _request.Id, It.IsAny<CancellationToken>())).ReturnsAsync(false);
+
+        var result = await Build().Handle(Cmd(_request.Id, WorkApprovalDecision.Cancel), default);
+
+        result.StatusCode.Should().Be(409);
+        _request.Status.Should().Be(WorkApprovalRequestStatuses.Pending);
+    }
+
+    [Fact]
+    public async Task Decision_TakesTheRowLock_BeforeApplying()
+    {
+        Caller(A);
+        var order = new List<string>();
+        _requests.Setup(x => x.LockIfPendingAsync(TenantId, _request.Id, It.IsAny<CancellationToken>()))
+            .Callback(() => order.Add("lock")).ReturnsAsync(true);
+        _applier.Setup(x => x.ApplyAsync(It.IsAny<ApprovalApplyContext>(), It.IsAny<CancellationToken>()))
+            .Callback(() => order.Add("apply")).ReturnsAsync(ApplyOutcome.Applied());
+
+        await Build().Handle(Cmd(_request.Id, WorkApprovalDecision.Approve), default);
+
+        order.Should().Equal("lock", "apply");
+        _uow.TransactionCallCount.Should().Be(1);
     }
 
     [Fact]

@@ -88,8 +88,35 @@ public sealed class DecideWorkApprovalRequestCommandHandler
             ? command.EditedPayloadJson!
             : request.PayloadJson;
 
-        var result = await _unitOfWork.ExecuteInTransactionAsync(async innerCt =>
+        Result<WorkApprovalRequestResponse> result;
+        try
         {
+            result = await DecideInTransactionAsync(command, request, applier, payload, tenantId, caller, ct);
+        }
+        catch (ApprovalAlreadyDecidedException)
+        {
+            return Result<WorkApprovalRequestResponse>.Conflict("This request has already been decided.");
+        }
+
+        if (!result.IsSuccess)
+            return result;
+
+        var names = await _identity.ResolveDisplayNamesByEmployeeIdAsync(
+            tenantId, [request.RequestedByEmployeeId, request.ApproverEmployeeId], ct);
+        return Result<WorkApprovalRequestResponse>.Success(WorkApprovalRequestMapper.ToResponse(request, names, caller));
+    }
+
+    private Task<Result<WorkApprovalRequestResponse>> DecideInTransactionAsync(DecideWorkApprovalRequestCommand command,
+        WorkApprovalRequest request, IApprovalActionApplier? applier, string payload, Guid tenantId, Guid caller,
+        CancellationToken ct)
+        => _unitOfWork.ExecuteInTransactionAsync(async innerCt =>
+        {
+            // The pending check above ran before the transaction. Two deciders (the approver and the HR fallback, or an
+            // approve racing a reject or the requester's cancel) can both pass it, so the row lock decides: the loser
+            // waits, then finds the row no longer pending and rolls back without applying anything.
+            if (!await _requests.LockIfPendingAsync(tenantId, request.Id, innerCt))
+                throw new ApprovalAlreadyDecidedException(request.Id);
+
             string status, kind;
             switch (command.Decision)
             {
@@ -129,12 +156,4 @@ public sealed class DecideWorkApprovalRequestCommandHandler
             await _unitOfWork.SaveChangesAsync(innerCt);
             return Result<WorkApprovalRequestResponse>.Success(null!);
         }, ct);
-
-        if (!result.IsSuccess)
-            return result;
-
-        var names = await _identity.ResolveDisplayNamesByEmployeeIdAsync(
-            tenantId, [request.RequestedByEmployeeId, request.ApproverEmployeeId], ct);
-        return Result<WorkApprovalRequestResponse>.Success(WorkApprovalRequestMapper.ToResponse(request, names, caller));
-    }
 }

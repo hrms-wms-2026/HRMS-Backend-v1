@@ -118,6 +118,47 @@ public sealed class MeetingApprovalIntegrationTests
     }
 
     /// <summary>Answers only "is this employee still a member of this module"; nothing else may be called.</summary>
+    [Fact]
+    public async Task TheDecisionRowLock_MakesASecondDeciderWait_ThenSeeTheRequestAlreadyDecided()
+    {
+        // Spec 5.2 "a conditional pending -> approved update; 409 if it was already decided": two deciders who both read
+        // the request as pending must not both apply it.
+        var w = await SeedAsync(Now.AddDays(2));
+
+        await using var first = w.H.NewContext();
+        await using var firstTx = await first.Database.BeginTransactionAsync();
+        Assert.True(await new EfWorkApprovalRequestRepository(first).LockIfPendingAsync(w.H.TenantId, w.Request.Id));
+        var decided = await first.WorkApprovalRequests.SingleAsync(r => r.Id == w.Request.Id);
+        decided.Status = WorkApprovalRequestStatuses.Approved;
+        await first.SaveChangesAsync();
+
+        await using var second = w.H.NewContext();
+        await using var secondTx = await second.Database.BeginTransactionAsync();
+        var secondLock = new EfWorkApprovalRequestRepository(second).LockIfPendingAsync(w.H.TenantId, w.Request.Id);
+        await Task.Delay(TimeSpan.FromMilliseconds(500));
+        Assert.False(secondLock.IsCompleted, "the second decider must wait on the row the first one holds");
+
+        await firstTx.CommitAsync();
+        Assert.False(await secondLock.WaitAsync(TimeSpan.FromSeconds(10)), "after the first commit the request is no longer pending");
+    }
+
+    [Fact]
+    public async Task TheDecisionRowLock_IsNotGranted_ForADecidedRequest_AndNeedsATransaction()
+    {
+        var w = await SeedAsync(Now.AddDays(2));
+        await using (var db = w.H.NewContext())
+        {
+            (await db.WorkApprovalRequests.SingleAsync(r => r.Id == w.Request.Id)).Status = WorkApprovalRequestStatuses.Rejected;
+            await db.SaveChangesAsync();
+        }
+
+        await using var ctx = w.H.NewContext();
+        var requests = new EfWorkApprovalRequestRepository(ctx);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => requests.LockIfPendingAsync(w.H.TenantId, w.Request.Id));
+        await using var tx = await ctx.Database.BeginTransactionAsync();
+        Assert.False(await requests.LockIfPendingAsync(w.H.TenantId, w.Request.Id));
+    }
+
     private sealed class MembershipStub(Guid moduleId, Guid employeeId, bool isMember) : IMilestoneMembershipCoordinator
     {
         public Task<bool> IsEffectiveManagerAsync(Guid tenantId, Guid objectiveId, Guid employee, CancellationToken ct = default)
