@@ -116,11 +116,46 @@ public sealed class ModuleHourSummaryMeetingExclusionIntegrationTests
             EXECUTE FUNCTION wm_tasks_refresh_module_hour_summary();
         """;
 
-    /// <summary>Installs the pre-fix schema into the test's own disposable database.</summary>
+    /// <summary>The per-test databases SharedPostgresTemplate clones are all named with this prefix.</summary>
+    private const string IsolatedDatabasePrefix = "onevo_it_";
+
+    /// <summary>Removes every summary object AddModuleHourSummaries creates (the same objects its
+    /// Down drops), leaving the database as a branch without module-hour summaries has it. On the
+    /// feature branch there is nothing to remove; on a tree that also carries AddModuleHourSummaries
+    /// the cloned template already has them. Refuses to run anywhere but a per-test clone.</summary>
+    private static async Task DropSummarySchemaAsync(NpgsqlConnection conn)
+    {
+        await using (var check = conn.CreateCommand())
+        {
+            check.CommandText = "SELECT current_database()";
+            var database = (string)(await check.ExecuteScalarAsync())!;
+            if (!database.StartsWith(IsolatedDatabasePrefix, StringComparison.Ordinal))
+                throw new InvalidOperationException(
+                    $"Refusing to drop the module-hour summary schema in '{database}': " +
+                    $"only a per-test '{IsolatedDatabasePrefix}*' database may be torn down.");
+        }
+
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            DROP TRIGGER IF EXISTS trg_tasks_module_hour_summary_update ON tasks;
+            DROP TRIGGER IF EXISTS trg_tasks_module_hour_summary_insert_delete ON tasks;
+            DROP TRIGGER IF EXISTS trg_task_statuses_module_hour_summary ON task_statuses;
+            DROP FUNCTION IF EXISTS wm_task_statuses_refresh_module_hour_summary();
+            DROP FUNCTION IF EXISTS wm_tasks_refresh_module_hour_summary();
+            DROP FUNCTION IF EXISTS wm_refresh_module_hour_summary(uuid);
+            DROP TABLE IF EXISTS wm_module_hour_summaries;
+            """;
+        await cmd.ExecuteNonQueryAsync();
+    }
+
+    /// <summary>Installs the pre-fix schema into the test's own disposable database, replacing any
+    /// summary schema the cloned template already carries.</summary>
     private static async Task InstallPreFixSchemaAsync(MyTeamDb helper)
     {
         await using var conn = new NpgsqlConnection(helper.ConnectionString);
         await conn.OpenAsync();
+        await DropSummarySchemaAsync(conn);
+
         await using var cmd = conn.CreateCommand();
         cmd.CommandText = PreFixSchema;
         await cmd.ExecuteNonQueryAsync();
@@ -498,6 +533,7 @@ public sealed class ModuleHourSummaryMeetingExclusionIntegrationTests
         var helper = await MyTeamDb.CreateAsync();
         await using var conn = new NpgsqlConnection(helper.ConnectionString);
         await conn.OpenAsync();
+        await DropSummarySchemaAsync(conn);
 
         await ApplyMigrationAsync(conn);
 

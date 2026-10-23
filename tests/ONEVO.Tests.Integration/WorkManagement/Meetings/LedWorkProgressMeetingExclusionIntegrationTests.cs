@@ -96,91 +96,6 @@ public sealed class LedWorkProgressMeetingExclusionIntegrationTests
         return (GetLedWorkProgressQueryHandler)ctor.Invoke(args);
     }
 
-    /// <summary>The pre-fix summary schema, as AddModuleHourSummaries creates it.</summary>
-    private const string PreFixSchema = """
-        CREATE TABLE wm_module_hour_summaries (
-            id uuid NOT NULL,
-            project_id uuid NOT NULL,
-            not_started_hours numeric(18,2) NOT NULL,
-            in_progress_hours numeric(18,2) NOT NULL,
-            completed_hours numeric(18,2) NOT NULL,
-            task_count integer NOT NULL,
-            unestimated_task_count integer NOT NULL,
-            earliest_open_due_date date NULL,
-            tenant_id uuid NOT NULL,
-            created_at timestamptz NOT NULL,
-            updated_at timestamptz NULL,
-            created_by_id uuid NOT NULL,
-            is_deleted boolean NOT NULL,
-            deleted_at timestamptz NULL,
-            CONSTRAINT pk_wm_module_hour_summaries PRIMARY KEY (id)
-        );
-
-        CREATE OR REPLACE FUNCTION wm_refresh_module_hour_summary(p_objective_id uuid) RETURNS void
-        LANGUAGE sql AS $fn$
-            INSERT INTO wm_module_hour_summaries AS s
-                (id, tenant_id, project_id, not_started_hours, in_progress_hours, completed_hours,
-                 task_count, unestimated_task_count, earliest_open_due_date,
-                 created_at, updated_at, created_by_id, is_deleted)
-            SELECT
-                o.id, o.tenant_id, o.project_id,
-                COALESCE(SUM(t.estimated_hours) FILTER (WHERE NOT x.done AND t.progress_percent <= 0), 0),
-                COALESCE(SUM(t.estimated_hours) FILTER (WHERE NOT x.done AND t.progress_percent > 0), 0),
-                COALESCE(SUM(t.estimated_hours) FILTER (WHERE x.done), 0),
-                COUNT(t.id),
-                COUNT(t.id) FILTER (WHERE COALESCE(t.estimated_hours, 0) = 0),
-                MIN(t.due_date) FILTER (WHERE NOT x.done),
-                now(), now(), '00000000-0000-0000-0000-000000000000', false
-            FROM objectives o
-            LEFT JOIN tasks t
-                ON t.objective_id = o.id AND t.tenant_id = o.tenant_id
-                AND t.parent_task_id IS NULL AND NOT t.is_deleted
-            LEFT JOIN task_statuses st ON st.id = t.status_id
-            CROSS JOIN LATERAL (
-                SELECT (COALESCE(st.marks_task_complete, false) OR COALESCE(t.progress_percent, 0) >= 100) AS done
-            ) x
-            WHERE o.id = p_objective_id
-            GROUP BY o.id, o.tenant_id, o.project_id
-            ON CONFLICT (id) DO UPDATE SET
-                not_started_hours = EXCLUDED.not_started_hours,
-                in_progress_hours = EXCLUDED.in_progress_hours,
-                completed_hours = EXCLUDED.completed_hours,
-                task_count = EXCLUDED.task_count,
-                unestimated_task_count = EXCLUDED.unestimated_task_count,
-                earliest_open_due_date = EXCLUDED.earliest_open_due_date,
-                updated_at = now();
-        $fn$;
-
-        CREATE OR REPLACE FUNCTION wm_tasks_refresh_module_hour_summary() RETURNS trigger
-        LANGUAGE plpgsql AS $fn$
-        BEGIN
-            IF TG_OP <> 'DELETE' THEN
-                PERFORM wm_refresh_module_hour_summary(NEW.objective_id);
-            END IF;
-            IF TG_OP = 'DELETE' OR (TG_OP = 'UPDATE' AND OLD.objective_id IS DISTINCT FROM NEW.objective_id) THEN
-                PERFORM wm_refresh_module_hour_summary(OLD.objective_id);
-            END IF;
-            RETURN NULL;
-        END;
-        $fn$;
-
-        CREATE TRIGGER trg_tasks_module_hour_summary_insert_delete
-            AFTER INSERT OR DELETE ON tasks
-            FOR EACH ROW EXECUTE FUNCTION wm_tasks_refresh_module_hour_summary();
-
-        CREATE TRIGGER trg_tasks_module_hour_summary_update
-            AFTER UPDATE ON tasks
-            FOR EACH ROW
-            WHEN (OLD.objective_id IS DISTINCT FROM NEW.objective_id
-                OR OLD.status_id IS DISTINCT FROM NEW.status_id
-                OR OLD.estimated_hours IS DISTINCT FROM NEW.estimated_hours
-                OR OLD.progress_percent IS DISTINCT FROM NEW.progress_percent
-                OR OLD.due_date IS DISTINCT FROM NEW.due_date
-                OR OLD.parent_task_id IS DISTINCT FROM NEW.parent_task_id
-                OR OLD.is_deleted IS DISTINCT FROM NEW.is_deleted)
-            EXECUTE FUNCTION wm_tasks_refresh_module_hour_summary();
-        """;
-
     private static async Task ApplyMigrationAsync(NpgsqlConnection conn)
     {
         var migration = new ExcludeMeetingTasksFromModuleHourSummaries();
@@ -229,7 +144,9 @@ public sealed class LedWorkProgressMeetingExclusionIntegrationTests
             await db.SaveChangesAsync();
         }
 
-        // The branch that has the summary table needs it - and the fix - to be in place.
+        // The branch that has the summary table needs the fix in place. The cloned template
+        // already carries AddModuleHourSummaries there, so the fix migration is applied over it
+        // as production applies it; its backfill recomputes the rows seeded above.
         await using (var conn = new NpgsqlConnection(helper.ConnectionString))
         {
             await conn.OpenAsync();
@@ -238,12 +155,7 @@ public sealed class LedWorkProgressMeetingExclusionIntegrationTests
                 cmd.CommandText = "SELECT count(*) FROM pg_class WHERE relname = 'wm_module_hour_summaries'";
                 var exists = (long)(await cmd.ExecuteScalarAsync())!;
                 if (exists > 0)
-                {
-                    await using var create = conn.CreateCommand();
-                    create.CommandText = PreFixSchema;
-                    await create.ExecuteNonQueryAsync();
                     await ApplyMigrationAsync(conn);
-                }
             }
         }
 
