@@ -24,8 +24,8 @@ public sealed class GetAvailableWidgetsQueryHandlerTests
         Assert.Equal(DashboardMutationFixture.PlainEmployeeWork.OrderBy(k => k), keys.OrderBy(k => k));
         var glance = result.Value!.Single(w => w.Key == "today-at-a-glance");
         Assert.Equal("Today at a glance", glance.Title);
-        Assert.Equal(new[] { 3, 3, 6, 5 }, new[] { glance.Size.MinW, glance.Size.MinH, glance.Size.MaxW, glance.Size.MaxH });
-        Assert.Equal((3, 4), (glance.DefaultW, glance.DefaultH));
+        Assert.Equal(new[] { 3, 3, 6, 8 }, new[] { glance.Size.MinW, glance.Size.MinH, glance.Size.MaxW, glance.Size.MaxH });
+        Assert.Equal((4, 4), (glance.DefaultW, glance.DefaultH));
     }
 
     [Fact]

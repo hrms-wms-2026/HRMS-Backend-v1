@@ -87,7 +87,7 @@ public sealed class DashboardWidgetRegistryTests
     {
         var work = DashboardWidgetRegistry.DefaultLayout(DashboardKeys.MyWork, Breakpoints.Desktop);
 
-        Assert.Equal(new GridRect(0, 0, 3, 4), work.Single(i => i.Key == "today-at-a-glance").Rect);
+        Assert.Equal(new GridRect(0, 0, 4, 4), work.Single(i => i.Key == "today-at-a-glance").Rect);
         Assert.Equal(new GridRect(0, 12, 12, 4), work.Single(i => i.Key == "work-pattern").Rect);
         Assert.Equal(new GridRect(8, 4, 4, 6), DashboardWidgetRegistry.DefaultLayout(DashboardKeys.MyTeam, Breakpoints.Desktop).Single(i => i.Key == "team-progress").Rect);
     }
@@ -162,13 +162,13 @@ public sealed class DashboardWidgetRegistryTests
 
         Assert.Equal(
             [
-                ("today-at-a-glance", new GridRect(0, 0, 3, 4)),
-                ("today-total-time", new GridRect(3, 0, 3, 4)),
-                ("active-projects", new GridRect(6, 0, 3, 4)),
+                ("today-at-a-glance", new GridRect(0, 0, 6, 4)),
+                ("today-total-time", new GridRect(6, 0, 3, 4)),
                 ("quick-actions", new GridRect(9, 0, 3, 4)),
                 ("todays-schedule", new GridRect(0, 4, 6, 4)),
-                ("my-tasks", new GridRect(6, 4, 6, 4)),
-                ("work-pattern", new GridRect(0, 8, 12, 4)),
+                ("active-projects", new GridRect(6, 4, 6, 4)),
+                ("my-tasks", new GridRect(0, 8, 6, 4)),
+                ("work-pattern", new GridRect(0, 12, 12, 4)),
             ],
             layout);
     }

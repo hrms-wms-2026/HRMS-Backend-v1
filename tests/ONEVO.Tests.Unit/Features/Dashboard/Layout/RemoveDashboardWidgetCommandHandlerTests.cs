@@ -35,7 +35,7 @@ public sealed class RemoveDashboardWidgetCommandHandlerTests
 
         await Handler().Handle(new RemoveDashboardWidgetCommand(d.Id, target.Id, 1), default);
 
-        // work-pattern (12 wide, y=12) floats up; my-tasks (0,8,6,4) floats to y=0+.
+        // work-pattern (12 wide, y=12) floats up; my-tasks (0,8,6,4) floats into the freed slot.
         var visible = d.Widgets.Where(w => w.WidgetKey != "action-center").ToList();
         foreach (var bp in Breakpoints.All)
         {

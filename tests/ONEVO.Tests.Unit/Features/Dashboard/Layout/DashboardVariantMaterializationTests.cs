@@ -113,7 +113,7 @@ public sealed class DashboardVariantMaterializationTests
         Assert.True(result.IsSuccess);
         var tabletAfter = Stored(d, "tablet", w => w.WidgetKey != "action-center");
         var variantTablet = Variant(DashboardKeys.MyWork, DashboardMutationFixture.PlainEmployeeWork, "tablet");
-        Assert.NotEqual(variantTablet["today-total-time"], tabletAfter["today-total-time"]);
+        Assert.NotEqual(variantTablet["quick-actions"], tabletAfter["quick-actions"]);
         tabletBefore.Remove("work-pattern");
         Assert.Equal(Compacted(tabletBefore).OrderBy(k => k.Key), tabletAfter.OrderBy(k => k.Key));
 
@@ -137,6 +137,6 @@ public sealed class DashboardVariantMaterializationTests
 
         Assert.True(result.IsSuccess);
         Assert.Equal(Compacted(full).OrderBy(k => k.Key), Stored(d, "desktop", _ => true).OrderBy(k => k.Key));
-        Assert.Equal(new GridRect(3, 0, 6, 4), Stored(d, "desktop", w => w.WidgetKey == "action-center")["action-center"]);
+        Assert.Equal(new GridRect(4, 0, 5, 4), Stored(d, "desktop", w => w.WidgetKey == "action-center")["action-center"]);
     }
 }
