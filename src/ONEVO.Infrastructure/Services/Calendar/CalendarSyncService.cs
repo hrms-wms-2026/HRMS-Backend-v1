@@ -29,7 +29,6 @@ public sealed class CalendarSyncService(
     private static readonly TimeSpan SyncWindowPast = TimeSpan.FromDays(30);
     private static readonly TimeSpan SyncWindowFuture = TimeSpan.FromDays(180);
     private const int BatchLimitPerConnection = 200;
-    private const int MaxConsecutiveFailures = 3;
 
     // This method deliberately does NOT wrap its writes in unitOfWork.ExecuteInTransactionAsync
     // the way every CQRS command handler does - it runs one connection's whole pull+push cycle as
@@ -92,7 +91,7 @@ public sealed class CalendarSyncService(
             connection.FailureCount++;
             connection.LastError = ex.Message;
             connection.LastSyncedAt = DateTimeOffset.UtcNow;
-            if (connection.FailureCount >= MaxConsecutiveFailures)
+            if (connection.FailureCount >= ExternalCalendarConnectionStatuses.MaxConsecutiveFailures)
             {
                 // The owner hears about it once, on the run that turns the connection Failed (plan C1 P1-6).
                 if (notifications is not null && connection.Status != ExternalCalendarConnectionStatuses.Failed)
