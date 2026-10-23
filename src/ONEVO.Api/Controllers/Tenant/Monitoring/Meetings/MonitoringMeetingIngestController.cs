@@ -31,7 +31,7 @@ public class MonitoringMeetingIngestController : ControllerBase
 
         var result = await _mediator.Send(new IngestMeetingSignalsCommand { Signals = items }, ct);
 
-        return result.IsSuccess ? Accepted() : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+        return SnapshotIngestResponses.ToActionResult(this, result);
     }
 }
 
