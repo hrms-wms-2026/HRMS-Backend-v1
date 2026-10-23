@@ -103,6 +103,11 @@ public interface IMeetingRepository
     /// tracking); soft-deleted ones are left out.</summary>
     Task<IReadOnlyList<MeetingDetails>> ListOccurrencesFromAsync(Guid tenantId, Guid seriesId, DateTimeOffset from, CancellationToken ct = default);
 
+    /// <summary>Every materialized occurrence of the series that starts after <paramref name="now"/>, whatever its
+    /// original_start: one rescheduled from a past slot into the future has not happened yet (no tracking); soft-deleted
+    /// ones are left out.</summary>
+    Task<IReadOnlyList<MeetingDetails>> ListNotStartedOccurrencesAsync(Guid tenantId, Guid seriesId, DateTimeOffset now, CancellationToken ct = default);
+
     Task<IReadOnlyList<MeetingOccurrenceSuppression>> ListSuppressionsFromAsync(Guid tenantId, Guid seriesId, DateTimeOffset from, CancellationToken ct = default);
 
     /// <summary>True when the occurrence carries attendee overrides, action items or attendance rows - it must then be

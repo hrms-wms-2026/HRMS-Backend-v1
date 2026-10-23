@@ -189,6 +189,15 @@ public sealed class EfMeetingRepository : IMeetingRepository
             .OrderBy(d => d.OriginalStart).ToListAsync(ct);
     }
 
+    public async Task<IReadOnlyList<MeetingDetails>> ListNotStartedOccurrencesAsync(Guid tenantId, Guid seriesId, DateTimeOffset now, CancellationToken ct = default)
+    {
+        var nowUtc = now.ToUniversalTime();
+        return await _db.MeetingDetails.AsNoTracking()
+            .Where(d => d.TenantId == tenantId && d.SeriesId == seriesId && d.StartAt > nowUtc
+                && _db.WorkTasks.IgnoreQueryFilters(ExcludeMeetingsOnly).Any(t => t.Id == d.TaskId))
+            .OrderBy(d => d.OriginalStart).ToListAsync(ct);
+    }
+
     public async Task<IReadOnlyList<MeetingTaskComplianceOccurrence>> ListEmployeeTaskMeetingsAsync(
         Guid tenantId, Guid employeeId, DateTimeOffset from, DateTimeOffset to, CancellationToken ct = default)
     {

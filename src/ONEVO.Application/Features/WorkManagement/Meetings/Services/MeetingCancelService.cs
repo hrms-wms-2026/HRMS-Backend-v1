@@ -86,10 +86,15 @@ public sealed class MeetingCancelService
                 }
                 else
                 {
-                    var from = scope == MeetingScopes.Following ? key : now;
-                    foreach (var occurrence in await _meetings.ListOccurrencesFromAsync(tenantId, seriesId, from, innerCt))
+                    // "All" is every occurrence that has not started, by its actual time: one rescheduled from a past slot
+                    // into the future is still ahead. "Following" is by key from the point, but an occurrence moved
+                    // earlier that has already happened stays as it was (past meetings never change).
+                    var occurrences = scope == MeetingScopes.All
+                        ? await _meetings.ListNotStartedOccurrencesAsync(tenantId, seriesId, now, innerCt)
+                        : await _meetings.ListOccurrencesFromAsync(tenantId, seriesId, key, innerCt);
+                    foreach (var occurrence in occurrences)
                     {
-                        if (occurrence.CancelledAt is not null || (scope == MeetingScopes.All && occurrence.StartAt <= now))
+                        if (occurrence.CancelledAt is not null || occurrence.StartAt <= now)
                             continue;
                         var details = (await _meetings.GetDetailsTrackedAsync(tenantId, occurrence.TaskId, innerCt))!;
                         details.CancelledAt = now;
