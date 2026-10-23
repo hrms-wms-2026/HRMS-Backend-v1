@@ -189,6 +189,30 @@ public sealed class EfMeetingRepository : IMeetingRepository
             .OrderBy(d => d.OriginalStart).ToListAsync(ct);
     }
 
+    public async Task<IReadOnlyList<Guid>> ListAttendeeEmployeeIdsInRangeAsync(Guid tenantId, DateTimeOffset from, DateTimeOffset to, CancellationToken ct = default)
+    {
+        var fromUtc = from.ToUniversalTime();
+        var toUtc = to.ToUniversalTime();
+        // The same window ListVisibleAsync reads for the engine; soft-deleted occurrences (split surplus) are gone.
+        var occurrences = _db.MeetingDetails.AsNoTracking()
+            .Where(d => d.TenantId == tenantId && d.StartAt < toUtc && d.EndAt > fromUtc
+                && _db.WorkTasks.IgnoreQueryFilters(ExcludeMeetingsOnly).Any(t => t.Id == d.TaskId));
+
+        var organizers = await _db.MeetingSeries.AsNoTracking()
+            .Where(s => s.TenantId == tenantId && occurrences.Any(d => d.SeriesId == s.Id))
+            .Select(s => s.OrganizerEmployeeId).ToListAsync(ct);
+        var participants = await _db.CalendarEventParticipants.AsNoTracking()
+            .Where(p => p.TenantId == tenantId && p.MeetingSeriesId != null && occurrences.Any(d => d.SeriesId == p.MeetingSeriesId))
+            .Select(p => p.EmployeeId).ToListAsync(ct);
+        var added = await _db.MeetingOccurrenceAttendees.AsNoTracking()
+            .Where(a => a.TenantId == tenantId && a.AttendeeKind == MeetingAttendeeKinds.Employee
+                && a.Change == MeetingAttendeeChanges.Add && a.EmployeeId != null
+                && occurrences.Any(d => d.TaskId == a.OccurrenceTaskId))
+            .Select(a => a.EmployeeId!.Value).ToListAsync(ct);
+
+        return organizers.Concat(participants).Concat(added).Distinct().ToList();
+    }
+
     public async Task<IReadOnlyList<MeetingDetails>> ListNotStartedOccurrencesAsync(Guid tenantId, Guid seriesId, DateTimeOffset now, CancellationToken ct = default)
     {
         var nowUtc = now.ToUniversalTime();

@@ -108,6 +108,11 @@ public interface IMeetingRepository
     /// ones are left out.</summary>
     Task<IReadOnlyList<MeetingDetails>> ListNotStartedOccurrencesAsync(Guid tenantId, Guid seriesId, DateTimeOffset now, CancellationToken ct = default);
 
+    /// <summary>Everyone who may attend a materialized occurrence overlapping [from, to]: the series organizer, its
+    /// participants and per-occurrence adds. The nightly C2 incident pass evaluates them alongside calendar-event
+    /// participants; a per-occurrence remove is left to the engine's own visibility check.</summary>
+    Task<IReadOnlyList<Guid>> ListAttendeeEmployeeIdsInRangeAsync(Guid tenantId, DateTimeOffset from, DateTimeOffset to, CancellationToken ct = default);
+
     Task<IReadOnlyList<MeetingOccurrenceSuppression>> ListSuppressionsFromAsync(Guid tenantId, Guid seriesId, DateTimeOffset from, CancellationToken ct = default);
 
     /// <summary>True when the occurrence carries attendee overrides, action items or attendance rows - it must then be
