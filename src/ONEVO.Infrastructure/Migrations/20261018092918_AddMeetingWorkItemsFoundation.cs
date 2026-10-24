@@ -717,15 +717,18 @@ namespace ONEVO.Infrastructure.Migrations
 
             // spec 4.1: a meeting task and its meeting_details row exist together, 1:1. Deferred to commit, and each check
             // re-reads the current rows, so the pair may be written in either order within one transaction. The functions
-            // run in admin RLS mode (a function-scoped SET, restored on return): under the caller's context a check that
-            // cannot see the rows - e.g. the tenant context switched before COMMIT - would pass instead of failing. They
-            // only look rows up by id and return nothing; the composite FKs keep each pair in one tenant.
+            // run in admin RLS mode: under the caller's context a check that cannot see the rows - e.g. the tenant context
+            // switched before COMMIT - would pass instead of failing. They set it with set_config(..., true) and put the
+            // caller's mode back before returning; a function-level `SET app.tenant_context_mode` is refused to the
+            // non-superuser onevo_migrator (42501). They only look rows up by id and return nothing; the composite FKs keep
+            // each pair in one tenant.
             migrationBuilder.Sql("""
-                CREATE FUNCTION meeting_task_has_details() RETURNS trigger LANGUAGE plpgsql
-                    SET app.tenant_context_mode = 'admin' AS $$
+                CREATE FUNCTION meeting_task_has_details() RETURNS trigger LANGUAGE plpgsql AS $$
                 DECLARE
+                    prev_mode text := current_setting('app.tenant_context_mode', true);
                     current_kind text;
                 BEGIN
+                    PERFORM set_config('app.tenant_context_mode', 'admin', true);
                     SELECT t.task_kind INTO current_kind FROM tasks t WHERE t.id = NEW.id;
                     IF current_kind = 'meeting'
                        AND NOT EXISTS (SELECT 1 FROM meeting_details d WHERE d.task_id = NEW.id) THEN
@@ -737,6 +740,7 @@ namespace ONEVO.Infrastructure.Migrations
                         RAISE EXCEPTION 'trg_meeting_task_has_details: task % has a meeting_details row but is not a meeting', NEW.id
                             USING ERRCODE = 'integrity_constraint_violation';
                     END IF;
+                    PERFORM set_config('app.tenant_context_mode', coalesce(prev_mode, ''), true);
                     RETURN NULL;
                 END $$;
                 CREATE CONSTRAINT TRIGGER trg_meeting_task_has_details
@@ -750,15 +754,18 @@ namespace ONEVO.Infrastructure.Migrations
                     FOR EACH ROW WHEN (OLD.task_kind = 'meeting' AND NEW.task_kind IS DISTINCT FROM 'meeting')
                     EXECUTE FUNCTION meeting_task_has_details();
 
-                CREATE FUNCTION meeting_details_has_meeting_task() RETURNS trigger LANGUAGE plpgsql
-                    SET app.tenant_context_mode = 'admin' AS $$
+                CREATE FUNCTION meeting_details_has_meeting_task() RETURNS trigger LANGUAGE plpgsql AS $$
+                DECLARE
+                    prev_mode text := current_setting('app.tenant_context_mode', true);
                 BEGIN
+                    PERFORM set_config('app.tenant_context_mode', 'admin', true);
                     IF TG_OP = 'DELETE' THEN
                         IF EXISTS (SELECT 1 FROM tasks t WHERE t.id = OLD.task_id AND t.task_kind = 'meeting')
                            AND NOT EXISTS (SELECT 1 FROM meeting_details d WHERE d.task_id = OLD.task_id) THEN
                             RAISE EXCEPTION 'trg_meeting_details_has_meeting_task: meeting task % lost its meeting_details row', OLD.task_id
                                 USING ERRCODE = 'integrity_constraint_violation';
                         END IF;
+                        PERFORM set_config('app.tenant_context_mode', coalesce(prev_mode, ''), true);
                         RETURN NULL;
                     END IF;
                     IF EXISTS (SELECT 1 FROM meeting_details d WHERE d.task_id = NEW.task_id)
@@ -766,6 +773,7 @@ namespace ONEVO.Infrastructure.Migrations
                         RAISE EXCEPTION 'trg_meeting_details_has_meeting_task: meeting_details % belongs to a task that is not a meeting', NEW.task_id
                             USING ERRCODE = 'integrity_constraint_violation';
                     END IF;
+                    PERFORM set_config('app.tenant_context_mode', coalesce(prev_mode, ''), true);
                     RETURN NULL;
                 END $$;
                 CREATE CONSTRAINT TRIGGER trg_meeting_details_has_meeting_task
@@ -777,13 +785,14 @@ namespace ONEVO.Infrastructure.Migrations
             // spec 4.1: every meeting task's (project, module) equals its series' placement. Checked at commit from
             // whichever side changed: the task, its meeting_details row, or the series.
             migrationBuilder.Sql("""
-                CREATE FUNCTION meeting_placement_matches_series() RETURNS trigger LANGUAGE plpgsql
-                    SET app.tenant_context_mode = 'admin' AS $$
+                CREATE FUNCTION meeting_placement_matches_series() RETURNS trigger LANGUAGE plpgsql AS $$
                 DECLARE
+                    prev_mode text := current_setting('app.tenant_context_mode', true);
                     target_series uuid;
                     target_task uuid;
                     mismatched uuid;
                 BEGIN
+                    PERFORM set_config('app.tenant_context_mode', 'admin', true);
                     -- Separate branches: PL/pgSQL plans only the branch it runs, and each table has different columns.
                     IF TG_TABLE_NAME = 'meeting_series' THEN
                         target_series := NEW.id;
@@ -803,6 +812,7 @@ namespace ONEVO.Infrastructure.Migrations
                         RAISE EXCEPTION 'trg_meeting_placement_matches_series: meeting task % is not at its series'' project and module', mismatched
                             USING ERRCODE = 'integrity_constraint_violation';
                     END IF;
+                    PERFORM set_config('app.tenant_context_mode', coalesce(prev_mode, ''), true);
                     RETURN NULL;
                 END $$;
                 CREATE CONSTRAINT TRIGGER trg_meeting_placement_matches_series

@@ -338,6 +338,48 @@ public sealed class MeetingSchemaIntegrationTests
     }
 
     [Fact]
+    public async Task TheCommitChecks_PutTheSessionsTenantModeBack()
+    {
+        var h = await MyTeamDb.CreateAsync();
+        MeetingPlacement at;
+        Guid seriesId;
+        await using (var db = h.NewContext())
+        {
+            at = h.AddPlacement(db);
+            seriesId = h.AddSeries(db, at).Id;
+            await db.SaveChangesAsync();
+        }
+        var taskId = Guid.NewGuid();
+
+        await using var connection = new NpgsqlConnection(h.ConnectionString);
+        await connection.OpenAsync();
+        await RunAsync(connection, "SET ROLE onevo_app");
+        try
+        {
+            await using var tx = await connection.BeginTransactionAsync();
+            await UseTenantAsync(connection, h.TenantId);
+            await RunAsync(connection, InsertMeetingTaskSql(taskId, h, at));
+            await RunAsync(connection, $"""
+                INSERT INTO meeting_details (task_id, tenant_id, series_id, original_start, start_at, end_at, is_all_day,
+                    is_private, is_detached, revision, attendance_checkpoint)
+                VALUES ('{taskId}', '{h.TenantId}', '{seriesId}', '2026-11-02T09:00:00Z', '2026-11-02T09:00:00Z',
+                    '2026-11-02T09:30:00Z', false, false, false, 0, 0)
+                """);
+            // Fires the deferred pairing and placement checks now, inside the transaction: the admin mode they run in
+            // must not outlive them, or the rest of this transaction would read across tenants.
+            await RunAsync(connection, "SET CONSTRAINTS ALL IMMEDIATE");
+
+            await using var mode = new NpgsqlCommand("SELECT current_setting('app.tenant_context_mode', true)", connection, tx);
+            Assert.Equal("tenant", (string?)await mode.ExecuteScalarAsync());
+            await tx.CommitAsync();
+        }
+        finally
+        {
+            await RunAsync(connection, "RESET ROLE");
+        }
+    }
+
+    [Fact]
     public async Task Migration_FailsFast_WhenATableItLocksIsBusy()
     {
         var h = await MyTeamDb.CreateAsync();

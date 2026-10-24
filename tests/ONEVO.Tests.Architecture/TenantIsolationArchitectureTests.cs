@@ -281,6 +281,35 @@ public class TenantIsolationArchitectureTests
         Assert.Empty(offenders);
     }
 
+    [Fact]
+    public void Migrations_NeverPinACustomSettingOnAFunction()
+    {
+        // `CREATE FUNCTION ... SET app.x = ...` stores a placeholder setting on the function, which PostgreSQL
+        // (15+) refuses to a non-superuser: the restricted onevo_migrator fails with 42501 "permission denied to
+        // set parameter". Set it inside the body with set_config(..., true) and put the previous value back.
+        var migrationsDir = FindMigrationsDirectory();
+
+        var offenders = Directory.GetFiles(migrationsDir, "*.cs")
+            .Where(f => !f.EndsWith(".Designer.cs", StringComparison.OrdinalIgnoreCase))
+            .Where(file =>
+            {
+                var source = File.ReadAllText(file);
+                var upStart = source.IndexOf("protected override void Up(", StringComparison.Ordinal);
+                var downStart = source.IndexOf("protected override void Down(", StringComparison.Ordinal);
+                if (upStart < 0 || downStart < 0 || downStart < upStart)
+                    return false;
+
+                var upBody = Regex.Replace(source[upStart..downStart], "//[^\n]*", string.Empty);
+                // The function header ends where its body starts ($$ or $tag$), so [^$]* stays inside the header.
+                return Regex.IsMatch(upBody, @"CREATE\s+(OR\s+REPLACE\s+)?FUNCTION[^$]*?\bSET\s+app\.\w+\s*(=|TO\b)",
+                    RegexOptions.IgnoreCase);
+            })
+            .Select(Path.GetFileName)
+            .ToList();
+
+        Assert.Empty(offenders);
+    }
+
     /// <summary>
     /// BYPASSRLS as an actual grant, not as a substring of NOBYPASSRLS (the explicit
     /// non-bypass attribute this same migration also sets on onevo_app).
