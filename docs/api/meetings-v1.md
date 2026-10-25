@@ -120,7 +120,7 @@ it writes nothing.
 - The approver sees only the snapshot below, as the inbox item detail's `extraJson`: `{"snapshot":{…}}` (also
   `extraJson` on `GET /api/v1/work/approvals/{id}`), for `meeting.create` and `meeting.move`. The requester gets
   `extraJson: null`; nobody gets the payload (`requestedPayloadJson`/`appliedPayloadJson` are null for meeting
-  actions). A `meeting.move` submitted before snapshots existed has `extraJson: null`.
+  actions, and the approvals list / approve / reject / cancel rows carry `payloadJson: "{}"`). A `meeting.move` submitted before snapshots existed has `extraJson: null`.
 
 **Monitoring compliance.** The Work & Activity "Application usage" card of an employee profile
 (`GET /api/v1/employees/{id}/work-activity/app-usage`) carries a `meetingCompliance` array: every meeting of
