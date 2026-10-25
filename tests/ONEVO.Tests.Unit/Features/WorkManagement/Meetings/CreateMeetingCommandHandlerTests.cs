@@ -13,6 +13,7 @@ using ONEVO.Application.Features.WorkManagement.Hierarchy;
 using ONEVO.Application.Features.WorkManagement.Meetings;
 using ONEVO.Application.Features.WorkManagement.Meetings.Commands.CreateMeeting;
 using ONEVO.Application.Features.WorkManagement.Meetings.Contracts;
+using ONEVO.Application.Features.WorkManagement.Meetings.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Meetings.Services;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.WorkManagement.Approvals.Entities;
@@ -58,7 +59,8 @@ public sealed class CreateMeetingCommandHandlerTests
     private CreateMeetingCommandHandler Handler(bool createOn = true) => new(
         Options.Create(new MeetingsOptions { Create = createOn }), _user.Object, _identity.Object,
         new MeetingCreateValidator(new IcalNetMeetingRecurrence()), _placements.Object, _factory.Object, _approvals.Object,
-        _hierarchy.Object, _employees.Object, _unitOfWork.Object, _clock.Object);
+        new MeetingApprovalSnapshotBuilder(_employees.Object, _hierarchy.Object, Mock.Of<IMeetingRepository>(), Mock.Of<IMeetingLinkRepository>()),
+        _unitOfWork.Object, _clock.Object);
 
     private static CreateMeetingRequest Form() => new(Project, Module.Id, "Design review", "Agenda", null, false,
         new DateTimeOffset(2026, 11, 3, 9, 0, 0, TimeSpan.Zero), 45, false, "UTC", "FREQ=WEEKLY", [], ["client@example.com"], null);

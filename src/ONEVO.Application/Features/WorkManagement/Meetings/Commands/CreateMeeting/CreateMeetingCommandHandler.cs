@@ -6,7 +6,6 @@ using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Approvals.Services;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
-using ONEVO.Application.Features.WorkManagement.Hierarchy;
 using ONEVO.Application.Features.WorkManagement.Meetings.Contracts;
 using ONEVO.Application.Features.WorkManagement.Meetings.Services;
 using ONEVO.Domain.Features.WorkManagement.Approvals.Entities;
@@ -30,14 +29,13 @@ public sealed class CreateMeetingCommandHandler : IRequestHandler<CreateMeetingC
     private readonly IMeetingPlacementResolver _placements;
     private readonly IMeetingSeriesFactory _factory;
     private readonly IWorkApprovalEngine _approvals;
-    private readonly IWorkHierarchyService _hierarchy;
-    private readonly IEmployeeRepository _employees;
+    private readonly IMeetingApprovalSnapshotBuilder _snapshots;
     private readonly IUnitOfWork _unitOfWork;
     private readonly IDateTimeProvider _clock;
 
     public CreateMeetingCommandHandler(IOptions<MeetingsOptions> options, ICurrentUser currentUser, ICallerIdentityResolver identity,
         MeetingCreateValidator validator, IMeetingPlacementResolver placements, IMeetingSeriesFactory factory,
-        IWorkApprovalEngine approvals, IWorkHierarchyService hierarchy, IEmployeeRepository employees, IUnitOfWork unitOfWork,
+        IWorkApprovalEngine approvals, IMeetingApprovalSnapshotBuilder snapshots, IUnitOfWork unitOfWork,
         IDateTimeProvider clock)
     {
         _options = options;
@@ -47,8 +45,7 @@ public sealed class CreateMeetingCommandHandler : IRequestHandler<CreateMeetingC
         _placements = placements;
         _factory = factory;
         _approvals = approvals;
-        _hierarchy = hierarchy;
-        _employees = employees;
+        _snapshots = snapshots;
         _unitOfWork = unitOfWork;
         _clock = clock;
     }
@@ -81,7 +78,7 @@ public sealed class CreateMeetingCommandHandler : IRequestHandler<CreateMeetingC
                     tenantId, caller, _currentUser.UserId, at, request,
                     at.IsOffice ? MeetingCreationPaths.CalendarOffice : MeetingCreationPaths.Direct, approvalRequestId: null, innerCt), ct);
 
-            var payload = JsonSerializer.Serialize(new MeetingCreatePayload(request, await SnapshotAsync(tenantId, caller, at, request, ct)), Json);
+            var payload = JsonSerializer.Serialize(new MeetingCreatePayload(request, await _snapshots.ForCreateAsync(tenantId, caller, at, request, ct)), Json);
             return await _unitOfWork.ExecuteInTransactionAsync(async innerCt =>
             {
                 var decision = await _approvals.SubmitAsync(new WorkAction(tenantId, at.ProjectId, caller,
@@ -104,18 +101,4 @@ public sealed class CreateMeetingCommandHandler : IRequestHandler<CreateMeetingC
         }
     }
 
-    /// <summary>The D5 approver view: names and paths resolved now, so later renames never change what was approved.</summary>
-    private async Task<MeetingApprovalSnapshot> SnapshotAsync(Guid tenantId, Guid caller, MeetingPlacement at,
-        CreateMeetingRequest request, CancellationToken ct)
-    {
-        var people = await _employees.ListByIdsAsync(tenantId, request.ParticipantEmployeeIds.Append(caller).Distinct().ToList(), ct);
-        string Name(Guid id) => people.TryGetValue(id, out var e) ? $"{e.FirstName} {e.LastName}".Trim() : "Unknown";
-        var tree = await _hierarchy.LoadTreeAsync(tenantId, at.ProjectId, ct);
-        var path = string.Join(" / ", tree.AncestorChain(at.ObjectiveId).Reverse().Select(m => m.Title));
-
-        return new MeetingApprovalSnapshot(request.Title.Trim(), request.Description?.Trim(), request.Start, request.DurationMinutes,
-            request.Timezone, request.RecurrenceRule ?? "Does not repeat", Name(caller), path,
-            request.ParticipantEmployeeIds.Where(id => id != caller).Distinct().Select(Name).ToList(),
-            MeetingCreateValidator.NormalizeGuests(request.GuestEmails), request.Platform);
-    }
 }

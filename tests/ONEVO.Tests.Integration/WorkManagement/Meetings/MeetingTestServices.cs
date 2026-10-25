@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Options;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.WorkManagement.Hierarchy;
 using ONEVO.Application.Features.WorkManagement.Meetings;
 using ONEVO.Application.Features.WorkManagement.Meetings.Services;
 using ONEVO.Infrastructure.Persistence;
@@ -65,6 +66,11 @@ public sealed class MeetingTestServices
             UnitOfWork, options is null ? Options : Microsoft.Extensions.Options.Options.Create(options), Clock);
 
     /// <summary>The occurrence attendance reads over these services.</summary>
+    /// <summary>The D5 approval snapshot builder. Its tree load reads only objectives, so the hierarchy service needs no
+    /// membership coordinator here.</summary>
+    public MeetingApprovalSnapshotBuilder Snapshots =>
+        new(new EfEmployeeRepository(Db), new WorkHierarchyService(new EfObjectiveRepository(Db), null!), Meetings, Links);
+
     public MeetingAttendanceReadService AttendanceReads => new(Meetings, Access, new EfMeetingAttendanceRepository(Db), Links, new EfEmployeeRepository(Db));
 
     /// <summary>Every connection has a fresh token.</summary>

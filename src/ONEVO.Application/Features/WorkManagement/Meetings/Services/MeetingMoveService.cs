@@ -13,8 +13,10 @@ using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
 
 namespace ONEVO.Application.Features.WorkManagement.Meetings.Services;
 
-/// <summary>The meeting.move approval payload: what to move and where.</summary>
-public sealed record MeetingMovePayload(Guid SeriesId, DateTimeOffset OriginalStart, string Scope, Guid ProjectId, Guid ObjectiveId);
+/// <summary>The meeting.move approval payload: what to move and where, and the approver's D5 snapshot frozen at submit
+/// (null on requests submitted before it existed).</summary>
+public sealed record MeetingMovePayload(Guid SeriesId, DateTimeOffset OriginalStart, string Scope, Guid ProjectId, Guid ObjectiveId,
+    MeetingApprovalSnapshot? Snapshot = null);
 
 /// <summary>
 /// Spec 5.5 / D9 / D20 moves, organizer only, forward-only:
@@ -41,13 +43,15 @@ public sealed class MeetingMoveService
     private readonly IUnitOfWork _unitOfWork;
     private readonly IDateTimeProvider _clock;
     private readonly IMeetingLinkRepository _links;
+    private readonly IMeetingApprovalSnapshotBuilder _snapshots;
 
     public MeetingMoveService(IOptions<MeetingsOptions> options, IMeetingRepository meetings, IMeetingOccurrenceWriter writer,
         IMeetingOccurrenceMaterializer materializer, IMeetingAccessResolver access, IMeetingPlacementResolver placements,
         IWorkApprovalEngine approvals, IMeetingSeriesSplitter splitter, IMeetingRecurrence recurrence, IUnitOfWork unitOfWork,
-        IDateTimeProvider clock, IMeetingLinkRepository links)
+        IDateTimeProvider clock, IMeetingLinkRepository links, IMeetingApprovalSnapshotBuilder snapshots)
     {
         _links = links;
+        _snapshots = snapshots;
         _options = options;
         _meetings = meetings;
         _writer = writer;
@@ -85,9 +89,11 @@ public sealed class MeetingMoveService
             {
                 if (!destination.Value!.Direct)
                 {
+                    var snapshot = await _snapshots.ForMoveAsync(tenantId, series, payload.OriginalStart, move.Scope, move.ProjectId,
+                        move.ObjectiveId, innerCt);
                     var decision = await _approvals.SubmitAsync(new WorkAction(tenantId, move.ProjectId, caller, WorkActionTypes.MeetingMove,
                         WorkTargetTypes.Meeting, seriesId, series.Title, move.ObjectiveId, PositionModuleId: null,
-                        JsonSerializer.Serialize(payload, Json), TargetUpdatedAt: series.UpdatedAt), innerCt);
+                        JsonSerializer.Serialize(payload with { Snapshot = snapshot }, Json), TargetUpdatedAt: series.UpdatedAt), innerCt);
                     if (!decision.IsSuccess)
                         return Result<MeetingMoveResponse>.Failure(decision.Error!, decision.StatusCode ?? 400, decision.ErrorCode);
                     if (!decision.Value!.IsDirect)
