@@ -91,6 +91,10 @@ public interface IMeetingRepository
 
     Task<MeetingDetails?> GetDetailsTrackedAsync(Guid tenantId, Guid taskId, CancellationToken ct = default);
 
+    /// <summary>Occurrences that ended at or before <paramref name="now"/> and whose person-hours are not stamped yet,
+    /// oldest first (meeting hours, 2026-10-26 Part A).</summary>
+    Task<IReadOnlyList<MeetingDetails>> ListEndedUnstampedTrackedAsync(Guid tenantId, DateTimeOffset now, int take, CancellationToken ct = default);
+
     /// <summary>The meeting task itself (meeting tasks are hidden from every ordinary task query).</summary>
     Task<WorkTask?> GetMeetingTaskTrackedAsync(Guid tenantId, Guid taskId, CancellationToken ct = default);
 

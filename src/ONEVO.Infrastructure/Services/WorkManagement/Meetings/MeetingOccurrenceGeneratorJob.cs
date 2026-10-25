@@ -55,6 +55,7 @@ public sealed class MeetingOccurrenceGeneratorJob(IServiceProvider services, IOp
             var switcher = provider.GetRequiredService<ITenantContextSwitcher>();
             var unitOfWork = provider.GetRequiredService<IUnitOfWork>();
             var generator = provider.GetRequiredService<MeetingOccurrenceGenerator>();
+            var stamper = provider.GetRequiredService<MeetingHoursStamper>();
             // Meeting tables are under FORCE row-level security: tenant list in admin mode, each tenant's rows under its own context.
             provider.GetRequiredService<IWritableTenantContext>().SetAdminMode();
 
@@ -66,6 +67,8 @@ public sealed class MeetingOccurrenceGeneratorJob(IServiceProvider services, IOp
                     await switcher.SwitchToTenantAsync(new TenantRegistryEntry(tenant.Id, tenant.Slug, tenant.Status, PlanCode: null), ct);
                     if (!await generator.RunForTenantAsync(tenant.Id, ct))
                         return;
+                    // Meeting hours (2026-10-26 Part A): ended occurrences carry their person-hours.
+                    await stamper.StampTenantAsync(tenant.Id, ct);
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {

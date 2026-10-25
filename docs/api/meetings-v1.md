@@ -226,6 +226,16 @@ the meeting the meeting application was used for (spec D17).
 - The conflict check includes the participants' task meetings. A meeting you cannot see comes back as
   `{ "conflictingEventId": "00000000-…", "conflictingEventTitle": "Busy", "isBusyOnly": true }` with its time only.
 
+## Hours (2026-10-26, Part A)
+
+- When an occurrence has ended, the hourly meeting job (`Meetings:Background`) stamps its task once with
+  **person-hours = duration × (organizer + every internal attendee who did not decline)**, each for the full duration.
+  Guests never count; a cancelled occurrence is stamped with 0.
+- The hours are the task's `estimatedHours` and `completedHours`, and roll up to its module, ancestor modules and project
+  (`completedHours`). The module hour summary (Team Progress) counts them in `completedHours` only; meetings stay out of
+  task counts.
+- Later RSVP or attendee changes do not change a stamped occurrence.
+
 ## Rules the UI relies on
 
 - **Status** is derived: `scheduled` → `in_progress` (from `startAt`) → `completed` (from `endAt`), or `cancelled`. Meeting cards are not status columns and cannot be dragged.

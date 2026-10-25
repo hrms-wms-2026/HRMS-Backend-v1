@@ -177,6 +177,14 @@ Migration `20261021181949_ExcludeMeetingTasksFromModuleHourSummaries` corrects t
   - `SELECT pg_get_functiondef(p.oid) FROM pg_proc p WHERE p.proname = 'wm_refresh_module_hour_summary';`
     contains `task_kind IS DISTINCT FROM 'meeting'`.
 
+## Meeting hours (2026-10-26, Part A)
+
+- Migration `AddMeetingHoursStamping` adds `meeting_details.hours_stamped_at` and makes the module hour summary count
+  stamped meeting hours in `completed_hours` (still not in the counts). It backfills every summary row.
+- Stamping runs inside the hourly meeting job, so it needs `Meetings:Background`. Ended recurring slots of the last
+  7 days that were never generated are materialized first, then stamped.
+- Check: after an occurrence ends, within an hour its task has `completed_hours` set and `hours_stamped_at` is not null.
+
 ## Rollback rules
 
 **Never roll back below Release A once meeting rows exist.**
