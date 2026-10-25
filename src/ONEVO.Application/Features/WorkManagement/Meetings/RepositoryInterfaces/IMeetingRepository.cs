@@ -19,6 +19,11 @@ public sealed record MeetingOccurrenceRow(MeetingDetails Details, string ShortId
 public sealed record MeetingTaskComplianceOccurrence(
     Guid TaskId, DateTimeOffset StartAt, DateTimeOffset EndAt, string Title, bool IsPrivate, string? Provider);
 
+/// <summary>One of an employee's materialized occurrences on a day (day planner, 2026-10-26 Part B). The title is the real
+/// title; the caller masks a private one.</summary>
+public sealed record EmployeeDayMeeting(Guid TaskId, Guid SeriesId, DateTimeOffset OriginalStart, DateTimeOffset StartAt,
+    DateTimeOffset EndAt, bool IsAllDay, string Title, bool IsPrivate, bool Cancelled, bool Declined);
+
 /// <summary>Reads and writes of meeting series, occurrences and their attendees (meetings-as-tasks Phase 2). Occurrence
 /// inserts and remaps go through <see cref="IMeetingOccurrenceWriter"/>. Never calls SaveChangesAsync.</summary>
 public interface IMeetingRepository
@@ -68,6 +73,11 @@ public interface IMeetingRepository
     /// caller masks it for a private meeting (spec D17).</summary>
     Task<IReadOnlyList<MeetingTaskComplianceOccurrence>> ListEmployeeTaskMeetingsAsync(Guid tenantId, Guid employeeId,
         DateTimeOffset from, DateTimeOffset to, CancellationToken ct = default);
+
+    /// <summary>The employee's materialized occurrences overlapping [from, to): as organizer, or as an effective attendee
+    /// (series participant without a remove override, or an occurrence add). Cancelled ones included, flagged.</summary>
+    Task<IReadOnlyList<EmployeeDayMeeting>> ListEmployeeDayMeetingsAsync(Guid tenantId, Guid employeeId, DateTimeOffset from,
+        DateTimeOffset to, CancellationToken ct = default);
 
     /// <summary>Non-cancelled series the employee organizes or is a (non-removed) series attendee of.</summary>
     Task<IReadOnlyList<MeetingSeries>> ListSeriesForAttendeeAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default);

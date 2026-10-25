@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using ONEVO.Application.Features.WorkManagement.Meetings.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Meetings.Services;
 using ONEVO.Domain.Features.Calendar.Entities;
 using ONEVO.Domain.Features.WorkManagement.Meetings.Entities;
 using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
@@ -285,6 +286,54 @@ public sealed class EfMeetingRepository : IMeetingRepository
                 continue;   // a declined occurrence has no meeting application to measure
 
             result.Add(new MeetingTaskComplianceOccurrence(c.TaskId, c.StartAt, c.EndAt, c.Title, c.IsPrivate, c.Provider));
+        }
+        return result;
+    }
+
+    public async Task<IReadOnlyList<EmployeeDayMeeting>> ListEmployeeDayMeetingsAsync(Guid tenantId, Guid employeeId,
+        DateTimeOffset from, DateTimeOffset to, CancellationToken ct = default)
+    {
+        var (fromUtc, toUtc) = (from.ToUniversalTime(), to.ToUniversalTime());
+        var candidates = await (
+            from d in _db.MeetingDetails.AsNoTracking()
+            join t in _db.WorkTasks.IgnoreQueryFilters(ExcludeMeetingsOnly) on d.TaskId equals t.Id
+            join s in _db.MeetingSeries.AsNoTracking() on d.SeriesId equals s.Id
+            where d.TenantId == tenantId && t.TenantId == tenantId && s.TenantId == tenantId
+                  && d.StartAt < toUtc && d.EndAt > fromUtc
+                  && (s.OrganizerEmployeeId == employeeId
+                      || _db.CalendarEventParticipants.Any(p => p.MeetingSeriesId == d.SeriesId && p.EmployeeId == employeeId && !p.IsDeleted)
+                      || _db.MeetingOccurrenceAttendees.Any(a => a.OccurrenceTaskId == d.TaskId
+                          && a.AttendeeKind == MeetingAttendeeKinds.Employee && a.EmployeeId == employeeId
+                          && a.Change == MeetingAttendeeChanges.Add))
+            orderby d.StartAt
+            select new { Details = d, Series = s, t.Title })
+            .ToListAsync(ct);
+        if (candidates.Count == 0)
+            return [];
+
+        var seriesIds = candidates.Select(c => c.Series.Id).Distinct().ToList();
+        var taskIds = candidates.Select(c => c.Details.TaskId).ToList();
+        var participants = await _db.CalendarEventParticipants.AsNoTracking()
+            .Where(p => p.TenantId == tenantId && p.EmployeeId == employeeId && !p.IsDeleted
+                && p.MeetingSeriesId != null && seriesIds.Contains(p.MeetingSeriesId.Value))
+            .ToListAsync(ct);
+        var overrides = await _db.MeetingOccurrenceAttendees.AsNoTracking()
+            .Where(a => a.TenantId == tenantId && taskIds.Contains(a.OccurrenceTaskId)
+                && a.AttendeeKind == MeetingAttendeeKinds.Employee && a.EmployeeId == employeeId)
+            .ToListAsync(ct);
+
+        var result = new List<EmployeeDayMeeting>();
+        foreach (var c in candidates)
+        {
+            var organizer = c.Series.OrganizerEmployeeId == employeeId;
+            var own = overrides.FirstOrDefault(a => a.OccurrenceTaskId == c.Details.TaskId);
+            if (own is { Change: MeetingAttendeeChanges.Remove } && !organizer)
+                continue;   // removed from this occurrence
+            var response = own?.ResponseStatus ?? participants.FirstOrDefault(p => p.MeetingSeriesId == c.Series.Id)?.ResponseStatus;
+            var cancelled = c.Details.CancelledAt is not null || MeetingStatusCalculator.CancelledWithSeries(c.Details, c.Series);
+            result.Add(new EmployeeDayMeeting(c.Details.TaskId, c.Series.Id, c.Details.OriginalStart, c.Details.StartAt, c.Details.EndAt,
+                c.Details.IsAllDay, c.Title, c.Details.IsPrivate, cancelled,
+                Declined: !organizer && response == CalendarEventParticipantStatuses.Rejected));
         }
         return result;
     }
