@@ -19,6 +19,23 @@ public class ConversationConfiguration : IEntityTypeConfiguration<Conversation>
     }
 }
 
+public class ConversationFavoriteConfiguration : IEntityTypeConfiguration<ConversationFavorite>
+{
+    public void Configure(EntityTypeBuilder<ConversationFavorite> builder)
+    {
+        builder.ToTable("conversation_favorites");
+        builder.HasKey(f => f.Id);
+
+        builder.HasIndex(f => new { f.EmployeeId, f.ConversationId })
+            .IsUnique()
+            .HasDatabaseName("ux_conversation_favorites_employee_id_conversation_id");
+        builder.HasIndex(f => new { f.TenantId, f.EmployeeId })
+            .HasDatabaseName("ix_conversation_favorites_tenant_id_employee_id");
+
+        builder.HasOne<Conversation>().WithMany().HasForeignKey(f => f.ConversationId).OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
 public class ConversationParticipantConfiguration : IEntityTypeConfiguration<ConversationParticipant>
 {
     public void Configure(EntityTypeBuilder<ConversationParticipant> builder)
@@ -70,6 +87,23 @@ public class ConversationMessageMentionConfiguration : IEntityTypeConfiguration<
     }
 }
 
+public class ConversationMessageReactionConfiguration : IEntityTypeConfiguration<ConversationMessageReaction>
+{
+    public void Configure(EntityTypeBuilder<ConversationMessageReaction> builder)
+    {
+        builder.ToTable("conversation_message_reactions");
+        builder.HasKey(r => r.Id);
+        builder.Property(r => r.Emoji).HasMaxLength(32).IsRequired();
+
+        // One reaction per person per message: reacting again replaces it.
+        builder.HasIndex(r => new { r.MessageId, r.EmployeeId })
+            .IsUnique()
+            .HasDatabaseName("ux_conversation_message_reactions_message_id_employee_id");
+
+        builder.HasOne<ConversationMessage>().WithMany().HasForeignKey(r => r.MessageId).OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
 public class ConversationMessageRevisionConfiguration : IEntityTypeConfiguration<ConversationMessageRevision>
 {
     public void Configure(EntityTypeBuilder<ConversationMessageRevision> builder)
@@ -83,6 +117,23 @@ public class ConversationMessageRevisionConfiguration : IEntityTypeConfiguration
             .HasDatabaseName("ix_conversation_message_revisions_message_id_revised_at");
 
         builder.HasOne<ConversationMessage>().WithMany().HasForeignKey(r => r.MessageId).OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
+public class ConversationMessageHideConfiguration : IEntityTypeConfiguration<ConversationMessageHide>
+{
+    public void Configure(EntityTypeBuilder<ConversationMessageHide> builder)
+    {
+        builder.ToTable("conversation_message_hides");
+        builder.HasKey(h => h.Id);
+        builder.Property(h => h.MessageId).IsRequired();
+        builder.Property(h => h.EmployeeId).IsRequired();
+        builder.HasIndex(h => new { h.MessageId, h.EmployeeId })
+            .IsUnique()
+            .HasDatabaseName("ux_conversation_message_hides_message_id_employee_id");
+        builder.HasIndex(h => new { h.TenantId, h.EmployeeId })
+            .HasDatabaseName("ix_conversation_message_hides_tenant_id_employee_id");
+        builder.HasOne<ConversationMessage>().WithMany().HasForeignKey(h => h.MessageId).OnDelete(DeleteBehavior.Cascade);
     }
 }
 

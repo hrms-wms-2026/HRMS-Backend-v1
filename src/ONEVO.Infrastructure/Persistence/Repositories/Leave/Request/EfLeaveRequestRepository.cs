@@ -85,6 +85,10 @@ public class EfLeaveRequestRepository : ILeaveRequestRepository
         }
         if (filter.LeaveTypeId is { } leaveTypeId)
             query = query.Where(x => x.request.LeaveTypeId == leaveTypeId);
+        if (filter.CreatedFrom is { } createdFrom)
+            query = query.Where(x => x.request.CreatedAt >= createdFrom);
+        if (filter.CreatedTo is { } createdTo)
+            query = query.Where(x => x.request.CreatedAt < createdTo);
 
         var rows = await query
             .OrderByDescending(x => x.request.CreatedAt)
@@ -205,6 +209,9 @@ public class EfLeaveRequestRepository : ILeaveRequestRepository
             writeSet.Entitlement.PendingHours = targetPendingHours;
             writeSet.Entitlement.UpdatedAt = _clock.UtcNow;
 
+            if (_db.Entry(writeSet.Entitlement).State == EntityState.Detached)
+                await _db.LeaveEntitlements.AddAsync(writeSet.Entitlement, ct);
+
             await _db.LeaveRequests.AddAsync(writeSet.Request, ct);
             await _db.LeaveRequestApprovers.AddRangeAsync(writeSet.Approvers, ct);
             await _db.LeaveRequestDocuments.AddRangeAsync(writeSet.Documents, ct);
@@ -231,5 +238,19 @@ public class EfLeaveRequestRepository : ILeaveRequestRepository
                 && f.Status == FileRecordStatus.Available,
                 ct);
         return available == distinct.Length;
+    }
+
+    public async Task<IReadOnlyDictionary<Guid, IReadOnlyList<Guid>>> ListApproverEmployeeIdsAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> requestIds, CancellationToken ct = default)
+    {
+        if (requestIds.Count == 0)
+            return new Dictionary<Guid, IReadOnlyList<Guid>>();
+        var ids = requestIds.ToList();
+        var rows = await _db.LeaveRequestApprovers.AsNoTracking()
+            .Where(a => a.TenantId == tenantId && ids.Contains(a.LeaveRequestId))
+            .Select(a => new { a.LeaveRequestId, a.ApproverEmployeeId })
+            .ToListAsync(ct);
+        return rows.GroupBy(r => r.LeaveRequestId)
+            .ToDictionary(g => g.Key, g => (IReadOnlyList<Guid>)g.Select(r => r.ApproverEmployeeId).Distinct().ToList());
     }
 }

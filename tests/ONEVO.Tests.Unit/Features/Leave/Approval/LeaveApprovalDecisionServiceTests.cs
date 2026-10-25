@@ -59,6 +59,57 @@ public class LeaveApprovalDecisionServiceTests
     }
 
     [Fact]
+    public async Task Approval_mode_none_auto_approves_and_moves_pending_hours_to_used_without_an_approver()
+    {
+        var harness = Harness.Create(
+            LeaveRequestStatuses.Pending,
+            paidHours: 8m,
+            pendingHours: 8m,
+            usedHours: 5m,
+            approvalMode: LeaveApprovalModes.None);
+
+        var result = await harness.Sut.FinalizeNoApprovalAsync(harness.Request.Id, CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue(result.Error);
+        harness.Request.Status.Should().Be(LeaveRequestStatuses.Approved);
+        harness.Request.ApprovedBy.Should().BeNull();
+        harness.Entitlement.PendingHours.Should().Be(0m);
+        harness.Entitlement.UsedHours.Should().Be(13m);
+        harness.Audits.Should().ContainSingle(a => a.ChangeType == LeaveBalanceChangeTypes.Deduction
+            && a.HoursChanged == -8m);
+    }
+
+    [Fact]
+    public async Task HandOver_skips_the_callers_step_and_gives_the_same_place_in_the_order_to_the_picked_person()
+    {
+        var harness = Harness.Create(LeaveRequestStatuses.Pending);
+        var target = Guid.NewGuid();
+
+        var result = await harness.Sut.HandOverAsync(harness.Request.Id, target, " Out next week ", CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue(result.Error);
+        harness.Approver.Status.Should().Be(LeaveRequestApproverStatuses.Skipped);
+        harness.Approver.Comment.Should().Be("Out next week");
+        harness.AddedApprovers.Should().ContainSingle(a => a.ApproverEmployeeId == target
+            && a.Status == LeaveRequestApproverStatuses.Pending && a.SequenceOrder == harness.Approver.SequenceOrder);
+        harness.Request.Status.Should().Be(LeaveRequestStatuses.Pending);
+    }
+
+    [Fact]
+    public async Task HandOver_refuses_the_requester_and_someone_already_on_the_request()
+    {
+        var harness = Harness.Create(LeaveRequestStatuses.Pending);
+
+        var toRequester = await harness.Sut.HandOverAsync(harness.Request.Id, harness.Request.EmployeeId, null, CancellationToken.None);
+        var toSelf = await harness.Sut.HandOverAsync(harness.Request.Id, harness.Approver.ApproverEmployeeId, null, CancellationToken.None);
+
+        toRequester.StatusCode.Should().Be(409);
+        toSelf.StatusCode.Should().Be(409);
+        harness.AddedApprovers.Should().BeEmpty();
+        harness.Approver.Status.Should().Be(LeaveRequestApproverStatuses.Pending);
+    }
+
+    [Fact]
     public async Task RejectAsync_ReleasesPendingPaidHoursWithoutUsedDeduction()
     {
         var harness = Harness.Create(LeaveRequestStatuses.Pending, paidHours: 2m, pendingHours: 2m, usedHours: 4m);
@@ -107,7 +158,7 @@ public class LeaveApprovalDecisionServiceTests
     }
 
     [Fact]
-    public async Task ChangeDecision_RejectedToApproved_WhenBalanceNoLongerCoversIt_ReturnsConflict()
+    public async Task ChangeDecision_RejectedToApproved_WhenBalanceNoLongerCoversIt_AllowsNegativeBalance()
     {
         // Entitlement is 20h; 15h already used, so 8h no longer fits.
         var harness = Harness.Create(LeaveRequestStatuses.Rejected, paidHours: 8m, pendingHours: 0m, usedHours: 15m);
@@ -115,9 +166,10 @@ public class LeaveApprovalDecisionServiceTests
 
         var result = await harness.Sut.ChangeDecisionAsync(harness.Request.Id, "approve", null, CancellationToken.None);
 
-        result.StatusCode.Should().Be(409);
-        harness.Request.Status.Should().Be(LeaveRequestStatuses.Rejected);
-        harness.Entitlement.UsedHours.Should().Be(15m);
+        result.IsSuccess.Should().BeTrue(result.Error);
+        harness.Request.Status.Should().Be(LeaveRequestStatuses.Approved);
+        harness.Entitlement.UsedHours.Should().Be(23m);
+        result.Value!.RemainingHours.Should().BeNegative();
     }
 
     [Fact]
@@ -171,7 +223,14 @@ public class LeaveApprovalDecisionServiceTests
         public List<LeaveRequestApprover> AddedApprovers { get; } = [];
         public LeaveApprovalDecisionService Sut { get; }
 
-        private Harness(string status, bool otherApprover, bool selfApprove, decimal paidHours, decimal pendingHours, decimal usedHours)
+        private Harness(
+            string status,
+            bool otherApprover,
+            bool selfApprove,
+            decimal paidHours,
+            decimal pendingHours,
+            decimal usedHours,
+            string approvalMode)
         {
             var tenantId = Guid.NewGuid();
             var userId = Guid.NewGuid();
@@ -254,7 +313,8 @@ public class LeaveApprovalDecisionServiceTests
                         LastName = "Nair",
                         HireDate = new DateOnly(2024, 1, 1)
                     },
-                    "Annual Leave", "AL", LeaveApprovalModes.AnyOne, [Approver]));
+                    "Annual Leave", "AL", approvalMode,
+                    approvalMode == LeaveApprovalModes.None ? [] : [Approver]));
             repo.Setup(x => x.AddBalanceAuditAsync(It.IsAny<LeaveBalanceAudit>(), It.IsAny<CancellationToken>()))
                 .Callback<LeaveBalanceAudit, CancellationToken>((a, _) => Audits.Add(a))
                 .Returns(Task.CompletedTask);
@@ -297,7 +357,8 @@ public class LeaveApprovalDecisionServiceTests
             bool selfApprove = false,
             decimal paidHours = 1m,
             decimal pendingHours = 1m,
-            decimal usedHours = 0m) =>
-            new(status, otherApprover, selfApprove, paidHours, pendingHours, usedHours);
+            decimal usedHours = 0m,
+            string approvalMode = LeaveApprovalModes.AnyOne) =>
+            new(status, otherApprover, selfApprove, paidHours, pendingHours, usedHours, approvalMode);
     }
 }

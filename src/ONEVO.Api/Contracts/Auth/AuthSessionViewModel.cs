@@ -4,7 +4,10 @@ namespace ONEVO.Api.Contracts.Auth;
 
 public record CurrentUserViewModel(
     [property: JsonPropertyName("email")] string Email,
-    [property: JsonPropertyName("display_name")] string? DisplayName = null
+    [property: JsonPropertyName("display_name")] string? DisplayName = null,
+    // The signed-in user's own employee id, so the client can tell its own messages, reactions
+    // and records apart from other people's. Null when the account has no employee record.
+    [property: JsonPropertyName("employeeId")] Guid? EmployeeId = null
 );
 
 public record WorkspaceViewModel(

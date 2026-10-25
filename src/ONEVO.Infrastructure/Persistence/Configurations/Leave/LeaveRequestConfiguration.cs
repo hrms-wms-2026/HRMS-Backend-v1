@@ -17,6 +17,7 @@ public class LeaveRequestConfiguration : IEntityTypeConfiguration<LeaveRequest>
         builder.Property(r => r.TotalHours).HasColumnType("numeric(8,2)");
         builder.Property(r => r.PaidHours).HasColumnType("numeric(8,2)");
         builder.Property(r => r.UnpaidHours).HasColumnType("numeric(8,2)");
+        builder.Property(r => r.ExceedsBalanceByHours).HasColumnType("numeric(8,2)");
         builder.Property(r => r.ConflictSnapshotJson).HasColumnType("jsonb");
 
         builder.HasIndex(r => new { r.TenantId, r.EmployeeId }).HasDatabaseName("ix_leave_requests_tenant_employee");

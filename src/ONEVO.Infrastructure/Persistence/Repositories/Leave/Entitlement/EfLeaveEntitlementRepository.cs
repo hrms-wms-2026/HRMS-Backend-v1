@@ -122,6 +122,36 @@ public class EfLeaveEntitlementRepository : ILeaveEntitlementRepository
             .ToListAsync(ct);
     }
 
+    public async Task<IReadOnlyList<LeaveEntitlement>> ListTrackedExistingAsync(
+        Guid tenantId,
+        int year,
+        IReadOnlyCollection<Guid> employeeIds,
+        CancellationToken ct = default)
+    {
+        if (employeeIds.Count == 0)
+            return [];
+
+        return await _db.LeaveEntitlements
+            .Where(e => e.TenantId == tenantId && e.Year == year && employeeIds.Contains(e.EmployeeId))
+            .ToListAsync(ct);
+    }
+
+    public async Task<IReadOnlyList<LeaveBalanceAudit>> ListAuditsAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Guid> employeeIds,
+        int? year,
+        CancellationToken ct = default)
+    {
+        if (employeeIds.Count == 0)
+            return [];
+
+        var query = _db.LeaveBalanceAudits.AsNoTracking()
+            .Where(a => a.TenantId == tenantId && employeeIds.Contains(a.EmployeeId));
+        if (year is { } value)
+            query = query.Where(a => a.Year == value);
+        return await query.OrderBy(a => a.CreatedAt).ToListAsync(ct);
+    }
+
     public async Task<LeaveEntitlement?> GetTrackedByIdAsync(
         Guid tenantId, Guid entitlementId, CancellationToken ct = default)
     {
@@ -189,6 +219,33 @@ public class EfLeaveEntitlementRepository : ILeaveEntitlementRepository
                 return Task.CompletedTask;
             },
             ct);
+    }
+
+    public async Task SaveCreditChangesAsync(
+        IReadOnlyCollection<LeaveEntitlementWriteSet> writeSets,
+        CancellationToken ct = default)
+    {
+        try
+        {
+            foreach (var writeSet in writeSets)
+            {
+                if (_db.Entry(writeSet.Entitlement).State == EntityState.Detached)
+                    _db.LeaveEntitlements.Add(writeSet.Entitlement);
+                _db.LeaveBalanceAudits.AddRange(writeSet.Audits);
+            }
+
+            await _db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateConcurrencyException ex)
+        {
+            _db.ChangeTracker.Clear();
+            throw new ConcurrencyConflictException(ex);
+        }
+        catch (DbUpdateException ex) when (ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
+        {
+            _db.ChangeTracker.Clear();
+            throw new ConcurrencyConflictException(ex);
+        }
     }
 
     private async Task WriteAsync(Func<Task> mutate, CancellationToken ct)

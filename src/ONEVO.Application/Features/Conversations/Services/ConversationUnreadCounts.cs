@@ -1,5 +1,6 @@
 using ONEVO.Application.Features.Conversations.Contracts;
 using ONEVO.Application.Features.Conversations.RepositoryInterfaces;
+using ONEVO.Domain.Features.Conversations.Entities;
 
 namespace ONEVO.Application.Features.Conversations.Services;
 
@@ -8,6 +9,10 @@ namespace ONEVO.Application.Features.Conversations.Services;
 public interface IConversationUnreadCounts
 {
     Task<IReadOnlyDictionary<ItemRef, int>> GetAsync(Guid tenantId, Guid employeeId, IReadOnlyCollection<ItemRef> items, CancellationToken ct);
+
+    /// <summary>Unread messages across the chats the employee's inbox lists - 1-on-1 chats, groups and case groups
+    /// (an item's own conversation counts only once it is a group; older per-item chats are hidden, so they don't).</summary>
+    Task<int> TotalInChatsAsync(Guid tenantId, Guid employeeId, CancellationToken ct);
 }
 
 public sealed class ConversationUnreadCounts : IConversationUnreadCounts
@@ -21,4 +26,17 @@ public sealed class ConversationUnreadCounts : IConversationUnreadCounts
         => items.Count == 0
             ? new Dictionary<ItemRef, int>()
             : await _conversations.CountUnreadAsync(tenantId, employeeId, items, ct);
+
+    public async Task<int> TotalInChatsAsync(Guid tenantId, Guid employeeId, CancellationToken ct)
+    {
+        var members = await _conversations.ListMemberConversationsAsync(tenantId, employeeId, ct);
+        var caseIds = members.Where(m => !ConversationSources.IsPeopleChat(m.Conversation.SubjectSource)).Select(m => m.Conversation.Id).ToList();
+        var groups = await _conversations.LatestSystemEventsAsync(tenantId, caseIds, [PeopleChatEvents.CaseGroup], ct);
+        var listed = members
+            .Where(m => ConversationSources.IsPeopleChat(m.Conversation.SubjectSource) || groups.ContainsKey(m.Conversation.Id))
+            .Select(m => m.Conversation.Id)
+            .ToList();
+        var unread = await _conversations.CountUnreadByConversationAsync(tenantId, employeeId, listed, ct);
+        return unread.Values.Sum();
+    }
 }

@@ -34,6 +34,7 @@ public sealed class PostConversationMessageCommandHandler
     private readonly IInboxRealtimePublisher _realtime;
     private readonly ILogger<PostConversationMessageCommandHandler> _logger;
     private readonly IFileStorageService? _files;
+    private readonly IEnumerable<IConversationActivityListener>? _listeners;
     private readonly IReadOnlyList<IConversationReplyHook> _replyHooks;
 
     public PostConversationMessageCommandHandler(
@@ -41,6 +42,7 @@ public sealed class PostConversationMessageCommandHandler
         IConversationRepository conversations, IUnitOfWork unitOfWork, ConversationNotifier notifier,
         ConversationResponseBuilder responses, IInboxRealtimePublisher realtime,
         ILogger<PostConversationMessageCommandHandler> logger, IFileStorageService? files = null,
+        IEnumerable<IConversationActivityListener>? listeners = null,
         IEnumerable<IConversationReplyHook>? replyHooks = null)
     {
         _replyHooks = replyHooks?.ToList() ?? [];
@@ -54,6 +56,7 @@ public sealed class PostConversationMessageCommandHandler
         _realtime = realtime;
         _logger = logger;
         _files = files;
+        _listeners = listeners;
     }
 
     public async Task<Result<ConversationMessageResponse>> Handle(PostConversationMessageCommand command, CancellationToken ct)
@@ -87,9 +90,11 @@ public sealed class PostConversationMessageCommandHandler
         if (mentionIds.Any(id => !context.ParticipantIds.Contains(id)))
             return Result<ConversationMessageResponse>.UnprocessableEntity("You can only mention people in this conversation.");
 
+        ConversationMessage? replyTarget = null;
         if (command.ReplyToMessageId is { } replyTo)
         {
             var target = (await _conversations.ListMessagesByIdAsync(tenantId, context.Conversation.Id, [replyTo], ct)).FirstOrDefault();
+            replyTarget = target;
             if (target is null)
                 return Result<ConversationMessageResponse>.UnprocessableEntity(ConversationRules.ReplyTargetMissing);
             if (target.Kind == ConversationMessageKinds.System)
@@ -146,13 +151,37 @@ public sealed class PostConversationMessageCommandHandler
             return true;
         }, ct);
 
+        // A new message has no reactions yet; it carries its quote when it is a reply.
         var response = ConversationResponseBuilder.Message(message, mentionIds, author, attachments,
-            await _responses.ReplyPreviewAsync(tenantId, message, ct));
+            replyTo: await _responses.ReplyPreviewAsync(tenantId, message, ct));
         await ConversationRules.PublishSafelyAsync(
             () => _realtime.MessageCreatedAsync(tenantId, context.ParticipantIds, context.Conversation.Id, response, ct),
             _logger, "messageCreated");
+        await ConversationRules.NotifyActivityAsync(_listeners, tenantId, context.Subject, caller.Value,
+            ConversationActivities.MessagePosted, _logger, ct);
         await RunReplyHooksAsync(tenantId, context.Subject, caller.Value, ct);
+        // A reply to a case card in a people chat is a reply on that case (a reviewer answering it acknowledges it).
+        if (replyTarget is { Kind: ConversationMessageKinds.Case } && CaseOf(replyTarget) is { } repliedCase && repliedCase != context.Subject)
+            await RunReplyHooksAsync(tenantId, repliedCase, caller.Value, ct);
         return Result<ConversationMessageResponse>.Success(response);
+    }
+
+    /// <summary>The item a case card carries ({"source","kind","id"} in its event JSON).</summary>
+    private static ItemRef? CaseOf(ConversationMessage card)
+    {
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(card.SystemEventJson ?? "{}");
+            var root = doc.RootElement;
+            return root.TryGetProperty("source", out var source) && root.TryGetProperty("kind", out var kind)
+                && root.TryGetProperty("id", out var id) && id.TryGetGuid(out var guid)
+                ? new ItemRef(source.GetString() ?? string.Empty, kind.GetString() ?? string.Empty, guid)
+                : null;
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return null;
+        }
     }
 
     /// <summary>The message is already saved: a hook that fails is logged and never fails the post.</summary>

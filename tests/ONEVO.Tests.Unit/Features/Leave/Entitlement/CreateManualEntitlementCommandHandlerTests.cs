@@ -63,7 +63,7 @@ public class CreateManualEntitlementCommandHandlerTests
         capturedEntitlement!.TotalHours.Should().Be(13.5m);
         capturedEntitlement.CarriedForwardHours.Should().Be(1.5m);
         capturedEntitlement.Source.Should().Be(LeaveEntitlementSources.Manual);
-        capturedAudit!.ChangeType.Should().Be(LeaveBalanceChangeTypes.Accrual);
+        capturedAudit!.ChangeType.Should().Be(LeaveBalanceChangeTypes.Adjustment);
         capturedAudit.Reason.Should().Be("Contractual top-up");
         result.Value!.TotalHours.Should().Be(13.5m);
     }

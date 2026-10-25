@@ -42,7 +42,8 @@ public sealed class ListConversationMessagesQueryHandler
             return Result<ConversationMessagesPageResponse>.NotFound(ConversationRules.NotFoundMessage);
 
         var take = ConversationRules.ClampPageSize(query.Take);
-        var page = await _conversations.ListMessagesAsync(tenantId, query.ConversationId, query.Before, take + 1, ct);
+        var page = await _conversations.ListVisibleMessagesAsync(
+            tenantId, query.ConversationId, caller.Value, query.Before, take + 1, ct);
         var messages = page.Take(take).Reverse().ToList();
         return Result<ConversationMessagesPageResponse>.Success(new ConversationMessagesPageResponse(
             await _responses.MessagesAsync(tenantId, messages, ct), page.Count > take));

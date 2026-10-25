@@ -1,3 +1,4 @@
+using ONEVO.Application.Features.Leave.Policy.Services;
 using FluentAssertions;
 using Moq;
 using ONEVO.Application.Common.Models;
@@ -16,7 +17,7 @@ public sealed class GetEmployeeTimeOffQueryHandlerTests
 {
     private readonly Mock<IEmployeeReadAccessGuard> _guard = new();
     private readonly Mock<ILeaveEntitlementRepository> _entitlements = new();
-    private readonly Mock<ILeavePolicyRepository> _policies = new();
+    private readonly Mock<ILeavePolicyResolver> _policies = new();
     private readonly Mock<ILeaveRequestReadRepository> _leaveRequests = new();
     private readonly Mock<ICurrentUser> _user = new();
     private readonly Mock<IDateTimeProvider> _clock = new();

@@ -12,6 +12,9 @@ public interface ILeaveTypeRepository
 
     Task<bool> ExistsByCodeAsync(Guid tenantId, string code, Guid? excludingLeaveTypeId, CancellationToken ct = default);
 
+    /// <summary>Active leave policies per leave type (types without one are absent).</summary>
+    Task<IReadOnlyDictionary<Guid, int>> CountActivePoliciesByLeaveTypeAsync(Guid tenantId, CancellationToken ct = default);
+
     Task<int> CountPendingRequestsAsync(Guid tenantId, Guid leaveTypeId, CancellationToken ct = default);
 
     Task AddAsync(LeaveType leaveType, CancellationToken ct = default);

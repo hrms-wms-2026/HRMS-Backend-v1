@@ -124,20 +124,12 @@ public class LeaveBalanceAuditEndpointTests : IAsyncLifetime
                 name,
                 code,
                 description = "integration fixture type",
-                category = "custom",
+                color = "#4F46E5",
                 isPaid = true,
-                requiresApproval = true,
-                requiresDocument = false,
-                documentRequiredAfterDays = (int?)null,
-                acceptedDocumentTypes = Array.Empty<string>(),
-                maxConsecutiveDays = (int?)null,
-                defaultDaysPerYear = 20m,
-                carryForwardAllowed = true,
-                maxCarryForwardDays = 5m,
-                carryForwardExpiryMonths = 3,
-                proRataForNewJoiners = true,
                 applicableGender = "all",
-                minimumNoticeDays = 0
+                requiresDocument = false,
+                documentRequiredAfterHours = (decimal?)null,
+                acceptedDocumentTypes = Array.Empty<string>()
             },
             cookie: _owner.SessionCookie,
             csrfToken: _owner.CsrfHeader);
@@ -209,40 +201,30 @@ public class LeaveBalanceAuditEndpointTests : IAsyncLifetime
         await db.SaveChangesAsync();
     }
 
+    /// <summary>One policy for one leave type, assigned to the legal entity. Amounts are hours (8 per day).</summary>
     private static object CreatePolicyBody(
         string name, Guid leaveTypeId, Guid legalEntityId, bool confirm, decimal annualEntitlementDays = 20m) => new
     {
+        leaveTypeId,
         name,
         description = "integration fixture policy",
-        country = "LK",
-        jobLevel = (string?)null,
-        accrualMethod = "annual",
-        accrualStart = "immediately",
-        accrualAfterNMonths = (int?)null,
-        prorationMethod = "calendar_days",
-        probationRestriction = false,
-        minimumTenureMonths = 0,
-        firstYearReducedPercent = (decimal?)null,
-        minimumNoticeDays = 7,
-        maxConsecutiveDays = 14,
-        minDaysPerRequest = 0.5m,
-        maxTeamAbsencePercent = 20m,
-        approvalMode = "any_one",
-        effectiveFrom = "2026-01-01",
-        leaveTypes = new[]
+        rules = new
         {
-            new
-            {
-                leaveTypeId,
-                annualEntitlementDays,
-                monthlyAccrualDays = (decimal?)null,
-                carryForwardMaxDays = 5m,
-                carryForwardExpiryMonths = 3
-            }
+            amountHours = annualEntitlementDays * 8m,
+            amountPeriod = "year",
+            carryForwardCapHours = 40m,
+            carryForwardExpiryMonths = 3,
+            eligibleFrom = "immediately",
+            eligibleAfterMonths = (int?)null,
+            minimumNoticeDays = 7,
+            minRequestHours = 4m,
+            maxRequestHours = 112m,
+            maxTeamAbsencePercent = 20m,
+            approvalMode = "any_one",
+            blackouts = new[] { new { startDate = "2026-12-24", endDate = "2026-12-26", reason = "Peak closure" } }
         },
-        blackoutPeriods = Array.Empty<object>(),
-        legalEntityIds = new[] { legalEntityId },
-        confirmReplaceExistingLegalEntityAssignments = confirm
+        assignments = new[] { new { targetKind = "legal_entity", targetId = legalEntityId } },
+        replaceConflicts = confirm
     };
 
     private sealed record TenantSession(string Host, string SessionCookie, string CsrfHeader);

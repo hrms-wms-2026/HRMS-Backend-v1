@@ -10,10 +10,25 @@ public class EfConversationPeopleDirectory : IConversationPeopleDirectory
 
     public EfConversationPeopleDirectory(ApplicationDbContext db) => _db = db;
 
-    public async Task<IReadOnlyList<Guid>> SearchActiveAsync(Guid tenantId, string? search, int take, CancellationToken ct = default)
+    public Task<IReadOnlyList<Guid>> SearchActiveAsync(Guid tenantId, string? search, int take, CancellationToken ct = default)
+        => SearchAsync(tenantId, null, search, take, ct);
+
+    public async Task<IReadOnlyList<Guid>> SearchActiveInLegalEntityOfAsync(
+        Guid tenantId, Guid employeeId, string? search, int take, CancellationToken ct = default)
+    {
+        var legalEntityId = await _db.Employees.AsNoTracking()
+            .Where(e => e.TenantId == tenantId && e.Id == employeeId)
+            .Select(e => e.LegalEntityId)
+            .FirstOrDefaultAsync(ct);
+        return await SearchAsync(tenantId, legalEntityId, search, take, ct);
+    }
+
+    private async Task<IReadOnlyList<Guid>> SearchAsync(Guid tenantId, Guid? legalEntityId, string? search, int take, CancellationToken ct)
     {
         var query = _db.Employees.AsNoTracking()
             .Where(e => e.TenantId == tenantId && e.EmploymentStatusId == EmploymentStatusIds.Active);
+        if (legalEntityId is { } entity)
+            query = query.Where(e => e.LegalEntityId == entity);
         if (!string.IsNullOrWhiteSpace(search))
         {
             var term = search.Trim().ToLower();

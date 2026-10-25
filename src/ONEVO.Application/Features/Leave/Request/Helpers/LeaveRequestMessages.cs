@@ -13,15 +13,23 @@ public static class LeaveRequestMessages
     public const string EndAtNotAfterStartAt = "Leave end must be after leave start.";
     public const string NoApprover = "No approver found in your reporting line. Please contact HR";
     public const string GenderRestricted = "This leave type is not available for the employee's gender.";
-    public const string NoEntitlement = "No active entitlement and policy were found for this employee, leave type, and year.";
+    public const string NoEntitlement = "No leave policy covers this leave type for you.";
     public const string FileNotAvailable = "A supporting document is not available for this request.";
     public const string RangeExceeded = "Leave request date range exceeds the configured maximum.";
 
     public static string InsufficientBalance(decimal remaining, string leaveTypeName) =>
         $"Insufficient balance. You have {remaining:0.#} hours remaining for {leaveTypeName}";
 
-    public static string DocumentRequired(string leaveTypeName, int afterDays) =>
-        $"A supporting document is required for {leaveTypeName} requests exceeding {afterDays} days";
+    public static string DocumentRequired(string leaveTypeName, decimal? afterHours) =>
+        afterHours is { } hours
+            ? $"A supporting document is required for {leaveTypeName} requests of more than {hours:0.##} hours"
+            : $"A supporting document is required for {leaveTypeName} requests";
+
+    public static string BelowMinimumHours(decimal hours) =>
+        $"Leave request must be at least {hours:0.##} hours.";
+
+    public static string AboveMaximumHours(decimal hours) =>
+        $"Leave request can be at most {hours:0.##} hours.";
 
     public static string NoticeMissed(int noticeDays) =>
         $"This request does not meet the minimum notice period of {noticeDays} days. Your manager will be informed.";

@@ -136,10 +136,7 @@ public sealed class LeaveCalendarIntegrationTests : IAsyncLifetime
             TenantId = tenant.Id,
             Name = "Calendar Smoke Leave",
             Code = leaveTypeCode,
-            Category = LeaveTypeCategories.Annual,
             IsPaid = true,
-            RequiresApproval = true,
-            DefaultDaysPerYear = 10m,
             ApplicableGender = LeaveGenderRestrictions.All,
             CreatedAt = now
         });

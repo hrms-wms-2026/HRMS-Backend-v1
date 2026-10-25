@@ -521,7 +521,7 @@ public class DepartmentApplicationUnitTests
             .ReturnsAsync(false);
 
         var handler = new CreateDepartmentCommandHandler(
-            _departmentRepoMock.Object, _legalEntityRepoMock.Object, _currentUserMock.Object, _dateTimeProviderMock.Object);
+            _departmentRepoMock.Object, _legalEntityRepoMock.Object, _positionRepoMock.Object, _currentUserMock.Object, _dateTimeProviderMock.Object);
 
         var command = new CreateDepartmentCommand(_legalEntityId, "Finance", "FIN", null, null);
         var result = await handler.Handle(command, CancellationToken.None);
@@ -547,7 +547,7 @@ public class DepartmentApplicationUnitTests
             .ReturnsAsync(true);
 
         var handler = new CreateDepartmentCommandHandler(
-            _departmentRepoMock.Object, _legalEntityRepoMock.Object, _currentUserMock.Object, _dateTimeProviderMock.Object);
+            _departmentRepoMock.Object, _legalEntityRepoMock.Object, _positionRepoMock.Object, _currentUserMock.Object, _dateTimeProviderMock.Object);
 
         var command = new CreateDepartmentCommand(_legalEntityId, "Engineering", "ENG", null, null);
         var result = await handler.Handle(command, CancellationToken.None);
@@ -568,7 +568,7 @@ public class DepartmentApplicationUnitTests
             .ReturnsAsync(false);
 
         var handler = new CreateDepartmentCommandHandler(
-            _departmentRepoMock.Object, _legalEntityRepoMock.Object, _currentUserMock.Object, _dateTimeProviderMock.Object);
+            _departmentRepoMock.Object, _legalEntityRepoMock.Object, _positionRepoMock.Object, _currentUserMock.Object, _dateTimeProviderMock.Object);
 
         var command = new CreateDepartmentCommand(_otherLegalEntityId, "Engineering", "ENG", null, null);
         var result = await handler.Handle(command, CancellationToken.None);
@@ -591,7 +591,7 @@ public class DepartmentApplicationUnitTests
             .ReturnsAsync((Domain.Features.OrgStructure.Entities.Department?)null);
 
         var handler = new CreateDepartmentCommandHandler(
-            _departmentRepoMock.Object, _legalEntityRepoMock.Object, _currentUserMock.Object, _dateTimeProviderMock.Object);
+            _departmentRepoMock.Object, _legalEntityRepoMock.Object, _positionRepoMock.Object, _currentUserMock.Object, _dateTimeProviderMock.Object);
 
         var command = new CreateDepartmentCommand(_legalEntityId, "DevOps", "DEV", invalidParentId, null);
         var result = await handler.Handle(command, CancellationToken.None);
@@ -611,7 +611,7 @@ public class DepartmentApplicationUnitTests
             .ReturnsAsync(true);
 
         var handler = new CreateDepartmentCommandHandler(
-            _departmentRepoMock.Object, _legalEntityRepoMock.Object, _currentUserMock.Object, _dateTimeProviderMock.Object);
+            _departmentRepoMock.Object, _legalEntityRepoMock.Object, _positionRepoMock.Object, _currentUserMock.Object, _dateTimeProviderMock.Object);
 
         var command = new CreateDepartmentCommand(_legalEntityId, "Operations", "ops", null, null);
         var result = await handler.Handle(command, CancellationToken.None);
@@ -635,7 +635,7 @@ public class DepartmentApplicationUnitTests
             .ReturnsAsync(false);
 
         var handler = new CreateDepartmentCommandHandler(
-            _departmentRepoMock.Object, _legalEntityRepoMock.Object, _currentUserMock.Object, _dateTimeProviderMock.Object);
+            _departmentRepoMock.Object, _legalEntityRepoMock.Object, _positionRepoMock.Object, _currentUserMock.Object, _dateTimeProviderMock.Object);
 
         var command = new CreateDepartmentCommand(_otherLegalEntityId, "Operations", "OPS", null, null);
         var result = await handler.Handle(command, CancellationToken.None);
@@ -670,7 +670,7 @@ public class DepartmentApplicationUnitTests
             .ReturnsAsync(false);
 
         var handler = new CreateDepartmentCommandHandler(
-            _departmentRepoMock.Object, _legalEntityRepoMock.Object, _currentUserMock.Object, _dateTimeProviderMock.Object);
+            _departmentRepoMock.Object, _legalEntityRepoMock.Object, _positionRepoMock.Object, _currentUserMock.Object, _dateTimeProviderMock.Object);
 
         var command = new CreateDepartmentCommand(_legalEntityId, "Finance", "  FIN  ", null, null);
         var result = await handler.Handle(command, CancellationToken.None);
@@ -687,7 +687,7 @@ public class DepartmentApplicationUnitTests
             .ReturnsAsync(false);
 
         var handler = new CreateDepartmentCommandHandler(
-            _departmentRepoMock.Object, _legalEntityRepoMock.Object, _currentUserMock.Object, _dateTimeProviderMock.Object);
+            _departmentRepoMock.Object, _legalEntityRepoMock.Object, _positionRepoMock.Object, _currentUserMock.Object, _dateTimeProviderMock.Object);
 
         var command = new CreateDepartmentCommand(_legalEntityId, "Finance", "   ", null, null);
         var result = await handler.Handle(command, CancellationToken.None);
@@ -714,22 +714,52 @@ public class DepartmentApplicationUnitTests
     }
 
     [Fact]
-    public async Task CreateDepartment_RejectsHeadPositionId_HeadAssignmentIsDeferredToUpdate()
+    public async Task CreateDepartment_WithHeadPositionId_MovesPositionIntoNewDepartment_AndSetsHead()
     {
-        // Documented create-time limitation: a new department has no positions belonging to it
-        // yet, so "the position must belong to the same department" cannot be evaluated during
-        // create. Per Onexo_Department_Position_User_Journey_Validation.md ("Create the
-        // department first and assign its head afterwards, which is recommended"), create
-        // rejects any non-null headPositionId outright instead of silently ignoring it or
-        // accepting a cross-department position - assignment is only supported via update.
+        // A new department has no positions of its own, so a head chosen at create time is an
+        // existing position that moves into the new department (journey doc, option 2).
+        var otherDepartmentId = Guid.NewGuid();
+        var position = CreatePosition(_tenantId, _legalEntityId, otherDepartmentId, isActive: true);
         _departmentRepoMock
             .Setup(d => d.ExistsByNameAsync(_tenantId, _legalEntityId, "Finance", null, It.IsAny<CancellationToken>()))
             .ReturnsAsync(false);
+        _positionRepoMock
+            .Setup(p => p.GetByIdForLegalEntityAsync(_tenantId, _legalEntityId, position.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(position);
+        _positionRepoMock
+            .Setup(p => p.CountHeadDepartmentReferencesAsync(_tenantId, _legalEntityId, position.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(0);
 
         var handler = new CreateDepartmentCommandHandler(
-            _departmentRepoMock.Object, _legalEntityRepoMock.Object, _currentUserMock.Object, _dateTimeProviderMock.Object);
+            _departmentRepoMock.Object, _legalEntityRepoMock.Object, _positionRepoMock.Object, _currentUserMock.Object, _dateTimeProviderMock.Object);
 
-        var command = new CreateDepartmentCommand(_legalEntityId, "Finance", "FIN", null, Guid.NewGuid());
+        var command = new CreateDepartmentCommand(_legalEntityId, "Finance", "FIN", null, position.Id);
+        var result = await handler.Handle(command, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(position.Id, result.Value!.HeadPositionId);
+        Assert.Equal(result.Value.Id, position.DepartmentId);
+        _positionRepoMock.Verify(p => p.Update(position), Times.Once);
+    }
+
+    [Fact]
+    public async Task CreateDepartment_RejectsHeadPosition_ThatAlreadyHeadsAnotherDepartment()
+    {
+        var position = CreatePosition(_tenantId, _legalEntityId, Guid.NewGuid(), isActive: true);
+        _departmentRepoMock
+            .Setup(d => d.ExistsByNameAsync(_tenantId, _legalEntityId, "Finance", null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+        _positionRepoMock
+            .Setup(p => p.GetByIdForLegalEntityAsync(_tenantId, _legalEntityId, position.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(position);
+        _positionRepoMock
+            .Setup(p => p.CountHeadDepartmentReferencesAsync(_tenantId, _legalEntityId, position.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(1);
+
+        var handler = new CreateDepartmentCommandHandler(
+            _departmentRepoMock.Object, _legalEntityRepoMock.Object, _positionRepoMock.Object, _currentUserMock.Object, _dateTimeProviderMock.Object);
+
+        var command = new CreateDepartmentCommand(_legalEntityId, "Finance", "FIN", null, position.Id);
         var result = await handler.Handle(command, CancellationToken.None);
 
         Assert.False(result.IsSuccess);
@@ -745,7 +775,7 @@ public class DepartmentApplicationUnitTests
             .ReturnsAsync(false);
 
         var handler = new CreateDepartmentCommandHandler(
-            _departmentRepoMock.Object, _legalEntityRepoMock.Object, _currentUserMock.Object, _dateTimeProviderMock.Object);
+            _departmentRepoMock.Object, _legalEntityRepoMock.Object, _positionRepoMock.Object, _currentUserMock.Object, _dateTimeProviderMock.Object);
 
         var command = new CreateDepartmentCommand(_legalEntityId, "Finance", "FIN", null, null);
         var result = await handler.Handle(command, CancellationToken.None);

@@ -14,7 +14,10 @@ public sealed record ExceptionListFilter(
     IReadOnlyCollection<ExceptionStatus>? Statuses = null,
     bool ActiveOnly = false,
     // true = only calendar meeting-exception cases, false = only the rest (monitoring), null = both (plan C2).
-    bool? Calendar = null);
+    bool? Calendar = null,
+    // Case history: DetectedAt in [DetectedFrom, DetectedTo).
+    DateTimeOffset? DetectedFrom = null,
+    DateTimeOffset? DetectedTo = null);
 
 public interface IExceptionRepository
 {

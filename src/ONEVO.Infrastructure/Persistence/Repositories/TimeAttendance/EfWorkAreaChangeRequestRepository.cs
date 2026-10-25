@@ -139,4 +139,10 @@ public sealed class EfWorkAreaChangeRequestRepository(ApplicationDbContext db)
             throw new UniqueConstraintConflictException(ex);
         }
     }
+
+    public async Task<IReadOnlyList<WorkAreaChangeRequest>> ListForEmployeeCreatedAsync(
+        Guid tenantId, Guid employeeId, DateTimeOffset from, DateTimeOffset to, CancellationToken ct = default)
+        => await db.WorkAreaChangeRequests.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.EmployeeId == employeeId && x.RequestedAt >= from && x.RequestedAt < to)
+            .ToListAsync(ct);
 }

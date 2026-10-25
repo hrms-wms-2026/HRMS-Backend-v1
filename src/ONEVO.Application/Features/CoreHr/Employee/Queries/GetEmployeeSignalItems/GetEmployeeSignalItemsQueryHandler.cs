@@ -50,7 +50,7 @@ public sealed class GetEmployeeSignalItemsQueryHandler(
     public const int MaxItems = 50;
 
     private static readonly HashSet<string> AttendanceKeys =
-        ["absent_days", "missing_clock_outs", "late_clock_ins", "early_clock_outs", "short_hours_days", "off_schedule_work", "over_break"];
+        ["absent_days", "missing_clock_outs", "late_clock_ins", "early_clock_outs", "off_schedule_work", "over_break"];
 
     public async Task<Result<EmployeeSignalItemsResponse>> Handle(GetEmployeeSignalItemsQuery request, CancellationToken ct)
     {
@@ -191,7 +191,6 @@ public sealed class GetEmployeeSignalItemsQueryHandler(
             "missing_clock_outs" => dates.MissingClockOuts.Select(d => Day(d, "No clock-out recorded")),
             "late_clock_ins" => dates.Late.Select(d => Day(d, "Clocked in after the scheduled start")),
             "early_clock_outs" => dates.EarlyDepartures.Select(d => Day(d, "Left before the scheduled end")),
-            "short_hours_days" => dates.ShortHours.Select(d => Day(d, "Worked less than the required hours")),
             _ => dates.WorkedOnNonWorkingDay.Select(d => Day(d, "Worked on a non-working day"))
                 .Concat(dates.WorkedDuringTimeOff.Select(d => Day(d, "Worked during approved time off")))
         };

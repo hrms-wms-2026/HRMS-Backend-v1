@@ -140,6 +140,8 @@ public sealed class CreateApproverBackdatedLeaveCommandHandler : IRequestHandler
             TotalHours = draft.TotalHours,
             PaidHours = draft.PaidHours,
             UnpaidHours = draft.UnpaidHours,
+            LeavePolicyVersionId = draft.PolicyVersionId,
+            ExceedsBalanceByHours = draft.ExceedsBalanceByHours,
             Reason = reason,
             Status = LeaveRequestStatuses.Approved,
             ApprovedBy = callerEmployeeId,

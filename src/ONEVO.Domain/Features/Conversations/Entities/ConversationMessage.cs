@@ -9,12 +9,17 @@ public static class ConversationMessageKinds
     /// <summary>A content-free marker where the item's evidence (e.g. an identity case's face checks) sits in the
     /// chat. The client fills it from the item's own evidence, which only reviewers receive - the row holds nothing.</summary>
     public const string Evidence = "evidence";
+    /// <summary>An inbox item (request, alert, case) posted into a people chat. SystemEventJson holds its reference
+    /// ({"source","kind","id","title",...}); the client loads the item itself, so each viewer sees only what they may.</summary>
+    public const string Case = "case";
 }
 
-/// <summary>Labels on a text message: justification is the subject employee's own explanation on an alert or case.</summary>
+/// <summary>Labels on a text message: justification is the subject employee's own explanation on an alert or case;
+/// forwarded is a copy of a message someone passed on from another chat.</summary>
 public static class ConversationMessageTags
 {
     public const string Justification = "justification";
+    public const string Forwarded = "forwarded";
 }
 
 public class ConversationMessage : BaseEntity
