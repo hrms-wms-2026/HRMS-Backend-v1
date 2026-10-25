@@ -117,7 +117,10 @@ it writes nothing.
 **Approvals.** A `requested` meeting appears in the existing approval inbox as action `meeting.create` (or `meeting.move`):
 - It is decided with the existing approval endpoints.
 - The payload cannot be edited (`canEditPayload: false`), and a revert returns 409.
-- The approver sees only the snapshot below.
+- The approver sees only the snapshot below, as the inbox item detail's `extraJson`: `{"snapshot":{…}}` (also
+  `extraJson` on `GET /api/v1/work/approvals/{id}`), for `meeting.create` and `meeting.move`. The requester gets
+  `extraJson: null`; nobody gets the payload (`requestedPayloadJson`/`appliedPayloadJson` are null for meeting
+  actions). A `meeting.move` submitted before snapshots existed has `extraJson: null`.
 
 **Monitoring compliance.** The Work & Activity "Application usage" card of an employee profile
 (`GET /api/v1/employees/{id}/work-activity/app-usage`) carries a `meetingCompliance` array: every meeting of
@@ -234,5 +237,5 @@ the meeting the meeting application was used for (spec D17).
   more and no attendance check still needs it. Until then a removal returns `releasePending: true`. Create returns the link
   as `provisioning`; poll `GET …/link` until it is `active` (the link email to attendees is sent then). `provisioning_unknown`
   → offer Retry; `unresolved` → ask the organizer to delete the meeting in Teams/Zoom, then `cleanup-confirmed`.
-- **Approval snapshot** (D5, `meeting.create` payload `snapshot`):
+- **Approval snapshot** (D5, `meeting.create` / `meeting.move` payload `snapshot`, frozen at submit):
   `{ title, description, start, durationMinutes, timezone, recurrenceSummary, organizerName, modulePath, participantNames[], guestEmails[], platform }`.

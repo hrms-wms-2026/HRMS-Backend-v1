@@ -25,4 +25,5 @@ public sealed record ApprovalDetailResponse(
     decimal? CurrentAllocatedHours,     // allocation rows only
     ApprovalInvitationResponse? Invitation,
     bool CanRevert,                     // engine rows only; always false for an invitation row
-    DateTimeOffset? RevertableUntil);
+    DateTimeOffset? RevertableUntil,
+    string? ExtraJson = null);          // meeting.create / meeting.move: {"snapshot":{...}} (D5), receivers only

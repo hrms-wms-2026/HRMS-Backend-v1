@@ -487,6 +487,24 @@ public class WorkInboxSourceProviderTests
         null, null, null, Now.AddHours(-2), null, canDecide, false, "Edit title");
 
     [Fact]
+    public async Task Meeting_approval_detail_carries_the_snapshot_as_extra_json()
+    {
+        var r = Request(_a, Requester);
+        const string extra = "{\"snapshot\":{\"title\":\"T\"}}";
+        var item = FeedItem(r.Id, ApprovalFeedSources.Engine, WorkApprovalRequestStatuses.Pending, canDecide: true)
+            with { ActionType = WorkActionTypes.MeetingCreate };
+        _sender.Setup(s => s.Send(It.IsAny<ONEVO.Application.Features.WorkManagement.Approvals.Queries.GetApprovalDetail.GetApprovalDetailQuery>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<ApprovalDetailResponse>.Success(new ApprovalDetailResponse(
+                item, null, null, [], CanEditPayload: false, Note: null, CurrentAllocatedHours: null,
+                Invitation: null, CanRevert: false, RevertableUntil: null, ExtraJson: extra)));
+
+        var detail = await Provider().GetDetailAsync(TenantId, "approval", r.Id, Me, default);
+
+        detail!.ExtraJson.Should().Be(extra);
+        detail.EditablePayloadJson.Should().BeNull();
+    }
+
+    [Fact]
     public async Task An_approval_detail_carries_steps_the_change_set_the_task_link_and_the_editable_payload()
     {
         var r = Request(_a, Requester);
