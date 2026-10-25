@@ -23,6 +23,8 @@ Today none of this happens:
 
 - **Hours per occurrence = meeting duration × number of attendees** (person-hours).
 - **Counted only after the meeting ends.** It is not based on attendance join times.
+- **Every invited attendee who did not decline counts for the full duration.** This holds even if they joined late or left early (confirmed 2026-10-26).
+- **Later, not now:** partial attendance (joining late or leaving early) will be flagged through the exception engine. It does not reduce the hours.
 - **Team Progress:** meetings add to the **hours** columns only. They stay out of task **counts** (`task_count`, `unestimated_task_count`). The rest of the counts-only exclusion from `ExcludeMeetingTasksFromModuleHourSummaries` stays.
 - A meeting with no project lives in the **Office** project. Its hours land on the Office project only and never on another project (B2, B9). This already holds today through `MeetingPlacementResolver`.
 
