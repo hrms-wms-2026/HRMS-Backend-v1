@@ -163,7 +163,7 @@ public sealed class PlannerService
             g => PlannerActuals.TaskMinutes(g.Select(s => (s.ClockInAt, s.ClockOutAt)), start, end, now));
         var meetingViews = meetings.Select(m =>
         {
-            var minutes = MeetingPersonHours.BillableMinutes(m.StartAt, m.EndAt, m.IsAllDay);
+            var minutes = MinutesInDay(m.StartAt, m.EndAt, m.IsAllDay, start, end);
             var counts = !m.Cancelled && !m.Declined;
             return new PlannerMeetingView(m.TaskId, m.SeriesId, m.OriginalStart, m.StartAt, m.EndAt,
                 maskPrivate && m.IsPrivate ? PrivateMeetingTitle : m.Title, m.IsPrivate, m.Cancelled, m.Declined,
@@ -185,6 +185,18 @@ public sealed class PlannerService
         return new PlannerDayResponse(day, zone.Id, editable, blockViews, meetingViews,
             due.Select(t => new PlannerDueTaskView(t.TaskId, t.Title, t.DueDate, t.EstimatedHours)).ToList(),
             new PlannerTotals(planned, actual));
+    }
+
+    /// <summary>A meeting's minutes on this day only: its overlap with the day, or one workday when an all-day meeting
+    /// covers the day (MeetingPersonHours.AllDayMinutesPerDay).</summary>
+    private static int MinutesInDay(DateTimeOffset meetingStart, DateTimeOffset meetingEnd, bool isAllDay, DateTimeOffset dayStart,
+        DateTimeOffset dayEnd)
+    {
+        var from = meetingStart > dayStart ? meetingStart : dayStart;
+        var to = meetingEnd < dayEnd ? meetingEnd : dayEnd;
+        if (to <= from)
+            return 0;
+        return isAllDay ? MeetingPersonHours.AllDayMinutesPerDay : (int)Math.Round((to - from).TotalMinutes);
     }
 
     private async Task<Zone?> ZoneOfAsync(Guid tenantId, Guid employeeId, CancellationToken ct)

@@ -215,6 +215,27 @@ public sealed class PlannerServiceIntegrationTests
     }
 
     [Fact]
+    public async Task A_meeting_counts_only_its_part_inside_the_day()
+    {
+        // 23:00 yesterday to 01:00 today (local): only the hour after midnight is today's.
+        var w = await SeedAsync();
+        await using (var db = w.H.NewContext())
+        {
+            var series = w.H.AddSeries(db, w.At, Local(23, dayOffset: -1).ToUniversalTime());
+            series.DurationMinutes = 120;
+            w.H.AddSeriesParticipant(db, series, w.Employee, CalendarEventParticipantStatuses.Accepted);
+            w.H.AddOccurrence(db, series, w.At);
+            await db.SaveChangesAsync();
+        }
+
+        await using var ctx = w.H.NewContext();
+        var day = (await Service(ctx, now: Local(2)).GetDayAsync(w.H.TenantId, w.Employee, w.Employee, null, default)).Value!;
+
+        var meeting = Assert.Single(day.Meetings);
+        Assert.Equal((60, 60), (meeting.PlannedMinutes, meeting.ActualMinutes));
+    }
+
+    [Fact]
     public async Task Ancestor_can_view_peer_gets_404_and_private_meetings_are_masked()
     {
         var w = await SeedAsync();
