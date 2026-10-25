@@ -39,7 +39,7 @@ namespace ONEVO.Infrastructure.Migrations
         /// AddModuleHourSummaries except for the added join predicate - the tenant scope
         /// (t.tenant_id = o.tenant_id) and the top-level / not-deleted scope are unchanged.
         /// </summary>
-        private const string RefreshFunctionWithMeetingExclusion = """
+        internal const string RefreshFunctionWithMeetingExclusion = """
             CREATE OR REPLACE FUNCTION wm_refresh_module_hour_summary(p_objective_id uuid) RETURNS void
             LANGUAGE sql AS $fn$
                 INSERT INTO wm_module_hour_summaries AS s
@@ -180,7 +180,7 @@ namespace ONEVO.Infrastructure.Migrations
         /// block does nothing.
         /// </para>
         /// </summary>
-        private static string ReplaceRefreshFunction(string refreshFunction)
+        internal static string ReplaceRefreshFunction(string refreshFunction)
         {
             return $$"""
                 DO $do$
@@ -243,7 +243,7 @@ namespace ONEVO.Infrastructure.Migrations
         /// AddModuleHourSummaries backfill used. set_config's third argument makes it local to
         /// this transaction, so the session's tenant mode is untouched.
         /// </summary>
-        private static string BackfillAllModules()
+        internal static string BackfillAllModules()
         {
             return """
                 DO $do$

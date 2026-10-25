@@ -30,6 +30,8 @@ public class MeetingDetails : ITenantOwnedEntity
     public int AttendanceCheckpoint { get; set; }
     public DateTimeOffset? AttendanceFinalizedAt { get; set; }
     public string? AttendanceLastError { get; set; }
+    /// <summary>When the ended occurrence's person-hours were written to its task (once; see MeetingHoursStamper).</summary>
+    public DateTimeOffset? HoursStampedAt { get; set; }
 }
 
 /// <summary>An occurrence's attendance progress (spec 5.8). It only moves forward and never leaves <see cref="Synced"/>.</summary>
