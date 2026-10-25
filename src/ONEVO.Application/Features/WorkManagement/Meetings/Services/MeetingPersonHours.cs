@@ -10,6 +10,16 @@ namespace ONEVO.Application.Features.WorkManagement.Meetings.Services;
 /// </summary>
 public static class MeetingPersonHours
 {
+    /// <summary>The workday an all-day meeting counts per person per day, not its 24 calendar hours.</summary>
+    public const int AllDayMinutesPerDay = 8 * 60;
+
+    /// <summary>The minutes one attendee spends: the occurrence's length, or a workday per calendar day when all-day.</summary>
+    public static int BillableMinutes(DateTimeOffset start, DateTimeOffset end, bool isAllDay)
+    {
+        var minutes = (int)(end - start).TotalMinutes;
+        return isAllDay ? Math.Max(1, (int)Math.Ceiling(minutes / 1440.0)) * AllDayMinutesPerDay : minutes;
+    }
+
     public static decimal Compute(int durationMinutes, Guid organizerEmployeeId, IReadOnlyList<EffectiveAttendee> attendees,
         bool cancelled)
     {

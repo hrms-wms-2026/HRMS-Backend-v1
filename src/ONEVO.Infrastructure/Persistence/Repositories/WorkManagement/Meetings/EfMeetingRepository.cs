@@ -163,9 +163,9 @@ public sealed class EfMeetingRepository : IMeetingRepository
     public async Task<MeetingDetails?> GetDetailsTrackedAsync(Guid tenantId, Guid taskId, CancellationToken ct = default)
         => await _db.MeetingDetails.FirstOrDefaultAsync(d => d.TenantId == tenantId && d.TaskId == taskId, ct);
 
-    public async Task<IReadOnlyList<MeetingDetails>> ListEndedUnstampedTrackedAsync(Guid tenantId, DateTimeOffset now, int take,
+    public async Task<IReadOnlyList<MeetingDetails>> ListEndedUnstampedAsync(Guid tenantId, DateTimeOffset now, int take,
         CancellationToken ct = default)
-        => await _db.MeetingDetails
+        => await _db.MeetingDetails.AsNoTracking()
             .Where(d => d.TenantId == tenantId && d.EndAt <= now && d.HoursStampedAt == null)
             .OrderBy(d => d.EndAt).ThenBy(d => d.TaskId).Take(take).ToListAsync(ct);
 

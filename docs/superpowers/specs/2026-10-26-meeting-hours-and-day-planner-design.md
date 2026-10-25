@@ -31,10 +31,11 @@ Today none of this happens:
 ### My calls (change them if wrong)
 
 - **Who counts as an attendee:**
-  - Counted: the organizer plus every internal employee attendee whose response is not `rejected` at the moment the occurrence ends. That covers the series participants not removed for that occurrence, plus per-occurrence adds.
+  - Counted: the organizer plus every internal employee attendee whose response is not `rejected` when the occurrence is stamped. Stamping happens within an hour after it ends (amended 2026-10-26 after review: the hourly job reads the attendee list then, not as of the exact end time). That covers the series participants not removed for that occurrence, plus per-occurrence adds.
   - Not counted: external guests.
   - Example: 5 invited, 1 declined, 1 external guest, 1 hour → **3 h**.
-- **Frozen at end:** RSVP or attendee changes after the occurrence ended do not change its hours.
+- **Frozen at stamping:** RSVP or attendee changes after the occurrence has been stamped do not change its hours.
+- **All-day meetings:** each attendee counts one 8-hour workday per calendar day, not 24 hours (added 2026-10-26 after review).
 - **Cancelled occurrences count 0.** This includes those cancelled with their series.
 - **Where the hours go:** when an occurrence ends, its meeting task gets `EstimatedHours = CompletedHours = person-hours`. Hours then flow through the same paths as a completed task:
   - the summary's `completed_hours`;

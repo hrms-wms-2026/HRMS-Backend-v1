@@ -230,7 +230,7 @@ the meeting the meeting application was used for (spec D17).
 
 - When an occurrence has ended, the hourly meeting job (`Meetings:Background`) stamps its task once with
   **person-hours = duration × (organizer + every internal attendee who did not decline)**, each for the full duration.
-  Guests never count; a cancelled occurrence is stamped with 0.
+  Guests never count; a cancelled occurrence is stamped with 0. An all-day occurrence counts 8 h per person per day.
 - The hours are the task's `estimatedHours` and `completedHours`, and roll up to its module, ancestor modules and project
   (`completedHours`). The module hour summary (Team Progress) counts them in `completedHours` only; meetings stay out of
   task counts.

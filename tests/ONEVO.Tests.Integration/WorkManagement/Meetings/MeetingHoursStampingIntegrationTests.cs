@@ -139,6 +139,57 @@ public sealed class MeetingHoursStampingIntegrationTests
     }
 
     [Fact]
+    public async Task A_task_completed_between_two_stamps_is_not_lost()
+    {
+        // One job run reuses its DbContext: a module tracked by the first stamp must not overwrite a user's later write.
+        var w = await SeedAsync();
+        await using (var db = w.H.NewContext())
+        {
+            var at = w.Root with { ObjectiveId = w.Module };
+            var second = w.H.AddSeries(db, at, Start.AddHours(3));
+            second.DurationMinutes = 60;
+            w.H.AddSeriesParticipant(db, second, at.OrganizerEmployeeId, CalendarEventParticipantStatuses.Accepted);
+            w.H.AddOccurrence(db, second, at);
+            await db.SaveChangesAsync();
+        }
+
+        await using var jobDb = w.H.NewContext();
+        var s = new MeetingTestServices(jobDb, new MeetingTestClock(AfterEnd));
+        var stamper = new MeetingHoursStamper(s.Meetings, s.Writer, s.Materializer, s.Recurrence, new EfObjectiveRepository(jobDb),
+            s.Projects, s.UnitOfWork, s.Clock, NullLogger<MeetingHoursStamper>.Instance);
+        await stamper.StampTenantAsync(w.H.TenantId, CancellationToken.None);   // first meeting: +3
+
+        await using (var user = w.H.NewContext())
+        {
+            (await user.Objectives.SingleAsync(o => o.Id == w.Module)).CompletedHours += 5m;   // a user completes a 5 h task
+            await user.SaveChangesAsync();
+        }
+
+        ((MeetingTestClock)s.Clock).UtcNow = Start.AddHours(5);
+        await stamper.StampTenantAsync(w.H.TenantId, CancellationToken.None);   // second meeting: +1
+
+        Assert.Equal(9m, (await RollupAsync(w.H, w)).Module);
+    }
+
+    [Fact]
+    public async Task An_all_day_meeting_counts_a_workday_per_person()
+    {
+        var w = await SeedAsync();
+        await using (var db = w.H.NewContext())
+        {
+            var details = await db.MeetingDetails.SingleAsync(d => d.TaskId == w.TaskId);
+            details.IsAllDay = true;
+            details.StartAt = new DateTimeOffset(Start.Date, TimeSpan.Zero);
+            details.EndAt = new DateTimeOffset(Start.Date.AddDays(1), TimeSpan.Zero);
+            await db.SaveChangesAsync();
+        }
+
+        await StampAsync(w.H, new DateTimeOffset(Start.Date.AddDays(1).AddHours(1), TimeSpan.Zero));
+
+        Assert.Equal(24m, (await TaskStateAsync(w.H, w.TaskId)).Estimated);   // 3 people x 8 h
+    }
+
+    [Fact]
     public async Task An_ended_virtual_occurrence_is_materialized_and_stamped()
     {
         var h = await MyTeamDb.CreateAsync();

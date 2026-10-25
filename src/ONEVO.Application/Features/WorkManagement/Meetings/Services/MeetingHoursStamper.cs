@@ -55,7 +55,7 @@ public sealed class MeetingHoursStamper
         var failed = new HashSet<Guid>();
         while (true)
         {
-            var batch = (await _meetings.ListEndedUnstampedTrackedAsync(tenantId, now, BatchSize + failed.Count, ct))
+            var batch = (await _meetings.ListEndedUnstampedAsync(tenantId, now, BatchSize + failed.Count, ct))
                 .Where(d => !failed.Contains(d.TaskId)).ToList();
             if (batch.Count == 0)
                 return stamped;
@@ -65,8 +65,8 @@ public sealed class MeetingHoursStamper
                 ct.ThrowIfCancellationRequested();
                 try
                 {
-                    await _unitOfWork.ExecuteInTransactionAsync(innerCt => StampAsync(tenantId, details, now, innerCt), ct);
-                    stamped++;
+                    if (await _unitOfWork.ExecuteInTransactionAsync(innerCt => StampAsync(tenantId, details, now, innerCt), ct))
+                        stamped++;
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
@@ -81,6 +81,9 @@ public sealed class MeetingHoursStamper
 
     private async Task<bool> StampAsync(Guid tenantId, MeetingDetails details, DateTimeOffset now, CancellationToken ct)
     {
+        // One job run shares a DbContext: drop what earlier stamps tracked so every attempt (a retry included) reads
+        // the current row, module and project, and never writes back a value a user has since changed.
+        _unitOfWork.ClearTracking();
         var tracked = await _meetings.GetDetailsTrackedAsync(tenantId, details.TaskId, ct);
         if (tracked is null || tracked.HoursStampedAt is not null)
             return false;
@@ -94,8 +97,8 @@ public sealed class MeetingHoursStamper
                 await _meetings.ListSeriesParticipantsAsync(tenantId, series.Id, ct),
                 await _meetings.ListSeriesGuestsAsync(tenantId, series.Id, ct),
                 await _meetings.ListOverridesAsync(tenantId, [tracked.TaskId], ct));
-            var hours = MeetingPersonHours.Compute((int)(tracked.EndAt - tracked.StartAt).TotalMinutes, series.OrganizerEmployeeId,
-                attendees, cancelled);
+            var hours = MeetingPersonHours.Compute(MeetingPersonHours.BillableMinutes(tracked.StartAt, tracked.EndAt, tracked.IsAllDay),
+                series.OrganizerEmployeeId, attendees, cancelled);
 
             var delta = hours - task.CompletedHours;
             task.EstimatedHours = hours;
