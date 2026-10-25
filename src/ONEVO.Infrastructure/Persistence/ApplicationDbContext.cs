@@ -379,6 +379,7 @@ public class ApplicationDbContext : DbContext
 
     // Meetings-as-tasks Phase 2: a meeting occurrence is a WorkTask (task_kind = 'meeting') plus its MeetingDetails.
     public DbSet<ONEVO.Domain.Features.WorkManagement.Meetings.Entities.MeetingSeries> MeetingSeries => Set<ONEVO.Domain.Features.WorkManagement.Meetings.Entities.MeetingSeries>();
+    public DbSet<ONEVO.Domain.Features.WorkManagement.Planner.Entities.PlannedTaskBlock> PlannedTaskBlocks => Set<ONEVO.Domain.Features.WorkManagement.Planner.Entities.PlannedTaskBlock>();
     public DbSet<ONEVO.Domain.Features.WorkManagement.Meetings.Entities.MeetingDetails> MeetingDetails => Set<ONEVO.Domain.Features.WorkManagement.Meetings.Entities.MeetingDetails>();
     public DbSet<ONEVO.Domain.Features.WorkManagement.Meetings.Entities.MeetingOccurrenceSuppression> MeetingOccurrenceSuppressions => Set<ONEVO.Domain.Features.WorkManagement.Meetings.Entities.MeetingOccurrenceSuppression>();
     public DbSet<ONEVO.Domain.Features.WorkManagement.Meetings.Entities.MeetingOccurrenceAttendee> MeetingOccurrenceAttendees => Set<ONEVO.Domain.Features.WorkManagement.Meetings.Entities.MeetingOccurrenceAttendee>();

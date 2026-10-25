@@ -423,6 +423,8 @@ public static class DependencyInjection
         // the outbox claim fix (P-1) stop the app at startup.
         services.AddSingleton<Microsoft.Extensions.Options.IValidateOptions<ONEVO.Application.Features.WorkManagement.Meetings.MeetingsOptions>,
             ONEVO.Application.Features.WorkManagement.Meetings.MeetingsOptionsValidator>();
+        services.Configure<ONEVO.Application.Features.WorkManagement.Planner.PlannerOptions>(
+            configuration.GetSection(ONEVO.Application.Features.WorkManagement.Planner.PlannerOptions.SectionName));
         services.AddOptions<ONEVO.Application.Features.WorkManagement.Meetings.MeetingsOptions>()
             .Configure(options => ONEVO.Application.Features.WorkManagement.Meetings.MeetingsOptions.BindFrom(
                 configuration.GetSection(ONEVO.Application.Features.WorkManagement.Meetings.MeetingsOptions.Section), options))
