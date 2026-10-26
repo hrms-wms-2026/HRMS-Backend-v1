@@ -59,6 +59,15 @@ public sealed class EfMeetingRepository : IMeetingRepository
             .Where(s => s.TenantId == tenantId && s.RecurrenceRule != null && s.CancelledAt == null)
             .OrderBy(s => s.CreatedAt).ThenBy(s => s.Id).Select(s => s.Id).ToListAsync(ct);
 
+    public async Task<IReadOnlyList<Guid>> ListRecurringSeriesIdsLiveSinceAsync(Guid tenantId, DateTimeOffset cancelledAfter,
+        CancellationToken ct = default)
+    {
+        var since = cancelledAfter.ToUniversalTime();
+        return await _db.MeetingSeries.AsNoTracking()
+            .Where(s => s.TenantId == tenantId && s.RecurrenceRule != null && (s.CancelledAt == null || s.CancelledAt > since))
+            .OrderBy(s => s.CreatedAt).ThenBy(s => s.Id).Select(s => s.Id).ToListAsync(ct);
+    }
+
     public async Task<IReadOnlyList<MeetingSeries>> ListSeriesAsync(Guid tenantId, IReadOnlyCollection<Guid> seriesIds, CancellationToken ct = default)
         => await _db.MeetingSeries.AsNoTracking().Where(s => s.TenantId == tenantId && seriesIds.Contains(s.Id)).ToListAsync(ct);
 

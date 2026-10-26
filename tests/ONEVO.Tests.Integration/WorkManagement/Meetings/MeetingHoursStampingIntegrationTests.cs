@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
+using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Meetings.Services;
 using ONEVO.Domain.Features.Calendar.Entities;
 using ONEVO.Domain.Features.WorkManagement.Meetings.Entities;
@@ -42,13 +43,26 @@ public sealed class MeetingHoursStampingIntegrationTests
         return new World(h, root, module, series, task.Id);
     }
 
-    private static async Task<int> StampAsync(MyTeamDb h, DateTimeOffset now)
+    private static async Task<int> StampAsync(MyTeamDb h, DateTimeOffset now, IJobLeaseService? lease = null)
+        => (await RunAsync(h, now, lease)).Stamped;
+
+    private static async Task<MeetingHoursStampRun> RunAsync(MyTeamDb h, DateTimeOffset now, IJobLeaseService? lease = null)
     {
         await using var db = h.NewContext();
         var s = new MeetingTestServices(db, new MeetingTestClock(now));
         var stamper = new MeetingHoursStamper(s.Meetings, s.Writer, s.Materializer, s.Recurrence, new EfObjectiveRepository(db),
-            s.Projects, s.UnitOfWork, s.Clock, NullLogger<MeetingHoursStamper>.Instance);
+            s.Projects, s.UnitOfWork, s.Clock, lease ?? new HeldLease(int.MaxValue), NullLogger<MeetingHoursStamper>.Instance);
         return await stamper.StampTenantAsync(h.TenantId, CancellationToken.None);
+    }
+
+    /// <summary>The job's lease: renews <paramref name="renewals"/> times, then reports it lost.</summary>
+    private sealed class HeldLease(int renewals) : IJobLeaseService
+    {
+        private int _left = renewals;
+        public string InstanceId => "test";
+        public Task<bool> TryAcquireAsync(string jobName, TimeSpan ttl, CancellationToken ct) => Task.FromResult(true);
+        public Task<bool> RenewAsync(string jobName, TimeSpan ttl, CancellationToken ct) => Task.FromResult(_left-- > 0);
+        public Task ReleaseAsync(string jobName, CancellationToken ct) => Task.CompletedTask;
     }
 
     private static async Task<(decimal? Estimated, decimal Completed, DateTimeOffset? StampedAt)> TaskStateAsync(MyTeamDb h, Guid taskId)
@@ -156,7 +170,7 @@ public sealed class MeetingHoursStampingIntegrationTests
         await using var jobDb = w.H.NewContext();
         var s = new MeetingTestServices(jobDb, new MeetingTestClock(AfterEnd));
         var stamper = new MeetingHoursStamper(s.Meetings, s.Writer, s.Materializer, s.Recurrence, new EfObjectiveRepository(jobDb),
-            s.Projects, s.UnitOfWork, s.Clock, NullLogger<MeetingHoursStamper>.Instance);
+            s.Projects, s.UnitOfWork, s.Clock, new HeldLease(int.MaxValue), NullLogger<MeetingHoursStamper>.Instance);
         await stamper.StampTenantAsync(w.H.TenantId, CancellationToken.None);   // first meeting: +3
 
         await using (var user = w.H.NewContext())
@@ -213,5 +227,54 @@ public sealed class MeetingHoursStampingIntegrationTests
         Assert.Equal(Start, details.OriginalStart);
         Assert.Equal((1m, WorkTaskKinds.Meeting), (task.EstimatedHours!.Value, task.TaskKind));
         Assert.NotNull(details.HoursStampedAt);
+    }
+
+    [Fact]
+    public async Task A_lost_lease_stops_the_run_after_the_occurrence_in_hand()
+    {
+        // Plan A minor M1: a long first run renews the job lease as it goes; once the lease is lost (another instance
+        // may now run), it stops instead of stamping on alongside that instance.
+        var h = await MyTeamDb.CreateAsync();
+        await using (var db = h.NewContext())
+        {
+            var at = h.AddPlacement(db);
+            var series = h.AddSeries(db, at, Start);
+            h.AddSeriesParticipant(db, series, at.OrganizerEmployeeId, CalendarEventParticipantStatuses.Accepted);
+            h.AddOccurrence(db, series, at);
+            var other = h.AddSeries(db, at, Start);
+            h.AddSeriesParticipant(db, other, at.OrganizerEmployeeId, CalendarEventParticipantStatuses.Accepted);
+            h.AddOccurrence(db, other, at);
+            await db.SaveChangesAsync();
+        }
+
+        var run = await RunAsync(h, AfterEnd, new HeldLease(renewals: 0));
+
+        Assert.Equal((1, true), (run.Stamped, run.LeaseLost));
+    }
+
+    [Fact]
+    public async Task A_series_cancelled_before_its_slots_were_generated_still_gets_the_meetings_it_held()
+    {
+        // Plan A minor M6: the daily series met at Start, was never materialized (job off), and was cancelled before its
+        // second meeting. The one that took place still gets its occurrence and hours; the ones after the cancel do not.
+        var h = await MyTeamDb.CreateAsync();
+        Guid seriesId;
+        await using (var db = h.NewContext())
+        {
+            var at = h.AddPlacement(db);
+            await db.SaveChangesAsync();
+            var series = h.AddSeries(db, at, Start, "FREQ=DAILY");
+            series.DurationMinutes = 60;
+            series.CancelledAt = Start.AddDays(1).AddHours(-1);
+            h.AddSeriesParticipant(db, series, at.OrganizerEmployeeId, CalendarEventParticipantStatuses.Accepted);
+            seriesId = series.Id;
+            await db.SaveChangesAsync();
+        }
+
+        Assert.Equal(1, await StampAsync(h, Start.AddDays(3)));
+
+        await using var check = h.NewContext();
+        var details = await check.MeetingDetails.Where(d => d.SeriesId == seriesId).ToListAsync();
+        Assert.Equal([Start], details.Select(d => d.OriginalStart));
     }
 }

@@ -68,7 +68,8 @@ public sealed class MeetingOccurrenceGeneratorJob(IServiceProvider services, IOp
                     if (!await generator.RunForTenantAsync(tenant.Id, ct))
                         return;
                     // Meeting hours (2026-10-26 Part A): ended occurrences carry their person-hours.
-                    await stamper.StampTenantAsync(tenant.Id, ct);
+                    if ((await stamper.StampTenantAsync(tenant.Id, ct)).LeaseLost)
+                        return;
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {

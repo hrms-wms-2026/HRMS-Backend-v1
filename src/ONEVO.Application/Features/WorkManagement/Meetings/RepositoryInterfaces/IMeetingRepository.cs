@@ -46,6 +46,10 @@ public interface IMeetingRepository
     /// <summary>Recurring, not cancelled series - the generator's work list.</summary>
     Task<IReadOnlyList<Guid>> ListActiveRecurringSeriesIdsAsync(Guid tenantId, CancellationToken ct = default);
 
+    /// <summary>Recurring series that are live or were cancelled after <paramref name="cancelledAfter"/> - the ones whose
+    /// recent slots may still need an occurrence for their meeting hours.</summary>
+    Task<IReadOnlyList<Guid>> ListRecurringSeriesIdsLiveSinceAsync(Guid tenantId, DateTimeOffset cancelledAfter, CancellationToken ct = default);
+
     Task<IReadOnlyList<MeetingSeries>> ListSeriesAsync(Guid tenantId, IReadOnlyCollection<Guid> seriesIds, CancellationToken ct = default);
 
     /// <summary>Current participants of several series at once.</summary>
