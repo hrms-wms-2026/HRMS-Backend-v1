@@ -82,7 +82,7 @@ public sealed class CalendarNotificationSender(
         Guid tenantId, string email, string name, string eventTitle, DateTimeOffset startDate, string? location,
         string organizerName, string? meetingLink, CalendarEventIcs? ics)
         => new(tenantId, email, name, eventTitle, startDate, location, organizerName, meetingLink,
-            CalendarEventEmailKinds.Invite, ics?.EventId, ics?.EndUtc, ics?.Sequence ?? 0, ics?.RecurrenceRule, ics?.RecurrenceId);
+            CalendarEventEmailKinds.Invite, ics?.EventId, ics?.EndUtc, ics?.Sequence ?? 0, ics?.RecurrenceRule, ics?.RecurrenceId, ics?.TimeZoneId);
 
     public async Task SendMeetingLinkRemovedAsync(
         Guid tenantId, string eventTitle, DateTimeOffset startDate, string? location,
@@ -158,7 +158,7 @@ public sealed class CalendarNotificationSender(
         Guid tenantId, string email, string name, string kind, string eventTitle, DateTimeOffset startDate, string? location,
         string organizerName, string? meetingLink, CalendarEventIcs ics)
         => new(tenantId, email, name, eventTitle, startDate, location, organizerName, meetingLink,
-            kind, ics.EventId, ics.EndUtc, ics.Sequence, ics.RecurrenceRule, ics.RecurrenceId);
+            kind, ics.EventId, ics.EndUtc, ics.Sequence, ics.RecurrenceRule, ics.RecurrenceId, ics.TimeZoneId);
 
     public async Task NotifyEventUpdatedAsync(
         Guid tenantId, string eventTitle, IReadOnlyList<Guid> employeeIds, string organizerName, CancellationToken ct = default)
@@ -228,7 +228,7 @@ public sealed class CalendarNotificationSender(
         await outboxWriter.EnqueueAsync(
             OutboxMessageTypes.CalendarEventInviteEmail,
             new CalendarEventInviteEmailPayload(tenantId, email, recipientName, eventTitle, startDate, location, organizerName, meetingLink,
-                kind, ics?.EventId, ics?.EndUtc, ics?.Sequence ?? 0, ics?.RecurrenceRule, ics?.RecurrenceId),
+                kind, ics?.EventId, ics?.EndUtc, ics?.Sequence ?? 0, ics?.RecurrenceRule, ics?.RecurrenceId, ics?.TimeZoneId),
             tenantId, ct);
     }
 

@@ -8,14 +8,16 @@ using ONEVO.Domain.Features.WorkManagement.Meetings.Entities;
 namespace ONEVO.Application.Features.WorkManagement.Meetings.Services;
 
 /// <summary>The .ics identity of a Phase 2 meeting (spec 3): UID = series id; one occurrence adds RECURRENCE-ID =
-/// its original start; SEQUENCE from the time of the change.</summary>
+/// its original start; SEQUENCE from the time of the change; times in the series' own zone.</summary>
 public static class MeetingIcs
 {
     public static CalendarEventIcs ForSeries(MeetingSeries series, DateTimeOffset now)
-        => CalendarEventIcs.For(series.Id, series.DtStart.AddMinutes(series.DurationMinutes), series.RecurrenceRule, now);
+        => CalendarEventIcs.For(series.Id, series.DtStart.AddMinutes(series.DurationMinutes), series.RecurrenceRule, now)
+            with { TimeZoneId = series.Timezone };
 
     public static CalendarEventIcs ForOccurrence(MeetingSeries series, MeetingDetails occurrence, DateTimeOffset now)
-        => new(series.Id, occurrence.EndAt, CalendarIcs.Sequence(now), RecurrenceRule: null, RecurrenceId: occurrence.OriginalStart);
+        => new(series.Id, occurrence.EndAt, CalendarIcs.Sequence(now), RecurrenceRule: null, RecurrenceId: occurrence.OriginalStart,
+            TimeZoneId: series.Timezone);
 }
 
 /// <summary>

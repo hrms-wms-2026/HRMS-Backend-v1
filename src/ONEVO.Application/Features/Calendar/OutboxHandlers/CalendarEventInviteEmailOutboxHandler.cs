@@ -21,7 +21,8 @@ public sealed record CalendarEventInviteEmailPayload(
     DateTimeOffset? EndDateUtc = null,
     int Sequence = 0,
     string? RecurrenceRule = null,
-    DateTimeOffset? RecurrenceId = null);
+    DateTimeOffset? RecurrenceId = null,
+    string? TimeZoneId = null);
 
 /// <summary>Sends a calendar email from the outbox. Safe to retry: resending the same invite, update or cancellation
 /// (same UID and SEQUENCE) is harmless, and the email is byte-identical on every attempt - DTSTAMP is the event
@@ -49,7 +50,7 @@ public sealed class CalendarEventInviteEmailOutboxHandler : IOutboxMessageHandle
         if (payload.EventId is Guid eventId)
         {
             ics = CalendarIcs.Build(payload.Kind, new CalendarEventIcs(eventId, payload.EndDateUtc ?? payload.StartDateUtc, payload.Sequence,
-                    payload.RecurrenceRule, payload.RecurrenceId),
+                    payload.RecurrenceRule, payload.RecurrenceId, payload.TimeZoneId),
                 payload.EventTitle, payload.StartDateUtc, payload.Location, payload.OrganizerName, payload.ToEmail, payload.MeetingLink,
                 CalendarIcs.VersionTime(payload.Sequence));
             method = CalendarEventEmailKinds.IsCancel(payload.Kind) ? "CANCEL" : "REQUEST";

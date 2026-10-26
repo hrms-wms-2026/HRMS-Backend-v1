@@ -180,5 +180,7 @@ public sealed class MeetingNotifierTests
         Assert.Equal((_series.Id, "FREQ=WEEKLY", (DateTimeOffset?)null, Start.AddMinutes(30)), (series.EventId, series.RecurrenceRule, series.RecurrenceId, series.EndUtc));
         Assert.Equal((_series.Id, (string?)null, (DateTimeOffset?)occurrence.OriginalStart, occurrence.EndAt), (one.EventId, one.RecurrenceRule, one.RecurrenceId, one.EndUtc));
         Assert.Equal(CalendarIcs.Sequence(Now), series.Sequence);
+        // Both carry the series' zone, so the .ics keeps the local time across DST (Plan C minor M5).
+        Assert.Equal((_series.Timezone, _series.Timezone), (series.TimeZoneId, one.TimeZoneId));
     }
 }

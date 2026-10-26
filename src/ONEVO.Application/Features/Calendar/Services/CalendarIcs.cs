@@ -5,8 +5,11 @@ namespace ONEVO.Application.Features.Calendar.Services;
 
 /// <summary>The event identity an email's .ics needs (plan C1 P2-1): a stable UID per event and a SEQUENCE that grows
 /// with every change, so mail clients update or remove the same calendar entry.</summary>
+/// <param name="TimeZoneId">The series' IANA zone. A recurring event (or one occurrence of it) is then written in that
+/// zone with a VTIMEZONE, so a weekly 09:00 stays 09:00 across a DST change; null or UTC keeps plain UTC times.</param>
 public sealed record CalendarEventIcs(
-    Guid EventId, DateTimeOffset EndUtc, int Sequence, string? RecurrenceRule = null, DateTimeOffset? RecurrenceId = null)
+    Guid EventId, DateTimeOffset EndUtc, int Sequence, string? RecurrenceRule = null, DateTimeOffset? RecurrenceId = null,
+    string? TimeZoneId = null)
 {
     /// <summary>The .ics identity of an event as it is now: SEQUENCE from the current time, so it grows with every email.</summary>
     public static CalendarEventIcs For(Guid eventId, DateTimeOffset endUtc, string? recurrenceRule, DateTimeOffset now)
@@ -45,6 +48,9 @@ public static class CalendarIcs
         string attendeeEmail, string? meetingLink, DateTimeOffset stampUtc)
     {
         var cancel = CalendarEventEmailKinds.IsCancel(kind);
+        // Only a series needs its zone: a one-off instant is the same in UTC.
+        var zone = ics.RecurrenceRule is not null || ics.RecurrenceId is not null ? ZoneOf(ics.TimeZoneId) : null;
+        var end = ics.EndUtc < startUtc ? startUtc : ics.EndUtc;
         var lines = new List<string>
         {
             "BEGIN:VCALENDAR",
@@ -52,20 +58,25 @@ public static class CalendarIcs
             "VERSION:2.0",
             "CALSCALE:GREGORIAN",
             $"METHOD:{(cancel ? "CANCEL" : "REQUEST")}",
+        };
+        if (zone is not null)
+            lines.AddRange(CalendarIcsTimeZone.Lines(ics.TimeZoneId!, zone, startUtc));
+        lines.AddRange(
+        [
             "BEGIN:VEVENT",
             $"UID:{Uid(ics.EventId)}",
             $"SEQUENCE:{ics.Sequence.ToString(CultureInfo.InvariantCulture)}",
             $"DTSTAMP:{Utc(stampUtc)}",
-            $"DTSTART:{Utc(startUtc)}",
-            $"DTEND:{Utc(ics.EndUtc < startUtc ? startUtc : ics.EndUtc)}",
+            $"DTSTART{At(startUtc, ics.TimeZoneId, zone)}",
+            $"DTEND{At(end, ics.TimeZoneId, zone)}",
             $"SUMMARY:{Escape(title)}",
             $"ORGANIZER;CN={Escape(organizerName)}:mailto:noreply@onevo.app",
             $"ATTENDEE;ROLE=REQ-PARTICIPANT;RSVP=TRUE:mailto:{Raw(attendeeEmail)}",
             $"STATUS:{(cancel ? "CANCELLED" : "CONFIRMED")}",
-        };
+        ]);
         // One occurrence of a series is addressed by RECURRENCE-ID; the series itself carries its rule.
         if (ics.RecurrenceId is { } occurrence)
-            lines.Add($"RECURRENCE-ID:{Utc(occurrence)}");
+            lines.Add($"RECURRENCE-ID{At(occurrence, ics.TimeZoneId, zone)}");
         else if (!string.IsNullOrWhiteSpace(ics.RecurrenceRule))
             lines.Add($"RRULE:{Raw(ics.RecurrenceRule!)}");
         if (!string.IsNullOrWhiteSpace(location))
@@ -85,6 +96,22 @@ public static class CalendarIcs
     }
 
     private static string Utc(DateTimeOffset at) => at.UtcDateTime.ToString("yyyyMMdd'T'HHmmss'Z'", CultureInfo.InvariantCulture);
+
+    /// <summary>":20261019T080000Z", or ";TZID=Europe/London:20261019T090000" in the series' zone.</summary>
+    private static string At(DateTimeOffset at, string? zoneId, TimeZoneInfo? zone)
+        => zone is null
+            ? $":{Utc(at)}"
+            : $";TZID={Raw(zoneId!)}:{TimeZoneInfo.ConvertTime(at, zone).DateTime.ToString("yyyyMMdd'T'HHmmss", CultureInfo.InvariantCulture)}";
+
+    /// <summary>The zone to write times in: null for none, UTC or an id this machine does not know.</summary>
+    private static TimeZoneInfo? ZoneOf(string? zoneId)
+    {
+        if (string.IsNullOrWhiteSpace(zoneId) || zoneId is "UTC" or "Etc/UTC")
+            return null;
+        return TimeZoneInfo.TryFindSystemTimeZoneById(zoneId, out var zone) && (zone.BaseUtcOffset != TimeSpan.Zero || zone.SupportsDaylightSavingTime)
+            ? zone
+            : null;
+    }
 
     private static string Escape(string value)
         => value.Replace("\\", "\\\\").Replace(";", "\\;").Replace(",", "\\,").Replace("\r\n", "\\n").Replace("\n", "\\n").Replace("\r", "\\n");

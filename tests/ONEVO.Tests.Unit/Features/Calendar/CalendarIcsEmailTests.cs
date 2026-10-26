@@ -36,6 +36,61 @@ public sealed class CalendarIcsEmailTests
     }
 
     [Fact]
+    public void A_recurring_meeting_is_written_in_its_own_time_zone_so_it_keeps_its_local_time_across_DST()
+    {
+        // 09:00 in London every week. In UTC the RRULE would repeat 08:00Z and show 08:00 after the clocks go back.
+        var bstNine = new DateTimeOffset(2026, 10, 19, 8, 0, 0, TimeSpan.Zero);
+        var ics = CalendarIcs.Build(CalendarEventEmailKinds.Invite,
+            new CalendarEventIcs(EventId, bstNine.AddHours(1), 42, "FREQ=WEEKLY", TimeZoneId: "Europe/London"),
+            "Weekly sync", bstNine, null, "Ada", "bob@acme.com", null, Start);
+
+        ics.Should().Contain("DTSTART;TZID=Europe/London:20261019T090000")
+            .And.Contain("DTEND;TZID=Europe/London:20261019T100000")
+            .And.Contain("RRULE:FREQ=WEEKLY")
+            .And.Contain("BEGIN:VTIMEZONE\r\nTZID:Europe/London")
+            .And.Contain("BEGIN:DAYLIGHT").And.Contain("TZOFFSETTO:+0100").And.Contain("RRULE:FREQ=YEARLY;BYMONTH=3;BYDAY=-1SU")
+            .And.Contain("BEGIN:STANDARD").And.Contain("TZOFFSETTO:+0000").And.Contain("RRULE:FREQ=YEARLY;BYMONTH=10;BYDAY=-1SU");
+        ics.IndexOf("END:VTIMEZONE", StringComparison.Ordinal).Should().BeLessThan(ics.IndexOf("BEGIN:VEVENT", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void One_occurrence_of_a_zoned_series_is_addressed_in_that_zone()
+    {
+        var gmtNine = new DateTimeOffset(2026, 10, 26, 9, 0, 0, TimeSpan.Zero);
+        var ics = CalendarIcs.Build(CalendarEventEmailKinds.Updated,
+            new CalendarEventIcs(EventId, gmtNine.AddHours(1), 43, RecurrenceId: gmtNine, TimeZoneId: "Europe/London"),
+            "Weekly sync", gmtNine, null, "Ada", "bob@acme.com", null, Start);
+
+        ics.Should().Contain("RECURRENCE-ID;TZID=Europe/London:20261026T090000").And.Contain("DTSTART;TZID=Europe/London:20261026T090000");
+    }
+
+    [Fact]
+    public void A_one_off_or_UTC_meeting_keeps_plain_UTC_times()
+    {
+        var ics = CalendarIcs.Build(CalendarEventEmailKinds.Invite, new CalendarEventIcs(EventId, Start.AddHours(1), 1, TimeZoneId: "UTC"),
+            "Planning", Start, null, "Ada", "bob@acme.com", null, Start);
+
+        ics.Should().Contain("DTSTART:20261020T090000Z").And.NotContain("VTIMEZONE");
+    }
+
+    [Fact]
+    public async Task The_outbox_email_keeps_the_series_time_zone()
+    {
+        // Meeting emails travel through the outbox; the zone must survive the payload.
+        var email = new Mock<IEmailService>();
+        var sent = new List<CalendarEventEmailMessage>();
+        email.Setup(e => e.SendCalendarEventEmailAsync(It.IsAny<CalendarEventEmailMessage>(), It.IsAny<CancellationToken>()))
+            .Callback((CalendarEventEmailMessage m, CancellationToken _) => sent.Add(m)).Returns(Task.CompletedTask);
+        var bstNine = new DateTimeOffset(2026, 10, 19, 8, 0, 0, TimeSpan.Zero);
+
+        await new CalendarEventInviteEmailOutboxHandler(email.Object).HandleAsync(JsonSerializer.Serialize(new CalendarEventInviteEmailPayload(
+            Guid.NewGuid(), "bob@acme.com", "Bob", "Weekly sync", bstNine, null, "Ada", null, CalendarEventEmailKinds.Invite, EventId,
+            bstNine.AddHours(1), 7, "FREQ=WEEKLY", TimeZoneId: "Europe/London")), default);
+
+        sent.Single().IcsContent.Should().Contain("DTSTART;TZID=Europe/London:20261019T090000");
+    }
+
+    [Fact]
     public void The_sequence_only_grows_with_time()
         => CalendarIcs.Sequence(Start.AddMinutes(1)).Should().BeGreaterThan(CalendarIcs.Sequence(Start));
 
