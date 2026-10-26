@@ -34,14 +34,24 @@ public sealed class OutboxProcessorBehaviourIntegrationTests
     }
 
     /// <summary>Never finishes on its own: only cancellation ends it.</summary>
-    private sealed class HangingHandler(TaskCompletionSource started) : IOutboxMessageHandler
+    /// <summary>Runs until it is cancelled. <paramref name="ran"/> receives how long it ran - the handler's own time,
+    /// without the claim and the completion write around it.</summary>
+    private sealed class HangingHandler(TaskCompletionSource started, Action<TimeSpan>? ran = null) : IOutboxMessageHandler
     {
         public string Type => HangingType;
 
         public async Task HandleAsync(string payloadJson, CancellationToken ct)
         {
+            var watch = System.Diagnostics.Stopwatch.StartNew();
             started.TrySetResult();
-            await Task.Delay(Timeout.Infinite, ct);
+            try
+            {
+                await Task.Delay(Timeout.Infinite, ct);
+            }
+            finally
+            {
+                ran?.Invoke(watch.Elapsed);
+            }
         }
     }
 
@@ -115,16 +125,19 @@ public sealed class OutboxProcessorBehaviourIntegrationTests
         var host = await OutboxTestHost.CreateAsync();
         var id = await host.SeedPendingAsync(HangingType);
         var started = new TaskCompletionSource();
-        var processor = host.CreateProcessor(s => s.AddScoped<IOutboxMessageHandler>(_ => new HangingHandler(started)), leaseSeconds: 3);
+        TimeSpan? handlerRan = null;
+        var processor = host.CreateProcessor(
+            s => s.AddScoped<IOutboxMessageHandler>(_ => new HangingHandler(started, elapsed => handlerRan = elapsed)), leaseSeconds: 3);
 
         // Safety net so a missing budget fails this test instead of hanging the run: this token
         // stands for host shutdown, which would surface as OperationCanceledException.
         using var safetyNet = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-        var watch = System.Diagnostics.Stopwatch.StartNew();
         await processor.ProcessBatchAsync(safetyNet.Token);
-        watch.Stop();
 
-        Assert.True(watch.Elapsed < processor.LeaseSettings.Lease, $"handler ran {watch.Elapsed}, lease is {processor.LeaseSettings.Lease}");
+        // The lease is renewed right before the handler starts, so the handler's own run is what must end inside it.
+        // Timing the whole batch would also count the claim and the first queries' warm-up.
+        Assert.NotNull(handlerRan);
+        Assert.True(handlerRan < processor.LeaseSettings.Lease, $"handler ran {handlerRan}, lease is {processor.LeaseSettings.Lease}");
         var row = await host.GetAsync(id);
         Assert.Equal(OutboxMessageStatus.Pending, row.Status);
         Assert.Equal(1, row.AttemptCount);
@@ -218,12 +231,10 @@ public sealed class OutboxProcessorBehaviourIntegrationTests
     public async Task PendingRowWrittenBeforeTheClaimColumnsExisted_IsClaimedAndPublishedAfterTheMigration()
     {
         var host = await OutboxTestHost.CreateAsync();
-        const string previousMigration = "20261016092608_AddUserSuspension";
         var id = Guid.NewGuid();
+        await RunClaimLeaseMigrationAsync(host, down: true);
         await using (var db = host.NewAdminContext())
         {
-            var migrator = db.GetService<IMigrator>();
-            await migrator.MigrateAsync(previousMigration);
             var now = DateTimeOffset.UtcNow.AddMinutes(-1);
             var payload = OutboxTestHost.Encryption.Encrypt(JsonSerializer.Serialize(new TestPayload(id)));
             // The pre-migration shape of the table: no status 'processing', no lock columns.
@@ -231,8 +242,8 @@ public sealed class OutboxProcessorBehaviourIntegrationTests
                 INSERT INTO outbox_messages (id, type, encrypted_payload, tenant_id, status, attempt_count, created_at, next_attempt_at)
                 VALUES ({id}, {LegacyType}, {payload}, {(Guid?)null}, 'pending', 0, {now}, {now})
                 """);
-            await migrator.MigrateAsync();
         }
+        await RunClaimLeaseMigrationAsync(host, down: false);
 
         var processed = new List<string>();
         var processor = host.CreateProcessor(s => s.AddScoped<IOutboxMessageHandler>(_ => new RecordingHandler(LegacyType, processed)));
@@ -243,6 +254,27 @@ public sealed class OutboxProcessorBehaviourIntegrationTests
         var row = await host.GetAsync(id);
         Assert.Equal(OutboxMessageStatus.Published, row.Status);
         Assert.Null(row.LockedBy);
+    }
+
+    private const string ClaimLease = "20261018085329_AddOutboxClaimLease";
+    private const string MigrationBeforeClaimLease = "20261018033708_AddNotificationTemplateVersioningAndRouting";
+
+    /// <summary>Runs AddOutboxClaimLease's own Down (or Up) script against the test's database. Migrating the database
+    /// itself below the claim columns would also roll back every later migration, and some of those are one-way
+    /// (e.g. LeavePolicyPerTypeVersionsAssignments), so the test exercises only this migration's SQL.</summary>
+    private static async Task RunClaimLeaseMigrationAsync(OutboxTestHost host, bool down)
+    {
+        string script;
+        await using (var db = host.NewAdminContext())
+        {
+            var migrator = db.GetService<IMigrator>();
+            script = down ? migrator.GenerateScript(ClaimLease, MigrationBeforeClaimLease)
+                : migrator.GenerateScript(MigrationBeforeClaimLease, ClaimLease);
+        }
+        await using var connection = new NpgsqlConnection(host.AdminConnectionString);
+        await connection.OpenAsync();
+        await using var command = new NpgsqlCommand(script, connection) { CommandTimeout = 120 };
+        await command.ExecuteNonQueryAsync();
     }
 
     private sealed class RecordingHandler(string type, List<string> payloads) : IOutboxMessageHandler
