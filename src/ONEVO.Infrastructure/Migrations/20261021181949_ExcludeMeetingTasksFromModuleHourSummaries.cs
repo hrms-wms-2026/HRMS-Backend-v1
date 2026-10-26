@@ -124,7 +124,7 @@ namespace ONEVO.Infrastructure.Migrations
         /// column is the one AddModuleHourSummaries chose: the summary depends on the Module,
         /// the status, the estimate, the progress, the due date, the parent and the soft delete.
         /// </summary>
-        private const string UpdateTriggerWatchingTaskKind = """
+        internal const string UpdateTriggerWatchingTaskKind = """
             CREATE TRIGGER trg_tasks_module_hour_summary_update
                 AFTER UPDATE ON tasks
                 FOR EACH ROW
@@ -212,7 +212,7 @@ namespace ONEVO.Infrastructure.Migrations
         /// time. Both sit in the same migration transaction, so a failure between them rolls
         /// both back and leaves the original trigger in place.
         /// </summary>
-        private static string ReplaceUpdateTrigger(string createTrigger)
+        internal static string ReplaceUpdateTrigger(string createTrigger)
         {
             return $$"""
                 DO $do$

@@ -15,7 +15,7 @@ namespace ONEVO.Infrastructure.Migrations
     /// </summary>
     public partial class AddMeetingHoursStamping : Migration
     {
-        private const string RefreshFunctionWithMeetingHours = """
+        internal const string RefreshFunctionWithMeetingHours = """
             CREATE OR REPLACE FUNCTION wm_refresh_module_hour_summary(p_objective_id uuid) RETURNS void
             LANGUAGE sql AS $fn$
                 INSERT INTO wm_module_hour_summaries AS s

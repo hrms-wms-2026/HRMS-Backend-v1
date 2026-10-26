@@ -1,4 +1,6 @@
 using FluentAssertions;
+using Microsoft.EntityFrameworkCore.Migrations.Operations;
+using ONEVO.Infrastructure.Migrations;
 using Npgsql;
 using ONEVO.Tests.Integration.MyTeam;
 using Xunit;
@@ -68,5 +70,32 @@ public sealed class MeetingHoursSummaryIntegrationTests
         var row = await ReadAsync(h, objectiveId);
 
         row.Should().Be(new Summary(1, 0, 5m, 0m, 0m));
+    }
+
+    [Fact]
+    public async Task The_reapply_migration_restores_the_trigger_a_misordered_database_lost()
+    {
+        // A database that ran Plan D before AddModuleHourSummaries existed recorded the fix as a no-op, then got the
+        // unfixed trigger (no task_kind watch) from development. The follow-up migration must put it back.
+        var (h, _) = await SeedAsync(meetingHours: null);
+        await using var conn = new NpgsqlConnection(h.ConnectionString);
+        await conn.OpenAsync();
+        await using (var drop = new NpgsqlCommand("""
+            DROP TRIGGER trg_tasks_module_hour_summary_update ON tasks;
+            CREATE TRIGGER trg_tasks_module_hour_summary_update AFTER UPDATE ON tasks FOR EACH ROW
+                WHEN (OLD.estimated_hours IS DISTINCT FROM NEW.estimated_hours)
+                EXECUTE FUNCTION wm_tasks_refresh_module_hour_summary();
+            """, conn))
+            await drop.ExecuteNonQueryAsync();
+
+        foreach (var sql in new ReapplyModuleHourSummaryMeetingRules().UpOperations.OfType<SqlOperation>())
+        {
+            await using var cmd = new NpgsqlCommand(sql.Sql, conn);
+            await cmd.ExecuteNonQueryAsync();
+        }
+
+        await using var def = new NpgsqlCommand(
+            "SELECT pg_get_triggerdef(t.oid) FROM pg_trigger t WHERE t.tgname = 'trg_tasks_module_hour_summary_update'", conn);
+        ((string)(await def.ExecuteScalarAsync())!).Should().Contain("task_kind");
     }
 }
