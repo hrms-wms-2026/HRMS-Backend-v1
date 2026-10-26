@@ -148,7 +148,27 @@ public sealed class EmployeeMeetingAttendanceIntegrationTests
     public async Task FormerManager_Gets404()
     {
         // Review Focus 3: the reporting manager changed, so the old manager must not see the attendance any more.
+        // The former manager first manages the subject and sees the summary; then the line moves away from them.
         var w = await SeedAsync();
+        await using (var db = w.H.NewContext())
+        {
+            db.EmployeeHierarchyClosures.Add(new EmployeeHierarchyClosure
+            {
+                TenantId = w.H.TenantId, AncestorEmployeeId = w.FormerManager, DescendantEmployeeId = w.Subject, Depth = 1,
+                SourcePositionAssignmentId = Guid.NewGuid(), GeneratedAt = DateTimeOffset.UtcNow,
+            });
+            await db.SaveChangesAsync();
+        }
+        var whileManaging = await ReadAsync(w, w.FormerManager, w.Subject);
+        Assert.True(whileManaging.IsSuccess, whileManaging.Error);
+
+        // The reporting line changes: the closure is regenerated without the former manager above the subject.
+        await using (var db = w.H.NewContext())
+        {
+            db.EmployeeHierarchyClosures.RemoveRange(db.EmployeeHierarchyClosures.Where(c =>
+                c.AncestorEmployeeId == w.FormerManager && c.DescendantEmployeeId == w.Subject));
+            await db.SaveChangesAsync();
+        }
 
         var result = await ReadAsync(w, w.FormerManager, w.Subject);
 

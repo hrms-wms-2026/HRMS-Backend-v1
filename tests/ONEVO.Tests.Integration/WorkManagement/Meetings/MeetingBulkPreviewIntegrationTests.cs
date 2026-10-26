@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
@@ -244,6 +245,40 @@ public sealed class MeetingBulkPreviewIntegrationTests
         // The organizer and the person already on the series are counted, not offered again.
         Assert.Equal(2, preview.AlreadyInvited);
         Assert.Empty(preview.People);
+    }
+
+    [Fact]
+    public async Task Preview_AGroupHoldingTheOrganizerAndAnInvitee_CountsThemAsAlreadyInvited_Once()
+    {
+        // Review Focus 4 through groups: the department holds the organizer and someone already on the series, and the
+        // manager's team holds that invitee again. Neither is offered; the repeat is a duplicate, not a second invite.
+        var w = await SeedAsync();
+        await using (var db = w.H.NewContext())
+        {
+            var organizer = await db.Employees.SingleAsync(e => e.Id == w.Organizer);
+            var attendee = await db.Employees.SingleAsync(e => e.Id == w.Attendee);
+            organizer.DepartmentId = w.DepartmentId;
+            attendee.DepartmentId = w.DepartmentId;
+            db.EmployeeHierarchyClosures.Add(new EmployeeHierarchyClosure
+            {
+                TenantId = w.H.TenantId, AncestorEmployeeId = w.Manager, DescendantEmployeeId = w.Attendee, Depth = 1,
+                SourcePositionAssignmentId = Guid.NewGuid(), GeneratedAt = DateTimeOffset.UtcNow,
+            });
+            w.H.AddSeriesParticipant(db, w.Series, w.Attendee);
+            await db.SaveChangesAsync();
+        }
+
+        await using var check = w.H.NewContext();
+        var result = await Service(check, new MeetingsOptions { Create = true, BulkInvite = true }, w)
+            .PreviewAsync(w.H.TenantId, w.Organizer, Request(w, seriesId: w.Series.Id,
+                departments: [w.DepartmentId], managers: [w.Manager]), CancellationToken.None);
+
+        Assert.True(result.IsSuccess, result.Error);
+        var preview = result.Value!;
+        Assert.Equal(new[] { w.DepartmentMember, w.DirectReport }.Order(), preview.People.Select(p => p.EmployeeId).Order());
+        Assert.Equal(2, preview.AlreadyInvited);       // the organizer and the invitee, each counted once
+        Assert.Equal(1, preview.DuplicatesRemoved);    // the invitee, in both groups
+        Assert.Equal(5, preview.Selected);
     }
 
     [Fact]

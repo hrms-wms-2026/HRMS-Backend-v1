@@ -222,6 +222,34 @@ public sealed class MeetingActionItemIntegrationTests
     }
 
     [Fact]
+    public async Task ApprovedRequest_ForAnOccurrenceCancelledMeanwhile_CreatesTheTaskWithoutALink()
+    {
+        // Review Focus 2, the cancelled half: the source was live when the request was filed, and the occurrence was
+        // cancelled before the approver decided it.
+        var w = await SeedAsync();
+        Guid requestId;
+        await using (var db = w.H.NewContext())
+            requestId = await FileRequestAsync(w, db, w.OccurrenceTaskId);
+        await using (var db = w.H.NewContext())
+        {
+            var details = await db.MeetingDetails.SingleAsync(d => d.TaskId == w.OccurrenceTaskId);
+            details.CancelledAt = DateTimeOffset.UtcNow;
+            await db.SaveChangesAsync();
+        }
+
+        await using (var db = w.H.NewContext())
+        {
+            var outcome = await ApplyAsync(w, db, requestId);
+
+            Assert.Equal(ApplyOutcomeKind.Applied, outcome.Kind);
+        }
+
+        await using var check = w.H.NewContext();
+        Assert.Equal(0, await check.MeetingActionItems.CountAsync());
+        Assert.Equal(1, await check.WorkTasks.CountAsync(t => t.TaskKind != WorkTaskKinds.Meeting));
+    }
+
+    [Fact]
     public async Task ApproverCannotRepointTheSourceMeeting_ApplyIsInvalid_AndWritesNothing()
     {
         // The requester's source was checked when they filed it; an approver editing it to another meeting would attach
