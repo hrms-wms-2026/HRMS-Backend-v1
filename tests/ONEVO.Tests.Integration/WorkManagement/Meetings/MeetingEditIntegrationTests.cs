@@ -92,6 +92,20 @@ public sealed class MeetingEditIntegrationTests
         Assert.Equal(("Weekly sync v2", "New agenda", 1), (series.Title, series.Description, series.Revision));
     }
 
+    [Theory]
+    [InlineData(MeetingScopes.This)]
+    [InlineData(MeetingScopes.All)]
+    public async Task ALocationLongerThanItsColumn_Is400_NotAServerError(string scope)
+    {
+        var w = await SeedAsync();
+        await using var db = w.H.NewContext();
+
+        var result = await new MeetingTestServices(db, Clock()).Edits.EditAsync(w.H.TenantId, w.Organizer, Guid.NewGuid(),
+            w.Series.Id, First.AddDays(7), Edit(scope, 0, location: new string('x', 501)), CancellationToken.None);
+
+        Assert.Equal((400, MeetingErrorCodes.LocationInvalid), (result.StatusCode, result.ErrorCode));
+    }
+
     [Fact]
     public async Task AStaleRevision_Is409MeetingChanged()
     {

@@ -31,7 +31,12 @@ public static class MeetingRoles
 public sealed record CreateMeetingRequest(
     Guid? ProjectId, Guid? ObjectiveId, string Title, string? Description, string? Location, bool IsPrivate,
     DateTimeOffset Start, int DurationMinutes, bool IsAllDay, string Timezone, string? RecurrenceRule,
-    IReadOnlyList<Guid> ParticipantEmployeeIds, IReadOnlyList<string> GuestEmails, string? Platform);
+    IReadOnlyList<Guid> ParticipantEmployeeIds, IReadOnlyList<string> GuestEmails, string? Platform)
+{
+    // A client that leaves a list out sends null; it means "nobody", not a server error.
+    public IReadOnlyList<Guid> ParticipantEmployeeIds { get; init; } = ParticipantEmployeeIds ?? [];
+    public IReadOnlyList<string> GuestEmails { get; init; } = GuestEmails ?? [];
+}
 
 /// <param name="Reason">"inactive" or "not_found".</param>
 public sealed record SkippedParticipant(Guid EmployeeId, string Reason);
@@ -144,7 +149,12 @@ public sealed record MoveMeetingRequest(string Scope, Guid ProjectId, Guid Objec
 /// <param name="Outcome">"moved" or "requested".</param>
 public sealed record MeetingMoveResponse(string Outcome, Guid? SeriesId, Guid? ApprovalRequestId);
 
-public sealed record MeetingAttendeesRequest(IReadOnlyList<Guid> EmployeeIds, IReadOnlyList<string> GuestEmails);
+public sealed record MeetingAttendeesRequest(IReadOnlyList<Guid> EmployeeIds, IReadOnlyList<string> GuestEmails)
+{
+    // A left-out list means "nobody", as in CreateMeetingRequest.
+    public IReadOnlyList<Guid> EmployeeIds { get; init; } = EmployeeIds ?? [];
+    public IReadOnlyList<string> GuestEmails { get; init; } = GuestEmails ?? [];
+}
 
 public sealed record MeetingAttendeesResponse(int Added, IReadOnlyList<SkippedParticipant> Skipped);
 

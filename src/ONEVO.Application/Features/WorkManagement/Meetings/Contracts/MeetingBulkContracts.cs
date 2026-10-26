@@ -17,7 +17,13 @@ namespace ONEVO.Application.Features.WorkManagement.Meetings.Contracts;
 public sealed record MeetingBulkPreviewRequest(
     Guid? ProjectId, Guid? ObjectiveId,
     IReadOnlyList<Guid> DepartmentIds, IReadOnlyList<Guid> ManagerEmployeeIds, IReadOnlyList<Guid> EmployeeIds,
-    Guid? SeriesId, string? Platform);
+    Guid? SeriesId, string? Platform)
+{
+    // A left-out list means "none picked", as in CreateMeetingRequest.
+    public IReadOnlyList<Guid> DepartmentIds { get; init; } = DepartmentIds ?? [];
+    public IReadOnlyList<Guid> ManagerEmployeeIds { get; init; } = ManagerEmployeeIds ?? [];
+    public IReadOnlyList<Guid> EmployeeIds { get; init; } = EmployeeIds ?? [];
+}
 
 /// <summary>One person in the preview - the participant picker's fields only.</summary>
 public sealed record MeetingBulkPerson(Guid EmployeeId, string Name, string? Email, string? DepartmentName);

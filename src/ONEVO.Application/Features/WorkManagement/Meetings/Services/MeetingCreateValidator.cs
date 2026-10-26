@@ -8,6 +8,9 @@ namespace ONEVO.Application.Features.WorkManagement.Meetings.Services;
 public sealed class MeetingCreateValidator
 {
     public const int MaxTitleLength = 500;
+    /// <summary>The meeting_series / meeting_details column widths.</summary>
+    public const int MaxLocationLength = 500;
+    public const int MaxRecurrenceRuleLength = 500;
 
     private readonly IMeetingRecurrence _recurrence;
 
@@ -22,6 +25,9 @@ public sealed class MeetingCreateValidator
         if (request.Start <= now)
             return Result.Failure("A meeting must start in the future.", 400, MeetingErrorCodes.StartInPast);
 
+        if (CheckLengths(request.Location, request.RecurrenceRule) is { } tooLong)
+            return tooLong;
+
         var recurrence = _recurrence.Validate(request.RecurrenceRule, request.Start, request.Timezone);
         if (!recurrence.IsSuccess)
             return recurrence;
@@ -34,6 +40,16 @@ public sealed class MeetingCreateValidator
                 return Result.Failure($"'{email}' is not a valid guest email.", 400, MeetingErrorCodes.GuestEmailInvalid);
 
         return Result.Success();
+    }
+
+    /// <summary>400 when the location or the recurrence rule would not fit its column (both paths: create and edit).</summary>
+    public static Result? CheckLengths(string? location, string? recurrenceRule)
+    {
+        if (location is not null && location.Trim().Length > MaxLocationLength)
+            return Result.Failure($"A location can be at most {MaxLocationLength} characters.", 400, MeetingErrorCodes.LocationInvalid);
+        if (recurrenceRule is not null && recurrenceRule.Length > MaxRecurrenceRuleLength)
+            return Result.Failure($"A repeat rule can be at most {MaxRecurrenceRuleLength} characters.", 400, MeetingErrorCodes.RecurrenceInvalid);
+        return null;
     }
 
     /// <summary>Trimmed, with duplicates removed case-insensitively; the first spelling is kept.</summary>

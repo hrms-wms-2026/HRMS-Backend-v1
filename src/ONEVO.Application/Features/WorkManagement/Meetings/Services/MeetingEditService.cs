@@ -57,6 +57,8 @@ public sealed class MeetingEditService
             return blocked;
         if (edit.Scope is not (MeetingScopes.This or MeetingScopes.All or MeetingScopes.Following))
             return Result<MeetingEditResponse>.Failure("Choose this, following or all occurrences.", 400, MeetingErrorCodes.ScopeInvalid);
+        if (MeetingCreateValidator.CheckLengths(edit.Location, edit.RecurrenceRule) is { } tooLong)
+            return Result<MeetingEditResponse>.Failure(tooLong.Error!, 400, tooLong.ErrorCode);
         if (await MeetingGuard.OrganizerOnlyAsync<MeetingEditResponse>(_access, tenantId, callerEmployeeId, seriesId, originalStart, ct) is { } denied)
             return denied;
 

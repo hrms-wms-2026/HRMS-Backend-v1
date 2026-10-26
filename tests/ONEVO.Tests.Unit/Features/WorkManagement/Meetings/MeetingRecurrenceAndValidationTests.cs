@@ -81,6 +81,41 @@ public sealed class MeetingRecurrenceAndValidationTests
     }
 
     [Fact]
+    public void Validator_RejectsALocationOrRuleLongerThanItsColumn_With400()
+    {
+        // Both columns hold 500 characters; a longer value used to reach the database and fail as a 500.
+        var validator = new MeetingCreateValidator(Recurrence);
+        var request = Request();
+
+        AssertCode(validator.Validate(request with { Location = new string('x', 501) }, Now), MeetingErrorCodes.LocationInvalid);
+        Assert.True(validator.Validate(request with { Location = new string('x', 500) }, Now).IsSuccess);
+        AssertCode(validator.Validate(request with { RecurrenceRule = "FREQ=WEEKLY;COUNT=3;" + new string('X', 490) }, Now),
+            MeetingErrorCodes.RecurrenceInvalid);
+    }
+
+    [Fact]
+    public void OmittedLists_ReadAsEmpty_SoTheRequestValidatesInsteadOfThrowing()
+    {
+        // A client that leaves out participantEmployeeIds / guestEmails / employeeIds sends null for them.
+        var web = new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web);
+        var create = System.Text.Json.JsonSerializer.Deserialize<CreateMeetingRequest>($$"""
+            {"projectId":"{{Guid.NewGuid()}}","objectiveId":"{{Guid.NewGuid()}}","title":"Standup","isPrivate":false,
+             "start":"{{Now.AddDays(1):O}}","durationMinutes":30,"isAllDay":false,"timezone":"UTC"}
+            """, web)!;
+        var attendees = System.Text.Json.JsonSerializer.Deserialize<MeetingAttendeesRequest>("{}", web)!;
+        var bulk = System.Text.Json.JsonSerializer.Deserialize<MeetingBulkPreviewRequest>("{}", web)!;
+
+        Assert.Empty(create.ParticipantEmployeeIds);
+        Assert.Empty(create.GuestEmails);
+        Assert.True(new MeetingCreateValidator(Recurrence).Validate(create, Now).IsSuccess);
+        Assert.Empty(attendees.EmployeeIds);
+        Assert.Empty(attendees.GuestEmails);
+        Assert.Empty(bulk.DepartmentIds);
+        Assert.Empty(bulk.ManagerEmployeeIds);
+        Assert.Empty(bulk.EmployeeIds);
+    }
+
+    [Fact]
     public void GuestEmails_AreDeduplicatedCaseInsensitively()
         => Assert.Equal(["Client@Example.com", "vendor@example.com"],
             MeetingCreateValidator.NormalizeGuests([" Client@Example.com", "client@example.com", "vendor@example.com "]));
