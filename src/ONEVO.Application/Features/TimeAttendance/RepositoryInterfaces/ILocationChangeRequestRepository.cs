@@ -30,5 +30,8 @@ public interface ILocationChangeRequestRepository
 
     Task<bool> HasActiveAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default);
 
+    /// <summary>The employee's requests of any status created in [from, to) - the inbox case history.</summary>
+    Task<IReadOnlyList<LocationChangeRequest>> ListForEmployeeCreatedAsync(
+        Guid tenantId, Guid employeeId, DateTimeOffset from, DateTimeOffset to, CancellationToken ct = default);
     Task<int> SaveChangesAsync(CancellationToken ct = default);
 }

@@ -1,3 +1,4 @@
+using ONEVO.Application.Features.Leave.Policy.Services;
 using FluentAssertions;
 using Moq;
 using ONEVO.Application.Common.RepositoryInterfaces;
@@ -34,7 +35,7 @@ public class ListTeamBalancesQueryHandlerTests
         var employees = new Mock<IEmployeeRepository>();
         var hierarchy = new Mock<IEmployeeHierarchyClosureRepository>();
         var entitlements = new Mock<ILeaveEntitlementRepository>();
-        var policies = new Mock<ILeavePolicyRepository>();
+        var policies = new Mock<ILeavePolicyResolver>();
         currentUser.SetupGet(x => x.IsAuthenticated).Returns(true);
         currentUser.SetupGet(x => x.TenantId).Returns(tenantId);
         currentUser.SetupGet(x => x.UserId).Returns(managerUserId);
@@ -47,8 +48,8 @@ public class ListTeamBalancesQueryHandlerTests
                 It.Is<LeaveEntitlementListFilter>(f => f.Year == 2026 && f.EmployeeIds != null && f.EmployeeIds.Contains(reportId)),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync([new LeaveEntitlementRow(reportEntitlement, "E2", "Report", null, null, null, null, "Annual", "AL", 4m)]);
-        policies.Setup(x => x.ListActiveAggregatesByLegalEntityIdsAsync(tenantId, It.IsAny<IReadOnlyCollection<Guid>>(), 2026, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new Dictionary<Guid, LeavePolicyAggregate>());
+        policies.Setup(x => x.ResolveForEmployeesAsync(It.IsAny<Guid>(), It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, IReadOnlyList<ResolvedLeavePolicy>>());
 
         var handler = new ListTeamBalancesQueryHandler(
             currentUser.Object, dateTime.Object, employees.Object, hierarchy.Object, entitlements.Object, policies.Object);

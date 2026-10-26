@@ -70,7 +70,6 @@ public sealed class NotificationTemplateSeederTests : IDisposable
         Assert.Contains("work_sprint_achieved", codes);
         Assert.Contains("leave_request_approved", codes);
         Assert.Contains("leave_request_rejected", codes);
-        Assert.Contains("leave_request_information_requested", codes);
         Assert.Contains("leave_request_next_approval_required", codes);
         Assert.Contains("leave_request_cancelled_by_employee", codes);
         Assert.Contains("leave_request_cancelled_by_hr", codes);
@@ -87,7 +86,7 @@ public sealed class NotificationTemplateSeederTests : IDisposable
         Assert.Contains("exception_alert_escalated", codes);
         Assert.Contains("conversation_member_added", codes);
         Assert.Contains("conversation_mentioned", codes);
-        Assert.Equal(57, codes.Count);
+        Assert.Equal(56, codes.Count);
         var expectedCodes = new[]
         {
             "work_task_creation_request_created",
@@ -110,7 +109,6 @@ public sealed class NotificationTemplateSeederTests : IDisposable
             "conversation_mentioned",
             "leave_request_approved",
             "leave_request_rejected",
-            "leave_request_information_requested",
             "leave_request_next_approval_required",
             "leave_request_cancelled_by_employee",
             "leave_request_cancelled_by_hr",
@@ -154,6 +152,115 @@ public sealed class NotificationTemplateSeederTests : IDisposable
             codes.OrderBy(x => x));
 
         Assert.Equal(codes.Count, codes.Distinct(StringComparer.Ordinal).Count());
+    }
+
+    [Fact]
+    public async Task SeedAsync_NewTemplates_GetAPublishedActiveFirstVersion()
+    {
+        await RunSeederAsync();
+
+        await using var assert = CreateContext();
+        var template = await assert.NotificationTemplates.SingleAsync(t => t.Code == "work_approval_requested");
+        var versions = await assert.NotificationTemplateVersions.Where(v => v.TemplateId == template.Id).ToListAsync();
+
+        var version = Assert.Single(versions);
+        Assert.Equal(NotificationTemplateVersionStatus.Published, version.Status);
+        Assert.Equal(version.Id, template.ActiveVersionId);
+        Assert.Equal("work_approval_requested", template.EventKey);
+        Assert.Equal(template.InAppBodyTemplate, version.InAppBody);
+    }
+
+    [Fact]
+    public async Task SeedAsync_Rerun_LeavesEditedDraftsAndPublishedVersionsUnchanged()
+    {
+        await RunSeederAsync();
+
+        Guid templateId;
+        await using (var edit = CreateContext())
+        {
+            var template = await edit.NotificationTemplates.SingleAsync(t => t.Code == "work_approval_requested");
+            templateId = template.Id;
+            var published = NotificationTemplateVersion.CreateDraft(template.Id, 2, Content("Admin wording"), null, _clock.UtcNow);
+            published.Publish(null, _clock.UtcNow);
+            edit.NotificationTemplateVersions.Add(published);
+            template.Activate(published, _clock.UtcNow);
+            edit.NotificationTemplateVersions.Add(
+                NotificationTemplateVersion.CreateDraft(template.Id, 3, Content("Draft in progress"), null, _clock.UtcNow));
+            await edit.SaveChangesAsync();
+        }
+
+        var before = await SnapshotAsync(templateId);
+        await RunSeederAsync();
+        var after = await SnapshotAsync(templateId);
+
+        Assert.Equal(before, after);
+        await using var assert = CreateContext();
+        Assert.Equal("Admin wording", (await assert.NotificationTemplates.SingleAsync(t => t.Id == templateId)).InAppTitleTemplate);
+    }
+
+    [Fact]
+    public async Task SeedAsync_PreVersioningTemplate_IsFrozenAsV1WithoutChangingItsCopy()
+    {
+        await using (var arrange = CreateContext())
+        {
+            arrange.NotificationTemplates.Add(new NotificationTemplate
+            {
+                Id = Guid.NewGuid(), Code = "work_sprint_completed",
+                InAppTitleTemplate = "Edited title", InAppBodyTemplate = "Edited body"
+            });
+            await arrange.SaveChangesAsync();
+        }
+
+        await RunSeederAsync();
+
+        await using var assert = CreateContext();
+        var template = await assert.NotificationTemplates.SingleAsync(t => t.Code == "work_sprint_completed");
+        var version = await assert.NotificationTemplateVersions.SingleAsync(v => v.TemplateId == template.Id);
+        Assert.Equal("Edited body", template.InAppBodyTemplate);
+        Assert.Equal("Edited body", version.InAppBody);
+        Assert.Equal(version.Id, template.ActiveVersionId);
+    }
+
+    [Fact]
+    public async Task SeedAsync_BackfilledTemplateNamedByItsCode_GetsTheCatalogDisplayName_AndKeepsItsCopy()
+    {
+        await RunSeederAsync();
+        await using (var arrange = CreateContext())
+        {
+            var t = await arrange.NotificationTemplates.SingleAsync(x => x.Code == "work_sprint_completed");
+            t.Name = t.Code; // what the AddNotificationTemplateVersioningAndRouting backfill writes
+            t.InAppBodyTemplate = "Admin-edited body";
+            await arrange.SaveChangesAsync();
+        }
+
+        await RunSeederAsync();
+
+        await using var assert = CreateContext();
+        var renamed = await assert.NotificationTemplates.SingleAsync(x => x.Code == "work_sprint_completed");
+        Assert.Equal("Work sprint completed", renamed.Name);
+        Assert.Equal("Admin-edited body", renamed.InAppBodyTemplate);
+    }
+
+    private static NotificationTemplateContent Content(string title) =>
+        new(title, "{{actorName}} body", null, null, null, null, null, null, "open_related");
+
+    private async Task RunSeederAsync()
+    {
+        await using var seedDb = CreateContext();
+        var services = new ServiceCollection();
+        services.AddScoped(_ => seedDb);
+        services.AddScoped<INotificationRepository>(_ => new EfNotificationRepository(seedDb));
+        var sp = services.BuildServiceProvider();
+        await new NotificationTemplateSeeder(sp, NullLogger<NotificationTemplateSeeder>.Instance).StartAsync(CancellationToken.None);
+    }
+
+    private async Task<string> SnapshotAsync(Guid templateId)
+    {
+        await using var db = CreateContext();
+        var t = await db.NotificationTemplates.AsNoTracking().SingleAsync(x => x.Id == templateId);
+        var versions = await db.NotificationTemplateVersions.AsNoTracking()
+            .Where(v => v.TemplateId == templateId).OrderBy(v => v.Version).ToListAsync();
+        return System.Text.Json.JsonSerializer.Serialize(new { t.InAppTitleTemplate, t.InAppBodyTemplate, t.ActiveVersionId, t.UpdatedAt, versions });
     }
 
     private ApplicationDbContext CreateContext()

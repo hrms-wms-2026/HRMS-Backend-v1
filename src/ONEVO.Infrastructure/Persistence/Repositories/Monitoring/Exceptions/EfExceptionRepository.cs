@@ -117,6 +117,10 @@ public class EfExceptionRepository : IExceptionRepository
         }
         if (filter.ExcludeEmployeeId is Guid excluded)
             query = query.Where(e => e.EmployeeId != excluded);
+        if (filter.DetectedFrom is DateTimeOffset from)
+            query = query.Where(e => e.DetectedAt >= from);
+        if (filter.DetectedTo is DateTimeOffset to)
+            query = query.Where(e => e.DetectedAt < to);
         return query;
     }
 

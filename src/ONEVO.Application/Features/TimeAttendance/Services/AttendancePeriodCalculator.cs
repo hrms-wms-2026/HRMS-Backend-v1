@@ -55,7 +55,7 @@ public static class AttendancePeriodCalculator
     }
 
     public static AttendancePeriodCounts Count(
-        IReadOnlyList<AttendanceRecord> records, TimeZoneInfo timezone, DateTimeOffset now)
+        IReadOnlyList<AttendanceRecord> records, TimeZoneInfo timezone, DateTimeOffset now, int thresholdMinutes = 0)
     {
         var workingDays = 0;
         var daysPresent = 0;
@@ -72,8 +72,8 @@ public static class AttendancePeriodCalculator
                 continue;
 
             daysPresent += 1;
-            if (IsLate(record, timezone)) late += 1;
-            if (IsEarlyDeparture(record, timezone)) early += 1;
+            if (IsLate(record, timezone, thresholdMinutes)) late += 1;
+            if (IsEarlyDeparture(record, timezone, thresholdMinutes)) early += 1;
             if (IsMissingClockOut(record, now)) missing += 1;
         }
 
@@ -93,6 +93,7 @@ public static class AttendancePeriodCalculator
         var late = new List<DateOnly>();
         var early = new List<DateOnly>();
         var missing = new List<DateOnly>();
+        // Short hours is retired (late, early, over-break and time off cover missing time); kept empty for callers.
         var shortHours = new List<DateOnly>();
         var offDayWork = new List<DateOnly>();
         var leaveWork = new List<DateOnly>();
@@ -110,14 +111,12 @@ public static class AttendancePeriodCalculator
             {
                 attended++;
                 var isMissing = IsMissingClockOut(record, data.Now);
-                var isLate = IsLate(record, data.Timezone);
+                var (isLate, isEarly) = LateEarly(record, data);
                 if (isMissing) missing.Add(d);
                 if (isLate) late.Add(d);
-                if (IsEarlyDeparture(record, data.Timezone)) early.Add(d);
+                if (isEarly) early.Add(d);
                 if (!expected) offDayWork.Add(d);
                 else if (onLeave) leaveWork.Add(d);
-                if (expected && record.ActualEnd is not null && record.RequiredWorkMinutes is int req && record.WorkedMinutes < req)
-                    shortHours.Add(d);
                 days.Add(new(d, isMissing ? "missing_clock_out" : isLate ? "late" : "present"));
             }
             else if (!expected) days.Add(new(d, "off"));
@@ -131,7 +130,6 @@ public static class AttendancePeriodCalculator
         late = Keep(late, data, AttendanceAlertSignals.LateClockIns);
         early = Keep(early, data, AttendanceAlertSignals.EarlyClockOuts);
         missing = Keep(missing, data, AttendanceAlertSignals.MissingClockOuts);
-        shortHours = Keep(shortHours, data, AttendanceAlertSignals.ShortHoursDays);
         offDayWork = Keep(offDayWork, data, AttendanceAlertSignals.OffScheduleWork);
 
         return new AttendancePeriodClassification(
@@ -166,8 +164,8 @@ public static class AttendancePeriodCalculator
                 var clockIn = record?.ActualStart;
                 var clockOut = record?.ActualEnd;
                 var breakMinutes = data.BreakMinutesByDate.TryGetValue(day.Date, out var used) ? used : record?.BreakMinutes ?? 0;
-                var shortHours = expected && record is { ActualStart: not null, ActualEnd: not null, RequiredWorkMinutes: int req }
-                                 && record.WorkedMinutes < req;
+                var (isLate, isEarly) = record is null ? (false, false) : LateEarly(record, data);
+                var (lateMinutes, earlyMinutes) = record is null ? (0, 0) : MissingMinutes(record, data);
                 return new EmployeeAttendanceDayDetail(
                     day.Date,
                     day.Status,
@@ -182,29 +180,64 @@ public static class AttendancePeriodCalculator
                     record?.WorkedMinutes ?? 0,
                     record?.RequiredWorkMinutes,
                     breakMinutes,
-                    record is null ? 0 : LateMinutes(record, data.Timezone),
-                    record is null ? 0 : EarlyLeaveMinutes(record, data.Timezone),
-                    shortHours,
+                    isLate ? lateMinutes : 0,
+                    isEarly ? earlyMinutes : 0,
+                    false,
                     overBreak.TryGetValue(day.Date, out var over) ? over : 0,
                     record?.ExpectedWorkModeName);
             })
             .ToList();
     }
 
-    /// <summary>Whole minutes after the scheduled start (the IsLate rule); 0 when on time or unscheduled.</summary>
-    private static int LateMinutes(AttendanceRecord record, TimeZoneInfo timezone)
+    /// <summary>Whole minutes missing at each end of the day: after the scheduled start and before the scheduled end,
+    /// where approved time off moves those edges (start to the end of leave covering it, end to the start of leave
+    /// covering it). A day fully covered by leave, an unscheduled day or a missing clock-out (for early) is 0.</summary>
+    public static (int Late, int Early) MissingMinutes(AttendanceRecord record, AttendancePeriodData data)
     {
-        if (!IsLate(record, timezone)) return 0;
-        var localStart = TimeZoneInfo.ConvertTime(record.ActualStart!.Value, timezone).TimeOfDay;
-        return (int)Math.Floor((localStart - record.ScheduledStart!.Value.ToTimeSpan()).TotalMinutes);
+        var (late, early) = MissingSpans(record, data);
+        return ((int)Math.Floor(late.TotalMinutes), (int)Math.Floor(early.TotalMinutes));
     }
 
-    /// <summary>Whole minutes before the scheduled end (the IsEarlyDeparture rule); 0 otherwise.</summary>
-    private static int EarlyLeaveMinutes(AttendanceRecord record, TimeZoneInfo timezone)
+    /// <summary>Late/early under the policy: from the threshold minutes when there is one, otherwise any lateness.</summary>
+    private static (bool Late, bool Early) LateEarly(AttendanceRecord record, AttendancePeriodData data)
     {
-        if (!IsEarlyDeparture(record, timezone)) return 0;
-        var localEnd = TimeZoneInfo.ConvertTime(record.ActualEnd!.Value, timezone).TimeOfDay;
-        return (int)Math.Floor((record.ScheduledEnd!.Value.ToTimeSpan() - localEnd).TotalMinutes);
+        var (late, early) = MissingSpans(record, data);
+        return (Counts(late, data.LateEarlyThresholdMinutes), Counts(early, data.LateEarlyThresholdMinutes));
+    }
+
+    private static bool Counts(TimeSpan missing, int thresholdMinutes) =>
+        thresholdMinutes > 0 ? Math.Floor(missing.TotalMinutes) >= thresholdMinutes : missing > LateOrEarlyGrace;
+
+    private static (TimeSpan Late, TimeSpan Early) MissingSpans(AttendanceRecord record, AttendancePeriodData data)
+    {
+        if (record.ScheduledStart is not TimeOnly scheduledStart || record.ScheduledEnd is not TimeOnly scheduledEnd)
+            return (TimeSpan.Zero, TimeSpan.Zero);
+        var start = LocalInstant(record.Date, scheduledStart, data.Timezone);
+        // An overnight shift (22:00-06:00) ends on the next day.
+        var end = LocalInstant(scheduledEnd <= scheduledStart ? record.Date.AddDays(1) : record.Date, scheduledEnd, data.Timezone);
+
+        // Leaves may chain (09:00-10:00 then 10:00-11:00), so keep moving the edges until they settle.
+        for (var moved = true; moved && start < end;)
+        {
+            moved = false;
+            foreach (var leave in data.ApprovedLeaves)
+            {
+                if (leave.StartAt <= start && leave.EndAt > start) { start = leave.EndAt; moved = true; }
+                if (leave.StartAt < end && leave.EndAt >= end) { end = leave.StartAt; moved = true; }
+            }
+        }
+        if (start >= end)
+            return (TimeSpan.Zero, TimeSpan.Zero);
+
+        var late = record.ActualStart is DateTimeOffset actualStart && actualStart > start ? actualStart - start : TimeSpan.Zero;
+        var early = record.ActualEnd is DateTimeOffset actualEnd && actualEnd < end ? end - actualEnd : TimeSpan.Zero;
+        return (late, early);
+    }
+
+    private static DateTimeOffset LocalInstant(DateOnly date, TimeOnly time, TimeZoneInfo timezone)
+    {
+        var local = date.ToDateTime(time);
+        return new DateTimeOffset(local, timezone.GetUtcOffset(local));
     }
 
     /// <summary>Days whose total break exceeded the configured allowance, with the minutes over.
@@ -222,12 +255,12 @@ public static class AttendancePeriodCalculator
     }
 
     public static string DayStatus(
-        AttendanceRecord record, TimeZoneInfo timezone, DateTimeOffset now, DateOnly today, bool hasApprovedLeave)
+        AttendanceRecord record, TimeZoneInfo timezone, DateTimeOffset now, DateOnly today, bool hasApprovedLeave, int thresholdMinutes = 0)
     {
         if (record.ActualStart is not null)
         {
             if (IsMissingClockOut(record, now)) return "missing_clock_out";
-            if (IsLate(record, timezone)) return "late";
+            if (IsLate(record, timezone, thresholdMinutes)) return "late";
             return "present";
         }
 
@@ -240,20 +273,21 @@ public static class AttendancePeriodCalculator
         DateOnly.FromDateTime(leave.StartAt.UtcDateTime) <= date
         && DateOnly.FromDateTime(leave.EndAt.UtcDateTime) >= date;
 
-    private static bool IsLate(AttendanceRecord record, TimeZoneInfo timezone)
+    // Leave-unaware edges, for the record-only callers (Count, DayStatus) that have no period data.
+    private static bool IsLate(AttendanceRecord record, TimeZoneInfo timezone, int thresholdMinutes)
     {
         if (record.ActualStart is not DateTimeOffset actualStart || record.ScheduledStart is not TimeOnly scheduledStart)
             return false;
         var localStart = TimeZoneInfo.ConvertTime(actualStart, timezone).TimeOfDay;
-        return localStart - scheduledStart.ToTimeSpan() > LateOrEarlyGrace;
+        return Counts(localStart - scheduledStart.ToTimeSpan(), thresholdMinutes);
     }
 
-    private static bool IsEarlyDeparture(AttendanceRecord record, TimeZoneInfo timezone)
+    private static bool IsEarlyDeparture(AttendanceRecord record, TimeZoneInfo timezone, int thresholdMinutes)
     {
         if (record.ActualEnd is not DateTimeOffset actualEnd || record.ScheduledEnd is not TimeOnly scheduledEnd)
             return false;
         var localEnd = TimeZoneInfo.ConvertTime(actualEnd, timezone).TimeOfDay;
-        return scheduledEnd.ToTimeSpan() - localEnd > LateOrEarlyGrace;
+        return Counts(scheduledEnd.ToTimeSpan() - localEnd, thresholdMinutes);
     }
 
     private static bool IsMissingClockOut(AttendanceRecord record, DateTimeOffset now) =>

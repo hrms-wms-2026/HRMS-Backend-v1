@@ -61,4 +61,9 @@ public sealed class EmployeeSignalCatalogueTests
         var s = EmployeeSignalCatalogue.Build(new(null, null, null, null, new(4, null)));
         s.Select(x => x.Key).Should().Equal("idle_activity_alerts");
     }
+
+    [Fact]
+    public void ShortHours_IsRetired_NoSignalEvenWithShortDays() =>
+        EmployeeSignalCatalogue.Build(new(Att(shortH: 4), Disc(), Work(0), Appr(0), new(0, 0)))
+            .Select(x => x.Key).Should().NotContain("short_hours_days");
 }

@@ -27,6 +27,9 @@ public class ListLeaveTypesQueryHandler : IRequestHandler<ListLeaveTypesQuery, R
         // wizard; deactivated types stay visible to leave:read holders (HR configuration screens).
         var includeInactive = request.IncludeInactive && _currentUser.HasPermission("leave:read");
         var types = await _leaveTypes.ListAsync(_currentUser.TenantId, includeInactive, ct);
-        return Result<IReadOnlyList<LeaveTypeResponse>>.Success(types.Select(LeaveTypeMapper.ToResponse).ToList());
+        var policyCounts = await _leaveTypes.CountActivePoliciesByLeaveTypeAsync(_currentUser.TenantId, ct)
+            ?? new Dictionary<Guid, int>();
+        return Result<IReadOnlyList<LeaveTypeResponse>>.Success(
+            types.Select(t => LeaveTypeMapper.ToResponse(t, policyCounts.GetValueOrDefault(t.Id))).ToList());
     }
 }

@@ -9,6 +9,7 @@ using ONEVO.Application.Features.Conversations.Commands.EditConversationMessage;
 using ONEVO.Application.Features.Conversations.Commands.LeaveConversation;
 using ONEVO.Application.Features.Conversations.Commands.OpenConversation;
 using ONEVO.Application.Features.Conversations.Commands.PostConversationMessage;
+using ONEVO.Application.Features.Conversations.Commands.ReactToConversationMessage;
 using ONEVO.Application.Features.Conversations.Commands.RemoveConversationParticipant;
 using ONEVO.Application.Features.Conversations.Contracts;
 using ONEVO.Application.Features.Conversations.DTOs;
@@ -51,6 +52,7 @@ public class ConversationsV2Tests
     private readonly InMemoryConversationRepository _repo = new();
     private readonly FakeUnitOfWork _uow = new();
     private readonly List<WorkNotificationPayload> _notifications = new();
+    private readonly RecordingActivityListener _activity = new();
     private Guid _conversationId;
 
     public ConversationsV2Tests()
@@ -97,7 +99,7 @@ public class ConversationsV2Tests
         Caller(caller);
         var result = await new AddConversationParticipantsCommandHandler(
                 _currentUser.Object, _identity.Object, Access(), _repo, _uow, _membership.Object, Notifier(), Builder(), _realtime.Object,
-                NullLogger<AddConversationParticipantsCommandHandler>.Instance)
+                NullLogger<AddConversationParticipantsCommandHandler>.Instance, [_activity])
             .Handle(new AddConversationParticipantsCommand(_conversationId, people), default);
         result.IsSuccess.Should().BeTrue(result.Error);
     }
@@ -108,7 +110,7 @@ public class ConversationsV2Tests
         Caller(caller);
         return new PostConversationMessageCommandHandler(
                 _currentUser.Object, _identity.Object, Access(), _repo, _uow, Notifier(), Builder(), _realtime.Object,
-                NullLogger<PostConversationMessageCommandHandler>.Instance, _files.Object)
+                NullLogger<PostConversationMessageCommandHandler>.Instance, _files.Object, [_activity])
             .Handle(new PostConversationMessageCommand(_conversationId, body, mentions, files, tag), default);
     }
 
@@ -116,7 +118,7 @@ public class ConversationsV2Tests
     {
         Caller(caller);
         return new RemoveConversationParticipantCommandHandler(_currentUser.Object, _identity.Object, Access(), _repo, _uow, _realtime.Object,
-                NullLogger<RemoveConversationParticipantCommandHandler>.Instance)
+                NullLogger<RemoveConversationParticipantCommandHandler>.Instance, [_activity])
             .Handle(new RemoveConversationParticipantCommand(_conversationId, employeeId), default);
     }
 
@@ -136,13 +138,25 @@ public class ConversationsV2Tests
             .Handle(new EditConversationMessageCommand(_conversationId, messageId, body, mentions), default);
     }
 
-    private Task<Result> DeleteAs(Guid caller, Guid messageId)
+    private Task<Result> DeleteAs(Guid caller, Guid messageId, bool forEveryone = true)
     {
         Caller(caller);
         return new DeleteConversationMessageCommandHandler(_currentUser.Object, _identity.Object, Access(), _repo, _uow, _realtime.Object,
                 NullLogger<DeleteConversationMessageCommandHandler>.Instance)
-            .Handle(new DeleteConversationMessageCommand(_conversationId, messageId), default);
+            .Handle(new DeleteConversationMessageCommand(_conversationId, messageId, forEveryone), default);
     }
+
+    private Task<Result<ConversationMessageResponse>> ReactAs(Guid caller, Guid messageId, string? emoji)
+    {
+        Caller(caller);
+        return new ReactToConversationMessageCommandHandler(_currentUser.Object, _identity.Object, Access(), _repo, _uow, Builder(),
+                _realtime.Object, NullLogger<ReactToConversationMessageCommandHandler>.Instance, [_activity])
+            .Handle(new ReactToConversationMessageCommand(_conversationId, messageId, emoji), default);
+    }
+
+    /// <summary>Moves a message's send time into the past (the edit/delete window is measured from it).</summary>
+    private void SentMinutesAgo(Guid messageId, int minutes)
+        => _repo.Messages.Single(m => m.Id == messageId).CreatedAt = DateTimeOffset.UtcNow.AddMinutes(-minutes);
 
     private Task<Result<ConversationMessagesPageResponse>> ListAs(Guid caller)
     {
@@ -321,6 +335,52 @@ public class ConversationsV2Tests
         (await EditAs(Subject, posted.Id, "<p>again</p>")).StatusCode.Should().Be(409);
     }
 
+    [Fact]
+    public async Task Once_another_participant_has_read_a_message_it_cannot_be_deleted_for_everyone_but_can_be_hidden_for_self()
+    {
+        await OpenedWithThirdAddedByApprover();
+        var posted = (await PostAs(Subject, "<p>keep for everyone</p>")).Value!;
+        _repo.Participants.Single(p => p.EmployeeId == Approver).LastReadAt = posted.CreatedAt.AddSeconds(1);
+
+        var globalDelete = await DeleteAs(Subject, posted.Id);
+        var selfDelete = await DeleteAs(Subject, posted.Id, forEveryone: false);
+
+        globalDelete.StatusCode.Should().Be(409);
+        globalDelete.Error.Should().Be(DeleteConversationMessageCommandHandler.AlreadyRead);
+        selfDelete.IsSuccess.Should().BeTrue(selfDelete.Error);
+        (await ListAs(Subject)).Value!.Items.Should().NotContain(m => m.Id == posted.Id);
+        (await ListAs(Approver)).Value!.Items.Should().Contain(m => m.Id == posted.Id && !m.IsDeleted);
+        var subjectChat = (await _repo.ListMemberConversationsAsync(TenantId, Subject)).Single(c => c.Conversation.Id == _conversationId);
+        subjectChat.LatestMessage?.Id.Should().NotBe(posted.Id, "a message hidden for me must not remain in my chat-list preview");
+    }
+
+    [Fact]
+    public async Task A_message_can_still_be_edited_within_30_minutes_after_another_participant_reads_it()
+    {
+        await OpenedWithThirdAddedByApprover();
+        var posted = (await PostAs(Subject, "<p>typo</p>")).Value!;
+        _repo.Participants.Single(p => p.EmployeeId == Approver).LastReadAt = posted.CreatedAt.AddSeconds(1);
+
+        var edited = await EditAs(Subject, posted.Id, "<p>corrected</p>");
+
+        edited.IsSuccess.Should().BeTrue(edited.Error);
+        edited.Value!.BodyHtml.Should().Be("<p>corrected</p>");
+        edited.Value.EditedAt.Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task A_message_cannot_be_edited_after_30_minutes_even_when_it_is_unread()
+    {
+        await OpenedWithThirdAddedByApprover();
+        var posted = (await PostAs(Subject, "<p>old typo</p>")).Value!;
+        _repo.Messages.Single(m => m.Id == posted.Id).CreatedAt = DateTimeOffset.UtcNow.AddMinutes(-31);
+
+        var edited = await EditAs(Subject, posted.Id, "<p>too late</p>");
+
+        edited.StatusCode.Should().Be(422);
+        edited.Error.Should().Be("A message can only be changed within 30 minutes of sending it.");
+    }
+
     // ---- attachments ------------------------------------------------------------------------
 
     [Fact]
@@ -357,12 +417,233 @@ public class ConversationsV2Tests
         await OpenedWithThirdAddedByApprover();
 
         (await PostAs(Approver, tag: ConversationMessageTags.Justification)).StatusCode.Should().Be(403);
-        (await PostAs(Subject, tag: ConversationMessageTags.InfoRequest)).StatusCode.Should().Be(422);
+        (await PostAs(Subject, tag: "info_request")).StatusCode.Should().Be(422);
         var justified = await PostAs(Subject, "<p>I was in a client meeting</p>", tag: ConversationMessageTags.Justification);
 
         justified.IsSuccess.Should().BeTrue();
         justified.Value!.Tag.Should().Be(ConversationMessageTags.Justification);
         (await OpenAs(Approver)).Value!.SubjectEmployeeId.Should().Be(Subject);
+    }
+
+    // ---- 30-minute edit/delete window -------------------------------------------------------------------------
+
+    [Fact]
+    public async Task The_author_can_edit_and_delete_within_30_minutes_of_sending()
+    {
+        (await OpenAs(Approver)).IsSuccess.Should().BeTrue();
+        var message = (await PostAs(Approver, "<p>first</p>")).Value!;
+        SentMinutesAgo(message.Id, 29);
+
+        (await EditAs(Approver, message.Id, "<p>fixed</p>")).IsSuccess.Should().BeTrue();
+        (await DeleteAs(Approver, message.Id)).IsSuccess.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task After_30_minutes_a_message_can_no_longer_be_edited_or_deleted()
+    {
+        (await OpenAs(Approver)).IsSuccess.Should().BeTrue();
+        var message = (await PostAs(Approver, "<p>first</p>")).Value!;
+        SentMinutesAgo(message.Id, 31);
+
+        var edit = await EditAs(Approver, message.Id, "<p>too late</p>");
+        var delete = await DeleteAs(Approver, message.Id);
+
+        edit.StatusCode.Should().Be(422);
+        edit.Error.Should().Be("A message can only be changed within 30 minutes of sending it.");
+        delete.StatusCode.Should().Be(422);
+        var stored = _repo.Messages.Single(m => m.Id == message.Id);
+        (stored.BodyHtml, stored.IsRetracted).Should().Be(("<p>first</p>", false));
+    }
+
+    // ---- Reactions: one per person, replaced on re-react -----------------------------------------------------
+
+    [Fact]
+    public async Task Everyone_in_the_chat_reacts_once_and_reacting_again_replaces_the_earlier_emoji()
+    {
+        await OpenedWithThirdAddedByApprover();
+        var message = (await PostAs(Approver)).Value!;
+
+        (await ReactAs(Approver, message.Id, "👍")).IsSuccess.Should().BeTrue();
+        (await ReactAs(Third, message.Id, "👍")).IsSuccess.Should().BeTrue();
+        var replaced = await ReactAs(Approver, message.Id, "🎉");
+
+        replaced.IsSuccess.Should().BeTrue(replaced.Error);
+        _repo.Reactions.Where(r => r.MessageId == message.Id).Select(r => (r.EmployeeId, r.Emoji))
+            .Should().BeEquivalentTo(new[] { (Third, "👍"), (Approver, "🎉") });
+        replaced.Value!.Reactions!.Select(r => (r.Emoji, string.Join(",", r.EmployeeIds)))
+            .Should().Equal(("👍", Third.ToString()), ("🎉", Approver.ToString()));
+        _realtime.Verify(r => r.MessageUpdatedAsync(TenantId, It.IsAny<IReadOnlyCollection<Guid>>(), _conversationId,
+            It.Is<ConversationMessageResponse>(m => m.Id == message.Id), It.IsAny<CancellationToken>()), Times.Exactly(3));
+    }
+
+    [Fact]
+    public async Task Removing_a_reaction_leaves_the_others()
+    {
+        await OpenedWithThirdAddedByApprover();
+        var message = (await PostAs(Approver)).Value!;
+        await ReactAs(Approver, message.Id, "👍");
+        await ReactAs(Third, message.Id, "😂");
+
+        var removed = await ReactAs(Approver, message.Id, null);
+
+        removed.Value!.Reactions!.Should().ContainSingle().Which.Emoji.Should().Be("😂");
+        (await ListAs(Approver)).Value!.Items.Single(m => m.Id == message.Id).Reactions!.Should().ContainSingle();
+    }
+
+    [Fact]
+    public async Task Deleted_and_system_messages_take_no_reactions_and_an_emoji_must_be_one_short_symbol()
+    {
+        await OpenedWithThirdAddedByApprover();
+        var message = (await PostAs(Approver)).Value!;
+        var system = _repo.Messages.First(m => m.Kind == ConversationMessageKinds.System);
+
+        (await ReactAs(Approver, system.Id, "👍")).StatusCode.Should().Be(422);
+        (await ReactAs(Approver, message.Id, "<b>")).StatusCode.Should().Be(422);
+        (await ReactAs(Approver, message.Id, "two words")).StatusCode.Should().Be(422);
+        await DeleteAs(Approver, message.Id);
+        (await ReactAs(Third, message.Id, "👍")).StatusCode.Should().Be(422);
+    }
+
+    [Fact]
+    public async Task Someone_outside_the_chat_cannot_react()
+    {
+        (await OpenAs(Approver)).IsSuccess.Should().BeTrue();
+        var message = (await PostAs(Approver)).Value!;
+
+        (await ReactAs(Stranger, message.Id, "👍")).StatusCode.Should().Be(404);
+        _repo.Reactions.Should().BeEmpty();
+    }
+
+    // ---- Chat activity is reported (an exception case's reviewer acknowledges it) ----------------------------
+
+    [Fact]
+    public async Task Posting_adding_removing_and_reacting_are_reported_with_the_item_and_the_actor()
+    {
+        await OpenedWithThirdAddedByApprover();
+        var message = (await PostAs(Approver)).Value!;
+        await ReactAs(Approver, message.Id, "👍");
+        (await RemoveAs(Approver, Third)).IsSuccess.Should().BeTrue();
+
+        _activity.Calls.Should().Equal(
+            (Item, Approver, ConversationActivities.MemberAdded),
+            (Item, Approver, ConversationActivities.MessagePosted),
+            (Item, Approver, ConversationActivities.Reacted),
+            (Item, Approver, ConversationActivities.MemberRemoved));
+    }
+
+    [Fact]
+    public async Task A_failing_activity_listener_never_fails_the_chat_request()
+    {
+        (await OpenAs(Approver)).IsSuccess.Should().BeTrue();
+        _activity.Throw = true;
+
+        var posted = await PostAs(Approver);
+
+        posted.IsSuccess.Should().BeTrue(posted.Error);
+        _repo.Messages.Should().Contain(m => m.Id == posted.Value!.Id);
+    }
+
+    private sealed class RecordingActivityListener : IConversationActivityListener
+    {
+        public List<(ItemRef Subject, Guid Actor, string Activity)> Calls { get; } = new();
+        public bool Throw { get; set; }
+
+        public Task OnActivityAsync(Guid tenantId, ItemRef subject, Guid actorEmployeeId, string activity, CancellationToken ct)
+        {
+            if (Throw)
+                throw new InvalidOperationException("listener down");
+            Calls.Add((subject, actorEmployeeId, activity));
+            return Task.CompletedTask;
+        }
+    }
+
+    // ---- Replies ---------------------------------------------------------------------------------
+
+    private Task<Result<ConversationMessageResponse>> ReplyAs(Guid caller, Guid replyTo, string body = "<p>reply</p>")
+    {
+        Caller(caller);
+        return new PostConversationMessageCommandHandler(
+                _currentUser.Object, _identity.Object, Access(), _repo, _uow, Notifier(), Builder(), _realtime.Object,
+                NullLogger<PostConversationMessageCommandHandler>.Instance, _files.Object)
+            .Handle(new PostConversationMessageCommand(_conversationId, body, null, null, null, replyTo), default);
+    }
+
+    [Fact]
+    public async Task A_reply_carries_a_short_plain_quote_of_the_message_it_answers()
+    {
+        await OpenAs(Subject);
+        var original = (await PostAs(Subject, "<p>I was <b>on a call</b> at 9.</p>")).Value!;
+
+        var reply = await ReplyAs(Approver, original.Id);
+
+        reply.IsSuccess.Should().BeTrue(reply.Error);
+        reply.Value!.ReplyTo.Should().NotBeNull();
+        reply.Value.ReplyTo!.Id.Should().Be(original.Id);
+        reply.Value.ReplyTo.AuthorName.Should().Be("Sam");
+        reply.Value.ReplyTo.Excerpt.Should().Be("I was on a call at 9.");
+        _repo.Messages.Single(m => m.Id == reply.Value.Id).ReplyToMessageId.Should().Be(original.Id);
+    }
+
+    [Fact]
+    public async Task A_replied_to_message_is_seen_so_it_can_only_be_deleted_for_the_author()
+    {
+        await OpenAs(Subject);
+        var original = (await PostAs(Subject, "<p>first</p>")).Value!;
+        await ReplyAs(Approver, original.Id);
+        var globalDelete = await DeleteAs(Subject, original.Id);
+        (await DeleteAs(Subject, original.Id, forEveryone: false)).IsSuccess.Should().BeTrue();
+
+        var opened = (await OpenAs(Approver)).Value!;
+
+        globalDelete.StatusCode.Should().Be(409);
+        var reply = opened.Messages.Single(m => m.ReplyTo is not null);
+        reply.ReplyTo!.IsDeleted.Should().BeFalse();
+        reply.ReplyTo.Excerpt.Should().Be("first");
+    }
+
+    [Fact]
+    public async Task A_reply_to_a_message_of_another_conversation_or_a_system_message_is_rejected()
+    {
+        await OpenAs(Subject);
+        var elsewhere = new ConversationMessage
+        {
+            Id = Guid.NewGuid(), TenantId = TenantId, ConversationId = Guid.NewGuid(), AuthorEmployeeId = Subject,
+            Kind = ConversationMessageKinds.Text, BodyHtml = "<p>other chat</p>", CreatedAt = DateTimeOffset.UtcNow
+        };
+        var system = new ConversationMessage
+        {
+            Id = Guid.NewGuid(), TenantId = TenantId, ConversationId = _conversationId,
+            Kind = ConversationMessageKinds.System, BodyHtml = "Hema was added", CreatedAt = DateTimeOffset.UtcNow
+        };
+        _repo.Messages.AddRange([elsewhere, system]);
+
+        (await ReplyAs(Subject, elsewhere.Id)).Error.Should().Be("The message you are replying to is not in this conversation.");
+        (await ReplyAs(Subject, system.Id)).Error.Should().Be("You cannot reply to that message.");
+    }
+
+    [Fact]
+    public async Task An_item_with_evidence_gets_one_empty_evidence_message_at_its_time_that_is_never_unread()
+    {
+        var detectedAt = DateTimeOffset.UtcNow.AddHours(-3);
+        _resolver.Subject = _resolver.Subject! with { EvidenceAt = detectedAt };
+
+        await OpenAs(Subject);
+        await OpenAs(Approver);
+        await PostAs(Subject, "<p>I can explain</p>");
+
+        var evidence = _repo.Messages.Where(m => m.Kind == ConversationMessageKinds.Evidence).ToList();
+        evidence.Should().ContainSingle();
+        evidence[0].BodyHtml.Should().BeEmpty();
+        evidence[0].AuthorEmployeeId.Should().BeNull();
+        evidence[0].CreatedAt.Should().Be(detectedAt);
+        evidence[0].Id.Should().Be(OpenConversationCommandHandler.EvidenceMessageId(_conversationId));
+
+        var unread = await _repo.CountUnreadAsync(TenantId, Approver, [Item]);
+        unread[Item].Should().Be(1);
+
+        var reply = await ReplyAs(Approver, evidence[0].Id, "<p>The photo looks fine to me</p>");
+        reply.Value!.ReplyTo!.Kind.Should().Be(ConversationMessageKinds.Evidence);
+        reply.Value.ReplyTo.Excerpt.Should().BeEmpty();
     }
 
     private sealed class Resolver : IConversationSubjectResolver

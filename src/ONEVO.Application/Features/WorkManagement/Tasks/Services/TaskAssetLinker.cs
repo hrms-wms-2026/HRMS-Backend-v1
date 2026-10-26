@@ -57,46 +57,77 @@ public sealed class TaskAssetLinker : ITaskAssetLinker
             return;
 
         foreach (var asset in sourceAssets)
+            await CopyFileToTaskAsync(tenantId, userId, asset.FileRecordId, asset.OriginalFileName, asset.ContentType, destinationTaskId, ct);
+
+        await _unitOfWork.SaveChangesAsync(ct);
+    }
+
+    public Task SyncChecklistTemplateAttachmentsAsync(
+        Guid tenantId, Guid userId, Guid templateId, IReadOnlyList<Guid> desiredFileIds, CancellationToken ct = default)
+        => SyncAsync(tenantId, userId, EntityAssetOwnerTypes.ChecklistTemplate, templateId, UploadPurposeCatalog.TaskAttachment, desiredFileIds, ct);
+
+    public async Task CopyChecklistTemplateFilesToTaskAsync(
+        Guid tenantId, Guid userId, IReadOnlyList<Guid> templateFileIds, Guid? templateId, Guid destinationTaskId,
+        CancellationToken ct = default)
+    {
+        foreach (var fileId in templateFileIds.Distinct())
         {
-            var streamResult = await _fileStorage.OpenReadAsync(tenantId, asset.FileRecordId, ct);
-            if (!streamResult.IsSuccess)
+            var link = await _assets.GetByFileRecordIdAsync(tenantId, fileId, ct);
+            if (link is null || link.OwnerType != EntityAssetOwnerTypes.ChecklistTemplate)
+                continue;
+            if (templateId is { } owningTemplateId && link.OwnerId != owningTemplateId)
                 continue;
 
-            Result<FileRecordDto> uploadResult;
-            await using (var source = streamResult.Value!.Content)
-            {
-                // UploadAsync requires a stream with a known Length - the source stream (read from
-                // object storage) is not guaranteed to be seekable, so buffer it first.
-                var buffered = new MemoryStream();
-                await source.CopyToAsync(buffered, ct);
-                buffered.Position = 0;
-                await using (buffered)
-                {
-                    uploadResult = await _fileStorage.UploadAsync(
-                        tenantId, userId, asset.OriginalFileName, asset.ContentType,
-                        UploadPurposeCatalog.TaskAttachment, buffered, ct);
-                }
-            }
-
-            if (!uploadResult.IsSuccess)
+            var record = await _fileStorage.GetRecordAsync(tenantId, fileId, ct);
+            if (!record.IsSuccess || record.Value!.DeletedAt is not null)
                 continue;
 
-            await _assets.AddAsync(new EntityAsset
-            {
-                Id = Guid.NewGuid(),
-                TenantId = tenantId,
-                OwnerType = EntityAssetOwnerTypes.Task,
-                OwnerId = destinationTaskId,
-                AssetPurpose = UploadPurposeCatalog.TaskAttachment,
-                FileRecordId = uploadResult.Value!.Id,
-                IsPrimary = false,
-                CreatedByType = "user",
-                CreatedById = userId,
-                CreatedAt = DateTimeOffset.UtcNow
-            }, ct);
+            await CopyFileToTaskAsync(
+                tenantId, userId, fileId, record.Value.OriginalFileName, record.Value.ContentType, destinationTaskId, ct);
         }
 
         await _unitOfWork.SaveChangesAsync(ct);
+    }
+
+    private async Task CopyFileToTaskAsync(
+        Guid tenantId, Guid userId, Guid sourceFileId, string fileName, string contentType, Guid destinationTaskId, CancellationToken ct)
+    {
+        var streamResult = await _fileStorage.OpenReadAsync(tenantId, sourceFileId, ct);
+        if (!streamResult.IsSuccess)
+            return;
+
+        Result<FileRecordDto> uploadResult;
+        await using (var source = streamResult.Value!.Content)
+        {
+            // UploadAsync requires a stream with a known Length - the source stream (read from
+            // object storage) is not guaranteed to be seekable, so buffer it first.
+            var buffered = new MemoryStream();
+            await source.CopyToAsync(buffered, ct);
+            buffered.Position = 0;
+            await using (buffered)
+            {
+                uploadResult = await _fileStorage.UploadAsync(
+                    tenantId, userId, fileName, contentType,
+                    UploadPurposeCatalog.TaskAttachment, buffered, ct);
+            }
+        }
+
+        if (!uploadResult.IsSuccess)
+            return;
+
+        await _assets.AddAsync(new EntityAsset
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenantId,
+            OwnerType = EntityAssetOwnerTypes.Task,
+            OwnerId = destinationTaskId,
+            AssetPurpose = UploadPurposeCatalog.TaskAttachment,
+            FileRecordId = uploadResult.Value!.Id,
+            IsPrimary = false,
+            CreatedByType = "user",
+            CreatedById = userId,
+            CreatedAt = DateTimeOffset.UtcNow
+        }, ct);
     }
 
     private static IReadOnlyList<Guid> ExtractFileIds(string? html)

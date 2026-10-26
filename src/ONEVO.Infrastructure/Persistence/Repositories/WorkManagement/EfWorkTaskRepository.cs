@@ -221,6 +221,26 @@ public class EfWorkTaskRepository : IWorkTaskRepository
         ).ToListAsync(ct);
     }
 
+    public async Task<IReadOnlyList<EmployeeTaskPeriodRow>> ListOpenForEmployeeAsync(
+        Guid tenantId, Guid employeeId, CancellationToken ct = default)
+    {
+        return await (
+            from t in _db.WorkTasks.AsNoTracking()
+            join s in _db.TaskStatuses.AsNoTracking() on t.StatusId equals s.Id
+            join p in _db.Projects.AsNoTracking() on t.ProjectId equals p.Id
+            join o in _db.Objectives.AsNoTracking() on t.ObjectiveId equals o.Id into objectives
+            from o in objectives.DefaultIfEmpty()
+            where t.TenantId == tenantId
+                  && _db.TaskAssignments.Any(a => a.TaskId == t.Id && a.EmployeeId == employeeId)
+                  && !s.MarksTaskComplete && t.ProgressPercent < 100
+            select new EmployeeTaskPeriodRow(
+                t.DueDate, t.CompletedAt, t.ProgressPercent, s.MarksTaskComplete, t.StoryPoints,
+                t.Id, t.Title, t.ProjectId, p.Name,
+                false,
+                t.ShortId, t.Priority, s.Name, s.Color, t.ObjectiveId, o != null ? o.Title : "")
+        ).ToListAsync(ct);
+    }
+
     public async Task<IReadOnlyList<EmployeeWorkTaskRow>> ListOpenDueByAsync(Guid tenantId, Guid employeeId, DateOnly dueOnOrBefore, CancellationToken ct = default)
     {
         return await (
@@ -290,19 +310,6 @@ public class EfWorkTaskRepository : IWorkTaskRepository
         => await _db.WorkTasks.IgnoreQueryFilters()
             .AnyAsync(t => t.TenantId == tenantId && t.CategoryId == categoryId, ct);
 
-    public async Task<IReadOnlyList<LedTaskProgressRow>> ListTopLevelProgressRowsAsync(Guid tenantId, IReadOnlyCollection<Guid> objectiveIds, CancellationToken ct = default)
-    {
-        if (objectiveIds.Count == 0)
-            return Array.Empty<LedTaskProgressRow>();
-        var ids = objectiveIds.ToList();
-        return await (
-            from t in _db.WorkTasks.AsNoTracking()
-            join s in _db.TaskStatuses.AsNoTracking() on t.StatusId equals s.Id
-            where t.TenantId == tenantId && t.ParentTaskId == null && ids.Contains(t.ObjectiveId)
-            select new LedTaskProgressRow(t.ObjectiveId, s.MarksTaskComplete, t.DueDate, t.ProgressPercent)
-        ).ToListAsync(ct);
-    }
-
     public async Task<IReadOnlyList<LedOverdueTaskRow>> ListTopLevelOverdueAsync(Guid tenantId, IReadOnlyCollection<Guid> objectiveIds, DateOnly today, int take, CancellationToken ct = default)
     {
         if (objectiveIds.Count == 0 || take <= 0)
@@ -330,6 +337,21 @@ public class EfWorkTaskRepository : IWorkTaskRepository
         return rows.Select(r => new LedOverdueTaskRow(
             r.Id, r.ShortId, r.Title, r.ProjectId, r.ObjectiveId, r.DueDate,
             assignees.TryGetValue(r.Id, out var assigneeIds) ? assigneeIds : new List<Guid>())).ToList();
+    }
+
+    public async Task<int> CountTopLevelOverdueAsync(Guid tenantId, IReadOnlyCollection<Guid> objectiveIds, DateOnly today, CancellationToken ct = default)
+    {
+        if (objectiveIds.Count == 0)
+            return 0;
+        var ids = objectiveIds.ToList();
+        return await (
+            from t in _db.WorkTasks.AsNoTracking()
+            join s in _db.TaskStatuses.AsNoTracking() on t.StatusId equals s.Id
+            where t.TenantId == tenantId && t.ParentTaskId == null && ids.Contains(t.ObjectiveId)
+                && !s.MarksTaskComplete && t.ProgressPercent < 100
+                && t.DueDate != null && t.DueDate < today
+            select t.Id
+        ).CountAsync(ct);
     }
 
     public void Update(WorkTask task) => _db.WorkTasks.Update(task);

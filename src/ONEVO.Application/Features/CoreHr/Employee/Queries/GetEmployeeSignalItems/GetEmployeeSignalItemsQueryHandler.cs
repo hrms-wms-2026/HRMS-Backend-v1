@@ -35,13 +35,22 @@ public sealed class GetEmployeeSignalItemsQueryHandler(
     IExceptionScopeResolver exceptionScope,
     ICurrentUser currentUser,
     IDateTimeProvider clock,
-    ONEVO.Application.Features.Calendar.Exceptions.ICalendarIncidentRepository? incidents = null)
+    ONEVO.Application.Features.Calendar.Exceptions.ICalendarIncidentRepository? incidents = null,
+    ONEVO.Application.Features.Monitoring.Exceptions.Services.ExceptionCaseRouting? caseRouting = null)
     : IRequestHandler<GetEmployeeSignalItemsQuery, Result<EmployeeSignalItemsResponse>>
 {
+    /// <summary>The exception cases of one employee are shown only to whoever they are routed to (their attendance
+    /// approver; HR only for monitoring cases of someone nobody can review) - the same rule as the Inbox.</summary>
+    private async Task<bool> ReviewsCasesAsync(
+        Guid tenantId, Guid employeeId, ONEVO.Application.Features.Monitoring.Exceptions.ServiceInterfaces.ExceptionScope? scope,
+        bool hrFallback, CancellationToken ct)
+        => scope?.CanSee(employeeId) == true
+           && (caseRouting is null || await caseRouting.ReviewsEmployeeAsync(tenantId, employeeId, scope, hrFallback, ct));
+
     public const int MaxItems = 50;
 
     private static readonly HashSet<string> AttendanceKeys =
-        ["absent_days", "missing_clock_outs", "late_clock_ins", "early_clock_outs", "short_hours_days", "off_schedule_work", "over_break"];
+        ["absent_days", "missing_clock_outs", "late_clock_ins", "early_clock_outs", "off_schedule_work", "over_break"];
 
     public async Task<Result<EmployeeSignalItemsResponse>> Handle(GetEmployeeSignalItemsQuery request, CancellationToken ct)
     {
@@ -86,7 +95,7 @@ public sealed class GetEmployeeSignalItemsQueryHandler(
                 if (!await toggles.IsEnabledForEmployeeAsync(tenantId, request.EmployeeId, MonitoringCapability.ActivityMonitoring, ct))
                     return Hidden();
                 var scope = await exceptionScope.ResolveAsync(forAction: false, [request.EmployeeId], ct);
-                if (scope?.CanSee(request.EmployeeId) != true)
+                if (!await ReviewsCasesAsync(tenantId, request.EmployeeId, scope, hrFallback: true, ct))
                     return Hidden();
                 var data = await reader.LoadAsync(tenantId, request.EmployeeId, legalEntityId, period.Value, ct);
                 var total = await exceptions.CountDetectedInRangeAsync(tenantId, request.EmployeeId, utcStart, utcEnd, ct);
@@ -101,7 +110,7 @@ public sealed class GetEmployeeSignalItemsQueryHandler(
                 // The meetings behind the open calendar meeting-exception cases (plan C2) - meeting facts only, never
                 // application names or activity samples.
                 var scope = await exceptionScope.ResolveAsync(forAction: false, [request.EmployeeId], ct);
-                if (scope?.CanSee(request.EmployeeId) != true)
+                if (!await ReviewsCasesAsync(tenantId, request.EmployeeId, scope, hrFallback: false, ct))
                     return Hidden();
                 var data = await reader.LoadAsync(tenantId, request.EmployeeId, legalEntityId, period.Value, ct);
                 var total = await exceptions.CountDetectedInRangeAsync(tenantId, request.EmployeeId, utcStart, utcEnd, ct, calendar: true);
@@ -182,7 +191,6 @@ public sealed class GetEmployeeSignalItemsQueryHandler(
             "missing_clock_outs" => dates.MissingClockOuts.Select(d => Day(d, "No clock-out recorded")),
             "late_clock_ins" => dates.Late.Select(d => Day(d, "Clocked in after the scheduled start")),
             "early_clock_outs" => dates.EarlyDepartures.Select(d => Day(d, "Left before the scheduled end")),
-            "short_hours_days" => dates.ShortHours.Select(d => Day(d, "Worked less than the required hours")),
             _ => dates.WorkedOnNonWorkingDay.Select(d => Day(d, "Worked on a non-working day"))
                 .Concat(dates.WorkedDuringTimeOff.Select(d => Day(d, "Worked during approved time off")))
         };

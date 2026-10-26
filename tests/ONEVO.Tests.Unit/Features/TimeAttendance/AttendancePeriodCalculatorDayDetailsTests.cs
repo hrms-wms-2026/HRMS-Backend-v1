@@ -50,7 +50,7 @@ public sealed class AttendancePeriodCalculatorDayDetailsTests
     }
 
     [Fact]
-    public void DayDetails_CarriesLocalClockTimes_LateEarlyAndShortHours()
+    public void DayDetails_CarriesLocalClockTimes_LateAndEarly_ShortHoursRetired()
     {
         var d4 = new DateOnly(2026, 8, 4);
         var data = Data(null, new(),
@@ -65,7 +65,7 @@ public sealed class AttendancePeriodCalculatorDayDetailsTests
         day.LateMinutes.Should().Be(45);
         day.EarlyLeaveMinutes.Should().Be(30);
         day.WorkedMinutes.Should().Be(300);
-        day.ShortHours.Should().BeTrue();
+        day.ShortHours.Should().BeFalse();
         day.WorkMode.Should().Be("Onsite");
     }
 

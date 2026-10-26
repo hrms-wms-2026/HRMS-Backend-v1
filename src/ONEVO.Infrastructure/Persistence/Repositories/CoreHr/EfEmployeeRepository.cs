@@ -132,12 +132,14 @@ public class EfEmployeeRepository : IEmployeeRepository
             var coveredPositionIds = scope.CoveredPositionIds;
             var coveredDepartmentIds = scope.CoveredDepartmentIds;
             var companyWideLegalEntityIds = scope.CompanyWideLegalEntityIds;
+            var coveredEmployeeIds = scope.CoveredEmployeeIds;
 
             joined = joined.Where(row =>
                 (ownEmployeeId != null && row.e.Id == ownEmployeeId.Value)
                 || (row.position != null && coveredPositionIds.Contains(row.position.Id))
                 || (row.dept != null && coveredDepartmentIds.Contains(row.dept.Id))
-                || (row.legalEntity != null && companyWideLegalEntityIds.Contains(row.legalEntity.Id)));
+                || (row.legalEntity != null && companyWideLegalEntityIds.Contains(row.legalEntity.Id))
+                || coveredEmployeeIds.Contains(row.e.Id));
         }
 
         if (!string.IsNullOrWhiteSpace(filter.Search))
@@ -793,12 +795,14 @@ public class EfEmployeeRepository : IEmployeeRepository
             var coveredPositionIds = scope.CoveredPositionIds;
             var coveredDepartmentIds = scope.CoveredDepartmentIds;
             var companyWideLegalEntityIds = scope.CompanyWideLegalEntityIds;
+            var coveredEmployeeIds = scope.CoveredEmployeeIds;
 
             joined = joined.Where(row =>
                 (ownEmployeeId != null && row.e.Id == ownEmployeeId.Value)
                 || (row.position != null && coveredPositionIds.Contains(row.position.Id))
                 || (row.dept != null && coveredDepartmentIds.Contains(row.dept.Id))
-                || (row.legalEntity != null && companyWideLegalEntityIds.Contains(row.legalEntity.Id)));
+                || (row.legalEntity != null && companyWideLegalEntityIds.Contains(row.legalEntity.Id))
+                || coveredEmployeeIds.Contains(row.e.Id));
         }
 
         return await joined
@@ -988,6 +992,23 @@ public class EfEmployeeRepository : IEmployeeRepository
                 && employeeIds.Contains(e.Id)
             select e.Id)
             .ToListAsync(ct);
+    }
+
+    public async Task<IReadOnlyDictionary<Guid, string>> ListPositionNamesAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> employeeIds, CancellationToken ct = default)
+    {
+        if (employeeIds.Count == 0)
+            return new Dictionary<Guid, string>();
+        var rows = await (
+            from pa in _db.PositionAssignments.AsNoTracking()
+            join position in _db.Positions.AsNoTracking() on pa.PositionId equals position.Id
+            where pa.TenantId == tenantId
+                && employeeIds.Contains(pa.EmployeeId)
+                && pa.AssignmentKind == PositionAssignmentKind.PrimaryEmployment
+                && pa.AssignmentStatus == PositionAssignmentStatus.Active
+            select new { pa.EmployeeId, position.Name })
+            .ToListAsync(ct);
+        return rows.GroupBy(r => r.EmployeeId).ToDictionary(g => g.Key, g => g.First().Name);
     }
 
     public async Task<IReadOnlyDictionary<Guid, EmployeeEntity>> ListByIdsAsync(

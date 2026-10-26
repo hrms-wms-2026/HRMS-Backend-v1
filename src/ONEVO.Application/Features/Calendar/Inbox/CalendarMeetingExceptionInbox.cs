@@ -12,6 +12,7 @@ using ONEVO.Application.Features.Inbox.Revert;
 using ONEVO.Application.Features.Monitoring.Exceptions.Inbox;
 using ONEVO.Application.Features.Monitoring.Exceptions.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.Exceptions.ServiceInterfaces;
+using ONEVO.Application.Features.Monitoring.Exceptions.Services;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Domain.Features.Calendar.Entities;
 using ONEVO.Domain.Features.Monitoring.Exceptions.Entities;
@@ -29,7 +30,7 @@ public static class CalendarInboxKinds
     public static readonly InboxKindDescriptor Descriptor = new(
         Source, MeetingException, "Meeting exception", InboxCategories.Alert,
         InboxCapabilities.Chat | InboxCapabilities.Resolve | InboxCapabilities.Escalate | InboxCapabilities.Revert
-        | InboxCapabilities.Bulk | InboxCapabilities.SubjectParticipates,
+        | InboxCapabilities.SubjectParticipates,
         Renderer);
 
     /// <summary>The only evidence keys an incident may show (meeting facts). Anything else - e.g. a desktop-agent usage
@@ -48,6 +49,8 @@ public static class CalendarInboxKinds
 /// the cases of the people the caller reviews (the exception scope the commands check - scope = act); the employee sees
 /// their own cases as info. The detail is meeting evidence only: each incident's meeting, time, RSVP and its history,
 /// joined/left and an "estimated" badge for the desktop agent - never application names or activity samples.
+/// Only the cases routed to the caller are listed (<see cref="ExceptionCaseRouting"/>: the subject's approver, then
+/// whoever it was escalated to - never HR); anyone else in the exception scope can still open one by link, as info.
 /// </summary>
 public sealed class CalendarInboxSourceProvider(
     IExceptionRepository exceptions,
@@ -56,7 +59,8 @@ public sealed class CalendarInboxSourceProvider(
     ICalendarIncidentRepository incidents,
     ICalendarEventRepository events,
     ExceptionCaseActions actions,
-    IConversationRepository conversations) : IInboxSourceProvider
+    IConversationRepository conversations,
+    ExceptionCaseRouting? routing = null) : IInboxSourceProvider, IInboxPersonCaseProvider
 {
     public const int ListLimit = 500;
 
@@ -69,12 +73,18 @@ public sealed class CalendarInboxSourceProvider(
             return [];
         var active = await exceptions.GetListAsync(tenantId, new ExceptionListFilter(null, null, null, null, ActiveOnly: true, Calendar: true), 1, ListLimit, ct);
         var reviewScope = active.Count == 0 ? null : await scope.ResolveAsync(forAction: true, active.Select(e => e.EmployeeId).Distinct().ToList(), ct);
+        var routed = reviewScope is null || routing is null ? null : await routing.RoutedCasesAsync(tenantId, active, reviewScope, hrFallback: false, ct);
 
         var items = new List<(MonitoringException Case, string Direction, bool Actionable)>();
         foreach (var exception in active)
         {
             if (exception.EmployeeId == callerEmployeeId)
                 items.Add((exception, InboxDirections.Info, false));
+            else if (routed is not null)
+            {
+                if (routed.Contains(exception.Id))
+                    items.Add((exception, InboxDirections.Received, true));
+            }
             else if (reviewScope?.CanAct(exception.Id, exception.EmployeeId) == true)
                 // HR is never in the calendar route (log only at the top), so HR sees the cases as info.
                 items.Add((exception, reviewScope.IsHr ? InboxDirections.Info : InboxDirections.Received, true));
@@ -88,6 +98,27 @@ public sealed class CalendarInboxSourceProvider(
 
         var people = await PeopleAsync(tenantId, items.Select(i => i.Case.EmployeeId), ct);
         return items.Select(i => Item(i.Case, people, i.Direction, i.Actionable ? ExceptionInboxSourceProvider.Actions(i.Case) : [])).ToList();
+    }
+
+    /// <summary>The subject's meeting-exception cases of any status, as info. CanOpen follows GetDetailAsync.</summary>
+    public async Task<IReadOnlyList<InboxPersonCase>> ListPersonCasesAsync(
+        Guid tenantId, Guid subjectEmployeeId, string category, DateTimeOffset from, DateTimeOffset to, Guid callerEmployeeId, CancellationToken ct)
+    {
+        if (category != InboxCategories.Alert)
+            return [];
+        var cases = (await exceptions.GetListAsync(tenantId,
+                new ExceptionListFilter(null, null, [subjectEmployeeId], null, Calendar: true, DetectedFrom: from, DetectedTo: to), 1, ListLimit, ct))
+            .Where(e => CalendarExceptionTypes.IsCalendar(e.Type)).ToList();
+        if (cases.Count == 0)
+            return [];
+
+        var isSubject = subjectEmployeeId == callerEmployeeId;
+        var reviewScope = isSubject ? null : await scope.ResolveAsync(forAction: true, [subjectEmployeeId], ct);
+        var added = isSubject ? [] : (await conversations.ListAddedSubjectsAsync(tenantId, callerEmployeeId, Source, ct)).ToHashSet();
+        var people = await PeopleAsync(tenantId, [subjectEmployeeId], ct);
+        return cases.Select(e => new InboxPersonCase(Item(e, people, InboxDirections.Info, []),
+            isSubject || reviewScope?.CanAct(e.Id, e.EmployeeId) == true
+            || added.Contains(new ItemRef(Source, CalendarInboxKinds.MeetingException, e.Id)))).ToList();
     }
 
     public async Task<IReadOnlyList<InboxFilterField>> GetFilterFieldsAsync(Guid tenantId, Guid callerEmployeeId, CancellationToken ct)
@@ -120,8 +151,12 @@ public sealed class CalendarInboxSourceProvider(
             return null;
 
         var people = await PeopleAsync(tenantId, [exception.EmployeeId], ct);
-        var direction = canAct && !reviewScope!.IsHr ? InboxDirections.Received : InboxDirections.Info;
-        var item = Item(exception, people, direction, canAct ? ExceptionInboxSourceProvider.Actions(exception) : []);
+        // Routed to the caller = theirs to work; anyone else in scope opened it by link and sees it as info.
+        var routedToMe = canAct && (routing is null
+            ? !reviewScope!.IsHr
+            : (await routing.RoutedCasesAsync(tenantId, [exception], reviewScope!, hrFallback: false, ct)).Contains(exception.Id));
+        var direction = routedToMe ? InboxDirections.Received : InboxDirections.Info;
+        var item = Item(exception, people, direction, routedToMe ? ExceptionInboxSourceProvider.Actions(exception) : []);
         return new InboxItemDetail(item, ExceptionInboxSourceProvider.Steps(exception), exception.Title, [], exception.Description,
             ExceptionInboxSourceProvider.Facts(exception), null, null, await EvidenceAsync(tenantId, exception, ct));
     }

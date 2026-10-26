@@ -2,10 +2,14 @@ using ONEVO.Application.Features.WorkManagement.Objectives.Services;
 
 namespace ONEVO.Application.Features.WorkManagement.Leadership.Services;
 
-public sealed record LedObjectiveRow(Guid Id, Guid ProjectId, Guid? ParentObjectiveId, string Title, bool IsDefault, DateOnly EndDate);
+public sealed record LedObjectiveRow(
+    Guid Id, Guid ProjectId, Guid? ParentObjectiveId, string Title, bool IsDefault, DateOnly EndDate, decimal AllocatedHours = 0);
 
+/// <param name="SubtreeRows">The head itself plus every accessible descendant Module, so callers can
+/// break the head's work down by child Module (Team Progress pop-out).</param>
 public sealed record LedHeadModule(
-    Guid ObjectiveId, Guid ProjectId, string Title, bool IsRootModule, DateOnly EndDate, IReadOnlySet<Guid> SubtreeObjectiveIds);
+    Guid ObjectiveId, Guid ProjectId, string Title, bool IsRootModule, DateOnly EndDate, IReadOnlySet<Guid> SubtreeObjectiveIds,
+    decimal AllocatedHours = 0, IReadOnlyList<LedObjectiveRow>? SubtreeRows = null);
 
 public sealed record LedWorkScope(IReadOnlyList<LedHeadModule> HeadModules, IReadOnlyList<Guid> DroppedOwnedObjectiveIds)
 {
@@ -59,7 +63,8 @@ public static class LedWorkScopeBuilder
 
             var subtree = ObjectiveTreeExpander.ExpandWithDescendants(new[] { objectiveId }, nodes);
             subtree.IntersectWith(accessible);
-            heads.Add(new LedHeadModule(row.Id, row.ProjectId, row.Title, row.IsDefault, row.EndDate, subtree));
+            heads.Add(new LedHeadModule(row.Id, row.ProjectId, row.Title, row.IsDefault, row.EndDate, subtree,
+                row.AllocatedHours, subtree.Select(id => rowsById[id]).ToList()));
         }
 
         return heads.Count == 0 && dropped.Count == 0 ? LedWorkScope.Empty : new LedWorkScope(heads, dropped);

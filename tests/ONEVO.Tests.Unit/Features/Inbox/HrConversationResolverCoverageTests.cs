@@ -59,7 +59,7 @@ public sealed class HrConversationResolverCoverageTests
             [
                 new LeaveRequestApprover { ApproverEmployeeId = approver },
                 new LeaveRequestApprover { ApproverEmployeeId = delegateApprover, DelegatedFromApproverId = original },
-            ], []));
+            ]));
 
         var subject = await Leave(approvals).ResolveAsync(TenantId, new ItemRef("leave", "request", request.Id), default);
 

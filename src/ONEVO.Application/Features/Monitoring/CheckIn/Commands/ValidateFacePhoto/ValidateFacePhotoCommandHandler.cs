@@ -1,4 +1,6 @@
 using MediatR;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
@@ -47,6 +49,7 @@ public class ValidateFacePhotoCommandHandler
     private readonly IEnrolledFaceMatcher _matcher;
     private readonly ITrayEmployeeIdentityResolver _employeeIdentity;
     private readonly IFaceVerificationRetryPolicy _retryPolicy;
+    private readonly ILogger<ValidateFacePhotoCommandHandler> _logger;
 
     public ValidateFacePhotoCommandHandler(
         ITrayCurrentDevice device,
@@ -56,8 +59,10 @@ public class ValidateFacePhotoCommandHandler
         IFaceQualityService faceQuality,
         IEnrolledFaceMatcher matcher,
         ITrayEmployeeIdentityResolver employeeIdentity,
-        IFaceVerificationRetryPolicy retryPolicy)
+        IFaceVerificationRetryPolicy retryPolicy,
+        ILogger<ValidateFacePhotoCommandHandler>? logger = null)
     {
+        _logger = logger ?? NullLogger<ValidateFacePhotoCommandHandler>.Instance;
         _device = device;
         _tenants = tenants;
         _tenantSwitcher = tenantSwitcher;
@@ -128,8 +133,10 @@ public class ValidateFacePhotoCommandHandler
         {
             quality = await _faceQuality.AnalyzeAsync(captured, cancellationToken);
         }
-        catch (Exception)
+        catch (Exception ex)
         {
+            // The tray only shows "unavailable", so the cause has to be findable here.
+            _logger.LogWarning(ex, "Face quality check failed for tenant {TenantId}", _device.TenantId);
             return FailedVerification();
         }
 
@@ -158,8 +165,9 @@ public class ValidateFacePhotoCommandHandler
         {
             match = await _matcher.MatchAsync(_device.TenantId, profile, captured, cancellationToken);
         }
-        catch (Exception)
+        catch (Exception ex)
         {
+            _logger.LogWarning(ex, "Face match failed for tenant {TenantId}", _device.TenantId);
             return Done(FailedVerification(quality));
         }
 

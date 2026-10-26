@@ -46,7 +46,8 @@ public sealed class GetConversationAttachmentQueryHandler
 
         var attachment = await _conversations.GetAttachmentAsync(caller.TenantId, query.AttachmentId, ct);
         var message = attachment is null ? null : await _conversations.GetMessageAsync(caller.TenantId, attachment.MessageId, ct);
-        if (attachment is null || message is null || message.ConversationId != context.Conversation.Id || message.IsRetracted)
+        if (attachment is null || message is null || message.ConversationId != context.Conversation.Id || message.IsRetracted
+            || await _conversations.IsMessageHiddenForEmployeeAsync(caller.TenantId, message.Id, caller.EmployeeId, ct))
             return Result<ConversationAttachmentDownload>.NotFound(AttachmentNotFound);
 
         var stream = await _files.OpenReadAsync(caller.TenantId, attachment.FileRecordId, ct);

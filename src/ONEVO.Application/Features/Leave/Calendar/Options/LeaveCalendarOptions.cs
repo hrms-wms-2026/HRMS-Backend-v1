@@ -6,22 +6,6 @@ public sealed class LeaveCalendarOptions
 
     public bool DefaultIncludeTentativeBlocks { get; init; }
 
-    public Dictionary<string, string> TypeCategoryColors { get; init; } =
-        new(StringComparer.OrdinalIgnoreCase);
-
-    public string? ColorFor(string? category)
-    {
-        if (string.IsNullOrWhiteSpace(category))
-            return null;
-
-        return TypeCategoryColors.TryGetValue(category.Trim(), out var color)
-            ? color
-            : null;
-    }
-
-    public static bool AreColorsValid(IReadOnlyDictionary<string, string>? colors)
-        => colors is null || colors.Values.All(IsValidHexColor);
-
     public static bool IsValidHexColor(string? value)
     {
         if (string.IsNullOrWhiteSpace(value))

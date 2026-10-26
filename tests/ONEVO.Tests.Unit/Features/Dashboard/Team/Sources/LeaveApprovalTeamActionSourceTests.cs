@@ -74,8 +74,7 @@ public sealed class LeaveApprovalTeamActionSourceTests
             .ReturnsAsync(new LeaveApprovalState(
                 actionableRequest, null, new Employee { Id = actionableRequest.EmployeeId }, "Annual", "AN",
                 LeaveApprovalModes.AnyOne,
-                [new LeaveRequestApprover { ApproverEmployeeId = ApproverEmployeeId, SequenceOrder = 1, Status = LeaveRequestApproverStatuses.Pending }],
-                []));
+                [new LeaveRequestApprover { ApproverEmployeeId = ApproverEmployeeId, SequenceOrder = 1, Status = LeaveRequestApproverStatuses.Pending }]));
 
         // in_order mode: this approver is sequence 2, but sequence 1 is still pending -> not actionable yet.
         repository.Setup(x => x.GetStateAsync(TenantId, notMyTurnRequest.Id, It.IsAny<CancellationToken>()))
@@ -85,8 +84,7 @@ public sealed class LeaveApprovalTeamActionSourceTests
                 [
                     new LeaveRequestApprover { ApproverEmployeeId = Guid.NewGuid(), SequenceOrder = 1, Status = LeaveRequestApproverStatuses.Pending },
                     new LeaveRequestApprover { ApproverEmployeeId = ApproverEmployeeId, SequenceOrder = 2, Status = LeaveRequestApproverStatuses.Pending },
-                ],
-                []));
+                ]));
 
         var source = new LeaveApprovalTeamActionSource(currentUser, employees, repository.Object);
 
@@ -117,8 +115,7 @@ public sealed class LeaveApprovalTeamActionSourceTests
             repository.Setup(x => x.GetStateAsync(TenantId, request.Id, It.IsAny<CancellationToken>()))
                 .ReturnsAsync(new LeaveApprovalState(
                     request, null, new Employee { Id = request.EmployeeId }, "Annual", "AN", LeaveApprovalModes.AnyOne,
-                    [new LeaveRequestApprover { ApproverEmployeeId = ApproverEmployeeId, SequenceOrder = 1, Status = LeaveRequestApproverStatuses.Pending }],
-                    []));
+                    [new LeaveRequestApprover { ApproverEmployeeId = ApproverEmployeeId, SequenceOrder = 1, Status = LeaveRequestApproverStatuses.Pending }]));
         }
 
         var source = new LeaveApprovalTeamActionSource(currentUser, employees, repository.Object);
@@ -146,8 +143,7 @@ public sealed class LeaveApprovalTeamActionSourceTests
             repository.Setup(x => x.GetStateAsync(TenantId, request.Id, It.IsAny<CancellationToken>()))
                 .ReturnsAsync(new LeaveApprovalState(
                     request, null, new Employee { Id = request.EmployeeId }, "Annual", "AN", LeaveApprovalModes.AnyOne,
-                    [new LeaveRequestApprover { ApproverEmployeeId = ApproverEmployeeId, SequenceOrder = 1, Status = LeaveRequestApproverStatuses.Pending }],
-                    []));
+                    [new LeaveRequestApprover { ApproverEmployeeId = ApproverEmployeeId, SequenceOrder = 1, Status = LeaveRequestApproverStatuses.Pending }]));
         }
 
         var source = new LeaveApprovalTeamActionSource(currentUser, employees, repository.Object);

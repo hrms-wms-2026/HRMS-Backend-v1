@@ -6,6 +6,8 @@ public static class WorkGraphNodeKinds
     public const string Project = "project";
     public const string Module = "module";
     public const string Task = "task";
+    /// <summary>Only the project-rooted graph draws sprints; the employee graph never emits one.</summary>
+    public const string Sprint = "sprint";
 }
 
 public static class WorkGraphModuleRoles

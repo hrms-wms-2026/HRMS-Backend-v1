@@ -272,6 +272,18 @@ public class WorkInboxSourceProviderTests
         });
     }
 
+    [Theory]
+    [InlineData("module_over_capacity")]
+    [InlineData("module_capacity_shortfall")]
+    public async Task Module_capacity_alerts_are_high_severity(string ruleCode)
+    {
+        _memberOf.Add(_a);
+        var alert = Alert(_a, subject: Me);
+        alert.RuleCode = ruleCode;
+
+        (await List()).Single(i => i.Id == alert.Id).Severity.Should().Be("high");
+    }
+
     [Fact]
     public async Task Resolved_alerts_and_alerts_on_achieved_modules_are_shown_but_not_pending()
     {

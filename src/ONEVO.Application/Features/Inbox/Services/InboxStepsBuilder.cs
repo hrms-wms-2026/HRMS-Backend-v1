@@ -83,8 +83,6 @@ public sealed class InboxStepsBuilder : IInboxStepsBuilder
     {
         InboxJournalActions.Approve => "Approved",
         InboxJournalActions.Reject => "Rejected",
-        InboxJournalActions.Forward => "Forwarded",
-        InboxJournalActions.RequestInfo => "Asked for more information",
         InboxJournalActions.Acknowledge => "Acknowledged",
         InboxJournalActions.Escalate => "Escalated",
         InboxJournalActions.Cancel => "Cancelled",

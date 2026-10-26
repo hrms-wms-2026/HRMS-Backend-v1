@@ -48,7 +48,7 @@ public sealed class LeaveRequestRangeEditor
         bool allowLonger = false)
     {
         var request = state.Request;
-        if (request.Status is not (LeaveRequestStatuses.Pending or LeaveRequestStatuses.InformationRequested))
+        if (request.Status != LeaveRequestStatuses.Pending)
             return Result<(LeaveRangeSnapshot, LeaveRangeSnapshot)>.Conflict(NotPending);
         if (startAt.Year != request.StartAt.Year)
             return Result<(LeaveRangeSnapshot, LeaveRangeSnapshot)>.UnprocessableEntity(OtherYear);

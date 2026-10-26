@@ -2,6 +2,7 @@ using FluentAssertions;
 using Moq;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Inbox.OutboxHandlers;
+using ONEVO.Application.Features.SharedPlatform.Notifications.Delivery;
 using ONEVO.Application.Features.WorkManagement.Common.OutboxHandlers;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Notifications.RepositoryInterfaces;
@@ -27,8 +28,14 @@ public class WorkNotificationEngineTests
     private readonly Mock<IOutboxWriter> _outbox = new();
     private readonly Mock<ICallerIdentityResolver> _identity = new();
     private readonly Mock<IMilestoneMembershipCoordinator> _membership = new();
+    private readonly Mock<INotificationOrchestrator> _orchestrator = new();
+    private readonly List<NotificationDispatchRequest> _dispatched = new();
     private readonly List<WorkNotificationLog> _written = new();
-    private readonly List<WorkNotificationPayload> _enqueued = new();
+    private readonly List<WorkNotificationPayload> _legacyEnqueued = new();
+    /// <summary>What reached the orchestrator, in the legacy payload's shape (all engine events are cut over).</summary>
+    private List<WorkNotificationPayload> _enqueued => _dispatched
+        .Select(r => new WorkNotificationPayload(r.TenantId, r.RecipientUserId, r.EventKey, new Dictionary<string, string>(r.Variables), r.RelatedEntityType, r.RelatedEntityId, r.EventId))
+        .ToList();
     private readonly List<InboxChangedPayload> _inboxChanges = new();
 
     public WorkNotificationEngineTests()
@@ -36,16 +43,18 @@ public class WorkNotificationEngineTests
         _logs.Setup(x => x.AddAsync(It.IsAny<WorkNotificationLog>(), It.IsAny<CancellationToken>()))
             .Callback<WorkNotificationLog, CancellationToken>((l, _) => _written.Add(l)).Returns(Task.CompletedTask);
         _outbox.Setup(x => x.EnqueueAsync(It.IsAny<string>(), It.IsAny<WorkNotificationPayload>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
-            .Callback<string, WorkNotificationPayload, Guid?, CancellationToken>((_, p, _, _) => _enqueued.Add(p)).Returns(Task.CompletedTask);
+            .Callback<string, WorkNotificationPayload, Guid?, CancellationToken>((_, p, _, _) => _legacyEnqueued.Add(p)).Returns(Task.CompletedTask);
         _outbox.Setup(x => x.EnqueueAsync(OutboxMessageTypes.InboxChanged, It.IsAny<InboxChangedPayload>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
             .Callback<string, InboxChangedPayload, Guid?, CancellationToken>((_, p, _, _) => _inboxChanges.Add(p)).Returns(Task.CompletedTask);
         _identity.Setup(x => x.ResolveDisplayNamesByEmployeeIdAsync(TenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Dictionary<Guid, string> { [Actor] = "Bala" });
         _membership.Setup(x => x.GetActiveAssigneeAsync(TenantId, Owner, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Employee { Id = Owner, UserId = OwnerUser });
+        _orchestrator.Setup(x => x.EnqueueAsync(It.IsAny<NotificationDispatchRequest>(), It.IsAny<CancellationToken>()))
+            .Callback<NotificationDispatchRequest, CancellationToken>((r, _) => _dispatched.Add(r)).Returns(Task.CompletedTask);
     }
 
-    private WorkNotificationEngine Build() => new(_logs.Object, _outbox.Object, _identity.Object, _membership.Object);
+    private WorkNotificationEngine Build() => new(_logs.Object, _outbox.Object, _identity.Object, _membership.Object, _orchestrator.Object);
 
     private static WorkNotificationEvent Event(string kind, params Guid[] recipients) => new(
         TenantId, ProjectId, Actor, kind, WorkActionTypes.TaskEdit, WorkTargetTypes.Task,
@@ -95,9 +104,16 @@ public class WorkNotificationEngineTests
         var e = Event(WorkNotificationKinds.Requested, Owner);
         await Build().NotifyAsync(e);
 
-        _enqueued[0].TemplateCode.Should().Be("work_approval_requested");
-        _enqueued[0].RelatedEntityType.Should().Be("work_approval_request");
-        _enqueued[0].RelatedEntityId.Should().Be(e.ApprovalRequestId);
+        // Orchestrator-owned: routed per tenant settings, no legacy in-app payload.
+        _legacyEnqueued.Should().BeEmpty();
+        var request = _dispatched.Should().ContainSingle().Subject;
+        request.EventKey.Should().Be("work_approval_requested");
+        request.TenantId.Should().Be(TenantId);
+        request.RecipientUserId.Should().Be(OwnerUser);
+        request.EventId.Should().NotBeEmpty();
+        request.Variables["actorName"].Should().Be("Bala");
+        request.RelatedEntityType.Should().Be("work_approval_request");
+        request.RelatedEntityId.Should().Be(e.ApprovalRequestId);
         _written[0].ApprovalRequestId.Should().Be(e.ApprovalRequestId);
     }
 
@@ -112,6 +128,19 @@ public class WorkNotificationEngineTests
 
         _enqueued[0].TemplateCode.Should().Be("work_approval_decided");
         _enqueued[0].Placeholders["decision"].Should().Be(decision);
+    }
+
+    [Fact]
+    public async Task Requested_ToSeveralRecipients_SharesOneStableEventId()
+    {
+        var second = Guid.NewGuid();
+        _membership.Setup(x => x.GetActiveAssigneeAsync(TenantId, second, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Employee { Id = second, UserId = Guid.NewGuid() });
+
+        await Build().NotifyAsync(Event(WorkNotificationKinds.Requested, Owner, second));
+
+        _dispatched.Should().HaveCount(2);
+        _dispatched.Select(d => d.EventId).Distinct().Should().ContainSingle();
     }
 
     [Fact]

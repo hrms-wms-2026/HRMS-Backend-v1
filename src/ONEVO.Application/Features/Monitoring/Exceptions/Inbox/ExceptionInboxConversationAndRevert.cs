@@ -9,6 +9,7 @@ using ONEVO.Application.Features.Monitoring.Exceptions.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.Exceptions.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Domain.Features.Inbox.Entities;
+using ONEVO.Domain.Features.Monitoring.Exceptions.Entities;
 
 namespace ONEVO.Application.Features.Monitoring.Exceptions.Inbox;
 
@@ -51,7 +52,9 @@ public sealed class ExceptionConversationSubjectResolver : IConversationSubjectR
             && await policy.InitialAsync(tenantId, new EscalationContext(subject, exception.Type.ToString(), [], exception.EmployeeId, null, null), ct)
                 is EscalationTarget.Employees reviewers)
             people.AddRange(reviewers.Recipients.Where(r => r.EmployeeId is not null).Select(r => r.EmployeeId!.Value));
-        return new ConversationSubject(people.Distinct().ToList(), exception.Title, null, SubjectEmployeeId: exception.EmployeeId);
+        // An identity case's face checks sit in its chat where the case was raised, so people can reply to them.
+        return new ConversationSubject(people.Distinct().ToList(), exception.Title, null, SubjectEmployeeId: exception.EmployeeId,
+            EvidenceAt: exception.Type == ExceptionType.IdentityAnomaly ? exception.DetectedAt : null);
     }
 
     public Task<bool> CanViewAsync(Guid tenantId, ItemRef subject, Guid employeeId, CancellationToken ct)

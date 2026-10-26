@@ -60,6 +60,7 @@ builder.Services.Configure<ONEVO.Api.Configuration.TrayReleasesOptions>(
     builder.Configuration.GetSection(ONEVO.Api.Configuration.TrayReleasesOptions.SectionName));
 
 builder.Services.AddInfrastructure(builder.Configuration);
+ONEVO.Api.Dashboard.Widgets.WidgetDataProviderRegistration.AddDashboardWidgetDataProviders(builder.Services);
 builder.Services.AddMemoryCache();
 builder.Services.AddControllers()
     .AddJsonOptions(options => options.JsonSerializerOptions.Converters.Add(new TimeOnlyHhMmJsonConverter()));
