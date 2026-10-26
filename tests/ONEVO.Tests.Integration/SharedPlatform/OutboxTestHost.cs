@@ -148,7 +148,9 @@ public sealed class OutboxTestHost
         services.AddScoped(_ => new DomainEventDispatchInterceptor(new NoOpPublisher()));
         services.AddDbContext<ApplicationDbContext>((sp, options) =>
         {
-            options.UseNpgsql(AppConnectionString)
+            // The retrying execution strategy, as production registers it (DependencyInjection): it forbids a
+            // transaction the processor starts outside the strategy, so leaving it out would hide that bug.
+            options.UseNpgsql(AppConnectionString, npgsql => npgsql.EnableRetryOnFailure(3))
                    .UseSnakeCaseNamingConvention()
                    .AddInterceptors(sp.GetRequiredService<TenantRlsInterceptor>());
         });
