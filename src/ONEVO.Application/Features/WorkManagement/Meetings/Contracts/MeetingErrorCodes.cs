@@ -22,6 +22,7 @@ public static class MeetingErrorCodes
     public const string MeetingsDisabled = "meetings_disabled";                    // 503
     public const string MeetingsReadOnly = "meetings_read_only";                   // 409
     public const string BulkInviteUnavailable = "bulk_invite_unavailable";         // 409
+    public const string BulkSelectionTooLarge = "meeting_bulk_selection_too_large";
 
     // Approval (409)
     public const string ApprovalAlreadyDecided = "approval_already_decided";

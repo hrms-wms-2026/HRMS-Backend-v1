@@ -75,6 +75,10 @@ public sealed class MeetingBulkInviteService
     /// <summary>The same "active" the rest of the Meetings feature uses: working, or on leave.</summary>
     private static readonly HashSet<int> ActiveStatuses = [EmploymentStatusIds.Active, EmploymentStatusIds.OnLeave];
 
+    /// <summary>The most ids one list of the request (departments, managers or people) may carry. It bounds the
+    /// request, not the meeting: one department can still expand to more people than this.</summary>
+    public const int MaxIdsPerList = 1000;
+
     private readonly IOptions<MeetingsOptions> _options;
     private readonly IEmployeeRepository _employees;
     private readonly IDepartmentRepository _departments;
@@ -110,6 +114,12 @@ public sealed class MeetingBulkInviteService
             return Result<MeetingBulkPreviewResponse>.Failure(
                 "Choose Microsoft Teams or Zoom.", 400, MeetingErrorCodes.PlatformInvalid);
 
+        if (request.DepartmentIds.Count > MaxIdsPerList || request.ManagerEmployeeIds.Count > MaxIdsPerList
+            || request.EmployeeIds.Count > MaxIdsPerList)
+            return Result<MeetingBulkPreviewResponse>.Failure(
+                $"Pick at most {MaxIdsPerList} departments, managers or people at a time.", 400,
+                MeetingErrorCodes.BulkSelectionTooLarge);
+
         var alreadyInvited = new HashSet<Guid> { callerEmployeeId };
         if (request.SeriesId is Guid seriesId)
         {
@@ -141,8 +151,9 @@ public sealed class MeetingBulkInviteService
             var departmentMembers = await _employees.ListByDepartmentIdsAsync(tenantId, request.DepartmentIds, ct);
             groups.Add(departmentMembers.Select(e => e.Id).ToList());
         }
-        foreach (var managerEmployeeId in request.ManagerEmployeeIds.Distinct())
-            groups.Add(await _employees.ListDirectReportEmployeeIdsAsync(tenantId, managerEmployeeId, ct));
+        if (request.ManagerEmployeeIds.Count > 0)
+            groups.Add(await _employees.ListDirectReportEmployeeIdsAsync(
+                tenantId, request.ManagerEmployeeIds.Distinct().ToList(), ct));
 
         var candidates = request.EmployeeIds
             .Concat(groups.SelectMany(g => g))

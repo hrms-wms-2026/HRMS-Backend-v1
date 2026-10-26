@@ -172,6 +172,59 @@ public sealed class MeetingBulkPreviewIntegrationTests
     }
 
     [Fact]
+    public async Task DirectReports_OfSeveralManagers_AreReadTogether()
+    {
+        var w = await SeedAsync();
+        Guid secondManager, secondReport, grandReport;
+        await using (var db = w.H.NewContext())
+        {
+            secondManager = w.H.AddEmployee(db).Id;
+            secondReport = w.H.AddEmployee(db).Id;
+            grandReport = w.H.AddEmployee(db).Id;
+            db.EmployeeHierarchyClosures.AddRange(
+                new EmployeeHierarchyClosure
+                {
+                    TenantId = w.H.TenantId, AncestorEmployeeId = secondManager, DescendantEmployeeId = secondReport, Depth = 1,
+                    SourcePositionAssignmentId = Guid.NewGuid(), GeneratedAt = DateTimeOffset.UtcNow,
+                },
+                // Two levels below the first manager: not a direct report, so not part of their team.
+                new EmployeeHierarchyClosure
+                {
+                    TenantId = w.H.TenantId, AncestorEmployeeId = w.Manager, DescendantEmployeeId = grandReport, Depth = 2,
+                    SourcePositionAssignmentId = Guid.NewGuid(), GeneratedAt = DateTimeOffset.UtcNow,
+                });
+            await db.SaveChangesAsync();
+        }
+
+        await using var check = w.H.NewContext();
+        var reports = await new CommonEfEmployeeRepository(check)
+            .ListDirectReportEmployeeIdsAsync(w.H.TenantId, [w.Manager, secondManager], CancellationToken.None);
+
+        Assert.Equal(new[] { w.DirectReport, secondReport }.Order(), reports.Order());
+    }
+
+    [Theory]
+    [InlineData("departments")]
+    [InlineData("managers")]
+    [InlineData("people")]
+    public async Task Preview_AListLongerThanTheLimit_Is400(string list)
+    {
+        var w = await SeedAsync();
+        await using var db = w.H.NewContext();
+        var tooMany = Enumerable.Range(0, MeetingBulkInviteService.MaxIdsPerList + 1).Select(_ => Guid.NewGuid()).ToList();
+
+        var result = await Service(db, new MeetingsOptions { Create = true, BulkInvite = true }, w)
+            .PreviewAsync(w.H.TenantId, w.Organizer, list switch
+            {
+                "departments" => Request(w, departments: tooMany),
+                "managers" => Request(w, managers: tooMany),
+                _ => Request(w, people: tooMany),
+            }, CancellationToken.None);
+
+        Assert.Equal((400, MeetingErrorCodes.BulkSelectionTooLarge), (result.StatusCode, result.ErrorCode));
+    }
+
+    [Fact]
     public async Task Preview_CountsAlreadyInvited_IncludingTheOrganizer()
     {
         var w = await SeedAsync();

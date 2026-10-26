@@ -56,11 +56,11 @@ public class EfEmployeeRepository : IEmployeeRepository
     }
 
     public async Task<IReadOnlyList<Guid>> ListDirectReportEmployeeIdsAsync(
-        Guid tenantId, Guid managerEmployeeId, CancellationToken ct = default)
+        Guid tenantId, IReadOnlyCollection<Guid> managerEmployeeIds, CancellationToken ct = default)
         // The materialized reporting-line closure: depth 1 is the direct report. WorkManagement may not
         // reference IEmployeeHierarchyClosureRepository (My Team spec section 10), so the read is exposed
-        // on the common interface; the query itself is shared with that repository.
-        => await EmployeeHierarchyClosureQueries.ListDirectReportEmployeeIdsAsync(_db, tenantId, managerEmployeeId, ct);
+        // on the common interface; the query itself lives beside that repository's.
+        => await EmployeeHierarchyClosureQueries.ListDirectReportEmployeeIdsAsync(_db, tenantId, managerEmployeeIds, ct);
 
     public async Task<IReadOnlyList<Guid>> ListAncestorChainEmployeeIdsAsync(
         Guid tenantId, Guid employeeId, CancellationToken ct = default)
