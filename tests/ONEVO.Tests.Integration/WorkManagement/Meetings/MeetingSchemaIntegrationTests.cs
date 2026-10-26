@@ -15,7 +15,9 @@ namespace ONEVO.Tests.Integration.WorkManagement.Meetings;
 /// deferred pairing/placement triggers, RLS, and a safe up/down over existing calendar data.</summary>
 public sealed class MeetingSchemaIntegrationTests
 {
-    private const string MigrationBeforeFoundation = "20261018080913_AddMeetingProvisioningState";
+    // The migration directly before the foundation. P-1's AddOutboxClaimLease sorts between AddMeetingProvisioningState
+    // and the foundation; scripting from any earlier migration would also replay it.
+    private const string MigrationBeforeFoundation = "20261018085329_AddOutboxClaimLease";
     private const string Foundation = "20261018092918_AddMeetingWorkItemsFoundation";
 
     /// <summary>Runs AddMeetingWorkItemsFoundation's own Down (or Up) script against the test's database. Migrating the
