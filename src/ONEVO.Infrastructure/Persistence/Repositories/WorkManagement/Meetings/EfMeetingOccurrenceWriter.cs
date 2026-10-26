@@ -36,6 +36,11 @@ public sealed class EfMeetingOccurrenceWriter : IMeetingOccurrenceWriter
         {
             throw new MeetingBusyException(seriesId, ex);
         }
+
+        // The 5 s bound is for the series lock only. The rest of the transaction (e.g. the project row behind the
+        // meeting number, which task creates take too) waits like any other write instead of failing with an
+        // unmapped lock_not_available.
+        await _db.Database.ExecuteSqlRawAsync("SET LOCAL lock_timeout = DEFAULT", ct);
     }
 
     public async Task<Guid?> TryMaterializeAsync(MeetingOccurrenceDraft d, CancellationToken ct)

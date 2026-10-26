@@ -192,6 +192,34 @@ public sealed class MeetingOccurrenceWriterIntegrationTests
     }
 
     [Fact]
+    public async Task TheSeriesLockTimeout_EndsWithTheLock_SoALaterRowWaitIsNotCutAtFiveSeconds()
+    {
+        // The 5 s timeout bounds the wait for the series lock only. A meeting transaction then takes the project row
+        // (the meeting number) like any task create; when that row is busy for longer, it waits instead of failing
+        // with an unmapped lock_not_available (55P03, a 500).
+        var f = await SeedAsync();
+        await using var holder = new NpgsqlConnection(f.H.ConnectionString);
+        await holder.OpenAsync();
+        await using var holderTx = await holder.BeginTransactionAsync();
+        await using (var lockRow = new NpgsqlCommand("SELECT 1 FROM projects WHERE id = @id FOR UPDATE", holder, holderTx))
+        {
+            lockRow.Parameters.AddWithValue("id", f.Series.ProjectId);
+            await lockRow.ExecuteNonQueryAsync();
+        }
+
+        await using var db = f.H.NewContext();
+        await using var tx = await db.Database.BeginTransactionAsync();
+        await new EfMeetingOccurrenceWriter(db).LockSeriesAsync(f.H.TenantId, f.Series.Id, CancellationToken.None);
+        var release = Task.Delay(TimeSpan.FromSeconds(6)).ContinueWith(_ => holderTx.CommitAsync()).Unwrap();
+        var updated = await db.Database.ExecuteSqlInterpolatedAsync(
+            $"UPDATE projects SET next_meeting_number = next_meeting_number WHERE id = {f.Series.ProjectId}");
+        await release;
+        await tx.CommitAsync();
+
+        Assert.Equal(1, updated);
+    }
+
+    [Fact]
     public async Task SixteenParallelWriters_WithTheLock_NoAborts()
     {
         var f = await SeedAsync();
