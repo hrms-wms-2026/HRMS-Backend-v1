@@ -7,6 +7,7 @@ using ONEVO.Application.Features.WorkManagement.Planner.Contracts;
 using ONEVO.Application.Features.WorkManagement.Planner.Services;
 using ONEVO.Domain.Features.Calendar.Entities;
 using ONEVO.Domain.Features.CoreHr.Entities;
+using ONEVO.Domain.Features.TimeAttendance.Entities;
 using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
 using ONEVO.Infrastructure.Persistence;
 using ONEVO.Infrastructure.Persistence.Repositories;
@@ -233,6 +234,37 @@ public sealed class PlannerServiceIntegrationTests
 
         var meeting = Assert.Single(day.Meetings);
         Assert.Equal((60, 60), (meeting.PlannedMinutes, meeting.ActualMinutes));
+    }
+
+    [Fact]
+    public async Task The_day_carries_attendance_clocked_minutes()
+    {
+        var w = await SeedAsync();
+        await using (var db = w.H.NewContext())
+        {
+            db.AttendanceRecords.Add(new AttendanceRecord
+            {
+                Id = Guid.NewGuid(), TenantId = w.H.TenantId, EmployeeId = w.Employee, Date = Today.AddDays(-1),
+                ActualStart = Local(9, dayOffset: -1).ToUniversalTime(), ActualEnd = Local(17, dayOffset: -1).ToUniversalTime(),
+                WorkedMinutes = 420, BreakMinutes = 60, Status = AttendanceRecord.StatusClockedOut,
+                CreatedAt = DateTimeOffset.UtcNow, UpdatedAt = DateTimeOffset.UtcNow,
+            });
+            db.AttendanceRecords.Add(new AttendanceRecord
+            {
+                Id = Guid.NewGuid(), TenantId = w.H.TenantId, EmployeeId = w.Employee, Date = Today,
+                ActualStart = Local(0).ToUniversalTime(), BreakMinutes = 15, Status = AttendanceRecord.StatusActive,
+                CreatedAt = DateTimeOffset.UtcNow, UpdatedAt = DateTimeOffset.UtcNow,
+            });
+            await db.SaveChangesAsync();
+        }
+
+        await using var ctx = w.H.NewContext();
+        var service = Service(ctx, now: Local(1, 30));
+        var today = (await service.GetDayAsync(w.H.TenantId, w.Employee, w.Employee, null, default)).Value!;
+        var yesterday = (await service.GetDayAsync(w.H.TenantId, w.Employee, w.Employee, Today.AddDays(-1), default)).Value!;
+
+        Assert.Equal(75, today.AttendanceMinutes);       // still clocked in: 90 min since clock-in minus a 15 min break
+        Assert.Equal(420, yesterday.AttendanceMinutes);  // clocked out: the recorded worked minutes
     }
 
     [Fact]

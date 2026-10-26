@@ -158,6 +158,7 @@ public sealed class PlannerService
         var sessions = await _planner.ListSessionsAsync(tenantId, employeeId, start, end, ct);
         var tasks = await _planner.GetTasksAsync(tenantId, employeeId, blocks.Select(b => b.TaskId).Distinct().ToList(), ct);
         var due = await _planner.ListDueAssignedTasksAsync(tenantId, employeeId, day, ct);
+        var attendance = await _planner.GetAttendanceAsync(tenantId, employeeId, day, ct);
 
         var actualByTask = sessions.GroupBy(s => s.TaskId).ToDictionary(g => g.Key,
             g => PlannerActuals.TaskMinutes(g.Select(s => (s.ClockInAt, s.ClockOutAt)), start, end, now));
@@ -184,7 +185,7 @@ public sealed class PlannerService
         var actual = blocks.Select(b => b.TaskId).Distinct().Sum(id => actualByTask.GetValueOrDefault(id)) + meetingViews.Sum(m => m.ActualMinutes);
         return new PlannerDayResponse(day, zone.Id, editable, blockViews, meetingViews,
             due.Select(t => new PlannerDueTaskView(t.TaskId, t.Title, t.DueDate, t.EstimatedHours)).ToList(),
-            new PlannerTotals(planned, actual));
+            new PlannerTotals(planned, actual), AttendanceMinutes(attendance, now));
     }
 
     /// <summary>A meeting's minutes on this day only: its overlap with the day, or one workday when an all-day meeting
@@ -197,6 +198,16 @@ public sealed class PlannerService
         if (to <= from)
             return 0;
         return isAllDay ? MeetingPersonHours.AllDayMinutesPerDay : (int)Math.Round((to - from).TotalMinutes);
+    }
+
+    /// <summary>Worked minutes once clocked out; while still clocked in, the time since clock-in less breaks so far.</summary>
+    private static int AttendanceMinutes(PlannerAttendance? attendance, DateTimeOffset now)
+    {
+        if (attendance is null)
+            return 0;
+        if (attendance.ActualStart is { } start && attendance.ActualEnd is null)
+            return Math.Max(0, (int)Math.Round((now - start).TotalMinutes) - attendance.BreakMinutes);
+        return attendance.WorkedMinutes;
     }
 
     private async Task<Zone?> ZoneOfAsync(Guid tenantId, Guid employeeId, CancellationToken ct)

@@ -72,6 +72,12 @@ public sealed class EfPlannerRepository : IPlannerRepository
             .ToListAsync(ct);
     }
 
+    public async Task<PlannerAttendance?> GetAttendanceAsync(Guid tenantId, Guid employeeId, DateOnly date, CancellationToken ct = default)
+        => await _db.AttendanceRecords.AsNoTracking()
+            .Where(r => r.TenantId == tenantId && r.EmployeeId == employeeId && r.Date == date)
+            .Select(r => new PlannerAttendance(r.ActualStart, r.ActualEnd, r.WorkedMinutes, r.BreakMinutes))
+            .FirstOrDefaultAsync(ct);
+
     public void AddBlock(PlannedTaskBlock block) => _db.PlannedTaskBlocks.Add(block);
 
     public void RemoveBlock(PlannedTaskBlock block) => _db.PlannedTaskBlocks.Remove(block);

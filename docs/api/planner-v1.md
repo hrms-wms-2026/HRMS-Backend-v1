@@ -23,7 +23,7 @@ Every call returns the day (`PlannerDayResponse`); writes return the caller's to
   "meetings": [ { "taskId": "…", "seriesId": "…", "originalStart": "…", "startAt": "…", "endAt": "…", "title": "Weekly sync",
                   "isPrivate": false, "cancelled": false, "declined": false, "plannedMinutes": 60, "actualMinutes": 60 } ],
   "dueTasks": [ { "taskId": "…", "title": "…", "dueDate": "2026-11-02", "estimatedHours": 5 } ],
-  "totals":   { "plannedMinutes": 180, "actualMinutes": 105 } }
+  "totals":   { "plannedMinutes": 180, "actualMinutes": 105 }, "attendanceMinutes": 450 }
 ```
 
 ## Rules
@@ -35,6 +35,8 @@ Every call returns the day (`PlannerDayResponse`); writes return the caller's to
   duration once it has ended unless declined or cancelled (all-day: 8 h per day). Meetings are the Phase 2 task meetings
   the employee organizes or attends.
 - A manager sees a private meeting as "Private meeting" (spec D17).
+- `attendanceMinutes`: the attendance clock for that day, shown beside planned vs actual: the recorded worked minutes once
+  clocked out, or the time since clock-in minus breaks while still clocked in; 0 with no attendance record.
 
 ## Errors (`ProblemDetails.code`)
 

@@ -31,5 +31,8 @@ public sealed record PlannerDueTaskView(Guid TaskId, string Title, DateOnly? Due
 public sealed record PlannerTotals(int PlannedMinutes, int ActualMinutes);
 
 /// <param name="Editable">True only for the employee's own today.</param>
+/// <param name="AttendanceMinutes">The attendance clock for that day: the recorded worked minutes once clocked out, or the
+/// time since clock-in minus breaks while still clocked in; 0 with no attendance record.</param>
 public sealed record PlannerDayResponse(DateOnly Date, string Timezone, bool Editable, IReadOnlyList<PlannerBlockView> Blocks,
-    IReadOnlyList<PlannerMeetingView> Meetings, IReadOnlyList<PlannerDueTaskView> DueTasks, PlannerTotals Totals);
+    IReadOnlyList<PlannerMeetingView> Meetings, IReadOnlyList<PlannerDueTaskView> DueTasks, PlannerTotals Totals,
+    int AttendanceMinutes);

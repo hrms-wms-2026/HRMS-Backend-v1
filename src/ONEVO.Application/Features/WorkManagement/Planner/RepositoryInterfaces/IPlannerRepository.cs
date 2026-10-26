@@ -8,6 +8,8 @@ public sealed record PlannerTaskInfo(Guid TaskId, string Title, DateOnly? DueDat
 
 public sealed record PlannerSession(Guid TaskId, DateTimeOffset ClockInAt, DateTimeOffset? ClockOutAt);
 
+public sealed record PlannerAttendance(DateTimeOffset? ActualStart, DateTimeOffset? ActualEnd, int WorkedMinutes, int BreakMinutes);
+
 /// <summary>Day planner reads and writes (2026-10-26 design, Part B). Never calls SaveChangesAsync.</summary>
 public interface IPlannerRepository
 {
@@ -31,6 +33,9 @@ public interface IPlannerRepository
     /// <summary>The employee's task clocking sessions overlapping [from, to).</summary>
     Task<IReadOnlyList<PlannerSession>> ListSessionsAsync(Guid tenantId, Guid employeeId, DateTimeOffset from, DateTimeOffset to,
         CancellationToken ct = default);
+
+    /// <summary>The employee's attendance record for that date, if any.</summary>
+    Task<PlannerAttendance?> GetAttendanceAsync(Guid tenantId, Guid employeeId, DateOnly date, CancellationToken ct = default);
 
     void AddBlock(PlannedTaskBlock block);
     void RemoveBlock(PlannedTaskBlock block);
