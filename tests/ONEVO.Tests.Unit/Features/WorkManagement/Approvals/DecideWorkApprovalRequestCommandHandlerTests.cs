@@ -6,6 +6,8 @@ using ONEVO.Application.Features.WorkManagement.Approvals.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Approvals.Services;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Hierarchy;
+using ONEVO.Application.Features.WorkManagement.Meetings;
+using ONEVO.Application.Features.WorkManagement.Meetings.Contracts;
 using ONEVO.Application.Features.WorkManagement.Notifications.Services;
 using ONEVO.Domain.Features.WorkManagement.Approvals.Entities;
 using ONEVO.Domain.Features.WorkManagement.Notifications.Entities;
@@ -239,6 +241,22 @@ public class DecideWorkApprovalRequestCommandHandlerTests
         _request.Status.Should().Be(WorkApprovalRequestStatuses.Pending);
         _uow.SaveCallCount.Should().Be(0);
         _notifications.Verify(x => x.NotifyAsync(It.IsAny<WorkNotificationEvent>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ApplyingWhileTheMeetingIsLocked_Returns409MeetingBusy_AndLeavesTheRequestPending()
+    {
+        // An approved meeting.move takes the series lock; another change to the same meeting holds it past the lock
+        // timeout. The approver gets the meeting's "being changed" answer to retry, not a server error.
+        Caller(A);
+        _applier.Setup(x => x.ApplyAsync(It.IsAny<ApprovalApplyContext>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new MeetingBusyException(Guid.NewGuid(), new TimeoutException()));
+
+        var result = await Build().Handle(Cmd(_request.Id, WorkApprovalDecision.Approve), default);
+
+        (result.StatusCode, result.ErrorCode).Should().Be((409, MeetingErrorCodes.Busy));
+        _request.Status.Should().Be(WorkApprovalRequestStatuses.Pending);
+        _uow.SaveCallCount.Should().Be(0);
     }
 
     [Fact]

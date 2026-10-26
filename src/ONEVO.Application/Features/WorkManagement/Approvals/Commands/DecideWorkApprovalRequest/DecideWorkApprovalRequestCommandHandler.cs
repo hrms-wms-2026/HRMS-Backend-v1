@@ -9,6 +9,8 @@ using ONEVO.Application.Features.WorkManagement.Approvals.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Approvals.Services;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Hierarchy;
+using ONEVO.Application.Features.WorkManagement.Meetings;
+using ONEVO.Application.Features.WorkManagement.Meetings.Services;
 using ONEVO.Application.Features.WorkManagement.Notifications.Services;
 using ONEVO.Domain.Features.WorkManagement.Approvals.Entities;
 using ONEVO.Domain.Features.WorkManagement.Notifications.Entities;
@@ -96,6 +98,12 @@ public sealed class DecideWorkApprovalRequestCommandHandler
         catch (ApprovalAlreadyDecidedException)
         {
             return Result<WorkApprovalRequestResponse>.Conflict("This request has already been decided.");
+        }
+        catch (MeetingBusyException)
+        {
+            // Applying a meeting.create/meeting.move takes the series lock; another change held it past the lock
+            // timeout. The transaction rolled back and the request is still pending, so the approver can retry.
+            return MeetingGuard.Busy<WorkApprovalRequestResponse>();
         }
 
         if (!result.IsSuccess)
