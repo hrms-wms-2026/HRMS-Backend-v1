@@ -10013,6 +10013,10 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("attempt_count");
 
+                    b.Property<DateTimeOffset?>("AttemptStartedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("attempt_started_at");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
@@ -10031,6 +10035,15 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasMaxLength(2000)
                         .HasColumnType("character varying(2000)")
                         .HasColumnName("last_error");
+
+                    b.Property<string>("LockedBy")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("locked_by");
+
+                    b.Property<DateTimeOffset?>("LockedUntil")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("locked_until");
 
                     b.Property<DateTimeOffset>("NextAttemptAt")
                         .HasColumnType("timestamp with time zone")
@@ -10063,6 +10076,10 @@ namespace ONEVO.Infrastructure.Migrations
                         .IsUnique()
                         .HasDatabaseName("ix_outbox_messages_deduplication_key")
                         .HasFilter("deduplication_key IS NOT NULL");
+
+                    b.HasIndex("LockedUntil")
+                        .HasDatabaseName("ix_outbox_messages_processing_locked_until")
+                        .HasFilter("status = 'processing'");
 
                     b.HasIndex("Status", "NextAttemptAt")
                         .HasDatabaseName("ix_outbox_messages_status_next_attempt_at");

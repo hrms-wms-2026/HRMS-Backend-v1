@@ -830,6 +830,9 @@ public static class DependencyInjection
         services.AddScoped<IOutboxWriter, Services.SharedPlatform.Outbox.OutboxWriter>();
         // One instance at a time for singleton background jobs (SCL-01); the instance id is fixed per process.
         services.AddSingleton<ONEVO.Application.Common.ServiceInterfaces.IJobLeaseService, Services.SharedPlatform.Jobs.JobLeaseService>();
+        // Per-scope "which outbox message is being dispatched" - feeds provider idempotency keys.
+        services.AddScoped<Services.SharedPlatform.Outbox.OutboxDispatchContext>();
+        services.AddScoped<IOutboxDispatchContext>(sp => sp.GetRequiredService<Services.SharedPlatform.Outbox.OutboxDispatchContext>());
         services.AddScoped<INotificationDispatcher, Services.SharedPlatform.Notifications.NotificationDispatcher>();
         services.AddSingleton<ONEVO.Application.Features.SharedPlatform.Notifications.Rendering.INotificationTemplateRenderer, Services.SharedPlatform.Notifications.NotificationTemplateRenderer>();
         services.AddScoped<ONEVO.Application.Features.SharedPlatform.Notifications.RepositoryInterfaces.INotificationTemplateStore, Persistence.Repositories.SharedPlatform.EfNotificationTemplateStore>();
