@@ -19,7 +19,8 @@ public sealed class CreateEventMeetingCommandHandler(
     EventMeetingLinkService links,
     ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces.IEmployeeRepository employees,
     IDateTimeProvider clock,
-    IUnitOfWork unitOfWork)
+    IUnitOfWork unitOfWork,
+    CalendarMeetingGuard? meetingGuard = null)
     : IRequestHandler<CreateEventMeetingCommand, Result<CreateEventMeetingResult>>
 {
     public async Task<Result<CreateEventMeetingResult>> Handle(CreateEventMeetingCommand request, CancellationToken ct)
@@ -33,6 +34,8 @@ public sealed class CreateEventMeetingCommandHandler(
             return Result<CreateEventMeetingResult>.NotFound("Calendar event not found.");
         if (existing.CreatedById != currentUser.UserId)
             return Result<CreateEventMeetingResult>.Forbidden("Only the event organizer can add a meeting.");
+        if (meetingGuard is not null && await meetingGuard.RefusesBecomingMeetingAsync(tenantId, existing, ct))
+            return CalendarMeetingGuard.Refusal<CreateEventMeetingResult>();
 
         var organizer = await employees.GetDefaultForUserAsync(tenantId, currentUser.UserId, ct);
         var organizerName = organizer is null ? "Someone" : $"{organizer.FirstName} {organizer.LastName}";

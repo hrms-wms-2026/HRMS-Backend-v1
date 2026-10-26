@@ -1,3 +1,5 @@
+using ONEVO.Application.Features.WorkManagement.Meetings;
+using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using ONEVO.Application.Common.Models;
@@ -65,6 +67,22 @@ public sealed class CreateEventMeetingCommandHandlerTests
             _notifications.Object, _unitOfWork.Object, _clock.Object, Mock.Of<IOutboxWriter>(), _employees.Object);
         return new CreateEventMeetingCommandHandler(
             _currentUser.Object, _events.Object, _connections.Object, _meetings.Object, links, _employees.Object, _clock.Object, _unitOfWork.Object);
+    }
+
+    [Fact]
+    public async Task With_meetings_on_a_personal_event_cannot_gain_a_meeting_link()
+    {
+        var sut = BuildSut();
+        var evt = new CalendarEvent { Id = Guid.NewGuid(), TenantId = TenantId, Title = "Focus", CreatedById = UserId,
+            StartDate = DateTimeOffset.UtcNow.AddHours(1), EndDate = DateTimeOffset.UtcNow.AddHours(2) };
+        _events.Setup(e => e.GetTrackedByIdForTenantAsync(TenantId, evt.Id, It.IsAny<CancellationToken>())).ReturnsAsync(evt);
+        var guarded = new CreateEventMeetingCommandHandler(_currentUser.Object, _events.Object, _connections.Object, _meetings.Object,
+            null!, _employees.Object, _clock.Object, _unitOfWork.Object, new CalendarMeetingGuard(Options.Create(new MeetingsOptions { Create = true }), _events.Object));
+
+        var result = await guarded.Handle(new CreateEventMeetingCommand(evt.Id, "zoom"), CancellationToken.None);
+
+        Assert.Equal((400, CalendarMeetingGuard.ErrorCode), (result.StatusCode, result.ErrorCode));
+        _ = sut;
     }
 
     private void FirstClaimSucceeds(int generation = 1, bool invitesPending = true)
