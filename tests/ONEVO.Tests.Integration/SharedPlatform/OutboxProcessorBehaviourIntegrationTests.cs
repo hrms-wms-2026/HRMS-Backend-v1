@@ -256,6 +256,27 @@ public sealed class OutboxProcessorBehaviourIntegrationTests
         Assert.Null(row.LockedBy);
     }
 
+    [Fact]
+    public async Task RollingBackTheClaimMigration_HandsProcessingMessagesBackAsPending()
+    {
+        // Code from before claiming only reads pending rows, so a row left processing by the rollback would never be
+        // sent again.
+        var host = await OutboxTestHost.CreateAsync();
+        var id = await host.SeedPendingAsync(LegacyType);
+        var services = host.BuildServices(_ => { });
+        await using (var scope = services.CreateAsyncScope())
+            await OutboxClaimStore.ClaimBatchAsync(scope.ServiceProvider.GetRequiredService<ApplicationDbContext>(), "owner-a",
+                TimeSpan.FromMinutes(5), 20, CancellationToken.None);
+
+        await RunClaimLeaseMigrationAsync(host, down: true);
+
+        await using var connection = new NpgsqlConnection(host.AdminConnectionString);
+        await connection.OpenAsync();
+        await using var command = new NpgsqlCommand("SELECT status FROM outbox_messages WHERE id = @id", connection);
+        command.Parameters.AddWithValue("id", id);
+        Assert.Equal(OutboxMessageStatus.Pending, (string)(await command.ExecuteScalarAsync())!);
+    }
+
     private const string ClaimLease = "20261018085329_AddOutboxClaimLease";
     private const string MigrationBeforeClaimLease = "20261018033708_AddNotificationTemplateVersioningAndRouting";
 
