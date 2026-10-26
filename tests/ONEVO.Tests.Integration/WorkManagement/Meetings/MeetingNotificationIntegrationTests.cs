@@ -217,6 +217,27 @@ public sealed class MeetingNotificationIntegrationTests
     }
 
     [Fact]
+    public async Task ReAddingASeriesAttendeeToOneOccurrence_InvitesThemToThatOccurrence()
+    {
+        // Taken off next week's occurrence, then put back on it: they attend it again and get its invite.
+        var w = await SeedAsync();
+        await using (var db = w.H.NewContext())
+            Assert.True((await Services(db).Attendees.RemoveOccurrenceEmployeeAsync(w.H.TenantId, w.Organizer, Guid.NewGuid(),
+                w.Series.Id, First.AddDays(7), w.Attendee, CancellationToken.None)).IsSuccess);
+        var before = EmailKeys(await OutboxAsync(w.H), CalendarEventEmailKinds.Invite).Count;
+
+        await using (var db = w.H.NewContext())
+        {
+            var added = await Services(db).Attendees.AddOccurrenceAttendeesAsync(w.H.TenantId, w.Organizer, Guid.NewGuid(),
+                w.Series.Id, First.AddDays(7), new MeetingAttendeesRequest([w.Attendee], []), CancellationToken.None);
+            Assert.True(added.IsSuccess, added.Error);
+            Assert.Equal(1, added.Value!.Added);
+        }
+
+        Assert.Equal(before + 1, EmailKeys(await OutboxAsync(w.H), CalendarEventEmailKinds.Invite).Count);
+    }
+
+    [Fact]
     public async Task Respond_NotifiesTheOrganizerInApp_OnlyWhenTheAnswerChanges()
     {
         var w = await SeedAsync();

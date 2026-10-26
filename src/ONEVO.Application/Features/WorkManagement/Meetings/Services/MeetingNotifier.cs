@@ -31,7 +31,8 @@ public interface IMeetingNotifier
     Task InviteAsync(MeetingSeries series, IReadOnlyList<CalendarEventParticipant> participants, IReadOnlyList<CalendarEventGuest> guests,
         CancellationToken ct, IReadOnlyDictionary<Guid, DateTimeOffset>? reinvited = null);
 
-    /// <summary>Invites to people added to one occurrence only.</summary>
+    /// <summary>Invites to people added to one occurrence only. Every row in <paramref name="added"/> now attends it: an
+    /// "add" override, or the "remove" override that was dropped when a series attendee was put back on.</summary>
     Task InviteToOccurrenceAsync(MeetingSeries series, MeetingDetails occurrence, string title, IReadOnlyList<MeetingOccurrenceAttendee> added,
         CancellationToken ct);
 
@@ -105,7 +106,7 @@ public sealed class MeetingNotifier : IMeetingNotifier
     public async Task InviteToOccurrenceAsync(MeetingSeries series, MeetingDetails occurrence, string title,
         IReadOnlyList<MeetingOccurrenceAttendee> added, CancellationToken ct)
     {
-        var people = added.Where(a => a.Change == MeetingAttendeeChanges.Add).ToList();
+        var people = added;
         var employees = people.Where(a => a.EmployeeId is Guid id && id != series.OrganizerEmployeeId).ToList();
         var guests = people.Where(a => a.AttendeeKind == MeetingAttendeeKinds.Guest && a.Email is not null).ToList();
         if (employees.Count == 0 && guests.Count == 0)
