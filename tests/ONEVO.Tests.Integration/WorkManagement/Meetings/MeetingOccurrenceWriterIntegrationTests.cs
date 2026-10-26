@@ -268,6 +268,34 @@ public sealed class MeetingOccurrenceWriterIntegrationTests
     }
 
     [Fact]
+    public async Task Remap_MovesEachPendingAttendanceCheck_ByTheSameShift()
+    {
+        var f = await SeedAsync();
+        var taskId = (await MaterializeInTransactionAsync(f, Draft(f, FirstStart), takeLock: true))!.Value;
+        var oldCheck = FirstStart.AddMinutes(30 + 30);
+        MeetingSeries target;
+        await using (var db = f.H.NewContext())
+        {
+            var details = await db.MeetingDetails.SingleAsync(d => d.TaskId == taskId);
+            details.AttendanceStatus = MeetingAttendanceStatuses.Pending;
+            details.AttendanceNextCheckAt = oldCheck;
+            target = f.H.AddSeries(db, f.At, FirstStart.AddHours(1), "FREQ=WEEKLY");
+            await db.SaveChangesAsync();
+        }
+
+        await using (var db = f.H.NewContext())
+        {
+            await using var tx = await db.Database.BeginTransactionAsync();
+            await new EfMeetingOccurrenceWriter(db).RemapIntoSeriesAsync(f.H.TenantId, target.Id,
+                [(taskId, FirstStart.AddHours(1), FirstStart.AddHours(1), FirstStart.AddHours(1).AddMinutes(30))], CancellationToken.None);
+            await tx.CommitAsync();
+        }
+
+        await using var check = f.H.NewContext();
+        Assert.Equal(oldCheck.AddHours(1), (await check.MeetingDetails.SingleAsync(d => d.TaskId == taskId)).AttendanceNextCheckAt);
+    }
+
+    [Fact]
     public async Task SameSeriesKeyChange_Raises()
     {
         var f = await SeedAsync();

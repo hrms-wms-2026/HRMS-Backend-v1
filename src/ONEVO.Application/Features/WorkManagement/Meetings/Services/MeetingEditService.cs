@@ -140,8 +140,13 @@ public sealed class MeetingEditService
                 return Result<MeetingEditResponse>.Failure("A meeting must end after it starts.", 400, MeetingErrorCodes.InvalidTime);
             if (start <= now)
                 return Result<MeetingEditResponse>.Failure("A meeting must start in the future.", 400, MeetingErrorCodes.StartInPast);
+            var newEnd = start.AddMinutes(minutes);
+            // A pending attendance check is counted from the end (spec 5.8): it moves with it, or it would run
+            // before the rescheduled meeting has ended.
+            if (details.AttendanceNextCheckAt is { } nextCheck)
+                details.AttendanceNextCheckAt = nextCheck + (newEnd - details.EndAt);
             details.StartAt = start;
-            details.EndAt = start.AddMinutes(minutes);
+            details.EndAt = newEnd;
         }
         details.IsDetached = true;
         details.Revision++;

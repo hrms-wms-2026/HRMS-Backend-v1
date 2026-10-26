@@ -92,6 +92,31 @@ public sealed class MeetingEditIntegrationTests
         Assert.Equal(("Weekly sync v2", "New agenda", 1), (series.Title, series.Description, series.Revision));
     }
 
+    [Fact]
+    public async Task RescheduleThis_MovesItsAttendanceCheck_WithTheNewEnd()
+    {
+        // The first attendance check is 30 min after the end. Moving the occurrence two hours later moves that check too;
+        // left at the old time, it ran before the meeting had ended.
+        var w = await SeedAsync();
+        DateTimeOffset oldCheck;
+        await using (var db = w.H.NewContext())
+        {
+            var details = await db.MeetingDetails.SingleAsync(d => d.TaskId == w.Next);
+            details.AttendanceStatus = MeetingAttendanceStatuses.Pending;
+            details.AttendanceNextCheckAt = oldCheck = details.EndAt.AddMinutes(30);
+            await db.SaveChangesAsync();
+        }
+
+        await using (var db = w.H.NewContext())
+            Assert.True((await new MeetingTestServices(db, Clock()).Edits.EditAsync(w.H.TenantId, w.Organizer, Guid.NewGuid(),
+                w.Series.Id, First.AddDays(7), Edit(MeetingScopes.This, 0, start: First.AddDays(7).AddHours(2)),
+                CancellationToken.None)).IsSuccess);
+
+        await using var check = w.H.NewContext();
+        var moved = await check.MeetingDetails.SingleAsync(d => d.TaskId == w.Next);
+        Assert.Equal(oldCheck.AddHours(2), moved.AttendanceNextCheckAt);
+    }
+
     [Theory]
     [InlineData(MeetingScopes.This)]
     [InlineData(MeetingScopes.All)]

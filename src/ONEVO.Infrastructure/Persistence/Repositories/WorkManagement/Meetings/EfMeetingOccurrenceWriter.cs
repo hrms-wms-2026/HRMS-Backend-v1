@@ -141,7 +141,9 @@ public sealed class EfMeetingOccurrenceWriter : IMeetingOccurrenceWriter
 
         var sql = new StringBuilder(
             "UPDATE meeting_details d SET series_id = @target, original_start = m.original_start, start_at = m.start_at, " +
-            "end_at = m.end_at, revision = d.revision + 1 FROM (VALUES ");
+            "end_at = m.end_at, revision = d.revision + 1, " +
+            // A pending attendance check is counted from the end (spec 5.8), so it moves by the same shift.
+            "attendance_next_check_at = d.attendance_next_check_at + (m.end_at - d.end_at) FROM (VALUES ");
         var parameters = new List<NpgsqlParameter>
         {
             new("target", NpgsqlDbType.Uuid) { Value = targetSeriesId },
