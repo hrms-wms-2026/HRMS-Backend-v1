@@ -162,11 +162,16 @@ public sealed class MeetingNotificationIntegrationTests
         await CancelAsync(MeetingScopes.All);
         await CancelAsync(MeetingScopes.All);
 
+        var outbox = await OutboxAsync(w.H);
+        // Week 0 already took place, so "all" does not CANCEL the series UID - that would take last week's meeting out of
+        // people's calendars too. It ends the series' rule now (an update), once per attendee, and a retry adds nothing.
         Assert.Equal(new[]
         {
             CalendarEmailKeys.Cancel(w.Series.Id, First.AddDays(7), w.AttendeeRow.Id), CalendarEmailKeys.Cancel(w.Series.Id, First.AddDays(7), w.GuestRow.Id),
-            CalendarEmailKeys.Cancel(w.Series.Id, null, w.AttendeeRow.Id), CalendarEmailKeys.Cancel(w.Series.Id, null, w.GuestRow.Id),
-        }.Order(), EmailKeys(await OutboxAsync(w.H), CalendarEventEmailKinds.Cancelled));
+        }.Order(), EmailKeys(outbox, CalendarEventEmailKinds.Cancelled));
+        var ended = outbox.Where(r => r.Payload.TryGetProperty("Kind", out var k) && k.GetString() == CalendarEventEmailKinds.Updated
+            && r.Payload.GetProperty("RecurrenceRule").GetString() is { } rule && rule.Contains("UNTIL=")).ToList();
+        Assert.Equal(2, ended.Count);
     }
 
     [Fact]

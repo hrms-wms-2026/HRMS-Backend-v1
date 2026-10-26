@@ -101,15 +101,20 @@ public sealed class MeetingCancelService
                         details.Revision++;
                     }
                     var wholeSeries = scope == MeetingScopes.All || series.RecurrenceRule is null || key <= series.DtStart;
+                    // A recurring series cancelled "all" after it began keeps its past meetings: it ends now, like
+                    // "this and following" from now.
+                    var hadMeetings = scope == MeetingScopes.All && series.RecurrenceRule is not null && series.DtStart <= now;
                     if (wholeSeries)
                         series.CancelledAt = now;
-                    else
+                    if (hadMeetings)
+                        series.RecurrenceRule = MeetingRules.WithUntil(series.RecurrenceRule!, now);
+                    else if (!wholeSeries)
                         series.RecurrenceRule = MeetingRules.WithUntil(series.RecurrenceRule!, key.AddSeconds(-1));
                     series.Revision++;
                     series.UpdatedAt = now;
-                    // "This and following" short of the whole series is an update to the series' end (its UNTIL): a CANCEL on
-                    // the series UID would also take the past meetings out of people's calendars.
-                    if (wholeSeries)
+                    // Ending a series early is an update to its end (its UNTIL): a CANCEL on the series UID would also take
+                    // the past meetings out of people's calendars. Only a series none of whose meetings happened is CANCELled.
+                    if (wholeSeries && !hadMeetings)
                         await _notifier.SeriesCancelledAsync(series, innerCt);
                     else
                         await _notifier.SeriesUpdatedAsync(series, innerCt);
