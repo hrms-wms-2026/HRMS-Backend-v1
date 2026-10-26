@@ -34,6 +34,10 @@ public static class CalendarIcs
     /// <summary>A SEQUENCE that only grows: whole seconds since 2020 of the moment the event version was written.</summary>
     public static int Sequence(DateTimeOffset versionAt) => (int)Math.Max(0, (versionAt - SequenceEpoch).TotalSeconds);
 
+    /// <summary>The moment an event version was written, read back from its <see cref="Sequence"/>. Used as DTSTAMP, so a
+    /// resent invite is byte-identical (a provider idempotency key only matches the same body).</summary>
+    public static DateTimeOffset VersionTime(int sequence) => SequenceEpoch.AddSeconds(sequence);
+
     public static string Uid(Guid eventId) => $"{eventId:N}@onevo";
 
     public static string Build(

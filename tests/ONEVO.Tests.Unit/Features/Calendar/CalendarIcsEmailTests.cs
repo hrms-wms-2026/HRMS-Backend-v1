@@ -40,13 +40,36 @@ public sealed class CalendarIcsEmailTests
         => CalendarIcs.Sequence(Start.AddMinutes(1)).Should().BeGreaterThan(CalendarIcs.Sequence(Start));
 
     [Fact]
+    public async Task A_retried_invite_is_byte_identical_so_the_provider_idempotency_key_still_matches()
+    {
+        // The outbox sends a retry under the same idempotency key, and Resend refuses a different body under a key it
+        // has seen (409). The .ics must therefore not depend on when the attempt ran.
+        var email = new Mock<IEmailService>();
+        var sent = new List<CalendarEventEmailMessage>();
+        email.Setup(e => e.SendCalendarEventEmailAsync(It.IsAny<CalendarEventEmailMessage>(), It.IsAny<CancellationToken>()))
+            .Callback((CalendarEventEmailMessage m, CancellationToken _) => sent.Add(m)).Returns(Task.CompletedTask);
+        var handler = new CalendarEventInviteEmailOutboxHandler(email.Object);
+        var payload = JsonSerializer.Serialize(new CalendarEventInviteEmailPayload(
+            Guid.NewGuid(), "bob@acme.com", "Bob", "Planning", Start, null, "Ada", null, CalendarEventEmailKinds.Invite, EventId,
+            Start.AddHours(1), CalendarIcs.Sequence(Start.AddDays(-1))));
+
+        await handler.HandleAsync(payload, default);
+        await Task.Delay(1100);
+        await handler.HandleAsync(payload, default);
+
+        sent[1].IcsContent.Should().Be(sent[0].IcsContent);
+        // DTSTAMP is the moment the event version was written - the time SEQUENCE is counted from.
+        sent[0].IcsContent.Should().Contain("DTSTAMP:20261019T090000Z");
+    }
+
+    [Fact]
     public async Task The_outbox_handler_attaches_the_ics_when_the_event_is_known_and_none_for_old_rows()
     {
         var email = new Mock<IEmailService>();
         var sent = new List<CalendarEventEmailMessage>();
         email.Setup(e => e.SendCalendarEventEmailAsync(It.IsAny<CalendarEventEmailMessage>(), It.IsAny<CancellationToken>()))
             .Callback((CalendarEventEmailMessage m, CancellationToken _) => sent.Add(m)).Returns(Task.CompletedTask);
-        var handler = new CalendarEventInviteEmailOutboxHandler(email.Object, new FakeDateTimeProvider { UtcNow = Start });
+        var handler = new CalendarEventInviteEmailOutboxHandler(email.Object);
 
         await handler.HandleAsync(JsonSerializer.Serialize(new CalendarEventInviteEmailPayload(
             Guid.NewGuid(), "bob@acme.com", "Bob", "Planning", Start, null, "Ada", null, CalendarEventEmailKinds.Updated, EventId, Start.AddHours(1), 7)), default);

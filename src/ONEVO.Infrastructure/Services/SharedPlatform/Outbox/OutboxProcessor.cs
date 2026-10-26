@@ -275,24 +275,42 @@ public sealed class OutboxProcessor : BackgroundService
     /// the owner-guarded state change in one transaction, so both land or neither does. When this
     /// instance no longer owns the message the transaction is rolled back: the new owner will run
     /// the handler again and its result wins. Returns whether this instance still owned it.
+    /// <para>
+    /// The context uses a retrying execution strategy (EnableRetryOnFailure), which refuses a transaction
+    /// started outside it, so the transaction runs inside the strategy as UnitOfWork does. The staged changes
+    /// are saved without being accepted, so a retried attempt saves them again; they are dropped once the
+    /// transaction has finished either way.
+    /// </para>
     /// </summary>
     private async Task<bool> SaveWithOutcomeAsync(ApplicationDbContext db, OutboxMessage message, Func<Task<bool>> guardedUpdate)
     {
-        await using var transaction = await db.Database.BeginTransactionAsync(CancellationToken.None);
-        await db.SaveChangesAsync(CancellationToken.None);
-        if (!await guardedUpdate())
+        bool owned;
+        try
         {
-            await transaction.RollbackAsync(CancellationToken.None);
+            owned = await db.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
+            {
+                await using var transaction = await db.Database.BeginTransactionAsync(CancellationToken.None);
+                await db.SaveChangesAsync(acceptAllChangesOnSuccess: false, CancellationToken.None);
+                if (!await guardedUpdate())
+                {
+                    await transaction.RollbackAsync(CancellationToken.None);
+                    return false;
+                }
+
+                await transaction.CommitAsync(CancellationToken.None);
+                return true;
+            });
+        }
+        finally
+        {
             db.ChangeTracker.Clear();
+        }
+
+        if (!owned)
             _logger.LogWarning(
                 "Outbox message {MessageId} ({Type}) is no longer owned by {InstanceId} (its lease expired and another instance reclaimed it); this attempt's result was discarded.",
                 message.Id, message.Type, InstanceId);
-            return false;
-        }
-
-        await transaction.CommitAsync(CancellationToken.None);
-        db.ChangeTracker.Clear();
-        return true;
+        return owned;
     }
 
     private async Task ParkAsync(ApplicationDbContext db, IDateTimeProvider clock, OutboxMessage message)

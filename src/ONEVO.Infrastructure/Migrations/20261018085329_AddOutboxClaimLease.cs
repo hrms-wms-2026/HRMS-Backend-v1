@@ -5,7 +5,15 @@ using Microsoft.EntityFrameworkCore.Migrations;
 
 namespace ONEVO.Infrastructure.Migrations
 {
-    /// <inheritdoc />
+    /// <summary>
+    /// P-1: the claim and lease columns for outbox_messages (see OutboxClaimStore).
+    /// <para>
+    /// Deploy with no mixed-version instances: an instance from before this release still polls pending
+    /// rows without claiming them, so it can load a row a new instance is claiming and both send it. Stop
+    /// (or drain) every old instance before starting new ones - at the latest before Meetings:BulkInvite
+    /// is switched on.
+    /// </para>
+    /// </summary>
     public partial class AddOutboxClaimLease : Migration
     {
         /// <inheritdoc />
@@ -40,6 +48,9 @@ namespace ONEVO.Infrastructure.Migrations
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
+            // Code from before claiming reads only pending rows: hand claimed ones back, or they are never sent.
+            migrationBuilder.Sql("UPDATE outbox_messages SET status = 'pending' WHERE status = 'processing';");
+
             migrationBuilder.DropIndex(
                 name: "ix_outbox_messages_processing_locked_until",
                 table: "outbox_messages");

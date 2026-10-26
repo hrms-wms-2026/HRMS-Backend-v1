@@ -33,7 +33,7 @@ public sealed class CalendarInviteEmailRateLimiterTests
         limiter.Setup(l => l.WaitAsync(It.IsAny<CancellationToken>()))
             .Returns(ValueTask.CompletedTask);
 
-        var handler = new CalendarEventInviteEmailOutboxHandler(email.Object, null, limiter.Object);
+        var handler = new CalendarEventInviteEmailOutboxHandler(email.Object, limiter.Object);
 
         await handler.HandleAsync(Payload(), CancellationToken.None);
 
@@ -55,7 +55,7 @@ public sealed class CalendarInviteEmailRateLimiterTests
             .Callback(() => order.Add("wait"))
             .Returns(ValueTask.CompletedTask);
 
-        var handler = new CalendarEventInviteEmailOutboxHandler(email.Object, null, limiter.Object);
+        var handler = new CalendarEventInviteEmailOutboxHandler(email.Object, limiter.Object);
 
         await handler.HandleAsync(Payload(), CancellationToken.None);
 
@@ -76,7 +76,7 @@ public sealed class CalendarInviteEmailRateLimiterTests
         limiter.Setup(l => l.WaitAsync(It.IsAny<CancellationToken>()))
             .Returns(ValueTask.FromCanceled(cts.Token));
 
-        var handler = new CalendarEventInviteEmailOutboxHandler(email.Object, null, limiter.Object);
+        var handler = new CalendarEventInviteEmailOutboxHandler(email.Object, limiter.Object);
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => handler.HandleAsync(Payload(), cts.Token));
 
