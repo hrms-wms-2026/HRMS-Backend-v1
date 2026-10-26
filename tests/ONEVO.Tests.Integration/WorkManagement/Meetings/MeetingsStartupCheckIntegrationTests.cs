@@ -26,10 +26,21 @@ public sealed class MeetingsStartupCheckIntegrationTests
         return new MeetingsStartupCheck(scopes, Options.Create(new MeetingsOptions { BulkInvite = bulkInvite }));
     }
 
+    /// <summary>P-1's migration (AddOutboxClaimLease) is part of this branch, so the test database has the claim
+    /// column; dropping it gives a database P-1 has not reached.</summary>
+    private static async Task WithoutP1Async(MyTeamDb h)
+    {
+        await using var connection = new NpgsqlConnection(h.ConnectionString);
+        await connection.OpenAsync();
+        await using var command = new NpgsqlCommand("ALTER TABLE outbox_messages DROP COLUMN locked_by", connection);
+        await command.ExecuteNonQueryAsync();
+    }
+
     [Fact]
     public async Task BulkInviteWithoutP1_FailsStartup()
     {
         var h = await MyTeamDb.CreateAsync();
+        await WithoutP1Async(h);
 
         var error = await Assert.ThrowsAsync<InvalidOperationException>(
             () => CheckFor(h, bulkInvite: true).StartAsync(CancellationToken.None));
@@ -41,13 +52,6 @@ public sealed class MeetingsStartupCheckIntegrationTests
     public async Task BulkInviteWithP1_Starts()
     {
         var h = await MyTeamDb.CreateAsync();
-        await using (var connection = new NpgsqlConnection(h.ConnectionString))
-        {
-            await connection.OpenAsync();
-            await using var command = new NpgsqlCommand(
-                "ALTER TABLE outbox_messages ADD COLUMN IF NOT EXISTS locked_by character varying(200)", connection);
-            await command.ExecuteNonQueryAsync();
-        }
 
         await CheckFor(h, bulkInvite: true).StartAsync(CancellationToken.None);
     }
@@ -56,6 +60,7 @@ public sealed class MeetingsStartupCheckIntegrationTests
     public async Task BulkInviteOff_StartsWithoutP1()
     {
         var h = await MyTeamDb.CreateAsync();
+        await WithoutP1Async(h);
 
         await CheckFor(h, bulkInvite: false).StartAsync(CancellationToken.None);
     }
