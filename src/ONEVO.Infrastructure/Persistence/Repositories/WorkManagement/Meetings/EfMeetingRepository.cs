@@ -262,22 +262,24 @@ public sealed class EfMeetingRepository : IMeetingRepository
             return [];
 
         // The RSVP that decides a decline: the occurrence's own answer when the occurrence carries one, else the
-        // series answer. Two batched reads, not one per occurrence.
+        // series answer. Two batched reads, not one per occurrence, and only the employee's own rows - never the
+        // other attendees of every series in the window.
         var seriesIds = candidates.Select(c => c.SeriesId).Distinct().ToList();
         var taskIds = candidates.Select(c => c.TaskId).ToList();
         var participants = await _db.CalendarEventParticipants.AsNoTracking()
-            .Where(p => p.TenantId == tenantId && p.MeetingSeriesId != null && seriesIds.Contains(p.MeetingSeriesId.Value))
+            .Where(p => p.TenantId == tenantId && p.EmployeeId == employeeId
+                && p.MeetingSeriesId != null && seriesIds.Contains(p.MeetingSeriesId.Value))
             .ToListAsync(ct);
         var overrides = await _db.MeetingOccurrenceAttendees.AsNoTracking()
-            .Where(a => a.TenantId == tenantId && taskIds.Contains(a.OccurrenceTaskId))
+            .Where(a => a.TenantId == tenantId && a.AttendeeKind == MeetingAttendeeKinds.Employee
+                && a.EmployeeId == employeeId && taskIds.Contains(a.OccurrenceTaskId))
             .ToListAsync(ct);
 
         var result = new List<MeetingTaskComplianceOccurrence>();
         foreach (var c in candidates)
         {
-            var own = overrides.FirstOrDefault(a => a.OccurrenceTaskId == c.TaskId
-                && a.AttendeeKind == MeetingAttendeeKinds.Employee && a.EmployeeId == employeeId);
-            var series = participants.FirstOrDefault(p => p.MeetingSeriesId == c.SeriesId && p.EmployeeId == employeeId);
+            var own = overrides.FirstOrDefault(a => a.OccurrenceTaskId == c.TaskId);
+            var series = participants.FirstOrDefault(p => p.MeetingSeriesId == c.SeriesId);
             // A "remove" override means the employee is not an attendee of this occurrence at all.
             if (own is { Change: MeetingAttendeeChanges.Remove })
                 continue;

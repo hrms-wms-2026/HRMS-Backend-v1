@@ -1,4 +1,6 @@
+using System.Data.Common;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using ONEVO.Application.Features.Calendar.Exceptions;
 using ONEVO.Application.Features.WorkManagement.Meetings.Services;
 using ONEVO.Domain.Features.Calendar.Entities;
@@ -266,5 +268,53 @@ public sealed class MeetingComplianceTaskMeetingIntegrationTests
 
         var view = Assert.Single(views, v => v.EventId == w.Tasks[0]);
         Assert.Equal(0.5m, view.AgentUsageRatio);
+    }
+
+    [Fact]
+    public async Task TaskMeetingRead_LoadsOnlyTheEmployeesOwnAttendeeRows()
+    {
+        // Someone else on the same series, with an occurrence answer of their own: rows the read has no use for.
+        var w = await SeedAsync();
+        await AttachLinkAsync(w);
+        await using (var seed = w.H.NewContext())
+        {
+            var other = w.H.AddEmployee(seed);
+            seed.CalendarEventParticipants.Add(new CalendarEventParticipant
+            {
+                Id = Guid.NewGuid(), TenantId = w.H.TenantId, MeetingSeriesId = w.SeriesId, EmployeeId = other.Id,
+                ResponseStatus = CalendarEventParticipantStatuses.Accepted,
+            });
+            seed.MeetingOccurrenceAttendees.Add(new MeetingOccurrenceAttendee
+            {
+                Id = Guid.NewGuid(), TenantId = w.H.TenantId, OccurrenceTaskId = w.Tasks[0],
+                AttendeeKind = MeetingAttendeeKinds.Employee, EmployeeId = other.Id,
+                Change = MeetingAttendeeChanges.Add, ResponseStatus = CalendarEventParticipantStatuses.Rejected,
+            });
+            await seed.SaveChangesAsync();
+        }
+
+        var recorder = new CommandRecorder();
+        await using var db = w.H.NewContext(recorder);
+        var occurrences = await new EfMeetingRepository(db)
+            .ListEmployeeTaskMeetingsAsync(w.H.TenantId, w.Attendee, From, To, CancellationToken.None);
+
+        Assert.NotEmpty(occurrences);
+        // Every read is bounded by the employee: none loads the whole series' participants or every attendee override.
+        Assert.NotEmpty(recorder.Commands);
+        Assert.All(recorder.Commands, parameters => Assert.Contains(w.Attendee, parameters));
+    }
+
+    /// <summary>Records the parameter values of every query a context sends.</summary>
+    private sealed class CommandRecorder : DbCommandInterceptor
+    {
+        public List<IReadOnlyList<object?>> Commands { get; } = [];
+
+        public override ValueTask<InterceptionResult<DbDataReader>> ReaderExecutingAsync(
+            DbCommand command, CommandEventData eventData, InterceptionResult<DbDataReader> result,
+            CancellationToken cancellationToken = default)
+        {
+            Commands.Add(command.Parameters.Cast<DbParameter>().Select(p => p.Value).ToList());
+            return ValueTask.FromResult(result);
+        }
     }
 }

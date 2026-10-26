@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using ONEVO.Domain.Features.Auth.Entities;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
@@ -79,7 +80,8 @@ public sealed class MyTeamDb
         await db.SaveChangesAsync();
     }
 
-    public ApplicationDbContext NewContext(CountingDbCommandInterceptor? counter = null)
+    /// <param name="counter">An extra command interceptor - usually a <see cref="CountingDbCommandInterceptor"/>.</param>
+    public ApplicationDbContext NewContext(IInterceptor? counter = null)
     {
         var tenantContext = new TenantContextAccessor();
         var builder = new DbContextOptionsBuilder<ApplicationDbContext>()
