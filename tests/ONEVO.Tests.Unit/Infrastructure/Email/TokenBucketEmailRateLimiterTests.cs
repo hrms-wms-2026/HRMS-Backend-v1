@@ -55,6 +55,29 @@ public sealed class TokenBucketEmailRateLimiterTests
     }
 
     [Fact]
+    public async Task ManyWaiters_AtOnce_AreSpreadOverTheFollowingSeconds_NotReleasedTogether()
+    {
+        // With claiming, several outbox handlers can be waiting at the same moment. Each waiter must queue behind
+        // the ones already waiting: with two per second, the fifth send belongs to the third second, not the second.
+        var clock = new TestTimeProvider(Start);
+        var limiter = Limiter(2, clock);
+        await limiter.WaitAsync(CancellationToken.None);
+        await limiter.WaitAsync(CancellationToken.None);
+
+        var third = limiter.WaitAsync(CancellationToken.None).AsTask();
+        var fourth = limiter.WaitAsync(CancellationToken.None).AsTask();
+        var fifth = limiter.WaitAsync(CancellationToken.None).AsTask();
+        await clock.WaitForTimerCountAsync(3);
+
+        clock.Advance(TimeSpan.FromSeconds(1));
+        await Task.WhenAll(third, fourth);
+        fifth.IsCompleted.Should().BeFalse("two sends already go in this second");
+
+        clock.Advance(TimeSpan.FromSeconds(1));
+        await fifth;
+    }
+
+    [Fact]
     public async Task TheWindow_Slides_SoTheLimitIsNotFixedToTheFirstSecond()
     {
         var clock = new TestTimeProvider(Start);

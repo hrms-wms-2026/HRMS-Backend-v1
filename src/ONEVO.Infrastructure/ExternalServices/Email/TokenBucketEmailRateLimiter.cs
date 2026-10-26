@@ -55,8 +55,10 @@ public sealed class TokenBucketEmailRateLimiter : IEmailRateLimiter
                 return;
             }
 
-            // The window is full: the oldest send has to be a second old before the next one may go.
-            dueAt = _window[0].EffectiveAt + _windowTicks;
+            // The window is full. The entries are in send order (reservations are appended with ever later
+            // times), so this send may go a second after the send MaxPerSecond places before it - not after the
+            // oldest one, which every waiter would share and so go together.
+            dueAt = _window[_window.Count - _maxPerSecond].EffectiveAt + _windowTicks;
             if (dueAt < now)
                 dueAt = now;
 
