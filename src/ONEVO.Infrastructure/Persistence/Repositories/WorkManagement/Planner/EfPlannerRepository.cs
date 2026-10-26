@@ -11,6 +11,17 @@ public sealed class EfPlannerRepository : IPlannerRepository
 
     public EfPlannerRepository(ApplicationDbContext db) => _db = db;
 
+    /// <summary>The advisory-lock key of one employee's plan.</summary>
+    public static string PlanLockKey(Guid tenantId, Guid employeeId) => $"planner:{tenantId}:{employeeId}";
+
+    public async Task LockPlanAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default)
+    {
+        if (_db.Database.CurrentTransaction is null)
+            throw new InvalidOperationException($"{nameof(LockPlanAsync)} needs a transaction.");
+        await _db.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT pg_advisory_xact_lock(hashtextextended({PlanLockKey(tenantId, employeeId)}, 0))", ct);
+    }
+
     public async Task<IReadOnlyList<PlannedTaskBlock>> ListBlocksAsync(Guid tenantId, Guid employeeId, DateTimeOffset from,
         DateTimeOffset to, CancellationToken ct = default)
     {

@@ -120,6 +120,86 @@ public sealed class PlannerServiceIntegrationTests
     }
 
     [Fact]
+    public async Task An_unknown_time_zone_falls_back_to_UTC_instead_of_failing()
+    {
+        // A bad DisplayTimezone (or legal-entity zone) used to throw in FindSystemTimeZoneById: every planner call was a 500.
+        var w = await SeedAsync();
+        await using (var db = w.H.NewContext())
+        {
+            (await db.Employees.SingleAsync(e => e.Id == w.Employee)).DisplayTimezone = "Mars/Olympus";
+            await db.SaveChangesAsync();
+        }
+
+        var day = await DayAsync(w, w.Employee, w.Employee);
+
+        Assert.True(day.IsSuccess, day.Error);
+        Assert.Equal("UTC", day.Value!.Timezone);
+    }
+
+    [Fact]
+    public async Task An_all_day_meeting_does_not_flag_every_block_as_overlapping()
+    {
+        // An all-day meeting (a workshop day, an offsite) spans the whole day; it is not a clash with each planned hour.
+        var w = await SeedAsync();
+        await using (var db = w.H.NewContext())
+        {
+            var series = w.H.AddSeries(db, w.At, Local(0).ToUniversalTime());
+            series.IsAllDay = true;
+            series.DurationMinutes = 24 * 60;
+            var (_, details) = w.H.AddOccurrence(db, series, w.At);
+            details.IsAllDay = true;
+            details.EndAt = details.StartAt.AddDays(1);
+            w.H.AddSeriesParticipant(db, series, w.Employee, CalendarEventParticipantStatuses.Accepted);
+            await db.SaveChangesAsync();
+        }
+
+        var planned = await PlanAsync(w, w.Task, Local(9), Local(10));
+
+        Assert.True(planned.IsSuccess, planned.Error);
+        Assert.False(Assert.Single(planned.Value!.Blocks).OverlapsMeeting);
+    }
+
+    [Fact]
+    public async Task Overlapping_blocks_saved_at_the_same_moment_from_two_devices_keep_only_one()
+    {
+        // Each write checks for overlap and then inserts; without serialising the two, both could pass the check.
+        var w = await SeedAsync();
+
+        var results = await Task.WhenAll(Enumerable.Range(0, 8).Select(i => Task.Run(
+            () => PlanAsync(w, w.Task, Local(9, i), Local(10, i)))));
+
+        Assert.Single(results, r => r.IsSuccess);
+        Assert.All(results.Where(r => !r.IsSuccess), r => Assert.Equal(PlannerErrorCodes.BlockOverlap, r.ErrorCode));
+        await using var db = w.H.NewContext();
+        Assert.Equal(1, await db.Set<ONEVO.Domain.Features.WorkManagement.Planner.Entities.PlannedTaskBlock>().CountAsync());
+    }
+
+    [Fact]
+    public async Task A_block_write_waits_for_another_write_to_the_same_plan()
+    {
+        // The overlap check and the insert run under the employee's plan lock, so a second device's write waits for the
+        // first one instead of checking against a plan that is about to change.
+        var w = await SeedAsync();
+        await using var holder = new Npgsql.NpgsqlConnection(w.H.ConnectionString);
+        await holder.OpenAsync();
+        await using var holderTx = await holder.BeginTransactionAsync();
+        await using (var take = new Npgsql.NpgsqlCommand(
+            "SELECT pg_advisory_xact_lock(hashtextextended(@key, 0))", holder, holderTx))
+        {
+            take.Parameters.AddWithValue("key", EfPlannerRepository.PlanLockKey(w.H.TenantId, w.Employee));
+            await take.ExecuteNonQueryAsync();
+        }
+
+        var write = Task.Run(() => PlanAsync(w, w.Task, Local(9), Local(10)));
+        await Task.Delay(TimeSpan.FromSeconds(2));
+        Assert.False(write.IsCompleted, "the write must wait while the plan is locked");
+
+        await holderTx.CommitAsync();
+        var result = await write.WaitAsync(TimeSpan.FromSeconds(30));
+        Assert.True(result.IsSuccess, result.Error);
+    }
+
+    [Fact]
     public async Task Meeting_or_unassigned_task_is_not_plannable()
     {
         var w = await SeedAsync();

@@ -37,6 +37,10 @@ public interface IPlannerRepository
     /// <summary>The employee's attendance record for that date, if any.</summary>
     Task<PlannerAttendance?> GetAttendanceAsync(Guid tenantId, Guid employeeId, DateOnly date, CancellationToken ct = default);
 
+    /// <summary>Takes the employee's plan lock for the rest of the caller's transaction, so one write's overlap check and
+    /// insert never interleave with another's (two devices saving at once).</summary>
+    Task LockPlanAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default);
+
     void AddBlock(PlannedTaskBlock block);
     void RemoveBlock(PlannedTaskBlock block);
 }

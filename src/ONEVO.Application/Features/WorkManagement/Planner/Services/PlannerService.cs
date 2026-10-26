@@ -63,44 +63,51 @@ public sealed class PlannerService
             await ComposeAsync(tenantId, employeeId, day, zone.Value, editable: own && day == today, maskPrivate: !own, ct));
     }
 
-    public async Task<Result<PlannerDayResponse>> CreateBlockAsync(Guid tenantId, Guid callerEmployeeId, CreatePlannedBlockRequest request,
+    public Task<Result<PlannerDayResponse>> CreateBlockAsync(Guid tenantId, Guid callerEmployeeId, CreatePlannedBlockRequest request,
         CancellationToken ct)
-    {
-        var check = await CheckWriteAsync(tenantId, callerEmployeeId, request.StartAt, request.EndAt, exceptBlockId: null, ct);
-        if (check.Failure is { } failure)
-            return failure;
-        var task = (await _planner.GetTasksAsync(tenantId, callerEmployeeId, [request.TaskId], ct)).GetValueOrDefault(request.TaskId);
-        if (task is null || task.IsMeeting || !task.AssignedToEmployee)
-            return Result<PlannerDayResponse>.Failure("Only a task assigned to you can be planned.", 400, PlannerErrorCodes.TaskNotPlannable);
-
-        _planner.AddBlock(new PlannedTaskBlock
+        => _unitOfWork.ExecuteInTransactionAsync(async innerCt =>
         {
-            Id = Guid.NewGuid(), TenantId = tenantId, EmployeeId = callerEmployeeId, TaskId = request.TaskId,
-            StartAt = request.StartAt.ToUniversalTime(), EndAt = request.EndAt.ToUniversalTime(), CreatedById = callerEmployeeId,
-        });
-        await _unitOfWork.SaveChangesAsync(ct);
-        return Result<PlannerDayResponse>.Success(await ComposeTodayAsync(tenantId, callerEmployeeId, check.Zone, ct));
-    }
+            // Under the plan lock, so a second device's write checks for overlap only after this one is in.
+            await _planner.LockPlanAsync(tenantId, callerEmployeeId, innerCt);
+            var check = await CheckWriteAsync(tenantId, callerEmployeeId, request.StartAt, request.EndAt, exceptBlockId: null, innerCt);
+            if (check.Failure is { } failure)
+                return failure;
+            var task = (await _planner.GetTasksAsync(tenantId, callerEmployeeId, [request.TaskId], innerCt)).GetValueOrDefault(request.TaskId);
+            if (task is null || task.IsMeeting || !task.AssignedToEmployee)
+                return Result<PlannerDayResponse>.Failure("Only a task assigned to you can be planned.", 400, PlannerErrorCodes.TaskNotPlannable);
+
+            _planner.AddBlock(new PlannedTaskBlock
+            {
+                Id = Guid.NewGuid(), TenantId = tenantId, EmployeeId = callerEmployeeId, TaskId = request.TaskId,
+                StartAt = request.StartAt.ToUniversalTime(), EndAt = request.EndAt.ToUniversalTime(), CreatedById = callerEmployeeId,
+            });
+            await _unitOfWork.SaveChangesAsync(innerCt);
+            return Result<PlannerDayResponse>.Success(await ComposeTodayAsync(tenantId, callerEmployeeId, check.Zone, innerCt));
+        }, ct);
 
     public async Task<Result<PlannerDayResponse>> MoveBlockAsync(Guid tenantId, Guid callerEmployeeId, Guid blockId,
         MovePlannedBlockRequest request, CancellationToken ct)
     {
         if (!_options.Value.Enabled)
             return Disabled<PlannerDayResponse>();
-        var block = await _planner.GetBlockTrackedAsync(tenantId, callerEmployeeId, blockId, ct);
-        if (block is null)
-            return NotFound<PlannerDayResponse>();
-        var check = await CheckWriteAsync(tenantId, callerEmployeeId, request.StartAt, request.EndAt, blockId, ct);
-        if (check.Failure is { } failure)
-            return failure;
-        if (!IsOn(TodayIn(check.Zone.Info), block.StartAt, check.Zone.Info))
-            return Result<PlannerDayResponse>.Failure("Only today's plan can change.", 400, PlannerErrorCodes.NotToday);
+        return await _unitOfWork.ExecuteInTransactionAsync(async innerCt =>
+        {
+            await _planner.LockPlanAsync(tenantId, callerEmployeeId, innerCt);
+            var block = await _planner.GetBlockTrackedAsync(tenantId, callerEmployeeId, blockId, innerCt);
+            if (block is null)
+                return NotFound<PlannerDayResponse>();
+            var check = await CheckWriteAsync(tenantId, callerEmployeeId, request.StartAt, request.EndAt, blockId, innerCt);
+            if (check.Failure is { } failure)
+                return failure;
+            if (!IsOn(TodayIn(check.Zone.Info), block.StartAt, check.Zone.Info))
+                return Result<PlannerDayResponse>.Failure("Only today's plan can change.", 400, PlannerErrorCodes.NotToday);
 
-        block.StartAt = request.StartAt.ToUniversalTime();
-        block.EndAt = request.EndAt.ToUniversalTime();
-        block.UpdatedAt = _clock.UtcNow;
-        await _unitOfWork.SaveChangesAsync(ct);
-        return Result<PlannerDayResponse>.Success(await ComposeTodayAsync(tenantId, callerEmployeeId, check.Zone, ct));
+            block.StartAt = request.StartAt.ToUniversalTime();
+            block.EndAt = request.EndAt.ToUniversalTime();
+            block.UpdatedAt = _clock.UtcNow;
+            await _unitOfWork.SaveChangesAsync(innerCt);
+            return Result<PlannerDayResponse>.Success(await ComposeTodayAsync(tenantId, callerEmployeeId, check.Zone, innerCt));
+        }, ct);
     }
 
     public async Task<Result<PlannerDayResponse>> DeleteBlockAsync(Guid tenantId, Guid callerEmployeeId, Guid blockId, CancellationToken ct)
@@ -170,7 +177,9 @@ public sealed class PlannerService
                 maskPrivate && m.IsPrivate ? PrivateMeetingTitle : m.Title, m.IsPrivate, m.Cancelled, m.Declined,
                 counts ? minutes : 0, PlannerActuals.MeetingMinutes(minutes, m.Declined, m.Cancelled, ended: now >= m.EndAt));
         }).ToList();
-        var busy = meetingViews.Where(m => !m.Cancelled && !m.Declined).ToList();
+        // An all-day meeting covers the whole day; it does not clash with each planned hour.
+        var allDay = meetings.Where(m => m.IsAllDay).Select(m => m.TaskId).ToHashSet();
+        var busy = meetingViews.Where(m => !m.Cancelled && !m.Declined && !allDay.Contains(m.TaskId)).ToList();
 
         var blockViews = blocks.Select(b =>
         {
@@ -216,7 +225,8 @@ public sealed class PlannerService
         if (employee is null)
             return null;
         var id = await _timezones.ResolveForUserAsync(tenantId, employee.UserId, ct);
-        return new Zone(id, TimeZoneInfo.FindSystemTimeZoneById(id));
+        // A zone id this machine does not know (a typo in the profile or legal entity) plans in UTC instead of failing.
+        return TimeZoneInfo.TryFindSystemTimeZoneById(id, out var info) ? new Zone(id, info) : new Zone("UTC", TimeZoneInfo.Utc);
     }
 
     private DateOnly TodayIn(TimeZoneInfo zone) => DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(_clock.UtcNow, zone).DateTime);
