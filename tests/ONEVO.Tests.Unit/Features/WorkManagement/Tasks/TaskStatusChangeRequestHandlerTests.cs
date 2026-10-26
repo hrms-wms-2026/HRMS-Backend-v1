@@ -272,6 +272,7 @@ public class TaskStatusChangeRequestHandlerTests
         var requests = new Mock<IWorkApprovalRequestRepository>();
         requests.Setup(x => x.ListTrackedPendingByActionAsync(TenantId, ProjectId, WorkActionTypes.ProjectStatusTemplateChange, It.IsAny<CancellationToken>()))
             .ReturnsAsync([conflicting, unrelated]);
+        requests.Setup(x => x.LockIfPendingAsync(TenantId, It.IsAny<Guid>(), It.IsAny<CancellationToken>())).ReturnsAsync(true);
         var notifications = new Mock<IWorkNotificationEngine>();
         var sweeper = new TaskStatusChangeRequestConflictSweeper(requests.Object, notifications.Object);
 
@@ -287,6 +288,49 @@ public class TaskStatusChangeRequestHandlerTests
             e.Kind == WorkNotificationKinds.Stale && e.ActionType == WorkActionTypes.ProjectStatusTemplateChange &&
             e.ApprovalRequestId == conflicting.Id && e.RecipientEmployeeIds.SequenceEqual(new[] { RequesterId })),
             It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Sweeper_leaves_a_request_another_decision_closed_after_it_was_read()
+    {
+        // The request read as pending, but its approver decided it before the sweeper reached it: the row lock finds it
+        // no longer pending, so the sweeper must not overwrite that decision with Stale.
+        var decidedMeanwhile = TemplateRequest(RenameActive());
+        var requests = new Mock<IWorkApprovalRequestRepository>();
+        requests.Setup(x => x.ListTrackedPendingByActionAsync(TenantId, ProjectId, WorkActionTypes.ProjectStatusTemplateChange, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([decidedMeanwhile]);
+        requests.Setup(x => x.LockIfPendingAsync(TenantId, decidedMeanwhile.Id, It.IsAny<CancellationToken>())).ReturnsAsync(false);
+        var notifications = new Mock<IWorkNotificationEngine>();
+        var sweeper = new TaskStatusChangeRequestConflictSweeper(requests.Object, notifications.Object);
+
+        var count = await sweeper.MarkConflictingStaleAsync(
+            TenantId, ProjectId, RootOwnerId, new TaskStatusChangeFootprint(new HashSet<Guid> { Active }, false), null);
+
+        Assert.Equal(0, count);
+        Assert.Equal(WorkApprovalRequestStatuses.Pending, decidedMeanwhile.Status);
+        requests.Verify(x => x.Update(It.IsAny<WorkApprovalRequest>()), Times.Never);
+        notifications.Verify(x => x.NotifyAsync(It.IsAny<WorkNotificationEvent>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Sweeper_locks_conflicting_requests_in_id_order()
+    {
+        // Two sweeps over the same project lock the same rows; taking them in one order keeps them from deadlocking.
+        var first = TemplateRequest(RenameActive());
+        var second = TemplateRequest(RenameActive());
+        var (low, high) = first.Id.CompareTo(second.Id) < 0 ? (first, second) : (second, first);
+        var requests = new Mock<IWorkApprovalRequestRepository>();
+        requests.Setup(x => x.ListTrackedPendingByActionAsync(TenantId, ProjectId, WorkActionTypes.ProjectStatusTemplateChange, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([high, low]);
+        var locked = new List<Guid>();
+        requests.Setup(x => x.LockIfPendingAsync(TenantId, It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .Callback<Guid, Guid, CancellationToken>((_, id, _) => locked.Add(id)).ReturnsAsync(true);
+        var sweeper = new TaskStatusChangeRequestConflictSweeper(requests.Object, new Mock<IWorkNotificationEngine>().Object);
+
+        await sweeper.MarkConflictingStaleAsync(
+            TenantId, ProjectId, RootOwnerId, new TaskStatusChangeFootprint(new HashSet<Guid> { Active }, false), null);
+
+        Assert.Equal(new[] { low.Id, high.Id }, locked);
     }
 
     // ---- Access + decision rule ----
