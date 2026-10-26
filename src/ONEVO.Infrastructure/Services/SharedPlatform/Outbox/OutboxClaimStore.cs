@@ -15,8 +15,9 @@ namespace ONEVO.Infrastructure.Services.SharedPlatform.Outbox;
 /// State machine (owner = locked_by):
 ///   pending    --claim-->            processing(owner, locked_until = now() + lease)
 ///   processing --lease expired-->    claimable again by any instance (crash recovery); the reclaim
-///                                    counts the abandoned attempt, and at MaxAttempts the new
-///                                    owner parks the message as failed instead of dispatching it
+///                                    counts the abandoned attempt if its handler had started, and
+///                                    at MaxAttempts the new owner parks the message as failed
+///                                    instead of dispatching it
 ///   processing --complete(owner)-->  published
 ///   processing --fail(owner)-->      pending (backoff) | failed (after MaxAttempts)
 ///   processing --release(owner)-->   pending (graceful shutdown; attempt not counted)
@@ -36,8 +37,11 @@ public static class OutboxClaimStore
     /// makes concurrent claimers skip rows another claimer is taking, instead of blocking on them
     /// or taking them twice; each row is returned to exactly one claimer.
     /// Reclaiming an expired lease counts the abandoned attempt (attempt_count + 1, last_error
-    /// says why), so OutboxRetryPolicy's max-attempts rule also bounds messages whose attempts
-    /// never finish. SET expressions read the row's old values, so the CASEs see the old status.
+    /// says why) when its handler had started - RenewLeaseAsync stamps attempt_started_at right
+    /// before the handler runs, and a claim clears it - so OutboxRetryPolicy's max-attempts rule
+    /// bounds messages whose attempts never finish, while a message that only waited behind slow
+    /// work in the previous owner's batch is reclaimed without losing an attempt.
+    /// SET expressions read the row's old values, so the CASEs see the old status.
     /// </summary>
     public static async Task<List<OutboxMessage>> ClaimBatchAsync(
         ApplicationDbContext db, string owner, TimeSpan lease, int batchSize, CancellationToken ct)
@@ -55,14 +59,14 @@ public static class OutboxClaimStore
                 )
                 UPDATE outbox_messages AS m
                 SET status = {OutboxMessageStatus.Processing},
-                    attempt_count = CASE WHEN m.status = {OutboxMessageStatus.Processing}
+                    attempt_count = CASE WHEN m.status = {OutboxMessageStatus.Processing} AND m.attempt_started_at IS NOT NULL
                                          THEN m.attempt_count + 1 ELSE m.attempt_count END,
-                    last_error = CASE WHEN m.status = {OutboxMessageStatus.Processing}
+                    last_error = CASE WHEN m.status = {OutboxMessageStatus.Processing} AND m.attempt_started_at IS NOT NULL
                                       THEN 'Attempt by ' || coalesce(m.locked_by, 'unknown instance') || ' did not finish before its lease expired; reclaimed.'
                                       ELSE m.last_error END,
                     locked_by = {owner},
                     locked_until = now() + {lease},
-                    attempt_started_at = now()
+                    attempt_started_at = NULL
                 FROM claimable
                 WHERE m.id = claimable.id
                 RETURNING m.*

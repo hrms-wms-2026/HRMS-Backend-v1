@@ -42,7 +42,8 @@ public class OutboxMessage
     /// <summary>End of the owner's lease. Once it passes, another instance may reclaim the message.</summary>
     public DateTimeOffset? LockedUntil { get; set; }
 
-    /// <summary>When the current (or last) claimed attempt started.</summary>
+    /// <summary>When the current claimed attempt's handler started; null from the claim until the lease is
+    /// renewed right before the handler runs, so a reclaim counts only attempts that actually ran.</summary>
     public DateTimeOffset? AttemptStartedAt { get; set; }
 }
 

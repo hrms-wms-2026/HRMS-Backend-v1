@@ -52,6 +52,31 @@ public sealed class OutboxClaimOwnershipIntegrationTests
     }
 
     [Fact]
+    public async Task AnExpiredClaimWhoseHandlerNeverStarted_IsReclaimedWithoutCountingAnAttempt()
+    {
+        // One instance claims a batch of two but only starts the first (renewing its lease right before the handler);
+        // it stalls on that one, and both leases expire. The second message never ran, so its reclaim must not cost it
+        // an attempt - otherwise an outage that slows the first sends parks the rest of the batch without a single try.
+        var host = await OutboxTestHost.CreateAsync();
+        var started = await host.SeedPendingAsync(Type);
+        var waiting = await host.SeedPendingAsync(Type);
+        var services = host.BuildServices(_ => { });
+        var shortLease = TimeSpan.FromSeconds(1);
+        var claimed = await WithAppDbAsync(services, db => OutboxClaimStore.ClaimBatchAsync(db, "owner-a", shortLease, 20, CancellationToken.None));
+        Assert.Equal(2, claimed.Count);
+        Assert.True(await WithAppDbAsync(services, db => OutboxClaimStore.RenewLeaseAsync(db, started, "owner-a", shortLease, CancellationToken.None)));
+
+        await Task.Delay(TimeSpan.FromSeconds(1.5));
+        var reclaimed = await WithAppDbAsync(services, db => OutboxClaimStore.ClaimBatchAsync(db, "owner-b", LongLease, 20, CancellationToken.None));
+
+        Assert.Equal(2, reclaimed.Count);
+        Assert.Equal(1, (await host.GetAsync(started)).AttemptCount);
+        var neverRan = await host.GetAsync(waiting);
+        Assert.Equal(0, neverRan.AttemptCount);
+        Assert.Null(neverRan.LastError);
+    }
+
+    [Fact]
     public async Task AValidLease_IsNeverClaimedByAnotherInstance()
     {
         var host = await OutboxTestHost.CreateAsync();
@@ -73,6 +98,8 @@ public sealed class OutboxClaimOwnershipIntegrationTests
         var id = await host.SeedPendingAsync(Type);
         var services = host.BuildServices(_ => { });
         await WithAppDbAsync(services, db => OutboxClaimStore.ClaimBatchAsync(db, "owner-a", TimeSpan.FromSeconds(1), 20, CancellationToken.None));
+        // owner-a starts the handler (the renewal right before it), then stalls past its lease.
+        await WithAppDbAsync(services, db => OutboxClaimStore.RenewLeaseAsync(db, id, "owner-a", TimeSpan.FromSeconds(1), CancellationToken.None));
 
         List<OutboxMessage> reclaimed = [];
         using (var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30)))

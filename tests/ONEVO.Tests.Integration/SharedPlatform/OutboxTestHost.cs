@@ -186,13 +186,17 @@ public sealed class OutboxTestHost
         }
     }
 
-    /// <summary>Claims due messages as an instance that then dies without completing them - what
-    /// a crashed API instance leaves behind.</summary>
+    /// <summary>Claims due messages and starts their handlers (the lease renewal that precedes each
+    /// handler) as an instance that then dies without completing them - what a crashed API instance
+    /// leaves behind.</summary>
     public async Task<List<OutboxMessage>> ClaimAsCrashedInstanceAsync(IServiceProvider services, string owner, TimeSpan lease)
     {
         await using var scope = services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-        return await OutboxClaimStore.ClaimBatchAsync(db, owner, lease, batchSize: 20, CancellationToken.None);
+        var claimed = await OutboxClaimStore.ClaimBatchAsync(db, owner, lease, batchSize: 20, CancellationToken.None);
+        foreach (var message in claimed)
+            await OutboxClaimStore.RenewLeaseAsync(db, message.Id, owner, lease, CancellationToken.None);
+        return claimed;
     }
 }
 
