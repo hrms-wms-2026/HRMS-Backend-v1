@@ -30,6 +30,7 @@ public static class DashboardWidgetRegistry
         new("team-status", DashboardKeys.MyTeam, "Team status", "Who in your team is working, away or off.", 6, 4, 12, 8, true),
         new("team-quick-actions", DashboardKeys.MyTeam, "Team quick actions", "Shortcuts for managing your team.", 3, 3, 6, 4, false),
         new("team-progress", DashboardKeys.MyTeam, "Team progress", "Estimated hours progress across your team.", 4, 4, 12, 8, true),
+        new("team-attendance", DashboardKeys.MyTeam, "Team attendance", "Attendance across your team by week or month.", 3, 3, 12, 8, true),
     ];
 
     private static readonly Dictionary<string, WidgetDefinition> ByKey =
@@ -59,8 +60,10 @@ public static class DashboardWidgetRegistry
         ("team-status", new GridRect(0, 0, 8, 6)),
         ("team-quick-actions", new GridRect(8, 0, 4, 4)),
         ("team-progress", new GridRect(8, 4, 4, 6)),
+        ("team-attendance", new GridRect(0, 6, 8, 6)),
     ];
 
+    // team-attendance shares team-status's gate, so the variants below (team-status not allowed) never include it.
     // Permission variants (spec 6.2): when a gated widget is not allowed, an untouched default layout is shown with
     // the remaining widgets rearranged so no hole is left. Display only; seeding and Reset store the full default.
     private static readonly (string Key, GridRect Rect)[] MyWorkWithoutActionCenter =

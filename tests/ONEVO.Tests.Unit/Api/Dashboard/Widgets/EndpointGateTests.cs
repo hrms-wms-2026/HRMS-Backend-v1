@@ -124,8 +124,9 @@ public sealed class EndpointGateTests
             new TeamStatusWidgetDataProvider(kit.Mediator.Object, kit.User.Object, kit.Entitlements.Object),
             new WellbeingWidgetDataProvider(kit.Mediator.Object, kit.User.Object, kit.Entitlements.Object),
             new ActiveProjectsWidgetDataProvider(kit.Mediator.Object, kit.User.Object, kit.Entitlements.Object),
+            new TeamAttendanceWidgetDataProvider(kit.Mediator.Object, kit.User.Object, kit.Entitlements.Object),
         ];
-        Assert.Equal(5, providers.Select(p => p.WidgetKey).Distinct().Count());
+        Assert.Equal(6, providers.Select(p => p.WidgetKey).Distinct().Count());
     }
 
     [Authorize(Policy = "TenantPolicy")]

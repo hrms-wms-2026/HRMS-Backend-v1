@@ -15,7 +15,7 @@ public sealed class DashboardWidgetRegistryTests
         var team = DashboardWidgetRegistry.ForDashboard(DashboardKeys.MyTeam).Select(d => d.Key).ToList();
 
         Assert.Equal(10, work.Count);
-        Assert.Equal(3, team.Count);
+        Assert.Equal(4, team.Count);
         Assert.Empty(work.Intersect(team));
         Assert.Equal(work.Count + team.Count, work.Concat(team).Distinct().Count());
         foreach (var key in work.Concat(team))
@@ -90,6 +90,7 @@ public sealed class DashboardWidgetRegistryTests
         Assert.Equal(new GridRect(0, 0, 3, 4), work.Single(i => i.Key == "today-at-a-glance").Rect);
         Assert.Equal(new GridRect(0, 12, 12, 4), work.Single(i => i.Key == "work-pattern").Rect);
         Assert.Equal(new GridRect(8, 4, 4, 6), DashboardWidgetRegistry.DefaultLayout(DashboardKeys.MyTeam, Breakpoints.Desktop).Single(i => i.Key == "team-progress").Rect);
+        Assert.Equal(new GridRect(0, 6, 8, 6), DashboardWidgetRegistry.DefaultLayout(DashboardKeys.MyTeam, Breakpoints.Desktop).Single(i => i.Key == "team-attendance").Rect);
     }
 
     [Fact]
@@ -108,6 +109,7 @@ public sealed class DashboardWidgetRegistryTests
         Assert.Equal((3, 3), DashboardWidgetRegistry.DefaultSize("notifications"));
         Assert.Equal((3, 3), DashboardWidgetRegistry.DefaultSize("wellbeing"));
         Assert.Equal((8, 6), DashboardWidgetRegistry.DefaultSize("team-status"));
+        Assert.Equal((8, 6), DashboardWidgetRegistry.DefaultSize("team-attendance"));
     }
 
     [Fact]
