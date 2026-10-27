@@ -104,6 +104,8 @@ public sealed class MyTeamCapabilitiesIntegrationTests
             var managerPosition = helper.AddPositionHeldBy(db, manager.Id);
             var dept = helper.AddDepartment(db);
             helper.AddCoverage(db, managerPosition, ManagementCoverageRecord.TargetDepartment, coveredDepartmentId: dept);
+            // HasAnyManagedCoverageAsync re-checks the permission in the database, not on the current user.
+            helper.GrantPermission(db, manager.UserId, "attendance:read");
             await db.SaveChangesAsync();
         }
 
@@ -115,7 +117,7 @@ public sealed class MyTeamCapabilitiesIntegrationTests
         await using var permissionOnly = helper.NewContext();
         var noPermission = await Handler(permissionOnly, helper.TenantId, managerUserId, workModuleActive: false)
             .Handle(new GetMyTeamCapabilitiesQuery(), CancellationToken.None);
-        noPermission.Value!.CanViewPeopleStatus.Should().BeFalse("permission alone without coverage must not grant the flag - the gate requires both");
+        noPermission.Value!.CanViewPeopleStatus.Should().BeFalse("coverage without the caller's permission must not grant the flag - the gate requires both");
     }
 
     [Fact]
