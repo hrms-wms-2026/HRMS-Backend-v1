@@ -98,6 +98,21 @@ public sealed class TeamAttendancePeriodReader(
             var buckets = new Dictionary<DateOnly, string>(classification.Days.Count);
             foreach (var day in classification.Days)
             {
+                // Only expected working days count: a clock-in on a day off or a holiday is not attendance.
+                if (!workdays.ExpectedDates.Contains(day.Date))
+                {
+                    buckets[day.Date] = TeamAttendanceBuckets.Off;
+                    continue;
+                }
+
+                // Today, expected and not clocked in yet: pending, never absent (the handler's Team Status merge
+                // refines it for employees it covers).
+                if (day.Date == today && day.Status == "none")
+                {
+                    buckets[day.Date] = TeamAttendanceBuckets.Pending;
+                    continue;
+                }
+
                 // Classify's day list keeps excused days as they happened; its Late/Absent lists drop them.
                 var status = day.Status switch
                 {

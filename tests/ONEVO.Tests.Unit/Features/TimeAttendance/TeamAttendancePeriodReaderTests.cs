@@ -117,7 +117,7 @@ public sealed class TeamAttendancePeriodReaderTests
         days[new DateOnly(2026, 10, 27)].Should().Be(TeamAttendanceBuckets.Late);
         days[new DateOnly(2026, 10, 28)].Should().Be(TeamAttendanceBuckets.Absent);
         days[new DateOnly(2026, 10, 29)].Should().Be(TeamAttendanceBuckets.Leave);
-        days[Today].Should().Be(TeamAttendanceBuckets.Off); // not yet due: the handler's today merge decides
+        days[Today].Should().Be(TeamAttendanceBuckets.Pending); // expected today, not in yet
         days[new DateOnly(2026, 10, 31)].Should().Be(TeamAttendanceBuckets.Off);
         var bDays = result.Single(r => r.EmployeeId == b).BucketByDate;
         bDays[new DateOnly(2026, 10, 26)].Should().Be(TeamAttendanceBuckets.Present);
@@ -191,6 +191,38 @@ public sealed class TeamAttendancePeriodReaderTests
         days[new DateOnly(2026, 10, 27)].Should().Be(TeamAttendanceBuckets.Present);
         days[new DateOnly(2026, 10, 28)].Should().Be(TeamAttendanceBuckets.Off);
         days[new DateOnly(2026, 10, 26)].Should().Be(TeamAttendanceBuckets.Absent);
+    }
+
+    [Fact]
+    public async Task Reader_OffDayClockIn_IsNotCounted()
+    {
+        // Mon-Wed working week: Thursday 29 Oct is a past non-working day.
+        _legalEntities.Setup(l => l.GetByIdForTenantAsync(TenantId, LegalEntityId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new LegalEntity
+            {
+                Id = LegalEntityId, TenantId = TenantId, Timezone = "UTC", StandardWorkingDays = "[1,2,3]",
+                WorkStartTime = new TimeOnly(9, 0), WorkEndTime = new TimeOnly(17, 0), BreakDurationMinutes = 60,
+            });
+        var a = AddEmployee();
+        Clock(a, new DateOnly(2026, 10, 29), 10, 30);   // "late" against 09:00, on a day off
+        Clock(a, new DateOnly(2026, 10, 26), 9);
+
+        var days = (await Reader().LoadAsync(TenantId, [a], From, To)).Single().BucketByDate;
+
+        days[new DateOnly(2026, 10, 29)].Should().Be(TeamAttendanceBuckets.Off);
+        days[new DateOnly(2026, 10, 26)].Should().Be(TeamAttendanceBuckets.Present);
+        days[Today].Should().Be(TeamAttendanceBuckets.Off); // Friday is not a working day here either
+    }
+
+    [Fact]
+    public async Task Reader_TodayNotExpected_IsOff()
+    {
+        var a = AddEmployee();
+        _employeeRows[a].HireDate = new DateOnly(2026, 11, 1); // starts after today
+
+        var days = (await Reader().LoadAsync(TenantId, [a], From, To)).Single().BucketByDate;
+
+        days[Today].Should().Be(TeamAttendanceBuckets.Off);
     }
 
     [Fact]
