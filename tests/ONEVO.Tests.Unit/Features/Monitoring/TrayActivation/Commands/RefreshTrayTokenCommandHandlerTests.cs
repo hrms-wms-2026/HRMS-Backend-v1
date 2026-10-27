@@ -104,6 +104,69 @@ public sealed class RefreshTrayTokenCommandHandlerTests
         result.Value!.RequiresLegalAcceptance.Should().BeFalse();
     }
 
+    [Fact]
+    public async Task Handle_WhenRotatedTokenIsRetriedWithinGrace_IssuesNewTokenAndRevokesUnreceivedReplacement()
+    {
+        var repository = CreateRepository();
+        repository.Setup(r => r.FindActiveRefreshTokenAsync("refresh-token-hash", It.IsAny<CancellationToken>()))
+            .ReturnsAsync((TrayDeviceRefreshToken?)null);
+        repository.Setup(r => r.FindUnconsumedRotatedRefreshTokenAsync(
+                "refresh-token-hash", It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new TrayDeviceRefreshToken
+            {
+                Id = Guid.NewGuid(),
+                TenantId = TenantId,
+                UserId = UserId,
+                DeviceRegistrationId = DeviceRegistrationId,
+                TokenHash = "refresh-token-hash",
+                ExpiresAt = DateTimeOffset.UtcNow.AddDays(30),
+                IsRevoked = true,
+                RevokedReason = TrayDeviceRefreshToken.RotatedReason,
+            });
+        var handler = CreateHandler(repository);
+
+        var result = await handler.Handle(
+            new RefreshTrayTokenCommand("raw-refresh-token", "fingerprint"),
+            CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.RefreshToken.Should().Be("new-raw-refresh-token");
+        repository.Verify(r => r.RevokeAllRefreshTokensForDeviceAsync(
+            DeviceRegistrationId, "rotation_retry", It.IsAny<CancellationToken>()), Times.Once);
+        repository.Verify(r => r.AddRefreshTokenAsync(It.IsAny<TrayDeviceRefreshToken>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_WhenTokenIsNeitherActiveNorAnUnconsumedRotation_Returns401()
+    {
+        var repository = CreateRepository();
+        repository.Setup(r => r.FindActiveRefreshTokenAsync("refresh-token-hash", It.IsAny<CancellationToken>()))
+            .ReturnsAsync((TrayDeviceRefreshToken?)null);
+        var handler = CreateHandler(repository);
+
+        var result = await handler.Handle(
+            new RefreshTrayTokenCommand("raw-refresh-token", "fingerprint"),
+            CancellationToken.None);
+
+        result.IsSuccess.Should().BeFalse();
+        result.StatusCode.Should().Be(401);
+        repository.Verify(r => r.AddRefreshTokenAsync(It.IsAny<TrayDeviceRefreshToken>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Handle_NormalRotation_RevokesOnlyThePresentedToken()
+    {
+        var repository = CreateRepository();
+        var handler = CreateHandler(repository);
+
+        await handler.Handle(new RefreshTrayTokenCommand("raw-refresh-token", "fingerprint"), CancellationToken.None);
+
+        repository.Verify(r => r.RevokeRefreshTokenAsync(
+            It.IsAny<TrayDeviceRefreshToken>(), TrayDeviceRefreshToken.RotatedReason, It.IsAny<CancellationToken>()), Times.Once);
+        repository.Verify(r => r.RevokeAllRefreshTokensForDeviceAsync(
+            It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
     private static Mock<ITrayActivationRepository> CreateRepository()
     {
         var repository = new Mock<ITrayActivationRepository>();
@@ -147,6 +210,8 @@ public sealed class RefreshTrayTokenCommandHandlerTests
             .ReturnsAsync(new Tenant { Id = TenantId, Slug = "acme" });
 
         var resolvedLegalChecker = legalChecker ?? DefaultLegalChecker();
+        var clock = new Mock<IDateTimeProvider>();
+        clock.Setup(c => c.UtcNow).Returns(DateTimeOffset.UtcNow);
 
         return new RefreshTrayTokenCommandHandler(
             repository.Object,
@@ -154,7 +219,7 @@ public sealed class RefreshTrayTokenCommandHandlerTests
             tenantRepository.Object,
             new Mock<ITenantContextSwitcher>().Object,
             tokenService.Object,
-            new Mock<IDateTimeProvider>().Object,
+            clock.Object,
             new Mock<IUnitOfWork>().Object,
             resolvedLegalChecker.Object,
             legalChallenges?.Object ?? new Mock<ILegalLoginChallengeRepository>().Object);

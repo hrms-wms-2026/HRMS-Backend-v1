@@ -104,8 +104,8 @@ public sealed class MyTeamCapabilitiesIntegrationTests
             var managerPosition = helper.AddPositionHeldBy(db, manager.Id);
             var dept = helper.AddDepartment(db);
             helper.AddCoverage(db, managerPosition, ManagementCoverageRecord.TargetDepartment, coveredDepartmentId: dept);
-            // HasAnyManagedCoverageAsync re-checks the permission in the database, not on the current user.
-            helper.GrantPermission(db, manager.UserId, "attendance:read");
+            // The resolver re-checks the permission against the user's roles, not just the token.
+            helper.GrantPermission(db, managerUserId, "attendance:read");
             await db.SaveChangesAsync();
         }
 

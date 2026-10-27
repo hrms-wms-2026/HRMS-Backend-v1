@@ -432,6 +432,95 @@ public class EfConversationRepository : IConversationRepository
         }
     }
 
+    public async Task<IReadOnlySet<Guid>> ListMutedConversationIdsAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default)
+        => (await _db.ConversationMutes.AsNoTracking()
+                .Where(m => m.TenantId == tenantId && m.EmployeeId == employeeId)
+                .Select(m => m.ConversationId)
+                .ToListAsync(ct))
+            .ToHashSet();
+
+    public async Task SetMutedAsync(Guid tenantId, Guid employeeId, Guid conversationId, bool muted, CancellationToken ct = default)
+    {
+        if (!muted)
+        {
+            await _db.ConversationMutes
+                .Where(m => m.TenantId == tenantId && m.EmployeeId == employeeId && m.ConversationId == conversationId)
+                .ExecuteDeleteAsync(ct);
+            return;
+        }
+        if (await _db.ConversationMutes.AnyAsync(m => m.EmployeeId == employeeId && m.ConversationId == conversationId, ct))
+            return;
+        var row = new ConversationMute { Id = Guid.NewGuid(), TenantId = tenantId, EmployeeId = employeeId, ConversationId = conversationId };
+        _db.ConversationMutes.Add(row);
+        try
+        {
+            await _db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException)
+        {
+            // Lost a race on the (employee, conversation) unique index: it is muted, which is the goal.
+            _db.Entry(row).State = EntityState.Detached;
+        }
+    }
+
+    public async Task SetDescriptionAsync(Guid tenantId, Guid conversationId, string? description, CancellationToken ct = default)
+        => await _db.Conversations
+            .Where(c => c.TenantId == tenantId && c.Id == conversationId)
+            .ExecuteUpdateAsync(set => set.SetProperty(c => c.Description, description), ct);
+
+    public async Task<ConversationMediaPage> ListMediaAsync(
+        Guid tenantId, Guid conversationId, Guid employeeId, string? kind, int skip, int take, CancellationToken ct = default)
+    {
+        var hiddenIds = _db.ConversationMessageHides
+            .Where(h => h.TenantId == tenantId && h.EmployeeId == employeeId)
+            .Select(h => h.MessageId);
+        var files = from a in _db.ConversationMessageAttachments.AsNoTracking()
+                    join m in _db.ConversationMessages.AsNoTracking() on a.MessageId equals m.Id
+                    where a.TenantId == tenantId && m.TenantId == tenantId && m.ConversationId == conversationId
+                        && m.DeletedAt == null && !hiddenIds.Contains(m.Id)
+                    select new { Attachment = a, m.AuthorEmployeeId, SentAt = m.CreatedAt };
+
+        var images = await files.CountAsync(f => f.Attachment.ContentType.StartsWith("image/"), ct);
+        var videos = await files.CountAsync(f => f.Attachment.ContentType.StartsWith("video/"), ct);
+        var audio = await files.CountAsync(f => f.Attachment.ContentType.StartsWith("audio/"), ct);
+        var all = await files.CountAsync(ct);
+        var counts = new Dictionary<string, int>
+        {
+            [ConversationMediaKinds.Image] = images,
+            [ConversationMediaKinds.Video] = videos,
+            [ConversationMediaKinds.Audio] = audio,
+            [ConversationMediaKinds.Document] = all - images - videos - audio,
+        };
+
+        var filtered = kind switch
+        {
+            ConversationMediaKinds.Image => files.Where(f => f.Attachment.ContentType.StartsWith("image/")),
+            ConversationMediaKinds.Video => files.Where(f => f.Attachment.ContentType.StartsWith("video/")),
+            ConversationMediaKinds.Audio => files.Where(f => f.Attachment.ContentType.StartsWith("audio/")),
+            ConversationMediaKinds.Document => files.Where(f => !f.Attachment.ContentType.StartsWith("image/")
+                && !f.Attachment.ContentType.StartsWith("video/") && !f.Attachment.ContentType.StartsWith("audio/")),
+            _ => files,
+        };
+        var rows = await filtered.OrderByDescending(f => f.SentAt).ThenByDescending(f => f.Attachment.Id).Skip(skip).Take(take).ToListAsync(ct);
+        var total = kind is null ? all : counts.GetValueOrDefault(kind);
+        return new ConversationMediaPage(rows.Select(r => new ConversationMediaItem(r.Attachment, r.AuthorEmployeeId, r.SentAt)).ToList(), total, counts);
+    }
+
+    public async Task<IReadOnlyList<ConversationMessage>> SearchTextMessagesAsync(
+        Guid tenantId, Guid conversationId, Guid employeeId, string text, int take, CancellationToken ct = default)
+    {
+        var hiddenIds = _db.ConversationMessageHides
+            .Where(h => h.TenantId == tenantId && h.EmployeeId == employeeId)
+            .Select(h => h.MessageId);
+        var pattern = "%" + text.Replace("\\", "\\\\").Replace("%", "\\%").Replace("_", "\\_") + "%";
+        return await _db.ConversationMessages.AsNoTracking()
+            .Where(m => m.TenantId == tenantId && m.ConversationId == conversationId && m.Kind == ConversationMessageKinds.Text
+                && m.DeletedAt == null && !hiddenIds.Contains(m.Id) && EF.Functions.ILike(m.BodyHtml, pattern, "\\"))
+            .OrderByDescending(m => m.CreatedAt).ThenByDescending(m => m.Id)
+            .Take(take)
+            .ToListAsync(ct);
+    }
+
     public async Task DeleteMessageIfExistsAsync(Guid tenantId, Guid messageId, CancellationToken ct = default)
         => await _db.ConversationMessages
             .Where(m => m.TenantId == tenantId && m.Id == messageId && m.AuthorEmployeeId == null)

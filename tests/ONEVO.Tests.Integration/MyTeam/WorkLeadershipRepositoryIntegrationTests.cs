@@ -33,6 +33,8 @@ public sealed class WorkLeadershipRepositoryIntegrationTests
 
             var doing = helper.AddStatus(db, projectId, marksComplete: false);
             var done = helper.AddStatus(db, projectId, marksComplete: true);
+            // Modules before tasks: the hour-summary trigger needs the objectives row to exist.
+            await db.SaveChangesAsync();
             var parent = helper.AddTask(db, projectId, moduleId, doing, 0, today.AddDays(-5), assigneeEmployeeId: strangerId);
             topOverdueTaskId = parent.Id;
             helper.AddTask(db, projectId, moduleId, doing, 0, today.AddDays(-9), parentTaskId: parent.Id); // subtask: excluded from top-level reads

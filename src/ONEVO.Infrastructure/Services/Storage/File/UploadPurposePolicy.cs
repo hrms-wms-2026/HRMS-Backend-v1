@@ -223,6 +223,21 @@ public sealed class UploadPurposePolicy : IUploadPurposePolicy
             ".zip" => contentType.Equals("application/zip", StringComparison.OrdinalIgnoreCase)
                 || contentType.Equals("application/x-zip-compressed", StringComparison.OrdinalIgnoreCase)
                 || contentType.Equals("application/octet-stream", StringComparison.OrdinalIgnoreCase),
+            // Chat video and audio (conversation_attachment). Browsers report these inconsistently, so each extension
+            // accepts the types they are known to send.
+            ".mp4" => contentType.Equals("video/mp4", StringComparison.OrdinalIgnoreCase),
+            ".mov" => contentType.Equals("video/quicktime", StringComparison.OrdinalIgnoreCase),
+            ".webm" => contentType.Equals("video/webm", StringComparison.OrdinalIgnoreCase)
+                || contentType.Equals("audio/webm", StringComparison.OrdinalIgnoreCase),
+            ".mp3" => contentType.Equals("audio/mpeg", StringComparison.OrdinalIgnoreCase)
+                || contentType.Equals("audio/mp3", StringComparison.OrdinalIgnoreCase),
+            ".wav" => contentType.Equals("audio/wav", StringComparison.OrdinalIgnoreCase)
+                || contentType.Equals("audio/x-wav", StringComparison.OrdinalIgnoreCase)
+                || contentType.Equals("audio/wave", StringComparison.OrdinalIgnoreCase),
+            ".m4a" => contentType.Equals("audio/mp4", StringComparison.OrdinalIgnoreCase)
+                || contentType.Equals("audio/x-m4a", StringComparison.OrdinalIgnoreCase),
+            ".ogg" => contentType.Equals("audio/ogg", StringComparison.OrdinalIgnoreCase)
+                || contentType.Equals("video/ogg", StringComparison.OrdinalIgnoreCase),
             _ => false
         };
     }

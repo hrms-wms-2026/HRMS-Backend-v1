@@ -119,6 +119,25 @@ public interface IConversationRepository
     /// <summary>Pins (or unpins) a chat for the employee and saves; repeating either is a no-op.</summary>
     Task SetFavoriteAsync(Guid tenantId, Guid employeeId, Guid conversationId, bool favorite, CancellationToken ct = default);
 
+    /// <summary>The chats the employee muted.</summary>
+    Task<IReadOnlySet<Guid>> ListMutedConversationIdsAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default);
+
+    /// <summary>Mutes (or unmutes) a chat for the employee and saves; repeating either is a no-op.</summary>
+    Task SetMutedAsync(Guid tenantId, Guid employeeId, Guid conversationId, bool muted, CancellationToken ct = default);
+
+    /// <summary>Sets (or clears) a chat's description and saves.</summary>
+    Task SetDescriptionAsync(Guid tenantId, Guid conversationId, string? description, CancellationToken ct = default);
+
+    /// <summary>A page of the files posted in a chat, newest first: only messages the employee can see (not retracted, not
+    /// hidden for them). <paramref name="kind"/> is a <see cref="ConversationMediaKinds"/> value or null for every file.</summary>
+    Task<ConversationMediaPage> ListMediaAsync(
+        Guid tenantId, Guid conversationId, Guid employeeId, string? kind, int skip, int take, CancellationToken ct = default);
+
+    /// <summary>Text messages of a chat whose body contains <paramref name="text"/> (case-insensitive), newest first, that
+    /// the employee can see.</summary>
+    Task<IReadOnlyList<ConversationMessage>> SearchTextMessagesAsync(
+        Guid tenantId, Guid conversationId, Guid employeeId, string text, int take, CancellationToken ct = default);
+
     /// <summary>Removes a system-written message (a case's "resolved" line after an undo) when it exists.</summary>
     Task DeleteMessageIfExistsAsync(Guid tenantId, Guid messageId, CancellationToken ct = default);
 
@@ -127,4 +146,28 @@ public interface IConversationRepository
 }
 
 /// <summary>One of an employee's conversations for the chat list.</summary>
+/// <summary>A file posted in a chat, with who posted it and when.</summary>
+public sealed record ConversationMediaItem(ConversationMessageAttachment Attachment, Guid? AuthorEmployeeId, DateTimeOffset SentAt);
+
+/// <summary>One page of a chat's files, the total for the requested kind, and how many of each kind it has.</summary>
+public sealed record ConversationMediaPage(IReadOnlyList<ConversationMediaItem> Items, int Total, IReadOnlyDictionary<string, int> Counts);
+
+/// <summary>What a chat's files are grouped by in its info panel, from their content type.</summary>
+public static class ConversationMediaKinds
+{
+    public const string Image = "image";
+    public const string Video = "video";
+    public const string Audio = "audio";
+    /// <summary>Everything that is not an image, video or audio file (PDFs, Office files, archives, ...).</summary>
+    public const string Document = "document";
+
+    public static readonly IReadOnlyList<string> All = [Image, Video, Audio, Document];
+
+    public static string Of(string contentType)
+        => contentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase) ? Image
+            : contentType.StartsWith("video/", StringComparison.OrdinalIgnoreCase) ? Video
+            : contentType.StartsWith("audio/", StringComparison.OrdinalIgnoreCase) ? Audio
+            : Document;
+}
+
 public sealed record MemberConversation(Conversation Conversation, DateTimeOffset? LastReadAt, ConversationMessage? LatestMessage);

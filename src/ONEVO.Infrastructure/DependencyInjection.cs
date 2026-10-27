@@ -483,6 +483,7 @@ public static class DependencyInjection
             sp => sp.GetRequiredService<ONEVO.Infrastructure.Persistence.Repositories.EfEmployeeRepository>());
         services.AddScoped<ONEVO.Application.Features.Storage.EntityAssets.Services.EmployeeEntityAssetAccessPolicy>();
         services.AddScoped<ONEVO.Application.Features.Storage.EntityAssets.Services.LegalEntityEntityAssetAccessPolicy>();
+        services.AddScoped<ONEVO.Application.Features.Inbox.Chats.ConversationEntityAssetAccessPolicy>();
         services.AddScoped<
             ONEVO.Application.Features.CoreHr.Employee.Documents.IEmployeeDocumentAccess,
             ONEVO.Application.Features.CoreHr.Employee.Documents.EmployeeDocumentAccess>();
@@ -505,7 +506,9 @@ public static class DependencyInjection
                     [ONEVO.Application.Common.Constants.EntityAssetOwnerTypes.LegalEntity] =
                         sp.GetRequiredService<ONEVO.Application.Features.Storage.EntityAssets.Services.LegalEntityEntityAssetAccessPolicy>(),
                     [ONEVO.Application.Common.Constants.EntityAssetOwnerTypes.EmployeeDocument] =
-                        sp.GetRequiredService<ONEVO.Application.Features.Storage.EntityAssets.Services.EmployeeDocumentAccessPolicy>()
+                        sp.GetRequiredService<ONEVO.Application.Features.Storage.EntityAssets.Services.EmployeeDocumentAccessPolicy>(),
+                    [ONEVO.Application.Common.Constants.EntityAssetOwnerTypes.Conversation] =
+                        sp.GetRequiredService<ONEVO.Application.Features.Inbox.Chats.ConversationEntityAssetAccessPolicy>()
                     // Part 2 plan (Project/Objective/Task endpoint consolidation) adds the remaining
                     // three owner types here when their controllers migrate to the generic resolve endpoint.
                 }));

@@ -136,15 +136,43 @@ public sealed class GetTeamActionItemsQueryHandlerTests
         Assert.Equal(LegalEntityId, source.LastLegalEntityId);
     }
 
-    [Fact]
-    public async Task Non_positive_top_per_source_falls_back_to_five()
+    [Theory]
+    [InlineData(0)]
+    [InlineData(25)]
+    public async Task Top_per_source_never_asks_for_more_than_the_total_cap(int requested)
     {
         var source = new FakeSource("leave.approval", ActionSourceSummary.DomainPeople, gated: true);
         var handler = CreateHandler(isAuthenticated: true, [source]);
 
-        await handler.Handle(new GetTeamActionItemsQuery(TopPerSource: 0), CancellationToken.None);
+        await handler.Handle(new GetTeamActionItemsQuery(TopPerSource: requested), CancellationToken.None);
 
-        Assert.Equal(5, source.LastTop);
+        Assert.Equal(GetTeamActionItemsQueryHandler.MaxItemsTotal, source.LastTop);
+    }
+
+    [Fact]
+    public async Task Returns_only_the_four_longest_waiting_items_across_sources_and_keeps_real_counts()
+    {
+        var now = DateTimeOffset.Parse("2026-10-27T12:00:00Z");
+        ActionItem Item(string key, int daysAgo) => new(
+            key, Guid.NewGuid(), $"{key} {daysAgo}", null, null, now.AddDays(-daysAgo), null,
+            new ActionItemLink(ActionItemLink.KindWorkRequest, new Dictionary<string, string>()));
+        ActionSourceSummary Summary(string key, string domain, int pending, params ActionItem[] items) =>
+            new(key, domain, ActionSourceSummary.StatusOk, pending, null, items.Min(i => i.CreatedAt), items);
+
+        var leave = new FakeSource("leave.approval", ActionSourceSummary.DomainPeople, gated: true,
+            summary: () => Task.FromResult(Summary("leave.approval", ActionSourceSummary.DomainPeople, 9,
+                Item("leave.approval", 9), Item("leave.approval", 2), Item("leave.approval", 1))));
+        var objective = new FakeSource("work.objective_change", ActionSourceSummary.DomainWork, gated: true,
+            summary: () => Task.FromResult(Summary("work.objective_change", ActionSourceSummary.DomainWork, 6,
+                Item("work.objective_change", 7), Item("work.objective_change", 6), Item("work.objective_change", 3))));
+        var handler = CreateHandler(isAuthenticated: true, [leave, objective]);
+
+        var result = await handler.Handle(new GetTeamActionItemsQuery(TopPerSource: 25), CancellationToken.None);
+
+        var items = result.Value!.Sources.SelectMany(s => s.TopItems).OrderBy(i => i.CreatedAt).Select(i => i.Title);
+        Assert.Equal(["leave.approval 9", "work.objective_change 7", "work.objective_change 6", "work.objective_change 3"], items);
+        Assert.Equal(9, result.Value.Sources.Single(s => s.SourceKey == "leave.approval").PendingCount);
+        Assert.Equal(6, result.Value.Sources.Single(s => s.SourceKey == "work.objective_change").PendingCount);
     }
 
     private static GetTeamActionItemsQueryHandler CreateHandler(

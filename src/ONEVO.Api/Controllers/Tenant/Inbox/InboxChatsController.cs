@@ -6,12 +6,15 @@ using ONEVO.Application.Features.Inbox.Chats;
 namespace ONEVO.Api.Controllers.Tenant.Inbox;
 
 public sealed record OpenDirectChatRequest(Guid EmployeeId);
-public sealed record CreateGroupChatRequest(string Name, IReadOnlyList<Guid> EmployeeIds);
+public sealed record CreateGroupChatRequest(string Name, IReadOnlyList<Guid> EmployeeIds, Guid? AvatarFileId = null);
 public sealed record RenameGroupChatRequest(string Name);
 public sealed record SetChatFavoriteRequest(bool Favorite);
+public sealed record SetChatMutedRequest(bool Muted);
+public sealed record SetChatDescriptionRequest(string? Description);
+public sealed record SetChatPhotoRequest(Guid? FileId);
 public sealed record ForwardCaseRequest(string Source, string Kind, Guid Id, IReadOnlyList<Guid> ConversationIds);
 public sealed record ForwardMessageRequest(Guid MessageId, IReadOnlyList<Guid> ConversationIds);
-public sealed record StartCaseGroupRequest(string Source, string Kind, Guid Id, IReadOnlyList<Guid>? EmployeeIds);
+public sealed record StartCaseGroupRequest(string Source, string Kind, Guid Id, IReadOnlyList<Guid>? EmployeeIds, string? Name = null, Guid? AvatarFileId = null);
 
 /// <summary>The inbox as chats: 1-on-1 chats with anyone in the legal entity, named groups, and the dedicated group
 /// of a case. Requests and alerts arrive as case cards inside them. Messages go through /conversations.</summary>
@@ -41,7 +44,7 @@ public class InboxChatsController : ControllerBase
 
     [HttpPost("groups")]
     public async Task<IActionResult> CreateGroup([FromBody] CreateGroupChatRequest body, CancellationToken ct)
-        => ToResult(await _mediator.Send(new CreateGroupChatCommand(body.Name, body.EmployeeIds ?? []), ct));
+        => ToResult(await _mediator.Send(new CreateGroupChatCommand(body.Name, body.EmployeeIds ?? [], body.AvatarFileId), ct));
 
     [HttpPut("groups/{conversationId:guid}/name")]
     public async Task<IActionResult> RenameGroup(Guid conversationId, [FromBody] RenameGroupChatRequest body, CancellationToken ct)
@@ -58,6 +61,36 @@ public class InboxChatsController : ControllerBase
         return result.IsSuccess ? NoContent() : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
+    /// <summary>Mutes (or unmutes) one of the caller's chats, for them only.</summary>
+    [HttpPut("{conversationId:guid}/mute")]
+    public async Task<IActionResult> SetMuted(Guid conversationId, [FromBody] SetChatMutedRequest body, CancellationToken ct)
+        => ToResult(await _mediator.Send(new SetChatMutedCommand(conversationId, body.Muted), ct));
+
+    /// <summary>Sets a group's (or case group's) description; empty clears it.</summary>
+    [HttpPut("{conversationId:guid}/description")]
+    public async Task<IActionResult> SetDescription(Guid conversationId, [FromBody] SetChatDescriptionRequest body, CancellationToken ct)
+        => ToResult(await _mediator.Send(new SetChatDescriptionCommand(conversationId, body.Description), ct));
+
+    /// <summary>Sets a group's (or case group's) photo from an uploaded conversation_avatar file.</summary>
+    [HttpPut("{conversationId:guid}/photo")]
+    public async Task<IActionResult> SetPhoto(Guid conversationId, [FromBody] SetChatPhotoRequest body, CancellationToken ct)
+        => ToResult(await _mediator.Send(new SetChatPhotoCommand(conversationId, body.FileId), ct));
+
+    [HttpDelete("{conversationId:guid}/photo")]
+    public async Task<IActionResult> RemovePhoto(Guid conversationId, CancellationToken ct)
+        => ToResult(await _mediator.Send(new SetChatPhotoCommand(conversationId, null), ct));
+
+    /// <summary>A page of the files posted in the chat (kind: image, video, audio, document), newest first, with counts per kind.</summary>
+    [HttpGet("{conversationId:guid}/media")]
+    public async Task<IActionResult> Media(Guid conversationId, [FromQuery] string? kind, [FromQuery] int page = 1, [FromQuery] int pageSize = 20,
+        CancellationToken ct = default)
+        => ToResult(await _mediator.Send(new ListChatMediaQuery(conversationId, kind, page, pageSize), ct));
+
+    /// <summary>The chat's text messages containing <paramref name="q"/>, newest first.</summary>
+    [HttpGet("{conversationId:guid}/search")]
+    public async Task<IActionResult> Search(Guid conversationId, [FromQuery] string? q, CancellationToken ct)
+        => ToResult(await _mediator.Send(new SearchChatMessagesQuery(conversationId, q ?? string.Empty), ct));
+
     /// <summary>Forwards a case card into chats the caller is in. Returns how many chats got it.</summary>
     [HttpPost("forward")]
     public async Task<IActionResult> Forward([FromBody] ForwardCaseRequest body, CancellationToken ct)
@@ -71,7 +104,10 @@ public class InboxChatsController : ControllerBase
     /// <summary>Moves a case to its own group (created once) and adds people to it.</summary>
     [HttpPost("case-group")]
     public async Task<IActionResult> StartCaseGroup([FromBody] StartCaseGroupRequest body, CancellationToken ct)
-        => ToResult(await _mediator.Send(new StartCaseGroupCommand(body.Source, body.Kind, body.Id, body.EmployeeIds ?? []), ct));
+        => ToResult(await _mediator.Send(new StartCaseGroupCommand(body.Source, body.Kind, body.Id, body.EmployeeIds ?? [], body.Name, body.AvatarFileId), ct));
+
+    private IActionResult ToResult(ONEVO.Application.Common.Models.Result result)
+        => result.IsSuccess ? NoContent() : Problem(result.Error, statusCode: result.StatusCode ?? 400);
 
     private IActionResult ToResult<T>(ONEVO.Application.Common.Models.Result<T> result)
         => result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);

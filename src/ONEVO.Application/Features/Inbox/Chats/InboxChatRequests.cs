@@ -1,12 +1,16 @@
 using MediatR;
 using Microsoft.Extensions.Logging;
+using ONEVO.Application.Common.Constants;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
+using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Conversations.Commands.AddConversationParticipants;
 using ONEVO.Application.Features.Conversations.Contracts;
 using ONEVO.Application.Features.Conversations.RepositoryInterfaces;
 using ONEVO.Application.Features.Conversations.Services;
 using ONEVO.Application.Features.Inbox.Services;
+using ONEVO.Application.Features.Storage.EntityAssets.ServiceInterfaces;
+using ONEVO.Application.Features.Storage.File.Helpers;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Objectives.Services;
 using ONEVO.Domain.Features.Conversations.Entities;
@@ -19,7 +23,8 @@ public sealed record InboxChatRef(Guid ConversationId, string Source, string Kin
 public sealed record ListInboxChatsQuery : IRequest<Result<IReadOnlyList<InboxChatRow>>>;
 public sealed record GetInboxChatForItemQuery(string Source, string Kind, Guid Id) : IRequest<Result<InboxChatRow>>;
 public sealed record OpenDirectChatCommand(Guid EmployeeId) : IRequest<Result<InboxChatRef>>;
-public sealed record CreateGroupChatCommand(string Name, IReadOnlyList<Guid> EmployeeIds) : IRequest<Result<InboxChatRef>>;
+/// <summary><see cref="AvatarFileId"/>: an image the caller uploaded (purpose conversation_avatar) to show as the group's photo.</summary>
+public sealed record CreateGroupChatCommand(string Name, IReadOnlyList<Guid> EmployeeIds, Guid? AvatarFileId = null) : IRequest<Result<InboxChatRef>>;
 public sealed record RenameGroupChatCommand(Guid ConversationId, string Name) : IRequest<Result>;
 /// <summary>Pins a chat to the top of its section in the caller's own inbox (or unpins it).</summary>
 public sealed record SetChatFavoriteCommand(Guid ConversationId, bool Favorite) : IRequest<Result>;
@@ -29,7 +34,9 @@ public sealed record ForwardCaseCommand(string Source, string Kind, Guid Id, IRe
 /// <summary>Sends a copy of a chat message (its text and files) into chats the caller is in, labelled "forwarded".</summary>
 public sealed record ForwardMessageCommand(Guid MessageId, IReadOnlyList<Guid> ConversationIds) : IRequest<Result<int>>;
 /// <summary>Moves a case from the 1-on-1 chat to its own group and adds people to it.</summary>
-public sealed record StartCaseGroupCommand(string Source, string Kind, Guid Id, IReadOnlyList<Guid> EmployeeIds) : IRequest<Result<InboxChatRef>>;
+/// <summary><see cref="Name"/>: the group's name when it should differ from the case title; <see cref="AvatarFileId"/>: its photo.</summary>
+public sealed record StartCaseGroupCommand(
+    string Source, string Kind, Guid Id, IReadOnlyList<Guid> EmployeeIds, string? Name = null, Guid? AvatarFileId = null) : IRequest<Result<InboxChatRef>>;
 
 public sealed class InboxChatHandlers :
     IRequestHandler<ListInboxChatsQuery, Result<IReadOnlyList<InboxChatRow>>>,
@@ -58,14 +65,18 @@ public sealed class InboxChatHandlers :
     private readonly ISender _sender;
     private readonly IInboxRouter _router;
     private readonly IUnitOfWork _unitOfWork;
+    private readonly ICurrentUser _currentUser;
+    private readonly IPrimaryEntityAssetLinker _assets;
     private readonly ILogger<InboxChatHandlers> _logger;
 
     public InboxChatHandlers(
         InboxCallerResolver callers, IInboxChatService chats, IPeopleChatService people, ICaseGroupService caseGroups,
         IConversationAccess access, IConversationRepository conversations, ICallerIdentityResolver identity,
         IMilestoneMembershipCoordinator membership, IInboxRealtimePublisher realtime, ISender sender, ILogger<InboxChatHandlers> logger,
-        IInboxRouter router, IUnitOfWork unitOfWork)
+        IInboxRouter router, IUnitOfWork unitOfWork, ICurrentUser currentUser, IPrimaryEntityAssetLinker assets)
     {
+        _currentUser = currentUser;
+        _assets = assets;
         _unitOfWork = unitOfWork;
         _callers = callers;
         _chats = chats;
@@ -126,6 +137,7 @@ public sealed class InboxChatHandlers :
 
         var creator = await CallerNameAsync(caller, ct);
         var group = await _people.CreateGroupAsync(caller.TenantId, caller.EmployeeId, creator, name, members, ct);
+        await LinkAvatarAsync(caller, group.Id, command.AvatarFileId, ct);
         var subject = new ItemRef(group.SubjectSource, group.SubjectKind, group.SubjectId);
         await ConversationRules.PublishSafelyAsync(
             () => _realtime.InboxChangedAsync(caller.TenantId, members.Append(caller.EmployeeId).ToList(), subject, ct), _logger, "inboxChanged");
@@ -142,7 +154,10 @@ public sealed class InboxChatHandlers :
         if (name.Length > PeopleChatNames.MaxGroupName)
             return Result.UnprocessableEntity($"Keep the name under {PeopleChatNames.MaxGroupName} characters.");
         var context = await _access.LoadAsync(caller.TenantId, command.ConversationId, caller.EmployeeId, ct);
-        if (context is null || context.Conversation.SubjectSource != ConversationSources.Group)
+        // A named group, or a case group (once started: it has its marker). A 1-on-1 chat has no name to change.
+        if (context is null || context.Conversation.SubjectSource == ConversationSources.Direct
+            || (context.Conversation.SubjectSource != ConversationSources.Group
+                && await _caseGroups.FindAsync(caller.TenantId, context.Subject, ct) is null))
             return Result.NotFound(NotFoundMessage);
         var line = await _people.RenameGroupAsync(caller.TenantId, context.Conversation, caller.EmployeeId, await CallerNameAsync(caller, ct), name, ct);
         var message = ConversationResponseBuilder.Message(line, [], author: null);
@@ -275,9 +290,23 @@ public sealed class InboxChatHandlers :
                 && !await _access.CanViewAsync(caller.TenantId, item, caller.EmployeeId, ct)))
             return Result<InboxChatRef>.NotFound(NotFoundMessage);
 
+        var name = command.Name?.Trim();
+        if (name is { Length: > PeopleChatNames.MaxGroupName })
+            return Result<InboxChatRef>.UnprocessableEntity($"Keep the name under {PeopleChatNames.MaxGroupName} characters.");
+
         var group = await _caseGroups.EnsureAsync(caller.TenantId, item, caller.EmployeeId, ct);
         if (group is null)
             return Result<InboxChatRef>.NotFound(NotFoundMessage);
+        // A name of its own only when it differs from what the group is called now (the case title, or an earlier name).
+        if (!string.IsNullOrEmpty(name))
+        {
+            var current = (await _conversations.LatestSystemEventsAsync(caller.TenantId, [group.Id], PeopleChatEvents.GroupNameEvents, ct))
+                .GetValueOrDefault(group.Id);
+            var currentName = current is null ? subject.Title : PeopleChatNames.GroupName(current);
+            if (!string.Equals(name, currentName, StringComparison.Ordinal))
+                await _people.RenameGroupAsync(caller.TenantId, group, caller.EmployeeId, await CallerNameAsync(caller, ct), name, ct);
+        }
+        await LinkAvatarAsync(caller, group.Id, command.AvatarFileId, ct);
         var toAdd = (command.EmployeeIds ?? []).Where(id => id != Guid.Empty).Distinct().ToList();
         if (toAdd.Count > 0)
         {
@@ -289,6 +318,18 @@ public sealed class InboxChatHandlers :
         await ConversationRules.PublishSafelyAsync(
             () => _realtime.InboxChangedAsync(caller.TenantId, members.GetValueOrDefault(group.Id) ?? [], item, ct), _logger, "inboxChanged");
         return Result<InboxChatRef>.Success(Ref(group));
+    }
+
+    /// <summary>Makes an uploaded image the group's photo. The group already exists by now, so a file that cannot be
+    /// linked (gone, too big, not an image) leaves it without a photo rather than failing the whole request.</summary>
+    private async Task LinkAvatarAsync(InboxCaller caller, Guid conversationId, Guid? fileId, CancellationToken ct)
+    {
+        if (fileId is not { } id || id == Guid.Empty)
+            return;
+        var linked = await _assets.LinkAsync(caller.TenantId, _currentUser.UserId, EntityAssetOwnerTypes.Conversation, conversationId,
+            UploadPurposeCatalog.ConversationAvatar, id, ct);
+        if (!linked.IsSuccess)
+            _logger.LogWarning("Group photo {FileId} could not be linked to conversation {ConversationId}: {Error}", id, conversationId, linked.Error);
     }
 
     private async Task<string> CallerNameAsync(InboxCaller caller, CancellationToken ct)
