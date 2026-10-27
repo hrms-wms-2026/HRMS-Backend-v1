@@ -16,6 +16,29 @@ public class UploadPurposePolicyTests
         Assert.Equal(400, result.StatusCode);
     }
 
+    [Theory]
+    [InlineData("clip.mp4", "video/mp4")]
+    [InlineData("clip.mov", "video/quicktime")]
+    [InlineData("clip.webm", "video/webm")]
+    [InlineData("voice.mp3", "audio/mpeg")]
+    [InlineData("voice.m4a", "audio/x-m4a")]
+    [InlineData("voice.wav", "audio/wav")]
+    [InlineData("voice.ogg", "audio/ogg")]
+    public void ValidateUpload_AcceptsVideoAndAudioInChats(string fileName, string contentType)
+    {
+        var result = _policy.ValidateUpload("conversation_attachment", fileName, contentType, 1024);
+
+        Assert.True(result.IsSuccess, result.Error);
+    }
+
+    [Fact]
+    public void ValidateUpload_KeepsVideoOutOfTaskAttachments()
+    {
+        var result = _policy.ValidateUpload("task_attachment", "clip.mp4", "video/mp4", 1024);
+
+        Assert.False(result.IsSuccess);
+    }
+
     [Fact]
     public void ValidateUpload_RejectsZeroSize()
     {

@@ -248,6 +248,51 @@ internal sealed class InMemoryConversationRepository : IConversationRepository
         return Task.CompletedTask;
     }
 
+    public List<ConversationMute> Mutes { get; } = new();
+
+    public Task<IReadOnlySet<Guid>> ListMutedConversationIdsAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default)
+        => Task.FromResult<IReadOnlySet<Guid>>(Mutes.Where(m => m.TenantId == tenantId && m.EmployeeId == employeeId)
+            .Select(m => m.ConversationId).ToHashSet());
+
+    public Task SetMutedAsync(Guid tenantId, Guid employeeId, Guid conversationId, bool muted, CancellationToken ct = default)
+    {
+        Mutes.RemoveAll(m => m.EmployeeId == employeeId && m.ConversationId == conversationId);
+        if (muted)
+            Mutes.Add(new ConversationMute { Id = Guid.NewGuid(), TenantId = tenantId, EmployeeId = employeeId, ConversationId = conversationId });
+        return Task.CompletedTask;
+    }
+
+    public Task SetDescriptionAsync(Guid tenantId, Guid conversationId, string? description, CancellationToken ct = default)
+    {
+        var c = Conversations.FirstOrDefault(x => x.Id == conversationId);
+        if (c is not null)
+            c.Description = description;
+        return Task.CompletedTask;
+    }
+
+    public Task<ConversationMediaPage> ListMediaAsync(
+        Guid tenantId, Guid conversationId, Guid employeeId, string? kind, int skip, int take, CancellationToken ct = default)
+    {
+        var files = Attachments
+            .Select(a => (Attachment: a, Message: Messages.FirstOrDefault(m => m.Id == a.MessageId)))
+            .Where(f => f.Message is { } m && m.ConversationId == conversationId && m.DeletedAt == null
+                && MessageHides.All(h => h.MessageId != m.Id || h.EmployeeId != employeeId))
+            .ToList();
+        var counts = ConversationMediaKinds.All.ToDictionary(k => k, k => files.Count(f => ConversationMediaKinds.Of(f.Attachment.ContentType) == k));
+        var filtered = kind is null ? files : files.Where(f => ConversationMediaKinds.Of(f.Attachment.ContentType) == kind).ToList();
+        var page = filtered.OrderByDescending(f => f.Message!.CreatedAt).Skip(skip).Take(take)
+            .Select(f => new ConversationMediaItem(f.Attachment, f.Message!.AuthorEmployeeId, f.Message.CreatedAt)).ToList();
+        return Task.FromResult(new ConversationMediaPage(page, filtered.Count, counts));
+    }
+
+    public Task<IReadOnlyList<ConversationMessage>> SearchTextMessagesAsync(
+        Guid tenantId, Guid conversationId, Guid employeeId, string text, int take, CancellationToken ct = default)
+        => Task.FromResult<IReadOnlyList<ConversationMessage>>(Messages
+            .Where(m => m.ConversationId == conversationId && m.Kind == ConversationMessageKinds.Text && m.DeletedAt == null
+                && m.BodyHtml.Contains(text, StringComparison.OrdinalIgnoreCase)
+                && MessageHides.All(h => h.MessageId != m.Id || h.EmployeeId != employeeId))
+            .OrderByDescending(m => m.CreatedAt).Take(take).ToList());
+
     public Task DeleteMessageIfExistsAsync(Guid tenantId, Guid messageId, CancellationToken ct = default)
     {
         Messages.RemoveAll(m => m.Id == messageId && m.AuthorEmployeeId == null);

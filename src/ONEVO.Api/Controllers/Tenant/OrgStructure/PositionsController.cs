@@ -14,6 +14,7 @@ using ONEVO.Application.Features.OrgStructure.Commands.PreviewReportingLineMove;
 using ONEVO.Application.Features.OrgStructure.Queries.GetActiveHolders;
 using ONEVO.Application.Features.OrgStructure.Queries.GetPositionById;
 using ONEVO.Application.Features.OrgStructure.Queries.GetPositionTree;
+using ONEVO.Application.Features.OrgStructure.Queries.GetCoverageVisualization;
 using ONEVO.Application.Features.OrgStructure.Queries.ListPositions;
 
 namespace ONEVO.Api.Controllers.Tenant.OrgStructure;
@@ -299,6 +300,21 @@ public class PositionsController : ControllerBase
             new ONEVO.Application.Features.OrgStructure.Queries.GetPositionCoverage.GetPositionCoverageQuery(legalEntityId, positionId),
             ct);
 
+        return result.IsSuccess
+            ? Ok(result.Value)
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Expanded, read-only coverage scope for the position and people charts.</summary>
+    [HttpGet("{positionId:guid}/coverage-visualization")]
+    [RequirePermission("org:read")]
+    public async Task<IActionResult> GetCoverageVisualization(
+        Guid legalEntityId,
+        Guid positionId,
+        CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(
+            new GetCoverageVisualizationQuery(legalEntityId, positionId), ct);
         return result.IsSuccess
             ? Ok(result.Value)
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
