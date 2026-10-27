@@ -20,20 +20,24 @@ This document explains what the backend architecture is, how requests flow throu
 
 | Area | Technology / Approach |
 |---|---|
-| Backend framework | ASP.NET Core Web API |
+| Backend framework | ASP.NET Core Web API on .NET 10 |
 | Architecture | Clean Architecture, CQRS, MediatR |
 | Database | PostgreSQL |
 | ORM / DB driver | EF Core + Npgsql |
 | Tenant isolation | Host tenant resolution, application tenant context, EF filters, PostgreSQL RLS |
-| Authentication | Tenant secure cookies, admin secure cookies |
+| Authentication | Tenant secure cookies, admin secure cookies; JWT bearer for the tray/monitoring agent |
 | Authorization | Server-side roles, policies, permissions, and tenant/business scope checks |
 | Validation | FluentValidation |
 | Logging | Serilog with correlation ID |
 | API documentation | Swagger / OpenAPI |
 | Cache | In-memory cache |
 | Object storage | Cloudflare R2 for private files and documents |
+| Realtime | SignalR hubs: `/hubs/inbox` (InboxHub), `/hubs/agent-commands` (AgentCommandsHub) |
+| Background processing | Hosted `BackgroundService` jobs, including `OutboxProcessor` and scheduled jobs (calendar sync/reminders, leave credit, project monitor, attendance/wellness/location rules, Teams/Zoom attendance sync) |
+| Payments | Stripe (webhooks verified with the `Stripe-Signature` header) |
+| Identity verification | AWS Rekognition + STS |
 | Testing | Unit tests, integration tests, architecture tests, Testcontainers for PostgreSQL |
-| CI/CD | Restore, build, unit tests, integration tests, architecture tests |
+| CI/CD | GitHub Actions: build + unit + architecture tests (blocking); integration tests (non-blocking, see §6.1) |
 
 ### 1.3 Main Architecture Decision
 
@@ -92,7 +96,6 @@ ONEVO backend is organized into layers and feature/subfeature folders. New work 
 
 ```text
 src/ONEVO.Api/
-  Auth/
   Configuration/
   Contracts/
     {Feature}/
@@ -101,11 +104,15 @@ src/ONEVO.Api/
     Admin/
       {Feature}/
         {SubFeature}/
-    Customer/
+    Tenant/
       {Feature}/
         {SubFeature}/
+    Public/
+    Webhooks/
+  Dashboard/
   Extensions/
   Filters/
+  Hubs/
   Middleware/
   Properties/
   Program.cs
@@ -115,13 +122,16 @@ Folder purpose:
 
 | Folder | Why it exists |
 |---|---|
-| `Auth/` | API authentication boundary helpers live here when the code is specific to HTTP authentication. |
 | `Configuration/` | API-specific configuration models and setup helpers live here. |
 | `Contracts/` | The API's own HTTP-boundary request and response models — see §2.1.1.1 View Model Convention below. |
 | `Controllers/Admin/` | Platform/admin endpoints live here. These endpoints use `/admin/v1/...` routes and admin policies. |
-| `Controllers/Customer/` | Tenant/customer endpoints should live here when the controller structure is migrated to customer/admin separation. These endpoints use `/api/v1/...` routes and tenant policies. |
+| `Controllers/Tenant/` | Tenant/customer endpoints. These use `/api/v1/...` routes and tenant policies. |
+| `Controllers/Public/` | Endpoints called without a session, such as OAuth provider callbacks. Each is `[AllowAnonymous]` and authenticates by other means (see §4.2.1). |
+| `Controllers/Webhooks/` | Inbound provider webhooks (Stripe), authenticated by request signature. |
+| `Dashboard/` | API-side wiring for the customizable dashboard widgets. |
 | `Extensions/` | Startup registrations are grouped here, such as authentication, authorization, CORS, and Swagger setup. This keeps `Program.cs` small. |
 | `Filters/` | Controller/action-level HTTP checks live here when middleware is too broad for the rule. |
+| `Hubs/` | SignalR hubs (`InboxHub`, `AgentCommandsHub`). |
 | `Middleware/` | Request pipeline checks live here, such as exception handling, correlation ID, tenant resolution, CSRF, rate limiting, permission version checks, and tenant enforcement. |
 | `Properties/` | ASP.NET launch/runtime project properties live here. |
 | `Program.cs` | API host startup, middleware ordering, dependency registration, and endpoint mapping live here. |
@@ -183,11 +193,16 @@ Controller rules:
 src/ONEVO.Application/
   Common/
     Behaviors/
+    Configuration/
+    Constants/
     Exceptions/
+    Helpers/              (shared pure helpers, e.g. RichTextRules, DeterministicGuid)
+    Json/
     Models/
     RepositoryInterfaces/
     Security/
     ServiceInterfaces/
+    Services/
   Features/
     {Feature}/
       {SubFeature}/
@@ -456,51 +471,61 @@ Rules:
 
 ### 3.2 Request Processing Pattern
 
-Current request flow:
+Current request flow (order as registered in `src/ONEVO.Api/Program.cs`, verified 2026-10-27):
 
 ```text
 1. Client sends request
 2. ONEVO.Api receives request
 3. ExceptionHandlerMiddleware
 4. CorrelationIdMiddleware
-5. Swagger in Development
-6. Serilog request logging
-7. HTTPS redirection outside Development
-8. CORS
-9. Forwarded headers
-10. HostTenantResolutionMiddleware
-11. AuthRateLimitingMiddleware
-12. Authentication
-13. CsrfProtectionMiddleware
-14. TenantEnforcementMiddleware
-15. PermissionVersionMiddleware
-16. Authorization
-17. Controller action
-18. IMediator.Send(...)
-19. MediatR behaviors
-20. Command/Query handler
-21. Application interface
-22. Infrastructure implementation
-23. EF Core / PostgreSQL / external service
-24. Result/DTO returned
-25. HTTP response returned
+5. SecurityHeadersMiddleware
+6. HSTS outside Development
+7. Swagger in Development
+8. Serilog request logging
+9. HTTPS redirection outside Development
+10. CORS ("AllowFrontend")
+11. Forwarded headers
+12. Routing
+13. PublicApiRateLimitingMiddleware
+14. HostTenantResolutionMiddleware
+15. AuthRateLimitingMiddleware
+16. Authentication
+17. CsrfProtectionMiddleware
+18. TenantEnforcementMiddleware
+19. WebActivityTrackingMiddleware
+20. TrayPresenceEnforcementMiddleware
+21. PermissionVersionMiddleware
+22. Authorization
+23. Controller action (or SignalR hub, or /health endpoints)
+24. IMediator.Send(...)
+25. MediatR behaviors
+26. Command/Query handler
+27. Application interface
+28. Infrastructure implementation
+29. EF Core / PostgreSQL / external service
+30. Result/DTO returned
+31. HTTP response returned
 ```
 
-MediatR pipeline:
+MediatR pipeline (registration order in `ONEVO.Application` DI):
 
 ```text
 Controller
   -> IMediator.Send(command/query)
     -> UnhandledExceptionBehavior
+    -> AdminTenantContextBehavior
     -> ValidationBehavior
     -> LoggingBehavior
     -> PerformanceBehavior
     -> Handler
 ```
 
+Every behavior passes the request's `CancellationToken` on with `next(ct)`.
+
 | Behavior | Required purpose |
 |---|---|
 | UnhandledExceptionBehavior | Log unexpected use-case errors and allow API middleware to shape the response |
+| AdminTenantContextBehavior | Switch the tenant context to admin mode for requests authenticated by the Dev Platform admin cookie, so admin handlers can reach RLS-protected rows without depending on the request host |
 | ValidationBehavior | Run FluentValidation before handlers |
 | LoggingBehavior | Log request execution with user and tenant context |
 | PerformanceBehavior | Warn on slow application requests |
@@ -968,6 +993,18 @@ Rules:
 - Add security headers such as Content-Security-Policy, X-Frame-Options, and Referrer-Policy.
 - Do not log secrets, raw tokens, payment data, or excessive PII.
 - Log access to sensitive audit/security logs.
+
+#### 4.2.1 Endpoint authorization is explicit
+
+There is no global fallback authorization policy: an action is anonymous unless it or its controller carries `[Authorize(...)]`. Every action must therefore declare its intent:
+
+- `[Authorize(Policy = "TenantPolicy")]` or `[Authorize(Policy = "AdminPolicy")]` at class or action level, plus `[RequirePermission]` / `[RequirePlatformPermission]` where a permission gates the action. Work Management endpoints mostly authorize inside the handler (project/milestone membership through `ITaskAccessResolver` and similar), returning `Forbidden` when the caller has no access.
+- Public endpoints carry an explicit `[AllowAnonymous]` and authenticate some other way: Stripe webhooks by signature, the tray release ingest by a constant-time `X-Release-Token` check, OAuth callbacks by a data-protected, expiring `state`.
+- `pwsh ../dev-env/scripts/find-unauthorized-endpoints.ps1 backend` lists any action with no authorization attribute at all; the expected result is zero.
+
+#### 4.2.2 User-authored rich text
+
+Chat messages, task descriptions and task comments are HTML. `RichTextRules.HasActiveContent` (`ONEVO.Application/Common/Helpers`) rejects script-capable tags, inline event handlers and script/data URLs on write, so active content is never stored. The frontend also sanitizes with DOMPurify before writing stored HTML into its editor, because `innerHTML` bypasses Angular's sanitizer. Any new rich-text field must use the same write-side check.
 
 ### 4.3 Scalability
 
@@ -1471,18 +1508,23 @@ Coverage target: at least 70% on business logic, with higher coverage expected f
 
 Backend changes should pass the basic CI checks before merge or deployment.
 
-Current CI gate scope:
+Current CI gate scope (`.github/workflows/ci.yml`, runs on PRs and pushes to `main`, `testing`, `development`):
 
-- Restore packages.
-- Build solution.
-- Run unit tests.
-- Run integration tests.
-- Run architecture tests.
+- `build-and-test` (blocking): restore, build `ONEVO.Api` in Release, unit tests, architecture tests.
+- `integration-routing` (pull requests, non-blocking): maps the changed files to the smallest set of Testcontainers integration tests (`.github/scripts/select-integration-filter.ps1`), falling back to the full suite.
+- `full-integration` (nightly, manual dispatch and pushes, non-blocking): the full integration suite.
+
+The integration jobs are `continue-on-error` because of a known CSRF-handling issue in the suite; they are not part of the required status check.
+
+Local quality and security gate (outside the repo, in `../dev-env/`, see its `README.md`):
+
+- `verify.ps1 backend` runs the same build + unit + architecture gate as CI; `-Full` adds integration tests.
+- `security-scan.ps1 backend` runs gitleaks (git history), Semgrep, DevSkim, NuGet vulnerable-package audit, OSV, Trivy, and actionlint + zizmor on the workflows. Reviewed false positives are kept in `../dev-env/baselines/`.
 
 Rules:
 
 - Failed build or failed tests must block merge/deployment.
-- Additional security scans can be added later when the deployment pipeline matures.
+- Run the local security scan before a release or UAT drop; CI does not run security scanners yet.
 
 ### 6.2 Deployment and Rollback
 
@@ -1524,6 +1566,8 @@ Rules:
 - Liveness should not fail just because the database is briefly down.
 - Readiness should fail when the app cannot safely serve traffic.
 - Health check output must not expose secrets.
+
+Current implementation (verified 2026-10-27): both endpoints are mapped in `Program.cs`, but only a single `"api"` self-check is registered, so `/health/ready` does not yet check PostgreSQL, R2 or other dependencies. The required checks above are still to be added.
 
 ### 7.3 Logging
 
