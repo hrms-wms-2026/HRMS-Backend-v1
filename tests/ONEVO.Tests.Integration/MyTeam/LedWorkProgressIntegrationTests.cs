@@ -78,7 +78,8 @@ public sealed class LedWorkProgressIntegrationTests
         var member = helper.AddEmployee(db);    // plain member of a sub-module only
         var (projectId, rootId) = helper.AddProject(db, creator.Id);
         var module = helper.AddModule(db, projectId, rootId, lead.Id, allocatedHours: 100);
-        var sub = helper.AddModule(db, projectId, module, member.Id, allocatedHours: 40);
+        // Owned by the creator: owning a Module makes you its lead, so the member must not own it.
+        var sub = helper.AddModule(db, projectId, module, creator.Id, allocatedHours: 40);
         var nestedOwned = helper.AddModule(db, projectId, sub, lead.Id, allocatedHours: 20); // nested ownership: must not double count
         helper.AddMember(db, projectId, module, lead.Id);
         helper.AddMember(db, projectId, sub, member.Id);
