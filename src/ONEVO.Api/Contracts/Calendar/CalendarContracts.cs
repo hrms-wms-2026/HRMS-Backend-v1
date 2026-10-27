@@ -48,7 +48,8 @@ public sealed record CalendarEventViewModel(
     bool IsRecurringOccurrence = false, Guid? RecurrenceMasterId = null, DateTimeOffset? OriginalStart = null,
     IReadOnlyList<CalendarEventParticipantSummaryViewModel>? Participants = null, bool HasConflict = false,
     bool IsOrganizer = false, string? OrganizerName = null,
-    IReadOnlyList<CalendarEventGuestViewModel>? Guests = null);
+    IReadOnlyList<CalendarEventGuestViewModel>? Guests = null,
+    string? ItemKind = null, Guid? MeetingSeriesId = null, Guid? MeetingTaskId = null, string? MeetingStatus = null);
 
 public sealed record CalendarEventsViewModel(IReadOnlyList<CalendarEventViewModel> Events);
 
@@ -67,7 +68,9 @@ public static class CalendarEventViewModelMapper
         dto.IsRecurringOccurrence, dto.RecurrenceMasterId, dto.OriginalStart,
         dto.Participants?.Select(p => new CalendarEventParticipantSummaryViewModel(p.EmployeeId, p.EmployeeName, p.ResponseStatus)).ToList(),
         dto.HasConflict, dto.IsOrganizer, dto.OrganizerName,
-        dto.Guests?.Select(g => new CalendarEventGuestViewModel(g.Email)).ToList());
+        dto.Guests?.Select(g => new CalendarEventGuestViewModel(g.Email)).ToList(),
+        // A task meeting (meetings Phase 2) says what it is, so the client opens its drawer rather than the event form.
+        dto.ItemKind, dto.MeetingSeriesId, dto.MeetingTaskId, dto.MeetingStatus);
 
     public static CalendarEventsViewModel ToViewModel(this CalendarEventsResponse dto) =>
         new(dto.Events.Select(e => e.ToViewModel()).ToList());
