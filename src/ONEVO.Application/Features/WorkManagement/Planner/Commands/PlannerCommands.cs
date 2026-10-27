@@ -16,6 +16,9 @@ public sealed record GetEmployeePlannerDayQuery(Guid EmployeeId, DateOnly? Date)
 /// <summary>GET /planner/me/range?from=&amp;to=: the caller's days for the calendar grid.</summary>
 public sealed record GetMyPlannerRangeQuery(DateOnly From, DateOnly To) : IRequest<Result<PlannerRangeResponse>>;
 
+/// <summary>GET /planner/me/focus: what the caller should work on.</summary>
+public sealed record GetMyPlannerFocusQuery : IRequest<Result<PlannerFocusResponse>>;
+
 public sealed record CreatePlannedBlockCommand(CreatePlannedBlockRequest Request) : IRequest<Result<PlannerDayResponse>>;
 
 public sealed record MovePlannedBlockCommand(Guid BlockId, MovePlannedBlockRequest Request) : IRequest<Result<PlannerDayResponse>>;
@@ -27,6 +30,7 @@ public sealed class PlannerRequestHandler :
     IRequestHandler<GetMyPlannerDayQuery, Result<PlannerDayResponse>>,
     IRequestHandler<GetEmployeePlannerDayQuery, Result<PlannerDayResponse>>,
     IRequestHandler<GetMyPlannerRangeQuery, Result<PlannerRangeResponse>>,
+    IRequestHandler<GetMyPlannerFocusQuery, Result<PlannerFocusResponse>>,
     IRequestHandler<CreatePlannedBlockCommand, Result<PlannerDayResponse>>,
     IRequestHandler<MovePlannedBlockCommand, Result<PlannerDayResponse>>,
     IRequestHandler<DeletePlannedBlockCommand, Result<PlannerDayResponse>>
@@ -50,6 +54,9 @@ public sealed class PlannerRequestHandler :
 
     public Task<Result<PlannerRangeResponse>> Handle(GetMyPlannerRangeQuery query, CancellationToken ct)
         => AsCaller((tenant, me) => _planner.GetRangeAsync(tenant, me, query.From, query.To, ct), ct);
+
+    public Task<Result<PlannerFocusResponse>> Handle(GetMyPlannerFocusQuery query, CancellationToken ct)
+        => AsCaller((tenant, me) => _planner.GetFocusAsync(tenant, me, ct), ct);
 
     public Task<Result<PlannerDayResponse>> Handle(CreatePlannedBlockCommand command, CancellationToken ct)
         => AsCaller((tenant, me) => _planner.CreateBlockAsync(tenant, me, command.Request, ct), ct);

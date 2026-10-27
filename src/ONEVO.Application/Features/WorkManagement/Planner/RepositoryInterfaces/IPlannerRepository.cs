@@ -9,6 +9,11 @@ public sealed record PlannerTaskInfo(Guid TaskId, string Title, DateOnly? DueDat
 
 public sealed record PlannerSession(Guid TaskId, DateTimeOffset ClockInAt, DateTimeOffset? ClockOutAt);
 
+/// <summary>An open task assigned to the employee, for the Focus list.</summary>
+/// <param name="LoggedMinutes">Every non-deleted clocking session on the task, by anyone; an open one up to now.</param>
+public sealed record PlannerFocusTaskRow(Guid TaskId, Guid ProjectId, string ProjectName, string Title, string Priority, DateOnly? DueDate,
+    decimal? EstimatedHours, int LoggedMinutes);
+
 public sealed record PlannerAttendance(DateTimeOffset? ActualStart, DateTimeOffset? ActualEnd, int WorkedMinutes, int BreakMinutes);
 
 /// <summary>Day planner reads and writes (2026-10-26 design, Part B). Never calls SaveChangesAsync.</summary>
@@ -29,6 +34,11 @@ public interface IPlannerRepository
 
     /// <summary>Tasks assigned to the employee, not done, not meetings, due on or before <paramref name="date"/>.</summary>
     Task<IReadOnlyList<PlannerTaskInfo>> ListDueAssignedTasksAsync(Guid tenantId, Guid employeeId, DateOnly date,
+        CancellationToken ct = default);
+
+    /// <summary>Every task assigned to the employee that is not done, not deleted and not a meeting, with its project and
+    /// everyone's logged minutes up to <paramref name="now"/>.</summary>
+    Task<IReadOnlyList<PlannerFocusTaskRow>> ListFocusTasksAsync(Guid tenantId, Guid employeeId, DateTimeOffset now,
         CancellationToken ct = default);
 
     /// <summary>The employee's task clocking sessions overlapping [from, to).</summary>

@@ -62,3 +62,27 @@ public sealed record PlannerRangeDay(DateOnly Date, bool Editable, PlannerWorkWi
 
 /// <summary>GET /planner/me/range: the caller's days from <c>from</c> to <c>to</c>, at most 42.</summary>
 public sealed record PlannerRangeResponse(string Timezone, DateOnly Today, IReadOnlyList<PlannerRangeDay> Days);
+
+/// <summary>Why a task is in the Focus list (2026-10-27 design, section 4.2).</summary>
+public static class PlannerFocusReasons
+{
+    public const string Overdue = "overdue";
+    public const string DueToday = "due_today";
+    public const string DueThisWeek = "due_this_week";
+    public const string Backlog = "backlog";
+}
+
+/// <param name="LoggedMinutes">Everyone's clocked minutes on the task (call C4).</param>
+/// <param name="RemainingMinutes">Estimate less logged, never below 0; null without an estimate.</param>
+/// <param name="PlannedAheadMinutes">The caller's block minutes on this task from today on.</param>
+/// <param name="FullyPlanned">Those blocks cover the remaining estimate; never true without an estimate.</param>
+public sealed record PlannerFocusItem(Guid TaskId, Guid ProjectId, string ProjectName, string Title, string Priority, DateOnly? DueDate,
+    int? EstimatedMinutes, int LoggedMinutes, int? RemainingMinutes, int PlannedAheadMinutes, DateOnly? FirstPlannedDate,
+    int PlannedDayCount, bool FullyPlanned, string Reason);
+
+/// <param name="Count">Every task in the group; <see cref="Items"/> keeps the first 50.</param>
+public sealed record PlannerFocusGroup(string Reason, int Count, IReadOnlyList<PlannerFocusItem> Items);
+
+/// <summary>GET /planner/me/focus: always the four groups, in the order overdue, due today, due this week, backlog.</summary>
+/// <param name="WeekEnd">The Sunday of today's Monday-based week, in the caller's zone.</param>
+public sealed record PlannerFocusResponse(DateOnly Today, DateOnly WeekEnd, IReadOnlyList<PlannerFocusGroup> Groups);

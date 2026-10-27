@@ -30,6 +30,10 @@ public sealed class PlannerController : ControllerBase
     public async Task<IActionResult> MyRange([FromQuery] DateOnly from, [FromQuery] DateOnly to, CancellationToken ct)
         => Respond(await _mediator.Send(new GetMyPlannerRangeQuery(from, to), ct));
 
+    [HttpGet("me/focus")]
+    public async Task<IActionResult> MyFocus(CancellationToken ct)
+        => Respond(await _mediator.Send(new GetMyPlannerFocusQuery(), ct));
+
     [HttpPost("me/blocks")]
     public async Task<IActionResult> CreateBlock([FromBody] CreatePlannedBlockRequest request, CancellationToken ct)
         => Respond(await _mediator.Send(new CreatePlannedBlockCommand(request), ct));

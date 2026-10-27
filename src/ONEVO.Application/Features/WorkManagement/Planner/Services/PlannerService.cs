@@ -111,6 +111,23 @@ public sealed class PlannerService
         return Result<PlannerRangeResponse>.Success(new PlannerRangeResponse(zone.Value.Id, today, days));
     }
 
+    /// <summary>The caller's Focus list: open assigned tasks grouped by due date, with what is already planned from today on.</summary>
+    public async Task<Result<PlannerFocusResponse>> GetFocusAsync(Guid tenantId, Guid callerEmployeeId, CancellationToken ct)
+    {
+        if (!_options.Value.Enabled)
+            return Disabled<PlannerFocusResponse>();
+        var zone = await ZoneOfAsync(tenantId, callerEmployeeId, ct);
+        if (zone is null)
+            return NotFound<PlannerFocusResponse>();
+
+        var today = TodayIn(zone.Value.Info);
+        var (start, _) = Bounds(today, zone.Value.Info);
+        var (_, end) = Bounds(today.AddDays(PlanningHorizonDays), zone.Value.Info);
+        var rows = await _planner.ListFocusTasksAsync(tenantId, callerEmployeeId, _clock.UtcNow, ct);
+        var blocks = await _planner.ListBlocksAsync(tenantId, callerEmployeeId, start, end, ct);
+        return Result<PlannerFocusResponse>.Success(PlannerFocus.Build(rows, blocks, today, zone.Value.Info));
+    }
+
     public Task<Result<PlannerDayResponse>> CreateBlockAsync(Guid tenantId, Guid callerEmployeeId, CreatePlannedBlockRequest request,
         CancellationToken ct)
         => _unitOfWork.ExecuteInTransactionAsync(async innerCt =>

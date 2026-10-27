@@ -85,6 +85,35 @@ public sealed class EfPlannerRepository : IPlannerRepository
             .ToListAsync(ct);
     }
 
+    public async Task<IReadOnlyList<PlannerFocusTaskRow>> ListFocusTasksAsync(Guid tenantId, Guid employeeId, DateTimeOffset now,
+        CancellationToken ct = default)
+    {
+        // Same "not done" test as ListDueAssignedTasksAsync; the default query filters already leave out meeting tasks.
+        var tasks = await (
+            from t in _db.WorkTasks.AsNoTracking()
+            join p in _db.Projects.AsNoTracking() on t.ProjectId equals p.Id
+            join s in _db.TaskStatuses.AsNoTracking() on t.StatusId equals s.Id into statuses
+            from s in statuses.DefaultIfEmpty()
+            where t.TenantId == tenantId && !t.IsDeleted && t.ProgressPercent < 100 && (s == null || !s.MarksTaskComplete)
+                  && _db.TaskAssignments.Any(a => a.TaskId == t.Id && a.EmployeeId == employeeId)
+            select new { t.Id, t.ProjectId, ProjectName = p.Name, t.Title, t.Priority, t.DueDate, t.EstimatedHours })
+            .ToListAsync(ct);
+        if (tasks.Count == 0)
+            return [];
+
+        var ids = tasks.Select(t => t.Id).ToList();
+        // Everyone's sessions on these tasks: the estimate belongs to the task, not to one assignee (design call C4).
+        var sessions = await _db.TaskClockingSessions.AsNoTracking()
+            .Where(s => s.TenantId == tenantId && ids.Contains(s.TaskId) && !s.IsDeleted)
+            .Select(s => new { s.TaskId, s.ClockInAt, s.ClockOutAt })
+            .ToListAsync(ct);
+        var logged = sessions.GroupBy(s => s.TaskId).ToDictionary(g => g.Key,
+            g => g.Sum(s => Math.Max(0, (int)((s.ClockOutAt ?? now) - s.ClockInAt).TotalMinutes)));
+
+        return tasks.Select(t => new PlannerFocusTaskRow(t.Id, t.ProjectId, t.ProjectName, t.Title, t.Priority, t.DueDate,
+            t.EstimatedHours, logged.GetValueOrDefault(t.Id))).ToList();
+    }
+
     public async Task<LegalEntity?> GetEmployeeLegalEntityAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default)
     {
         var own = await (
