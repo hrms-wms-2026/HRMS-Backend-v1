@@ -26,6 +26,10 @@ public sealed class PlannerController : ControllerBase
     public async Task<IActionResult> EmployeeDay(Guid employeeId, [FromQuery] DateOnly? date, CancellationToken ct)
         => Respond(await _mediator.Send(new GetEmployeePlannerDayQuery(employeeId, date), ct));
 
+    [HttpGet("me/range")]
+    public async Task<IActionResult> MyRange([FromQuery] DateOnly from, [FromQuery] DateOnly to, CancellationToken ct)
+        => Respond(await _mediator.Send(new GetMyPlannerRangeQuery(from, to), ct));
+
     [HttpPost("me/blocks")]
     public async Task<IActionResult> CreateBlock([FromBody] CreatePlannedBlockRequest request, CancellationToken ct)
         => Respond(await _mediator.Send(new CreatePlannedBlockCommand(request), ct));
@@ -38,7 +42,7 @@ public sealed class PlannerController : ControllerBase
     public async Task<IActionResult> DeleteBlock(Guid blockId, CancellationToken ct)
         => Respond(await _mediator.Send(new DeletePlannedBlockCommand(blockId), ct));
 
-    private IActionResult Respond(Result<PlannerDayResponse> result)
+    private IActionResult Respond<T>(Result<T> result)
     {
         if (result.IsSuccess)
             return Ok(result.Value);

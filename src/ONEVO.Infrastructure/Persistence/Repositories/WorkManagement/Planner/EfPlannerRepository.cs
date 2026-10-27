@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using ONEVO.Application.Features.WorkManagement.Planner.RepositoryInterfaces;
+using ONEVO.Domain.Features.OrgStructure.Entities;
 using ONEVO.Domain.Features.WorkManagement.Planner.Entities;
 
 namespace ONEVO.Infrastructure.Persistence.Repositories.WorkManagement.Planner;
@@ -52,11 +53,12 @@ public sealed class EfPlannerRepository : IPlannerRepository
             .Where(t => t.TenantId == tenantId && taskIds.Contains(t.Id) && !t.IsDeleted)
             .Select(t => new
             {
-                t.Id, t.Title, t.DueDate, t.EstimatedHours,
+                t.Id, t.Title, t.DueDate, t.EstimatedHours, t.ProjectId,
                 Assigned = _db.TaskAssignments.Any(a => a.TaskId == t.Id && a.EmployeeId == employeeId),
             })
             .ToListAsync(ct);
-        return rows.ToDictionary(r => r.Id, r => new PlannerTaskInfo(r.Id, r.Title, r.DueDate, r.EstimatedHours, IsMeeting: false, r.Assigned));
+        return rows.ToDictionary(r => r.Id,
+            r => new PlannerTaskInfo(r.Id, r.Title, r.DueDate, r.EstimatedHours, IsMeeting: false, r.Assigned, r.ProjectId));
     }
 
     public async Task<IReadOnlyList<PlannerTaskInfo>> ListDueAssignedTasksAsync(Guid tenantId, Guid employeeId, DateOnly date,
@@ -69,7 +71,7 @@ public sealed class EfPlannerRepository : IPlannerRepository
                   && t.ProgressPercent < 100 && (s == null || !s.MarksTaskComplete)
                   && _db.TaskAssignments.Any(a => a.TaskId == t.Id && a.EmployeeId == employeeId)
             orderby t.DueDate, t.Title
-            select new PlannerTaskInfo(t.Id, t.Title, t.DueDate, t.EstimatedHours, false, true))
+            select new PlannerTaskInfo(t.Id, t.Title, t.DueDate, t.EstimatedHours, false, true, t.ProjectId))
             .ToListAsync(ct);
 
     public async Task<IReadOnlyList<PlannerSession>> ListSessionsAsync(Guid tenantId, Guid employeeId, DateTimeOffset from,
@@ -81,6 +83,16 @@ public sealed class EfPlannerRepository : IPlannerRepository
                 && s.ClockInAt < toUtc && (s.ClockOutAt == null || s.ClockOutAt > fromUtc))
             .Select(s => new PlannerSession(s.TaskId, s.ClockInAt, s.ClockOutAt))
             .ToListAsync(ct);
+    }
+
+    public async Task<LegalEntity?> GetEmployeeLegalEntityAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default)
+    {
+        var own = await (
+            from e in _db.Employees.AsNoTracking()
+            join le in _db.LegalEntities.AsNoTracking() on e.LegalEntityId equals le.Id
+            where e.TenantId == tenantId && e.Id == employeeId && le.TenantId == tenantId
+            select le).FirstOrDefaultAsync(ct);
+        return own ?? await _db.LegalEntities.AsNoTracking().FirstOrDefaultAsync(le => le.TenantId == tenantId && le.IsPrimary, ct);
     }
 
     public async Task<PlannerAttendance?> GetAttendanceAsync(Guid tenantId, Guid employeeId, DateOnly date, CancellationToken ct = default)

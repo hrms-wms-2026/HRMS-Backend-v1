@@ -11,6 +11,7 @@ public static class PlannerErrorCodes
     public const string TaskNotPlannable = "planner_task_not_plannable";
     public const string InvalidTime = "planner_invalid_time";
     public const string NotFound = "planner_not_found";
+    public const string InvalidRange = "planner_invalid_range";
 }
 
 /// <param name="TaskId">A task assigned to the caller that is not a meeting.</param>
@@ -46,3 +47,18 @@ public sealed record PlannerDayResponse(DateOnly Date, string Timezone, bool Edi
 /// <param name="WorkingMinutes">The window less the break; 0 on a non-working day.</param>
 public sealed record PlannerWorkWindow(TimeOnly WorkStart, TimeOnly WorkEnd, int BreakMinutes, TimeOnly? BreakStart,
     bool IsWorkingDay, int WorkingMinutes);
+
+/// <param name="ProjectId">For opening the task on its project board.</param>
+/// <param name="ActualMinutes">The employee's clocked minutes on that task inside that day (as in v1).</param>
+public sealed record PlannerRangeBlockView(Guid Id, Guid TaskId, Guid ProjectId, string TaskTitle, DateTimeOffset StartAt,
+    DateTimeOffset EndAt, int PlannedMinutes, int ActualMinutes, bool StillAssigned);
+
+/// <param name="Editable">The caller's own day from today up to the planning horizon.</param>
+/// <param name="WorkWindow">Null when the legal entity has no usable schedule.</param>
+/// <param name="BlockMinutes">The day's planned task minutes; the load the grid shows (blocks plus busy events, counted
+/// once) is computed by the client (call C2).</param>
+public sealed record PlannerRangeDay(DateOnly Date, bool Editable, PlannerWorkWindow? WorkWindow,
+    IReadOnlyList<PlannerRangeBlockView> Blocks, int BlockMinutes, int WorkingMinutes);
+
+/// <summary>GET /planner/me/range: the caller's days from <c>from</c> to <c>to</c>, at most 42.</summary>
+public sealed record PlannerRangeResponse(string Timezone, DateOnly Today, IReadOnlyList<PlannerRangeDay> Days);

@@ -1,10 +1,11 @@
+using ONEVO.Domain.Features.OrgStructure.Entities;
 using ONEVO.Domain.Features.WorkManagement.Planner.Entities;
 
 namespace ONEVO.Application.Features.WorkManagement.Planner.RepositoryInterfaces;
 
 /// <param name="AssignedToEmployee">The task is currently assigned to the employee the query was for.</param>
 public sealed record PlannerTaskInfo(Guid TaskId, string Title, DateOnly? DueDate, decimal? EstimatedHours, bool IsMeeting,
-    bool AssignedToEmployee);
+    bool AssignedToEmployee, Guid ProjectId);
 
 public sealed record PlannerSession(Guid TaskId, DateTimeOffset ClockInAt, DateTimeOffset? ClockOutAt);
 
@@ -33,6 +34,9 @@ public interface IPlannerRepository
     /// <summary>The employee's task clocking sessions overlapping [from, to).</summary>
     Task<IReadOnlyList<PlannerSession>> ListSessionsAsync(Guid tenantId, Guid employeeId, DateTimeOffset from, DateTimeOffset to,
         CancellationToken ct = default);
+
+    /// <summary>The employee's own legal entity, else the tenant's primary one, else null (for the work window).</summary>
+    Task<LegalEntity?> GetEmployeeLegalEntityAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default);
 
     /// <summary>The employee's attendance record for that date, if any.</summary>
     Task<PlannerAttendance?> GetAttendanceAsync(Guid tenantId, Guid employeeId, DateOnly date, CancellationToken ct = default);

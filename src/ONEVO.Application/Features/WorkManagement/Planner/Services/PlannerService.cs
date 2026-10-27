@@ -22,6 +22,8 @@ public sealed class PlannerService
     public const int MinimumBlockMinutes = 15;
     /// <summary>How many days after today can still be planned (spec section 5.1).</summary>
     public const int PlanningHorizonDays = 28;
+    /// <summary>The longest range one read returns: a month grid (spec section 5.2).</summary>
+    public const int MaxRangeDays = 42;
     private const string PrivateMeetingTitle = "Private meeting";
     private const string NotFoundMessage = "Planner day not found.";
 
@@ -64,6 +66,49 @@ public sealed class PlannerService
 
         return Result<PlannerDayResponse>.Success(
             await ComposeAsync(tenantId, employeeId, day, zone.Value, editable: own && DayCheck(day, today) is null, maskPrivate: !own, ct));
+    }
+
+    /// <summary>The caller's own days from <paramref name="from"/> to <paramref name="to"/> for the calendar grid: blocks, the
+    /// work window and whether each day can still change. One read per concern for the whole range.</summary>
+    public async Task<Result<PlannerRangeResponse>> GetRangeAsync(Guid tenantId, Guid callerEmployeeId, DateOnly from, DateOnly to,
+        CancellationToken ct)
+    {
+        if (!_options.Value.Enabled)
+            return Disabled<PlannerRangeResponse>();
+        if (to < from || to.DayNumber - from.DayNumber + 1 > MaxRangeDays)
+            return Result<PlannerRangeResponse>.Failure($"A range runs forwards and covers at most {MaxRangeDays} days.", 400,
+                PlannerErrorCodes.InvalidRange);
+        var zone = await ZoneOfAsync(tenantId, callerEmployeeId, ct);
+        if (zone is null)
+            return NotFound<PlannerRangeResponse>();
+
+        var today = TodayIn(zone.Value.Info);
+        var (start, _) = Bounds(from, zone.Value.Info);
+        var (_, end) = Bounds(to, zone.Value.Info);
+        var now = _clock.UtcNow;
+        var blocks = await _planner.ListBlocksAsync(tenantId, callerEmployeeId, start, end, ct);
+        var tasks = await _planner.GetTasksAsync(tenantId, callerEmployeeId, blocks.Select(b => b.TaskId).Distinct().ToList(), ct);
+        var sessions = await _planner.ListSessionsAsync(tenantId, callerEmployeeId, start, end, ct);
+        var legalEntity = await _planner.GetEmployeeLegalEntityAsync(tenantId, callerEmployeeId, ct);
+        var blocksByDay = blocks.ToLookup(b => DayOf(b.StartAt, zone.Value.Info));
+
+        var days = new List<PlannerRangeDay>(to.DayNumber - from.DayNumber + 1);
+        for (var day = from; day <= to; day = day.AddDays(1))
+        {
+            var (dayStart, dayEnd) = Bounds(day, zone.Value.Info);
+            var views = blocksByDay[day].Select(b =>
+            {
+                var task = tasks.GetValueOrDefault(b.TaskId);
+                var actual = PlannerActuals.TaskMinutes(sessions.Where(s => s.TaskId == b.TaskId).Select(s => (s.ClockInAt, s.ClockOutAt)),
+                    dayStart, dayEnd, now);
+                return new PlannerRangeBlockView(b.Id, b.TaskId, task?.ProjectId ?? Guid.Empty, task?.Title ?? string.Empty,
+                    b.StartAt, b.EndAt, (int)(b.EndAt - b.StartAt).TotalMinutes, actual, task?.AssignedToEmployee ?? false);
+            }).ToList();
+            var window = PlannerWorkWindows.For(legalEntity, day);
+            days.Add(new PlannerRangeDay(day, DayCheck(day, today) is null, window, views, views.Sum(v => v.PlannedMinutes),
+                window?.WorkingMinutes ?? 0));
+        }
+        return Result<PlannerRangeResponse>.Success(new PlannerRangeResponse(zone.Value.Id, today, days));
     }
 
     public Task<Result<PlannerDayResponse>> CreateBlockAsync(Guid tenantId, Guid callerEmployeeId, CreatePlannedBlockRequest request,
