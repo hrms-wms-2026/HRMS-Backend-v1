@@ -18,6 +18,11 @@ public class RefreshTrayTokenCommandHandler
 {
     private static readonly TimeSpan RefreshTokenLifetime = TimeSpan.FromDays(90);
     private static readonly TimeSpan LegalChallengeLifetime = TimeSpan.FromMinutes(10);
+
+    // If the rotation response is lost (timeout, dropped connection) the tray agent still holds
+    // the old refresh token and retries with it. Accept that retry for a short window, as long as
+    // the replacement was never used, instead of permanently logging the device out.
+    internal static readonly TimeSpan RotationRetryGrace = TimeSpan.FromMinutes(10);
     private const int AccessTokenExpiresInSeconds = 3600;
     private const int RefreshTokenExpiresInSeconds = 7_776_000;
     private const string LegalChallengeOrigin = "tray";
@@ -60,9 +65,17 @@ public class RefreshTrayTokenCommandHandler
     {
         var tokenHash = _tokenService.HashToken(request.RefreshToken);
         var existingToken = await _repository.FindActiveRefreshTokenAsync(tokenHash, cancellationToken);
+        var isRotationRetry = false;
 
         if (existingToken is null)
-            return Result<TrayAuthResponseDto>.Failure("Invalid or expired refresh token.", 401);
+        {
+            existingToken = await _repository.FindUnconsumedRotatedRefreshTokenAsync(
+                tokenHash, _clock.UtcNow - RotationRetryGrace, cancellationToken);
+            if (existingToken is null)
+                return Result<TrayAuthResponseDto>.Failure("Invalid or expired refresh token.", 401);
+
+            isRotationRetry = true;
+        }
 
         var device = await _repository.FindActiveDeviceAsync(
             existingToken.DeviceRegistrationId, existingToken.TenantId, cancellationToken);
@@ -81,8 +94,17 @@ public class RefreshTrayTokenCommandHandler
 
         var now = _clock.UtcNow;
 
-        // Rotate: revoke old, issue new
-        await _repository.RevokeRefreshTokenAsync(existingToken, "rotated", cancellationToken);
+        if (isRotationRetry)
+        {
+            // The replacement issued last time never reached the client — revoke it so only the
+            // token issued below stays live. The presented token is already revoked as "rotated".
+            await _repository.RevokeAllRefreshTokensForDeviceAsync(device.Id, "rotation_retry", cancellationToken);
+        }
+        else
+        {
+            // Rotate: revoke old, issue new
+            await _repository.RevokeRefreshTokenAsync(existingToken, TrayDeviceRefreshToken.RotatedReason, cancellationToken);
+        }
 
         var newRawToken = _tokenService.GenerateRawRefreshToken();
         var newTokenHash = _tokenService.HashToken(newRawToken);
