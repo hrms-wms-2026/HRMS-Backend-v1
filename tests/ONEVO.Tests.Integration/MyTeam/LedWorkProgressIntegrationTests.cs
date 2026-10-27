@@ -84,6 +84,9 @@ public sealed class LedWorkProgressIntegrationTests
         helper.AddMember(db, projectId, sub, member.Id);
         var doing = helper.AddStatus(db, projectId, false);
         var done = helper.AddStatus(db, projectId, true);
+        // tasks.objective_id has no EF relationship, so save the Modules first: the summary
+        // trigger reads the objectives row and writes nothing if the task lands before it.
+        await db.SaveChangesAsync();
         var inProgress = new List<Guid>();
         for (var i = 0; i < tasksPerModule; i++)
         {
@@ -175,7 +178,8 @@ public sealed class LedWorkProgressIntegrationTests
         {
             var counter = new CountingDbCommandInterceptor();
             await using var db = seeded.Db.NewContext(counter);
-            await Handler(db, seeded.Db.TenantId, seeded.LeadUserId).Handle(new GetLedWorkProgressQuery(), default);
+            // OverdueLimit 1 so both sizes fill the overdue page and take the same COUNT path.
+            await Handler(db, seeded.Db.TenantId, seeded.LeadUserId).Handle(new GetLedWorkProgressQuery(OverdueLimit: 1), default);
             return counter.Count;
         }
 
@@ -183,6 +187,6 @@ public sealed class LedWorkProgressIntegrationTests
         var largeCount = await CountAsync(large);
 
         smallCount.Should().Be(largeCount);
-        largeCount.Should().BeLessThanOrEqualTo(9);
+        largeCount.Should().BeLessThanOrEqualTo(10);
     }
 }
