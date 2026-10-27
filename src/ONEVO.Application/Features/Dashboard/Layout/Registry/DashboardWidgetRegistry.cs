@@ -42,19 +42,19 @@ public static class DashboardWidgetRegistry
         Definitions.Where(d => d.DashboardKey == dashboardKey).ToList();
 
     // Desktop default placements. Widgets absent here are in the catalog but not placed by default.
-    // Row 1: Today at a glance (the wide greeting hero), Action center, Quick actions; row 2: Today's schedule,
-    // Weekly progress, Active projects. The web app does not show my-tasks / work-pattern on My Work, so they sit
-    // below the rest and leave no hole.
+    // Taken from the Dapi owner's tuned dashboard (2026-10-27). Row 1: Today at a glance (the greeting hero),
+    // Today's schedule, Quick actions; row 2: Action center, Weekly progress, Active projects - all three rows tall.
+    // The web app does not show my-tasks / work-pattern on My Work, so they sit below the rest and leave no hole.
     private static readonly (string Key, GridRect Rect)[] MyWorkDefaults =
     [
-        ("today-at-a-glance", new GridRect(0, 0, 4, 4)),
-        ("action-center", new GridRect(4, 0, 5, 4)),
-        ("quick-actions", new GridRect(9, 0, 3, 4)),
-        ("todays-schedule", new GridRect(0, 4, 6, 4)),
-        ("today-total-time", new GridRect(6, 4, 3, 4)),
-        ("active-projects", new GridRect(9, 4, 3, 4)),
-        ("my-tasks", new GridRect(0, 8, 6, 4)),
-        ("work-pattern", new GridRect(0, 12, 12, 4)),
+        ("today-at-a-glance", new GridRect(0, 0, 4, 3)),
+        ("todays-schedule", new GridRect(4, 0, 5, 3)),
+        ("quick-actions", new GridRect(9, 0, 3, 3)),
+        ("action-center", new GridRect(0, 3, 5, 3)),
+        ("today-total-time", new GridRect(5, 3, 4, 3)),
+        ("active-projects", new GridRect(9, 3, 3, 3)),
+        ("my-tasks", new GridRect(0, 6, 6, 4)),
+        ("work-pattern", new GridRect(0, 10, 12, 4)),
     ];
 
     private static readonly (string Key, GridRect Rect)[] MyTeamDefaults =
@@ -68,13 +68,13 @@ public static class DashboardWidgetRegistry
     // the remaining widgets rearranged so no hole is left. Display only; seeding and Reset store the full default.
     private static readonly (string Key, GridRect Rect)[] MyWorkWithoutActionCenter =
     [
-        ("today-at-a-glance", new GridRect(0, 0, 6, 4)),
-        ("today-total-time", new GridRect(6, 0, 3, 4)),
-        ("quick-actions", new GridRect(9, 0, 3, 4)),
-        ("todays-schedule", new GridRect(0, 4, 6, 4)),
-        ("active-projects", new GridRect(6, 4, 6, 4)),
-        ("my-tasks", new GridRect(0, 8, 6, 4)),
-        ("work-pattern", new GridRect(0, 12, 12, 4)),
+        ("today-at-a-glance", new GridRect(0, 0, 4, 3)),
+        ("todays-schedule", new GridRect(4, 0, 5, 3)),
+        ("quick-actions", new GridRect(9, 0, 3, 3)),
+        ("today-total-time", new GridRect(0, 3, 6, 3)),
+        ("active-projects", new GridRect(6, 3, 6, 3)),
+        ("my-tasks", new GridRect(0, 6, 6, 4)),
+        ("work-pattern", new GridRect(0, 10, 12, 4)),
     ];
 
     private static readonly (string Key, GridRect Rect)[] MyTeamWithoutTeamStatus =

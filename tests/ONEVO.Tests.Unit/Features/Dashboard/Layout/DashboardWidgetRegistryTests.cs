@@ -62,7 +62,7 @@ public sealed class DashboardWidgetRegistryTests
         var mobile = DashboardWidgetRegistry.DefaultLayout(DashboardKeys.MyWork, Breakpoints.Mobile);
 
         Assert.Equal(
-            ["today-at-a-glance", "action-center", "quick-actions", "todays-schedule", "today-total-time", "active-projects", "my-tasks", "work-pattern"],
+            ["today-at-a-glance", "todays-schedule", "quick-actions", "action-center", "today-total-time", "active-projects", "my-tasks", "work-pattern"],
             mobile.Select(i => i.Key).ToArray());
         Assert.All(mobile, i =>
         {
@@ -87,8 +87,9 @@ public sealed class DashboardWidgetRegistryTests
     {
         var work = DashboardWidgetRegistry.DefaultLayout(DashboardKeys.MyWork, Breakpoints.Desktop);
 
-        Assert.Equal(new GridRect(0, 0, 4, 4), work.Single(i => i.Key == "today-at-a-glance").Rect);
-        Assert.Equal(new GridRect(0, 12, 12, 4), work.Single(i => i.Key == "work-pattern").Rect);
+        Assert.Equal(new GridRect(0, 0, 4, 3), work.Single(i => i.Key == "today-at-a-glance").Rect);
+        Assert.Equal(new GridRect(0, 3, 5, 3), work.Single(i => i.Key == "action-center").Rect);
+        Assert.Equal(new GridRect(0, 10, 12, 4), work.Single(i => i.Key == "work-pattern").Rect);
         Assert.Equal(new GridRect(8, 4, 4, 6), DashboardWidgetRegistry.DefaultLayout(DashboardKeys.MyTeam, Breakpoints.Desktop).Single(i => i.Key == "team-progress").Rect);
     }
 
@@ -162,13 +163,13 @@ public sealed class DashboardWidgetRegistryTests
 
         Assert.Equal(
             [
-                ("today-at-a-glance", new GridRect(0, 0, 6, 4)),
-                ("today-total-time", new GridRect(6, 0, 3, 4)),
-                ("quick-actions", new GridRect(9, 0, 3, 4)),
-                ("todays-schedule", new GridRect(0, 4, 6, 4)),
-                ("active-projects", new GridRect(6, 4, 6, 4)),
-                ("my-tasks", new GridRect(0, 8, 6, 4)),
-                ("work-pattern", new GridRect(0, 12, 12, 4)),
+                ("today-at-a-glance", new GridRect(0, 0, 4, 3)),
+                ("todays-schedule", new GridRect(4, 0, 5, 3)),
+                ("quick-actions", new GridRect(9, 0, 3, 3)),
+                ("today-total-time", new GridRect(0, 3, 6, 3)),
+                ("active-projects", new GridRect(6, 3, 6, 3)),
+                ("my-tasks", new GridRect(0, 6, 6, 4)),
+                ("work-pattern", new GridRect(0, 10, 12, 4)),
             ],
             layout);
     }

@@ -25,7 +25,7 @@ public sealed class GetAvailableWidgetsQueryHandlerTests
         var glance = result.Value!.Single(w => w.Key == "today-at-a-glance");
         Assert.Equal("Today at a glance", glance.Title);
         Assert.Equal(new[] { 3, 3, 6, 8 }, new[] { glance.Size.MinW, glance.Size.MinH, glance.Size.MaxW, glance.Size.MaxH });
-        Assert.Equal((4, 4), (glance.DefaultW, glance.DefaultH));
+        Assert.Equal((4, 3), (glance.DefaultW, glance.DefaultH));
     }
 
     [Fact]

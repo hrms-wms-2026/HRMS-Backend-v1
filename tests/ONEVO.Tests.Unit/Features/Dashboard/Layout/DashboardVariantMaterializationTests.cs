@@ -137,6 +137,6 @@ public sealed class DashboardVariantMaterializationTests
 
         Assert.True(result.IsSuccess);
         Assert.Equal(Compacted(full).OrderBy(k => k.Key), Stored(d, "desktop", _ => true).OrderBy(k => k.Key));
-        Assert.Equal(new GridRect(4, 0, 5, 4), Stored(d, "desktop", w => w.WidgetKey == "action-center")["action-center"]);
+        Assert.Equal(new GridRect(0, 3, 5, 3), Stored(d, "desktop", w => w.WidgetKey == "action-center")["action-center"]);
     }
 }
