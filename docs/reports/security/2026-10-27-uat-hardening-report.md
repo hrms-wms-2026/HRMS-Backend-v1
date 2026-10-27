@@ -48,4 +48,4 @@ Architecture docs reconciled with the code: see the 2026-10-27 entry in `docs/su
 - Release build of `ONEVO.Api`: clean.
 - Unit tests: 6809/6809 (includes 18 new `RichTextRules` tests).
 - Architecture tests: 736/736.
-- Integration tests: NOT RUN in this pass (needs Docker; run `pwsh ../dev-env/scripts/verify.ps1 backend -Full`).
+- Integration tests (Testcontainers): 560 passed, 0 failed, 1 skipped. The long-standing "CSRF issue" label on the integration jobs turned out not to be a CSRF bug; see `docs/reports/build-and-ci/2026-10-27-integration-csrf-label-investigation.md`.

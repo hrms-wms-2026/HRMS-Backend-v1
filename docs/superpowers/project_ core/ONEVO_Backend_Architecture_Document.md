@@ -1514,7 +1514,7 @@ Current CI gate scope (`.github/workflows/ci.yml`, runs on PRs and pushes to `ma
 - `integration-routing` (pull requests, non-blocking): maps the changed files to the smallest set of Testcontainers integration tests (`.github/scripts/select-integration-filter.ps1`), falling back to the full suite.
 - `full-integration` (nightly, manual dispatch and pushes, non-blocking): the full integration suite.
 
-The integration jobs are `continue-on-error` because of a known CSRF-handling issue in the suite; they are not part of the required status check.
+The integration jobs are `continue-on-error` and not part of the required status check. They were made non-blocking for a "CSRF-handling issue" that was never confirmed: the failures were ordinary test regressions, now fixed, and the full suite passes (560/560 locally on 2026-10-27). See `docs/reports/build-and-ci/2026-10-27-integration-csrf-label-investigation.md`.
 
 Local quality and security gate (outside the repo, in `../dev-env/`, see its `README.md`):
 

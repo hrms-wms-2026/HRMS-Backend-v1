@@ -45,10 +45,12 @@ jobs:
   # .github/scripts/select-integration-filter.ps1 for the routing rules and
   # CI_FOCUSED_INTEGRATION_TEST_ROUTING_REPORT.md for the full design and examples.
   #
-  # Known gap, carried over unchanged from before this routing was added: the integration test
-  # suite has a pre-existing CSRF-handling issue (tracked separately, unrelated to CI routing).
-  # Non-blocking until that's fixed, so it isn't part of the required status check for branch
-  # protection.
+  # Non-blocking (continue-on-error), so it isn't part of the required status check for branch
+  # protection. It was made non-blocking for a "CSRF-handling issue" that was never confirmed:
+  # the 2026-08/09 failures were ordinary test regressions (Leave, Objective edit approval,
+  # MyTeam), all fixed since, and the full suite is green again (local 560/560 on 2026-10-27).
+  # See docs/reports/build-and-ci/2026-10-27-integration-csrf-label-investigation.md before
+  # deciding whether to make these jobs blocking.
   integration-routing:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
