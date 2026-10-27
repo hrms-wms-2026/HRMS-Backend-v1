@@ -39,3 +39,10 @@ public sealed record PlannerTotals(int PlannedMinutes, int ActualMinutes);
 public sealed record PlannerDayResponse(DateOnly Date, string Timezone, bool Editable, IReadOnlyList<PlannerBlockView> Blocks,
     IReadOnlyList<PlannerMeetingView> Meetings, IReadOnlyList<PlannerDueTaskView> DueTasks, PlannerTotals Totals,
     int AttendanceMinutes);
+
+/// <summary>A day's working hours from the legal entity schedule, as wall-clock in the employee's zone (2026-10-27 design,
+/// call C1).</summary>
+/// <param name="BreakStart">Centred in the window and rounded down to 15 minutes (call C7); null with no break.</param>
+/// <param name="WorkingMinutes">The window less the break; 0 on a non-working day.</param>
+public sealed record PlannerWorkWindow(TimeOnly WorkStart, TimeOnly WorkEnd, int BreakMinutes, TimeOnly? BreakStart,
+    bool IsWorkingDay, int WorkingMinutes);
