@@ -9,9 +9,12 @@
 bin/
 obj/
 artifacts/
+.codex-build/
 
 # Test results and temp files
 TestResults/
+TestResults*/
+*.trx
 *.log
 [Ll]ogs/
 [Ll]og/
@@ -23,6 +26,12 @@ TestResults/
 
 # Superpowers / local agent tooling (not part of the app)
 .superpowers/
+.claude/
+.codex/
+.playwright-mcp/
+
+# Work reports belong under docs/reports/<area>/, not the repo root
+/*_REPORT.md
 
 # Postman workspace metadata & collections
 .postman/
