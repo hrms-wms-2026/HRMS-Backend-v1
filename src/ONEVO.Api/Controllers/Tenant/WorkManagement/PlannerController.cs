@@ -7,7 +7,8 @@ using ONEVO.Application.Features.WorkManagement.Planner.Contracts;
 
 namespace ONEVO.Api.Controllers.Tenant.WorkManagement;
 
-/// <summary>Day planner (2026-10-26 design, Part B; docs/api/planner-v1.md). Writes touch only the caller's today.</summary>
+/// <summary>Day planner (2026-10-26 design, Part B; 2026-10-27 Planner = Calendar; docs/api/planner-v1.md). Writes touch the
+/// caller's own plan, today up to 28 days ahead.</summary>
 [ApiController]
 [Route("api/v1/planner")]
 [Authorize(Policy = "TenantPolicy")]

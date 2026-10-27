@@ -3,7 +3,10 @@ namespace ONEVO.Application.Features.WorkManagement.Planner.Contracts;
 public static class PlannerErrorCodes
 {
     public const string Disabled = "planner_disabled";
+    /// <summary>No longer returned (v1 "today only"); kept so older clients' error maps still compile against it.</summary>
     public const string NotToday = "planner_not_today";
+    public const string DayReadOnly = "planner_day_read_only";
+    public const string BeyondHorizon = "planner_beyond_horizon";
     public const string BlockOverlap = "planner_block_overlap";
     public const string TaskNotPlannable = "planner_task_not_plannable";
     public const string InvalidTime = "planner_invalid_time";

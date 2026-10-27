@@ -8,6 +8,7 @@ using ONEVO.Application.Features.WorkManagement.Planner.Services;
 using ONEVO.Domain.Features.Calendar.Entities;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.TimeAttendance.Entities;
+using ONEVO.Domain.Features.WorkManagement.Planner.Entities;
 using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
 using ONEVO.Infrastructure.Persistence;
 using ONEVO.Infrastructure.Persistence.Repositories;
@@ -31,7 +32,7 @@ public sealed class PlannerServiceIntegrationTests
     private static readonly DateTimeOffset Now = new(2026, 11, 1, 20, 0, 0, TimeSpan.Zero);
     private static readonly DateOnly Today = new(2026, 11, 2);
     private static DateTimeOffset Local(int hour, int minute = 0, int dayOffset = 0)
-        => new(2026, 11, 2 + dayOffset, hour, minute, 0, TimeSpan.FromHours(5.5));
+        => new DateTimeOffset(2026, 11, 2, hour, minute, 0, TimeSpan.FromHours(5.5)).AddDays(dayOffset);
 
     private sealed record World(MyTeamDb H, MeetingPlacement At, Guid Employee, Guid Task);
 
@@ -95,15 +96,64 @@ public sealed class PlannerServiceIntegrationTests
     }
 
     [Fact]
-    public async Task Yesterday_or_tomorrow_is_refused()
+    public async Task Yesterday_is_read_only_tomorrow_can_be_planned_and_beyond_28_days_is_refused()
     {
         var w = await SeedAsync();
 
-        foreach (var offset in new[] { -1, 1 })
+        var past = await PlanAsync(w, w.Task, Local(9, dayOffset: -1), Local(10, dayOffset: -1));
+        var tomorrow = await PlanAsync(w, w.Task, Local(9, dayOffset: 1), Local(10, dayOffset: 1));
+        var last = await PlanAsync(w, w.Task, Local(9, dayOffset: 28), Local(10, dayOffset: 28));
+        var beyond = await PlanAsync(w, w.Task, Local(9, dayOffset: 29), Local(10, dayOffset: 29));
+
+        Assert.Equal((400, PlannerErrorCodes.DayReadOnly), (past.StatusCode, past.ErrorCode));
+        Assert.True(tomorrow.IsSuccess, tomorrow.Error);
+        Assert.Equal(Today.AddDays(1), tomorrow.Value!.Date);
+        Assert.True(last.IsSuccess, last.Error);
+        Assert.Equal((400, PlannerErrorCodes.BeyondHorizon), (beyond.StatusCode, beyond.ErrorCode));
+    }
+
+    [Fact]
+    public async Task A_block_moves_to_another_day_but_not_onto_another_block_there()
+    {
+        var w = await SeedAsync();
+        var today = (await PlanAsync(w, w.Task, Local(9), Local(10))).Value!.Blocks.Single();
+        Assert.True((await PlanAsync(w, w.Task, Local(14, dayOffset: 1), Local(15, dayOffset: 1))).IsSuccess);
+        await using var db = w.H.NewContext();
+
+        var clash = await Service(db).MoveBlockAsync(w.H.TenantId, w.Employee, today.Id,
+            new MovePlannedBlockRequest(Local(14, 30, dayOffset: 1), Local(15, 30, dayOffset: 1)), default);
+        var moved = await Service(db).MoveBlockAsync(w.H.TenantId, w.Employee, today.Id,
+            new MovePlannedBlockRequest(Local(10, dayOffset: 1), Local(11, dayOffset: 1)), default);
+
+        Assert.Equal((409, PlannerErrorCodes.BlockOverlap), (clash.StatusCode, clash.ErrorCode));
+        Assert.True(moved.IsSuccess, moved.Error);
+        Assert.Equal(Today.AddDays(1), moved.Value!.Date);
+        Assert.Equal(2, moved.Value.Blocks.Count);
+    }
+
+    [Fact]
+    public async Task A_past_block_cannot_be_moved_or_deleted()
+    {
+        var w = await SeedAsync();
+        var blockId = Guid.NewGuid();
+        await using (var seed = w.H.NewContext())
         {
-            var result = await PlanAsync(w, w.Task, Local(9, dayOffset: offset), Local(10, dayOffset: offset));
-            Assert.Equal((400, PlannerErrorCodes.NotToday), (result.StatusCode, result.ErrorCode));
+            seed.PlannedTaskBlocks.Add(new PlannedTaskBlock
+            {
+                Id = blockId, TenantId = w.H.TenantId, EmployeeId = w.Employee, TaskId = w.Task,
+                StartAt = Local(9, dayOffset: -1).ToUniversalTime(), EndAt = Local(10, dayOffset: -1).ToUniversalTime(),
+                CreatedById = w.Employee,
+            });
+            await seed.SaveChangesAsync();
         }
+        await using var db = w.H.NewContext();
+
+        var move = await Service(db).MoveBlockAsync(w.H.TenantId, w.Employee, blockId,
+            new MovePlannedBlockRequest(Local(9), Local(10)), default);
+        var delete = await Service(db).DeleteBlockAsync(w.H.TenantId, w.Employee, blockId, default);
+
+        Assert.Equal((400, PlannerErrorCodes.DayReadOnly), (move.StatusCode, move.ErrorCode));
+        Assert.Equal((400, PlannerErrorCodes.DayReadOnly), (delete.StatusCode, delete.ErrorCode));
     }
 
     [Fact]
@@ -383,14 +433,16 @@ public sealed class PlannerServiceIntegrationTests
     }
 
     [Fact]
-    public async Task Past_day_is_read_only_and_future_day_is_refused()
+    public async Task Past_day_reads_read_only_and_a_future_day_reads_editable()
     {
         var w = await SeedAsync();
 
         var past = await DayAsync(w, w.Employee, w.Employee, Today.AddDays(-1));
-        var future = await DayAsync(w, w.Employee, w.Employee, Today.AddDays(1));
+        var future = await DayAsync(w, w.Employee, w.Employee, Today.AddDays(3));
+        var beyond = await DayAsync(w, w.Employee, w.Employee, Today.AddDays(29));
 
         Assert.False(past.Value!.Editable);
-        Assert.Equal((400, PlannerErrorCodes.NotToday), (future.StatusCode, future.ErrorCode));
+        Assert.True(future.Value!.Editable);
+        Assert.Equal((400, PlannerErrorCodes.BeyondHorizon), (beyond.StatusCode, beyond.ErrorCode));
     }
 }
