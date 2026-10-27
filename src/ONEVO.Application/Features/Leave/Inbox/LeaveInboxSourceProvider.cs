@@ -7,7 +7,11 @@ using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Conversations.Contracts;
 using ONEVO.Application.Features.Conversations.RepositoryInterfaces;
 using ONEVO.Application.Features.Conversations.Services;
+using ONEVO.Application.Features.Auth.Permission.RepositoryInterfaces;
+using ONEVO.Application.Features.CoreHr.EmployeeAuthority.Models;
+using ONEVO.Application.Features.CoreHr.EmployeeAuthority.ServiceInterfaces;
 using ONEVO.Application.Features.Inbox.Contracts;
+using ONEVO.Application.Features.Inbox.Escalation;
 using ONEVO.Application.Features.Leave.Approval.Commands;
 using ONEVO.Application.Features.Leave.Approval.DTOs.Responses;
 using ONEVO.Application.Features.Leave.Approval.Helpers;
@@ -30,7 +34,7 @@ namespace ONEVO.Application.Features.Leave.Inbox;
 /// was added to (read-only). Every action runs the Leave module's own commands - the Inbox adds the journal row (same
 /// transaction) and, for request/respond info, the tagged chat message (plan D-d).
 /// </summary>
-public sealed class LeaveInboxSourceProvider : IInboxSourceProvider, IInboxBulkActionProvider
+public sealed class LeaveInboxSourceProvider : IInboxSourceProvider, IInboxPersonCaseProvider
 {
     public const int DecidedHistoryDays = 90;
     public const int DecidedHistoryLimit = 500;
@@ -50,12 +54,24 @@ public sealed class LeaveInboxSourceProvider : IInboxSourceProvider, IInboxBulkA
     private readonly IUnitOfWork _unitOfWork;
     private readonly IConversationRepository _conversations;
     private readonly IDateTimeProvider _clock;
+    private readonly IInboxEscalationRecorder? _escalations;
+    private readonly IPermissionRepository? _permissions;
+    private readonly IEmployeeAuthorityResolver? _authority;
+    private readonly ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces.IEmployeeRepository? _people;
+    private readonly ONEVO.Application.Features.WorkManagement.Common.Services.ICallerIdentityResolver? _identity;
 
     public LeaveInboxSourceProvider(
         ICurrentUser currentUser, IEmployeeRepository employees, ILeaveApprovalRepository approvals, ILeaveRequestRepository requests,
         ISender sender, IInboxDecisionJournal journal, IUnitOfWork unitOfWork,
-        IConversationRepository conversations, IDateTimeProvider clock)
+        IConversationRepository conversations, IDateTimeProvider clock,
+        IInboxEscalationRecorder? escalations = null, IPermissionRepository? permissions = null, IEmployeeAuthorityResolver? authority = null,
+        ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces.IEmployeeRepository? people = null, ONEVO.Application.Features.WorkManagement.Common.Services.ICallerIdentityResolver? identity = null)
     {
+        _people = people;
+        _identity = identity;
+        _escalations = escalations;
+        _permissions = permissions;
+        _authority = authority;
         _currentUser = currentUser;
         _employees = employees;
         _approvals = approvals;
@@ -128,6 +144,35 @@ public sealed class LeaveInboxSourceProvider : IInboxSourceProvider, IInboxBulkA
         return items.Values.ToList();
     }
 
+    /// <summary>The subject's leave requests created in [from, to), of any status, as info. CanOpen follows
+    /// GetDetailAsync: requester (or who submitted it for them), an approver at any step, leave:read, or added to the chat.</summary>
+    public async Task<IReadOnlyList<InboxPersonCase>> ListPersonCasesAsync(
+        Guid tenantId, Guid subjectEmployeeId, string category, DateTimeOffset from, DateTimeOffset to, Guid callerEmployeeId, CancellationToken ct)
+    {
+        if (category != InboxCategories.Request)
+            return [];
+        var rows = await _requests.ListOwnAsync(tenantId, subjectEmployeeId,
+            new LeaveRequestListFilter(null, null, null, null, CreatedFrom: from, CreatedTo: to), ct);
+        if (rows.Count == 0)
+            return [];
+
+        var caller = await _employees.GetByIdAsync(tenantId, callerEmployeeId, ct);
+        var subject = (await _employees.ListByIdsAsync(tenantId, [subjectEmployeeId], ct)).GetValueOrDefault(subjectEmployeeId);
+        var approvers = await _requests.ListApproverEmployeeIdsAsync(tenantId, rows.Select(r => r.Request.Id).ToList(), ct);
+        var added = (await _conversations.ListAddedSubjectsAsync(tenantId, callerEmployeeId, Source, ct)).ToHashSet();
+        var reader = _currentUser.HasPermission(LeaveReadPermission);
+        return rows.Select(row =>
+        {
+            var request = row.Request;
+            var canOpen = reader
+                || request.EmployeeId == callerEmployeeId
+                || (caller is not null && request.SubmittedOnBehalfOfBy == caller.UserId)
+                || approvers.GetValueOrDefault(request.Id)?.Contains(callerEmployeeId) == true
+                || added.Contains(new ItemRef(Source, LeaveInboxKinds.Request, request.Id));
+            return new InboxPersonCase(Item(ListRow.Of(request, subject, null, row.LeaveTypeName), InboxDirections.Info, pending: IsOpen(request), []), canOpen);
+        }).ToList();
+    }
+
     public async Task<IReadOnlyList<InboxFilterField>> GetFilterFieldsAsync(Guid tenantId, Guid callerEmployeeId, CancellationToken ct)
     {
         var items = await ListAsync(tenantId, new InboxQuery(), callerEmployeeId, ct);
@@ -162,7 +207,7 @@ public sealed class LeaveInboxSourceProvider : IInboxSourceProvider, IInboxBulkA
 
         var actions = new List<InboxAction>();
         if (actionable)
-            actions.AddRange(ReceivedActions());
+            actions.AddRange(await WithEscalationTargetsAsync(tenantId, state, caller, ReceivedActions(), ct));
         else if (isApprover && _currentUser.HasPermission(LeaveApprovePermission)
                  && LeaveDecisionChangeRules.CanChange(state, caller.Id, _clock.UtcNow))
             actions.Add(new InboxAction(LeaveInboxActions.ChangeDecision, "Change decision", "neutral", NeedsComment: true, NeedsPayload: true));
@@ -177,7 +222,11 @@ public sealed class LeaveInboxSourceProvider : IInboxSourceProvider, IInboxBulkA
             item, Steps(state, people, actionable ? caller.Id : null), Summary(state), ChangeSet(state, actionable),
             state.Request.Reason, Details(state), null,
             JsonSerializer.Serialize(new { startAt = state.Request.StartAt, endAt = state.Request.EndAt }),
-            await ExtraAsync(tenantId, state, ct));
+            await ExtraAsync(tenantId, state, ct),
+            state.Request.Status == LeaveRequestStatuses.Pending && state.Request.ExceedsBalanceByHours > 0m
+                ? [new InboxFact("Over balance",
+                    $"{state.Request.ExceedsBalanceByHours:0.##} h — balance goes negative if approved")]
+                : null);
     }
 
     // ---- actions --------------------------------------------------------------------------------
@@ -193,6 +242,8 @@ public sealed class LeaveInboxSourceProvider : IInboxSourceProvider, IInboxBulkA
             return Result<InboxActionResult>.Forbidden(MissingPermission);
         if (action == LeaveInboxActions.Cancel)
             return await CancelAsync(tenantId, id, comment, BodyString(body, "effectiveDate"), callerEmployeeId, ct);
+        if (action == LeaveInboxActions.Escalate)
+            return await EscalateAsync(tenantId, id, comment, BodyString(body, "targetEmployeeId"), callerEmployeeId, ct);
 
         var before = await _approvals.GetStateAsync(tenantId, id, ct);
         if (before is null)
@@ -219,46 +270,6 @@ public sealed class LeaveInboxSourceProvider : IInboxSourceProvider, IInboxBulkA
         return await JournaledAsync(tenantId, id, action, callerEmployeeId, comment, beforeJson, run, ct);
     }
 
-    public async Task<IReadOnlyList<(ItemRef Ref, Result<InboxActionResult> Result)>?> ExecuteBulkAsync(
-        Guid tenantId, string kind, string action, IReadOnlyList<Guid> ids, JsonElement body, Guid callerEmployeeId, CancellationToken ct)
-    {
-        if (kind != LeaveInboxKinds.Request || action is not (LeaveInboxActions.Approve or LeaveInboxActions.Reject))
-            return null;
-        if (!MayRun(action))
-            return ids.Select(id => (new ItemRef(Source, kind, id), Result<InboxActionResult>.Forbidden(MissingPermission))).ToList();
-        var comment = BodyString(body, "comment");
-        if (action == LeaveInboxActions.Reject && string.IsNullOrWhiteSpace(comment))
-            return ids.Select(id => (new ItemRef(Source, kind, id), Result<InboxActionResult>.UnprocessableEntity("A reason is required to reject."))).ToList();
-
-        var before = new Dictionary<Guid, string>();
-        foreach (var id in ids)
-        {
-            if (await _approvals.GetStateAsync(tenantId, id, ct) is { } state)
-                before[id] = LeaveDecisionSnapshot.Of(state).ToJson();
-        }
-
-        var bulk = action == LeaveInboxActions.Approve
-            ? await _sender.Send(new BulkApproveLeaveRequestsCommand(ids, comment), ct)
-            : await _sender.Send(new BulkRejectLeaveRequestsCommand(ids, comment!), ct);
-        if (!bulk.IsSuccess)
-            return ids.Select(id => (new ItemRef(Source, kind, id), Result<InboxActionResult>.Failure(bulk.Error!, bulk.StatusCode ?? 400))).ToList();
-
-        var results = new List<(ItemRef, Result<InboxActionResult>)>();
-        foreach (var item in bulk.Value!.Items)
-        {
-            var itemRef = new ItemRef(Source, kind, item.RequestId);
-            if (!item.Success)
-            {
-                results.Add((itemRef, Result<InboxActionResult>.UnprocessableEntity(item.Error ?? "The action failed.")));
-                continue;
-            }
-            var after = await _approvals.GetStateAsync(tenantId, item.RequestId, ct);
-            await RecordAsync(tenantId, item.RequestId, action, callerEmployeeId, comment, before.GetValueOrDefault(item.RequestId), after, ct);
-            results.Add((itemRef, Result<InboxActionResult>.Success(new InboxActionResult(after is null ? [] : People(after)))));
-        }
-        return results;
-    }
-
     private async Task<Result<InboxActionResult>> CancelAsync(
         Guid tenantId, Guid id, string? reason, string? effectiveDate, Guid callerEmployeeId, CancellationToken ct)
     {
@@ -276,6 +287,107 @@ public sealed class LeaveInboxSourceProvider : IInboxSourceProvider, IInboxBulkA
                 ? Result<LeaveApprovalDecisionResponse>.Success(null!)
                 : Result<LeaveApprovalDecisionResponse>.Failure(cancelled.Error!, cancelled.StatusCode ?? 400);
         }, ct);
+    }
+
+    /// <summary>Escalate: the caller's pending step goes to the person they picked (default: their own leave approver).
+    /// The hand-over and the standard escalation record (journal, the chat - the case group when there is one, else the
+    /// requester's 1-on-1 chat with the new approver) commit together.</summary>
+    private async Task<Result<InboxActionResult>> EscalateAsync(
+        Guid tenantId, Guid id, string? note, string? targetRaw, Guid callerEmployeeId, CancellationToken ct)
+    {
+        if (_escalations is null)
+            return Result<InboxActionResult>.UnprocessableEntity(UnknownAction);
+        var state = await _approvals.GetStateAsync(tenantId, id, ct);
+        var caller = await _employees.GetByIdAsync(tenantId, callerEmployeeId, ct);
+        if (state is null || caller is null)
+            return Result<InboxActionResult>.NotFound("Leave request not found.");
+        if (!LeavePendingApprovals.IsActionable(state, caller.Id))
+            return Result<InboxActionResult>.Forbidden("This request is not waiting on you.");
+
+        var candidates = await EscalationCandidatesAsync(tenantId, state, caller, ct);
+        var target = Guid.TryParse(targetRaw, out var picked)
+            ? candidates.FirstOrDefault(c => c.Employee.Id == picked).Employee
+            : candidates.FirstOrDefault(c => c.IsDefault).Employee;
+        if (target is null)
+            return Result<InboxActionResult>.UnprocessableEntity(targetRaw is null
+                ? "Pick who to send this request to."
+                : "That person cannot approve this request.");
+
+        var beforeJson = LeaveDecisionSnapshot.Of(state).ToJson();
+        try
+        {
+            return await _unitOfWork.ExecuteInTransactionAsync(async t =>
+            {
+                var handed = await _sender.Send(new HandOverLeaveApprovalCommand(id, target.Id, note), t);
+                if (!handed.IsSuccess)
+                    throw new ModuleRefused(Result<InboxActionResult>.Failure(handed.Error!, handed.StatusCode ?? 400));
+                var after = (await _approvals.GetStateAsync(tenantId, id, t))!;
+                var affected = await _escalations.RecordAsync(tenantId, new EscalationRecord(
+                    new ItemRef(Source, LeaveInboxKinds.Request, id),
+                    new EscalationTarget.Employees([new EscalationRecipient(target.UserId, target.Id)]),
+                    caller.Id, note, [caller.Id], beforeJson, LeaveDecisionSnapshot.Of(after).ToJson(), state.Request.EmployeeId), t);
+                return Result<InboxActionResult>.Success(new InboxActionResult(affected.Concat(People(after)).Distinct().ToList()));
+            }, ct);
+        }
+        catch (ModuleRefused refused)
+        {
+            _unitOfWork.ClearTracking();
+            return refused.Result;
+        }
+    }
+
+    /// <summary>Who the caller may hand their step to: everyone holding leave:approve, minus the requester, the caller and
+    /// anyone already on the request. The default is the caller's own leave approver (one level up), when eligible.</summary>
+    private async Task<IReadOnlyList<(ONEVO.Domain.Features.CoreHr.Entities.Employee Employee, bool IsDefault)>> EscalationCandidatesAsync(
+        Guid tenantId, LeaveApprovalState state, ONEVO.Domain.Features.CoreHr.Entities.Employee caller, CancellationToken ct)
+    {
+        if (_permissions is null)
+            return [];
+        var excluded = state.Approvers.Select(a => a.ApproverEmployeeId).Append(state.Request.EmployeeId).Append(caller.Id).ToHashSet();
+        Guid? defaultId = null;
+        if (_authority is not null && caller.LegalEntityId is Guid legalEntityId)
+        {
+            var route = await _authority.ResolveApproverAsync(new EmployeeApprovalRouteRequest(
+                caller.Id, legalEntityId, LeaveApprovePermission, EmployeeAuthorityPurpose.TimeOffApproval), ct);
+            if (route.IsSuccess && route.Value is { } approver)
+                defaultId = approver.ApproverEmployeeId;
+        }
+
+        var candidates = new List<(ONEVO.Domain.Features.CoreHr.Entities.Employee Employee, bool IsDefault)>();
+        foreach (var userId in (await _permissions.ListUserIdsWithPermissionCodeAsync(tenantId, LeaveApprovePermission, _clock.UtcNow, ct)).Distinct())
+        {
+            if (await _employees.GetByUserIdAsync(tenantId, userId, ct) is { } employee && !excluded.Contains(employee.Id))
+                candidates.Add((employee, employee.Id == defaultId));
+        }
+        return candidates.OrderByDescending(c => c.IsDefault).ThenBy(c => $"{c.Employee.FirstName} {c.Employee.LastName}").ToList();
+    }
+
+    /// <summary>The escalate dialog's preview (detail only): "escalateTo" names the caller's own approver when they can take
+    /// it, "escalateCandidates" (JSON) lists everyone the caller may pick. No one to pick: no Escalate.</summary>
+    private async Task<IReadOnlyList<InboxAction>> WithEscalationTargetsAsync(
+        Guid tenantId, LeaveApprovalState state, ONEVO.Domain.Features.CoreHr.Entities.Employee caller, IReadOnlyList<InboxAction> actions,
+        CancellationToken ct)
+    {
+        var candidates = await EscalationCandidatesAsync(tenantId, state, caller, ct);
+        if (candidates.Count == 0)
+            return actions.Where(a => a.Key != LeaveInboxActions.Escalate).ToList();
+        var ids = candidates.Select(c => c.Employee.Id).ToList();
+        var positions = _people is null ? new Dictionary<Guid, string>() : await _people.ListPositionNamesAsync(tenantId, ids, ct);
+        var identities = _identity is null
+            ? new Dictionary<Guid, ONEVO.Application.Features.WorkManagement.Common.Services.EmployeeIdentityDto>()
+            : await _identity.ResolveIdentitiesByEmployeeIdAsync(tenantId, ids, ct);
+        var meta = new Dictionary<string, string>
+        {
+            ["escalateCandidates"] = JsonSerializer.Serialize(candidates.Select(c => new
+            {
+                employeeId = c.Employee.Id, name = $"{c.Employee.FirstName} {c.Employee.LastName}".Trim(),
+                position = positions.GetValueOrDefault(c.Employee.Id),
+                avatarFileId = identities.GetValueOrDefault(c.Employee.Id)?.AvatarFileId, isDefault = c.IsDefault,
+            })),
+        };
+        if (candidates.FirstOrDefault(c => c.IsDefault).Employee is { } suggested)
+            meta["escalateTo"] = $"{suggested.FirstName} {suggested.LastName}".Trim();
+        return actions.Select(a => a.Key == LeaveInboxActions.Escalate ? a with { Meta = meta } : a).ToList();
     }
 
     /// <summary>Runs the module command and writes its journal row in one transaction; a module failure leaves nothing.</summary>
@@ -322,8 +434,8 @@ public sealed class LeaveInboxSourceProvider : IInboxSourceProvider, IInboxBulkA
     /// <summary>The permission each Leave endpoint requires (LeaveApprovalsController / LeaveRequestsController).</summary>
     private bool MayRun(string action) => action switch
     {
-        LeaveInboxActions.Approve or LeaveInboxActions.Reject
-            or LeaveInboxActions.ChangeDecision => _currentUser.HasPermission(LeaveApprovePermission),
+        LeaveInboxActions.Approve or LeaveInboxActions.Reject or LeaveInboxActions.ChangeDecision
+            or LeaveInboxActions.Escalate => _currentUser.HasPermission(LeaveApprovePermission),
         LeaveInboxActions.Cancel => _currentUser.HasPermission(LeaveReadOwnPermission) || _currentUser.HasPermission(LeaveManagePermission),
         _ => true,
     };
@@ -344,6 +456,7 @@ public sealed class LeaveInboxSourceProvider : IInboxSourceProvider, IInboxBulkA
     [
         new(LeaveInboxActions.Approve, "Approve", "primary", NeedsComment: false, NeedsPayload: false),
         new(LeaveInboxActions.Reject, "Reject", "danger", NeedsComment: true, NeedsPayload: false),
+        new(LeaveInboxActions.Escalate, "Escalate", "danger", NeedsComment: true, NeedsPayload: false),
     ];
 
     private List<InboxAction> SentActions(LeaveRequest request, Guid caller)
@@ -382,7 +495,8 @@ public sealed class LeaveInboxSourceProvider : IInboxSourceProvider, IInboxBulkA
             facets["department"] = [department.ToString()];
         return new InboxItem(
             LeaveInboxKinds.Source, LeaveInboxKinds.Request, request.Id, InboxCategories.Request, row.TypeName,
-            $"{row.TypeName} - {row.EmployeeName}", Subtitle(row.TypeName, request), request.Status, direction, null,
+            $"{row.TypeName} - {row.EmployeeName}", Subtitle(row.TypeName, request), request.Status, direction,
+            request.Status == LeaveRequestStatuses.Pending && request.ExceedsBalanceByHours > 0m ? "warning" : null,
             "legal_entity", row.LegalEntityId, null,
             new InboxPerson(request.EmployeeId, row.EmployeeName), row.RequestedTo is { } to ? new InboxPerson(to, string.Empty) : null,
             request.CreatedAt, request.UpdatedAt ?? request.CreatedAt, actions, 0, pending, facets);
@@ -402,17 +516,20 @@ public sealed class LeaveInboxSourceProvider : IInboxSourceProvider, IInboxBulkA
             : LeaveApprovalMapper.CalculateRemaining(
                 state.Entitlement.TotalHours, state.Entitlement.CarriedForwardHours, state.Entitlement.UsedHours, state.Entitlement.PendingHours);
         var pending = IsOpen(request);
-        return
-        [
+        var changes = new List<InboxChange>
+        {
             new("leave_type", "Leave type", null, state.LeaveTypeName),
             new("startAt", "From", null, request.StartAt.ToString("O"), "datetime", Editable: editable),
             new("endAt", "To", null, request.EndAt.ToString("O"), "datetime", Editable: editable),
             new("total_hours", "Total", null, request.TotalHours.ToString("0.##", CultureInfo.InvariantCulture), "hours"),
             new("paid_hours", "Paid", null, request.PaidHours.ToString("0.##", CultureInfo.InvariantCulture), "hours"),
-            new("unpaid_hours", "Unpaid", null, request.UnpaidHours.ToString("0.##", CultureInfo.InvariantCulture), "hours"),
             new("balance", "Balance", Hours(remaining is null ? null : remaining + (pending ? request.PaidHours : 0m)), Hours(remaining), "hours"),
             new("reason", "Reason", null, request.Reason),
-        ];
+        };
+        if (!(request.PaidHours > 0m && request.UnpaidHours == 0m))
+            changes.Insert(5, new InboxChange("unpaid_hours", "Unpaid", null,
+                request.UnpaidHours.ToString("0.##", CultureInfo.InvariantCulture), "hours"));
+        return changes;
     }
 
     private static string? Hours(decimal? value) => value?.ToString("0.##", CultureInfo.InvariantCulture);

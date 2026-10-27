@@ -1,7 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using ONEVO.Application.Features.Leave.Approval.RepositoryInterfaces;
 using ONEVO.Application.Features.Leave.Entitlement.Mappers;
-using ONEVO.Application.Features.Leave.Policy.RepositoryInterfaces;
+using ONEVO.Application.Features.Leave.Policy.Services;
 using ONEVO.Domain.Features.Leave.BalanceAudit.Entities;
 using ONEVO.Domain.Features.Leave.Common;
 using ONEVO.Domain.Features.Leave.Request.Entities;
@@ -12,9 +12,9 @@ namespace ONEVO.Infrastructure.Persistence.Repositories.Leave.Approval;
 public class EfLeaveApprovalRepository : ILeaveApprovalRepository
 {
     private readonly ApplicationDbContext _db;
-    private readonly ILeavePolicyRepository _policies;
+    private readonly ILeavePolicyResolver _policies;
 
-    public EfLeaveApprovalRepository(ApplicationDbContext db, ILeavePolicyRepository policies)
+    public EfLeaveApprovalRepository(ApplicationDbContext db, ILeavePolicyResolver policies)
     {
         _db = db;
         _policies = policies;
@@ -50,13 +50,19 @@ public class EfLeaveApprovalRepository : ILeaveApprovalRepository
             .ThenBy(x => x.Id)
             .ToListAsync(ct);
 
-        string? approvalMode = null;
-        if (employee.LegalEntityId is Guid legalEntityId)
+        string? approvalMode;
+        if (request.LeavePolicyVersionId is { } versionId)
         {
-            var policies = await _policies.ListActiveAggregatesByLegalEntityIdsAsync(
-                tenantId, [legalEntityId], request.StartAt.Year, ct);
-            if (policies.TryGetValue(legalEntityId, out var policy))
-                approvalMode = policy.Policy.ApprovalMode;
+            approvalMode = await _db.LeavePolicyVersions.AsNoTracking()
+                .Where(v => v.TenantId == tenantId && v.Id == versionId)
+                .Select(v => v.ApprovalMode)
+                .SingleOrDefaultAsync(ct);
+        }
+        else
+        {
+            var policy = await _policies.ResolveAsync(
+                tenantId, employee.Id, request.LeaveTypeId, DateOnly.FromDateTime(request.StartAt.UtcDateTime), ct);
+            approvalMode = policy?.Version.ApprovalMode;
         }
 
         return new LeaveApprovalState(

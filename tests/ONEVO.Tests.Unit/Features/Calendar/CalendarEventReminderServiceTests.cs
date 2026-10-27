@@ -4,8 +4,10 @@ using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Features.Calendar.RepositoryInterfaces;
 using ONEVO.Application.Features.Calendar.ServiceInterfaces;
 using ONEVO.Application.Features.Calendar.Services;
+using ONEVO.Application.Features.WorkManagement.Meetings.RepositoryInterfaces;
 using ONEVO.Domain.Features.Calendar.Entities;
 using ONEVO.Domain.Features.CoreHr.Entities;
+using ONEVO.Domain.Features.WorkManagement.Meetings.Entities;
 using Xunit;
 
 namespace ONEVO.Tests.Unit.Features.Calendar;
@@ -108,5 +110,41 @@ public sealed class CalendarEventReminderServiceTests
 
         (await Sut().SendDueAsync(TenantId, Now, default)).Should().Be(1);
         _logged.Should().ContainSingle(l => l.EventId == masterId && l.OccurrenceStart == moved.StartDate);
+    }
+
+    [Fact]
+    public async Task A_task_meeting_occurrence_reminds_its_attendees_who_did_not_decline_and_its_organizer_once()
+    {
+        var organizer = new Employee { Id = Guid.NewGuid(), TenantId = TenantId, UserId = Guid.NewGuid(), FirstName = "Org" };
+        _employees.Setup(e => e.ListByIdsAsync(TenantId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, Employee> { [_ada.Id] = _ada, [_bob.Id] = _bob, [organizer.Id] = organizer });
+        var series = new MeetingSeries { Id = Guid.NewGuid(), TenantId = TenantId, OrganizerEmployeeId = organizer.Id, Title = "Sync" };
+        var occurrence = new MeetingDetails
+        {
+            TaskId = Guid.NewGuid(), TenantId = TenantId, SeriesId = series.Id, OriginalStart = Now.AddMinutes(10),
+            StartAt = Now.AddMinutes(12), EndAt = Now.AddMinutes(42),
+        };
+        var meetings = new Mock<IMeetingRepository>();
+        meetings.Setup(m => m.ListStartingBetweenAsync(TenantId, Now, Now.AddMinutes(15), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([new MeetingOccurrenceRow(occurrence, "ACME-M1", "Sync", null, Guid.NewGuid(), Guid.NewGuid())]);
+        meetings.Setup(m => m.ListSeriesAsync(TenantId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>())).ReturnsAsync([series]);
+        meetings.Setup(m => m.ListParticipantsForSeriesAsync(TenantId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([
+                new CalendarEventParticipant { Id = Guid.NewGuid(), TenantId = TenantId, MeetingSeriesId = series.Id, EmployeeId = _ada.Id, ResponseStatus = CalendarEventParticipantStatuses.Accepted },
+                new CalendarEventParticipant { Id = Guid.NewGuid(), TenantId = TenantId, MeetingSeriesId = series.Id, EmployeeId = _bob.Id, ResponseStatus = CalendarEventParticipantStatuses.Rejected },
+            ]);
+        meetings.Setup(m => m.ListOverridesAsync(TenantId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>())).ReturnsAsync([]);
+        var sut = () => new CalendarEventReminderService(_events.Object, _expander.Object, _employees.Object, _notifications.Object, _unitOfWork.Object,
+            meetings.Object);
+
+        var first = await sut().SendDueAsync(TenantId, Now, default);
+        var second = await sut().SendDueAsync(TenantId, Now, default);
+
+        (first, second).Should().Be((2, 0));
+        _logged.Select(l => (l.EventId, l.OccurrenceStart, l.EmployeeId)).Should().BeEquivalentTo(new[]
+        {
+            (occurrence.TaskId, occurrence.StartAt, _ada.Id), (occurrence.TaskId, occurrence.StartAt, organizer.Id),
+        });
+        _notifications.Verify(n => n.NotifyEventReminderAsync(TenantId, _bob.UserId, It.IsAny<string>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 }

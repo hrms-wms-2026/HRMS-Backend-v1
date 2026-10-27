@@ -1,7 +1,9 @@
 using MediatR;
 using ONEVO.Application.Common.Models;
+using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Inbox.Services;
+using ONEVO.Application.Features.Leave.Approval.Commands;
 using ONEVO.Application.Features.Leave.Cancellation.Helpers;
 using ONEVO.Application.Features.Leave.Request.DTOs.Responses;
 using ONEVO.Application.Features.Leave.Request.Helpers;
@@ -21,6 +23,8 @@ public sealed class SubmitLeaveRequestCommandHandler
     private readonly LeaveRequestSubmissionEvaluator _evaluator;
     private readonly ILeaveRequestRepository _requests;
     private readonly LeaveRequestDayAllocationBuilder _allocationBuilder;
+    private readonly LeaveApprovalDecisionService _decisions;
+    private readonly IUnitOfWork _unitOfWork;
     private readonly IInboxChangeNotifier? _inbox;
 
     public SubmitLeaveRequestCommandHandler(
@@ -29,6 +33,8 @@ public sealed class SubmitLeaveRequestCommandHandler
         LeaveRequestSubmissionEvaluator evaluator,
         ILeaveRequestRepository requests,
         LeaveRequestDayAllocationBuilder allocationBuilder,
+        LeaveApprovalDecisionService decisions,
+        IUnitOfWork unitOfWork,
         IInboxChangeNotifier? inbox = null)
     {
         _currentUser = currentUser;
@@ -36,6 +42,8 @@ public sealed class SubmitLeaveRequestCommandHandler
         _evaluator = evaluator;
         _requests = requests;
         _allocationBuilder = allocationBuilder;
+        _decisions = decisions;
+        _unitOfWork = unitOfWork;
         _inbox = inbox;
     }
 
@@ -76,6 +84,8 @@ public sealed class SubmitLeaveRequestCommandHandler
             TotalHours = draft.TotalHours,
             PaidHours = draft.PaidHours,
             UnpaidHours = draft.UnpaidHours,
+            LeavePolicyVersionId = draft.PolicyVersionId,
+            ExceedsBalanceByHours = draft.ExceedsBalanceByHours,
             Reason = string.IsNullOrWhiteSpace(command.Reason) ? null : command.Reason.Trim(),
             Status = LeaveRequestStatuses.Pending,
             ConflictSnapshotJson = snapshotJson,
@@ -84,7 +94,9 @@ public sealed class SubmitLeaveRequestCommandHandler
             CreatedAt = now
         };
 
-        var approvers = draft.Approvers.Approvers.Select(row => new LeaveRequestApprover
+        var approvers = (draft.ApprovalMode == LeaveApprovalModes.None
+            ? []
+            : draft.Approvers.Approvers).Select(row => new LeaveRequestApprover
         {
             Id = Guid.NewGuid(),
             TenantId = _currentUser.TenantId,
@@ -121,12 +133,30 @@ public sealed class SubmitLeaveRequestCommandHandler
 
         try
         {
-            await _requests.AddPendingRequestAsync(
-                new LeaveRequestWriteSet(request, approvers, documents, dayAllocations, draft.Entitlement), ct);
+            await _unitOfWork.ExecuteInTransactionAsync(async transactionCt =>
+            {
+                await _requests.AddPendingRequestAsync(
+                    new LeaveRequestWriteSet(request, approvers, documents, dayAllocations, draft.Entitlement),
+                    transactionCt);
+
+                if (draft.ApprovalMode == LeaveApprovalModes.None)
+                {
+                    var finalized = await _decisions.FinalizeNoApprovalAsync(requestId, transactionCt);
+                    if (!finalized.IsSuccess)
+                        throw new AutomaticApprovalException(
+                            finalized.Error!, finalized.StatusCode ?? 500, finalized.ErrorCode);
+                }
+
+                return true;
+            }, ct);
         }
         catch (InvalidOperationException ex) when (ex.Message == LeaveRequestMessages.Overlap)
         {
             return Result<LeaveRequestResponse>.Conflict(LeaveRequestMessages.Overlap);
+        }
+        catch (AutomaticApprovalException ex)
+        {
+            return Result<LeaveRequestResponse>.Failure(ex.Message, ex.StatusCode, ex.ErrorCode);
         }
 
         var snapshot = new LeaveRequestConflictSnapshotResponse(
@@ -142,5 +172,14 @@ public sealed class SubmitLeaveRequestCommandHandler
             approvers,
             LeaveRequestMapper.ToBalanceImpact(draft.CurrentRemaining, pendingBeforeSubmit, draft.PaidHours),
             snapshot));
+    }
+
+    private sealed class AutomaticApprovalException(
+        string message,
+        int statusCode,
+        string? errorCode) : Exception(message)
+    {
+        public int StatusCode { get; } = statusCode;
+        public string? ErrorCode { get; } = errorCode;
     }
 }

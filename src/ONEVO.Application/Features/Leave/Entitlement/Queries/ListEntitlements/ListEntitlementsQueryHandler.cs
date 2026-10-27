@@ -1,3 +1,4 @@
+using ONEVO.Application.Features.Leave.Balance.Helpers;
 using MediatR;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
@@ -6,7 +7,7 @@ using ONEVO.Application.Features.Leave.Entitlement.DTOs.Responses;
 using ONEVO.Application.Features.Leave.Entitlement.Helpers;
 using ONEVO.Application.Features.Leave.Entitlement.Mappers;
 using ONEVO.Application.Features.Leave.Entitlement.RepositoryInterfaces;
-using ONEVO.Application.Features.Leave.Policy.RepositoryInterfaces;
+using ONEVO.Application.Features.Leave.Policy.Services;
 
 namespace ONEVO.Application.Features.Leave.Entitlement.Queries.ListEntitlements;
 
@@ -17,14 +18,14 @@ public class ListEntitlementsQueryHandler
     private readonly IDateTimeProvider _dateTimeProvider;
     private readonly ILeaveEntitlementRepository _entitlements;
     private readonly IEmployeeRepository _employees;
-    private readonly ILeavePolicyRepository _policies;
+    private readonly ILeavePolicyResolver _policies;
 
     public ListEntitlementsQueryHandler(
         ICurrentUser currentUser,
         IDateTimeProvider dateTimeProvider,
         ILeaveEntitlementRepository entitlements,
         IEmployeeRepository employees,
-        ILeavePolicyRepository policies)
+        ILeavePolicyResolver policies)
     {
         _currentUser = currentUser;
         _dateTimeProvider = dateTimeProvider;
@@ -48,19 +49,13 @@ public class ListEntitlementsQueryHandler
 
         var employeeIds = rows.Select(r => r.Entitlement.EmployeeId).Distinct().ToArray();
         var warnings = await _employees.ListLegalEntityChangeWarningsAsync(tenantId, employeeIds, request.Year, ct);
-        var legalEntityIds = rows.Select(r => r.LegalEntityId).OfType<Guid>().Distinct().ToArray();
-        var policies = await _policies.ListActiveAggregatesByLegalEntityIdsAsync(tenantId, legalEntityIds, request.Year, ct);
+        var resolved = await LeaveBalanceMapping.ResolveCarryPoliciesAsync(_policies, tenantId, request.Year, rows, ct);
 
         return Result<IReadOnlyList<LeaveEntitlementResponse>>.Success(rows.Select(row =>
-        {
-            var policy = row.LegalEntityId is { } legalEntityId && policies.TryGetValue(legalEntityId, out var match)
-                ? match
-                : null;
-            return LeaveEntitlementMapper.ToResponse(
+            LeaveEntitlementMapper.ToResponse(
                 row,
                 warnings.GetValueOrDefault(row.Entitlement.EmployeeId),
                 asOfDate,
-                LeaveEntitlementPlanner.CarryExpiryFromPolicy(policy, row.Entitlement.LeaveTypeId, request.Year));
-        }).ToList());
+                LeaveCarryExpiry.For(LeaveBalanceMapping.Find(resolved, row), request.Year))).ToList());
     }
 }

@@ -8,7 +8,12 @@ public enum CalendarAttendanceSyncOutcome
     RetryLater,
     /// <summary>Still no rows <see cref="CalendarAttendanceSyncPolicy.AttendanceReportCutoffHours"/> after the end: stop and mark it unavailable.</summary>
     Unavailable,
+    /// <summary>The fetch itself failed and the cutoff has passed: stop and mark the sync failed ("unknown").</summary>
+    Failed,
 }
+
+/// <summary>An event's scheduled start and end - the window its provider attendance session must start in.</summary>
+public sealed record CalendarEventWindow(DateTimeOffset Start, DateTimeOffset End);
 
 /// <summary>
 /// What the Teams/Zoom attendance sync jobs do with one report (plan C0 P0-2). An empty report is never treated as
@@ -26,4 +31,11 @@ public static class CalendarAttendanceSyncPolicy
             ? CalendarAttendanceSyncOutcome.Unavailable
             : CalendarAttendanceSyncOutcome.RetryLater;
     }
+
+    /// <summary>The fetch failed (provider error, no connection, sign-in needed): retried until the cutoff,
+    /// then recorded as failed so the meeting stops being polled forever.</summary>
+    public static CalendarAttendanceSyncOutcome DecideAfterFailure(DateTimeOffset eventEnd, DateTimeOffset now)
+        => now >= eventEnd.AddHours(AttendanceReportCutoffHours)
+            ? CalendarAttendanceSyncOutcome.Failed
+            : CalendarAttendanceSyncOutcome.RetryLater;
 }

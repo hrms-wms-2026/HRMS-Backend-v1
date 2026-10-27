@@ -130,6 +130,11 @@ public interface IEmployeeRepository
     Task<IReadOnlyDictionary<Guid, ONEVO.Domain.Features.CoreHr.Entities.Employee>> ListByIdsAsync(
         Guid tenantId, IReadOnlyCollection<Guid> employeeIds, CancellationToken ct = default);
 
+    /// <summary>The name of each employee's active primary-employment position (one query). Employees without one are
+    /// absent from the result.</summary>
+    Task<IReadOnlyDictionary<Guid, string>> ListPositionNamesAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> employeeIds, CancellationToken ct = default);
+
     Task AddAsync(ONEVO.Domain.Features.CoreHr.Entities.Employee employee, CancellationToken ct = default);
 
     Task<int> SaveChangesAsync(CancellationToken ct = default);

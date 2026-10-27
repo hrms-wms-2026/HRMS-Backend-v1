@@ -14,6 +14,18 @@ public static class WorkTaskKinds
 {
     public const string Standard = "standard";
     public const string EmployeeChecklist = "employee_checklist";
+    /// <summary>A meeting occurrence (meetings-as-tasks Phase 2). Hidden from every ordinary task query by
+    /// <see cref="WorkTaskQueryFilters.ExcludeMeetings"/>.</summary>
+    public const string Meeting = "meeting";
+}
+
+/// <summary>The named query filters on WorkTask. A query that must see meetings ignores only
+/// <see cref="ExcludeMeetings"/> (and applies MeetingVisibility itself); <see cref="TenantScope"/> is the
+/// composed tenant/soft-delete filter every entity has.</summary>
+public static class WorkTaskQueryFilters
+{
+    public const string ExcludeMeetings = "ExcludeMeetings";
+    public const string TenantScope = "TenantScope";
 }
 
 public static class WorkTaskVisibilityScopes

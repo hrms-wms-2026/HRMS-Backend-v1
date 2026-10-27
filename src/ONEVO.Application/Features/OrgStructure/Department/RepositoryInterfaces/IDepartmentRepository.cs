@@ -32,6 +32,12 @@ public interface IDepartmentRepository
     Task<Department?> GetByIdAsync(
         Guid tenantId, Guid departmentId, CancellationToken ct = default);
 
+    /// <summary>Batch lookup by id, in ONE query - the departments keyed by their id. Ids that do not
+    /// exist are simply absent from the result. Used where a list of people's departments is shown
+    /// (e.g. the meetings bulk invite preview) without one query per department.</summary>
+    Task<IReadOnlyDictionary<Guid, Department>> GetByIdsAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> departmentIds, CancellationToken ct = default);
+
     Task<Department?> GetByIdForLegalEntityAsync(
         Guid tenantId, Guid legalEntityId, Guid departmentId, CancellationToken ct = default);
 

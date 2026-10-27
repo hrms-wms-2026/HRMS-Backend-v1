@@ -30,7 +30,7 @@ public static class CalendarInboxKinds
     public static readonly InboxKindDescriptor Descriptor = new(
         Source, MeetingException, "Meeting exception", InboxCategories.Alert,
         InboxCapabilities.Chat | InboxCapabilities.Resolve | InboxCapabilities.Escalate | InboxCapabilities.Revert
-        | InboxCapabilities.Bulk | InboxCapabilities.SubjectParticipates,
+        | InboxCapabilities.SubjectParticipates,
         Renderer);
 
     /// <summary>The only evidence keys an incident may show (meeting facts). Anything else - e.g. a desktop-agent usage
@@ -60,7 +60,7 @@ public sealed class CalendarInboxSourceProvider(
     ICalendarEventRepository events,
     ExceptionCaseActions actions,
     IConversationRepository conversations,
-    ExceptionCaseRouting? routing = null) : IInboxSourceProvider
+    ExceptionCaseRouting? routing = null) : IInboxSourceProvider, IInboxPersonCaseProvider
 {
     public const int ListLimit = 500;
 
@@ -98,6 +98,27 @@ public sealed class CalendarInboxSourceProvider(
 
         var people = await PeopleAsync(tenantId, items.Select(i => i.Case.EmployeeId), ct);
         return items.Select(i => Item(i.Case, people, i.Direction, i.Actionable ? ExceptionInboxSourceProvider.Actions(i.Case) : [])).ToList();
+    }
+
+    /// <summary>The subject's meeting-exception cases of any status, as info. CanOpen follows GetDetailAsync.</summary>
+    public async Task<IReadOnlyList<InboxPersonCase>> ListPersonCasesAsync(
+        Guid tenantId, Guid subjectEmployeeId, string category, DateTimeOffset from, DateTimeOffset to, Guid callerEmployeeId, CancellationToken ct)
+    {
+        if (category != InboxCategories.Alert)
+            return [];
+        var cases = (await exceptions.GetListAsync(tenantId,
+                new ExceptionListFilter(null, null, [subjectEmployeeId], null, Calendar: true, DetectedFrom: from, DetectedTo: to), 1, ListLimit, ct))
+            .Where(e => CalendarExceptionTypes.IsCalendar(e.Type)).ToList();
+        if (cases.Count == 0)
+            return [];
+
+        var isSubject = subjectEmployeeId == callerEmployeeId;
+        var reviewScope = isSubject ? null : await scope.ResolveAsync(forAction: true, [subjectEmployeeId], ct);
+        var added = isSubject ? [] : (await conversations.ListAddedSubjectsAsync(tenantId, callerEmployeeId, Source, ct)).ToHashSet();
+        var people = await PeopleAsync(tenantId, [subjectEmployeeId], ct);
+        return cases.Select(e => new InboxPersonCase(Item(e, people, InboxDirections.Info, []),
+            isSubject || reviewScope?.CanAct(e.Id, e.EmployeeId) == true
+            || added.Contains(new ItemRef(Source, CalendarInboxKinds.MeetingException, e.Id)))).ToList();
     }
 
     public async Task<IReadOnlyList<InboxFilterField>> GetFilterFieldsAsync(Guid tenantId, Guid callerEmployeeId, CancellationToken ct)

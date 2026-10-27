@@ -25,6 +25,15 @@ public interface IInboxRealtimePublisher
     Task MessageDeletedAsync(
         Guid tenantId, IReadOnlyCollection<Guid> recipientEmployeeIds, Guid conversationId, Guid messageId, CancellationToken ct = default);
 
+    /// <summary>A participant advanced their read marker. Senders use this to stop offering edit/delete-for-everyone.</summary>
+    Task ParticipantReadAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> recipientEmployeeIds, Guid conversationId, Guid employeeId,
+        DateTimeOffset readAt, CancellationToken ct = default);
+
+    /// <summary>A message was hidden only for one employee (and their other connected clients).</summary>
+    Task MessageHiddenAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> recipientEmployeeIds, Guid conversationId, Guid messageId, CancellationToken ct = default);
+
     /// <summary>Someone was removed or left. Sent to the remaining members and to that person (their panel closes).</summary>
     Task ParticipantRemovedAsync(
         Guid tenantId, IReadOnlyCollection<Guid> recipientEmployeeIds, Guid conversationId, Guid employeeId, CancellationToken ct = default);

@@ -28,11 +28,20 @@ public static class WorkTargetTypes
     public const string Sprint = "sprint";
     /// <summary>Project-wide settings with no single row as target, e.g. the task-status template.</summary>
     public const string Project = "project";
+    /// <summary>A meeting series (meetings-as-tasks Phase 2).</summary>
+    public const string Meeting = "meeting";
 }
 
 public static class WorkActionTypes
 {
     public const string TaskCreate = "task.create";
+    /// <summary>Meetings-as-tasks Phase 2 (D4/D9): a module member asks to schedule, or move, a meeting. Their payloads
+    /// are never edited by the approver and never reverted.</summary>
+    public const string MeetingCreate = "meeting.create";
+    public const string MeetingMove = "meeting.move";
+
+    public static bool IsMeeting(string actionType) => actionType.StartsWith("meeting.", StringComparison.Ordinal);
+
     public const string TaskEdit = "task.edit";
     public const string TaskDelete = "task.delete";
     public const string TaskStatusChange = "task.status_change";

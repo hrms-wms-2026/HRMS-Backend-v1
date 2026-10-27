@@ -81,7 +81,7 @@ public class ConversationHandlersTests
     private AddConversationParticipantsCommandHandler Add() => new(
         _currentUser.Object, _identity.Object, Access(), _repo, _uow, _membership.Object, Notifier(), Builder(), _realtime.Object,
         NullLogger<AddConversationParticipantsCommandHandler>.Instance);
-    private MarkConversationReadCommandHandler MarkRead() => new(_currentUser.Object, _identity.Object, Access(), _repo, _uow);
+    private MarkConversationReadCommandHandler MarkRead() => new(_currentUser.Object, _identity.Object, Access(), _repo, _uow, _realtime.Object);
     private ListConversationMessagesQueryHandler List() => new(_currentUser.Object, _identity.Object, Access(), _repo, Builder());
     private ConversationUnreadCounts Unread() => new(_repo);
 
@@ -379,7 +379,7 @@ public class ConversationHandlersTests
     public async Task People_search_returns_active_colleagues_with_avatars_but_not_the_caller()
     {
         var directory = new Mock<IConversationPeopleDirectory>();
-        directory.Setup(d => d.SearchActiveAsync(TenantId, "pri", 21, It.IsAny<CancellationToken>()))
+        directory.Setup(d => d.SearchActiveInLegalEntityOfAsync(TenantId, It.IsAny<Guid>(), "pri", 21, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new[] { Third, Requester });
         var handler = new SearchConversationPeopleQueryHandler(_currentUser.Object, _identity.Object, directory.Object);
 

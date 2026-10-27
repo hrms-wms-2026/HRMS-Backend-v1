@@ -45,6 +45,13 @@ public class EfLeaveTypeRepository : ILeaveTypeRepository
         return await query.AnyAsync(ct);
     }
 
+    public async Task<IReadOnlyDictionary<Guid, int>> CountActivePoliciesByLeaveTypeAsync(Guid tenantId, CancellationToken ct = default)
+        => await _db.LeavePolicies.AsNoTracking()
+            .Where(p => p.TenantId == tenantId && p.IsActive)
+            .GroupBy(p => p.LeaveTypeId)
+            .Select(g => new { g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.Key, x => x.Count, ct);
+
     public async Task<int> CountPendingRequestsAsync(Guid tenantId, Guid leaveTypeId, CancellationToken ct = default)
         => await _db.LeaveRequests.AsNoTracking()
             .CountAsync(r => r.TenantId == tenantId

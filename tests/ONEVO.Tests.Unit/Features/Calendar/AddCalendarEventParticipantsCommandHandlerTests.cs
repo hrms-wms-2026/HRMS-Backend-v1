@@ -1,3 +1,5 @@
+using ONEVO.Application.Features.WorkManagement.Meetings;
+using Microsoft.Extensions.Options;
 using FluentAssertions;
 using Moq;
 using ONEVO.Application.Common.RepositoryInterfaces;
@@ -47,6 +49,21 @@ public sealed class AddCalendarEventParticipantsCommandHandlerTests
         StartDate = DateTimeOffset.UtcNow.AddHours(1), EndDate = DateTimeOffset.UtcNow.AddHours(2),
         MeetingLink = "https://us05web.zoom.us/j/123"
     };
+
+    [Fact]
+    public async Task With_meetings_on_a_personal_event_cannot_gain_participants()
+    {
+        var evt = MakeEvent();
+        evt.MeetingLink = null;   // no link, no participants, no guests: a personal event
+        _events.Setup(e => e.GetTrackedByIdForTenantAsync(TenantId, EventId, It.IsAny<CancellationToken>())).ReturnsAsync(evt);
+        BuildSut();
+        var sut = new AddCalendarEventParticipantsCommandHandler(_currentUser.Object, _events.Object, _employees.Object,
+            _notifications.Object, _unitOfWork.Object, new CalendarMeetingGuard(Options.Create(new MeetingsOptions { Create = true }), _events.Object));
+
+        var result = await sut.Handle(new AddCalendarEventParticipantsCommand(EventId, [NewEmployeeId]), CancellationToken.None);
+
+        Assert.Equal((400, CalendarMeetingGuard.ErrorCode), (result.StatusCode, result.ErrorCode));
+    }
 
     [Fact]
     public async Task Handle_NotOrganizer_ReturnsForbidden()

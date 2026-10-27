@@ -55,7 +55,7 @@ public sealed class CalendarIncidentEngineInputTests
             .ReturnsAsync([new MeetingApplicationComplianceItem(_meeting.Id, _meeting.Title, _meeting.StartDate, _meeting.EndDate, 1800, 0, 0m, false)]);
     }
 
-    private CalendarIncidentEngine Engine()
+    private CalendarIncidentEngine Engine(params IEmployeeMeetingOccurrenceSource[] extra)
     {
         var employees = new Mock<CoreEmployeeRepository>();
         employees.Setup(e => e.GetByIdAsync(TenantId, _employee.Id, It.IsAny<CancellationToken>())).ReturnsAsync(_employee);
@@ -68,7 +68,7 @@ public sealed class CalendarIncidentEngineInputTests
             Mock.Of<INotificationDispatcher>(), employees.Object);
         return new CalendarIncidentEngine(_events.Object, Mock.Of<ICalendarEventMeetingRepository>(), Mock.Of<ICalendarEventMeetingAttendanceRepository>(),
             Mock.Of<ICalendarRecurrenceExpander>(), leaves.Object, Mock.Of<ILegalEntityRepository>(), employees.Object, connections.Object,
-            _compliance.Object, Mock.Of<IEmployeeAuthorityResolverFactory>(), [], cases, new FakeDateTimeProvider { UtcNow = Now }, _toggles.Object);
+            _compliance.Object, Mock.Of<IEmployeeAuthorityResolverFactory>(), [], cases, new FakeDateTimeProvider { UtcNow = Now }, _toggles.Object, extra);
     }
 
     [Theory]
@@ -93,5 +93,31 @@ public sealed class CalendarIncidentEngineInputTests
         var input = await Engine().BuildInputAsync(TenantId, _employee.Id, default);
 
         input!.Meetings.Single().Title.Should().Be("Private meeting");
+    }
+
+    private sealed class TaskSource : IEmployeeMeetingOccurrenceSource
+    {
+        public EmployeeOccurrenceContext? Seen { get; private set; }
+
+        public Task<IReadOnlyList<CalendarMeetingView>> ListAsync(EmployeeOccurrenceContext context, CancellationToken ct)
+        {
+            Seen = context;
+            return Task.FromResult<IReadOnlyList<CalendarMeetingView>>([new CalendarMeetingView(Guid.NewGuid(), Now.AddHours(-5), Now.AddHours(-4),
+                "Weekly sync", false, false, false, 3, null, false, CalendarEventParticipantStatuses.Accepted, [], false,
+                CalendarReportState.Pending, [], null)]);
+        }
+    }
+
+    [Fact]
+    public async Task Other_meeting_sources_are_evaluated_after_the_calendar_events_with_the_same_context()
+    {
+        var tasks = new TaskSource();
+
+        var input = await Engine(tasks).BuildInputAsync(TenantId, _employee.Id, default);
+
+        input!.Meetings.Select(m => m.Title).Should().Equal("Private meeting", "Weekly sync");
+        tasks.Seen!.Employee.Should().BeSameAs(_employee);
+        tasks.Seen.Identities.Should().Contain("pat@acme.com");
+        (tasks.Seen.Now, tasks.Seen.To - tasks.Seen.Now).Should().Be((Now, TimeSpan.FromDays(CalendarIncidentEngine.LookAheadDays)));
     }
 }

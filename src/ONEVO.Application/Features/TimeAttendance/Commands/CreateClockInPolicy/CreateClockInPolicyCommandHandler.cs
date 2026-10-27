@@ -91,7 +91,8 @@ public class CreateClockInPolicyCommandHandler
             IsActive = request.IsActive,
             CreatedById = _currentUser.UserId,
             CreatedAt = now,
-            UpdatedAt = now
+            UpdatedAt = now,
+            DeductionRulesChangedAt = request.LateDeductionRules.Count > 0 ? now : null
         };
 
         ClockInPolicyMapper.ApplyScope(policy, request.Scope);

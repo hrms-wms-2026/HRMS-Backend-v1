@@ -24,17 +24,20 @@ public class LoginSessionMaterialFactory : ILoginSessionMaterialFactory
     private readonly IPermissionResolver _permissionResolver;
     private readonly IModuleEntitlementService _entitlements;
     private readonly IDateTimeProvider _clock;
+    private readonly IEmployeeRepository _employees;
 
     public LoginSessionMaterialFactory(
         ISecureTokenGenerator tokenService,
         IPermissionResolver permissionResolver,
         IModuleEntitlementService entitlements,
-        IDateTimeProvider clock)
+        IDateTimeProvider clock,
+        IEmployeeRepository employees)
     {
         _tokenService = tokenService;
         _permissionResolver = permissionResolver;
         _entitlements = entitlements;
         _clock = clock;
+        _employees = employees;
     }
 
     public async Task<Result<LoginResponseDto>> PrepareAsync(
@@ -46,6 +49,7 @@ public class LoginSessionMaterialFactory : ILoginSessionMaterialFactory
     {
         var permissions = await _permissionResolver.ResolveAsync(user.Id, user.TenantId, null, ct);
         var activeModules = await _entitlements.GetActiveModuleKeysForTenantAsync(user.TenantId, ct);
+        var employee = await _employees.GetByUserIdAsync(user.TenantId, user.Id, ct);
 
         var rawCsrfToken = _tokenService.GenerateCsrfToken();
         var csrfTokenHash = _tokenService.HashToken(rawCsrfToken);
@@ -54,7 +58,7 @@ public class LoginSessionMaterialFactory : ILoginSessionMaterialFactory
             CsrfToken: rawCsrfToken,
             CsrfTokenHash: csrfTokenHash,
             ExpiresAt: _clock.UtcNow.Add(SessionPolicy.SlidingWindow),
-            User: new CurrentUserDto(user.Id, user.TenantId, user.Email),
+            User: new CurrentUserDto(user.Id, user.TenantId, user.Email, employee?.Id),
             Permissions: permissions,
             ActiveModules: activeModules,
             Workspace: new WorkspaceResponseDto(tenant.Slug, tenant.Name)

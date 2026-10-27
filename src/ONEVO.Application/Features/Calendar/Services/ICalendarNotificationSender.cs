@@ -23,6 +23,23 @@ public interface ICalendarNotificationSender
         Guid tenantId, string eventTitle, DateTimeOffset startDate, string? location,
         IReadOnlyList<Guid> employeeIds, string organizerName, string meetingLink, CancellationToken ct = default, CalendarEventIcs? ics = null);
 
+    /// <summary>Keyed invite email (with the join link, or without one when <paramref name="meetingLink"/> is null -
+    /// the P1-5 fallback) to each participant and guest, once per EmailKey, with the event's .ics.</summary>
+    Task SendMeetingLinkAsync(
+        Guid tenantId, string eventTitle, DateTimeOffset startDate, string? location,
+        IReadOnlyList<CalendarParticipantRecipient> participants, IReadOnlyList<CalendarGuestRecipient> guests,
+        string organizerName, string? meetingLink, CalendarEventIcs? ics, CancellationToken ct = default);
+
+    /// <summary>In-app to participants + keyed "link removed" email to participants and guests.</summary>
+    Task SendMeetingLinkRemovedAsync(
+        Guid tenantId, string eventTitle, DateTimeOffset startDate, string? location,
+        IReadOnlyList<CalendarParticipantRecipient> participants, IReadOnlyList<CalendarGuestRecipient> guests,
+        string organizerName, CancellationToken ct = default);
+
+    /// <summary>In-app notice to the organizer about their online meeting (see CalendarMeetingNoticeCodes).</summary>
+    Task NotifyOrganizerAboutMeetingAsync(
+        Guid tenantId, Guid organizerUserId, string templateCode, string eventTitle, string providerName, CancellationToken ct = default);
+
     /// <summary>Invite email (with the join link when there is one) to external guests identified only
     /// by email - covers both first invite and a meeting link added later.</summary>
     Task NotifyGuestsAsync(
@@ -54,6 +71,14 @@ public interface ICalendarNotificationSender
     Task EmailEventChangedAsync(
         Guid tenantId, string kind, CalendarEventIcs ics, string eventTitle, DateTimeOffset startDate, string? location, string? meetingLink,
         IReadOnlyList<Guid> employeeIds, IReadOnlyList<string> guestEmails, string organizerName, CancellationToken ct = default);
+
+    /// <summary>Keyed version of <see cref="EmailEventChangedAsync"/>: one email per recipient key (see
+    /// <see cref="CalendarEmailKeys"/>), with its .ics, so a retried change emails nobody twice. Needs the caller's
+    /// transaction. Meetings-as-tasks Phase 2 sends every update, cancellation and removal this way.</summary>
+    Task EmailEventChangedKeyedAsync(
+        Guid tenantId, string kind, CalendarEventIcs ics, string eventTitle, DateTimeOffset startDate, string? location, string? meetingLink,
+        IReadOnlyList<CalendarParticipantRecipient> participants, IReadOnlyList<CalendarGuestRecipient> guests, string organizerName,
+        CancellationToken ct = default);
 
     /// <summary>In-app notification to the nominee that they were nominated to replace a participant (P1-4).</summary>
     Task NotifyNomineeAsync(Guid tenantId, Guid nomineeUserId, string eventTitle, string responderName, CancellationToken ct = default);

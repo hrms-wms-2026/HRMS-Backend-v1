@@ -129,7 +129,9 @@ public class CreateTaskCommandHandlerTests
         var handler = new CreateTaskCommandHandler(
             currentUser.Object, identity.Object, objectives.Object, unitOfWork.Object, membership.Object,
             (assetLinker ?? new Mock<ITaskAssetLinker>()).Object, writes, hierarchy.Object, approvals.Object,
-            new Mock<IWorkNotificationEngine>().Object);
+            new Mock<IWorkNotificationEngine>().Object,
+            Microsoft.Extensions.Options.Options.Create(new ONEVO.Application.Features.WorkManagement.Meetings.MeetingsOptions { Create = true }),
+            ONEVO.Tests.Unit.Features.WorkManagement.Meetings.MeetingActionItemTestFactory.Build());
         return (handler, tasks, sprints, sprintLogs);
     }
 

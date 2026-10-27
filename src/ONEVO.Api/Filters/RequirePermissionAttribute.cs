@@ -13,6 +13,9 @@ public class RequirePermissionAttribute : Attribute, IAuthorizationFilter
     public RequirePermissionAttribute(string permission)
         => _permission = permission;
 
+    /// <summary>The required permission (read by dashboard widget providers).</summary>
+    public string Permission => _permission;
+
     public void OnAuthorization(AuthorizationFilterContext context)
     {
         var currentUser = context.HttpContext.RequestServices.GetService<ICurrentUser>();

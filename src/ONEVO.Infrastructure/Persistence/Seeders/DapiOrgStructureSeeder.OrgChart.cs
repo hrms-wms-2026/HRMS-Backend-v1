@@ -132,6 +132,59 @@ public sealed partial class DapiOrgStructureSeeder
         history.ReportsToPositionId = reportsToPositionId;
     }
 
+    /// <summary>
+    /// The HR Manager position covers every department as its primary manager (manual coverage, owner order 1), the
+    /// way an admin sets it up under Positions > Management Coverage. An existing HR Manager row for a department is
+    /// moved to primary when that slot is free; a department whose primary slot another position holds is left alone.
+    /// </summary>
+    private static async Task SeedHrDepartmentCoverageAsync(
+        ApplicationDbContext db,
+        Dictionary<string, Guid> departmentIdByCode,
+        Guid hrManagerPositionId,
+        DateTimeOffset now,
+        CancellationToken ct)
+    {
+        foreach (var def in DapiOrgStructureData.Departments)
+        {
+            var departmentId = departmentIdByCode[def.Code];
+            var active = await db.ManagementCoverageRecords
+                .Where(c => c.TenantId == DapiTenantId
+                    && c.LegalEntityId == DapiLegalEntityId
+                    && c.CoveredTargetType == ManagementCoverageRecord.TargetDepartment
+                    && c.CoveredDepartmentId == departmentId
+                    && c.Status == ManagementCoverageRecord.StatusActive)
+                .ToListAsync(ct);
+            var primaryTaken = active.Any(c => c.OwnerOrder == 1 && c.OwnerPositionId != hrManagerPositionId);
+            var existing = active.FirstOrDefault(c => c.OwnerPositionId == hrManagerPositionId);
+            if (existing is not null)
+            {
+                if (existing.OwnerOrder != 1 && !primaryTaken)
+                {
+                    existing.OwnerOrder = 1;
+                    existing.UpdatedAt = now;
+                }
+                continue;
+            }
+            if (primaryTaken)
+                continue;
+
+            db.ManagementCoverageRecords.Add(new ManagementCoverageRecord
+            {
+                Id = DeterministicGuid($"dapi-org:hr-department-coverage:{def.Code}"),
+                TenantId = DapiTenantId,
+                LegalEntityId = DapiLegalEntityId,
+                OwnerPositionId = hrManagerPositionId,
+                CoveredTargetType = ManagementCoverageRecord.TargetDepartment,
+                CoveredDepartmentId = departmentId,
+                OwnerOrder = 1,
+                Source = ManagementCoverageRecord.SourceManual,
+                IsLocked = false,
+                Status = ManagementCoverageRecord.StatusActive,
+                CreatedAt = now
+            });
+        }
+    }
+
     private static async Task SeedManagementCoverageRecordAsync(
         ApplicationDbContext db,
         string positionCode,

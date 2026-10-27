@@ -71,7 +71,11 @@ public sealed record InboxTarget(IReadOnlyList<string> Route, string Label, IRea
 public sealed record InboxItemDetail(
     InboxItem Item, IReadOnlyList<InboxStep> Steps, string? Summary, IReadOnlyList<InboxChange> ChangeSet,
     string? Explanation, IReadOnlyDictionary<string, string>? ExplanationDetails, InboxTarget? Target,
-    string? EditablePayloadJson, string? ExtraJson = null);
+    string? EditablePayloadJson, string? ExtraJson = null, IReadOnlyList<InboxFact>? Facts = null);
+
+/// <summary>A plain fact row the ticket details show under the standard ones (label, value), e.g. what a late
+/// clock-in cost. No prose; kinds without facts leave it null.</summary>
+public sealed record InboxFact(string Label, string Value);
 
 public sealed record InboxFilterOption(string Value, string Label);
 

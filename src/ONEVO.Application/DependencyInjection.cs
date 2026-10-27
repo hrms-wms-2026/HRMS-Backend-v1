@@ -38,6 +38,15 @@ public static class DependencyInjection
         services.AddValidatorsFromAssembly(assembly);
 
         services.AddScoped<
+            ONEVO.Application.Features.Dashboard.Layout.Access.IDashboardWidgetAccess,
+            ONEVO.Application.Features.Dashboard.Layout.Access.DashboardWidgetAccess>();
+        services.AddScoped<ONEVO.Application.Features.Dashboard.Layout.Services.DashboardSeeder>();
+        // Widget data providers themselves are registered by the API layer (they mirror its controller actions).
+        services.AddScoped<
+            ONEVO.Application.Features.Dashboard.Layout.Data.IWidgetDataOrchestrator,
+            ONEVO.Application.Features.Dashboard.Layout.Data.WidgetDataOrchestrator>();
+
+        services.AddScoped<
             ONEVO.Application.Features.Monitoring.TrayActivation.ServiceInterfaces.ITrayPresenceRequirementEvaluator,
             ONEVO.Application.Features.Monitoring.TrayActivation.Services.TrayPresenceRequirementEvaluator>();
         services.AddScoped<
@@ -108,6 +117,8 @@ public static class DependencyInjection
         services.AddScoped<IOutboxMessageHandler, WorkNotificationOutboxHandler>();
         services.AddScoped<IOutboxMessageHandler, ONEVO.Application.Features.Inbox.OutboxHandlers.InboxChangedOutboxHandler>();
         services.AddScoped<IOutboxMessageHandler, ONEVO.Application.Features.Calendar.OutboxHandlers.CalendarEventInviteEmailOutboxHandler>();
+        services.AddScoped<IOutboxMessageHandler, ONEVO.Application.Features.Calendar.OutboxHandlers.CalendarMeetingCancelOutboxHandler>();
+        services.AddScoped<IOutboxMessageHandler, ONEVO.Application.Features.WorkManagement.Meetings.OutboxHandlers.MeetingLinkProvisionOutboxHandler>();
         services.AddScoped<IOutboxMessageHandler, ONEVO.Application.Features.Calendar.OutboxHandlers.CalendarOutlookPushOutboxHandler>();
         services.AddScoped<GetBulkOnboardingTemplateQueryHandler>();
 

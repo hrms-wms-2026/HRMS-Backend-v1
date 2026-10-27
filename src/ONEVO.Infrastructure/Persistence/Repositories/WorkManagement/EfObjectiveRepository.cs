@@ -106,7 +106,7 @@ public class EfObjectiveRepository : IObjectiveRepository
         var ids = projectIds.ToList();
         return await _db.Objectives.AsNoTracking()
             .Where(o => o.TenantId == tenantId && ids.Contains(o.ProjectId) && o.IsActive)
-            .Select(o => new LedObjectiveRow(o.Id, o.ProjectId, o.ParentObjectiveId, o.Title, o.IsDefault, o.EndDate))
+            .Select(o => new LedObjectiveRow(o.Id, o.ProjectId, o.ParentObjectiveId, o.Title, o.IsDefault, o.EndDate, o.AllocatedHours))
             .ToListAsync(ct);
     }
 

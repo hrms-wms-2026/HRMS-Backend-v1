@@ -275,7 +275,7 @@ public class GetLeaveCalendarQueryHandlerTests
             "Acme Lanka",
             "Annual Leave",
             "AL",
-            LeaveTypeCategories.Annual);
+            "#2563EB");
     }
 
     private sealed class Harness

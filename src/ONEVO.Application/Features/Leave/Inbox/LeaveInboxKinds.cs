@@ -14,8 +14,8 @@ public static class LeaveInboxKinds
 
     public static readonly InboxKindDescriptor Descriptor = new(
         Source, Request, "Leave request", InboxCategories.Request,
-        InboxCapabilities.Chat | InboxCapabilities.EditBeforeApprove | InboxCapabilities.Revert | InboxCapabilities.Bulk
-        | InboxCapabilities.Cancel,
+        InboxCapabilities.Chat | InboxCapabilities.EditBeforeApprove | InboxCapabilities.Revert
+        | InboxCapabilities.Cancel | InboxCapabilities.Escalate,
         Renderer);
 }
 
@@ -25,6 +25,8 @@ public static class LeaveInboxActions
     public const string Reject = "reject";
     public const string ChangeDecision = "change_decision";
     public const string Cancel = "cancel";
+    /// <summary>The current approver hands their step to someone else (journal action "escalate").</summary>
+    public const string Escalate = "escalate";
 }
 
 public sealed record LeaveApproverRowSnapshot(Guid Id, Guid ApproverEmployeeId, string Status, string? Comment, DateTimeOffset? DecidedAt);

@@ -8,6 +8,9 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.CoreHr.EmployeeAuthority.Services;
+using ONEVO.Application.Features.Leave.Request.Services;
+using ONEVO.Domain.Features.Conversations.Entities;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.DevPlatform.AppCatalog.Entities;
 using ONEVO.Domain.Features.Leave.BalanceAudit.Entities;
@@ -37,6 +40,9 @@ public sealed class DapiHistorySeeder : IHostedService
     internal static readonly Guid DapiTenantId = Guid.Parse("6b0874ab-71db-401f-859f-bdd50c1317fb");
     internal static readonly Guid DapiOwnerUserId = Guid.Parse("cd49a0c2-e978-4055-b8be-7d46a3727e94");
     internal static readonly Guid DapiLegalEntityId = Guid.Parse("57fecfe8-1c1e-4a82-be4b-2c8451436420");
+    /// <summary>Gets no seeded attendance (records, presence, breaks), so Clock In / Clock Out can be tried live as
+    /// this person; earlier seeded rows for them are removed. Their leave and monitoring history stay.</summary>
+    internal const string ClockInTesterEmail = "tharmi.rajendran@dapi.test";
 
     internal static readonly DateOnly[] SeedMonthStarts =
     [
@@ -85,7 +91,12 @@ public sealed class DapiHistorySeeder : IHostedService
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             timeout.CancelAfter(TimeSpan.FromMinutes(2));
 
-            var employeeCount = await SeedAsync(db, tenantContext, timeout.Token);
+            // The real leave route (coverage, reporting line, HR fallback, delegation). A hosted service has no
+            // signed-in user, so the authority resolver is pinned to the Dapi tenant instead of read from ICurrentUser.
+            var approvers = ActivatorUtilities.CreateInstance<LeaveApproverResolver>(
+                scope.ServiceProvider,
+                scope.ServiceProvider.GetRequiredService<IEmployeeAuthorityResolverFactory>().CreateForTenant(DapiTenantId));
+            var employeeCount = await SeedAsync(db, tenantContext, timeout.Token, approvers);
             _logger.LogInformation(
                 "Dapi September-October 2026 history seeded for {EmployeeCount} employees.",
                 employeeCount);
@@ -101,7 +112,8 @@ public sealed class DapiHistorySeeder : IHostedService
     internal static async Task<int> SeedAsync(
         ApplicationDbContext db,
         IWritableTenantContext tenantContext,
-        CancellationToken ct)
+        CancellationToken ct,
+        ILeaveApproverResolver? approvers = null)
     {
         var tenant = await db.Tenants.FirstOrDefaultAsync(t => t.Id == DapiTenantId, ct);
         if (tenant is null)
@@ -159,6 +171,7 @@ public sealed class DapiHistorySeeder : IHostedService
                 workMode?.Id,
                 workMode?.Name,
                 monthStart,
+                approvers,
                 ct);
         }
 
@@ -174,6 +187,7 @@ public sealed class DapiHistorySeeder : IHostedService
         Guid? workModeId,
         string? workModeName,
         DateOnly monthStart,
+        ILeaveApproverResolver? approvers,
         CancellationToken ct)
     {
         var monthEnd = new DateOnly(
@@ -240,9 +254,15 @@ public sealed class DapiHistorySeeder : IHostedService
         var existingAuditIds = await ExistingIdsAsync(
             db.LeaveBalanceAudits.Where(x => x.TenantId == DapiTenantId).Select(x => x.Id), ct);
 
+        var clockInTester = employees.FirstOrDefault(
+            e => string.Equals(e.Email, ClockInTesterEmail, StringComparison.OrdinalIgnoreCase));
+        if (clockInTester is not null)
+            await RemoveSeededAttendanceAsync(db, clockInTester.Id, allDates, ct);
+
         for (var index = 0; index < employees.Count; index++)
         {
             var employee = employees[index];
+            var seedsAttendance = employee.Id != clockInTester?.Id;
             var status = (index % 6) switch
             {
                 1 => LeaveRequestStatuses.Rejected,
@@ -250,7 +270,8 @@ public sealed class DapiHistorySeeder : IHostedService
                 _ => LeaveRequestStatuses.Approved
             };
             var leaveDate = workdays[(4 + index * 3) % workdays.Length];
-            var approverId = employee.Id == ownerEmployeeId ? fallbackApproverId : ownerEmployeeId;
+            var approverId = await ResolveApproverAsync(approvers, employee.Id, leaveDate, ct)
+                ?? (employee.Id == ownerEmployeeId ? fallbackApproverId : ownerEmployeeId);
             var plan = new LeavePlan(
                 leaveDate,
                 leaveTypes[index % leaveTypes.Count].Id,
@@ -272,18 +293,19 @@ public sealed class DapiHistorySeeder : IHostedService
                 var isWorkingDay = date.DayOfWeek is not DayOfWeek.Saturday and not DayOfWeek.Sunday;
                 var isApprovedLeave = plan.Status == LeaveRequestStatuses.Approved && plan.Date == date;
 
-                SeedAttendance(
-                    db,
-                    employee.Id,
-                    workModeId,
-                    workModeName,
-                    index,
-                    date,
-                    isWorkingDay,
-                    isApprovedLeave,
-                    attendanceKeys,
-                    presenceKeys,
-                    existingBreakIds);
+                if (seedsAttendance)
+                    SeedAttendance(
+                        db,
+                        employee.Id,
+                        workModeId,
+                        workModeName,
+                        index,
+                        date,
+                        isWorkingDay,
+                        isApprovedLeave,
+                        attendanceKeys,
+                        presenceKeys,
+                        existingBreakIds);
 
                 if (isWorkingDay && !isApprovedLeave)
                 {
@@ -298,7 +320,8 @@ public sealed class DapiHistorySeeder : IHostedService
                         existingDeviceStateIds);
                 }
 
-                if (isWorkingDay)
+                // The clock-in tester's face checks are their own - seeded passes would reset their retry count.
+                if (isWorkingDay && seedsAttendance)
                 {
                     SeedVerificationAttempts(
                         db,
@@ -788,7 +811,11 @@ public sealed class DapiHistorySeeder : IHostedService
         }
 
         var approverRowId = SeedId($"leave-approver:{requestId:N}");
-        if (existingApproverIds.Add(approverRowId))
+        if (!existingApproverIds.Add(approverRowId))
+        {
+            await RerouteIfPendingAsync(db, requestId, approverRowId, plan.ApproverEmployeeId, ct);
+        }
+        else
         {
             var approverStatus = plan.Status switch
             {
@@ -869,6 +896,79 @@ public sealed class DapiHistorySeeder : IHostedService
                 CreatedBy = DapiOwnerUserId
             });
         }
+    }
+
+    /// <summary>Deletes only the rows this seeder wrote (deterministic ids) - attendance the person clocks live stays.</summary>
+    private static async Task RemoveSeededAttendanceAsync(
+        ApplicationDbContext db, Guid employeeId, IReadOnlyList<DateOnly> dates, CancellationToken ct)
+    {
+        var attendanceIds = dates.Select(d => SeedId($"attendance:{employeeId:N}:{d:yyyy-MM-dd}")).ToList();
+        var presenceIds = dates.Select(d => SeedId($"presence:{employeeId:N}:{d:yyyy-MM-dd}")).ToList();
+        var breakIds = dates.Select(d => SeedId($"break:{employeeId:N}:{d:yyyy-MM-dd}")).ToList();
+        string[] faceKeys = ["clock_in", "clock_in-failed", "clock_in-overridden", "clock_out"];
+        var faceIds = dates
+            .SelectMany(d => faceKeys.Select(k => SeedId($"face:{employeeId:N}:{d:yyyy-MM-dd}:{k}")))
+            .ToList();
+        await db.BreakRecords.Where(b => breakIds.Contains(b.Id)).ExecuteDeleteAsync(ct);
+        await db.FaceVerificationAttempts.Where(f => faceIds.Contains(f.Id)).ExecuteDeleteAsync(ct);
+        // A correction filed against a seeded day keeps that day (it points at the row).
+        await db.PresenceSessions
+            .Where(p => presenceIds.Contains(p.Id) && !db.AttendanceCorrections.Any(c => c.PresenceSessionId == p.Id))
+            .ExecuteDeleteAsync(ct);
+        await db.AttendanceRecords
+            .Where(a => attendanceIds.Contains(a.Id) && !db.AttendanceCorrections.Any(c => c.AttendanceRecordId == a.Id))
+            .ExecuteDeleteAsync(ct);
+    }
+
+    /// <summary>Who the leave route picks for this employee's leave on that day; null when it finds nobody.</summary>
+    private static async Task<Guid?> ResolveApproverAsync(
+        ILeaveApproverResolver? approvers, Guid employeeId, DateOnly date, CancellationToken ct)
+    {
+        if (approvers is null)
+            return null;
+        var resolution = await approvers.ResolveAsync(DapiTenantId, employeeId, date, date, ct);
+        return resolution.Approvers.OrderBy(a => a.SequenceOrder).Select(a => (Guid?)a.ApproverEmployeeId).FirstOrDefault();
+    }
+
+    /// <summary>
+    /// A demo leave still waiting for its approver moves to whoever the leave route picks now (older seeds named the
+    /// owner for everyone). Its case cards in 1-on-1 chats go too, so the inbox places it in the new approver's chat
+    /// on their next load. Decided leaves keep their history.
+    /// </summary>
+    private static async Task RerouteIfPendingAsync(
+        ApplicationDbContext db, Guid requestId, Guid approverRowId, Guid approverEmployeeId, CancellationToken ct)
+    {
+        var row = await db.LeaveRequestApprovers.FirstOrDefaultAsync(a => a.Id == approverRowId, ct);
+        if (row is null || row.Status != LeaveRequestApproverStatuses.Pending || row.ApproverEmployeeId == approverEmployeeId)
+            return;
+        var requestPending = await db.LeaveRequests.AnyAsync(
+            r => r.Id == requestId && r.Status == LeaveRequestStatuses.Pending, ct);
+        if (!requestPending)
+            return;
+
+        row.ApproverEmployeeId = approverEmployeeId;
+        row.DelegatedFromApproverId = null;
+
+        var cardRef = $"\"id\":\"{requestId}\"";
+        var directChatIds = db.Conversations
+            .Where(c => c.TenantId == DapiTenantId && c.SubjectSource == ConversationSources.Direct)
+            .Select(c => c.Id);
+        var staleCards = await db.ConversationMessages
+            .Where(m => m.TenantId == DapiTenantId
+                && m.Kind == ConversationMessageKinds.Case
+                && directChatIds.Contains(m.ConversationId)
+                && m.SystemEventJson != null
+                && m.SystemEventJson.Contains(cardRef))
+            .ToListAsync(ct);
+        if (staleCards.Count == 0)
+            return;
+        var staleIds = staleCards.Select(m => m.Id).ToList();
+        var replies = await db.ConversationMessages
+            .Where(m => m.ReplyToMessageId != null && staleIds.Contains(m.ReplyToMessageId.Value))
+            .ToListAsync(ct);
+        foreach (var reply in replies)
+            reply.ReplyToMessageId = null;
+        db.ConversationMessages.RemoveRange(staleCards);
     }
 
     private static async Task<HashSet<Guid>> ExistingIdsAsync(IQueryable<Guid> query, CancellationToken ct) =>

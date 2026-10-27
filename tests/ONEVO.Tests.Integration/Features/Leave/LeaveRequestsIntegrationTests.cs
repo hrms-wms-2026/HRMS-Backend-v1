@@ -80,11 +80,15 @@ public class LeaveRequestsIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task SubmitOwnRequest_ReservesPaidPendingHoursAndListsMine()
     {
-        var leaveTypeId = await CreateLeaveTypeAsync("Annual Leave", "AL", requiresApproval: false);
+        var leaveTypeId = await CreateLeaveTypeAsync("Annual Leave", "AL");
         var legalEntityId = await GetPrimaryLegalEntityIdAsync(_tenantId);
         await EnsureWorkWindowAsync(legalEntityId);
         await CreatePolicyAsync("Annual Policy", leaveTypeId, legalEntityId, 17.5m);
         var employeeId = await EnsureEmployeeInLegalEntityAsync(_tenantId, legalEntityId);
+        // Every request needs an approver; the owner has no manager, so it routes to HR.
+        await SeedAndLoginFixtureUserAsync(
+            _tenantId, _owner.Host, "hr@leave-req.test", permissionCodes: ["leave:manage", "leave:approve"], roleName: "HR Manager");
+        await AddEmployeeForUserAsync(_tenantId, legalEntityId, "hr@leave-req.test", "EMP-LEAVE-HR");
 
         var leaveDay = FutureWeekdayUtc();
         var generate = await SendAsync(HttpMethod.Post, _owner.Host, "/api/v1/leave/entitlements/generate",
@@ -144,11 +148,15 @@ public class LeaveRequestsIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task Submit_OverlappingDates_Returns409()
     {
-        var leaveTypeId = await CreateLeaveTypeAsync("Sick Leave", "SICK", requiresApproval: false);
+        var leaveTypeId = await CreateLeaveTypeAsync("Sick Leave", "SICK");
         var legalEntityId = await GetPrimaryLegalEntityIdAsync(_tenantId);
         await EnsureWorkWindowAsync(legalEntityId);
         await CreatePolicyAsync("Sick Policy", leaveTypeId, legalEntityId, 10m);
         await EnsureEmployeeInLegalEntityAsync(_tenantId, legalEntityId);
+        // Every request needs an approver; the owner has no manager, so it routes to HR.
+        await SeedAndLoginFixtureUserAsync(
+            _tenantId, _owner.Host, "hr@leave-req.test", permissionCodes: ["leave:manage", "leave:approve"], roleName: "HR Manager");
+        await AddEmployeeForUserAsync(_tenantId, legalEntityId, "hr@leave-req.test", "EMP-LEAVE-HR");
         var leaveDay = FutureWeekdayUtc();
         var generate = await SendAsync(HttpMethod.Post, _owner.Host, "/api/v1/leave/entitlements/generate",
             new { year = leaveDay.Year, legalEntityId },
@@ -175,7 +183,7 @@ public class LeaveRequestsIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task Submit_WithoutReportingManager_RoutesToHrManagerWhoCanApprove()
     {
-        var leaveTypeId = await CreateLeaveTypeAsync("Annual Leave", "AL", requiresApproval: true);
+        var leaveTypeId = await CreateLeaveTypeAsync("Annual Leave", "AL");
         var legalEntityId = await GetPrimaryLegalEntityIdAsync(_tenantId);
         await EnsureWorkWindowAsync(legalEntityId);
         await CreatePolicyAsync("Annual Policy", leaveTypeId, legalEntityId, 17.5m);
@@ -231,7 +239,7 @@ public class LeaveRequestsIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task AllRequestsLedger_ShowsApprover_AndOnlyTheAssignedApproverCanDecide()
     {
-        var leaveTypeId = await CreateLeaveTypeAsync("Annual Leave", "AL", requiresApproval: true);
+        var leaveTypeId = await CreateLeaveTypeAsync("Annual Leave", "AL");
         var legalEntityId = await GetPrimaryLegalEntityIdAsync(_tenantId);
         await EnsureWorkWindowAsync(legalEntityId);
         await CreatePolicyAsync("Annual Policy", leaveTypeId, legalEntityId, 17.5m);
@@ -310,7 +318,7 @@ public class LeaveRequestsIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task ChangeDecision_ApprovedToRejectedAndBack_MovesTheBalanceEachTime()
     {
-        var leaveTypeId = await CreateLeaveTypeAsync("Annual Leave", "AL", requiresApproval: true);
+        var leaveTypeId = await CreateLeaveTypeAsync("Annual Leave", "AL");
         var legalEntityId = await GetPrimaryLegalEntityIdAsync(_tenantId);
         await EnsureWorkWindowAsync(legalEntityId);
         await CreatePolicyAsync("Annual Policy", leaveTypeId, legalEntityId, 17.5m);
@@ -407,7 +415,7 @@ public class LeaveRequestsIntegrationTests : IAsyncLifetime
         return employeeId;
     }
 
-    private async Task<Guid> CreateLeaveTypeAsync(string name, string code, bool requiresApproval = true)
+    private async Task<Guid> CreateLeaveTypeAsync(string name, string code)
     {
         var response = await SendAsync(HttpMethod.Post, _owner.Host, "/api/v1/leave/types",
             new
@@ -415,20 +423,12 @@ public class LeaveRequestsIntegrationTests : IAsyncLifetime
                 name,
                 code,
                 description = "integration fixture type",
-                category = "custom",
+                color = "#4F46E5",
                 isPaid = true,
-                requiresApproval,
-                requiresDocument = false,
-                documentRequiredAfterDays = (int?)null,
-                acceptedDocumentTypes = Array.Empty<string>(),
-                maxConsecutiveDays = (int?)null,
-                defaultDaysPerYear = 20m,
-                carryForwardAllowed = true,
-                maxCarryForwardDays = 5m,
-                carryForwardExpiryMonths = 3,
-                proRataForNewJoiners = true,
                 applicableGender = "all",
-                minimumNoticeDays = 0
+                requiresDocument = false,
+                documentRequiredAfterHours = (decimal?)null,
+                acceptedDocumentTypes = Array.Empty<string>()
             },
             cookie: _owner.SessionCookie,
             csrfToken: _owner.CsrfHeader);
@@ -527,48 +527,30 @@ public class LeaveRequestsIntegrationTests : IAsyncLifetime
         await db.SaveChangesAsync();
     }
 
+    /// <summary>One policy for one leave type, assigned to the legal entity. Amounts are hours (8 per day).</summary>
     private static object CreatePolicyBody(
         string name, Guid leaveTypeId, Guid legalEntityId, bool confirm, decimal annualEntitlementDays = 20m) => new
     {
+        leaveTypeId,
         name,
         description = "integration fixture policy",
-        country = "LK",
-        jobLevel = (string?)null,
-        accrualMethod = "annual",
-        accrualStart = "immediately",
-        accrualAfterNMonths = (int?)null,
-        prorationMethod = "calendar_days",
-        probationRestriction = false,
-        minimumTenureMonths = 0,
-        firstYearReducedPercent = (decimal?)null,
-        minimumNoticeDays = 7,
-        maxConsecutiveDays = 14,
-        minDaysPerRequest = 0.5m,
-        maxTeamAbsencePercent = 20m,
-        approvalMode = "any_one",
-        effectiveFrom = "2026-01-01",
-        leaveTypes = new[]
+        rules = new
         {
-            new
-            {
-                leaveTypeId,
-                annualEntitlementDays,
-                monthlyAccrualDays = (decimal?)null,
-                carryForwardMaxDays = 5m,
-                carryForwardExpiryMonths = 3
-            }
+            amountHours = annualEntitlementDays * 8m,
+            amountPeriod = "year",
+            carryForwardCapHours = 40m,
+            carryForwardExpiryMonths = 3,
+            eligibleFrom = "immediately",
+            eligibleAfterMonths = (int?)null,
+            minimumNoticeDays = 7,
+            minRequestHours = 4m,
+            maxRequestHours = 112m,
+            maxTeamAbsencePercent = 20m,
+            approvalMode = "any_one",
+            blackouts = new[] { new { startDate = "2026-12-24", endDate = "2026-12-26", reason = "Peak closure" } }
         },
-        blackoutPeriods = new[]
-        {
-            new
-            {
-                startDate = "2026-12-24",
-                endDate = "2026-12-26",
-                reason = "Peak closure"
-            }
-        },
-        legalEntityIds = new[] { legalEntityId },
-        confirmReplaceExistingLegalEntityAssignments = confirm
+        assignments = new[] { new { targetKind = "legal_entity", targetId = legalEntityId } },
+        replaceConflicts = confirm
     };
 
     private sealed record TenantSession(string Host, string SessionCookie, string CsrfHeader);

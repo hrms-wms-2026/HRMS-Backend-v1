@@ -29,26 +29,4 @@ public class LeaveCalendarOptionsTests
     {
         LeaveCalendarOptions.IsValidHexColor(value).Should().BeFalse();
     }
-
-    [Fact]
-    public void ColorFor_ReturnsConfiguredCategoryColorCaseInsensitively()
-    {
-        var options = new LeaveCalendarOptions
-        {
-            TypeCategoryColors = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-            {
-                ["annual"] = "#2563EB"
-            }
-        };
-
-        options.ColorFor("Annual").Should().Be("#2563EB");
-    }
-
-    [Fact]
-    public void ColorFor_ReturnsNullWhenCategoryIsNotConfigured()
-    {
-        var options = new LeaveCalendarOptions();
-
-        options.ColorFor("sick").Should().BeNull();
-    }
 }

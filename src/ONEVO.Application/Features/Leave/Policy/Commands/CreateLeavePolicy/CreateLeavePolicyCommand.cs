@@ -1,40 +1,15 @@
 using MediatR;
 using ONEVO.Application.Common.Models;
-using ONEVO.Application.Features.Leave.Policy.DTOs.Responses;
+using ONEVO.Application.Features.Leave.Policy.Commands.Common;
 
 namespace ONEVO.Application.Features.Leave.Policy.Commands.CreateLeavePolicy;
 
-public record CreateLeavePolicyCommand(
+/// <summary>Creates a single-leave-type policy, its version 1 (in force from today) and its
+/// company/department/position assignments.</summary>
+public sealed record CreateLeavePolicyCommand(
+    Guid LeaveTypeId,
     string Name,
     string? Description,
-    string Country,
-    string? JobLevel,
-    string AccrualMethod,
-    string AccrualStart,
-    int? AccrualAfterNMonths,
-    string ProrationMethod,
-    bool ProbationRestriction,
-    int MinimumTenureMonths,
-    decimal? FirstYearReducedPercent,
-    int MinimumNoticeDays,
-    int? MaxConsecutiveDays,
-    decimal MinDaysPerRequest,
-    decimal? MaxTeamAbsencePercent,
-    string ApprovalMode,
-    DateOnly EffectiveFrom,
-    IReadOnlyList<LeavePolicyTypeRuleInput> LeaveTypes,
-    IReadOnlyList<LeavePolicyBlackoutPeriodInput> BlackoutPeriods,
-    IReadOnlyList<Guid> LegalEntityIds,
-    bool ConfirmReplaceExistingLegalEntityAssignments) : IRequest<Result<LeavePolicyResponse>>;
-
-public record LeavePolicyTypeRuleInput(
-    Guid LeaveTypeId,
-    decimal AnnualEntitlementDays,
-    decimal? MonthlyAccrualDays,
-    decimal? CarryForwardMaxDays,
-    int? CarryForwardExpiryMonths);
-
-public record LeavePolicyBlackoutPeriodInput(
-    DateOnly StartDate,
-    DateOnly EndDate,
-    string? Reason);
+    LeavePolicyRulesInput Rules,
+    IReadOnlyList<LeavePolicyAssignmentInput> Assignments,
+    bool ReplaceConflicts) : IRequest<Result<LeavePolicyWriteResult>>;

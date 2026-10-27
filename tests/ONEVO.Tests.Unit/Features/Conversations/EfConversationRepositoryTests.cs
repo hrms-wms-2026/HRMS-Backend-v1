@@ -52,6 +52,46 @@ public sealed class EfConversationRepositoryTests : IDisposable
     private static ItemRef NewRef(string kind = "approval") => new("work", kind, Guid.NewGuid());
 
     [Fact]
+    public async Task Reactions_are_one_per_person_per_message_listed_oldest_first_and_removable()
+    {
+        var conversation = NewConversation(NewRef());
+        var message = NewMessage(conversation.Id, Me);
+        ConversationMessageReaction Reaction(Guid employee, string emoji) => new()
+        {
+            Id = Guid.NewGuid(), TenantId = TenantId, MessageId = message.Id, EmployeeId = employee, Emoji = emoji
+        };
+        // The audit interceptor stamps CreatedAt from the clock: Me reacts first, Other a minute later.
+        await using (var db = CreateContext())
+        {
+            var repo = new EfConversationRepository(db);
+            await repo.GetOrCreateAsync(conversation);
+            await repo.AddMessageAsync(message, []);
+            await repo.AddReactionAsync(Reaction(Me, "👍"));
+            await db.SaveChangesAsync();
+            _clock.UtcNow = _clock.UtcNow.AddMinutes(1);
+            await repo.AddReactionAsync(Reaction(Other, "😂"));
+            await db.SaveChangesAsync();
+        }
+
+        await using (var db = CreateContext())
+        {
+            var repo = new EfConversationRepository(db);
+            (await repo.ListReactionsAsync(TenantId, [message.Id]))[message.Id].Select(r => r.Emoji).Should().Equal("👍", "😂");
+            await repo.AddReactionAsync(Reaction(Me, "🎉"));
+            var duplicate = async () => await db.SaveChangesAsync();
+            await duplicate.Should().ThrowAsync<DbUpdateException>("one reaction per person per message");
+        }
+
+        await using (var db = CreateContext())
+        {
+            var repo = new EfConversationRepository(db);
+            repo.RemoveReaction((await repo.GetReactionAsync(TenantId, message.Id, Me))!);
+            await db.SaveChangesAsync();
+            (await repo.ListReactionsAsync(TenantId, [message.Id]))[message.Id].Should().ContainSingle().Which.EmployeeId.Should().Be(Other);
+        }
+    }
+
+    [Fact]
     public async Task GetOrCreate_returns_the_existing_conversation_when_the_subject_already_has_one()
     {
         var subject = NewRef();

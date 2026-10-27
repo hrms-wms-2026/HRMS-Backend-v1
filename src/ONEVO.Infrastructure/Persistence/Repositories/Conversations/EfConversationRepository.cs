@@ -86,6 +86,19 @@ public class EfConversationRepository : IConversationRepository
         return await query.OrderByDescending(m => m.CreatedAt).ThenByDescending(m => m.Id).Take(take).ToListAsync(ct);
     }
 
+    public async Task<IReadOnlyList<ConversationMessage>> ListVisibleMessagesAsync(
+        Guid tenantId, Guid conversationId, Guid employeeId, DateTimeOffset? before, int take, CancellationToken ct = default)
+    {
+        var hiddenIds = _db.ConversationMessageHides
+            .Where(h => h.TenantId == tenantId && h.EmployeeId == employeeId)
+            .Select(h => h.MessageId);
+        var query = _db.ConversationMessages.AsNoTracking()
+            .Where(m => m.TenantId == tenantId && m.ConversationId == conversationId && !hiddenIds.Contains(m.Id));
+        if (before is { } cutoff)
+            query = query.Where(m => m.CreatedAt < cutoff);
+        return await query.OrderByDescending(m => m.CreatedAt).ThenByDescending(m => m.Id).Take(take).ToListAsync(ct);
+    }
+
     public async Task<IReadOnlyList<ConversationMessage>> ListMessagesByIdAsync(
         Guid tenantId, Guid conversationId, IReadOnlyCollection<Guid> messageIds, CancellationToken ct = default)
     {
@@ -172,6 +185,7 @@ public class EfConversationRepository : IConversationRepository
                     && m.Kind != ConversationMessageKinds.Evidence
                     && (m.AuthorEmployeeId == null || m.AuthorEmployeeId != employeeId)
                     && (p.LastReadAt == null || m.CreatedAt > p.LastReadAt)
+                    && !_db.ConversationMessageHides.Any(h => h.MessageId == m.Id && h.EmployeeId == employeeId)
                 group m by m.ConversationId into g
                 select new { ConversationId = g.Key, Count = g.Count() })
             .ToListAsync(ct);
@@ -210,8 +224,44 @@ public class EfConversationRepository : IConversationRepository
             await _db.ConversationMessageMentions.AddRangeAsync(mentions, ct);
     }
 
+    public async Task<ConversationMessageReaction?> GetReactionAsync(Guid tenantId, Guid messageId, Guid employeeId, CancellationToken ct = default)
+        => await _db.ConversationMessageReactions
+            .FirstOrDefaultAsync(r => r.TenantId == tenantId && r.MessageId == messageId && r.EmployeeId == employeeId, ct);
+
+    public async Task AddReactionAsync(ConversationMessageReaction reaction, CancellationToken ct = default)
+        => await _db.ConversationMessageReactions.AddAsync(reaction, ct);
+
+    public void RemoveReaction(ConversationMessageReaction reaction) => _db.ConversationMessageReactions.Remove(reaction);
+
+    public async Task<IReadOnlyDictionary<Guid, IReadOnlyList<ConversationMessageReaction>>> ListReactionsAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> messageIds, CancellationToken ct = default)
+    {
+        if (messageIds.Count == 0)
+            return new Dictionary<Guid, IReadOnlyList<ConversationMessageReaction>>();
+        var ids = messageIds.ToList();
+        var rows = await _db.ConversationMessageReactions.AsNoTracking()
+            .Where(r => r.TenantId == tenantId && ids.Contains(r.MessageId))
+            .ToListAsync(ct);
+        // A few rows per message; ordered here (reacted-at = UpdatedAt ?? CreatedAt) rather than in SQL.
+        return rows.OrderBy(r => r.UpdatedAt ?? r.CreatedAt).GroupBy(r => r.MessageId)
+            .ToDictionary(g => g.Key, g => (IReadOnlyList<ConversationMessageReaction>)g.ToList());
+    }
+
     public async Task AddRevisionAsync(ConversationMessageRevision revision, CancellationToken ct = default)
         => await _db.ConversationMessageRevisions.AddAsync(revision, ct);
+
+    public async Task HideMessageForEmployeeAsync(ConversationMessageHide hide, CancellationToken ct = default)
+    {
+        var exists = await _db.ConversationMessageHides.AnyAsync(
+            h => h.MessageId == hide.MessageId && h.EmployeeId == hide.EmployeeId, ct);
+        if (!exists)
+            await _db.ConversationMessageHides.AddAsync(hide, ct);
+    }
+
+    public Task<bool> IsMessageHiddenForEmployeeAsync(
+        Guid tenantId, Guid messageId, Guid employeeId, CancellationToken ct = default)
+        => _db.ConversationMessageHides.AnyAsync(
+            h => h.TenantId == tenantId && h.MessageId == messageId && h.EmployeeId == employeeId, ct);
 
     public async Task<IReadOnlyList<ConversationMessageRevision>> ListRevisionsAsync(
         Guid tenantId, IReadOnlyCollection<Guid> messageIds, CancellationToken ct = default)
@@ -250,4 +300,162 @@ public class EfConversationRepository : IConversationRepository
     public void Update(Conversation conversation) => _db.Conversations.Update(conversation);
 
     public void UpdateParticipant(ConversationParticipant participant) => _db.ConversationParticipants.Update(participant);
+
+    public async Task<IReadOnlyList<MemberConversation>> ListMemberConversationsAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default)
+    {
+        var rows = await (
+                from p in _db.ConversationParticipants.AsNoTracking()
+                join c in _db.Conversations.AsNoTracking() on p.ConversationId equals c.Id
+                where p.TenantId == tenantId && p.EmployeeId == employeeId && p.RemovedAt == null && p.LeftAt == null
+                select new
+                {
+                    Conversation = c,
+                    p.LastReadAt,
+                    Latest = _db.ConversationMessages
+                        .Where(m => m.ConversationId == c.Id && m.Kind != ConversationMessageKinds.Evidence
+                            && !_db.ConversationMessageHides.Any(h => h.MessageId == m.Id && h.EmployeeId == employeeId))
+                        .OrderByDescending(m => m.CreatedAt).ThenByDescending(m => m.Id)
+                        .FirstOrDefault(),
+                })
+            .ToListAsync(ct);
+        return rows.Select(r => new MemberConversation(r.Conversation, r.LastReadAt, r.Latest)).ToList();
+    }
+
+    public async Task<IReadOnlyDictionary<Guid, int>> CountUnreadByConversationAsync(
+        Guid tenantId, Guid employeeId, IReadOnlyCollection<Guid> conversationIds, CancellationToken ct = default, bool textOnly = false)
+    {
+        if (conversationIds.Count == 0)
+            return new Dictionary<Guid, int>();
+        var ids = conversationIds.ToList();
+        var counts = await (
+                from m in _db.ConversationMessages.AsNoTracking()
+                join p in _db.ConversationParticipants.AsNoTracking() on m.ConversationId equals p.ConversationId
+                where m.TenantId == tenantId && ids.Contains(m.ConversationId) && p.EmployeeId == employeeId
+                    && p.RemovedAt == null && p.LeftAt == null
+                    && m.Kind != ConversationMessageKinds.Evidence
+                    && (!textOnly || m.Kind == ConversationMessageKinds.Text)
+                    && (m.AuthorEmployeeId == null || m.AuthorEmployeeId != employeeId)
+                    && (p.LastReadAt == null || m.CreatedAt > p.LastReadAt)
+                    && !_db.ConversationMessageHides.Any(h => h.MessageId == m.Id && h.EmployeeId == employeeId)
+                group m by m.ConversationId into g
+                select new { ConversationId = g.Key, Count = g.Count() })
+            .ToListAsync(ct);
+        return counts.ToDictionary(c => c.ConversationId, c => c.Count);
+    }
+
+    public async Task<IReadOnlyDictionary<Guid, IReadOnlyList<Guid>>> ListActiveMemberIdsAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> conversationIds, CancellationToken ct = default)
+    {
+        if (conversationIds.Count == 0)
+            return new Dictionary<Guid, IReadOnlyList<Guid>>();
+        var ids = conversationIds.ToList();
+        var rows = await _db.ConversationParticipants.AsNoTracking()
+            .Where(p => p.TenantId == tenantId && ids.Contains(p.ConversationId) && p.RemovedAt == null && p.LeftAt == null)
+            .OrderBy(p => p.AddedAt)
+            .Select(p => new { p.ConversationId, p.EmployeeId })
+            .ToListAsync(ct);
+        return rows.GroupBy(r => r.ConversationId)
+            .ToDictionary(g => g.Key, g => (IReadOnlyList<Guid>)g.Select(r => r.EmployeeId).ToList());
+    }
+
+    public async Task<IReadOnlySet<Guid>> ListExistingMessageIdsAsync(Guid tenantId, IReadOnlyCollection<Guid> messageIds, CancellationToken ct = default)
+    {
+        if (messageIds.Count == 0)
+            return new HashSet<Guid>();
+        var ids = messageIds.Distinct().ToList();
+        var found = await _db.ConversationMessages.AsNoTracking()
+            .Where(m => m.TenantId == tenantId && ids.Contains(m.Id))
+            .Select(m => m.Id)
+            .ToListAsync(ct);
+        return found.ToHashSet();
+    }
+
+    public async Task<IReadOnlyList<ConversationMessage>> ListCaseCardsAsync(Guid tenantId, ItemRef item, CancellationToken ct = default)
+    {
+        // A card's event JSON carries the item's id; the kind filter keeps the text match to card rows only. Cards
+        // someone forwarded (they have an author) are copies in other chats, not where the case is worked on.
+        var id = item.Id.ToString();
+        var cards = await _db.ConversationMessages.AsNoTracking()
+            .Where(m => m.TenantId == tenantId && m.Kind == ConversationMessageKinds.Case && m.AuthorEmployeeId == null && m.SystemEventJson != null
+                && m.SystemEventJson.Contains(id))
+            .OrderBy(m => m.CreatedAt)
+            .ToListAsync(ct);
+        return cards.Where(m => CaseRefOf(m) == item).ToList();
+    }
+
+    public async Task<IReadOnlyDictionary<Guid, ConversationMessage>> LatestSystemEventsAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> conversationIds, IReadOnlyCollection<string> eventTypes, CancellationToken ct = default)
+    {
+        if (conversationIds.Count == 0 || eventTypes.Count == 0)
+            return new Dictionary<Guid, ConversationMessage>();
+        var ids = conversationIds.ToList();
+        // Event JSON is written with "type" first ({"type":"group_renamed",...}), so a prefix match finds the type.
+        var prefixes = eventTypes.Select(t => "{\"type\":\"" + t + "\"").ToList();
+        // System messages are few (people added, escalations, names), so the type is matched in memory.
+        var rows = await _db.ConversationMessages.AsNoTracking()
+            .Where(m => m.TenantId == tenantId && ids.Contains(m.ConversationId) && m.Kind == ConversationMessageKinds.System
+                && m.SystemEventJson != null)
+            .ToListAsync(ct);
+        return rows.Where(m => prefixes.Any(prefix => m.SystemEventJson!.StartsWith(prefix, StringComparison.Ordinal)))
+            .GroupBy(m => m.ConversationId)
+            .ToDictionary(g => g.Key, g => g.OrderByDescending(m => m.CreatedAt).First());
+    }
+
+    public async Task<IReadOnlySet<Guid>> ListFavoriteConversationIdsAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default)
+        => (await _db.ConversationFavorites.AsNoTracking()
+                .Where(f => f.TenantId == tenantId && f.EmployeeId == employeeId)
+                .Select(f => f.ConversationId)
+                .ToListAsync(ct))
+            .ToHashSet();
+
+    public async Task SetFavoriteAsync(Guid tenantId, Guid employeeId, Guid conversationId, bool favorite, CancellationToken ct = default)
+    {
+        if (!favorite)
+        {
+            await _db.ConversationFavorites
+                .Where(f => f.TenantId == tenantId && f.EmployeeId == employeeId && f.ConversationId == conversationId)
+                .ExecuteDeleteAsync(ct);
+            return;
+        }
+        if (await _db.ConversationFavorites.AnyAsync(f => f.EmployeeId == employeeId && f.ConversationId == conversationId, ct))
+            return;
+        var row = new ConversationFavorite { Id = Guid.NewGuid(), TenantId = tenantId, EmployeeId = employeeId, ConversationId = conversationId };
+        _db.ConversationFavorites.Add(row);
+        try
+        {
+            await _db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException)
+        {
+            // Lost a race on the (employee, conversation) unique index: it is pinned, which is the goal.
+            _db.Entry(row).State = EntityState.Detached;
+        }
+    }
+
+    public async Task DeleteMessageIfExistsAsync(Guid tenantId, Guid messageId, CancellationToken ct = default)
+        => await _db.ConversationMessages
+            .Where(m => m.TenantId == tenantId && m.Id == messageId && m.AuthorEmployeeId == null)
+            .ExecuteDeleteAsync(ct);
+
+    public async Task TouchAsync(Guid tenantId, Guid conversationId, DateTimeOffset at, CancellationToken ct = default)
+        => await _db.Conversations
+            .Where(c => c.TenantId == tenantId && c.Id == conversationId && (c.LastMessageAt == null || c.LastMessageAt < at))
+            .ExecuteUpdateAsync(set => set.SetProperty(c => c.LastMessageAt, at), ct);
+
+    private static ItemRef? CaseRefOf(ConversationMessage message)
+    {
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(message.SystemEventJson!);
+            var root = doc.RootElement;
+            return root.TryGetProperty("source", out var source) && root.TryGetProperty("kind", out var kind)
+                && root.TryGetProperty("id", out var id) && id.TryGetGuid(out var guid)
+                ? new ItemRef(source.GetString() ?? string.Empty, kind.GetString() ?? string.Empty, guid)
+                : null;
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return null;
+        }
+    }
 }

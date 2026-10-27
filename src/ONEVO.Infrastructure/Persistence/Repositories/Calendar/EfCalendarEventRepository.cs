@@ -114,9 +114,9 @@ public class EfCalendarEventRepository : ICalendarEventRepository
         Guid tenantId, IReadOnlyList<Guid> eventIds, CancellationToken ct = default)
     {
         var rows = await _db.CalendarEventParticipants.AsNoTracking()
-            .Where(p => p.TenantId == tenantId && eventIds.Contains(p.EventId))
+            .Where(p => p.TenantId == tenantId && eventIds.Contains(p.EventId!.Value))
             .ToListAsync(ct);
-        return rows.GroupBy(p => p.EventId).ToDictionary(g => g.Key, g => (IReadOnlyList<CalendarEventParticipant>)g.ToList());
+        return rows.GroupBy(p => p.EventId!.Value).ToDictionary(g => g.Key, g => (IReadOnlyList<CalendarEventParticipant>)g.ToList());
     }
 
     public async Task<CalendarEventParticipant?> GetTrackedParticipantAsync(
@@ -141,10 +141,10 @@ public class EfCalendarEventRepository : ICalendarEventRepository
         Guid tenantId, IReadOnlyList<Guid> eventIds, CancellationToken ct = default)
     {
         var rows = await _db.CalendarEventGuests.AsNoTracking()
-            .Where(g => g.TenantId == tenantId && eventIds.Contains(g.EventId))
+            .Where(g => g.TenantId == tenantId && eventIds.Contains(g.EventId!.Value))
             .OrderBy(g => g.CreatedAt)
             .ToListAsync(ct);
-        return rows.GroupBy(g => g.EventId).ToDictionary(g => g.Key, g => (IReadOnlyList<CalendarEventGuest>)g.ToList());
+        return rows.GroupBy(g => g.EventId!.Value).ToDictionary(g => g.Key, g => (IReadOnlyList<CalendarEventGuest>)g.ToList());
     }
 
     public async Task<CalendarEventGuest?> GetTrackedGuestAsync(

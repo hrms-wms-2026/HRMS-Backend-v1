@@ -1,7 +1,7 @@
 using Microsoft.EntityFrameworkCore;
-using Npgsql;
-using ONEVO.Application.Common.Exceptions;
+using ONEVO.Application.Features.Leave.Policy.Commands.Common;
 using ONEVO.Application.Features.Leave.Policy.RepositoryInterfaces;
+using ONEVO.Domain.Features.Leave.Common;
 using ONEVO.Domain.Features.Leave.Policy.Entities;
 using ONEVO.Domain.Features.Leave.Type.Entities;
 using ONEVO.Domain.Features.OrgStructure.Entities;
@@ -17,51 +17,6 @@ public class EfLeavePolicyRepository : ILeavePolicyRepository
         _db = db;
     }
 
-    public async Task<IReadOnlyList<LeavePolicyAggregate>> ListAsync(
-        Guid tenantId, bool includeInactive, CancellationToken ct = default)
-    {
-        var query = _db.LeavePolicies.AsNoTracking().Where(p => p.TenantId == tenantId);
-        if (!includeInactive)
-            query = query.Where(p => p.IsActive);
-
-        var policies = await query.OrderBy(p => p.Name).ToListAsync(ct);
-        return await BuildAggregatesAsync(tenantId, policies, ct);
-    }
-
-    public async Task<LeavePolicyAggregate?> GetAggregateByIdAsync(
-        Guid tenantId, Guid leavePolicyId, CancellationToken ct = default)
-    {
-        var policy = await _db.LeavePolicies
-            .AsNoTracking()
-            .FirstOrDefaultAsync(p => p.TenantId == tenantId && p.Id == leavePolicyId, ct);
-
-        if (policy is null)
-            return null;
-
-        return (await BuildAggregatesAsync(tenantId, [policy], ct)).Single();
-    }
-
-    public async Task<bool> ExistsByNameAsync(
-        Guid tenantId, string name, Guid? excludingLeavePolicyId, CancellationToken ct = default)
-    {
-        var normalized = name.ToLower();
-        var query = _db.LeavePolicies.AsNoTracking()
-            .Where(p => p.TenantId == tenantId && p.Name.ToLower() == normalized);
-
-        if (excludingLeavePolicyId is { } id)
-            query = query.Where(p => p.Id != id);
-
-        return await query.AnyAsync(ct);
-    }
-
-    public async Task<IReadOnlyList<LeaveType>> ListActiveLeaveTypesByIdsAsync(
-        Guid tenantId, IReadOnlyCollection<Guid> leaveTypeIds, CancellationToken ct = default)
-    {
-        return await _db.LeaveTypes.AsNoTracking()
-            .Where(t => t.TenantId == tenantId && t.IsActive && leaveTypeIds.Contains(t.Id))
-            .ToListAsync(ct);
-    }
-
     public async Task<IReadOnlyList<LegalEntity>> ListActiveLegalEntitiesByIdsAsync(
         Guid tenantId, IReadOnlyCollection<Guid> legalEntityIds, CancellationToken ct = default)
     {
@@ -71,156 +26,133 @@ public class EfLeavePolicyRepository : ILeavePolicyRepository
             .ToListAsync(ct);
     }
 
-    public async Task<IReadOnlyList<LeavePolicyLegalEntityConflict>> ListActiveAssignmentConflictsAsync(
-        Guid tenantId, IReadOnlyCollection<Guid> legalEntityIds, CancellationToken ct = default)
+    public Task<LeaveType?> GetLeaveTypeAsync(Guid tenantId, Guid leaveTypeId, CancellationToken ct = default) =>
+        _db.LeaveTypes.AsNoTracking().FirstOrDefaultAsync(t => t.TenantId == tenantId && t.Id == leaveTypeId, ct);
+
+    public Task<bool> ExistsByNameAsync(Guid tenantId, string name, Guid? excludingPolicyId, CancellationToken ct = default)
     {
-        return await (
-            from assignment in _db.LeavePolicyLegalEntities.AsNoTracking()
-            join policy in _db.LeavePolicies.AsNoTracking() on assignment.LeavePolicyId equals policy.Id
-            join legalEntity in _db.LegalEntities.AsNoTracking() on assignment.LegalEntityId equals legalEntity.Id
-            where assignment.TenantId == tenantId
-                && assignment.IsActive
-                && legalEntityIds.Contains(assignment.LegalEntityId)
-            orderby legalEntity.Name
-            select new LeavePolicyLegalEntityConflict(
-                assignment.LegalEntityId,
-                legalEntity.Name,
-                policy.Id,
-                policy.Name))
-            .ToListAsync(ct);
+        var normalized = name.ToLower();
+        return _db.LeavePolicies.AsNoTracking()
+            .AnyAsync(p => p.TenantId == tenantId && p.Name.ToLower() == normalized
+                && (excludingPolicyId == null || p.Id != excludingPolicyId), ct);
     }
 
-    public async Task AddAggregateWithReplacementAsync(
-        LeavePolicy policy,
-        IReadOnlyCollection<LeavePolicyLeaveType> leaveTypes,
-        IReadOnlyCollection<LeavePolicyBlackoutPeriod> blackoutPeriods,
-        IReadOnlyCollection<LeavePolicyLegalEntity> legalEntityAssignments,
-        IReadOnlyCollection<Guid> legalEntityIdsToReplace,
-        CancellationToken ct = default)
+    public Task<LeavePolicy?> GetTrackedAsync(Guid tenantId, Guid policyId, CancellationToken ct = default) =>
+        _db.LeavePolicies.FirstOrDefaultAsync(p => p.TenantId == tenantId && p.Id == policyId, ct);
+
+    public async Task<IReadOnlyList<LeavePolicy>> ListAsync(Guid tenantId, bool includeInactive, CancellationToken ct = default) =>
+        await _db.LeavePolicies.AsNoTracking()
+            .Where(p => p.TenantId == tenantId && (includeInactive || p.IsActive))
+            .OrderBy(p => p.Name)
+            .ToListAsync(ct);
+
+    public async Task<IReadOnlyList<LeavePolicyVersion>> ListVersionsTrackedAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> policyIds, CancellationToken ct = default) =>
+        await _db.LeavePolicyVersions
+            .Where(v => v.TenantId == tenantId && policyIds.Contains(v.LeavePolicyId))
+            .ToListAsync(ct);
+
+    public async Task<IReadOnlyList<LeavePolicyBlackoutPeriod>> ListBlackoutsAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> versionIds, CancellationToken ct = default) =>
+        await _db.LeavePolicyBlackoutPeriods.AsNoTracking()
+            .Where(b => b.TenantId == tenantId && versionIds.Contains(b.LeavePolicyVersionId))
+            .OrderBy(b => b.StartDate)
+            .ToListAsync(ct);
+
+    public async Task<IReadOnlyList<LeavePolicyAssignment>> ListOpenAssignmentsForLeaveTypeTrackedAsync(
+        Guid tenantId, Guid leaveTypeId, CancellationToken ct = default) =>
+        await _db.LeavePolicyAssignments
+            .Where(a => a.TenantId == tenantId && a.LeaveTypeId == leaveTypeId && a.EffectiveTo == null)
+            .ToListAsync(ct);
+
+    public async Task<IReadOnlyList<LeavePolicyAssignment>> ListOpenAssignmentsForPoliciesAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> policyIds, CancellationToken ct = default) =>
+        await _db.LeavePolicyAssignments.AsNoTracking()
+            .Where(a => a.TenantId == tenantId && policyIds.Contains(a.LeavePolicyId) && a.EffectiveTo == null)
+            .ToListAsync(ct);
+
+    public async Task<IReadOnlyList<LeavePolicyAssignmentInput>> ListMissingTargetsAsync(
+        Guid tenantId, IReadOnlyCollection<LeavePolicyAssignmentInput> targets, CancellationToken ct = default)
     {
-        // EnableRetryOnFailure configured - EF Core forbids a user-initiated BeginTransactionAsync
-        // under a retrying execution strategy unless it runs inside ExecuteAsync.
-        var executionStrategy = _db.Database.CreateExecutionStrategy();
-        try
-        {
-            await executionStrategy.ExecuteAsync(async () =>
-            {
-                await using var transaction = _db.Database.IsRelational()
-                    ? await _db.Database.BeginTransactionAsync(ct)
-                    : null;
-
-                var activeAssignmentsToReplace = legalEntityIdsToReplace.Count == 0
-                    ? []
-                    : await _db.LeavePolicyLegalEntities
-                        .Where(x => x.TenantId == policy.TenantId
-                            && x.IsActive
-                            && legalEntityIdsToReplace.Contains(x.LegalEntityId))
-                        .ToListAsync(ct);
-
-                foreach (var assignment in activeAssignmentsToReplace)
-                    assignment.IsActive = false;
-
-                if (activeAssignmentsToReplace.Count > 0)
-                    await _db.SaveChangesAsync(ct);
-
-                await _db.LeavePolicies.AddAsync(policy, ct);
-                await _db.LeavePolicyLeaveTypes.AddRangeAsync(leaveTypes, ct);
-                await _db.LeavePolicyBlackoutPeriods.AddRangeAsync(blackoutPeriods, ct);
-                await _db.LeavePolicyLegalEntities.AddRangeAsync(legalEntityAssignments, ct);
-                await _db.SaveChangesAsync(ct);
-
-                if (transaction is not null)
-                    await transaction.CommitAsync(ct);
-            });
-        }
-        catch (DbUpdateException ex) when (ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
-        {
-            throw new UniqueConstraintConflictException(ex);
-        }
+        var found = await GetTargetNamesAsync(
+            tenantId, targets.Select(t => (t.TargetKind, t.TargetId)).ToList(), ct, activeOnly: true);
+        return targets.Where(t => !found.ContainsKey((t.TargetKind, t.TargetId))).ToList();
     }
 
-    public async Task<IReadOnlyDictionary<Guid, LeavePolicyAggregate>> ListActiveAggregatesByLegalEntityIdsAsync(
-        Guid tenantId,
-        IReadOnlyCollection<Guid> legalEntityIds,
-        int year,
-        CancellationToken ct = default)
+    public Task<IReadOnlyDictionary<(string Kind, Guid Id), string>> GetTargetNamesAsync(
+        Guid tenantId, IReadOnlyCollection<(string Kind, Guid Id)> targets, CancellationToken ct = default) =>
+        GetTargetNamesAsync(tenantId, targets, ct, activeOnly: false);
+
+    private async Task<IReadOnlyDictionary<(string Kind, Guid Id), string>> GetTargetNamesAsync(
+        Guid tenantId, IReadOnlyCollection<(string Kind, Guid Id)> targets, CancellationToken ct, bool activeOnly)
     {
-        if (legalEntityIds.Count == 0)
-            return new Dictionary<Guid, LeavePolicyAggregate>();
+        Guid[] Ids(string kind) => targets.Where(t => t.Kind == kind).Select(t => t.Id).Distinct().ToArray();
+        var names = new Dictionary<(string Kind, Guid Id), string>();
 
-        var yearEnd = new DateOnly(year, 12, 31);
-        var assignments = await _db.LeavePolicyLegalEntities
-            .AsNoTracking()
-            .Where(x => x.TenantId == tenantId
-                && x.IsActive
-                && legalEntityIds.Contains(x.LegalEntityId)
-                && x.EffectiveDate <= yearEnd)
-            .ToListAsync(ct);
+        var legalEntityIds = Ids(LeavePolicyTargetKinds.LegalEntity);
+        if (legalEntityIds.Length > 0)
+            foreach (var x in await _db.LegalEntities.AsNoTracking()
+                         .Where(e => e.TenantId == tenantId && legalEntityIds.Contains(e.Id) && (!activeOnly || e.IsActive))
+                         .Select(e => new { e.Id, e.Name }).ToListAsync(ct))
+                names[(LeavePolicyTargetKinds.LegalEntity, x.Id)] = x.Name;
 
-        var policyIds = assignments.Select(a => a.LeavePolicyId).Distinct().ToArray();
-        if (policyIds.Length == 0)
-            return new Dictionary<Guid, LeavePolicyAggregate>();
+        var departmentIds = Ids(LeavePolicyTargetKinds.Department);
+        if (departmentIds.Length > 0)
+            foreach (var x in await _db.Departments.AsNoTracking()
+                         .Where(d => d.TenantId == tenantId && departmentIds.Contains(d.Id) && (!activeOnly || d.IsActive))
+                         .Select(d => new { d.Id, d.Name }).ToListAsync(ct))
+                names[(LeavePolicyTargetKinds.Department, x.Id)] = x.Name;
 
-        var policies = await _db.LeavePolicies.AsNoTracking()
-            .Where(p => p.TenantId == tenantId
-                && p.IsActive
-                && policyIds.Contains(p.Id)
-                && p.EffectiveFrom <= yearEnd)
-            .ToListAsync(ct);
+        var positionIds = Ids(LeavePolicyTargetKinds.Position);
+        if (positionIds.Length > 0)
+            foreach (var x in await _db.Positions.AsNoTracking()
+                         .Where(p => p.TenantId == tenantId && positionIds.Contains(p.Id) && !p.IsDeleted
+                             && (!activeOnly || p.IsActive))
+                         .Select(p => new { p.Id, p.Name }).ToListAsync(ct))
+                names[(LeavePolicyTargetKinds.Position, x.Id)] = x.Name;
 
-        var aggregates = await BuildAggregatesAsync(tenantId, policies, ct);
-        var aggregateById = aggregates.ToDictionary(a => a.Policy.Id);
+        var employeeIds = Ids(LeavePolicyTargetKinds.Employee);
+        if (employeeIds.Length > 0)
+            foreach (var x in await _db.Employees.AsNoTracking()
+                         .Where(e => e.TenantId == tenantId && employeeIds.Contains(e.Id) && !e.IsDeleted)
+                         .Select(e => new { e.Id, e.FirstName, e.LastName }).ToListAsync(ct))
+                names[(LeavePolicyTargetKinds.Employee, x.Id)] = $"{x.FirstName} {x.LastName}".Trim();
 
-        return assignments
-            .Where(a => aggregateById.ContainsKey(a.LeavePolicyId))
-            .GroupBy(a => a.LegalEntityId)
-            .ToDictionary(
-                group => group.Key,
-                group => aggregateById[group.OrderByDescending(a => a.EffectiveDate).First().LeavePolicyId]);
+        return names;
     }
 
-    private async Task<IReadOnlyList<LeavePolicyAggregate>> BuildAggregatesAsync(
-        Guid tenantId, IReadOnlyList<LeavePolicy> policies, CancellationToken ct)
+    public async Task<IReadOnlyDictionary<Guid, string>> GetPolicyNamesAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> policyIds, CancellationToken ct = default) =>
+        await _db.LeavePolicies.AsNoTracking()
+            .Where(p => p.TenantId == tenantId && policyIds.Contains(p.Id))
+            .ToDictionaryAsync(p => p.Id, p => p.Name, ct);
+
+    public async Task<IReadOnlyDictionary<Guid, string>> GetUserNamesAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> userIds, CancellationToken ct = default)
     {
-        if (policies.Count == 0)
-            return [];
-
-        var policyIds = policies.Select(p => p.Id).ToArray();
-
-        var typeRules = await (
-            from rule in _db.LeavePolicyLeaveTypes.AsNoTracking()
-            join leaveType in _db.LeaveTypes.AsNoTracking() on rule.LeaveTypeId equals leaveType.Id
-            where rule.TenantId == tenantId && policyIds.Contains(rule.LeavePolicyId)
-            orderby leaveType.Name
-            select new
-            {
-                rule.LeavePolicyId,
-                Item = new LeavePolicyLeaveTypeWithType(rule, leaveType.Name, leaveType.Code)
-            })
+        var rows = await _db.Employees.AsNoTracking()
+            .Where(e => e.TenantId == tenantId && userIds.Contains(e.UserId) && !e.IsDeleted)
+            .Select(e => new { e.UserId, e.FirstName, e.LastName })
             .ToListAsync(ct);
-
-        var blackoutPeriods = await _db.LeavePolicyBlackoutPeriods.AsNoTracking()
-            .Where(p => p.TenantId == tenantId && policyIds.Contains(p.LeavePolicyId))
-            .OrderBy(p => p.StartDate)
-            .ToListAsync(ct);
-
-        var legalEntities = await (
-            from assignment in _db.LeavePolicyLegalEntities.AsNoTracking()
-            join legalEntity in _db.LegalEntities.AsNoTracking() on assignment.LegalEntityId equals legalEntity.Id
-            where assignment.TenantId == tenantId && policyIds.Contains(assignment.LeavePolicyId)
-            orderby legalEntity.Name
-            select new
-            {
-                assignment.LeavePolicyId,
-                Item = new LeavePolicyLegalEntityWithName(assignment, legalEntity.Name, legalEntity.StandardWorkingDays)
-            })
-            .ToListAsync(ct);
-
-        return policies.Select(policy => new LeavePolicyAggregate(
-            policy,
-            typeRules.Where(x => x.LeavePolicyId == policy.Id).Select(x => x.Item).ToList(),
-            blackoutPeriods.Where(x => x.LeavePolicyId == policy.Id).ToList(),
-            legalEntities.Where(x => x.LeavePolicyId == policy.Id).Select(x => x.Item).ToList()))
-            .ToList();
+        return rows.GroupBy(r => r.UserId).ToDictionary(g => g.Key, g => $"{g.First().FirstName} {g.First().LastName}".Trim());
     }
+
+    public Task<bool> IsUsersOwnEmployeeAsync(Guid tenantId, Guid employeeId, Guid userId, CancellationToken ct = default) =>
+        _db.Employees.AsNoTracking().AnyAsync(e => e.TenantId == tenantId && e.Id == employeeId && e.UserId == userId, ct);
+
+    public void AddPolicy(LeavePolicy policy) => _db.LeavePolicies.Add(policy);
+
+    public void AddVersion(LeavePolicyVersion version, IReadOnlyList<LeavePolicyBlackoutPeriod> blackouts)
+    {
+        _db.LeavePolicyVersions.Add(version);
+        _db.LeavePolicyBlackoutPeriods.AddRange(blackouts);
+    }
+
+    public void RemoveVersion(LeavePolicyVersion version) => _db.LeavePolicyVersions.Remove(version);
+
+    public void AddAssignment(LeavePolicyAssignment assignment) => _db.LeavePolicyAssignments.Add(assignment);
+
+    public void RemoveAssignment(LeavePolicyAssignment assignment) => _db.LeavePolicyAssignments.Remove(assignment);
+
+    public Task SaveChangesAsync(CancellationToken ct = default) => _db.SaveChangesAsync(ct);
 }

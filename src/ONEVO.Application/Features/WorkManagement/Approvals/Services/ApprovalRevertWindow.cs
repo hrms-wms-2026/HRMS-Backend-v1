@@ -11,10 +11,13 @@ public static class ApprovalRevertWindow
     public const int Minutes = ONEVO.Application.Features.Inbox.Revert.InboxRevertWindow.Minutes;
 
     /// <summary>True only for the viewer who decided this request, only while Approved/Rejected, only
-    /// within Minutes of DecidedAt. Shared by WorkApprovalRequestMapper and GetApprovalDetailQueryHandler
+    /// within Minutes of DecidedAt, never for a meeting action. Shared by WorkApprovalRequestMapper and GetApprovalDetailQueryHandler
     /// so the two can never disagree on what's revertable.</summary>
     public static (bool CanRevert, DateTimeOffset? RevertableUntil) ComputeCanRevert(WorkApprovalRequest request, Guid viewerEmployeeId)
     {
+        // Meeting decisions are final (spec 5.2: revert answers 409), so no window is offered for them.
+        if (WorkActionTypes.IsMeeting(request.ActionType))
+            return (false, null);
         var isDecided = request.Status == WorkApprovalRequestStatuses.Approved || request.Status == WorkApprovalRequestStatuses.Rejected;
         var revertableUntil = isDecided ? request.DecidedAt?.AddMinutes(Minutes) : null;
         var canRevert = isDecided && request.DecidedByEmployeeId == viewerEmployeeId

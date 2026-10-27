@@ -57,6 +57,63 @@ public sealed class CalendarNotificationSender(
         }
     }
 
+    public async Task SendMeetingLinkAsync(
+        Guid tenantId, string eventTitle, DateTimeOffset startDate, string? location,
+        IReadOnlyList<CalendarParticipantRecipient> participants, IReadOnlyList<CalendarGuestRecipient> guests,
+        string organizerName, string? meetingLink, CalendarEventIcs? ics, CancellationToken ct = default)
+    {
+        foreach (var recipient in participants)
+        {
+            var employee = await employees.GetByIdAsync(tenantId, recipient.EmployeeId, ct);
+            if (employee is null || string.IsNullOrWhiteSpace(employee.Email)) continue;
+
+            await KeyedEmailAsync(tenantId,
+                InvitePayload(tenantId, employee.Email, $"{employee.FirstName} {employee.LastName}", eventTitle, startDate, location,
+                    organizerName, meetingLink, ics),
+                recipient.EmailKey, ct);
+        }
+        foreach (var guest in guests)
+            await KeyedEmailAsync(tenantId,
+                InvitePayload(tenantId, guest.Email, guest.Email.Split('@')[0], eventTitle, startDate, location, organizerName, meetingLink, ics),
+                guest.EmailKey, ct);
+    }
+
+    private static CalendarEventInviteEmailPayload InvitePayload(
+        Guid tenantId, string email, string name, string eventTitle, DateTimeOffset startDate, string? location,
+        string organizerName, string? meetingLink, CalendarEventIcs? ics)
+        => new(tenantId, email, name, eventTitle, startDate, location, organizerName, meetingLink,
+            CalendarEventEmailKinds.Invite, ics?.EventId, ics?.EndUtc, ics?.Sequence ?? 0, ics?.RecurrenceRule, ics?.RecurrenceId, ics?.TimeZoneId);
+
+    public async Task SendMeetingLinkRemovedAsync(
+        Guid tenantId, string eventTitle, DateTimeOffset startDate, string? location,
+        IReadOnlyList<CalendarParticipantRecipient> participants, IReadOnlyList<CalendarGuestRecipient> guests,
+        string organizerName, CancellationToken ct = default)
+    {
+        foreach (var recipient in participants)
+        {
+            var employee = await employees.GetByIdAsync(tenantId, recipient.EmployeeId, ct);
+            if (employee is null) continue;
+
+            await InAppAsync(tenantId, employee.UserId, "calendar_event_meeting_link_removed",
+                new Dictionary<string, string> { ["organizerName"] = organizerName, ["eventTitle"] = eventTitle }, ct);
+            if (string.IsNullOrWhiteSpace(employee.Email)) continue;
+            await KeyedEmailAsync(tenantId,
+                new CalendarEventInviteEmailPayload(tenantId, employee.Email, $"{employee.FirstName} {employee.LastName}",
+                    eventTitle, startDate, location, organizerName, MeetingLink: null, Kind: CalendarEventEmailKinds.LinkRemoved),
+                recipient.EmailKey, ct);
+        }
+        foreach (var guest in guests)
+            await KeyedEmailAsync(tenantId,
+                new CalendarEventInviteEmailPayload(tenantId, guest.Email, guest.Email.Split('@')[0],
+                    eventTitle, startDate, location, organizerName, MeetingLink: null, Kind: CalendarEventEmailKinds.LinkRemoved),
+                guest.EmailKey, ct);
+    }
+
+    public Task NotifyOrganizerAboutMeetingAsync(
+        Guid tenantId, Guid organizerUserId, string templateCode, string eventTitle, string providerName, CancellationToken ct = default)
+        => InAppAsync(tenantId, organizerUserId, templateCode,
+            new Dictionary<string, string> { ["eventTitle"] = eventTitle, ["provider"] = providerName }, ct);
+
     public async Task NotifyGuestsAsync(
         Guid tenantId, string eventTitle, DateTimeOffset startDate, string? location,
         IReadOnlyList<string> guestEmails, string organizerName, string? meetingLink, CancellationToken ct = default, CalendarEventIcs? ics = null)
@@ -79,6 +136,29 @@ public sealed class CalendarNotificationSender(
         foreach (var email in guestEmails)
             await EmailAsync(tenantId, email, email.Split('@')[0], kind, eventTitle, startDate, location, organizerName, meetingLink, ics, ct);
     }
+
+    public async Task EmailEventChangedKeyedAsync(
+        Guid tenantId, string kind, CalendarEventIcs ics, string eventTitle, DateTimeOffset startDate, string? location, string? meetingLink,
+        IReadOnlyList<CalendarParticipantRecipient> participants, IReadOnlyList<CalendarGuestRecipient> guests, string organizerName,
+        CancellationToken ct = default)
+    {
+        foreach (var recipient in participants)
+        {
+            var employee = await employees.GetByIdAsync(tenantId, recipient.EmployeeId, ct);
+            if (employee is null || string.IsNullOrWhiteSpace(employee.Email)) continue;
+            await KeyedEmailAsync(tenantId, ChangePayload(tenantId, employee.Email, $"{employee.FirstName} {employee.LastName}", kind,
+                eventTitle, startDate, location, organizerName, meetingLink, ics), recipient.EmailKey, ct);
+        }
+        foreach (var guest in guests)
+            await KeyedEmailAsync(tenantId, ChangePayload(tenantId, guest.Email, guest.Email.Split('@')[0], kind, eventTitle, startDate,
+                location, organizerName, meetingLink, ics), guest.EmailKey, ct);
+    }
+
+    private static CalendarEventInviteEmailPayload ChangePayload(
+        Guid tenantId, string email, string name, string kind, string eventTitle, DateTimeOffset startDate, string? location,
+        string organizerName, string? meetingLink, CalendarEventIcs ics)
+        => new(tenantId, email, name, eventTitle, startDate, location, organizerName, meetingLink,
+            kind, ics.EventId, ics.EndUtc, ics.Sequence, ics.RecurrenceRule, ics.RecurrenceId, ics.TimeZoneId);
 
     public async Task NotifyEventUpdatedAsync(
         Guid tenantId, string eventTitle, IReadOnlyList<Guid> employeeIds, string organizerName, CancellationToken ct = default)
@@ -148,7 +228,7 @@ public sealed class CalendarNotificationSender(
         await outboxWriter.EnqueueAsync(
             OutboxMessageTypes.CalendarEventInviteEmail,
             new CalendarEventInviteEmailPayload(tenantId, email, recipientName, eventTitle, startDate, location, organizerName, meetingLink,
-                kind, ics?.EventId, ics?.EndUtc, ics?.Sequence ?? 0, ics?.RecurrenceRule, ics?.RecurrenceId),
+                kind, ics?.EventId, ics?.EndUtc, ics?.Sequence ?? 0, ics?.RecurrenceRule, ics?.RecurrenceId, ics?.TimeZoneId),
             tenantId, ct);
     }
 
@@ -194,6 +274,16 @@ public sealed class CalendarNotificationSender(
         }
         _outlookHandles[ics.EventId] = handles;
         return handles;
+    }
+
+    /// <summary>A keyed email is written once per key (ON CONFLICT inside the caller's transaction), so a
+    /// retried operation can't email anyone twice; a null key sends an ordinary email.</summary>
+    private async Task KeyedEmailAsync(Guid tenantId, CalendarEventInviteEmailPayload payload, string? key, CancellationToken ct)
+    {
+        if (key is null)
+            await outboxWriter.EnqueueAsync(OutboxMessageTypes.CalendarEventInviteEmail, payload, tenantId, ct);
+        else
+            await outboxWriter.EnqueueKeyedAsync(OutboxMessageTypes.CalendarEventInviteEmail, payload, key, tenantId, ct);
     }
 
     private async Task InAppAsync(Guid tenantId, Guid userId, string templateCode, Dictionary<string, string> placeholders, CancellationToken ct)

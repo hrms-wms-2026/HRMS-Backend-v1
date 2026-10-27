@@ -88,25 +88,18 @@ public sealed class LeaveTypesIntegrationTestsFixture : IAsyncLifetime
         await _environmentScope.DisposeAsync();
     }
 
+    /// <summary>A leave type is only the kind of leave: its amounts, carry-over, notice and approval live on its policy.</summary>
     public static object CreateBody(string name, string code) => new
     {
         name,
         code,
         description = "test type",
-        category = "custom",
+        color = "#4F46E5",
         isPaid = true,
-        requiresApproval = true,
-        requiresDocument = false,
-        documentRequiredAfterDays = (int?)null,
-        acceptedDocumentTypes = Array.Empty<string>(),
-        maxConsecutiveDays = (int?)null,
-        defaultDaysPerYear = 10m,
-        carryForwardAllowed = false,
-        maxCarryForwardDays = (decimal?)null,
-        carryForwardExpiryMonths = (int?)null,
-        proRataForNewJoiners = false,
         applicableGender = "all",
-        minimumNoticeDays = 0
+        requiresDocument = false,
+        documentRequiredAfterHours = (decimal?)null,
+        acceptedDocumentTypes = Array.Empty<string>()
     };
 
     public sealed record TenantSession(string Host, string SessionCookie, string CsrfHeader);
@@ -433,20 +426,12 @@ public class LeaveTypesIntegrationTests : IClassFixture<LeaveTypesIntegrationTes
             {
                 name = "Renamed Leave",
                 description = "updated",
-                category = "custom",
+                color = "#16A34A",
                 isPaid = true,
-                requiresApproval = true,
-                requiresDocument = false,
-                documentRequiredAfterDays = (int?)null,
-                acceptedDocumentTypes = Array.Empty<string>(),
-                maxConsecutiveDays = (int?)null,
-                defaultDaysPerYear = 12m,
-                carryForwardAllowed = false,
-                maxCarryForwardDays = (decimal?)null,
-                carryForwardExpiryMonths = (int?)null,
-                proRataForNewJoiners = false,
                 applicableGender = "all",
-                minimumNoticeDays = 0
+                requiresDocument = false,
+                documentRequiredAfterHours = (decimal?)null,
+                acceptedDocumentTypes = Array.Empty<string>()
             },
             cookie: _fixture.Owner.SessionCookie, csrfToken: _fixture.Owner.CsrfHeader);
         update.StatusCode.Should().Be(HttpStatusCode.OK);

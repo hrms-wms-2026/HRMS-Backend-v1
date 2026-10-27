@@ -7,6 +7,7 @@ using ONEVO.Application.Features.WorkManagement.Approvals.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Approvals.Services;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Hierarchy;
+using ONEVO.Application.Features.WorkManagement.Meetings.Services;
 using ONEVO.Application.Features.WorkManagement.ProjectInvitations.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Sprints.RepositoryInterfaces;
@@ -156,6 +157,16 @@ public sealed class GetApprovalDetailQueryHandler : IRequestHandler<GetApprovalD
             : null;
 
         var (canRevert, revertableUntil) = ApprovalRevertWindow.ComputeCanRevert(request, caller);
+        // A meeting request shows only its D5 snapshot, and only to a receiver (the approver, whoever can decide it, or
+        // whoever decided it): never its raw payload, and nothing beyond the item to the requester.
+        if (MeetingApprovalDetail.IsMeetingAction(request.ActionType))
+            return Result<ApprovalDetailResponse>.Success(new ApprovalDetailResponse(
+                item, RequestedPayloadJson: null, AppliedPayloadJson: null, Fields: [], CanEditPayload: false,
+                string.IsNullOrWhiteSpace(note) ? null : note.Trim(), allocated, Invitation: null, canRevert, revertableUntil,
+                ExtraJson: ApprovalFeedParticipants.IsReceiver(tree, request, caller)
+                    ? MeetingApprovalDetail.ExtraJson(request.PayloadJson)
+                    : null));
+
         return Result<ApprovalDetailResponse>.Success(new ApprovalDetailResponse(
             item, request.PayloadJson, request.AppliedPayloadJson, fields, canEdit,
             string.IsNullOrWhiteSpace(note) ? null : note.Trim(), allocated, Invitation: null,

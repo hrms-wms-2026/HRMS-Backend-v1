@@ -23,7 +23,8 @@ public sealed class AddCalendarEventGuestsCommandHandler(
     ICalendarEventRepository events,
     ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces.IEmployeeRepository employees,
     ICalendarNotificationSender notifications,
-    IUnitOfWork unitOfWork)
+    IUnitOfWork unitOfWork,
+    CalendarMeetingGuard? meetingGuard = null)
     : IRequestHandler<AddCalendarEventGuestsCommand, Result<CalendarEventGuestsResult>>
 {
     public async Task<Result<CalendarEventGuestsResult>> Handle(AddCalendarEventGuestsCommand request, CancellationToken ct)
@@ -42,6 +43,8 @@ public sealed class AddCalendarEventGuestsCommandHandler(
 
         if (existing.CreatedById != currentUser.UserId)
             return Result<CalendarEventGuestsResult>.Forbidden("Only the event organizer can invite guests.");
+        if (meetingGuard is not null && await meetingGuard.RefusesBecomingMeetingAsync(tenantId, existing, ct))
+            return CalendarMeetingGuard.Refusal<CalendarEventGuestsResult>();
 
         return await unitOfWork.ExecuteInTransactionAsync(async innerCt =>
         {

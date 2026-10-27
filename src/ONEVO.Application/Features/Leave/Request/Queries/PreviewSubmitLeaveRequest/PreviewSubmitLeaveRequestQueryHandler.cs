@@ -73,7 +73,7 @@ public sealed class PreviewSubmitLeaveRequestQueryHandler
             draft.TotalHours,
             draft.PaidHours,
             draft.UnpaidHours,
-            LeaveRequestStatuses.Pending,
+            draft.ApprovalMode == LeaveApprovalModes.None ? LeaveRequestStatuses.Approved : LeaveRequestStatuses.Pending,
             draft.NoticePeriodMissed,
             query.IsOnBehalfRequest ? _currentUser.UserId : null,
             LeaveRequestMapper.ToBalanceImpact(draft.CurrentRemaining, draft.Entitlement.PendingHours, draft.PaidHours),
@@ -84,6 +84,7 @@ public sealed class PreviewSubmitLeaveRequestQueryHandler
                 LeaveRequestApproverStatuses.Pending,
                 a.DelegatedFromApproverId)).ToList(),
             snapshot,
-            _clock.UtcNow));
+            _clock.UtcNow,
+            draft.ExceedsBalanceByHours));
     }
 }

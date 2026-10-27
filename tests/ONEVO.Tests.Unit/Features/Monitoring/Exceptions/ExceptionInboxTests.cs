@@ -111,7 +111,7 @@ public class ExceptionInboxTests
         var asStranger = await Provider().ListAsync(TenantId, new InboxQuery(), Stranger, default);
 
         asManager.Select(i => (i.Id, i.Direction)).Should().Equal((mine.Id, InboxDirections.Received));
-        asManager[0].AvailableActions.Select(a => a.Key).Should().Equal("acknowledge", "resolve", "escalate");
+        asManager[0].AvailableActions.Select(a => a.Key).Should().Equal("resolve", "escalate");
         asStranger.Should().BeEmpty();
     }
 
@@ -278,6 +278,41 @@ public class ExceptionInboxTests
     }
 
     [Fact]
+    public async Task Escalate_to_a_picked_person_routes_and_notifies_only_them_and_refuses_someone_without_the_permission()
+    {
+        var c = Case();
+        var (hrUser, hrEmployee, outsiderEmployee) = (Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
+        var permissions = new Mock<ONEVO.Application.Features.Auth.Permission.RepositoryInterfaces.IPermissionRepository>();
+        permissions.Setup(p => p.ListUserIdsWithPermissionCodeAsync(TenantId, It.IsAny<string>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Guid _, string code, DateTimeOffset _, CancellationToken _) => code == ExceptionPermissions.HrReview ? [hrUser] : []);
+        var employees = new Mock<ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces.IEmployeeRepository>();
+        employees.Setup(e => e.GetDefaultForUserAsync(TenantId, hrUser, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Employee { Id = hrEmployee, FirstName = "Hana", LastName = "Perera" });
+        employees.Setup(e => e.ListPositionNamesAsync(TenantId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, string> { [hrEmployee] = "HR Manager" });
+        _policy.Setup(p => p.NextAsync(TenantId, It.IsAny<EscalationContext>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new EscalationTarget.LogOnly("top"));
+        _sender.Setup(s => s.Send(It.IsAny<EscalateExceptionCommand>(), It.IsAny<CancellationToken>()))
+            .Callback(() => c.Status = ExceptionStatus.Escalated).ReturnsAsync(Result.Success());
+        _recorder.Setup(r => r.RecordAsync(TenantId, It.IsAny<EscalationRecord>(), It.IsAny<CancellationToken>())).ReturnsAsync([Reviewer, hrEmployee]);
+        var actions = new ExceptionCaseActions(_sender.Object, _exceptions.Object, _journal, _recorder.Object,
+            new InboxEscalationPolicyRegistry([_policy.Object]), new FakeUnitOfWork(), new FakeDateTimeProvider { UtcNow = Now },
+            null, permissions.Object, employees.Object);
+        var item = new ItemRef("monitoring", "exception_case", c.Id);
+
+        var refused = await actions.RunAsync(TenantId, item, "escalate",
+            JsonSerializer.SerializeToElement(new { targetEmployeeId = outsiderEmployee }), Reviewer, default);
+        var picked = await actions.RunAsync(TenantId, item, "escalate",
+            JsonSerializer.SerializeToElement(new { comment = "HR please", targetEmployeeId = hrEmployee }), Reviewer, default);
+
+        refused.IsSuccess.Should().BeFalse();
+        picked.IsSuccess.Should().BeTrue(picked.Error);
+        _sender.Verify(s => s.Send(It.Is<EscalateExceptionCommand>(x => x.NotifyUserIds!.Single() == hrUser), It.IsAny<CancellationToken>()), Times.Once);
+        _recorder.Verify(r => r.RecordAsync(TenantId, It.Is<EscalationRecord>(x =>
+            ((EscalationTarget.Employees)x.Target).Recipients.Single().EmployeeId == hrEmployee), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
     public async Task Undoing_restores_the_previous_review_state_while_the_case_is_still_in_scope()
     {
         var c = Case(ExceptionStatus.Resolved);
@@ -360,5 +395,76 @@ public class ExceptionInboxTests
         var created = cases.Should().ContainSingle().Subject;
         (created.EmployeeId, created.Type, created.Status).Should().Be((skipped.Id, ExceptionType.IdentityAnomaly, ExceptionStatus.Open));
         ExceptionMetadata.Parse(created.MetadataJson).Source.Should().Be(ExceptionMetadata.SourceCameraVerificationSkipped);
+    }
+
+    private static readonly DateTimeOffset MonthStart = new(2026, 10, 1, 0, 0, 0, TimeSpan.Zero);
+    private static readonly DateTimeOffset MonthEnd = new(2026, 11, 1, 0, 0, 0, TimeSpan.Zero);
+
+    [Fact]
+    public async Task ListPersonCases_QueriesTheSubjectAndRange_IncludingResolvedCases()
+    {
+        ExceptionListFilter? used = null;
+        _exceptions.Setup(x => x.GetListAsync(TenantId, It.IsAny<ExceptionListFilter>(), 1, It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .Callback((Guid _, ExceptionListFilter f, int _, int _, CancellationToken _) => used = f)
+            .ReturnsAsync(() => _cases.ToList());
+        Case(ExceptionStatus.Resolved);
+        Case(ExceptionStatus.Open);
+        ScopeIs(isHr: false, Subject);
+
+        var rows = await Provider().ListPersonCasesAsync(TenantId, Subject, InboxCategories.Alert, MonthStart, MonthEnd, Reviewer, default);
+
+        rows.Should().HaveCount(2);
+        rows.Select(r => r.Item.Status).Should().BeEquivalentTo("resolved", "open");
+        used!.EmployeeIds.Should().Equal(Subject);
+        used.ActiveOnly.Should().BeFalse();
+        used.Calendar.Should().BeFalse();
+        (used.DetectedFrom, used.DetectedTo).Should().Be((MonthStart, MonthEnd));
+    }
+
+    [Fact]
+    public async Task ListPersonCases_ExcludesCalendarTypes()
+    {
+        Case().Type = ExceptionType.MeetingNoShow;
+        ScopeIs(isHr: false, Subject);
+
+        (await Provider().ListPersonCasesAsync(TenantId, Subject, InboxCategories.Alert, MonthStart, MonthEnd, Reviewer, default))
+            .Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task ListPersonCases_RequestCategoryReturnsEmpty()
+    {
+        Case();
+
+        (await Provider().ListPersonCasesAsync(TenantId, Subject, InboxCategories.Request, MonthStart, MonthEnd, Reviewer, default))
+            .Should().BeEmpty();
+        _exceptions.Verify(x => x.GetListAsync(It.IsAny<Guid>(), It.IsAny<ExceptionListFilter>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ListPersonCases_CanOpenTrueInScope_FalseOutOfScope()
+    {
+        Case();
+        ScopeIs(isHr: false, Subject);
+        var inScope = await Provider().ListPersonCasesAsync(TenantId, Subject, InboxCategories.Alert, MonthStart, MonthEnd, Reviewer, default);
+        ScopeIs(isHr: false);
+        var outOfScope = await Provider().ListPersonCasesAsync(TenantId, Subject, InboxCategories.Alert, MonthStart, MonthEnd, Reviewer, default);
+
+        inScope.Single().CanOpen.Should().BeTrue();
+        outOfScope.Single().CanOpen.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task ListPersonCases_MapsAsInfoWithNoActions()
+    {
+        Case();
+        ScopeIs(isHr: false, Subject);
+        ApproverOf(Subject);
+
+        var row = (await Provider().ListPersonCasesAsync(TenantId, Subject, InboxCategories.Alert, MonthStart, MonthEnd, Reviewer, default)).Single();
+
+        row.Item.Direction.Should().Be(InboxDirections.Info);
+        row.Item.AvailableActions.Should().BeEmpty();
+        row.Item.RequestedBy!.Id.Should().Be(Subject);
     }
 }

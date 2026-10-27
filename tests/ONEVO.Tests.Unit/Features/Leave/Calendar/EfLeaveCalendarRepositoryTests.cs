@@ -45,7 +45,7 @@ public class EfLeaveCalendarRepositoryTests
         rows[0].EmployeeName.Should().Be("Priya Nair");
         rows[0].DepartmentName.Should().Be("Engineering");
         rows[0].LegalEntityName.Should().Be("Acme Lanka");
-        rows[0].LeaveTypeCategory.Should().Be(LeaveTypeCategories.Annual);
+        rows[0].LeaveTypeColor.Should().Be("#16A34A");
     }
 
     [Fact]
@@ -236,8 +236,7 @@ public class EfLeaveCalendarRepositoryTests
         TenantId = tenantId,
         Name = name,
         Code = code,
-        Category = LeaveTypeCategories.Annual,
-        DefaultDaysPerYear = 20m,
+        Color = "#16A34A",
         IsActive = true
     };
 

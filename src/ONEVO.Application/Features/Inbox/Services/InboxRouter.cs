@@ -21,7 +21,6 @@ public interface IInboxRouter
         Guid tenantId, Guid callerEmployeeId, string source, string kind, Guid id, string action, JsonElement? body, CancellationToken ct);
     IReadOnlyList<InboxKindDescriptor> GetKinds();
     Task<InboxHistoryPage> GetHistoryAsync(Guid tenantId, Guid callerEmployeeId, InboxHistoryQuery query, CancellationToken ct);
-    Task<Result<InboxBulkResult>> ExecuteBulkAsync(Guid tenantId, Guid callerEmployeeId, InboxBulkRequest request, CancellationToken ct);
 }
 
 /// <summary>
@@ -30,17 +29,14 @@ public interface IInboxRouter
 /// unread-message count from Conversations. Providers run one after another: they share the request's
 /// DbContext, which is not safe for concurrent use.
 /// The Inbox Standard parts every kind shares live here too: the kind registry, the generic "revert" action
-/// (run by the kind's <see cref="IInboxDecisionReverter"/>), one merged Steps timeline, History and Bulk.
+/// (run by the kind's <see cref="IInboxDecisionReverter"/>), one merged Steps timeline and History.
 /// </summary>
 public sealed class InboxRouter : IInboxRouter
 {
     public const string SourceFilterKey = "source";
     public const string KindFilterKey = "kind";
     public const int MaxPageSize = 100;
-    public const int MaxBulkItems = 100;
     private const string NotFoundMessage = "Inbox item not found.";
-    public const string BulkNotAllowedMessage = "Bulk actions are not available for one or more of the selected items.";
-    public const string BulkEmptyMessage = "Select at least one item.";
 
     private readonly IReadOnlyList<IInboxSourceProvider> _providers;
     private readonly IConversationUnreadCounts _unread;
@@ -117,12 +113,11 @@ public sealed class InboxRouter : IInboxRouter
     public async Task<InboxCounts> GetCountsAsync(Guid tenantId, Guid callerEmployeeId, CancellationToken ct)
     {
         var items = await CollectAsync(tenantId, callerEmployeeId, new InboxQuery(), ct);
-        var unread = await _unread.GetAsync(tenantId, callerEmployeeId, items.Select(Ref).ToList(), ct);
         var needsMe = items.Where(i => i.IsPending
             && (i.Category == InboxCategories.Alert || (i.Category == InboxCategories.Request && i.Direction == InboxDirections.Received))).ToList();
         return new InboxCounts(
             PendingReceived: items.Count(i => i.IsPending && i.Category == InboxCategories.Request && i.Direction == InboxDirections.Received),
-            UnreadMessages: unread.Values.Sum(),
+            UnreadMessages: await _unread.TotalInChatsAsync(tenantId, callerEmployeeId, ct),
             OpenAlerts: items.Count(i => i.IsPending && i.Category == InboxCategories.Alert),
             BySource: needsMe.GroupBy(i => i.Source).ToDictionary(g => g.Key, g => g.Count()),
             ByKind: needsMe.GroupBy(i => $"{i.Source}:{i.Kind}").ToDictionary(g => g.Key, g => g.Count()));
@@ -193,68 +188,6 @@ public sealed class InboxRouter : IInboxRouter
                 item?.Title ?? SnapshotTitle(entry) ?? "Item no longer available", item));
         }
         return new InboxHistoryPage(rows, journal.Total, page, pageSize);
-    }
-
-    public async Task<Result<InboxBulkResult>> ExecuteBulkAsync(
-        Guid tenantId, Guid callerEmployeeId, InboxBulkRequest request, CancellationToken ct)
-    {
-        var refs = request.Items.Distinct().ToList();
-        if (refs.Count == 0)
-            return Result<InboxBulkResult>.UnprocessableEntity(BulkEmptyMessage);
-        if (refs.Count > MaxBulkItems)
-            return Result<InboxBulkResult>.UnprocessableEntity($"At most {MaxBulkItems} items can be updated at once.");
-        if (refs.Any(r => _kinds.Find(r.Source, r.Kind)?.Has(InboxCapabilities.Bulk) != true || ProviderFor(r.Source) is null))
-            return Result<InboxBulkResult>.UnprocessableEntity(BulkNotAllowedMessage);
-
-        var body = JsonSerializer.SerializeToElement(new { comment = request.Comment, outcome = request.Outcome });
-        var succeeded = new List<ItemRef>();
-        var failed = new List<InboxBulkFailure>();
-
-        void Collect(ItemRef itemRef, Result<InboxActionResult> result)
-        {
-            if (result.IsSuccess)
-                succeeded.Add(itemRef);
-            else
-                failed.Add(new InboxBulkFailure(itemRef, result.Error ?? "The action failed."));
-        }
-
-        foreach (var group in refs.GroupBy(r => (r.Source, r.Kind)))
-        {
-            var provider = ProviderFor(group.Key.Source)!;
-            if (provider is IInboxBulkActionProvider batching)
-            {
-                var batched = await batching.ExecuteBulkAsync(
-                    tenantId, group.Key.Kind, request.Action, group.Select(r => r.Id).ToList(), body, callerEmployeeId, ct);
-                if (batched is not null)
-                {
-                    foreach (var (itemRef, result) in batched)
-                    {
-                        Collect(itemRef, result);
-                        await PublishAsync(tenantId, result, itemRef, request.Action, ct);
-                    }
-                    _unitOfWork.ClearTracking();
-                    continue;
-                }
-            }
-            foreach (var itemRef in group)
-            {
-                Result<InboxActionResult> result;
-                try
-                {
-                    result = await provider.ExecuteActionAsync(tenantId, itemRef.Kind, itemRef.Id, request.Action, body, callerEmployeeId, ct);
-                }
-                catch (Exception ex) when (ex is not OperationCanceledException)
-                {
-                    _logger.LogWarning(ex, "Inbox bulk {Action} failed on {Source}/{Kind}/{Id}", request.Action, itemRef.Source, itemRef.Kind, itemRef.Id);
-                    result = Result<InboxActionResult>.Failure("The action failed.", 500);
-                }
-                // A failed item's tracked-but-unsaved changes must never be flushed by the next item's save.
-                _unitOfWork.ClearTracking();
-                Collect(itemRef, result);
-                await PublishAsync(tenantId, result, itemRef, request.Action, ct);
-            }
-        }
-        return Result<InboxBulkResult>.Success(new InboxBulkResult(succeeded, failed));
     }
 
     private IInboxSourceProvider? ProviderFor(string source) => _providers.FirstOrDefault(p => p.Source == source);

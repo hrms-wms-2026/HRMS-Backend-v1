@@ -57,6 +57,8 @@ public class AttendanceInboxTests
         public Mock<ONEVO.Application.Features.Leave.Approval.RepositoryInterfaces.ILeaveApprovalRepository> LeaveApprovals { get; } = new();
         public List<ONEVO.Domain.Features.TimeAttendance.Alerts.AttendanceAlert> OpenAlerts { get; } = new();
         public List<ONEVO.Domain.Features.TimeAttendance.Alerts.AttendanceAlert> OwnAlerts { get; } = new();
+        public Dictionary<Guid, ONEVO.Domain.Features.TimeAttendance.Alerts.AttendanceAlertDeduction> DeductionRows { get; } = new();
+        public Mock<ONEVO.Application.Features.TimeAttendance.Alerts.IAttendanceAlertDeductionRepository> DeductionRepo { get; } = new();
 
         public Fixture()
         {
@@ -98,6 +100,11 @@ public class AttendanceInboxTests
                 .ReturnsAsync(() => OwnAlerts.ToList());
             Alerts.Setup(x => x.GetByIdAsync(TenantId, It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync((Guid _, Guid id, CancellationToken _) => OpenAlerts.Concat(OwnAlerts).FirstOrDefault(a => a.Id == id));
+            DeductionRepo.Setup(x => x.GetByAlertAsync(TenantId, It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync((Guid _, Guid id, CancellationToken _) => DeductionRows.GetValueOrDefault(id));
+            DeductionRepo.Setup(x => x.ListByAlertsAsync(TenantId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync((Guid _, IReadOnlyCollection<Guid> ids, CancellationToken _) =>
+                    DeductionRows.Where(d => ids.Contains(d.Key)).ToDictionary(d => d.Key, d => d.Value));
         }
 
         public Mock<IConversationRepository> Conversations()
@@ -112,9 +119,14 @@ public class AttendanceInboxTests
             Attendance.Object, WorkLocations.Object, Tray.Object, Mock.Of<IWorkModeRepository>(), Mock.Of<ILegalEntityRepository>(),
             Sender.Object, Journal, new FakeUnitOfWork(), Conversations().Object, Clock, AlertInbox());
 
+        /// <summary>The day's attendance for late/early clock times; unset = the card shows none.</summary>
+        public ONEVO.Application.Features.TimeAttendance.Services.IEmployeeAttendancePeriodReader? Periods { get; set; }
+
         public AttendanceAlertInbox AlertInbox() => new(
             CurrentUser.Object, Employees.Object, Authority.Object, Alerts.Object, Entitlements.Object, LeaveApprovals.Object, Sender.Object,
-            Journal, new FakeUnitOfWork(), Clock);
+            Journal, new FakeUnitOfWork(), Clock,
+            new ONEVO.Application.Features.TimeAttendance.Alerts.AttendanceDeductionService(DeductionRepo.Object, Entitlements.Object, LeaveApprovals.Object, Clock),
+            DeductionRepo.Object, Periods);
 
         public ONEVO.Domain.Features.TimeAttendance.Alerts.AttendanceAlert Alert(Guid employeeId, string signal = ONEVO.Domain.Features.TimeAttendance.Alerts.AttendanceAlertSignals.AbsentDays) => new()
         {
@@ -598,5 +610,262 @@ public class AttendanceInboxTests
         (await f.Provider().GetDetailAsync(f.TenantId, AttendanceInboxKinds.Alert, alert.Id, f.Approver.Id, default)).Should().NotBeNull();
         f.Authority.Verify(a => a.ResolveVisibilityAsync(It.Is<EmployeeAuthorityVisibilityRequest>(r =>
             r.RequiredPermission == "attendance:read" && r.LegalEntityId == f.LegalEntityId), It.IsAny<CancellationToken>()), Times.AtLeastOnce);
+    }
+
+    private static readonly DateTimeOffset MonthStart = new(2026, 10, 1, 0, 0, 0, TimeSpan.Zero);
+    private static readonly DateTimeOffset MonthEnd = new(2026, 11, 1, 0, 0, 0, TimeSpan.Zero);
+
+    private static void PersonHistory(Fixture f, IReadOnlyList<AttendanceCorrection>? corrections = null,
+        IReadOnlyList<WorkAreaChangeRequest>? workAreas = null, IReadOnlyList<LocationChangeRequest>? locations = null,
+        IReadOnlyList<DeviceChangeRequest>? devices = null,
+        IReadOnlyList<ONEVO.Domain.Features.TimeAttendance.Alerts.AttendanceAlert>? alerts = null)
+    {
+        f.Corrections.Setup(x => x.ListForEmployeeCreatedAsync(f.TenantId, f.Worker.Id, MonthStart, MonthEnd, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(corrections ?? []);
+        f.WorkAreas.Setup(x => x.ListForEmployeeCreatedAsync(f.TenantId, f.Worker.Id, MonthStart, MonthEnd, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(workAreas ?? []);
+        f.Locations.Setup(x => x.ListForEmployeeCreatedAsync(f.TenantId, f.Worker.Id, MonthStart, MonthEnd, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(locations ?? []);
+        f.Devices.Setup(x => x.ListForEmployeeAsync(f.TenantId, f.Worker.Id, It.IsAny<CancellationToken>())).ReturnsAsync(devices ?? []);
+        f.Alerts.Setup(x => x.ListForEmployeeAsync(f.TenantId, f.Worker.Id, It.IsAny<DateOnly>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Guid _, Guid _, DateOnly from, DateOnly to, CancellationToken _) => (alerts ?? []).Where(a => a.WorkDate >= from && a.WorkDate <= to).ToList());
+    }
+
+    [Fact]
+    public async Task ListPersonCases_Request_ReturnsAllFourKindsInRange()
+    {
+        var f = new Fixture();
+        var inRange = MonthStart.AddDays(3);
+        PersonHistory(f,
+            corrections: [f.Correction()],
+            workAreas: [new WorkAreaChangeRequest { Id = Guid.NewGuid(), TenantId = f.TenantId, EmployeeId = f.Worker.Id, LegalEntityId = f.LegalEntityId, RequestedAt = inRange }],
+            locations: [new LocationChangeRequest { Id = Guid.NewGuid(), TenantId = f.TenantId, EmployeeId = f.Worker.Id, LegalEntityId = f.LegalEntityId, RequestedAt = inRange }],
+            devices: [
+                new DeviceChangeRequest { Id = Guid.NewGuid(), TenantId = f.TenantId, EmployeeId = f.Worker.Id, LegalEntityId = f.LegalEntityId, RequestedAt = inRange },
+                new DeviceChangeRequest { Id = Guid.NewGuid(), TenantId = f.TenantId, EmployeeId = f.Worker.Id, LegalEntityId = f.LegalEntityId, RequestedAt = MonthEnd.AddDays(2) }]);
+
+        f.Authority.Setup(a => a.ResolveApproverAsync(It.IsAny<EmployeeApprovalRouteRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<EmployeeApprovalRoute>.NotFound("no approver"));
+
+        var rows = await f.Provider().ListPersonCasesAsync(f.TenantId, f.Worker.Id, InboxCategories.Request, MonthStart, MonthEnd, f.Approver.Id, default);
+
+        rows.Select(r => r.Item.Kind).Should().BeEquivalentTo(
+            AttendanceInboxKinds.Correction, AttendanceInboxKinds.WorkModeChange, AttendanceInboxKinds.LocationChange, AttendanceInboxKinds.DeviceChange);
+        rows.Should().OnlyContain(r => r.Item.Direction == InboxDirections.Info && r.Item.AvailableActions.Count == 0);
+    }
+
+    [Fact]
+    public async Task ListPersonCases_Alert_ReturnsAlertsOnly()
+    {
+        var f = new Fixture();
+        var alert = f.Alert(f.Worker.Id);
+        PersonHistory(f, corrections: [f.Correction()], alerts: [alert]);
+
+        var rows = await f.Provider().ListPersonCasesAsync(f.TenantId, f.Worker.Id, InboxCategories.Alert, MonthStart, MonthEnd, f.Approver.Id, default);
+
+        rows.Should().ContainSingle().Which.Item.Id.Should().Be(alert.Id);
+        f.Corrections.Verify(x => x.ListForEmployeeCreatedAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<DateTimeOffset>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ListPersonCases_IncludesFinishedRequests()
+    {
+        var f = new Fixture();
+        PersonHistory(f, corrections: [f.Correction("approved"), f.Correction("rejected")]);
+
+        var rows = await f.Provider().ListPersonCasesAsync(f.TenantId, f.Worker.Id, InboxCategories.Request, MonthStart, MonthEnd, f.Approver.Id, default);
+
+        rows.Select(r => r.Item.Status).Should().BeEquivalentTo("approved", "rejected");
+    }
+
+    [Fact]
+    public async Task ListPersonCases_CanOpenFalseWithoutAuthority_TrueForTheApproverOfAPendingRequest()
+    {
+        var f = new Fixture();
+        var alert = f.Alert(f.Worker.Id);
+        PersonHistory(f, corrections: [f.Correction()], alerts: [alert]);
+        f.Authority.Setup(a => a.ResolveApproverAsync(It.IsAny<EmployeeApprovalRouteRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<EmployeeApprovalRoute>.Success(new EmployeeApprovalRoute(f.Approver.Id, f.ApproverUserId, Guid.NewGuid(),
+                "attendance:approve", EmployeeAuthorityPurpose.AttendanceCorrectionApproval, EmployeeApprovalRouteSource.ReportingLine, null)));
+        f.Scope.Add(f.Worker.Id);
+
+        var asApprover = await f.Provider().ListPersonCasesAsync(f.TenantId, f.Worker.Id, InboxCategories.Request, MonthStart, MonthEnd, f.Approver.Id, default);
+        var alertsAsReviewer = await f.Provider().ListPersonCasesAsync(f.TenantId, f.Worker.Id, InboxCategories.Alert, MonthStart, MonthEnd, f.Approver.Id, default);
+        f.CurrentUser.Setup(x => x.HasPermission("attendance:approve")).Returns(false);
+        var asNobody = await f.Provider().ListPersonCasesAsync(f.TenantId, f.Worker.Id, InboxCategories.Request, MonthStart, MonthEnd, f.Approver.Id, default);
+        var alertsAsNobody = await f.Provider().ListPersonCasesAsync(f.TenantId, f.Worker.Id, InboxCategories.Alert, MonthStart, MonthEnd, f.Approver.Id, default);
+
+        asApprover.Single().CanOpen.Should().BeTrue();
+        alertsAsReviewer.Single().CanOpen.Should().BeTrue();
+        asNobody.Single().CanOpen.Should().BeFalse();
+        alertsAsNobody.Single().CanOpen.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task ListPersonCases_HandlesRowsWithoutALegalEntity()
+    {
+        var f = new Fixture();
+        var alert = f.Alert(f.Worker.Id);
+        alert.LegalEntityId = null;
+        PersonHistory(f,
+            devices: [new DeviceChangeRequest { Id = Guid.NewGuid(), TenantId = f.TenantId, EmployeeId = f.Worker.Id, LegalEntityId = null, RequestedAt = MonthStart.AddDays(1) }],
+            alerts: [alert]);
+        f.Authority.Setup(a => a.ResolveApproverAsync(It.IsAny<EmployeeApprovalRouteRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<EmployeeApprovalRoute>.NotFound("no approver"));
+
+        var requests = await f.Provider().ListPersonCasesAsync(f.TenantId, f.Worker.Id, InboxCategories.Request, MonthStart, MonthEnd, f.Approver.Id, default);
+        var alerts = await f.Provider().ListPersonCasesAsync(f.TenantId, f.Worker.Id, InboxCategories.Alert, MonthStart, MonthEnd, f.Approver.Id, default);
+
+        requests.Should().ContainSingle();
+        alerts.Should().ContainSingle();
+    }
+
+    [Fact]
+    public async Task ListPersonCases_Alert_IsDatedAndBucketedByWorkDate_AndOpenAlertsStayLive()
+    {
+        var f = new Fixture();
+        var open = f.Alert(f.Worker.Id);                       // work date 9 Oct, detected 10 Oct
+        var resolved = f.Alert(f.Worker.Id);
+        resolved.WorkDate = new DateOnly(2026, 10, 2);
+        resolved.Status = "resolved";
+        var september = f.Alert(f.Worker.Id);
+        september.WorkDate = new DateOnly(2026, 9, 25);        // detected in October, about September
+        PersonHistory(f, alerts: [open, resolved, september]);
+
+        var rows = await f.Provider().ListPersonCasesAsync(f.TenantId, f.Worker.Id, InboxCategories.Alert, MonthStart, MonthEnd, f.Approver.Id, default);
+
+        rows.Select(r => r.Item.Id).Should().BeEquivalentTo([open.Id, resolved.Id]);
+        var openRow = rows.Single(r => r.Item.Id == open.Id).Item;
+        openRow.CreatedAt.Should().Be(new DateTimeOffset(2026, 10, 9, 12, 0, 0, TimeSpan.Zero));
+        openRow.IsPending.Should().BeTrue();
+        rows.Single(r => r.Item.Id == resolved.Id).Item.IsPending.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task ListPersonCases_Request_PendingRowsStayLive()
+    {
+        var f = new Fixture();
+        PersonHistory(f, corrections: [f.Correction(), f.Correction("approved")]);
+        f.Authority.Setup(a => a.ResolveApproverAsync(It.IsAny<EmployeeApprovalRouteRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<EmployeeApprovalRoute>.NotFound("no approver"));
+
+        var rows = await f.Provider().ListPersonCasesAsync(f.TenantId, f.Worker.Id, InboxCategories.Request, MonthStart, MonthEnd, f.Approver.Id, default);
+
+        rows.Single(r => r.Item.Status == "pending").Item.IsPending.Should().BeTrue();
+        rows.Single(r => r.Item.Status == "approved").Item.IsPending.Should().BeFalse();
+    }
+
+    // ---- late/early deductions --------------------------------------------------------------------
+
+    private static (ONEVO.Domain.Features.TimeAttendance.Alerts.AttendanceAlert Alert, ONEVO.Domain.Features.Leave.Entitlement.Entities.LeaveEntitlement Entitlement)
+        ChargedLateAlert(Fixture f)
+    {
+        var alert = f.Alert(f.Worker.Id, ONEVO.Domain.Features.TimeAttendance.Alerts.AttendanceAlertSignals.LateClockIns);
+        f.OpenAlerts.Add(alert);
+        f.Scope.Add(f.Worker.Id);
+        var typeId = Guid.NewGuid();
+        var entitlement = new ONEVO.Domain.Features.Leave.Entitlement.Entities.LeaveEntitlement
+            { Id = Guid.NewGuid(), TenantId = f.TenantId, EmployeeId = f.Worker.Id, LeaveTypeId = typeId, Year = 2026, TotalHours = 80m, UsedHours = 0.5m };
+        f.Entitlements.Setup(e => e.GetTrackedByEmployeeTypeYearAsync(f.TenantId, f.Worker.Id, typeId, 2026, It.IsAny<CancellationToken>())).ReturnsAsync(entitlement);
+        f.LeaveApprovals.Setup(a => a.ListLeaveTypeNamesAsync(f.TenantId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, string> { [typeId] = "Annual Leave" });
+        f.DeductionRows[alert.Id] = new ONEVO.Domain.Features.TimeAttendance.Alerts.AttendanceAlertDeduction
+        {
+            Id = Guid.NewGuid(), TenantId = f.TenantId, EmployeeId = f.Worker.Id, AlertId = alert.Id, LeaveTypeId = typeId, Year = 2026,
+            Minutes = 30, Multiplier = 1m, Hours = 0.5m, Status = ONEVO.Domain.Features.TimeAttendance.Alerts.AttendanceAlertDeductionStatuses.Charged,
+        };
+        return (alert, entitlement);
+    }
+
+    [Fact]
+    public async Task Excuse_RefundsTheDeductionImmediately()
+    {
+        var f = new Fixture();
+        var (alert, entitlement) = ChargedLateAlert(f);
+
+        var result = await f.Provider().ExecuteActionAsync(f.TenantId, AttendanceInboxKinds.Alert, alert.Id, AttendanceInboxActions.Resolve,
+            Body(new { outcome = "excused" }), f.Approver.Id, default);
+
+        result.IsSuccess.Should().BeTrue(result.Error);
+        f.DeductionRows[alert.Id].Status.Should().Be(ONEVO.Domain.Features.TimeAttendance.Alerts.AttendanceAlertDeductionStatuses.Refunded);
+        entitlement.UsedHours.Should().Be(0m);
+        f.LeaveApprovals.Verify(a => a.AddBalanceAuditAsync(It.Is<ONEVO.Domain.Features.Leave.BalanceAudit.Entities.LeaveBalanceAudit>(x =>
+            x.ChangeType == "adjustment" && x.HoursChanged == 0.5m), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Confirm_KeepsTheDeduction()
+    {
+        var f = new Fixture();
+        var (alert, entitlement) = ChargedLateAlert(f);
+
+        (await f.Provider().ExecuteActionAsync(f.TenantId, AttendanceInboxKinds.Alert, alert.Id, AttendanceInboxActions.Resolve,
+            Body(new { outcome = "confirmed" }), f.Approver.Id, default)).IsSuccess.Should().BeTrue();
+
+        f.DeductionRows[alert.Id].Status.Should().Be(ONEVO.Domain.Features.TimeAttendance.Alerts.AttendanceAlertDeductionStatuses.Charged);
+        entitlement.UsedHours.Should().Be(0.5m);
+    }
+
+    [Fact]
+    public async Task Detail_ShowsLateByAndDeductedFacts()
+    {
+        var f = new Fixture();
+        var (alert, _) = ChargedLateAlert(f);
+
+        var detail = await f.Provider().GetDetailAsync(f.TenantId, AttendanceInboxKinds.Alert, alert.Id, f.Approver.Id, default);
+
+        detail!.Facts.Should().Equal(new InboxFact("Late by", "30 min"), new InboxFact("Deducted", "0.5 h from Annual Leave"));
+        detail.ChangeSet.Single(c => c.Field == "outcome").Options!.Single(o => o.Value == "excused").Label
+            .Should().Be("Excused - stop counting it and refund the deduction");
+    }
+
+    [Fact]
+    public async Task Alerts_AreDatedByTheirWorkDay_NotTheDetectionRun_TheStepKeepsDetection()
+    {
+        var f = new Fixture();
+        var alert = f.Alert(f.Worker.Id, ONEVO.Domain.Features.TimeAttendance.Alerts.AttendanceAlertSignals.LateClockIns); // work day 9 Oct, detected 10 Oct
+        f.OpenAlerts.Add(alert);
+        f.Scope.Add(f.Worker.Id);
+        var workDay = new DateTimeOffset(2026, 10, 9, 12, 0, 0, TimeSpan.Zero);
+
+        var item = (await f.Provider().ListAsync(f.TenantId, new InboxQuery(Category: [InboxCategories.Alert]), f.Approver.Id, default)).Single();
+        var detail = await f.Provider().GetDetailAsync(f.TenantId, AttendanceInboxKinds.Alert, alert.Id, f.Approver.Id, default);
+
+        (item.CreatedAt, item.UpdatedAt).Should().Be((workDay, workDay));
+        detail!.Item.CreatedAt.Should().Be(workDay);
+        detail.Steps.Single(s => s.Key == "detected").At.Should().Be(alert.DetectedAt);
+    }
+
+    [Fact]
+    public async Task A_late_clock_in_shows_when_they_clocked_in_what_was_expected_and_how_late()
+    {
+        var f = new Fixture();
+        var alert = f.Alert(f.Worker.Id, ONEVO.Domain.Features.TimeAttendance.Alerts.AttendanceAlertSignals.LateClockIns); // work day 9 Oct (Fri)
+        f.OpenAlerts.Add(alert);
+        f.Scope.Add(f.Worker.Id);
+        var day = alert.WorkDate;
+        // 09:00 shift in UTC+5:30; clocked in 04:15 UTC = 09:45 local.
+        var record = new AttendanceRecord
+        {
+            Id = Guid.NewGuid(), TenantId = f.TenantId, EmployeeId = f.Worker.Id, Date = day, ExpectedWorkingDay = true,
+            ScheduledStart = new TimeOnly(9, 0), ScheduledEnd = new TimeOnly(17, 30),
+            ActualStart = DateTimeOffset.Parse("2026-10-09T04:15:00+00:00"), ActualEnd = DateTimeOffset.Parse("2026-10-09T12:00:00+00:00"),
+        };
+        var today = new DateOnly(2026, 10, 14);
+        var periods = new Mock<ONEVO.Application.Features.TimeAttendance.Services.IEmployeeAttendancePeriodReader>();
+        periods.Setup(p => p.LoadAsync(f.TenantId, f.Worker.Id, alert.LegalEntityId, It.IsAny<ONEVO.Application.Features.CoreHr.Employee.Helpers.EmployeePeriod>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ONEVO.Application.Features.TimeAttendance.Services.AttendancePeriodData(
+                [record], TimeZoneInfo.CreateCustomTimeZone("t", TimeSpan.FromHours(5.5), "t", "t"), Now, today, null, new Dictionary<DateOnly, int>(),
+                Array.Empty<ONEVO.Domain.Features.Leave.Request.Entities.LeaveRequest>(), DateTimeOffset.Parse("2026-10-08T18:30:00+00:00"),
+                DateTimeOffset.Parse("2026-10-09T18:30:00+00:00"),
+                ONEVO.Application.Features.TimeAttendance.Services.ExpectedWorkdayCalendar.Build(
+                    new HashSet<int> { 1, 2, 3, 4, 5 }, new HashSet<DateOnly>(), day, day, day, null, today)));
+        f.Periods = periods.Object;
+
+        var detail = await f.Provider().GetDetailAsync(f.TenantId, AttendanceInboxKinds.Alert, alert.Id, f.Approver.Id, default);
+
+        detail!.ChangeSet.Select(c => (c.Field, c.Label, c.After)).Should().ContainInOrder(
+            ("clock_in", "Clocked in", "9:45 AM"), ("expected_in", "Expected", "9:00 AM"), ("minutes", "Late by", "45 min"));
+        detail.ChangeSet.Select(c => c.Field).Should().StartWith(["signal", "work_date", "clock_in"]);
     }
 }

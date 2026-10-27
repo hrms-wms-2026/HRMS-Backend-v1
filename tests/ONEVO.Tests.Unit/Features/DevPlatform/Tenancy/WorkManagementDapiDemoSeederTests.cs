@@ -19,6 +19,7 @@ using ONEVO.Infrastructure.Identity.Tenancy;
 using ONEVO.Infrastructure.Persistence;
 using ONEVO.Infrastructure.Persistence.Interceptors;
 using ONEVO.Infrastructure.Persistence.Repositories.TimeAttendance;
+using ONEVO.Domain.Features.OrgStructure.Entities;
 using ONEVO.Infrastructure.Persistence.Seeders;
 using ONEVO.Infrastructure.Services.TimeAttendance;
 using ONEVO.Tests.Unit.Features.Auth;
@@ -251,6 +252,28 @@ public sealed class WorkManagementDapiDemoSeederTests : IDisposable
 
         secondUserCount.Should().Be(firstUserCount);
         secondRolePermissionCount.Should().Be(firstRolePermissionCount);
+    }
+
+    [Fact]
+    public async Task OrgStructureSeedAsync_HrManagerIsPrimaryCoverageOfEveryDepartment_AndRerunAddsNothing()
+    {
+        using var db = CreateContext();
+        await RunDevSmokeSeederAsync(db);
+        await RunDemoSeederAsync(db);
+        await RunOrgStructureSeederAsync(db);
+        await RunOrgStructureSeederAsync(db);
+
+        db.ChangeTracker.Clear();
+        var hrManager = await db.Positions.SingleAsync(p => p.TenantId == DapiTenantId && p.Code == DapiOrgStructureData.HrManagerPosition);
+        var departmentIds = await db.Departments.Where(d => d.TenantId == DapiTenantId && d.LegalEntityId == hrManager.LegalEntityId).Select(d => d.Id).ToListAsync();
+        var coverage = await db.ManagementCoverageRecords
+            .Where(c => c.OwnerPositionId == hrManager.Id && c.CoveredTargetType == ManagementCoverageRecord.TargetDepartment)
+            .ToListAsync();
+
+        coverage.Select(c => c.CoveredDepartmentId!.Value).Should().BeEquivalentTo(departmentIds);
+        coverage.Should().OnlyContain(c => c.OwnerOrder == 1
+            && c.Source == ManagementCoverageRecord.SourceManual
+            && c.Status == ManagementCoverageRecord.StatusActive);
     }
 
     [Fact]
@@ -681,12 +704,13 @@ public sealed class WorkManagementDapiDemoSeederTests : IDisposable
         eposTaskCategories.Should().HaveCount(1);
         eposTaskCategories[0].Id.Should().Be(preexistingId);
 
-        // The remaining 3 canonical categories should have been newly seeded for the same project.
+        // The remaining 4 canonical categories (incl. the system Meeting) should have been newly seeded for the same project.
         var allEposCategories = await verify.TaskCategories
             .Where(c => c.ProjectId == eposProjectId)
             .ToListAsync();
-        allEposCategories.Should().HaveCount(4);
-        allEposCategories.Select(c => c.Name).Should().BeEquivalentTo(["task", "bug", "story", "feature"]);
+        allEposCategories.Should().HaveCount(5);
+        allEposCategories.Select(c => c.Name).Should().BeEquivalentTo(["task", "bug", "story", "feature", "meeting"]);
+        allEposCategories.Should().ContainSingle(c => c.SystemKey == TaskCategorySystemKeys.Meeting);
 
         // Every seeded WorkTask/task.create request under EPOS that uses the "task" category must
         // resolve to the pre-existing (reused) id, not a freshly-minted duplicate.

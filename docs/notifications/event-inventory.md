@@ -32,7 +32,7 @@ Action for shared events is `open_related` (existing `RelatedEntityType`/`Relate
 | `exception_alert_detected`, `exception_alert_escalated` | `Features/Monitoring/Exceptions/Services/ExceptionAlertRouter.cs`, `.../Inbox/ExceptionCaseActions.cs` | direct | Reviewer / HR | orchestrator |
 | `attendance_correction_request_created/decided/cancelled` | `Features/TimeAttendance/Commands/AttendanceCorrections/AttendanceCorrectionWorkflow.cs` | direct | Approver / requester | orchestrator |
 | `work_area_change_request_created/decided/cancelled` | `Features/TimeAttendance/Commands/WorkAreaChangeRequests/WorkAreaChangeRequestWorkflow.cs` | direct | Approver / requester | orchestrator |
-| `calendar_event_*` (12 codes), `calendar_connection_*` (3 codes) | `Features/Calendar/Services/CalendarNotificationSender.cs` | direct | Participants / organizer / connection owner | orchestrator |
+| `calendar_event_*` (15 codes), `calendar_connection_*` (3 codes) | `Features/Calendar/Services/CalendarNotificationSender.cs` | direct | Participants / organizer / connection owner | orchestrator |
 | `calendar_exception_detected`, `calendar_exception_raised_for_you`, `calendar_exception_escalated` | `Features/Calendar/Exceptions/CalendarCaseService.cs`, `CalendarExceptionEscalationSweepSource.cs`, `Monitoring/Exceptions/Inbox/ExceptionCaseActions.cs` | direct | Reviewer / subject employee / escalation target | orchestrator |
 
 Direct producers keep calling `INotificationDispatcher.SendTemplatedAsync`; the dispatcher is the cut-over

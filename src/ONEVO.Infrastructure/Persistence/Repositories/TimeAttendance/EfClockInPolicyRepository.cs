@@ -142,6 +142,14 @@ public class EfClockInPolicyRepository : IClockInPolicyRepository
         await _db.ClockInPolicies.AddAsync(policy, ct);
     }
 
+    public async Task<IReadOnlyList<ClockInPolicy>> ListActiveOnDateAsync(
+        Guid tenantId, Guid legalEntityId, DateOnly date, CancellationToken ct = default)
+        => await _db.ClockInPolicies.AsNoTracking()
+            .Include(p => p.LateDeductionRules)
+            .Where(p => p.TenantId == tenantId && p.LegalEntityId == legalEntityId && p.IsActive
+                && p.EffectiveFrom <= date && (p.EffectiveTo == null || p.EffectiveTo >= date))
+            .ToListAsync(ct);
+
     public void Update(ClockInPolicy policy)
     {
         _db.ClockInPolicies.Update(policy);

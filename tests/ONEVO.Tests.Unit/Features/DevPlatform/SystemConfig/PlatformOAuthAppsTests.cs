@@ -250,6 +250,7 @@ public class PlatformOAuthAppsTests
         Assert.Contains("meeting:delete:meeting", definition.DefaultScopes);
         Assert.Contains("meeting:read:meeting", definition.DefaultScopes);
         Assert.Contains("meeting:read:list_past_participants", definition.DefaultScopes);
+        Assert.Contains("meeting:read:list_past_instances", definition.DefaultScopes);
         Assert.Contains(PlatformOAuthProviderCatalog.CapabilityMeetings, definition.Capabilities);
     }
 

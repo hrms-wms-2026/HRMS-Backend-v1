@@ -25,7 +25,7 @@ public partial class InboxRouterTests
     [Fact]
     public void Kinds_lists_every_registered_descriptor()
     {
-        _kinds.Add(Kind("leave", "request", InboxCapabilities.Bulk));
+        _kinds.Add(Kind("leave", "request", InboxCapabilities.Revert));
 
         Router().GetKinds().Should().ContainSingle().Which.Kind.Should().Be("request");
     }
@@ -117,37 +117,5 @@ public partial class InboxRouterTests
         first.Items[1].ActionLabel.Should().Be("Rejected");
         second.Items.Should().ContainSingle().Which.Title.Should().Be("Annual leave - Bala");
         second.Items[0].Item.Should().NotBeNull();
-    }
-
-    [Fact]
-    public async Task Bulk_runs_each_item_on_its_own_and_reports_partial_failures()
-    {
-        _kinds.Add(Kind("leave", "request", InboxCapabilities.Bulk));
-        var ok = Guid.NewGuid();
-        var bad = Guid.NewGuid();
-        _leave.ActionResults[bad] = Result<InboxActionResult>.UnprocessableEntity("Balance too low.");
-
-        var result = await Router().ExecuteBulkAsync(TenantId, Me, new InboxBulkRequest("approve",
-            [new ItemRef("leave", "request", ok), new ItemRef("leave", "request", bad)], "fine"), default);
-
-        result.IsSuccess.Should().BeTrue();
-        result.Value!.Succeeded.Should().Equal(new ItemRef("leave", "request", ok));
-        result.Value.Failed.Should().ContainSingle().Which.Message.Should().Be("Balance too low.");
-        _leave.Actions.Select(a => a.Body!.Value.GetProperty("comment").GetString()).Should().AllBe("fine");
-        _uow.Verify(u => u.ClearTracking(), Times.Exactly(2));
-    }
-
-    [Fact]
-    public async Task Bulk_is_refused_when_any_item_kind_does_not_declare_Bulk()
-    {
-        _kinds.Add(Kind("leave", "request", InboxCapabilities.Bulk));
-        _kinds.Add(Kind("work", "approval", InboxCapabilities.Chat));
-
-        var result = await Router().ExecuteBulkAsync(TenantId, Me, new InboxBulkRequest("approve",
-            [new ItemRef("leave", "request", Guid.NewGuid()), new ItemRef("work", "approval", Guid.NewGuid())]), default);
-
-        result.StatusCode.Should().Be(422);
-        _leave.Actions.Should().BeEmpty();
-        _work.Actions.Should().BeEmpty();
     }
 }

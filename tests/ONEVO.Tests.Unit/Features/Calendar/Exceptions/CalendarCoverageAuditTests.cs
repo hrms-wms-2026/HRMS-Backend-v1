@@ -34,6 +34,7 @@ using ONEVO.Tests.Unit.Features.Inbox;
 using Xunit;
 using CoreEmployeeRepository = ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces.IEmployeeRepository;
 using MonitoringException = ONEVO.Domain.Features.Monitoring.Exceptions.Entities.Exception;
+using TaskMeetingRepository = ONEVO.Application.Features.WorkManagement.Meetings.RepositoryInterfaces.IMeetingRepository;
 
 namespace ONEVO.Tests.Unit.Features.Calendar.Exceptions;
 
@@ -113,9 +114,17 @@ public sealed class CalendarCoverageAuditTests
         events.Setup(e => e.ListParticipantEmployeeIdsInRangeAsync(healthy, Now.AddDays(-CalendarExceptionDefaults.LongWindowDays),
                 Now.AddDays(CalendarIncidentEngine.LookAheadDays), It.IsAny<CancellationToken>()))
             .ReturnsAsync([brokenEmployee, fineEmployee]);
+        // A series participant has no calendar event row: task-meeting attendees come from the meetings side. Someone in
+        // both lists is evaluated once.
+        var taskMeetingOnly = Guid.NewGuid();
+        var meetings = new Mock<TaskMeetingRepository>();
+        meetings.Setup(m => m.ListAttendeeEmployeeIdsInRangeAsync(healthy, Now.AddDays(-CalendarExceptionDefaults.LongWindowDays),
+                Now.AddDays(CalendarIncidentEngine.LookAheadDays), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([fineEmployee, taskMeetingOnly]);
         var employees = new Mock<CoreEmployeeRepository>();
         employees.Setup(e => e.GetByIdAsync(healthy, brokenEmployee, It.IsAny<CancellationToken>())).ThrowsAsync(new InvalidOperationException("row"));
         employees.Setup(e => e.GetByIdAsync(healthy, fineEmployee, It.IsAny<CancellationToken>())).ReturnsAsync((Employee?)null);
+        employees.Setup(e => e.GetByIdAsync(healthy, taskMeetingOnly, It.IsAny<CancellationToken>())).ReturnsAsync((Employee?)null);
         var incidents = new Mock<ICalendarIncidentRepository>();
         incidents.Setup(i => i.PurgeUnattachedAsync(healthy, It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>())).ReturnsAsync(2);
         var uow = new Mock<IUnitOfWork>();
@@ -125,6 +134,7 @@ public sealed class CalendarCoverageAuditTests
         services.AddSingleton(Mock.Of<ITenantContextSwitcher>());
         services.AddSingleton<IWritableTenantContext>(new TenantContextAccessor());
         services.AddSingleton(events.Object);
+        services.AddSingleton(meetings.Object);
         services.AddSingleton(Engine(employees));
         services.AddSingleton(incidents.Object);
         services.AddSingleton(uow.Object);
@@ -134,6 +144,8 @@ public sealed class CalendarCoverageAuditTests
 
         opened.Should().Be(0);
         employees.Verify(e => e.GetByIdAsync(healthy, fineEmployee, It.IsAny<CancellationToken>()), Times.Once, "one employee failing never stops the rest");
+        employees.Verify(e => e.GetByIdAsync(healthy, taskMeetingOnly, It.IsAny<CancellationToken>()), Times.Once,
+            "an employee whose only meetings are task meetings is evaluated too");
         incidents.Verify(i => i.PurgeUnattachedAsync(healthy, Now.AddDays(-CalendarExceptionDefaults.IncidentRetentionDays), It.IsAny<CancellationToken>()), Times.Once);
         incidents.Verify(i => i.PurgeUnattachedAsync(failing, It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()), Times.Never);
         incidents.Verify(i => i.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);

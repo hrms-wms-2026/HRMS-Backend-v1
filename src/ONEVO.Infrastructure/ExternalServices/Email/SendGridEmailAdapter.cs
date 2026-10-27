@@ -14,6 +14,12 @@ namespace ONEVO.Infrastructure.ExternalServices.Email;
 /// SECURITY: the Authorization header is built locally from the resolver-provided key,
 /// is never logged, and provider error bodies are never stored - only the HTTP status
 /// code is surfaced as a safe error.
+///
+/// IDEMPOTENCY: none. SendGrid's v3 Mail Send API documents no idempotency key header or field
+/// (https://www.twilio.com/docs/sendgrid/api-reference/mail-send/mail-send), so
+/// TransactionalEmailRequest.IdempotencyKey is deliberately not sent. If the API instance crashes
+/// after SendGrid accepted a message but before the outbox row is marked Published, the outbox
+/// retries it after the lease expires and the recipient may receive a duplicate (at-least-once).
 /// </summary>
 public sealed class SendGridEmailAdapter : IEmailProviderAdapter
 {

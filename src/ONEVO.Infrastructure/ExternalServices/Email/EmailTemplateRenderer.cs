@@ -39,6 +39,7 @@ public class EmailTemplateRenderer : IEmailTemplateRenderer
             "calendar_event_updated" => RenderCalendarEvent(fields, "updated"),
             "calendar_event_cancelled" => RenderCalendarEvent(fields, "cancelled"),
             "calendar_event_removed" => RenderCalendarEvent(fields, "removed"),
+            "calendar_event_link_removed" => RenderCalendarEvent(fields, "link_removed"),
             _ => throw new InvalidOperationException(
                 $"Unknown email template '{templateId}'. Add a case in EmailTemplateRenderer.")
         };
@@ -334,13 +335,14 @@ public class EmailTemplateRenderer : IEmailTemplateRenderer
         var startDateUtc = FormatCalendarEventStart(Get(f, "startDateUtc"));
         var location = Get(f, "location");
         var organizerName = Get(f, "organizerName");
-        var meetingLink = kind is "cancelled" or "removed" ? "" : Get(f, "meetingLink");
+        var meetingLink = kind is "cancelled" or "removed" or "link_removed" ? "" : Get(f, "meetingLink");
 
         var (subject, heading, intro, textIntro) = kind switch
         {
             "updated" => ($"Updated: {eventTitle}", "Event updated", $"{Escape(organizerName)} has updated the following event:", $"{organizerName} has updated \"{eventTitle}\"."),
             "cancelled" => ($"Cancelled: {eventTitle}", "Event cancelled", $"{Escape(organizerName)} has cancelled the following event:", $"{organizerName} has cancelled \"{eventTitle}\"."),
             "removed" => ($"Removed: {eventTitle}", "Removed from an event", $"{Escape(organizerName)} removed you from the following event:", $"{organizerName} removed you from \"{eventTitle}\"."),
+            "link_removed" => ($"Meeting link removed: {eventTitle}", "Online meeting removed", $"{Escape(organizerName)} removed the online meeting link from this event. The event itself is unchanged:", $"{organizerName} removed the online meeting link from \"{eventTitle}\". The event itself is unchanged."),
             _ => ($"You're invited: {eventTitle}", "Meeting invitation", $"{Escape(organizerName)} has invited you to the following event:", $"{organizerName} has invited you to \"{eventTitle}\"."),
         };
         var whenRow = $"""<tr><td style="padding:4px 8px 4px 0; color:#64748b;">When</td><td style="padding:4px 0;">{Escape(startDateUtc)}</td></tr>""";

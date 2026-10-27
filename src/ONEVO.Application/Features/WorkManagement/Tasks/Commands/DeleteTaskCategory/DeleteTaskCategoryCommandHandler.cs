@@ -50,6 +50,8 @@ public class DeleteTaskCategoryCommandHandler : IRequestHandler<DeleteTaskCatego
         var category = await _categories.GetByIdForTenantAsync(tenantId, request.CategoryId, ct);
         if (category is null)
             return Result.NotFound("Task category not found.");
+        if (category.SystemKey is not null)
+            return Result.Conflict("System categories can't be deleted.");
 
         var project = await _projects.GetByIdForTenantAsync(tenantId, category.ProjectId, ct);
         if (project is null || !project.IsActive)

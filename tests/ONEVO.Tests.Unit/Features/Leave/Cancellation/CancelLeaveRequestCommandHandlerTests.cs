@@ -1,3 +1,4 @@
+using ONEVO.Application.Features.Leave.Policy.Services;
 using FluentAssertions;
 using Microsoft.Extensions.Options;
 using Moq;
@@ -387,10 +388,8 @@ public class CancelLeaveRequestCommandHandlerTests
                     It.IsAny<DateOnly>(),
                     It.IsAny<CancellationToken>()))
                 .ReturnsAsync([]);
-            var policies = new Mock<ILeavePolicyRepository>();
-            policies.Setup(x => x.ListActiveAggregatesByLegalEntityIdsAsync(
-                    It.IsAny<Guid>(), It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
-                .ReturnsAsync(new Dictionary<Guid, LeavePolicyAggregate>());
+            var policies = new Mock<ILeavePolicyResolver>();
+            
 
             Sut = new CancelLeaveRequestCommandHandler(
                 currentUser.Object,

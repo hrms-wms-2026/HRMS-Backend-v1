@@ -6,6 +6,7 @@ using ONEVO.Application.Features.Calendar.DTOs.Responses;
 using ONEVO.Application.Features.Calendar.RepositoryInterfaces;
 using ONEVO.Application.Features.Calendar.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Meetings.Services;
 using ONEVO.Domain.Features.Calendar.Entities;
 
 namespace ONEVO.Application.Features.Calendar.Queries.GetCalendarEvents;
@@ -14,7 +15,8 @@ public sealed class GetCalendarEventsQueryHandler(
     ICurrentUser currentUser,
     IEmployeeRepository employees,
     ICalendarEventRepository events,
-    ICalendarRecurrenceExpander expander)
+    ICalendarRecurrenceExpander expander,
+    MeetingCalendarProjection? meetings = null)
     : IRequestHandler<GetCalendarEventsQuery, Result<CalendarEventsResponse>>
 {
     private static readonly Guid OccurrenceIdNamespace = Guid.Parse("6f1f9b2a-6c1e-4b7a-9c2e-8f6a1d2b3c4d");
@@ -76,6 +78,10 @@ public sealed class GetCalendarEventsQueryHandler(
                     Participants: masterParticipants, Guests: masterGuests));
             }
         }
+
+        // Task meetings (meetings Phase 2) sit next to calendar events, and count for the conflict flags (spec 5.9).
+        if (meetings is not null && employee is not null)
+            items.AddRange(await meetings.ListAsync(tenantId, employee.Id, request.From, request.To, ct));
 
         var organizerNames = new Dictionary<Guid, string?>();
         foreach (var creatorId in items.Select(i => i.CreatedById).Distinct())

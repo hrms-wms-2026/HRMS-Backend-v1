@@ -99,7 +99,9 @@ public class TaskActionsThroughEngineTests
 
     private CreateTaskCommandHandler CreateHandler() => new(
         _currentUser.Object, _identity.Object, _objectives.Object, _unitOfWork.Object, _membership.Object,
-        _assetLinker.Object, _writes.Object, _hierarchy.Object, _approvals.Object, _notifications.Object);
+        _assetLinker.Object, _writes.Object, _hierarchy.Object, _approvals.Object, _notifications.Object,
+        Microsoft.Extensions.Options.Options.Create(new ONEVO.Application.Features.WorkManagement.Meetings.MeetingsOptions { Create = true }),
+        ONEVO.Tests.Unit.Features.WorkManagement.Meetings.MeetingActionItemTestFactory.Build());
 
     private EditTaskCommandHandler EditHandler() => new(
         _currentUser.Object, _tasks.Object, _objectives.Object, _unitOfWork.Object, _identity.Object, _membership.Object,

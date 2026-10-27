@@ -58,11 +58,13 @@ public sealed class WorkLeadershipRepositoryIntegrationTests
             .Should().BeEquivalentTo(new[] { moduleId });
         (await projects.ListByIdsAsync(helper.TenantId, new[] { projectId })).Should().ContainSingle(p => p.Id == projectId);
 
-        var rows = await tasks.ListTopLevelProgressRowsAsync(helper.TenantId, new[] { moduleId, subId });
-        rows.Should().HaveCount(3, "the subtask is excluded from a top-level read");
-
         var overdue = await tasks.ListTopLevelOverdueAsync(helper.TenantId, new[] { moduleId, subId }, today, take: 10);
         overdue.Should().ContainSingle().Which.TaskId.Should().Be(topOverdueTaskId);
         overdue[0].AssigneeEmployeeIds.Should().Equal(strangerId);
+        (await tasks.CountTopLevelOverdueAsync(helper.TenantId, new[] { moduleId, subId }, today)).Should().Be(1);
+
+        var summaries = await new EfModuleHourSummaryRepository(read).ListByObjectiveIdsAsync(helper.TenantId, new[] { moduleId, subId });
+        ((summaries.GetValueOrDefault(moduleId)?.TaskCount ?? 0) + (summaries.GetValueOrDefault(subId)?.TaskCount ?? 0))
+            .Should().Be(3, "the subtask is excluded from the top-level summary");
     }
 }

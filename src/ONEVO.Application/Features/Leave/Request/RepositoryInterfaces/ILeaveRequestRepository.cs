@@ -27,6 +27,10 @@ public interface ILeaveRequestRepository
         LeaveRequestListFilter filter,
         CancellationToken ct = default);
 
+    /// <summary>Approver employee ids per request (every step, any status) - who may open each in the inbox history.</summary>
+    Task<IReadOnlyDictionary<Guid, IReadOnlyList<Guid>>> ListApproverEmployeeIdsAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> requestIds, CancellationToken ct = default);
+
     Task<IReadOnlyList<LeaveApprovalDelegateRow>> ListActiveDelegatesAsync(
         Guid tenantId,
         IReadOnlyCollection<Guid> approverEmployeeIds,
@@ -72,7 +76,10 @@ public sealed record LeaveRequestListFilter(
     string? Status,
     DateOnly? FromDate,
     DateOnly? ToDate,
-    Guid? LeaveTypeId);
+    Guid? LeaveTypeId,
+    // Inbox case history: CreatedAt in [CreatedFrom, CreatedTo).
+    DateTimeOffset? CreatedFrom = null,
+    DateTimeOffset? CreatedTo = null);
 
 public sealed record LeaveRequestListRow(
     LeaveRequest Request,

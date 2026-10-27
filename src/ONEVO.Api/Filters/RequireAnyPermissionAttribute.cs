@@ -14,6 +14,9 @@ public sealed class RequireAnyPermissionAttribute : Attribute, IAuthorizationFil
         _permissions = permissions;
     }
 
+    /// <summary>The permissions of which at least one is required (read by dashboard widget providers).</summary>
+    public IReadOnlyList<string> Permissions => _permissions;
+
     public void OnAuthorization(AuthorizationFilterContext context)
     {
         var currentUser = context.HttpContext.RequestServices.GetService<ICurrentUser>();

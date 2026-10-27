@@ -26,7 +26,7 @@ public class DeleteTaskCategoryCommandHandlerTests
     private static readonly Guid CategoryId = Guid.NewGuid();
 
     private (DeleteTaskCategoryCommandHandler Handler, Mock<ITaskCategoryRepository> Categories) Build(
-        bool anyTasksInCategory, Guid? callerEmployeeId = null, bool? callerIsEffectiveManager = null)
+        bool anyTasksInCategory, Guid? callerEmployeeId = null, bool? callerIsEffectiveManager = null, string? systemKey = null)
     {
         var resolvedCallerEmployeeId = callerEmployeeId ?? OwnerEmployeeId;
 
@@ -39,7 +39,7 @@ public class DeleteTaskCategoryCommandHandlerTests
         identity.Setup(x => x.ResolveCallerEmployeeIdAsync(TenantId, UserId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(resolvedCallerEmployeeId);
 
-        var category = new TaskCategory { Id = CategoryId, TenantId = TenantId, ProjectId = ProjectId, Name = "Bug", CreatedAt = DateTimeOffset.UtcNow };
+        var category = new TaskCategory { Id = CategoryId, TenantId = TenantId, ProjectId = ProjectId, Name = systemKey ?? "Bug", SystemKey = systemKey, CreatedAt = DateTimeOffset.UtcNow };
         var categories = new Mock<ITaskCategoryRepository>();
         categories.Setup(x => x.GetByIdForTenantAsync(TenantId, CategoryId, It.IsAny<CancellationToken>())).ReturnsAsync(category);
 
@@ -111,5 +111,17 @@ public class DeleteTaskCategoryCommandHandlerTests
 
         Assert.True(result.IsSuccess);
         categories.Verify(x => x.Remove(It.Is<TaskCategory>(c => c.Id == CategoryId)), Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_SystemCategory_ReturnsConflictAndDoesNotRemove()
+    {
+        var (handler, categories) = Build(anyTasksInCategory: false, systemKey: TaskCategorySystemKeys.Meeting);
+
+        var result = await handler.Handle(new DeleteTaskCategoryCommand(CategoryId), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(409, result.StatusCode);
+        categories.Verify(x => x.Remove(It.IsAny<TaskCategory>()), Times.Never);
     }
 }

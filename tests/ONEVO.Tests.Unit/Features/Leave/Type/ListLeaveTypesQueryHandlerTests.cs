@@ -35,6 +35,27 @@ public class ListLeaveTypesQueryHandlerTests
     }
 
     [Fact]
+    public async Task Handle_ReturnsActivePolicyCountPerType()
+    {
+        var annual = Guid.NewGuid();
+        var sick = Guid.NewGuid();
+        _repoMock.Setup(r => r.ListAsync(_tenantId, false, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<LeaveType>
+            {
+                new() { Id = annual, TenantId = _tenantId, Name = "Annual", Code = "AN", IsActive = true },
+                new() { Id = sick, TenantId = _tenantId, Name = "Sick", Code = "SI", IsActive = true },
+            });
+        _repoMock.Setup(r => r.CountActivePoliciesByLeaveTypeAsync(_tenantId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, int> { [annual] = 2 });
+
+        var result = await new ListLeaveTypesQueryHandler(_repoMock.Object, _currentUserMock.Object)
+            .Handle(new ListLeaveTypesQuery(IncludeInactive: false), CancellationToken.None);
+
+        Assert.Equal(2, result.Value!.Single(t => t.Id == annual).PolicyCount);
+        Assert.Equal(0, result.Value!.Single(t => t.Id == sick).PolicyCount);
+    }
+
+    [Fact]
     public async Task Handle_IncludeInactive_WithoutLeaveRead_ReturnsOnlyActive()
     {
         // A self-service employee (leave:read-own) lists types for the New Request wizard only;

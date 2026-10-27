@@ -4,6 +4,7 @@ using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Conversations.Contracts;
 using ONEVO.Application.Features.Conversations.RepositoryInterfaces;
+using ONEVO.Application.Features.Inbox.Chats;
 using ONEVO.Application.Features.Inbox.Contracts;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Domain.Features.Conversations.Entities;
@@ -12,15 +13,20 @@ using ONEVO.Domain.Features.Inbox.Entities;
 namespace ONEVO.Application.Features.Inbox.Escalation;
 
 /// <summary>An escalation the module has already applied (status, its own notifications), to be recorded the
-/// standard way. <see cref="ActorEmployeeId"/> is null for the SLA sweep.</summary>
+/// standard way. <see cref="ActorEmployeeId"/> is null for the SLA sweep. <see cref="SubjectEmployeeId"/> (the person the
+/// case is about): when set and the case has no group yet, it goes to that person's 1-on-1 chat with each new reviewer
+/// instead of starting a group.</summary>
 public sealed record EscalationRecord(
     ItemRef Item, EscalationTarget Target, Guid? ActorEmployeeId, string? Note,
-    IReadOnlyCollection<Guid> PreviousHolderEmployeeIds, string? BeforeJson = null, string? AfterJson = null);
+    IReadOnlyCollection<Guid> PreviousHolderEmployeeIds, string? BeforeJson = null, string? AfterJson = null,
+    Guid? SubjectEmployeeId = null);
 
 /// <summary>
-/// The inbox half of every escalation (plan S2.4), whichever module owns the item: a journal row, the new reviewers
-/// join the item's chat as viewers, and a system message says who it went to ("Escalated to X", or that nobody is
-/// above and it was logged). Runs inside the provider's transaction; returns who must refresh their inbox
+/// The inbox half of every escalation (plan S2.4), whichever module owns the item: a journal row, the case moves from
+/// the 1-on-1 chat to its own group (created when missing, with the people already on it - or, with a SubjectEmployeeId
+/// and no group yet, to the subject's 1-on-1 chat with each new reviewer), the new reviewers join that
+/// group as viewers, and a system message says who it went to ("Escalated to X", or that nobody is above and it was
+/// logged) - an escalation line, never "X added Y". Runs inside the provider's transaction; returns who must refresh their inbox
 /// (previous holders + new reviewers) for the provider's <see cref="InboxActionResult"/>.
 /// </summary>
 public interface IInboxEscalationRecorder
@@ -38,11 +44,15 @@ public sealed class InboxEscalationRecorder : IInboxEscalationRecorder
     private readonly ICallerIdentityResolver _identity;
     private readonly IUnitOfWork _unitOfWork;
     private readonly IDateTimeProvider _clock;
+    private readonly IServiceProvider? _services;
 
+    // The case group service is resolved when needed, not injected: it reaches every module's conversation resolver,
+    // and some of those (Work) depend on providers that depend on this recorder - a constructor cycle.
     public InboxEscalationRecorder(
         IInboxDecisionJournal journal, IConversationRepository conversations, ICallerIdentityResolver identity,
-        IUnitOfWork unitOfWork, IDateTimeProvider clock)
+        IUnitOfWork unitOfWork, IDateTimeProvider clock, IServiceProvider? services = null)
     {
+        _services = services;
         _journal = journal;
         _conversations = conversations;
         _identity = identity;
@@ -70,7 +80,18 @@ public sealed class InboxEscalationRecorder : IInboxEscalationRecorder
             Comment = string.IsNullOrWhiteSpace(record.Note) ? null : record.Note.Trim(), DecidedAt = now, CreatedAt = now,
         }, ct);
 
-        var conversation = await _conversations.GetBySubjectAsync(tenantId, record.Item, ct)
+        var caseGroups = _services?.GetService(typeof(ICaseGroupService)) as ICaseGroupService;
+        // No group yet: the case moves to the requester's 1-on-1 chat with the new reviewer, not to a new group.
+        if (record.SubjectEmployeeId is { } subjectId && targets.Count > 0 && caseGroups is not null
+            && await caseGroups.FindAsync(tenantId, record.Item, ct) is null)
+        {
+            await caseGroups.PlaceEscalationInDirectChatsAsync(tenantId, record.Item, subjectId, targets, record.ActorEmployeeId, record.Note, ct);
+            await _unitOfWork.SaveChangesAsync(ct);
+            return record.PreviousHolderEmployeeIds.Concat(targets).Append(subjectId).Distinct().ToList();
+        }
+
+        var conversation = (caseGroups is null ? null : await caseGroups.EnsureAsync(tenantId, record.Item, record.ActorEmployeeId, ct))
+            ?? await _conversations.GetBySubjectAsync(tenantId, record.Item, ct)
             ?? await _conversations.GetOrCreateAsync(new Conversation
             {
                 Id = Guid.NewGuid(), TenantId = tenantId, SubjectSource = record.Item.Source, SubjectKind = record.Item.Kind,

@@ -88,6 +88,30 @@ public sealed class GetEventMeetingAttendanceQueryHandlerTests
         _meetings.Verify(m => m.GetTrackedByCalendarEventAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
+    // ---- sync status: why there are no rows, never "nobody attended" ----------------------------------------------
+
+    public static TheoryData<CalendarEventMeeting?, string> SyncStatusCases => new()
+    {
+        { null, "none" },
+        { new CalendarEventMeeting { Id = Guid.NewGuid() }, "pending" },
+        { new CalendarEventMeeting { Id = Guid.NewGuid(), AttendanceUnavailableAt = DateTimeOffset.UtcNow }, "attendance_unavailable" },
+        { new CalendarEventMeeting { Id = Guid.NewGuid(), AttendanceSyncFailedAt = DateTimeOffset.UtcNow, AttendanceSyncError = "reauth_required" }, "sync_failed" },
+        { new CalendarEventMeeting { Id = Guid.NewGuid(), LastAttendanceSyncedAt = DateTimeOffset.UtcNow }, "synced" },
+    };
+
+    [Theory]
+    [MemberData(nameof(SyncStatusCases))]
+    public async Task The_organizer_is_told_the_attendance_sync_status(CalendarEventMeeting? meeting, string expected)
+    {
+        _meetings.Setup(m => m.GetTrackedByCalendarEventAsync(TenantId, EventId, It.IsAny<CancellationToken>())).ReturnsAsync(meeting);
+        _attendances.Setup(a => a.GetByMeetingIdAsync(TenantId, It.IsAny<Guid>(), It.IsAny<CancellationToken>())).ReturnsAsync([]);
+
+        var result = await BuildSut().Handle(new GetEventMeetingAttendanceQuery(EventId), CancellationToken.None);
+
+        result.Value!.SyncStatus.Should().Be(expected);
+        result.Value.SyncError.Should().Be(meeting?.AttendanceSyncError);
+    }
+
     // ---- audience: the organizer only - participants and unrelated tenant users are refused ------------------------
 
     [Fact]

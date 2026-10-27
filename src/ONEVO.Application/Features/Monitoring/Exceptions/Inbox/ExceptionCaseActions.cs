@@ -3,6 +3,7 @@ using MediatR;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.Auth.Permission.RepositoryInterfaces;
 using ONEVO.Application.Features.Conversations.Contracts;
 using ONEVO.Application.Features.Inbox.Contracts;
 using ONEVO.Application.Features.Inbox.Escalation;
@@ -10,6 +11,7 @@ using ONEVO.Application.Features.Monitoring.Exceptions.Commands.AcknowledgeExcep
 using ONEVO.Application.Features.Monitoring.Exceptions.Commands.EscalateException;
 using ONEVO.Application.Features.Monitoring.Exceptions.Commands.ResolveException;
 using ONEVO.Application.Features.Monitoring.Exceptions.RepositoryInterfaces;
+using ONEVO.Application.Features.Monitoring.Exceptions.Services;
 using ONEVO.Domain.Features.Inbox.Entities;
 using ONEVO.Domain.Features.Monitoring.Exceptions.Entities;
 using MonitoringException = ONEVO.Domain.Features.Monitoring.Exceptions.Entities.Exception;
@@ -25,7 +27,7 @@ public static class ExceptionInboxKinds
     public static readonly InboxKindDescriptor Descriptor = new(
         Source, Case, "Exception case", InboxCategories.Alert,
         InboxCapabilities.Chat | InboxCapabilities.Resolve | InboxCapabilities.Escalate | InboxCapabilities.Revert
-        | InboxCapabilities.Bulk | InboxCapabilities.SubjectParticipates,
+        | InboxCapabilities.SubjectParticipates,
         Renderer);
 
     /// <summary>Calendar meeting types live in the calendar source (plan C2/C3), not here.</summary>
@@ -38,6 +40,12 @@ public static class ExceptionCaseInboxActions
     public const string Resolve = "resolve";
     public const string Escalate = "escalate";
 }
+
+/// <summary>Someone a monitoring case may be escalated to by hand: they hold an exception permission (so the case is
+/// theirs to work once it is held), with <see cref="IsDefault"/> marking who the policy would pick. Position and photo
+/// are for the picker.</summary>
+public sealed record ExceptionEscalationCandidate(
+    Guid EmployeeId, Guid UserId, string Name, string Role, bool IsDefault, string? Position = null, Guid? AvatarFileId = null);
 
 /// <summary>A case's review state, kept in the inbox journal so a decision on it can be undone exactly.</summary>
 public sealed record ExceptionStateSnapshot(
@@ -87,12 +95,20 @@ public sealed class ExceptionCaseActions
     private readonly IUnitOfWork _unitOfWork;
     private readonly IDateTimeProvider _clock;
     private readonly INotificationDispatcher? _notifications;
+    private readonly IPermissionRepository? _permissions;
+    private readonly ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces.IEmployeeRepository? _employees;
+    private readonly ONEVO.Application.Features.WorkManagement.Common.Services.ICallerIdentityResolver? _identity;
 
     public ExceptionCaseActions(
         ISender sender, IExceptionRepository exceptions, IInboxDecisionJournal journal, IInboxEscalationRecorder escalations,
         IInboxEscalationPolicyRegistry policies, IUnitOfWork unitOfWork, IDateTimeProvider clock,
-        INotificationDispatcher? notifications = null)
+        INotificationDispatcher? notifications = null, IPermissionRepository? permissions = null,
+        ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces.IEmployeeRepository? employees = null,
+        ONEVO.Application.Features.WorkManagement.Common.Services.ICallerIdentityResolver? identity = null)
     {
+        _identity = identity;
+        _permissions = permissions;
+        _employees = employees;
         _sender = sender;
         _exceptions = exceptions;
         _journal = journal;
@@ -108,11 +124,14 @@ public sealed class ExceptionCaseActions
     {
         var note = BodyString(body, "comment");
         var outcome = BodyString(body, "outcome");
+        var pickedId = action == ExceptionCaseInboxActions.Escalate && Guid.TryParse(BodyString(body, "targetEmployeeId"), out var parsed)
+            ? parsed : (Guid?)null;
+        ExceptionEscalationCandidate? picked = null;
         Func<CancellationToken, Task<Result>>? run = action switch
         {
             ExceptionCaseInboxActions.Acknowledge => t => _sender.Send(new AcknowledgeExceptionCommand(item.Id), t),
             ExceptionCaseInboxActions.Resolve => t => _sender.Send(new ResolveExceptionCommand(item.Id, note, outcome), t),
-            ExceptionCaseInboxActions.Escalate => t => _sender.Send(new EscalateExceptionCommand(item.Id, note), t),
+            ExceptionCaseInboxActions.Escalate => t => _sender.Send(new EscalateExceptionCommand(item.Id, note, picked is null ? null : [picked.UserId]), t),
             _ => null,
         };
         if (run is null)
@@ -124,6 +143,12 @@ public sealed class ExceptionCaseActions
         if (exception is null)
             return Result<InboxActionResult>.NotFound("Exception not found.");
         var before = ExceptionStateSnapshot.Of(exception).ToJson();
+        if (pickedId is { } targetId)
+        {
+            picked = (await EscalationCandidatesAsync(tenantId, item, exception, callerEmployeeId, ct)).FirstOrDefault(c => c.EmployeeId == targetId);
+            if (picked is null)
+                return Result<InboxActionResult>.UnprocessableEntity("That person cannot take this case.");
+        }
 
         try
         {
@@ -137,7 +162,9 @@ public sealed class ExceptionCaseActions
                 IReadOnlyCollection<Guid> affected = [updated.EmployeeId, callerEmployeeId];
                 if (action == ExceptionCaseInboxActions.Escalate)
                 {
-                    var target = await NextReviewersAsync(tenantId, item, updated, callerEmployeeId, t);
+                    var target = picked is null
+                        ? await NextReviewersAsync(tenantId, item, updated, callerEmployeeId, t)
+                        : new EscalationTarget.Employees([new EscalationRecipient(picked.UserId, picked.EmployeeId)]);
                     // A calendar case goes up the manager chain (log only at the top) and the next reviewer is told here - the
                     // monitoring alert router never handles calendar types (plan C3).
                     if (item.Source == "calendar" && target is EscalationTarget.Employees next && _notifications is not null)
@@ -146,7 +173,7 @@ public sealed class ExceptionCaseActions
                                 new Dictionary<string, string> { ["title"] = updated.Title, ["description"] = updated.Description },
                                 InboxNotificationNavigation.RelatedEntityType("calendar", "meeting_exception"), updated.Id, t);
                     affected = (await _escalations.RecordAsync(tenantId,
-                        new EscalationRecord(item, target, callerEmployeeId, note, [callerEmployeeId], before, after), t))
+                        new EscalationRecord(item, target, callerEmployeeId, note, [callerEmployeeId], before, after, updated.EmployeeId), t))
                         .Append(updated.EmployeeId).Distinct().ToList();
                 }
                 else
@@ -181,6 +208,51 @@ public sealed class ExceptionCaseActions
             return new EscalationTarget.LogOnly("No escalation policy for this case type.");
         return await policy.NextAsync(tenantId, new EscalationContext(item, exception.Type.ToString(),
             currentHolder is { } holder ? [holder] : [], exception.EmployeeId, null, null), ct);
+    }
+
+    /// <summary>
+    /// Who the caller may hand a monitoring case to: everyone holding an exception permission (HR, attendance approvers,
+    /// exceptions:acknowledge) - the case they are escalated becomes theirs to work (ExceptionScope.HeldCaseIds) - minus the
+    /// subject and the caller. The policy's pick comes first; calendar cases follow their own chain and offer no choice.
+    /// </summary>
+    public async Task<IReadOnlyList<ExceptionEscalationCandidate>> EscalationCandidatesAsync(
+        Guid tenantId, ItemRef item, MonitoringException exception, Guid callerEmployeeId, CancellationToken ct)
+    {
+        if (item.Source != ExceptionInboxKinds.Source || _permissions is null || _employees is null)
+            return [];
+        var now = _clock.UtcNow;
+        var hr = new HashSet<Guid>();
+        foreach (var code in new[] { ExceptionPermissions.HrReview, ExceptionPermissions.HrManage })
+            hr.UnionWith(await _permissions.ListUserIdsWithPermissionCodeAsync(tenantId, code, now, ct));
+        var userIds = new HashSet<Guid>(hr);
+        foreach (var code in new[] { ExceptionPermissions.ManagerReview, ExceptionPermissions.Acknowledge })
+            userIds.UnionWith(await _permissions.ListUserIdsWithPermissionCodeAsync(tenantId, code, now, ct));
+
+        var defaults = await NextReviewersAsync(tenantId, item, exception, callerEmployeeId, ct) is EscalationTarget.Employees next
+            ? next.Recipients.Select(r => r.UserId).ToHashSet()
+            : [];
+        var candidates = new List<ExceptionEscalationCandidate>();
+        foreach (var userId in userIds)
+        {
+            // Only someone with an employee record can hold the case in the inbox.
+            if (await _employees.GetDefaultForUserAsync(tenantId, userId, ct) is not { } employee
+                || employee.Id == exception.EmployeeId || employee.Id == callerEmployeeId)
+                continue;
+            candidates.Add(new ExceptionEscalationCandidate(employee.Id, userId, $"{employee.FirstName} {employee.LastName}".Trim(),
+                hr.Contains(userId) ? "HR" : "Manager", defaults.Contains(userId)));
+        }
+        var ids = candidates.Select(c => c.EmployeeId).ToList();
+        var positions = await _employees.ListPositionNamesAsync(tenantId, ids, ct);
+        var identities = _identity is null || ids.Count == 0
+            ? new Dictionary<Guid, ONEVO.Application.Features.WorkManagement.Common.Services.EmployeeIdentityDto>()
+            : await _identity.ResolveIdentitiesByEmployeeIdAsync(tenantId, ids, ct);
+        return candidates
+            .Select(c => c with
+            {
+                Position = positions.GetValueOrDefault(c.EmployeeId),
+                AvatarFileId = identities.GetValueOrDefault(c.EmployeeId)?.AvatarFileId,
+            })
+            .OrderByDescending(c => c.IsDefault).ThenBy(c => c.Role == "HR" ? 0 : 1).ThenBy(c => c.Name).ToList();
     }
 
     private sealed class ModuleRefused(Result<InboxActionResult> result) : System.Exception(result.Error)

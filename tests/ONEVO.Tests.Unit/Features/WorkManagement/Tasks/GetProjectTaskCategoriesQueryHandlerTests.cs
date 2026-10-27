@@ -47,6 +47,34 @@ public class GetProjectTaskCategoriesQueryHandlerTests
     }
 
     [Fact]
+    public async Task Handle_ReturnsSystemKeyAndIsSystem()
+    {
+        var currentUser = new Mock<ICurrentUser>();
+        currentUser.SetupGet(x => x.IsAuthenticated).Returns(true);
+        currentUser.SetupGet(x => x.TenantId).Returns(TenantId);
+
+        var projects = new Mock<IProjectRepository>();
+        projects.Setup(x => x.GetByIdForTenantAsync(TenantId, ProjectId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ActiveProject());
+
+        var categories = new Mock<ITaskCategoryRepository>();
+        categories.Setup(x => x.GetByProjectIdAsync(TenantId, ProjectId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<TaskCategory>
+            {
+                new() { Id = Guid.NewGuid(), TenantId = TenantId, ProjectId = ProjectId, Name = "Bug", DisplayOrder = 1, CreatedAt = DateTimeOffset.UtcNow },
+                new() { Id = Guid.NewGuid(), TenantId = TenantId, ProjectId = ProjectId, Name = "Feature", DisplayOrder = 0, CreatedAt = DateTimeOffset.UtcNow },
+                new() { Id = Guid.NewGuid(), TenantId = TenantId, ProjectId = ProjectId, Name = "meeting", DisplayOrder = 2, SystemKey = TaskCategorySystemKeys.Meeting, CreatedAt = DateTimeOffset.UtcNow }
+            });
+
+        var handler = new GetProjectTaskCategoriesQueryHandler(currentUser.Object, projects.Object, categories.Object);
+        var result = await handler.Handle(new GetProjectTaskCategoriesQuery(ProjectId), CancellationToken.None);
+
+        var meeting = Assert.Single(result.Value!, c => c.IsSystem);
+        Assert.Equal(TaskCategorySystemKeys.Meeting, meeting.SystemKey);
+        Assert.All(result.Value!.Where(c => c.Name != "meeting"), c => Assert.False(c.IsSystem));
+    }
+
+    [Fact]
     public async Task Handle_ProjectNotFound_ReturnsNotFound()
     {
         var currentUser = new Mock<ICurrentUser>();

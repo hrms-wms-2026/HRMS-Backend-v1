@@ -83,6 +83,9 @@ public sealed class LeaveDecisionReverter : InboxDecisionReverterBase
                 return state.Request.PaidHours > 0m && remaining < state.Request.PaidHours
                     ? Result.Conflict($"The balance can no longer cover this request ({remaining:0.##} h left).")
                     : Result.Success();
+            case LeaveInboxActions.Escalate:
+                // The hand-over's rows go back: the caller's step is pending again and the added approver's row is removed.
+                return Result.Success();
             default:
                 return Result.UnprocessableEntity(NotUndoable);
         }

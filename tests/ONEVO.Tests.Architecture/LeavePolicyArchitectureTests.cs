@@ -1,7 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata;
 using ONEVO.Domain.Common;
-using ONEVO.Domain.Features.Leave.Common;
 using ONEVO.Domain.Features.Leave.Policy.Entities;
 using ONEVO.Infrastructure.ExternalServices.Messaging;
 using ONEVO.Infrastructure.Identity.CurrentUser;
@@ -15,42 +14,54 @@ namespace ONEVO.Tests.Architecture;
 
 public class LeavePolicyArchitectureTests
 {
-    [Fact]
-    public void LeavePolicy_IsTenantOwned()
+    [Theory]
+    [InlineData(typeof(LeavePolicy))]
+    [InlineData(typeof(LeavePolicyVersion))]
+    [InlineData(typeof(LeavePolicyAssignment))]
+    [InlineData(typeof(LeavePolicyBlackoutPeriod))]
+    public void LeavePolicyEntities_AreTenantOwned(Type type)
     {
-        Assert.True(typeof(ITenantOwnedEntity).IsAssignableFrom(typeof(LeavePolicy)));
+        Assert.True(typeof(ITenantOwnedEntity).IsAssignableFrom(type));
     }
 
     [Fact]
-    public void LeavePolicy_HasAccrualMethodProperty()
-    {
-        var property = typeof(LeavePolicy).GetProperty(nameof(LeavePolicy.AccrualMethod));
-
-        Assert.NotNull(property);
-        Assert.Equal(typeof(string), property!.PropertyType);
-    }
-
-    [Fact]
-    public void Model_LeavePolicy_AccrualMethod_MapsToRequiredColumn()
+    public void Model_LeavePolicy_HasSingleLeaveType()
     {
         using var context = CreateModelInspectionContext();
-
         var entityType = context.Model.GetEntityTypes().Single(e => e.ClrType == typeof(LeavePolicy));
-        var property = entityType.FindProperty(nameof(LeavePolicy.AccrualMethod));
-        var table = StoreObjectIdentifier.Table("leave_policies");
+        var property = entityType.FindProperty(nameof(LeavePolicy.LeaveTypeId));
 
         Assert.NotNull(property);
-        Assert.Equal("accrual_method", property!.GetColumnName(table));
+        Assert.Equal("leave_type_id", property!.GetColumnName(StoreObjectIdentifier.Table("leave_policies")));
         Assert.False(property.IsNullable);
-        Assert.Equal(20, property.GetMaxLength());
     }
 
     [Fact]
-    public void LeaveAccrualMethods_UsesStringConstants()
+    public void Model_LeavePolicyVersion_VersionNumberAndEffectiveDateAreUniquePerPolicy()
     {
-        Assert.Equal("annual", LeaveAccrualMethods.Annual);
-        Assert.Equal("monthly", LeaveAccrualMethods.Monthly);
-        Assert.Equal("daily", LeaveAccrualMethods.Daily);
+        using var context = CreateModelInspectionContext();
+        var entityType = context.Model.GetEntityTypes().Single(e => e.ClrType == typeof(LeavePolicyVersion));
+
+        Assert.Equal("leave_policy_versions", entityType.GetTableName());
+        Assert.Contains(entityType.GetIndexes(), i => i.IsUnique
+            && i.Properties.Select(p => p.Name).SequenceEqual([nameof(LeavePolicyVersion.LeavePolicyId), nameof(LeavePolicyVersion.VersionNumber)]));
+        Assert.Contains(entityType.GetIndexes(), i => i.IsUnique
+            && i.Properties.Select(p => p.Name).SequenceEqual([nameof(LeavePolicyVersion.LeavePolicyId), nameof(LeavePolicyVersion.EffectiveFrom)]));
+    }
+
+    [Fact]
+    public void Model_LeavePolicyAssignment_OneOpenPolicyPerLeaveTypePerTarget()
+    {
+        using var context = CreateModelInspectionContext();
+        var entityType = context.Model.GetEntityTypes().Single(e => e.ClrType == typeof(LeavePolicyAssignment));
+
+        Assert.Equal("leave_policy_assignments", entityType.GetTableName());
+        var unique = Assert.Single(entityType.GetIndexes(), i => i.IsUnique);
+        Assert.Equal(
+            [nameof(LeavePolicyAssignment.TenantId), nameof(LeavePolicyAssignment.TargetKind),
+             nameof(LeavePolicyAssignment.TargetId), nameof(LeavePolicyAssignment.LeaveTypeId)],
+            unique.Properties.Select(p => p.Name));
+        Assert.Equal("effective_to IS NULL", unique.GetFilter());
     }
 
     private static ApplicationDbContext CreateModelInspectionContext()

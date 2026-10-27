@@ -1,12 +1,21 @@
 using Microsoft.EntityFrameworkCore;
 using ONEVO.Application.Features.Monitoring.Meetings.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.Meetings.Services;
+using ONEVO.Application.Features.WorkManagement.Meetings.RepositoryInterfaces;
 using ONEVO.Domain.Features.Calendar.Entities;
 using ONEVO.Domain.Features.DevPlatform.AppCatalog.Entities;
+using ONEVO.Domain.Features.WorkManagement.Meetings.Entities;
 
 namespace ONEVO.Infrastructure.Persistence.Repositories.Monitoring.Meetings;
 
-public sealed class EfMeetingComplianceReadRepository(ApplicationDbContext db) : IMeetingComplianceReadRepository
+/// <summary>
+/// The monitoring compliance view (spec D17): every meeting of the monitored employee in the window - the legacy
+/// calendar events and the task-meeting occurrences - with the share of the meeting the meeting application was used
+/// for. A private meeting shows as "Private meeting"; its usage numbers are unchanged.
+/// </summary>
+public sealed class EfMeetingComplianceReadRepository(
+    ApplicationDbContext db,
+    IMeetingRepository meetings) : IMeetingComplianceReadRepository
 {
     public async Task<IReadOnlyList<MeetingApplicationComplianceItem>> ListAsync(
         Guid tenantId,
@@ -20,7 +29,7 @@ public sealed class EfMeetingComplianceReadRepository(ApplicationDbContext db) :
             .Select(x => x.ProcessName)
             .ToListAsync(ct);
 
-        var meetings = await (
+        var legacy = await (
             from participant in db.CalendarEventParticipants.AsNoTracking()
             join calendarEvent in db.PersonalCalendarEvents.AsNoTracking()
                 on participant.EventId equals calendarEvent.Id
@@ -40,6 +49,7 @@ public sealed class EfMeetingComplianceReadRepository(ApplicationDbContext db) :
             {
                 calendarEvent.Id,
                 calendarEvent.Title,
+                calendarEvent.IsPrivate,
                 calendarEvent.StartDate,
                 calendarEvent.EndDate,
                 // Set when the meeting was created through ONEVO (Teams/Zoom); null for a pasted link.
@@ -49,13 +59,22 @@ public sealed class EfMeetingComplianceReadRepository(ApplicationDbContext db) :
                     .FirstOrDefault()
             }).ToListAsync(ct);
 
-        if (meetings.Count == 0)
+        // The task meetings of the same window: the occurrences the employee effectively attends, has not declined,
+        // and whose link is active (a link that is not active has no provider application to measure).
+        var taskMeetings = await meetings.ListEmployeeTaskMeetingsAsync(tenantId, employeeId, fromUtc, toUtcExclusive, ct);
+
+        var items = legacy
+            .Select(m => new ComplianceMeeting(m.Id, m.Title, m.IsPrivate, m.StartDate, m.EndDate, m.Provider))
+            .Concat(taskMeetings.Select(m => new ComplianceMeeting(m.TaskId, m.Title, m.IsPrivate, m.StartAt, m.EndAt, m.Provider)))
+            .ToList();
+
+        if (items.Count == 0)
             return [];
 
         var categoryStems = meetingProcesses.Select(MeetingProviderApplications.Stem).ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var anyProviderMeeting = meetings.Any(m => MeetingProviderApplications.ProcessStemsFor(m.Provider) is not null);
-        var sampleFrom = meetings.Min(x => x.StartDate);
-        var sampleTo = meetings.Max(x => x.EndDate);
+        var anyProviderMeeting = items.Any(m => MeetingProviderApplications.ProcessStemsFor(m.Provider) is not null);
+        var sampleFrom = items.Min(x => x.StartsAt);
+        var sampleTo = items.Max(x => x.EndsAt);
         var samples = categoryStems.Count == 0 && !anyProviderMeeting
             ? []
             : await db.AppUsageSnapshots.AsNoTracking()
@@ -67,10 +86,10 @@ public sealed class EfMeetingComplianceReadRepository(ApplicationDbContext db) :
                 .Select(x => new { x.ProcessName, x.CapturedAt })
                 .ToListAsync(ct);
 
-        return meetings.Select(meeting =>
+        return items.Select(meeting =>
         {
-            var startsAt = meeting.StartDate;
-            var endsAt = meeting.EndDate;
+            var startsAt = meeting.StartsAt;
+            var endsAt = meeting.EndsAt;
             var durationSeconds = Math.Max(0, (int)Math.Ceiling((endsAt - startsAt).TotalSeconds));
             // A meeting created through ONEVO counts only its own provider's app; a pasted link counts any Meeting-category app.
             var stems = MeetingProviderApplications.ProcessStemsFor(meeting.Provider) ?? categoryStems;
@@ -82,14 +101,21 @@ public sealed class EfMeetingComplianceReadRepository(ApplicationDbContext db) :
             var result = MeetingApplicationComplianceCalculator.Calculate(durationSeconds, matchingSamples);
 
             return new MeetingApplicationComplianceItem(
-                meeting.Id,
-                meeting.Title,
-                meeting.StartDate,
-                meeting.EndDate,
+                meeting.EventId,
+                // A private meeting is listed, never named (spec D17). Its usage numbers are unchanged.
+                meeting.IsPrivate ? MeetingPrivacy.MaskedTitle : meeting.Title,
+                meeting.StartsAt,
+                meeting.EndsAt,
                 result.RequiredSeconds,
                 result.UsedSeconds,
                 result.UsagePercentage,
-                result.IsCompliant);
+                result.IsCompliant)
+            {
+                IsPrivate = meeting.IsPrivate
+            };
         }).ToList();
     }
+
+    /// <summary>One meeting of either kind, in the shape the compliance calculation needs.</summary>
+    private sealed record ComplianceMeeting(Guid EventId, string Title, bool IsPrivate, DateTimeOffset StartsAt, DateTimeOffset EndsAt, string? Provider);
 }

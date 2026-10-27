@@ -7,6 +7,7 @@ using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Calendar.Exceptions;
 using ONEVO.Application.Features.Calendar.RepositoryInterfaces;
 using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Meetings.RepositoryInterfaces;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
 
 namespace ONEVO.Infrastructure.Services.Calendar;
@@ -59,6 +60,7 @@ public sealed class CalendarIncidentJob(IServiceProvider services, ILogger<Calen
         var switcher = provider.GetRequiredService<ITenantContextSwitcher>();
         var tenantContext = provider.GetRequiredService<IWritableTenantContext>();
         var events = provider.GetRequiredService<ICalendarEventRepository>();
+        var meetings = provider.GetRequiredService<IMeetingRepository>();
         var engine = provider.GetRequiredService<CalendarIncidentEngine>();
         var incidents = provider.GetRequiredService<ICalendarIncidentRepository>();
         var unitOfWork = provider.GetRequiredService<IUnitOfWork>();
@@ -73,8 +75,13 @@ public sealed class CalendarIncidentJob(IServiceProvider services, ILogger<Calen
             try
             {
                 await switcher.SwitchToTenantAsync(new TenantRegistryEntry(tenant.Id, tenant.Slug, tenant.Status, PlanCode: null), ct);
-                var employeeIds = await events.ListParticipantEmployeeIdsInRangeAsync(
-                    tenant.Id, now.AddDays(-CalendarExceptionDefaults.LongWindowDays), now.AddDays(CalendarIncidentEngine.LookAheadDays), ct);
+                var windowFrom = now.AddDays(-CalendarExceptionDefaults.LongWindowDays);
+                var windowTo = now.AddDays(CalendarIncidentEngine.LookAheadDays);
+                // Calendar-event participants, plus task-meeting attendees: a series participant has no calendar event
+                // row, so the first query never finds someone whose only meetings are task meetings.
+                var employeeIds = (await events.ListParticipantEmployeeIdsInRangeAsync(tenant.Id, windowFrom, windowTo, ct))
+                    .Concat(await meetings.ListAttendeeEmployeeIdsInRangeAsync(tenant.Id, windowFrom, windowTo, ct))
+                    .Distinct().ToList();
                 foreach (var employeeId in employeeIds)
                 {
                     try

@@ -994,6 +994,23 @@ public class EfEmployeeRepository : IEmployeeRepository
             .ToListAsync(ct);
     }
 
+    public async Task<IReadOnlyDictionary<Guid, string>> ListPositionNamesAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> employeeIds, CancellationToken ct = default)
+    {
+        if (employeeIds.Count == 0)
+            return new Dictionary<Guid, string>();
+        var rows = await (
+            from pa in _db.PositionAssignments.AsNoTracking()
+            join position in _db.Positions.AsNoTracking() on pa.PositionId equals position.Id
+            where pa.TenantId == tenantId
+                && employeeIds.Contains(pa.EmployeeId)
+                && pa.AssignmentKind == PositionAssignmentKind.PrimaryEmployment
+                && pa.AssignmentStatus == PositionAssignmentStatus.Active
+            select new { pa.EmployeeId, position.Name })
+            .ToListAsync(ct);
+        return rows.GroupBy(r => r.EmployeeId).ToDictionary(g => g.Key, g => g.First().Name);
+    }
+
     public async Task<IReadOnlyDictionary<Guid, EmployeeEntity>> ListByIdsAsync(
         Guid tenantId, IReadOnlyCollection<Guid> employeeIds, CancellationToken ct = default)
     {
