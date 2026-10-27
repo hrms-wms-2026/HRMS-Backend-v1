@@ -22,6 +22,24 @@ public sealed class EfAttendanceAlertRepository : IAttendanceAlertRepository
             .ToDictionary(g => g.Key, g => (IReadOnlySet<DateOnly>)g.Select(r => r.WorkDate).ToHashSet());
     }
 
+    public async Task<IReadOnlyDictionary<Guid, IReadOnlyDictionary<string, IReadOnlySet<DateOnly>>>> ExcusedDatesForEmployeesAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> employeeIds, DateOnly from, DateOnly to, CancellationToken ct)
+    {
+        if (employeeIds.Count == 0)
+            return new Dictionary<Guid, IReadOnlyDictionary<string, IReadOnlySet<DateOnly>>>();
+
+        var rows = await _db.AttendanceAlerts.AsNoTracking()
+            .Where(a => a.TenantId == tenantId && employeeIds.Contains(a.EmployeeId) && a.WorkDate >= from && a.WorkDate <= to
+                        && (a.Outcome == AttendanceAlertOutcomes.Excused || a.Outcome == AttendanceAlertOutcomes.ConvertedToLeave))
+            .Select(a => new { a.EmployeeId, a.SignalKey, a.WorkDate })
+            .ToListAsync(ct);
+        return rows.GroupBy(r => r.EmployeeId)
+            .ToDictionary(
+                e => e.Key,
+                e => (IReadOnlyDictionary<string, IReadOnlySet<DateOnly>>)e.GroupBy(r => r.SignalKey)
+                    .ToDictionary(g => g.Key, g => (IReadOnlySet<DateOnly>)g.Select(r => r.WorkDate).ToHashSet()));
+    }
+
     public Task<List<AttendanceAlert>> ListForEmployeeAsync(
         Guid tenantId, Guid employeeId, DateOnly from, DateOnly to, CancellationToken ct) =>
         _db.AttendanceAlerts
