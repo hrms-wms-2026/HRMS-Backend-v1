@@ -62,8 +62,9 @@ public sealed class AdminAuthController : ControllerBase
         if (!result.IsSuccess)
             return Problem(result.Error, statusCode: result.StatusCode ?? 400);
 
-        await SignInAsync(result.Value!);
-        return Ok(result.Value.ToSessionResponse());
+        var session = result.Value!;
+        await SignInAsync(session);
+        return Ok(session.ToSessionResponse());
     }
 
     /// <summary>

@@ -14,7 +14,7 @@ public class ValidationBehavior<TRequest, TResponse> : IPipelineBehavior<TReques
 
     public async Task<TResponse> Handle(TRequest request, RequestHandlerDelegate<TResponse> next, CancellationToken ct)
     {
-        if (!_validators.Any()) return await next();
+        if (!_validators.Any()) return await next(ct);
 
         var context = new ValidationContext<TRequest>(request);
         var failures = _validators
@@ -26,6 +26,6 @@ public class ValidationBehavior<TRequest, TResponse> : IPipelineBehavior<TReques
         if (failures.Count > 0)
             throw new ValidationException(failures);
 
-        return await next();
+        return await next(ct);
     }
 }
