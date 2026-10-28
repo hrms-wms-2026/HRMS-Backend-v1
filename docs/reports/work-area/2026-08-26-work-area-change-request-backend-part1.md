@@ -10,10 +10,10 @@ The initial worktree was:
 ## local/reporting-manager-run
  M src/ONEVO.Api/Controllers/Tenant/OrgStructure/PositionsController.cs
 ?? dev-server-restart.log
-?? docs/superpowers/plans/2026-08-25-attendance-list-pagination.md
+?? docs/superpowers/plans/finished/2026-08-25/2026-08-25-attendance-list-pagination.md
 ```
 
-The existing `PositionsController.cs` modification, `dev-server-restart.log`, and `docs/superpowers/plans/2026-08-25-attendance-list-pagination.md` were preserved and were not used as part of this feature.
+The existing `PositionsController.cs` modification, `dev-server-restart.log`, and `docs/superpowers/plans/finished/2026-08-25/2026-08-25-attendance-list-pagination.md` were preserved and were not used as part of this feature.
 
 ## 2. Documents and code inspected
 

@@ -41,4 +41,4 @@ If `employeeId` doesn't resolve to any employee with active memberships in the t
 
 Controller: `src/ONEVO.Api/Controllers/Tenant/WorkManagement/ProjectsController.cs` (`ListMine`, `ListByUser`)
 Handler: `src/ONEVO.Application/Features/WorkManagement/Projects/Queries/ListProjects/ListProjectsQueryHandler.cs`
-Plan: `docs/superpowers/plans/2026-08-04-work-management-projects-edit-delete-view.md`, `docs/superpowers/plans/next/2026-08-14-work-management-objective-member-management.md` (Task 25 identity change)
+Plan: `docs/superpowers/plans/finished/2026-08-04/2026-08-04-work-management-projects-edit-delete-view.md`, `docs/superpowers/plans/next/2026-08-14-work-management-objective-member-management.md` (Task 25 identity change)

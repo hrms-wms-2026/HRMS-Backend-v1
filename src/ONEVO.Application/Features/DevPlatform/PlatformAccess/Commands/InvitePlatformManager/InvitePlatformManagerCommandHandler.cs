@@ -12,7 +12,7 @@ namespace ONEVO.Application.Features.DevPlatform.PlatformAccess.Commands.InviteP
 
 /// <summary>
 /// Creates the PlatformUser row (Pending) and its roles immediately, rather than at
-/// acceptance time - see docs/superpowers/specs/2026-08-06-invite-platform-manager-design.md
+/// acceptance time - see docs/superpowers/specs/finished/2026-08-06/2026-08-06-invite-platform-manager-design.md
 /// "Data model change" for why this replaces an earlier join-table design.
 /// </summary>
 public sealed class InvitePlatformManagerCommandHandler : IRequestHandler<InvitePlatformManagerCommand, Result>

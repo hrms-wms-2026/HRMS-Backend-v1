@@ -117,7 +117,7 @@ public sealed class MyTeamCapabilitiesIntegrationTests
         await using var permissionOnly = helper.NewContext();
         var noPermission = await Handler(permissionOnly, helper.TenantId, managerUserId, workModuleActive: false)
             .Handle(new GetMyTeamCapabilitiesQuery(), CancellationToken.None);
-        noPermission.Value!.CanViewPeopleStatus.Should().BeFalse("permission alone without coverage must not grant the flag - the gate requires both");
+        noPermission.Value!.CanViewPeopleStatus.Should().BeFalse("coverage without the caller's permission must not grant the flag - the gate requires both");
     }
 
     [Fact]

@@ -14,7 +14,7 @@ public sealed record WorkPatternTotals(
 /// (ActivityDailySummaryAggregator) so the two paths can never compute different numbers for
 /// the same underlying data - see WorkPatternLiveVsNightlyConsistencyTests.
 ///
-/// Model summary (full derivation in docs/superpowers/plans/2026-09-25-work-pattern-productivity-model.md):
+/// Model summary (full derivation in docs/superpowers/plans/finished/2026-09-25/2026-09-25-work-pattern-productivity-model.md):
 /// - A snapshot window that overlaps a meeting contributes its WHOLE duration (active+idle
 ///   both) to MeetingBar and is excluded from everything else below - meeting-ness doesn't
 ///   depend on whether you were typing.

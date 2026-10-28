@@ -11,6 +11,10 @@ public interface IAttendanceAlertResolutionLookup
 {
     Task<IReadOnlyDictionary<string, IReadOnlySet<DateOnly>>> ExcusedDatesAsync(
         Guid tenantId, Guid employeeId, DateOnly from, DateOnly to, CancellationToken ct);
+
+    /// <summary>Batched ExcusedDatesAsync, keyed by employee; employees with nothing excused are left out.</summary>
+    Task<IReadOnlyDictionary<Guid, IReadOnlyDictionary<string, IReadOnlySet<DateOnly>>>> ExcusedDatesForEmployeesAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> employeeIds, DateOnly from, DateOnly to, CancellationToken ct);
 }
 
 public interface IAttendanceAlertRepository : IAttendanceAlertResolutionLookup

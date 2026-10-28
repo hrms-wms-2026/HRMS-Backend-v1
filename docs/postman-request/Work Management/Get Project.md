@@ -38,4 +38,4 @@ Doc corrected 2026-08-09: `isAchieved`/`achievedAt` were already returned by `Pr
 
 Controller: `src/ONEVO.Api/Controllers/Tenant/WorkManagement/ProjectsController.cs` (`GetById`)
 Handler: `src/ONEVO.Application/Features/WorkManagement/Projects/Queries/GetProjectById/GetProjectByIdQueryHandler.cs`
-Plan: `docs/superpowers/plans/2026-08-04-work-management-projects-edit-delete-view.md`
+Plan: `docs/superpowers/plans/finished/2026-08-04/2026-08-04-work-management-projects-edit-delete-view.md`

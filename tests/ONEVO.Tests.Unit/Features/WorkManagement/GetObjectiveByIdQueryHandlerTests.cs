@@ -1,5 +1,8 @@
 using Moq;
+using ONEVO.Application.Common.Constants;
+using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.Storage.File.Helpers;
 using ONEVO.Application.Features.Auth.Permission.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Objectives.Queries.GetObjectiveById;
@@ -59,8 +62,37 @@ public class GetObjectiveByIdQueryHandlerTests
         var permissionResolver = new Mock<IPermissionResolver>();
         permissionResolver.Setup(x => x.ResolveAsync(It.IsAny<Guid>(), TenantId, It.IsAny<Guid?>(), It.IsAny<CancellationToken>())).ReturnsAsync(permissions);
 
-        var handler = new GetObjectiveByIdQueryHandler(currentUser.Object, identity.Object, objectives.Object, WorkHierarchyServiceMocks.ReadAccess(members, target, Parent()), permissionResolver.Object);
+        var handler = new GetObjectiveByIdQueryHandler(currentUser.Object, identity.Object, objectives.Object, WorkHierarchyServiceMocks.ReadAccess(members, target, Parent()), permissionResolver.Object, _assets.Object);
         return (handler, members);
+    }
+
+    private readonly Mock<IEntityAssetRepository> _assets = new();
+
+    public GetObjectiveByIdQueryHandlerTests() =>
+        _assets.Setup(x => x.ListByOwnerAsync(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<EntityAssetWithFile>());
+
+    [Fact]
+    public async Task Handle_ReturnsModuleAttachmentsWithDownloadPaths_AndIgnoresOtherPurposes()
+    {
+        var attachmentId = Guid.NewGuid();
+        var uploadedAt = new DateTimeOffset(2026, 10, 28, 9, 0, 0, TimeSpan.Zero);
+        _assets.Setup(x => x.ListByOwnerAsync(TenantId, EntityAssetOwnerTypes.Objective, ObjectiveId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<EntityAssetWithFile>
+            {
+                new(attachmentId, Guid.NewGuid(), "plan.pdf", 2048, "application/pdf", uploadedAt, UploadPurposeCatalog.ObjectiveAsset),
+                new(Guid.NewGuid(), Guid.NewGuid(), "other.png", 10, "image/png", uploadedAt, "some_other_purpose")
+            });
+        var (handler, _) = BuildHandler(Target(), ["*"], hasAncestorOrSelfMembership: false);
+
+        var result = await handler.Handle(new GetObjectiveByIdQuery(ObjectiveId), CancellationToken.None);
+
+        var asset = Assert.Single(result.Value!.Assets!);
+        Assert.Equal(attachmentId, asset.Id);
+        Assert.Equal("plan.pdf", asset.FileName);
+        Assert.Equal(2048, asset.SizeBytes);
+        Assert.Equal(uploadedAt, asset.UploadedAt);
+        Assert.Equal($"/api/v1/work/objectives/{ObjectiveId}/assets/{attachmentId}/file", asset.DownloadUrl);
     }
 
     [Fact]

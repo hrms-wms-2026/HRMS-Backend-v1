@@ -1,4 +1,5 @@
 using System.Text.Json;
+using ONEVO.Application.Common.Helpers;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Features.WorkManagement.CalendarEvents.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
@@ -50,6 +51,9 @@ public sealed class TaskWriteService : ITaskWriteService
 
     public async Task<Result> ValidateCreateAsync(Guid tenantId, TaskCreateInput input, CancellationToken ct = default)
     {
+        if (RichTextRules.HasActiveContent(input.Description))
+            return Result.Failure(RichTextRules.ActiveContentError, 400);
+
         var objective = await _objectives.GetByIdForTenantAsync(tenantId, input.ObjectiveId, ct);
         if (objective is null || !objective.IsActive)
             return Result.NotFound("Objective not found.");
@@ -138,6 +142,8 @@ public sealed class TaskWriteService : ITaskWriteService
 
     public async Task<Result> ValidateEditAsync(Guid tenantId, WorkTask task, Objective objective, TaskEditInput input, CancellationToken ct = default)
     {
+        if (RichTextRules.HasActiveContent(input.Description))
+            return Result.Failure(RichTextRules.ActiveContentError, 400);
         if (task.TaskKind == WorkTaskKinds.EmployeeChecklist && input.SprintId.HasValue
             && input.SprintId.Value != task.SprintId)
             return Result.Conflict("Checklist tasks cannot be added to a sprint.");

@@ -13,8 +13,8 @@ The repository began dirty on `local/reporting-manager-run` with the complete Pa
  ... (23 modified files, 27 untracked paths — the full Part 1 feature plus prior unrelated work)
 ?? WORK_AREA_CHANGE_REQUEST_BACKEND_PART1_REPORT.md
 ?? dev-server-restart.log
-?? docs/superpowers/plans/2026-08-25-attendance-list-pagination.md
-?? docs/superpowers/plans/2026-08-25-work-area-hardening-part1-final.md
+?? docs/superpowers/plans/finished/2026-08-25/2026-08-25-attendance-list-pagination.md
+?? docs/superpowers/plans/finished/2026-08-25/2026-08-25-work-area-hardening-part1-final.md
 ```
 
 All of this pre-existing state was preserved. `git diff --check` reported only pre-existing Windows LF→CRLF advisory warnings, no whitespace errors or conflict markers, both before and after this task's changes.

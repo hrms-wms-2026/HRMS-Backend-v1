@@ -22,7 +22,7 @@ When a `workflow/` report explicitly states it is code-verified (for example `au
 
 Only `project_ core/` documents (the architecture docs, the tables file) get content edits during doc-sync work. Other folders (`plans/`, `workflow/`) only receive **new** files (new plans, new workflow reports) — an existing file there is only changed if the user explicitly asks for that specific file to change.
 
-**Origin:** established 2026-08-03, see `docs/superpowers/specs/2026-08-03-doc-audit-and-process-setup-design.md`.
+**Origin:** established 2026-08-03, see `docs/superpowers/specs/finished/2026-08-03/2026-08-03-doc-audit-and-process-setup-design.md`.
 
 ## 6. Every finished API endpoint gets a plain-Markdown doc under `docs/postman-request/`
 

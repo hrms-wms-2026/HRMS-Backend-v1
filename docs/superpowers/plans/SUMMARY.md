@@ -74,7 +74,7 @@ See `finished/SUMMARY.md` for the full file-by-file list, grouped by date folder
 
 ## Next up
 
-- The multi-legal-entity employment foundation shipped 2026-08-16. Sub-project 2 (Employee Detail screen, `employees:read:sensitive`, Change Position) has both a design and a plan (`next/2026-08-16-employee-detail-screen-backend.md`) but hasn't started implementation yet.
+- The multi-legal-entity employment foundation shipped 2026-08-16. Sub-project 2 (Employee Detail screen, `employees:read:sensitive`, Change Position) has both a design and a plan (`finished/2026-08-16/2026-08-16-employee-detail-screen-backend.md`) but hasn't started implementation yet.
 - Nothing currently in flight for Work Management backend. The only remaining `next/` items are the two raw, not-yet-brainstormed `Project Management.md` entries (see `next/SUMMARY.md`), plus the still-unsynced `2026-08-07-work-management-objective-subtree.md` drift noted below.
 - `2026-08-10-milestone-ownership-and-subtree-access.md` (finished 2026-08-10) unblocks the frontend's Milestone Cards + Tree View feature — see `Hrms--Web-application---front-end---v1/docs/superpowers/plans/finished/2026-08-10/2026-08-10-milestone-cards-and-tree-view/`.
 - A separate, smaller plan — `docs/superpowers/plans/next/2026-08-07-work-management-objective-subtree.md` (`GET /api/v1/work/objectives/{id}/tree`) — is not reflected in this SUMMARY's status table at all, though its git commits (`2a77bbc`..`b900ec5`, 2026-08-07) show it already shipped. This predates the current session and wasn't touched during this pass; worth a status-sync check next time `plans/` is audited.
@@ -87,3 +87,67 @@ See `finished/SUMMARY.md` for the full file-by-file list, grouped by date folder
 - The broader project lifecycle/approval/progress-tracking feature set (workflow status, approval pipeline, archive/restore, progress calculation) remains raw context, not yet brainstormed, in `next/Project Management.md` — separate from and not to be silently merged with the milestone-hierarchy plan's `objective_change_requests` table. The new Achieve workflow is a narrow, single-flag addition and deliberately does not attempt to unify with that broader, still-unbrainstormed feature set.
 - The 42 pre-2026-08-08 files in `finished/` were classified by filename convention (and, for the date-folder split, by explicit `**Date:**` headers or content inference) during the 2026-08-06 move, not individually re-verified — see `finished/SUMMARY.md`'s status note and "Layout: date subfolders" section for which dates were inferred.
 - The `docs/postman-request/README.md` module index was stale from 2026-08-08 through 2026-08-09 (listed only `Create Project.md`) — fixed 2026-08-09 alongside the frontend-blocking-endpoints work; now correctly shows 24 files under `Work Management/`.
+
+## 2026-10-28 migration of loose files
+
+44 files had been added loose in `plans/`, against FILE_CREATION_RULES rule 1. They were moved with `git mv` on 2026-10-28. Status was decided from the code, not from the file: **finished** means the feature's endpoints/components exist in `src/`; **pending** means they do not. Finished files sit under `finished/<date>/` using the date in the file name (the plan/design date; the completion date was not recorded).
+
+| File | Location | Status | Note |
+|---|---|---|---|
+| Invite Platform Manager (Backend) Implementation Plan | `finished/2026-08-06/2026-08-06-invite-platform-manager-backend.md` | finished |  |
+| Legal Entity Logo Upload Implementation Plan | `finished/2026-08-07/2026-08-07-legal-entity-logo-upload.md` | finished |  |
+| PlatformUserDetailResponse Shape Fix Implementation Plan | `finished/2026-08-07/2026-08-07-platform-user-detail-response-shape-fix.md` | finished |  |
+| Admin Subscription Plans List Endpoint Implementation Plan | `finished/2026-08-08/2026-08-08-admin-subscription-plans-list.md` | finished |  |
+| Admin Client Logs Endpoint Implementation Plan | `finished/2026-08-09/2026-08-09-admin-client-logs-endpoint.md` | finished |  |
+| Admin Subscription Plan Detail Endpoint Implementation Plan | `finished/2026-08-09/2026-08-09-admin-subscription-plan-detail-endpoint.md` | finished |  |
+| Inactivity Screenshot and Daily Report Implementation Plan | `finished/2026-08-10/2026-08-10-inactivity-screenshot-daily-report.md` | finished |  |
+| Checklist Template Backend Foundation Implementation Plan | `finished/2026-08-13/2026-08-13-checklist-template-backend-foundation.md` | finished |  |
+| Employee Offboarding Execution — Backend Implementation Plan | `finished/2026-08-17/2026-08-17-employee-offboarding-execution-backend.md` | finished |  |
+| Meeting Detection End-to-End Implementation Plan | `finished/2026-08-17/2026-08-17-meeting-detection-end-to-end.md` | finished |  |
+| MonitoringFeatureToggles Admin CRUD Implementation Plan | `finished/2026-08-17/2026-08-17-monitoring-feature-toggles-admin-crud.md` | finished |  |
+| Bulk Employee Onboarding (Backend) Implementation Plan | `finished/2026-08-18/2026-08-18-bulk-employee-onboarding-backend.md` | finished |  |
+| Bulk Onboarding Template & XLSX Upload Implementation Plan | `finished/2026-08-19/2026-08-19-bulk-onboarding-template-xlsx.md` | finished |  |
+| Management Coverage Responsible Person Implementation Plan | `finished/2026-08-19/2026-08-19-coverage-responsible-person.md` | finished |  |
+| Reporting Manager Resolution Implementation Plan | `finished/2026-08-19/2026-08-19-reporting-manager-resolution.md` | finished |  |
+| Attendance List Pagination Implementation Plan | `finished/2026-08-25/2026-08-25-attendance-list-pagination.md` | finished |  |
+| Tray App Employee Access Toggle (Phase A) Implementation Plan | `next/2026-08-25-tray-app-employee-access-toggle-backend.md` | pending | backend endpoint POST /employees/{id}/tray-app-access was never built (only this plan was committed) |
+| Work Area Change Request Backend Part 1 — Final Hardening Implementation Plan | `finished/2026-08-25/2026-08-25-work-area-hardening-part1-final.md` | finished |  |
+| Calendar Invites, RSVP, and Conflict Detection — Backend Implementation Plan | `finished/2026-08-31/2026-08-31-calendar-invites-rsvp-conflicts-backend.md` | finished |  |
+| Calendar Recurrence Engine Implementation Plan | `finished/2026-08-31/2026-08-31-calendar-recurrence-engine.md` | finished |  |
+| Calendar Timezone Correctness — Backend Implementation Plan | `finished/2026-09-01/2026-09-01-calendar-timezone-backend.md` | finished |  |
+| Objective Asset Attachments (Backend) Implementation Plan | `finished/2026-10-28/2026-09-02-objective-asset-attachments-backend.md` | finished | built 2026-10-28 (upload, delete, download endpoints + assets on Get Objective); see docs/reports/work-management/2026-10-28-module-attachments-backend.md for deviations from the plan |
+| Calendar Small Fixes Implementation Plan | `finished/2026-09-04/2026-09-04-calendar-small-fixes.md` | finished |  |
+| Face Match Verification Implementation Plan | `finished/2026-09-04/2026-09-04-face-match-verification.md` | finished |  |
+| Landing Page "Go to Workspace" Shortcut Implementation Plan | `finished/2026-09-04/2026-09-04-landing-page-workspace-shortcut.md` | finished |  |
+| Calendar External Sync (Google/Outlook) Implementation Plan | `finished/2026-09-08/2026-09-08-calendar-external-sync.md` | finished |  |
+| Task Attachments, Text Highlighting & Inline Description Images Implementation Plan | `finished/2026-09-14/2026-09-14-task-attachments-rich-description.md` | finished |  |
+| Sprint Lifecycle Redesign Implementation Plan | `finished/2026-09-18/2026-09-18-sprint-lifecycle-redesign.md` | finished |  |
+| ClickUp-style Task Status Groups Implementation Plan | `finished/2026-09-18/2026-09-18-task-status-groups.md` | finished |  |
+| Tray Installer Release Management Implementation Plan | `finished/2026-09-19/2026-09-19-tray-installer-release-management.md` | finished |  |
+| Task Comments Implementation Plan | `finished/2026-09-22/2026-09-22-task-comments.md` | finished |  |
+| Microsoft Teams Meeting Integration (Phase 1) Implementation Plan | `finished/2026-09-23/2026-09-23-teams-meeting-integration.md` | finished |  |
+| Independent Sprints Implementation Plan | `finished/2026-09-23/2026-09-23-wm-independent-sprints.md` | finished |  |
+| Zoom Meeting Integration (Phase 2) Implementation Plan | `finished/2026-09-24/2026-09-24-zoom-meeting-integration.md` | finished |  |
+| Work Pattern / Productivity Metric Model Implementation Plan | `finished/2026-09-25/2026-09-25-work-pattern-productivity-model.md` | finished |  |
+| Employee Work Graph — Backend Implementation Plan (Plan 1, backend half) | `finished/2026-09-30/2026-09-30-employee-detail-work-graph-backend.md` | finished |  |
+| Employee Overview — Activity & Discipline Comparison (Plan 3B, backend) | `finished/2026-09-30/2026-09-30-employee-overview-activity-discipline-backend.md` | finished |  |
+| Employee Overview — Approval Activity (Plan 3C, backend) | `finished/2026-09-30/2026-09-30-employee-overview-approvals-backend.md` | finished |  |
+| Employee Overview — Attendance, Discipline & Time-Off (Plan 2, backend half) | `finished/2026-09-30/2026-09-30-employee-overview-attendance-timeoff-backend.md` | finished |  |
+| Employee Overview — Checklists, Employment History & Upcoming Items (Plan 4A, backend) | `finished/2026-09-30/2026-09-30-employee-overview-checklists-history-upcoming-backend.md` | finished |  |
+| Employee Overview — Recent Activity (Plan 4B, backend) | `finished/2026-09-30/2026-09-30-employee-overview-recent-activity-backend.md` | finished |  |
+| Employee Overview — Work & Delivery (Plan 3A, backend) | `finished/2026-09-30/2026-09-30-employee-overview-work-delivery-backend.md` | finished |  |
+| Needs Attention Drill-down — Backend Implementation Plan | `finished/2026-10-01/2026-10-01-needs-attention-drilldown-backend.md` | finished |  |
+| Customizable Grid Dashboard (My Work + My Team) Implementation Plan | `finished/2026-10-20/2026-10-20-customizable-dashboard.md` | finished |  |
+
+## 2026-10-28 status correction
+
+Moved from `next/` to `finished/<date>/`: the backend for these is in `src/` (verified by the entity, query and endpoint names the documents define), and the matching frontend plans were already finished.
+
+- `plans/finished/2026-08-15/2026-08-15-employee-self-service-profile-backend.md`
+- `plans/finished/2026-08-16/2026-08-16-employee-detail-screen-backend.md`
+- `plans/finished/2026-08-17/2026-08-17-sensitive-position-approval-backend.md`
+- `specs/finished/2026-08-15/2026-08-15-employee-self-service-profile-backend-design.md`
+- `specs/finished/2026-08-16/2026-08-16-employee-detail-screen-backend-design.md`
+- `specs/finished/2026-08-17/2026-08-17-employee-offboarding-execution-backend-design.md`
+- `specs/finished/2026-08-17/2026-08-17-sensitive-position-approval-backend-design.md`
+- `specs/finished/2026-08-18/2026-08-18-bulk-employee-onboarding-backend-design.md`

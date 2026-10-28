@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
+using ONEVO.Application.Common.Helpers;
 using ONEVO.Application.Features.Conversations.Contracts;
 using ONEVO.Domain.Features.Conversations.Entities;
 
@@ -31,7 +32,7 @@ internal static partial class ConversationRules
         var body = bodyHtml?.Trim() ?? string.Empty;
         if (body.Length > MaxBodyLength)
             return (null, "Message is too long.");
-        if (HasActiveContent(body))
+        if (RichTextRules.HasActiveContent(body))
             return (null, "Message contains content that is not allowed.");
         var text = WebUtility.HtmlDecode(Tags().Replace(body, " ")).Replace(' ', ' ').Trim();
         if (text.Length == 0 && !allowEmpty && !Embeds().IsMatch(body))
@@ -93,24 +94,6 @@ internal static partial class ConversationRules
             }
         }
     }
-
-    private static bool HasActiveContent(string body)
-    {
-        if (ForbiddenTags().IsMatch(body) || EventHandlerAttributes().IsMatch(body))
-            return true;
-        // Entities and tab/newline characters can hide a scheme from a naive match ("java&#115;cript:").
-        var decoded = WebUtility.HtmlDecode(body).Replace("\t", string.Empty).Replace("\n", string.Empty).Replace("\r", string.Empty);
-        return ScriptUrls().IsMatch(decoded);
-    }
-
-    [GeneratedRegex(@"<\s*/?\s*(script|iframe|frame|frameset|object|embed|applet|svg|math|style|link|meta|base|form|template)\b", RegexOptions.IgnoreCase)]
-    private static partial Regex ForbiddenTags();
-
-    [GeneratedRegex(@"<[^>]*[\s/""']on[a-z]+\s*=", RegexOptions.IgnoreCase)]
-    private static partial Regex EventHandlerAttributes();
-
-    [GeneratedRegex(@"(href|src|action|formaction|data|xlink:href|background|poster)\s*=\s*[""']?[\s\x00-\x20]*(javascript|vbscript|data(?!:image/(png|jpe?g|gif|webp)))\s*:", RegexOptions.IgnoreCase)]
-    private static partial Regex ScriptUrls();
 
     [GeneratedRegex("<[^>]*>")]
     private static partial Regex Tags();
