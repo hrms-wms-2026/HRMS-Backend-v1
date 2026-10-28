@@ -17,6 +17,9 @@ public sealed record CalendarConflict(
     DateTimeOffset OverlapStart, DateTimeOffset OverlapEnd, bool IsBusyOnly = false, string Kind = CalendarConflictKinds.Event);
 public sealed record CalendarConflictsResponse(IReadOnlyList<CalendarConflict> Conflicts);
 
+/// <summary><paramref name="TimeZone"/> is the meeting's zone, used for a participant whose own zone is unknown;
+/// <paramref name="ExcludeMeetingSeriesId"/> is the meeting being edited, whose occurrences are not conflicts.</summary>
 public sealed record CheckCalendarConflictsQuery(
-    IReadOnlyList<Guid> ParticipantEmployeeIds, DateTimeOffset StartDate, DateTimeOffset EndDate)
+    IReadOnlyList<Guid> ParticipantEmployeeIds, DateTimeOffset StartDate, DateTimeOffset EndDate,
+    bool IsAllDay = false, string? TimeZone = null, Guid? ExcludeMeetingSeriesId = null)
     : IRequest<Result<CalendarConflictsResponse>>;
