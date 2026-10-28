@@ -3,6 +3,7 @@ using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.EmployeeAuthority.Models;
 using ONEVO.Application.Features.CoreHr.EmployeeAuthority.ServiceInterfaces;
+using ONEVO.Application.Features.CoreHr.EmployeeHierarchyClosure.RepositoryInterfaces;
 using ONEVO.Application.Features.Dashboard.Team.Queries;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Leadership.Services;
@@ -145,13 +146,38 @@ public sealed class GetMyTeamCapabilitiesQueryHandlerTests
         Assert.False(result.Value.CanViewLiveActivity);
     }
 
+    [Fact]
+    public async Task HasReports_follows_direct_reports()
+    {
+        var withReports = await CreateHandler(CurrentUser(permissions: []), out _, out _, out _, directReports: [Guid.NewGuid()])
+            .Handle(new GetMyTeamCapabilitiesQuery(), CancellationToken.None);
+        var without = await CreateHandler(CurrentUser(permissions: []), out _, out _, out _)
+            .Handle(new GetMyTeamCapabilitiesQuery(), CancellationToken.None);
+
+        Assert.True(withReports.Value!.HasReports);
+        Assert.False(without.Value!.HasReports);
+    }
+
+    [Fact]
+    public async Task HasReports_is_false_without_an_employee_record()
+    {
+        var employees = new Mock<IEmployeeRepository>();
+        employees.Setup(x => x.GetDefaultForUserAsync(TenantId, UserId, It.IsAny<CancellationToken>())).ReturnsAsync((Employee?)null);
+
+        var result = await CreateHandler(CurrentUser(permissions: []), out _, out _, out _, employees: employees, directReports: [Guid.NewGuid()])
+            .Handle(new GetMyTeamCapabilitiesQuery(), CancellationToken.None);
+
+        Assert.False(result.Value!.HasReports);
+    }
+
     private static GetMyTeamCapabilitiesQueryHandler CreateHandler(
         Mock<ICurrentUser> currentUser,
         out Mock<IEmployeeAuthorityResolver> authority,
         out Mock<IModuleEntitlementService> modules,
         out Mock<IWorkLeadershipService> workLeadership,
         Mock<IEmployeeRepository>? employees = null,
-        string[]? activeModules = null)
+        string[]? activeModules = null,
+        Guid[]? directReports = null)
     {
         employees ??= EmployeesWithActor();
         authority = new Mock<IEmployeeAuthorityResolver>();
@@ -164,8 +190,12 @@ public sealed class GetMyTeamCapabilitiesQueryHandlerTests
         workLeadership.Setup(x => x.LeadsAnyWorkAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>())).ReturnsAsync(false);
         workLeadership.Setup(x => x.HasPendingWorkApprovalsAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>())).ReturnsAsync(false);
 
+        var hierarchy = new Mock<IEmployeeHierarchyClosureRepository>();
+        hierarchy.Setup(x => x.GetDirectReportEmployeeIdsAsync(TenantId, ActorId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(directReports ?? []);
+
         return new GetMyTeamCapabilitiesQueryHandler(
-            currentUser.Object, employees.Object, authority.Object, modules.Object, workLeadership.Object);
+            currentUser.Object, employees.Object, authority.Object, modules.Object, workLeadership.Object, hierarchy.Object);
     }
 
     private static Mock<ICurrentUser> CurrentUser(IReadOnlyList<string> permissions)

@@ -15,7 +15,7 @@ public sealed class DashboardWidgetRegistryTests
         var team = DashboardWidgetRegistry.ForDashboard(DashboardKeys.MyTeam).Select(d => d.Key).ToList();
 
         Assert.Equal(10, work.Count);
-        Assert.Equal(4, team.Count);
+        Assert.Equal(5, team.Count);
         Assert.Empty(work.Intersect(team));
         Assert.Equal(work.Count + team.Count, work.Concat(team).Distinct().Count());
         foreach (var key in work.Concat(team))
@@ -24,6 +24,19 @@ public sealed class DashboardWidgetRegistryTests
                 1,
                 Dashboards.Count(d => DashboardWidgetRegistry.ForDashboard(d).Any(w => w.Key == key)));
         }
+    }
+
+    [Fact]
+    public void Team_schedule_is_a_2x2_my_team_widget_placed_below_the_rest()
+    {
+        var def = DashboardWidgetRegistry.Get("team-schedule")!;
+        var placed = DashboardWidgetRegistry.DefaultLayout(DashboardKeys.MyTeam, Breakpoints.Desktop)
+            .Single(p => p.Key == "team-schedule");
+
+        Assert.Equal(("Today's team schedule", DashboardKeys.MyTeam, true), (def.Title, def.DashboardKey, def.HasProvider));
+        Assert.Equal((2, 2, 12, 8), (def.MinW, def.MinH, def.MaxW, def.MaxH));
+        Assert.Equal(new GridRect(0, 12, 8, 6), placed.Rect);
+        Assert.Equal("Working / Break / Leave", DashboardWidgetRegistry.Get("team-status")!.Title);
     }
 
     [Fact]

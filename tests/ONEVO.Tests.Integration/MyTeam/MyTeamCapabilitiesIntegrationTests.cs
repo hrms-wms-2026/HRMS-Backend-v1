@@ -89,7 +89,8 @@ public sealed class MyTeamCapabilitiesIntegrationTests
 
         return new GetMyTeamCapabilitiesQueryHandler(
             currentUser, new EfEmployeeRepository(db), authority,
-            new StubModuleEntitlementService(workModuleActive), workLeadership);
+            new StubModuleEntitlementService(workModuleActive), workLeadership,
+            new EfEmployeeHierarchyClosureRepository(db, new SystemDateTimeProvider()));
     }
 
     [Fact]

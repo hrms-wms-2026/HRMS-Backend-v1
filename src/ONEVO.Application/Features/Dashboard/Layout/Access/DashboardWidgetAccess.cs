@@ -16,6 +16,7 @@ public sealed class DashboardWidgetAccess(
     public const string TeamStatus = "team-status";
     public const string TeamProgress = "team-progress";
     public const string TeamAttendance = "team-attendance";
+    public const string TeamSchedule = "team-schedule";
 
     private Task<MyTeamCapabilitiesResponse?>? _capabilities;
 
@@ -46,6 +47,7 @@ public sealed class DashboardWidgetAccess(
                     keys.Add(TeamAttendance);
                 }
                 if (caps is { IsAvailable: true, LeadsWork: true }) keys.Add(TeamProgress);
+                if (caps is { IsAvailable: true, HasReports: true }) keys.Add(TeamSchedule);
                 break;
         }
 

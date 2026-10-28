@@ -31,6 +31,7 @@ public static class DashboardWidgetRegistry
         new("team-quick-actions", DashboardKeys.MyTeam, "Team quick actions", "Shortcuts for managing your team.", 2, 2, 6, 4, false),
         new("team-progress", DashboardKeys.MyTeam, "Team progress", "Estimated hours progress across your team.", 2, 2, 12, 8, true),
         new("team-attendance", DashboardKeys.MyTeam, "Team attendance", "Attendance across your team by week or month.", 2, 2, 12, 8, true),
+        new("team-schedule", DashboardKeys.MyTeam, "Today's team schedule", "What your team planned for today and how far they are.", 2, 2, 12, 8, true),
     ];
 
     private static readonly Dictionary<string, WidgetDefinition> ByKey =
@@ -64,6 +65,7 @@ public static class DashboardWidgetRegistry
         ("team-quick-actions", new GridRect(8, 0, 4, 4)),
         ("team-progress", new GridRect(8, 4, 4, 6)),
         ("team-attendance", new GridRect(0, 6, 8, 6)),
+        ("team-schedule", new GridRect(0, 12, 8, 6)),
     ];
 
     // team-attendance shares team-status's gate, so the variants below (team-status not allowed) never include it.

@@ -4,6 +4,7 @@ using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.EmployeeAuthority.Models;
 using ONEVO.Application.Features.CoreHr.EmployeeAuthority.ServiceInterfaces;
+using ONEVO.Application.Features.CoreHr.EmployeeHierarchyClosure.RepositoryInterfaces;
 using ONEVO.Application.Features.Dashboard.Team.DTOs;
 using ONEVO.Application.Features.Monitoring.Exceptions.Services;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
@@ -23,7 +24,8 @@ public sealed class GetMyTeamCapabilitiesQueryHandler(
     IEmployeeRepository employees,
     IEmployeeAuthorityResolver authority,
     IModuleEntitlementService modules,
-    IWorkLeadershipService workLeadership)
+    IWorkLeadershipService workLeadership,
+    IEmployeeHierarchyClosureRepository hierarchy)
     : IRequestHandler<GetMyTeamCapabilitiesQuery, Result<MyTeamCapabilitiesResponse>>
 {
     private const string AttendanceReadPermission = "attendance:read";
@@ -48,9 +50,12 @@ public sealed class GetMyTeamCapabilitiesQueryHandler(
         var canViewPeopleStatus = false;
         var leadsWork = false;
         var hasWorkApprovals = false;
+        var hasReports = false;
 
         if (legalEntityId is Guid activeLegalEntityId)
         {
+            hasReports = (await hierarchy.GetDirectReportEmployeeIdsAsync(currentUser.TenantId, actor!.Id, ct)).Count > 0;
+
             if (currentUser.HasPermission(AttendanceReadPermission))
             {
                 canViewPeopleStatus = await authority.HasAnyManagedCoverageAsync(
@@ -64,7 +69,7 @@ public sealed class GetMyTeamCapabilitiesQueryHandler(
             if (hasWorkModule)
             {
                 leadsWork = await workLeadership.LeadsAnyWorkAsync(
-                    currentUser.TenantId, actor!.Id, activeLegalEntityId, ct);
+                    currentUser.TenantId, actor.Id, activeLegalEntityId, ct);
                 hasWorkApprovals = await workLeadership.HasPendingWorkApprovalsAsync(
                     currentUser.TenantId, actor.Id, activeLegalEntityId, ct);
             }
@@ -80,6 +85,7 @@ public sealed class GetMyTeamCapabilitiesQueryHandler(
             hasWorkApprovals,
             leadsWork,
             CanViewLiveActivity: false,
+            hasReports,
             legalEntityId));
     }
 }
