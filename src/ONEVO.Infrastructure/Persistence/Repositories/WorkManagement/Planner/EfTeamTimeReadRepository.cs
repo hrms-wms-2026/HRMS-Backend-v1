@@ -135,4 +135,18 @@ public sealed class EfTeamTimeReadRepository(ApplicationDbContext db) : ITeamTim
                 r.EmploymentStatusId == EmploymentStatusIds.Active);
         });
     }
+
+    public async Task<IReadOnlyList<Guid>> ListAssigneesForTasksAsync(Guid tenantId, IReadOnlyCollection<Guid> objectiveIds,
+        CancellationToken ct = default)
+    {
+        if (objectiveIds.Count == 0)
+            return [];
+        return await (
+            from a in db.TaskAssignments.AsNoTracking()
+            join t in db.WorkTasks.AsNoTracking() on a.TaskId equals t.Id
+            where t.TenantId == tenantId && !t.IsDeleted && objectiveIds.Contains(t.ObjectiveId)
+            select a.EmployeeId)
+            .Distinct()
+            .ToListAsync(ct);
+    }
 }

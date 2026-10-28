@@ -41,4 +41,8 @@ public interface ITeamTimeReadRepository
     /// <summary>Name ("First Last"), primary avatar and active flag per employee of this tenant.</summary>
     Task<IReadOnlyDictionary<Guid, TeamPersonRow>> GetPeopleAsync(Guid tenantId, IReadOnlyCollection<Guid> employeeIds,
         CancellationToken ct = default);
+
+    /// <summary>Distinct assignees of the "for tasks" set (Team Progress workload population).</summary>
+    Task<IReadOnlyList<Guid>> ListAssigneesForTasksAsync(Guid tenantId, IReadOnlyCollection<Guid> objectiveIds,
+        CancellationToken ct = default);
 }
