@@ -436,4 +436,19 @@ public sealed class EmailTemplateRendererTests
         else
             rendered.HtmlBody.Should().NotContain("https://us05web.zoom.us/j/123456789");
     }
+
+    [Fact]
+    public void RenderCalendarEventInvite_LinkRemoved_SaysSo_WithoutTheLink()
+    {
+        var renderer = new EmailTemplateRenderer(Options.Create(new EmailOptions()));
+
+        var rendered = renderer.Render("calendar_event_link_removed", new
+        {
+            recipientName = "Ada", eventTitle = "Standup", startDateUtc = "2026-09-29T14:45:00Z",
+            location = (string?)null, organizerName = "Owner", meetingLink = "https://zoom.us/j/1"
+        });
+
+        rendered.Subject.Should().Be("Meeting link removed: Standup");
+        rendered.HtmlBody.Should().NotContain("https://zoom.us/j/1");
+    }
 }

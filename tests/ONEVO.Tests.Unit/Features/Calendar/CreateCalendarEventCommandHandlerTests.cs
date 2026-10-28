@@ -1,3 +1,5 @@
+using ONEVO.Application.Features.WorkManagement.Meetings;
+using Microsoft.Extensions.Options;
 using Moq;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
@@ -39,6 +41,25 @@ public sealed class CreateCalendarEventCommandHandlerTests
             .Returns<Func<CancellationToken, Task<ONEVO.Application.Common.Models.Result<CalendarEventItem>>>, CancellationToken>(
                 (action, ct) => action(ct));
         return new CreateCalendarEventCommandHandler(_currentUser.Object, _events.Object, _employees.Object, _notifications.Object, _timezoneResolver.Object, _unitOfWork.Object);
+    }
+
+    // Meetings-as-tasks: with Meetings:Create on, a meeting with people or a link belongs to a project (a Meeting work item).
+    [Fact]
+    public async Task With_meetings_on_a_new_event_with_people_or_a_link_is_refused()
+    {
+        _currentUser.SetupGet(x => x.IsAuthenticated).Returns(true);
+        var sut = new CreateCalendarEventCommandHandler(_currentUser.Object, _events.Object, _employees.Object, _notifications.Object,
+            _timezoneResolver.Object, _unitOfWork.Object, new CalendarMeetingGuard(Options.Create(new MeetingsOptions { Create = true }), _events.Object));
+
+        var withPeople = await sut.Handle(new CreateCalendarEventCommand("Sync", null, Start, Start.AddHours(1), false, null, null, null,
+            CalendarRecurrences.None, [Guid.NewGuid()]), CancellationToken.None);
+        var withLink = await sut.Handle(new CreateCalendarEventCommand("Sync", null, Start, Start.AddHours(1), false, null,
+            "https://zoom.us/j/1", null, CalendarRecurrences.None, []), CancellationToken.None);
+        var withGuest = await sut.Handle(new CreateCalendarEventCommand("Sync", null, Start, Start.AddHours(1), false, null, null, null,
+            CalendarRecurrences.None, [], GuestEmails: ["client@example.com"]), CancellationToken.None);
+
+        foreach (var result in new[] { withPeople, withLink, withGuest })
+            Assert.Equal((400, CalendarMeetingGuard.ErrorCode), (result.StatusCode, result.ErrorCode));
     }
 
     [Fact]

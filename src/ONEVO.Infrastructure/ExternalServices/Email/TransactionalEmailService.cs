@@ -17,15 +17,21 @@ public class TransactionalEmailService : IEmailService
     private readonly ITransactionalEmailSender _sender;
     private readonly IEmailTemplateRenderer _renderer;
     private readonly ILogger<TransactionalEmailService> _logger;
+    private readonly IOutboxDispatchContext? _dispatchContext;
 
+    /// <param name="dispatchContext">When the send happens inside an outbox dispatch, each request
+    /// carries the message id and a stable idempotency key so a retry of the same message reuses
+    /// it. Optional so request-time callers and existing tests construct the service unchanged.</param>
     public TransactionalEmailService(
         ITransactionalEmailSender sender,
         IEmailTemplateRenderer renderer,
-        ILogger<TransactionalEmailService> logger)
+        ILogger<TransactionalEmailService> logger,
+        IOutboxDispatchContext? dispatchContext = null)
     {
         _sender = sender;
         _renderer = renderer;
         _logger = logger;
+        _dispatchContext = dispatchContext;
     }
 
     public Task SendAsync(string to, string subject, string htmlBody, CancellationToken ct = default)
@@ -53,6 +59,7 @@ public class TransactionalEmailService : IEmailService
             "updated" => "calendar_event_updated",
             "cancelled" => "calendar_event_cancelled",
             "removed" => "calendar_event_removed",
+            "link_removed" => "calendar_event_link_removed",
             _ => "calendar_event_invite",
         };
         var rendered = _renderer.Render(templateId, new
@@ -98,7 +105,9 @@ public class TransactionalEmailService : IEmailService
             Subject: subject,
             HtmlBody: htmlBody,
             TextBody: textBody,
-            Attachments: attachments);
+            OutboxMessageId: _dispatchContext?.CurrentMessageId,
+            Attachments: attachments,
+            IdempotencyKey: _dispatchContext?.NextIdempotencyKey());
 
         var result = await _sender.SendAsync(request, ct);
         if (result.Success)

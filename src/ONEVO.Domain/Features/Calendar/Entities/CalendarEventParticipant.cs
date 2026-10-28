@@ -13,7 +13,10 @@ public static class CalendarEventParticipantStatuses
 
 public class CalendarEventParticipant : BaseEntity
 {
-    public Guid EventId { get; set; }
+    /// <summary>The calendar event this participant belongs to; null when a meeting series owns the row
+    /// (exactly one of <see cref="EventId"/> / <see cref="MeetingSeriesId"/> is set, meetings-as-tasks Phase 2).</summary>
+    public Guid? EventId { get; set; }
+    public Guid? MeetingSeriesId { get; set; }
     public Guid EmployeeId { get; set; }
     public string ResponseStatus { get; set; } = CalendarEventParticipantStatuses.Pending;
     public string? ResponseReason { get; set; }

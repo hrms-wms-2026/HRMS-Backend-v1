@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using ONEVO.Domain.Features.Calendar.Entities;
+using ONEVO.Domain.Features.WorkManagement.Meetings.Entities;
 
 namespace ONEVO.Infrastructure.Persistence.Configurations.Calendar;
 
@@ -19,5 +20,12 @@ public class CalendarEventParticipantConfiguration : IEntityTypeConfiguration<Ca
 
         builder.HasIndex(p => new { p.TenantId, p.EmployeeId })
             .HasDatabaseName("ix_calendar_event_participants_tenant_id_employee_id");
+
+        // Series attendees (meetings-as-tasks Phase 2): one row per employee per series, like the event index above.
+        builder.HasIndex(p => new { p.TenantId, p.MeetingSeriesId, p.EmployeeId })
+            .IsUnique()
+            .HasFilter("meeting_series_id IS NOT NULL")
+            .HasDatabaseName("ux_calendar_event_participants_series_employee");
+        builder.HasOne<MeetingSeries>().WithMany().HasForeignKey(p => p.MeetingSeriesId).OnDelete(DeleteBehavior.Restrict);
     }
 }

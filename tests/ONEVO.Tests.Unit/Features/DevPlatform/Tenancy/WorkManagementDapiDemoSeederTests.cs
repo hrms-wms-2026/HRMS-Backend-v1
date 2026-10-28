@@ -704,12 +704,13 @@ public sealed class WorkManagementDapiDemoSeederTests : IDisposable
         eposTaskCategories.Should().HaveCount(1);
         eposTaskCategories[0].Id.Should().Be(preexistingId);
 
-        // The remaining 3 canonical categories should have been newly seeded for the same project.
+        // The remaining 4 canonical categories (incl. the system Meeting) should have been newly seeded for the same project.
         var allEposCategories = await verify.TaskCategories
             .Where(c => c.ProjectId == eposProjectId)
             .ToListAsync();
-        allEposCategories.Should().HaveCount(4);
-        allEposCategories.Select(c => c.Name).Should().BeEquivalentTo(["task", "bug", "story", "feature"]);
+        allEposCategories.Should().HaveCount(5);
+        allEposCategories.Select(c => c.Name).Should().BeEquivalentTo(["task", "bug", "story", "feature", "meeting"]);
+        allEposCategories.Should().ContainSingle(c => c.SystemKey == TaskCategorySystemKeys.Meeting);
 
         // Every seeded WorkTask/task.create request under EPOS that uses the "task" category must
         // resolve to the pre-existing (reused) id, not a freshly-minted duplicate.

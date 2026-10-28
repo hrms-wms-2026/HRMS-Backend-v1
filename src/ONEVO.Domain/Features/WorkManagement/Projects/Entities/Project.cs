@@ -15,6 +15,9 @@ public class Project : BaseEntity
     public string Name { get; set; } = string.Empty;
     public string Identifier { get; set; } = string.Empty;
     public long NextTaskNumber { get; set; } = 1;
+    /// <summary>Meeting occurrences number separately ({Identifier}-M{n}), so meetings never show up as gaps in
+    /// the task ShortId sequence (meetings-as-tasks Phase 2 spec 4.1).</summary>
+    public long NextMeetingNumber { get; set; } = 1;
     public string? Description { get; set; }
     public Guid LeadId { get; set; }
     public DateOnly StartDate { get; set; }

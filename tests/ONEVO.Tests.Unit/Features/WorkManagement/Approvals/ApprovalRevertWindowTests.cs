@@ -35,6 +35,18 @@ public class ApprovalRevertWindowTests
         canRevert.Should().Be(expectedCanRevert);
     }
 
+    [Theory]
+    [InlineData(WorkActionTypes.MeetingCreate)]
+    [InlineData(WorkActionTypes.MeetingMove)]
+    public void ComputeCanRevert_IsFalseForMeetingDecisions_WhichCannotBeReverted(string actionType)
+    {
+        // A meeting decision is final (its revert answers 409), so the decider is never offered an Undo that fails.
+        var request = Request(WorkApprovalRequestStatuses.Approved, Decider, DateTimeOffset.UtcNow.AddMinutes(-5));
+        request.ActionType = actionType;
+
+        ApprovalRevertWindow.ComputeCanRevert(request, Decider).Should().Be((false, (DateTimeOffset?)null));
+    }
+
     [Fact]
     public void ComputeCanRevert_RevertableUntilIsThirtyMinutesAfterDecidedAt()
     {

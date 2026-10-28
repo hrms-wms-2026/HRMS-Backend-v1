@@ -87,6 +87,21 @@ public class NotificationDeliveryHandlerTests
     }
 
     [Fact]
+    public async Task Email_CarriesAnIdempotencyKey_FromTheDelivery_SoARetryAfterAcceptanceIsNotSentTwice()
+    {
+        // A crash after the provider accepted the email retries the delivery; Resend drops the repeat when the key matches.
+        UserHasEmail("priya@tenant.test");
+        _email.Setup(e => e.SendAsync(It.IsAny<TransactionalEmailRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(TransactionalEmailResult.Sent("resend", "m-1", Now));
+        var d = Delivery(NotificationChannels.Email);
+
+        await Build().HandleAsync(Payload(d), default);
+
+        _email.Verify(e => e.SendAsync(It.Is<TransactionalEmailRequest>(r =>
+            r.IdempotencyKey == $"notification-delivery/{d.Id}"), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
     public async Task Email_Accepted_IsProviderAccepted_NotRead()
     {
         UserHasEmail("priya@tenant.test");

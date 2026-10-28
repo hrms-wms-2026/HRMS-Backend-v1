@@ -48,7 +48,8 @@ public sealed record CalendarEventViewModel(
     bool IsRecurringOccurrence = false, Guid? RecurrenceMasterId = null, DateTimeOffset? OriginalStart = null,
     IReadOnlyList<CalendarEventParticipantSummaryViewModel>? Participants = null, bool HasConflict = false,
     bool IsOrganizer = false, string? OrganizerName = null,
-    IReadOnlyList<CalendarEventGuestViewModel>? Guests = null);
+    IReadOnlyList<CalendarEventGuestViewModel>? Guests = null,
+    string? ItemKind = null, Guid? MeetingSeriesId = null, Guid? MeetingTaskId = null, string? MeetingStatus = null);
 
 public sealed record CalendarEventsViewModel(IReadOnlyList<CalendarEventViewModel> Events);
 
@@ -67,7 +68,9 @@ public static class CalendarEventViewModelMapper
         dto.IsRecurringOccurrence, dto.RecurrenceMasterId, dto.OriginalStart,
         dto.Participants?.Select(p => new CalendarEventParticipantSummaryViewModel(p.EmployeeId, p.EmployeeName, p.ResponseStatus)).ToList(),
         dto.HasConflict, dto.IsOrganizer, dto.OrganizerName,
-        dto.Guests?.Select(g => new CalendarEventGuestViewModel(g.Email)).ToList());
+        dto.Guests?.Select(g => new CalendarEventGuestViewModel(g.Email)).ToList(),
+        // A task meeting (meetings Phase 2) says what it is, so the client opens its drawer rather than the event form.
+        dto.ItemKind, dto.MeetingSeriesId, dto.MeetingTaskId, dto.MeetingStatus);
 
     public static CalendarEventsViewModel ToViewModel(this CalendarEventsResponse dto) =>
         new(dto.Events.Select(e => e.ToViewModel()).ToList());
@@ -98,18 +101,24 @@ public sealed record CreateEventMeetingRequestModel(string Provider, bool Invite
 
 public sealed record CreateEventMeetingResponseModel(string JoinUrl);
 
+public sealed record EventMeetingStatusViewModel(string Status, string? Provider, string? JoinUrl, string? FailureReason);
+
 public sealed record MeetingAttendeeViewModel(string? Name, string? Email, DateTimeOffset JoinedAt, DateTimeOffset? LeftAt, int? DurationSeconds);
 public sealed record MeetingIncidentViewModel(string EmployeeName, string Rule, DateTimeOffset OccurrenceStart, bool Estimated);
 
 /// <summary><see cref="Incidents"/>: the incidents this meeting raised - for its organizer only (empty otherwise).</summary>
+/// <summary><see cref="SyncStatus"/>: none | pending | synced | attendance_unavailable | sync_failed (the last two mean
+/// "unknown", never "nobody attended"); <see cref="SyncError"/> says why a sync failed.</summary>
 public sealed record MeetingAttendanceViewModel(
-    bool Available, IReadOnlyList<MeetingAttendeeViewModel> Attendees, IReadOnlyList<MeetingIncidentViewModel> Incidents);
+    bool Available, IReadOnlyList<MeetingAttendeeViewModel> Attendees, IReadOnlyList<MeetingIncidentViewModel> Incidents,
+    string SyncStatus, string? SyncError);
 
 public static class MeetingAttendanceViewModelMapper
 {
     public static MeetingAttendanceViewModel ToViewModel(this GetEventMeetingAttendanceResult dto) =>
         new(dto.Available, dto.Attendees.Select(a => new MeetingAttendeeViewModel(a.Name, a.Email, a.JoinedAt, a.LeftAt, a.DurationSeconds)).ToList(),
-            dto.Incidents.Select(i => new MeetingIncidentViewModel(i.EmployeeName, i.Rule, i.OccurrenceStart, i.Estimated)).ToList());
+            dto.Incidents.Select(i => new MeetingIncidentViewModel(i.EmployeeName, i.Rule, i.OccurrenceStart, i.Estimated)).ToList(),
+            dto.SyncStatus, dto.SyncError);
 }
 
 public sealed record StartCalendarConnectionRequest(); // provider comes from the route, body is empty

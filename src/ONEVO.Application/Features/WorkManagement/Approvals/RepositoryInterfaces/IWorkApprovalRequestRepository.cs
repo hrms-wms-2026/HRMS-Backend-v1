@@ -40,5 +40,10 @@ public interface IWorkApprovalRequestRepository
     Task<IReadOnlySet<Guid>> ListProjectsWithPendingAsync(
         Guid tenantId, IReadOnlyCollection<Guid> projectIds, IReadOnlySet<string> actionTypes, CancellationToken ct = default);
 
+    /// <summary>SELECT ... FOR UPDATE on the request row while it is still pending: true when this transaction now holds
+    /// it, false when another decision got there first. A concurrent decider waits on the lock and then sees the row is
+    /// no longer pending (meetings-as-tasks spec 5.2 "a conditional pending -> approved update"). Needs a transaction.</summary>
+    Task<bool> LockIfPendingAsync(Guid tenantId, Guid id, CancellationToken ct = default);
+
     void Update(WorkApprovalRequest request);
 }

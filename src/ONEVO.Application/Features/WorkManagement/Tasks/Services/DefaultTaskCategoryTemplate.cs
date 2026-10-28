@@ -11,7 +11,8 @@ public static class DefaultTaskCategoryTemplate
             new() { Id = Guid.NewGuid(), TenantId = tenantId, ProjectId = projectId, Name = "task", DisplayOrder = 0, CreatedById = createdById, CreatedAt = now },
             new() { Id = Guid.NewGuid(), TenantId = tenantId, ProjectId = projectId, Name = "bug", DisplayOrder = 1, CreatedById = createdById, CreatedAt = now },
             new() { Id = Guid.NewGuid(), TenantId = tenantId, ProjectId = projectId, Name = "story", DisplayOrder = 2, CreatedById = createdById, CreatedAt = now },
-            new() { Id = Guid.NewGuid(), TenantId = tenantId, ProjectId = projectId, Name = "feature", DisplayOrder = 3, CreatedById = createdById, CreatedAt = now }
+            new() { Id = Guid.NewGuid(), TenantId = tenantId, ProjectId = projectId, Name = "feature", DisplayOrder = 3, CreatedById = createdById, CreatedAt = now },
+            new() { Id = Guid.NewGuid(), TenantId = tenantId, ProjectId = projectId, Name = TaskCategorySystemKeys.Meeting, DisplayOrder = 4, SystemKey = TaskCategorySystemKeys.Meeting, CreatedById = createdById, CreatedAt = now }
         };
     }
 }

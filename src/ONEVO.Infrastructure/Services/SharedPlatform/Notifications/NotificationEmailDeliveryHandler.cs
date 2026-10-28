@@ -7,8 +7,10 @@ namespace ONEVO.Infrastructure.Services.SharedPlatform.Notifications;
 
 /// <summary>
 /// Sends the captured email. Delivery is at-least-once: if the provider accepts the message but the status
-/// save then fails (or the provider times out after accepting), the retry can send it again - providers in
-/// use expose no idempotency key on this path. Internal duplicates are prevented by the delivery identity.
+/// save then fails (or the provider times out after accepting), the retry sends it again. The send carries an
+/// idempotency key from the delivery's id - the same on every retry, with the same captured body - so a
+/// provider that honours keys (Resend) drops the repeat; one that does not (SendGrid) may deliver it twice.
+/// Internal duplicates are prevented by the delivery identity.
 /// </summary>
 public sealed class NotificationEmailDeliveryHandler : INotificationChannelDeliveryHandler
 {
@@ -44,7 +46,7 @@ public sealed class NotificationEmailDeliveryHandler : INotificationChannelDeliv
         delivery.AttemptCount++;
         var result = await _email.SendAsync(new TransactionalEmailRequest(
             delivery.TenantId, user.Email, delivery.EmailSubject ?? delivery.Title,
-            delivery.EmailHtml ?? string.Empty, delivery.EmailText), ct);
+            delivery.EmailHtml ?? string.Empty, delivery.EmailText, IdempotencyKey: IdempotencyKey(delivery)), ct);
         delivery.UpdatedAt = _clock.UtcNow;
 
         if (result.Success)
@@ -65,6 +67,9 @@ public sealed class NotificationEmailDeliveryHandler : INotificationChannelDeliv
 
         throw new NotificationDeliveryRetryException($"Email delivery {delivery.Id} failed; will retry.");
     }
+
+    /// <summary>One key per delivery: stable across retries, unlike a key counted per outbox attempt.</summary>
+    public static string IdempotencyKey(NotificationDelivery delivery) => $"notification-delivery/{delivery.Id}";
 
     private static string Truncate(string value, int max) => value.Length <= max ? value : value[..max];
 }

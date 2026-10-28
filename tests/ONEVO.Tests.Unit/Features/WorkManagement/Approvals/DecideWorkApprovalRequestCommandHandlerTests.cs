@@ -6,6 +6,8 @@ using ONEVO.Application.Features.WorkManagement.Approvals.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Approvals.Services;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Hierarchy;
+using ONEVO.Application.Features.WorkManagement.Meetings;
+using ONEVO.Application.Features.WorkManagement.Meetings.Contracts;
 using ONEVO.Application.Features.WorkManagement.Notifications.Services;
 using ONEVO.Domain.Features.WorkManagement.Approvals.Entities;
 using ONEVO.Domain.Features.WorkManagement.Notifications.Entities;
@@ -57,6 +59,7 @@ public class DecideWorkApprovalRequestCommandHandlerTests
             RequestedByEmployeeId = Requester, PayloadJson = "{\"title\":\"old\"}", Status = WorkApprovalRequestStatuses.Pending
         };
         _requests.Setup(x => x.GetTrackedByIdForTenantAsync(TenantId, _request.Id, It.IsAny<CancellationToken>())).ReturnsAsync(_request);
+        _requests.Setup(x => x.LockIfPendingAsync(TenantId, _request.Id, It.IsAny<CancellationToken>())).ReturnsAsync(true);
         _applier.SetupGet(x => x.ActionType).Returns(WorkActionTypes.TaskEdit);
         _appliers.Setup(x => x.Find(WorkActionTypes.TaskEdit)).Returns(_applier.Object);
     }
@@ -220,6 +223,68 @@ public class DecideWorkApprovalRequestCommandHandlerTests
         Caller(A);
         _request.Status = WorkApprovalRequestStatuses.Approved;
         (await Build().Handle(Cmd(_request.Id, WorkApprovalDecision.Reject), default)).StatusCode.Should().Be(409);
+    }
+
+    [Theory]
+    [InlineData(WorkApprovalDecision.Approve)]
+    [InlineData(WorkApprovalDecision.Reject)]
+    public async Task ConcurrentDecisionWonTheRow_Returns409_AndAppliesNothing(WorkApprovalDecision decision)
+    {
+        // The request read as pending, but another decider committed first: the row lock finds it no longer pending.
+        Caller(A);
+        _requests.Setup(x => x.LockIfPendingAsync(TenantId, _request.Id, It.IsAny<CancellationToken>())).ReturnsAsync(false);
+
+        var result = await Build().Handle(Cmd(_request.Id, decision), default);
+
+        result.StatusCode.Should().Be(409);
+        _applier.Verify(x => x.ApplyAsync(It.IsAny<ApprovalApplyContext>(), It.IsAny<CancellationToken>()), Times.Never);
+        _request.Status.Should().Be(WorkApprovalRequestStatuses.Pending);
+        _uow.SaveCallCount.Should().Be(0);
+        _notifications.Verify(x => x.NotifyAsync(It.IsAny<WorkNotificationEvent>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ApplyingWhileTheMeetingIsLocked_Returns409MeetingBusy_AndLeavesTheRequestPending()
+    {
+        // An approved meeting.move takes the series lock; another change to the same meeting holds it past the lock
+        // timeout. The approver gets the meeting's "being changed" answer to retry, not a server error.
+        Caller(A);
+        _applier.Setup(x => x.ApplyAsync(It.IsAny<ApprovalApplyContext>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new MeetingBusyException(Guid.NewGuid(), new TimeoutException()));
+
+        var result = await Build().Handle(Cmd(_request.Id, WorkApprovalDecision.Approve), default);
+
+        (result.StatusCode, result.ErrorCode).Should().Be((409, MeetingErrorCodes.Busy));
+        _request.Status.Should().Be(WorkApprovalRequestStatuses.Pending);
+        _uow.SaveCallCount.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task ConcurrentCancelLostTheRow_Returns409()
+    {
+        Caller(Requester);
+        _requests.Setup(x => x.LockIfPendingAsync(TenantId, _request.Id, It.IsAny<CancellationToken>())).ReturnsAsync(false);
+
+        var result = await Build().Handle(Cmd(_request.Id, WorkApprovalDecision.Cancel), default);
+
+        result.StatusCode.Should().Be(409);
+        _request.Status.Should().Be(WorkApprovalRequestStatuses.Pending);
+    }
+
+    [Fact]
+    public async Task Decision_TakesTheRowLock_BeforeApplying()
+    {
+        Caller(A);
+        var order = new List<string>();
+        _requests.Setup(x => x.LockIfPendingAsync(TenantId, _request.Id, It.IsAny<CancellationToken>()))
+            .Callback(() => order.Add("lock")).ReturnsAsync(true);
+        _applier.Setup(x => x.ApplyAsync(It.IsAny<ApprovalApplyContext>(), It.IsAny<CancellationToken>()))
+            .Callback(() => order.Add("apply")).ReturnsAsync(ApplyOutcome.Applied());
+
+        await Build().Handle(Cmd(_request.Id, WorkApprovalDecision.Approve), default);
+
+        order.Should().Equal("lock", "apply");
+        _uow.TransactionCallCount.Should().Be(1);
     }
 
     [Fact]

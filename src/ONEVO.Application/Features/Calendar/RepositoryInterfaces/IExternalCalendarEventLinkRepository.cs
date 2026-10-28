@@ -7,6 +7,8 @@ public interface IExternalCalendarEventLinkRepository
     Task AddAsync(ExternalCalendarEventLink link, CancellationToken ct = default);
     Task<ExternalCalendarEventLink?> GetTrackedByConnectionAndExternalEventAsync(Guid tenantId, Guid connectionId, string externalEventId, CancellationToken ct = default);
     Task<ExternalCalendarEventLink?> GetTrackedByCalendarEventAndConnectionAsync(Guid tenantId, Guid calendarEventId, Guid connectionId, CancellationToken ct = default);
+    /// <summary>The connection's outbound links of meeting occurrences (MeetingTaskId set), tracked.</summary>
+    Task<IReadOnlyList<ExternalCalendarEventLink>> ListTrackedMeetingLinksAsync(Guid tenantId, Guid connectionId, CancellationToken ct = default);
     Task<IReadOnlyList<ExternalCalendarEventLink>> GetByConnectionIdAsync(Guid tenantId, Guid connectionId, CancellationToken ct = default);
     void Update(ExternalCalendarEventLink link);
     void Remove(ExternalCalendarEventLink link);

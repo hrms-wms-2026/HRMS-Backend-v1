@@ -198,29 +198,6 @@ public class MoveTaskStatusCommandHandler : IRequestHandler<MoveTaskStatusComman
         }, ct);
     }
 
-    private async Task CascadeCompletedHoursAsync(Guid tenantId, Objective startingObjective, decimal delta, CancellationToken ct)
-    {
-        if (delta == 0m)
-            return;
-
-        var current = startingObjective;
-        while (true)
-        {
-            current.CompletedHours += delta;
-
-            if (current.ParentObjectiveId is null)
-            {
-                var project = await _projects.GetTrackedByIdForTenantAsync(tenantId, current.ProjectId, ct);
-                if (project is not null)
-                    project.CompletedHours += delta;
-                return;
-            }
-
-            var parent = await _objectives.GetTrackedByIdForTenantAsync(tenantId, current.ParentObjectiveId.Value, ct);
-            if (parent is null)
-                return;
-
-            current = parent;
-        }
-    }
+    private Task CascadeCompletedHoursAsync(Guid tenantId, Objective startingObjective, decimal delta, CancellationToken ct)
+        => CompletedHoursCascade.ApplyAsync(_objectives, _projects, tenantId, startingObjective, delta, ct);
 }

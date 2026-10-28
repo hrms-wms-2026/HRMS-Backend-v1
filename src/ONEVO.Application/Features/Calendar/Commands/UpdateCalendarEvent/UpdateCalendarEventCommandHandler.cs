@@ -14,7 +14,8 @@ public sealed class UpdateCalendarEventCommandHandler(
     ICalendarEventRepository events,
     ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces.IEmployeeRepository employees,
     ICalendarNotificationSender notifications,
-    IUnitOfWork unitOfWork)
+    IUnitOfWork unitOfWork,
+    CalendarMeetingGuard? meetingGuard = null)
     : IRequestHandler<UpdateCalendarEventCommand, Result<CalendarEventItem>>
 {
     public async Task<Result<CalendarEventItem>> Handle(UpdateCalendarEventCommand request, CancellationToken ct)
@@ -35,6 +36,9 @@ public sealed class UpdateCalendarEventCommandHandler(
 
         if (existing.CreatedById != currentUser.UserId)
             return Result<CalendarEventItem>.Forbidden("Only the event creator can edit this event.");
+        if (meetingGuard is not null && !string.IsNullOrWhiteSpace(request.MeetingLink) && string.IsNullOrWhiteSpace(existing.MeetingLink)
+            && await meetingGuard.RefusesBecomingMeetingAsync(tenantId, existing, ct))
+            return CalendarMeetingGuard.Refusal<CalendarEventItem>();
 
         return await unitOfWork.ExecuteInTransactionAsync(async innerCt =>
         {

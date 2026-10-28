@@ -26,9 +26,14 @@ public sealed record CalendarMeetingView(
     Guid EventId, DateTimeOffset Start, DateTimeOffset End, string Title, bool IsAllDay, bool IsCancelled,
     bool EmployeeIsOrganizer, int PeopleCount, Guid? OrganizerEmployeeId, bool OrganizerIsReportingManager,
     string ResponseStatus, IReadOnlyList<CalendarRsvpChange> RsvpHistory, bool ReplacementAttended,
-    CalendarReportState Report, IReadOnlyList<CalendarAttendanceSpan> Attendance, decimal? AgentUsageRatio)
+    CalendarReportState Report, IReadOnlyList<CalendarAttendanceSpan> Attendance, decimal? AgentUsageRatio,
+    DateTimeOffset? KeyStart = null)
 {
     public TimeSpan Duration => End - Start;
+
+    /// <summary>The occurrence start in the incident key: <see cref="KeyStart"/> when the source keeps a stable one (a task
+    /// meeting's original start survives a reschedule), otherwise <see cref="Start"/>. Rules time things by Start.</summary>
+    public DateTimeOffset OccurrenceKey => KeyStart ?? Start;
 
     /// <summary>The answer the employee had given when the meeting started.</summary>
     public string StatusAt(DateTimeOffset at)
@@ -119,7 +124,7 @@ public sealed class NoShowRule : ICalendarIncidentRule
             if (confidence is null)
                 continue;
             var weighted = m.OrganizerIsReportingManager || m.PeopleCount == 2;
-            yield return new CalendarIncidentFinding(Code, m.EventId, m.Start, confidence,
+            yield return new CalendarIncidentFinding(Code, m.EventId, m.OccurrenceKey, confidence,
                 CalendarIncidentExclusions.Evidence(m, ("agentUsageRatio", confidence == CalendarIncidentConfidence.Agent ? m.AgentUsageRatio : null),
                     ("organizedByManager", m.OrganizerIsReportingManager), ("oneToOne", m.PeopleCount == 2)),
                 Immediate: weighted, Severity: weighted ? CalendarRuleCatalog.High : null);
@@ -142,7 +147,7 @@ public sealed class LateJoinRule : ICalendarIncidentRule
             var firstJoin = m.Attendance.Min(a => a.JoinedAt);
             var minutesLate = (firstJoin - m.Start).TotalMinutes;
             if (minutesLate > CalendarExceptionDefaults.LateJoinMinutes)
-                yield return new CalendarIncidentFinding(Code, m.EventId, m.Start, CalendarIncidentConfidence.Provider,
+                yield return new CalendarIncidentFinding(Code, m.EventId, m.OccurrenceKey, CalendarIncidentConfidence.Provider,
                     CalendarIncidentExclusions.Evidence(m, ("joinedAt", firstJoin), ("minutesLate", (int)minutesLate)));
         }
     }
@@ -165,7 +170,7 @@ public sealed class EarlyLeaveRule : ICalendarIncidentRule
             var ratio = AttendedRatio(m);
             var minutesEarly = (m.End - lastLeft).TotalMinutes;
             if (minutesEarly > CalendarExceptionDefaults.EarlyLeaveMinutes || ratio < CalendarExceptionDefaults.MinAttendanceRatio)
-                yield return new CalendarIncidentFinding(Code, m.EventId, m.Start, CalendarIncidentConfidence.Provider,
+                yield return new CalendarIncidentFinding(Code, m.EventId, m.OccurrenceKey, CalendarIncidentConfidence.Provider,
                     CalendarIncidentExclusions.Evidence(m, ("leftAt", lastLeft), ("attendedRatio", Math.Round(ratio, 2))));
         }
     }
@@ -204,7 +209,7 @@ public sealed class NoResponseRule : ICalendarIncidentRule
         => input.Meetings
             .Where(m => m.Start <= input.Now && !CalendarIncidentExclusions.Excluded(m, input, attendanceRule: false)
                         && m.StatusAt(m.Start) == CalendarEventParticipantStatuses.Pending)
-            .Select(m => new CalendarIncidentFinding(Code, m.EventId, m.Start, CalendarIncidentConfidence.Provider,
+            .Select(m => new CalendarIncidentFinding(Code, m.EventId, m.OccurrenceKey, CalendarIncidentConfidence.Provider,
                 CalendarIncidentExclusions.Evidence(m, ("rsvpAtStart", CalendarEventParticipantStatuses.Pending))));
 }
 
@@ -223,7 +228,7 @@ public sealed class LateDeclineRule : ICalendarIncidentRule
                 && h.To == CalendarEventParticipantStatuses.Rejected
                 && h.At < m.Start && h.At >= m.Start.AddHours(-CalendarExceptionDefaults.LateDeclineHours));
             if (late is not null)
-                yield return new CalendarIncidentFinding(Code, m.EventId, m.Start, CalendarIncidentConfidence.Provider,
+                yield return new CalendarIncidentFinding(Code, m.EventId, m.OccurrenceKey, CalendarIncidentConfidence.Provider,
                     CalendarIncidentExclusions.Evidence(m, ("declinedAt", late.At)));
         }
     }
@@ -239,7 +244,7 @@ public sealed class UnresolvedRequestRule : ICalendarIncidentRule
         => input.Meetings
             .Where(m => m.Start <= input.Now && !CalendarIncidentExclusions.Excluded(m, input, attendanceRule: false)
                         && m.StatusAt(m.Start) is CalendarEventParticipantStatuses.ResolutionRequested or CalendarEventParticipantStatuses.ReplacementNominated)
-            .Select(m => new CalendarIncidentFinding(Code, m.EventId, m.Start, CalendarIncidentConfidence.Provider,
+            .Select(m => new CalendarIncidentFinding(Code, m.EventId, m.OccurrenceKey, CalendarIncidentConfidence.Provider,
                 CalendarIncidentExclusions.Evidence(m, ("request", m.StatusAt(m.Start))), Immediate: true));
 }
 
@@ -293,7 +298,7 @@ public sealed class DoubleBookRule : ICalendarIncidentRule
                     continue;
                 var later = meetings[j];
                 if (flagged.Add((later.EventId, later.Start)))
-                    yield return new CalendarIncidentFinding(Code, later.EventId, later.Start, CalendarIncidentConfidence.Provider,
+                    yield return new CalendarIncidentFinding(Code, later.EventId, later.OccurrenceKey, CalendarIncidentConfidence.Provider,
                         CalendarIncidentExclusions.Evidence(later, ("overlapsEventId", meetings[i].EventId), ("overlapsTitle", meetings[i].Title),
                             ("overlapMinutes", (int)(overlapTo - overlapFrom).TotalMinutes)));
             }
@@ -313,7 +318,7 @@ public sealed class OnLeaveRule : ICalendarIncidentRule
                         // Leave is what this rule is about, so it is not an exclusion here.
                         && !CalendarIncidentExclusions.Excluded(m, input, attendanceRule: false, leaveExcludes: false)
                         && input.Leave.Any(l => l.Overlaps(m.Start, m.End)))
-            .Select(m => new CalendarIncidentFinding(Code, m.EventId, m.Start, CalendarIncidentConfidence.Provider,
+            .Select(m => new CalendarIncidentFinding(Code, m.EventId, m.OccurrenceKey, CalendarIncidentConfidence.Provider,
                 CalendarIncidentExclusions.Evidence(m), Immediate: true));
 }
 
@@ -382,7 +387,7 @@ public sealed class OffHoursRule : ICalendarIncidentRule
                 || DateOnly.FromDateTime(end.DateTime) != day
                 || TimeOnly.FromDateTime(end.DateTime) > hours.End;
             if (outside)
-                yield return new CalendarIncidentFinding(Code, m.EventId, m.Start, CalendarIncidentConfidence.Provider,
+                yield return new CalendarIncidentFinding(Code, m.EventId, m.OccurrenceKey, CalendarIncidentConfidence.Provider,
                     CalendarIncidentExclusions.Evidence(m, ("workStart", hours.Start.ToString("HH:mm")), ("workEnd", hours.End.ToString("HH:mm"))));
         }
     }

@@ -86,7 +86,7 @@ public sealed class NotificationTemplateSeederTests : IDisposable
         Assert.Contains("exception_alert_escalated", codes);
         Assert.Contains("conversation_member_added", codes);
         Assert.Contains("conversation_mentioned", codes);
-        Assert.Equal(56, codes.Count);
+        Assert.Equal(59, codes.Count);
         var expectedCodes = new[]
         {
             "work_task_creation_request_created",
@@ -136,6 +136,9 @@ public sealed class NotificationTemplateSeederTests : IDisposable
             "calendar_event_participant_removed",
             "calendar_event_meeting_link_removed",
             "calendar_event_meeting_link_failed",
+            "calendar_event_meeting_link_unknown",
+            "calendar_event_meeting_unresolved",
+            "calendar_event_meeting_cancel_failed",
             "calendar_connection_reauth_required",
             "calendar_connection_failed",
             "calendar_connection_sync_conflict",

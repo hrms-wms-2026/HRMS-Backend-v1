@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using ONEVO.Domain.Features.Auth.Entities;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
@@ -37,9 +38,27 @@ public sealed class MyTeamDb
     public Guid TenantId { get; private set; }
     public Guid LegalEntityId { get; private set; }
 
+    /// <summary>Superuser connection to this test's own database (raw SQL, catalog checks, SET ROLE).</summary>
+    public string ConnectionString => _connectionString;
+
     public static async Task<MyTeamDb> CreateAsync()
     {
         var helper = new MyTeamDb { _connectionString = await SharedPostgresTemplate.CreateDatabaseAsync() };
+        await helper.SeedTenantAsync();
+        return helper;
+    }
+
+    /// <summary>Another tenant (with its own legal entity) in the same database; the returned helper seeds into it.</summary>
+    public async Task<MyTeamDb> AddTenantAsync()
+    {
+        var other = new MyTeamDb { _connectionString = _connectionString };
+        await other.SeedTenantAsync();
+        return other;
+    }
+
+    private async Task SeedTenantAsync()
+    {
+        var helper = this;
         await using var db = helper.NewContext();
         if (!await db.EmploymentStatuses.AnyAsync(s => s.Id == 1))
             db.EmploymentStatuses.Add(new EmploymentStatus { Id = 1, Code = "active", Label = "Active" });
@@ -59,10 +78,10 @@ public sealed class MyTeamDb
         helper.LegalEntityId = legalEntity.Id;
         db.LegalEntities.Add(legalEntity);
         await db.SaveChangesAsync();
-        return helper;
     }
 
-    public ApplicationDbContext NewContext(CountingDbCommandInterceptor? counter = null)
+    /// <param name="counter">An extra command interceptor - usually a <see cref="CountingDbCommandInterceptor"/>.</param>
+    public ApplicationDbContext NewContext(IInterceptor? counter = null)
     {
         var tenantContext = new TenantContextAccessor();
         var builder = new DbContextOptionsBuilder<ApplicationDbContext>()
@@ -72,6 +91,24 @@ public sealed class MyTeamDb
         if (counter is not null)
             builder.AddInterceptors(counter);
 
+        return new ApplicationDbContext(
+            builder.Options,
+            new AuditableEntityInterceptor(new AnonymousCurrentUser(), _clock),
+            new SoftDeleteInterceptor(_clock),
+            new DomainEventDispatchInterceptor(new NoOpPublisher()),
+            tenantContext);
+    }
+
+    /// <summary>A context resolved to this tenant, so the tenant query filter (and RLS) apply as in a request.</summary>
+    public ApplicationDbContext NewTenantContext(Guid? tenantId = null)
+    {
+        var tenantContext = new TenantContextAccessor();
+        tenantContext.Resolve(new ONEVO.Application.Common.ServiceInterfaces.TenantRegistryEntry(
+            tenantId ?? TenantId, "my-team", TenantStatus.Active, PlanCode: null));
+        var builder = new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseNpgsql(_connectionString)
+            .UseSnakeCaseNamingConvention()
+            .AddInterceptors(new TenantRlsInterceptor(tenantContext));
         return new ApplicationDbContext(
             builder.Options,
             new AuditableEntityInterceptor(new AnonymousCurrentUser(), _clock),
@@ -263,6 +300,9 @@ public sealed class MyTeamDb
         db.Objectives.Add(module);
         return module.Id;
     }
+
+    /// <summary>The task category AddProject created for <paramref name="projectId"/>.</summary>
+    public Guid CategoryIdFor(Guid projectId) => _taskCategoryByProject[projectId];
 
     public void AddMember(ApplicationDbContext db, Guid projectId, Guid objectiveId, Guid employeeId)
         => db.ProjectMembers.Add(new ProjectMember

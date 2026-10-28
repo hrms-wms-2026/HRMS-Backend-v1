@@ -16,11 +16,21 @@ public class EfWorkTaskRepository : IWorkTaskRepository
     public async Task<WorkTask?> GetByIdForTenantAsync(Guid tenantId, Guid id, CancellationToken ct = default)
         => await _db.WorkTasks.AsNoTracking().FirstOrDefaultAsync(t => t.TenantId == tenantId && t.Id == id, ct);
 
+    public async Task<IReadOnlyList<WorkTask>> GetByIdsForTenantAsync(Guid tenantId, IReadOnlyCollection<Guid> ids, CancellationToken ct = default)
+    {
+        if (ids.Count == 0)
+            return Array.Empty<WorkTask>();
+        return await _db.WorkTasks.AsNoTracking()
+            .Where(t => t.TenantId == tenantId && ids.Contains(t.Id))
+            .ToListAsync(ct);
+    }
+
     public async Task<WorkTask?> GetTrackedByIdForTenantAsync(Guid tenantId, Guid id, CancellationToken ct = default)
         => await _db.WorkTasks.FirstOrDefaultAsync(t => t.TenantId == tenantId && t.Id == id, ct);
 
+    // Bypasses only the tenant/soft-delete filter (tenant re-applied by hand): meetings stay hidden (Phase 2 spec 2.2).
     public async Task<WorkTask?> GetTrackedByIdForTenantIncludingDeletedAsync(Guid tenantId, Guid id, CancellationToken ct = default)
-        => await _db.WorkTasks.IgnoreQueryFilters().FirstOrDefaultAsync(t => t.TenantId == tenantId && t.Id == id, ct);
+        => await _db.WorkTasks.IgnoreQueryFilters([WorkTaskQueryFilters.TenantScope]).FirstOrDefaultAsync(t => t.TenantId == tenantId && t.Id == id, ct);
 
     public Task<bool> IsAssignedToEmployeeAsync(Guid taskId, Guid employeeId, CancellationToken ct = default)
         => _db.TaskAssignments.AsNoTracking()
@@ -299,6 +309,7 @@ public class EfWorkTaskRepository : IWorkTaskRepository
     // IgnoreQueryFilters() bypasses the soft-delete half of the composed query filter on
     // purpose: a status must stay undeletable if a soft-deleted task still references it, not
     // just active ones. Tenant scoping is preserved manually via the TenantId equality below.
+    // Meeting tasks are counted on purpose: they reference a status too (FK), so it must stay undeletable.
     public async Task<bool> AnyActiveByStatusIdAsync(Guid tenantId, Guid statusId, CancellationToken ct = default)
         => await _db.WorkTasks.IgnoreQueryFilters()
             .AnyAsync(t => t.TenantId == tenantId && t.StatusId == statusId, ct);
@@ -306,6 +317,7 @@ public class EfWorkTaskRepository : IWorkTaskRepository
     // IgnoreQueryFilters() bypasses the soft-delete half of the composed query filter on
     // purpose: a category must stay undeletable if a soft-deleted task still references it, not
     // just active ones. Tenant scoping is preserved manually via the TenantId equality below.
+    // Meeting tasks are counted on purpose: they reference a category too (FK), so it must stay undeletable.
     public async Task<bool> AnyActiveByCategoryIdAsync(Guid tenantId, Guid categoryId, CancellationToken ct = default)
         => await _db.WorkTasks.IgnoreQueryFilters()
             .AnyAsync(t => t.TenantId == tenantId && t.CategoryId == categoryId, ct);

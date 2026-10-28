@@ -103,4 +103,27 @@ public sealed class CalendarConnectionTokenProviderTests
         notifications.Verify(n => n.NotifyConnectionProblemAsync(connection.TenantId, connection.UserId, "Outlook Calendar", "reauth_required", It.IsAny<CancellationToken>()),
             notified ? Times.Once() : Times.Never());
     }
+
+    [Fact]
+    public async Task ForceRefreshAccessTokenAsync_TokenNotExpired_RefreshesAnyway()
+    {
+        var connection = new ExternalCalendarConnection
+        {
+            Id = Guid.NewGuid(), AccessTokenEncrypted = [1], RefreshTokenEncrypted = [9, 9, 9],
+            ExpiresAt = DateTimeOffset.UtcNow.AddHours(1)
+        };
+        _appResolver.Setup(a => a.GetActiveAppForProviderAsync("microsoft", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ResolvedPlatformOAuthApp("microsoft", "client-id", "https://login.microsoftonline.com/common/oauth2/v2.0/authorize", "https://login.microsoftonline.com/common/oauth2/v2.0/token", ["scope"]));
+        _appResolver.Setup(a => a.GetActiveCredentialForProviderAsync("microsoft", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ResolvedPlatformOAuthAppCredential("microsoft", "client-id", "client-secret", null, 1));
+        _encryption.Setup(e => e.DecryptBytes(connection.RefreshTokenEncrypted)).Returns("old-refresh-token");
+        _tokenExchange.Setup(t => t.RefreshTokenAsync(
+                "https://login.microsoftonline.com/common/oauth2/v2.0/token", "client-id", "client-secret", "old-refresh-token", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CalendarProviderTokens("forced-access-token", "new-refresh-token", DateTimeOffset.UtcNow.AddHours(1)));
+        _encryption.Setup(e => e.EncryptBytes(It.IsAny<string>())).Returns([7]);
+
+        var result = await BuildSut().ForceRefreshAccessTokenAsync(connection, "microsoft", CancellationToken.None);
+
+        Assert.Equal("forced-access-token", result);
+    }
 }

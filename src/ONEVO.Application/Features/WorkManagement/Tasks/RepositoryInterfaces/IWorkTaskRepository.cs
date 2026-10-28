@@ -88,6 +88,11 @@ public interface IWorkTaskRepository
 {
     Task AddAsync(WorkTask task, CancellationToken ct = default);
     Task<WorkTask?> GetByIdForTenantAsync(Guid tenantId, Guid id, CancellationToken ct = default);
+
+    /// <summary>Bulk fetch of specific task rows by id - one query for a set of tasks, instead of one
+    /// query per task (e.g. the action items linked to a meeting occurrence).</summary>
+    Task<IReadOnlyList<WorkTask>> GetByIdsForTenantAsync(Guid tenantId, IReadOnlyCollection<Guid> ids, CancellationToken ct = default);
+
     Task<WorkTask?> GetTrackedByIdForTenantAsync(Guid tenantId, Guid id, CancellationToken ct = default);
 
     /// <summary>Same as <see cref="GetTrackedByIdForTenantAsync"/> but bypasses the soft-delete query

@@ -17,6 +17,10 @@ public class CalendarEventMeetingConfiguration : IEntityTypeConfiguration<Calend
         builder.Property(m => m.OrganizerJoinUrl).HasMaxLength(500);
         builder.Property(m => m.PasscodeOrPin).HasMaxLength(50);
         builder.Property(m => m.Status).HasMaxLength(20).IsRequired();
+        builder.Property(m => m.AttendanceSyncError).HasMaxLength(40);
+        builder.Property(m => m.LinkGeneration).HasDefaultValue(1);
+        builder.Property(m => m.FailureReason).HasMaxLength(40);
+        builder.Property(m => m.OwnerKind).HasMaxLength(20).IsRequired().HasDefaultValue(CalendarMeetingOwnerKinds.CalendarEvent);
 
         // One auto-generated meeting per event.
         builder.HasIndex(m => m.CalendarEventId)
