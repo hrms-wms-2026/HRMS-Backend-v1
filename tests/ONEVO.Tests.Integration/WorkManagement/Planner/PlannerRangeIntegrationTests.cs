@@ -1,3 +1,4 @@
+using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using ONEVO.Application.Common.Models;
@@ -94,6 +95,30 @@ public sealed class PlannerRangeIntegrationTests
 
         Assert.False(string.IsNullOrEmpty(projectName));
         Assert.Equal(projectName, block.ProjectName);
+    }
+
+    [Fact]
+    public async Task TheRange_AndTheQueue_CarryTheCategoryKind()
+    {
+        var w = await SeedAsync();
+        await using (var db = w.H.NewContext())
+        {
+            var task = await db.WorkTasks.SingleAsync(t => t.Id == w.Task);
+            var category = await db.TaskCategories.SingleAsync(c => c.Id == task.CategoryId);
+            category.Name = "Defects";
+            category.Kind = TaskCategoryKinds.Bug;
+            await db.SaveChangesAsync();
+        }
+        await PlanAsync(w, Local(9), Local(10));
+
+        var block = Assert.Single((await RangeAsync(w, Today, Today)).Value!.Days[0].Blocks);
+        await using var read = w.H.NewContext();
+        var focus = (await Service(read).GetFocusAsync(w.H.TenantId, w.Employee, default)).Value!;
+        var item = focus.Groups.SelectMany(g => g.Items).Single(i => i.TaskId == w.Task);
+
+        Assert.Equal(("Defects", TaskCategoryKinds.Bug), (block.CategoryName, block.CategoryKind));
+        Assert.Equal(("Defects", TaskCategoryKinds.Bug), (item.CategoryName, item.CategoryKind));
+        Assert.NotEqual(default, item.CreatedAt);
     }
 
     [Fact]

@@ -1,3 +1,4 @@
+using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
 using Microsoft.EntityFrameworkCore;
 using ONEVO.Application.Features.WorkManagement.Planner.RepositoryInterfaces;
 using ONEVO.Domain.Features.OrgStructure.Entities;
@@ -52,15 +53,19 @@ public sealed class EfPlannerRepository : IPlannerRepository
         var rows = await (
             from t in _db.WorkTasks.AsNoTracking()
             join p in _db.Projects.AsNoTracking() on t.ProjectId equals p.Id
+            join c in _db.TaskCategories.AsNoTracking() on t.CategoryId equals c.Id into categories
+            from c in categories.DefaultIfEmpty()
             where t.TenantId == tenantId && taskIds.Contains(t.Id) && !t.IsDeleted
             select new
             {
                 t.Id, t.Title, t.DueDate, t.EstimatedHours, t.ProjectId, ProjectName = p.Name,
+                CategoryName = c == null ? "" : c.Name, CategoryKind = c == null ? TaskCategoryKinds.Task : c.Kind,
                 Assigned = _db.TaskAssignments.Any(a => a.TaskId == t.Id && a.EmployeeId == employeeId),
             })
             .ToListAsync(ct);
         return rows.ToDictionary(r => r.Id,
-            r => new PlannerTaskInfo(r.Id, r.Title, r.DueDate, r.EstimatedHours, IsMeeting: false, r.Assigned, r.ProjectId, r.ProjectName));
+            r => new PlannerTaskInfo(r.Id, r.Title, r.DueDate, r.EstimatedHours, IsMeeting: false, r.Assigned, r.ProjectId, r.ProjectName,
+                r.CategoryName, r.CategoryKind));
     }
 
     public async Task<IReadOnlyList<PlannerTaskInfo>> ListDueAssignedTasksAsync(Guid tenantId, Guid employeeId, DateOnly date,
@@ -96,9 +101,15 @@ public sealed class EfPlannerRepository : IPlannerRepository
             join p in _db.Projects.AsNoTracking() on t.ProjectId equals p.Id
             join s in _db.TaskStatuses.AsNoTracking() on t.StatusId equals s.Id into statuses
             from s in statuses.DefaultIfEmpty()
+            join c in _db.TaskCategories.AsNoTracking() on t.CategoryId equals c.Id into categories
+            from c in categories.DefaultIfEmpty()
             where t.TenantId == tenantId && !t.IsDeleted && t.ProgressPercent < 100 && (s == null || !s.MarksTaskComplete)
                   && _db.TaskAssignments.Any(a => a.TaskId == t.Id && a.EmployeeId == employeeId)
-            select new { t.Id, t.ProjectId, ProjectName = p.Name, t.Title, t.Priority, t.DueDate, t.EstimatedHours })
+            select new
+            {
+                t.Id, t.ProjectId, ProjectName = p.Name, t.Title, t.Priority, t.DueDate, t.EstimatedHours, t.CreatedAt,
+                CategoryName = c == null ? "" : c.Name, CategoryKind = c == null ? TaskCategoryKinds.Task : c.Kind,
+            })
             .ToListAsync(ct);
         if (tasks.Count == 0)
             return [];
@@ -113,7 +124,7 @@ public sealed class EfPlannerRepository : IPlannerRepository
             g => g.Sum(s => Math.Max(0, (int)((s.ClockOutAt ?? now) - s.ClockInAt).TotalMinutes)));
 
         return tasks.Select(t => new PlannerFocusTaskRow(t.Id, t.ProjectId, t.ProjectName, t.Title, t.Priority, t.DueDate,
-            t.EstimatedHours, logged.GetValueOrDefault(t.Id))).ToList();
+            t.EstimatedHours, logged.GetValueOrDefault(t.Id), t.CategoryName, t.CategoryKind, t.CreatedAt)).ToList();
     }
 
     public async Task<LegalEntity?> GetEmployeeLegalEntityAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default)

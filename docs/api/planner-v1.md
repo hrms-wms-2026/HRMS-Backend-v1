@@ -52,7 +52,8 @@ The calendar grid's days, one entry per date from `from` to `to`:
               "workWindow": { "workStart": "09:00:00", "workEnd": "17:00:00", "breakMinutes": 60, "breakStart": "12:30:00",
                               "isWorkingDay": true, "workingMinutes": 420 },
               "blocks": [ { "id": "…", "taskId": "…", "projectId": "…", "projectName": "Portal", "taskTitle": "Write the report", "startAt": "…",
-                            "endAt": "…", "plannedMinutes": 120, "actualMinutes": 45, "stillAssigned": true } ],
+                            "endAt": "…", "plannedMinutes": 120, "actualMinutes": 45, "stillAssigned": true,
+                            "categoryName": "bug", "categoryKind": "bug" } ],
               "blockMinutes": 120, "workingMinutes": 420 } ] }
 ```
 
@@ -75,6 +76,7 @@ The tasks to focus on: open (not complete), not deleted, not meetings, and assig
 - `remainingMinutes` = estimate − `loggedMinutes`, never below 0, or `null` without an estimate.
 - `loggedMinutes` counts **everyone's** clocking sessions on the task, with an open one counted up to now.
 - `plannedAheadMinutes`, `firstPlannedDate` and `plannedDayCount` describe the caller's blocks from today on.
+- `categoryKind` is the category's fixed type (`task`, `bug`, `story`, `feature`, `testing`, `meeting`, `checklist`); a task with no category reads `categoryName: ""`, `categoryKind: "task"`. `createdAt` drives "Open N days".
 - `fullyPlanned` is true when those blocks cover `remainingMinutes`; it is never true without an estimate.
 
 ```json
@@ -83,7 +85,8 @@ The tasks to focus on: open (not complete), not deleted, not meetings, and assig
                 "items": [ { "taskId": "…", "projectId": "…", "projectName": "Portal", "title": "Payroll export fix",
                              "priority": "high", "dueDate": "2026-10-31", "estimatedMinutes": 300, "loggedMinutes": 90,
                              "remainingMinutes": 210, "plannedAheadMinutes": 120, "firstPlannedDate": "2026-11-04",
-                             "plannedDayCount": 1, "fullyPlanned": false, "reason": "overdue" } ] },
+                             "plannedDayCount": 1, "fullyPlanned": false, "reason": "overdue",
+                             "categoryName": "bug", "categoryKind": "bug", "createdAt": "2026-10-27T09:00:00Z" } ] },
               { "reason": "due_today", "count": 0, "items": [] },
               { "reason": "due_this_week", "count": 0, "items": [] },
               { "reason": "backlog", "count": 0, "items": [] } ] }

@@ -114,4 +114,24 @@ public class PlannerFocusTests
         Assert.Equal(PlannerFocusReasons.Backlog, PlannerFocus.Build([row], [], sunday, Colombo).Groups.Single(g => g.Count == 1).Reason);
         Assert.Equal(PlannerFocusReasons.DueToday, PlannerFocus.Build([row], [], sunday.AddDays(1), Colombo).Groups.Single(g => g.Count == 1).Reason);
     }
+
+    [Fact]
+    public void Items_carry_their_category_kind_and_created_date()
+    {
+        var created = new DateTimeOffset(2026, 10, 27, 9, 0, 0, TimeSpan.Zero);
+        var row = new PlannerFocusTaskRow(Guid.NewGuid(), Guid.NewGuid(), "Portal", "Fix login", "high", null, 1, 0,
+            CategoryName: "Bugs", CategoryKind: "bug", CreatedAt: created);
+
+        var item = PlannerFocus.Build([row], [], Monday, Colombo).Groups.SelectMany(g => g.Items).Single();
+
+        Assert.Equal(("Bugs", "bug", created), (item.CategoryName, item.CategoryKind, item.CreatedAt));
+    }
+
+    [Fact]
+    public void A_task_with_no_category_is_a_task_with_an_empty_name()
+    {
+        var item = PlannerFocus.Build([Row("plain")], [], Monday, Colombo).Groups.SelectMany(g => g.Items).Single();
+
+        Assert.Equal(("", "task"), (item.CategoryName, item.CategoryKind));
+    }
 }
