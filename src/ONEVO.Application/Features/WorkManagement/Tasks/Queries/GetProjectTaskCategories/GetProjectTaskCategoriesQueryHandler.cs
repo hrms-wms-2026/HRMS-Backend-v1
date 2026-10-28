@@ -34,7 +34,7 @@ public class GetProjectTaskCategoriesQueryHandler : IRequestHandler<GetProjectTa
         var categories = await _categories.GetByProjectIdAsync(tenantId, project.Id, ct);
         return Result<IReadOnlyList<TaskCategoryResponse>>.Success(
             categories.OrderBy(c => c.DisplayOrder)
-                .Select(c => new TaskCategoryResponse(c.Id, c.Name, c.DisplayOrder))
+                .Select(c => new TaskCategoryResponse(c.Id, c.Name, c.DisplayOrder, c.SystemKey))
                 .ToList());
     }
 }

@@ -5,7 +5,7 @@ namespace ONEVO.Application.Features.Calendar.Queries.CheckCalendarConflicts;
 
 public sealed record CalendarConflict(
     Guid EmployeeId, string EmployeeName, Guid ConflictingEventId, string ConflictingEventTitle,
-    DateTimeOffset OverlapStart, DateTimeOffset OverlapEnd);
+    DateTimeOffset OverlapStart, DateTimeOffset OverlapEnd, bool IsBusyOnly = false);
 public sealed record CalendarConflictsResponse(IReadOnlyList<CalendarConflict> Conflicts);
 
 public sealed record CheckCalendarConflictsQuery(

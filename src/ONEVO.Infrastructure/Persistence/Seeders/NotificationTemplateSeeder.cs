@@ -383,6 +383,25 @@ public class NotificationTemplateSeeder : IHostedService
                 InAppTitleTemplate = "Leave decision undone",
                 InAppBodyTemplate = "The {{decision}} of your {{leaveType}} from {{startDate}} was undone. Your request is pending again."
             }
+            ,
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "calendar_event_meeting_link_unknown",
+                InAppTitleTemplate = "Meeting link status unknown",
+                InAppBodyTemplate = "We couldn't confirm whether the {{provider}} meeting for \"{{eventTitle}}\" was created. Open the event to retry or remove it."
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "calendar_event_meeting_unresolved",
+                InAppTitleTemplate = "A meeting may still exist",
+                InAppBodyTemplate = "A {{provider}} meeting for \"{{eventTitle}}\" may still exist. Please check and delete it in {{provider}}, then confirm in the event."
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "calendar_event_meeting_cancel_failed",
+                InAppTitleTemplate = "Meeting not cancelled",
+                InAppBodyTemplate = "We couldn't cancel the {{provider}} meeting for \"{{eventTitle}}\". Please delete it in {{provider}}."
+            }
 
         };
     }

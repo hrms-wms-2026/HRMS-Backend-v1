@@ -45,13 +45,19 @@ public sealed class TaskStatusChangeRequestConflictSweeper : ITaskStatusChangeRe
         var now = DateTimeOffset.UtcNow;
         var closed = 0;
 
-        foreach (var request in pending)
+        // Id order: two sweeps of the same project take the row locks in one order, so neither waits on the other.
+        foreach (var request in pending.OrderBy(r => r.Id))
         {
             if (request.Id == excludingRequestId)
                 continue;
 
             var payload = JsonSerializer.Deserialize<TaskStatusTemplateChangePayload>(request.PayloadJson, PayloadOptions);
             if (payload?.Changes is null || !payload.Changes.Footprint().ConflictsWith(applied))
+                continue;
+
+            // The list was read without a lock. Its approver may have decided the request since; the row lock waits for
+            // that decision and then finds the row no longer pending, so it is left as decided instead of overwritten.
+            if (!await _requests.LockIfPendingAsync(tenantId, request.Id, ct))
                 continue;
 
             request.Status = WorkApprovalRequestStatuses.Stale;

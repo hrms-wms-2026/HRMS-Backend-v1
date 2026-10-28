@@ -9,7 +9,9 @@ public class CalendarEventGuest : ITenantOwnedEntity
 {
     public Guid Id { get; set; }
     public Guid TenantId { get; set; }
-    public Guid EventId { get; set; }
+    /// <summary>Null when a meeting series owns the row (exactly one of the two is set, meetings-as-tasks Phase 2).</summary>
+    public Guid? EventId { get; set; }
+    public Guid? MeetingSeriesId { get; set; }
     public string Email { get; set; } = string.Empty;
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 }

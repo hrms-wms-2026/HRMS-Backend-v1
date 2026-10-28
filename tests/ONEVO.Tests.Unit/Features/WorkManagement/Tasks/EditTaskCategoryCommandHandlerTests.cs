@@ -26,7 +26,7 @@ public class EditTaskCategoryCommandHandlerTests
     private static readonly Guid CategoryId = Guid.NewGuid();
 
     private (EditTaskCategoryCommandHandler Handler, Mock<ITaskCategoryRepository> Categories) Build(
-        Guid? callerEmployeeId = null, bool? callerIsEffectiveManager = null)
+        Guid? callerEmployeeId = null, bool? callerIsEffectiveManager = null, string? systemKey = null)
     {
         var resolvedCallerEmployeeId = callerEmployeeId ?? OwnerEmployeeId;
 
@@ -44,7 +44,8 @@ public class EditTaskCategoryCommandHandlerTests
             Id = CategoryId,
             TenantId = TenantId,
             ProjectId = ProjectId,
-            Name = "Bug",
+            Name = systemKey ?? "Bug",
+            SystemKey = systemKey,
             DisplayOrder = 0,
             CreatedAt = DateTimeOffset.UtcNow
         };
@@ -130,6 +131,43 @@ public class EditTaskCategoryCommandHandlerTests
 
         Assert.False(result.IsSuccess);
         Assert.Equal(403, result.StatusCode);
+        categories.Verify(x => x.Update(It.IsAny<TaskCategory>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Handle_SystemCategoryRename_ReturnsConflict()
+    {
+        var (handler, categories) = Build(systemKey: TaskCategorySystemKeys.Meeting);
+
+        var result = await handler.Handle(new EditTaskCategoryCommand(CategoryId, "Calls", 3), CancellationToken.None);
+
+        Assert.Equal(409, result.StatusCode);
+        categories.Verify(x => x.Update(It.IsAny<TaskCategory>()), Times.Never);
+    }
+
+    [Theory]
+    [InlineData("meeting")]
+    [InlineData(" meeting ")]
+    public async Task Handle_SystemCategoryOrderOnlyEdit_IsAllowed(string sameName)
+    {
+        var (handler, categories) = Build(systemKey: TaskCategorySystemKeys.Meeting);
+
+        var result = await handler.Handle(new EditTaskCategoryCommand(CategoryId, sameName, 3), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        categories.Verify(x => x.Update(It.Is<TaskCategory>(c => c.DisplayOrder == 3 && c.Name == "meeting")), Times.Once);
+    }
+
+    [Theory]
+    [InlineData("Meeting")]
+    [InlineData(" MEETING ")]
+    public async Task Handle_RenameUserCategoryToReservedName_ReturnsConflict(string name)
+    {
+        var (handler, categories) = Build();
+
+        var result = await handler.Handle(new EditTaskCategoryCommand(CategoryId, name, 0), CancellationToken.None);
+
+        Assert.Equal(409, result.StatusCode);
         categories.Verify(x => x.Update(It.IsAny<TaskCategory>()), Times.Never);
     }
 }

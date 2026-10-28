@@ -130,7 +130,7 @@ public class CreateProjectCommandHandlerTests
     }
 
     [Fact]
-    public async Task Handle_ValidRequest_SeedsFourDefaultTaskCategories()
+    public async Task Handle_ValidRequest_SeedsDefaultTaskCategoriesIncludingSystemMeeting()
     {
         var setup = BuildHandler();
 
@@ -139,9 +139,10 @@ public class CreateProjectCommandHandlerTests
         Assert.True(result.IsSuccess);
         setup.TaskCategories.Verify(x => x.AddRangeAsync(
             It.Is<IReadOnlyList<TaskCategory>>(rows =>
-                rows.Count == 4
-                && rows.Select(r => r.Name).SequenceEqual(new[] { "task", "bug", "story", "feature" })
-                && rows.Select(r => r.DisplayOrder).SequenceEqual(new[] { 0, 1, 2, 3 })
+                rows.Count == 5
+                && rows.Select(r => r.Name).SequenceEqual(new[] { "task", "bug", "story", "feature", "meeting" })
+                && rows.Select(r => r.DisplayOrder).SequenceEqual(new[] { 0, 1, 2, 3, 4 })
+                && rows.Count(r => r.SystemKey == TaskCategorySystemKeys.Meeting) == 1
                 && rows.All(r => r.ProjectId == result.Value!.Project.Id)),
             It.IsAny<CancellationToken>()), Times.Once);
     }

@@ -17,6 +17,12 @@ public interface ITaskAccessResolver
     Task<Result<TaskAccessContext>> ResolveViewableTaskAsync(
         Guid tenantId, Guid userId, Guid taskId, CancellationToken ct = default);
 
+    /// <summary>The same visibility rule as <see cref="ResolveViewableTaskAsync"/>, applied to a set of
+    /// tasks in one round trip: the tasks the caller may see are returned, the rest are dropped (no
+    /// existence leak). Use it instead of calling the single-task method in a loop.</summary>
+    Task<IReadOnlyList<WorkTask>> ResolveViewableTasksAsync(
+        Guid tenantId, Guid userId, IReadOnlyList<WorkTask> tasks, CancellationToken ct = default);
+
     Task<IReadOnlyList<WorkTask>> FilterViewableTasksAsync(
         Guid tenantId, Guid userId, Guid callerEmployeeId,
         IReadOnlyList<WorkTask> tasks, CancellationToken ct = default);

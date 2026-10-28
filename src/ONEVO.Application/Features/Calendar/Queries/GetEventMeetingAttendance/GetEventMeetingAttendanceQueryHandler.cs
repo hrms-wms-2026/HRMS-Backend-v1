@@ -34,13 +34,20 @@ public sealed class GetEventMeetingAttendanceQueryHandler(
 
         var raised = await IncidentsAsync(tenantId, request.EventId, ct);
         var meeting = await meetings.GetTrackedByCalendarEventAsync(tenantId, request.EventId, ct);
+        var syncStatus = MeetingAttendanceSyncStatus.Of(meeting);
         if (meeting is null || meeting.LastAttendanceSyncedAt is null)
-            return Result<GetEventMeetingAttendanceResult>.Success(new GetEventMeetingAttendanceResult(false, [], raised));
+            return Result<GetEventMeetingAttendanceResult>.Success(new GetEventMeetingAttendanceResult(false, [], raised)
+            {
+                SyncStatus = syncStatus, SyncError = meeting?.AttendanceSyncError,
+            });
 
         var records = await attendances.GetByMeetingIdAsync(tenantId, meeting.Id, ct);
         var items = records.Select(a => new MeetingAttendeeItem(
             a.ExternalParticipantName, a.ExternalParticipantEmail, a.JoinedAt, a.LeftAt, a.DurationSeconds)).ToList();
-        return Result<GetEventMeetingAttendanceResult>.Success(new GetEventMeetingAttendanceResult(true, items, raised));
+        return Result<GetEventMeetingAttendanceResult>.Success(new GetEventMeetingAttendanceResult(true, items, raised)
+        {
+            SyncStatus = syncStatus,
+        });
     }
 
     /// <summary>The incidents this meeting raised (caller already checked as organizer): rule and occurrence, never the evidence.</summary>

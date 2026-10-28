@@ -284,7 +284,7 @@ public sealed class WorkInboxSourceProvider : IInboxSourceProvider
             item, WorkInboxItemMapper.ApprovalSteps(d.Item, request, revertedByName), d.Item.Summary,
             WorkInboxItemMapper.ChangeSet(d.Fields), d.Note, ExplanationDetails: null,
             WorkInboxItemMapper.Target(request.ProjectId, request.TargetType, request.TargetId, request.ActionType),
-            d.CanEditPayload ? d.RequestedPayloadJson : null);
+            d.CanEditPayload ? d.RequestedPayloadJson : null, d.ExtraJson);
     }
 
     private async Task<InboxItemDetail?> InvitationDetailAsync(Guid tenantId, Guid id, Guid caller, CancellationToken ct)

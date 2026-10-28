@@ -16,13 +16,17 @@ public sealed class CreateCalendarEventCommandHandler(
     ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces.IEmployeeRepository employees,
     ICalendarNotificationSender notifications,
     ICalendarTimezoneResolver timezoneResolver,
-    IUnitOfWork unitOfWork)
+    IUnitOfWork unitOfWork,
+    CalendarMeetingGuard? meetingGuard = null)
     : IRequestHandler<CreateCalendarEventCommand, Result<CalendarEventItem>>
 {
     public async Task<Result<CalendarEventItem>> Handle(CreateCalendarEventCommand request, CancellationToken ct)
     {
         if (!currentUser.IsAuthenticated)
             return Result<CalendarEventItem>.Forbidden();
+        if (meetingGuard?.RefusesNewEvent(request.ParticipantEmployeeIds, request.GuestEmails, request.MeetingLink,
+                request.PendingMeetingProvider) == true)
+            return CalendarMeetingGuard.Refusal<CalendarEventItem>();
 
         if (request.EndDate < request.StartDate)
             return Result<CalendarEventItem>.Failure("End date cannot be before start date.", 400);

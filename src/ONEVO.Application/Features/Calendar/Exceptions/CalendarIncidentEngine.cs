@@ -10,6 +10,7 @@ using ONEVO.Application.Features.Monitoring.Meetings.RepositoryInterfaces;
 using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
 using ONEVO.Application.Features.TimeAttendance.Services;
 using ONEVO.Domain.Features.Calendar.Entities;
+using ONEVO.Domain.Features.WorkManagement.Meetings.Entities;
 using CoreEmployeeRepository = ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces.IEmployeeRepository;
 
 namespace ONEVO.Application.Features.Calendar.Exceptions;
@@ -33,9 +34,15 @@ public sealed class CalendarIncidentEngine(
     IEnumerable<ICalendarIncidentRule> rules,
     CalendarCaseService cases,
     IDateTimeProvider clock,
-    IMonitoringToggleResolver? toggles = null)
+    IMonitoringToggleResolver? toggles = null,
+    IEnumerable<IEmployeeMeetingOccurrenceSource>? occurrenceSources = null)
 {
     public const int LookAheadDays = 14;
+
+    /// <summary>Calendar events always; every registered source of other meetings after them.</summary>
+    private IEnumerable<IEmployeeMeetingOccurrenceSource> Sources =>
+        new[] { new LegacyCalendarOccurrenceSource(events, meetings, attendances, expander, employees) }
+            .Concat(occurrenceSources ?? []);
 
     public async Task<CalendarCaseResult> EvaluateEmployeeAsync(Guid tenantId, Guid employeeId, CancellationToken ct)
     {
@@ -57,28 +64,6 @@ public sealed class CalendarIncidentEngine(
         var from = now.AddDays(-CalendarExceptionDefaults.LongWindowDays);
         var to = now.AddDays(LookAheadDays);
 
-        // Occurrences: single events and moved occurrences as they are, recurring series expanded (cancelled or moved
-        // occurrences skipped - a moved one is its own row).
-        var occurrences = new List<(CalendarEvent Event, Guid SeriesId, DateTimeOffset Start, DateTimeOffset End, bool Cancelled)>();
-        foreach (var e in await events.GetInDateRangeForEmployeeAsync(tenantId, employeeId, from, to, ct))
-            occurrences.Add((e, e.RecurrenceParentId ?? e.Id, e.StartDate, e.EndDate, IsCancelled(e)));
-        foreach (var master in await events.GetRecurringMastersForEmployeeAsync(tenantId, employeeId, to, ct))
-        {
-            if (string.IsNullOrWhiteSpace(master.RecurrenceRule))
-                continue;
-            var overridden = (await events.GetChildrenForMasterAsync(tenantId, master.Id, ct))
-                .Where(c => c.RecurrenceOriginalStart is not null).Select(c => c.RecurrenceOriginalStart!.Value).ToHashSet();
-            var length = master.EndDate - master.StartDate;
-            foreach (var start in expander.Expand(master.RecurrenceRule, master.StartDate, from, to).Where(s => !overridden.Contains(s)))
-                occurrences.Add((master, master.Id, start, start + length, IsCancelled(master)));
-        }
-
-        var seriesIds = occurrences.Select(o => o.SeriesId).Distinct().ToList();
-        var participants = seriesIds.Count == 0 ? new Dictionary<Guid, IReadOnlyList<CalendarEventParticipant>>()
-            : await events.GetParticipantsForEventsAsync(tenantId, seriesIds, ct);
-        var history = (await events.ListRsvpHistoryAsync(tenantId, employeeId, seriesIds, ct))
-            .GroupBy(h => h.EventId).ToDictionary(g => g.Key, g => g.ToList());
-
         // Identity: the work email and every connected calendar account's email. Unmatched attendance is never evidence.
         var identities = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         if (!string.IsNullOrWhiteSpace(employee.Email))
@@ -96,39 +81,12 @@ public sealed class CalendarIncidentEngine(
             : (await compliance.ListAsync(tenantId, employeeId, from, now, ct))
                 .GroupBy(c => (c.EventId, c.StartsAt)).ToDictionary(g => g.Key, g => g.First().UsagePercentage / 100m);
         var managerId = await ReportingManagerAsync(tenantId, employee, ct);
-        var organizerIds = new Dictionary<Guid, Guid?>();
 
+        // Calendar events, then every other meeting kind (task meetings) through the same view (spec 10 "Engine integration").
+        var context = new EmployeeOccurrenceContext(tenantId, employee, from, to, identities, managerId, agent, now);
         var views = new List<CalendarMeetingView>();
-        var reports = new Dictionary<Guid, (CalendarEventMeeting? Meeting, IReadOnlyList<CalendarEventMeetingAttendance> Rows)>();
-        foreach (var (e, seriesId, start, end, cancelled) in occurrences)
-        {
-            var people = participants.TryGetValue(seriesId, out var list) ? list : [];
-            var mine = people.FirstOrDefault(p => p.EmployeeId == employeeId);
-            var isOrganizer = e.CreatedById == employee.UserId;
-            if (mine is null && !isOrganizer)
-                continue;
-            if (!organizerIds.TryGetValue(e.CreatedById, out var organizerId))
-                organizerIds[e.CreatedById] = organizerId = (await employees.GetDefaultForUserAsync(tenantId, e.CreatedById, ct))?.Id;
-            var peopleCount = people.Select(p => p.EmployeeId).Append(organizerId ?? Guid.Empty).Where(id => id != Guid.Empty).Distinct().Count();
-
-            if (!reports.TryGetValue(seriesId, out var report))
-            {
-                var meeting = await meetings.GetTrackedByCalendarEventAsync(tenantId, seriesId, ct);
-                var rows = meeting is { Status: CalendarEventMeetingStatuses.Active } && meeting.LastAttendanceSyncedAt is not null
-                    ? await attendances.GetByMeetingIdAsync(tenantId, meeting.Id, ct) : [];
-                reports[seriesId] = report = (meeting, rows);
-            }
-            var (state, spans) = ReportFor(report.Meeting, report.Rows, start, end, employeeId, identities, now);
-
-            views.Add(new CalendarMeetingView(
-                seriesId, start, end, DisplayTitle(e), e.IsAllDay, cancelled, isOrganizer, peopleCount, organizerId,
-                organizerId is not null && organizerId == managerId,
-                mine?.ResponseStatus ?? CalendarEventParticipantStatuses.Accepted,
-                history.TryGetValue(seriesId, out var changes) ? changes.Select(h => new CalendarRsvpChange(h.FromStatus, h.ToStatus, h.ChangedAt)).ToList() : [],
-                // The nominee of a replacement is not stored, so a replacement's attendance cannot be confirmed.
-                ReplacementAttended: false,
-                state, spans, agent.TryGetValue((seriesId, start), out var ratio) ? ratio : null));
-        }
+        foreach (var source in Sources)
+            views.AddRange(await source.ListAsync(context, ct));
 
         var leaveIntervals = (await leaves.ListApprovedCoveringAsync(tenantId, [employeeId], DateOnly.FromDateTime(from.UtcDateTime), DateOnly.FromDateTime(to.UtcDateTime), ct))
             .Select(l => new CalendarInterval(l.StartAt, l.EndAt)).ToList();
@@ -150,9 +108,7 @@ public sealed class CalendarIncidentEngine(
     }
 
     /// <summary>What the rules, the evidence and the reviewer may see of a meeting's title: a private event stays private.</summary>
-    public static string DisplayTitle(CalendarEvent e) => e.IsPrivate ? "Private meeting" : e.Title;
-
-    private static bool IsCancelled(CalendarEvent e) => e.IsRecurrenceCancelled || e.EventStatus == CalendarEventStatuses.Cancelled;
+    public static string DisplayTitle(CalendarEvent e) => e.IsPrivate ? MeetingPrivacy.MaskedTitle : e.Title;
 
     /// <summary>Whether the provider report can be used for this occurrence, and the employee's matched rows in it. A
     /// recurring series shares one meeting: its report counts for an occurrence only when it was synced after that
