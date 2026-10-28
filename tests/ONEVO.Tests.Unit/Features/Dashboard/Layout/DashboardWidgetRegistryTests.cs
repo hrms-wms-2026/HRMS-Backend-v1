@@ -27,6 +27,25 @@ public sealed class DashboardWidgetRegistryTests
     }
 
     [Fact]
+    public void TodayTotalTime_is_weekly_work_progress_with_a_2x2_minimum()
+    {
+        var def = DashboardWidgetRegistry.Get("today-total-time")!;
+
+        Assert.Equal("Weekly work progress", def.Title);
+        Assert.Equal((2, 2, 12, 8), (def.MinW, def.MinH, def.MaxW, def.MaxH));
+    }
+
+    [Fact]
+    public void Web_hidden_widgets_are_flagged()
+    {
+        var hidden = DashboardWidgetRegistry.ForDashboard(DashboardKeys.MyWork)
+            .Concat(DashboardWidgetRegistry.ForDashboard(DashboardKeys.MyTeam))
+            .Where(d => !d.ShownOnWeb).Select(d => d.Key).OrderBy(k => k);
+
+        Assert.Equal(new[] { "my-tasks", "notifications", "wellbeing", "work-pattern" }, hidden);
+    }
+
+    [Fact]
     public void Default_layouts_are_valid_for_every_dashboard_and_breakpoint()
     {
         foreach (var dashboard in Dashboards)
