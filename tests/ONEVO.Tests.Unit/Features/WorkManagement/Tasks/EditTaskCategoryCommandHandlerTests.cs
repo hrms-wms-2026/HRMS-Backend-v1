@@ -170,4 +170,49 @@ public class EditTaskCategoryCommandHandlerTests
         Assert.Equal(409, result.StatusCode);
         categories.Verify(x => x.Update(It.IsAny<TaskCategory>()), Times.Never);
     }
+
+    [Fact]
+    public async Task Handle_Rename_KeepsTheKind_AndDoesNotReInferIt()
+    {
+        var (handler, categories) = Build();
+
+        var result = await handler.Handle(new EditTaskCategoryCommand(CategoryId, "Bugs fixed", 0), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        categories.Verify(x => x.Update(It.Is<TaskCategory>(c => c.Name == "Bugs fixed" && c.Kind == TaskCategoryKinds.Task)), Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_GivenKind_ChangesIt()
+    {
+        var (handler, categories) = Build();
+
+        var result = await handler.Handle(new EditTaskCategoryCommand(CategoryId, "Bug", 0, TaskCategoryKinds.Bug), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        categories.Verify(x => x.Update(It.Is<TaskCategory>(c => c.Kind == TaskCategoryKinds.Bug)), Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_UnknownKind_Is400()
+    {
+        var (handler, categories) = Build();
+
+        var result = await handler.Handle(new EditTaskCategoryCommand(CategoryId, "Bug", 0, "epic"), CancellationToken.None);
+
+        Assert.Equal((400, "invalid_category_kind"), (result.StatusCode, result.ErrorCode));
+        categories.Verify(x => x.Update(It.IsAny<TaskCategory>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Handle_SystemCategoryKind_CannotChange()
+    {
+        var (handler, categories) = Build(systemKey: TaskCategorySystemKeys.Meeting);
+
+        var result = await handler.Handle(
+            new EditTaskCategoryCommand(CategoryId, TaskCategorySystemKeys.Meeting, 0, TaskCategoryKinds.Bug), CancellationToken.None);
+
+        Assert.Equal((400, "invalid_category_kind"), (result.StatusCode, result.ErrorCode));
+        categories.Verify(x => x.Update(It.IsAny<TaskCategory>()), Times.Never);
+    }
 }

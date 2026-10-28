@@ -108,6 +108,7 @@ public sealed partial class WorkManagementDapiDemoSeeder
                 Name = name,
                 DisplayOrder = order,
                 SystemKey = name == TaskCategorySystemKeys.Meeting ? TaskCategorySystemKeys.Meeting : null,
+                Kind = TaskCategoryKinds.Infer(name, name == TaskCategorySystemKeys.Meeting ? TaskCategorySystemKeys.Meeting : null),
                 CreatedById = DapiOwnerUserId,
                 CreatedAt = now
             });

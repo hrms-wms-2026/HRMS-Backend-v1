@@ -14992,6 +14992,14 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("boolean")
                         .HasColumnName("is_deleted");
 
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasDefaultValue("task")
+                        .HasColumnName("kind");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(100)

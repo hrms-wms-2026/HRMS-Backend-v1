@@ -20,6 +20,7 @@ public class TaskCategoryConfiguration : IEntityTypeConfiguration<TaskCategory>
             .HasDatabaseName("ix_task_categories_one_name_per_project");
 
         builder.Property(c => c.SystemKey).HasMaxLength(32);
+        builder.Property(c => c.Kind).HasMaxLength(20).IsRequired().HasDefaultValue(TaskCategoryKinds.Task);
 
         builder.HasIndex(c => new { c.TenantId, c.ProjectId, c.SystemKey })
             .IsUnique()

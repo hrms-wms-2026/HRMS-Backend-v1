@@ -54,6 +54,8 @@ public class CreateTaskCategoryCommandHandler : IRequestHandler<CreateTaskCatego
             return Result<TaskCategoryResponse>.Conflict("The Office project categories are system-managed.");
         if (TaskCategorySystemKeys.IsReservedName(request.Name))
             return Result<TaskCategoryResponse>.Conflict("This project already has a Meeting category.");
+        if (request.Kind is not null && !TaskCategoryKinds.UserSelectable.Contains(request.Kind))
+            return Result<TaskCategoryResponse>.Failure("Choose Task, Bug, Story, Feature or Testing.", 400, TaskCategoryErrorCodes.InvalidKind);
 
         var defaultObjective = await _objectives.GetDefaultByProjectIdAsync(tenantId, project.Id, ct);
         if (defaultObjective is null)
@@ -69,6 +71,7 @@ public class CreateTaskCategoryCommandHandler : IRequestHandler<CreateTaskCatego
             {
                 Id = Guid.NewGuid(), TenantId = tenantId, ProjectId = project.Id,
                 Name = request.Name.Trim(), DisplayOrder = request.DisplayOrder,
+                Kind = request.Kind ?? TaskCategoryKinds.Infer(request.Name, null),
                 CreatedById = _currentUser.UserId, CreatedAt = now
             };
 
@@ -76,7 +79,7 @@ public class CreateTaskCategoryCommandHandler : IRequestHandler<CreateTaskCatego
             await _unitOfWork.SaveChangesAsync(innerCt);
 
             return Result<TaskCategoryResponse>.Success(new TaskCategoryResponse(
-                category.Id, category.Name, category.DisplayOrder, category.SystemKey));
+                category.Id, category.Name, category.DisplayOrder, category.SystemKey, category.Kind));
         }, ct);
     }
 }
