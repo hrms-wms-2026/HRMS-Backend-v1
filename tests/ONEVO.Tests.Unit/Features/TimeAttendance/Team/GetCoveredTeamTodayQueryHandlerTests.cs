@@ -203,6 +203,96 @@ public sealed class GetCoveredTeamTodayQueryHandlerTests
     }
 
     [Fact]
+    public async Task Unauthorized_leave_viewer_never_gets_on_leave_or_leave_detail()
+    {
+        // The Working / Break / Leave fields must not reopen the D6 leave masking: a masked subject has no since,
+        // no remaining time, no shift end and no leave block.
+        var f = CreateFixture();
+        var memberId = Guid.NewGuid();
+        f.Authority.Setup(x => x.ResolveVisibilityAsync(It.IsAny<EmployeeAuthorityVisibilityRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new EmployeeAuthorityVisibilityScope(UserId, LegalEntityId, false, [memberId]));
+        f.LeaveRequests.Setup(x => x.ListApprovedCoveringAsync(TenantId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<DateOnly>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([new LeaveRequest
+            {
+                Id = Guid.NewGuid(), TenantId = TenantId, EmployeeId = memberId, LeaveTypeId = Guid.NewGuid(),
+                StartAt = DateTimeOffset.Parse("2026-09-30T00:00:00+00:00"), EndAt = DateTimeOffset.Parse("2026-10-01T00:00:00+00:00"),
+                Status = LeaveRequestStatuses.Approved,
+            }]);
+
+        var result = await f.Handler.Handle(new GetCoveredTeamTodayQuery(), CancellationToken.None);
+
+        var member = Assert.Single(result.Value!.Members);
+        Assert.NotEqual("on_leave", member.Status);
+        Assert.Null(member.Leave);
+        Assert.Equal(0, result.Value.Summary.OnLeave);
+        Assert.Equal((null, null, null, 0), (member.StateSince, member.BreakRemainingMinutes, member.ShiftEndsAt, member.AttendanceMinutes));
+    }
+
+    [Fact]
+    public async Task Working_member_has_since_shift_end_and_attendance_minutes()
+    {
+        var f = CreateFixture();
+        var memberId = Guid.NewGuid();
+        var clockIn = DateTimeOffset.Parse("2026-09-30T04:00:00+00:00");   // 09:30 Colombo, UtcNow is 15:30 Colombo
+        f.Authority.Setup(x => x.ResolveVisibilityAsync(It.IsAny<EmployeeAuthorityVisibilityRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new EmployeeAuthorityVisibilityScope(UserId, LegalEntityId, false, [memberId]));
+        f.Attendance.Setup(x => x.ListRecordsForDateAsync(TenantId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([new AttendanceRecord
+            {
+                Id = Guid.NewGuid(), TenantId = TenantId, EmployeeId = memberId, ActualStart = clockIn, BreakMinutes = 30,
+                Status = AttendanceRecord.StatusOnTime,
+            }]);
+
+        var result = await f.Handler.Handle(new GetCoveredTeamTodayQuery(), CancellationToken.None);
+
+        var member = Assert.Single(result.Value!.Members);
+        Assert.Equal("working", member.Status);
+        Assert.Equal(clockIn, member.StateSince);
+        Assert.Null(member.BreakRemainingMinutes);
+        Assert.Equal(DateTimeOffset.Parse("2026-09-30T17:30:00+05:30"), member.ShiftEndsAt);
+        Assert.Equal(6 * 60 - 30, member.AttendanceMinutes);
+    }
+
+    [Fact]
+    public async Task On_break_member_has_open_break_start_and_remaining_allowance()
+    {
+        var f = CreateFixture();
+        var memberId = Guid.NewGuid();
+        var breakStart = UtcNow.AddMinutes(-20);
+        f.Authority.Setup(x => x.ResolveVisibilityAsync(It.IsAny<EmployeeAuthorityVisibilityRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new EmployeeAuthorityVisibilityScope(UserId, LegalEntityId, false, [memberId]));
+        f.Attendance.Setup(x => x.ListRecordsForDateAsync(TenantId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([new AttendanceRecord
+            {
+                Id = Guid.NewGuid(), TenantId = TenantId, EmployeeId = memberId,
+                ActualStart = DateTimeOffset.Parse("2026-09-30T04:00:00+00:00"), Status = AttendanceRecord.StatusOnTime,
+            }]);
+        f.Attendance.Setup(x => x.ListBreaksForEmployeesAsync(TenantId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<DateTimeOffset>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([new BreakRecord { Id = Guid.NewGuid(), TenantId = TenantId, EmployeeId = memberId, BreakStart = breakStart }]);
+
+        var result = await f.Handler.Handle(new GetCoveredTeamTodayQuery(), CancellationToken.None);
+
+        var member = Assert.Single(result.Value!.Members);
+        Assert.Equal("on_break", member.Status);
+        Assert.Equal(breakStart, member.StateSince);
+        Assert.Equal(40, member.BreakRemainingMinutes);   // 60 allowed, 20 used
+    }
+
+    [Fact]
+    public async Task As_of_is_now()
+    {
+        var f = CreateFixture();
+
+        var empty = await f.Handler.Handle(new GetCoveredTeamTodayQuery(), CancellationToken.None);
+        f.Authority.Setup(x => x.ResolveVisibilityAsync(It.IsAny<EmployeeAuthorityVisibilityRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new EmployeeAuthorityVisibilityScope(UserId, LegalEntityId, false, [Guid.NewGuid()]));
+        var populated = await f.Handler.Handle(new GetCoveredTeamTodayQuery(), CancellationToken.None);
+
+        Assert.Equal(UtcNow, empty.Value!.AsOf);
+        Assert.Equal(UtcNow, populated.Value!.AsOf);
+    }
+
+    [Fact]
     public async Task Ordering_places_critical_attention_before_absent_before_late_before_name()
     {
         var f = CreateFixture();

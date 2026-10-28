@@ -25,6 +25,7 @@ using ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces;
 using ONEVO.Application.Features.TimeAttendance.Services;
 using ONEVO.Application.Features.TimeAttendance.Team.DTOs;
 using ONEVO.Application.Features.TimeAttendance.Team.Services;
+using ONEVO.Application.Features.WorkManagement.Planner.Services;
 using ONEVO.Domain.Features.Monitoring.CheckIn.Entities;
 using ONEVO.Domain.Features.Monitoring.Exceptions.Entities;
 using ONEVO.Domain.Features.TimeAttendance.Entities;
@@ -581,10 +582,12 @@ public sealed class AttendanceReadHandler(
                 legalEntity.Id,
                 new TeamTodaySummary(0, 0, 0, 0, 0, 0, 0, 0, 0, 0),
                 Array.Empty<TeamTodayMember>(),
-                0));
+                0,
+                utcNow));
         }
 
         var dayWindow = AttendanceTodayStateService.GetLocalDayWindow(workDate, scheduleResolution.TimeZone);
+        var scheduledEnd = TeamPresenceMath.ScheduledEnd(workDate, scheduleResolution.Schedule.End, scheduleResolution.TimeZone);
 
         var records = await attendance.ListRecordsForDateAsync(currentUser.TenantId, coveredEmployeeIds, workDate, ct);
         var recordsByEmployee = records.ToDictionary(r => r.EmployeeId);
@@ -695,7 +698,12 @@ public sealed class AttendanceReadHandler(
                 mapped.AttentionType,
                 mapped.AttentionLabel,
                 mapped.AttentionSeverity,
-                leaveBlock));
+                leaveBlock,
+                TeamPresenceMath.StateSince(mapped.TeamStatus, record, employeeBreaks),
+                TeamPresenceMath.BreakRemainingMinutes(mapped.TeamStatus, legalEntity.BreakDurationMinutes, breakUsedMinutes),
+                TeamPresenceMath.ShiftEndsAt(mapped.TeamStatus, scheduledEnd),
+                record is null ? 0 : PlannerActuals.AttendanceMinutes(
+                    record.ActualStart, record.ActualEnd, record.WorkedMinutes, record.BreakMinutes, utcNow)));
 
             var countIndex = mapped.TeamStatus switch
             {
@@ -731,7 +739,8 @@ public sealed class AttendanceReadHandler(
             legalEntity.Id,
             summary,
             ordered.Take(limit).ToList(),
-            members.Count));
+            members.Count,
+            utcNow));
     }
 
     private static int AttentionSeverityRank(string? severity) => severity switch
