@@ -21,6 +21,8 @@ public sealed class CheckCalendarConflictsQueryHandler(
         if (!currentUser.IsAuthenticated)
             return Result<CalendarConflictsResponse>.Forbidden();
 
+        // Npgsql writes only UTC DateTimeOffsets to timestamptz; clients may send local offsets (the meeting form does).
+        request = request with { StartDate = request.StartDate.ToUniversalTime(), EndDate = request.EndDate.ToUniversalTime() };
         var tenantId = currentUser.TenantId;
         var conflicts = new List<CalendarConflict>();
         // Task meetings the caller cannot see themselves are reported as "Busy" with their time only (spec 5.1 privacy).
