@@ -111,7 +111,7 @@ public sealed class MeetingReadService
                 : participants.TryGetValue(s.Id, out var p) ? p.ResponseStatus : null;
             return new MeetingListItem(r.Details.TaskId, r.ShortId, s.Id, r.Details.OriginalStart, r.Details.StartAt, r.Details.EndAt,
                 r.Details.IsAllDay, r.Title, MeetingStatusCalculator.Of(r.Details, s, now), r.Details.IsPrivate, r.ProjectId,
-                r.ObjectiveId, role, response);
+                r.ObjectiveId, role, response, s.OrganizerEmployeeId);
         }).ToList();
     }
 
