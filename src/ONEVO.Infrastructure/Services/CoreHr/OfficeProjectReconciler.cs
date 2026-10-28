@@ -18,7 +18,8 @@ public sealed class OfficeProjectReconciler(
     IOfficeProjectProvisioner provisioner,
     ILogger<OfficeProjectReconciler> logger) : IOfficeProjectReconciler
 {
-    private const string OwnerRoleName = "Owner";
+    // Provisioned tenants seed "Owner" (DefaultRoleSeeder); dev smoke tenants seed "Tenant Owner" (as EfUserAccountRepository).
+    private static readonly string[] OwnerRoleNames = ["Owner", "Tenant Owner"];
 
     private sealed record OwnerEmployee(Guid EmployeeId, Guid UserId, Guid LegalEntityId);
 
@@ -111,7 +112,7 @@ public sealed class OfficeProjectReconciler(
     {
         var ownerUserIds = await db.UserRoles.AsNoTracking()
             .Where(ur => ur.TenantId == tenantId
-                && ur.Role.IsSystem && ur.Role.Name == OwnerRoleName
+                && ur.Role.IsSystem && OwnerRoleNames.Contains(ur.Role.Name)
                 && (ur.ExpiresAt == null || ur.ExpiresAt > now))
             .OrderBy(ur => ur.AssignedAt).ThenBy(ur => ur.UserId)
             .Select(ur => ur.UserId)
