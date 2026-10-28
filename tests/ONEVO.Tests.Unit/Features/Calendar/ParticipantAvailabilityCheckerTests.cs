@@ -49,7 +49,9 @@ public sealed class ParticipantAvailabilityCheckerTests
     private ParticipantAvailabilityChecker BuildSut(EmployeeVisibilityScope? scope, params LeaveRequest[] leave)
     {
         _leave.Setup(x => x.ListApprovedCoveringAsync(TenantId, It.IsAny<IReadOnlyCollection<Guid>>(),
-            It.IsAny<DateOnly>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>())).ReturnsAsync(leave);
+            It.IsAny<DateOnly>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>())).ReturnsAsync(leave.Where(l => l.Status == "approved").ToList());
+        _leave.Setup(x => x.ListPartiallyCancelledCoveringAsync(TenantId, It.IsAny<IReadOnlyCollection<Guid>>(),
+            It.IsAny<DateOnly>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>())).ReturnsAsync(leave.Where(l => l.Status == "cancelled").ToList());
         _holidays.Setup(x => x.ListHolidaysAsync(TenantId, It.IsAny<IReadOnlyCollection<Guid>>(),
             It.IsAny<DateOnly>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>())).ReturnsAsync([]);
         _entities.Setup(x => x.GetByIdForTenantAsync(TenantId, Entity.Id, It.IsAny<CancellationToken>())).ReturnsAsync(Entity);
@@ -119,5 +121,23 @@ public sealed class ParticipantAvailabilityCheckerTests
 
         Assert.Empty(rows);
         _zones.Verify(x => x.ResolveForUserAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+    [Fact]
+    public async Task Partially_cancelled_leave_warns_before_its_effective_date()
+    {
+        // Leave Mon 2026-11-02 to Fri, cancelled from Thursday: Tuesday is still leave (a partial cancel sets Status = cancelled).
+        var me = Person("Me");
+        var leave = new LeaveRequest
+        {
+            Id = Guid.NewGuid(), TenantId = TenantId, EmployeeId = me.Id, Status = "cancelled",
+            StartAt = new DateTimeOffset(2026, 11, 2, 0, 0, 0, TimeSpan.FromHours(5.5)),
+            EndAt = new DateTimeOffset(2026, 11, 7, 0, 0, 0, TimeSpan.FromHours(5.5)),
+            PartialCancelEffectiveDate = new DateOnly(2026, 11, 5),
+        };
+        var sut = BuildSut(DepartmentScope(), leave);
+
+        var rows = await sut.CheckAsync(TenantId, me.Id, [me], Start, End, false, "Asia/Colombo", CancellationToken.None);
+
+        Assert.Equal("On leave", Assert.Single(rows).ConflictingEventTitle);
     }
 }

@@ -32,7 +32,8 @@ public sealed class ParticipantAvailabilityRulesTests
 
     private static LeaveRequest Leave(DateTimeOffset start, DateTimeOffset end, DateOnly? partialCancel = null) => new()
     {
-        Id = Guid.NewGuid(), EmployeeId = EmployeeId, StartAt = start, EndAt = end, Status = "approved",
+        Id = Guid.NewGuid(), EmployeeId = EmployeeId, StartAt = start, EndAt = end,
+        Status = partialCancel is null ? "approved" : "cancelled",
         Reason = "Family trip", PartialCancelEffectiveDate = partialCancel,
     };
 

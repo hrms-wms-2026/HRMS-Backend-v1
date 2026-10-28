@@ -43,7 +43,10 @@ public sealed class ParticipantAvailabilityChecker(
         var from = DateOnly.FromDateTime(start.UtcDateTime).AddDays(-1);
         var to = DateOnly.FromDateTime(end.UtcDateTime).AddDays(1);
 
-        var approved = await leave.ListApprovedCoveringAsync(tenantId, ids, from, to, ct);
+        // A partial cancel sets Status = cancelled; the days before its effective date are still leave.
+        var approved = (await leave.ListApprovedCoveringAsync(tenantId, ids, from, to, ct))
+            .Concat(await leave.ListPartiallyCancelledCoveringAsync(tenantId, ids, from, to, ct))
+            .ToList();
 
         var entityIds = participants.Where(p => p.LegalEntityId is not null).Select(p => p.LegalEntityId!.Value).Distinct().ToList();
         var entities = new Dictionary<Guid, LegalEntity>();
