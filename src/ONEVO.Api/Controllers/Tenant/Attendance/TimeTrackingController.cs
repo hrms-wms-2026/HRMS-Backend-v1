@@ -9,6 +9,7 @@ using ONEVO.Application.Features.TimeAttendance.Commands.ClockOut;
 using ONEVO.Application.Features.TimeAttendance.Commands.EndBreak;
 using ONEVO.Application.Features.TimeAttendance.Commands.StartBreak;
 using ONEVO.Application.Features.TimeAttendance.Queries;
+using ONEVO.Application.Features.TimeAttendance.Team.Queries;
 
 namespace ONEVO.Api.Controllers.Tenant.Attendance;
 
@@ -124,6 +125,38 @@ public sealed class TimeTrackingController(IMediator mediator) : ControllerBase
         CancellationToken ct = default)
     {
         var result = await mediator.Send(new GetCoveredTeamTodayQuery(limit), ct);
+        return result.IsSuccess
+            ? Ok(result.Value)
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    [HttpGet("team/attendance-summary")]
+    [RequirePermission("attendance:read")]
+    public async Task<IActionResult> TeamAttendanceSummary(
+        [FromQuery] string mode = "week",
+        [FromQuery] DateOnly? anchor = null,
+        [FromQuery] Guid? departmentId = null,
+        CancellationToken ct = default)
+    {
+        var result = await mediator.Send(new GetTeamAttendanceSummaryQuery(mode, anchor, departmentId), ct);
+        return result.IsSuccess
+            ? Ok(result.Value)
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    [HttpGet("team/attendance-employees")]
+    [RequirePermission("attendance:read")]
+    public async Task<IActionResult> TeamAttendanceEmployees(
+        [FromQuery] string mode = "week",
+        [FromQuery] DateOnly? anchor = null,
+        [FromQuery] Guid? departmentId = null,
+        [FromQuery] string? search = null,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 20,
+        CancellationToken ct = default)
+    {
+        var result = await mediator.Send(
+            new GetTeamAttendanceEmployeesQuery(mode, anchor, departmentId, search, page, pageSize), ct);
         return result.IsSuccess
             ? Ok(result.Value)
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);

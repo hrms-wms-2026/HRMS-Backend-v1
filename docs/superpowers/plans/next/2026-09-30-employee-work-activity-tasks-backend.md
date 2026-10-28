@@ -8,7 +8,7 @@
 
 **Tech Stack:** ASP.NET Core, MediatR, EF Core (PostgreSQL; InMemory in unit tests), xUnit, Moq, FluentAssertions.
 
-**Spec:** `docs/superpowers/specs/2026-09-30-employee-detail-redesign-design.md` plus the Work & Activity mockup (product owner, 2026-09-30). Sibling plans: 4B (`2026-09-30-employee-work-activity-monitoring-backend.md`), frontend `Hrms--Web-application---front-end---v1/docs/superpowers/plans/next/2026-09-30-employee-work-activity-tab.md`.
+**Spec:** `docs/superpowers/specs/finished/2026-09-30/2026-09-30-employee-detail-redesign-design.md` plus the Work & Activity mockup (product owner, 2026-09-30). Sibling plans: 4B (`2026-09-30-employee-work-activity-monitoring-backend.md`), frontend `Hrms--Web-application---front-end---v1/docs/superpowers/plans/next/2026-09-30-employee-work-activity-tab.md`.
 
 ## Prerequisites
 

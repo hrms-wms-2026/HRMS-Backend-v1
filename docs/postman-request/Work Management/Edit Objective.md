@@ -34,4 +34,4 @@ Edits a milestone. A non-conflicting edit (within the parent's date/hours bounds
 
 Controller: `src/ONEVO.Api/Controllers/Tenant/WorkManagement/ObjectivesController.cs` (`Edit`)
 Handler: `src/ONEVO.Application/Features/WorkManagement/Objectives/Commands/EditObjective/EditObjectiveCommandHandler.cs`
-Plan: `docs/superpowers/plans/2026-08-04-work-management-milestone-hierarchy.md`
+Plan: `docs/superpowers/plans/finished/2026-08-04/2026-08-04-work-management-milestone-hierarchy.md`

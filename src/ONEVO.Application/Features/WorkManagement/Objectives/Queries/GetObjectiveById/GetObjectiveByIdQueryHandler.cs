@@ -1,7 +1,10 @@
 using MediatR;
+using ONEVO.Application.Common.Constants;
 using ONEVO.Application.Common.Models;
+using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Permission.ServiceInterfaces;
+using ONEVO.Application.Features.Storage.File.Helpers;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Objectives.DTOs.Responses;
 using ONEVO.Application.Features.WorkManagement.Objectives.Mappers;
@@ -17,16 +20,18 @@ public class GetObjectiveByIdQueryHandler : IRequestHandler<GetObjectiveByIdQuer
     private readonly IObjectiveRepository _objectives;
     private readonly IModuleReadAccess _readAccess;
     private readonly IPermissionResolver _permissionResolver;
+    private readonly IEntityAssetRepository _assets;
 
     public GetObjectiveByIdQueryHandler(
         ICurrentUser currentUser, ICallerIdentityResolver identity, IObjectiveRepository objectives,
-        IModuleReadAccess readAccess, IPermissionResolver permissionResolver)
+        IModuleReadAccess readAccess, IPermissionResolver permissionResolver, IEntityAssetRepository assets)
     {
         _currentUser = currentUser;
         _identity = identity;
         _objectives = objectives;
         _readAccess = readAccess;
         _permissionResolver = permissionResolver;
+        _assets = assets;
     }
 
     public async Task<Result<ObjectiveDetailResponse>> Handle(GetObjectiveByIdQuery request, CancellationToken ct)
@@ -63,6 +68,13 @@ public class GetObjectiveByIdQueryHandler : IRequestHandler<GetObjectiveByIdQuer
 
         var namesByEmployeeId = await _identity.ResolveDisplayNamesByEmployeeIdAsync(tenantId, nameLookupIds, ct);
 
-        return Result<ObjectiveDetailResponse>.Success(ObjectiveMapper.ToDetail(objective, namesByEmployeeId, callerEmployeeId.Value));
+        var assets = (await _assets.ListByOwnerAsync(tenantId, EntityAssetOwnerTypes.Objective, objective.Id, ct))
+            .Where(a => a.AssetPurpose == UploadPurposeCatalog.ObjectiveAsset)
+            .Select(a => new ObjectiveAssetResponse(
+                a.Id, a.OriginalFileName, a.FileSizeBytes, a.ContentType, a.CreatedAt,
+                ObjectiveAssetResponse.DownloadPath(objective.Id, a.Id)))
+            .ToList();
+
+        return Result<ObjectiveDetailResponse>.Success(ObjectiveMapper.ToDetail(objective, namesByEmployeeId, callerEmployeeId.Value, assets));
     }
 }

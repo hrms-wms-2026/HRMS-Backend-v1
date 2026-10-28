@@ -75,7 +75,7 @@ public sealed class LedWorkProgressIntegrationTests
         await using var db = helper.NewContext();
         var creator = helper.AddEmployee(db);   // owns the project root - leads the whole project
         var lead = helper.AddEmployee(db);      // owns one module (and a nested one below it)
-        var member = helper.AddEmployee(db);    // plain member of a sub-module only
+        var member = helper.AddEmployee(db);    // plain member of a sub-module only - owns nothing
         var (projectId, rootId) = helper.AddProject(db, creator.Id);
         var module = helper.AddModule(db, projectId, rootId, lead.Id, allocatedHours: 100);
         // Owned by the creator: owning a Module makes you its lead, so the member must not own it.
@@ -175,11 +175,12 @@ public sealed class LedWorkProgressIntegrationTests
         var small = await SeedAsync(tasksPerModule: 1);
         var large = await SeedAsync(tasksPerModule: 15);
 
+        // OverdueLimit 1 puts both seeds over the limit, so both run the overdue count query; below the limit the
+        // handler skips it and takes one query less.
         async Task<int> CountAsync(Seeded seeded)
         {
             var counter = new CountingDbCommandInterceptor();
             await using var db = seeded.Db.NewContext(counter);
-            // OverdueLimit 1 so both sizes fill the overdue page and take the same COUNT path.
             await Handler(db, seeded.Db.TenantId, seeded.LeadUserId).Handle(new GetLedWorkProgressQuery(OverdueLimit: 1), default);
             return counter.Count;
         }

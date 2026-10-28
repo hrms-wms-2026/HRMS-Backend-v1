@@ -8,6 +8,7 @@ using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.Queries.GetMyFocusStatus;
 using ONEVO.Application.Features.TimeAttendance.Queries;
+using ONEVO.Application.Features.TimeAttendance.Team.Queries;
 using ONEVO.Application.Features.WorkManagement.Leadership.Queries.GetLedWorkProgress;
 using ONEVO.Application.Features.WorkManagement.Projects.Queries.ListProjects;
 using ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetMyActiveTasks;
@@ -75,6 +76,25 @@ public sealed class TeamStatusWidgetDataProvider(IMediator mediator, ICurrentUse
         Map(await Mediator.Send(new GetCoveredTeamTodayQuery(Limit), ct), value => value);
 }
 
+/// <summary>team-attendance: mirrors GET api/v1/attendance/time-tracking/team/attendance-summary
+/// (TimeTrackingController.TeamAttendanceSummary) with the card's first request: this week, no department.</summary>
+public sealed class TeamAttendanceWidgetDataProvider(IMediator mediator, ICurrentUser currentUser, IModuleEntitlementService entitlements)
+    : EndpointMirrorWidgetDataProvider(mediator, currentUser, entitlements)
+{
+    public const string Key = "team-attendance";
+
+    private static readonly EndpointGate MirroredGate =
+        EndpointGate.For<TimeTrackingController>(nameof(TimeTrackingController.TeamAttendanceSummary));
+
+    public override string WidgetKey => Key;
+
+    protected override EndpointGate Gate => MirroredGate;
+
+    // The action returns Ok(result.Value) - no view-model mapping.
+    protected override async Task<Result<object>> LoadAsync(CancellationToken ct) =>
+        Map(await Mediator.Send(new GetTeamAttendanceSummaryQuery("week", null, null), ct), value => value);
+}
+
 /// <summary>wellbeing: mirrors GET api/v1/monitoring/activity/my-focus-status (MonitoringActivityController.GetMyFocusStatus).</summary>
 public sealed class WellbeingWidgetDataProvider(IMediator mediator, ICurrentUser currentUser, IModuleEntitlementService entitlements)
     : EndpointMirrorWidgetDataProvider(mediator, currentUser, entitlements)
@@ -129,6 +149,7 @@ public static class WidgetDataProviderRegistration
         Add<MyTasksWidgetDataProvider>(services, MyTasksWidgetDataProvider.Key);
         Add<TeamProgressWidgetDataProvider>(services, TeamProgressWidgetDataProvider.Key);
         Add<TeamStatusWidgetDataProvider>(services, TeamStatusWidgetDataProvider.Key);
+        Add<TeamAttendanceWidgetDataProvider>(services, TeamAttendanceWidgetDataProvider.Key);
         Add<WellbeingWidgetDataProvider>(services, WellbeingWidgetDataProvider.Key);
         Add<ActiveProjectsWidgetDataProvider>(services, ActiveProjectsWidgetDataProvider.Key);
         return services;
