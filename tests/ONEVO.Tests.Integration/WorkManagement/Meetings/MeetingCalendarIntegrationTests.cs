@@ -234,4 +234,14 @@ public sealed class MeetingCalendarIntegrationTests
         Assert.DoesNotContain("Family trip", json);
         Assert.DoesNotContain("Annual", json);
     }
+    [Fact]
+    public async Task Conflicts_AcceptLocalOffsetTimes_AgainstPostgres()
+    {
+        // The meeting form sends "...+05:30"; Npgsql rejects non-UTC DateTimeOffsets for timestamptz.
+        var w = await SeedAsync();
+
+        var conflicts = (await CheckWithAvailabilityAsync(w, w.OrganizerUser, Week(0).AddMinutes(-15).ToOffset(TimeSpan.FromHours(5.5)))).Conflicts;
+
+        Assert.Contains(conflicts, c => c.Kind == CalendarConflictKinds.Event);
+    }
 }

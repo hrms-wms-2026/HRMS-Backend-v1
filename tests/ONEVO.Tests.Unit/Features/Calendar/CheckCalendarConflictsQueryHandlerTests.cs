@@ -132,4 +132,23 @@ public sealed class CheckCalendarConflictsQueryHandlerTests
 
         Assert.Equal([CalendarConflictKinds.Event, CalendarConflictKinds.Leave], result.Value!.Conflicts.Select(c => c.Kind));
     }
+    [Fact]
+    public async Task Offset_times_are_queried_in_utc()
+    {
+        // Npgsql only accepts UTC DateTimeOffsets for timestamptz; the meeting form sends "...T08:45:00+05:30".
+        var sut = BuildSut();
+        var colomboStart = Start.ToOffset(TimeSpan.FromHours(5.5));
+        var colomboEnd = End.ToOffset(TimeSpan.FromHours(5.5));
+        _events.Setup(x => x.GetInDateRangeForEmployeeAsync(TenantId, EmployeeId, It.IsAny<DateTimeOffset>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>())).ReturnsAsync([]);
+        _events.Setup(x => x.GetRecurringMastersForEmployeeAsync(TenantId, EmployeeId, It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>())).ReturnsAsync([]);
+
+        var result = await sut.Handle(new CheckCalendarConflictsQuery([EmployeeId], colomboStart, colomboEnd), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        _events.Verify(x => x.GetInDateRangeForEmployeeAsync(TenantId, EmployeeId,
+            It.Is<DateTimeOffset>(d => d.Offset == TimeSpan.Zero && d == Start),
+            It.Is<DateTimeOffset>(d => d.Offset == TimeSpan.Zero && d == End), It.IsAny<CancellationToken>()), Times.Once);
+        _events.Verify(x => x.GetRecurringMastersForEmployeeAsync(TenantId, EmployeeId,
+            It.Is<DateTimeOffset>(d => d.Offset == TimeSpan.Zero), It.IsAny<CancellationToken>()), Times.Once);
+    }
 }
