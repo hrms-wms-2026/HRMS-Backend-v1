@@ -131,9 +131,10 @@ purpose (see the `DashboardWidgetRegistry` comment).
 ## 8. API
 
 `GET /api/v1/work/my-weekly-progress?weekStart=yyyy-MM-dd` (optional; must be a Monday; not in the future; at most
-52 weeks back → 422 otherwise). Same class-level gates as `TasksController` (`TenantPolicy`,
-`RequireAnyModule(worksync_foundation, projects, objectives_milestones, tasks, boards, planning_sprints)`); caller's
-own employee only (no employee id parameter). 404 when the caller has no employee record.
+52 weeks back → 422 otherwise). `TenantPolicy` only, **no module gate** (like the planner): every My Work user has
+the widget, so an HR-only tenant must still get its attendance-based week (changed during the final review; it was
+first gated like `TasksController`). Caller's own employee only (no employee id parameter). 404 when the caller has no
+employee record.
 
 The bootstrap provider `WeeklyWorkProgressWidgetDataProvider` (key `today-total-time`) mirrors this endpoint with no
 `weekStart` (current week), as the other `EndpointMirrorWidgetDataProvider`s do.

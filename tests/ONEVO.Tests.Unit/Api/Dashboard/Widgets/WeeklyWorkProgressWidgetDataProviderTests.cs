@@ -24,15 +24,18 @@ public sealed class WeeklyWorkProgressWidgetDataProviderTests
     }
 
     [Fact]
-    public async Task Missing_permission_is_forbidden()
+    public async Task Works_without_work_management_modules()
     {
-        // MyWorkProgressController is gated by [RequireAnyModule(<Work Management modules>)].
+        // Every My Work user gets this widget; like the planner, the endpoint has no module gate (own data only), so an
+        // HR-only tenant still sees its attendance-based week.
         var kit = new WidgetProviderTestKit(activeModules: []);
+        kit.Mediator.Setup(m => m.Send(It.IsAny<GetMyWeeklyWorkProgressQuery>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<WeeklyWorkProgressResponse>.NotFound("Current employee record was not found."));
 
         var result = await Create(kit).GetAsync(default);
 
-        WidgetProviderTestKit.AssertForbidden(result);
-        kit.Mediator.VerifyNoOtherCalls();
+        Assert.Equal(404, result.StatusCode);
+        kit.Mediator.Verify(m => m.Send(It.IsAny<GetMyWeeklyWorkProgressQuery>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]

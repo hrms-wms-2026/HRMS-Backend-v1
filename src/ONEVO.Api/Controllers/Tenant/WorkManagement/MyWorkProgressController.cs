@@ -1,18 +1,18 @@
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using ONEVO.Api.Filters;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Features.WorkManagement.WeeklyProgress.DTOs;
 using ONEVO.Application.Features.WorkManagement.WeeklyProgress.Queries.GetMyWeeklyWorkProgress;
 
 namespace ONEVO.Api.Controllers.Tenant.WorkManagement;
 
-/// <summary>The caller's own work progress (Weekly Work Progress widget, 2026-10-28 design). Same gates as TasksController.</summary>
+/// <summary>The caller's own work progress (Weekly Work Progress widget, 2026-10-28 design). Like the planner, no module gate:
+/// every My Work user has the widget and it only returns the caller's own data, so an HR-only tenant still gets its
+/// attendance-based week (task figures are simply empty).</summary>
 [ApiController]
 [Route("api/v1/work")]
 [Authorize(Policy = "TenantPolicy")]
-[RequireAnyModule("worksync_foundation", "projects", "objectives_milestones", "tasks", "boards", "planning_sprints")]
 public sealed class MyWorkProgressController(IMediator mediator) : ControllerBase
 {
     /// <summary>This week (or the Monday given) and the week before, for the caller.</summary>
