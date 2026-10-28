@@ -150,10 +150,10 @@ public sealed class OfficeProjectDb : IAsyncDisposable
         return entity.Id;
     }
 
-    public async Task<Guid> SeedOwnerRoleAsync()
+    public async Task<Guid> SeedOwnerRoleAsync(string name = "Owner")
     {
         await using var db = AdminContext();
-        var role = new Role { Id = Guid.NewGuid(), TenantId = TenantId, Name = "Owner", Description = "Full access", IsSystem = true };
+        var role = new Role { Id = Guid.NewGuid(), TenantId = TenantId, Name = name, Description = "Full access", IsSystem = true };
         db.Roles.Add(role);
         await db.SaveChangesAsync();
         return role.Id;
