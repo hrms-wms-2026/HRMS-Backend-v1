@@ -139,12 +139,21 @@ This was a self-review, not a separate reviewer. It found two issues; both are f
 1. **The popup kept reloading last week.** It reloaded on every 60 s card refresh and briefly showed this week. Now it only resets when the week changes.
 2. **HR-only tenants would have seen a permanent error card.** The endpoint first required a Work Management module, but every My Work user has the widget. The module gate is removed, matching the Planner.
 
+## Browser pass (2026-10-29, Playwright, dapi, after the API restart)
+
+- **Data path:** the card loads from the bootstrap. It made no `my-weekly-progress` call and no attendance history or monthly-summary call.
+- **Views:** checked at 2×2, 5×2, 7×2, 2×4, 2×5, 6×3, 6×5, 6×7 and 12×5. Each size gave the right view: mini; mini-wide, with tiles from 7×2; xs, with stacked tiles; standard, with the chart from 6×5 and the comparison from 6×7.
+- **Layout:** no vertical overflow and no clipped text. The donut is 140 px everywhere.
+- **Popup:** opens on click, with real data. Task weightage showed 40h not started.
+- **Fixed during the pass (FE b90d11df):**
+  - The chart columns used percentage padding, which is measured against the whole chart, so large cards scrolled sideways.
+  - Zero showed as "0m"; it now shows "0h".
+  - An unchanged week showed "↗ +0%"; it now shows "→ 0%".
+- **Test-environment artifact, not a bug:** the Playwright window throttles `requestAnimationFrame` to about 550 ms, so views switch late there. The card's `view` is now a `linkedSignal` of its size.
+- **Not checked:** phone width.
+
 ## Limitations and pending items
 
-- **Browser pass not done.** The user must:
-  1. Rebuild and restart the API. The running API is old code without this endpoint or provider.
-  2. Sign in at `https://dapi.onexso.com:4200`.
-  3. Check the card at 2×2, 5×2, 7×2, 2×5, 6×3, 6×5 and 6×7, plus the popup and a phone-width screen.
 - **Migration not applied:** `20261028170646_AddWeeklyProgressReadIndexes`. It creates the index non-concurrently, so apply it in a quiet window on large data.
 - **Most figures are 0 locally.** The Planner flag is off and `planned_task_blocks`, `task_clocking_sessions` and `meeting_details` are empty. Only Expected, Attendance and Task weightage have real local data. Worked will read 0 until people clock task time.
 - **Planner v1 on `development` only allows planning today**, so future days of the week show 0 scheduled until v1.1 (`feature/planner-calendar-merge`) is merged.
