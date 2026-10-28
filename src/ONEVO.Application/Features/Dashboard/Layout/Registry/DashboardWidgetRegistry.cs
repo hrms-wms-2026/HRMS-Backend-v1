@@ -21,7 +21,7 @@ public static class DashboardWidgetRegistry
         new("action-center", DashboardKeys.MyWork, "Action center", "Items waiting for your action.", 4, 3, 12, 6, false),
         new("quick-actions", DashboardKeys.MyWork, "Quick actions", "Shortcuts to common tasks.", 3, 3, 6, 4, false),
         new("todays-schedule", DashboardKeys.MyWork, "Today's schedule", "Your shifts and events for today.", 3, 3, 12, 6, false),
-        new("today-total-time", DashboardKeys.MyWork, "Weekly work progress", "Your week's worked hours against expected and planned time.", 2, 2, 12, 8, false),
+        new("today-total-time", DashboardKeys.MyWork, "Weekly work progress", "Your week's worked hours against expected and planned time.", 2, 2, 12, 8, true),
         new("active-projects", DashboardKeys.MyWork, "Active projects", "Projects you are currently working on.", 3, 3, 6, 6, true),
         new("my-tasks", DashboardKeys.MyWork, "My tasks", "Tasks assigned to you.", 3, 3, 12, 6, true, ShownOnWeb: false),
         new("work-pattern", DashboardKeys.MyWork, "Work pattern", "Your recent working pattern.", 6, 3, 12, 5, false, ShownOnWeb: false),
