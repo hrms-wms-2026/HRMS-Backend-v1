@@ -1,11 +1,14 @@
 using System.Net;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using ONEVO.Application.Common.Constants;
+using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Features.Conversations.Contracts;
 using ONEVO.Application.Features.Conversations.RepositoryInterfaces;
 using ONEVO.Application.Features.Conversations.Services;
 using ONEVO.Application.Features.Inbox.Contracts;
 using ONEVO.Application.Features.Inbox.Services;
+using ONEVO.Application.Features.Storage.File.Helpers;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Domain.Features.Conversations.Entities;
 
@@ -29,7 +32,8 @@ public sealed record InboxChatRow(
     Guid ConversationId, string Source, string Kind, Guid SubjectId, string Type, string Title,
     Guid? OtherEmployeeId, Guid? AvatarFileId, int MemberCount,
     string? Preview, DateTimeOffset? LastMessageAt, int Unread,
-    IReadOnlyList<InboxChatPendingItem> Pending, InboxChatPendingItem? CaseItem, bool IsFavorite = false);
+    IReadOnlyList<InboxChatPendingItem> Pending, InboxChatPendingItem? CaseItem, bool IsFavorite = false,
+    bool IsMuted = false, string? Description = null);
 
 public interface IInboxChatService
 {
@@ -49,10 +53,13 @@ public sealed partial class InboxChatService : IInboxChatService
     private readonly IInboxChatProjector _projector;
     private readonly IConversationRepository _conversations;
     private readonly ICallerIdentityResolver _identity;
+    private readonly IEntityAssetRepository? _assets;
 
     public InboxChatService(
-        IInboxRouter router, IInboxChatProjector projector, IConversationRepository conversations, ICallerIdentityResolver identity)
+        IInboxRouter router, IInboxChatProjector projector, IConversationRepository conversations, ICallerIdentityResolver identity,
+        IEntityAssetRepository? assets = null)
     {
+        _assets = assets;
         _router = router;
         _projector = projector;
         _conversations = conversations;
@@ -117,7 +124,8 @@ public sealed partial class InboxChatService : IInboxChatService
         var caseConversationIds = members.Where(m => !ConversationSources.IsPeopleChat(m.Conversation.SubjectSource)).Select(m => m.Conversation.Id).ToList();
         var groupIds = members.Where(m => m.Conversation.SubjectSource == ConversationSources.Group).Select(m => m.Conversation.Id).ToList();
         var markers = await _conversations.LatestSystemEventsAsync(tenantId, caseConversationIds, [PeopleChatEvents.CaseGroup], ct);
-        var names = await _conversations.LatestSystemEventsAsync(tenantId, groupIds, PeopleChatEvents.GroupNameEvents, ct);
+        // Case groups have a name event only when someone named them something other than their case.
+        var names = await _conversations.LatestSystemEventsAsync(tenantId, groupIds.Concat(caseConversationIds).ToList(), PeopleChatEvents.GroupNameEvents, ct);
 
         // An item's own conversation is listed only once it is a group (its marker): older per-item chats stay hidden.
         var shown = members
@@ -130,14 +138,27 @@ public sealed partial class InboxChatService : IInboxChatService
         // Text messages only: the badge adds the open cases (pending) on top, so a case card must not count twice.
         var unread = await _conversations.CountUnreadByConversationAsync(tenantId, caller, ids, ct, textOnly: true);
         var favorites = await _conversations.ListFavoriteConversationIdsAsync(tenantId, caller, ct);
+        var muted = await _conversations.ListMutedConversationIdsAsync(tenantId, caller, ct);
 
         var others = shown.Where(m => m.Conversation.SubjectSource == ConversationSources.Direct)
             .Select(m => memberIds.GetValueOrDefault(m.Conversation.Id)?.FirstOrDefault(id => id != caller) ?? Guid.Empty)
             .Where(id => id != Guid.Empty);
         var authors = shown.Select(m => m.LatestMessage?.AuthorEmployeeId).OfType<Guid>();
         var people = await _identity.ResolveIdentitiesByEmployeeIdAsync(tenantId, others.Concat(authors).Distinct().ToList(), ct);
+        var groupPhotoIds = shown.Where(m => m.Conversation.SubjectSource != ConversationSources.Direct).Select(m => m.Conversation.Id).ToList();
+        var photos = _assets is null || groupPhotoIds.Count == 0
+            ? new Dictionary<Guid, Guid>()
+            : await _assets.GetPrimaryFileIdsByOwnerAsync(tenantId, EntityAssetOwnerTypes.Conversation, groupPhotoIds, UploadPurposeCatalog.ConversationAvatar, ct);
 
-        return shown.Select(m =>
+        return shown.Select(m => WithSettings(BuildRow(m), m.Conversation))
+            .OrderByDescending(r => r.Pending.Count > 0)
+            .ThenByDescending(r => r.LastMessageAt ?? DateTimeOffset.MinValue)
+            .ToList();
+
+        InboxChatRow WithSettings(InboxChatRow row, Conversation c)
+            => row with { IsMuted = muted.Contains(c.Id), Description = c.SubjectSource == ConversationSources.Direct ? null : c.Description };
+
+        InboxChatRow BuildRow(MemberConversation m)
             {
                 var c = m.Conversation;
                 var count = memberIds.GetValueOrDefault(c.Id)?.Count ?? 0;
@@ -153,17 +174,18 @@ public sealed partial class InboxChatService : IInboxChatService
                 }
                 if (c.SubjectSource == ConversationSources.Group)
                     return new InboxChatRow(c.Id, c.SubjectSource, c.SubjectKind, c.SubjectId, InboxChatTypes.Group, PeopleChatNames.GroupName(names.GetValueOrDefault(c.Id)),
-                        null, null, count, preview, m.LatestMessage?.CreatedAt ?? c.LastMessageAt, unread.GetValueOrDefault(c.Id), rowPending, null,
+                        null, PhotoOf(photos, c.Id), count, preview, m.LatestMessage?.CreatedAt ?? c.LastMessageAt, unread.GetValueOrDefault(c.Id), rowPending, null,
                         favorites.Contains(c.Id));
                 var title = MarkerTitle(markers.GetValueOrDefault(c.Id)) ?? "Case";
-                return new InboxChatRow(c.Id, c.SubjectSource, c.SubjectKind, c.SubjectId, InboxChatTypes.Case, title,
-                    null, null, count, preview, m.LatestMessage?.CreatedAt ?? c.LastMessageAt, unread.GetValueOrDefault(c.Id), rowPending,
+                var name = names.GetValueOrDefault(c.Id) is { } named ? PeopleChatNames.GroupName(named) : title;
+                return new InboxChatRow(c.Id, c.SubjectSource, c.SubjectKind, c.SubjectId, InboxChatTypes.Case, name,
+                    null, PhotoOf(photos, c.Id), count, preview, m.LatestMessage?.CreatedAt ?? c.LastMessageAt, unread.GetValueOrDefault(c.Id), rowPending,
                     new InboxChatPendingItem(c.SubjectSource, c.SubjectKind, c.SubjectId, title), favorites.Contains(c.Id));
-            })
-            .OrderByDescending(r => r.Pending.Count > 0)
-            .ThenByDescending(r => r.LastMessageAt ?? DateTimeOffset.MinValue)
-            .ToList();
+            }
     }
+
+    private static Guid? PhotoOf(IReadOnlyDictionary<Guid, Guid> photos, Guid conversationId)
+        => photos.TryGetValue(conversationId, out var fileId) ? fileId : null;
 
     private static string? MarkerTitle(ConversationMessage? marker)
     {

@@ -12,10 +12,28 @@ public class ConversationConfiguration : IEntityTypeConfiguration<Conversation>
         builder.HasKey(c => c.Id);
         builder.Property(c => c.SubjectSource).HasMaxLength(40).IsRequired();
         builder.Property(c => c.SubjectKind).HasMaxLength(40).IsRequired();
+        builder.Property(c => c.Description).HasMaxLength(500);
 
         builder.HasIndex(c => new { c.TenantId, c.SubjectSource, c.SubjectKind, c.SubjectId })
             .IsUnique()
             .HasDatabaseName("ux_conversations_tenant_id_subject_source_subject_kind_subject_id");
+    }
+}
+
+public class ConversationMuteConfiguration : IEntityTypeConfiguration<ConversationMute>
+{
+    public void Configure(EntityTypeBuilder<ConversationMute> builder)
+    {
+        builder.ToTable("conversation_mutes");
+        builder.HasKey(m => m.Id);
+
+        builder.HasIndex(m => new { m.EmployeeId, m.ConversationId })
+            .IsUnique()
+            .HasDatabaseName("ux_conversation_mutes_employee_id_conversation_id");
+        builder.HasIndex(m => new { m.TenantId, m.EmployeeId })
+            .HasDatabaseName("ix_conversation_mutes_tenant_id_employee_id");
+
+        builder.HasOne<Conversation>().WithMany().HasForeignKey(m => m.ConversationId).OnDelete(DeleteBehavior.Cascade);
     }
 }
 

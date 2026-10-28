@@ -131,6 +131,30 @@ public class EfTrayActivationRepository : ITrayActivationRepository
                 && t.ExpiresAt > now, ct);
     }
 
+    public async Task<TrayDeviceRefreshToken?> FindUnconsumedRotatedRefreshTokenAsync(
+        string tokenHash, DateTimeOffset rotatedSince, CancellationToken ct)
+    {
+        var now = _clock.UtcNow;
+        var candidate = await _db.TrayDeviceRefreshTokens
+            .FirstOrDefaultAsync(t => t.TokenHash == tokenHash
+                && t.IsRevoked
+                && t.RevokedReason == TrayDeviceRefreshToken.RotatedReason
+                && t.RevokedAt >= rotatedSince
+                && t.ExpiresAt > now, ct);
+        if (candidate is null)
+            return null;
+
+        // If any later token on this device has been rotated too, the client did receive (and
+        // use) the replacement — presenting this one again is reuse, not a lost response.
+        var replacementUsed = await _db.TrayDeviceRefreshTokens
+            .AnyAsync(t => t.DeviceRegistrationId == candidate.DeviceRegistrationId
+                && t.Id != candidate.Id
+                && t.RevokedReason == TrayDeviceRefreshToken.RotatedReason
+                && t.RevokedAt > candidate.RevokedAt, ct);
+
+        return replacementUsed ? null : candidate;
+    }
+
     public async Task RevokeRefreshTokenAsync(TrayDeviceRefreshToken token, string reason, CancellationToken ct)
     {
         token.IsRevoked = true;
