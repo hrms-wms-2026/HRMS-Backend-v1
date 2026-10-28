@@ -130,6 +130,18 @@ public sealed class TimeTrackingController(IMediator mediator) : ControllerBase
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
+    [HttpGet("team/working-hours")]
+    [RequirePermission("attendance:read")]
+    public async Task<IActionResult> TeamWorkingHours(
+        [FromQuery] DateOnly? weekStart = null,
+        CancellationToken ct = default)
+    {
+        var result = await mediator.Send(new GetTeamWorkingHoursQuery(weekStart), ct);
+        return result.IsSuccess
+            ? Ok(result.Value)
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
     [HttpGet("team/attendance-summary")]
     [RequirePermission("attendance:read")]
     public async Task<IActionResult> TeamAttendanceSummary(
