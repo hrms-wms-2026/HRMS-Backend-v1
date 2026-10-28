@@ -82,6 +82,21 @@ public sealed class PlannerRangeIntegrationTests
     }
 
     [Fact]
+    public async Task TheRange_NamesEachBlocksProject()
+    {
+        var w = await SeedAsync();
+        await PlanAsync(w, Local(9), Local(10));
+        string projectName;
+        await using (var db = w.H.NewContext())
+            projectName = (await db.Projects.AsNoTracking().SingleAsync(p => p.Id == w.At.ProjectId)).Name;
+
+        var block = Assert.Single((await RangeAsync(w, Today, Today)).Value!.Days[0].Blocks);
+
+        Assert.False(string.IsNullOrEmpty(projectName));
+        Assert.Equal(projectName, block.ProjectName);
+    }
+
+    [Fact]
     public async Task Work_window_comes_from_the_employees_legal_entity()
     {
         var w = await SeedAsync();

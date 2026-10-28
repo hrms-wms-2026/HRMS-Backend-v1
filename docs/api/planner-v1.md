@@ -51,7 +51,7 @@ The calendar grid's days, one entry per date from `from` to `to`:
   "days": [ { "date": "2026-11-02", "editable": true,
               "workWindow": { "workStart": "09:00:00", "workEnd": "17:00:00", "breakMinutes": 60, "breakStart": "12:30:00",
                               "isWorkingDay": true, "workingMinutes": 420 },
-              "blocks": [ { "id": "…", "taskId": "…", "projectId": "…", "taskTitle": "Write the report", "startAt": "…",
+              "blocks": [ { "id": "…", "taskId": "…", "projectId": "…", "projectName": "Portal", "taskTitle": "Write the report", "startAt": "…",
                             "endAt": "…", "plannedMinutes": 120, "actualMinutes": 45, "stillAssigned": true } ],
               "blockMinutes": 120, "workingMinutes": 420 } ] }
 ```

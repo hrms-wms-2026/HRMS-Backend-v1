@@ -101,7 +101,7 @@ public sealed class PlannerService
                 var task = tasks.GetValueOrDefault(b.TaskId);
                 var actual = PlannerActuals.TaskMinutes(sessions.Where(s => s.TaskId == b.TaskId).Select(s => (s.ClockInAt, s.ClockOutAt)),
                     dayStart, dayEnd, now);
-                return new PlannerRangeBlockView(b.Id, b.TaskId, task?.ProjectId ?? Guid.Empty, task?.Title ?? string.Empty,
+                return new PlannerRangeBlockView(b.Id, b.TaskId, task?.ProjectId ?? Guid.Empty, task?.ProjectName ?? string.Empty, task?.Title ?? string.Empty,
                     b.StartAt, b.EndAt, (int)(b.EndAt - b.StartAt).TotalMinutes, actual, task?.AssignedToEmployee ?? false);
             }).ToList();
             var window = PlannerWorkWindows.For(legalEntity, day);

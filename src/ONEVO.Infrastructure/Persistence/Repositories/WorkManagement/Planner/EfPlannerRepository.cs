@@ -49,16 +49,18 @@ public sealed class EfPlannerRepository : IPlannerRepository
     {
         if (taskIds.Count == 0)
             return new Dictionary<Guid, PlannerTaskInfo>();
-        var rows = await _db.WorkTasks.AsNoTracking()
-            .Where(t => t.TenantId == tenantId && taskIds.Contains(t.Id) && !t.IsDeleted)
-            .Select(t => new
+        var rows = await (
+            from t in _db.WorkTasks.AsNoTracking()
+            join p in _db.Projects.AsNoTracking() on t.ProjectId equals p.Id
+            where t.TenantId == tenantId && taskIds.Contains(t.Id) && !t.IsDeleted
+            select new
             {
-                t.Id, t.Title, t.DueDate, t.EstimatedHours, t.ProjectId,
+                t.Id, t.Title, t.DueDate, t.EstimatedHours, t.ProjectId, ProjectName = p.Name,
                 Assigned = _db.TaskAssignments.Any(a => a.TaskId == t.Id && a.EmployeeId == employeeId),
             })
             .ToListAsync(ct);
         return rows.ToDictionary(r => r.Id,
-            r => new PlannerTaskInfo(r.Id, r.Title, r.DueDate, r.EstimatedHours, IsMeeting: false, r.Assigned, r.ProjectId));
+            r => new PlannerTaskInfo(r.Id, r.Title, r.DueDate, r.EstimatedHours, IsMeeting: false, r.Assigned, r.ProjectId, r.ProjectName));
     }
 
     public async Task<IReadOnlyList<PlannerTaskInfo>> ListDueAssignedTasksAsync(Guid tenantId, Guid employeeId, DateOnly date,
