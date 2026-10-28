@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Features.WorkManagement.Planner.Commands;
 using ONEVO.Application.Features.WorkManagement.Planner.Contracts;
+using ONEVO.Application.Features.WorkManagement.Planner.TeamSchedule;
 
 namespace ONEVO.Api.Controllers.Tenant.WorkManagement;
 
@@ -25,6 +26,12 @@ public sealed class PlannerController : ControllerBase
     public async Task<IActionResult> EmployeeDay(Guid employeeId, [FromQuery] DateOnly? date, CancellationToken ct)
         => Respond(await _mediator.Send(new GetEmployeePlannerDayQuery(employeeId, date), ct));
 
+    /// <summary>Today's Team Schedule (My Team widgets, 2026-10-29): the caller's reports' day. Answers with
+    /// plannerEnabled = false instead of 503 while the Planner is off.</summary>
+    [HttpGet("team")]
+    public async Task<IActionResult> TeamDay([FromQuery] DateOnly? date, CancellationToken ct)
+        => Respond(await _mediator.Send(new GetTeamScheduleQuery(date), ct));
+
     [HttpPost("me/blocks")]
     public async Task<IActionResult> CreateBlock([FromBody] CreatePlannedBlockRequest request, CancellationToken ct)
         => Respond(await _mediator.Send(new CreatePlannedBlockCommand(request), ct));
@@ -37,7 +44,7 @@ public sealed class PlannerController : ControllerBase
     public async Task<IActionResult> DeleteBlock(Guid blockId, CancellationToken ct)
         => Respond(await _mediator.Send(new DeletePlannedBlockCommand(blockId), ct));
 
-    private IActionResult Respond(Result<PlannerDayResponse> result)
+    private IActionResult Respond<T>(Result<T> result)
     {
         if (result.IsSuccess)
             return Ok(result.Value);

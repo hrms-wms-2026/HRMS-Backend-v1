@@ -1,5 +1,8 @@
 using Microsoft.EntityFrameworkCore;
+using ONEVO.Application.Common.Constants;
+using ONEVO.Application.Features.Storage.File.Helpers;
 using ONEVO.Application.Features.WorkManagement.Planner.RepositoryInterfaces;
+using ONEVO.Domain.Lookups;
 
 namespace ONEVO.Infrastructure.Persistence.Repositories.WorkManagement.Planner;
 
@@ -105,5 +108,31 @@ public sealed class EfTeamTimeReadRepository(ApplicationDbContext db) : ITeamTim
             !string.IsNullOrWhiteSpace(r.DisplayTimezone) ? r.DisplayTimezone!
             : !string.IsNullOrWhiteSpace(r.LegalEntityTimezone) ? r.LegalEntityTimezone!
             : "UTC");
+    }
+
+    public async Task<IReadOnlyDictionary<Guid, TeamPersonRow>> GetPeopleAsync(Guid tenantId, IReadOnlyCollection<Guid> employeeIds,
+        CancellationToken ct = default)
+    {
+        if (employeeIds.Count == 0)
+            return new Dictionary<Guid, TeamPersonRow>();
+        var avatars = db.EntityAssets.AsNoTracking().Where(a => a.TenantId == tenantId
+            && a.OwnerType == EntityAssetOwnerTypes.Employee && a.AssetPurpose == UploadPurposeCatalog.EmployeeAvatar && a.IsPrimary);
+        var rows = await (
+            from e in db.Employees.AsNoTracking()
+            join asset in avatars on e.Id equals asset.OwnerId into assetJoin
+            from asset in assetJoin.DefaultIfEmpty()
+            where e.TenantId == tenantId && employeeIds.Contains(e.Id)
+            select new
+            {
+                e.Id, e.FirstName, e.LastName, e.EmploymentStatusId,
+                AvatarFileId = asset == null ? (Guid?)null : asset.FileRecordId,
+            })
+            .ToListAsync(ct);
+        return rows.GroupBy(r => r.Id).ToDictionary(g => g.Key, g =>
+        {
+            var r = g.First();
+            return new TeamPersonRow(r.Id, $"{r.FirstName} {r.LastName}".Trim(), r.AvatarFileId,
+                r.EmploymentStatusId == EmploymentStatusIds.Active);
+        });
     }
 }
