@@ -456,6 +456,8 @@ public static class DependencyInjection
         services.AddScoped<ONEVO.Application.Features.Calendar.Services.CalendarMeetingGuard>();
         services.AddScoped<ONEVO.Application.Features.WorkManagement.Planner.RepositoryInterfaces.IPlannerRepository,
             ONEVO.Infrastructure.Persistence.Repositories.WorkManagement.Planner.EfPlannerRepository>();
+        services.AddScoped<ONEVO.Application.Features.WorkManagement.Planner.RepositoryInterfaces.ITeamTimeReadRepository,
+            ONEVO.Infrastructure.Persistence.Repositories.WorkManagement.Planner.EfTeamTimeReadRepository>();
         services.AddScoped<ONEVO.Application.Features.WorkManagement.Planner.Services.PlannerService>();
         services.AddScoped<ONEVO.Application.Features.WorkManagement.WeeklyProgress.RepositoryInterfaces.IWeeklyWorkProgressReadRepository,
             ONEVO.Infrastructure.Persistence.Repositories.WorkManagement.WeeklyProgress.EfWeeklyWorkProgressReadRepository>();
