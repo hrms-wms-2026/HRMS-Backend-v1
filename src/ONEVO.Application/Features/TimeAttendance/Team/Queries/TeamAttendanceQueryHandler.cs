@@ -111,10 +111,19 @@ public sealed class TeamAttendanceQueryHandler(
         var ctx = loaded.Context!;
         var range = ctx.Range;
 
+        // Each row's period counts and its rate rank across the whole team (search doesn't change a rank).
+        var counted = ctx.Rows.Select(r => (Row: r, Counts: Count([r], range.From, range.To))).ToList();
+        var rates = counted.Select(x => RateOf(x.Counts)).Where(rate => rate is not null).Select(rate => rate!.Value).ToList();
+        int? RankOf(decimal? rate) => rate is { } value ? rates.Count(other => other > value) + 1 : null;
+
         var search = query.Search?.Trim();
-        var matching = ctx.Rows
-            .Where(r => string.IsNullOrEmpty(search) || r.Name.Contains(search, StringComparison.OrdinalIgnoreCase))
-            .OrderBy(r => r.Name, StringComparer.OrdinalIgnoreCase)
+        var filtered = counted.Where(x => string.IsNullOrEmpty(search) || x.Row.Name.Contains(search, StringComparison.OrdinalIgnoreCase));
+        var matching = (string.Equals(query.Sort, "rate", StringComparison.OrdinalIgnoreCase)
+                ? filtered
+                    .OrderBy(x => RateOf(x.Counts) is null)
+                    .ThenByDescending(x => RateOf(x.Counts))
+                    .ThenBy(x => x.Row.Name, StringComparer.OrdinalIgnoreCase)
+                : filtered.OrderBy(x => x.Row.Name, StringComparer.OrdinalIgnoreCase))
             .ToList();
 
         var pageSize = Math.Clamp(query.PageSize <= 0 ? 20 : query.PageSize, 1, MaxPageSize);
@@ -122,15 +131,16 @@ public sealed class TeamAttendanceQueryHandler(
         var items = matching
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
-            .Select(r =>
+            .Select(x =>
             {
                 var cells = new List<TeamAttendanceDayCell>();
                 for (var d = range.From; d <= range.To; d = d.AddDays(1))
-                    cells.Add(new TeamAttendanceDayCell(d, r.BucketOn(d)));
-                var c = Count([r], range.From, range.To);
+                    cells.Add(new TeamAttendanceDayCell(d, x.Row.BucketOn(d)));
+                var c = x.Counts;
+                var rate = RateOf(c);
                 return new TeamAttendanceEmployeeRow(
-                    r.EmployeeId, r.Name, r.AvatarFileId, r.Department, cells,
-                    c.Present + c.Late, c.Present + c.Late + c.Absent, RateOf(c));
+                    x.Row.EmployeeId, x.Row.Name, x.Row.AvatarFileId, x.Row.Department, cells,
+                    c.Present + c.Late, c.Present + c.Late + c.Absent, rate, RankOf(rate));
             })
             .ToList();
 

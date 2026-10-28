@@ -45,4 +45,6 @@ public sealed record TeamAttendanceEmployeeRow(
     IReadOnlyList<TeamAttendanceDayCell> Days,
     int Attended,
     int EligibleDays,
-    decimal? Rate);
+    decimal? Rate,
+    /// <summary>1 = best rate in the team (ties share a rank); null when there were no eligible days.</summary>
+    int? Rank);
