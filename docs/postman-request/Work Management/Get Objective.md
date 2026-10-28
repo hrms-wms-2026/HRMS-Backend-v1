@@ -39,4 +39,4 @@ Added 2026-08-10: `ownerName`, `reportingManagerName` (resolved server-side, `nu
 
 Controller: `src/ONEVO.Api/Controllers/Tenant/WorkManagement/ObjectivesController.cs` (`GetById`)
 Handler: `src/ONEVO.Application/Features/WorkManagement/Objectives/Queries/GetObjectiveById/GetObjectiveByIdQueryHandler.cs`
-Plan: `docs/superpowers/plans/2026-08-06-work-management-milestone-membership-and-achieve.md`
+Plan: `docs/superpowers/plans/finished/2026-08-08/2026-08-06-work-management-milestone-membership-and-achieve.md`

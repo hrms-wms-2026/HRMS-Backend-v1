@@ -14,7 +14,7 @@ public static class OffboardingRecordStatuses
 /// (Core HR, offboarding_records) for the documented baseline; RehireEligibility, Notes,
 /// ChecklistTemplateId, InitiatedById, PreviousEmploymentStatusId, UpdatedAt, CompletedAt are
 /// additions found missing during the 2026-08-17 offboarding-execution design (see
-/// specs/next/2026-08-17-employee-offboarding-execution-backend-design.md §4.1).</summary>
+/// specs/finished/2026-08-17/2026-08-17-employee-offboarding-execution-backend-design.md §4.1).</summary>
 public class OffboardingRecord : ITenantOwnedEntity
 {
     public Guid Id { get; set; }

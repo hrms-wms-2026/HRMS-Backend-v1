@@ -73,7 +73,7 @@ public static class PlatformOAuthProviderCatalog
                 Capabilities: new[] { CapabilityUserOAuth, CapabilityCalendar, CapabilityMeetings }),
 
             // Scopes verified live against a real Zoom Marketplace "General App" (User-managed)
-            // 2026-09-24 — see docs/superpowers/specs/2026-09-23-teams-zoom-meeting-integration-design.md.
+            // 2026-09-24 — see docs/superpowers/specs/finished/2026-09-23/2026-09-23-teams-zoom-meeting-integration-design.md.
             // meeting:read:list_past_participants is deliberately chosen over the live
             // meeting:read:participant scope: attendance is only ever synced after the event's end
             // time has passed (ZoomAttendanceSyncJob mirrors TeamsAttendanceSyncJob's timing), so

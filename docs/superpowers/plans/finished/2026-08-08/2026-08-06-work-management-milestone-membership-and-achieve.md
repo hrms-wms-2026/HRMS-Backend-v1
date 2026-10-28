@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Close three gaps left open by the shipped milestone-hierarchy feature (Head/member assignment doesn't sync project membership; the tree endpoint isn't scoped to what a caller can actually reach; Reporting Manager is frozen at creation instead of tracking the parent's current Head) and add a new Achieve completion workflow for both Projects and Objectives, per `docs/superpowers/specs/2026-08-06-work-management-milestone-membership-and-achieve-design.md`.
+**Goal:** Close three gaps left open by the shipped milestone-hierarchy feature (Head/member assignment doesn't sync project membership; the tree endpoint isn't scoped to what a caller can actually reach; Reporting Manager is frozen at creation instead of tracking the parent's current Head) and add a new Achieve completion workflow for both Projects and Objectives, per `docs/superpowers/specs/finished/2026-08-08/2026-08-06-work-management-milestone-membership-and-achieve-design.md`.
 
 **Architecture:** Same ASP.NET Core / CQRS-via-MediatR / EF Core (Npgsql/PostgreSQL) stack as every prior Work Management slice. One migration (two boolean+timestamp column pairs, no RLS changes). Two new small Application-layer services (`IMilestoneMembershipCoordinator`, `IPermissionAutoGrantService`) shared across the Create/Transfer/Achieve/member-management handlers rather than duplicating membership logic in each. `IUnitOfWork.ExecuteInTransactionAsync` (already exists) wraps every handler that touches more than one aggregate (Objective + membership rows).
 
@@ -579,7 +579,7 @@ namespace ONEVO.Application.Features.WorkManagement.Objectives.Services;
 
 /// <summary>
 /// Encapsulates the membership-lifecycle rules from
-/// docs/superpowers/specs/2026-08-06-work-management-milestone-membership-and-achieve-design.md
+/// docs/superpowers/specs/finished/2026-08-08/2026-08-06-work-management-milestone-membership-and-achieve-design.md
 /// §3, shared across Create/Transfer/Achieve/member-management. Never calls SaveChangesAsync -
 /// callers wrap the whole operation in IUnitOfWork.ExecuteInTransactionAsync.
 /// </summary>
@@ -4291,7 +4291,7 @@ Adds a user to this milestone's project membership (`project_members`, scoped to
 
 Controller: `src/ONEVO.Api/Controllers/Tenant/WorkManagement/ObjectivesController.cs` (`AddMember`)
 Handler: `src/ONEVO.Application/Features/WorkManagement/Objectives/Commands/AddObjectiveMember/AddObjectiveMemberCommandHandler.cs`
-Plan: `docs/superpowers/plans/2026-08-06-work-management-milestone-membership-and-achieve.md`
+Plan: `docs/superpowers/plans/finished/2026-08-08/2026-08-06-work-management-milestone-membership-and-achieve.md`
 ```
 
 - [ ] **Step 2: `Remove Objective Member.md`**
@@ -4328,7 +4328,7 @@ No body.
 
 Controller: `src/ONEVO.Api/Controllers/Tenant/WorkManagement/ObjectivesController.cs` (`RemoveMember`)
 Handler: `src/ONEVO.Application/Features/WorkManagement/Objectives/Commands/RemoveObjectiveMember/RemoveObjectiveMemberCommandHandler.cs`
-Plan: `docs/superpowers/plans/2026-08-06-work-management-milestone-membership-and-achieve.md`
+Plan: `docs/superpowers/plans/finished/2026-08-08/2026-08-06-work-management-milestone-membership-and-achieve.md`
 ```
 
 - [ ] **Step 3: `Achieve Objective.md`**
@@ -4367,7 +4367,7 @@ No body.
 
 Controller: `src/ONEVO.Api/Controllers/Tenant/WorkManagement/ObjectivesController.cs` (`Achieve`)
 Handler: `src/ONEVO.Application/Features/WorkManagement/Objectives/Commands/AchieveObjective/AchieveObjectiveCommandHandler.cs`
-Plan: `docs/superpowers/plans/2026-08-06-work-management-milestone-membership-and-achieve.md`
+Plan: `docs/superpowers/plans/finished/2026-08-08/2026-08-06-work-management-milestone-membership-and-achieve.md`
 ```
 
 - [ ] **Step 4: `Unachieve Objective.md`**
@@ -4405,7 +4405,7 @@ No body.
 
 Controller: `src/ONEVO.Api/Controllers/Tenant/WorkManagement/ObjectivesController.cs` (`Unachieve`)
 Handler: `src/ONEVO.Application/Features/WorkManagement/Objectives/Commands/UnachieveObjective/UnachieveObjectiveCommandHandler.cs`
-Plan: `docs/superpowers/plans/2026-08-06-work-management-milestone-membership-and-achieve.md`
+Plan: `docs/superpowers/plans/finished/2026-08-08/2026-08-06-work-management-milestone-membership-and-achieve.md`
 ```
 
 - [ ] **Step 5: `Get Objective.md`**
@@ -4447,7 +4447,7 @@ Gets a single milestone by id.
 
 Controller: `src/ONEVO.Api/Controllers/Tenant/WorkManagement/ObjectivesController.cs` (`GetById`)
 Handler: `src/ONEVO.Application/Features/WorkManagement/Objectives/Queries/GetObjectiveById/GetObjectiveByIdQueryHandler.cs`
-Plan: `docs/superpowers/plans/2026-08-06-work-management-milestone-membership-and-achieve.md`
+Plan: `docs/superpowers/plans/finished/2026-08-08/2026-08-06-work-management-milestone-membership-and-achieve.md`
 ```
 
 - [ ] **Step 6: `My Objective History.md`**
@@ -4484,7 +4484,7 @@ Milestones the caller used to have active access to (as Head or member) but no l
 
 Controller: `src/ONEVO.Api/Controllers/Tenant/WorkManagement/ObjectivesController.cs` (`MyHistory`)
 Handler: `src/ONEVO.Application/Features/WorkManagement/Objectives/Queries/GetMyObjectiveHistory/GetMyObjectiveHistoryQueryHandler.cs`
-Plan: `docs/superpowers/plans/2026-08-06-work-management-milestone-membership-and-achieve.md`
+Plan: `docs/superpowers/plans/finished/2026-08-08/2026-08-06-work-management-milestone-membership-and-achieve.md`
 ```
 
 - [ ] **Step 7: `Achieve Project.md`**
@@ -4523,7 +4523,7 @@ No body.
 
 Controller: `src/ONEVO.Api/Controllers/Tenant/WorkManagement/ProjectsController.cs` (`Achieve`)
 Handler: `src/ONEVO.Application/Features/WorkManagement/Projects/Commands/AchieveProject/AchieveProjectCommandHandler.cs`
-Plan: `docs/superpowers/plans/2026-08-06-work-management-milestone-membership-and-achieve.md`
+Plan: `docs/superpowers/plans/finished/2026-08-08/2026-08-06-work-management-milestone-membership-and-achieve.md`
 ```
 
 - [ ] **Step 8: `Unachieve Project.md`**
@@ -4560,7 +4560,7 @@ No body.
 
 Controller: `src/ONEVO.Api/Controllers/Tenant/WorkManagement/ProjectsController.cs` (`Unachieve`)
 Handler: `src/ONEVO.Application/Features/WorkManagement/Projects/Commands/UnachieveProject/UnachieveProjectCommandHandler.cs`
-Plan: `docs/superpowers/plans/2026-08-06-work-management-milestone-membership-and-achieve.md`
+Plan: `docs/superpowers/plans/finished/2026-08-08/2026-08-06-work-management-milestone-membership-and-achieve.md`
 ```
 
 - [ ] **Step 9: Update the 3 existing docs for accuracy**
@@ -4661,7 +4661,7 @@ git commit -m "fix(work-management): require an active employee record to create
 
 ## Self-review
 
-**Spec coverage** (against `docs/superpowers/specs/2026-08-06-work-management-milestone-membership-and-achieve-design.md`):
+**Spec coverage** (against `docs/superpowers/specs/finished/2026-08-08/2026-08-06-work-management-milestone-membership-and-achieve-design.md`):
 - §2 Schema additions (IsAchieved/AchievedAt, achieve/unachieve request types) → Task 1.
 - §3 Membership model (validation, Create/Transfer/member-add/remove sync, transactional) → Tasks 4, 6, 7, 8.
 - §4 Dynamic Reporting Manager (cascade to direct children on Transfer, both immediate and approved paths) → Tasks 7, 11.

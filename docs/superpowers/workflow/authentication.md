@@ -234,7 +234,7 @@ The integration jobs in `ci.yml` were long labelled as having a "CSRF-handling i
 
 ## 12. Current Gaps and Risks
 
-- **Frontend/backend contract mismatch (partial)**: the auth plan doc (`docs/superpowers/plans/2026-07-28-core-auth-login-legal-consent.md`) predates the `workspace`/`redirect_required`/`continue_url`/session-exchange mechanism entirely — no design doc covers the currently-implemented flow.
+- **Frontend/backend contract mismatch (partial)**: the auth plan doc (`Hrms--Web-application---front-end---v1/docs/superpowers/plans/finished/2026-07-28/2026-07-28-core-auth-login-legal-consent.md`) predates the `workspace`/`redirect_required`/`continue_url`/session-exchange mechanism entirely — no design doc covers the currently-implemented flow.
 - **Legacy dead code**: `IJwtTokenService.GenerateDeviceToken` is registered in DI but has zero call sites anywhere in `src/` — scaffolding for an unbuilt device/agent auth surface.
 - **Legacy table, narrow use**: `RefreshToken`/`IRefreshTokenRepository` exist and are only touched by `ResetPasswordCommandHandler` (revocation on password reset) — no login path ever issues one. Confirms cookie-only sessions but leaves unused infrastructure in place.
 - **Known unfixed inconsistency (backend team's own report)**: `ForcePasswordChangeCommandHandler` requires tenant-host context, but the continue-URL is built from the host where login started — a base-domain-triggered forced password change can produce an unreachable `continue_url`.

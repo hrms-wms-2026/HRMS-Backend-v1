@@ -3,7 +3,7 @@
 
 **Status:** Approved by user 2026-08-04, ready for implementation planning.
 
-**Builds on:** `docs/superpowers/plans/2026-08-03-work-management-foundation.md` (Slice 1 — Create Project only). This design covers the next slice of `ProjectsController`: Edit, Delete, and the two read paths (single + list) that Slice 1 explicitly deferred (`GetById` currently returns `501`).
+**Builds on:** `docs/superpowers/plans/finished/2026-08-03/2026-08-03-work-management-foundation.md` (Slice 1 — Create Project only). This design covers the next slice of `ProjectsController`: Edit, Delete, and the two read paths (single + list) that Slice 1 explicitly deferred (`GetById` currently returns `501`).
 
 **Out of scope (deliberately deferred, see `docs/superpowers/next-plan/Project Management.md`):** the Milestone(Objective)-in-charge role/permission/reporting-hierarchy system. That system doesn't exist in the schema yet (`project_members` explicitly forbids a `role` column) and depends on Objective/Task CRUD, neither of which exists yet either. `GetById` returns only a simple `isLead` viewer flag, not a capability/role breakdown.
 
@@ -101,7 +101,7 @@ List endpoints (4, 5) don't have resource-specific error cases beyond standard `
 
 ## 7. Testing approach
 
-Follows the existing Foundation slice's pattern (`docs/superpowers/plans/2026-08-03-work-management-foundation.md` Task 8-9): xUnit + Testcontainers integration tests hitting real HTTP through the `onevo_app` restricted PostgreSQL role (not the superuser Testcontainers default), so RLS is actually exercised, plus handler/validator unit tests. Specific cases to cover:
+Follows the existing Foundation slice's pattern (`docs/superpowers/plans/finished/2026-08-03/2026-08-03-work-management-foundation.md` Task 8-9): xUnit + Testcontainers integration tests hitting real HTTP through the `onevo_app` restricted PostgreSQL role (not the superuser Testcontainers default), so RLS is actually exercised, plus handler/validator unit tests. Specific cases to cover:
 
 - Edit: happy path updates both `projects` and the Default Objective; identifier-change attempt rejected; cross-tenant project id returns 404 (RLS proof, matching the pattern in `2026-07-27-forgot-password-restricted-role-http-rls-proof.md`).
 - Delete: lead succeeds; non-lead with `projects:write` gets 403; already-deleted gets 409; soft-deleted project excluded from GetById/List afterward.

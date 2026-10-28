@@ -24,4 +24,4 @@ The caller's approval queue — every `pending` change request where the caller 
 
 Controller: `src/ONEVO.Api/Controllers/Tenant/WorkManagement/ObjectivesController.cs` (`ListMyChangeRequests`)
 Handler: `src/ONEVO.Application/Features/WorkManagement/ObjectiveChangeRequests/Queries/ListMyObjectiveChangeRequests/ListMyObjectiveChangeRequestsQueryHandler.cs`
-Plan: `docs/superpowers/plans/2026-08-04-work-management-milestone-hierarchy.md`
+Plan: `docs/superpowers/plans/finished/2026-08-04/2026-08-04-work-management-milestone-hierarchy.md`

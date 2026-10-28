@@ -26,7 +26,7 @@ call site pattern as `DefaultTaskStatusTemplate`.
 - Migrations in this repo are generated with:
   `dotnet ef migrations add <Name> --project src/ONEVO.Infrastructure --startup-project src/ONEVO.Api`
   (needs a `ConnectionStrings__MigrationConnection` env var set — see
-  `docs/superpowers/plans/2026-08-06-invite-platform-manager-backend.md` for a worked example of this
+  `docs/superpowers/plans/finished/2026-08-06/2026-08-06-invite-platform-manager-backend.md` for a worked example of this
   exact command in this repo).
 - `EfTaskStatusRepository` (full content in Part 1) is the repository-implementation pattern to mirror.
 

@@ -21,7 +21,7 @@ Raw commands, if you need them: `dotnet build src/ONEVO.Api/ONEVO.Api.csproj -c 
 - User-authored rich text (messages, task descriptions, comments) must be checked with `RichTextRules.HasActiveContent` on write.
 - Do not apply migrations to a shared database yourself. Create them, report them, and let the developer apply them.
 - Do not suppress analyzers or tests, and do not use `--no-verify`, to make a check pass.
-- New prompts, summaries and reports go under `docs/` (`docs/superpowers/execution-prompts/`, `docs/superpowers/reports/`, `docs/design-notes/`), never at the repo root.
+- Documentation layout is described in `docs/README.md`. In short: reports and summaries go in `docs/reports/<area>/` with a `YYYY-MM-DD-` prefix; plans and designs go in `docs/superpowers/plans|specs/next/` and move to `finished/<date>/` when built (rules in `docs/superpowers/rules/FILE_CREATION_RULES.md`). Never add docs at the repo root or loose in `plans/`, `specs/` or `finished/`.
 
 ## Known gotchas
 

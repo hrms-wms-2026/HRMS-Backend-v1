@@ -5,7 +5,7 @@ Implements database-backed rich content storage for Terms/Privacy legal document
 read endpoints, and wiring so the pending-login legal acceptance flow can serve the exact
 document content before a user accepts it.
 
-Plan executed: `docs/superpowers/plans/2026-07-28-legal-document-rich-content.md` (20 tasks).
+Plan executed: `docs/superpowers/plans/finished/2026-07-28/2026-07-28-legal-document-rich-content.md` (20 tasks).
 
 **2026-07-28 follow-up pass**: closed four production-readiness gaps found in review - see
 "Production-readiness follow-up (this pass)" near the end of this report for the full
@@ -275,7 +275,7 @@ U+2500, showing up as garbled bytes under some tools) - contradicting this repor
 ASCII-clean claim once that file is included in the check. All eight occurrences were replaced
 with plain ASCII `--` separators; no code/assertions were touched, and the two tests in that
 file still pass (2/2).
-The unrelated `docs/superpowers/plans/2026-07-28-legal-document-rich-content.md` planning
+The unrelated `docs/superpowers/plans/finished/2026-07-28/2026-07-28-legal-document-rich-content.md` planning
 document also contains em dashes/arrows throughout, but it predates this task, is not source/
 test/report code, and was left untouched as out of scope.
 

@@ -13,7 +13,7 @@ membership modeling were added.
   over tenant/user/legal-entity definitions instead of a single hardcoded Acme tenant.
 - `tests/ONEVO.Tests.Unit/Features/DevPlatform/Tenancy/DevSmokeTestTenantSeederTests.cs` — new,
   13 focused tests against the expanded seeder (SQLite in-memory fixture).
-- `docs/superpowers/plans/2026-08-02-dev-smoke-multi-tenant-seed-expansion.md` — implementation
+- `docs/superpowers/plans/finished/2026-08-02/2026-08-02-dev-smoke-multi-tenant-seed-expansion.md` — implementation
   plan used for this task.
 - `DEV_SMOKE_MULTI_TENANT_SEED_EXPANSION_REPORT.md` — this report.
 

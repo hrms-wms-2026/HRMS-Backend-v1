@@ -8,7 +8,7 @@
 
 ## Description
 
-Updates a Project's editable fields and cascades the same `name`/`description`/`startDate`/`targetDate` onto its Default Objective, in one transaction. When `allocatedHours` is sent, it updates both the Project and the Default Objective (the root-case extend-allocation path from Task Foundation Part 3). `identifier` is immutable — if the request body includes one that differs from the project's current value, the request is rejected with `400`. Only the project's lead may edit it — matches Delete's existing lead-only rule (a Project is the tree's root node; only its own Head has unrestricted control over it, per `docs/superpowers/specs/2026-08-04-work-management-milestone-hierarchy-design.md` §4).
+Updates a Project's editable fields and cascades the same `name`/`description`/`startDate`/`targetDate` onto its Default Objective, in one transaction. When `allocatedHours` is sent, it updates both the Project and the Default Objective (the root-case extend-allocation path from Task Foundation Part 3). `identifier` is immutable — if the request body includes one that differs from the project's current value, the request is rejected with `400`. Only the project's lead may edit it — matches Delete's existing lead-only rule (a Project is the tree's root node; only its own Head has unrestricted control over it, per `docs/superpowers/specs/finished/2026-08-04/2026-08-04-work-management-milestone-hierarchy-design.md` §4).
 
 ## Request
 
@@ -55,4 +55,4 @@ Content type: `application/json`.
 
 Controller: `src/ONEVO.Api/Controllers/Tenant/WorkManagement/ProjectsController.cs` (`Edit`)
 Handler: `src/ONEVO.Application/Features/WorkManagement/Projects/Commands/EditProject/EditProjectCommandHandler.cs`
-Plan: `docs/superpowers/plans/2026-08-04-work-management-projects-edit-delete-view.md`
+Plan: `docs/superpowers/plans/finished/2026-08-04/2026-08-04-work-management-projects-edit-delete-view.md`
