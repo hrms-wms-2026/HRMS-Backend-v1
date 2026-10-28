@@ -46,7 +46,11 @@ public sealed class MeetingCalendarProjection
             foreach (var s in await _meetings.ListSeriesAsync(tenantId, missing, ct))
                 series[s.Id] = s;
 
-        var organizers = await _employees.ListByIdsAsync(tenantId, series.Values.Select(s => s.OrganizerEmployeeId).Distinct().ToList(), ct);
+        // Everyone's names in one read: the organizers and every series' participants.
+        var participants = await _meetings.ListParticipantsForSeriesAsync(tenantId, series.Keys.ToList(), ct);
+        var organizers = await _employees.ListByIdsAsync(tenantId,
+            series.Values.Select(s => s.OrganizerEmployeeId).Concat(participants.Select(p => p.EmployeeId)).Distinct().ToList(), ct);
+        var attendees = series.Values.ToDictionary(s => s.Id, s => Attendees(s, participants, organizers));
         var joinUrls = new Dictionary<Guid, string?>();
         foreach (var id in series.Keys)
             joinUrls[id] = await _links.GetActiveForSeriesAsync(tenantId, id, ct) is { Status: CalendarEventMeetingStatuses.Active } link
@@ -55,7 +59,7 @@ public sealed class MeetingCalendarProjection
         var items = new List<CalendarEventItem>();
         foreach (var row in rows)
             if (series.TryGetValue(row.Details.SeriesId, out var s))
-                items.Add(Item(s, row.Details, row.Details.TaskId, row.Details.TaskId, row.Title, row.Description, organizers, joinUrls, now));
+                items.Add(Item(s, row.Details, row.Details.TaskId, row.Details.TaskId, row.Title, row.Description, organizers, joinUrls, attendees, now));
 
         // Virtual occurrences: a slot nobody materialized or suppressed yet, from the series template.
         var open = attended.Where(s => s.CancelledAt is null).ToList();
@@ -71,19 +75,39 @@ public sealed class MeetingCalendarProjection
                     SeriesId = s.Id, OriginalStart = start, StartAt = start, EndAt = start.AddMinutes(s.DurationMinutes), IsAllDay = s.IsAllDay,
                     Location = s.Location, IsPrivate = s.IsPrivate,
                 };
-                items.Add(Item(s, slot, MeetingOccurrenceIds.For(s.Id, start), null, s.Title, s.Description, organizers, joinUrls, now));
+                items.Add(Item(s, slot, MeetingOccurrenceIds.For(s.Id, start), null, s.Title, s.Description, organizers, joinUrls, attendees, now));
             }
         return items.OrderBy(i => i.StartDate).ToList();
     }
 
     private static CalendarEventItem Item(MeetingSeries s, MeetingDetails d, Guid id, Guid? taskId, string title, string? description,
         IReadOnlyDictionary<Guid, ONEVO.Domain.Features.CoreHr.Entities.Employee> organizers, IReadOnlyDictionary<Guid, string?> joinUrls,
-        DateTimeOffset now)
+        IReadOnlyDictionary<Guid, IReadOnlyList<CalendarEventParticipantSummary>> attendees, DateTimeOffset now)
         => new(id, title, description, d.StartAt, d.EndAt, SourceType, Color: null, RecurrenceOf(s.RecurrenceRule), d.IsAllDay, s.Timezone,
             CalendarEventStatuses.Confirmed, d.IsPrivate, d.Location, joinUrls.GetValueOrDefault(s.Id), ExternalSource: null,
             CreatedById: organizers.TryGetValue(s.OrganizerEmployeeId, out var organizer) ? organizer.UserId : Guid.Empty,
             IsRecurringOccurrence: s.RecurrenceRule is not null, OriginalStart: d.OriginalStart,
+            Participants: attendees.GetValueOrDefault(s.Id),
             ItemKind: ItemKind, MeetingSeriesId: s.Id, MeetingTaskId: taskId, MeetingStatus: MeetingStatusCalculator.Of(d, s, now));
+
+    /// <summary>
+    /// A series' people for the calendar (avatars on the meeting block): the organizer first, then the participants by name.
+    /// Series level only; occurrence-only additions are not reflected here.
+    /// </summary>
+    private static IReadOnlyList<CalendarEventParticipantSummary> Attendees(MeetingSeries s, IReadOnlyList<CalendarEventParticipant> participants,
+        IReadOnlyDictionary<Guid, ONEVO.Domain.Features.CoreHr.Entities.Employee> people)
+    {
+        string NameOf(Guid id) => people.TryGetValue(id, out var e) ? $"{e.FirstName} {e.LastName}".Trim() : string.Empty;
+        var own = participants.Where(p => p.MeetingSeriesId == s.Id).ToList();
+        var organizerStatus = own.FirstOrDefault(p => p.EmployeeId == s.OrganizerEmployeeId)?.ResponseStatus
+            ?? CalendarEventParticipantStatuses.Accepted;
+        return [
+            new CalendarEventParticipantSummary(s.OrganizerEmployeeId, NameOf(s.OrganizerEmployeeId), organizerStatus),
+            .. own.Where(p => p.EmployeeId != s.OrganizerEmployeeId)
+                .Select(p => new CalendarEventParticipantSummary(p.EmployeeId, NameOf(p.EmployeeId), p.ResponseStatus))
+                .OrderBy(p => p.EmployeeName, StringComparer.CurrentCulture),
+        ];
+    }
 
     /// <summary>The legacy calendar's coarse recurrence label for an RRULE.</summary>
     private static string RecurrenceOf(string? rule)
