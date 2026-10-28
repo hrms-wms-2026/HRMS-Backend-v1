@@ -8,12 +8,29 @@ namespace ONEVO.Infrastructure.Persistence.Repositories.Leave.Request;
 
 public sealed class EfLeaveRequestReadRepository(ApplicationDbContext db) : ILeaveRequestReadRepository
 {
-    public async Task<IReadOnlyList<LeaveRequest>> ListApprovedCoveringAsync(
+    public Task<IReadOnlyList<LeaveRequest>> ListApprovedCoveringAsync(
         Guid tenantId,
         IReadOnlyCollection<Guid> employeeIds,
         DateOnly from,
         DateOnly to,
-        CancellationToken ct = default)
+        CancellationToken ct = default) =>
+        ListCoveringAsync(tenantId, employeeIds, from, to, partiallyCancelled: false, ct);
+
+    public Task<IReadOnlyList<LeaveRequest>> ListPartiallyCancelledCoveringAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Guid> employeeIds,
+        DateOnly from,
+        DateOnly to,
+        CancellationToken ct = default) =>
+        ListCoveringAsync(tenantId, employeeIds, from, to, partiallyCancelled: true, ct);
+
+    private async Task<IReadOnlyList<LeaveRequest>> ListCoveringAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Guid> employeeIds,
+        DateOnly from,
+        DateOnly to,
+        bool partiallyCancelled,
+        CancellationToken ct)
     {
         if (employeeIds.Count == 0 || from > to)
             return Array.Empty<LeaveRequest>();
@@ -24,7 +41,9 @@ public sealed class EfLeaveRequestReadRepository(ApplicationDbContext db) : ILea
             .AsNoTracking()
             .Where(request => request.TenantId == tenantId
                 && employeeIds.Contains(request.EmployeeId)
-                && request.Status == LeaveRequestStatuses.Approved
+                && (partiallyCancelled
+                    ? request.Status == LeaveRequestStatuses.Cancelled && request.PartialCancelEffectiveDate != null
+                    : request.Status == LeaveRequestStatuses.Approved)
                 && request.StartAt < toExclusive
                 && request.EndAt > fromStart)
             .OrderBy(request => request.EmployeeId)
