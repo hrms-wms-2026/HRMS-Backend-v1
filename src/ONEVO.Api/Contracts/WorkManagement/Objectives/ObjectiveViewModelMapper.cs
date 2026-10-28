@@ -10,7 +10,11 @@ public static class ObjectiveViewModelMapper
         dto.OwnerId, dto.ReportingManagerId, dto.CreatedById, dto.StartDate, dto.EndDate,
         dto.Progress, dto.ActualHours, dto.AllocatedHours, dto.CompletedHours,
         dto.IsActive, dto.IsAchieved, dto.AchievedAt, dto.CreatedAt, dto.UpdatedAt,
-        dto.OwnerName, dto.ReportingManagerName, dto.IsOwner);
+        dto.OwnerName, dto.ReportingManagerName, dto.IsOwner,
+        dto.Assets?.Select(a => a.ToViewModel()).ToList());
+
+    public static ObjectiveAssetViewModel ToViewModel(this ObjectiveAssetResponse dto) => new(
+        dto.Id, dto.FileName, dto.SizeBytes, dto.ContentType, dto.UploadedAt, dto.DownloadUrl);
 
     public static ObjectiveTreeItemViewModel ToViewModel(this ObjectiveTreeItemResponse dto) => new(
         dto.Id, dto.ParentObjectiveId, dto.IsDefault, dto.Title, dto.OwnerId,

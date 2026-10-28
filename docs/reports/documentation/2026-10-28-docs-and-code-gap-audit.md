@@ -21,7 +21,7 @@ Each `SUMMARY.md` that gained or lost files has a dated section listing what mov
 
 | Severity | Gap | Evidence | Docs now say |
 |---|---|---|---|
-| **High (UAT bug)** | **Work Management module (objective) file attachments.** The frontend store calls `POST /api/v1/work/objectives/{id}/assets` and `DELETE .../assets/{assetId}` (`project-api.service.ts`, `project-detail.store.ts`), but the backend never built these endpoints; only the upload purpose `objective_asset` is registered. Attaching a file to a module returns 404. | No `UploadObjectiveAsset*` type in any branch's history; only the plan commit `13476ad4`. | Backend plan `plans/next/2026-09-02-objective-asset-attachments-backend.md` and design `specs/next/2026-09-02-module-creation-assets-members-design.md` are **pending**. |
+| ~~High (UAT bug)~~ **Fixed 2026-10-28** | **Work Management module (objective) file attachments.** The frontend called `POST/DELETE /api/v1/work/objectives/{id}/assets` but the backend endpoints had never been built, so attaching a file to a module returned 404. | Only the plan commit `13476ad4` existed. | Built 2026-10-28: see `docs/reports/work-management/2026-10-28-module-attachments-backend.md`. Plan and design moved to `finished/2026-10-28/`. |
 | Low | **Tray app access toggle per employee.** The frontend has `PeopleApiService.setTrayAppAccess()` → `POST /employees/{id}/tray-app-access`, but no UI calls it and the backend endpoint was never built. No user-visible effect. | `SetEmployeeTrayAppAccessCommand` exists only in plan commit `587246f8`. | Backend and frontend plans/designs for `2026-08-25-tray-app-employee-access-toggle-*` are **pending**. |
 
 ## 3. Areas with little or no design documentation

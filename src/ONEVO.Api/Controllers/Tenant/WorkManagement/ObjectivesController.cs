@@ -9,12 +9,15 @@ using ONEVO.Application.Features.WorkManagement.Objectives.Commands.AchieveObjec
 using ONEVO.Application.Features.WorkManagement.Objectives.Commands.AddObjectiveMember;
 using ONEVO.Application.Features.WorkManagement.Objectives.Commands.CreateObjective;
 using ONEVO.Application.Features.WorkManagement.Objectives.Commands.DeleteObjective;
+using ONEVO.Application.Features.WorkManagement.Objectives.Commands.DeleteObjectiveAsset;
+using ONEVO.Application.Features.WorkManagement.Objectives.Commands.UploadObjectiveAsset;
 using ONEVO.Application.Features.WorkManagement.Objectives.Commands.EditObjective;
 using ONEVO.Application.Features.WorkManagement.Objectives.Commands.RemoveObjectiveMember;
 using ONEVO.Application.Features.WorkManagement.Objectives.Commands.TransferObjectiveHead;
 using ONEVO.Application.Features.WorkManagement.Objectives.Commands.UnachieveObjective;
 using ONEVO.Application.Features.WorkManagement.Objectives.Queries.GetMyObjectiveHistory;
 using ONEVO.Application.Features.WorkManagement.Objectives.Queries.GetMyProjectMilestones;
+using ONEVO.Application.Features.WorkManagement.Objectives.Queries.GetObjectiveAssetFile;
 using ONEVO.Application.Features.WorkManagement.Objectives.Queries.GetObjectiveById;
 using ONEVO.Application.Features.WorkManagement.Objectives.Queries.GetObjectiveMembers;
 using ONEVO.Application.Features.WorkManagement.Objectives.Queries.GetObjectiveSubtree;
@@ -137,6 +140,45 @@ public class ObjectivesController : ControllerBase
         return outcome.Applied
             ? StatusCode(202, outcome.ToViewModel())
             : StatusCode(202, new { approvalRequestId = outcome.ApprovalRequestId });
+    }
+
+    /// <summary>Attaches one file (multipart field "File") to a module: documents, images or ZIP, up to 25 MB.
+    /// Any member of the module or an ancestor (or a full admin) may attach; access is checked in-handler.</summary>
+    [HttpPost("{id:guid}/assets")]
+    public async Task<IActionResult> UploadAsset(Guid id, [FromForm] UploadObjectiveAssetFormRequest request, CancellationToken ct)
+    {
+        if (request.File is null || request.File.Length == 0)
+            return Problem("A file is required.", statusCode: 400);
+
+        await using var stream = request.File.OpenReadStream();
+        var result = await _mediator.Send(new UploadObjectiveAssetCommand(
+            id, request.File.FileName, request.File.ContentType, stream), ct);
+
+        return result.IsSuccess
+            ? StatusCode(201, result.Value!.ToViewModel())
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Removes a module attachment and its file. Allowed for the uploader, the module head or a full admin.</summary>
+    [HttpDelete("{id:guid}/assets/{assetId:guid}")]
+    public async Task<IActionResult> DeleteAsset(Guid id, Guid assetId, CancellationToken ct)
+    {
+        var result = await _mediator.Send(new DeleteObjectiveAssetCommand(id, assetId), ct);
+
+        return result.IsSuccess
+            ? NoContent()
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Downloads a module attachment. Same access rule as reading the module.</summary>
+    [HttpGet("{id:guid}/assets/{assetId:guid}/file")]
+    public async Task<IActionResult> GetAssetFile(Guid id, Guid assetId, CancellationToken ct)
+    {
+        var result = await _mediator.Send(new GetObjectiveAssetFileQuery(id, assetId), ct);
+        if (!result.IsSuccess)
+            return Problem(result.Error, statusCode: result.StatusCode ?? 400);
+
+        return File(result.Value!.Content, result.Value.ContentType, result.Value.FileName);
     }
 
     /// <summary>Removes a member through the approval engine: 204 when the caller is the parent's owner or above, otherwise 202 { approvalRequestId }. Rejects removing the current head - use Transfer instead.</summary>

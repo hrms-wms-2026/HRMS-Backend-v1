@@ -191,3 +191,7 @@ FILE_CREATION_RULES rule 1 allows nothing loose in `finished/`. Point-in-time re
 | `POSTMAN_COLLECTION_REPAIR_REPORT.md` | `docs/reports/build-and-ci/POSTMAN_COLLECTION_REPAIR_REPORT.md` |
 | `STORAGE_QUOTA_LOCAL_LOGO_UPLOAD_FIX_REPORT.md` | `docs/reports/legal-entity/STORAGE_QUOTA_LOCAL_LOGO_UPLOAD_FIX_REPORT.md` |
 | `WORK_MODE_LOOKUP_GRANT_FIX_REPORT.md` | `docs/reports/onboarding/WORK_MODE_LOOKUP_GRANT_FIX_REPORT.md` |
+
+## 2026-10-28/
+
+- `2026-09-02-objective-asset-attachments-backend.md` — Objective Asset Attachments (Backend). built 2026-10-28 (upload, delete, download endpoints + assets on Get Objective).

@@ -22,9 +22,15 @@ Added 2026-08-10: `ownerName`, `reportingManagerName` (resolved server-side, `nu
   "createdById": "guid", "startDate": "date", "endDate": "date", "progress": 0, "actualHours": "decimal|null",
   "allocatedHours": "decimal", "completedHours": "decimal", "isActive": true, "isAchieved": false,
   "achievedAt": "datetime|null", "createdAt": "datetime", "updatedAt": "datetime|null",
-  "ownerName": "string|null", "reportingManagerName": "string|null", "isOwner": false
+  "ownerName": "string|null", "reportingManagerName": "string|null", "isOwner": false,
+  "assets": [
+    { "id": "guid", "fileName": "string", "sizeBytes": 0, "contentType": "string",
+      "uploadedAt": "datetime", "downloadUrl": "/api/v1/work/objectives/{id}/assets/{assetId}/file" }
+  ]
 }
 ```
+
+Added 2026-10-28: `assets` — files attached to this module (see Upload / Delete / Download Objective Asset). Always present on this endpoint (empty array when none); `null` on the create and edit responses, which don't load attachments.
 
 **Breaking change (2026-08-14):** `ownerId` and `reportingManagerId` now carry `employees.id` values, not `users.id`. The field names are unchanged. Clients that were caching or comparing against the old UserId-space value must re-fetch.
 

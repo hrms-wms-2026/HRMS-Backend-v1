@@ -106,7 +106,7 @@ This folder absorbed the former top-level `docs/superpowers/next-plan/` folder o
 ## Added 2026-10-28 (migrated from loose `plans/` files)
 
 - `2026-08-25-tray-app-employee-access-toggle-backend.md` — Tray App Employee Access Toggle (Phase A) Implementation Plan — **pending**: backend endpoint POST /employees/{id}/tray-app-access was never built (only this plan was committed)
-- `2026-09-02-objective-asset-attachments-backend.md` — Objective Asset Attachments (Backend) Implementation Plan — **pending**: POST/DELETE /work/objectives/{id}/assets were never built; the frontend store already calls them, so module file upload returns 404
+- ~~`2026-09-02-objective-asset-attachments-backend.md`~~ — moved to `finished/2026-10-28/` (built 2026-10-28 (upload, delete, download endpoints + assets on Get Objective)).
 
 ## 2026-10-28 status correction
 

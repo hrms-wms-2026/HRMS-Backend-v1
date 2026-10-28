@@ -37,7 +37,7 @@
 ## Added 2026-10-28 (migrated from loose `specs/` files)
 
 - `2026-08-25-tray-app-employee-access-toggle-backend-design.md` — Tray App Employee Access Toggle — Backend Design — **pending**: backend endpoint POST /employees/{id}/tray-app-access was never built (only this plan was committed)
-- `2026-09-02-module-creation-assets-members-design.md` — Module / Sub-Module Creation Screen — Assets, Members, Date Range Picker — **pending**: members part built; assets part pending: POST/DELETE /work/objectives/{id}/assets were never built; the frontend store already calls them, so module file upload returns 404
+- ~~`2026-09-02-module-creation-assets-members-design.md`~~ — moved to `finished/2026-10-28/` (assets built 2026-10-28 (upload, delete, download endpoints + assets on Get Objective)).
 
 ## 2026-10-28 status correction
 

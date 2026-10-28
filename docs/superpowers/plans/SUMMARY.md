@@ -115,7 +115,7 @@ See `finished/SUMMARY.md` for the full file-by-file list, grouped by date folder
 | Calendar Invites, RSVP, and Conflict Detection — Backend Implementation Plan | `finished/2026-08-31/2026-08-31-calendar-invites-rsvp-conflicts-backend.md` | finished |  |
 | Calendar Recurrence Engine Implementation Plan | `finished/2026-08-31/2026-08-31-calendar-recurrence-engine.md` | finished |  |
 | Calendar Timezone Correctness — Backend Implementation Plan | `finished/2026-09-01/2026-09-01-calendar-timezone-backend.md` | finished |  |
-| Objective Asset Attachments (Backend) Implementation Plan | `next/2026-09-02-objective-asset-attachments-backend.md` | pending | POST/DELETE /work/objectives/{id}/assets were never built; the frontend store already calls them, so module file upload returns 404 |
+| Objective Asset Attachments (Backend) Implementation Plan | `finished/2026-10-28/2026-09-02-objective-asset-attachments-backend.md` | finished | built 2026-10-28 (upload, delete, download endpoints + assets on Get Objective); see docs/reports/work-management/2026-10-28-module-attachments-backend.md for deviations from the plan |
 | Calendar Small Fixes Implementation Plan | `finished/2026-09-04/2026-09-04-calendar-small-fixes.md` | finished |  |
 | Face Match Verification Implementation Plan | `finished/2026-09-04/2026-09-04-face-match-verification.md` | finished |  |
 | Landing Page "Go to Workspace" Shortcut Implementation Plan | `finished/2026-09-04/2026-09-04-landing-page-workspace-shortcut.md` | finished |  |

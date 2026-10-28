@@ -55,3 +55,7 @@ None.
 - `2026-09-30/2026-09-30-employee-detail-redesign-design.md` — Employee Detail Screen Redesign — Design
 - `2026-10-06/2026-10-06-leave-approval-forward-and-history-design.md` — Leave approvals: forward to my manager + approval history
 - `2026-10-20/2026-10-20-customizable-dashboard-design.md` — Customizable Grid Dashboard (My Work + My Team) — Design
+
+## 2026-10-28/
+
+- `2026-09-02-module-creation-assets-members-design.md` — Module / Sub-Module Creation Screen — Assets, Members, Date Range Picker. Assets part built 2026-10-28 (upload, delete, download endpoints + assets on Get Objective).

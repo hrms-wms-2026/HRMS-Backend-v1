@@ -52,7 +52,7 @@ Every file here says `**Status:** Approved...` at the top — that field is the 
 | Calendar Invites, RSVP, and Conflict Detection Design | `finished/2026-08-31/2026-08-31-calendar-invites-rsvp-conflicts-design.md` | finished |  |
 | Calendar R1: Recurrence Engine + Frontend Design | `finished/2026-08-31/2026-08-31-calendar-r1-recurrence-and-frontend-design.md` | finished |  |
 | Calendar Timezone Correctness and Unsaved-Changes Guard Design | `finished/2026-09-01/2026-09-01-calendar-timezone-and-unsaved-guard-design.md` | finished |  |
-| Module / Sub-Module Creation Screen — Assets, Members, Date Range Picker | `next/2026-09-02-module-creation-assets-members-design.md` | pending | members part built; assets part pending: POST/DELETE /work/objectives/{id}/assets were never built; the frontend store already calls them, so module file upload returns 404 |
+| Module / Sub-Module Creation Screen — Assets, Members, Date Range Picker | `finished/2026-10-28/2026-09-02-module-creation-assets-members-design.md` | finished | members built earlier; assets built 2026-10-28 (upload, delete, download endpoints + assets on Get Objective) |
 | Calendar Small Fixes — Design Spec | `finished/2026-09-04/2026-09-04-calendar-small-fixes-design.md` | finished |  |
 | Landing Page "Go to Workspace" Shortcut | `finished/2026-09-04/2026-09-04-landing-page-workspace-shortcut-design.md` | finished |  |
 | Task Attachments, Text Highlighting & Inline Description Images — Design Spec | `finished/2026-09-14/2026-09-14-task-attachments-rich-description-design.md` | finished |  |
