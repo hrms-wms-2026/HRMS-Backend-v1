@@ -57,6 +57,12 @@ public interface IEmployeeRepository
     Task<ONEVO.Domain.Features.CoreHr.Entities.Employee?> GetByIdAsync(
         Guid tenantId, Guid employeeId, CancellationToken ct = default);
 
+    /// <summary>Projection-only companion to GetByIdAsync for callers that need nothing but the
+    /// legal entity id (e.g. resolving a session's active employee on every authenticated
+    /// request) - avoids materializing the full Employee row just to read one column.</summary>
+    Task<Guid?> GetLegalEntityIdAsync(
+        Guid tenantId, Guid employeeId, CancellationToken ct = default);
+
     /// <summary>The Employee row a fresh session should default its ActiveEmployeeId to: the
     /// user's only Employee row if they have exactly one, or - if they have more than one -
     /// the one with the most recent active PrimaryEmployment PositionAssignment.EffectiveFrom.

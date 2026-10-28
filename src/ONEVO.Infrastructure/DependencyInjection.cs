@@ -892,6 +892,13 @@ public static class DependencyInjection
             ONEVO.Application.Features.Monitoring.Screenshots.RepositoryInterfaces.IInactivityCaptureAttemptRepository,
             ONEVO.Infrastructure.Persistence.Repositories.Monitoring.Screenshots.EfInactivityCaptureAttemptRepository>();
         services.AddHostedService<ONEVO.Infrastructure.Services.Monitoring.Screenshots.AgentCommandExpiryJob>();
+
+        // Monitoring - Retention (MON-02: purges activity_raw_buffer and expired screenshot evidence)
+        services.AddScoped<
+            ONEVO.Application.Features.Monitoring.ActivityMonitoring.ServiceInterfaces.IMonitoringRetentionPurgeRunner,
+            ONEVO.Infrastructure.Services.Monitoring.Retention.MonitoringRetentionPurgeRunner>();
+        services.AddHostedService<ONEVO.Infrastructure.Services.Monitoring.Retention.MonitoringRetentionPurgeJob>();
+
         services.AddHostedService<Services.WorkManagement.ProjectMonitorJob>();
         services.AddHostedService<Services.Calendar.CalendarSyncJob>();
         services.AddHostedService<Services.Calendar.TeamsAttendanceSyncJob>();
@@ -949,6 +956,8 @@ public static class DependencyInjection
             configuration.GetSection(ONEVO.Infrastructure.Configuration.StorageQuotaOptions.SectionName));
         services.Configure<ONEVO.Infrastructure.Configuration.FileStorageOptions>(
             configuration.GetSection(ONEVO.Infrastructure.Configuration.FileStorageOptions.SectionName));
+        services.Configure<ONEVO.Application.Features.Monitoring.ActivityMonitoring.Options.MonitoringRetentionOptions>(
+            configuration.GetSection(ONEVO.Application.Features.Monitoring.ActivityMonitoring.Options.MonitoringRetentionOptions.SectionName));
         services.AddOptions<AwsRekognitionOptions>()
             .Bind(configuration.GetSection(AwsRekognitionOptions.SectionName))
             .ValidateDataAnnotations()
