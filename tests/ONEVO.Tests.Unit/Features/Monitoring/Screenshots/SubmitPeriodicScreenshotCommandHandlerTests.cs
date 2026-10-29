@@ -5,6 +5,7 @@ using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.CheckIn.ServiceInterfaces;
+using ONEVO.Application.Features.Monitoring.ActivityMonitoring.Helpers;
 using ONEVO.Application.Features.Monitoring.Screenshots.Commands.SubmitPeriodicScreenshot;
 using ONEVO.Application.Features.Monitoring.Screenshots.RepositoryInterfaces;
 using ONEVO.Application.Features.Storage.File.DTOs.Responses;
@@ -111,8 +112,39 @@ public class SubmitPeriodicScreenshotCommandHandlerTests
         savedAsset.TriggerType.Should().Be("periodic");
         savedAsset.EvidenceType.Should().Be("screenshot");
         savedAsset.EmployeeId.Should().Be(_employeeId);
-        savedAsset.CapturedAt.Should().Be(capturedAt);
+        savedAsset.CapturedAt.Should().Be(SnapshotTimeWindow.Normalize(capturedAt));
         result.Value.Should().Be(savedAsset.Id);
         _uow.SaveCallCount.Should().Be(1);
+    }
+
+    // AGT-01: retry after a lost response (100ns ticks on the wire, microseconds in the database).
+    [Fact]
+    public async Task Handle_RetryOfStoredScreenshot_ReturnsExistingAssetWithoutUploadingAgain()
+    {
+        var capturedAt = new DateTimeOffset(DateTimeOffset.UtcNow.AddSeconds(-30).UtcTicks / 10 * 10 + 3, TimeSpan.Zero);
+        var existing = new MonitoringEvidenceAsset
+        {
+            Id = Guid.NewGuid(),
+            TenantId = _tenantId,
+            AgentDeviceId = Guid.NewGuid(),
+            EvidenceType = "screenshot",
+            TriggerType = "periodic",
+            Source = "agent",
+            CapturedAt = SnapshotTimeWindow.Normalize(capturedAt)
+        };
+        _assetsRepo.Setup(r => r.FindPeriodicScreenshotAsync(
+                _tenantId, It.IsAny<Guid>(), SnapshotTimeWindow.Normalize(capturedAt), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(existing);
+
+        var result = await CreateHandler().Handle(
+            new SubmitPeriodicScreenshotCommand("shot.jpg", "image/jpeg", new MemoryStream(), capturedAt),
+            default);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Should().Be(existing.Id);
+        _fileStorage.Verify(f => f.UploadAsync(
+            It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<string>(),
+            It.IsAny<string>(), It.IsAny<Stream>(), It.IsAny<CancellationToken>()), Times.Never);
+        _assetsRepo.Verify(r => r.Add(It.IsAny<MonitoringEvidenceAsset>()), Times.Never);
     }
 }
