@@ -49,9 +49,10 @@ public sealed record PlannerWorkWindow(TimeOnly WorkStart, TimeOnly WorkEnd, int
     bool IsWorkingDay, int WorkingMinutes);
 
 /// <param name="ProjectId">For opening the task on its project board.</param>
+/// <param name="ProjectName">Shown under the block's title.</param>
 /// <param name="ActualMinutes">The employee's clocked minutes on that task inside that day (as in v1).</param>
-public sealed record PlannerRangeBlockView(Guid Id, Guid TaskId, Guid ProjectId, string TaskTitle, DateTimeOffset StartAt,
-    DateTimeOffset EndAt, int PlannedMinutes, int ActualMinutes, bool StillAssigned);
+public sealed record PlannerRangeBlockView(Guid Id, Guid TaskId, Guid ProjectId, string ProjectName, string TaskTitle, DateTimeOffset StartAt,
+    DateTimeOffset EndAt, int PlannedMinutes, int ActualMinutes, bool StillAssigned, string CategoryName, string CategoryKind);
 
 /// <param name="Editable">The caller's own day from today up to the planning horizon.</param>
 /// <param name="WorkWindow">Null when the legal entity has no usable schedule.</param>
@@ -78,7 +79,7 @@ public static class PlannerFocusReasons
 /// <param name="FullyPlanned">Those blocks cover the remaining estimate; never true without an estimate.</param>
 public sealed record PlannerFocusItem(Guid TaskId, Guid ProjectId, string ProjectName, string Title, string Priority, DateOnly? DueDate,
     int? EstimatedMinutes, int LoggedMinutes, int? RemainingMinutes, int PlannedAheadMinutes, DateOnly? FirstPlannedDate,
-    int PlannedDayCount, bool FullyPlanned, string Reason);
+    int PlannedDayCount, bool FullyPlanned, string Reason, string CategoryName, string CategoryKind, DateTimeOffset CreatedAt);
 
 /// <param name="Count">Every task in the group; <see cref="Items"/> keeps the first 50.</param>
 public sealed record PlannerFocusGroup(string Reason, int Count, IReadOnlyList<PlannerFocusItem> Items);

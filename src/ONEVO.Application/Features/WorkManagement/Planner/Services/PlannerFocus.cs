@@ -38,7 +38,8 @@ public static class PlannerFocus
             var planned = plannedByTask.TryGetValue(row.TaskId, out var p) ? p : (Minutes: 0, First: (DateOnly?)null, Days: 0);
             return new PlannerFocusItem(row.TaskId, row.ProjectId, row.ProjectName, row.Title, row.Priority, row.DueDate, estimate,
                 row.LoggedMinutes, remaining, planned.Minutes, planned.Days > 0 ? planned.First : null, planned.Days,
-                FullyPlanned: remaining is { } r && planned.Minutes >= r, Reason(row.DueDate, today, weekEnd));
+                FullyPlanned: remaining is { } r && planned.Minutes >= r, Reason(row.DueDate, today, weekEnd),
+                row.CategoryName, row.CategoryKind, row.CreatedAt);
         }).ToList();
 
         var groups = GroupOrder.Select(reason =>
