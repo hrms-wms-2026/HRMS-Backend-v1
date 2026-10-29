@@ -268,4 +268,40 @@ public sealed class TeamAttendanceQueryHandlerTests
         zed.Rate.Should().Be(0m);
         zed.Days.Should().HaveCount(7);
     }
+
+    [Fact]
+    public async Task Employees_SortByRate_RanksBestFirstAndKeepsRankAcrossSearch()
+    {
+        // Week of 26 Oct. Ann 2/2, Bob 1/2, Cat 0/1, Dan no eligible days (rate null).
+        Member("Ann", null, ("2026-10-26", "present"), ("2026-10-27", "late"));
+        Member("Bob", null, ("2026-10-26", "present"), ("2026-10-27", "absent"));
+        Member("Cat", null, ("2026-10-26", "absent"));
+        Member("Dan", null, ("2026-10-26", "leave"));
+
+        var ranked = (await Handler().Handle(
+            new GetTeamAttendanceEmployeesQuery("week", null, null, null, 1, 20, "rate"), CancellationToken.None)).Value!;
+        ranked.Items.Select(r => r.Name).Should().Equal("Ann", "Bob", "Cat", "Dan");
+        ranked.Items.Select(r => r.Rank).Should().Equal(1, 2, 3, null);
+
+        var search = (await Handler().Handle(
+            new GetTeamAttendanceEmployeesQuery("week", null, null, "cat", 1, 20, "rate"), CancellationToken.None)).Value!;
+        search.Items.Single().Rank.Should().Be(3);
+
+        var byName = (await Handler().Handle(
+            new GetTeamAttendanceEmployeesQuery("week", null, null, null, 1, 20), CancellationToken.None)).Value!;
+        byName.Items.Select(r => r.Name).Should().Equal("Ann", "Bob", "Cat", "Dan");
+        byName.Items.Single(r => r.Name == "Bob").Rank.Should().Be(2);
+    }
+
+    [Fact]
+    public async Task Employees_SortByRate_TiesShareARank()
+    {
+        Member("Zoe", null, ("2026-10-26", "present"));
+        Member("Amy", null, ("2026-10-26", "present"));
+        Member("Kim", null, ("2026-10-26", "absent"));
+
+        var ranked = (await Handler().Handle(
+            new GetTeamAttendanceEmployeesQuery("week", null, null, null, 1, 20, "rate"), CancellationToken.None)).Value!;
+        ranked.Items.Select(r => (r.Name, r.Rank)).Should().Equal(("Amy", 1), ("Zoe", 1), ("Kim", 3));
+    }
 }

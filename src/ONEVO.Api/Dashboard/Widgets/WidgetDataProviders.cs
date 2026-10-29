@@ -12,6 +12,7 @@ using ONEVO.Application.Features.TimeAttendance.Team.Queries;
 using ONEVO.Application.Features.WorkManagement.Leadership.Queries.GetLedWorkProgress;
 using ONEVO.Application.Features.WorkManagement.Projects.Queries.ListProjects;
 using ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetMyActiveTasks;
+using ONEVO.Application.Features.WorkManagement.WeeklyProgress.Queries.GetMyWeeklyWorkProgress;
 
 namespace ONEVO.Api.Dashboard.Widgets;
 
@@ -53,6 +54,25 @@ public sealed class TeamProgressWidgetDataProvider(IMediator mediator, ICurrentU
     // The action returns Ok(result.Value) - no view-model mapping.
     protected override async Task<Result<object>> LoadAsync(CancellationToken ct) =>
         Map(await Mediator.Send(new GetLedWorkProgressQuery(OverdueLimit), ct), value => value);
+}
+
+/// <summary>today-total-time (Weekly work progress): mirrors GET api/v1/work/my-weekly-progress
+/// (MyWorkProgressController.MyWeeklyProgress) for the current week; the card sends no weekStart on load.</summary>
+public sealed class WeeklyWorkProgressWidgetDataProvider(IMediator mediator, ICurrentUser currentUser, IModuleEntitlementService entitlements)
+    : EndpointMirrorWidgetDataProvider(mediator, currentUser, entitlements)
+{
+    public const string Key = "today-total-time";
+
+    private static readonly EndpointGate MirroredGate =
+        EndpointGate.For<MyWorkProgressController>(nameof(MyWorkProgressController.MyWeeklyProgress));
+
+    public override string WidgetKey => Key;
+
+    protected override EndpointGate Gate => MirroredGate;
+
+    // The action returns Ok(result.Value) - no view-model mapping.
+    protected override async Task<Result<object>> LoadAsync(CancellationToken ct) =>
+        Map(await Mediator.Send(new GetMyWeeklyWorkProgressQuery(null), ct), value => value);
 }
 
 /// <summary>team-status: mirrors GET api/v1/attendance/time-tracking/team/today (TimeTrackingController.TeamToday).</summary>
@@ -141,8 +161,8 @@ public static class WidgetDataProviderRegistration
 {
     /// <summary>
     /// Registers each provider as a keyed scoped IWidgetDataProvider (key = widget key). Must match the
-    /// registry's HasProvider flags (asserted by a unit test). todays-schedule, today-at-a-glance,
-    /// today-total-time and work-pattern stay client-sourced: see DashboardWidgetRegistry.
+    /// registry's HasProvider flags (asserted by a unit test). todays-schedule, today-at-a-glance
+    /// and work-pattern stay client-sourced: see DashboardWidgetRegistry.
     /// </summary>
     public static IServiceCollection AddDashboardWidgetDataProviders(this IServiceCollection services)
     {
@@ -152,6 +172,7 @@ public static class WidgetDataProviderRegistration
         Add<TeamAttendanceWidgetDataProvider>(services, TeamAttendanceWidgetDataProvider.Key);
         Add<WellbeingWidgetDataProvider>(services, WellbeingWidgetDataProvider.Key);
         Add<ActiveProjectsWidgetDataProvider>(services, ActiveProjectsWidgetDataProvider.Key);
+        Add<WeeklyWorkProgressWidgetDataProvider>(services, WeeklyWorkProgressWidgetDataProvider.Key);
         return services;
     }
 

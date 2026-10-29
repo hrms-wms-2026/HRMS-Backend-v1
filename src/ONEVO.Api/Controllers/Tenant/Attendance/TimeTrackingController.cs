@@ -153,10 +153,11 @@ public sealed class TimeTrackingController(IMediator mediator) : ControllerBase
         [FromQuery] string? search = null,
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 20,
+        [FromQuery] string? sort = null,
         CancellationToken ct = default)
     {
         var result = await mediator.Send(
-            new GetTeamAttendanceEmployeesQuery(mode, anchor, departmentId, search, page, pageSize), ct);
+            new GetTeamAttendanceEmployeesQuery(mode, anchor, departmentId, search, page, pageSize, sort), ct);
         return result.IsSuccess
             ? Ok(result.Value)
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);

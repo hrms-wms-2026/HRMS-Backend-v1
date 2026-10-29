@@ -15167,6 +15167,9 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasDatabaseName("ix_task_clocking_sessions_one_open_per_task")
                         .HasFilter("clock_out_at IS NULL");
 
+                    b.HasIndex("TenantId", "EmployeeId", "ClockInAt")
+                        .HasDatabaseName("ix_task_clocking_sessions_tenant_id_employee_id_clock_in_at");
+
                     b.HasIndex("TenantId", "TaskId", "ClockInAt")
                         .HasDatabaseName("ix_task_clocking_sessions_tenant_id_task_id_clock_in_at");
 

@@ -8,7 +8,7 @@ namespace ONEVO.Application.Features.Dashboard.Layout.Registry;
 /// Client-sourced on purpose (identical behaviour beats coverage):
 /// todays-schedule - two dependent calls (my-timezone, then events) and a browser Intl-based
 ///   local-midnight-to-UTC conversion (hour12:false can render midnight as "24" in some engines);
-/// today-at-a-glance / today-total-time - the timeline call is conditional on the TimeTrackingStore's
+/// today-at-a-glance - the timeline call is conditional on the TimeTrackingStore's
 ///   today summary (desktopTray clock-in) and merged client-side with that shared store;
 /// work-pattern - from/to come from the browser's local date and the user-selected period, and the card
 ///   merges the result with TimeTrackingStore history.
@@ -21,16 +21,16 @@ public static class DashboardWidgetRegistry
         new("action-center", DashboardKeys.MyWork, "Action center", "Items waiting for your action.", 4, 3, 12, 6, false),
         new("quick-actions", DashboardKeys.MyWork, "Quick actions", "Shortcuts to common tasks.", 3, 3, 6, 4, false),
         new("todays-schedule", DashboardKeys.MyWork, "Today's schedule", "Your shifts and events for today.", 3, 3, 12, 6, false),
-        new("today-total-time", DashboardKeys.MyWork, "Today's total time", "Time worked so far today.", 3, 3, 6, 5, false),
+        new("today-total-time", DashboardKeys.MyWork, "Weekly work progress", "Your week's worked hours against expected and planned time.", 2, 2, 12, 8, true),
         new("active-projects", DashboardKeys.MyWork, "Active projects", "Projects you are currently working on.", 3, 3, 6, 6, true),
-        new("my-tasks", DashboardKeys.MyWork, "My tasks", "Tasks assigned to you.", 3, 3, 12, 6, true),
-        new("work-pattern", DashboardKeys.MyWork, "Work pattern", "Your recent working pattern.", 6, 3, 12, 5, false),
-        new("notifications", DashboardKeys.MyWork, "Notifications", "Your latest notifications.", 3, 3, 6, 6, false),
-        new("wellbeing", DashboardKeys.MyWork, "Wellbeing", "Wellbeing insights for you.", 3, 3, 6, 4, true),
-        new("team-status", DashboardKeys.MyTeam, "Team status", "Who in your team is working, away or off.", 6, 4, 12, 8, true),
-        new("team-quick-actions", DashboardKeys.MyTeam, "Team quick actions", "Shortcuts for managing your team.", 3, 3, 6, 4, false),
-        new("team-progress", DashboardKeys.MyTeam, "Team progress", "Estimated hours progress across your team.", 4, 4, 12, 8, true),
-        new("team-attendance", DashboardKeys.MyTeam, "Team attendance", "Attendance across your team by week or month.", 3, 3, 12, 8, true),
+        new("my-tasks", DashboardKeys.MyWork, "My tasks", "Tasks assigned to you.", 3, 3, 12, 6, true, ShownOnWeb: false),
+        new("work-pattern", DashboardKeys.MyWork, "Work pattern", "Your recent working pattern.", 6, 3, 12, 5, false, ShownOnWeb: false),
+        new("notifications", DashboardKeys.MyWork, "Notifications", "Your latest notifications.", 3, 3, 6, 6, false, ShownOnWeb: false),
+        new("wellbeing", DashboardKeys.MyWork, "Wellbeing", "Wellbeing insights for you.", 3, 3, 6, 4, true, ShownOnWeb: false),
+        new("team-status", DashboardKeys.MyTeam, "Team status", "Who in your team is working, away or off.", 2, 2, 12, 8, true),
+        new("team-quick-actions", DashboardKeys.MyTeam, "Team quick actions", "Shortcuts for managing your team.", 2, 2, 6, 4, false),
+        new("team-progress", DashboardKeys.MyTeam, "Team progress", "Estimated hours progress across your team.", 2, 2, 12, 8, true),
+        new("team-attendance", DashboardKeys.MyTeam, "Team attendance", "Attendance across your team by week or month.", 2, 2, 12, 8, true),
     ];
 
     private static readonly Dictionary<string, WidgetDefinition> ByKey =
