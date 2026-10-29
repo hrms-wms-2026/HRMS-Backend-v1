@@ -46,7 +46,7 @@ Signed in as the `dapi` tenant owner (full access):
 - HttpOnly session cookie and a CSRF double-submit header. No tokens in browser storage (hardening report, still true).
 - Legal consent is enforced before any session is issued for first-time users (verified at runtime).
 - MFA endpoints exist (`AuthMfaController`). End-to-end MFA was **untested**.
-- Demo accounts with the password `Password123!` exist only when the environment is Development or Test. A UAT host that runs as `Development` would expose them, and some of those accounts use real people's email addresses (`DevSmokeTestTenantSeeder.cs:83-89`). See UAT-003.
+- Demo accounts with a shared password that is visible in source exist only when the environment is Development or Test. A UAT host that runs as `Development` would expose them, and some of those accounts use real people's email addresses (`DevSmokeTestTenantSeeder.cs:83-89`). See UAT-003.
 
 ## 4. Authorization Coverage
 

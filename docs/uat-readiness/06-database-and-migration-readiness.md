@@ -26,7 +26,7 @@ All 268 migrations on `development` apply cleanly to an empty PostgreSQL 16 data
 
 | Month | Migrations |
 |---|---:|
-| 2026-05 to 2026-06 | 13 |
+| 2026-05 | 14 |
 | 2026-07 | 39 |
 | 2026-08 | 99 |
 | 2026-09 | 50 |

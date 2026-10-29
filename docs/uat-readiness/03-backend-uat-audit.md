@@ -110,7 +110,7 @@ Of 16 recurring jobs, only the meeting jobs and the outbox use a lease (report 2
 
 - Only `appsettings.json` and `appsettings.Development.json` exist. The repository has no staging or UAT settings file, no container image definition and no deployment runbook (`docs/deployment/` holds only `tray-device-jwt.md`).
 - `appsettings.json:3` lists origins on `onevo.com`, while the product domain is `onexso.com`. `Tenancy:RootDomain` is empty (`appsettings.json:41`). CORS falls back to exact `AllowedOrigins` matches when the root domain is empty (`CorsExtensions.cs:28-39`), so a UAT host without `Tenancy__RootDomain` set rejects every tenant origin.
-- If UAT runs with `ASPNETCORE_ENVIRONMENT=Development`, the demo seeders create known-password accounts (`Password123!`) for real people's email addresses and turn on Swagger. Recorded as UAT-003.
+- If UAT runs with `ASPNETCORE_ENVIRONMENT=Development`, the demo seeders create accounts with a shared, source-visible password for real people's email addresses and turn on Swagger. Recorded as UAT-003.
 - `/health/ready` checks only the API itself, not the database or storage (UAT-008, carried over).
 
 ## 4. Backend Findings Summary
