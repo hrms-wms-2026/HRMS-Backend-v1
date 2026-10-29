@@ -46,9 +46,9 @@ public sealed record TaskStatusOrderUpdateRequest(
 
 public sealed record ReorderTaskStatusesRequest(List<TaskStatusOrderUpdateRequest> Updates);
 
-public sealed record EditTaskCategoryRequest(string Name, int DisplayOrder);
+public sealed record EditTaskCategoryRequest(string Name, int DisplayOrder, string? Kind = null);
 
-public sealed record CreateTaskCategoryRequest(string Name, int DisplayOrder);
+public sealed record CreateTaskCategoryRequest(string Name, int DisplayOrder, string? Kind = null);
 
 public sealed record TaskCategoryOrderUpdateRequest(Guid CategoryId, int DisplayOrder);
 

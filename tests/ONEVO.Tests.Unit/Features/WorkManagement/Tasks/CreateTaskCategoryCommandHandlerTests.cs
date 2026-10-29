@@ -114,4 +114,40 @@ public class CreateTaskCategoryCommandHandlerTests
         Assert.Equal(409, result.StatusCode);
         categories.Verify(x => x.AddAsync(It.IsAny<TaskCategory>(), It.IsAny<CancellationToken>()), Times.Never);
     }
+
+    [Fact]
+    public async Task Handle_NoKind_InfersItFromTheName()
+    {
+        var (handler, categories) = Build(OwnerEmployeeId);
+
+        var result = await handler.Handle(new CreateTaskCategoryCommand(ProjectId, "Defects", 1), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(TaskCategoryKinds.Bug, result.Value!.Kind);
+        categories.Verify(x => x.AddAsync(It.Is<TaskCategory>(c => c.Kind == TaskCategoryKinds.Bug), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_GivenKind_IsKeptOverTheName()
+    {
+        var (handler, _) = Build(OwnerEmployeeId);
+
+        var result = await handler.Handle(new CreateTaskCategoryCommand(ProjectId, "Defects", 1, TaskCategoryKinds.Testing), CancellationToken.None);
+
+        Assert.Equal(TaskCategoryKinds.Testing, result.Value!.Kind);
+    }
+
+    [Theory]
+    [InlineData("epic")]
+    [InlineData("meeting")]
+    [InlineData("checklist")]
+    public async Task Handle_UnknownOrSystemKind_Is400(string kind)
+    {
+        var (handler, categories) = Build(OwnerEmployeeId);
+
+        var result = await handler.Handle(new CreateTaskCategoryCommand(ProjectId, "Things", 1, kind), CancellationToken.None);
+
+        Assert.Equal((400, "invalid_category_kind"), (result.StatusCode, result.ErrorCode));
+        categories.Verify(x => x.AddAsync(It.IsAny<TaskCategory>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
 }

@@ -70,11 +70,17 @@ public class EditTaskCategoryCommandHandler : IRequestHandler<EditTaskCategoryCo
             return Result.Conflict("System categories can't be renamed.");
         if (category.SystemKey is null && TaskCategorySystemKeys.IsReservedName(newName))
             return Result.Conflict("This project already has a Meeting category.");
+        if (request.Kind is not null && request.Kind != category.Kind
+            && (category.SystemKey is not null || !TaskCategoryKinds.UserSelectable.Contains(request.Kind)))
+            return Result.Failure(category.SystemKey is not null ? "A system category's type can't change." : "Choose Task, Bug, Story, Feature or Testing.",
+                400, TaskCategoryErrorCodes.InvalidKind);
 
         return await _unitOfWork.ExecuteInTransactionAsync(async innerCt =>
         {
             category.Name = newName;
             category.DisplayOrder = request.DisplayOrder;
+            if (request.Kind is not null)
+                category.Kind = request.Kind;
             category.UpdatedAt = DateTimeOffset.UtcNow;
             _categories.Update(category);
             await _unitOfWork.SaveChangesAsync(innerCt);

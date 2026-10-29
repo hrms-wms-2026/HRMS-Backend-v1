@@ -43,7 +43,7 @@ public sealed class MeetingTaskDefaults : IMeetingTaskDefaults
             {
                 Id = Guid.NewGuid(), TenantId = tenantId, ProjectId = projectId, Name = TaskCategorySystemKeys.Meeting,
                 DisplayOrder = categories.Count == 0 ? 0 : categories.Max(c => c.DisplayOrder) + 1,
-                SystemKey = TaskCategorySystemKeys.Meeting, CreatedById = createdById, CreatedAt = DateTimeOffset.UtcNow,
+                SystemKey = TaskCategorySystemKeys.Meeting, Kind = TaskCategoryKinds.Meeting, CreatedById = createdById, CreatedAt = DateTimeOffset.UtcNow,
             };
             await _categories.AddAsync(meeting, ct);
         }
