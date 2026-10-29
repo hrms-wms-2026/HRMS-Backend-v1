@@ -54,7 +54,7 @@ public sealed record TaskCategoryOrderUpdateRequest(Guid CategoryId, int Display
 
 public sealed record ReorderTaskCategoriesRequest(List<TaskCategoryOrderUpdateRequest> Updates);
 
-public sealed record TaskCategoryViewModel(Guid Id, string Name, int DisplayOrder, string? SystemKey, bool IsSystem);
+public sealed record TaskCategoryViewModel(Guid Id, string Name, int DisplayOrder, string? SystemKey, bool IsSystem, string Kind);
 
 public sealed record TaskAttachmentViewModel(Guid FileId, string FileName, long FileSizeBytes, string ContentType);
 
