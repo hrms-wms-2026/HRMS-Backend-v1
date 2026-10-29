@@ -19,7 +19,12 @@ namespace ONEVO.Infrastructure.Migrations
                 defaultValue: "task");
 
             // Existing categories get the kind their name suggests (TaskCategoryKinds.Infer); anything else stays "task".
+            // task_categories has FORCE ROW LEVEL SECURITY, so without admin mode the tenant_isolation policy matches no rows
+            // and the UPDATE silently changes nothing (as in 20260823175314_AddWorkTaskCategoryId). SET LOCAL scopes it to
+            // this migration's transaction.
             migrationBuilder.Sql("""
+                SET LOCAL app.tenant_context_mode = 'admin';
+
                 UPDATE task_categories SET kind = CASE
                     WHEN system_key = 'meeting' THEN 'meeting'
                     WHEN lower(btrim(name)) IN ('bug', 'bugs', 'defect', 'defects') THEN 'bug'

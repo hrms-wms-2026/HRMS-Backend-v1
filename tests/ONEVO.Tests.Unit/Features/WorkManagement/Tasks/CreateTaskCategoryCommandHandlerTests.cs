@@ -127,6 +127,18 @@ public class CreateTaskCategoryCommandHandlerTests
         categories.Verify(x => x.AddAsync(It.Is<TaskCategory>(c => c.Kind == TaskCategoryKinds.Bug), It.IsAny<CancellationToken>()), Times.Once);
     }
 
+    [Theory]
+    [InlineData("Onboarding")]
+    [InlineData("Offboarding")]
+    public async Task Handle_NoKind_NeverInfersASystemKind(string name)
+    {
+        var (handler, _) = Build(OwnerEmployeeId);
+
+        var result = await handler.Handle(new CreateTaskCategoryCommand(ProjectId, name, 1), CancellationToken.None);
+
+        Assert.Equal(TaskCategoryKinds.Task, result.Value!.Kind);
+    }
+
     [Fact]
     public async Task Handle_GivenKind_IsKeptOverTheName()
     {

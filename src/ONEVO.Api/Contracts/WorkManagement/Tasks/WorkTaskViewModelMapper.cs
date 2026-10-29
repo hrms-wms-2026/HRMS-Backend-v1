@@ -27,7 +27,7 @@ public static class WorkTaskViewModelMapper
             dto.MovedToStatus.Id, dto.MovedToStatus.Name, dto.MovedToStatus.Color));
 
     public static TaskCategoryViewModel ToViewModel(this TaskCategoryResponse dto) =>
-        new(dto.Id, dto.Name, dto.DisplayOrder, dto.SystemKey, dto.IsSystem);
+        new(dto.Id, dto.Name, dto.DisplayOrder, dto.SystemKey, dto.IsSystem, dto.Kind);
 
     public static MyDeadlinesViewModel ToViewModel(this MyDeadlinesResponse dto) => new(
         dto.ObjectiveDeadlines.Select(o => new ObjectiveDeadlineViewModel(o.ObjectiveId, o.Title, o.EndDate)).ToList(),
