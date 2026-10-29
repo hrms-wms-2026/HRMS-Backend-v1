@@ -62,7 +62,7 @@ public sealed class DashboardWidgetRegistryTests
         var mobile = DashboardWidgetRegistry.DefaultLayout(DashboardKeys.MyWork, Breakpoints.Mobile);
 
         Assert.Equal(
-            ["today-at-a-glance", "todays-schedule", "quick-actions", "action-center", "today-total-time", "active-projects", "my-tasks", "work-pattern"],
+            ["today-at-a-glance", "today-total-time", "todays-schedule", "action-center", "active-projects", "quick-actions", "my-tasks", "work-pattern"],
             mobile.Select(i => i.Key).ToArray());
         Assert.All(mobile, i =>
         {
@@ -158,18 +158,37 @@ public sealed class DashboardWidgetRegistryTests
     }
 
     [Fact]
+    public void My_work_default_is_the_owners_saved_layout()
+    {
+        // The Dapi owner's saved My Work layout (2026-10-29): Today's schedule on the right, five rows tall.
+        Assert.Equal(
+            [
+                ("today-at-a-glance", new GridRect(0, 0, 4, 3)),
+                ("today-total-time", new GridRect(4, 0, 4, 3)),
+                ("todays-schedule", new GridRect(8, 0, 4, 5)),
+                ("action-center", new GridRect(0, 3, 5, 3)),
+                ("active-projects", new GridRect(5, 3, 3, 3)),
+                ("quick-actions", new GridRect(0, 6, 3, 3)),
+                ("my-tasks", new GridRect(3, 6, 6, 4)),
+                ("work-pattern", new GridRect(0, 10, 12, 4)),
+            ],
+            DashboardWidgetRegistry.DefaultLayout(DashboardKeys.MyWork, Breakpoints.Desktop));
+    }
+
+    [Fact]
     public void My_work_without_action_center_variant_matches_ruling()
     {
         var layout = DashboardWidgetRegistry.DefaultLayoutFor(
             DashboardKeys.MyWork, new HashSet<string>(AllWork.Where(k => k != "action-center")), Breakpoints.Desktop);
 
+        // The owner's layout with Active projects and Quick actions filling the row Action center leaves.
         Assert.Equal(
             [
                 ("today-at-a-glance", new GridRect(0, 0, 4, 3)),
-                ("todays-schedule", new GridRect(4, 0, 5, 3)),
-                ("quick-actions", new GridRect(9, 0, 3, 3)),
-                ("today-total-time", new GridRect(0, 3, 6, 3)),
-                ("active-projects", new GridRect(6, 3, 6, 3)),
+                ("today-total-time", new GridRect(4, 0, 4, 3)),
+                ("todays-schedule", new GridRect(8, 0, 4, 5)),
+                ("active-projects", new GridRect(0, 3, 4, 3)),
+                ("quick-actions", new GridRect(4, 3, 4, 3)),
                 ("my-tasks", new GridRect(0, 6, 6, 4)),
                 ("work-pattern", new GridRect(0, 10, 12, 4)),
             ],
