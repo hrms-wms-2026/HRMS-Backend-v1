@@ -146,16 +146,18 @@ public sealed class GetDashboardBootstrapQueryHandlerTests
         var byKey = result.Value!.Widgets.ToDictionary(w => w.WidgetKey, w => w.Layout);
         Assert.Equal(7, byKey.Count);
         Assert.Equal(new GridRect(0, 0, 4, 3), byKey["today-at-a-glance"]);
-        Assert.Equal(new GridRect(4, 0, 5, 3), byKey["todays-schedule"]);
-        Assert.Equal(new GridRect(9, 0, 3, 3), byKey["quick-actions"]);
-        Assert.Equal(new GridRect(0, 3, 6, 3), byKey["today-total-time"]);
-        Assert.Equal(new GridRect(6, 3, 6, 3), byKey["active-projects"]);
+        Assert.Equal(new GridRect(4, 0, 4, 3), byKey["today-total-time"]);
+        Assert.Equal(new GridRect(8, 0, 4, 5), byKey["todays-schedule"]);
+        Assert.Equal(new GridRect(0, 3, 4, 3), byKey["active-projects"]);
+        Assert.Equal(new GridRect(4, 3, 4, 3), byKey["quick-actions"]);
         Assert.Equal(new GridRect(0, 6, 6, 4), byKey["my-tasks"]);
         Assert.Equal(new GridRect(0, 10, 12, 4), byKey["work-pattern"]);
-        // The first two rows are what the web app shows on My Work; my-tasks / work-pattern sit below them.
+        // The first two rows are what the web app shows on My Work; my-tasks / work-pattern sit below them. The one
+        // row under Today's schedule (x 8-11, y 5) is open in the owner's own layout too, so it is not a hole here.
         for (var y = 0; y < 6; y++)
             for (var x = 0; x < 12; x++)
-                Assert.Contains(byKey.Values, r => x >= r.X && x < r.X + r.W && y >= r.Y && y < r.Y + r.H);
+                if (!(y == 5 && x >= 8))
+                    Assert.Contains(byKey.Values, r => x >= r.X && x < r.X + r.W && y >= r.Y && y < r.Y + r.H);
     }
 
     [Theory]
@@ -208,18 +210,19 @@ public sealed class GetDashboardBootstrapQueryHandlerTests
     public async Task Customized_layout_keeps_stored_rects()
     {
         var d = Seed(DashboardKeys.MyWork);
-        // Customized: my-tasks narrowed to four columns, under the hidden action center's slot.
-        SetDesktop(d, "my-tasks", new GridRect(0, 6, 4, 4));
+        // Customized: my-tasks narrowed to four columns where it stands.
+        SetDesktop(d, "my-tasks", new GridRect(3, 6, 4, 4));
         Allow(DashboardKeys.MyWork, PlainEmployeeWork);
 
         var result = await Handler().Handle(new GetDashboardBootstrapQuery(d.Id, "desktop"), default);
 
         var byKey = result.Value!.Widgets.ToDictionary(w => w.WidgetKey, w => w.Layout);
-        // Not the variant: stored columns are kept, only gravity compaction applies (as before).
-        Assert.Equal(new GridRect(5, 3, 4, 3), byKey["today-total-time"]);
-        Assert.Equal(new GridRect(9, 3, 3, 3), byKey["active-projects"]);
-        Assert.Equal(new GridRect(0, 3, 4, 4), byKey["my-tasks"]);
-        Assert.Equal(new GridRect(9, 0, 3, 3), byKey["quick-actions"]);
+        // Not the variant: stored columns are kept, only gravity compaction applies (as before): quick-actions rises into
+        // the hidden action center's rows; my-tasks stays under active-projects.
+        Assert.Equal(new GridRect(4, 0, 4, 3), byKey["today-total-time"]);
+        Assert.Equal(new GridRect(5, 3, 3, 3), byKey["active-projects"]);
+        Assert.Equal(new GridRect(0, 3, 3, 3), byKey["quick-actions"]);
+        Assert.Equal(new GridRect(3, 6, 4, 4), byKey["my-tasks"]);
         _repo.Verify(r => r.SaveWithVersionAsync(d, 1, It.IsAny<CancellationToken>()), Times.Once);
     }
 
