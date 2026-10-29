@@ -129,7 +129,8 @@ public sealed class OfficeProjectProvisioner(IServiceScopeFactory scopeFactory) 
         ONEVO.Domain.Features.WorkManagement.Tasks.Entities.TaskCategory TaskCategory(string name, int order, string? systemKey = null) => new()
         {
             Id = Guid.NewGuid(), TenantId = tenantId, ProjectId = project.Id,
-            Name = name, DisplayOrder = order, SystemKey = systemKey, CreatedById = actingUserId, CreatedAt = now
+            Name = name, DisplayOrder = order, SystemKey = systemKey, Kind = ONEVO.Domain.Features.WorkManagement.Tasks.Entities.TaskCategoryKinds.Infer(name, systemKey),
+            CreatedById = actingUserId, CreatedAt = now
         };
     }
 

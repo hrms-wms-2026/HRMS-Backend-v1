@@ -100,4 +100,55 @@ public sealed class CheckCalendarConflictsQueryHandlerTests
         Assert.Equal(Start, conflict.OverlapStart);
         Assert.Equal(End, conflict.OverlapEnd);
     }
+    [Fact]
+    public async Task Duplicate_participant_ids_are_checked_once()
+    {
+        var sut = BuildSut();
+        _events.Setup(x => x.GetInDateRangeForEmployeeAsync(TenantId, EmployeeId, Start, End, It.IsAny<CancellationToken>())).ReturnsAsync([]);
+
+        var result = await sut.Handle(new CheckCalendarConflictsQuery([EmployeeId, EmployeeId], Start, End), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        _events.Verify(x => x.GetInDateRangeForEmployeeAsync(TenantId, EmployeeId, Start, End, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Availability_rows_are_appended_after_event_rows()
+    {
+        _events.Setup(x => x.GetInDateRangeForEmployeeAsync(TenantId, EmployeeId, Start, End, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([new CalendarEvent { Id = Guid.NewGuid(), TenantId = TenantId, Title = "Standup", StartDate = Start, EndDate = End, SourceType = CalendarEventSourceTypes.Manual, CreatedById = Guid.NewGuid(), CreatedAt = DateTimeOffset.UtcNow }]);
+        var leave = new CalendarConflict(EmployeeId, "Ada Lovelace", Guid.Empty, "On leave", Start, End, Kind: CalendarConflictKinds.Leave);
+        var availability = new Mock<IParticipantAvailabilityChecker>();
+        availability.Setup(x => x.CheckAsync(TenantId, It.IsAny<Guid?>(),
+                It.Is<IReadOnlyList<Employee>>(people => people.Count == 1 && people[0].Id == EmployeeId),
+                Start, End, true, "Asia/Colombo", It.IsAny<CancellationToken>()))
+            .ReturnsAsync([leave]);
+        BuildSut();
+        var sut = new CheckCalendarConflictsQueryHandler(_currentUser.Object, _events.Object, _employees.Object, _expander.Object,
+            availability: availability.Object);
+
+        var result = await sut.Handle(
+            new CheckCalendarConflictsQuery([EmployeeId], Start, End, IsAllDay: true, TimeZone: "Asia/Colombo"), CancellationToken.None);
+
+        Assert.Equal([CalendarConflictKinds.Event, CalendarConflictKinds.Leave], result.Value!.Conflicts.Select(c => c.Kind));
+    }
+    [Fact]
+    public async Task Offset_times_are_queried_in_utc()
+    {
+        // Npgsql only accepts UTC DateTimeOffsets for timestamptz; the meeting form sends "...T08:45:00+05:30".
+        var sut = BuildSut();
+        var colomboStart = Start.ToOffset(TimeSpan.FromHours(5.5));
+        var colomboEnd = End.ToOffset(TimeSpan.FromHours(5.5));
+        _events.Setup(x => x.GetInDateRangeForEmployeeAsync(TenantId, EmployeeId, It.IsAny<DateTimeOffset>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>())).ReturnsAsync([]);
+        _events.Setup(x => x.GetRecurringMastersForEmployeeAsync(TenantId, EmployeeId, It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>())).ReturnsAsync([]);
+
+        var result = await sut.Handle(new CheckCalendarConflictsQuery([EmployeeId], colomboStart, colomboEnd), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        _events.Verify(x => x.GetInDateRangeForEmployeeAsync(TenantId, EmployeeId,
+            It.Is<DateTimeOffset>(d => d.Offset == TimeSpan.Zero && d == Start),
+            It.Is<DateTimeOffset>(d => d.Offset == TimeSpan.Zero && d == End), It.IsAny<CancellationToken>()), Times.Once);
+        _events.Verify(x => x.GetRecurringMastersForEmployeeAsync(TenantId, EmployeeId,
+            It.Is<DateTimeOffset>(d => d.Offset == TimeSpan.Zero), It.IsAny<CancellationToken>()), Times.Once);
+    }
 }

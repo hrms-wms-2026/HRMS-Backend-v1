@@ -88,7 +88,7 @@ public class ReorderTaskCategoriesCommandHandler : IRequestHandler<ReorderTaskCa
 
             return Result<IReadOnlyList<TaskCategoryResponse>>.Success(
                 existing.OrderBy(c => c.DisplayOrder)
-                    .Select(c => new TaskCategoryResponse(c.Id, c.Name, c.DisplayOrder, c.SystemKey))
+                    .Select(c => new TaskCategoryResponse(c.Id, c.Name, c.DisplayOrder, c.SystemKey, c.Kind))
                     .ToList());
         }, ct);
     }

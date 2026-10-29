@@ -56,6 +56,19 @@ public sealed class OfficeProjectReconcilerIntegrationTests
     }
 
     [Fact]
+    public async Task TenantOwnerRole_OfDevTenants_AlsoCreatesOffice()
+    {
+        // Provisioned tenants seed "Owner" (DefaultRoleSeeder); the dev smoke tenants (Dapi, Acme) seed "Tenant Owner".
+        await using var harness = await OfficeProjectDb.CreateAsync();
+        var role = await harness.SeedOwnerRoleAsync("Tenant Owner");
+        var owner = await harness.SeedEmployeeAsync(harness.LegalEntityId);
+        await harness.AssignRoleAsync(owner.UserId, role, DateTimeOffset.UtcNow.AddDays(-5));
+
+        Assert.Equal(OfficeProjectReconcileOutcome.Created, await ReconcileAsync(harness));
+        Assert.Equal(owner.Id, (await OfficeAsync(harness))?.LeadId);
+    }
+
+    [Fact]
     public async Task ExistingOfficeLedByHr_SwitchesLeadToOwner_KeepsHrMembership()
     {
         await using var harness = await OfficeProjectDb.CreateAsync();

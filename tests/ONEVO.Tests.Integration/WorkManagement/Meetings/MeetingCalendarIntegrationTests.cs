@@ -121,6 +121,18 @@ public sealed class MeetingCalendarIntegrationTests
     }
 
     [Fact]
+    public async Task TheFeed_ListsAMeetingsSeriesAttendees_OrganizerFirst()
+    {
+        var w = await SeedAsync();
+
+        var items = (await CalendarAsync(w, w.Attendee)).Where(i => i.MeetingSeriesId == w.SeriesId).ToList();
+
+        Assert.NotEmpty(items);
+        Assert.All(items, item => Assert.Equal([w.Organizer, w.Attendee], item.Participants!.Select(p => p.EmployeeId)));
+        Assert.All(items, item => Assert.All(item.Participants!, p => Assert.False(string.IsNullOrWhiteSpace(p.EmployeeName))));
+    }
+
+    [Fact]
     public async Task Outsider_SeesNoMeeting()
     {
         var w = await SeedAsync();
@@ -166,5 +178,82 @@ public sealed class MeetingCalendarIntegrationTests
             (hidden.ConflictingEventId, hidden.ConflictingEventTitle, hidden.IsBusyOnly, hidden.OverlapStart, hidden.OverlapEnd));
         Assert.Equal((w.Tasks[0], "Weekly sync", false), (shown.ConflictingEventId, shown.ConflictingEventTitle, shown.IsBusyOnly));
         Assert.Equal((MeetingOccurrenceIds.For(w.SeriesId, Week(4)), false), (virtualShown.ConflictingEventId, virtualShown.IsBusyOnly));
+    }
+    private sealed class FixedZone : ONEVO.Application.Features.Calendar.Services.ICalendarTimezoneResolver
+    {
+        public Task<string> ResolveForUserAsync(Guid tenantId, Guid userId, CancellationToken ct = default) => Task.FromResult("UTC");
+    }
+
+    /// <summary>A caller with no leave read permission: they see only their own leave.</summary>
+    private sealed class NoLeaveScope : ONEVO.Application.Features.Leave.Calendar.Services.ILeaveVisibilityScopeProvider
+    {
+        public Task<ONEVO.Application.Features.Leave.Calendar.Services.LeaveVisibilityScopeResolution> ResolveForCurrentUserAsync(CancellationToken ct = default) =>
+            Task.FromResult(new ONEVO.Application.Features.Leave.Calendar.Services.LeaveVisibilityScopeResolution(
+                null, ONEVO.Application.Features.Leave.Calendar.Services.LeaveVisibilityScopeFailure.NoLeaveReadPermission));
+    }
+
+    private static async Task<CalendarConflictsResponse> CheckWithAvailabilityAsync(
+        World w, Guid callerUser, DateTimeOffset start, Guid? excludeSeries = null)
+    {
+        await using var db = w.H.NewContext();
+        var s = new MeetingTestServices(db, new MeetingTestClock(Now));
+        var availability = new ParticipantAvailabilityChecker(
+            new ONEVO.Infrastructure.Persistence.Repositories.Leave.Request.EfLeaveRequestReadRepository(db),
+            new ONEVO.Application.Features.Leave.Calendar.Services.NoOpLeaveCalendarHolidayProvider(),
+            new ONEVO.Infrastructure.Persistence.Repositories.OrgStructure.EfLegalEntityRepository(db),
+            new FixedZone(), new NoLeaveScope(),
+            new ONEVO.Infrastructure.Persistence.Repositories.CoreHr.EfPositionAssignmentRepository(db,
+                new ONEVO.Infrastructure.Persistence.Repositories.CoreHr.EfEmployeeHierarchyClosureRepository(db, new MeetingTestClock(Now))));
+        var handler = new CheckCalendarConflictsQueryHandler(new CalendarNotificationDb.StubCurrentUser(w.H.TenantId, callerUser),
+            new EfCalendarEventRepository(db), new ONEVO.Infrastructure.Persistence.Repositories.CoreHr.EfEmployeeRepository(db),
+            new ONEVO.Infrastructure.Services.Calendar.IcalNetRecurrenceExpander(), Projection(db, s), availability);
+        var result = await handler.Handle(new CheckCalendarConflictsQuery([w.Attendee], start, start.AddMinutes(60), IsAllDay: true,
+            TimeZone: "UTC", ExcludeMeetingSeriesId: excludeSeries), CancellationToken.None);
+        Assert.True(result.IsSuccess, result.Error);
+        return result.Value!;
+    }
+
+    [Fact]
+    public async Task Conflicts_SkipTheSeriesBeingEdited()
+    {
+        var w = await SeedAsync();
+
+        var conflicts = (await CheckWithAvailabilityAsync(w, w.OrganizerUser, Week(0).AddMinutes(-15), w.SeriesId)).Conflicts;
+
+        Assert.DoesNotContain(conflicts, c => c.Kind == CalendarConflictKinds.Event);
+    }
+
+    [Fact]
+    public async Task Conflicts_ApprovedLeave_IsOnLeaveForSelf_BusyForOthers_AndNeverCarriesLeaveDetails()
+    {
+        var w = await SeedAsync();
+        var day = DateOnly.FromDateTime(Week(1).UtcDateTime);
+        await using (var db = w.H.NewContext())
+        {
+            var type = w.H.AddLeaveType(db);
+            w.H.AddApprovedLeave(db, w.Attendee, type, day, day).Reason = "Family trip";
+            await db.SaveChangesAsync();
+        }
+        var attendeeUser = await UserOfAsync(w, w.Attendee);
+        var probe = Week(1).AddHours(2);
+
+        var own = Assert.Single((await CheckWithAvailabilityAsync(w, attendeeUser, probe)).Conflicts, c => c.Kind == CalendarConflictKinds.Leave);
+        var other = Assert.Single((await CheckWithAvailabilityAsync(w, w.OrganizerUser, probe)).Conflicts, c => c.Kind == CalendarConflictKinds.Leave);
+
+        Assert.Equal(("On leave", Guid.Empty), (own.ConflictingEventTitle, own.ConflictingEventId));
+        Assert.Equal("Busy", other.ConflictingEventTitle);
+        var json = System.Text.Json.JsonSerializer.Serialize(new[] { own, other });
+        Assert.DoesNotContain("Family trip", json);
+        Assert.DoesNotContain("Annual", json);
+    }
+    [Fact]
+    public async Task Conflicts_AcceptLocalOffsetTimes_AgainstPostgres()
+    {
+        // The meeting form sends "...+05:30"; Npgsql rejects non-UTC DateTimeOffsets for timestamptz.
+        var w = await SeedAsync();
+
+        var conflicts = (await CheckWithAvailabilityAsync(w, w.OrganizerUser, Week(0).AddMinutes(-15).ToOffset(TimeSpan.FromHours(5.5)))).Conflicts;
+
+        Assert.Contains(conflicts, c => c.Kind == CalendarConflictKinds.Event);
     }
 }

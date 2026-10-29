@@ -223,8 +223,22 @@ the meeting the meeting application was used for (spec D17).
   occurrences, cancelled series and moved-away slots are not listed. Open a meeting item with
   `GET /meetings/series/{meetingSeriesId}/occurrences/{originalStart}`.
 - Only meetings you organize or attend are listed; `hasConflict` counts them.
+- Each meeting item carries `participants` (the Planner draws them as avatars): the organizer first, then the series'
+  participants by name, each `{ employeeId, employeeName, responseStatus }`. These are series-level participants only;
+  people added to a single occurrence are not reflected here.
 - The conflict check includes the participants' task meetings. A meeting you cannot see comes back as
   `{ "conflictingEventId": "00000000-…", "conflictingEventTitle": "Busy", "isBusyOnly": true }` with its time only.
+- **Availability warnings (2026-10-28):** each conflict has a `kind`: `event` (above), `leave`, `holiday` or
+  `outside_hours`. They are warnings only; nothing is ever blocked.
+  - `leave`: approved leave overlapping the exact time. The title is `On leave`, or `Busy` when the caller may not see
+    that person's leave (the leave calendar's visibility scope). The caller's own leave always reads `On leave`. The type
+    and reason are never returned.
+  - `holiday`: `Public holiday: {name}` for the person's legal entity.
+  - `outside_hours`: `Outside working hours (09:00–17:00)` or `Non-working day`, read in the person's own timezone.
+    It is skipped for all-day checks.
+  - For the new kinds, `conflictingEventId` is the empty GUID and `overlapStart`/`overlapEnd` is the affected part.
+- The optional request fields are `isAllDay`, `timeZone` (the meeting's zone, used for a person whose own zone is
+  unknown) and `excludeMeetingSeriesId` (the meeting being edited, whose occurrences are skipped).
 
 ## Hours (2026-10-26, Part A)
 

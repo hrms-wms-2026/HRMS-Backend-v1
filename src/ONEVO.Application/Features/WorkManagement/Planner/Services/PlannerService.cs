@@ -1,3 +1,4 @@
+using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
 using Microsoft.Extensions.Options;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
@@ -12,13 +13,18 @@ using ONEVO.Domain.Features.WorkManagement.Planner.Entities;
 namespace ONEVO.Application.Features.WorkManagement.Planner.Services;
 
 /// <summary>
-/// Day planner (2026-10-26 design, Part B). An employee plans only today, in their own timezone, as task blocks next to
-/// their meetings; a block never touches the task. Their reporting-line managers (any ancestor) read any past day or
-/// today, with private meetings masked; anyone else gets 404.
+/// Day planner (2026-10-26 design, Part B; 2026-10-27 Planner = Calendar design). An employee plans today and up to
+/// <see cref="PlanningHorizonDays"/> days ahead, in their own timezone, as task blocks next to their meetings; past days
+/// are read-only and a block never touches the task. Their reporting-line managers (any ancestor) read any day up to the
+/// horizon, with private meetings masked; anyone else gets 404.
 /// </summary>
 public sealed class PlannerService
 {
     public const int MinimumBlockMinutes = 15;
+    /// <summary>How many days after today can still be planned (spec section 5.1).</summary>
+    public const int PlanningHorizonDays = 28;
+    /// <summary>The longest range one read returns: a month grid (spec section 5.2).</summary>
+    public const int MaxRangeDays = 42;
     private const string PrivateMeetingTitle = "Private meeting";
     private const string NotFoundMessage = "Planner day not found.";
 
@@ -56,11 +62,72 @@ public sealed class PlannerService
             return NotFound<PlannerDayResponse>();
         var today = TodayIn(zone.Value.Info);
         var day = date ?? today;
-        if (day > today)
-            return Result<PlannerDayResponse>.Failure("Only today and earlier days can be shown.", 400, PlannerErrorCodes.NotToday);
+        if (day > today.AddDays(PlanningHorizonDays))
+            return BeyondHorizon<PlannerDayResponse>();
 
         return Result<PlannerDayResponse>.Success(
-            await ComposeAsync(tenantId, employeeId, day, zone.Value, editable: own && day == today, maskPrivate: !own, ct));
+            await ComposeAsync(tenantId, employeeId, day, zone.Value, editable: own && DayCheck(day, today) is null, maskPrivate: !own, ct));
+    }
+
+    /// <summary>The caller's own days from <paramref name="from"/> to <paramref name="to"/> for the calendar grid: blocks, the
+    /// work window and whether each day can still change. One read per concern for the whole range.</summary>
+    public async Task<Result<PlannerRangeResponse>> GetRangeAsync(Guid tenantId, Guid callerEmployeeId, DateOnly from, DateOnly to,
+        CancellationToken ct)
+    {
+        if (!_options.Value.Enabled)
+            return Disabled<PlannerRangeResponse>();
+        if (to < from || to.DayNumber - from.DayNumber + 1 > MaxRangeDays)
+            return Result<PlannerRangeResponse>.Failure($"A range runs forwards and covers at most {MaxRangeDays} days.", 400,
+                PlannerErrorCodes.InvalidRange);
+        var zone = await ZoneOfAsync(tenantId, callerEmployeeId, ct);
+        if (zone is null)
+            return NotFound<PlannerRangeResponse>();
+
+        var today = TodayIn(zone.Value.Info);
+        var (start, _) = Bounds(from, zone.Value.Info);
+        var (_, end) = Bounds(to, zone.Value.Info);
+        var now = _clock.UtcNow;
+        var blocks = await _planner.ListBlocksAsync(tenantId, callerEmployeeId, start, end, ct);
+        var tasks = await _planner.GetTasksAsync(tenantId, callerEmployeeId, blocks.Select(b => b.TaskId).Distinct().ToList(), ct);
+        var sessions = await _planner.ListSessionsAsync(tenantId, callerEmployeeId, start, end, ct);
+        var legalEntity = await _planner.GetEmployeeLegalEntityAsync(tenantId, callerEmployeeId, ct);
+        var blocksByDay = blocks.ToLookup(b => DayOf(b.StartAt, zone.Value.Info));
+
+        var days = new List<PlannerRangeDay>(to.DayNumber - from.DayNumber + 1);
+        for (var day = from; day <= to; day = day.AddDays(1))
+        {
+            var (dayStart, dayEnd) = Bounds(day, zone.Value.Info);
+            var views = blocksByDay[day].Select(b =>
+            {
+                var task = tasks.GetValueOrDefault(b.TaskId);
+                var actual = PlannerActuals.TaskMinutes(sessions.Where(s => s.TaskId == b.TaskId).Select(s => (s.ClockInAt, s.ClockOutAt)),
+                    dayStart, dayEnd, now);
+                return new PlannerRangeBlockView(b.Id, b.TaskId, task?.ProjectId ?? Guid.Empty, task?.ProjectName ?? string.Empty, task?.Title ?? string.Empty,
+                    b.StartAt, b.EndAt, (int)(b.EndAt - b.StartAt).TotalMinutes, actual, task?.AssignedToEmployee ?? false,
+                    task?.CategoryName ?? string.Empty, task?.CategoryKind ?? TaskCategoryKinds.Task);
+            }).ToList();
+            var window = PlannerWorkWindows.For(legalEntity, day);
+            days.Add(new PlannerRangeDay(day, DayCheck(day, today) is null, window, views, views.Sum(v => v.PlannedMinutes),
+                window?.WorkingMinutes ?? 0));
+        }
+        return Result<PlannerRangeResponse>.Success(new PlannerRangeResponse(zone.Value.Id, today, days));
+    }
+
+    /// <summary>The caller's Focus list: open assigned tasks grouped by due date, with what is already planned from today on.</summary>
+    public async Task<Result<PlannerFocusResponse>> GetFocusAsync(Guid tenantId, Guid callerEmployeeId, CancellationToken ct)
+    {
+        if (!_options.Value.Enabled)
+            return Disabled<PlannerFocusResponse>();
+        var zone = await ZoneOfAsync(tenantId, callerEmployeeId, ct);
+        if (zone is null)
+            return NotFound<PlannerFocusResponse>();
+
+        var today = TodayIn(zone.Value.Info);
+        var (start, _) = Bounds(today, zone.Value.Info);
+        var (_, end) = Bounds(today.AddDays(PlanningHorizonDays), zone.Value.Info);
+        var rows = await _planner.ListFocusTasksAsync(tenantId, callerEmployeeId, _clock.UtcNow, ct);
+        var blocks = await _planner.ListBlocksAsync(tenantId, callerEmployeeId, start, end, ct);
+        return Result<PlannerFocusResponse>.Success(PlannerFocus.Build(rows, blocks, today, zone.Value.Info));
     }
 
     public Task<Result<PlannerDayResponse>> CreateBlockAsync(Guid tenantId, Guid callerEmployeeId, CreatePlannedBlockRequest request,
@@ -82,7 +149,7 @@ public sealed class PlannerService
                 StartAt = request.StartAt.ToUniversalTime(), EndAt = request.EndAt.ToUniversalTime(), CreatedById = callerEmployeeId,
             });
             await _unitOfWork.SaveChangesAsync(innerCt);
-            return Result<PlannerDayResponse>.Success(await ComposeTodayAsync(tenantId, callerEmployeeId, check.Zone, innerCt));
+            return Result<PlannerDayResponse>.Success(await ComposeDayOfAsync(tenantId, callerEmployeeId, request.StartAt, check.Zone, innerCt));
         }, ct);
 
     public async Task<Result<PlannerDayResponse>> MoveBlockAsync(Guid tenantId, Guid callerEmployeeId, Guid blockId,
@@ -97,16 +164,19 @@ public sealed class PlannerService
             if (block is null)
                 return NotFound<PlannerDayResponse>();
             var check = await CheckWriteAsync(tenantId, callerEmployeeId, request.StartAt, request.EndAt, blockId, innerCt);
-            if (check.Failure is { } failure)
+            if (check.Failure is { } failure && check.Zone == default)
                 return failure;
-            if (!IsOn(TodayIn(check.Zone.Info), block.StartAt, check.Zone.Info))
-                return Result<PlannerDayResponse>.Failure("Only today's plan can change.", 400, PlannerErrorCodes.NotToday);
+            // A block already on a past day stays where it is, wherever the request would take it.
+            if (DayCheck(DayOf(block.StartAt, check.Zone.Info), TodayIn(check.Zone.Info)) is { } locked)
+                return locked;
+            if (check.Failure is { } writeFailure)
+                return writeFailure;
 
             block.StartAt = request.StartAt.ToUniversalTime();
             block.EndAt = request.EndAt.ToUniversalTime();
             block.UpdatedAt = _clock.UtcNow;
             await _unitOfWork.SaveChangesAsync(innerCt);
-            return Result<PlannerDayResponse>.Success(await ComposeTodayAsync(tenantId, callerEmployeeId, check.Zone, innerCt));
+            return Result<PlannerDayResponse>.Success(await ComposeDayOfAsync(tenantId, callerEmployeeId, request.StartAt, check.Zone, innerCt));
         }, ct);
     }
 
@@ -120,19 +190,19 @@ public sealed class PlannerService
         var zone = await ZoneOfAsync(tenantId, callerEmployeeId, ct);
         if (zone is null)
             return NotFound<PlannerDayResponse>();
-        if (!IsOn(TodayIn(zone.Value.Info), block.StartAt, zone.Value.Info))
-            return Result<PlannerDayResponse>.Failure("Only today's plan can change.", 400, PlannerErrorCodes.NotToday);
+        if (DayCheck(DayOf(block.StartAt, zone.Value.Info), TodayIn(zone.Value.Info)) is { } locked)
+            return locked;
 
         _planner.RemoveBlock(block);
         await _unitOfWork.SaveChangesAsync(ct);
-        return Result<PlannerDayResponse>.Success(await ComposeTodayAsync(tenantId, callerEmployeeId, zone.Value, ct));
+        return Result<PlannerDayResponse>.Success(await ComposeDayOfAsync(tenantId, callerEmployeeId, block.StartAt, zone.Value, ct));
     }
 
     private readonly record struct Zone(string Id, TimeZoneInfo Info);
 
     private readonly record struct WriteCheck(Zone Zone, Result<PlannerDayResponse>? Failure);
 
-    /// <summary>Flag on, a valid block on the caller's today, no overlap with their other blocks.</summary>
+    /// <summary>Flag on, a valid block inside one editable day (today up to the horizon), no overlap with their other blocks.</summary>
     private async Task<WriteCheck> CheckWriteAsync(Guid tenantId, Guid employeeId, DateTimeOffset start, DateTimeOffset end,
         Guid? exceptBlockId, CancellationToken ct)
     {
@@ -144,16 +214,31 @@ public sealed class PlannerService
         if ((end - start).TotalMinutes < MinimumBlockMinutes)
             return new(zone.Value, Result<PlannerDayResponse>.Failure(
                 $"A block ends after it starts and lasts at least {MinimumBlockMinutes} minutes.", 400, PlannerErrorCodes.InvalidTime));
-        var today = TodayIn(zone.Value.Info);
-        if (!IsOn(today, start, zone.Value.Info) || !IsOn(today, end.AddTicks(-1), zone.Value.Info))
-            return new(zone.Value, Result<PlannerDayResponse>.Failure("Only today can be planned.", 400, PlannerErrorCodes.NotToday));
+        var day = DayOf(start, zone.Value.Info);
+        if (DayOf(end.AddTicks(-1), zone.Value.Info) != day)
+            return new(zone.Value, Result<PlannerDayResponse>.Failure("A block starts and ends on the same day.", 400,
+                PlannerErrorCodes.InvalidTime));
+        if (DayCheck(day, TodayIn(zone.Value.Info)) is { } dayFailure)
+            return new(zone.Value, dayFailure);
         if (await _planner.OverlapsAsync(tenantId, employeeId, start, end, exceptBlockId, ct))
             return new(zone.Value, Result<PlannerDayResponse>.Failure("This overlaps another planned block.", 409, PlannerErrorCodes.BlockOverlap));
         return new(zone.Value, null);
     }
 
-    private Task<PlannerDayResponse> ComposeTodayAsync(Guid tenantId, Guid employeeId, Zone zone, CancellationToken ct)
-        => ComposeAsync(tenantId, employeeId, TodayIn(zone.Info), zone, editable: true, maskPrivate: false, ct);
+    /// <summary>The caller's own day that <paramref name="instant"/> falls on, after a write to it (so it is editable).</summary>
+    private Task<PlannerDayResponse> ComposeDayOfAsync(Guid tenantId, Guid employeeId, DateTimeOffset instant, Zone zone,
+        CancellationToken ct)
+        => ComposeAsync(tenantId, employeeId, DayOf(instant, zone.Info), zone, editable: true, maskPrivate: false, ct);
+
+    /// <summary>Null when <paramref name="day"/> can be planned: today up to <see cref="PlanningHorizonDays"/> ahead.</summary>
+    private static Result<PlannerDayResponse>? DayCheck(DateOnly day, DateOnly today)
+    {
+        if (day < today)
+            return Result<PlannerDayResponse>.Failure("Past days can't be changed.", 400, PlannerErrorCodes.DayReadOnly);
+        if (day > today.AddDays(PlanningHorizonDays))
+            return BeyondHorizon<PlannerDayResponse>();
+        return null;
+    }
 
     private async Task<PlannerDayResponse> ComposeAsync(Guid tenantId, Guid employeeId, DateOnly day, Zone zone, bool editable,
         bool maskPrivate, CancellationToken ct)
@@ -231,8 +316,8 @@ public sealed class PlannerService
 
     private DateOnly TodayIn(TimeZoneInfo zone) => DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(_clock.UtcNow, zone).DateTime);
 
-    private static bool IsOn(DateOnly day, DateTimeOffset instant, TimeZoneInfo zone)
-        => DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(instant, zone).DateTime) == day;
+    private static DateOnly DayOf(DateTimeOffset instant, TimeZoneInfo zone)
+        => DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(instant, zone).DateTime);
 
     private static (DateTimeOffset Start, DateTimeOffset End) Bounds(DateOnly day, TimeZoneInfo zone)
     {
@@ -243,6 +328,9 @@ public sealed class PlannerService
         }
         return (At(day), At(day.AddDays(1)));
     }
+
+    private static Result<T> BeyondHorizon<T>() => Result<T>.Failure(
+        $"You can plan up to {PlanningHorizonDays} days ahead.", 400, PlannerErrorCodes.BeyondHorizon);
 
     private static Result<T> Disabled<T>() => Result<T>.Failure("The planner is not available.", 503, PlannerErrorCodes.Disabled);
 
