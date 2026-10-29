@@ -172,7 +172,8 @@ the meeting the meeting application was used for (spec D17).
 // MeetingListItem: one per visible occurrence (board, Work Tree, My Work "Today's meetings")
 { "taskId": "…", "shortId": "ACME-M12", "seriesId": "…", "originalStart": "…", "startAt": "…", "endAt": "…",
   "isAllDay": false, "title": "Weekly delivery sync", "status": "in_progress", "isPrivate": false,
-  "projectId": "…", "objectiveId": "…", "myRole": "organizer", "myResponse": "accepted" }
+  "projectId": "…", "objectiveId": "…", "myRole": "organizer", "myResponse": "accepted",
+  "organizerEmployeeId": "…" }
 
 // MeetingSeriesResponse = series template + placement + organizer + myRole + attendees + upcomingOccurrences (MeetingListItem[])
 
