@@ -158,7 +158,7 @@ public sealed class PlannerService
     private async Task<PlannerDayResponse> ComposeAsync(Guid tenantId, Guid employeeId, DateOnly day, Zone zone, bool editable,
         bool maskPrivate, CancellationToken ct)
     {
-        var (start, end) = Bounds(day, zone.Info);
+        var (start, end) = PlannerActuals.DayBounds(day, zone.Info);
         var now = _clock.UtcNow;
         var blocks = await _planner.ListBlocksAsync(tenantId, employeeId, start, end, ct);
         var meetings = await _meetings.ListEmployeeDayMeetingsAsync(tenantId, employeeId, start, end, ct);
@@ -171,7 +171,7 @@ public sealed class PlannerService
             g => PlannerActuals.TaskMinutes(g.Select(s => (s.ClockInAt, s.ClockOutAt)), start, end, now));
         var meetingViews = meetings.Select(m =>
         {
-            var minutes = MinutesInDay(m.StartAt, m.EndAt, m.IsAllDay, start, end);
+            var minutes = PlannerActuals.MeetingMinutesInDay(m.StartAt, m.EndAt, m.IsAllDay, start, end);
             var counts = !m.Cancelled && !m.Declined;
             return new PlannerMeetingView(m.TaskId, m.SeriesId, m.OriginalStart, m.StartAt, m.EndAt,
                 maskPrivate && m.IsPrivate ? PrivateMeetingTitle : m.Title, m.IsPrivate, m.Cancelled, m.Declined,
@@ -194,29 +194,8 @@ public sealed class PlannerService
         var actual = blocks.Select(b => b.TaskId).Distinct().Sum(id => actualByTask.GetValueOrDefault(id)) + meetingViews.Sum(m => m.ActualMinutes);
         return new PlannerDayResponse(day, zone.Id, editable, blockViews, meetingViews,
             due.Select(t => new PlannerDueTaskView(t.TaskId, t.Title, t.DueDate, t.EstimatedHours)).ToList(),
-            new PlannerTotals(planned, actual), AttendanceMinutes(attendance, now));
-    }
-
-    /// <summary>A meeting's minutes on this day only: its overlap with the day, or one workday when an all-day meeting
-    /// covers the day (MeetingPersonHours.AllDayMinutesPerDay).</summary>
-    private static int MinutesInDay(DateTimeOffset meetingStart, DateTimeOffset meetingEnd, bool isAllDay, DateTimeOffset dayStart,
-        DateTimeOffset dayEnd)
-    {
-        var from = meetingStart > dayStart ? meetingStart : dayStart;
-        var to = meetingEnd < dayEnd ? meetingEnd : dayEnd;
-        if (to <= from)
-            return 0;
-        return isAllDay ? MeetingPersonHours.AllDayMinutesPerDay : (int)Math.Round((to - from).TotalMinutes);
-    }
-
-    /// <summary>Worked minutes once clocked out; while still clocked in, the time since clock-in less breaks so far.</summary>
-    private static int AttendanceMinutes(PlannerAttendance? attendance, DateTimeOffset now)
-    {
-        if (attendance is null)
-            return 0;
-        if (attendance.ActualStart is { } start && attendance.ActualEnd is null)
-            return Math.Max(0, (int)Math.Round((now - start).TotalMinutes) - attendance.BreakMinutes);
-        return attendance.WorkedMinutes;
+            new PlannerTotals(planned, actual), attendance is null ? 0
+                : PlannerActuals.AttendanceMinutes(attendance.ActualStart, attendance.ActualEnd, attendance.WorkedMinutes, attendance.BreakMinutes, now));
     }
 
     private async Task<Zone?> ZoneOfAsync(Guid tenantId, Guid employeeId, CancellationToken ct)
@@ -233,16 +212,6 @@ public sealed class PlannerService
 
     private static bool IsOn(DateOnly day, DateTimeOffset instant, TimeZoneInfo zone)
         => DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(instant, zone).DateTime) == day;
-
-    private static (DateTimeOffset Start, DateTimeOffset End) Bounds(DateOnly day, TimeZoneInfo zone)
-    {
-        DateTimeOffset At(DateOnly d)
-        {
-            var local = d.ToDateTime(TimeOnly.MinValue);
-            return new DateTimeOffset(local, zone.GetUtcOffset(local));
-        }
-        return (At(day), At(day.AddDays(1)));
-    }
 
     private static Result<T> Disabled<T>() => Result<T>.Failure("The planner is not available.", 503, PlannerErrorCodes.Disabled);
 

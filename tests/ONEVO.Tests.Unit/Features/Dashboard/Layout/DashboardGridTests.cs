@@ -30,9 +30,37 @@ public sealed class DashboardGridTests
     [Fact]
     public void Size_below_min_rejected()
     {
-        var errors = DashboardGrid.Validate([("team-status", new GridRect(0, 0, 5, 4))], Breakpoints.Desktop);
+        var errors = DashboardGrid.Validate([("work-pattern", new GridRect(0, 0, 5, 3))], Breakpoints.Desktop);
 
         Assert.Contains("SIZE_NOT_ALLOWED", errors);
+    }
+
+    [Theory]
+    [InlineData("team-status", 12, 8)]
+    [InlineData("team-quick-actions", 6, 4)]
+    [InlineData("team-progress", 12, 8)]
+    [InlineData("team-attendance", 12, 8)]
+    public void My_team_widget_min_is_2x2_and_layouts_stored_under_older_minimums_stay_valid(string key, int maxW, int maxH)
+    {
+        var def = DashboardWidgetRegistry.Get(key)!;
+        Assert.Equal((2, 2, maxW, maxH), (def.MinW, def.MinH, def.MaxW, def.MaxH));
+
+        foreach (var breakpoint in new[] { Breakpoints.Desktop, Breakpoints.Tablet })
+        {
+            Assert.Empty(DashboardGrid.Validate([(key, new GridRect(0, 0, 2, 2))], breakpoint));
+            Assert.Empty(DashboardGrid.Validate([(key, new GridRect(0, 0, 3, 3))], breakpoint));
+            Assert.Empty(DashboardGrid.Validate([(key, new GridRect(0, 0, 4, 4))], breakpoint));
+            Assert.Contains("SIZE_NOT_ALLOWED", DashboardGrid.Validate([(key, new GridRect(0, 0, 1, 2))], breakpoint));
+            Assert.Contains("SIZE_NOT_ALLOWED", DashboardGrid.Validate([(key, new GridRect(0, 0, 2, 1))], breakpoint));
+        }
+
+        // Every default layout (stored for users who never customised) still validates.
+        foreach (var breakpoint in new[] { Breakpoints.Desktop, Breakpoints.Tablet })
+        {
+            var defaults = DashboardWidgetRegistry.DefaultLayout(DashboardKeys.MyTeam, breakpoint)
+                .Select(i => (i.Key, i.Rect)).ToList();
+            Assert.Empty(DashboardGrid.Validate(defaults, breakpoint));
+        }
     }
 
     [Fact]

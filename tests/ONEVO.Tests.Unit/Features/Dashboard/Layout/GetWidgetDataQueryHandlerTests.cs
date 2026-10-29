@@ -108,12 +108,25 @@ public sealed class GetWidgetDataQueryHandlerTests
     }
 
     [Fact]
-    public async Task Success_returns_payload()
+    public async Task Widget_hidden_on_web_has_no_provider_and_loads_nothing()
     {
         var widget = Seed(DashboardKeys.MyWork, "my-tasks");
         Allow(DashboardKeys.MyWork, "my-tasks");
+
+        var result = await Handler().Handle(new GetWidgetDataQuery(widget.Id), default);
+
+        Assert.Equal(404, result.StatusCode);
+        Assert.Equal(WidgetDataErrors.NoProvider, result.Error);
+        _orchestrator.Verify(o => o.LoadOneAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Success_returns_payload()
+    {
+        var widget = Seed(DashboardKeys.MyWork, "active-projects");
+        Allow(DashboardKeys.MyWork, "active-projects");
         var payload = new object();
-        Outcome("my-tasks", new WidgetDataOutcome(new WidgetDataStateDto(WidgetDataStatus.Success, Now, null), payload, null));
+        Outcome("active-projects", new WidgetDataOutcome(new WidgetDataStateDto(WidgetDataStatus.Success, Now, null), payload, null));
 
         var result = await Handler().Handle(new GetWidgetDataQuery(widget.Id), default);
 
@@ -130,9 +143,9 @@ public sealed class GetWidgetDataQueryHandlerTests
     [InlineData(WidgetDataErrors.Failed, 500)]
     public async Task Provider_failure_keeps_its_status(string code, int status)
     {
-        var widget = Seed(DashboardKeys.MyWork, "my-tasks");
-        Allow(DashboardKeys.MyWork, "my-tasks");
-        Outcome("my-tasks", new WidgetDataOutcome(new WidgetDataStateDto(WidgetDataStatus.Error, Now, code), null, status));
+        var widget = Seed(DashboardKeys.MyWork, "active-projects");
+        Allow(DashboardKeys.MyWork, "active-projects");
+        Outcome("active-projects", new WidgetDataOutcome(new WidgetDataStateDto(WidgetDataStatus.Error, Now, code), null, status));
 
         var result = await Handler().Handle(new GetWidgetDataQuery(widget.Id), default);
 

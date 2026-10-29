@@ -98,20 +98,40 @@ public sealed class GetDashboardBootstrapQueryHandlerTests
         Allow(DashboardKeys.MyWork, PlainEmployeeWork);
         var payload = new object();
         var fetchedAt = new DateTimeOffset(2026, 10, 20, 9, 0, 0, TimeSpan.Zero);
-        _widgetData["my-tasks"] = (new WidgetDataStateDto("success", fetchedAt, null), payload);
-        _widgetData["active-projects"] = (new WidgetDataStateDto("error", fetchedAt, "FORBIDDEN"), null);
+        _widgetData["active-projects"] = (new WidgetDataStateDto("success", fetchedAt, null), payload);
+        _widgetData["today-at-a-glance"] = (new WidgetDataStateDto("error", fetchedAt, "FORBIDDEN"), null);
 
         var result = await Handler().Handle(new GetDashboardBootstrapQuery(d.Id, "desktop"), default);
 
         var keys = Assert.Single(_loadedKeys);
         Assert.DoesNotContain("action-center", keys);
-        Assert.Equal(result.Value!.Widgets.Select(w => w.WidgetKey).OrderBy(k => k), keys.OrderBy(k => k));
-        var tasks = Assert.Single(result.Value.Widgets, w => w.WidgetKey == "my-tasks");
-        Assert.Equal(new WidgetDataStateDto("success", fetchedAt, null), tasks.DataState);
-        Assert.Same(payload, tasks.Data);
+        Assert.Equal(
+            result.Value!.Widgets.Select(w => w.WidgetKey)
+                .Where(k => DashboardWidgetRegistry.Get(k)!.ShownOnWeb).OrderBy(k => k),
+            keys.OrderBy(k => k));
         var projects = Assert.Single(result.Value.Widgets, w => w.WidgetKey == "active-projects");
-        Assert.Equal(new WidgetDataStateDto("error", fetchedAt, "FORBIDDEN"), projects.DataState);
-        Assert.Null(projects.Data);
+        Assert.Equal(new WidgetDataStateDto("success", fetchedAt, null), projects.DataState);
+        Assert.Same(payload, projects.Data);
+        var glance = Assert.Single(result.Value.Widgets, w => w.WidgetKey == "today-at-a-glance");
+        Assert.Equal(new WidgetDataStateDto("error", fetchedAt, "FORBIDDEN"), glance.DataState);
+        Assert.Null(glance.Data);
+    }
+
+    [Fact]
+    public async Task Bootstrap_does_not_load_data_for_widgets_hidden_on_web()
+    {
+        var d = Seed(DashboardKeys.MyWork);
+        Allow(DashboardKeys.MyWork, PlainEmployeeWork);
+        _widgetData["my-tasks"] = (new WidgetDataStateDto("success", DateTimeOffset.UtcNow, null), new object());
+
+        var result = await Handler().Handle(new GetDashboardBootstrapQuery(d.Id, "desktop"), default);
+
+        var keys = Assert.Single(_loadedKeys);
+        Assert.DoesNotContain("my-tasks", keys);
+        Assert.DoesNotContain("work-pattern", keys);
+        var tasks = Assert.Single(result.Value!.Widgets, w => w.WidgetKey == "my-tasks");
+        Assert.Equal(WidgetDataStatus.Client, tasks.DataState.Status);
+        Assert.Null(tasks.Data);
     }
 
     [Fact]

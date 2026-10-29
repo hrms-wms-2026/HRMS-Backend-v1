@@ -27,6 +27,25 @@ public sealed class DashboardWidgetRegistryTests
     }
 
     [Fact]
+    public void TodayTotalTime_is_weekly_work_progress_with_a_2x2_minimum()
+    {
+        var def = DashboardWidgetRegistry.Get("today-total-time")!;
+
+        Assert.Equal("Weekly work progress", def.Title);
+        Assert.Equal((2, 2, 12, 8), (def.MinW, def.MinH, def.MaxW, def.MaxH));
+    }
+
+    [Fact]
+    public void Web_hidden_widgets_are_flagged()
+    {
+        var hidden = DashboardWidgetRegistry.ForDashboard(DashboardKeys.MyWork)
+            .Concat(DashboardWidgetRegistry.ForDashboard(DashboardKeys.MyTeam))
+            .Where(d => !d.ShownOnWeb).Select(d => d.Key).OrderBy(k => k);
+
+        Assert.Equal(new[] { "my-tasks", "notifications", "wellbeing", "work-pattern" }, hidden);
+    }
+
+    [Fact]
     public void Default_layouts_are_valid_for_every_dashboard_and_breakpoint()
     {
         foreach (var dashboard in Dashboards)
@@ -118,7 +137,7 @@ public sealed class DashboardWidgetRegistryTests
     {
         var tablet = DashboardWidgetRegistry.DefaultLayout(DashboardKeys.MyTeam, Breakpoints.Tablet);
 
-        Assert.Equal(4, tablet.Single(i => i.Key == "team-progress").Rect.W);
+        Assert.Equal(3, tablet.Single(i => i.Key == "team-progress").Rect.W);
         Assert.Equal(6, tablet.Single(i => i.Key == "team-status").Rect.W);
     }
     private static readonly string[] AllWork =
@@ -215,7 +234,7 @@ public sealed class DashboardWidgetRegistryTests
         var progress = DashboardWidgetRegistry.Get("team-progress")!;
         var tasks = DashboardWidgetRegistry.Get("my-tasks")!;
 
-        Assert.Equal(4, DashboardWidgetRegistry.TabletWidth(progress, 4));
+        Assert.Equal(3, DashboardWidgetRegistry.TabletWidth(progress, 4));
         Assert.Equal(6, DashboardWidgetRegistry.TabletWidth(progress, 8));
         Assert.Equal(3, DashboardWidgetRegistry.TabletWidth(tasks, 3));
         Assert.Equal(6, DashboardWidgetRegistry.TabletWidth(tasks, 12));
