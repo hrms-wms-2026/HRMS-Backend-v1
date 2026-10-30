@@ -57,6 +57,9 @@ public sealed class GetTrayAttendanceStatusQueryHandler(
             BreakStartedAtUtc: openBreak?.BreakStart,
             CanStartBreak: allowance.CanStartBreak,
             BreakAllowanceMinutes: allowance.AllowanceMinutes,
-            CompletedBreakMinutes: allowance.CompletedMinutes));
+            CompletedBreakMinutes: allowance.CompletedMinutes,
+            // Today's record even after clock-out, so a restarted tray can show the finished day.
+            DayClockedInAtUtc: record?.ActualStart,
+            DayClockedOutAtUtc: record?.ActualEnd));
     }
 }

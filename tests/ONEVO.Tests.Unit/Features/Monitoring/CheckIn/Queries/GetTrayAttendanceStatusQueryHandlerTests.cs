@@ -65,6 +65,36 @@ public class GetTrayAttendanceStatusQueryHandlerTests
     }
 
     [Fact]
+    public async Task Handle_ClockedOutToday_ReturnsDayTimesButNotClockedIn()
+    {
+        var device = new Mock<ITrayCurrentDevice>();
+        device.Setup(d => d.IsAuthenticated).Returns(true);
+        device.Setup(d => d.TenantId).Returns(TenantId);
+        device.Setup(d => d.UserId).Returns(UserId);
+
+        var startedAt = DateTimeOffset.UtcNow.AddHours(-8);
+        var endedAt = DateTimeOffset.UtcNow.AddMinutes(-10);
+        var todayState = new Mock<IAttendanceTodayStateService>();
+        todayState.Setup(t => t.ResolveContextAsync(TenantId, UserId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<AttendanceTodayContext>.Success(BuildContext()));
+
+        var attendance = new Mock<IAttendanceReadRepository>();
+        attendance.Setup(a => a.GetRecordAsync(TenantId, EmployeeId, WorkDate, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AttendanceRecord { ActualStart = startedAt, ActualEnd = endedAt });
+
+        var (tenants, switcher) = CreateTenantMocks();
+        var sut = new GetTrayAttendanceStatusQueryHandler(device.Object, todayState.Object, attendance.Object, tenants.Object, switcher.Object);
+
+        var result = await sut.Handle(new GetTrayAttendanceStatusQuery(), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.False(result.Value!.IsClockedIn);
+        Assert.Null(result.Value.ClockedInAtUtc);
+        Assert.Equal(startedAt, result.Value.DayClockedInAtUtc);
+        Assert.Equal(endedAt, result.Value.DayClockedOutAtUtc);
+    }
+
+    [Fact]
     public async Task Handle_NoAttendanceRecordForToday_ReturnsIsClockedInFalse()
     {
         var device = new Mock<ITrayCurrentDevice>();
