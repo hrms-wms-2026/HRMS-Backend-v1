@@ -31,22 +31,6 @@ public static class TaskCategoryKinds
 
     /// <summary>The kinds a user may give a category; Meeting and Checklist are set by the system only.</summary>
     public static readonly IReadOnlyList<string> UserSelectable = [Task, Bug, Story, Feature, Testing];
-
-    /// <summary>The kind a name suggests (trimmed, any casing); anything not recognised is a Task.</summary>
-    public static string Infer(string name, string? systemKey)
-    {
-        if (systemKey == TaskCategorySystemKeys.Meeting)
-            return Meeting;
-        return name.Trim().ToLowerInvariant() switch
-        {
-            "bug" or "bugs" or "defect" or "defects" => Bug,
-            "story" or "stories" or "user story" => Story,
-            "feature" or "features" or "enhancement" => Feature,
-            "test" or "tests" or "testing" or "qa" => Testing,
-            "onboarding" or "offboarding" => Checklist,
-            _ => Task,
-        };
-    }
 }
 
 public static class TaskCategoryErrorCodes

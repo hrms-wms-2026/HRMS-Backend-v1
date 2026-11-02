@@ -14,6 +14,14 @@ public sealed partial class WorkManagementDapiDemoSeeder
 {
     private static readonly string[] CanonicalStatusNames = ["To Do", "In Process", "Review", "Done"];
     private static readonly string[] CanonicalCategoryNames = ["task", "bug", "story", "feature", TaskCategorySystemKeys.Meeting];
+    private static readonly Dictionary<string, string> CanonicalCategoryKinds = new()
+    {
+        ["task"] = TaskCategoryKinds.Task,
+        ["bug"] = TaskCategoryKinds.Bug,
+        ["story"] = TaskCategoryKinds.Story,
+        ["feature"] = TaskCategoryKinds.Feature,
+        [TaskCategorySystemKeys.Meeting] = TaskCategoryKinds.Meeting,
+    };
 
     private static async Task SeedTasksAndApprovalsAsync(
         ApplicationDbContext db,
@@ -108,7 +116,7 @@ public sealed partial class WorkManagementDapiDemoSeeder
                 Name = name,
                 DisplayOrder = order,
                 SystemKey = name == TaskCategorySystemKeys.Meeting ? TaskCategorySystemKeys.Meeting : null,
-                Kind = TaskCategoryKinds.Infer(name, name == TaskCategorySystemKeys.Meeting ? TaskCategorySystemKeys.Meeting : null),
+                Kind = CanonicalCategoryKinds[name],
                 CreatedById = DapiOwnerUserId,
                 CreatedAt = now
             });

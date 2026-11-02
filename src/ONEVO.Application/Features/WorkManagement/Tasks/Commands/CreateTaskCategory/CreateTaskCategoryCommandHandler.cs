@@ -54,7 +54,8 @@ public class CreateTaskCategoryCommandHandler : IRequestHandler<CreateTaskCatego
             return Result<TaskCategoryResponse>.Conflict("The Office project categories are system-managed.");
         if (TaskCategorySystemKeys.IsReservedName(request.Name))
             return Result<TaskCategoryResponse>.Conflict("This project already has a Meeting category.");
-        if (request.Kind is not null && !TaskCategoryKinds.UserSelectable.Contains(request.Kind))
+        // The user always picks the kind; a name never decides it, and Meeting/Checklist are system-only.
+        if (request.Kind is null || !TaskCategoryKinds.UserSelectable.Contains(request.Kind))
             return Result<TaskCategoryResponse>.Failure("Choose Task, Bug, Story, Feature or Testing.", 400, TaskCategoryErrorCodes.InvalidKind);
 
         var defaultObjective = await _objectives.GetDefaultByProjectIdAsync(tenantId, project.Id, ct);
@@ -71,7 +72,7 @@ public class CreateTaskCategoryCommandHandler : IRequestHandler<CreateTaskCatego
             {
                 Id = Guid.NewGuid(), TenantId = tenantId, ProjectId = project.Id,
                 Name = request.Name.Trim(), DisplayOrder = request.DisplayOrder,
-                Kind = request.Kind ?? UserKindFor(request.Name),
+                Kind = request.Kind,
                 CreatedById = _currentUser.UserId, CreatedAt = now
             };
 
@@ -81,13 +82,5 @@ public class CreateTaskCategoryCommandHandler : IRequestHandler<CreateTaskCatego
             return Result<TaskCategoryResponse>.Success(new TaskCategoryResponse(
                 category.Id, category.Name, category.DisplayOrder, category.SystemKey, category.Kind));
         }, ct);
-    }
-
-    /// <summary>The kind a user's new category gets from its name; never a system kind (an "Onboarding" category in a
-    /// normal project is a Task, not a Checklist).</summary>
-    private static string UserKindFor(string name)
-    {
-        var inferred = TaskCategoryKinds.Infer(name, null);
-        return TaskCategoryKinds.UserSelectable.Contains(inferred) ? inferred : TaskCategoryKinds.Task;
     }
 }
