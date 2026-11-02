@@ -3,7 +3,6 @@ using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.EmployeeAuthority.Models;
 using ONEVO.Application.Features.CoreHr.EmployeeAuthority.ServiceInterfaces;
-using ONEVO.Application.Features.CoreHr.EmployeeHierarchyClosure.RepositoryInterfaces;
 using ONEVO.Application.Features.Dashboard.Team.Queries;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Leadership.Services;
@@ -190,12 +189,13 @@ public sealed class GetMyTeamCapabilitiesQueryHandlerTests
         workLeadership.Setup(x => x.LeadsAnyWorkAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>())).ReturnsAsync(false);
         workLeadership.Setup(x => x.HasPendingWorkApprovalsAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>())).ReturnsAsync(false);
 
-        var hierarchy = new Mock<IEmployeeHierarchyClosureRepository>();
-        hierarchy.Setup(x => x.GetDirectReportEmployeeIdsAsync(TenantId, ActorId, It.IsAny<CancellationToken>()))
+        var reportingLine = new Mock<ONEVO.Application.Common.RepositoryInterfaces.IEmployeeRepository>();
+        reportingLine.Setup(x => x.ListDirectReportEmployeeIdsAsync(TenantId,
+                It.Is<IReadOnlyCollection<Guid>>(ids => ids.Count == 1 && ids.Contains(ActorId)), It.IsAny<CancellationToken>()))
             .ReturnsAsync(directReports ?? []);
 
         return new GetMyTeamCapabilitiesQueryHandler(
-            currentUser.Object, employees.Object, authority.Object, modules.Object, workLeadership.Object, hierarchy.Object);
+            currentUser.Object, employees.Object, authority.Object, modules.Object, workLeadership.Object, reportingLine.Object);
     }
 
     private static Mock<ICurrentUser> CurrentUser(IReadOnlyList<string> permissions)

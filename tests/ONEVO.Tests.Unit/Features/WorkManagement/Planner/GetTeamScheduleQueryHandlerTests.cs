@@ -3,7 +3,7 @@ using Microsoft.Extensions.Options;
 using Moq;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
-using ONEVO.Application.Features.CoreHr.EmployeeHierarchyClosure.RepositoryInterfaces;
+using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Features.TimeAttendance.Queries;
 using ONEVO.Application.Features.TimeAttendance.Team.DTOs;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
@@ -31,13 +31,15 @@ public class GetTeamScheduleQueryHandlerTests
     {
         public readonly Mock<ICurrentUser> User = new();
         public readonly Mock<ICallerIdentityResolver> Identity = new();
-        public readonly Mock<IEmployeeHierarchyClosureRepository> Hierarchy = new();
+        public readonly Mock<IEmployeeRepository> Employees = new();
         public readonly Mock<ITeamTimeReadRepository> TeamTime = new();
         public readonly Mock<IMeetingRepository> Meetings = new();
         public readonly Mock<IMediator> Mediator = new();
         public readonly Dictionary<Guid, string> Zones = new() { [Manager] = "Asia/Colombo", [Report] = "Asia/Colombo" };
         public readonly Dictionary<Guid, TeamPersonRow> People = new() { [Report] = new TeamPersonRow(Report, "Priya K", null, true) };
+        /// <summary>The caller's direct reports; ReportsOf adds further levels.</summary>
         public List<Guid> Descendants = [Report];
+        public readonly Dictionary<Guid, List<Guid>> ReportsOf = [];
         public List<TeamSessionRow> Sessions = [];
         public List<TeamBlockRow> Blocks = [];
 
@@ -47,8 +49,10 @@ public class GetTeamScheduleQueryHandlerTests
             User.SetupGet(x => x.TenantId).Returns(TenantId);
             User.SetupGet(x => x.UserId).Returns(UserId);
             Identity.Setup(x => x.ResolveCallerEmployeeIdAsync(TenantId, UserId, It.IsAny<CancellationToken>())).ReturnsAsync(Manager);
-            Hierarchy.Setup(x => x.GetDescendantEmployeeIdsAsync(TenantId, Manager, It.IsAny<CancellationToken>()))
-                .ReturnsAsync(() => Descendants);
+            Employees.Setup(x => x.ListDirectReportEmployeeIdsAsync(TenantId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync((Guid _, IReadOnlyCollection<Guid> managers, CancellationToken _) => managers
+                    .SelectMany(m => m == Manager ? Descendants : ReportsOf.GetValueOrDefault(m) ?? [])
+                    .Distinct().ToList());
             TeamTime.Setup(x => x.GetPeopleAsync(TenantId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync((Guid _, IReadOnlyCollection<Guid> ids, CancellationToken _) =>
                     People.Where(p => ids.Contains(p.Key)).ToDictionary(p => p.Key, p => p.Value));
@@ -73,7 +77,7 @@ public class GetTeamScheduleQueryHandlerTests
         {
             var clock = new Mock<IDateTimeProvider>();
             clock.SetupGet(x => x.UtcNow).Returns(Now);
-            return new GetTeamScheduleQueryHandler(User.Object, Identity.Object, Hierarchy.Object, TeamTime.Object, Meetings.Object,
+            return new GetTeamScheduleQueryHandler(User.Object, Identity.Object, Employees.Object, TeamTime.Object, Meetings.Object,
                 Mediator.Object, clock.Object, Options.Create(new PlannerOptions { Enabled = plannerEnabled }))
                 .Handle(new GetTeamScheduleQuery(date), default);
         }
@@ -204,7 +208,8 @@ public class GetTeamScheduleQueryHandlerTests
             It.IsAny<DateTimeOffset>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()), Times.Never);
         f.Meetings.Verify(x => x.ListEmployeesDayMeetingsAsync(It.Is<Guid>(t => t != TenantId), It.IsAny<IReadOnlyCollection<Guid>>(),
             It.IsAny<DateTimeOffset>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()), Times.Never);
-        f.Hierarchy.Verify(x => x.GetDescendantEmployeeIdsAsync(TenantId, Manager, It.IsAny<CancellationToken>()), Times.Once);
+        f.Employees.Verify(x => x.ListDirectReportEmployeeIdsAsync(It.Is<Guid>(t => t != TenantId), It.IsAny<IReadOnlyCollection<Guid>>(),
+            It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -225,5 +230,19 @@ public class GetTeamScheduleQueryHandlerTests
 
         Assert.True(result.IsSuccess);
         Assert.Equal(new DateOnly(2026, 11, 2), result.Value!.Date);
+    }
+
+    [Fact]
+    public async Task Reports_of_reports_are_included_and_a_cycle_does_not_loop()
+    {
+        var skip = Guid.NewGuid();
+        var f = new Fixture();
+        f.People[skip] = new TeamPersonRow(skip, "Skip Level", null, true);
+        f.ReportsOf[Report] = [skip];
+        f.ReportsOf[skip] = [Manager, Report];   // bad data: a cycle back up the line
+
+        var result = await f.RunAsync();
+
+        Assert.Equal(new[] { Report, skip }.Order(), result.Value!.Members.Select(m => m.EmployeeId).Order());
     }
 }

@@ -4,7 +4,6 @@ using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.EmployeeAuthority.Models;
 using ONEVO.Application.Features.CoreHr.EmployeeAuthority.ServiceInterfaces;
-using ONEVO.Application.Features.CoreHr.EmployeeHierarchyClosure.RepositoryInterfaces;
 using ONEVO.Application.Features.Dashboard.Team.DTOs;
 using ONEVO.Application.Features.Monitoring.Exceptions.Services;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
@@ -25,7 +24,7 @@ public sealed class GetMyTeamCapabilitiesQueryHandler(
     IEmployeeAuthorityResolver authority,
     IModuleEntitlementService modules,
     IWorkLeadershipService workLeadership,
-    IEmployeeHierarchyClosureRepository hierarchy)
+    ONEVO.Application.Common.RepositoryInterfaces.IEmployeeRepository reportingLine)
     : IRequestHandler<GetMyTeamCapabilitiesQuery, Result<MyTeamCapabilitiesResponse>>
 {
     private const string AttendanceReadPermission = "attendance:read";
@@ -54,7 +53,8 @@ public sealed class GetMyTeamCapabilitiesQueryHandler(
 
         if (legalEntityId is Guid activeLegalEntityId)
         {
-            hasReports = (await hierarchy.GetDirectReportEmployeeIdsAsync(currentUser.TenantId, actor!.Id, ct)).Count > 0;
+            // The reporting line through the common repository, never the raw closure (My Team spec section 10 rule 1).
+            hasReports = (await reportingLine.ListDirectReportEmployeeIdsAsync(currentUser.TenantId, [actor!.Id], ct)).Count > 0;
 
             if (currentUser.HasPermission(AttendanceReadPermission))
             {
