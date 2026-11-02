@@ -398,6 +398,8 @@
 | D23 | Kind of existing categories | — | Backfilled once from the trimmed, case-insensitive name: bug / bugs / defect / defects → bug; story / stories / user story → story; feature / features / enhancement → feature; test / tests / testing / qa → testing; SystemKey `meeting` → meeting; onboarding / offboarding → checklist; **anything else → task**. New categories take a kind from the settings form, which defaults to the same inference. |
 | D24 | Who sets the kind | — | Project settings → categories editor: a **Type** select per category. System categories (meeting) show their type read-only. |
 
+**Amendment (2026-11-02, user decision):** a new category's kind is never inferred from its name. Create requires `kind` (one of the five user kinds; missing → 400 `invalid_category_kind`), and the Add row in the categories editor has its own Type select (default Task). System-created categories set their kind explicitly: the default template (task/bug/story/feature/meeting), the Meeting fallback in `MeetingTaskDefaults`, and the Office project's Onboarding/Offboarding (checklist) and Meeting (meeting). `TaskCategoryKinds.Infer` is removed; the D23 backfill stays only inside the already-written `AddTaskCategoryKind` migration.
+
 **Kind styles** (one frontend source of truth, `KIND_META`). **The user approved the final preview on 2026-10-29**: the week grid with typed blocks, split day headers, today tint, red Over, and a Task queue with Group by, type chips, kind tiles and Plan buttons.
 
 | Kind | Icon (inline SVG) | Colour |
