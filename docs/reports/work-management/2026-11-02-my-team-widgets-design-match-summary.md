@@ -244,3 +244,23 @@ None taken, and no demo Planner seed script written. Both wait for the browser p
 - Card tile icons are the closest shared icons, not the preview's.
 - Ranking stays the workload ranking. "Top performers %" is still your call.
 - The 140 px donut does not fit a 2x2 body (136 px). This also affects the existing Team Attendance reference card. To be confirmed in the browser pass.
+
+## Follow-up changes (same day, from your review of the popup and cards)
+
+| Change | Commits |
+|---|---|
+| Team Progress popup: Project breakdown is now a bar chart (allocated vs completed hours per project, one shared scale). | FE `7a01dcd0` |
+| Team Progress popup: Workload ranking spans two grid columns, so its table no longer scrolls sideways. | FE `7a01dcd0` |
+| Overdue tasks: the total overdue estimated hours sit on top, with a pie of overdue hours by project and a table of overdue tasks showing each task's allocated (estimated) hours. Card: the overdue panel title shows the total overdue hours and each row shows its task's hours ("—" without an estimate). | BE `343b723e`, FE `d31d8df3` |
+| Working / Break / Leave: the donut is in hours. The centre shows the team's total working hours, and the legend shows working, break and leave hours. In xs, an employee-by-employee working-hours breakdown (worked / break / leave on one bar) sits under the donut. | BE `6d34d51f`, FE `d07a4ff4` |
+
+- **New API fields:**
+  - `team/today` members: `LeaveMinutes`. It is the work window when on leave, and only where the viewer may see the leave. Masked leave adds 0.
+  - `led work progress`: `EstimatedHours` on each overdue task, plus `OverdueHours`, `OverdueUnestimatedTaskCount` and `OverdueByProject`.
+  - The handler now uses one grouped query for every overdue task, in place of the conditional count query.
+- **Overdue pie with a module filter:** the server totals are per project only. With a module filter, the pie and total cover the listed overdue tasks only, and the total is marked "(listed tasks)".
+- **Tests:**
+  - BE `verify.ps1 backend`: unit 7464/7464, architecture 755/755.
+  - Overdue integration tests: 4/4.
+  - FE: all dashboard specs 845/845 (81 files), check:warnings clean, ESLint 0.
+- **Not done:** browser check of these changes.
