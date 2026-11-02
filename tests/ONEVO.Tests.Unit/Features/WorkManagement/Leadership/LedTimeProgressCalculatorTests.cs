@@ -166,4 +166,48 @@ public sealed class LedTimeProgressCalculatorTests
         Assert.Null(LedTimeProgressCalculator.ExpectedMinutes(new HashSet<int> { 1 }, null, null, new HashSet<DateOnly>(), Monday,
             Monday.AddDays(6), new DateOnly(2020, 1, 1), null, new Dictionary<DateOnly, decimal?>()));
     }
+
+    // ---- Coverage audit (2026-10-29 plan, Task 12) ----
+
+    [Theory]
+    [InlineData(2026, 3, 31, 2026, 2, 28)]
+    [InlineData(2028, 3, 31, 2028, 2, 29)]
+    [InlineData(2026, 5, 31, 2026, 4, 30)]
+    [InlineData(2026, 8, 31, 2026, 7, 31)]
+    [InlineData(2026, 3, 1, 2026, 2, 1)]
+    public void Previous_month_same_elapsed_for_28_29_30_31_day_months(int y, int m, int d, int py, int pm, int pd)
+    {
+        var (from, to) = LedTimeProgressCalculator.PreviousSameElapsed(LedPeriod.Month, new DateOnly(y, m, 1), new DateOnly(y, m, d));
+
+        Assert.Equal((new DateOnly(py, pm, 1), new DateOnly(py, pm, pd)), (from, to));
+    }
+
+    [Fact]
+    public void Each_person_is_attributed_on_their_own_local_day()
+    {
+        // 02:00-03:00 on Wed 21 Oct in Colombo is Tue 20 Oct 20:30-21:30 UTC: the minutes land on Wednesday.
+        var colombo = TimeZoneInfo.FindSystemTimeZoneById("Asia/Colombo");
+        var ist = TimeSpan.FromHours(5.5);
+        var person = new LedTimePerson(Guid.NewGuid(), "Ada", colombo, null, [],
+            [new AttributionSession(TaskA, new DateTimeOffset(2026, 10, 21, 2, 0, 0, ist), new DateTimeOffset(2026, 10, 21, 3, 0, 0, ist))]);
+
+        var r = LedTimeProgressCalculator.Build(LedPeriod.Week, Monday, Monday.AddDays(6), Today, Now, true, [person],
+            new Dictionary<Guid, TeamTaskRow>());
+
+        Assert.Equal(60, r.Buckets[2].UnscheduledMinutes);
+        Assert.Equal(0, r.Buckets[1].UnscheduledMinutes);
+    }
+
+    [Fact]
+    public void Unscheduled_list_keeps_the_newest_200_and_counts_them_all()
+    {
+        var sessions = Enumerable.Range(0, 250)
+            .Select(i => new AttributionSession(Guid.NewGuid(), On(Monday, 0).AddMinutes(i * 5), On(Monday, 0).AddMinutes(i * 5 + 2)))
+            .ToArray();
+
+        var r = Week(Person("Ada", [], sessions));
+
+        Assert.Equal((200, 250), (r.Unscheduled.Count, r.UnscheduledTotal));
+        Assert.True(r.Unscheduled[0].Start > r.Unscheduled[^1].Start);
+    }
 }
