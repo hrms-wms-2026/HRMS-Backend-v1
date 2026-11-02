@@ -279,6 +279,39 @@ public sealed class GetCoveredTeamTodayQueryHandlerTests
     }
 
     [Fact]
+    public async Task Member_carries_expected_minutes_and_todays_breaks()
+    {
+        var f = CreateFixture();
+        var memberId = Guid.NewGuid();
+        var closedStart = DateTimeOffset.Parse("2026-09-30T06:00:00+00:00");
+        var openStart = UtcNow.AddMinutes(-10);
+        f.Authority.Setup(x => x.ResolveVisibilityAsync(It.IsAny<EmployeeAuthorityVisibilityRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new EmployeeAuthorityVisibilityScope(UserId, LegalEntityId, false, [memberId]));
+        f.Attendance.Setup(x => x.ListRecordsForDateAsync(TenantId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([new AttendanceRecord
+            {
+                Id = Guid.NewGuid(), TenantId = TenantId, EmployeeId = memberId,
+                ActualStart = DateTimeOffset.Parse("2026-09-30T04:00:00+00:00"), Status = AttendanceRecord.StatusOnTime,
+            }]);
+        f.Attendance.Setup(x => x.ListBreaksForEmployeesAsync(TenantId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<DateTimeOffset>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([
+                new BreakRecord { Id = Guid.NewGuid(), TenantId = TenantId, EmployeeId = memberId, BreakStart = openStart },
+                new BreakRecord { Id = Guid.NewGuid(), TenantId = TenantId, EmployeeId = memberId, BreakStart = closedStart, BreakEnd = closedStart.AddMinutes(15) },
+            ]);
+
+        var result = await f.Handler.Handle(new GetCoveredTeamTodayQuery(), CancellationToken.None);
+
+        var member = Assert.Single(result.Value!.Members);
+        Assert.Equal(510, member.ExpectedMinutes);   // fixture schedule 09:00-17:30
+        Assert.NotNull(member.Breaks);
+        Assert.Equal(2, member.Breaks!.Count);
+        Assert.Equal(closedStart, member.Breaks[0].Start);
+        Assert.Equal(closedStart.AddMinutes(15), member.Breaks[0].End);
+        Assert.Equal(openStart, member.Breaks[1].Start);
+        Assert.Null(member.Breaks[1].End);
+    }
+
+    [Fact]
     public async Task As_of_is_now()
     {
         var f = CreateFixture();

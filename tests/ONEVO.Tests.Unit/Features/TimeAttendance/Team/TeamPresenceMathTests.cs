@@ -87,4 +87,15 @@ public sealed class TeamPresenceMathTests
     [Fact]
     public void On_break_without_an_open_break_has_no_since()
         => Assert.Null(TeamPresenceMath.StateSince("on_break", Record(), [Break(60, 75)]));
+    [Theory]
+    [InlineData("working", "09:00", "17:00", 480)]
+    [InlineData("clocked_out", "09:00", "17:30", 510)]
+    [InlineData("on_leave", "09:00", "17:00", 0)]
+    [InlineData("working", "22:00", "06:00", 480)]
+    public void ExpectedMinutes_is_the_work_window(string status, string start, string end, int expected)
+        => Assert.Equal(expected, TeamPresenceMath.ExpectedMinutes(status, TimeOnly.Parse(start), TimeOnly.Parse(end)));
+
+    [Fact]
+    public void ExpectedMinutes_is_null_without_working_hours()
+        => Assert.Null(TeamPresenceMath.ExpectedMinutes("working", null, TimeOnly.Parse("17:00")));
 }

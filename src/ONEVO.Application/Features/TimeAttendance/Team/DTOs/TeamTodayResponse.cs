@@ -28,6 +28,8 @@ public sealed record TeamTodaySummary(
 /// <param name="BreakRemainingMinutes">On break with a configured allowance only.</param>
 /// <param name="ShiftEndsAt">Working or on break with a scheduled end only.</param>
 /// <param name="AttendanceMinutes">PlannerActuals.AttendanceMinutes of today's record; 0 without one.</param>
+/// <param name="ExpectedMinutes">The legal entity's work window for the date; 0 on leave, null without working hours.</param>
+/// <param name="Breaks">Today's break intervals ordered by start; an open break has a null End.</param>
 public sealed record TeamTodayMember(
     Guid EmployeeId,
     string DisplayName,
@@ -45,7 +47,11 @@ public sealed record TeamTodayMember(
     DateTimeOffset? StateSince = null,
     int? BreakRemainingMinutes = null,
     DateTimeOffset? ShiftEndsAt = null,
-    int AttendanceMinutes = 0);
+    int AttendanceMinutes = 0,
+    int? ExpectedMinutes = null,
+    IReadOnlyList<TeamTodayBreak>? Breaks = null);
+
+public sealed record TeamTodayBreak(DateTimeOffset Start, DateTimeOffset? End);
 
 /// <summary>Present only when the mapper's ShowLeaveDetail is true - i.e. only for a subject the
 /// caller is Leave-authorized for (spec §8.1.2 rule 5 / D6 masking).</summary>

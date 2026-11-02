@@ -31,4 +31,16 @@ public static class TeamPresenceMath
         var local = workDate.ToDateTime(endTime);
         return new DateTimeOffset(local, zone.GetUtcOffset(local));
     }
+
+    /// <summary>The work window in whole minutes: 0 on leave, null without a configured start or end. An end before the
+    /// start wraps past midnight.</summary>
+    public static int? ExpectedMinutes(string teamStatus, TimeOnly? start, TimeOnly? end)
+    {
+        if (teamStatus == "on_leave")
+            return 0;
+        if (start is not { } from || end is not { } to)
+            return null;
+        var span = to - from;   // TimeOnly subtraction already wraps past midnight
+        return (int)span.TotalMinutes;
+    }
 }
