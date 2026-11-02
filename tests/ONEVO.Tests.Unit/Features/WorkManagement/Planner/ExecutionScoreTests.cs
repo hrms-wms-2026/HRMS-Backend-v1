@@ -85,4 +85,47 @@ public class ExecutionScoreTests
 
         Assert.Equal(new[] { "Top", "Bob", "Amy", "Zoe", "Absent", "Unranked" }, ranked.Select(r => r.Name));
     }
+
+    // ---- Coverage audit (2026-10-29 plan, Task 12) ----
+
+    [Theory]
+    [InlineData(0, 0, null)]
+    [InlineData(1, 0, 0.0)]
+    [InlineData(1, 1, 100.0)]
+    public void Due_items_zero_and_one(int due, int done, double? expected)
+    {
+        var r = ExecutionScore.Compute(due, done, 60, 60, false, true);
+
+        Assert.Equal(expected is null ? null : (decimal)expected, r.ItemCompletionPercent);
+    }
+
+    [Theory]
+    [InlineData(0, 0, null)]
+    [InlineData(1, 0, 0.0)]
+    [InlineData(1, 1, 100.0)]
+    public void Planned_minutes_zero_and_one(int planned, int scheduled, double? expected)
+    {
+        var r = ExecutionScore.Compute(1, 1, planned, scheduled, false, true);
+
+        Assert.Equal(expected is null ? null : (decimal)expected, r.TimeCoveragePercent);
+    }
+
+    [Theory]
+    [InlineData(100, 100)]
+    [InlineData(101, 100)]
+    [InlineData(99, 99)]
+    public void Coverage_exactly_100_and_101_caps_at_100(int scheduled, double expected)
+        => Assert.Equal((decimal)expected, ExecutionScore.Compute(1, 1, 100, scheduled, false, true).TimeCoveragePercent);
+
+    [Fact]
+    public void Percentages_round_half_away_from_zero()
+    {
+        // item 1/16 = 6.25 -> 6.3
+        Assert.Equal(6.3m, ExecutionScore.Compute(16, 1, 60, 60, false, true).ItemCompletionPercent);
+        // item 1/8 = 12.5, time 25: 0.6 x 12.5 + 0.4 x 25 = 17.5
+        Assert.Equal(17.5m, ExecutionScore.Compute(8, 1, 200, 50, false, true).Score);
+        // item 1/3: shown 33.3; score from the unrounded part: 0.6 x 33.33 + 0.4 x 100 = 60.0
+        var third = ExecutionScore.Compute(3, 1, 60, 60, false, true);
+        Assert.Equal((33.3m, 60.0m), (third.ItemCompletionPercent, third.Score));
+    }
 }
