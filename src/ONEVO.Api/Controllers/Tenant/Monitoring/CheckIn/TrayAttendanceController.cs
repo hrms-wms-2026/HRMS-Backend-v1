@@ -8,6 +8,7 @@ using ONEVO.Application.Features.Monitoring.CheckIn.Commands.TrayClockOut;
 using ONEVO.Application.Features.Monitoring.CheckIn.Commands.TrayEndBreak;
 using ONEVO.Application.Features.Monitoring.CheckIn.Commands.TrayStartBreak;
 using ONEVO.Application.Features.Monitoring.CheckIn.Queries.GetTrayAttendanceStatus;
+using ONEVO.Application.Features.Monitoring.CheckIn.Queries.GetTrayDailyTasks;
 
 /// <summary>
 /// Tray-authenticated attendance actions. Authorization: Bearer {tray_access_token}.
@@ -29,6 +30,18 @@ public sealed class TrayAttendanceController : ControllerBase
     public async Task<IActionResult> GetAttendanceStatus(CancellationToken ct)
     {
         var result = await _mediator.Send(new GetTrayAttendanceStatusQuery(), ct);
+        if (!result.IsSuccess)
+            return Problem(result.Error, statusCode: result.StatusCode ?? 400);
+        return Ok(result.Value);
+    }
+
+    /// <summary>Tasks the employee clocked in on today, for the tray Daily Summary.</summary>
+    [HttpGet("daily-tasks")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> GetDailyTasks(CancellationToken ct)
+    {
+        var result = await _mediator.Send(new GetTrayDailyTasksQuery(), ct);
         if (!result.IsSuccess)
             return Problem(result.Error, statusCode: result.StatusCode ?? 400);
         return Ok(result.Value);
