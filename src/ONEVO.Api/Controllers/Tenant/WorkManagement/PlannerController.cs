@@ -32,6 +32,13 @@ public sealed class PlannerController : ControllerBase
     public async Task<IActionResult> TeamDay([FromQuery] DateOnly? date, CancellationToken ct)
         => Respond(await _mediator.Send(new GetTeamScheduleQuery(date), ct));
 
+    /// <summary>Team week planned vs actual (My Team widgets design match, 2026-11-02): the same population and gate as
+    /// <see cref="TeamDay"/>, each person on their own local days. weekStart must be a Monday; plannerEnabled = false keeps
+    /// clocked minutes.</summary>
+    [HttpGet("team/week")]
+    public async Task<IActionResult> TeamWeek([FromQuery] DateOnly? weekStart, CancellationToken ct)
+        => Respond(await _mediator.Send(new GetTeamScheduleWeekQuery(weekStart), ct));
+
     [HttpPost("me/blocks")]
     public async Task<IActionResult> CreateBlock([FromBody] CreatePlannedBlockRequest request, CancellationToken ct)
         => Respond(await _mediator.Send(new CreatePlannedBlockCommand(request), ct));

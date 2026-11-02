@@ -45,12 +45,12 @@ public sealed class GetTeamScheduleQueryHandler(
         var now = clock.UtcNow;
         var plannerEnabled = options.Value.Enabled;
 
-        var callerZone = Zone((await teamTime.GetTimezonesAsync(tenantId, [callerId], ct)).GetValueOrDefault(callerId));
-        var callerToday = TodayIn(callerZone.Info, now);
+        var callerZone = TeamSchedulePopulation.ZoneOf((await teamTime.GetTimezonesAsync(tenantId, [callerId], ct)).GetValueOrDefault(callerId));
+        var callerToday = TeamSchedulePopulation.TodayIn(callerZone.Info, now);
         if (query.Date is { } requested && requested > callerToday)
             return Result<TeamScheduleResponse>.Failure("Only today and earlier days can be shown.", 400, PlannerErrorCodes.NotToday);
 
-        var descendants = await TransitiveReportsAsync(tenantId, callerId, ct);
+        var descendants = await TeamSchedulePopulation.TransitiveReportsAsync(employees, tenantId, callerId, ct);
         var people = await teamTime.GetPeopleAsync(tenantId, descendants, ct);
         var reports = descendants.Where(id => people.GetValueOrDefault(id)?.IsActive == true).ToList();
         if (reports.Count == 0)
@@ -62,8 +62,8 @@ public sealed class GetTeamScheduleQueryHandler(
         var zoneIds = await teamTime.GetTimezonesAsync(tenantId, reports, ct);
         var days = reports.ToDictionary(id => id, id =>
         {
-            var zone = Zone(zoneIds.GetValueOrDefault(id));
-            var bounds = PlannerActuals.DayBounds(query.Date ?? TodayIn(zone.Info, now), zone.Info);
+            var zone = TeamSchedulePopulation.ZoneOf(zoneIds.GetValueOrDefault(id));
+            var bounds = PlannerActuals.DayBounds(query.Date ?? TeamSchedulePopulation.TodayIn(zone.Info, now), zone.Info);
             return (Zone: zone, bounds.Start, bounds.End);
         });
         var from = days.Values.Min(d => d.Start);
@@ -93,23 +93,6 @@ public sealed class GetTeamScheduleQueryHandler(
             TeamScheduleComposer.Summarize(ranked), ranked));
     }
 
-    /// <summary>Everyone below the caller in the reporting line, one batched read per level. Through the common employee
-    /// repository: WorkManagement may never reference the raw coverage tables (My Team spec section 10, enforced by
-    /// MyTeamBoundaryArchitectureTests). The seen set stops a cycle in bad data from looping.</summary>
-    private async Task<List<Guid>> TransitiveReportsAsync(Guid tenantId, Guid callerId, CancellationToken ct)
-    {
-        var seen = new HashSet<Guid> { callerId };
-        var result = new List<Guid>();
-        IReadOnlyCollection<Guid> level = [callerId];
-        while (level.Count > 0)
-        {
-            var next = (await employees.ListDirectReportEmployeeIdsAsync(tenantId, level, ct)).Where(seen.Add).ToList();
-            result.AddRange(next);
-            level = next;
-        }
-        return result;
-    }
-
     /// <summary>Team Status per covered person (status, work window, breaks), today only; nothing without attendance:read.</summary>
     private async Task<IReadOnlyDictionary<Guid, TeamPresence>> PresenceAsync(bool today, CancellationToken ct)
     {
@@ -121,12 +104,4 @@ public sealed class GetTeamScheduleQueryHandler(
                 (m.Breaks ?? []).Select(b => new TeamScheduleBreak(b.Start, b.End)).ToList()))
             : new Dictionary<Guid, TeamPresence>();
     }
-
-    private readonly record struct ZoneInfo(string Id, TimeZoneInfo Info);
-
-    /// <summary>An unknown zone id reads in UTC instead of failing, like PlannerService.</summary>
-    private static ZoneInfo Zone(string? id)
-        => id is not null && TimeZoneInfo.TryFindSystemTimeZoneById(id, out var info) ? new ZoneInfo(id, info) : new ZoneInfo("UTC", TimeZoneInfo.Utc);
-
-    private static DateOnly TodayIn(TimeZoneInfo zone, DateTimeOffset now) => DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(now, zone).DateTime);
 }
