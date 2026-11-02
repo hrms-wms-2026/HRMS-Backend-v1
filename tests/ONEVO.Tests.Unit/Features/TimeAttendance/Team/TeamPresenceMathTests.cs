@@ -66,4 +66,25 @@ public sealed class TeamPresenceMathTests
             TeamPresenceMath.ScheduledEnd(new DateOnly(2026, 9, 30), new TimeOnly(17, 30), zone));
         Assert.Null(TeamPresenceMath.ScheduledEnd(new DateOnly(2026, 9, 30), null, zone));
     }
+
+    // ---- Coverage audit (2026-10-29 plan, Task 12) ----
+
+    [Theory]
+    [InlineData(29, 1)]
+    [InlineData(30, 0)]
+    [InlineData(31, 0)]
+    public void Break_remaining_around_the_allowance(int used, int expected)
+        => Assert.Equal(expected, TeamPresenceMath.BreakRemainingMinutes("on_break", 30, used));
+
+    [Fact]
+    public void Clocked_out_has_no_since_no_remaining_and_no_shift_end()
+    {
+        Assert.Null(TeamPresenceMath.StateSince("clocked_out", Record(), []));
+        Assert.Null(TeamPresenceMath.BreakRemainingMinutes("clocked_out", 30, 0));
+        Assert.Null(TeamPresenceMath.ShiftEndsAt("clocked_out", ClockIn.AddHours(8)));
+    }
+
+    [Fact]
+    public void On_break_without_an_open_break_has_no_since()
+        => Assert.Null(TeamPresenceMath.StateSince("on_break", Record(), [Break(60, 75)]));
 }
