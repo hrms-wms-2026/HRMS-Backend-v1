@@ -188,4 +188,98 @@ public sealed class TeamTimeReadRepositoryTests
         Assert.Empty(await repo.ListSessionsForTasksAsync(h.TenantId, [otherObjective], DayStart, DayEnd));
         Assert.Empty(await repo.GetTimezonesAsync(h.TenantId, [otherEmployee]));
     }
+
+    // ---- Coverage audit (2026-10-29 plan, Task 12) ----
+
+    [Fact]
+    public async Task People_have_a_name_the_active_flag_and_stay_inside_the_tenant()
+    {
+        var h = await MyTeamDb.CreateAsync();
+        var other = await h.AddTenantAsync();
+        Guid active, terminated, foreign;
+        await using (var db = h.NewContext())
+        {
+            var a = h.AddEmployee(db, lastName: "Lovelace");
+            a.FirstName = "Ada";
+            var t = h.AddEmployee(db);
+            t.EmploymentStatusId = ONEVO.Domain.Lookups.EmploymentStatusIds.Terminated;
+            (active, terminated) = (a.Id, t.Id);
+            await db.SaveChangesAsync();
+        }
+        await using (var db = other.NewContext())
+        {
+            foreign = other.AddEmployee(db).Id;
+            await db.SaveChangesAsync();
+        }
+
+        await using var read = h.NewTenantContext();
+        var people = await new EfTeamTimeReadRepository(read).GetPeopleAsync(h.TenantId, [active, terminated, foreign]);
+
+        Assert.Equal(("Ada Lovelace", true), (people[active].DisplayName, people[active].IsActive));
+        Assert.False(people[terminated].IsActive);
+        Assert.False(people.ContainsKey(foreign));
+    }
+
+    [Fact]
+    public async Task Assignees_for_tasks_cover_subtasks_and_skip_other_modules_and_deleted_tasks()
+    {
+        var h = await MyTeamDb.CreateAsync();
+        Guid onParent, onChild, onDeleted, elsewhere;
+        MeetingPlacement at;
+        await using (var db = h.NewContext())
+        {
+            at = h.AddPlacement(db);
+            var outside = h.AddModule(db, at.ProjectId, at.ObjectiveId, at.OrganizerEmployeeId);
+            onParent = h.AddEmployee(db).Id;
+            onChild = h.AddEmployee(db).Id;
+            onDeleted = h.AddEmployee(db).Id;
+            elsewhere = h.AddEmployee(db).Id;
+            var parent = h.AddTask(db, at.ProjectId, at.ObjectiveId, at.StatusId, progress: 0, due: null, assigneeEmployeeId: onParent);
+            h.AddTask(db, at.ProjectId, at.ObjectiveId, at.StatusId, progress: 0, due: null, parentTaskId: parent.Id, assigneeEmployeeId: onChild);
+            var gone = h.AddTask(db, at.ProjectId, at.ObjectiveId, at.StatusId, progress: 0, due: null, assigneeEmployeeId: onDeleted);
+            gone.IsDeleted = true;
+            h.AddTask(db, at.ProjectId, outside, at.StatusId, progress: 0, due: null, assigneeEmployeeId: elsewhere);
+            await db.SaveChangesAsync();
+        }
+
+        await using var read = h.NewTenantContext();
+        var assignees = await new EfTeamTimeReadRepository(read).ListAssigneesForTasksAsync(h.TenantId, [at.ObjectiveId]);
+
+        Assert.Equal(new[] { onParent, onChild }.Order(), assignees.Order());
+    }
+
+    [Fact]
+    public async Task An_organizer_is_never_declined_even_with_a_rejected_rsvp()
+    {
+        var h = await MyTeamDb.CreateAsync();
+        Guid organizer;
+        await using (var db = h.NewContext())
+        {
+            var at = h.AddPlacement(db);
+            organizer = at.OrganizerEmployeeId;
+            var series = h.AddSeries(db, at, DayStart.AddHours(9));
+            h.AddOccurrence(db, series, at);
+            h.AddSeriesParticipant(db, series, organizer, CalendarEventParticipantStatuses.Rejected);
+            await db.SaveChangesAsync();
+        }
+
+        await using var read = h.NewTenantContext();
+        var batched = await new EfMeetingRepository(read).ListEmployeesDayMeetingsAsync(h.TenantId, [organizer], DayStart, DayEnd);
+
+        Assert.False(Assert.Single(batched[organizer]).Declined);
+    }
+
+    [Fact]
+    public async Task Empty_id_sets_read_nothing()
+    {
+        var h = await MyTeamDb.CreateAsync();
+        await using var read = h.NewTenantContext();
+        var repo = new EfTeamTimeReadRepository(read);
+
+        Assert.Empty(await repo.ListBlocksForEmployeesAsync(h.TenantId, [], DayStart, DayEnd));
+        Assert.Empty(await repo.ListSessionsForTasksAsync(h.TenantId, [], DayStart, DayEnd));
+        Assert.Empty(await repo.ListAssigneesForTasksAsync(h.TenantId, []));
+        Assert.Empty(await repo.GetPeopleAsync(h.TenantId, []));
+        Assert.Empty(await new EfMeetingRepository(read).ListEmployeesDayMeetingsAsync(h.TenantId, [], DayStart, DayEnd));
+    }
 }
