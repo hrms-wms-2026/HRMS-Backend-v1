@@ -65,7 +65,12 @@ public sealed record TaskProgressRow(
 
 /// <summary>One overdue top-level task for My Team's Team Progress overdue list, with its
 /// assignees.</summary>
-public sealed record LedOverdueTaskRow(Guid TaskId, string ShortId, string Title, Guid ProjectId, Guid ObjectiveId, DateOnly DueDate, IReadOnlyList<Guid> AssigneeEmployeeIds);
+public sealed record LedOverdueTaskRow(Guid TaskId, string ShortId, string Title, Guid ProjectId, Guid ObjectiveId, DateOnly DueDate, IReadOnlyList<Guid> AssigneeEmployeeIds,
+    decimal? EstimatedHours = null);
+
+/// <summary>Every top-level overdue task of a project, summed: how many, their estimated hours, and how many have no
+/// estimate (they add no hours).</summary>
+public sealed record LedOverdueProjectRow(Guid ProjectId, int TaskCount, decimal EstimatedHours, int UnestimatedTaskCount);
 
 /// <summary>An employee's assigned task with its project and status, for the Work & Activity
 /// Needs attention and Recent tasks cards.</summary>
@@ -188,6 +193,10 @@ public interface IWorkTaskRepository
 
     /// <summary>How many tasks ListTopLevelOverdueAsync would return without a limit.</summary>
     Task<int> CountTopLevelOverdueAsync(Guid tenantId, IReadOnlyCollection<Guid> objectiveIds, DateOnly today, CancellationToken ct = default);
+
+    /// <summary>The tasks ListTopLevelOverdueAsync would return without a limit, grouped by project: one query.</summary>
+    Task<IReadOnlyList<LedOverdueProjectRow>> ListTopLevelOverdueByProjectAsync(Guid tenantId, IReadOnlyCollection<Guid> objectiveIds,
+        DateOnly today, CancellationToken ct = default);
 
     void Update(WorkTask task);
     void Remove(WorkTask task);

@@ -1,4 +1,5 @@
 using FluentAssertions;
+using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
 using ONEVO.Infrastructure.Persistence.Repositories.WorkManagement;
 using Xunit;
 
@@ -64,6 +65,10 @@ public sealed class WorkLeadershipRepositoryIntegrationTests
         overdue.Should().ContainSingle().Which.TaskId.Should().Be(topOverdueTaskId);
         overdue[0].AssigneeEmployeeIds.Should().Equal(strangerId);
         (await tasks.CountTopLevelOverdueAsync(helper.TenantId, new[] { moduleId, subId }, today)).Should().Be(1);
+        overdue[0].EstimatedHours.Should().BeNull("the seed gives it no estimate");
+        var byProject = await tasks.ListTopLevelOverdueByProjectAsync(helper.TenantId, new[] { moduleId, subId }, today);
+        byProject.Should().ContainSingle().Which.Should().Be(new LedOverdueProjectRow(projectId, 1, 0m, 1),
+            "one overdue top-level task with no estimate; the subtask and the completed task are excluded");
 
         var summaries = await new EfModuleHourSummaryRepository(read).ListByObjectiveIdsAsync(helper.TenantId, new[] { moduleId, subId });
         ((summaries.GetValueOrDefault(moduleId)?.TaskCount ?? 0) + (summaries.GetValueOrDefault(subId)?.TaskCount ?? 0))

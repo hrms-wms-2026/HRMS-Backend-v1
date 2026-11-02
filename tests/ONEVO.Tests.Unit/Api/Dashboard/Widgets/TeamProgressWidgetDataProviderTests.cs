@@ -37,8 +37,8 @@ public sealed class TeamProgressWidgetDataProviderTests
             [new LedProjectProgress(projectId, "Website", "WEB", hours,
                 [new LedModuleProgress(objectiveId, "Launch", true, new DateOnly(2026, 11, 1), null, 0, true, hours)])],
             [new LedOverdueTask(Guid.NewGuid(), "WEB-3", "Fix", projectId, objectiveId, new DateOnly(2026, 10, 18), 2,
-                [new LedTaskAssignee(Guid.NewGuid(), "Ada Lovelace")])],
-            1, 1);
+                [new LedTaskAssignee(Guid.NewGuid(), "Ada Lovelace")], 3m)],
+            1, 1, 3m, 0, [new LedOverdueProject(projectId, "Website", 3m, 1, 0)]);
         kit.Mediator.Setup(m => m.Send(It.IsAny<GetLedWorkProgressQuery>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result<LedWorkProgressResponse>.Success(response));
 

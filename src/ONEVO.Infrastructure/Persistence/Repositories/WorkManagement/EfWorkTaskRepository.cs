@@ -336,7 +336,7 @@ public class EfWorkTaskRepository : IWorkTaskRepository
                 && !s.MarksTaskComplete && t.ProgressPercent < 100
                 && t.DueDate != null && t.DueDate < today
             orderby t.DueDate, t.ShortId
-            select new { t.Id, t.ShortId, t.Title, t.ProjectId, t.ObjectiveId, DueDate = t.DueDate!.Value }
+            select new { t.Id, t.ShortId, t.Title, t.ProjectId, t.ObjectiveId, DueDate = t.DueDate!.Value, t.EstimatedHours }
         ).Take(take).ToListAsync(ct);
 
         var taskIds = rows.Select(r => r.Id).ToList();
@@ -348,7 +348,32 @@ public class EfWorkTaskRepository : IWorkTaskRepository
 
         return rows.Select(r => new LedOverdueTaskRow(
             r.Id, r.ShortId, r.Title, r.ProjectId, r.ObjectiveId, r.DueDate,
-            assignees.TryGetValue(r.Id, out var assigneeIds) ? assigneeIds : new List<Guid>())).ToList();
+            assignees.TryGetValue(r.Id, out var assigneeIds) ? assigneeIds : new List<Guid>(), r.EstimatedHours)).ToList();
+    }
+
+    public async Task<IReadOnlyList<LedOverdueProjectRow>> ListTopLevelOverdueByProjectAsync(Guid tenantId,
+        IReadOnlyCollection<Guid> objectiveIds, DateOnly today, CancellationToken ct = default)
+    {
+        if (objectiveIds.Count == 0)
+            return Array.Empty<LedOverdueProjectRow>();
+        var ids = objectiveIds.ToList();
+        // The same predicate as ListTopLevelOverdueAsync, summed per project in the database.
+        var rows = await (
+            from t in _db.WorkTasks.AsNoTracking()
+            join s in _db.TaskStatuses.AsNoTracking() on t.StatusId equals s.Id
+            where t.TenantId == tenantId && t.ParentTaskId == null && ids.Contains(t.ObjectiveId)
+                && !s.MarksTaskComplete && t.ProgressPercent < 100
+                && t.DueDate != null && t.DueDate < today
+            group t by t.ProjectId into g
+            select new
+            {
+                ProjectId = g.Key,
+                TaskCount = g.Count(),
+                Hours = g.Sum(t => t.EstimatedHours ?? 0m),
+                Unestimated = g.Count(t => t.EstimatedHours == null),
+            }
+        ).ToListAsync(ct);
+        return rows.Select(r => new LedOverdueProjectRow(r.ProjectId, r.TaskCount, r.Hours, r.Unestimated)).ToList();
     }
 
     public async Task<int> CountTopLevelOverdueAsync(Guid tenantId, IReadOnlyCollection<Guid> objectiveIds, DateOnly today, CancellationToken ct = default)
