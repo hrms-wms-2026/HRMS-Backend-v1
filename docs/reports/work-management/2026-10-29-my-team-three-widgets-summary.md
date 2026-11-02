@@ -2,7 +2,7 @@
 
 **Built:** 2026-10-29 to 2026-11-02 on `feature/my-team-three-widgets` in both repos (local, not pushed).
 **Plan:** `docs/superpowers/plans/next/2026-10-29-my-team-three-widgets.md` · **Design:** `docs/superpowers/specs/next/2026-10-29-my-team-three-widgets-design.md`
-**Status:** code, unit, architecture and frontend gates green. Still open: the integration suite (Docker was down), the Team Progress month timing on dapi, and the browser pass. Plan and spec stay in `next/` until you sign off in the browser.
+**Status:** every gate is green, including the full integration suite, and the Team Progress month timing passes the 500 ms gate. Only your browser pass is left. Plan and spec stay in `next/` until you sign off in the browser.
 
 ## 1. What shipped
 
@@ -101,7 +101,14 @@ Modified:
 
 - **Tables created:** none. **Migrations to apply:** none.
 - **Index:** not added. I did not run `EXPLAIN` on dapi's `planned_task_blocks`; block reads by task join through `tasks` and use the existing `task_id` FK index.
-- **Team Progress month timing (Task 8 Step 6):** **not measured.** It needs the API running against dapi, which only you start. To take it: restart the API, then time `GET /api/v1/work/led-progress/time?period=month` about 20 times as a module lead and take the 95th percentile. Over 500 ms → report it before adding anything (spec §7).
+- **Team Progress month timing (Task 8 Step 6), measured 2026-11-02 on dapi** (local API, Release test build stopped first). Called from the signed-in browser: 2 warm-up calls, then 20 timed calls each.
+
+  | Request | p50 | p95 | max | Team size |
+  |---|---|---|---|---|
+  | `GET work/led-progress/time?period=month` | 165 ms | **181 ms** | 202 ms | 25 people |
+  | `GET work/led-progress/time?period=week` | 149 ms | **162 ms** | 191 ms | 25 people |
+
+  Well under the 500 ms gate (spec §7), so no summary table is needed. **Caveat:** on dapi the Planner is off and there are no clocked sessions in October or November. The timing therefore covers scope resolution, the people set and capacity (employees, legal entities, holidays, leave), but not heavy block or session volume. Measure again once real clocking data exists.
 
 ## 7. Test runs (real counts)
 
@@ -111,7 +118,7 @@ Modified:
 | `verify.ps1 backend` (first full run, before the fix) | unit 7427 / 0 · architecture **753 passed, 2 failed** — see section 8 |
 | Targeted `verify.ps1 backend -Filter …` during Tasks 1–8 and 12 | 8/8, 702/702, 711/711, 8/8, 44/44, 249/249, 197/197, 98/98 — all passed |
 | `dotnet test` integration, filter `TeamTimeReadRepository\|Planner` (2026-10-29, Docker up) | **23 passed**, 0 failed |
-| Integration suite on 2026-11-02 | **not run**: Docker Desktop was not running, so the 30 filtered tests failed to connect. This includes the 4 new audit tests, which compile but have never run. |
+| Full integration suite, `dotnet test tests/ONEVO.Tests.Integration -c Release` (2026-11-02, Docker up) | **924 passed, 0 failed, 1 skipped** of 925 (35 min). The skip is the existing `NotificationReleaseSmokeTests`, which needs a database copy; it is not from this branch. Includes the new `TeamTimeReadRepositoryTests` and the updated `MyTeamCapabilitiesIntegrationTests`. |
 | `verify.ps1 frontend` | build-clean PASS ("no warnings, no errors") · unit **5146 passed (5146)** |
 | `npm run check:warnings` after Tasks 9, 10 and 11 | clean each time |
 | `npx eslint` on every changed `.ts` / `.html` file | 0 errors, 0 warnings |
@@ -159,4 +166,4 @@ Pre-existing failures: none in any suite I ran.
 6. **Leave display:** a leave row shows type and end date only where Team Status already sends them (leave-authorized viewers). Half-day leave can't be told apart, because the payload has no interval.
 7. **Working / Break / Leave member table:** limited to the 50 members `team/today` returns. The popup says "showing 50 of N"; the counts cover everyone.
 8. **Links to time tracking:** the old Team Status card linked each person and "View team" to the time-tracking page; the new card opens its popup instead. Add the links back if they are missed.
-9. **Still to do:** run the integration suite with Docker; measure the Team Progress month timing (section 6); do the browser pass at 2×2, medium and large plus each popup, with the Planner on and off, on dapi.onexso.com:4200 with you signed in. Then move the plan and spec to `finished/`.
+9. **Still to do:** the browser pass at 2×2, medium and large plus each popup, with the Planner on and off, on dapi.onexso.com:4200 with you signed in. Then move the plan and spec to `finished/`.
