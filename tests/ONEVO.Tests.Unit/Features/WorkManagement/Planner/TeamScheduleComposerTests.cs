@@ -150,4 +150,27 @@ public class TeamScheduleComposerTests
 
         Assert.Equal(new[] { ("Zed", (int?)1), ("Amy", 2), ("Bea", null) }, ranked.Select(r => (r.DisplayName, r.Rank)));
     }
+
+    // ---- Coverage audit (2026-10-29 plan, Task 12) ----
+
+    [Fact]
+    public void A_declined_meeting_is_absent_and_counts_nowhere()
+    {
+        var declined = Meeting(10, 11, "Board") with { Declined = true };
+
+        var m = Compose([], [], [declined]);
+
+        Assert.Empty(m.Items);
+        Assert.Equal(0, m.PlannedMeetingMinutes);
+        Assert.Equal(0, TeamScheduleComposer.Summarize([m]).Meetings);
+    }
+
+    [Fact]
+    public void A_private_meeting_title_never_reaches_any_field()
+    {
+        var m = Compose([Block(A, 10, 11)], [], [Meeting(10, 11, "Salary review", isPrivate: true)]);
+
+        var everything = string.Join("|", m.Items.Select(i => i.Title).Concat(m.Conflicts.SelectMany(c => new[] { c.FirstTitle, c.SecondTitle })));
+        Assert.DoesNotContain("Salary", everything);
+    }
 }

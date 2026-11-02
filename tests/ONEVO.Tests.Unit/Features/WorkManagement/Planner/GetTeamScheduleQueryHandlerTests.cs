@@ -188,4 +188,42 @@ public class GetTeamScheduleQueryHandlerTests
 
         Assert.Equal(404, result.StatusCode);
     }
+
+    // ---- Coverage audit (2026-10-29 plan, Task 12) ----
+
+    [Fact]
+    public async Task Every_read_is_for_the_callers_tenant_only()
+    {
+        var f = new Fixture();
+
+        await f.RunAsync();
+
+        f.TeamTime.Verify(x => x.ListSessionsForEmployeesAsync(It.Is<Guid>(t => t != TenantId), It.IsAny<IReadOnlyCollection<Guid>>(),
+            It.IsAny<DateTimeOffset>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()), Times.Never);
+        f.TeamTime.Verify(x => x.ListBlocksForEmployeesAsync(It.Is<Guid>(t => t != TenantId), It.IsAny<IReadOnlyCollection<Guid>>(),
+            It.IsAny<DateTimeOffset>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()), Times.Never);
+        f.Meetings.Verify(x => x.ListEmployeesDayMeetingsAsync(It.Is<Guid>(t => t != TenantId), It.IsAny<IReadOnlyCollection<Guid>>(),
+            It.IsAny<DateTimeOffset>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()), Times.Never);
+        f.Hierarchy.Verify(x => x.GetDescendantEmployeeIdsAsync(TenantId, Manager, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task The_caller_never_appears_in_their_own_team()
+    {
+        var f = new Fixture { Descendants = [Manager, Report] };
+        f.People[Manager] = new TeamPersonRow(Manager, "Me", null, true);
+
+        var result = await f.RunAsync();
+
+        Assert.DoesNotContain(result.Value!.Members, m => m.EmployeeId == Manager);
+    }
+
+    [Fact]
+    public async Task Today_is_allowed_by_date_too()
+    {
+        var result = await new Fixture().RunAsync(new DateOnly(2026, 11, 2));
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(new DateOnly(2026, 11, 2), result.Value!.Date);
+    }
 }
