@@ -19,7 +19,7 @@ public sealed class TeamScheduleWidgetDataProviderTests
         var response = new TeamScheduleResponse(new DateOnly(2026, 11, 2), false, new DateTimeOffset(2026, 11, 2, 6, 0, 0, TimeSpan.Zero),
             new TeamScheduleSummary(1, 0, 0, 0, 0, 1, 0, 0, 0),
             [new TeamScheduleMember(Guid.NewGuid(), "Ada Lovelace", null, "Asia/Colombo", "working", 0, 30, 45, 0, 0, 0,
-                null, null, null, "planner_off", null, [], [], [])]);
+                null, null, null, "planner_off", null, [], [], [], 480, [])]);
         kit.Mediator.Setup(m => m.Send(It.IsAny<GetTeamScheduleQuery>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result<TeamScheduleResponse>.Success(response));
 

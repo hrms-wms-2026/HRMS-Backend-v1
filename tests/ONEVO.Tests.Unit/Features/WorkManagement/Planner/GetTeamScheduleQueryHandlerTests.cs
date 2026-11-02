@@ -182,6 +182,62 @@ public class GetTeamScheduleQueryHandlerTests
         Assert.Equal("working", Assert.Single(result.Value!.Members).PresenceStatus);
     }
 
+    private static void PresenceWithBreaks(Fixture f)
+    {
+        var breaks = new List<TeamTodayBreak>
+        {
+            new(Now.AddHours(-3), Now.AddHours(-3).AddMinutes(15)),
+            new(Now.AddMinutes(-10), null),
+        };
+        f.Mediator.Setup(x => x.Send(It.IsAny<GetCoveredTeamTodayQuery>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<TeamTodayResponse>.Success(new TeamTodayResponse(new DateOnly(2026, 11, 2), "Asia/Colombo", Guid.NewGuid(),
+                new TeamTodaySummary(1, 0, 1, 0, 0, 0, 0, 0, 0, 0),
+                [new TeamTodayMember(Report, "Priya K", null, null, "on_break", "On break", false, null, null, null, null, null, null,
+                    ExpectedMinutes: 480, Breaks: breaks)], 1, Now)));
+    }
+
+    [Fact]
+    public async Task Today_members_carry_breaks_and_expected_minutes_from_presence()
+    {
+        var f = new Fixture();
+        f.User.Setup(x => x.HasPermission("attendance:read")).Returns(true);
+        PresenceWithBreaks(f);
+
+        var member = Assert.Single((await f.RunAsync()).Value!.Members);
+
+        Assert.Equal("on_break", member.PresenceStatus);
+        Assert.Equal(480, member.ExpectedMinutes);
+        Assert.Equal(2, member.Breaks.Count);
+        Assert.Equal(Now.AddHours(-3), member.Breaks[0].Start);
+        Assert.Null(member.Breaks[1].End);
+    }
+
+    [Fact]
+    public async Task Past_day_has_no_breaks_and_null_expected()
+    {
+        var f = new Fixture();
+        f.User.Setup(x => x.HasPermission("attendance:read")).Returns(true);
+        PresenceWithBreaks(f);
+
+        var member = Assert.Single((await f.RunAsync(new DateOnly(2026, 11, 1))).Value!.Members);
+
+        Assert.Empty(member.Breaks);
+        Assert.Null(member.ExpectedMinutes);
+    }
+
+    [Fact]
+    public async Task Viewer_without_attendance_read_gets_no_breaks()
+    {
+        var f = new Fixture();
+        PresenceWithBreaks(f);
+
+        var member = Assert.Single((await f.RunAsync()).Value!.Members);
+
+        Assert.Empty(member.Breaks);
+        Assert.Null(member.ExpectedMinutes);
+        Assert.Null(member.PresenceStatus);
+    }
+
     [Fact]
     public async Task Caller_without_an_employee_gets_404()
     {

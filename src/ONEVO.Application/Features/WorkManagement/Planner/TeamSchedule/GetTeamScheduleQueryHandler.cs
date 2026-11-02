@@ -83,8 +83,9 @@ public sealed class GetTeamScheduleQueryHandler(
             var day = days[id];
             var person = people[id];
             return TeamScheduleComposer.Compose(new TeamScheduleInput(
-                id, person.DisplayName, person.AvatarFileId, day.Zone.Id, day.Start, day.End, presence.GetValueOrDefault(id),
-                blocksBy[id].ToList(), sessionsBy[id].ToList(), dayMeetings.GetValueOrDefault(id) ?? [], tasks), now, plannerEnabled);
+                id, person.DisplayName, person.AvatarFileId, day.Zone.Id, day.Start, day.End, null,
+                blocksBy[id].ToList(), sessionsBy[id].ToList(), dayMeetings.GetValueOrDefault(id) ?? [], tasks), now, plannerEnabled,
+                presence.GetValueOrDefault(id));
         }).ToList();
 
         var ranked = TeamScheduleComposer.Rank(members);
@@ -109,15 +110,16 @@ public sealed class GetTeamScheduleQueryHandler(
         return result;
     }
 
-    /// <summary>Team Status per covered person, today only; nothing without attendance:read.</summary>
-    private async Task<IReadOnlyDictionary<Guid, string>> PresenceAsync(bool today, CancellationToken ct)
+    /// <summary>Team Status per covered person (status, work window, breaks), today only; nothing without attendance:read.</summary>
+    private async Task<IReadOnlyDictionary<Guid, TeamPresence>> PresenceAsync(bool today, CancellationToken ct)
     {
         if (!today || !currentUser.HasPermission(CoveredTeam.AttendanceReadPermission))
-            return new Dictionary<Guid, string>();
+            return new Dictionary<Guid, TeamPresence>();
         var result = await mediator.Send(new GetCoveredTeamTodayQuery(PresenceLimit), ct);
         return result.IsSuccess
-            ? result.Value!.Members.ToDictionary(m => m.EmployeeId, m => m.Status)
-            : new Dictionary<Guid, string>();
+            ? result.Value!.Members.ToDictionary(m => m.EmployeeId, m => new TeamPresence(m.Status, m.ExpectedMinutes,
+                (m.Breaks ?? []).Select(b => new TeamScheduleBreak(b.Start, b.End)).ToList()))
+            : new Dictionary<Guid, TeamPresence>();
     }
 
     private readonly record struct ZoneInfo(string Id, TimeZoneInfo Info);

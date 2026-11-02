@@ -13,10 +13,18 @@ public sealed record TeamScheduleSummary(int People, int TasksPlanned, int Tasks
 /// <param name="PresenceStatus">The Team Status status when the caller has attendance:read coverage of this person (today
 /// only), else null.</param>
 /// <param name="NotRankedReason">none | no_items_yet | no_planned_task_time | on_leave | planner_off.</param>
+/// <param name="ExpectedMinutes">The person's work window today (Team Status); null without presence.</param>
+/// <param name="Breaks">Today's break intervals (Team Status); empty without presence.</param>
 public sealed record TeamScheduleMember(Guid EmployeeId, string DisplayName, Guid? AvatarFileId, string Timezone, string? PresenceStatus,
     int PlannedTaskMinutes, int PlannedMeetingMinutes, int ClockedMinutes, int ScheduledMinutes, int OutsideSlotMinutes, int NoPlanMinutes,
     decimal? ItemCompletionPercent, decimal? TimeCoveragePercent, decimal? Score, string NotRankedReason, int? Rank,
-    IReadOnlyList<TeamScheduleItem> Items, IReadOnlyList<TeamScheduleUnscheduled> Unscheduled, IReadOnlyList<TeamScheduleConflict> Conflicts);
+    IReadOnlyList<TeamScheduleItem> Items, IReadOnlyList<TeamScheduleUnscheduled> Unscheduled, IReadOnlyList<TeamScheduleConflict> Conflicts,
+    int? ExpectedMinutes, IReadOnlyList<TeamScheduleBreak> Breaks);
+
+public sealed record TeamScheduleBreak(DateTimeOffset Start, DateTimeOffset? End);
+
+/// <summary>What Team Status says about one covered person today: status, work window and breaks.</summary>
+public sealed record TeamPresence(string Status, int? ExpectedMinutes, IReadOnlyList<TeamScheduleBreak> Breaks);
 
 /// <param name="Kind">task | meeting.</param>
 /// <param name="Status">Tasks: completed | in_progress | pending | scheduled_not_clocked. Meetings: upcoming | in_meeting |

@@ -17,8 +17,10 @@ public static class TeamScheduleComposer
 {
     public const string PrivateMeetingTitle = "Private meeting";
 
-    public static TeamScheduleMember Compose(TeamScheduleInput input, DateTimeOffset now, bool plannerEnabled)
+    /// <param name="presence">Team Status for this person today; its status wins over input.PresenceStatus.</param>
+    public static TeamScheduleMember Compose(TeamScheduleInput input, DateTimeOffset now, bool plannerEnabled, TeamPresence? presence = null)
     {
+        var presenceStatus = presence?.Status ?? input.PresenceStatus;
         var (dayStart, dayEnd) = (input.DayStart, input.DayEnd);
         var blocks = plannerEnabled
             ? input.Blocks.Where(b => b.Start < dayEnd && b.End > dayStart).OrderBy(b => b.Start).ToList()
@@ -74,7 +76,7 @@ public static class TeamScheduleComposer
             return to > from ? (to - from).TotalMinutes : 0;
         }), MidpointRounding.AwayFromZero);
         var score = ExecutionScore.Compute(due, done, elapsedPlanned, attribution.ScheduledMinutes,
-            onLeave: input.PresenceStatus == "on_leave", plannerEnabled);
+            onLeave: presenceStatus == "on_leave", plannerEnabled);
 
         var unscheduled = plannerEnabled
             ? attribution.Unscheduled.Select(s => new TeamScheduleUnscheduled(s.TaskId, TaskTitle(s.TaskId), s.Start, s.End, s.Minutes,
@@ -107,13 +109,13 @@ public static class TeamScheduleComposer
             }
         }
 
-        return new TeamScheduleMember(input.EmployeeId, input.DisplayName, input.AvatarFileId, input.Timezone, input.PresenceStatus,
+        return new TeamScheduleMember(input.EmployeeId, input.DisplayName, input.AvatarFileId, input.Timezone, presenceStatus,
             attribution.PlannedMinutes, plannedMeetingMinutes, attribution.ClockedMinutes,
             plannerEnabled ? attribution.ScheduledMinutes : 0,
             plannerEnabled ? attribution.OutsideSlotMinutes : 0,
             plannerEnabled ? attribution.NoPlanMinutes : 0,
             score.ItemCompletionPercent, score.TimeCoveragePercent, score.Score, WireReason(score.Reason), Rank: null,
-            items, unscheduled, conflicts.OrderBy(c => c.Start).ToList());
+            items, unscheduled, conflicts.OrderBy(c => c.Start).ToList(), presence?.ExpectedMinutes, presence?.Breaks ?? []);
     }
 
     /// <summary>Counts over the composed members; a task counts once per person, by its best status.</summary>
