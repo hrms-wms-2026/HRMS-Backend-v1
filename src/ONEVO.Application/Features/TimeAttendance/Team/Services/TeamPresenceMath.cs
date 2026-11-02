@@ -43,4 +43,9 @@ public static class TeamPresenceMath
         var span = to - from;   // TimeOnly subtraction already wraps past midnight
         return (int)span.TotalMinutes;
     }
+
+    /// <summary>On leave: the work window the leave takes (Working / Break / Leave hours); 0 for any other status or without
+    /// working hours. Masked leave arrives as absent, so it never adds leave hours.</summary>
+    public static int LeaveMinutes(string teamStatus, TimeOnly? start, TimeOnly? end)
+        => teamStatus == "on_leave" && start is { } from && end is { } to ? (int)(to - from).TotalMinutes : 0;
 }

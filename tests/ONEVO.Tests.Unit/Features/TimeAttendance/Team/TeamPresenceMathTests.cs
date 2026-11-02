@@ -98,4 +98,15 @@ public sealed class TeamPresenceMathTests
     [Fact]
     public void ExpectedMinutes_is_null_without_working_hours()
         => Assert.Null(TeamPresenceMath.ExpectedMinutes("working", null, TimeOnly.Parse("17:00")));
+
+    [Theory]
+    [InlineData("on_leave", "09:00", "17:30", 510)]
+    [InlineData("working", "09:00", "17:30", 0)]
+    [InlineData("absent", "09:00", "17:30", 0)]
+    public void LeaveMinutes_is_the_work_window_only_on_leave(string status, string start, string end, int expected)
+        => Assert.Equal(expected, TeamPresenceMath.LeaveMinutes(status, TimeOnly.Parse(start), TimeOnly.Parse(end)));
+
+    [Fact]
+    public void LeaveMinutes_is_zero_without_working_hours()
+        => Assert.Equal(0, TeamPresenceMath.LeaveMinutes("on_leave", null, TimeOnly.Parse("17:00")));
 }

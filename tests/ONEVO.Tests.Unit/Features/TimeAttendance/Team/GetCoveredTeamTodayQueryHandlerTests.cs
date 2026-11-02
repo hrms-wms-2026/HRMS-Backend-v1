@@ -200,6 +200,7 @@ public sealed class GetCoveredTeamTodayQueryHandlerTests
         Assert.NotNull(member.Leave);
         Assert.Equal("Annual Leave", member.Leave!.LeaveTypeName);
         Assert.Equal(1, result.Value.Summary.OnLeave);
+        Assert.Equal(510, member.LeaveMinutes);   // the fixture's 09:00-17:30 work window
     }
 
     [Fact]
@@ -226,6 +227,7 @@ public sealed class GetCoveredTeamTodayQueryHandlerTests
         Assert.Null(member.Leave);
         Assert.Equal(0, result.Value.Summary.OnLeave);
         Assert.Equal((null, null, null, 0), (member.StateSince, member.BreakRemainingMinutes, member.ShiftEndsAt, member.AttendanceMinutes));
+        Assert.Equal(0, member.LeaveMinutes);   // masked: no leave hours either
     }
 
     [Fact]

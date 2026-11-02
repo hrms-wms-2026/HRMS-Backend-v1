@@ -30,6 +30,7 @@ public sealed record TeamTodaySummary(
 /// <param name="AttendanceMinutes">PlannerActuals.AttendanceMinutes of today's record; 0 without one.</param>
 /// <param name="ExpectedMinutes">The legal entity's work window for the date; 0 on leave, null without working hours.</param>
 /// <param name="Breaks">Today's break intervals ordered by start; an open break has a null End.</param>
+/// <param name="LeaveMinutes">On leave (only where the viewer may see it): the work window the leave takes; else 0.</param>
 public sealed record TeamTodayMember(
     Guid EmployeeId,
     string DisplayName,
@@ -49,7 +50,8 @@ public sealed record TeamTodayMember(
     DateTimeOffset? ShiftEndsAt = null,
     int AttendanceMinutes = 0,
     int? ExpectedMinutes = null,
-    IReadOnlyList<TeamTodayBreak>? Breaks = null);
+    IReadOnlyList<TeamTodayBreak>? Breaks = null,
+    int LeaveMinutes = 0);
 
 public sealed record TeamTodayBreak(DateTimeOffset Start, DateTimeOffset? End);
 

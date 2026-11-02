@@ -686,7 +686,8 @@ public sealed class AttendanceReadHandler(
                 record is null ? 0 : PlannerActuals.AttendanceMinutes(
                     record.ActualStart, record.ActualEnd, record.WorkedMinutes, record.BreakMinutes, utcNow),
                 TeamPresenceMath.ExpectedMinutes(mapped.TeamStatus, scheduleResolution.Schedule.Start, scheduleResolution.Schedule.End),
-                employeeBreaks.OrderBy(b => b.BreakStart).Select(b => new TeamTodayBreak(b.BreakStart, b.BreakEnd)).ToList()));
+                employeeBreaks.OrderBy(b => b.BreakStart).Select(b => new TeamTodayBreak(b.BreakStart, b.BreakEnd)).ToList(),
+                TeamPresenceMath.LeaveMinutes(mapped.TeamStatus, scheduleResolution.Schedule.Start, scheduleResolution.Schedule.End)));
 
             var countIndex = mapped.TeamStatus switch
             {
