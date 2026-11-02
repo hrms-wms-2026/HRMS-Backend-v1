@@ -123,4 +123,54 @@ public class TaskTimeAttributionTests
         Assert.Empty(r.Tasks);
         Assert.Empty(r.Unscheduled);
     }
+
+    // ---- Coverage audit (2026-10-29 plan, Task 12) ----
+
+    [Fact]
+    public void Window_is_half_open_a_session_ending_at_from_or_starting_at_to_adds_nothing()
+    {
+        var r = Run([], [new AttributionSession(A, DayStart.AddHours(-2), DayStart), new AttributionSession(B, DayEnd, DayEnd.AddHours(1))],
+            now: DayEnd.AddHours(2));
+
+        Assert.Equal(0, r.ClockedMinutes);
+        Assert.Empty(r.Unscheduled);
+    }
+
+    [Fact]
+    public void A_block_touching_the_window_edge_counts_only_inside()
+    {
+        var r = Run([new AttributionBlock(A, DayStart.AddHours(-1), DayStart.AddHours(1))], [new AttributionSession(A, DayStart, DayStart.AddHours(1))]);
+
+        Assert.Equal((60, 60, 60), (r.PlannedMinutes, r.ClockedMinutes, r.ScheduledMinutes));
+    }
+
+    [Fact]
+    public void Now_inside_a_block_counts_the_open_session_up_to_now_only()
+    {
+        var r = Run([new AttributionBlock(A, At(9), At(11))], [new AttributionSession(A, At(9), null)], now: At(9, 30));
+
+        Assert.Equal((120, 30, 30, 0), (r.PlannedMinutes, r.ClockedMinutes, r.ScheduledMinutes, r.OutsideSlotMinutes));
+    }
+
+    [Fact]
+    public void A_block_of_task_A_while_clocked_on_task_B_is_no_plan_for_B_and_scheduled_zero_for_A()
+    {
+        var r = Run([new AttributionBlock(A, At(9), At(10))], [new AttributionSession(B, At(9), At(10))]);
+
+        var a = r.Tasks.Single(t => t.TaskId == A);
+        var b = r.Tasks.Single(t => t.TaskId == B);
+        Assert.Equal((60, 0, 0), (a.PlannedMinutes, a.ClockedMinutes, a.ScheduledMinutes));
+        Assert.Equal((0, 60, 0, 60), (b.PlannedMinutes, b.ClockedMinutes, b.ScheduledMinutes, b.NoPlanMinutes));
+        Assert.Equal(0, r.ParallelClockMinutes);
+    }
+
+    [Fact]
+    public void Sub_minute_pieces_round_away_from_zero_and_keep_the_invariant()
+    {
+        // 30 s inside the block, 30 s outside: the total rounds to 1 and the parts still add up to it.
+        var r = Run([new AttributionBlock(A, At(9), At(10))], [new AttributionSession(A, At(9, 59).AddSeconds(30), At(10).AddSeconds(30))]);
+
+        Assert.Equal(1, r.ClockedMinutes);
+        Assert.Equal(r.ClockedMinutes, r.ScheduledMinutes + r.OutsideSlotMinutes);
+    }
 }
