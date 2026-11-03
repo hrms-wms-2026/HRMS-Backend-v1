@@ -40,7 +40,7 @@ The result is that work gets assigned with no time attached, and nobody can see 
 - A manager moving, resizing or deleting an employee's blocks directly. The plan stays the employee's.
 - People outside the caller's reporting line, even when they share a module.
 - Capacity forecasting, auto-scheduling, or "find a free slot for the team".
-- Changing the People → Employee profile → Today's plan tab. It stays as it is.
+- A plan view on the People → Employee profile. The old "Today's plan" tab is **removed** *(decided 2026-11-03)*, so a person's plan lives only in Planner → My team and is not repeated on the profile.
 - Requests for meetings or time off. Meetings already invite people, and time off is the employee's own.
 - Extras seen in the reference images, **not built** unless the product owner asks *(decided 2026-11-03)*:
   - a "Team workload" side panel;
