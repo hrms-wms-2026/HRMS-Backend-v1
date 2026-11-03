@@ -1,4 +1,6 @@
 using MediatR;
+using Microsoft.Extensions.Options;
+using ONEVO.Application.Features.WorkManagement.Planner;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
@@ -23,7 +25,9 @@ public sealed class GetMyTeamCapabilitiesQueryHandler(
     IEmployeeRepository employees,
     IEmployeeAuthorityResolver authority,
     IModuleEntitlementService modules,
-    IWorkLeadershipService workLeadership)
+    IWorkLeadershipService workLeadership,
+    ONEVO.Application.Common.RepositoryInterfaces.IEmployeeRepository? reportingLines = null,
+    IOptions<PlannerOptions>? plannerOptions = null)
     : IRequestHandler<GetMyTeamCapabilitiesQuery, Result<MyTeamCapabilitiesResponse>>
 {
     private const string AttendanceReadPermission = "attendance:read";
@@ -70,7 +74,12 @@ public sealed class GetMyTeamCapabilitiesQueryHandler(
             }
         }
 
-        var isAvailable = canViewPeopleStatus || canReviewPeopleApprovals || canReviewExceptions || hasWorkApprovals || leadsWork;
+        // Team planner (2026-11-03): a cheap existence probe on the reporting line, like the flags above.
+        var canViewTeamPlan = actor is not null && reportingLines is not null && plannerOptions?.Value.Enabled == true
+            && (await reportingLines.ListDirectReportEmployeeIdsAsync(currentUser.TenantId, [actor.Id], ct)).Count > 0;
+
+        var isAvailable = canViewPeopleStatus || canReviewPeopleApprovals || canReviewExceptions || hasWorkApprovals || leadsWork
+            || canViewTeamPlan;
 
         return Result<MyTeamCapabilitiesResponse>.Success(new MyTeamCapabilitiesResponse(
             isAvailable,
@@ -80,6 +89,7 @@ public sealed class GetMyTeamCapabilitiesQueryHandler(
             hasWorkApprovals,
             leadsWork,
             CanViewLiveActivity: false,
-            legalEntityId));
+            legalEntityId,
+            canViewTeamPlan));
     }
 }
