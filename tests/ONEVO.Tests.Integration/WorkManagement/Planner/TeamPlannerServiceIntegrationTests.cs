@@ -191,6 +191,129 @@ public sealed class TeamPlannerServiceIntegrationTests
         Assert.DoesNotContain(days[1].Leaves, l => l.Status == "pending");
     }
 
+    // --- Team (Task 3) ---
+
+    private sealed record Team(World W, Guid SecondReport, Guid GrandReport);
+
+    /// <summary>Manager → {Employee, Second}; Employee → {Grand}.</summary>
+    private static async Task<Team> SeedTeamAsync(string? secondZone = null)
+    {
+        var w = await SeedAsync();
+        await using var db = w.H.NewContext();
+        var second = w.H.AddEmployee(db, lastName: "Second");
+        second.FirstName = "Anjali";
+        second.DisplayTimezone = secondZone ?? Colombo;
+        var grand = w.H.AddEmployee(db, lastName: "Grand");
+        grand.DisplayTimezone = Colombo;
+        AddLine(w.H, db, w.Manager, second.Id, 1);
+        AddLine(w.H, db, w.Employee, grand.Id, 1);
+        AddLine(w.H, db, w.Manager, grand.Id, 2);
+        db.Employees.Single(e => e.Id == w.Employee).FirstName = "Ravi";
+        await db.SaveChangesAsync();
+        return new Team(w, second.Id, grand.Id);
+    }
+
+    private static async Task<Result<TeamPlannerResponse>> TeamDayAsync(World w, Guid caller, Guid? managerId, DateOnly? date = null,
+        bool enabled = true)
+    {
+        await using var db = w.H.NewContext();
+        return await Service(db, enabled).GetTeamDayAsync(w.H.TenantId, caller, managerId, date ?? Today, true, default);
+    }
+
+    [Fact]
+    public async Task Team_ReturnsDirectReportsWithTheirDays()
+    {
+        var t = await SeedTeamAsync();
+
+        var result = await TeamDayAsync(t.W, t.W.Manager, null);
+
+        Assert.True(result.IsSuccess, result.Error);
+        Assert.Equal(t.W.Manager, result.Value!.ManagerEmployeeId);
+        Assert.Equal([t.SecondReport, t.W.Employee], result.Value.Members.Select(m => m.EmployeeId).ToList());
+        Assert.Equal(1, result.Value.Members.Single(m => m.EmployeeId == t.W.Employee).DirectReportCount);
+        Assert.Equal(0, result.Value.Members.Single(m => m.EmployeeId == t.SecondReport).DirectReportCount);
+        Assert.All(result.Value.Members, m => Assert.Equal(Today, Assert.Single(m.Days).Date));
+    }
+
+    [Fact]
+    public async Task Team_DrillDown_ToAReportsTeam()
+    {
+        var t = await SeedTeamAsync();
+
+        var result = await TeamDayAsync(t.W, t.W.Manager, t.W.Employee);
+
+        Assert.True(result.IsSuccess, result.Error);
+        Assert.Equal(t.GrandReport, Assert.Single(result.Value!.Members).EmployeeId);
+    }
+
+    [Fact]
+    public async Task Team_ManagerNotInCallerChain_IsNotFound()
+    {
+        var t = await SeedTeamAsync();
+
+        var result = await TeamDayAsync(t.W, t.W.Stranger, t.W.Manager);
+
+        Assert.Equal(404, result.StatusCode);
+        Assert.Null(result.Value);
+    }
+
+    [Fact]
+    public async Task Team_MemberInAnotherZone_UsesTheirDay()
+    {
+        var t = await SeedTeamAsync(secondZone: "Asia/Dubai");
+
+        var result = await TeamDayAsync(t.W, t.W.Manager, null);
+
+        var dubai = result.Value!.Members.Single(m => m.EmployeeId == t.SecondReport);
+        Assert.Equal("Asia/Dubai", dubai.Timezone);
+        var day = Assert.Single(dubai.Days);
+        Assert.NotNull(day.WorkStartAt);
+        Assert.Equal(TimeSpan.FromHours(4), day.WorkStartAt!.Value.Offset);
+        Assert.Equal(day.WorkWindow!.WorkStart.Hour, day.WorkStartAt.Value.Hour);
+    }
+
+    [Fact]
+    public async Task TeamRange_IsSummary()
+    {
+        var t = await SeedTeamAsync();
+        await using (var db = t.W.H.NewContext())
+            Assert.True((await Planner(db).CreateBlockAsync(t.W.H.TenantId, t.W.Employee,
+                new CreatePlannedBlockRequest(t.W.Task, Local(10), Local(12)), default)).IsSuccess);
+
+        Result<TeamPlannerResponse> result;
+        await using (var db = t.W.H.NewContext())
+            result = await Service(db).GetTeamAsync(t.W.H.TenantId, t.W.Manager, null, Today, Today.AddDays(6), detail: false,
+                callerCanReadLeave: true, default);
+
+        Assert.True(result.IsSuccess, result.Error);
+        var ravi = result.Value!.Members.Single(m => m.EmployeeId == t.W.Employee);
+        Assert.Equal(7, ravi.Days.Count);
+        Assert.Empty(ravi.Days[0].Blocks);
+        Assert.Equal(120, ravi.Days[0].BlockMinutes);
+    }
+
+    [Fact]
+    public async Task Team_PlannerDisabled_Is503()
+    {
+        var t = await SeedTeamAsync();
+
+        var result = await TeamDayAsync(t.W, t.W.Manager, null, enabled: false);
+
+        Assert.Equal(503, result.StatusCode);
+        Assert.Equal(PlannerErrorCodes.Disabled, result.ErrorCode);
+    }
+
+    [Fact]
+    public async Task Team_NoReports_ReturnsEmptyMembers()
+    {
+        var t = await SeedTeamAsync();
+
+        var result = await TeamDayAsync(t.W, t.W.Stranger, null);
+
+        Assert.True(result.IsSuccess, result.Error);
+        Assert.Empty(result.Value!.Members);
+    }
+
     [Fact]
     public async Task PersonRange_TooLong_IsInvalidRange()
     {

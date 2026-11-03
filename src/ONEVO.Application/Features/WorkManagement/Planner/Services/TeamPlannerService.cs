@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Options;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
@@ -62,6 +62,57 @@ public sealed class TeamPlannerService
             canReadLeave: own || callerCanReadLeave, ct);
         return Result<PlannerPersonRangeResponse>.Success(new PlannerPersonRangeResponse(employeeId, NameOf(employee),
             zone.Value.Id, PlannerZones.TodayIn(_clock.UtcNow, zone.Value.Info), days));
+    }
+
+    /// <summary>The team's <paramref name="date"/> (default: today in the caller's zone), with every block, meeting and leave.</summary>
+    public async Task<Result<TeamPlannerResponse>> GetTeamDayAsync(Guid tenantId, Guid callerEmployeeId, Guid? managerId,
+        DateOnly? date, bool callerCanReadLeave, CancellationToken ct)
+    {
+        if (!_options.Value.Enabled)
+            return PlannerService.Disabled<TeamPlannerResponse>();
+        var day = date;
+        if (day is null)
+        {
+            var zone = await PlannerZones.ResolveAsync(_employees, _timezones, tenantId, callerEmployeeId, ct);
+            day = PlannerZones.TodayIn(_clock.UtcNow, zone?.Info ?? TimeZoneInfo.Utc);
+        }
+        return await GetTeamAsync(tenantId, callerEmployeeId, managerId, day.Value, day.Value, detail: true, callerCanReadLeave, ct);
+    }
+
+    /// <summary>
+    /// The direct reports of <paramref name="managerId"/> (default: the caller), each with their days from
+    /// <paramref name="from"/> to <paramref name="to"/> in their own zone. The caller must be that manager or one of their
+    /// reporting-line ancestors; anyone else gets 404. Without <paramref name="detail"/> only the minutes come back.
+    /// </summary>
+    public async Task<Result<TeamPlannerResponse>> GetTeamAsync(Guid tenantId, Guid callerEmployeeId, Guid? managerId,
+        DateOnly from, DateOnly to, bool detail, bool callerCanReadLeave, CancellationToken ct)
+    {
+        if (!_options.Value.Enabled)
+            return PlannerService.Disabled<TeamPlannerResponse>();
+        if (!ValidRange(from, to))
+            return PlannerService.InvalidRange<TeamPlannerResponse>();
+        var managerEmployeeId = managerId ?? callerEmployeeId;
+        if (managerEmployeeId != callerEmployeeId
+            && !(await _employees.ListAncestorChainEmployeeIdsAsync(tenantId, managerEmployeeId, ct)).Contains(callerEmployeeId))
+            return PlannerService.NotFound<TeamPlannerResponse>();
+        var manager = (await _employees.ListByIdsAsync(tenantId, [managerEmployeeId], ct)).GetValueOrDefault(managerEmployeeId);
+        if (manager is null)
+            return PlannerService.NotFound<TeamPlannerResponse>();
+
+        var reportIds = (await _employees.ListDirectReportEmployeeIdsAsync(tenantId, [managerEmployeeId], ct)).Distinct().ToList();
+        var reports = await _employees.ListByIdsAsync(tenantId, reportIds, ct);
+        var members = new List<TeamPlannerMember>(reports.Count);
+        foreach (var report in reports.Values.OrderBy(e => e.FirstName).ThenBy(e => e.LastName))
+        {
+            var zone = await PlannerZones.ResolveAsync(_employees, _timezones, tenantId, report.Id, ct);
+            if (zone is null)
+                continue;
+            var directReports = (await _employees.ListDirectReportEmployeeIdsAsync(tenantId, [report.Id], ct)).Distinct().Count();
+            var days = await BuildDaysAsync(tenantId, report.Id, zone.Value, from, to, detail, maskPrivate: true,
+                canReadLeave: callerCanReadLeave, ct);
+            members.Add(new TeamPlannerMember(report.Id, NameOf(report), directReports, zone.Value.Id, days));
+        }
+        return Result<TeamPlannerResponse>.Success(new TeamPlannerResponse(managerEmployeeId, NameOf(manager), from, to, members));
     }
 
     internal static bool ValidRange(DateOnly from, DateOnly to)

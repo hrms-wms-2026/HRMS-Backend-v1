@@ -29,9 +29,17 @@ public sealed record DeletePlannedBlockCommand(Guid BlockId) : IRequest<Result<P
 public sealed record GetEmployeePlannerRangeQuery(Guid EmployeeId, DateOnly From, DateOnly To)
     : IRequest<Result<PlannerPersonRangeResponse>>;
 
+/// <summary>GET /planner/team?date=&amp;managerId=: a manager's direct reports for one day, with detail.</summary>
+public sealed record GetTeamPlannerDayQuery(DateOnly? Date, Guid? ManagerEmployeeId) : IRequest<Result<TeamPlannerResponse>>;
+
+/// <summary>GET /planner/team/range?from=&amp;to=&amp;managerId=: the same team over a range, minutes only.</summary>
+public sealed record GetTeamPlannerRangeQuery(DateOnly From, DateOnly To, Guid? ManagerEmployeeId) : IRequest<Result<TeamPlannerResponse>>;
+
 /// <summary>Team planner reads (2026-11-03): the caller's employee plus whether they may read others' leave.</summary>
 public sealed class TeamPlannerRequestHandler :
-    IRequestHandler<GetEmployeePlannerRangeQuery, Result<PlannerPersonRangeResponse>>
+    IRequestHandler<GetEmployeePlannerRangeQuery, Result<PlannerPersonRangeResponse>>,
+    IRequestHandler<GetTeamPlannerDayQuery, Result<TeamPlannerResponse>>,
+    IRequestHandler<GetTeamPlannerRangeQuery, Result<TeamPlannerResponse>>
 {
     /// <summary>The permission that shows a team's leave as leave, as on Team Status (My Team spec 8.1.2).</summary>
     public const string LeaveReadPermission = "leave:read";
@@ -49,6 +57,14 @@ public sealed class TeamPlannerRequestHandler :
 
     public Task<Result<PlannerPersonRangeResponse>> Handle(GetEmployeePlannerRangeQuery query, CancellationToken ct)
         => AsCaller((tenant, me) => _team.GetPersonRangeAsync(tenant, me, query.EmployeeId, query.From, query.To,
+            _currentUser.HasPermission(LeaveReadPermission), ct), ct);
+
+    public Task<Result<TeamPlannerResponse>> Handle(GetTeamPlannerDayQuery query, CancellationToken ct)
+        => AsCaller((tenant, me) => _team.GetTeamDayAsync(tenant, me, query.ManagerEmployeeId, query.Date,
+            _currentUser.HasPermission(LeaveReadPermission), ct), ct);
+
+    public Task<Result<TeamPlannerResponse>> Handle(GetTeamPlannerRangeQuery query, CancellationToken ct)
+        => AsCaller((tenant, me) => _team.GetTeamAsync(tenant, me, query.ManagerEmployeeId, query.From, query.To, detail: false,
             _currentUser.HasPermission(LeaveReadPermission), ct), ct);
 
     private async Task<Result<T>> AsCaller<T>(Func<Guid, Guid, Task<Result<T>>> run, CancellationToken ct)

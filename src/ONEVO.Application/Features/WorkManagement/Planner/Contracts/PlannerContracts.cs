@@ -81,6 +81,14 @@ public sealed record PlannerPersonDay(DateOnly Date, PlannerWorkWindow? WorkWind
 public sealed record PlannerPersonRangeResponse(Guid EmployeeId, string Name, string Timezone, DateOnly Today,
     IReadOnlyList<PlannerPersonDay> Days);
 
+/// <summary>A direct report on the team planner, with their days in their own zone.</summary>
+public sealed record TeamPlannerMember(Guid EmployeeId, string Name, int DirectReportCount, string Timezone,
+    IReadOnlyList<PlannerPersonDay> Days);
+
+/// <summary>GET /planner/team and /planner/team/range: a manager's direct reports, ordered by name.</summary>
+public sealed record TeamPlannerResponse(Guid ManagerEmployeeId, string ManagerName, DateOnly From, DateOnly To,
+    IReadOnlyList<TeamPlannerMember> Members);
+
 /// <summary>Why a task is in the Focus list (2026-10-27 design, section 4.2).</summary>
 public static class PlannerFocusReasons
 {
