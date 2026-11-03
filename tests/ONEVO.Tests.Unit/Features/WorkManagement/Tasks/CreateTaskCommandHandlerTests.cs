@@ -1,5 +1,7 @@
+using System.Text.Json;
 using Moq;
 using ONEVO.Application.Common.Models;
+using ONEVO.Application.Features.WorkManagement.Tasks.Appliers;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Approvals.Services;
@@ -47,7 +49,8 @@ public class CreateTaskCommandHandlerTests
         Guid? callerEmployeeId = null, bool? callerIsEffectiveManager = null,
         bool categoryExists = true, Guid? categoryProjectId = null, Guid? sprintProjectId = null,
         Mock<ONEVO.Application.Features.WorkManagement.CalendarEvents.RepositoryInterfaces.ICalendarEventRepository>? calendarEvents = null,
-        Mock<ITaskAssetLinker>? assetLinker = null, IReadOnlyList<TaskStatusEntity>? template = null)
+        Mock<ITaskAssetLinker>? assetLinker = null, IReadOnlyList<TaskStatusEntity>? template = null,
+        Mock<IWorkApprovalEngine>? approvalEngine = null)
     {
         var resolvedCallerEmployeeId = callerEmployeeId ?? EmployeeId;
 
@@ -122,9 +125,10 @@ public class CreateTaskCommandHandlerTests
         var hierarchy = new Mock<IWorkHierarchyService>();
         hierarchy.Setup(x => x.LoadTreeAsync(TenantId, ProjectId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ProjectModuleTree(new[] { objective }));
-        var approvals = new Mock<IWorkApprovalEngine>();
-        approvals.Setup(x => x.SubmitAsync(It.IsAny<WorkAction>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Result<ApprovalDecision>.Success(ApprovalDecision.Direct));
+        var approvals = approvalEngine ?? new Mock<IWorkApprovalEngine>();
+        if (approvalEngine is null)
+            approvals.Setup(x => x.SubmitAsync(It.IsAny<WorkAction>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(Result<ApprovalDecision>.Success(ApprovalDecision.Direct));
 
         var handler = new CreateTaskCommandHandler(
             currentUser.Object, identity.Object, objectives.Object, unitOfWork.Object, membership.Object,
@@ -133,6 +137,90 @@ public class CreateTaskCommandHandlerTests
             Microsoft.Extensions.Options.Options.Create(new ONEVO.Application.Features.WorkManagement.Meetings.MeetingsOptions { Create = true }),
             ONEVO.Tests.Unit.Features.WorkManagement.Meetings.MeetingActionItemTestFactory.Build());
         return (handler, tasks, sprints, sprintLogs);
+    }
+
+    // Planner create popover (2026-11-03): a request can carry the requester as assignee and a plan slot.
+    private static readonly DateTimeOffset SlotStart = new(2026, 11, 10, 9, 0, 0, TimeSpan.Zero);
+    private static readonly DateTimeOffset SlotEnd = new(2026, 11, 10, 11, 0, 0, TimeSpan.Zero);
+    private static readonly Guid MemberEmployeeId = Guid.NewGuid();
+
+    private static (Mock<IWorkApprovalEngine> Engine, List<WorkAction> Sent) PendingEngine()
+    {
+        var sent = new List<WorkAction>();
+        var engine = new Mock<IWorkApprovalEngine>();
+        engine.Setup(x => x.SubmitAsync(Capture.In(sent), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<ApprovalDecision>.Success(ApprovalDecision.Pending(Guid.NewGuid(), EmployeeId)));
+        return (engine, sent);
+    }
+
+    private static CreateTaskCommand PlanCommand(Guid? assignee, DateTimeOffset? start, DateTimeOffset? end)
+        => new(ObjectiveId, "Fix login bug", null, CategoryId, WorkTaskPriorities.Medium, null, 2m, null, null,
+            AssigneeEmployeeId: assignee, PlanStartAt: start, PlanEndAt: end);
+
+    [Fact]
+    public async Task Handle_AssigneeIsTheCaller_AndASlot_ArePutInTheApprovalPayload()
+    {
+        var (engine, sent) = PendingEngine();
+        var (handler, _, _, _) = BuildHandler(Owned(100m), 0m, callerEmployeeId: MemberEmployeeId, callerIsEffectiveManager: true,
+            approvalEngine: engine);
+
+        var result = await handler.Handle(PlanCommand(MemberEmployeeId, SlotStart, SlotEnd), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        var payload = JsonSerializer.Deserialize<TaskCreateInput>(Assert.Single(sent).PayloadJson, TaskPayload.Options)!;
+        Assert.Equal((MemberEmployeeId, SlotStart, SlotEnd), (payload.AssigneeEmployeeId!.Value, payload.PlanStartAt!.Value, payload.PlanEndAt!.Value));
+    }
+
+    [Fact]
+    public async Task Handle_AssigneeIsSomeoneElse_Is400()
+    {
+        var (engine, sent) = PendingEngine();
+        var (handler, _, _, _) = BuildHandler(Owned(100m), 0m, callerEmployeeId: MemberEmployeeId, callerIsEffectiveManager: true,
+            approvalEngine: engine);
+
+        var result = await handler.Handle(PlanCommand(Guid.NewGuid(), SlotStart, SlotEnd), CancellationToken.None);
+
+        Assert.Equal((400, TaskErrorCodes.InvalidPlanRequest), (result.StatusCode, result.ErrorCode));
+        Assert.Empty(sent);
+    }
+
+    [Fact]
+    public async Task Handle_OnlyOneSlotEnd_Is400()
+    {
+        var (engine, sent) = PendingEngine();
+        var (handler, _, _, _) = BuildHandler(Owned(100m), 0m, callerEmployeeId: MemberEmployeeId, callerIsEffectiveManager: true,
+            approvalEngine: engine);
+
+        var result = await handler.Handle(PlanCommand(MemberEmployeeId, SlotStart, null), CancellationToken.None);
+
+        Assert.Equal((400, TaskErrorCodes.InvalidPlanRequest), (result.StatusCode, result.ErrorCode));
+        Assert.Empty(sent);
+    }
+
+    [Fact]
+    public async Task Handle_SlotEndNotAfterStart_Is400()
+    {
+        var (engine, sent) = PendingEngine();
+        var (handler, _, _, _) = BuildHandler(Owned(100m), 0m, callerEmployeeId: MemberEmployeeId, callerIsEffectiveManager: true,
+            approvalEngine: engine);
+
+        var result = await handler.Handle(PlanCommand(MemberEmployeeId, SlotEnd, SlotStart), CancellationToken.None);
+
+        Assert.Equal((400, TaskErrorCodes.InvalidPlanRequest), (result.StatusCode, result.ErrorCode));
+        Assert.Empty(sent);
+    }
+
+    [Fact]
+    public async Task Handle_NoNewFields_PayloadUnchanged()
+    {
+        var (engine, sent) = PendingEngine();
+        var (handler, _, _, _) = BuildHandler(Owned(100m), 0m, callerEmployeeId: MemberEmployeeId, callerIsEffectiveManager: true,
+            approvalEngine: engine);
+
+        await handler.Handle(PlanCommand(null, null, null), CancellationToken.None);
+
+        var payload = JsonSerializer.Deserialize<TaskCreateInput>(Assert.Single(sent).PayloadJson, TaskPayload.Options)!;
+        Assert.Equal((null, null, null), (payload.AssigneeEmployeeId, payload.PlanStartAt, payload.PlanEndAt));
     }
 
     [Fact]
