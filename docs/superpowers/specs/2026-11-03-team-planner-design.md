@@ -73,12 +73,24 @@ If the caller manages no module the employee could be given work in, the drag sh
 
 ### 4.1 Planner tab: Me / My team switch
 - The Planner header gets a segmented switch: **Me · My team**. The choice is remembered per browser (localStorage) *(call)*.
-- **My team, Day** (default) *(call)*: one row per person. Columns are the hours of their work window (each person's own zone, labelled when it differs from mine). Each row shows:
-  - their planned blocks (work item title, colour by project);
-  - meetings (busy bands);
-  - leave (pending and approved, the same bands as my Planner);
-  - a load bar: planned / working minutes (e.g. "6h / 8h"), amber over 90 %, red over 100 % *(call: thresholds)*.
-- **My team, Week**: one row per person, one cell per day. Each cell shows the load bar and leave, but no individual blocks. Click a cell to open that person's day.
+- **My team, Day** (default) *(approved 2026-11-03, "TeamDay" artboard on the Team Week View Ideas canvas)*:
+  - **One column per person**, hours top → bottom: the same grid as my own Planner, so dragging works the same way.
+  - Each column header shows name, role and today's load bar ("6h / 8h", in the week heatmap's colours).
+  - Each column shows:
+    - their planned blocks (work item title, colour by project);
+    - meetings;
+    - Busy (private, no title);
+    - leave (pending and approved), filling the hours;
+    - my waiting requests (dashed);
+    - their off-work hours, hatched.
+  - Times are drawn in **my** zone. A person in another zone shows it under their name (e.g. "Dubai · 1h 30m behind").
+  - With more than ~7 people, the time column stays fixed and the people columns scroll sideways.
+- **My team, Week** *(approved 2026-11-03, "A · Heatmap" artboard)*:
+  - One row per person, one **coloured load cell** per day. The cell shows hours and %, the colour runs from not planned through under 50 %, 50–89 % and full to over capacity, and leave is yellow.
+  - A "1 req" marker shows on days with my pending request.
+  - Each row ends with the week total.
+  - Header chips show how many people are over capacity, under-planned and on leave. A legend sits underneath.
+  - No individual blocks. Click a cell to open that person's day.
 - **Person view**: click a name to open their week in the normal week grid, read-only, with a header such as "Ravi's plan · Back to team".
 - Pending requests I sent show on their grid as **dashed ghost blocks** labelled "Waiting for Ravi". Clicking one gives **Cancel request**.
 
