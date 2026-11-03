@@ -6,7 +6,7 @@ using Xunit;
 namespace ONEVO.Tests.Unit.Features.Monitoring.ActivityMonitoring;
 
 /// <summary>Property-style checks over the 8-hour worked example and a few edge fixtures,
-/// proving the invariants stated in docs/superpowers/plans/2026-09-25-work-pattern-productivity-model.md
+/// proving the invariants stated in docs/superpowers/plans/finished/2026-09-25/2026-09-25-work-pattern-productivity-model.md
 /// hold structurally rather than via a clamp.</summary>
 public sealed class WorkPatternInvariantTests
 {

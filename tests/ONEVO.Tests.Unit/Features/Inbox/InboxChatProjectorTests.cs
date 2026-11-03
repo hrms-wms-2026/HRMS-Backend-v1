@@ -304,6 +304,34 @@ public class InboxChatProjectorTests
     }
 
     [Fact]
+    public async Task A_named_case_group_lists_under_its_own_name_and_photo_while_its_case_keeps_the_case_title()
+    {
+        var clock = new Mock<IDateTimeProvider>();
+        clock.Setup(c => c.UtcNow).Returns(Now);
+        var identity = new Mock<ICallerIdentityResolver>();
+        identity.Setup(i => i.ResolveIdentitiesByEmployeeIdAsync(TenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, EmployeeIdentityDto>());
+        var group = (await new CaseGroupService(_repo, _access.Object, identity.Object, clock.Object)
+            .EnsureAsync(TenantId, new ItemRef("leave", "request", Guid.NewGuid()), Manager, CancellationToken.None))!;
+        await new PeopleChatService(_repo, clock.Object).RenameGroupAsync(TenantId, group, Manager, "Manager", "Priya's leave review", CancellationToken.None);
+        var photo = Guid.NewGuid();
+        var assets = new Mock<ONEVO.Application.Common.RepositoryInterfaces.IEntityAssetRepository>();
+        assets.Setup(a => a.GetPrimaryFileIdsByOwnerAsync(TenantId, ONEVO.Application.Common.Constants.EntityAssetOwnerTypes.Conversation,
+                It.IsAny<IReadOnlyCollection<Guid>>(), ONEVO.Application.Features.Storage.File.Helpers.UploadPurposeCatalog.ConversationAvatar, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, Guid> { [group.Id] = photo });
+        var router = new Mock<ONEVO.Application.Features.Inbox.Services.IInboxRouter>();
+        router.Setup(r => r.ListAsync(TenantId, It.IsAny<Guid>(), It.IsAny<InboxQuery>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new InboxPage([], 0, 1, 100));
+
+        var row = (await new InboxChatService(router.Object, _projector, _repo, identity.Object, assets.Object)
+            .ListAsync(TenantId, Manager, CancellationToken.None)).Single(r => r.ConversationId == group.Id);
+
+        row.Title.Should().Be("Priya's leave review");
+        row.AvatarFileId.Should().Be(photo);
+        row.CaseItem!.Title.Should().Be("Annual leave - Priya");
+    }
+
+    [Fact]
     public async Task Watchers_and_alerts_without_a_holder_place_nothing_from_the_subjects_side()
     {
         await Project(Priya, Leave(Guid.NewGuid(), InboxDirections.Info, holder: null, pending: true));

@@ -54,7 +54,7 @@
 - `src/ONEVO.Application/Features/OrgStructure/Department/Commands/ArchiveDepartment/ArchiveDepartmentCommandHandler.cs`
 - `src/ONEVO.Application/Features/OrgStructure/Department/Commands/ArchiveDepartment/ArchiveDepartmentCommandValidator.cs`
 - `src/ONEVO.Infrastructure/Migrations/20260804053523_AddDepartmentCodeCaseInsensitiveUniqueIndex.cs` (+ `.Designer.cs`)
-- `docs/superpowers/plans/2026-08-04-department-hardening-part1.md`
+- `docs/superpowers/plans/finished/2026-08-04/2026-08-04-department-hardening-part1.md`
 - `DEPARTMENT_HARDENING_PART1_CODE_HIERARCHY_ARCHIVE_REPORT.md` (this file)
 
 **Modified:**

@@ -29,4 +29,4 @@ Milestones the caller used to have active access to (as Head or member) but no l
 
 Controller: `src/ONEVO.Api/Controllers/Tenant/WorkManagement/ObjectivesController.cs` (`MyHistory`)
 Handler: `src/ONEVO.Application/Features/WorkManagement/Objectives/Queries/GetMyObjectiveHistory/GetMyObjectiveHistoryQueryHandler.cs`
-Plan: `docs/superpowers/plans/2026-08-06-work-management-milestone-membership-and-achieve.md`
+Plan: `docs/superpowers/plans/finished/2026-08-08/2026-08-06-work-management-milestone-membership-and-achieve.md`
