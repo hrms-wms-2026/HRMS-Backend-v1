@@ -159,6 +159,15 @@ If the builder still finds a gap, the smallest additive backend change is accept
 - The FE Planner code this builds on is in the open stack (#132 → #135 → #139). The work branches from the top of that stack, `feature/category-kind-explicit`, and becomes the next stacked PR.
 - FE #138 (a new meeting starts at the next half hour; a past start is caught) is not in that stack. The new branch **merges `fix/meeting-form-start-in-future` in first** *(my call, builder check Q4)*, so the Meeting tab reuses that rule instead of duplicating it. #138 already merges cleanly with #134's embedded meeting form.
 
+## Implementation acceptance criteria (review, 2026-11-03)
+
+The design is approved; the build is accepted only when these hold, each with a test:
+
+1. **Approval after the slot has passed:** the item is created and assigned to the requester and waits in their Task queue; no block; the approval succeeds.
+2. **Lost create response:** no automatic second create from the popover (see "Create & plan safeguards"). *Future, not in this build:* a backend idempotency key on work item create would remove the duplicate risk completely; worth its own change.
+3. **More options → full work item form:** the task to plan is taken from the form's `created` output (it emits the new task's id on a direct create, and `''` when the request went for approval). Closing the form (`closed`) never counts as a create. The builder confirms in code that `created` fires only after the assignee is saved, and plans only on a non-empty id.
+4. **Verified in code before relying on them**, with tests: the my-call points Q2 (Planner off → today's behaviour), Q3 (no new mode on the full form) and Q4 (FE #138 merged in first); that the approval applier may assign the requester although the requester is not the module owner; and the branch bases (FE on `feature/category-kind-explicit` + #138; BE on the #200 → #204 → #207 stack).
+
 ## Left to the builder
 
 - Component split (one popover shell + one component per tab, or otherwise), and how prefill reaches the full forms.
