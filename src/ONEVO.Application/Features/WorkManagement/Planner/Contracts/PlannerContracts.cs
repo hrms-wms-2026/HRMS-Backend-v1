@@ -64,6 +64,23 @@ public sealed record PlannerRangeDay(DateOnly Date, bool Editable, PlannerWorkWi
 /// <summary>GET /planner/me/range: the caller's days from <c>from</c> to <c>to</c>, at most 42.</summary>
 public sealed record PlannerRangeResponse(string Timezone, DateOnly Today, IReadOnlyList<PlannerRangeDay> Days);
 
+/// <summary>Team planner (2026-11-03): leave on a person's day, by status only. "busy" is approved leave seen by someone who
+/// may not read leave; pending leave is then left out.</summary>
+public sealed record PlannerLeaveView(DateTimeOffset StartAt, DateTimeOffset EndAt, string Status);
+
+/// <summary>One of a person's days for the team planner.</summary>
+/// <param name="WorkStartAt">The work window's start that day as an instant; null on a non-working day or with no schedule.</param>
+/// <param name="CapacityMinutes">WorkingMinutes less approved leave inside the work window, never below 0.</param>
+/// <param name="OnLeave">A working day fully taken by approved leave (only for viewers who may read leave).</param>
+public sealed record PlannerPersonDay(DateOnly Date, PlannerWorkWindow? WorkWindow, DateTimeOffset? WorkStartAt,
+    DateTimeOffset? WorkEndAt, IReadOnlyList<PlannerRangeBlockView> Blocks, IReadOnlyList<PlannerMeetingView> Meetings,
+    IReadOnlyList<PlannerLeaveView> Leaves, int BlockMinutes, int MeetingMinutes, int WorkingMinutes, int CapacityMinutes,
+    bool OnLeave);
+
+/// <summary>GET /planner/employees/{id}/range: one person's days, read-only, in their zone.</summary>
+public sealed record PlannerPersonRangeResponse(Guid EmployeeId, string Name, string Timezone, DateOnly Today,
+    IReadOnlyList<PlannerPersonDay> Days);
+
 /// <summary>Why a task is in the Focus list (2026-10-27 design, section 4.2).</summary>
 public static class PlannerFocusReasons
 {

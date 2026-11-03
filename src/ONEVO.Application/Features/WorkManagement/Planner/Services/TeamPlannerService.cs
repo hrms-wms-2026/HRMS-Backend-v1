@@ -1,0 +1,143 @@
+﻿using Microsoft.Extensions.Options;
+using ONEVO.Application.Common.Models;
+using ONEVO.Application.Common.RepositoryInterfaces;
+using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.Calendar.Services;
+using ONEVO.Application.Features.Leave.Request.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Meetings.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Planner.Contracts;
+using ONEVO.Application.Features.WorkManagement.Planner.RepositoryInterfaces;
+using ONEVO.Domain.Features.CoreHr.Entities;
+using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
+
+namespace ONEVO.Application.Features.WorkManagement.Planner.Services;
+
+/// <summary>
+/// Team planner, Phase A (2026-11-03 design): read-only days of a person, for themself or their reporting-line ancestors,
+/// with private meetings masked and leave shown by status only. Anyone else gets 404, as for the day planner.
+/// </summary>
+public sealed class TeamPlannerService
+{
+    public const string LeaveApproved = "approved";
+    public const string LeavePending = "pending";
+    public const string LeaveBusy = "busy";
+
+    private readonly IPlannerRepository _planner;
+    private readonly IMeetingRepository _meetings;
+    private readonly ICalendarTimezoneResolver _timezones;
+    private readonly IEmployeeRepository _employees;
+    private readonly ILeaveRequestReadRepository _leave;
+    private readonly IDateTimeProvider _clock;
+    private readonly IOptions<PlannerOptions> _options;
+
+    public TeamPlannerService(IPlannerRepository planner, IMeetingRepository meetings, ICalendarTimezoneResolver timezones,
+        IEmployeeRepository employees, ILeaveRequestReadRepository leave, IDateTimeProvider clock, IOptions<PlannerOptions> options)
+    {
+        _planner = planner;
+        _meetings = meetings;
+        _timezones = timezones;
+        _employees = employees;
+        _leave = leave;
+        _clock = clock;
+        _options = options;
+    }
+
+    /// <param name="callerCanReadLeave">The caller holds leave:read; without it others' approved leave reads as busy time.</param>
+    public async Task<Result<PlannerPersonRangeResponse>> GetPersonRangeAsync(Guid tenantId, Guid callerEmployeeId, Guid employeeId,
+        DateOnly from, DateOnly to, bool callerCanReadLeave, CancellationToken ct)
+    {
+        if (!_options.Value.Enabled)
+            return PlannerService.Disabled<PlannerPersonRangeResponse>();
+        if (!ValidRange(from, to))
+            return PlannerService.InvalidRange<PlannerPersonRangeResponse>();
+        var own = callerEmployeeId == employeeId;
+        if (!own && !(await _employees.ListAncestorChainEmployeeIdsAsync(tenantId, employeeId, ct)).Contains(callerEmployeeId))
+            return PlannerService.NotFound<PlannerPersonRangeResponse>();
+        var employee = (await _employees.ListByIdsAsync(tenantId, [employeeId], ct)).GetValueOrDefault(employeeId);
+        var zone = employee is null ? null : await PlannerZones.ResolveAsync(_employees, _timezones, tenantId, employeeId, ct);
+        if (employee is null || zone is null)
+            return PlannerService.NotFound<PlannerPersonRangeResponse>();
+
+        var days = await BuildDaysAsync(tenantId, employeeId, zone.Value, from, to, detail: true, maskPrivate: !own,
+            canReadLeave: own || callerCanReadLeave, ct);
+        return Result<PlannerPersonRangeResponse>.Success(new PlannerPersonRangeResponse(employeeId, NameOf(employee),
+            zone.Value.Id, PlannerZones.TodayIn(_clock.UtcNow, zone.Value.Info), days));
+    }
+
+    internal static bool ValidRange(DateOnly from, DateOnly to)
+        => to >= from && to.DayNumber - from.DayNumber + 1 <= PlannerService.MaxRangeDays;
+
+    internal static string NameOf(Employee employee) => $"{employee.FirstName} {employee.LastName}".Trim();
+
+    /// <summary>The person's days from <paramref name="from"/> to <paramref name="to"/> in their zone. Without
+    /// <paramref name="detail"/> the lists are empty but every minute figure and OnLeave stay.</summary>
+    internal async Task<IReadOnlyList<PlannerPersonDay>> BuildDaysAsync(Guid tenantId, Guid employeeId, PlannerZones.Zone zone,
+        DateOnly from, DateOnly to, bool detail, bool maskPrivate, bool canReadLeave, CancellationToken ct)
+    {
+        var (start, _) = PlannerService.Bounds(from, zone.Info);
+        var (_, end) = PlannerService.Bounds(to, zone.Info);
+        var now = _clock.UtcNow;
+        var blocks = await _planner.ListBlocksAsync(tenantId, employeeId, start, end, ct);
+        var tasks = await _planner.GetTasksAsync(tenantId, employeeId, blocks.Select(b => b.TaskId).Distinct().ToList(), ct);
+        var sessions = await _planner.ListSessionsAsync(tenantId, employeeId, start, end, ct);
+        var meetings = await _meetings.ListEmployeeDayMeetingsAsync(tenantId, employeeId, start, end, ct);
+        var legalEntity = await _planner.GetEmployeeLegalEntityAsync(tenantId, employeeId, ct);
+        // Leave reads by UTC date; a day either side covers every zone, then each day keeps what overlaps it.
+        var approved = await _leave.ListApprovedCoveringAsync(tenantId, [employeeId], from.AddDays(-1), to.AddDays(1), ct);
+        var pending = canReadLeave
+            ? await _leave.ListPendingCoveringAsync(tenantId, [employeeId], from.AddDays(-1), to.AddDays(1), ct)
+            : [];
+        var blocksByDay = blocks.ToLookup(b => PlannerZones.DayOf(b.StartAt, zone.Info));
+
+        var days = new List<PlannerPersonDay>(to.DayNumber - from.DayNumber + 1);
+        for (var day = from; day <= to; day = day.AddDays(1))
+        {
+            var (dayStart, dayEnd) = PlannerService.Bounds(day, zone.Info);
+            var window = PlannerWorkWindows.For(legalEntity, day);
+            DateTimeOffset? workStart = window is { IsWorkingDay: true } ? PlannerZones.At(day, window.WorkStart, zone.Info) : null;
+            DateTimeOffset? workEnd = window is { IsWorkingDay: true } ? PlannerZones.At(day, window.WorkEnd, zone.Info) : null;
+
+            var blockViews = blocksByDay[day].Select(b =>
+            {
+                var task = tasks.GetValueOrDefault(b.TaskId);
+                var actual = PlannerActuals.TaskMinutes(sessions.Where(s => s.TaskId == b.TaskId).Select(s => (s.ClockInAt, s.ClockOutAt)),
+                    dayStart, dayEnd, now);
+                return new PlannerRangeBlockView(b.Id, b.TaskId, task?.ProjectId ?? Guid.Empty, task?.ProjectName ?? string.Empty,
+                    task?.Title ?? string.Empty, b.StartAt, b.EndAt, (int)(b.EndAt - b.StartAt).TotalMinutes, actual,
+                    task?.AssignedToEmployee ?? false, task?.CategoryName ?? string.Empty, task?.CategoryKind ?? TaskCategoryKinds.Task);
+            }).ToList();
+
+            var meetingViews = meetings.Where(m => m.StartAt < dayEnd && m.EndAt > dayStart).Select(m =>
+            {
+                var minutes = PlannerService.MinutesInDay(m.StartAt, m.EndAt, m.IsAllDay, dayStart, dayEnd);
+                var counts = !m.Cancelled && !m.Declined;
+                return new PlannerMeetingView(m.TaskId, m.SeriesId, m.OriginalStart, m.StartAt, m.EndAt,
+                    maskPrivate && m.IsPrivate ? PlannerService.PrivateTitle : m.Title, m.IsPrivate, m.Cancelled, m.Declined,
+                    counts ? minutes : 0, PlannerActuals.MeetingMinutes(minutes, m.Declined, m.Cancelled, ended: now >= m.EndAt));
+            }).ToList();
+
+            var approvedToday = approved.Where(l => l.StartAt < dayEnd && l.EndAt > dayStart).ToList();
+            var leaveViews = approvedToday
+                .Select(l => new PlannerLeaveView(Max(l.StartAt, dayStart), Min(l.EndAt, dayEnd), canReadLeave ? LeaveApproved : LeaveBusy))
+                .Concat(pending.Where(l => l.StartAt < dayEnd && l.EndAt > dayStart)
+                    .Select(l => new PlannerLeaveView(Max(l.StartAt, dayStart), Min(l.EndAt, dayEnd), LeavePending)))
+                .ToList();
+
+            var working = window?.WorkingMinutes ?? 0;
+            var leaveInWindow = workStart is { } ws && workEnd is { } we
+                ? approvedToday.Sum(l => Math.Max(0, (int)Math.Round((Min(l.EndAt, we) - Max(l.StartAt, ws)).TotalMinutes)))
+                : 0;
+            var capacity = Math.Max(0, working - leaveInWindow);
+            var onLeave = canReadLeave && working > 0 && leaveInWindow > 0 && capacity == 0;
+
+            days.Add(new PlannerPersonDay(day, window, workStart, workEnd,
+                detail ? blockViews : [], detail ? meetingViews : [], detail ? leaveViews : [],
+                blockViews.Sum(v => v.PlannedMinutes), meetingViews.Sum(v => v.PlannedMinutes), working, capacity, onLeave));
+        }
+        return days;
+    }
+
+    private static DateTimeOffset Max(DateTimeOffset a, DateTimeOffset b) => a > b ? a : b;
+
+    private static DateTimeOffset Min(DateTimeOffset a, DateTimeOffset b) => a < b ? a : b;
+}

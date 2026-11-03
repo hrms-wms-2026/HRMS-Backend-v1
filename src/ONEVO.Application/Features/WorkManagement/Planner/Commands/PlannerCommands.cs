@@ -25,6 +25,43 @@ public sealed record MovePlannedBlockCommand(Guid BlockId, MovePlannedBlockReque
 
 public sealed record DeletePlannedBlockCommand(Guid BlockId) : IRequest<Result<PlannerDayResponse>>;
 
+/// <summary>GET /planner/employees/{employeeId}/range?from=&amp;to=: one person's days, read-only (team planner, 2026-11-03).</summary>
+public sealed record GetEmployeePlannerRangeQuery(Guid EmployeeId, DateOnly From, DateOnly To)
+    : IRequest<Result<PlannerPersonRangeResponse>>;
+
+/// <summary>Team planner reads (2026-11-03): the caller's employee plus whether they may read others' leave.</summary>
+public sealed class TeamPlannerRequestHandler :
+    IRequestHandler<GetEmployeePlannerRangeQuery, Result<PlannerPersonRangeResponse>>
+{
+    /// <summary>The permission that shows a team's leave as leave, as on Team Status (My Team spec 8.1.2).</summary>
+    public const string LeaveReadPermission = "leave:read";
+
+    private readonly ICurrentUser _currentUser;
+    private readonly ICallerIdentityResolver _identity;
+    private readonly TeamPlannerService _team;
+
+    public TeamPlannerRequestHandler(ICurrentUser currentUser, ICallerIdentityResolver identity, TeamPlannerService team)
+    {
+        _currentUser = currentUser;
+        _identity = identity;
+        _team = team;
+    }
+
+    public Task<Result<PlannerPersonRangeResponse>> Handle(GetEmployeePlannerRangeQuery query, CancellationToken ct)
+        => AsCaller((tenant, me) => _team.GetPersonRangeAsync(tenant, me, query.EmployeeId, query.From, query.To,
+            _currentUser.HasPermission(LeaveReadPermission), ct), ct);
+
+    private async Task<Result<T>> AsCaller<T>(Func<Guid, Guid, Task<Result<T>>> run, CancellationToken ct)
+    {
+        var caller = _currentUser.IsAuthenticated
+            ? await _identity.ResolveCallerEmployeeIdAsync(_currentUser.TenantId, _currentUser.UserId, ct)
+            : null;
+        return caller is Guid employeeId
+            ? await run(_currentUser.TenantId, employeeId)
+            : Result<T>.Failure("Planner day not found.", 404, PlannerErrorCodes.NotFound);
+    }
+}
+
 /// <summary>Resolves the caller's employee and hands each request to <see cref="PlannerService"/>.</summary>
 public sealed class PlannerRequestHandler :
     IRequestHandler<GetMyPlannerDayQuery, Result<PlannerDayResponse>>,

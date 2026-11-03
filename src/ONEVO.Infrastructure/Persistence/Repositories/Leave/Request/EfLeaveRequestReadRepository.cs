@@ -43,7 +43,7 @@ public sealed class EfLeaveRequestReadRepository(ApplicationDbContext db) : ILea
         CancellationToken ct)
     {
         var partiallyCancelled = covering == Covering.PartiallyCancelled;
-        var status = covering == Covering.Pending ? LeaveRequestStatuses.Pending : LeaveRequestStatuses.Approved;
+        var pending = covering == Covering.Pending;
         if (employeeIds.Count == 0 || from > to)
             return Array.Empty<LeaveRequest>();
 
@@ -55,7 +55,9 @@ public sealed class EfLeaveRequestReadRepository(ApplicationDbContext db) : ILea
                 && employeeIds.Contains(request.EmployeeId)
                 && (partiallyCancelled
                     ? request.Status == LeaveRequestStatuses.Cancelled && request.PartialCancelEffectiveDate != null
-                    : request.Status == status)
+                    : pending
+                        ? request.Status == LeaveRequestStatuses.Pending
+                        : request.Status == LeaveRequestStatuses.Approved)
                 && request.StartAt < toExclusive
                 && request.EndAt > fromStart)
             .OrderBy(request => request.EmployeeId)
