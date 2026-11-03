@@ -1,5 +1,6 @@
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Features.Calendar.Services;
+using ONEVO.Domain.Features.CoreHr.Entities;
 
 namespace ONEVO.Application.Features.WorkManagement.Planner.Services;
 
@@ -13,8 +14,12 @@ internal static class PlannerZones
         Guid employeeId, CancellationToken ct)
     {
         var employee = (await employees.ListByIdsAsync(tenantId, [employeeId], ct)).GetValueOrDefault(employeeId);
-        if (employee is null)
-            return null;
+        return employee is null ? null : await ResolveForAsync(timezones, tenantId, employee, ct);
+    }
+
+    /// <summary>The zone of an employee already loaded.</summary>
+    internal static async Task<Zone> ResolveForAsync(ICalendarTimezoneResolver timezones, Guid tenantId, Employee employee, CancellationToken ct)
+    {
         var id = await timezones.ResolveForUserAsync(tenantId, employee.UserId, ct);
         // A zone id this machine does not know (a typo in the profile or legal entity) plans in UTC instead of failing.
         return TimeZoneInfo.TryFindSystemTimeZoneById(id, out var info) ? new Zone(id, info) : new Zone("UTC", TimeZoneInfo.Utc);

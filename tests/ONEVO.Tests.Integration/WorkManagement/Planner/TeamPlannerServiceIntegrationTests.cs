@@ -171,6 +171,30 @@ public sealed class TeamPlannerServiceIntegrationTests
         Assert.Equal("pending", Assert.Single(days[2].Leaves).Status);
     }
 
+    // Review finding 5: a partial cancel keeps the days before its effective date as leave.
+    [Fact]
+    public async Task PersonRange_PartiallyCancelledLeave_StillCountsBeforeItsEffectiveDate()
+    {
+        var w = await SeedAsync();
+        await using (var db = w.H.NewContext())
+        {
+            var type = w.H.AddLeaveType(db);
+            var leave = w.H.AddApprovedLeave(db, w.Employee, type, Today.AddDays(1), Today.AddDays(3));
+            leave.StartAt = Local(0, dayOffset: 1).ToUniversalTime();
+            leave.EndAt = Local(23, 59, dayOffset: 3).ToUniversalTime();
+            leave.Status = LeaveRequestStatuses.Cancelled;
+            leave.PartialCancelEffectiveDate = Today.AddDays(3);
+            await db.SaveChangesAsync();
+        }
+
+        var days = (await RangeAsync(w, w.Employee, Today.AddDays(1), Today.AddDays(3))).Value!.Days;
+
+        Assert.True(days[0].OnLeave);
+        Assert.True(days[1].OnLeave);
+        Assert.False(days[2].OnLeave);
+        Assert.Equal(days[2].WorkingMinutes, days[2].CapacityMinutes);
+    }
+
     [Fact]
     public async Task PersonRange_ManagerWithoutLeaveRead_SeesApprovedLeaveAsBusyAndNoPending()
     {
