@@ -8,5 +8,6 @@ public sealed record CreateTaskCommand(
     Guid ObjectiveId, string Title, string? Description, Guid CategoryId, string Priority,
     DateOnly? DueDate, decimal? EstimatedHours, int? StoryPoints, Guid? SprintId,
     IReadOnlyList<Guid>? AttachmentFileIds = null,
-    Guid? SourceMeetingOccurrenceId = null
+    Guid? SourceMeetingOccurrenceId = null,
+    Guid? AssigneeEmployeeId = null, DateTimeOffset? PlanStartAt = null, DateTimeOffset? PlanEndAt = null
 ) : IRequest<Result<TaskWriteOutcome>>;

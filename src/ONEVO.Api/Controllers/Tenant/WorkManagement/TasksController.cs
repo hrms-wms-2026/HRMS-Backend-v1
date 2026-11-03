@@ -157,7 +157,7 @@ public class TasksController : ControllerBase
         var result = await _mediator.Send(new CreateTaskCommand(
             objectiveId, request.Title, request.Description, request.CategoryId, request.Priority,
             request.DueDate, request.EstimatedHours, request.StoryPoints, request.SprintId, request.AttachmentFileIds,
-            request.SourceMeetingOccurrenceId), ct);
+            request.SourceMeetingOccurrenceId, request.AssigneeEmployeeId, request.PlanStartAt, request.PlanEndAt), ct);
 
         // 201 = created now; 202 = sent for approval (the approval engine decides, not the caller).
         return !result.IsSuccess ? Problem(result.Error, statusCode: result.StatusCode ?? 400)

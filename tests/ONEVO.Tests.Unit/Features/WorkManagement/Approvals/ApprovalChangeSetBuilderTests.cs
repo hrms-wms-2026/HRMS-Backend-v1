@@ -79,6 +79,38 @@ public class ApprovalChangeSetBuilderTests
         fields.Should().NotContain(f => f.Label == "Progress %");
     }
 
+    // Planner create popover (2026-11-03): who a requested work item is for and when it is planned show read-only.
+    [Fact]
+    public void TaskCreate_WithPlan_ShowsAssigneeAndSlot_ReadOnly()
+    {
+        var fields = ApprovalChangeSetBuilder.Build(WorkActionTypes.TaskCreate,
+            """{"Title":"Fix login bug","AssigneeEmployeeId":"8f2c3a1e-0000-0000-0000-000000000001","PlanStartAt":"2026-11-10T09:00:00+00:00","PlanEndAt":"2026-11-10T11:00:00+00:00"}""",
+            null, NoCurrent, editable: true);
+
+        fields.Single(f => f.Label == "Title").Editable.Should().BeTrue();
+        var plan = fields.Where(f => f.Label is "Assign to" or "Planned from" or "Planned to").ToList();
+        plan.Select(f => f.Kind).Should().Equal("employee", "datetime", "datetime");
+        plan.Should().OnlyContain(f => !f.Editable && f.Requested != null);
+    }
+
+    [Fact]
+    public void TaskCreate_WithoutPlan_HasNoPlanRows()
+    {
+        var fields = ApprovalChangeSetBuilder.Build(WorkActionTypes.TaskCreate, """{"Title":"New"}""", null, NoCurrent, editable: true);
+
+        fields.Should().NotContain(f => f.Label == "Assign to" || f.Label == "Planned from" || f.Label == "Planned to");
+    }
+
+    [Fact]
+    public void TaskCreate_AssigneeRow_ShowsTheOverrideName()
+    {
+        var fields = ApprovalChangeSetBuilder.Build(WorkActionTypes.TaskCreate,
+            """{"Title":"New","AssigneeEmployeeId":"8f2c3a1e-0000-0000-0000-000000000001"}""", null, NoCurrent, editable: true,
+            requestedOverrides: new Dictionary<string, string?> { ["assigneeEmployeeId"] = "Bala" });
+
+        fields.Single(f => f.Label == "Assign to").Requested.Should().Be("Bala");
+    }
+
     [Fact]
     public void Transfer_uses_display_overrides_and_is_never_editable()
     {

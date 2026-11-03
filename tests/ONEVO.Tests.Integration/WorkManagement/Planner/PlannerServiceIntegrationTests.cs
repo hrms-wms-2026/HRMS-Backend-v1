@@ -86,6 +86,40 @@ public sealed class PlannerServiceIntegrationTests
         Assert.Contains(day.DueTasks, t => t.TaskId == w.Task);
     }
 
+    // Planner create popover (2026-11-03): an approved work item request is planned for its requester through
+    // IPlannerBlockWriter, under the same rules as the employee planning it themselves.
+    [Fact]
+    public async Task PlanFor_ATaskAssignedToTheEmployee_AddsTheBlock()
+    {
+        var w = await SeedAsync();
+
+        Result planned;
+        await using (var db = w.H.NewContext())
+            planned = await ((IPlannerBlockWriter)Service(db)).PlanForAsync(w.H.TenantId, w.Employee, w.Task, Local(9), Local(11), default);
+
+        Assert.True(planned.IsSuccess, planned.Error);
+        var block = Assert.Single((await DayAsync(w, w.Employee, w.Employee)).Value!.Blocks);
+        Assert.Equal((w.Task, 120), (block.TaskId, block.PlannedMinutes));
+    }
+
+    [Fact]
+    public async Task PlanFor_ATaskNotAssigned_IsTaskNotPlannable()
+    {
+        var w = await SeedAsync();
+        Guid unassigned;
+        await using (var db = w.H.NewContext())
+        {
+            unassigned = w.H.AddTask(db, w.At.ProjectId, w.At.ObjectiveId, w.At.StatusId, progress: 0, due: Today).Id;
+            await db.SaveChangesAsync();
+        }
+
+        Result planned;
+        await using (var db = w.H.NewContext())
+            planned = await ((IPlannerBlockWriter)Service(db)).PlanForAsync(w.H.TenantId, w.Employee, unassigned, Local(9), Local(11), default);
+
+        Assert.Equal(PlannerErrorCodes.TaskNotPlannable, planned.ErrorCode);
+    }
+
     [Fact]
     public async Task Today_uses_the_employee_zone()
     {

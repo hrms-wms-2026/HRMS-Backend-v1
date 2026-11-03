@@ -18,7 +18,7 @@ namespace ONEVO.Application.Features.WorkManagement.Planner.Services;
 /// are read-only and a block never touches the task. Their reporting-line managers (any ancestor) read any day up to the
 /// horizon, with private meetings masked; anyone else gets 404.
 /// </summary>
-public sealed class PlannerService
+public sealed class PlannerService : IPlannerBlockWriter
 {
     public const int MinimumBlockMinutes = 15;
     /// <summary>How many days after today can still be planned (spec section 5.1).</summary>
@@ -151,6 +151,13 @@ public sealed class PlannerService
             await _unitOfWork.SaveChangesAsync(innerCt);
             return Result<PlannerDayResponse>.Success(await ComposeDayOfAsync(tenantId, callerEmployeeId, request.StartAt, check.Zone, innerCt));
         }, ct);
+
+    async Task<Result> IPlannerBlockWriter.PlanForAsync(Guid tenantId, Guid employeeId, Guid taskId, DateTimeOffset startAt,
+        DateTimeOffset endAt, CancellationToken ct)
+    {
+        var planned = await CreateBlockAsync(tenantId, employeeId, new CreatePlannedBlockRequest(taskId, startAt, endAt), ct);
+        return planned.IsSuccess ? Result.Success() : Result.Failure(planned.Error!, planned.StatusCode ?? 400, planned.ErrorCode);
+    }
 
     public async Task<Result<PlannerDayResponse>> MoveBlockAsync(Guid tenantId, Guid callerEmployeeId, Guid blockId,
         MovePlannedBlockRequest request, CancellationToken ct)

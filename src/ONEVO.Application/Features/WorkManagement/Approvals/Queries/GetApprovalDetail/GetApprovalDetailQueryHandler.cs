@@ -134,6 +134,11 @@ public sealed class GetApprovalDetailQueryHandler : IRequestHandler<GetApprovalD
             if (currentOwnerId is Guid o) employeeIds.Add(o);
             if (newOwnerId is Guid n) employeeIds.Add(n);
         }
+        // Planner create popover: a work item request may be for its requester; the approver sees their name.
+        var requestedAssigneeId = request.ActionType == WorkActionTypes.TaskCreate
+            ? ApprovalPayloadJson.GetGuid(payload, "assigneeEmployeeId")
+            : null;
+        if (requestedAssigneeId is Guid a) employeeIds.Add(a);
 
         var names = await _identity.ResolveDisplayNamesByEmployeeIdAsync(tenantId, employeeIds.Distinct().ToList(), ct);
         IReadOnlyDictionary<string, string?>? requestedOverrides = null;
@@ -145,6 +150,11 @@ public sealed class GetApprovalDetailQueryHandler : IRequestHandler<GetApprovalD
                 ["newHeadEmployeeId"] = newOwnerId is Guid n ? names.GetValueOrDefault(n) ?? "Unknown employee" : null
             };
         }
+        if (requestedAssigneeId is Guid assignee)
+            requestedOverrides = new Dictionary<string, string?>
+            {
+                ["assigneeEmployeeId"] = names.GetValueOrDefault(assignee) ?? "Unknown employee"
+            };
 
         var lookup = new ApprovalFeedLookup(tree, project.Name, names, taskModules);
         var item = ApprovalFeedItemFactory.FromRequest(request, caller, lookup);
