@@ -14,7 +14,15 @@ public sealed class EfLeaveRequestReadRepository(ApplicationDbContext db) : ILea
         DateOnly from,
         DateOnly to,
         CancellationToken ct = default) =>
-        ListCoveringAsync(tenantId, employeeIds, from, to, partiallyCancelled: false, ct);
+        ListCoveringAsync(tenantId, employeeIds, from, to, Covering.Approved, ct);
+
+    public Task<IReadOnlyList<LeaveRequest>> ListPendingCoveringAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Guid> employeeIds,
+        DateOnly from,
+        DateOnly to,
+        CancellationToken ct = default) =>
+        ListCoveringAsync(tenantId, employeeIds, from, to, Covering.Pending, ct);
 
     public Task<IReadOnlyList<LeaveRequest>> ListPartiallyCancelledCoveringAsync(
         Guid tenantId,
@@ -22,16 +30,20 @@ public sealed class EfLeaveRequestReadRepository(ApplicationDbContext db) : ILea
         DateOnly from,
         DateOnly to,
         CancellationToken ct = default) =>
-        ListCoveringAsync(tenantId, employeeIds, from, to, partiallyCancelled: true, ct);
+        ListCoveringAsync(tenantId, employeeIds, from, to, Covering.PartiallyCancelled, ct);
+
+    private enum Covering { Approved, Pending, PartiallyCancelled }
 
     private async Task<IReadOnlyList<LeaveRequest>> ListCoveringAsync(
         Guid tenantId,
         IReadOnlyCollection<Guid> employeeIds,
         DateOnly from,
         DateOnly to,
-        bool partiallyCancelled,
+        Covering covering,
         CancellationToken ct)
     {
+        var partiallyCancelled = covering == Covering.PartiallyCancelled;
+        var pending = covering == Covering.Pending;
         if (employeeIds.Count == 0 || from > to)
             return Array.Empty<LeaveRequest>();
 
@@ -43,7 +55,9 @@ public sealed class EfLeaveRequestReadRepository(ApplicationDbContext db) : ILea
                 && employeeIds.Contains(request.EmployeeId)
                 && (partiallyCancelled
                     ? request.Status == LeaveRequestStatuses.Cancelled && request.PartialCancelEffectiveDate != null
-                    : request.Status == LeaveRequestStatuses.Approved)
+                    : pending
+                        ? request.Status == LeaveRequestStatuses.Pending
+                        : request.Status == LeaveRequestStatuses.Approved)
                 && request.StartAt < toExclusive
                 && request.EndAt > fromStart)
             .OrderBy(request => request.EmployeeId)
