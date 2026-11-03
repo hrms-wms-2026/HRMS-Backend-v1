@@ -42,6 +42,11 @@ The result is that work gets assigned with no time attached, and nobody can see 
 - Capacity forecasting, auto-scheduling, or "find a free slot for the team".
 - Changing the People → Employee profile → Today's plan tab. It stays as it is.
 - Requests for meetings or time off. Meetings already invite people, and time off is the employee's own.
+- Extras seen in the reference images, **not built** unless the product owner asks *(decided 2026-11-03)*:
+  - a "Team workload" side panel;
+  - a "N members" picker button;
+  - a "Realtime updates" side panel. Badges and ghost blocks update live without it.
+- Changes to the Planner create popover form (Event / Meeting / Work item / Time off). It is frozen.
 
 **Anti-goals (a failure even if it "works")**
 - An employee's plan changes without the employee saying yes.
@@ -107,7 +112,12 @@ Dragging a range on a team member's day or person view opens a popover modelled 
   - **Plan**: the dragged time, shown as "Tue 09:00–11:00 · 2h" in *their* zone.
   - **Note** (optional, e.g. "Please pick this up before the demo").
   - **Send request**.
-- **New work item** inside the popover *(call)*: offered only where I can create directly (module owner). It creates the item now, unassigned, and the request carries it. Members who would need approval to create pick an existing item instead. This avoids a request chained to another approval.
+- **The request form is a popover** over the dragged slot *(decided 2026-11-03)*, not a side panel. Clicking a waiting ghost block opens the same popover with the request's details (Pending, Cancel request).
+- **New work item** inside the popover *(decided 2026-11-03)*:
+  - Offered **only to the module owner**, who can create directly.
+  - Fields: **Title, Module, Type (category)**. Priority defaults to medium.
+  - It creates the item now, unassigned, and the request carries it.
+  - Everyone else sees only "Assign existing". This avoids a request chained to another approval.
 - **Warnings before sending** (advisory, never blocking): the slot overlaps their planned blocks, meetings or leave; the day is beyond their 28-day horizon; or the day is already over capacity.
 - **Hard blocks** (the button is disabled, with the reason):
   - the day is in the past for them;
@@ -129,6 +139,8 @@ Dragging a range on a team member's day or person view opens a popover modelled 
 
 ### 4.5 Requester side
 - My **Inbox → Sent** shows the request and its outcome: Accepted, Declined with the reason, Cancelled or Expired.
+  - This is the **existing Inbox menu**, with the plan request as a type and a status chip *(decided 2026-11-03)*.
+  - There is no separate "Sent plan requests" page, and the Inbox never lives inside the Planner.
 - The ghost block on their planner turns into their real block, or disappears.
 
 ## 5. Backend
