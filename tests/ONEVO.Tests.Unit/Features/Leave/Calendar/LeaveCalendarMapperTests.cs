@@ -28,14 +28,8 @@ public class LeaveCalendarMapperTests
             PaidHours = 1m
         };
         var row = new LeaveCalendarRequestRow(
-            request, "Priya Nair", null, null, null, null, "Annual Leave", "AL", LeaveTypeCategories.Annual);
-        var options = new LeaveCalendarOptions
-        {
-            TypeCategoryColors = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-            {
-                [LeaveTypeCategories.Annual] = "#2563EB"
-            }
-        };
+            request, "Priya Nair", null, null, null, null, "Annual Leave", "AL", "#2563EB");
+        var options = new LeaveCalendarOptions();
 
         var response = LeaveCalendarMapper.ToMonthResponse(
             range,

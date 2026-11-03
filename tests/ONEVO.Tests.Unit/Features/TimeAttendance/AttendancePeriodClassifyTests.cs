@@ -55,10 +55,10 @@ public sealed class AttendancePeriodClassifyTests
     }
 
     [Fact]
-    public void ShortHours_CountedWhenWorkedBelowRequired()
+    public void ShortHours_IsRetired_EvenWhenWorkedBelowRequired()
     {
         var c = AttendancePeriodCalculator.Classify(Data(records: [Record(new(2026, 9, 1), requiredMinutes: 480, workedMinutes: 300)]));
-        c.ShortHours.Should().Be(1);
+        c.ShortHours.Should().Be(0);
         c.Attended.Should().Be(1);
     }
 

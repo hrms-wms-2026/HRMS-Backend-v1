@@ -33,6 +33,8 @@ public sealed class WorkLeadershipRepositoryIntegrationTests
 
             var doing = helper.AddStatus(db, projectId, marksComplete: false);
             var done = helper.AddStatus(db, projectId, marksComplete: true);
+            // Modules before tasks: the hour-summary trigger needs the objectives row to exist.
+            await db.SaveChangesAsync();
             var parent = helper.AddTask(db, projectId, moduleId, doing, 0, today.AddDays(-5), assigneeEmployeeId: strangerId);
             topOverdueTaskId = parent.Id;
             helper.AddTask(db, projectId, moduleId, doing, 0, today.AddDays(-9), parentTaskId: parent.Id); // subtask: excluded from top-level reads
@@ -58,11 +60,13 @@ public sealed class WorkLeadershipRepositoryIntegrationTests
             .Should().BeEquivalentTo(new[] { moduleId });
         (await projects.ListByIdsAsync(helper.TenantId, new[] { projectId })).Should().ContainSingle(p => p.Id == projectId);
 
-        var rows = await tasks.ListTopLevelProgressRowsAsync(helper.TenantId, new[] { moduleId, subId });
-        rows.Should().HaveCount(3, "the subtask is excluded from a top-level read");
-
         var overdue = await tasks.ListTopLevelOverdueAsync(helper.TenantId, new[] { moduleId, subId }, today, take: 10);
         overdue.Should().ContainSingle().Which.TaskId.Should().Be(topOverdueTaskId);
         overdue[0].AssigneeEmployeeIds.Should().Equal(strangerId);
+        (await tasks.CountTopLevelOverdueAsync(helper.TenantId, new[] { moduleId, subId }, today)).Should().Be(1);
+
+        var summaries = await new EfModuleHourSummaryRepository(read).ListByObjectiveIdsAsync(helper.TenantId, new[] { moduleId, subId });
+        ((summaries.GetValueOrDefault(moduleId)?.TaskCount ?? 0) + (summaries.GetValueOrDefault(subId)?.TaskCount ?? 0))
+            .Should().Be(3, "the subtask is excluded from the top-level summary");
     }
 }

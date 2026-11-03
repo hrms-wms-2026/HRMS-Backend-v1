@@ -1,5 +1,7 @@
 using Moq;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.Auth.Invite.RepositoryInterfaces;
+using ONEVO.Domain.Features.Auth.Entities;
 using ONEVO.Application.Features.CoreHr.Employee.Access;
 using ONEVO.Application.Features.CoreHr.Employee.DTOs.Responses;
 using ONEVO.Application.Features.CoreHr.Employee.Models;
@@ -20,6 +22,9 @@ public class EmployeeViewAccessTests
     private readonly Mock<CommonEmployeeRepo> _employees = new();
     private readonly Mock<VisibleEmployeeRepo> _visibleEmployees = new();
     private readonly Mock<IEmployeeVisibilityScopeResolver> _scopeResolver = new();
+    private readonly Mock<IInvitationTokenRepository> _invitations = new();
+    private readonly Mock<IEmployeeInvitationAccess> _invitationAccess = new();
+    private readonly EmployeeVisibilityScope _scope;
 
     public EmployeeViewAccessTests()
     {
@@ -30,17 +35,59 @@ public class EmployeeViewAccessTests
         _currentUser.Setup(c => c.HasPermission(It.IsAny<string>())).Returns(false);
         _employees.Setup(r => r.GetByUserIdAsync(_tenantId, _userId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new EmployeeEntity { Id = _employeeId, TenantId = _tenantId });
+        _scope = new EmployeeVisibilityScope(
+            false, _employeeId, new HashSet<Guid> { Guid.NewGuid() }, new HashSet<Guid>(), new HashSet<Guid>());
         _scopeResolver.Setup(r => r.ResolveAsync(_tenantId, _userId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new EmployeeVisibilityScope(
-                false, _employeeId, new HashSet<Guid> { Guid.NewGuid() }, new HashSet<Guid>(), new HashSet<Guid>()));
+            .ReturnsAsync(_scope);
     }
 
     private EmployeeViewAccess Sut() =>
-        new(_employees.Object, _visibleEmployees.Object, _scopeResolver.Object, _currentUser.Object);
+        new(_employees.Object, _visibleEmployees.Object, _scopeResolver.Object,
+            _invitations.Object, _invitationAccess.Object, _currentUser.Object);
 
-    private void MakeVisible(Guid employeeId) =>
-        _visibleEmployees.Setup(r => r.GetVisibleByIdAsync(_tenantId, It.IsAny<EmployeeVisibilityScope>(), employeeId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new EmployeeListItemResponse(employeeId, "E-1", "Ada", "ada@test.dev", null, null, null, null, null, null, "full_time", "active", null, null));
+    private Guid AddInvitedEmployee(Guid inviterUserId, DateTimeOffset? usedAt = null, DateTimeOffset? revokedAt = null)
+    {
+        var id = Guid.NewGuid();
+        var createdById = Guid.NewGuid();
+        var invitation = new InvitationToken { TenantId = _tenantId, EmployeeId = id, UsedAt = usedAt, RevokedAt = revokedAt };
+        _employees.Setup(r => r.GetByIdAsync(_tenantId, id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new EmployeeEntity { Id = id, TenantId = _tenantId, CreatedById = createdById });
+        _invitations.Setup(r => r.GetLatestByEmployeeIdAsync(_tenantId, id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(invitation);
+        _invitationAccess.Setup(a => a.ResolveInviterUserIdAsync(invitation, createdById, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(inviterUserId);
+        return id;
+    }
+
+    [Fact]
+    public async Task OpenInviteYouSent_IsVisible_WithoutCoverage()
+    {
+        // A just-invited employee's position is still "planned", so no reporting line reaches
+        // them; the inviter must still be able to open them (detail page + widgets).
+        var invited = AddInvitedEmployee(_userId);
+
+        Assert.True(await Sut().CanViewAsync(invited));
+    }
+
+    [Fact]
+    public async Task OpenInviteSomeoneElseSent_IsNotVisible()
+    {
+        var invited = AddInvitedEmployee(Guid.NewGuid());
+
+        Assert.False(await Sut().CanViewAsync(invited));
+    }
+
+    [Fact]
+    public async Task AcceptedInviteYouSent_FallsBackToCoverage()
+    {
+        var accepted = AddInvitedEmployee(_userId, usedAt: DateTimeOffset.UtcNow);
+
+        Assert.False(await Sut().CanViewAsync(accepted));
+    }
+
+    private void MakeVisible(Guid employeeId, string status = "active") =>
+        _visibleEmployees.Setup(r => r.GetVisibleByIdAsync(_tenantId, _scope, employeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new EmployeeListItemResponse(employeeId, "E-1", "Ada", "ada@test.dev", null, null, null, null, null, null, "full_time", status, null, null));
 
     [Fact]
     public async Task Self_IsAlwaysVisible()
@@ -55,6 +102,17 @@ public class EmployeeViewAccessTests
         MakeVisible(report);
 
         Assert.True(await Sut().CanViewAsync(report));
+    }
+
+    [Fact]
+    public async Task OffboardingReport_StaysVisible()
+    {
+        // Starting offboarding flips the status to "offboarding"; the manager must still be able
+        // to load the offboarding wizard (GET offboarding, checklist-matches) afterwards.
+        var leaver = Guid.NewGuid();
+        MakeVisible(leaver, status: "offboarding");
+
+        Assert.True(await Sut().CanViewAsync(leaver));
     }
 
     [Fact]

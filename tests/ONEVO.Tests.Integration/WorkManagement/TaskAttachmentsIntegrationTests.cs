@@ -170,6 +170,32 @@ public sealed class TaskAttachmentsIntegrationTestsFixture : IAsyncLifetime
     public async Task<HttpResponseMessage> SendGetTaskFileAsync(TenantSession session, Guid fileId)
         => await _client.SendAsync(BuildGetRequest(session, $"/api/v1/work/tasks/files/{fileId}"));
 
+    // ── Module (objective) attachment HTTP helpers ───────────────────────────
+
+    public async Task<HttpResponseMessage> SendUploadObjectiveAssetAsync(
+        TenantSession session, Guid objectiveId, string fileName, string contentType, byte[] bytes)
+    {
+        using var content = new ByteArrayContent(bytes);
+        content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(contentType);
+        using var form = new MultipartFormDataContent { { content, "File", fileName } };
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, $"/api/v1/work/objectives/{objectiveId}/assets") { Content = form };
+        request.Headers.Host = session.Host;
+        request.Headers.Add("Cookie", session.SessionCookie);
+        request.Headers.Add("X-CSRF-Token", session.CsrfHeader);
+        return await _client.SendAsync(request);
+    }
+
+    public Task<HttpResponseMessage> SendDeleteObjectiveAssetAsync(TenantSession session, Guid objectiveId, Guid assetId)
+        => SendJsonAsync(HttpMethod.Delete, session.Host, $"/api/v1/work/objectives/{objectiveId}/assets/{assetId}", null,
+            cookie: session.SessionCookie, csrfToken: session.CsrfHeader);
+
+    public async Task<HttpResponseMessage> SendGetObjectiveAsync(TenantSession session, Guid objectiveId)
+        => await _client.SendAsync(BuildGetRequest(session, $"/api/v1/work/objectives/{objectiveId}"));
+
+    public async Task<HttpResponseMessage> SendGetPathAsync(TenantSession session, string path)
+        => await _client.SendAsync(BuildGetRequest(session, path));
+
     public HttpRequestMessage BuildGetRequest(TenantSession session, string path)
     {
         var request = new HttpRequestMessage(HttpMethod.Get, path);
@@ -609,6 +635,57 @@ public sealed class TaskAttachmentsIntegrationTests : IClassFixture<TaskAttachme
         var editResponse = await _fixture.SendEditTaskAsync(_fixture.TenantA, taskId, editBody);
         var responseBody = await editResponse.Content.ReadAsStringAsync();
         editResponse.StatusCode.Should().Be(HttpStatusCode.OK, responseBody);
+    }
+
+    /// <summary>Module (objective) attachments, end to end: upload, listed on the module detail,
+    /// downloadable through its downloadUrl, invisible to another tenant, then deleted.</summary>
+    [Fact]
+    public async Task ModuleAsset_UploadListDownloadDelete_RoundTrip()
+    {
+        var fileBytes = new byte[] { 0x25, 0x50, 0x44, 0x46 }
+            .Concat(Encoding.UTF8.GetBytes("module brief")).ToArray();
+        var objectiveId = _fixture.TenantAObjectiveId;
+
+        var uploadResponse = await _fixture.SendUploadObjectiveAssetAsync(
+            _fixture.TenantA, objectiveId, "brief.pdf", "application/pdf", fileBytes);
+        uploadResponse.StatusCode.Should().Be(HttpStatusCode.Created, await uploadResponse.Content.ReadAsStringAsync());
+        var uploaded = await TaskAttachmentsIntegrationTestsFixture.ReadJsonAsync(uploadResponse);
+        var assetId = uploaded.GetProperty("id").GetGuid();
+        uploaded.GetProperty("fileName").GetString().Should().Be("brief.pdf");
+        uploaded.GetProperty("sizeBytes").GetInt64().Should().Be(fileBytes.Length);
+        var downloadUrl = uploaded.GetProperty("downloadUrl").GetString()!;
+        downloadUrl.Should().Be($"/api/v1/work/objectives/{objectiveId}/assets/{assetId}/file");
+
+        var detailResponse = await _fixture.SendGetObjectiveAsync(_fixture.TenantA, objectiveId);
+        detailResponse.StatusCode.Should().Be(HttpStatusCode.OK, await detailResponse.Content.ReadAsStringAsync());
+        var detail = await TaskAttachmentsIntegrationTestsFixture.ReadJsonAsync(detailResponse);
+        detail.GetProperty("assets").EnumerateArray().Should().ContainSingle(a => a.GetProperty("id").GetGuid() == assetId);
+
+        var downloadResponse = await _fixture.SendGetPathAsync(_fixture.TenantA, downloadUrl);
+        downloadResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        (await downloadResponse.Content.ReadAsByteArrayAsync()).Should().Equal(fileBytes);
+
+        var crossTenantDownload = await _fixture.SendGetPathAsync(_fixture.TenantB, downloadUrl);
+        crossTenantDownload.StatusCode.Should().BeOneOf(HttpStatusCode.NotFound, HttpStatusCode.Forbidden);
+        var crossTenantDelete = await _fixture.SendDeleteObjectiveAssetAsync(_fixture.TenantB, objectiveId, assetId);
+        crossTenantDelete.StatusCode.Should().BeOneOf(HttpStatusCode.NotFound, HttpStatusCode.Forbidden);
+
+        var deleteResponse = await _fixture.SendDeleteObjectiveAssetAsync(_fixture.TenantA, objectiveId, assetId);
+        deleteResponse.StatusCode.Should().Be(HttpStatusCode.NoContent, await deleteResponse.Content.ReadAsStringAsync());
+
+        var afterDelete = await TaskAttachmentsIntegrationTestsFixture.ReadJsonAsync(
+            await _fixture.SendGetObjectiveAsync(_fixture.TenantA, objectiveId));
+        afterDelete.GetProperty("assets").EnumerateArray().Should().NotContain(a => a.GetProperty("id").GetGuid() == assetId);
+        (await _fixture.SendGetPathAsync(_fixture.TenantA, downloadUrl)).StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task ModuleAsset_DisallowedFileType_Rejected()
+    {
+        var response = await _fixture.SendUploadObjectiveAssetAsync(
+            _fixture.TenantA, _fixture.TenantAObjectiveId, "run.exe", "application/octet-stream", new byte[] { 0x4D, 0x5A, 0x90, 0x00 });
+
+        ((int)response.StatusCode).Should().BeInRange(400, 499, await response.Content.ReadAsStringAsync());
     }
 
     [Fact]

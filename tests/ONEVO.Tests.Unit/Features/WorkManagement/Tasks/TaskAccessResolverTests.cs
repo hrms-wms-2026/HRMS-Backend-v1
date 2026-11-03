@@ -161,4 +161,45 @@ public class TaskAccessResolverTests
         Assert.False(result.IsSuccess);
         Assert.Equal(404, result.StatusCode);
     }
+
+    [Fact]
+    public async Task ResolveViewableTasksAsync_ReturnsOnlyTheVisibleTasks_InOneRoundTrip()
+    {
+        var visibleObjective = Guid.NewGuid();
+        var hiddenObjective = Guid.NewGuid();
+        var (resolver, tasks, projects, members, permissions) = Build();
+        var visible = new WorkTask { Id = Guid.NewGuid(), TenantId = TenantId, ProjectId = ProjectId, ObjectiveId = visibleObjective };
+        var hidden = new WorkTask { Id = Guid.NewGuid(), TenantId = TenantId, ProjectId = ProjectId, ObjectiveId = hiddenObjective };
+        projects.Setup(x => x.GetByIdForTenantAsync(TenantId, ProjectId, It.IsAny<CancellationToken>())).ReturnsAsync(ActiveProject());
+        permissions.Setup(x => x.ResolveAsync(UserId, TenantId, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<string>());
+        members.Setup(x => x.GetActiveObjectiveIdsForEmployeeInProjectAsync(TenantId, ProjectId, EmployeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<Guid> { visibleObjective });
+
+        var result = await resolver.ResolveViewableTasksAsync(TenantId, UserId, new[] { visible, hidden }, CancellationToken.None);
+
+        Assert.Equal(new[] { visible.Id }, result.Select(t => t.Id));
+        // One project lookup and one membership lookup for the whole set - not one per task.
+        projects.Verify(x => x.GetByIdForTenantAsync(TenantId, ProjectId, It.IsAny<CancellationToken>()), Times.Once);
+        members.Verify(x => x.GetActiveObjectiveIdsForEmployeeInProjectAsync(TenantId, ProjectId, EmployeeId, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task ResolveViewableTasksAsync_AnAssigneeScopeTaskTheCallerIsNotOnIsDropped()
+    {
+        var (resolver, tasks, projects, members, permissions) = Build();
+        var task = Task_(ObjectiveId);
+        task.VisibilityScope = WorkTaskVisibilityScopes.Assignees;
+        projects.Setup(x => x.GetByIdForTenantAsync(TenantId, ProjectId, It.IsAny<CancellationToken>())).ReturnsAsync(ActiveProject());
+        permissions.Setup(x => x.ResolveAsync(UserId, TenantId, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<string>());
+        members.Setup(x => x.GetActiveObjectiveIdsForEmployeeInProjectAsync(TenantId, ProjectId, EmployeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<Guid> { ObjectiveId });
+        tasks.Setup(x => x.GetAssignedEmployeeIdsByTaskIdsAsync(It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, IReadOnlyList<Guid>>());
+
+        var result = await resolver.ResolveViewableTasksAsync(TenantId, UserId, new[] { task }, CancellationToken.None);
+
+        Assert.Empty(result);
+    }
 }

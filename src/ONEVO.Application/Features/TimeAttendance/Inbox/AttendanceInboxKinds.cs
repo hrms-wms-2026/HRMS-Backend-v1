@@ -17,7 +17,7 @@ public static class AttendanceInboxKinds
     public const string ApprovePermission = "attendance:approve";
     public const string ReadPermission = "attendance:read";
 
-    private const InboxCapabilities RequestBase = InboxCapabilities.Chat | InboxCapabilities.Revert | InboxCapabilities.Bulk;
+    private const InboxCapabilities RequestBase = InboxCapabilities.Chat | InboxCapabilities.Revert;
 
     public static readonly IReadOnlyList<InboxKindDescriptor> Descriptors =
     [
@@ -30,7 +30,7 @@ public static class AttendanceInboxKinds
         // No cancel: there is no cancel command for device changes.
         new(Source, DeviceChange, "Device change", InboxCategories.Request, RequestBase, "device-change"),
         new(Source, Alert, "Attendance alert", InboxCategories.Alert,
-            InboxCapabilities.Chat | InboxCapabilities.Revert | InboxCapabilities.Bulk | InboxCapabilities.Resolve, "attendance-alert"),
+            InboxCapabilities.Chat | InboxCapabilities.Revert | InboxCapabilities.Resolve, "attendance-alert"),
     ];
 
     public static readonly IReadOnlyDictionary<string, EmployeeAuthorityPurpose> Purposes = new Dictionary<string, EmployeeAuthorityPurpose>

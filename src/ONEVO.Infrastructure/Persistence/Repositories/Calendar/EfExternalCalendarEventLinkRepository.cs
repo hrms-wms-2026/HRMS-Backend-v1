@@ -21,6 +21,11 @@ public class EfExternalCalendarEventLinkRepository : IExternalCalendarEventLinkR
         => await _db.ExternalCalendarEventLinks.FirstOrDefaultAsync(
             l => l.TenantId == tenantId && l.CalendarEventId == calendarEventId && l.ExternalCalendarConnectionId == connectionId, ct);
 
+    public async Task<IReadOnlyList<ExternalCalendarEventLink>> ListTrackedMeetingLinksAsync(Guid tenantId, Guid connectionId, CancellationToken ct = default)
+        => await _db.ExternalCalendarEventLinks
+            .Where(l => l.TenantId == tenantId && l.ExternalCalendarConnectionId == connectionId && l.MeetingTaskId != null)
+            .ToListAsync(ct);
+
     public async Task<IReadOnlyList<ExternalCalendarEventLink>> GetByConnectionIdAsync(Guid tenantId, Guid connectionId, CancellationToken ct = default)
         => await _db.ExternalCalendarEventLinks.AsNoTracking()
             .Where(l => l.TenantId == tenantId && l.ExternalCalendarConnectionId == connectionId)

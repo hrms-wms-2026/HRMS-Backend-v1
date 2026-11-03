@@ -44,7 +44,7 @@ public sealed class ExceptionScopeResolverEscalationHolderTests
             System.Text.Json.JsonSerializer.Serialize(new { escalatedTo = to }));
 
     [Fact]
-    public async Task The_current_holder_of_a_calendar_case_gets_that_case_and_a_previous_holder_does_not()
+    public async Task The_current_holder_of_an_escalated_case_gets_that_case_and_a_previous_holder_does_not()
     {
         var held = new ItemRef("calendar", "meeting_exception", Guid.NewGuid());
         var movedOn = new ItemRef("calendar", "meeting_exception", Guid.NewGuid());
@@ -52,12 +52,12 @@ public sealed class ExceptionScopeResolverEscalationHolderTests
         Escalated(held, 0, _skipLevel.Id);
         Escalated(movedOn, 0, _skipLevel.Id);
         Escalated(movedOn, 10, Guid.NewGuid()); // escalated further up since
-        Escalated(monitoring, 0, _skipLevel.Id); // monitoring cases keep their own (coverage / HR) scope
+        Escalated(monitoring, 0, _skipLevel.Id); // monitoring cases also escalate up the approver chain
 
         var scope = await new ExceptionScopeResolver(_currentUser.Object, _employees.Object, _authority.Object, _journal)
             .ResolveAsync(forAction: true, [Guid.NewGuid()], default);
 
-        scope!.HeldCaseIds.Should().Equal(held.Id);
+        scope!.HeldCaseIds.Should().BeEquivalentTo([held.Id, monitoring.Id]);
         scope.CanAct(held.Id, Guid.NewGuid()).Should().BeTrue();
         scope.CanAct(movedOn.Id, Guid.NewGuid()).Should().BeFalse();
         scope.CanAct(held.Id, _skipLevel.Id).Should().BeFalse("nobody works a case about themselves");

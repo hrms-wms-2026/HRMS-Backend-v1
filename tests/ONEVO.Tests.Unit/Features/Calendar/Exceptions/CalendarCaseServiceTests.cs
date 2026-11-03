@@ -80,30 +80,43 @@ public sealed class CalendarCaseServiceTests
         => Sut().ApplyAsync(TenantId, _subject.Id, findings, CalendarRuleCatalog.Specs.Keys.ToList(), Now, Now, default);
 
     [Theory]
-    [InlineData(1, false)] // 2 no-shows in 30 days
-    [InlineData(2, true)]  // 3 no-shows in 30 days
+    [InlineData(1, false)] // 2 last-minute declines in 30 days
+    [InlineData(2, true)]  // 3 last-minute declines in 30 days
     public async Task A_threshold_rule_opens_a_case_exactly_at_its_threshold(int earlier, bool opens)
     {
         for (var i = 0; i < earlier; i++)
-            Stored(CalendarRuleCodes.NoShow, 5 + i);
+            Stored(CalendarRuleCodes.LateDecline, 5 + i);
 
-        var result = await Apply(Finding(CalendarRuleCodes.NoShow, 1));
+        var result = await Apply(Finding(CalendarRuleCodes.LateDecline, 1));
 
         result.CasesOpened.Should().HaveCount(opens ? 1 : 0);
         if (opens)
         {
-            _cases.Single().Type.Should().Be(ExceptionType.MeetingNoShow);
+            _cases.Single().Type.Should().Be(ExceptionType.MeetingRsvp);
             _incidents.Rows.Should().OnlyContain(i => i.ExceptionId == _cases.Single().Id, "every counted incident is the case's evidence");
         }
     }
 
     [Fact]
+    public async Task A_single_missed_meeting_opens_a_case()
+    {
+        var result = await Apply(Finding(CalendarRuleCodes.NoShow, 1));
+
+        result.CasesOpened.Should().ContainSingle();
+        _cases.Single().Type.Should().Be(ExceptionType.MeetingNoShow);
+    }
+
+    [Fact]
+    public async Task A_single_unanswered_invitation_does_not_open_a_case_on_its_own()
+        => (await Apply(Finding(CalendarRuleCodes.NoResponse, 1))).CasesOpened.Should().BeEmpty();
+
+    [Fact]
     public async Task Incidents_older_than_the_window_do_not_count()
     {
-        Stored(CalendarRuleCodes.NoShow, 31);
-        Stored(CalendarRuleCodes.NoShow, 35);
+        Stored(CalendarRuleCodes.LateDecline, 31);
+        Stored(CalendarRuleCodes.LateDecline, 35);
 
-        (await Apply(Finding(CalendarRuleCodes.NoShow, 1))).CasesOpened.Should().BeEmpty();
+        (await Apply(Finding(CalendarRuleCodes.LateDecline, 1))).CasesOpened.Should().BeEmpty();
     }
 
     [Fact]
@@ -111,14 +124,14 @@ public sealed class CalendarCaseServiceTests
     {
         var dismissed = new MonitoringException
         {
-            Id = Guid.NewGuid(), TenantId = TenantId, EmployeeId = _subject.Id, Type = ExceptionType.MeetingNoShow,
+            Id = Guid.NewGuid(), TenantId = TenantId, EmployeeId = _subject.Id, Type = ExceptionType.MeetingRsvp,
             Status = ExceptionStatus.Resolved, Outcome = ExceptionOutcomes.Excused,
         };
         _cases.Add(dismissed);
-        Stored(CalendarRuleCodes.NoShow, 5, dismissed.Id);
-        Stored(CalendarRuleCodes.NoShow, 6, dismissed.Id);
+        Stored(CalendarRuleCodes.LateDecline, 5, dismissed.Id);
+        Stored(CalendarRuleCodes.LateDecline, 6, dismissed.Id);
 
-        (await Apply(Finding(CalendarRuleCodes.NoShow, 1))).CasesOpened.Should().BeEmpty();
+        (await Apply(Finding(CalendarRuleCodes.LateDecline, 1))).CasesOpened.Should().BeEmpty();
     }
 
     [Fact]

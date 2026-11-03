@@ -23,7 +23,8 @@ public sealed class AddCalendarEventParticipantsCommandHandler(
     ICalendarEventRepository events,
     ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces.IEmployeeRepository employees,
     ICalendarNotificationSender notifications,
-    IUnitOfWork unitOfWork)
+    IUnitOfWork unitOfWork,
+    CalendarMeetingGuard? meetingGuard = null)
     : IRequestHandler<AddCalendarEventParticipantsCommand, Result<CalendarEventParticipantsResult>>
 {
     public async Task<Result<CalendarEventParticipantsResult>> Handle(
@@ -39,6 +40,8 @@ public sealed class AddCalendarEventParticipantsCommandHandler(
 
         if (existing.CreatedById != currentUser.UserId)
             return Result<CalendarEventParticipantsResult>.Forbidden("Only the event organizer can add participants.");
+        if (meetingGuard is not null && await meetingGuard.RefusesBecomingMeetingAsync(tenantId, existing, ct))
+            return CalendarMeetingGuard.Refusal<CalendarEventParticipantsResult>();
 
         return await unitOfWork.ExecuteInTransactionAsync(async innerCt =>
         {

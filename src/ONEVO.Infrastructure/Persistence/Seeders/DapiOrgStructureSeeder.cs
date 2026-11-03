@@ -102,6 +102,7 @@ public sealed partial class DapiOrgStructureSeeder : IHostedService
 
         var departmentIdByCode = await SeedDepartmentsAsync(db, now, ct);
         var positionIdByCode = await SeedPositionsAsync(db, departmentIdByCode, now, ct);
+        await SeedHrDepartmentCoverageAsync(db, departmentIdByCode, positionIdByCode[DapiOrgStructureData.HrManagerPosition], now, ct);
         var roleIdByName = await SeedRolesAsync(db, now, ct);
         var defaultWorkModeId = await db.TimeAttendanceWorkModes
             .Where(w => w.TenantId == DapiTenantId && w.LegalEntityId == DapiLegalEntityId

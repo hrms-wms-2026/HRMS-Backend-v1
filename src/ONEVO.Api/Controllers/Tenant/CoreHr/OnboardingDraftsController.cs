@@ -45,6 +45,17 @@ public class OnboardingDraftsController : ControllerBase
         return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
+    /// <summary>Who will have to approve adding someone to <paramref name="positionId"/>: the position access
+    /// approvers when its template requires approval, and the billing managers when no seat is free.</summary>
+    [HttpGet("approval-preview")]
+    [RequirePermission("employees:write")]
+    public async Task<IActionResult> GetApprovalPreview([FromQuery] Guid? positionId = null, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(
+            new ONEVO.Application.Features.CoreHr.Onboarding.Queries.GetOnboardingApprovalPreview.GetOnboardingApprovalPreviewQuery(positionId), ct);
+        return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
     /// <summary>Anyone with an active seat in the company matching <paramref name="search"/>
     /// (name, position or department) - the Reporting step's "Choose someone else" box.</summary>
     [HttpGet("manager-candidates")]

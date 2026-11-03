@@ -59,6 +59,5 @@ public class InboxStepsBuilderTests
     [Theory]
     [InlineData("resolve:converted_to_leave", "Resolved - Converted to leave")]
     [InlineData("change_decision", "Change decision")]
-    [InlineData("request_info", "Asked for more information")]
     public void Journal_labels(string action, string label) => InboxStepsBuilder.JournalLabel(action).Should().Be(label);
 }

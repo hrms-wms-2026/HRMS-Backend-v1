@@ -3,6 +3,7 @@ using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Calendar.RepositoryInterfaces;
 using ONEVO.Application.Features.Calendar.ServiceInterfaces;
+using ONEVO.Application.Features.WorkManagement.Meetings.Services;
 
 namespace ONEVO.Application.Features.Calendar.Queries.CheckCalendarConflicts;
 
@@ -10,7 +11,8 @@ public sealed class CheckCalendarConflictsQueryHandler(
     ICurrentUser currentUser,
     ICalendarEventRepository events,
     ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces.IEmployeeRepository employees,
-    ICalendarRecurrenceExpander expander)
+    ICalendarRecurrenceExpander expander,
+    MeetingCalendarProjection? meetings = null)
     : IRequestHandler<CheckCalendarConflictsQuery, Result<CalendarConflictsResponse>>
 {
     public async Task<Result<CalendarConflictsResponse>> Handle(CheckCalendarConflictsQuery request, CancellationToken ct)
@@ -20,6 +22,14 @@ public sealed class CheckCalendarConflictsQueryHandler(
 
         var tenantId = currentUser.TenantId;
         var conflicts = new List<CalendarConflict>();
+        // Task meetings the caller cannot see themselves are reported as "Busy" with their time only (spec 5.1 privacy).
+        HashSet<Guid>? visibleToCaller = null;
+        if (meetings is not null)
+        {
+            var caller = await employees.GetDefaultForUserAsync(tenantId, currentUser.UserId, ct);
+            visibleToCaller = caller is null ? []
+                : (await meetings.ListAsync(tenantId, caller.Id, request.StartDate, request.EndDate, ct)).Select(i => i.Id).ToHashSet();
+        }
 
         foreach (var employeeId in request.ParticipantEmployeeIds)
         {
@@ -50,6 +60,19 @@ public sealed class CheckCalendarConflictsQueryHandler(
                     var overlapEnd = master.EndDate < request.EndDate ? master.EndDate : request.EndDate;
                     conflicts.Add(new CalendarConflict(employeeId, employeeName, master.Id, master.Title, overlapStart, overlapEnd));
                 }
+            }
+
+            if (meetings is null)
+                continue;
+            foreach (var m in await meetings.ListAsync(tenantId, employeeId, request.StartDate, request.EndDate, ct))
+            {
+                if (m.StartDate >= request.EndDate || m.EndDate <= request.StartDate)
+                    continue;
+                var overlapStart = m.StartDate > request.StartDate ? m.StartDate : request.StartDate;
+                var overlapEnd = m.EndDate < request.EndDate ? m.EndDate : request.EndDate;
+                conflicts.Add(visibleToCaller!.Contains(m.Id)
+                    ? new CalendarConflict(employeeId, employeeName, m.Id, m.Title, overlapStart, overlapEnd)
+                    : new CalendarConflict(employeeId, employeeName, Guid.Empty, "Busy", overlapStart, overlapEnd, IsBusyOnly: true));
             }
         }
 

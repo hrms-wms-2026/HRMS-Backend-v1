@@ -37,20 +37,12 @@ public class UpdateLeaveTypeCommandHandler : IRequestHandler<UpdateLeaveTypeComm
 
         entity.Name = name;
         entity.Description = request.Description?.Trim();
-        entity.Category = request.Category;
+        entity.Color = request.Color.Trim().ToUpperInvariant();
         entity.IsPaid = request.IsPaid;
-        entity.RequiresApproval = request.RequiresApproval;
-        entity.RequiresDocument = request.RequiresDocument;
-        entity.DocumentRequiredAfterDays = request.DocumentRequiredAfterDays;
-        entity.AcceptedDocumentTypes = request.AcceptedDocumentTypes ?? [];
-        entity.MaxConsecutiveDays = request.MaxConsecutiveDays;
-        entity.DefaultDaysPerYear = request.DefaultDaysPerYear;
-        entity.CarryForwardAllowed = request.CarryForwardAllowed;
-        entity.MaxCarryForwardDays = request.MaxCarryForwardDays;
-        entity.CarryForwardExpiryMonths = request.CarryForwardExpiryMonths;
-        entity.ProRataForNewJoiners = request.ProRataForNewJoiners;
         entity.ApplicableGender = request.ApplicableGender;
-        entity.MinimumNoticeDays = request.MinimumNoticeDays;
+        entity.RequiresDocument = request.RequiresDocument;
+        entity.DocumentRequiredAfterHours = request.RequiresDocument ? request.DocumentRequiredAfterHours : null;
+        entity.AcceptedDocumentTypes = request.AcceptedDocumentTypes ?? [];
         entity.UpdatedAt = _dateTimeProvider.UtcNow;
 
         _leaveTypes.Update(entity);

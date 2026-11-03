@@ -81,6 +81,9 @@ public class UpdateClockInPolicyCommandHandler
         }
 
         var now = _dateTimeProvider.UtcNow;
+        // Who the rows apply to, and when: widening it must not back-charge the newly covered days either.
+        var coverageBefore = (policy.ScopeType, Ids(policy.DepartmentIds), Ids(policy.PositionIds), Ids(policy.EmployeeIds),
+            policy.EffectiveFrom, policy.EffectiveTo, policy.IsActive);
         policy.Name = request.Name.Trim();
         policy.EffectiveFrom = request.EffectiveFrom;
         policy.EffectiveTo = request.EffectiveTo;
@@ -90,6 +93,18 @@ public class UpdateClockInPolicyCommandHandler
         policy.UpdatedAt = now;
 
         ClockInPolicyMapper.ApplyScope(policy, request.Scope);
+
+        // Days before the rows last changed are never newly charged, so only a real change moves the stamp
+        // (the rows are recreated on every save, so compare their content, not their ids). Rows saved before
+        // deductions existed carry no stamp; the first save stamps them, so they only charge from then on.
+        var coverageAfter = (policy.ScopeType, Ids(policy.DepartmentIds), Ids(policy.PositionIds), Ids(policy.EmployeeIds),
+            policy.EffectiveFrom, policy.EffectiveTo, policy.IsActive);
+        if ((policy.DeductionRulesChangedAt is null && request.LateDeductionRules.Count > 0)
+            || coverageBefore != coverageAfter
+            || !ClockInPolicyRules.SameRows(
+                policy.LateDeductionRules.Where(r => r.IsActive).Select(r => (r.LateArrivalMinute, r.Multiplier, r.TimeOffTypeId)),
+                request.LateDeductionRules.Select(r => (r.LateArrivalMinute, r.Multiplier, r.TimeOffTypeId))))
+            policy.DeductionRulesChangedAt = now;
 
         policy.LateDeductionRules.Clear();
         foreach (var rule in request.LateDeductionRules.OrderBy(r => r.LateArrivalMinute))
@@ -113,4 +128,7 @@ public class UpdateClockInPolicyCommandHandler
 
         return Result<ClockInPolicyResponse>.Success(ClockInPolicyMapper.ToResponse(policy));
     }
+
+    /// <summary>Order-insensitive comparable form of a scope id list.</summary>
+    private static string Ids(Guid[]? ids) => ids is null ? "" : string.Join(",", ids.Order());
 }

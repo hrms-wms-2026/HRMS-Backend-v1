@@ -49,7 +49,11 @@ public static class LeaveEntitlementMapper
             entitlement.UpdatedAt);
     }
 
-    public static LeaveBalanceResponse ToBalance(LeaveEntitlementRow row, DateOnly asOfDate, DateOnly? carryExpiresOn)
+    public static LeaveBalanceResponse ToBalance(
+        LeaveEntitlementRow row,
+        DateOnly asOfDate,
+        DateOnly? carryExpiresOn,
+        ONEVO.Application.Features.Leave.Policy.Services.ResolvedLeavePolicy? policy = null)
     {
         var entitlement = row.Entitlement;
         var carry = EffectiveCarry(entitlement.CarriedForwardHours, carryExpiresOn, asOfDate);
@@ -74,7 +78,10 @@ public static class LeaveEntitlementMapper
             entitlement.PendingHours,
             remaining,
             remaining < 0m,
-            carryExpiresOn);
+            carryExpiresOn,
+            policy?.PolicyName,
+            policy?.Version.AmountHours,
+            policy?.Version.AmountPeriod);
     }
 
     public static string EmployeeName(string firstName, string lastName) =>

@@ -30,7 +30,7 @@ public sealed class EmployeeAttendancePeriodReaderExcusedTests
         _clock.SetupGet(c => c.UtcNow).Returns(DateTimeOffset.Parse("2026-08-21T04:00:00+00:00"));
     }
 
-    private EmployeeAttendancePeriodReader Reader(IAttendanceAlertResolutionLookup? lookup)
+    private EmployeeAttendancePeriodReader Reader(IAttendanceAlertResolutionLookup? lookup, IEmployeeClockInPolicyResolver? policies = null)
     {
         _attendance.Setup(a => a.ListBreaksAsync(_tenantId, _employeeId, It.IsAny<DateTimeOffset>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Array.Empty<BreakRecord>());
@@ -40,7 +40,7 @@ public sealed class EmployeeAttendancePeriodReaderExcusedTests
         var calendar = new Mock<ICalendarEventRepository>();
         calendar.Setup(c => c.ListHolidayDatesAsync(_tenantId, August.From, August.To, It.IsAny<CancellationToken>())).ReturnsAsync(Array.Empty<DateOnly>());
         return new(_attendance.Object, leaves.Object, new Mock<ILegalEntityRepository>().Object,
-            _clock.Object, new Mock<IEmployeeRepository>().Object, calendar.Object, lookup);
+            _clock.Object, new Mock<IEmployeeRepository>().Object, calendar.Object, lookup, policies);
     }
 
     [Fact]
@@ -65,4 +65,22 @@ public sealed class EmployeeAttendancePeriodReaderExcusedTests
 
         data.Excused.Should().BeNull();
     }
+
+    [Fact]
+    public async Task LoadAsync_CarriesThePolicyThreshold()
+    {
+        var legalEntityId = Guid.NewGuid();
+        var policy = new ONEVO.Domain.Features.TimeAttendance.Entities.ClockInPolicy();
+        policy.LateDeductionRules.Add(new ONEVO.Domain.Features.TimeAttendance.Entities.ClockInLateDeductionRule { LateArrivalMinute = 15, Multiplier = 1m, IsActive = true });
+        var policies = new Mock<IEmployeeClockInPolicyResolver>();
+        policies.Setup(p => p.ResolveAsync(_tenantId, _employeeId, legalEntityId, August.To, It.IsAny<CancellationToken>())).ReturnsAsync(policy);
+
+        var data = await Reader(null, policies.Object).LoadAsync(_tenantId, _employeeId, legalEntityId, August);
+
+        data.LateEarlyThresholdMinutes.Should().Be(15);
+    }
+
+    [Fact]
+    public async Task LoadAsync_WithoutAPolicy_ThresholdIsZero()
+        => (await Reader(null).LoadAsync(_tenantId, _employeeId, Guid.NewGuid(), August)).LateEarlyThresholdMinutes.Should().Be(0);
 }

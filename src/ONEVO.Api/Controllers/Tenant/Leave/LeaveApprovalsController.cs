@@ -79,22 +79,6 @@ public sealed class LeaveApprovalsController : ControllerBase
         return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
-    [HttpPost("{requestId:guid}/request-info")]
-    [RequirePermission("leave:approve")]
-    public async Task<IActionResult> RequestInfo(Guid requestId, [FromBody] RequestLeaveInformationRequest request, CancellationToken ct = default)
-    {
-        var result = await _mediator.Send(new RequestLeaveInformationCommand(requestId, request.Question), ct);
-        return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
-    }
-
-    [HttpPost("{requestId:guid}/forward")]
-    [RequirePermission("leave:approve")]
-    public async Task<IActionResult> Forward(Guid requestId, [FromBody] ForwardLeaveRequestRequest? request, CancellationToken ct = default)
-    {
-        var result = await _mediator.Send(new ForwardLeaveRequestCommand(requestId, request?.Note), ct);
-        return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
-    }
-
     [HttpPost("{requestId:guid}/change-decision")]
     [RequirePermission("leave:approve")]
     public async Task<IActionResult> ChangeDecision(Guid requestId, [FromBody] ChangeLeaveDecisionRequest request, CancellationToken ct = default)
@@ -111,14 +95,6 @@ public sealed class LeaveApprovalsController : ControllerBase
         CancellationToken ct = default)
     {
         var result = await _mediator.Send(new ListLeaveApprovalHistoryQuery(fromDate, toDate), ct);
-        return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
-    }
-
-    [HttpPost("{requestId:guid}/respond-info")]
-    [RequirePermission("leave:read-own")]
-    public async Task<IActionResult> RespondInfo(Guid requestId, [FromBody] RespondLeaveInformationRequest request, CancellationToken ct = default)
-    {
-        var result = await _mediator.Send(new RespondLeaveInformationCommand(requestId, request.Message, request.FileRecordIds ?? []), ct);
         return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 

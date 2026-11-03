@@ -16,11 +16,21 @@ public class EfWorkTaskRepository : IWorkTaskRepository
     public async Task<WorkTask?> GetByIdForTenantAsync(Guid tenantId, Guid id, CancellationToken ct = default)
         => await _db.WorkTasks.AsNoTracking().FirstOrDefaultAsync(t => t.TenantId == tenantId && t.Id == id, ct);
 
+    public async Task<IReadOnlyList<WorkTask>> GetByIdsForTenantAsync(Guid tenantId, IReadOnlyCollection<Guid> ids, CancellationToken ct = default)
+    {
+        if (ids.Count == 0)
+            return Array.Empty<WorkTask>();
+        return await _db.WorkTasks.AsNoTracking()
+            .Where(t => t.TenantId == tenantId && ids.Contains(t.Id))
+            .ToListAsync(ct);
+    }
+
     public async Task<WorkTask?> GetTrackedByIdForTenantAsync(Guid tenantId, Guid id, CancellationToken ct = default)
         => await _db.WorkTasks.FirstOrDefaultAsync(t => t.TenantId == tenantId && t.Id == id, ct);
 
+    // Bypasses only the tenant/soft-delete filter (tenant re-applied by hand): meetings stay hidden (Phase 2 spec 2.2).
     public async Task<WorkTask?> GetTrackedByIdForTenantIncludingDeletedAsync(Guid tenantId, Guid id, CancellationToken ct = default)
-        => await _db.WorkTasks.IgnoreQueryFilters().FirstOrDefaultAsync(t => t.TenantId == tenantId && t.Id == id, ct);
+        => await _db.WorkTasks.IgnoreQueryFilters([WorkTaskQueryFilters.TenantScope]).FirstOrDefaultAsync(t => t.TenantId == tenantId && t.Id == id, ct);
 
     public Task<bool> IsAssignedToEmployeeAsync(Guid taskId, Guid employeeId, CancellationToken ct = default)
         => _db.TaskAssignments.AsNoTracking()
@@ -221,6 +231,26 @@ public class EfWorkTaskRepository : IWorkTaskRepository
         ).ToListAsync(ct);
     }
 
+    public async Task<IReadOnlyList<EmployeeTaskPeriodRow>> ListOpenForEmployeeAsync(
+        Guid tenantId, Guid employeeId, CancellationToken ct = default)
+    {
+        return await (
+            from t in _db.WorkTasks.AsNoTracking()
+            join s in _db.TaskStatuses.AsNoTracking() on t.StatusId equals s.Id
+            join p in _db.Projects.AsNoTracking() on t.ProjectId equals p.Id
+            join o in _db.Objectives.AsNoTracking() on t.ObjectiveId equals o.Id into objectives
+            from o in objectives.DefaultIfEmpty()
+            where t.TenantId == tenantId
+                  && _db.TaskAssignments.Any(a => a.TaskId == t.Id && a.EmployeeId == employeeId)
+                  && !s.MarksTaskComplete && t.ProgressPercent < 100
+            select new EmployeeTaskPeriodRow(
+                t.DueDate, t.CompletedAt, t.ProgressPercent, s.MarksTaskComplete, t.StoryPoints,
+                t.Id, t.Title, t.ProjectId, p.Name,
+                false,
+                t.ShortId, t.Priority, s.Name, s.Color, t.ObjectiveId, o != null ? o.Title : "")
+        ).ToListAsync(ct);
+    }
+
     public async Task<IReadOnlyList<EmployeeWorkTaskRow>> ListOpenDueByAsync(Guid tenantId, Guid employeeId, DateOnly dueOnOrBefore, CancellationToken ct = default)
     {
         return await (
@@ -279,6 +309,7 @@ public class EfWorkTaskRepository : IWorkTaskRepository
     // IgnoreQueryFilters() bypasses the soft-delete half of the composed query filter on
     // purpose: a status must stay undeletable if a soft-deleted task still references it, not
     // just active ones. Tenant scoping is preserved manually via the TenantId equality below.
+    // Meeting tasks are counted on purpose: they reference a status too (FK), so it must stay undeletable.
     public async Task<bool> AnyActiveByStatusIdAsync(Guid tenantId, Guid statusId, CancellationToken ct = default)
         => await _db.WorkTasks.IgnoreQueryFilters()
             .AnyAsync(t => t.TenantId == tenantId && t.StatusId == statusId, ct);
@@ -286,22 +317,10 @@ public class EfWorkTaskRepository : IWorkTaskRepository
     // IgnoreQueryFilters() bypasses the soft-delete half of the composed query filter on
     // purpose: a category must stay undeletable if a soft-deleted task still references it, not
     // just active ones. Tenant scoping is preserved manually via the TenantId equality below.
+    // Meeting tasks are counted on purpose: they reference a category too (FK), so it must stay undeletable.
     public async Task<bool> AnyActiveByCategoryIdAsync(Guid tenantId, Guid categoryId, CancellationToken ct = default)
         => await _db.WorkTasks.IgnoreQueryFilters()
             .AnyAsync(t => t.TenantId == tenantId && t.CategoryId == categoryId, ct);
-
-    public async Task<IReadOnlyList<LedTaskProgressRow>> ListTopLevelProgressRowsAsync(Guid tenantId, IReadOnlyCollection<Guid> objectiveIds, CancellationToken ct = default)
-    {
-        if (objectiveIds.Count == 0)
-            return Array.Empty<LedTaskProgressRow>();
-        var ids = objectiveIds.ToList();
-        return await (
-            from t in _db.WorkTasks.AsNoTracking()
-            join s in _db.TaskStatuses.AsNoTracking() on t.StatusId equals s.Id
-            where t.TenantId == tenantId && t.ParentTaskId == null && ids.Contains(t.ObjectiveId)
-            select new LedTaskProgressRow(t.ObjectiveId, s.MarksTaskComplete, t.DueDate, t.ProgressPercent)
-        ).ToListAsync(ct);
-    }
 
     public async Task<IReadOnlyList<LedOverdueTaskRow>> ListTopLevelOverdueAsync(Guid tenantId, IReadOnlyCollection<Guid> objectiveIds, DateOnly today, int take, CancellationToken ct = default)
     {
@@ -330,6 +349,21 @@ public class EfWorkTaskRepository : IWorkTaskRepository
         return rows.Select(r => new LedOverdueTaskRow(
             r.Id, r.ShortId, r.Title, r.ProjectId, r.ObjectiveId, r.DueDate,
             assignees.TryGetValue(r.Id, out var assigneeIds) ? assigneeIds : new List<Guid>())).ToList();
+    }
+
+    public async Task<int> CountTopLevelOverdueAsync(Guid tenantId, IReadOnlyCollection<Guid> objectiveIds, DateOnly today, CancellationToken ct = default)
+    {
+        if (objectiveIds.Count == 0)
+            return 0;
+        var ids = objectiveIds.ToList();
+        return await (
+            from t in _db.WorkTasks.AsNoTracking()
+            join s in _db.TaskStatuses.AsNoTracking() on t.StatusId equals s.Id
+            where t.TenantId == tenantId && t.ParentTaskId == null && ids.Contains(t.ObjectiveId)
+                && !s.MarksTaskComplete && t.ProgressPercent < 100
+                && t.DueDate != null && t.DueDate < today
+            select t.Id
+        ).CountAsync(ct);
     }
 
     public void Update(WorkTask task) => _db.WorkTasks.Update(task);

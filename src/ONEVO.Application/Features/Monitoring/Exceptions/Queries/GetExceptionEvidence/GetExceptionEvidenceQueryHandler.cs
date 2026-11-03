@@ -87,7 +87,7 @@ public class GetExceptionEvidenceQueryHandler : IRequestHandler<GetExceptionEvid
         if (scope is null)
             return Result<ExceptionEvidenceDto>.Forbidden();
         // Out-of-scope cases answer the same as missing ones so ids can't be probed.
-        if (exception is null || !scope.CanSee(exception.EmployeeId))
+        if (exception is null || !scope.CanAct(exception.Id, exception.EmployeeId))
             return Result<ExceptionEvidenceDto>.NotFound("Exception not found.");
 
         var meta = ExceptionMetadata.Parse(exception.MetadataJson);

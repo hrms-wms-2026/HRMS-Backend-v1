@@ -100,4 +100,18 @@ public class CreateTaskCategoryCommandHandlerTests
         Assert.Equal(403, result.StatusCode);
         categories.Verify(x => x.AddAsync(It.IsAny<TaskCategory>(), It.IsAny<CancellationToken>()), Times.Never);
     }
+
+    [Theory]
+    [InlineData("meeting")]
+    [InlineData("Meeting")]
+    [InlineData(" MEETING ")]
+    public async Task Handle_ReservedName_ReturnsConflict(string name)
+    {
+        var (handler, categories) = Build(OwnerEmployeeId);
+
+        var result = await handler.Handle(new CreateTaskCategoryCommand(ProjectId, name, 9), CancellationToken.None);
+
+        Assert.Equal(409, result.StatusCode);
+        categories.Verify(x => x.AddAsync(It.IsAny<TaskCategory>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
 }

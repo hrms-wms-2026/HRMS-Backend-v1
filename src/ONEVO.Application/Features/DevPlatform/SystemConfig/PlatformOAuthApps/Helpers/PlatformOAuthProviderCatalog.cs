@@ -73,7 +73,7 @@ public static class PlatformOAuthProviderCatalog
                 Capabilities: new[] { CapabilityUserOAuth, CapabilityCalendar, CapabilityMeetings }),
 
             // Scopes verified live against a real Zoom Marketplace "General App" (User-managed)
-            // 2026-09-24 — see docs/superpowers/specs/2026-09-23-teams-zoom-meeting-integration-design.md.
+            // 2026-09-24 — see docs/superpowers/specs/finished/2026-09-23/2026-09-23-teams-zoom-meeting-integration-design.md.
             // meeting:read:list_past_participants is deliberately chosen over the live
             // meeting:read:participant scope: attendance is only ever synced after the event's end
             // time has passed (ZoomAttendanceSyncJob mirrors TeamsAttendanceSyncJob's timing), so
@@ -93,7 +93,15 @@ public static class PlatformOAuthProviderCatalog
                     // call return 400 even though the token exchange itself succeeds.
                     "user:read:user",
                     "meeting:write:meeting", "meeting:delete:meeting",
-                    "meeting:read:meeting", "meeting:read:list_past_participants"
+                    "meeting:read:meeting", "meeting:read:list_past_participants",
+                    // Per-occurrence attendance of a link reused by a meeting series lists the meeting's past instances
+                    // (meetings Phase 2, spec 5.8). Enable it on the Marketplace app too; users reconnect to pick it up -
+                    // until then the sync reports missing_scope (Permanent) and the occurrence ends sync_failed.
+                    "meeting:read:list_past_instances",
+                    // Correlating a meeting whose creation timed out (spec §3.2.2) lists the organizer's
+                    // scheduled meetings. Also enable it on the Zoom Marketplace app; existing connections
+                    // pick it up on reconnect, and until then correlation fails safely (no duplicate).
+                    "meeting:read:list_meetings"
                 },
                 ClientSecretRequired: true,
                 Capabilities: new[] { CapabilityUserOAuth, CapabilityMeetings })

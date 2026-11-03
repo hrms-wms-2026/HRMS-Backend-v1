@@ -3,7 +3,6 @@ using Moq;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Conversations.Contracts;
-using ONEVO.Application.Features.Inbox.Commands.ExecuteInboxBulkAction;
 using ONEVO.Application.Features.Inbox.Contracts;
 using ONEVO.Application.Features.Inbox.Queries.GetInboxHistory;
 using ONEVO.Application.Features.Inbox.Queries.GetInboxKinds;
@@ -50,16 +49,13 @@ public sealed class InboxStandardHandlerCoverageTests
     }
 
     [Fact]
-    public async Task History_and_bulk_are_forbidden_without_an_employee_record_and_never_reach_the_router()
+    public async Task History_is_forbidden_without_an_employee_record_and_never_reaches_the_router()
     {
         var caller = Caller(null);
 
         var history = await new GetInboxHistoryQueryHandler(caller, _router.Object).Handle(new GetInboxHistoryQuery(new InboxHistoryQuery()), default);
-        var bulk = await new ExecuteInboxBulkActionCommandHandler(caller, _router.Object)
-            .Handle(new ExecuteInboxBulkActionCommand(new InboxBulkRequest("approve", [new ItemRef("leave", "request", Guid.NewGuid())])), default);
 
         (history.StatusCode, history.Error).Should().Be((403, InboxCallerResolver.NoEmployeeMessage));
-        (bulk.StatusCode, bulk.Error).Should().Be((403, InboxCallerResolver.NoEmployeeMessage));
         _router.Invocations.Should().BeEmpty();
     }
 
@@ -72,20 +68,6 @@ public sealed class InboxStandardHandlerCoverageTests
 
         history.StatusCode.Should().Be(403);
         _identity.Verify(i => i.ResolveCallerEmployeeIdAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
-    }
-
-    [Fact]
-    public async Task Bulk_returns_the_routers_per_item_outcome_as_is()
-    {
-        var ok = new ItemRef("leave", "request", Guid.NewGuid());
-        var bad = new ItemRef("leave", "request", Guid.NewGuid());
-        var request = new InboxBulkRequest("approve", [ok, bad], Comment: "fine");
-        var outcome = new InboxBulkResult([ok], [new InboxBulkFailure(bad, "Already decided.")]);
-        _router.Setup(r => r.ExecuteBulkAsync(TenantId, EmployeeId, request, It.IsAny<CancellationToken>())).ReturnsAsync(Result<InboxBulkResult>.Success(outcome));
-
-        var result = await new ExecuteInboxBulkActionCommandHandler(Caller(EmployeeId), _router.Object).Handle(new ExecuteInboxBulkActionCommand(request), default);
-
-        result.Value.Should().BeSameAs(outcome);
     }
 
     [Fact]

@@ -8,6 +8,7 @@ using ONEVO.Application.Features.Inbox.Contracts;
 using ONEVO.Application.Features.Monitoring.Exceptions.Queries.GetExceptionEvidence;
 using ONEVO.Application.Features.Monitoring.Exceptions.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.Exceptions.ServiceInterfaces;
+using ONEVO.Application.Features.Monitoring.Exceptions.Services;
 using ONEVO.Domain.Features.Monitoring.Exceptions.Entities;
 using Employee = ONEVO.Domain.Features.CoreHr.Entities.Employee;
 using MonitoringException = ONEVO.Domain.Features.Monitoring.Exceptions.Entities.Exception;
@@ -15,13 +16,14 @@ using MonitoringException = ONEVO.Domain.Features.Monitoring.Exceptions.Entities
 namespace ONEVO.Application.Features.Monitoring.Exceptions.Inbox;
 
 /// <summary>
-/// Monitoring exception cases in the Inbox (plan X1). The list is the cases in the caller's exception scope
-/// (IExceptionScopeResolver - the same check the acknowledge/resolve/escalate commands make, so scope = act): a
-/// manager receives the cases of the people they review; HR receives escalated cases and sees the rest as info. The
-/// employee a case is about sees their own open cases as info - facts only (title, description, when, status), never
-/// the monitoring evidence (P10).
+/// Monitoring exception cases in the Inbox (plan X1). The list is the cases routed to the caller - the same people
+/// ReportingLineThenHrPolicy alerts, so nobody above sees a case just because their coverage is wide: the subject's
+/// attendance approver (attendance:approve, ResolveApprovalInboxScopeAsync), whoever the latest escalation went to,
+/// and HR only for cases of employees nobody can review (or escalated before the journal existed). Anyone else in the
+/// exception scope can still open a case by link, as info. The employee a case is about sees their own open cases as
+/// info - facts only (title, description, when, status), never the monitoring evidence (P10).
 /// </summary>
-public sealed class ExceptionInboxSourceProvider : IInboxSourceProvider
+public sealed class ExceptionInboxSourceProvider : IInboxSourceProvider, IInboxPersonCaseProvider
 {
     public const int ListLimit = 500;
 
@@ -31,11 +33,13 @@ public sealed class ExceptionInboxSourceProvider : IInboxSourceProvider
     private readonly ISender _sender;
     private readonly ExceptionCaseActions _actions;
     private readonly IConversationRepository _conversations;
+    private readonly ExceptionCaseRouting _routing;
 
     public ExceptionInboxSourceProvider(
         IExceptionRepository exceptions, IExceptionScopeResolver scope, IEmployeeRepository employees, ISender sender,
-        ExceptionCaseActions actions, IConversationRepository conversations)
+        ExceptionCaseActions actions, IConversationRepository conversations, ExceptionCaseRouting routing)
     {
+        _routing = routing;
         _exceptions = exceptions;
         _scope = scope;
         _employees = employees;
@@ -55,14 +59,15 @@ public sealed class ExceptionInboxSourceProvider : IInboxSourceProvider
         var active = (await _exceptions.GetListAsync(tenantId, new ExceptionListFilter(null, null, null, null, ActiveOnly: true), 1, ListLimit, ct))
             .Where(e => !ExceptionInboxKinds.IsCalendarType(e.Type)).ToList();
         var scope = active.Count == 0 ? null : await _scope.ResolveAsync(forAction: true, active.Select(e => e.EmployeeId).Distinct().ToList(), ct);
+        var routed = scope is null ? [] : await _routing.RoutedCasesAsync(tenantId, active, scope, hrFallback: true, ct);
 
         var items = new List<(MonitoringException Case, string Direction, bool Actionable)>();
         foreach (var exception in active)
         {
             if (exception.EmployeeId == callerEmployeeId)
                 items.Add((exception, InboxDirections.Info, false));
-            else if (scope?.CanSee(exception.EmployeeId) == true)
-                items.Add((exception, !scope.IsHr || exception.Status == ExceptionStatus.Escalated ? InboxDirections.Received : InboxDirections.Info, true));
+            else if (routed.Contains(exception.Id))
+                items.Add((exception, InboxDirections.Received, true));
         }
         foreach (var subject in await _conversations.ListAddedSubjectsAsync(tenantId, callerEmployeeId, Source, ct))
         {
@@ -72,6 +77,27 @@ public sealed class ExceptionInboxSourceProvider : IInboxSourceProvider
 
         var people = await PeopleAsync(tenantId, items.Select(i => i.Case.EmployeeId), ct);
         return items.Select(i => Item(i.Case, people, i.Direction, i.Actionable ? Actions(i.Case) : [])).ToList();
+    }
+
+    /// <summary>The subject's monitoring cases of any status, as info. CanOpen follows GetDetailAsync: the subject,
+    /// anyone in the exception scope, or someone added to the case's chat.</summary>
+    public async Task<IReadOnlyList<InboxPersonCase>> ListPersonCasesAsync(
+        Guid tenantId, Guid subjectEmployeeId, string category, DateTimeOffset from, DateTimeOffset to, Guid callerEmployeeId, CancellationToken ct)
+    {
+        if (category != InboxCategories.Alert)
+            return [];
+        var cases = (await _exceptions.GetListAsync(tenantId,
+                new ExceptionListFilter(null, null, [subjectEmployeeId], null, Calendar: false, DetectedFrom: from, DetectedTo: to), 1, ListLimit, ct))
+            .Where(e => !ExceptionInboxKinds.IsCalendarType(e.Type)).ToList();
+        if (cases.Count == 0)
+            return [];
+
+        var isSubject = subjectEmployeeId == callerEmployeeId;
+        var scope = isSubject ? null : await _scope.ResolveAsync(forAction: true, [subjectEmployeeId], ct);
+        var added = isSubject ? [] : (await _conversations.ListAddedSubjectsAsync(tenantId, callerEmployeeId, Source, ct)).ToHashSet();
+        var people = await PeopleAsync(tenantId, [subjectEmployeeId], ct);
+        return cases.Select(e => new InboxPersonCase(Item(e, people, InboxDirections.Info, []),
+            isSubject || scope?.CanAct(e.Id, e.EmployeeId) == true || added.Contains(new ItemRef(Source, ExceptionInboxKinds.Case, e.Id)))).ToList();
     }
 
     public async Task<IReadOnlyList<InboxFilterField>> GetFilterFieldsAsync(Guid tenantId, Guid callerEmployeeId, CancellationToken ct)
@@ -103,17 +129,20 @@ public sealed class ExceptionInboxSourceProvider : IInboxSourceProvider
                 [], exception.Description, Facts(exception), null, null, null);
 
         var scope = await _scope.ResolveAsync(forAction: true, [exception.EmployeeId], ct);
-        var canAct = scope?.CanSee(exception.EmployeeId) == true;
-        var added = !canAct && (await _conversations.ListAddedSubjectsAsync(tenantId, callerEmployeeId, Source, ct))
+        var inScope = scope?.CanAct(exception.Id, exception.EmployeeId) == true;
+        // Routed to the caller = theirs to work; anyone else in scope may still open it by link, as info.
+        var canAct = inScope && (await _routing.RoutedCasesAsync(tenantId, [exception], scope!, hrFallback: true, ct)).Contains(exception.Id);
+        var added = !inScope && (await _conversations.ListAddedSubjectsAsync(tenantId, callerEmployeeId, Source, ct))
             .Contains(new ItemRef(Source, kind, id));
-        if (!canAct && !added)
+        if (!inScope && !added)
             return null;
 
         string? evidence = null;
-        if (canAct && await _sender.Send(new GetExceptionEvidenceQuery(id), ct) is { IsSuccess: true } loaded)
+        if (inScope && await _sender.Send(new GetExceptionEvidenceQuery(id), ct) is { IsSuccess: true } loaded)
             evidence = JsonSerializer.Serialize(loaded.Value, Web);
-        var direction = canAct && (!scope!.IsHr || exception.Status == ExceptionStatus.Escalated) ? InboxDirections.Received : InboxDirections.Info;
-        return new InboxItemDetail(Item(exception, people, direction, canAct ? Actions(exception) : []), Steps(exception), exception.Title,
+        var direction = canAct ? InboxDirections.Received : InboxDirections.Info;
+        var actions = canAct ? await WithEscalationTargetsAsync(tenantId, exception, Actions(exception), callerEmployeeId, ct) : [];
+        return new InboxItemDetail(Item(exception, people, direction, actions), Steps(exception), exception.Title,
             [], exception.Description, Facts(exception), null, null, evidence);
     }
 
@@ -133,11 +162,35 @@ public sealed class ExceptionInboxSourceProvider : IInboxSourceProvider
         return list.Count == 0 ? new Dictionary<Guid, Employee>() : await _employees.ListByIdsAsync(tenantId, list, ct);
     }
 
+    /// <summary>The escalate dialog's preview (detail only - it costs a few lookups): "escalateTo" names who the policy
+    /// picks, "escalateCandidates" (JSON) everyone the caller may pick instead.</summary>
+    private async Task<IReadOnlyList<InboxAction>> WithEscalationTargetsAsync(
+        Guid tenantId, MonitoringException exception, IReadOnlyList<InboxAction> actions, Guid callerEmployeeId, CancellationToken ct)
+    {
+        if (actions.All(a => a.Key != ExceptionCaseInboxActions.Escalate))
+            return actions;
+        var candidates = await _actions.EscalationCandidatesAsync(
+            tenantId, new ItemRef(Source, ExceptionInboxKinds.Case, exception.Id), exception, callerEmployeeId, ct);
+        var defaults = candidates.Where(c => c.IsDefault).ToList();
+        var escalateTo = defaults.Count switch
+        {
+            0 => "",
+            1 => defaults[0].Name,
+            _ => defaults.All(d => d.Role == "HR") ? $"HR ({defaults.Count} people)" : $"{defaults.Count} people",
+        };
+        var meta = new Dictionary<string, string>
+        {
+            ["escalateTo"] = escalateTo,
+            ["escalateCandidates"] = JsonSerializer.Serialize(
+                candidates.Select(c => new { c.EmployeeId, c.Name, c.Position, c.AvatarFileId, c.IsDefault }), Web),
+        };
+        return actions.Select(a => a.Key == ExceptionCaseInboxActions.Escalate ? a with { Meta = meta } : a).ToList();
+    }
+
     public static IReadOnlyList<InboxAction> Actions(MonitoringException exception)
     {
+        // No manual Acknowledge: an open case either gets resolved, escalated by hand, or escalates itself when its SLA runs out.
         var actions = new List<InboxAction>();
-        if (exception.Status == ExceptionStatus.Open)
-            actions.Add(new InboxAction(ExceptionCaseInboxActions.Acknowledge, "Acknowledge", "neutral", NeedsComment: false, NeedsPayload: false));
         if (exception.Status != ExceptionStatus.Resolved)
             actions.Add(new InboxAction(ExceptionCaseInboxActions.Resolve, "Resolve", "primary", NeedsComment: true, NeedsPayload: true,
                 new Dictionary<string, string> { ["outcomes"] = $"{ExceptionOutcomes.Excused},{ExceptionOutcomes.Confirmed}" }));

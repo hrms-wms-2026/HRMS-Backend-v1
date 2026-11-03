@@ -1,3 +1,4 @@
+using System.Text.Json;
 using FluentAssertions;
 using Moq;
 using ONEVO.Application.Common.ServiceInterfaces;
@@ -5,6 +6,7 @@ using ONEVO.Application.Features.WorkManagement.Approvals.Queries.GetApprovalDet
 using ONEVO.Application.Features.WorkManagement.Approvals.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Hierarchy;
+using ONEVO.Application.Features.WorkManagement.Meetings.Contracts;
 using ONEVO.Application.Features.WorkManagement.ProjectInvitations.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Sprints.RepositoryInterfaces;
@@ -155,5 +157,124 @@ public class GetApprovalDetailQueryHandlerTests
 
         Caller(Requester);
         (await Build().Handle(new GetApprovalDetailQuery(invitation.Id, "invitation"), default)).StatusCode.Should().Be(404);
+    }
+
+    // ---- meeting.create / meeting.move: the D5 snapshot, to receivers only (meetings-as-tasks D5, spec 5 access tiers) ----
+
+    private static readonly string[] SnapshotKeys =
+    [
+        "title", "description", "start", "durationMinutes", "timezone", "recurrenceSummary", "organizerName", "modulePath",
+        "participantNames", "guestEmails", "platform",
+    ];
+
+    private void UseMeetingCreate()
+    {
+        var start = new DateTimeOffset(2026, 11, 2, 9, 0, 0, TimeSpan.Zero);
+        var form = new CreateMeetingRequest(ProjectId, _p, "Design review", "<p>Agenda</p>", null, false, start, 45, false, "UTC", null,
+            [Owner], ["g@x.com"], "zoom");
+        var snapshot = new MeetingApprovalSnapshot("Design review", "<p>Agenda</p>", start, 45, "UTC", "Does not repeat", "Bala",
+            "Root / Payments", ["Anu"], ["g@x.com"], "zoom");
+        _request.ActionType = WorkActionTypes.MeetingCreate;
+        _request.TargetType = WorkTargetTypes.Meeting;
+        _request.TargetId = null;
+        _request.TargetTitle = "Design review";
+        _request.PayloadJson = JsonSerializer.Serialize(new MeetingCreatePayload(form, snapshot), new JsonSerializerOptions(JsonSerializerDefaults.Web));
+    }
+
+    [Fact]
+    public async Task Meeting_create_approver_sees_only_the_snapshot()
+    {
+        UseMeetingCreate();
+        Caller(Owner);
+
+        var detail = (await Build().Handle(new GetApprovalDetailQuery(_request.Id, "engine"), default)).Value!;
+
+        detail.RequestedPayloadJson.Should().BeNull();
+        detail.AppliedPayloadJson.Should().BeNull();
+        detail.Fields.Should().BeEmpty();
+        detail.CanEditPayload.Should().BeFalse();
+        detail.ExtraJson.Should().NotBeNull();
+        using var extra = JsonDocument.Parse(detail.ExtraJson!);
+        extra.RootElement.EnumerateObject().Select(p => p.Name).Should().Equal("snapshot");
+        var snapshot = extra.RootElement.GetProperty("snapshot");
+        snapshot.EnumerateObject().Select(p => p.Name).Should().BeEquivalentTo(SnapshotKeys);
+        snapshot.GetProperty("title").GetString().Should().Be("Design review");
+        snapshot.GetProperty("guestEmails")[0].GetString().Should().Be("g@x.com");
+        detail.ExtraJson.Should().NotContain("participantEmployeeIds").And.NotContain("\"form\"");
+    }
+
+    [Fact]
+    public async Task Meeting_create_requester_gets_no_snapshot_and_no_payload()
+    {
+        UseMeetingCreate();
+        Caller(Requester);
+
+        var result = await Build().Handle(new GetApprovalDetailQuery(_request.Id, "engine"), default);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.ExtraJson.Should().BeNull();
+        result.Value.RequestedPayloadJson.Should().BeNull();
+        result.Value.AppliedPayloadJson.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Meeting_requester_who_can_decide_still_gets_no_snapshot()
+    {
+        UseMeetingCreate();
+        // The requester owns the root module, so the decision rules would let them decide.
+        _hierarchy.Setup(x => x.LoadTreeAsync(TenantId, ProjectId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ProjectModuleTree(new[]
+            {
+                new Objective { Id = _root, OwnerId = Requester, IsDefault = true, Title = "Root" },
+                new Objective { Id = _p, ParentObjectiveId = _root, OwnerId = Owner, Title = "Payments" },
+            }));
+        Caller(Requester);
+
+        var detail = (await Build().Handle(new GetApprovalDetailQuery(_request.Id, "engine"), default)).Value!;
+
+        detail.ExtraJson.Should().BeNull();
+        detail.RequestedPayloadJson.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Meeting_request_stranger_gets_404()
+    {
+        UseMeetingCreate();
+        Caller(Stranger);
+
+        var result = await Build().Handle(new GetApprovalDetailQuery(_request.Id, "engine"), default);
+
+        result.StatusCode.Should().Be(404);
+        result.Error.Should().Be("Approval request not found.");
+    }
+
+    [Fact]
+    public async Task Meeting_create_decided_approver_keeps_the_snapshot()
+    {
+        UseMeetingCreate();
+        _request.Status = WorkApprovalRequestStatuses.Approved;
+        _request.DecidedByEmployeeId = Owner;
+        _request.DecidedAt = DateTimeOffset.UtcNow;
+        Caller(Owner);
+
+        var detail = (await Build().Handle(new GetApprovalDetailQuery(_request.Id, "engine"), default)).Value!;
+
+        detail.ExtraJson.Should().Contain("\"title\":\"Design review\"");
+    }
+
+    [Fact]
+    public async Task Meeting_move_without_a_stored_snapshot_shows_none()
+    {
+        _request.ActionType = WorkActionTypes.MeetingMove;
+        _request.TargetType = WorkTargetTypes.Meeting;
+        _request.TargetId = Guid.NewGuid();
+        _request.PayloadJson = $$"""{"seriesId":"{{_request.TargetId}}","originalStart":"2026-11-02T03:30:00Z","scope":"this","projectId":"{{ProjectId}}","objectiveId":"{{_p}}"}""";
+        Caller(Owner);
+
+        var result = await Build().Handle(new GetApprovalDetailQuery(_request.Id, "engine"), default);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.ExtraJson.Should().BeNull();
+        result.Value.RequestedPayloadJson.Should().BeNull();
     }
 }

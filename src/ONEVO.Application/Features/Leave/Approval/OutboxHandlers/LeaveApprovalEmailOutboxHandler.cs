@@ -29,9 +29,6 @@ public sealed class LeaveApprovalEmailOutboxHandler : IOutboxMessageHandler
             case OutboxMessageTypes.LeaveRequestRejected:
                 await SendRejectedAsync(JsonSerializer.Deserialize<LeaveRequestRejectedPayload>(payloadJson), ct);
                 return;
-            case OutboxMessageTypes.LeaveInformationRequested:
-                await SendInfoAsync(JsonSerializer.Deserialize<LeaveInformationRequestedPayload>(payloadJson), ct);
-                return;
             case OutboxMessageTypes.LeaveRequestCancelled:
                 await SendCancelledAsync(JsonSerializer.Deserialize<LeaveRequestCancelledPayload>(payloadJson), ct);
                 return;
@@ -61,18 +58,6 @@ public sealed class LeaveApprovalEmailOutboxHandler : IOutboxMessageHandler
             employee.Email,
             "Your leave request was rejected",
             $"<p>Your leave from {payload.StartAt:yyyy-MM-dd} to {payload.EndAt:yyyy-MM-dd} was rejected.</p><p>{System.Net.WebUtility.HtmlEncode(payload.Reason)}</p>",
-            ct);
-    }
-
-    private async Task SendInfoAsync(LeaveInformationRequestedPayload? payload, CancellationToken ct)
-    {
-        if (payload is null) return;
-        var employee = await _employees.GetByIdAsync(payload.TenantId, payload.EmployeeId, ct);
-        if (employee is null || string.IsNullOrWhiteSpace(employee.Email)) return;
-        await _email.SendAsync(
-            employee.Email,
-            "More information needed for your leave request",
-            $"<p>{System.Net.WebUtility.HtmlEncode(payload.Question)}</p>",
             ct);
     }
 

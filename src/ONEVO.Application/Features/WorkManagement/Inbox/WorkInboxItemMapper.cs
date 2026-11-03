@@ -190,7 +190,7 @@ public static class WorkInboxItemMapper
 
     private static string Severity(string ruleCode)
         => ruleCode.Contains("overdue", StringComparison.Ordinal) || ruleCode.Contains("over_capacity", StringComparison.Ordinal)
-           || ruleCode.Contains("overload", StringComparison.Ordinal)
+           || ruleCode.Contains("capacity_shortfall", StringComparison.Ordinal) || ruleCode.Contains("overload", StringComparison.Ordinal)
             ? "high"
             : "medium";
 

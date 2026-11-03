@@ -1,6 +1,9 @@
+using System.Reflection;
 using FluentAssertions;
+using Microsoft.AspNetCore.Mvc;
 using Moq;
 using ONEVO.Api.Controllers.Tenant.Inbox;
+using ONEVO.Api.Filters;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Inbox.Commands.ExecuteInboxAction;
 using ONEVO.Application.Features.Inbox.Contracts;
@@ -112,5 +115,16 @@ public class InboxEndpointsTests
 
         (await new GetInboxCountsQueryHandler(Caller(), _router.Object).Handle(new GetInboxCountsQuery(), default)).StatusCode.Should().Be(403);
         _identity.VerifyNoOtherCalls();
+    }
+
+    [Theory]
+    [InlineData(nameof(InboxController.PersonCases), "people/{employeeId:guid}/cases")]
+    [InlineData(nameof(InboxController.PersonCaseMonths), "people/{employeeId:guid}/cases/months")]
+    public void PersonCases_HasRequireVisibleEmployeeOnEmployeeId(string action, string route)
+    {
+        var method = typeof(InboxController).GetMethod(action)!;
+
+        method.GetCustomAttribute<RequireVisibleEmployeeAttribute>()!.RouteKey.Should().Be("employeeId");
+        method.GetCustomAttribute<HttpGetAttribute>()!.Template.Should().Be(route);
     }
 }

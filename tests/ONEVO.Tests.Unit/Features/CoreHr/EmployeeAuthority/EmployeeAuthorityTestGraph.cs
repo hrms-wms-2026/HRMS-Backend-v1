@@ -242,6 +242,10 @@ internal sealed class EmployeeAuthorityTestGraph
 
     private sealed class FakeEmployeeRepository : IEmployeeRepository
     {
+        public Task<IReadOnlyDictionary<Guid, string>> ListPositionNamesAsync(
+            Guid tenantId, IReadOnlyCollection<Guid> employeeIds, CancellationToken ct = default)
+            => Task.FromResult<IReadOnlyDictionary<Guid, string>>(new Dictionary<Guid, string>());
+
         private readonly EmployeeAuthorityTestGraph _graph;
         public FakeEmployeeRepository(EmployeeAuthorityTestGraph graph) => _graph = graph;
 
@@ -602,6 +606,9 @@ internal sealed class EmployeeAuthorityTestGraph
 
         public Task<IReadOnlyList<ONEVO.Domain.Features.OrgStructure.Entities.Department>> ListByLegalEntityAsync(
             Guid tenantId, Guid legalEntityId, bool includeInactive, CancellationToken ct = default)
+            => throw new NotImplementedException();
+        public Task<IReadOnlyDictionary<Guid, ONEVO.Domain.Features.OrgStructure.Entities.Department>> GetByIdsAsync(
+            Guid tenantId, IReadOnlyCollection<Guid> departmentIds, CancellationToken ct = default)
             => throw new NotImplementedException();
         public Task<DepartmentPage> ListPageByLegalEntityAsync(
             Guid tenantId, Guid legalEntityId, string? search, bool includeInactive, Guid? parentDepartmentId,

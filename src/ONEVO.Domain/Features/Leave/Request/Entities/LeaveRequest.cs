@@ -22,6 +22,13 @@ public class LeaveRequest : ITenantOwnedEntity
     public Guid? SubmittedOnBehalfOfBy { get; set; }
     public string? CancellationReason { get; set; }
     public DateOnly? PartialCancelEffectiveDate { get; set; }
+
+    /// <summary>The policy version the request was checked against at submission; approval follows it.</summary>
+    public Guid? LeavePolicyVersionId { get; set; }
+
+    /// <summary>Paid hours requested beyond the available balance at submission (0 when within it).
+    /// Approving such a request takes the balance negative.</summary>
+    public decimal ExceedsBalanceByHours { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? UpdatedAt { get; set; }
 }

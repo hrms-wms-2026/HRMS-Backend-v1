@@ -36,5 +36,8 @@ public interface IClockInPolicyRepository
 
     void Update(ClockInPolicy policy);
 
+    /// <summary>Active policies of the legal entity effective on <paramref name="date"/>, with their rules (read-only).</summary>
+    Task<IReadOnlyList<ClockInPolicy>> ListActiveOnDateAsync(Guid tenantId, Guid legalEntityId, DateOnly date, CancellationToken ct = default);
+
     Task<int> SaveChangesAsync(CancellationToken ct = default);
 }

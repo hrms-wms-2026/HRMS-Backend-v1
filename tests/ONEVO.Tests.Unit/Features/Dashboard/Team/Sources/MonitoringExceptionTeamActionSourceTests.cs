@@ -1,5 +1,10 @@
 using Moq;
+using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.CoreHr.EmployeeAuthority.Models;
+using ONEVO.Application.Features.CoreHr.EmployeeAuthority.ServiceInterfaces;
+using ONEVO.Application.Features.Monitoring.Exceptions.Services;
+using ONEVO.Tests.Unit.Features.Inbox;
 using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
 using ONEVO.Application.Features.Dashboard.Team.DTOs;
 using ONEVO.Application.Features.Dashboard.Team.Sources;
@@ -92,6 +97,34 @@ public sealed class MonitoringExceptionTeamActionSourceTests
         exceptions.Verify(x => x.GetListAsync(
             TenantId, It.Is<ExceptionListFilter>(f => f.EmployeeIds != null && f.EmployeeIds.Single() == scopedId),
             1, int.MaxValue, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task HR_or_wide_coverage_alone_does_not_count_cases_routed_to_someone_else()
+    {
+        var employeeId = Guid.NewGuid();
+        var exceptions = new Mock<IExceptionRepository>();
+        exceptions.Setup(x => x.ListEmployeeIdsWithExceptionsAsync(TenantId, It.IsAny<CancellationToken>())).ReturnsAsync([employeeId]);
+        exceptions.Setup(x => x.GetListAsync(TenantId, It.IsAny<ExceptionListFilter>(), 1, int.MaxValue, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([Exception(employeeId, ExceptionStatus.Open, DateTimeOffset.Parse("2026-09-10T00:00:00Z"))]);
+        var people = new Mock<ONEVO.Application.Common.RepositoryInterfaces.IEmployeeRepository>();
+        people.Setup(x => x.ListByIdsAsync(TenantId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, Employee> { [employeeId] = new() { Id = employeeId, LegalEntityId = LegalEntityId } });
+        var authority = new Mock<IEmployeeAuthorityResolver>();
+        authority.Setup(a => a.ResolveApprovalInboxScopeAsync(It.IsAny<EmployeeApprovalInboxScopeRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+        // The employee has their own approver, so the case is theirs, not HR's.
+        authority.Setup(a => a.ResolveApproverAsync(It.IsAny<EmployeeApprovalRouteRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<EmployeeApprovalRoute>.Success(new EmployeeApprovalRoute(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(),
+                "attendance:approve", EmployeeAuthorityPurpose.ExceptionAlertReview, EmployeeApprovalRouteSource.ReportingLine, null)));
+        var source = new MonitoringExceptionTeamActionSource(
+            CurrentUser(), ScopeResolverReturning(new ExceptionScope(true, Guid.NewGuid(), [employeeId])), exceptions.Object,
+            Mock.Of<IEmployeeRepository>(), new ExceptionCaseRouting(people.Object, authority.Object, new InMemoryInboxDecisionJournal()));
+
+        var summary = await source.GetSummaryAsync(LegalEntityId, 5, CancellationToken.None);
+
+        Assert.Equal(0, summary.PendingCount);
+        Assert.Empty(summary.TopItems);
     }
 
     private static ICurrentUser CurrentUser()

@@ -88,5 +88,17 @@ public class EfWorkApprovalRequestRepository : IWorkApprovalRequestRepository
         return matching.ToHashSet();
     }
 
+    public async Task<bool> LockIfPendingAsync(Guid tenantId, Guid id, CancellationToken ct = default)
+    {
+        if (_db.Database.CurrentTransaction is null)
+            throw new InvalidOperationException($"{nameof(LockIfPendingAsync)} needs a transaction.");
+        var locked = await _db.Database.SqlQuery<int>($"""
+            SELECT 1 AS "Value" FROM wm_approval_requests
+            WHERE tenant_id = {tenantId} AND id = {id} AND status = {WorkApprovalRequestStatuses.Pending}
+            FOR UPDATE
+            """).ToListAsync(ct);
+        return locked.Count > 0;
+    }
+
     public void Update(WorkApprovalRequest request) => _db.WorkApprovalRequests.Update(request);
 }

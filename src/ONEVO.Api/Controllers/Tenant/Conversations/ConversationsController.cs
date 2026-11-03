@@ -10,6 +10,7 @@ using ONEVO.Application.Features.Conversations.Queries.GetConversationAttachment
 using ONEVO.Application.Features.Conversations.Commands.MarkConversationRead;
 using ONEVO.Application.Features.Conversations.Commands.OpenConversation;
 using ONEVO.Application.Features.Conversations.Commands.PostConversationMessage;
+using ONEVO.Application.Features.Conversations.Commands.ReactToConversationMessage;
 using ONEVO.Application.Features.Conversations.Queries.ListConversationMessages;
 using ONEVO.Application.Features.Conversations.Queries.SearchConversationPeople;
 
@@ -17,8 +18,10 @@ namespace ONEVO.Api.Controllers.Tenant.Conversations;
 
 public sealed record OpenConversationRequest(string Source, string Kind, Guid Id);
 public sealed record PostConversationMessageRequest(
-    string BodyHtml, IReadOnlyList<Guid>? MentionEmployeeIds, IReadOnlyList<Guid>? AttachmentFileIds = null, string? Tag = null);
+    string BodyHtml, IReadOnlyList<Guid>? MentionEmployeeIds, IReadOnlyList<Guid>? AttachmentFileIds = null, string? Tag = null,
+    Guid? ReplyToMessageId = null);
 public sealed record EditConversationMessageRequest(string BodyHtml, IReadOnlyList<Guid>? MentionEmployeeIds);
+public sealed record ReactToConversationMessageRequest(string Emoji);
 public sealed record AddConversationParticipantsRequest(IReadOnlyList<Guid> EmployeeIds);
 
 /// <summary>The group chat of an inbox item. Sender and receiver are base members; any member can add
@@ -48,19 +51,30 @@ public class ConversationsController : ControllerBase
     [HttpPost("{id:guid}/messages")]
     public async Task<IActionResult> Post(Guid id, [FromBody] PostConversationMessageRequest body, CancellationToken ct)
         => ToResult(await _mediator.Send(
-            new PostConversationMessageCommand(id, body.BodyHtml, body.MentionEmployeeIds, body.AttachmentFileIds, body.Tag), ct));
+            new PostConversationMessageCommand(id, body.BodyHtml, body.MentionEmployeeIds, body.AttachmentFileIds, body.Tag, body.ReplyToMessageId), ct));
 
     /// <summary>The author edits their own message; the previous text is kept for the investigation export.</summary>
     [HttpPut("{id:guid}/messages/{messageId:guid}")]
     public async Task<IActionResult> Edit(Guid id, Guid messageId, [FromBody] EditConversationMessageRequest body, CancellationToken ct)
         => ToResult(await _mediator.Send(new EditConversationMessageCommand(id, messageId, body.BodyHtml, body.MentionEmployeeIds), ct));
 
-    /// <summary>The author deletes their own message (shown as "Message deleted").</summary>
+    /// <summary>Deletes for everyone while unread, or hides the message only for the caller.</summary>
     [HttpDelete("{id:guid}/messages/{messageId:guid}")]
-    public async Task<IActionResult> DeleteMessage(Guid id, Guid messageId, CancellationToken ct)
-        => ToNoContent(await _mediator.Send(new DeleteConversationMessageCommand(id, messageId), ct));
+    public async Task<IActionResult> DeleteMessage(
+        Guid id, Guid messageId, [FromQuery] bool forEveryone = true, CancellationToken ct = default)
+        => ToNoContent(await _mediator.Send(new DeleteConversationMessageCommand(id, messageId, forEveryone), ct));
 
     /// <summary>Downloads a chat attachment through the conversation access check (never a public URL).</summary>
+    /// <summary>Sets the caller's one reaction on the message (replacing an earlier one).</summary>
+    [HttpPut("{id:guid}/messages/{messageId:guid}/reaction")]
+    public async Task<IActionResult> React(Guid id, Guid messageId, [FromBody] ReactToConversationMessageRequest body, CancellationToken ct)
+        => ToResult(await _mediator.Send(new ReactToConversationMessageCommand(id, messageId, body.Emoji), ct));
+
+    /// <summary>Removes the caller's reaction on the message.</summary>
+    [HttpDelete("{id:guid}/messages/{messageId:guid}/reaction")]
+    public async Task<IActionResult> Unreact(Guid id, Guid messageId, CancellationToken ct)
+        => ToResult(await _mediator.Send(new ReactToConversationMessageCommand(id, messageId, null), ct));
+
     [HttpGet("{id:guid}/attachments/{attachmentId:guid}")]
     public async Task<IActionResult> Attachment(Guid id, Guid attachmentId, CancellationToken ct)
     {

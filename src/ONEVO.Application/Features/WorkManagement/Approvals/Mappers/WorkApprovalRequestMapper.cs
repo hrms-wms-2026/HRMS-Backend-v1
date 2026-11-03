@@ -16,7 +16,9 @@ public static class WorkApprovalRequestMapper
             r.Id, r.ProjectId, r.ActionType, r.TargetType, r.TargetId, r.TargetTitle, r.Status,
             r.RequestedByEmployeeId, names.GetValueOrDefault(r.RequestedByEmployeeId) ?? "Unknown",
             r.ApproverEmployeeId, names.GetValueOrDefault(r.ApproverEmployeeId) ?? "Unknown",
-            r.PayloadJson, r.DecisionComment, r.CreatedAt, r.DecidedAt,
+            // A meeting request's form holds more than D5 allows; its snapshot travels only in the approval detail's
+            // extraJson, to receivers (meetings-as-tasks D5).
+            WorkActionTypes.IsMeeting(r.ActionType) ? "{}" : r.PayloadJson, r.DecisionComment, r.CreatedAt, r.DecidedAt,
             r.ActionType == WorkActionTypes.ModuleAllocationExtend && r.TargetId is { } moduleId
                 ? tree?.Get(moduleId)?.AllocatedHours
                 : null,

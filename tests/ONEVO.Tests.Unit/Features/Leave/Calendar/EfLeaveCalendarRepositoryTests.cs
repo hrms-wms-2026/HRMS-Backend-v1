@@ -45,7 +45,7 @@ public class EfLeaveCalendarRepositoryTests
         rows[0].EmployeeName.Should().Be("Priya Nair");
         rows[0].DepartmentName.Should().Be("Engineering");
         rows[0].LegalEntityName.Should().Be("Acme Lanka");
-        rows[0].LeaveTypeCategory.Should().Be(LeaveTypeCategories.Annual);
+        rows[0].LeaveTypeColor.Should().Be("#16A34A");
     }
 
     [Fact]
@@ -159,6 +159,36 @@ public class EfLeaveCalendarRepositoryTests
         rows.Select(row => row.EmployeeName).Should().BeEquivalentTo("Priya Nair", "Ravi Kumar");
     }
 
+    [Fact]
+    public async Task ListMonthRequestsAsync_IncludesSkipLevelEmployeesReachedByCoverageExpansion()
+    {
+        await using var db = BuildInMemoryDb();
+        var tenantId = Guid.NewGuid();
+        var legalEntity = CreateLegalEntity(tenantId, "Dapi");
+        var department = CreateDepartment(tenantId, legalEntity.Id, "Hardware");
+        var leaveType = CreateLeaveType(tenantId, "Annual Leave", "AL");
+        var skipLevel = CreateEmployee(tenantId, legalEntity.Id, department.Id, "EMP-007", "Kiru", "Balachandran");
+        var unrelated = CreateEmployee(tenantId, legalEntity.Id, department.Id, "EMP-008", "Tara", "Jones");
+        db.AddRange(legalEntity, department, leaveType, skipLevel, unrelated);
+        db.LeaveRequests.AddRange(
+            CreateRequest(tenantId, skipLevel.Id, leaveType.Id, LeaveRequestStatuses.Approved, new DateOnly(2026, 8, 10), new DateOnly(2026, 8, 10)),
+            CreateRequest(tenantId, unrelated.Id, leaveType.Id, LeaveRequestStatuses.Approved, new DateOnly(2026, 8, 11), new DateOnly(2026, 8, 11)));
+        await db.SaveChangesAsync();
+
+        // No direct position/department coverage matches Kiru - only the resolver's reporting-line
+        // expansion (CEO covers GM -> Lead -> Kiru) does.
+        var scope = new EmployeeVisibilityScope(
+            false, null, new HashSet<Guid>(), new HashSet<Guid>(), new HashSet<Guid>())
+        {
+            CoveredEmployeeIds = new HashSet<Guid> { skipLevel.Id },
+        };
+
+        var rows = await new EfLeaveCalendarRepository(db).ListMonthRequestsAsync(
+            tenantId, scope, Filter(includeTentative: true), CancellationToken.None);
+
+        rows.Select(row => row.EmployeeName).Should().BeEquivalentTo("Kiru Balachandran");
+    }
+
     private static async Task<(Employee Employee, LeaveType LeaveType)> SeedEmployeeAndTypeAsync(ApplicationDbContext db, Guid tenantId)
     {
         var legalEntity = CreateLegalEntity(tenantId, "Acme Lanka");
@@ -206,8 +236,7 @@ public class EfLeaveCalendarRepositoryTests
         TenantId = tenantId,
         Name = name,
         Code = code,
-        Category = LeaveTypeCategories.Annual,
-        DefaultDaysPerYear = 20m,
+        Color = "#16A34A",
         IsActive = true
     };
 

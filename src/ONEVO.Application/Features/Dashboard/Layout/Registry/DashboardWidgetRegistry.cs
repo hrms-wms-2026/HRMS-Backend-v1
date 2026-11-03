@@ -1,0 +1,181 @@
+using ONEVO.Application.Features.Dashboard.Layout.Grid;
+
+namespace ONEVO.Application.Features.Dashboard.Layout.Registry;
+
+/// <summary>
+/// Code-defined widget catalog. Sizes are desktop (12 columns).
+/// HasProvider = a server widget data provider mirrors the card's API (see ONEVO.Api/Dashboard/Widgets).
+/// Client-sourced on purpose (identical behaviour beats coverage):
+/// todays-schedule - two dependent calls (my-timezone, then events) and a browser Intl-based
+///   local-midnight-to-UTC conversion (hour12:false can render midnight as "24" in some engines);
+/// today-at-a-glance - the timeline call is conditional on the TimeTrackingStore's
+///   today summary (desktopTray clock-in) and merged client-side with that shared store;
+/// work-pattern - from/to come from the browser's local date and the user-selected period, and the card
+///   merges the result with TimeTrackingStore history.
+/// </summary>
+public static class DashboardWidgetRegistry
+{
+    private static readonly WidgetDefinition[] Definitions =
+    [
+        new("today-at-a-glance", DashboardKeys.MyWork, "Today at a glance", "Your day at a glance: attendance, leave and key counts.", 3, 3, 6, 8, false),
+        new("action-center", DashboardKeys.MyWork, "Action center", "Items waiting for your action.", 4, 3, 12, 6, false),
+        new("quick-actions", DashboardKeys.MyWork, "Quick actions", "Shortcuts to common tasks.", 3, 3, 6, 4, false),
+        new("todays-schedule", DashboardKeys.MyWork, "Today's schedule", "Your shifts and events for today.", 3, 3, 12, 6, false),
+        new("today-total-time", DashboardKeys.MyWork, "Weekly work progress", "Your week's worked hours against expected and planned time.", 2, 2, 12, 8, true),
+        new("active-projects", DashboardKeys.MyWork, "Active projects", "Projects you are currently working on.", 3, 3, 6, 6, true),
+        new("my-tasks", DashboardKeys.MyWork, "My tasks", "Tasks assigned to you.", 3, 3, 12, 6, true, ShownOnWeb: false),
+        new("work-pattern", DashboardKeys.MyWork, "Work pattern", "Your recent working pattern.", 6, 3, 12, 5, false, ShownOnWeb: false),
+        new("notifications", DashboardKeys.MyWork, "Notifications", "Your latest notifications.", 3, 3, 6, 6, false, ShownOnWeb: false),
+        new("wellbeing", DashboardKeys.MyWork, "Wellbeing", "Wellbeing insights for you.", 3, 3, 6, 4, true, ShownOnWeb: false),
+        new("team-status", DashboardKeys.MyTeam, "Team status", "Who in your team is working, away or off.", 2, 2, 12, 8, true),
+        new("team-quick-actions", DashboardKeys.MyTeam, "Team quick actions", "Shortcuts for managing your team.", 2, 2, 6, 4, false),
+        new("team-progress", DashboardKeys.MyTeam, "Team progress", "Estimated hours progress across your team.", 2, 2, 12, 8, true),
+        new("team-attendance", DashboardKeys.MyTeam, "Team attendance", "Attendance across your team by week or month.", 2, 2, 12, 8, true),
+    ];
+
+    private static readonly Dictionary<string, WidgetDefinition> ByKey =
+        Definitions.ToDictionary(d => d.Key, StringComparer.Ordinal);
+
+    public static WidgetDefinition? Get(string key) =>
+        key is not null && ByKey.TryGetValue(key, out var def) ? def : null;
+
+    public static IReadOnlyList<WidgetDefinition> ForDashboard(string dashboardKey) =>
+        Definitions.Where(d => d.DashboardKey == dashboardKey).ToList();
+
+    // Desktop default placements. Widgets absent here are in the catalog but not placed by default.
+    // Taken from the Dapi owner's tuned dashboard (2026-10-27). Row 1: Today at a glance (the greeting hero),
+    // Today's schedule, Quick actions; row 2: Action center, Weekly progress, Active projects - all three rows tall.
+    // The web app does not show my-tasks / work-pattern on My Work, so they sit below the rest and leave no hole.
+    private static readonly (string Key, GridRect Rect)[] MyWorkDefaults =
+    [
+        ("today-at-a-glance", new GridRect(0, 0, 4, 3)),
+        ("todays-schedule", new GridRect(4, 0, 5, 3)),
+        ("quick-actions", new GridRect(9, 0, 3, 3)),
+        ("action-center", new GridRect(0, 3, 5, 3)),
+        ("today-total-time", new GridRect(5, 3, 4, 3)),
+        ("active-projects", new GridRect(9, 3, 3, 3)),
+        ("my-tasks", new GridRect(0, 6, 6, 4)),
+        ("work-pattern", new GridRect(0, 10, 12, 4)),
+    ];
+
+    private static readonly (string Key, GridRect Rect)[] MyTeamDefaults =
+    [
+        ("team-status", new GridRect(0, 0, 8, 6)),
+        ("team-quick-actions", new GridRect(8, 0, 4, 4)),
+        ("team-progress", new GridRect(8, 4, 4, 6)),
+        ("team-attendance", new GridRect(0, 6, 8, 6)),
+    ];
+
+    // team-attendance shares team-status's gate, so the variants below (team-status not allowed) never include it.
+    // Permission variants (spec 6.2): when a gated widget is not allowed, an untouched default layout is shown with
+    // the remaining widgets rearranged so no hole is left. Display only; seeding and Reset store the full default.
+    private static readonly (string Key, GridRect Rect)[] MyWorkWithoutActionCenter =
+    [
+        ("today-at-a-glance", new GridRect(0, 0, 4, 3)),
+        ("todays-schedule", new GridRect(4, 0, 5, 3)),
+        ("quick-actions", new GridRect(9, 0, 3, 3)),
+        ("today-total-time", new GridRect(0, 3, 6, 3)),
+        ("active-projects", new GridRect(6, 3, 6, 3)),
+        ("my-tasks", new GridRect(0, 6, 6, 4)),
+        ("work-pattern", new GridRect(0, 10, 12, 4)),
+    ];
+
+    private static readonly (string Key, GridRect Rect)[] MyTeamWithoutTeamStatus =
+    [
+        ("team-progress", new GridRect(0, 0, 8, 6)),
+        ("team-quick-actions", new GridRect(8, 0, 4, 4)),
+    ];
+
+    private static readonly (string Key, GridRect Rect)[] MyTeamQuickActionsOnly =
+    [
+        ("team-quick-actions", new GridRect(8, 0, 4, 4)),
+    ];
+
+    private static (string Key, GridRect Rect)[]? VariantDesktop(string dashboardKey, IReadOnlySet<string> allowedKeys) =>
+        dashboardKey switch
+        {
+            DashboardKeys.MyWork when !allowedKeys.Contains("action-center") => MyWorkWithoutActionCenter,
+            DashboardKeys.MyTeam when !allowedKeys.Contains("team-status") =>
+                allowedKeys.Contains("team-progress") ? MyTeamWithoutTeamStatus : MyTeamQuickActionsOnly,
+            _ => null,
+        };
+
+    /// <summary>True when the allowed set selects a permission-variant default layout for the dashboard.</summary>
+    public static bool HasVariant(string dashboardKey, IReadOnlySet<string> allowedKeys) =>
+        VariantDesktop(dashboardKey, allowedKeys) is not null;
+
+    /// <summary>
+    /// The default layout a viewer with the given allowed widgets sees: the permission variant when one is selected,
+    /// otherwise the full default. Tablet/mobile are derived from the variant's desktop layout.
+    /// </summary>
+    public static IReadOnlyList<(string Key, GridRect Rect)> DefaultLayoutFor(
+        string dashboardKey, IReadOnlySet<string> allowedKeys, string breakpoint) =>
+        Derive(VariantDesktop(dashboardKey, allowedKeys) ?? DesktopDefaults(dashboardKey), breakpoint);
+
+    /// <summary>Tablet width (6 columns) for a widget whose desktop width is <paramref name="desktopW"/> (Ruling 2).</summary>
+    public static int TabletWidth(WidgetDefinition? def, int desktopW)
+    {
+        var columns = Breakpoints.Columns(Breakpoints.Tablet);
+        var minW = def is null ? 1 : Math.Min(def.MinW, columns);
+        return Math.Max(desktopW >= 6 ? 6 : 3, minW);
+    }
+
+    private static IReadOnlyList<(string Key, GridRect Rect)> DesktopDefaults(string dashboardKey) => dashboardKey switch
+    {
+        DashboardKeys.MyWork => MyWorkDefaults,
+        DashboardKeys.MyTeam => MyTeamDefaults,
+        _ => [],
+    };
+
+    public static IReadOnlyList<(string Key, GridRect Rect)> DefaultLayout(string dashboardKey, string breakpoint) =>
+        Derive(DesktopDefaults(dashboardKey), breakpoint);
+
+    /// <summary>Default W x H for a newly added widget: its default-layout desktop rect, else its minimum size.</summary>
+    public static (int W, int H) DefaultSize(string key)
+    {
+        var def = Get(key) ?? throw new ArgumentException($"Unknown widget '{key}'.", nameof(key));
+        foreach (var (k, rect) in DesktopDefaults(def.DashboardKey))
+        {
+            if (k == key)
+            {
+                return (rect.W, rect.H);
+            }
+        }
+
+        return (def.MinW, def.MinH);
+    }
+
+    /// <summary>Derives a tablet/mobile layout from a desktop layout. Desktop is returned unchanged.</summary>
+    public static IReadOnlyList<(string Key, GridRect Rect)> Derive(
+        IReadOnlyList<(string Key, GridRect Rect)> desktop, string breakpoint)
+    {
+        if (breakpoint == Breakpoints.Desktop)
+        {
+            return desktop.ToList();
+        }
+
+        var columns = Breakpoints.Columns(breakpoint);
+        var ordered = desktop.OrderBy(i => i.Rect.Y).ThenBy(i => i.Rect.X).ToList();
+        var result = new List<(string Key, GridRect Rect)>();
+
+        if (breakpoint == Breakpoints.Mobile)
+        {
+            var y = 0;
+            foreach (var (key, rect) in ordered)
+            {
+                result.Add((key, new GridRect(0, y, columns, rect.H)));
+                y += rect.H;
+            }
+
+            return result;
+        }
+
+        foreach (var (key, rect) in ordered)
+        {
+            var w = TabletWidth(Get(key), rect.W);
+            result.Add((key, DashboardGrid.AutoPlace(result.Select(r => r.Rect), w, rect.H, columns)));
+        }
+
+        return result;
+    }
+}

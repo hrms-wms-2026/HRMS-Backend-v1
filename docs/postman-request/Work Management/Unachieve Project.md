@@ -29,4 +29,4 @@ No body.
 
 Controller: `src/ONEVO.Api/Controllers/Tenant/WorkManagement/ProjectsController.cs` (`Unachieve`)
 Handler: `src/ONEVO.Application/Features/WorkManagement/Projects/Commands/UnachieveProject/UnachieveProjectCommandHandler.cs`
-Plan: `docs/superpowers/plans/2026-08-06-work-management-milestone-membership-and-achieve.md`
+Plan: `docs/superpowers/plans/finished/2026-08-08/2026-08-06-work-management-milestone-membership-and-achieve.md`

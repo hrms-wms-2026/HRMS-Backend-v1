@@ -36,6 +36,22 @@ public class EmployeeOffboardingCoverageGuardTests
     }
 
     [Fact]
+    public async Task EnsureCovered_SkipLevelEmployeeReachedByCoverageExpansion_ReturnsNull()
+    {
+        _employeeRepository.Setup(r => r.GetByIdAsync(_tenantId, _employeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new EmployeeEntity { Id = _employeeId, DepartmentId = Guid.NewGuid(), LegalEntityId = Guid.NewGuid() });
+        _scopeResolver.Setup(r => r.ResolveAsync(_tenantId, _actingUserId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new EmployeeVisibilityScope(false, null, new HashSet<Guid>(), new HashSet<Guid>(), new HashSet<Guid>())
+            {
+                CoveredEmployeeIds = new HashSet<Guid> { _employeeId },
+            });
+
+        var result = await CreateSut().EnsureCovered(_tenantId, _actingUserId, _employeeId);
+
+        result.Should().BeNull();
+    }
+
+    [Fact]
     public async Task EnsureCovered_NoOverlap_ReturnsForbidden()
     {
         _employeeRepository.Setup(r => r.GetByIdAsync(_tenantId, _employeeId, It.IsAny<CancellationToken>()))

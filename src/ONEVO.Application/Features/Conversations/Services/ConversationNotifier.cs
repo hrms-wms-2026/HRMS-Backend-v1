@@ -40,7 +40,7 @@ public sealed class ConversationNotifier
             var placeholders = new Dictionary<string, string> { ["actorName"] = actorName, ["itemTitle"] = itemTitle };
             await _outbox.EnqueueAsync(
                 OutboxMessageTypes.WorkNotification,
-                new WorkNotificationPayload(tenantId, employee.UserId, templateCode, placeholders, RelatedEntityType(subject), subject.Id),
+                new WorkNotificationPayload(tenantId, employee.UserId, templateCode, placeholders, RelatedEntityType(subject), subject.Id, EventId: Guid.NewGuid()),
                 tenantId,
                 ct);
         }

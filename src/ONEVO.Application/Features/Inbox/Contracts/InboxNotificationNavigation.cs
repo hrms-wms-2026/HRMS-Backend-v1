@@ -18,7 +18,6 @@ public static class InboxNotificationNavigation
         {
             ["leave_request_approved"] = ("leave", "request"),
             ["leave_request_rejected"] = ("leave", "request"),
-            ["leave_request_information_requested"] = ("leave", "request"),
             ["leave_request_next_approval_required"] = ("leave", "request"),
             ["leave_request_cancelled_by_employee"] = ("leave", "request"),
             ["leave_request_cancelled_by_hr"] = ("leave", "request"),

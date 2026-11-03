@@ -194,11 +194,14 @@ public static class DependencyInjection
         services.AddScoped<ILegalEntityRepository>(sp => sp.GetRequiredService<EfLegalEntityRepository>());
         services.AddScoped<IDepartmentRepository, EfDepartmentRepository>();
         services.AddScoped<IClockInPolicyRepository, EfClockInPolicyRepository>();
+        services.AddScoped<ONEVO.Application.Features.TimeAttendance.Services.IEmployeeClockInPolicyResolver, ONEVO.Application.Features.TimeAttendance.Services.EmployeeClockInPolicyResolver>();
         services.AddScoped<IAttendanceReadRepository, EfAttendanceReadRepository>();
         services.AddScoped<ONEVO.Infrastructure.Persistence.Repositories.TimeAttendance.EfAttendanceAlertRepository>();
         services.AddScoped<ONEVO.Application.Features.TimeAttendance.Alerts.IAttendanceAlertRepository>(sp => sp.GetRequiredService<ONEVO.Infrastructure.Persistence.Repositories.TimeAttendance.EfAttendanceAlertRepository>());
         services.AddScoped<ONEVO.Application.Features.TimeAttendance.Alerts.IAttendanceAlertResolutionLookup>(sp => sp.GetRequiredService<ONEVO.Infrastructure.Persistence.Repositories.TimeAttendance.EfAttendanceAlertRepository>());
         services.AddScoped<ONEVO.Application.Features.TimeAttendance.Alerts.IAttendanceAlertMaterializer, ONEVO.Application.Features.TimeAttendance.Alerts.AttendanceAlertMaterializer>();
+        services.AddScoped<ONEVO.Application.Features.TimeAttendance.Alerts.IAttendanceAlertDeductionRepository, ONEVO.Infrastructure.Persistence.Repositories.TimeAttendance.EfAttendanceAlertDeductionRepository>();
+        services.AddScoped<ONEVO.Application.Features.TimeAttendance.Alerts.AttendanceDeductionService>();
         services.AddScoped<
             ONEVO.Application.Features.Leave.Type.RepositoryInterfaces.ILeaveTypeRepository,
             ONEVO.Infrastructure.Persistence.Repositories.Leave.Type.EfLeaveTypeRepository>();
@@ -227,6 +230,13 @@ public static class DependencyInjection
             ONEVO.Application.Features.Leave.Policy.RepositoryInterfaces.ILeavePolicyRepository,
             ONEVO.Infrastructure.Persistence.Repositories.Leave.Policy.EfLeavePolicyRepository>();
         services.AddScoped<
+            ONEVO.Application.Features.Leave.Policy.RepositoryInterfaces.ILeavePolicyResolutionRepository,
+            ONEVO.Infrastructure.Persistence.Repositories.Leave.Policy.EfLeavePolicyResolutionRepository>();
+        services.AddScoped<
+            ONEVO.Application.Features.Leave.Policy.Services.ILeavePolicyResolver,
+            ONEVO.Application.Features.Leave.Policy.Services.LeavePolicyResolver>();
+        services.AddScoped<ONEVO.Application.Features.Leave.Policy.Services.LeavePolicyAssignmentService>();
+        services.AddScoped<
             ONEVO.Application.Features.Leave.Entitlement.RepositoryInterfaces.ILeaveEntitlementRepository,
             ONEVO.Infrastructure.Persistence.Repositories.Leave.Entitlement.EfLeaveEntitlementRepository>();
         services.AddScoped<
@@ -234,9 +244,10 @@ public static class DependencyInjection
             ONEVO.Infrastructure.Persistence.Repositories.Leave.BalanceAudit.EfLeaveBalanceAuditRepository>();
         services.AddScoped<ONEVO.Application.Features.Leave.Entitlement.Helpers.ILeaveWorkingDayCounter,
             ONEVO.Application.Features.Leave.Entitlement.Helpers.LeaveWorkingDayCounter>();
-        services.AddScoped<ONEVO.Application.Features.Leave.Entitlement.Helpers.LeaveEntitlementCalculator>();
-        services.AddScoped<ONEVO.Application.Features.Leave.Entitlement.Helpers.LeaveEntitlementPlanner>();
-        services.AddHostedService<ONEVO.Infrastructure.Services.Leave.LeaveYearEndEntitlementJob>();
+        services.AddScoped<
+            ONEVO.Application.Features.Leave.Entitlement.Services.ILeaveCreditService,
+            ONEVO.Application.Features.Leave.Entitlement.Services.LeaveCreditService>();
+        services.AddHostedService<ONEVO.Infrastructure.Services.Leave.LeaveCreditJob>();
         services.AddOptions<ONEVO.Application.Features.Leave.Entitlement.Options.LeaveEntitlementYearOptions>()
             .Bind(configuration.GetSection(ONEVO.Application.Features.Leave.Entitlement.Options.LeaveEntitlementYearOptions.SectionName))
             .Validate(options => options.MinimumYear > 0, "Leave entitlement minimum year must be configured.")
@@ -248,9 +259,6 @@ public static class DependencyInjection
             .ValidateOnStart();
         services.AddOptions<ONEVO.Application.Features.Leave.Calendar.Options.LeaveCalendarOptions>()
             .Bind(configuration.GetSection(ONEVO.Application.Features.Leave.Calendar.Options.LeaveCalendarOptions.SectionName))
-            .Validate(options =>
-                ONEVO.Application.Features.Leave.Calendar.Options.LeaveCalendarOptions.AreColorsValid(options.TypeCategoryColors),
-                "Leave:Calendar:TypeCategoryColors must contain #RRGGBB hex colors.")
             .ValidateOnStart();
         services.AddScoped<
             ONEVO.Application.Features.Leave.Request.RepositoryInterfaces.ILeaveRequestRepository,
@@ -285,7 +293,6 @@ public static class DependencyInjection
         services.AddScoped<
             ONEVO.Application.Features.Leave.Approval.RepositoryInterfaces.ILeaveApprovalRepository,
             ONEVO.Infrastructure.Persistence.Repositories.Leave.Approval.EfLeaveApprovalRepository>();
-        services.AddScoped<ONEVO.Application.Features.Leave.Approval.Services.LeaveForwardTargetResolver>();
         services.AddScoped<ONEVO.Application.Features.Leave.Approval.Commands.LeaveApprovalDecisionService>();
         services.AddScoped<ONEVO.Application.Features.Leave.Approval.Services.LeaveRequestRangeEditor>();
         // Monitoring exception cases in the Inbox (plan X1).
@@ -293,7 +300,11 @@ public static class DependencyInjection
         services.AddScoped<ONEVO.Application.Features.Monitoring.Exceptions.Inbox.ExceptionCaseActions>();
         services.AddScoped<ONEVO.Application.Features.Inbox.Contracts.IInboxSourceProvider, ONEVO.Application.Features.Monitoring.Exceptions.Inbox.ExceptionInboxSourceProvider>();
         services.AddScoped<ONEVO.Application.Features.Conversations.Contracts.IConversationSubjectResolver, ONEVO.Application.Features.Monitoring.Exceptions.Inbox.ExceptionConversationSubjectResolver>();
+        // A reviewer's reply on an open monitoring or calendar case acknowledges it.
+        services.AddScoped<ONEVO.Application.Features.Conversations.Contracts.IConversationReplyHook, ONEVO.Application.Features.Monitoring.Exceptions.Inbox.ExceptionCaseReplyAcknowledger>();
         services.AddScoped<ONEVO.Application.Features.Inbox.Revert.IInboxDecisionReverter, ONEVO.Application.Features.Monitoring.Exceptions.Inbox.ExceptionCaseReverter>();
+        // A reviewer's chat activity on a monitoring or calendar case acknowledges it (stops the SLA escalation).
+        services.AddScoped<ONEVO.Application.Features.Conversations.Contracts.IConversationActivityListener, ONEVO.Application.Features.Monitoring.Exceptions.Inbox.ExceptionCaseActivityAcknowledger>();
         // Calendar meeting-exception cases in the Inbox (plan C3).
         services.AddInboxKind(ONEVO.Application.Features.Calendar.Inbox.CalendarInboxKinds.Descriptor);
         services.AddScoped<ONEVO.Application.Features.Inbox.Contracts.IInboxSourceProvider, ONEVO.Application.Features.Calendar.Inbox.CalendarInboxSourceProvider>();
@@ -351,9 +362,19 @@ public static class DependencyInjection
         services.AddScoped<ONEVO.Application.Features.CoreHr.BulkOnboarding.Commands.ValidateBulkOnboardingBatch.IBulkOnboardingValidationRunner,
             ONEVO.Application.Features.CoreHr.BulkOnboarding.Commands.ValidateBulkOnboardingBatch.BulkOnboardingValidationRunner>();
         services.AddScoped<IAccessGrantRequestRepository, EfAccessGrantRequestRepository>();
+        services.AddScoped<ISeatIncreaseRequestRepository, EfSeatIncreaseRequestRepository>();
+        services.AddScoped<IOnboardingInboxRepository, EfOnboardingInboxRepository>();
+        services.AddScoped<ONEVO.Application.Features.CoreHr.Onboarding.Services.OnboardingApprovers>();
+        // Position access and seat increase approvals in the Inbox.
+        foreach (var kind in ONEVO.Application.Features.CoreHr.Onboarding.Inbox.OnboardingInboxKinds.Descriptors)
+            services.AddInboxKind(kind);
+        services.AddScoped<ONEVO.Application.Features.Inbox.Contracts.IInboxSourceProvider, ONEVO.Application.Features.CoreHr.Onboarding.Inbox.OnboardingInboxSourceProvider>();
+        services.AddScoped<ONEVO.Application.Features.Conversations.Contracts.IConversationSubjectResolver, ONEVO.Application.Features.CoreHr.Onboarding.Inbox.OnboardingConversationSubjectResolver>();
         services.AddScoped<IChecklistTemplateRepository, EfChecklistTemplateRepository>();
         services.AddScoped<IEmployeeChecklistTaskRepository, EfEmployeeChecklistTaskRepository>();
         services.AddScoped<IOfficeProjectProvisioner, ONEVO.Infrastructure.Services.CoreHr.OfficeProjectProvisioner>();
+        services.AddScoped<IOfficeProjectReconciler, ONEVO.Infrastructure.Services.CoreHr.OfficeProjectReconciler>();
+        services.AddHostedService<ONEVO.Infrastructure.Services.CoreHr.OfficeProjectReconciliationStartupService>();
         services.AddScoped<IEmployeeChecklistWorkTaskProvisioner, EmployeeChecklistWorkTaskProvisioner>();
         services.AddScoped<IOffboardingRecordRepository, EfOffboardingRecordRepository>();
         services.AddScoped<IOffboardingTaskBypassRequestRepository, EfOffboardingTaskBypassRequestRepository>();
@@ -398,6 +419,72 @@ public static class DependencyInjection
         services.AddScoped<ITaskCategoryRepository>(sp => sp.GetRequiredService<EfTaskCategoryRepository>());
         services.AddScoped<EfWorkTaskRepository>();
         services.AddScoped<IWorkTaskRepository>(sp => sp.GetRequiredService<EfWorkTaskRepository>());
+        // Meetings-as-tasks Phase 2 (spec 8): every flag off by default; bad attendance settings or BulkInvite without
+        // the outbox claim fix (P-1) stop the app at startup.
+        services.AddSingleton<Microsoft.Extensions.Options.IValidateOptions<ONEVO.Application.Features.WorkManagement.Meetings.MeetingsOptions>,
+            ONEVO.Application.Features.WorkManagement.Meetings.MeetingsOptionsValidator>();
+        services.Configure<ONEVO.Application.Features.WorkManagement.Planner.PlannerOptions>(
+            configuration.GetSection(ONEVO.Application.Features.WorkManagement.Planner.PlannerOptions.SectionName));
+        services.AddOptions<ONEVO.Application.Features.WorkManagement.Meetings.MeetingsOptions>()
+            .Configure(options => ONEVO.Application.Features.WorkManagement.Meetings.MeetingsOptions.BindFrom(
+                configuration.GetSection(ONEVO.Application.Features.WorkManagement.Meetings.MeetingsOptions.Section), options))
+            .ValidateOnStart();
+        services.AddHostedService<Services.WorkManagement.Meetings.MeetingsStartupCheck>();
+        services.AddScoped<ONEVO.Application.Features.WorkManagement.Meetings.RepositoryInterfaces.IMeetingRepository,
+            ONEVO.Infrastructure.Persistence.Repositories.WorkManagement.Meetings.EfMeetingRepository>();
+        services.AddScoped<ONEVO.Application.Features.WorkManagement.Meetings.Services.IMeetingAccessResolver,
+            ONEVO.Application.Features.WorkManagement.Meetings.Services.MeetingAccessResolver>();
+        services.AddSingleton<ONEVO.Application.Features.WorkManagement.Meetings.Services.IMeetingRecurrence,
+            Services.WorkManagement.Meetings.IcalNetMeetingRecurrence>();
+        services.AddScoped<ONEVO.Application.Features.WorkManagement.Meetings.Services.MeetingCreateValidator>();
+        services.AddScoped<ONEVO.Application.Features.WorkManagement.Meetings.Services.IMeetingPlacementResolver,
+            ONEVO.Application.Features.WorkManagement.Meetings.Services.MeetingPlacementResolver>();
+        services.AddScoped<ONEVO.Application.Features.WorkManagement.Meetings.Services.MeetingReadService>();
+        services.AddScoped<ONEVO.Application.Features.WorkManagement.Meetings.Services.IMeetingOccurrenceMaterializer,
+            ONEVO.Application.Features.WorkManagement.Meetings.Services.MeetingOccurrenceMaterializer>();
+        services.AddScoped<ONEVO.Application.Features.WorkManagement.Meetings.Services.IMeetingSeriesSplitter,
+            ONEVO.Application.Features.WorkManagement.Meetings.Services.MeetingSeriesSplitter>();
+        services.AddScoped<ONEVO.Application.Features.WorkManagement.Meetings.Services.MeetingEditService>();
+        services.AddScoped<ONEVO.Application.Features.WorkManagement.Meetings.Services.MeetingCancelService>();
+        services.AddScoped<ONEVO.Application.Features.WorkManagement.Meetings.Services.MeetingAttendeeService>();
+        services.AddScoped<ONEVO.Application.Features.WorkManagement.Meetings.Services.IMeetingApprovalSnapshotBuilder,
+            ONEVO.Application.Features.WorkManagement.Meetings.Services.MeetingApprovalSnapshotBuilder>();
+        services.AddScoped<ONEVO.Application.Features.WorkManagement.Meetings.Services.MeetingMoveService>();
+        services.AddScoped<ONEVO.Application.Features.WorkManagement.Meetings.Services.SeriesMeetingLinkService>();
+        services.AddScoped<ONEVO.Application.Features.WorkManagement.Meetings.Services.MeetingOccurrenceGenerator>();
+        services.AddScoped<ONEVO.Application.Features.WorkManagement.Meetings.Services.MeetingHoursStamper>();
+        services.AddScoped<ONEVO.Application.Features.Calendar.Services.CalendarMeetingGuard>();
+        services.AddScoped<ONEVO.Application.Features.WorkManagement.Planner.RepositoryInterfaces.IPlannerRepository,
+            ONEVO.Infrastructure.Persistence.Repositories.WorkManagement.Planner.EfPlannerRepository>();
+        services.AddScoped<ONEVO.Application.Features.WorkManagement.Planner.Services.PlannerService>();
+        services.AddScoped<ONEVO.Application.Features.WorkManagement.WeeklyProgress.RepositoryInterfaces.IWeeklyWorkProgressReadRepository,
+            ONEVO.Infrastructure.Persistence.Repositories.WorkManagement.WeeklyProgress.EfWeeklyWorkProgressReadRepository>();
+        services.AddHostedService<Services.WorkManagement.Meetings.MeetingOccurrenceGeneratorJob>();
+        services.AddScoped<ONEVO.Application.Features.WorkManagement.Meetings.Services.MeetingAttendanceSyncService>();
+        services.AddScoped<ONEVO.Application.Features.WorkManagement.Meetings.Services.MeetingAttendanceReadService>();
+        services.AddScoped<ONEVO.Application.Features.WorkManagement.Meetings.Services.MeetingCalendarProjection>();
+        services.AddScoped<ONEVO.Application.Features.WorkManagement.Meetings.RepositoryInterfaces.IMeetingAttendanceRepository,
+            ONEVO.Infrastructure.Persistence.Repositories.WorkManagement.Meetings.EfMeetingAttendanceRepository>();
+        services.AddHostedService<Services.WorkManagement.Meetings.MeetingAttendanceJob>();
+        services.AddScoped<ONEVO.Application.Features.WorkManagement.Meetings.Services.IMeetingSeriesFactory,
+            ONEVO.Application.Features.WorkManagement.Meetings.Services.MeetingSeriesFactory>();
+        services.AddScoped<ONEVO.Application.Features.WorkManagement.Meetings.Services.IMeetingTaskDefaults,
+            ONEVO.Application.Features.WorkManagement.Meetings.Services.MeetingTaskDefaults>();
+        services.AddScoped<ONEVO.Application.Features.WorkManagement.Meetings.RepositoryInterfaces.IMeetingOccurrenceWriter,
+            ONEVO.Infrastructure.Persistence.Repositories.WorkManagement.Meetings.EfMeetingOccurrenceWriter>();
+        services.AddScoped<ONEVO.Application.Features.WorkManagement.Meetings.Services.IMeetingNotifier,
+            ONEVO.Application.Features.WorkManagement.Meetings.Services.MeetingNotifier>();
+        services.AddScoped<ONEVO.Application.Features.WorkManagement.Meetings.RepositoryInterfaces.IMeetingLinkRepository,
+            ONEVO.Infrastructure.Persistence.Repositories.WorkManagement.Meetings.EfMeetingLinkRepository>();
+        // Action items (Plan D, spec 5.4): the link between a meeting occurrence and the ordinary task raised from it.
+        services.AddScoped<ONEVO.Application.Features.WorkManagement.Meetings.RepositoryInterfaces.IMeetingActionItemRepository,
+            ONEVO.Infrastructure.Persistence.Repositories.WorkManagement.Meetings.EfMeetingActionItemRepository>();
+        services.AddScoped<ONEVO.Application.Features.WorkManagement.Meetings.Services.MeetingActionItemService>();
+        // Bulk invite preview (Plan D, spec 5.2 / D8): a department or a manager's direct reports expanded into a snapshot.
+        services.AddScoped<ONEVO.Application.Features.WorkManagement.Meetings.Services.MeetingBulkInviteService>();
+        // Reporting-line attendance view (Plan D, spec D16 / D17): the employee's own attendance summary, seen by
+        // the employee and by their managers in the current reporting line.
+        services.AddScoped<ONEVO.Application.Features.WorkManagement.Meetings.Services.EmployeeMeetingAttendanceService>();
         services.AddScoped<ONEVO.Infrastructure.Persistence.Repositories.Calendar.EfCalendarEventRepository>();
         services.AddScoped<ONEVO.Application.Features.Calendar.RepositoryInterfaces.ICalendarEventRepository>(
             sp => sp.GetRequiredService<ONEVO.Infrastructure.Persistence.Repositories.Calendar.EfCalendarEventRepository>());
@@ -407,6 +494,8 @@ public static class DependencyInjection
         services.AddScoped<ICalendarEventMeetingAttendanceRepository, EfCalendarEventMeetingAttendanceRepository>();
         services.AddScoped<ICalendarRecurrenceExpander, IcalNetRecurrenceExpander>();
         services.AddScoped<ICalendarNotificationSender, CalendarNotificationSender>();
+        services.AddScoped<IMeetingProvisioner, MeetingProvisioner>();
+        services.AddScoped<EventMeetingLinkService>();
         services.AddScoped<ICalendarTimezoneResolver, CalendarTimezoneResolver>();
         services.AddScoped<EfSprintRepository>();
         services.AddScoped<ISprintRepository>(sp => sp.GetRequiredService<EfSprintRepository>());
@@ -419,6 +508,9 @@ public static class DependencyInjection
         services.AddScoped<EfWorkNotificationLogRepository>();
         services.AddScoped<IWorkNotificationLogRepository>(sp => sp.GetRequiredService<EfWorkNotificationLogRepository>());
         services.AddScoped<IMonitorAlertRepository, EfMonitorAlertRepository>();
+        services.AddScoped<IModuleHourSummaryRepository, EfModuleHourSummaryRepository>();
+        services.AddScoped<ONEVO.Application.Features.WorkManagement.Leadership.RepositoryInterfaces.ILedProgressReadRepository, EfLedProgressReadRepository>();
+        services.AddScoped<ONEVO.Application.Features.Dashboard.Layout.RepositoryInterfaces.IUserDashboardRepository, ONEVO.Infrastructure.Persistence.Repositories.Dashboard.EfUserDashboardRepository>();
         services.AddScoped<EfTaskEditLogRepository>();
         services.AddScoped<ITaskEditLogRepository>(sp => sp.GetRequiredService<EfTaskEditLogRepository>());
         services.AddScoped<EfTaskStatusChangeLogRepository>();
@@ -462,6 +554,7 @@ public static class DependencyInjection
             sp => sp.GetRequiredService<ONEVO.Infrastructure.Persistence.Repositories.EfEmployeeRepository>());
         services.AddScoped<ONEVO.Application.Features.Storage.EntityAssets.Services.EmployeeEntityAssetAccessPolicy>();
         services.AddScoped<ONEVO.Application.Features.Storage.EntityAssets.Services.LegalEntityEntityAssetAccessPolicy>();
+        services.AddScoped<ONEVO.Application.Features.Inbox.Chats.ConversationEntityAssetAccessPolicy>();
         services.AddScoped<
             ONEVO.Application.Features.CoreHr.Employee.Documents.IEmployeeDocumentAccess,
             ONEVO.Application.Features.CoreHr.Employee.Documents.EmployeeDocumentAccess>();
@@ -484,7 +577,9 @@ public static class DependencyInjection
                     [ONEVO.Application.Common.Constants.EntityAssetOwnerTypes.LegalEntity] =
                         sp.GetRequiredService<ONEVO.Application.Features.Storage.EntityAssets.Services.LegalEntityEntityAssetAccessPolicy>(),
                     [ONEVO.Application.Common.Constants.EntityAssetOwnerTypes.EmployeeDocument] =
-                        sp.GetRequiredService<ONEVO.Application.Features.Storage.EntityAssets.Services.EmployeeDocumentAccessPolicy>()
+                        sp.GetRequiredService<ONEVO.Application.Features.Storage.EntityAssets.Services.EmployeeDocumentAccessPolicy>(),
+                    [ONEVO.Application.Common.Constants.EntityAssetOwnerTypes.Conversation] =
+                        sp.GetRequiredService<ONEVO.Application.Features.Inbox.Chats.ConversationEntityAssetAccessPolicy>()
                     // Part 2 plan (Project/Objective/Task endpoint consolidation) adds the remaining
                     // three owner types here when their controllers migrate to the generic resolve endpoint.
                 }));
@@ -493,6 +588,7 @@ public static class DependencyInjection
         services.AddScoped<IMilestoneMembershipCoordinator, MilestoneMembershipCoordinator>();
         services.AddScoped<IWorkHierarchyService, WorkHierarchyService>();
         services.AddScoped<IModuleReadAccess, ModuleReadAccess>();
+        services.AddScoped<ONEVO.Application.Features.WorkManagement.Objectives.Services.ObjectiveAssetAccess>();
         services.AddScoped<IWorkCalendarResolver, WorkCalendarResolver>();
         services.AddScoped<IProjectMonitorSnapshotLoader, ProjectMonitorSnapshotLoader>();
         services.AddScoped<IProjectMonitorCallerResolver, ProjectMonitorCallerResolver>();
@@ -521,12 +617,22 @@ public static class DependencyInjection
             ONEVO.Application.Features.Conversations.Services.ConversationAccess>();
         services.AddScoped<ONEVO.Application.Features.Conversations.Services.ConversationResponseBuilder>();
         services.AddScoped<ONEVO.Application.Features.Conversations.Services.ConversationNotifier>();
-        services.AddScoped<ONEVO.Application.Features.Conversations.Services.IConversationPoster, ONEVO.Application.Features.Conversations.Services.ConversationPoster>();
         services.AddScoped<ONEVO.Application.Features.Conversations.Services.IConversationUnreadCounts,
             ONEVO.Application.Features.Conversations.Services.ConversationUnreadCounts>();
+        // People chats: 1-on-1 chats and named groups (their own conversation sources), case cards placed into them.
+        services.AddScoped<ONEVO.Application.Features.Conversations.Contracts.IConversationSubjectResolver,
+            ONEVO.Application.Features.Conversations.Services.DirectConversationSubjectResolver>();
+        services.AddScoped<ONEVO.Application.Features.Conversations.Contracts.IConversationSubjectResolver,
+            ONEVO.Application.Features.Conversations.Services.GroupConversationSubjectResolver>();
+        services.AddScoped<ONEVO.Application.Features.Conversations.Services.IPeopleChatService,
+            ONEVO.Application.Features.Conversations.Services.PeopleChatService>();
+        services.AddScoped<ONEVO.Application.Features.Inbox.Chats.ICaseGroupService, ONEVO.Application.Features.Inbox.Chats.CaseGroupService>();
+        services.AddScoped<ONEVO.Application.Features.Inbox.Chats.IInboxChatProjector, ONEVO.Application.Features.Inbox.Chats.InboxChatProjector>();
+        services.AddScoped<ONEVO.Application.Features.Inbox.Chats.IInboxChatService, ONEVO.Application.Features.Inbox.Chats.InboxChatService>();
         // Inbox router: fans out to every registered IInboxSourceProvider (one per module).
         services.AddScoped<ONEVO.Application.Features.Inbox.Services.IInboxRouter, ONEVO.Application.Features.Inbox.Services.InboxRouter>();
         services.AddScoped<ONEVO.Application.Features.Inbox.Services.InboxCallerResolver>();
+        services.AddScoped<ONEVO.Application.Features.Inbox.Services.IInboxPersonCaseService, ONEVO.Application.Features.Inbox.Services.InboxPersonCaseService>();
         // Inbox Standard: kind descriptors (each module adds its own with services.AddInboxKind), the decision
         // journal, the merged Steps timeline. Reverters register as IInboxDecisionReverter per (source, kind).
         services.AddSingleton<ONEVO.Application.Features.Inbox.Contracts.IInboxKindRegistry, ONEVO.Application.Features.Inbox.Contracts.InboxKindRegistry>();
@@ -555,6 +661,8 @@ public static class DependencyInjection
         services.TryAddSingleton<ONEVO.Application.Features.Conversations.Contracts.IInboxRealtimePublisher,
             ONEVO.Application.Features.Conversations.Services.NullInboxRealtimePublisher>();
         services.AddScoped<IApprovalActionApplier, ONEVO.Application.Features.WorkManagement.Tasks.Appliers.TaskCreateApplier>();
+        services.AddScoped<IApprovalActionApplier, ONEVO.Application.Features.WorkManagement.Meetings.Appliers.MeetingCreateApplier>();
+        services.AddScoped<IApprovalActionApplier, ONEVO.Application.Features.WorkManagement.Meetings.Appliers.MeetingMoveApplier>();
         services.AddScoped<IApprovalActionApplier, ONEVO.Application.Features.WorkManagement.Tasks.Appliers.TaskEditApplier>();
         services.AddScoped<IApprovalActionApplier, ONEVO.Application.Features.WorkManagement.Tasks.Appliers.TaskDeleteApplier>();
         services.AddScoped<IApprovalActionApplier, ONEVO.Application.Features.WorkManagement.Tasks.Appliers.TaskStatusTemplateChangeApplier>();
@@ -694,6 +802,11 @@ public static class DependencyInjection
         services.AddHttpClient<IMicrosoftGraphCalendarClient, MicrosoftGraphCalendarClient>(client => { client.Timeout = TimeSpan.FromSeconds(30); });
         services.AddHttpClient<ITeamsMeetingClient, MicrosoftGraphMeetingClient>(client => { client.Timeout = TimeSpan.FromSeconds(30); });
         services.AddHttpClient<IZoomMeetingClient, ZoomMeetingClient>(client => { client.Timeout = TimeSpan.FromSeconds(30); });
+        // Per-occurrence attendance sync (meetings Phase 2, spec 5.8): one session client per provider, over the same typed clients.
+        services.AddTransient<ONEVO.Application.Features.Calendar.ServiceInterfaces.IMeetingAttendanceSessionClient>(
+            sp => (MicrosoftGraphMeetingClient)sp.GetRequiredService<ITeamsMeetingClient>());
+        services.AddTransient<ONEVO.Application.Features.Calendar.ServiceInterfaces.IMeetingAttendanceSessionClient>(
+            sp => (ZoomMeetingClient)sp.GetRequiredService<IZoomMeetingClient>());
         services.AddScoped<ICalendarConnectionTokenProvider, CalendarConnectionTokenProvider>();
         services.AddScoped<ICalendarSyncService, CalendarSyncService>();
         services.AddScoped<ONEVO.Application.Features.Calendar.Services.CalendarEventReminderService>();
@@ -709,6 +822,9 @@ public static class DependencyInjection
             services.AddSingleton(typeof(ONEVO.Application.Features.Calendar.Exceptions.ICalendarIncidentRule), rule);
         services.AddScoped<ONEVO.Application.Features.Calendar.Exceptions.CalendarCaseService>();
         services.AddScoped<ONEVO.Application.Features.Calendar.Exceptions.CalendarIncidentEngine>();
+        // Task meetings feed the same C2 rules as calendar events (meetings Phase 2, spec 10).
+        services.AddScoped<ONEVO.Application.Features.Calendar.Exceptions.IEmployeeMeetingOccurrenceSource,
+            ONEVO.Application.Features.WorkManagement.Meetings.Services.TaskMeetingOccurrenceSource>();
         services.AddScoped<ONEVO.Application.Common.ServiceInterfaces.IOutboxMessageHandler, ONEVO.Application.Features.Calendar.OutboxHandlers.CalendarIncidentEvaluateOutboxHandler>();
         services.AddScoped<ONEVO.Application.Features.Inbox.Escalation.IInboxEscalationSweepSource, ONEVO.Application.Features.Calendar.Exceptions.CalendarExceptionEscalationSweepSource>();
         services.AddHostedService<ONEVO.Infrastructure.Services.Calendar.CalendarIncidentJob>();
@@ -719,7 +835,21 @@ public static class DependencyInjection
 
         // Transactional outbox + idempotency
         services.AddScoped<IOutboxWriter, Services.SharedPlatform.Outbox.OutboxWriter>();
+        // One instance at a time for singleton background jobs (SCL-01); the instance id is fixed per process.
+        services.AddSingleton<ONEVO.Application.Common.ServiceInterfaces.IJobLeaseService, Services.SharedPlatform.Jobs.JobLeaseService>();
+        // Per-scope "which outbox message is being dispatched" - feeds provider idempotency keys.
+        services.AddScoped<Services.SharedPlatform.Outbox.OutboxDispatchContext>();
+        services.AddScoped<IOutboxDispatchContext>(sp => sp.GetRequiredService<Services.SharedPlatform.Outbox.OutboxDispatchContext>());
         services.AddScoped<INotificationDispatcher, Services.SharedPlatform.Notifications.NotificationDispatcher>();
+        services.AddSingleton<ONEVO.Application.Features.SharedPlatform.Notifications.Rendering.INotificationTemplateRenderer, Services.SharedPlatform.Notifications.NotificationTemplateRenderer>();
+        services.AddScoped<ONEVO.Application.Features.SharedPlatform.Notifications.RepositoryInterfaces.INotificationTemplateStore, Persistence.Repositories.SharedPlatform.EfNotificationTemplateStore>();
+        services.AddScoped<ONEVO.Application.Features.SharedPlatform.Notifications.RepositoryInterfaces.ITenantNotificationRuleRepository, Persistence.Repositories.SharedPlatform.EfTenantNotificationRuleRepository>();
+        services.AddScoped<ONEVO.Application.Features.SharedPlatform.Notifications.RepositoryInterfaces.INotificationDeliveryRepository, Persistence.Repositories.SharedPlatform.EfNotificationDeliveryRepository>();
+        services.AddScoped<ONEVO.Application.Features.SharedPlatform.Notifications.Delivery.INotificationOrchestrator, Services.SharedPlatform.Notifications.NotificationOrchestrator>();
+        services.AddScoped<ONEVO.Application.Features.SharedPlatform.Notifications.Delivery.INotificationChannelDeliveryHandler, Services.SharedPlatform.Notifications.NotificationInAppDeliveryHandler>();
+        services.AddScoped<ONEVO.Application.Features.SharedPlatform.Notifications.Delivery.INotificationChannelDeliveryHandler, Services.SharedPlatform.Notifications.NotificationEmailDeliveryHandler>();
+        services.AddScoped<ONEVO.Application.Common.ServiceInterfaces.IOutboxMessageHandler, ONEVO.Application.Features.SharedPlatform.Notifications.Delivery.NotificationDeliveryOutboxHandler>();
+        services.AddScoped<ONEVO.Application.Common.ServiceInterfaces.IOutboxMessageHandler, ONEVO.Application.Features.SharedPlatform.Notifications.Tray.NotificationTrayPushOutboxHandler>();
         services.AddScoped<IIdempotencyStore, Persistence.Repositories.SharedPlatform.Idempotency.EfIdempotencyStore>();
         services.AddHostedService<Services.SharedPlatform.Outbox.OutboxProcessor>();
         services.AddHostedService<Services.CoreHr.BulkOnboarding.BulkOnboardingBatchProcessor>();
@@ -789,6 +919,9 @@ public static class DependencyInjection
         services.AddScoped<
             ONEVO.Application.Features.Monitoring.Biometrics.RepositoryInterfaces.IBiometricProfileRepository,
             ONEVO.Infrastructure.Persistence.Repositories.Monitoring.Biometrics.EfBiometricProfileRepository>();
+        services.AddScoped<
+            ONEVO.Application.Features.Monitoring.PermissionConsent.RepositoryInterfaces.IMonitoringPermissionConsentRepository,
+            ONEVO.Infrastructure.Persistence.Repositories.Monitoring.PermissionConsent.EfMonitoringPermissionConsentRepository>();
         services.AddScoped<
             ONEVO.Infrastructure.Services.Monitoring.Biometrics.IAwsRekognitionClientFactory,
             ONEVO.Infrastructure.Services.Monitoring.Biometrics.AwsRekognitionClientFactory>();
@@ -930,6 +1063,16 @@ public static class DependencyInjection
         services.AddScoped<ITransactionalEmailSender, PlatformKeyTransactionalEmailSender>();
         services.AddScoped<IEmailService, TransactionalEmailService>();
 
+        // -- Email: outbound pacing (Plan D Task 3) ------------------------------
+        // Email:MaxPerSecond caps how many calendar invite emails may start per rolling second, per
+        // instance. 0 (the default) means unlimited. The limiter is a singleton: the window is shared by
+        // every send in this process, so a scoped limiter would reset on every scope.
+        services.Configure<EmailRateOptions>(configuration.GetSection(EmailRateOptions.SectionName));
+        services.AddSingleton<Microsoft.Extensions.Options.IValidateOptions<EmailRateOptions>, EmailRateOptionsValidator>();
+        services.AddOptions<EmailRateOptions>().ValidateOnStart();
+        services.TryAddSingleton(TimeProvider.System);
+        services.AddSingleton<IEmailRateLimiter, TokenBucketEmailRateLimiter>();
+
         services.AddScoped<IEncryptionService, AesEncryptionService>();
 
         // -- My Team dashboard: Approvals & Exceptions action sources (spec §8.2/§9.4) --
@@ -972,6 +1115,7 @@ public static class DependencyInjection
         services.AddHostedService<RoleTemplateSeeder>();
         services.AddHostedService<LookupDataSeeder>();
         services.AddHostedService<NotificationTemplateSeeder>();
+        services.AddHostedService<Services.SharedPlatform.Notifications.NotificationTrayExpiryJob>();
         services.AddHostedService<PlatformAccessSeeder>();
         services.AddHostedService<PositionTemplatePackSeeder>();
         services.AddHostedService<ModuleCatalogSeeder>();

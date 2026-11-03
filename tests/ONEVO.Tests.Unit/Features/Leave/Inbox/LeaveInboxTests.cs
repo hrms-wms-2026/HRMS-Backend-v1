@@ -38,14 +38,6 @@ public class LeaveInboxTests
 {
     private static DateTimeOffset At(int day, int hour) => new(2026, 8, day, hour, 0, 0, TimeSpan.Zero);
 
-    private static LeaveForwardTargetResolver NoForwardTarget()
-    {
-        var approvers = new Mock<ILeaveApproverResolver>();
-        approvers.Setup(a => a.ResolveAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<DateOnly>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new LeaveApproverResolution([]));
-        return new LeaveForwardTargetResolver(approvers.Object);
-    }
-
     private static LeaveApprovalState State(
         Employee employee, LeaveEntitlement? entitlement, Guid leaveTypeId, string mode, params LeaveRequestApprover[] approvers)
     {
@@ -55,7 +47,7 @@ public class LeaveInboxTests
             LeaveTypeId = leaveTypeId, StartAt = At(18, 9), EndAt = At(18, 18), TotalHours = 8m, PaidHours = 8m,
             Status = LeaveRequestStatuses.Pending, CreatedAt = At(10, 9),
         };
-        return new LeaveApprovalState(request, entitlement, employee, "Annual Leave", "AL", mode, approvers.ToList(), []);
+        return new LeaveApprovalState(request, entitlement, employee, "Annual Leave", "AL", mode, approvers.ToList());
     }
 
     private static LeaveRequestApprover Approver(Guid requestId, Guid employeeId, int sequence, string status = LeaveRequestApproverStatuses.Pending)
@@ -121,18 +113,16 @@ public class LeaveInboxTests
     }
 
     [Fact]
-    public async Task An_edited_range_that_breaks_a_leave_rule_is_refused_with_its_message_and_nothing_changes()
+    public async Task An_edited_range_may_exceed_balance_and_is_not_silently_split()
     {
         var f = new EditFixture(remaining: 8m); // only this request's own 8 h are available
 
         var result = await f.Editor().ApplyAsync(f.State, At(18, 9), At(19, 18), "x", default, allowLonger: true);
 
-        result.StatusCode.Should().Be(422);
-        result.Error.Should().Contain("balance", "the evaluator's own insufficient-balance message is returned");
-        (f.State.Request.StartAt, f.State.Request.EndAt, f.State.Request.PaidHours).Should().Be((At(18, 9), At(18, 18), 8m));
-        f.Harness.Entitlement.PendingHours.Should().Be(8m);
-        f.AddedAllocations.Should().BeEmpty();
-        f.Audits.Should().BeEmpty();
+        result.IsSuccess.Should().BeTrue(result.Error);
+        f.State.Request.PaidHours.Should().BeGreaterThan(8m);
+        f.State.Request.UnpaidHours.Should().Be(0m);
+        f.Harness.Entitlement.PendingHours.Should().Be(f.State.Request.PaidHours);
     }
 
     [Fact]
@@ -161,7 +151,6 @@ public class LeaveInboxTests
         employees.Setup(x => x.GetByUserIdAsync(f.Harness.TenantId, f.Harness.UserId, It.IsAny<CancellationToken>())).ReturnsAsync(approver);
         var decisions = new LeaveApprovalDecisionService(f.CurrentUser.Object, f.Harness.Clock.Object, employees.Object, f.Repository.Object,
             Mock.Of<IOutboxWriter>(), Mock.Of<INotificationDispatcher>(), Mock.Of<ILeaveRequestConflictProvider>(),
-            NoForwardTarget(),
             Options.Create(new LeaveApprovalOptions()));
         var uow = new FakeUnitOfWork();
         var handler = new ApproveEditedLeaveRequestCommandHandler(f.CurrentUser.Object, employees.Object, f.Repository.Object,
@@ -192,7 +181,6 @@ public class LeaveInboxTests
         public Mock<ISender> Sender { get; } = new();
         public InMemoryInboxDecisionJournal Journal { get; } = new();
         public FakeUnitOfWork UnitOfWork { get; } = new();
-        public Mock<IConversationPoster> Poster { get; } = new();
         public Mock<IConversationRepository> Conversations { get; } = new();
         public List<LeaveApprovalState> States { get; } = new();
 
@@ -231,8 +219,7 @@ public class LeaveInboxTests
 
         public LeaveInboxSourceProvider Provider() => new(
             CurrentUser.Object, Employees.Object, Approvals.Object, Requests.Object,
-            NoForwardTarget(),
-            Sender.Object, Journal, UnitOfWork, Poster.Object, Conversations.Object, new FakeDateTimeProvider { UtcNow = At(15, 9) });
+            Sender.Object, Journal, UnitOfWork, Conversations.Object, new FakeDateTimeProvider { UtcNow = At(15, 9) });
     }
 
     [Fact]
@@ -249,14 +236,40 @@ public class LeaveInboxTests
     }
 
     [Fact]
-    public async Task After_a_forward_the_new_approver_sees_the_request_and_the_old_one_does_not()
+    public async Task Pending_over_balance_request_is_a_warning_with_a_fact_and_no_zero_unpaid_row()
     {
         var f = new ProviderFixture();
-        var state = f.Add(LeaveApprovalModes.AnyOne, (f.First, LeaveRequestApproverStatuses.Forwarded), (f.Second, LeaveRequestApproverStatuses.Pending));
+        var state = f.Add(LeaveApprovalModes.AnyOne, (f.First, LeaveRequestApproverStatuses.Pending));
+        state.Request.ExceedsBalanceByHours = 24m;
 
-        (await f.Provider().ListAsync(f.TenantId, new InboxQuery(), f.Second.Id, default))
-            .Should().ContainSingle(i => i.Id == state.Request.Id && i.IsPending);
-        (await f.Provider().ListAsync(f.TenantId, new InboxQuery(), f.First.Id, default)).Should().BeEmpty();
+        var item = (await f.Provider().ListAsync(f.TenantId, new InboxQuery(), f.First.Id, default)).Single();
+        var detail = await f.Provider().GetDetailAsync(
+            f.TenantId, LeaveInboxKinds.Request, state.Request.Id, f.First.Id, default);
+
+        item.Severity.Should().Be("warning");
+        detail!.Facts.Should().ContainSingle().Which.Should().Be(
+            new InboxFact("Over balance", "24 h — balance goes negative if approved"));
+        detail.ChangeSet.Should().Contain(x => x.Field == "balance");
+        detail.ChangeSet.Should().NotContain(x => x.Field == "unpaid_hours");
+    }
+
+    [Theory]
+    [InlineData(LeaveRequestStatuses.Pending, 0)]
+    [InlineData(LeaveRequestStatuses.Approved, 24)]
+    public async Task Non_over_balance_or_non_pending_request_has_no_warning_fact(
+        string status,
+        decimal excess)
+    {
+        var f = new ProviderFixture();
+        var state = f.Add(LeaveApprovalModes.AnyOne, (f.First, LeaveRequestApproverStatuses.Pending));
+        state.Request.Status = status;
+        state.Request.ExceedsBalanceByHours = excess;
+
+        var detail = await f.Provider().GetDetailAsync(
+            f.TenantId, LeaveInboxKinds.Request, state.Request.Id, f.First.Id, default);
+
+        detail!.Item.Severity.Should().BeNull();
+        detail.Facts.Should().BeNull();
     }
 
     [Fact]
@@ -291,34 +304,8 @@ public class LeaveInboxTests
         asAdded.Should().NotBeNull();
         asAdded!.Item.AvailableActions.Should().BeEmpty();
         asAdded.ChangeSet.Should().OnlyContain(c => !c.Editable);
-        asApprover!.Item.AvailableActions.Select(a => a.Key).Should().Contain(["approve", "reject", "request_info"]);
+        asApprover!.Item.AvailableActions.Select(a => a.Key).Should().Contain(["approve", "reject"]);
         asApprover.ChangeSet.Where(c => c.Editable).Select(c => c.Field).Should().Equal("startAt", "endAt");
-    }
-
-    [Fact]
-    public async Task Ask_for_information_runs_the_leave_command_posts_the_question_into_the_chat_and_journals_it()
-    {
-        var f = new ProviderFixture();
-        var state = f.Add(LeaveApprovalModes.AnyOne, (f.First, LeaveRequestApproverStatuses.Pending));
-        f.Sender.Setup(s => s.Send(It.Is<RequestLeaveInformationCommand>(c => c.RequestId == state.Request.Id && c.Question == "Which dates exactly?"),
-                It.IsAny<CancellationToken>()))
-            .Callback(() => state.Request.Status = LeaveRequestStatuses.InformationRequested)
-            .ReturnsAsync(Result<LeaveApprovalDecisionResponse>.Success(null!));
-        var published = false;
-        f.Poster.Setup(p => p.PostAsync(f.TenantId, new ItemRef("leave", "request", state.Request.Id), f.First.Id, "Which dates exactly?",
-                ConversationMessageTags.InfoRequest, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(() => () => { published = true; return Task.CompletedTask; });
-
-        var result = await f.Provider().ExecuteActionAsync(f.TenantId, "request", state.Request.Id, "request_info",
-            JsonSerializer.SerializeToElement(new { comment = "Which dates exactly?" }), f.First.Id, default);
-
-        result.IsSuccess.Should().BeTrue(result.Error);
-        published.Should().BeTrue("the chat message is announced after the commit");
-        var row = f.Journal.Entries.Should().ContainSingle().Subject;
-        (row.Action, row.ActorEmployeeId).Should().Be(("request_info", f.First.Id));
-        LeaveDecisionSnapshot.Parse(row.BeforeJson)!.Status.Should().Be(LeaveRequestStatuses.Pending);
-        LeaveDecisionSnapshot.Parse(row.AfterJson)!.Status.Should().Be(LeaveRequestStatuses.InformationRequested);
-        result.Value!.AffectedEmployeeIds.Should().BeEquivalentTo([f.Requester.Id, f.First.Id]);
     }
 
     [Fact]
@@ -349,28 +336,30 @@ public class LeaveInboxTests
 
         var listed = await f.Provider().ListAsync(f.TenantId, new InboxQuery(), f.First.Id, default);
         var approve = await f.Provider().ExecuteActionAsync(f.TenantId, "request", state.Request.Id, "approve", null, f.First.Id, default);
-        var bulk = await f.Provider().ExecuteBulkAsync(f.TenantId, "request", "approve", [state.Request.Id],
-            JsonSerializer.SerializeToElement(new { }), f.First.Id, default);
 
         listed.Should().BeEmpty();
         approve.StatusCode.Should().Be(403);
-        bulk!.Should().OnlyContain(r => r.Result.StatusCode == 403);
         f.Sender.Invocations.Should().BeEmpty();
         f.Journal.Entries.Should().BeEmpty();
     }
 
     [Fact]
-    public async Task Replying_to_an_information_request_needs_the_employee_self_service_permission()
+    public async Task Only_the_requester_can_cancel_from_the_inbox_even_with_leave_manage()
     {
         var f = new ProviderFixture();
-        var state = f.Add(LeaveApprovalModes.AnyOne, (f.First, LeaveRequestApproverStatuses.InformationRequested));
-        f.CurrentUser.Setup(x => x.HasPermission("leave:read-own")).Returns(false);
+        var state = f.Add(LeaveApprovalModes.AnyOne, (f.First, LeaveRequestApproverStatuses.Pending));
+        f.CurrentUser.Setup(x => x.HasPermission("leave:manage")).Returns(true);
 
-        var result = await f.Provider().ExecuteActionAsync(f.TenantId, "request", state.Request.Id, "respond_info",
-            JsonSerializer.SerializeToElement(new { comment = "here" }), f.Requester.Id, default);
+        var asApprover = await f.Provider().GetDetailAsync(f.TenantId, "request", state.Request.Id, f.First.Id, default);
+        var asRequester = await f.Provider().GetDetailAsync(f.TenantId, "request", state.Request.Id, f.Requester.Id, default);
+        var approverCancel = await f.Provider().ExecuteActionAsync(f.TenantId, "request", state.Request.Id, "cancel",
+            JsonSerializer.SerializeToElement(new { comment = "no" }), f.First.Id, default);
 
-        result.StatusCode.Should().Be(403);
+        asApprover!.Item.AvailableActions.Select(a => a.Key).Should().NotContain("cancel");
+        asRequester!.Item.AvailableActions.Select(a => a.Key).Should().Contain("cancel");
+        approverCancel.StatusCode.Should().Be(403);
         f.Sender.Invocations.Should().BeEmpty();
+        f.Journal.Entries.Should().BeEmpty();
     }
 
     [Fact]
@@ -546,24 +535,70 @@ public class LeaveInboxTests
         result.Error.Should().Contain("can no longer cover");
     }
 
-    [Fact]
-    public async Task Undoing_a_forward_removes_the_added_approver_unless_they_already_acted()
+    // ---- person case history ------------------------------------------------------------------
+
+    private static readonly DateTimeOffset HistoryFrom = new(2026, 8, 1, 0, 0, 0, TimeSpan.Zero);
+    private static readonly DateTimeOffset HistoryTo = new(2026, 9, 1, 0, 0, 0, TimeSpan.Zero);
+
+    private static LeaveRequest Own(ProviderFixture f, string status) => new()
     {
-        var f = new RevertFixture();
-        var target = new LeaveRequestApprover { Id = Guid.NewGuid(), LeaveRequestId = f.State.Request.Id, ApproverEmployeeId = Guid.NewGuid(),
-            SequenceOrder = 1, Status = LeaveRequestApproverStatuses.Pending };
-        f.Decide(LeaveInboxActions.Forward, s =>
-        {
-            s.Approvers[0].Status = LeaveRequestApproverStatuses.Forwarded;
-            ((List<LeaveRequestApprover>)s.Approvers).Add(target);
-        });
+        Id = Guid.NewGuid(), TenantId = f.TenantId, EmployeeId = f.Requester.Id, LeaveTypeId = f.LeaveTypeId,
+        StartAt = At(18, 9), EndAt = At(18, 18), TotalHours = 8m, Status = status, CreatedAt = At(10, 9),
+    };
 
-        target.Status = LeaveRequestApproverStatuses.Approved;
-        (await f.Revert()).Error.Should().Be(LeaveDecisionReverter.ForwardActed);
+    private static void History(ProviderFixture f, IReadOnlyList<LeaveRequest> requests, Guid? approverOfAll = null)
+    {
+        f.Requests.Setup(x => x.ListOwnAsync(f.TenantId, f.Requester.Id,
+                It.Is<LeaveRequestListFilter>(l => l.CreatedFrom == HistoryFrom && l.CreatedTo == HistoryTo), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(requests.Select(r => new LeaveRequestListRow(r, "Annual Leave", "AL")).ToList());
+        f.Requests.Setup(x => x.ListApproverEmployeeIdsAsync(f.TenantId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(requests.ToDictionary(r => r.Id, r => (IReadOnlyList<Guid>)(approverOfAll is { } a ? [a] : [])));
+    }
 
-        target.Status = LeaveRequestApproverStatuses.Pending;
-        (await f.Revert()).IsSuccess.Should().BeTrue();
-        f.Approvals.Verify(x => x.RemoveApprover(target), Times.Once);
-        f.State.Approvers[0].Status.Should().Be(LeaveRequestApproverStatuses.Pending);
+    [Fact]
+    public async Task ListPersonCases_ReturnsAllStatusesInRange()
+    {
+        var f = new ProviderFixture();
+        History(f, [Own(f, "pending"), Own(f, "approved"), Own(f, "rejected"), Own(f, "cancelled")]);
+
+        var rows = await f.Provider().ListPersonCasesAsync(f.TenantId, f.Requester.Id, InboxCategories.Request, HistoryFrom, HistoryTo, f.First.Id, default);
+
+        rows.Select(r => r.Item.Status).Should().BeEquivalentTo("pending", "approved", "rejected", "cancelled");
+        rows.Should().OnlyContain(r => r.Item.Direction == InboxDirections.Info && r.Item.AvailableActions.Count == 0);
+    }
+
+    [Fact]
+    public async Task ListPersonCases_AlertCategoryReturnsEmpty()
+    {
+        var f = new ProviderFixture();
+        History(f, [Own(f, "pending")]);
+
+        (await f.Provider().ListPersonCasesAsync(f.TenantId, f.Requester.Id, InboxCategories.Alert, HistoryFrom, HistoryTo, f.First.Id, default))
+            .Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task ListPersonCases_CanOpenTrueForApprover_FalseForUninvolved()
+    {
+        var f = new ProviderFixture();
+        History(f, [Own(f, "approved")], approverOfAll: f.First.Id);
+
+        var asApprover = await f.Provider().ListPersonCasesAsync(f.TenantId, f.Requester.Id, InboxCategories.Request, HistoryFrom, HistoryTo, f.First.Id, default);
+        var asUninvolved = await f.Provider().ListPersonCasesAsync(f.TenantId, f.Requester.Id, InboxCategories.Request, HistoryFrom, HistoryTo, f.Second.Id, default);
+
+        asApprover.Single().CanOpen.Should().BeTrue();
+        asUninvolved.Single().CanOpen.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task ListPersonCases_PendingRequestsStayLive()
+    {
+        var f = new ProviderFixture();
+        History(f, [Own(f, "pending"), Own(f, "approved")]);
+
+        var rows = await f.Provider().ListPersonCasesAsync(f.TenantId, f.Requester.Id, InboxCategories.Request, HistoryFrom, HistoryTo, f.First.Id, default);
+
+        rows.Single(r => r.Item.Status == "pending").Item.IsPending.Should().BeTrue();
+        rows.Single(r => r.Item.Status == "approved").Item.IsPending.Should().BeFalse();
     }
 }

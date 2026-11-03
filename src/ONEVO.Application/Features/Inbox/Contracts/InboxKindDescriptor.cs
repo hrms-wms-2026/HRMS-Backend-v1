@@ -10,12 +10,9 @@ public enum InboxCapabilities
     Chat = 1,
     EditBeforeApprove = 2,
     Revert = 4,
-    Bulk = 8,
     Escalate = 16,
     Resolve = 32,
     Cancel = 64,
-    Forward = 128,
-    RequestInfo = 256,
     SubjectParticipates = 512,
 }
 

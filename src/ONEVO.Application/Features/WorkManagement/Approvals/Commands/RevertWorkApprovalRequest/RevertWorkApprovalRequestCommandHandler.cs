@@ -1,3 +1,4 @@
+using ONEVO.Application.Features.WorkManagement.Meetings.Contracts;
 using MediatR;
 using ONEVO.Application.Common.Exceptions;
 using ONEVO.Application.Common.Models;
@@ -50,6 +51,10 @@ public sealed class RevertWorkApprovalRequestCommandHandler
         var request = await _requests.GetTrackedByIdForTenantAsync(tenantId, command.RequestId, ct);
         if (request is null)
             return Result<WorkApprovalRequestResponse>.NotFound("Approval request not found.");
+        // A meeting decision is final: an approved one already scheduled the meeting (meetings-as-tasks spec 5.2).
+        if (WorkActionTypes.IsMeeting(request.ActionType))
+            return Result<WorkApprovalRequestResponse>.Failure(
+                "A meeting decision cannot be reverted.", 409, MeetingErrorCodes.ApprovalNotEditable);
 
         if (request.DecidedByEmployeeId != caller)
             return Result<WorkApprovalRequestResponse>.Forbidden("Only the person who decided this request can revert it.");

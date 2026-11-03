@@ -16,6 +16,9 @@ public class WorkTaskConfiguration : IEntityTypeConfiguration<WorkTask>
         builder.Property(t => t.Title).HasMaxLength(500).IsRequired();
         builder.Property(t => t.Priority).HasMaxLength(20).IsRequired();
         builder.Property(t => t.TaskKind).HasMaxLength(40).HasDefaultValue(WorkTaskKinds.Standard).IsRequired();
+        // Fail-closed: no ordinary task query sees a meeting occurrence (Phase 2 spec 2.2). Named, so a meeting-aware
+        // query can ignore just this one; the tenant filter is then also registered by name (ApplicationDbContext).
+        builder.HasQueryFilter(WorkTaskQueryFilters.ExcludeMeetings, t => t.TaskKind != WorkTaskKinds.Meeting);
         builder.Property(t => t.VisibilityScope).HasMaxLength(20).HasDefaultValue(WorkTaskVisibilityScopes.Module).IsRequired();
         builder.Property(t => t.EstimatedHours).HasColumnType("numeric(18,2)");
         builder.Property(t => t.CompletedHours).HasColumnType("numeric(18,2)");

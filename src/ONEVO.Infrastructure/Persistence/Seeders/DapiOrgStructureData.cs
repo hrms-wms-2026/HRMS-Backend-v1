@@ -117,13 +117,15 @@ public static class DapiOrgStructureData
     public static readonly IReadOnlyList<string> GeneralManagerPermissionCodes =
     [
         "org:read", "org:manage", "roles:read",
-        "calendar:read", "leave:read", "leave:approve", "monitoring:read",
+        "calendar:read", "leave:read", "leave:approve", "attendance:approve", "monitoring:read",
         "projects:create"
     ];
 
     public static readonly IReadOnlyList<string> ManagerPermissionCodes =
     [
-        "leave:approve", "calendar:read",
+        // attendance:approve: managers review their own team's attendance requests and alerts (identity checks
+        // included); without it every case skips them and lands on the owner at the top of the chain.
+        "leave:approve", "attendance:approve", "calendar:read",
         "projects:create"
     ];
 

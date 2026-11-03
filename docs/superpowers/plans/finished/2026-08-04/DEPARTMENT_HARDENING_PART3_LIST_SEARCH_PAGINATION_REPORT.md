@@ -51,7 +51,7 @@ as instructed.
 - `src/ONEVO.Application/Features/OrgStructure/Department/Mappers/DepartmentTreeMapper.cs`
 - `tests/ONEVO.Tests.Unit/Features/OrgStructure/Department/DepartmentTreeMapperTests.cs`
 - `tests/ONEVO.Tests.Architecture/DepartmentPart3ArchitectureTests.cs`
-- `docs/superpowers/plans/2026-08-04-department-hardening-part3.md` (implementation plan)
+- `docs/superpowers/plans/finished/2026-08-04/2026-08-04-department-hardening-part3.md` (implementation plan)
 
 ### Modified
 - `src/ONEVO.Application/Features/OrgStructure/Department/RepositoryInterfaces/IDepartmentRepository.cs` - added `ListPageByLegalEntityAsync`, `ListForTreeByLegalEntityAsync`

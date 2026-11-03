@@ -28,6 +28,10 @@ public sealed record CalendarEventItem(
     bool HasConflict = false,
     bool IsOrganizer = false,
     string? OrganizerName = null,
-    IReadOnlyList<CalendarEventGuestSummary>? Guests = null);
+    IReadOnlyList<CalendarEventGuestSummary>? Guests = null,
+    string? ItemKind = null,
+    Guid? MeetingSeriesId = null,
+    Guid? MeetingTaskId = null,
+    string? MeetingStatus = null);
 
 public sealed record CalendarEventsResponse(IReadOnlyList<CalendarEventItem> Events);

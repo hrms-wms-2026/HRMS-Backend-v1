@@ -23,13 +23,9 @@ public class CreateLeaveTypeCommandHandlerTests
     }
 
     private static CreateLeaveTypeCommand DefaultCommand(string name = "Annual Leave", string code = "ANNUAL") =>
-        new(name, code, "Standard annual leave", LeaveTypeCategories.Annual,
-            IsPaid: true, RequiresApproval: true, RequiresDocument: false,
-            DocumentRequiredAfterDays: null, AcceptedDocumentTypes: [],
-            MaxConsecutiveDays: null, DefaultDaysPerYear: 20m,
-            CarryForwardAllowed: true, MaxCarryForwardDays: 5m, CarryForwardExpiryMonths: 3,
-            ProRataForNewJoiners: true, ApplicableGender: LeaveGenderRestrictions.All,
-            MinimumNoticeDays: 0);
+        new(name, code, "Standard annual leave", "#12AB9F",
+            IsPaid: true, ApplicableGender: LeaveGenderRestrictions.Female, RequiresDocument: false,
+            DocumentRequiredAfterHours: null, AcceptedDocumentTypes: []);
 
     [Fact]
     public async Task Handle_ValidCommand_CreatesLeaveTypeAndReturnsSuccess()
@@ -47,6 +43,22 @@ public class CreateLeaveTypeCommandHandlerTests
         _repoMock.Verify(r => r.AddAsync(It.Is<Domain.Features.Leave.Type.Entities.LeaveType>(
             t => t.TenantId == _tenantId && t.Name == "Annual Leave" && t.Code == "ANNUAL"), It.IsAny<CancellationToken>()), Times.Once);
         _repoMock.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Create_persists_only_kind_fields()
+    {
+        _repoMock.Setup(r => r.ExistsByNameAsync(_tenantId, "Annual Leave", null, It.IsAny<CancellationToken>())).ReturnsAsync(false);
+        _repoMock.Setup(r => r.ExistsByCodeAsync(_tenantId, "ANNUAL", null, It.IsAny<CancellationToken>())).ReturnsAsync(false);
+        var handler = new CreateLeaveTypeCommandHandler(_repoMock.Object, _currentUserMock.Object, _dateTimeProviderMock.Object);
+
+        var result = await handler.Handle(DefaultCommand(), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        _repoMock.Verify(r => r.AddAsync(It.Is<Domain.Features.Leave.Type.Entities.LeaveType>(
+            t => t.Color == "#12AB9F" && t.IsPaid && t.ApplicableGender == LeaveGenderRestrictions.Female),
+            It.IsAny<CancellationToken>()), Times.Once);
+        Assert.Equal("#12AB9F", result.Value!.Color);
     }
 
     [Fact]

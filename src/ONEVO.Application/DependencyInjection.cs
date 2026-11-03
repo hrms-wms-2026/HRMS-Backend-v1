@@ -38,6 +38,15 @@ public static class DependencyInjection
         services.AddValidatorsFromAssembly(assembly);
 
         services.AddScoped<
+            ONEVO.Application.Features.Dashboard.Layout.Access.IDashboardWidgetAccess,
+            ONEVO.Application.Features.Dashboard.Layout.Access.DashboardWidgetAccess>();
+        services.AddScoped<ONEVO.Application.Features.Dashboard.Layout.Services.DashboardSeeder>();
+        // Widget data providers themselves are registered by the API layer (they mirror its controller actions).
+        services.AddScoped<
+            ONEVO.Application.Features.Dashboard.Layout.Data.IWidgetDataOrchestrator,
+            ONEVO.Application.Features.Dashboard.Layout.Data.WidgetDataOrchestrator>();
+
+        services.AddScoped<
             ONEVO.Application.Features.Monitoring.TrayActivation.ServiceInterfaces.ITrayPresenceRequirementEvaluator,
             ONEVO.Application.Features.Monitoring.TrayActivation.Services.TrayPresenceRequirementEvaluator>();
         services.AddScoped<
@@ -55,6 +64,9 @@ public static class DependencyInjection
         services.AddScoped<
             ONEVO.Application.Features.TimeAttendance.Services.IEmployeeAttendancePeriodReader,
             ONEVO.Application.Features.TimeAttendance.Services.EmployeeAttendancePeriodReader>();
+        services.AddScoped<
+            ONEVO.Application.Features.TimeAttendance.Team.Services.ITeamAttendancePeriodReader,
+            ONEVO.Application.Features.TimeAttendance.Team.Services.TeamAttendancePeriodReader>();
         // Registered as concrete types too: TrayClockInCommandHandler/TrayClockOutCommandHandler/
         // TrayStartBreakCommandHandler/TrayEndBreakCommandHandler inject these directly to reuse
         // their mutation logic without duplicating it.
@@ -98,11 +110,6 @@ public static class DependencyInjection
             new LeaveApprovalEmailOutboxHandler(
                 sp.GetRequiredService<IEmailService>(),
                 sp.GetRequiredService<IEmployeeRepository>(),
-                OutboxMessageTypes.LeaveInformationRequested));
-        services.AddScoped<IOutboxMessageHandler>(sp =>
-            new LeaveApprovalEmailOutboxHandler(
-                sp.GetRequiredService<IEmailService>(),
-                sp.GetRequiredService<IEmployeeRepository>(),
                 OutboxMessageTypes.LeaveRequestCancelled));
                 services.AddScoped<GitHubUserIntegrationAvailability>();
         services.AddScoped<
@@ -113,6 +120,9 @@ public static class DependencyInjection
         services.AddScoped<IOutboxMessageHandler, WorkNotificationOutboxHandler>();
         services.AddScoped<IOutboxMessageHandler, ONEVO.Application.Features.Inbox.OutboxHandlers.InboxChangedOutboxHandler>();
         services.AddScoped<IOutboxMessageHandler, ONEVO.Application.Features.Calendar.OutboxHandlers.CalendarEventInviteEmailOutboxHandler>();
+        services.AddScoped<IOutboxMessageHandler, ONEVO.Application.Features.Calendar.OutboxHandlers.CalendarMeetingCancelOutboxHandler>();
+        services.AddScoped<IOutboxMessageHandler, ONEVO.Application.Features.WorkManagement.Meetings.OutboxHandlers.MeetingLinkProvisionOutboxHandler>();
+        services.AddScoped<IOutboxMessageHandler, ONEVO.Application.Features.Calendar.OutboxHandlers.CalendarOutlookPushOutboxHandler>();
         services.AddScoped<GetBulkOnboardingTemplateQueryHandler>();
 
         services.AddScoped<
@@ -122,6 +132,7 @@ public static class DependencyInjection
         services.AddScoped<
             ONEVO.Application.Features.Monitoring.Exceptions.ServiceInterfaces.IExceptionScopeResolver,
             ONEVO.Application.Features.Monitoring.Exceptions.Services.ExceptionScopeResolver>();
+        services.AddScoped<ONEVO.Application.Features.Monitoring.Exceptions.Services.ExceptionCaseRouting>();
         services.AddScoped<
             ONEVO.Application.Features.Monitoring.Exceptions.ServiceInterfaces.IExceptionAlertRouter,
             ONEVO.Application.Features.Monitoring.Exceptions.Services.ExceptionAlertRouter>();

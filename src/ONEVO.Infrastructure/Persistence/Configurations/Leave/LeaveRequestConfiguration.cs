@@ -17,6 +17,7 @@ public class LeaveRequestConfiguration : IEntityTypeConfiguration<LeaveRequest>
         builder.Property(r => r.TotalHours).HasColumnType("numeric(8,2)");
         builder.Property(r => r.PaidHours).HasColumnType("numeric(8,2)");
         builder.Property(r => r.UnpaidHours).HasColumnType("numeric(8,2)");
+        builder.Property(r => r.ExceedsBalanceByHours).HasColumnType("numeric(8,2)");
         builder.Property(r => r.ConflictSnapshotJson).HasColumnType("jsonb");
 
         builder.HasIndex(r => new { r.TenantId, r.EmployeeId }).HasDatabaseName("ix_leave_requests_tenant_employee");
@@ -77,27 +78,6 @@ public class LeaveApprovalDelegateConfiguration : IEntityTypeConfiguration<Leave
             .HasDatabaseName("ix_leave_approval_delegates_tenant_approver");
         builder.HasOne<Employee>().WithMany().HasForeignKey(d => d.ApproverEmployeeId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne<Employee>().WithMany().HasForeignKey(d => d.DelegateEmployeeId).OnDelete(DeleteBehavior.Restrict);
-    }
-}
-
-public class LeaveRequestInfoMessageConfiguration : IEntityTypeConfiguration<LeaveRequestInfoMessage>
-{
-    public void Configure(EntityTypeBuilder<LeaveRequestInfoMessage> builder)
-    {
-        builder.ToTable("leave_request_info_messages");
-        builder.HasKey(x => x.Id);
-        builder.Property(x => x.Message).HasMaxLength(2000).IsRequired();
-        builder.HasIndex(x => new { x.TenantId, x.LeaveRequestId, x.CreatedAt })
-            .HasDatabaseName("ix_leave_request_info_messages_tenant_request_created");
-
-        builder.HasOne<LeaveRequest>()
-            .WithMany()
-            .HasForeignKey(x => x.LeaveRequestId)
-            .OnDelete(DeleteBehavior.Cascade);
-        builder.HasOne<Employee>()
-            .WithMany()
-            .HasForeignKey(x => x.SenderEmployeeId)
-            .OnDelete(DeleteBehavior.Restrict);
     }
 }
 

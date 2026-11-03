@@ -15,5 +15,8 @@ public interface IAttendanceCorrectionRepository
         DateOnly? from, DateOnly? to, string? status, CancellationToken ct = default);
     Task<bool> HasPendingForRecordAsync(
         Guid tenantId, Guid employeeId, Guid? attendanceRecordId, string correctionType, CancellationToken ct = default);
+    /// <summary>The employee's requests of any status created in [from, to) - the inbox case history.</summary>
+    Task<IReadOnlyList<AttendanceCorrection>> ListForEmployeeCreatedAsync(
+        Guid tenantId, Guid employeeId, DateTimeOffset from, DateTimeOffset to, CancellationToken ct = default);
     Task<int> SaveChangesAsync(CancellationToken ct = default);
 }

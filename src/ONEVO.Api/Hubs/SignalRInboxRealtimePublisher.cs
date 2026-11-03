@@ -36,6 +36,15 @@ public sealed class SignalRInboxRealtimePublisher(
         Guid tenantId, IReadOnlyCollection<Guid> recipientEmployeeIds, Guid conversationId, Guid messageId, CancellationToken ct = default)
         => SendAsync(tenantId, recipientEmployeeIds, InboxHub.MessageDeleted, new { conversationId, messageId }, ct);
 
+    public Task ParticipantReadAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> recipientEmployeeIds, Guid conversationId, Guid employeeId,
+        DateTimeOffset readAt, CancellationToken ct = default)
+        => SendAsync(tenantId, recipientEmployeeIds, InboxHub.ParticipantRead, new { conversationId, employeeId, readAt }, ct);
+
+    public Task MessageHiddenAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> recipientEmployeeIds, Guid conversationId, Guid messageId, CancellationToken ct = default)
+        => SendAsync(tenantId, recipientEmployeeIds, InboxHub.MessageHidden, new { conversationId, messageId }, ct);
+
     public Task ParticipantRemovedAsync(
         Guid tenantId, IReadOnlyCollection<Guid> recipientEmployeeIds, Guid conversationId, Guid employeeId, CancellationToken ct = default)
         => SendAsync(tenantId, recipientEmployeeIds, InboxHub.ParticipantRemoved, new { conversationId, employeeId }, ct);

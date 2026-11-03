@@ -18,6 +18,29 @@ public interface IEmployeeRepository
     Task<IReadOnlyDictionary<Guid, Employee>> ListByIdsAsync(
         Guid tenantId, IReadOnlyCollection<Guid> employeeIds, CancellationToken ct = default);
 
+    /// <summary>Every employee in the given departments, in ONE query - the department's own employees only,
+    /// not its sub-departments'. Used by the meetings bulk invite preview to expand a picked department
+    /// (spec 5.2, D8). No employment-status filter: the caller decides who counts as active.</summary>
+    Task<IReadOnlyList<Employee>> ListByDepartmentIdsAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> departmentIds, CancellationToken ct = default);
+
+    /// <summary>The direct reports of every given manager, in ONE query - the employees whose reporting line
+    /// points straight at one of them. One id per reporting line, so someone reporting to two of the managers
+    /// appears twice. Used by the meetings bulk invite preview to expand "a manager's team" (spec 5.2, D8).
+    /// The reporting-line closure is read here, and not through
+    /// IEmployeeHierarchyClosureRepository: WorkManagement may never reference the raw coverage
+    /// tables (My Team spec section 10), so the read is exposed on the common interface instead.</summary>
+    Task<IReadOnlyList<Guid>> ListDirectReportEmployeeIdsAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> managerEmployeeIds, CancellationToken ct = default);
+
+    /// <summary>The employee's upward reporting chain, nearest manager first: every manager above them in the
+    /// <em>current</em> reporting line. Used by the reporting-line meeting attendance view to decide who may
+    /// see an employee's attendance summary (spec 5.1, D16). The reporting-line closure is read here, and not
+    /// through IEmployeeHierarchyClosureRepository: WorkManagement may never reference the raw coverage
+    /// tables (My Team spec section 10), so the read is exposed on the common interface instead.</summary>
+    Task<IReadOnlyList<Guid>> ListAncestorChainEmployeeIdsAsync(
+        Guid tenantId, Guid employeeId, CancellationToken ct = default);
+
     Task<IReadOnlyList<Employee>> ListActiveByLegalEntityAsync(
         Guid tenantId,
         Guid? legalEntityId,

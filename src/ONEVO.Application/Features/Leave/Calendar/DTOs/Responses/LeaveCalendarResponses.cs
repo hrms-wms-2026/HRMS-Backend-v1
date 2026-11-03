@@ -26,7 +26,6 @@ public sealed record LeaveCalendarAbsenceResponse(
     Guid LeaveTypeId,
     string LeaveTypeName,
     string LeaveTypeCode,
-    string LeaveTypeCategory,
     string? TypeColorHex,
     string Status,
     bool IsTentative,

@@ -17,7 +17,8 @@ public sealed record LeaveRequestResponse(
     LeaveRequestBalanceImpactResponse BalanceImpact,
     IReadOnlyList<LeaveRequestApproverResponse> Approvers,
     LeaveRequestConflictSnapshotResponse ConflictSnapshot,
-    DateTimeOffset CreatedAt);
+    DateTimeOffset CreatedAt,
+    decimal ExceedsBalanceByHours = 0m);
 
 public sealed record LeaveRequestBalanceImpactResponse(
     decimal CurrentRemainingHours,
@@ -60,6 +61,6 @@ public sealed record LeaveRequestListItemResponse(
     string Status,
     bool NoticePeriodMissed,
     string? ApprovedByName,
-    string? InfoQuestion,
     DateTimeOffset CreatedAt,
-    DateTimeOffset? UpdatedAt);
+    DateTimeOffset? UpdatedAt,
+    decimal ExceedsBalanceByHours = 0m);

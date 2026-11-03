@@ -18,6 +18,15 @@ public class LeaveEntitlementConfiguration : IEntityTypeConfiguration<LeaveEntit
         builder.Property(e => e.PendingHours).HasColumnType("numeric(8,2)");
         builder.Property(e => e.CarriedForwardHours).HasColumnType("numeric(8,2)");
 
+        // Crediting and requests both move these totals; the PostgreSQL xmin system column makes a
+        // lost update fail instead of silently overwriting (nullable for non-PostgreSQL test DBs,
+        // see EmployeeConfiguration).
+        builder.Property<uint?>("xmin")
+            .HasColumnName("xmin")
+            .HasColumnType("xid")
+            .ValueGeneratedOnAddOrUpdate()
+            .IsConcurrencyToken();
+
         builder.HasIndex(e => new { e.TenantId, e.EmployeeId, e.LeaveTypeId, e.Year })
             .IsUnique()
             .HasDatabaseName("ix_leave_entitlements_tenant_employee_type_year");

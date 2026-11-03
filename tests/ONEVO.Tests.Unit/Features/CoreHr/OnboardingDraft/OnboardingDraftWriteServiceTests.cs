@@ -5,7 +5,9 @@ using ONEVO.Application.Features.Auth.Login.RepositoryInterfaces;
 using ONEVO.Application.Features.Auth.Login.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Permission.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
+using ONEVO.Application.Common.Exceptions;
 using ONEVO.Application.Features.CoreHr.Onboarding.RepositoryInterfaces;
+using ONEVO.Application.Features.CoreHr.Onboarding.Services;
 using ONEVO.Application.Features.CoreHr.OnboardingDraft.Services;
 using ONEVO.Application.Features.CoreHr.OnboardingDrafts.Commands.SaveOnboardingDraft;
 using ONEVO.Application.Features.CoreHr.OnboardingDrafts.DTOs.Responses;
@@ -146,5 +148,76 @@ public sealed class OnboardingDraftWriteServiceTests
         Assert.Equal(explicitUserId, added.StartedById);
         currentUser.VerifyGet(u => u.TenantId, Times.Never);
         currentUser.VerifyGet(u => u.UserId, Times.Never);
+    }
+
+    private (OnboardingDraftWriteService Service, Mock<IOfficeProjectReconciler> Reconciler, List<string> Calls, Guid TenantId, Guid DraftId)
+        BuildFinalize()
+    {
+        var tenantId = Guid.NewGuid();
+        var draft = new OnboardingDraftEntity
+        {
+            Id = Guid.NewGuid(), TenantId = tenantId, FirstName = "Ada", LastName = "Lovelace",
+            WorkEmail = "ada@test.dev", LegalEntityId = Guid.NewGuid(), EmploymentType = "full_time",
+            StartDate = DateOnly.FromDateTime(DateTime.UtcNow), EmployeeNumber = "EMP-001",
+            WorkModeId = Guid.NewGuid(), Status = OnboardingDraftStatus.Draft, StartedById = Guid.NewGuid(),
+        };
+        _draftRepository.Setup(r => r.GetTrackedAsync(tenantId, draft.Id, It.IsAny<CancellationToken>())).ReturnsAsync(draft);
+        _seatEntitlementService.Setup(s => s.EvaluateAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SeatDecision(SeatDecisionStatus.Approved, 10, 0, 0, 10, false, false, "ok"));
+        var employmentTypes = new Mock<IEmploymentTypeRepository>();
+        employmentTypes.Setup(r => r.GetIdByCodeAsync("full_time", It.IsAny<CancellationToken>())).ReturnsAsync(1);
+        var tokens = new Mock<ISecureTokenGenerator>();
+        tokens.Setup(t => t.GenerateUrlSafeOpaqueToken()).Returns("raw-token-value");
+
+        var calls = new List<string>();
+        var unitOfWork = new Mock<IUnitOfWork>();
+        unitOfWork.Setup(u => u.ExecuteInTransactionAsync(It.IsAny<Func<CancellationToken, Task<bool>>>(), It.IsAny<CancellationToken>()))
+            .Returns(async (Func<CancellationToken, Task<bool>> operation, CancellationToken token) =>
+            {
+                var result = await operation(token);
+                calls.Add("commit");
+                return result;
+            });
+        var reconciler = new Mock<IOfficeProjectReconciler>();
+        reconciler.Setup(r => r.TryReconcileAsync(tenantId, It.IsAny<CancellationToken>()))
+            .Callback(() => calls.Add("reconcile")).ReturnsAsync(OfficeProjectReconcileOutcome.Created);
+
+        var service = new OnboardingDraftWriteService(
+            _draftRepository.Object, _employeeRepository.Object,
+            Mock.Of<IUserRepository>(), Mock.Of<IUserRoleRepository>(),
+            _positionRepository.Object, Mock.Of<IPositionAssignmentRepository>(),
+            _legalEntityRepository.Object, _departmentRepository.Object,
+            employmentTypes.Object, _workModeRepository.Object,
+            _seatEntitlementService.Object, Mock.Of<IAccessGrantRequestRepository>(),
+            Mock.Of<IPermissionRepository>(), Mock.Of<IChecklistTemplateRepository>(),
+            Mock.Of<IEmployeeChecklistTaskRepository>(), Mock.Of<IInvitationTokenRepository>(),
+            Mock.Of<ITenantRepository>(), Mock.Of<IOutboxWriter>(),
+            tokens.Object, Mock.Of<ICurrentUser>(), _clock.Object, unitOfWork.Object,
+            officeReconciler: reconciler.Object);
+        return (service, reconciler, calls, tenantId, draft.Id);
+    }
+
+    [Fact]
+    public async Task FinalizeAsync_Immediate_ReconcilesTheOfficeProjectAfterCommit()
+    {
+        var (service, _, calls, tenantId, draftId) = BuildFinalize();
+
+        var result = await service.FinalizeAsync(tenantId, Guid.NewGuid(), draftId, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(new[] { "commit", "reconcile" }, calls);
+    }
+
+    [Fact]
+    public async Task FinalizeAsync_SaveConflict_DoesNotReconcile()
+    {
+        var (service, reconciler, _, tenantId, draftId) = BuildFinalize();
+        _draftRepository.Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new UniqueConstraintConflictException(new Exception("dup")));
+
+        var result = await service.FinalizeAsync(tenantId, Guid.NewGuid(), draftId, CancellationToken.None);
+
+        Assert.Equal(409, result.StatusCode);
+        reconciler.Verify(r => r.TryReconcileAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 }

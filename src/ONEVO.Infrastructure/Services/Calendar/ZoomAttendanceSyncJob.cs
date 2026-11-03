@@ -98,45 +98,85 @@ public sealed class ZoomAttendanceSyncJob(IServiceProvider services, ILogger<Zoo
         }
     }
 
-    /// <summary>Once the report settled (synced, or unavailable at the cutoff) the meeting's participants are re-evaluated
+    /// <summary>Once the report settled (synced, or unavailable / failed at the cutoff) the meeting's participants are re-evaluated
     /// against the attendance rules (plan C2 post-meeting trigger).</summary>
     private static async Task QueueEvaluationWhenSettledAsync(
         IServiceProvider services, Guid tenantId, CalendarEventMeeting meeting, IUnitOfWork unitOfWork, CancellationToken ct)
     {
-        if (meeting.LastAttendanceSyncedAt is null && meeting.AttendanceUnavailableAt is null)
+        if (meeting.LastAttendanceSyncedAt is null && meeting.AttendanceUnavailableAt is null && meeting.AttendanceSyncFailedAt is null)
             return;
         if (services.GetService<ICalendarNotificationSender>() is not { } sender || services.GetService<ICalendarEventRepository>() is not { } events)
             return;
-        var participants = await events.GetParticipantsForEventsAsync(tenantId, [meeting.CalendarEventId], ct);
-        if (participants is null || !participants.TryGetValue(meeting.CalendarEventId, out var list) || list.Count == 0)
+        if (meeting.CalendarEventId is not Guid eventId)
+            return; // a meeting series' link: its occurrences are evaluated by the Phase 2 attendance sync
+        var participants = await events.GetParticipantsForEventsAsync(tenantId, [eventId], ct);
+        if (participants is null || !participants.TryGetValue(eventId, out var list) || list.Count == 0)
             return;
         await sender.QueueIncidentEvaluationAsync(tenantId, list.Select(p => p.EmployeeId).ToList(), ct);
         await unitOfWork.SaveChangesAsync(ct);
     }
 
-    private static async Task SyncOneMeetingAsync(
+    private async Task SyncOneMeetingAsync(
         Guid tenantId, CalendarEventMeeting meeting,
         IExternalCalendarConnectionRepository connections, ICalendarConnectionTokenProvider tokenProvider,
         IZoomMeetingClient zoomClient, ICalendarEventMeetingAttendanceRepository attendances,
         ICalendarEventMeetingRepository meetings, IUnitOfWork unitOfWork, CancellationToken ct)
     {
-        var connection = await connections.GetByIdForTenantAsync(tenantId, meeting.ExternalCalendarConnectionId, ct);
-        if (connection is null)
+        // A meeting series' link is synced per occurrence by the Phase 2 attendance sync, never by this one-shot job.
+        if (meeting.CalendarEventId is not Guid eventId)
             return;
+        if (await meetings.GetEventWindowAsync(tenantId, eventId, ct) is not { } window)
+            return; // the event is gone - nothing to ask the provider about
 
-        var accessToken = await tokenProvider.GetFreshAccessTokenAsync(connection, "zoom", ct);
-        if (accessToken is null)
-            return; // reauth required - retried automatically next run once the connection is fixed
+        string? failure = null;
+        Exception? providerError = null;
+        IReadOnlyList<ZoomAttendanceRecordDto> records = [];
+        var connection = await connections.GetByIdForTenantAsync(tenantId, meeting.ExternalCalendarConnectionId, ct);
+        var accessToken = connection is null ? null : await tokenProvider.GetFreshAccessTokenAsync(connection, "zoom", ct);
+        if (connection is null)
+            failure = CalendarAttendanceSyncErrors.NotConnected;
+        else if (accessToken is null)
+            failure = CalendarAttendanceSyncErrors.ReauthRequired;
+        else
+        {
+            try
+            {
+                // The scheduled window, so a link reused by later occurrences still yields this session (E6b/E6c).
+                records = await zoomClient.GetAttendanceAsync(accessToken, meeting.ExternalMeetingId, window.Start, window.End, ct);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                failure = CalendarAttendanceSyncErrors.ProviderError;
+                providerError = ex;
+            }
+        }
 
-        var records = await zoomClient.GetAttendanceAsync(accessToken, meeting.ExternalMeetingId, ct);
         var now = DateTimeOffset.UtcNow;
-        switch (CalendarAttendanceSyncPolicy.Decide(records.Count, await meetings.GetEventEndAsync(tenantId, meeting.CalendarEventId, ct), now))
+        if (failure is not null)
+        {
+            if (CalendarAttendanceSyncPolicy.DecideAfterFailure(window.End, now) == CalendarAttendanceSyncOutcome.RetryLater)
+            {
+                if (providerError is not null)
+                    throw providerError; // logged by the run loop; the meeting stays due
+                return; // no connection or sign-in needed yet - retried next run once fixed
+            }
+            logger.LogWarning(providerError,
+                "Attendance for meeting {MeetingId} (tenant {TenantId}) could not be fetched by the cutoff ({Reason}); recorded as failed.",
+                meeting.Id, tenantId, failure);
+            meeting.AttendanceSyncFailedAt = now;
+            meeting.AttendanceSyncError = failure;
+            meetings.UpdateAttendanceSync(meeting);
+            await unitOfWork.SaveChangesAsync(ct);
+            return;
+        }
+
+        switch (CalendarAttendanceSyncPolicy.Decide(records.Count, window.End, now))
         {
             case CalendarAttendanceSyncOutcome.RetryLater:
                 return; // no report yet - the meeting stays due and is retried next run
             case CalendarAttendanceSyncOutcome.Unavailable:
                 meeting.AttendanceUnavailableAt = now;
-                meetings.Update(meeting);
+                meetings.UpdateAttendanceSync(meeting);
                 await unitOfWork.SaveChangesAsync(ct);
                 return;
         }
@@ -152,7 +192,7 @@ public sealed class ZoomAttendanceSyncJob(IServiceProvider services, ILogger<Zoo
         await attendances.AddRangeAsync(toAdd, ct);
 
         meeting.LastAttendanceSyncedAt = DateTimeOffset.UtcNow;
-        meetings.Update(meeting);
+        meetings.UpdateAttendanceSync(meeting);
         await unitOfWork.SaveChangesAsync(ct);
     }
 }

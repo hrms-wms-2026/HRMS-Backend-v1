@@ -17,6 +17,9 @@ public interface ITenantRepository
         TenantStatus? statusFilter,
         string? searchTerm,
         CancellationToken ct = default);
+    /// <summary>Keyset page of every tenant ordered by Id, starting after <paramref name="afterId"/>
+    /// (null: from the start). Stable while tenants are created during a scan, unlike offset paging.</summary>
+    Task<IReadOnlyList<Tenant>> ListPageByIdAsync(Guid? afterId, int take, CancellationToken ct = default);
     Task AddAsync(Tenant tenant, CancellationToken ct = default);
 }
 

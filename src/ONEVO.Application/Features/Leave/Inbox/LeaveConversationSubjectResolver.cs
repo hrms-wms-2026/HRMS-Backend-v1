@@ -48,7 +48,8 @@ public sealed class LeaveConversationSubjectResolver : IConversationSubjectResol
                 people.Add(original);
         }
         var title = $"{state.LeaveTypeName} - {state.Employee.FirstName} {state.Employee.LastName}".Trim();
-        return new ConversationSubject(people.Distinct().ToList(), title, null);
+        // The requested changes sit in the chat where the request was made, so people can reply to them.
+        return new ConversationSubject(people.Distinct().ToList(), title, null, EvidenceAt: state.Request.CreatedAt);
     }
 
     public Task<bool> CanViewAsync(Guid tenantId, ItemRef subject, Guid employeeId, CancellationToken ct)

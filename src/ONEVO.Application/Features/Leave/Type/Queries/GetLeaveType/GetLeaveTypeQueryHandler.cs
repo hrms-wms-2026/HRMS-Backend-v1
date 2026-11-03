@@ -24,8 +24,11 @@ public class GetLeaveTypeQueryHandler : IRequestHandler<GetLeaveTypeQuery, Resul
             return Result<LeaveTypeResponse>.Forbidden("Authentication required.");
 
         var entity = await _leaveTypes.GetByIdAsync(_currentUser.TenantId, request.LeaveTypeId, ct);
-        return entity is null
-            ? Result<LeaveTypeResponse>.NotFound("Leave type not found.")
-            : Result<LeaveTypeResponse>.Success(LeaveTypeMapper.ToResponse(entity));
+        if (entity is null)
+            return Result<LeaveTypeResponse>.NotFound("Leave type not found.");
+
+        var policyCounts = await _leaveTypes.CountActivePoliciesByLeaveTypeAsync(_currentUser.TenantId, ct);
+        return Result<LeaveTypeResponse>.Success(
+            LeaveTypeMapper.ToResponse(entity, policyCounts?.GetValueOrDefault(entity.Id) ?? 0));
     }
 }

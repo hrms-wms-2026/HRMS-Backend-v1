@@ -7,6 +7,10 @@ public static class TaskEditLogSources
     public const string Direct = "direct";
     public const string ApprovedRequest = "approved_request";
     public const string Reverted = "reverted";
+    /// <summary>The organizer edited a meeting occurrence's notes after it ended (meetings-as-tasks D19).</summary>
+    public const string MeetingNotes = "meeting_notes";
+    /// <summary>A meeting occurrence moved to another module (meetings-as-tasks D20).</summary>
+    public const string MeetingMove = "meeting_move";
 }
 
 /// <summary>

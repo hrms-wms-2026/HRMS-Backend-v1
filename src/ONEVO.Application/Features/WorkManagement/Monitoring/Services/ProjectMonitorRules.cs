@@ -93,11 +93,17 @@ public static class ProjectMonitorRules
         var from = today > module.StartDate ? today : module.StartDate;
         var remaining = Math.Max(0m, module.AllocatedHours - module.CompletedHours);
         var capacity = calendar.Capacity(people, from, module.EndDate);
-        return remaining > capacity
-            ? new(MonitorRuleCodes.ModuleCapacityShortfall, MonitorTargetTypes.Module, module.Id, module.Title, null,
-                $"{Hours(remaining)} h of work remain, but the team can produce only {Hours(capacity)} h before the {Day(module.EndDate)} deadline.",
-                Details(("remainingHours", remaining), ("capacityHours", capacity), ("memberCount", people)))
-            : null;
+        if (remaining <= capacity)
+            return null;
+
+        // At the team's pace from today: when the work would really finish, and how many working days past the deadline.
+        var finish = calendar.FinishDate(people, from, remaining);
+        return new(MonitorRuleCodes.ModuleCapacityShortfall, MonitorTargetTypes.Module, module.Id, module.Title, null,
+            $"{Hours(remaining)} h of work remain, but the team can produce only {Hours(capacity)} h before the {Day(module.EndDate)} deadline.",
+            Details(("endDate", Iso(module.EndDate)), ("expectedFinish", finish is { } f ? Iso(f) : null),
+                ("lateDays", finish is { } d ? calendar.WorkingDaysBetween(module.EndDate.AddDays(1), d) : null),
+                ("remainingHours", remaining), ("capacityHours", capacity), ("shortfallHours", remaining - capacity),
+                ("memberCount", people)));
     }
 
     /// <summary>

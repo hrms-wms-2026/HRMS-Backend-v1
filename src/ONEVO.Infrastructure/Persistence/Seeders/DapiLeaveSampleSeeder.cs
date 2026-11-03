@@ -14,7 +14,7 @@ using ONEVO.Domain.Features.Leave.Type.Entities;
 namespace ONEVO.Infrastructure.Persistence.Seeders;
 
 /// <summary>
-/// Development/Test-only: seeds leave types, one legal-entity policy, and 2026 entitlements
+/// Development/Test-only: seeds leave types, one company-wide policy per type, and 2026 entitlements
 /// on the dapi smoke tenant so Time Off screens are not empty. Idempotent via deterministic
 /// Guids. Must run after DevSmokeTestTenantSeeder and WorkManagementDapiDemoSeeder.
 /// </summary>
@@ -27,7 +27,6 @@ public sealed class DapiLeaveSampleSeeder : IHostedService
     private static readonly Guid AnnualTypeId = WorkManagementDapiDemoSeeder.DeterministicGuid("dapi-leave:type:annual");
     private static readonly Guid SickTypeId = WorkManagementDapiDemoSeeder.DeterministicGuid("dapi-leave:type:sick");
     private static readonly Guid CasualTypeId = WorkManagementDapiDemoSeeder.DeterministicGuid("dapi-leave:type:casual");
-    private static readonly Guid PolicyId = WorkManagementDapiDemoSeeder.DeterministicGuid("dapi-leave:policy:standard");
 
     private const int SeedYear = 2026;
 
@@ -105,50 +104,23 @@ public sealed class DapiLeaveSampleSeeder : IHostedService
         if (workHours <= 0m)
             workHours = 8m;
 
-        await EnsureTypeAsync(db, AnnualTypeId, "Annual Leave", "ANNUAL", LeaveTypeCategories.Annual, 14m, now, ct);
-        await EnsureTypeAsync(db, SickTypeId, "Sick Leave", "SICK", LeaveTypeCategories.Sick, 10m, now, ct);
-        await EnsureTypeAsync(db, CasualTypeId, "Casual Leave", "CASUAL", LeaveTypeCategories.Custom, 5m, now, ct);
+        await EnsureTypeAsync(db, AnnualTypeId, "Annual Leave", "ANNUAL", "#2563EB", now, ct);
+        await EnsureTypeAsync(db, SickTypeId, "Sick Leave", "SICK", "#16A34A", now, ct);
+        await EnsureTypeAsync(db, CasualTypeId, "Casual Leave", "CASUAL", "#475569", now, ct);
 
-        var policy = await db.LeavePolicies.FirstOrDefaultAsync(p => p.Id == PolicyId, ct);
-        if (policy is null)
-        {
-            policy = new LeavePolicy
-            {
-                Id = PolicyId,
-                TenantId = DapiTenantId,
-                Name = "Dapi Standard Leave",
-                Description = "Default paid leave policy for Dapi Technologies.",
-                AccrualMethod = LeaveAccrualMethods.Annual,
-                AccrualStart = LeaveAccrualStarts.Immediately,
-                ProrationMethod = LeaveProrationMethods.CalendarDays,
-                ApprovalMode = LeaveApprovalModes.AnyOne,
-                MinDaysPerRequest = 0.5m,
-                EffectiveFrom = new DateOnly(SeedYear, 1, 1),
-                Version = 1,
-                IsActive = true,
-                CreatedAt = now
-            };
-            db.LeavePolicies.Add(policy);
-        }
+        await EnsurePolicyAsync(db, AnnualTypeId, "Annual Leave · Dapi standard", 14m * workHours, workHours, now, ct);
+        await EnsurePolicyAsync(db, SickTypeId, "Sick Leave · Dapi standard", 10m * workHours, workHours, now, ct);
+        await EnsurePolicyAsync(db, CasualTypeId, "Casual Leave · Dapi standard", 5m * workHours, workHours, now, ct);
 
-        await EnsurePolicyTypeAsync(db, PolicyId, AnnualTypeId, 14m, ct);
-        await EnsurePolicyTypeAsync(db, PolicyId, SickTypeId, 10m, ct);
-        await EnsurePolicyTypeAsync(db, PolicyId, CasualTypeId, 5m, ct);
-
-        var assignmentId = WorkManagementDapiDemoSeeder.DeterministicGuid("dapi-leave:policy-le:standard");
-        var assignment = await db.LeavePolicyLegalEntities.FirstOrDefaultAsync(a => a.Id == assignmentId, ct);
-        if (assignment is null)
-        {
-            db.LeavePolicyLegalEntities.Add(new LeavePolicyLegalEntity
-            {
-                Id = assignmentId,
-                TenantId = DapiTenantId,
-                LeavePolicyId = PolicyId,
-                LegalEntityId = DapiLegalEntityId,
-                EffectiveDate = new DateOnly(SeedYear, 1, 1),
-                IsActive = true
-            });
-        }
+        var policyVersions = await (
+            from policy in db.LeavePolicies
+            join version in db.LeavePolicyVersions on policy.Id equals version.LeavePolicyId
+            where policy.TenantId == DapiTenantId && version.EffectiveFrom <= new DateOnly(SeedYear, 12, 31)
+            orderby version.EffectiveFrom descending
+            select new { policy.LeaveTypeId, PolicyId = policy.Id, VersionId = version.Id })
+            .ToListAsync(ct);
+        var policyByType = policyVersions.GroupBy(x => x.LeaveTypeId)
+            .ToDictionary(g => g.Key, g => g.First());
 
         var typeHours = new (Guid TypeId, decimal Days)[]
         {
@@ -178,6 +150,7 @@ public sealed class DapiLeaveSampleSeeder : IHostedService
                 var hours = decimal.Round(days * workHours, 2, MidpointRounding.AwayFromZero);
                 var entitlementId = WorkManagementDapiDemoSeeder.DeterministicGuid(
                     $"dapi-leave:entitlement:{employeeId:N}:{typeId:N}:{SeedYear}");
+                policyByType.TryGetValue(typeId, out var policy);
                 db.LeaveEntitlements.Add(new LeaveEntitlement
                 {
                     Id = entitlementId,
@@ -190,6 +163,8 @@ public sealed class DapiLeaveSampleSeeder : IHostedService
                     PendingHours = 0m,
                     CarriedForwardHours = 0m,
                     Source = LeaveEntitlementSources.Auto,
+                    LeavePolicyId = policy?.PolicyId,
+                    LeavePolicyVersionId = policy?.VersionId,
                     CreatedAt = now
                 });
                 db.LeaveBalanceAudits.Add(new LeaveBalanceAudit
@@ -202,7 +177,12 @@ public sealed class DapiLeaveSampleSeeder : IHostedService
                     ChangeType = LeaveBalanceChangeTypes.Accrual,
                     HoursChanged = hours,
                     BalanceAfter = hours,
-                    Reason = "Generated from Dapi Standard Leave policy",
+                    Reason = "Generated from Dapi standard leave policies",
+                    LeavePolicyId = policy?.PolicyId,
+                    LeavePolicyVersionId = policy?.VersionId,
+                    Year = SeedYear,
+                    CoversFromMonth = 1,
+                    CoversToMonth = 12,
                     CreatedAt = now,
                     CreatedBy = DapiOwnerUserId
                 });
@@ -215,8 +195,7 @@ public sealed class DapiLeaveSampleSeeder : IHostedService
         Guid id,
         string name,
         string code,
-        string category,
-        decimal days,
+        string color,
         DateTimeOffset now,
         CancellationToken ct)
     {
@@ -229,10 +208,8 @@ public sealed class DapiLeaveSampleSeeder : IHostedService
             TenantId = DapiTenantId,
             Name = name,
             Code = code,
-            Category = category,
+            Color = color,
             IsPaid = true,
-            RequiresApproval = true,
-            DefaultDaysPerYear = days,
             ApplicableGender = LeaveGenderRestrictions.All,
             AcceptedDocumentTypes = [],
             IsActive = true,
@@ -240,25 +217,58 @@ public sealed class DapiLeaveSampleSeeder : IHostedService
         });
     }
 
-    private static async Task EnsurePolicyTypeAsync(
+    /// <summary>One single-type policy per leave type, assigned to the whole company. Skipped when the
+    /// tenant already has any policy for that leave type (e.g. one split out by the policy migration).</summary>
+    private static async Task EnsurePolicyAsync(
         ApplicationDbContext db,
-        Guid policyId,
         Guid typeId,
-        decimal days,
+        string name,
+        decimal hoursPerYear,
+        decimal workHours,
+        DateTimeOffset now,
         CancellationToken ct)
     {
-        var exists = await db.LeavePolicyLeaveTypes.AnyAsync(
-            r => r.TenantId == DapiTenantId && r.LeavePolicyId == policyId && r.LeaveTypeId == typeId, ct);
-        if (exists)
+        if (await db.LeavePolicies.AnyAsync(p => p.TenantId == DapiTenantId && p.LeaveTypeId == typeId, ct))
             return;
 
-        db.LeavePolicyLeaveTypes.Add(new LeavePolicyLeaveType
+        var policyId = WorkManagementDapiDemoSeeder.DeterministicGuid($"dapi-leave:policy:{typeId:N}");
+        var effectiveFrom = new DateOnly(SeedYear, 1, 1);
+        db.LeavePolicies.Add(new LeavePolicy
         {
-            Id = WorkManagementDapiDemoSeeder.DeterministicGuid($"dapi-leave:policy-type:{typeId:N}"),
+            Id = policyId,
+            TenantId = DapiTenantId,
+            LeaveTypeId = typeId,
+            Name = name,
+            Description = "Default policy for Dapi Technologies.",
+            IsActive = true,
+            CreatedAt = now
+        });
+        db.LeavePolicyVersions.Add(new LeavePolicyVersion
+        {
+            Id = WorkManagementDapiDemoSeeder.DeterministicGuid($"dapi-leave:policy-version:{typeId:N}:1"),
+            TenantId = DapiTenantId,
+            LeavePolicyId = policyId,
+            VersionNumber = 1,
+            EffectiveFrom = effectiveFrom,
+            AmountHours = decimal.Round(hoursPerYear, 2, MidpointRounding.AwayFromZero),
+            AmountPeriod = LeaveAmountPeriods.Year,
+            EligibleFrom = LeaveEligibility.Immediately,
+            MinRequestHours = decimal.Round(workHours / 2m, 2, MidpointRounding.AwayFromZero),
+            ApprovalMode = LeaveApprovalModes.AnyOne,
+            CreatedAt = now,
+            CreatedBy = DapiOwnerUserId
+        });
+        db.LeavePolicyAssignments.Add(new LeavePolicyAssignment
+        {
+            Id = WorkManagementDapiDemoSeeder.DeterministicGuid($"dapi-leave:policy-assignment:{typeId:N}"),
             TenantId = DapiTenantId,
             LeavePolicyId = policyId,
             LeaveTypeId = typeId,
-            AnnualEntitlementDays = days
+            TargetKind = LeavePolicyTargetKinds.LegalEntity,
+            TargetId = DapiLegalEntityId,
+            EffectiveFrom = effectiveFrom,
+            CreatedAt = now,
+            CreatedBy = DapiOwnerUserId
         });
     }
 }

@@ -114,7 +114,7 @@ public class AddProjectMemberCommandHandler : IRequestHandler<AddProjectMemberCo
                     ["projectName"] = project.Name
                 },
                 "project_member_invitation",
-                invitation.Id),
+                invitation.Id, EventId: Guid.NewGuid()),
             tenantId,
             ct);
         await WorkNotificationEngine.EnqueueInboxChangedAsync(

@@ -18,6 +18,18 @@ public interface ILeaveEntitlementRepository
         IReadOnlyCollection<Guid> employeeIds,
         CancellationToken ct = default);
 
+    Task<IReadOnlyList<LeaveEntitlement>> ListTrackedExistingAsync(
+        Guid tenantId,
+        int year,
+        IReadOnlyCollection<Guid> employeeIds,
+        CancellationToken ct = default);
+
+    Task<IReadOnlyList<LeaveBalanceAudit>> ListAuditsAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Guid> employeeIds,
+        int? year,
+        CancellationToken ct = default);
+
     Task<LeaveEntitlement?> GetTrackedByIdAsync(Guid tenantId, Guid entitlementId, CancellationToken ct = default);
 
     Task<LeaveEntitlement?> GetTrackedByEmployeeTypeYearAsync(
@@ -38,6 +50,10 @@ public interface ILeaveEntitlementRepository
     Task AddManualAsync(LeaveEntitlement entitlement, LeaveBalanceAudit audit, CancellationToken ct = default);
 
     Task SaveWithAuditAsync(LeaveEntitlement entitlement, LeaveBalanceAudit audit, CancellationToken ct = default);
+
+    Task SaveCreditChangesAsync(
+        IReadOnlyCollection<LeaveEntitlementWriteSet> writeSets,
+        CancellationToken ct = default);
 }
 
 public record LeaveEntitlementListFilter(

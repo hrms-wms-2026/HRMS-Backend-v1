@@ -6,15 +6,20 @@ public static class ConversationMessageKinds
 {
     public const string Text = "text";
     public const string System = "system";
+    /// <summary>A content-free marker where the item's evidence (e.g. an identity case's face checks) sits in the
+    /// chat. The client fills it from the item's own evidence, which only reviewers receive - the row holds nothing.</summary>
+    public const string Evidence = "evidence";
+    /// <summary>An inbox item (request, alert, case) posted into a people chat. SystemEventJson holds its reference
+    /// ({"source","kind","id","title",...}); the client loads the item itself, so each viewer sees only what they may.</summary>
+    public const string Case = "case";
 }
 
-/// <summary>Labels on a text message. info_request/info_response are posted by request workflows (leave
-/// request-info); justification is the subject employee's own explanation on an alert or case.</summary>
+/// <summary>Labels on a text message: justification is the subject employee's own explanation on an alert or case;
+/// forwarded is a copy of a message someone passed on from another chat.</summary>
 public static class ConversationMessageTags
 {
-    public const string InfoRequest = "info_request";
-    public const string InfoResponse = "info_response";
     public const string Justification = "justification";
+    public const string Forwarded = "forwarded";
 }
 
 public class ConversationMessage : BaseEntity
@@ -28,6 +33,8 @@ public class ConversationMessage : BaseEntity
     public string? SystemEventJson { get; set; }
     /// <summary><see cref="ConversationMessageTags"/> or null.</summary>
     public string? Tag { get; set; }
+    /// <summary>The message this one replies to (same conversation), or null.</summary>
+    public Guid? ReplyToMessageId { get; set; }
     public DateTimeOffset? EditedAt { get; set; }
     /// <summary>The author deleted the message (BaseEntity.DeletedAt is the time). The row is kept - IsDeleted stays
     /// false - so the chat shows a "message deleted" placeholder; the original body lives in the revisions.</summary>

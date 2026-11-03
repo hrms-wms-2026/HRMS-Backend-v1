@@ -26,7 +26,8 @@ public static class WorkTaskViewModelMapper
         dto.MovedToStatus is null ? null : new TaskStatusMoveInfoViewModel(
             dto.MovedToStatus.Id, dto.MovedToStatus.Name, dto.MovedToStatus.Color));
 
-    public static TaskCategoryViewModel ToViewModel(this TaskCategoryResponse dto) => new(dto.Id, dto.Name, dto.DisplayOrder);
+    public static TaskCategoryViewModel ToViewModel(this TaskCategoryResponse dto) =>
+        new(dto.Id, dto.Name, dto.DisplayOrder, dto.SystemKey, dto.IsSystem);
 
     public static MyDeadlinesViewModel ToViewModel(this MyDeadlinesResponse dto) => new(
         dto.ObjectiveDeadlines.Select(o => new ObjectiveDeadlineViewModel(o.ObjectiveId, o.Title, o.EndDate)).ToList(),

@@ -128,7 +128,7 @@ public class AcceptObjectiveInvitationCommandHandler : IRequestHandler<AcceptObj
                                     ["projectName"] = project.Name
                                 },
                                 "project_member_invitation",
-                                invitation.Id),
+                                invitation.Id, EventId: Guid.NewGuid()),
                             tenantId,
                             innerCt);
                     }

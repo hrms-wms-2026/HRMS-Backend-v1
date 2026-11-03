@@ -1,3 +1,4 @@
+using ONEVO.Application.Features.WorkManagement.Meetings.Contracts;
 using MediatR;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
@@ -8,6 +9,8 @@ using ONEVO.Application.Features.WorkManagement.Approvals.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Approvals.Services;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Hierarchy;
+using ONEVO.Application.Features.WorkManagement.Meetings;
+using ONEVO.Application.Features.WorkManagement.Meetings.Services;
 using ONEVO.Application.Features.WorkManagement.Notifications.Services;
 using ONEVO.Domain.Features.WorkManagement.Approvals.Entities;
 using ONEVO.Domain.Features.WorkManagement.Notifications.Entities;
@@ -55,6 +58,11 @@ public sealed class DecideWorkApprovalRequestCommandHandler
             return Result<WorkApprovalRequestResponse>.NotFound("Approval request not found.");
         if (request.Status != WorkApprovalRequestStatuses.Pending)
             return Result<WorkApprovalRequestResponse>.Conflict("This request has already been decided.");
+        // A meeting request is approved exactly as submitted: the approver saw that snapshot (meetings-as-tasks D5).
+        if (WorkActionTypes.IsMeeting(request.ActionType) && command.Decision == WorkApprovalDecision.Approve
+            && !string.IsNullOrWhiteSpace(command.EditedPayloadJson) && command.EditedPayloadJson != request.PayloadJson)
+            return Result<WorkApprovalRequestResponse>.Failure(
+                "A meeting request cannot be changed by the approver.", 409, MeetingErrorCodes.ApprovalNotEditable);
 
         if (command.Decision == WorkApprovalDecision.Cancel)
         {
@@ -82,8 +90,41 @@ public sealed class DecideWorkApprovalRequestCommandHandler
             ? command.EditedPayloadJson!
             : request.PayloadJson;
 
-        var result = await _unitOfWork.ExecuteInTransactionAsync(async innerCt =>
+        Result<WorkApprovalRequestResponse> result;
+        try
         {
+            result = await DecideInTransactionAsync(command, request, applier, payload, tenantId, caller, ct);
+        }
+        catch (ApprovalAlreadyDecidedException)
+        {
+            return Result<WorkApprovalRequestResponse>.Conflict("This request has already been decided.");
+        }
+        catch (MeetingBusyException)
+        {
+            // Applying a meeting.create/meeting.move takes the series lock; another change held it past the lock
+            // timeout. The transaction rolled back and the request is still pending, so the approver can retry.
+            return MeetingGuard.Busy<WorkApprovalRequestResponse>();
+        }
+
+        if (!result.IsSuccess)
+            return result;
+
+        var names = await _identity.ResolveDisplayNamesByEmployeeIdAsync(
+            tenantId, [request.RequestedByEmployeeId, request.ApproverEmployeeId], ct);
+        return Result<WorkApprovalRequestResponse>.Success(WorkApprovalRequestMapper.ToResponse(request, names, caller));
+    }
+
+    private Task<Result<WorkApprovalRequestResponse>> DecideInTransactionAsync(DecideWorkApprovalRequestCommand command,
+        WorkApprovalRequest request, IApprovalActionApplier? applier, string payload, Guid tenantId, Guid caller,
+        CancellationToken ct)
+        => _unitOfWork.ExecuteInTransactionAsync(async innerCt =>
+        {
+            // The pending check above ran before the transaction. Two deciders (the approver and the HR fallback, or an
+            // approve racing a reject or the requester's cancel) can both pass it, so the row lock decides: the loser
+            // waits, then finds the row no longer pending and rolls back without applying anything.
+            if (!await _requests.LockIfPendingAsync(tenantId, request.Id, innerCt))
+                throw new ApprovalAlreadyDecidedException(request.Id);
+
             string status, kind;
             switch (command.Decision)
             {
@@ -123,12 +164,4 @@ public sealed class DecideWorkApprovalRequestCommandHandler
             await _unitOfWork.SaveChangesAsync(innerCt);
             return Result<WorkApprovalRequestResponse>.Success(null!);
         }, ct);
-
-        if (!result.IsSuccess)
-            return result;
-
-        var names = await _identity.ResolveDisplayNamesByEmployeeIdAsync(
-            tenantId, [request.RequestedByEmployeeId, request.ApproverEmployeeId], ct);
-        return Result<WorkApprovalRequestResponse>.Success(WorkApprovalRequestMapper.ToResponse(request, names, caller));
-    }
 }

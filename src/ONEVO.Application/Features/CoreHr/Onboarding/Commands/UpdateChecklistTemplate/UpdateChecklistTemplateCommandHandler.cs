@@ -1,11 +1,13 @@
 using MediatR;
 using ONEVO.Application.Common.Models;
+using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.Onboarding.DTOs.Responses;
 using ONEVO.Application.Features.CoreHr.Onboarding.Models;
 using ONEVO.Application.Features.CoreHr.Onboarding.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.Onboarding.Services;
 using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Tasks.Services;
 
 namespace ONEVO.Application.Features.CoreHr.Onboarding.Commands.UpdateChecklistTemplate;
 
@@ -14,6 +16,8 @@ public class UpdateChecklistTemplateCommandHandler(
     IDepartmentRepository departmentRepository,
     IPositionRepository positionRepository,
     ChecklistTemplateTaskInputResolver taskInputResolver,
+    ITaskAssetLinker assetLinker,
+    IEntityAssetRepository assets,
     ICurrentUser currentUser)
     : IRequestHandler<UpdateChecklistTemplateCommand, Result<ChecklistTemplateResponse>>
 {
@@ -34,7 +38,8 @@ public class UpdateChecklistTemplateCommandHandler(
             return Result<ChecklistTemplateResponse>.UnprocessableEntity(scopeError);
 
         var inputs = request.Tasks
-            .Select(t => new ChecklistTemplateTaskInput(t.Title, t.OwnerType, t.AssignedToId, t.AssigneePositionId, t.DueOffsetDays, t.Sequence, t.IsRequired))
+            .Select(t => new ChecklistTemplateTaskInput(t.Title, t.OwnerType, t.AssignedToId, t.AssigneePositionId, t.DueOffsetDays, t.Sequence, t.IsRequired,
+                t.IsBypassable, t.BypassPenaltyDescription, t.Category, t.Description, t.Priority, t.AttachmentFileIds))
             .ToList();
         var resolved = await taskInputResolver.ResolveAsync(tenantId, template.LegalEntityId.Value, inputs, ct);
         if (!resolved.IsSuccess)
@@ -46,10 +51,12 @@ public class UpdateChecklistTemplateCommandHandler(
         template.Name = request.Name.Trim();
         template.DepartmentId = request.DepartmentId;
         template.PositionId = request.PositionId;
-        template.TasksJson = ChecklistTaskJsonContract.SerializeTemplateTasks(resolved.Value!);
+        var (tasks, files) = await ChecklistTemplateAttachmentSync.SyncAsync(
+            tenantId, currentUser.UserId, template.Id, resolved.Value!, assetLinker, assets, ct);
+        template.TasksJson = ChecklistTaskJsonContract.SerializeTemplateTasks(tasks);
 
         await templateRepository.SaveChangesAsync(ct);
 
-        return Result<ChecklistTemplateResponse>.Success(ChecklistTemplateResponseMapper.ToResponse(template, resolved.Value!));
+        return Result<ChecklistTemplateResponse>.Success(ChecklistTemplateResponseMapper.ToResponse(template, tasks, files));
     }
 }

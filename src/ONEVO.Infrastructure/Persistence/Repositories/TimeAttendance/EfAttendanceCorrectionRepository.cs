@@ -100,4 +100,10 @@ public sealed class EfAttendanceCorrectionRepository(ApplicationDbContext db) : 
 
         return query;
     }
+
+    public async Task<IReadOnlyList<AttendanceCorrection>> ListForEmployeeCreatedAsync(
+        Guid tenantId, Guid employeeId, DateTimeOffset from, DateTimeOffset to, CancellationToken ct = default)
+        => await db.AttendanceCorrections.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.EmployeeId == employeeId && x.CreatedAt >= from && x.CreatedAt < to)
+            .ToListAsync(ct);
 }

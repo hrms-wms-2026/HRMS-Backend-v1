@@ -39,7 +39,10 @@ public sealed record ChecklistTaskDefinition(
     bool IsBypassable = false,
     string? BypassPenaltyDescription = null,
     string? Category = null,
-    Guid? AssigneePositionId = null);
+    Guid? AssigneePositionId = null,
+    string? Description = null,
+    string? Priority = null,
+    IReadOnlyList<Guid>? AttachmentFileIds = null);
 
 /// <summary>The single strict parser/serializer for checklist task definitions, shared by
 /// template CRUD, draft edit validation, and instantiation so there is exactly one definition
@@ -147,9 +150,30 @@ public static class ChecklistTaskJsonContract
             dueDate = parsedDueDate;
         }
 
+        string? description = item.TryGetProperty("description", out var descriptionEl) && descriptionEl.ValueKind == JsonValueKind.String
+            ? descriptionEl.GetString()
+            : null;
+
+        string? priority = item.TryGetProperty("priority", out var priorityEl) && priorityEl.ValueKind == JsonValueKind.String
+            ? priorityEl.GetString()
+            : null;
+
+        List<Guid>? attachmentFileIds = null;
+        if (item.TryGetProperty("attachmentFileIds", out var attachmentsEl) && attachmentsEl.ValueKind == JsonValueKind.Array)
+        {
+            attachmentFileIds = new List<Guid>();
+            foreach (var fileIdEl in attachmentsEl.EnumerateArray())
+            {
+                if (!Guid.TryParse(fileIdEl.GetString(), out var fileId))
+                    throw new ArgumentException("attachmentFileIds must contain valid GUIDs.");
+                attachmentFileIds.Add(fileId);
+            }
+        }
+
         return new ChecklistTaskDefinition(
             title, ownerType, assignedToId, dueOffsetDays, dueDate, sequence, isRequired,
-            isBypassable, bypassPenaltyDescription, category, assigneePositionId);
+            isBypassable, bypassPenaltyDescription, category, assigneePositionId,
+            description, priority, attachmentFileIds);
     }
 
     public static string SerializeTemplateTasks(IReadOnlyList<ChecklistTaskDefinition> tasks)
@@ -166,6 +190,9 @@ public static class ChecklistTaskJsonContract
             isBypassable = t.IsBypassable,
             bypassPenaltyDescription = t.BypassPenaltyDescription,
             category = t.Category,
+            description = t.Description,
+            priority = t.Priority,
+            attachmentFileIds = t.AttachmentFileIds?.Select(id => id.ToString()).ToArray(),
         });
         return JsonSerializer.Serialize(payload);
     }
@@ -204,6 +231,11 @@ public static class ChecklistTaskJsonContract
             IsBypassable = definition.IsBypassable,
             BypassPenaltyDescription = definition.BypassPenaltyDescription,
             Category = definition.Category,
+            Description = definition.Description,
+            Priority = definition.Priority,
+            AttachmentFileIdsJson = definition.AttachmentFileIds is { Count: > 0 } fileIds
+                ? JsonSerializer.Serialize(fileIds)
+                : null,
             Status = "pending",
         }).ToList();
     }

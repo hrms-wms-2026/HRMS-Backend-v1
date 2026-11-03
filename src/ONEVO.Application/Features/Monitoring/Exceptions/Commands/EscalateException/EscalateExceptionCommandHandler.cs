@@ -52,7 +52,10 @@ public class EscalateExceptionCommandHandler : IRequestHandler<EscalateException
         _exceptions.Update(exception);
 
         // Queued on the same unit of work, so the HR alert commits with the escalation.
-        await _alerts.NotifyEscalatedAsync(exception, ct);
+        if (request.NotifyUserIds is { } picked)
+            await _alerts.NotifyEscalatedToAsync(exception, picked, ct);
+        else
+            await _alerts.NotifyEscalatedAsync(exception, ct);
         await _exceptions.SaveChangesAsync(ct);
 
         return Result.Success();

@@ -83,7 +83,7 @@ public class CreateManualEntitlementCommandHandler
             TenantId = tenantId,
             EmployeeId = request.EmployeeId,
             LeaveTypeId = request.LeaveTypeId,
-            ChangeType = LeaveBalanceChangeTypes.Accrual,
+            ChangeType = LeaveBalanceChangeTypes.Adjustment,
             HoursChanged = remaining,
             BalanceAfter = remaining,
             Reason = request.Reason.Trim(),
