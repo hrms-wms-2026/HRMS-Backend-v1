@@ -88,8 +88,10 @@ public sealed class TaskCreateApplier : IApprovalActionApplier
 
         // The assignee is always the requester (checked when the request was filed); the approval stands in for the
         // module owner's assign. The block needs the assignment saved first, then follows the requester's planner rules.
+        // A requester removed from the module since filing is not re-added: the task is created, unassigned.
         var task = created.Value!;
-        if (input.AssigneeEmployeeId is not null && _assignments is not null && _unitOfWork is not null)
+        if (input.AssigneeEmployeeId is not null && _assignments is not null && _unitOfWork is not null
+            && await _membership.IsEffectiveManagerAsync(request.TenantId, task.ObjectiveId, requester.Id, ct))
         {
             await _assignments.AddAsync(new TaskAssignment
             {

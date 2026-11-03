@@ -35,7 +35,7 @@ public class TaskCreateApplierTests
     private sealed record Kit(TaskCreateApplier Applier, Mock<ITaskAssignmentRepository> Assignments,
         Mock<IMilestoneMembershipCoordinator> Membership, Mock<IPlannerBlockWriter> Planner, List<string> Calls);
 
-    private static Kit Build(bool requesterActive = true, Result? planResult = null)
+    private static Kit Build(bool requesterActive = true, Result? planResult = null, bool requesterInModule = true)
     {
         var calls = new List<string>();
         var writes = new Mock<ITaskWriteService>();
@@ -51,6 +51,8 @@ public class TaskCreateApplierTests
         var membership = new Mock<IMilestoneMembershipCoordinator>();
         membership.Setup(x => x.GetActiveAssigneeAsync(TenantId, RequesterId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(requesterActive ? new Employee { Id = RequesterId, UserId = RequesterUserId, TenantId = TenantId } : null);
+        membership.Setup(x => x.IsEffectiveManagerAsync(TenantId, ObjectiveId, RequesterId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(requesterInModule);
         var assignments = new Mock<ITaskAssignmentRepository>();
         assignments.Setup(x => x.AddAsync(It.IsAny<TaskAssignment>(), It.IsAny<CancellationToken>()))
             .Callback(() => calls.Add("assign")).Returns(Task.CompletedTask);
@@ -128,6 +130,22 @@ public class TaskCreateApplierTests
         Assert.Equal(ApplyOutcomeKind.Invalid, outcome.Kind);
         Assert.Equal("The assignee and planned time cannot be changed by the approver.", outcome.Error);
         kit.Assignments.Verify(x => x.AddAsync(It.IsAny<TaskAssignment>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    // Review finding 3: a requester removed from the module between filing and approval is never re-added by the assign.
+    [Fact]
+    public async Task Apply_RequesterRemovedFromTheModule_CreatesTheTask_ButNeitherAssignsNorPlans()
+    {
+        var kit = Build(requesterInModule: false);
+
+        var outcome = await kit.Applier.ApplyAsync(Context(Payload(RequesterId, Start, End)), CancellationToken.None);
+
+        Assert.Equal(ApplyOutcomeKind.Applied, outcome.Kind);
+        kit.Assignments.Verify(x => x.AddAsync(It.IsAny<TaskAssignment>(), It.IsAny<CancellationToken>()), Times.Never);
+        kit.Membership.Verify(x => x.UpsertMembershipAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<Guid>(),
+            It.IsAny<CancellationToken>()), Times.Never);
+        kit.Planner.Verify(x => x.PlanForAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<DateTimeOffset>(),
+            It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
