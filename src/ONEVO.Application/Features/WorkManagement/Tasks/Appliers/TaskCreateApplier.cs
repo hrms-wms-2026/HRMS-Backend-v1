@@ -27,7 +27,7 @@ public sealed class TaskCreateApplier : IApprovalActionApplier
     private readonly ITaskWriteService _writes;
     private readonly IObjectiveRepository _objectives;
     private readonly IMilestoneMembershipCoordinator _membership;
-    private readonly MeetingActionItemService _actionItems;
+    private readonly MeetingActionItemService? _actionItems;
     private readonly ITaskAssignmentRepository? _assignments;
     private readonly IUnitOfWork? _unitOfWork;
     private readonly IPlannerBlockWriter? _planner;
