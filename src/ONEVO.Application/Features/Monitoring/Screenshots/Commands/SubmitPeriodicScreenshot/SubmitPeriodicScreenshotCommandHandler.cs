@@ -4,6 +4,7 @@ using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
+using ONEVO.Application.Features.Monitoring.ActivityMonitoring.Helpers;
 using ONEVO.Application.Features.Monitoring.CheckIn.ServiceInterfaces;
 using ONEVO.Application.Features.Monitoring.Screenshots.RepositoryInterfaces;
 using ONEVO.Application.Features.Storage.File.Helpers;
@@ -73,6 +74,17 @@ public class SubmitPeriodicScreenshotCommandHandler
         var tenantId = _device.TenantId;
         var deviceId = _device.DeviceRegistrationId;
 
+        // Idempotency: the tray retries an upload whose response was lost. Same device + same
+        // capture instant = same screenshot; answer with the stored asset instead of a duplicate.
+        var capturedAt = SnapshotTimeWindow.Normalize(request.CapturedAt);
+        var existing = await _assets.FindPeriodicScreenshotAsync(tenantId, deviceId, capturedAt, ct);
+        if (existing is not null)
+        {
+            _logger.LogInformation(
+                "Periodic screenshot already recorded. AssetId={AssetId} DeviceId={DeviceId}", existing.Id, deviceId);
+            return Result<Guid>.Success(existing.Id);
+        }
+
         var uploadResult = await _fileStorage.UploadAsync(
             tenantId,
             _device.UserId,
@@ -102,7 +114,7 @@ public class SubmitPeriodicScreenshotCommandHandler
             EvidenceType = "screenshot",
             Source = "agent",
             TriggerType = "periodic",
-            CapturedAt = request.CapturedAt,
+            CapturedAt = capturedAt,
             CreatedAt = now
         };
 
