@@ -9,7 +9,8 @@ namespace ONEVO.Application.Features.WorkManagement.Approvals.Services;
 /// Pure: the caller loads the current values (camelCase keys, display-ready strings).</summary>
 public static class ApprovalChangeSetBuilder
 {
-    private sealed record FieldSpec(string Name, string Label, string Kind);
+    /// <param name="Locked">Never editable by the approver, and left out when the request didn't send it.</param>
+    private sealed record FieldSpec(string Name, string Label, string Kind, bool Locked = false);
 
     private static readonly FieldSpec[] TaskFields =
     [
@@ -19,7 +20,12 @@ public static class ApprovalChangeSetBuilder
 
     private static readonly Dictionary<string, FieldSpec[]> Specs = new()
     {
-        [WorkActionTypes.TaskCreate] = TaskFields,
+        // Planner create popover: the requester asked for the task to be theirs and planned at a slot.
+        [WorkActionTypes.TaskCreate] =
+        [
+            .. TaskFields, new("assigneeEmployeeId", "Assign to", "employee", Locked: true),
+            new("planStartAt", "Planned from", "datetime", Locked: true), new("planEndAt", "Planned to", "datetime", Locked: true)
+        ],
         [WorkActionTypes.TaskEdit] = [.. TaskFields, new("progressPercent", "Progress %", "number")],
         [WorkActionTypes.ModuleEdit] =
         [
@@ -65,7 +71,9 @@ public static class ApprovalChangeSetBuilder
         var applied = ApprovalPayloadJson.Parse(appliedJson);
         var actionEditable = editable && EditableActions.Contains(actionType);
 
-        return specs.Select(spec =>
+        return specs.Where(spec => !spec.Locked || ApprovalPayloadJson.TryGet(requested, spec.Name, out var v, out _)
+                && v.ValueKind is not (JsonValueKind.Null or JsonValueKind.Undefined))
+            .Select(spec =>
         {
             var found = ApprovalPayloadJson.TryGet(requested, spec.Name, out var requestedValue, out var key);
             var requestedText = requestedOverrides is not null && requestedOverrides.TryGetValue(spec.Name, out var overridden)
@@ -81,7 +89,7 @@ public static class ApprovalChangeSetBuilder
 
             return new ApprovalFieldResponse(
                 key, spec.Label, spec.Kind, currentText, requestedText, appliedText, changed,
-                actionEditable);
+                actionEditable && !spec.Locked);
         }).ToList();
     }
 

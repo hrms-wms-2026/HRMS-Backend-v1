@@ -1,3 +1,4 @@
+using ONEVO.Application.Common.Helpers;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using ONEVO.Domain.Features.Leave.Type.Entities;
@@ -13,6 +14,7 @@ public class LeaveTypeConfiguration : IEntityTypeConfiguration<LeaveType>
         builder.Property(t => t.Name).HasMaxLength(100).IsRequired();
         builder.Property(t => t.Code).HasMaxLength(20).IsRequired();
         builder.Property(t => t.Color).HasMaxLength(9).IsRequired().HasDefaultValue(LeaveType.DefaultColor);
+        builder.Property(t => t.Icon).HasMaxLength(EntityIconRules.MaxLength);
         builder.Property(t => t.ApplicableGender).HasMaxLength(10).IsRequired();
         builder.Property(t => t.DocumentRequiredAfterHours).HasColumnType("numeric(7,2)");
         builder.Property(t => t.AcceptedDocumentTypes).HasColumnType("text[]");

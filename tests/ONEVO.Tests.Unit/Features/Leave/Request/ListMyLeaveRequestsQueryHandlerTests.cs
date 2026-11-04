@@ -48,4 +48,41 @@ public class ListMyLeaveRequestsQueryHandlerTests
         result.IsSuccess.Should().BeTrue();
         result.Value.Should().ContainSingle(x => x.Id == request.Id && x.EmployeeId == employee.Id);
     }
+
+    [Fact]
+    public async Task Handle_ReturnsApprovalProgressForMultiStepRequests()
+    {
+        var tenantId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+        var employee = new Employee { Id = Guid.NewGuid(), TenantId = tenantId, UserId = userId, FirstName = "Priya", LastName = "Nair", EmployeeNumber = "E1", HireDate = new DateOnly(2024, 1, 1) };
+        var request = new LeaveRequest
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenantId,
+            EmployeeId = employee.Id,
+            LeaveTypeId = Guid.NewGuid(),
+            StartAt = new DateTimeOffset(2026, 12, 1, 9, 0, 0, TimeSpan.Zero),
+            EndAt = new DateTimeOffset(2026, 12, 1, 18, 0, 0, TimeSpan.Zero),
+            TotalHours = 8m,
+            Status = LeaveRequestStatuses.Pending,
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+
+        var currentUser = new Mock<ICurrentUser>();
+        var employees = new Mock<IEmployeeRepository>();
+        var requests = new Mock<ILeaveRequestRepository>();
+        currentUser.SetupGet(x => x.IsAuthenticated).Returns(true);
+        currentUser.SetupGet(x => x.TenantId).Returns(tenantId);
+        currentUser.SetupGet(x => x.UserId).Returns(userId);
+        employees.Setup(x => x.GetByUserIdAsync(tenantId, userId, It.IsAny<CancellationToken>())).ReturnsAsync(employee);
+        requests.Setup(x => x.ListOwnAsync(tenantId, employee.Id, It.IsAny<LeaveRequestListFilter>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([new LeaveRequestListRow(request, "Annual Leave", "AL", null, ApprovedApproverCount: 1, ApproverCount: 2)]);
+
+        var handler = new ListMyLeaveRequestsQueryHandler(currentUser.Object, employees.Object, requests.Object);
+        var result = await handler.Handle(new ListMyLeaveRequestsQuery(null, null, null, null), CancellationToken.None);
+
+        var item = result.Value.Should().ContainSingle().Subject;
+        item.ApprovedApproverCount.Should().Be(1);
+        item.ApproverCount.Should().Be(2);
+    }
 }

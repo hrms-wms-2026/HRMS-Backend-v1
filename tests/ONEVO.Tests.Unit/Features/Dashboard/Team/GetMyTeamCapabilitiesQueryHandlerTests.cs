@@ -169,6 +169,26 @@ public sealed class GetMyTeamCapabilitiesQueryHandlerTests
         Assert.False(result.Value!.HasReports);
     }
 
+    // Team planner (2026-11-03): offered to someone with direct reports while the planner is on.
+    [Theory]
+    [InlineData(true, 2, true)]
+    [InlineData(true, 0, false)]
+    [InlineData(false, 2, false)]
+    public async Task CanViewTeamPlan_needs_the_planner_on_and_a_direct_report(bool plannerOn, int reports, bool expected)
+    {
+        var currentUser = CurrentUser(permissions: []);
+        var lines = new Mock<ONEVO.Application.Common.RepositoryInterfaces.IEmployeeRepository>();
+        lines.Setup(x => x.ListDirectReportEmployeeIdsAsync(TenantId, It.Is<IReadOnlyCollection<Guid>>(ids => ids.Single() == ActorId),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Enumerable.Range(0, reports).Select(_ => Guid.NewGuid()).ToList());
+        var handler = CreateHandler(currentUser, out _, out _, out _, reportingLines: lines, plannerOn: plannerOn);
+
+        var result = await handler.Handle(new GetMyTeamCapabilitiesQuery(), CancellationToken.None);
+
+        Assert.Equal(expected, result.Value!.CanViewTeamPlan);
+        Assert.Equal(expected, result.Value.IsAvailable);
+    }
+
     private static GetMyTeamCapabilitiesQueryHandler CreateHandler(
         Mock<ICurrentUser> currentUser,
         out Mock<IEmployeeAuthorityResolver> authority,
@@ -176,7 +196,9 @@ public sealed class GetMyTeamCapabilitiesQueryHandlerTests
         out Mock<IWorkLeadershipService> workLeadership,
         Mock<IEmployeeRepository>? employees = null,
         string[]? activeModules = null,
-        Guid[]? directReports = null)
+        Guid[]? directReports = null,
+        Mock<ONEVO.Application.Common.RepositoryInterfaces.IEmployeeRepository>? reportingLines = null,
+        bool plannerOn = true)
     {
         employees ??= EmployeesWithActor();
         authority = new Mock<IEmployeeAuthorityResolver>();
@@ -189,13 +211,16 @@ public sealed class GetMyTeamCapabilitiesQueryHandlerTests
         workLeadership.Setup(x => x.LeadsAnyWorkAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>())).ReturnsAsync(false);
         workLeadership.Setup(x => x.HasPendingWorkApprovalsAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>())).ReturnsAsync(false);
 
-        var reportingLine = new Mock<ONEVO.Application.Common.RepositoryInterfaces.IEmployeeRepository>();
-        reportingLine.Setup(x => x.ListDirectReportEmployeeIdsAsync(TenantId,
-                It.Is<IReadOnlyCollection<Guid>>(ids => ids.Count == 1 && ids.Contains(ActorId)), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(directReports ?? []);
-
+        if (reportingLines is null)
+        {
+            reportingLines = new Mock<ONEVO.Application.Common.RepositoryInterfaces.IEmployeeRepository>();
+            reportingLines.Setup(x => x.ListDirectReportEmployeeIdsAsync(TenantId,
+                    It.Is<IReadOnlyCollection<Guid>>(ids => ids.Count == 1 && ids.Contains(ActorId)), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(directReports ?? []);
+        }
         return new GetMyTeamCapabilitiesQueryHandler(
-            currentUser.Object, employees.Object, authority.Object, modules.Object, workLeadership.Object, reportingLine.Object);
+            currentUser.Object, employees.Object, authority.Object, modules.Object, workLeadership.Object, reportingLines.Object,
+            Microsoft.Extensions.Options.Options.Create(new ONEVO.Application.Features.WorkManagement.Planner.PlannerOptions { Enabled = plannerOn }));
     }
 
     private static Mock<ICurrentUser> CurrentUser(IReadOnlyList<string> permissions)

@@ -8,7 +8,9 @@ namespace ONEVO.Application.Features.WorkManagement.Tasks.DTOs;
 public sealed record TaskCreateInput(
     Guid ObjectiveId, string Title, string? Description, Guid CategoryId, string Priority,
     DateOnly? DueDate, decimal? EstimatedHours, int? StoryPoints, Guid? SprintId,
-    Guid? SourceMeetingOccurrenceId = null);
+    Guid? SourceMeetingOccurrenceId = null,
+    // Planner create popover: on approval the requester (always the caller) is assigned and planned at this slot.
+    Guid? AssigneeEmployeeId = null, DateTimeOffset? PlanStartAt = null, DateTimeOffset? PlanEndAt = null);
 
 /// <summary>Serialised as payload_json for task.edit. SprintId null = leave the sprint alone.</summary>
 public sealed record TaskEditInput(

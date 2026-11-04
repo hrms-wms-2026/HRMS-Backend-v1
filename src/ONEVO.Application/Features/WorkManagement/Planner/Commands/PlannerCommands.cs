@@ -13,16 +13,77 @@ public sealed record GetMyPlannerDayQuery(DateOnly? Date) : IRequest<Result<Plan
 /// <summary>GET /planner/employees/{employeeId}?date=: an employee's day, for the employee or a reporting-line manager.</summary>
 public sealed record GetEmployeePlannerDayQuery(Guid EmployeeId, DateOnly? Date) : IRequest<Result<PlannerDayResponse>>;
 
+/// <summary>GET /planner/me/range?from=&amp;to=: the caller's days for the calendar grid.</summary>
+public sealed record GetMyPlannerRangeQuery(DateOnly From, DateOnly To) : IRequest<Result<PlannerRangeResponse>>;
+
+/// <summary>GET /planner/me/focus: what the caller should work on.</summary>
+public sealed record GetMyPlannerFocusQuery : IRequest<Result<PlannerFocusResponse>>;
+
 public sealed record CreatePlannedBlockCommand(CreatePlannedBlockRequest Request) : IRequest<Result<PlannerDayResponse>>;
 
 public sealed record MovePlannedBlockCommand(Guid BlockId, MovePlannedBlockRequest Request) : IRequest<Result<PlannerDayResponse>>;
 
 public sealed record DeletePlannedBlockCommand(Guid BlockId) : IRequest<Result<PlannerDayResponse>>;
 
+/// <summary>GET /planner/employees/{employeeId}/range?from=&amp;to=: one person's days, read-only (team planner, 2026-11-03).</summary>
+public sealed record GetEmployeePlannerRangeQuery(Guid EmployeeId, DateOnly From, DateOnly To)
+    : IRequest<Result<PlannerPersonRangeResponse>>;
+
+/// <summary>GET /planner/team?date=&amp;managerId=: a manager's direct reports for one day, with detail.</summary>
+public sealed record GetTeamPlannerDayQuery(DateOnly? Date, Guid? ManagerEmployeeId) : IRequest<Result<TeamPlannerResponse>>;
+
+/// <summary>GET /planner/team/range?from=&amp;to=&amp;managerId=: the same team over a range, minutes only.</summary>
+public sealed record GetTeamPlannerRangeQuery(DateOnly From, DateOnly To, Guid? ManagerEmployeeId) : IRequest<Result<TeamPlannerResponse>>;
+
+/// <summary>Team planner reads (2026-11-03): the caller's employee plus whether they may read others' leave.</summary>
+public sealed class TeamPlannerRequestHandler :
+    IRequestHandler<GetEmployeePlannerRangeQuery, Result<PlannerPersonRangeResponse>>,
+    IRequestHandler<GetTeamPlannerDayQuery, Result<TeamPlannerResponse>>,
+    IRequestHandler<GetTeamPlannerRangeQuery, Result<TeamPlannerResponse>>
+{
+    /// <summary>The permission that shows a team's leave as leave, as on Team Status (My Team spec 8.1.2).</summary>
+    public const string LeaveReadPermission = "leave:read";
+
+    private readonly ICurrentUser _currentUser;
+    private readonly ICallerIdentityResolver _identity;
+    private readonly TeamPlannerService _team;
+
+    public TeamPlannerRequestHandler(ICurrentUser currentUser, ICallerIdentityResolver identity, TeamPlannerService team)
+    {
+        _currentUser = currentUser;
+        _identity = identity;
+        _team = team;
+    }
+
+    public Task<Result<PlannerPersonRangeResponse>> Handle(GetEmployeePlannerRangeQuery query, CancellationToken ct)
+        => AsCaller((tenant, me) => _team.GetPersonRangeAsync(tenant, me, query.EmployeeId, query.From, query.To,
+            _currentUser.HasPermission(LeaveReadPermission), ct), ct);
+
+    public Task<Result<TeamPlannerResponse>> Handle(GetTeamPlannerDayQuery query, CancellationToken ct)
+        => AsCaller((tenant, me) => _team.GetTeamDayAsync(tenant, me, query.ManagerEmployeeId, query.Date,
+            _currentUser.HasPermission(LeaveReadPermission), ct), ct);
+
+    public Task<Result<TeamPlannerResponse>> Handle(GetTeamPlannerRangeQuery query, CancellationToken ct)
+        => AsCaller((tenant, me) => _team.GetTeamAsync(tenant, me, query.ManagerEmployeeId, query.From, query.To, detail: false,
+            _currentUser.HasPermission(LeaveReadPermission), ct), ct);
+
+    private async Task<Result<T>> AsCaller<T>(Func<Guid, Guid, Task<Result<T>>> run, CancellationToken ct)
+    {
+        var caller = _currentUser.IsAuthenticated
+            ? await _identity.ResolveCallerEmployeeIdAsync(_currentUser.TenantId, _currentUser.UserId, ct)
+            : null;
+        return caller is Guid employeeId
+            ? await run(_currentUser.TenantId, employeeId)
+            : Result<T>.Failure("Planner day not found.", 404, PlannerErrorCodes.NotFound);
+    }
+}
+
 /// <summary>Resolves the caller's employee and hands each request to <see cref="PlannerService"/>.</summary>
 public sealed class PlannerRequestHandler :
     IRequestHandler<GetMyPlannerDayQuery, Result<PlannerDayResponse>>,
     IRequestHandler<GetEmployeePlannerDayQuery, Result<PlannerDayResponse>>,
+    IRequestHandler<GetMyPlannerRangeQuery, Result<PlannerRangeResponse>>,
+    IRequestHandler<GetMyPlannerFocusQuery, Result<PlannerFocusResponse>>,
     IRequestHandler<CreatePlannedBlockCommand, Result<PlannerDayResponse>>,
     IRequestHandler<MovePlannedBlockCommand, Result<PlannerDayResponse>>,
     IRequestHandler<DeletePlannedBlockCommand, Result<PlannerDayResponse>>
@@ -44,6 +105,12 @@ public sealed class PlannerRequestHandler :
     public Task<Result<PlannerDayResponse>> Handle(GetEmployeePlannerDayQuery query, CancellationToken ct)
         => AsCaller((tenant, me) => _planner.GetDayAsync(tenant, me, query.EmployeeId, query.Date, ct), ct);
 
+    public Task<Result<PlannerRangeResponse>> Handle(GetMyPlannerRangeQuery query, CancellationToken ct)
+        => AsCaller((tenant, me) => _planner.GetRangeAsync(tenant, me, query.From, query.To, ct), ct);
+
+    public Task<Result<PlannerFocusResponse>> Handle(GetMyPlannerFocusQuery query, CancellationToken ct)
+        => AsCaller((tenant, me) => _planner.GetFocusAsync(tenant, me, ct), ct);
+
     public Task<Result<PlannerDayResponse>> Handle(CreatePlannedBlockCommand command, CancellationToken ct)
         => AsCaller((tenant, me) => _planner.CreateBlockAsync(tenant, me, command.Request, ct), ct);
 
@@ -53,13 +120,13 @@ public sealed class PlannerRequestHandler :
     public Task<Result<PlannerDayResponse>> Handle(DeletePlannedBlockCommand command, CancellationToken ct)
         => AsCaller((tenant, me) => _planner.DeleteBlockAsync(tenant, me, command.BlockId, ct), ct);
 
-    private async Task<Result<PlannerDayResponse>> AsCaller(Func<Guid, Guid, Task<Result<PlannerDayResponse>>> run, CancellationToken ct)
+    private async Task<Result<T>> AsCaller<T>(Func<Guid, Guid, Task<Result<T>>> run, CancellationToken ct)
     {
         var caller = _currentUser.IsAuthenticated
             ? await _identity.ResolveCallerEmployeeIdAsync(_currentUser.TenantId, _currentUser.UserId, ct)
             : null;
         return caller is Guid employeeId
             ? await run(_currentUser.TenantId, employeeId)
-            : Result<PlannerDayResponse>.Failure("Planner day not found.", 404, PlannerErrorCodes.NotFound);
+            : Result<T>.Failure("Planner day not found.", 404, PlannerErrorCodes.NotFound);
     }
 }

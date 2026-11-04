@@ -110,6 +110,41 @@ public sealed class TenantHostPasswordResetFlowIntegrationTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task ResetPassword_RevokesExistingBrowserSessions_UnderRls()
+    {
+        var (tenantId, slug, userId, email) = await SeedActiveUserAsync("reset-flow-sessions");
+        var sessionId = Guid.NewGuid();
+        await using (var seedDb = BuildAdminDbContext())
+        {
+            seedDb.Sessions.Add(new Domain.Features.Auth.Entities.Session
+            {
+                Id = sessionId,
+                TenantId = tenantId,
+                UserId = userId,
+                ExpiresAt = _clock.UtcNow.AddDays(1),
+                KeyHash = Guid.NewGuid().ToString("N")
+            });
+            await seedDb.SaveChangesAsync();
+        }
+
+        using var scope = BuildScopeFactory().CreateScope();
+        ResolveTenant(scope, tenantId, slug);
+        await scope.ServiceProvider.GetRequiredService<RequestPasswordResetCommandHandler>()
+            .Handle(new RequestPasswordResetCommand(email), CancellationToken.None);
+        var rawToken = await GetLatestRawTokenAsync(userId);
+
+        using var resetScope = BuildScopeFactory().CreateScope();
+        ResolveTenant(resetScope, tenantId, slug);
+        var resetResult = await resetScope.ServiceProvider.GetRequiredService<ResetPasswordCommandHandler>()
+            .Handle(new ResetPasswordCommand(rawToken!, "BrandNewPassword1"), CancellationToken.None);
+
+        resetResult.IsSuccess.Should().BeTrue();
+        await using var verifyDb = BuildAdminDbContext();
+        var session = await verifyDb.Sessions.AsNoTracking().SingleAsync(s => s.Id == sessionId);
+        session.IsRevoked.Should().BeTrue();
+    }
+
+    [Fact]
     public async Task ResetPassword_ExpiredToken_FailsGenerically()
     {
         var (tenantId, slug, userId, email) = await SeedActiveUserAsync("reset-flow-expired");
@@ -215,6 +250,7 @@ public sealed class TenantHostPasswordResetFlowIntegrationTests : IAsyncLifetime
         services.AddScoped<IUserRepository, EfUserRepository>();
         services.AddScoped<IPasswordResetTokenRepository, EfPasswordResetTokenRepository>();
         services.AddScoped<IRefreshTokenRepository, EfRefreshTokenRepository>();
+        services.AddScoped<ISessionRepository, EfSessionRepository>();
         services.AddScoped<IBaseLoginCandidateRepository, EfBaseLoginCandidateRepository>();
         services.AddScoped<ITenantContextSwitcher, TenantContextSwitcher>();
         services.AddScoped<RequestPasswordResetCommandHandler>();

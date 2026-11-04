@@ -32,7 +32,11 @@ public static class DashboardWidgetRegistry
         new("team-progress", DashboardKeys.MyTeam, "Team progress", "Estimated hours progress across your team.", 2, 2, 12, 8, true),
         new("team-attendance", DashboardKeys.MyTeam, "Team attendance", "Attendance across your team by week or month.", 2, 2, 12, 8, true),
         new("team-schedule", DashboardKeys.MyTeam, "Today's team schedule", "What your team planned for today and how far they are.", 2, 2, 12, 8, true),
+        new("team-plan-today", DashboardKeys.MyTeam, "Team plan today", "Today's planned load for each direct report.", 2, 2, 12, 8, false),
     ];
+
+    private const string TeamPlanToday = "team-plan-today";
+    private static readonly GridRect TeamPlanTodaySize = new(0, 0, 8, 6);
 
     private static readonly Dictionary<string, WidgetDefinition> ByKey =
         Definitions.ToDictionary(d => d.Key, StringComparer.Ordinal);
@@ -44,18 +48,18 @@ public static class DashboardWidgetRegistry
         Definitions.Where(d => d.DashboardKey == dashboardKey).ToList();
 
     // Desktop default placements. Widgets absent here are in the catalog but not placed by default.
-    // Taken from the Dapi owner's tuned dashboard (2026-10-27). Row 1: Today at a glance (the greeting hero),
-    // Today's schedule, Quick actions; row 2: Action center, Weekly progress, Active projects - all three rows tall.
-    // The web app does not show my-tasks / work-pattern on My Work, so they sit below the rest and leave no hole.
+    // Taken from the Dapi owner's saved dashboard (2026-10-29). Row 1: Today at a glance (the greeting hero), Weekly
+    // progress, and Today's schedule down the right, five rows tall; row 2: Action center and Active projects; then
+    // Quick actions beside My tasks. The web app does not show my-tasks / work-pattern on My Work.
     private static readonly (string Key, GridRect Rect)[] MyWorkDefaults =
     [
         ("today-at-a-glance", new GridRect(0, 0, 4, 3)),
-        ("todays-schedule", new GridRect(4, 0, 5, 3)),
-        ("quick-actions", new GridRect(9, 0, 3, 3)),
+        ("today-total-time", new GridRect(4, 0, 4, 3)),
+        ("todays-schedule", new GridRect(8, 0, 4, 5)),
         ("action-center", new GridRect(0, 3, 5, 3)),
-        ("today-total-time", new GridRect(5, 3, 4, 3)),
-        ("active-projects", new GridRect(9, 3, 3, 3)),
-        ("my-tasks", new GridRect(0, 6, 6, 4)),
+        ("active-projects", new GridRect(5, 3, 3, 3)),
+        ("quick-actions", new GridRect(0, 6, 3, 3)),
+        ("my-tasks", new GridRect(3, 6, 6, 4)),
         ("work-pattern", new GridRect(0, 10, 12, 4)),
     ];
 
@@ -65,19 +69,21 @@ public static class DashboardWidgetRegistry
         ("team-quick-actions", new GridRect(8, 0, 4, 4)),
         ("team-progress", new GridRect(8, 4, 4, 6)),
         ("team-attendance", new GridRect(0, 6, 8, 6)),
-        ("team-schedule", new GridRect(0, 12, 8, 6)),
+        ("team-plan-today", new GridRect(0, 12, 8, 6)),
+        ("team-schedule", new GridRect(0, 18, 8, 6)),
     ];
 
     // team-attendance shares team-status's gate, so the variants below (team-status not allowed) never include it.
     // Permission variants (spec 6.2): when a gated widget is not allowed, an untouched default layout is shown with
     // the remaining widgets rearranged so no hole is left. Display only; seeding and Reset store the full default.
+    // The owner's layout with Active projects and Quick actions filling the row Action center leaves.
     private static readonly (string Key, GridRect Rect)[] MyWorkWithoutActionCenter =
     [
         ("today-at-a-glance", new GridRect(0, 0, 4, 3)),
-        ("todays-schedule", new GridRect(4, 0, 5, 3)),
-        ("quick-actions", new GridRect(9, 0, 3, 3)),
-        ("today-total-time", new GridRect(0, 3, 6, 3)),
-        ("active-projects", new GridRect(6, 3, 6, 3)),
+        ("today-total-time", new GridRect(4, 0, 4, 3)),
+        ("todays-schedule", new GridRect(8, 0, 4, 5)),
+        ("active-projects", new GridRect(0, 3, 4, 3)),
+        ("quick-actions", new GridRect(4, 3, 4, 3)),
         ("my-tasks", new GridRect(0, 6, 6, 4)),
         ("work-pattern", new GridRect(0, 10, 12, 4)),
     ];
@@ -112,7 +118,21 @@ public static class DashboardWidgetRegistry
     /// </summary>
     public static IReadOnlyList<(string Key, GridRect Rect)> DefaultLayoutFor(
         string dashboardKey, IReadOnlySet<string> allowedKeys, string breakpoint) =>
-        Derive(VariantDesktop(dashboardKey, allowedKeys) ?? DesktopDefaults(dashboardKey), breakpoint);
+        Derive(VariantDesktop(dashboardKey, allowedKeys) is { } variant
+            ? WithTeamPlanToday(variant, allowedKeys)
+            : DesktopDefaults(dashboardKey), breakpoint);
+
+    /// <summary>A My Team variant plus "Team plan today" when it is allowed: 8 wide, in the first rows the left 8 columns leave
+    /// free, so a manager without Team Status still gets it.</summary>
+    private static IReadOnlyList<(string Key, GridRect Rect)> WithTeamPlanToday(
+        IReadOnlyList<(string Key, GridRect Rect)> variant, IReadOnlySet<string> allowedKeys)
+    {
+        if (!allowedKeys.Contains(TeamPlanToday) || variant.Any(i => i.Key == TeamPlanToday)
+            || variant.All(i => Get(i.Key)?.DashboardKey != DashboardKeys.MyTeam))
+            return variant;
+        var top = variant.Where(i => i.Rect.X < TeamPlanTodaySize.W).Select(i => i.Rect.Y + i.Rect.H).DefaultIfEmpty(0).Max();
+        return [.. variant, (TeamPlanToday, TeamPlanTodaySize with { Y = top })];
+    }
 
     /// <summary>Tablet width (6 columns) for a widget whose desktop width is <paramref name="desktopW"/> (Ruling 2).</summary>
     public static int TabletWidth(WidgetDefinition? def, int desktopW)

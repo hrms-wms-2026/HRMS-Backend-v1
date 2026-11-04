@@ -8,13 +8,42 @@ namespace ONEVO.Infrastructure.Persistence.Repositories.Leave.Request;
 
 public sealed class EfLeaveRequestReadRepository(ApplicationDbContext db) : ILeaveRequestReadRepository
 {
-    public async Task<IReadOnlyList<LeaveRequest>> ListApprovedCoveringAsync(
+    public Task<IReadOnlyList<LeaveRequest>> ListApprovedCoveringAsync(
         Guid tenantId,
         IReadOnlyCollection<Guid> employeeIds,
         DateOnly from,
         DateOnly to,
-        CancellationToken ct = default)
+        CancellationToken ct = default) =>
+        ListCoveringAsync(tenantId, employeeIds, from, to, Covering.Approved, ct);
+
+    public Task<IReadOnlyList<LeaveRequest>> ListPendingCoveringAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Guid> employeeIds,
+        DateOnly from,
+        DateOnly to,
+        CancellationToken ct = default) =>
+        ListCoveringAsync(tenantId, employeeIds, from, to, Covering.Pending, ct);
+
+    public Task<IReadOnlyList<LeaveRequest>> ListPartiallyCancelledCoveringAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Guid> employeeIds,
+        DateOnly from,
+        DateOnly to,
+        CancellationToken ct = default) =>
+        ListCoveringAsync(tenantId, employeeIds, from, to, Covering.PartiallyCancelled, ct);
+
+    private enum Covering { Approved, Pending, PartiallyCancelled }
+
+    private async Task<IReadOnlyList<LeaveRequest>> ListCoveringAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Guid> employeeIds,
+        DateOnly from,
+        DateOnly to,
+        Covering covering,
+        CancellationToken ct)
     {
+        var partiallyCancelled = covering == Covering.PartiallyCancelled;
+        var pending = covering == Covering.Pending;
         if (employeeIds.Count == 0 || from > to)
             return Array.Empty<LeaveRequest>();
 
@@ -24,7 +53,11 @@ public sealed class EfLeaveRequestReadRepository(ApplicationDbContext db) : ILea
             .AsNoTracking()
             .Where(request => request.TenantId == tenantId
                 && employeeIds.Contains(request.EmployeeId)
-                && request.Status == LeaveRequestStatuses.Approved
+                && (partiallyCancelled
+                    ? request.Status == LeaveRequestStatuses.Cancelled && request.PartialCancelEffectiveDate != null
+                    : pending
+                        ? request.Status == LeaveRequestStatuses.Pending
+                        : request.Status == LeaveRequestStatuses.Approved)
                 && request.StartAt < toExclusive
                 && request.EndAt > fromStart)
             .OrderBy(request => request.EmployeeId)

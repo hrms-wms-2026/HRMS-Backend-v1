@@ -8,7 +8,8 @@ using ONEVO.Application.Features.WorkManagement.Planner.TeamSchedule;
 
 namespace ONEVO.Api.Controllers.Tenant.WorkManagement;
 
-/// <summary>Day planner (2026-10-26 design, Part B; docs/api/planner-v1.md). Writes touch only the caller's today.</summary>
+/// <summary>Day planner (2026-10-26 design, Part B; 2026-10-27 Planner = Calendar; docs/api/planner-v1.md). Writes touch the
+/// caller's own plan, today up to 28 days ahead.</summary>
 [ApiController]
 [Route("api/v1/planner")]
 [Authorize(Policy = "TenantPolicy")]
@@ -26,14 +27,35 @@ public sealed class PlannerController : ControllerBase
     public async Task<IActionResult> EmployeeDay(Guid employeeId, [FromQuery] DateOnly? date, CancellationToken ct)
         => Respond(await _mediator.Send(new GetEmployeePlannerDayQuery(employeeId, date), ct));
 
-    /// <summary>Today's Team Schedule (My Team widgets, 2026-10-29): the caller's reports' day. Answers with
-    /// plannerEnabled = false instead of 503 while the Planner is off.</summary>
+    [HttpGet("employees/{employeeId:guid}/range")]
+    public async Task<IActionResult> EmployeeRange(Guid employeeId, [FromQuery] DateOnly from, [FromQuery] DateOnly to, CancellationToken ct)
+        => Respond(await _mediator.Send(new GetEmployeePlannerRangeQuery(employeeId, from, to), ct));
+
     [HttpGet("team")]
-    public async Task<IActionResult> TeamDay([FromQuery] DateOnly? date, CancellationToken ct)
+    public async Task<IActionResult> TeamDay([FromQuery] DateOnly? date, [FromQuery] Guid? managerId, CancellationToken ct)
+        => Respond(await _mediator.Send(new GetTeamPlannerDayQuery(date, managerId), ct));
+
+    [HttpGet("team/range")]
+    public async Task<IActionResult> TeamRange([FromQuery] DateOnly from, [FromQuery] DateOnly to, [FromQuery] Guid? managerId,
+        CancellationToken ct)
+        => Respond(await _mediator.Send(new GetTeamPlannerRangeQuery(from, to, managerId), ct));
+
+    [HttpGet("me/range")]
+    public async Task<IActionResult> MyRange([FromQuery] DateOnly from, [FromQuery] DateOnly to, CancellationToken ct)
+        => Respond(await _mediator.Send(new GetMyPlannerRangeQuery(from, to), ct));
+
+    [HttpGet("me/focus")]
+    public async Task<IActionResult> MyFocus(CancellationToken ct)
+        => Respond(await _mediator.Send(new GetMyPlannerFocusQuery(), ct));
+
+    /// <summary>Today's Team Schedule (My Team widgets, 2026-10-29): the caller's reports' day (moved off "team" 2026-11-04, which the team planner owns). Answers with
+    /// plannerEnabled = false instead of 503 while the Planner is off.</summary>
+    [HttpGet("team/schedule")]
+    public async Task<IActionResult> TeamSchedule([FromQuery] DateOnly? date, CancellationToken ct)
         => Respond(await _mediator.Send(new GetTeamScheduleQuery(date), ct));
 
     /// <summary>Team week planned vs actual (My Team widgets design match, 2026-11-02): the same population and gate as
-    /// <see cref="TeamDay"/>, each person on their own local days. weekStart must be a Monday; plannerEnabled = false keeps
+    /// <see cref="TeamSchedule"/>, each person on their own local days. weekStart must be a Monday; plannerEnabled = false keeps
     /// clocked minutes.</summary>
     [HttpGet("team/week")]
     public async Task<IActionResult> TeamWeek([FromQuery] DateOnly? weekStart, CancellationToken ct)

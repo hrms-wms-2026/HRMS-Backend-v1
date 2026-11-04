@@ -17,6 +17,7 @@ using ONEVO.Application.Features.WorkManagement.Tasks.Mappers;
 using ONEVO.Application.Features.WorkManagement.Tasks.Services;
 using ONEVO.Domain.Features.WorkManagement.Approvals.Entities;
 using ONEVO.Domain.Features.WorkManagement.Notifications.Entities;
+using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
 
 namespace ONEVO.Application.Features.WorkManagement.Tasks.Commands.CreateTask;
 
@@ -80,9 +81,20 @@ public class CreateTaskCommandHandler : IRequestHandler<CreateTaskCommand, Resul
         if (!await _membership.IsEffectiveManagerAsync(tenantId, objective.Id, callerEmployeeId.Value, ct))
             return Result<TaskWriteOutcome>.Forbidden("Only members of this module can change its tasks.");
 
+        // A request may ask to be assigned to its requester and planned at a slot (Planner create popover). Only the
+        // caller can be the assignee; the direct path ignores both (the client assigns and plans itself).
+        if (request.AssigneeEmployeeId is { } assignee && assignee != callerEmployeeId.Value)
+            return InvalidPlan("A work item request can only be assigned to you.");
+        if ((request.PlanStartAt.HasValue || request.PlanEndAt.HasValue) && request.AssigneeEmployeeId is null)
+            return InvalidPlan("A planned time needs the assignee it is planned for.");
+        if (request.PlanStartAt.HasValue != request.PlanEndAt.HasValue)
+            return InvalidPlan("A planned time needs both a start and an end.");
+        if (request.PlanStartAt is { } planStart && request.PlanEndAt is { } planEnd && planEnd <= planStart)
+            return InvalidPlan("A planned time must end after it starts.");
+
         var input = new TaskCreateInput(objective.Id, request.Title.Trim(), request.Description?.Trim(), request.CategoryId,
             request.Priority, request.DueDate, request.EstimatedHours, request.StoryPoints, request.SprintId,
-            request.SourceMeetingOccurrenceId);
+            request.SourceMeetingOccurrenceId, request.AssigneeEmployeeId, request.PlanStartAt, request.PlanEndAt);
 
         // An action item is a meeting write too: the Plan B flags gate it (R4), and the source must be an
         // occurrence the caller can see - an invisible or gone source is a 404 and nothing is created.
@@ -145,4 +157,7 @@ public class CreateTaskCommandHandler : IRequestHandler<CreateTaskCommand, Resul
             return Result<TaskWriteOutcome>.Success(new TaskWriteOutcome(WorkTaskResponseMapper.ToResponse(task), null));
         }, ct);
     }
+
+    private static Result<TaskWriteOutcome> InvalidPlan(string message)
+        => Result<TaskWriteOutcome>.Failure(message, 400, TaskErrorCodes.InvalidPlanRequest);
 }

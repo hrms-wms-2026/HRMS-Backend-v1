@@ -128,6 +128,9 @@ public interface IConversationRepository
     /// <summary>Sets (or clears) a chat's description and saves.</summary>
     Task SetDescriptionAsync(Guid tenantId, Guid conversationId, string? description, CancellationToken ct = default);
 
+    /// <summary>Sets (or clears, with nulls) a group's picked icon and its tint, and saves.</summary>
+    Task SetIconAsync(Guid tenantId, Guid conversationId, string? icon, string? color, CancellationToken ct = default);
+
     /// <summary>A page of the files posted in a chat, newest first: only messages the employee can see (not retracted, not
     /// hidden for them). <paramref name="kind"/> is a <see cref="ConversationMediaKinds"/> value or null for every file.</summary>
     Task<ConversationMediaPage> ListMediaAsync(

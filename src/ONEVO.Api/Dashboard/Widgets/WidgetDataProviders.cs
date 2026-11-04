@@ -97,7 +97,7 @@ public sealed class TeamStatusWidgetDataProvider(IMediator mediator, ICurrentUse
         Map(await Mediator.Send(new GetCoveredTeamTodayQuery(Limit), ct), value => value);
 }
 
-/// <summary>team-schedule (Today's team schedule): mirrors GET api/v1/planner/team (PlannerController.TeamDay) for
+/// <summary>team-schedule (Today's team schedule): mirrors GET api/v1/planner/team/schedule (PlannerController.TeamSchedule) for
 /// today; the card sends no date on load.</summary>
 public sealed class TeamScheduleWidgetDataProvider(IMediator mediator, ICurrentUser currentUser, IModuleEntitlementService entitlements)
     : EndpointMirrorWidgetDataProvider(mediator, currentUser, entitlements)

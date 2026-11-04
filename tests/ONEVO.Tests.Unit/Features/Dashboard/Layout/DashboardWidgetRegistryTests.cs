@@ -15,7 +15,7 @@ public sealed class DashboardWidgetRegistryTests
         var team = DashboardWidgetRegistry.ForDashboard(DashboardKeys.MyTeam).Select(d => d.Key).ToList();
 
         Assert.Equal(10, work.Count);
-        Assert.Equal(5, team.Count);
+        Assert.Equal(6, team.Count); // team-schedule (ours) and team-plan-today (team planner) both live on My Team
         Assert.Empty(work.Intersect(team));
         Assert.Equal(work.Count + team.Count, work.Concat(team).Distinct().Count());
         foreach (var key in work.Concat(team))
@@ -35,7 +35,7 @@ public sealed class DashboardWidgetRegistryTests
 
         Assert.Equal(("Today's team schedule", DashboardKeys.MyTeam, true), (def.Title, def.DashboardKey, def.HasProvider));
         Assert.Equal((2, 2, 12, 8), (def.MinW, def.MinH, def.MaxW, def.MaxH));
-        Assert.Equal(new GridRect(0, 12, 8, 6), placed.Rect);
+        Assert.Equal(new GridRect(0, 18, 8, 6), placed.Rect); // below team-plan-today (0, 12) since the 2026-11-04 merge
         Assert.Equal("Working / Break / Leave", DashboardWidgetRegistry.Get("team-status")!.Title);
     }
 
@@ -94,7 +94,7 @@ public sealed class DashboardWidgetRegistryTests
         var mobile = DashboardWidgetRegistry.DefaultLayout(DashboardKeys.MyWork, Breakpoints.Mobile);
 
         Assert.Equal(
-            ["today-at-a-glance", "todays-schedule", "quick-actions", "action-center", "today-total-time", "active-projects", "my-tasks", "work-pattern"],
+            ["today-at-a-glance", "today-total-time", "todays-schedule", "action-center", "active-projects", "quick-actions", "my-tasks", "work-pattern"],
             mobile.Select(i => i.Key).ToArray());
         Assert.All(mobile, i =>
         {
@@ -161,7 +161,26 @@ public sealed class DashboardWidgetRegistryTests
         { DashboardKeys.MyWork, AllWork.Where(k => k != "action-center").ToArray() },
         { DashboardKeys.MyTeam, ["team-quick-actions", "team-progress"] },
         { DashboardKeys.MyTeam, ["team-quick-actions"] },
+        { DashboardKeys.MyTeam, ["team-quick-actions", "team-progress", "team-plan-today"] },
+        { DashboardKeys.MyTeam, ["team-quick-actions", "team-plan-today"] },
     };
+
+    // Team planner (2026-11-03): a manager without Team Status still gets "Team plan today", below what is there.
+    [Fact]
+    public void My_team_variants_place_team_plan_today_in_the_first_free_rows()
+    {
+        Assert.Equal(
+            [("team-progress", new GridRect(0, 0, 8, 6)), ("team-quick-actions", new GridRect(8, 0, 4, 4)),
+                ("team-plan-today", new GridRect(0, 6, 8, 6))],
+            DashboardWidgetRegistry.DefaultLayoutFor(DashboardKeys.MyTeam,
+                new HashSet<string> { "team-quick-actions", "team-progress", "team-plan-today" }, Breakpoints.Desktop));
+        Assert.Equal(
+            [("team-quick-actions", new GridRect(8, 0, 4, 4)), ("team-plan-today", new GridRect(0, 0, 8, 6))],
+            DashboardWidgetRegistry.DefaultLayoutFor(DashboardKeys.MyTeam,
+                new HashSet<string> { "team-quick-actions", "team-plan-today" }, Breakpoints.Desktop));
+        Assert.Contains(("team-plan-today", new GridRect(0, 12, 8, 6)),
+            DashboardWidgetRegistry.DefaultLayout(DashboardKeys.MyTeam, Breakpoints.Desktop));
+    }
 
     [Theory]
     [MemberData(nameof(VariantCases))]
@@ -190,18 +209,37 @@ public sealed class DashboardWidgetRegistryTests
     }
 
     [Fact]
+    public void My_work_default_is_the_owners_saved_layout()
+    {
+        // The Dapi owner's saved My Work layout (2026-10-29): Today's schedule on the right, five rows tall.
+        Assert.Equal(
+            [
+                ("today-at-a-glance", new GridRect(0, 0, 4, 3)),
+                ("today-total-time", new GridRect(4, 0, 4, 3)),
+                ("todays-schedule", new GridRect(8, 0, 4, 5)),
+                ("action-center", new GridRect(0, 3, 5, 3)),
+                ("active-projects", new GridRect(5, 3, 3, 3)),
+                ("quick-actions", new GridRect(0, 6, 3, 3)),
+                ("my-tasks", new GridRect(3, 6, 6, 4)),
+                ("work-pattern", new GridRect(0, 10, 12, 4)),
+            ],
+            DashboardWidgetRegistry.DefaultLayout(DashboardKeys.MyWork, Breakpoints.Desktop));
+    }
+
+    [Fact]
     public void My_work_without_action_center_variant_matches_ruling()
     {
         var layout = DashboardWidgetRegistry.DefaultLayoutFor(
             DashboardKeys.MyWork, new HashSet<string>(AllWork.Where(k => k != "action-center")), Breakpoints.Desktop);
 
+        // The owner's layout with Active projects and Quick actions filling the row Action center leaves.
         Assert.Equal(
             [
                 ("today-at-a-glance", new GridRect(0, 0, 4, 3)),
-                ("todays-schedule", new GridRect(4, 0, 5, 3)),
-                ("quick-actions", new GridRect(9, 0, 3, 3)),
-                ("today-total-time", new GridRect(0, 3, 6, 3)),
-                ("active-projects", new GridRect(6, 3, 6, 3)),
+                ("today-total-time", new GridRect(4, 0, 4, 3)),
+                ("todays-schedule", new GridRect(8, 0, 4, 5)),
+                ("active-projects", new GridRect(0, 3, 4, 3)),
+                ("quick-actions", new GridRect(4, 3, 4, 3)),
                 ("my-tasks", new GridRect(0, 6, 6, 4)),
                 ("work-pattern", new GridRect(0, 10, 12, 4)),
             ],

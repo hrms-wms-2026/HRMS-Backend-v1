@@ -8,4 +8,6 @@ public record UpdateLeaveTypeRequest(
     string ApplicableGender,
     bool RequiresDocument,
     decimal? DocumentRequiredAfterHours,
-    string[] AcceptedDocumentTypes);
+    string[] AcceptedDocumentTypes,
+    // Icon: null keeps the current icon; empty clears it.
+    string? Icon = null);

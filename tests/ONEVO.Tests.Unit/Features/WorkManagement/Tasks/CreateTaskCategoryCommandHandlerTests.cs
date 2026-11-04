@@ -26,7 +26,7 @@ public class CreateTaskCategoryCommandHandlerTests
     private static readonly Guid ProjectId = Guid.NewGuid();
 
     private (CreateTaskCategoryCommandHandler Handler, Mock<ITaskCategoryRepository> Categories) Build(
-        Guid callerEmployeeId, bool? callerIsEffectiveManager = null)
+        Guid callerEmployeeId, bool? callerIsEffectiveManager = null, string? projectSystemPurpose = null)
     {
         var currentUser = new Mock<ICurrentUser>();
         currentUser.SetupGet(x => x.IsAuthenticated).Returns(true);
@@ -37,7 +37,7 @@ public class CreateTaskCategoryCommandHandlerTests
         identity.Setup(x => x.ResolveCallerEmployeeIdAsync(TenantId, UserId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(callerEmployeeId);
 
-        var project = new Project { Id = ProjectId, TenantId = TenantId, IsActive = true, Name = "Proj", Identifier = "PRJ", CreatedAt = DateTimeOffset.UtcNow };
+        var project = new Project { Id = ProjectId, TenantId = TenantId, IsActive = true, Name = "Proj", Identifier = "PRJ", SystemPurpose = projectSystemPurpose, CreatedAt = DateTimeOffset.UtcNow };
         var projects = new Mock<IProjectRepository>();
         projects.Setup(x => x.GetByIdForTenantAsync(TenantId, ProjectId, It.IsAny<CancellationToken>())).ReturnsAsync(project);
 
@@ -64,7 +64,7 @@ public class CreateTaskCategoryCommandHandlerTests
     public async Task Handle_Owner_CreatesCategory()
     {
         var (handler, categories) = Build(OwnerEmployeeId);
-        var command = new CreateTaskCategoryCommand(ProjectId, "Bug", 1);
+        var command = new CreateTaskCategoryCommand(ProjectId, "Bug", 1, TaskCategoryKinds.Bug);
 
         var result = await handler.Handle(command, CancellationToken.None);
 
@@ -79,7 +79,7 @@ public class CreateTaskCategoryCommandHandlerTests
         // Category is Project-level configuration any effective manager of the Project's default
         // Objective can change, not just the owner - mirrors Task Status's authorization shape.
         var (handler, categories) = Build(OtherEmployeeId, callerIsEffectiveManager: true);
-        var command = new CreateTaskCategoryCommand(ProjectId, "Feature", 2);
+        var command = new CreateTaskCategoryCommand(ProjectId, "Feature", 2, TaskCategoryKinds.Feature);
 
         var result = await handler.Handle(command, CancellationToken.None);
 
@@ -92,7 +92,7 @@ public class CreateTaskCategoryCommandHandlerTests
     public async Task Handle_NotOwner_ReturnsForbidden()
     {
         var (handler, categories) = Build(OtherEmployeeId);
-        var command = new CreateTaskCategoryCommand(ProjectId, "Bug", 1);
+        var command = new CreateTaskCategoryCommand(ProjectId, "Bug", 1, TaskCategoryKinds.Bug);
 
         var result = await handler.Handle(command, CancellationToken.None);
 
@@ -109,9 +109,67 @@ public class CreateTaskCategoryCommandHandlerTests
     {
         var (handler, categories) = Build(OwnerEmployeeId);
 
-        var result = await handler.Handle(new CreateTaskCategoryCommand(ProjectId, name, 9), CancellationToken.None);
+        var result = await handler.Handle(new CreateTaskCategoryCommand(ProjectId, name, 9, TaskCategoryKinds.Task), CancellationToken.None);
 
         Assert.Equal(409, result.StatusCode);
+        categories.Verify(x => x.AddAsync(It.IsAny<TaskCategory>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Handle_OfficeProject_ReturnsConflict()
+    {
+        var (handler, categories) = Build(OwnerEmployeeId, projectSystemPurpose: ProjectSystemPurposes.Office);
+
+        var result = await handler.Handle(new CreateTaskCategoryCommand(ProjectId, "Things", 3, TaskCategoryKinds.Task), CancellationToken.None);
+
+        Assert.Equal(409, result.StatusCode);
+        categories.Verify(x => x.AddAsync(It.IsAny<TaskCategory>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Handle_NoKind_Is400_AndTheNameIsNeverUsedToGuessIt()
+    {
+        var (handler, categories) = Build(OwnerEmployeeId);
+
+        var result = await handler.Handle(new CreateTaskCategoryCommand(ProjectId, "Defects", 1, null), CancellationToken.None);
+
+        Assert.Equal((400, "invalid_category_kind"), (result.StatusCode, result.ErrorCode));
+        categories.Verify(x => x.AddAsync(It.IsAny<TaskCategory>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Theory]
+    [InlineData("Onboarding")]
+    [InlineData("Offboarding")]
+    public async Task Handle_ASystemCategoryName_InANormalProject_KeepsTheChosenKind(string name)
+    {
+        var (handler, _) = Build(OwnerEmployeeId);
+
+        var result = await handler.Handle(new CreateTaskCategoryCommand(ProjectId, name, 1, TaskCategoryKinds.Task), CancellationToken.None);
+
+        Assert.Equal(TaskCategoryKinds.Task, result.Value!.Kind);
+    }
+
+    [Fact]
+    public async Task Handle_GivenKind_IsKeptOverTheName()
+    {
+        var (handler, _) = Build(OwnerEmployeeId);
+
+        var result = await handler.Handle(new CreateTaskCategoryCommand(ProjectId, "Defects", 1, TaskCategoryKinds.Testing), CancellationToken.None);
+
+        Assert.Equal(TaskCategoryKinds.Testing, result.Value!.Kind);
+    }
+
+    [Theory]
+    [InlineData("epic")]
+    [InlineData("meeting")]
+    [InlineData("checklist")]
+    public async Task Handle_UnknownOrSystemKind_Is400(string kind)
+    {
+        var (handler, categories) = Build(OwnerEmployeeId);
+
+        var result = await handler.Handle(new CreateTaskCategoryCommand(ProjectId, "Things", 1, kind), CancellationToken.None);
+
+        Assert.Equal((400, "invalid_category_kind"), (result.StatusCode, result.ErrorCode));
         categories.Verify(x => x.AddAsync(It.IsAny<TaskCategory>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 }

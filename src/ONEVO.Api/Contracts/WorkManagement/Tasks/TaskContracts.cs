@@ -8,7 +8,10 @@ public sealed record CreateTaskRequest(
     DateOnly? DueDate, decimal? EstimatedHours, int? StoryPoints, Guid? SprintId,
     IReadOnlyList<Guid>? AttachmentFileIds = null,
     /// <summary>The meeting occurrence this task is raised from (an action item, spec 5.4). Null = an ordinary task.</summary>
-    Guid? SourceMeetingOccurrenceId = null);
+    Guid? SourceMeetingOccurrenceId = null,
+    /// <summary>Planner create popover: when the create goes for approval, assign the caller (the only allowed value)
+    /// and plan this slot once approved. Ignored when the task is created directly.</summary>
+    Guid? AssigneeEmployeeId = null, DateTimeOffset? PlanStartAt = null, DateTimeOffset? PlanEndAt = null);
 
 public sealed record EditTaskRequest(
     string Title, string? Description, string Priority,
@@ -46,15 +49,15 @@ public sealed record TaskStatusOrderUpdateRequest(
 
 public sealed record ReorderTaskStatusesRequest(List<TaskStatusOrderUpdateRequest> Updates);
 
-public sealed record EditTaskCategoryRequest(string Name, int DisplayOrder);
+public sealed record EditTaskCategoryRequest(string Name, int DisplayOrder, string? Kind = null);
 
-public sealed record CreateTaskCategoryRequest(string Name, int DisplayOrder);
+public sealed record CreateTaskCategoryRequest(string Name, int DisplayOrder, string? Kind = null);
 
 public sealed record TaskCategoryOrderUpdateRequest(Guid CategoryId, int DisplayOrder);
 
 public sealed record ReorderTaskCategoriesRequest(List<TaskCategoryOrderUpdateRequest> Updates);
 
-public sealed record TaskCategoryViewModel(Guid Id, string Name, int DisplayOrder, string? SystemKey, bool IsSystem);
+public sealed record TaskCategoryViewModel(Guid Id, string Name, int DisplayOrder, string? SystemKey, bool IsSystem, string Kind);
 
 public sealed record TaskAttachmentViewModel(Guid FileId, string FileName, long FileSizeBytes, string ContentType);
 

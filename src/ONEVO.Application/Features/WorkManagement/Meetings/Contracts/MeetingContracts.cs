@@ -125,7 +125,7 @@ public sealed record MeetingOccurrenceResponse(
 public sealed record MeetingListItem(
     Guid TaskId, string ShortId, Guid SeriesId, DateTimeOffset OriginalStart, DateTimeOffset StartAt,
     DateTimeOffset EndAt, bool IsAllDay, string Title, string Status, bool IsPrivate, Guid ProjectId,
-    Guid ObjectiveId, string MyRole, string? MyResponse);
+    Guid ObjectiveId, string MyRole, string? MyResponse, Guid OrganizerEmployeeId);
 
 public sealed record MeetingSeriesResponse(
     Guid SeriesId, string Title, string? Description, string? Location, bool IsPrivate, DateTimeOffset DtStart,

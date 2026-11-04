@@ -1,4 +1,5 @@
 using MediatR;
+using ONEVO.Application.Common.Helpers;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Leave.Type.DTOs.Responses;
@@ -38,6 +39,8 @@ public class UpdateLeaveTypeCommandHandler : IRequestHandler<UpdateLeaveTypeComm
         entity.Name = name;
         entity.Description = request.Description?.Trim();
         entity.Color = request.Color.Trim().ToUpperInvariant();
+        if (request.Icon is not null)
+            entity.Icon = EntityIconRules.Normalize(request.Icon);
         entity.IsPaid = request.IsPaid;
         entity.ApplicableGender = request.ApplicableGender;
         entity.RequiresDocument = request.RequiresDocument;

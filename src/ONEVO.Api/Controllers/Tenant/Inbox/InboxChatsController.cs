@@ -12,6 +12,7 @@ public sealed record SetChatFavoriteRequest(bool Favorite);
 public sealed record SetChatMutedRequest(bool Muted);
 public sealed record SetChatDescriptionRequest(string? Description);
 public sealed record SetChatPhotoRequest(Guid? FileId);
+public sealed record SetChatIconRequest(string? Icon, string? Color);
 public sealed record ForwardCaseRequest(string Source, string Kind, Guid Id, IReadOnlyList<Guid> ConversationIds);
 public sealed record ForwardMessageRequest(Guid MessageId, IReadOnlyList<Guid> ConversationIds);
 public sealed record StartCaseGroupRequest(string Source, string Kind, Guid Id, IReadOnlyList<Guid>? EmployeeIds, string? Name = null, Guid? AvatarFileId = null);
@@ -75,6 +76,11 @@ public class InboxChatsController : ControllerBase
     [HttpPut("{conversationId:guid}/photo")]
     public async Task<IActionResult> SetPhoto(Guid conversationId, [FromBody] SetChatPhotoRequest body, CancellationToken ct)
         => ToResult(await _mediator.Send(new SetChatPhotoCommand(conversationId, body.FileId), ct));
+
+    /// <summary>Sets a group's (or case group's) picked icon and tint, replacing its photo; an empty icon clears it.</summary>
+    [HttpPut("{conversationId:guid}/icon")]
+    public async Task<IActionResult> SetIcon(Guid conversationId, [FromBody] SetChatIconRequest body, CancellationToken ct)
+        => ToResult(await _mediator.Send(new SetChatIconCommand(conversationId, body.Icon, body.Color), ct));
 
     [HttpDelete("{conversationId:guid}/photo")]
     public async Task<IActionResult> RemovePhoto(Guid conversationId, CancellationToken ct)

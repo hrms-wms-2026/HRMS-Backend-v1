@@ -13,4 +13,6 @@ public record UpdateLeaveTypeCommand(
     string ApplicableGender,
     bool RequiresDocument,
     decimal? DocumentRequiredAfterHours,
-    string[] AcceptedDocumentTypes) : IRequest<Result<LeaveTypeResponse>>;
+    string[] AcceptedDocumentTypes,
+    // Icon: null keeps the current icon; empty clears it.
+    string? Icon = null) : IRequest<Result<LeaveTypeResponse>>;

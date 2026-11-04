@@ -8,6 +8,8 @@ public class EditProjectRequest
     public DateOnly StartDate { get; set; }
     public DateOnly TargetDate { get; set; }
     public string? Color { get; set; }
+    /// <summary>"lucide:{name}" or "emoji:{emoji}". Omit to keep the current icon; empty clears it.</summary>
+    public string? Icon { get; set; }
     public decimal? ActualHours { get; set; }
 
     /// <summary>Optional. When set, updates both the Project and its Default Objective allocated hours (root-case extend-allocation, spec §4.3).</summary>

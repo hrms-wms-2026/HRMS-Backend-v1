@@ -82,7 +82,8 @@ public class ProjectsController : ControllerBase
             logoStream,
             request.Banner?.FileName,
             request.Banner?.ContentType,
-            bannerStream);
+            bannerStream,
+            request.Icon);
 
         var result = await _mediator.Send(command, ct);
 
@@ -98,7 +99,7 @@ public class ProjectsController : ControllerBase
         var command = new EditProjectCommand(
             id, request.Name, request.Description, request.CategoryId,
             request.StartDate, request.TargetDate, request.Color, request.ActualHours, request.Identifier,
-            request.AllocatedHours);
+            request.AllocatedHours, request.Icon);
 
         var result = await _mediator.Send(command, ct);
 

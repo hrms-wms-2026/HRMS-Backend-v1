@@ -459,12 +459,16 @@ public static class DependencyInjection
         services.AddScoped<ONEVO.Application.Features.WorkManagement.Planner.RepositoryInterfaces.ITeamTimeReadRepository,
             ONEVO.Infrastructure.Persistence.Repositories.WorkManagement.Planner.EfTeamTimeReadRepository>();
         services.AddScoped<ONEVO.Application.Features.WorkManagement.Planner.Services.PlannerService>();
+        services.AddScoped<ONEVO.Application.Features.WorkManagement.Planner.Services.TeamPlannerService>();
+        services.AddScoped<ONEVO.Application.Features.WorkManagement.Planner.Services.IPlannerBlockWriter>(
+            sp => sp.GetRequiredService<ONEVO.Application.Features.WorkManagement.Planner.Services.PlannerService>());
         services.AddScoped<ONEVO.Application.Features.WorkManagement.WeeklyProgress.RepositoryInterfaces.IWeeklyWorkProgressReadRepository,
             ONEVO.Infrastructure.Persistence.Repositories.WorkManagement.WeeklyProgress.EfWeeklyWorkProgressReadRepository>();
         services.AddHostedService<Services.WorkManagement.Meetings.MeetingOccurrenceGeneratorJob>();
         services.AddScoped<ONEVO.Application.Features.WorkManagement.Meetings.Services.MeetingAttendanceSyncService>();
         services.AddScoped<ONEVO.Application.Features.WorkManagement.Meetings.Services.MeetingAttendanceReadService>();
         services.AddScoped<ONEVO.Application.Features.WorkManagement.Meetings.Services.MeetingCalendarProjection>();
+        services.AddScoped<ONEVO.Application.Features.Calendar.Queries.CheckCalendarConflicts.IParticipantAvailabilityChecker, ONEVO.Application.Features.Calendar.Queries.CheckCalendarConflicts.ParticipantAvailabilityChecker>();
         services.AddScoped<ONEVO.Application.Features.WorkManagement.Meetings.RepositoryInterfaces.IMeetingAttendanceRepository,
             ONEVO.Infrastructure.Persistence.Repositories.WorkManagement.Meetings.EfMeetingAttendanceRepository>();
         services.AddHostedService<Services.WorkManagement.Meetings.MeetingAttendanceJob>();
@@ -980,6 +984,13 @@ public static class DependencyInjection
             ONEVO.Application.Features.Monitoring.Screenshots.RepositoryInterfaces.IInactivityCaptureAttemptRepository,
             ONEVO.Infrastructure.Persistence.Repositories.Monitoring.Screenshots.EfInactivityCaptureAttemptRepository>();
         services.AddHostedService<ONEVO.Infrastructure.Services.Monitoring.Screenshots.AgentCommandExpiryJob>();
+
+        // Monitoring - Retention (MON-02: purges activity_raw_buffer and expired screenshot evidence)
+        services.AddScoped<
+            ONEVO.Application.Features.Monitoring.ActivityMonitoring.ServiceInterfaces.IMonitoringRetentionPurgeRunner,
+            ONEVO.Infrastructure.Services.Monitoring.Retention.MonitoringRetentionPurgeRunner>();
+        services.AddHostedService<ONEVO.Infrastructure.Services.Monitoring.Retention.MonitoringRetentionPurgeJob>();
+
         services.AddHostedService<Services.WorkManagement.ProjectMonitorJob>();
         services.AddHostedService<Services.Calendar.CalendarSyncJob>();
         services.AddHostedService<Services.Calendar.TeamsAttendanceSyncJob>();
@@ -1037,6 +1048,8 @@ public static class DependencyInjection
             configuration.GetSection(ONEVO.Infrastructure.Configuration.StorageQuotaOptions.SectionName));
         services.Configure<ONEVO.Infrastructure.Configuration.FileStorageOptions>(
             configuration.GetSection(ONEVO.Infrastructure.Configuration.FileStorageOptions.SectionName));
+        services.Configure<ONEVO.Application.Features.Monitoring.ActivityMonitoring.Options.MonitoringRetentionOptions>(
+            configuration.GetSection(ONEVO.Application.Features.Monitoring.ActivityMonitoring.Options.MonitoringRetentionOptions.SectionName));
         services.AddOptions<AwsRekognitionOptions>()
             .Bind(configuration.GetSection(AwsRekognitionOptions.SectionName))
             .ValidateDataAnnotations()

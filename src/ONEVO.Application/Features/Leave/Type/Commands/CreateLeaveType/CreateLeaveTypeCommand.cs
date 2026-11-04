@@ -13,4 +13,5 @@ public record CreateLeaveTypeCommand(
     string ApplicableGender,
     bool RequiresDocument,
     decimal? DocumentRequiredAfterHours,
-    string[] AcceptedDocumentTypes) : IRequest<Result<LeaveTypeResponse>>;
+    string[] AcceptedDocumentTypes,
+    string? Icon = null) : IRequest<Result<LeaveTypeResponse>>;

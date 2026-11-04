@@ -1,4 +1,6 @@
 using MediatR;
+using Microsoft.Extensions.Options;
+using ONEVO.Application.Features.WorkManagement.Planner;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
@@ -24,7 +26,8 @@ public sealed class GetMyTeamCapabilitiesQueryHandler(
     IEmployeeAuthorityResolver authority,
     IModuleEntitlementService modules,
     IWorkLeadershipService workLeadership,
-    ONEVO.Application.Common.RepositoryInterfaces.IEmployeeRepository reportingLine)
+    ONEVO.Application.Common.RepositoryInterfaces.IEmployeeRepository? reportingLines = null,
+    IOptions<PlannerOptions>? plannerOptions = null)
     : IRequestHandler<GetMyTeamCapabilitiesQuery, Result<MyTeamCapabilitiesResponse>>
 {
     private const string AttendanceReadPermission = "attendance:read";
@@ -51,10 +54,14 @@ public sealed class GetMyTeamCapabilitiesQueryHandler(
         var hasWorkApprovals = false;
         var hasReports = false;
 
+        // One reporting-line probe feeds both Today's Team Schedule (hasReports) and the team planner (canViewTeamPlan).
+        var hasDirectReports = actor is not null && reportingLines is not null
+            && (await reportingLines.ListDirectReportEmployeeIdsAsync(currentUser.TenantId, [actor.Id], ct)).Count > 0;
+
         if (legalEntityId is Guid activeLegalEntityId)
         {
             // The reporting line through the common repository, never the raw closure (My Team spec section 10 rule 1).
-            hasReports = (await reportingLine.ListDirectReportEmployeeIdsAsync(currentUser.TenantId, [actor!.Id], ct)).Count > 0;
+            hasReports = hasDirectReports;
 
             if (currentUser.HasPermission(AttendanceReadPermission))
             {
@@ -69,13 +76,17 @@ public sealed class GetMyTeamCapabilitiesQueryHandler(
             if (hasWorkModule)
             {
                 leadsWork = await workLeadership.LeadsAnyWorkAsync(
-                    currentUser.TenantId, actor.Id, activeLegalEntityId, ct);
+                    currentUser.TenantId, actor!.Id, activeLegalEntityId, ct);
                 hasWorkApprovals = await workLeadership.HasPendingWorkApprovalsAsync(
                     currentUser.TenantId, actor.Id, activeLegalEntityId, ct);
             }
         }
 
-        var isAvailable = canViewPeopleStatus || canReviewPeopleApprovals || canReviewExceptions || hasWorkApprovals || leadsWork;
+        // Team planner (2026-11-03): a cheap existence probe on the reporting line, like the flags above.
+        var canViewTeamPlan = hasDirectReports && plannerOptions?.Value.Enabled == true;
+
+        var isAvailable = canViewPeopleStatus || canReviewPeopleApprovals || canReviewExceptions || hasWorkApprovals || leadsWork
+            || canViewTeamPlan;
 
         return Result<MyTeamCapabilitiesResponse>.Success(new MyTeamCapabilitiesResponse(
             isAvailable,
@@ -86,6 +97,7 @@ public sealed class GetMyTeamCapabilitiesQueryHandler(
             leadsWork,
             CanViewLiveActivity: false,
             hasReports,
-            legalEntityId));
+            legalEntityId,
+            canViewTeamPlan));
     }
 }

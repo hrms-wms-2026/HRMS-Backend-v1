@@ -157,7 +157,7 @@ public class TasksController : ControllerBase
         var result = await _mediator.Send(new CreateTaskCommand(
             objectiveId, request.Title, request.Description, request.CategoryId, request.Priority,
             request.DueDate, request.EstimatedHours, request.StoryPoints, request.SprintId, request.AttachmentFileIds,
-            request.SourceMeetingOccurrenceId), ct);
+            request.SourceMeetingOccurrenceId, request.AssigneeEmployeeId, request.PlanStartAt, request.PlanEndAt), ct);
 
         // 201 = created now; 202 = sent for approval (the approval engine decides, not the caller).
         return !result.IsSuccess ? Problem(result.Error, statusCode: result.StatusCode ?? 400)
@@ -297,7 +297,7 @@ public class TasksController : ControllerBase
     [HttpPost("projects/{projectId:guid}/task-categories")]
     public async Task<IActionResult> CreateCategory(Guid projectId, [FromBody] CreateTaskCategoryRequest request, CancellationToken ct)
     {
-        var result = await _mediator.Send(new CreateTaskCategoryCommand(projectId, request.Name, request.DisplayOrder), ct);
+        var result = await _mediator.Send(new CreateTaskCategoryCommand(projectId, request.Name, request.DisplayOrder, request.Kind), ct);
         return result.IsSuccess
             ? StatusCode(201, result.Value!.ToViewModel())
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
@@ -317,7 +317,7 @@ public class TasksController : ControllerBase
     [HttpPatch("task-categories/{id:guid}")]
     public async Task<IActionResult> EditCategory(Guid id, [FromBody] EditTaskCategoryRequest request, CancellationToken ct)
     {
-        var result = await _mediator.Send(new EditTaskCategoryCommand(id, request.Name, request.DisplayOrder), ct);
+        var result = await _mediator.Send(new EditTaskCategoryCommand(id, request.Name, request.DisplayOrder, request.Kind), ct);
         return result.IsSuccess ? NoContent() : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 

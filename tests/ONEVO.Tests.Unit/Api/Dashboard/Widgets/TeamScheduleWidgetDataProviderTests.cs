@@ -25,7 +25,7 @@ public sealed class TeamScheduleWidgetDataProviderTests
 
         var provided = await Create(kit).GetAsync(default);
         // The card's first request sends no date.
-        var endpoint = await new PlannerController(kit.Mediator.Object).TeamDay(null, default);
+        var endpoint = await new PlannerController(kit.Mediator.Object).TeamSchedule(null, default);
 
         WidgetProviderTestKit.AssertSameBody(endpoint, provided);
         kit.Mediator.Verify(m => m.Send(It.Is<GetTeamScheduleQuery>(q => q.Date == null), It.IsAny<CancellationToken>()), Times.Exactly(2));

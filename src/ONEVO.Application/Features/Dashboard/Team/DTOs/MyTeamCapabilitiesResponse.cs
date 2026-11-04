@@ -12,4 +12,6 @@ public sealed record MyTeamCapabilitiesResponse(
     bool LeadsWork,
     bool CanViewLiveActivity,
     bool HasReports,
-    Guid? LegalEntityId);
+    Guid? LegalEntityId,
+    // Team planner (2026-11-03): the planner is on and the caller has at least one direct report.
+    bool CanViewTeamPlan = false);

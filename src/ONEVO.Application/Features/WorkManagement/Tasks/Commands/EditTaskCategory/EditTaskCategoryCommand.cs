@@ -4,5 +4,5 @@ using ONEVO.Application.Common.Models;
 namespace ONEVO.Application.Features.WorkManagement.Tasks.Commands.EditTaskCategory;
 
 public sealed record EditTaskCategoryCommand(
-    Guid CategoryId, string Name, int DisplayOrder
+    Guid CategoryId, string Name, int DisplayOrder, string? Kind = null
 ) : IRequest<Result>;

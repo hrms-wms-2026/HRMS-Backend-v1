@@ -108,6 +108,21 @@ public class GetApprovalDetailQueryHandlerTests
     }
 
     [Fact]
+    public async Task Task_create_request_for_the_requester_names_them_as_assignee()
+    {
+        Caller(Owner);
+        _request.ActionType = WorkActionTypes.TaskCreate;
+        _request.TargetId = null;
+        _request.PayloadJson = $$"""{"Title":"Fix login bug","AssigneeEmployeeId":"{{Requester}}","PlanStartAt":"2026-11-10T09:00:00+00:00","PlanEndAt":"2026-11-10T11:00:00+00:00"}""";
+
+        var detail = (await Build().Handle(new GetApprovalDetailQuery(_request.Id, "engine"), default)).Value!;
+
+        var assignee = detail.Fields.Single(f => f.Label == "Assign to");
+        assignee.Requested.Should().Be("Bala");
+        assignee.Editable.Should().BeFalse();
+    }
+
+    [Fact]
     public async Task Requester_cannot_edit_payload()
     {
         Caller(Requester);

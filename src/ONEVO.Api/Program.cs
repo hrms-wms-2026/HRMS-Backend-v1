@@ -1,5 +1,4 @@
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
-using Microsoft.AspNetCore.HttpOverrides;
 using ONEVO.Api.Configuration;
 using ONEVO.Api.Extensions;
 using ONEVO.Api.Middleware;
@@ -50,8 +49,7 @@ builder.Host.UseSerilog((ctx, cfg) =>
        .Enrich.FromLogContext()
        .Enrich.WithProperty("Application", "ONEVO.Api"));
 
-builder.Services.Configure<ForwardedHeadersOptions>(options =>
-    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedHost);
+builder.Services.AddApiForwardedHeaders(builder.Configuration);
 
 builder.Services.AddApplication();
 builder.Services.Configure<ONEVO.Application.Features.Monitoring.TrayActivation.Options.TrayPresenceOptions>(
@@ -113,6 +111,9 @@ builder.Services.AddHealthChecks()
 
 var app = builder.Build();
 
+// First, so scheme, host and client IP are the real client's for everything below
+// (HTTPS redirect, HSTS, logging, CORS, rate limiting, tenant resolution).
+app.UseForwardedHeaders();
 app.UseMiddleware<ExceptionHandlerMiddleware>();
 app.UseMiddleware<CorrelationIdMiddleware>();
 app.UseMiddleware<SecurityHeadersMiddleware>();
@@ -129,7 +130,6 @@ app.UseSerilogRequestLogging(opts =>
 if (!app.Environment.IsDevelopment())
     app.UseHttpsRedirection();
 app.UseCors("AllowFrontend");
-app.UseForwardedHeaders();
 app.UseRouting();
 app.UseMiddleware<PublicApiRateLimitingMiddleware>();
 app.UseMiddleware<HostTenantResolutionMiddleware>();
