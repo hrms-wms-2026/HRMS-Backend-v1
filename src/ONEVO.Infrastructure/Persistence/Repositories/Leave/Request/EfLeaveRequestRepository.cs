@@ -94,11 +94,32 @@ public class EfLeaveRequestRepository : ILeaveRequestRepository
             .OrderByDescending(x => x.request.CreatedAt)
             .ToListAsync(ct);
 
-        return rows.Select(x => new LeaveRequestListRow(
-            x.request,
-            x.leaveType.Name,
-            x.leaveType.Code,
-            string.IsNullOrWhiteSpace(x.ApprovedByName) ? null : x.ApprovedByName)).ToList();
+        // Approval progress per request: one grouped query for the whole page, not one per row.
+        var requestIds = rows.Select(x => x.request.Id).ToList();
+        var progress = new Dictionary<Guid, (int Approved, int Total)>();
+        if (requestIds.Count > 0)
+        {
+            var counts = await _db.LeaveRequestApprovers.AsNoTracking()
+                .Where(a => a.TenantId == tenantId && requestIds.Contains(a.LeaveRequestId) &&
+                    a.Status != LeaveRequestApproverStatuses.Skipped && a.Status != LeaveRequestApproverStatuses.Cancelled)
+                .GroupBy(a => a.LeaveRequestId)
+                .Select(g => new { RequestId = g.Key, Total = g.Count(), Approved = g.Count(a => a.Status == LeaveRequestApproverStatuses.Approved) })
+                .ToListAsync(ct);
+            foreach (var count in counts)
+                progress[count.RequestId] = (count.Approved, count.Total);
+        }
+
+        return rows.Select(x =>
+        {
+            var (approved, total) = progress.GetValueOrDefault(x.request.Id);
+            return new LeaveRequestListRow(
+                x.request,
+                x.leaveType.Name,
+                x.leaveType.Code,
+                string.IsNullOrWhiteSpace(x.ApprovedByName) ? null : x.ApprovedByName,
+                approved,
+                total);
+        }).ToList();
     }
 
     public async Task<IReadOnlyList<LeaveApprovalDelegateRow>> ListActiveDelegatesAsync(

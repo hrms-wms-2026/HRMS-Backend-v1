@@ -33,7 +33,7 @@ public sealed record InboxChatRow(
     Guid? OtherEmployeeId, Guid? AvatarFileId, int MemberCount,
     string? Preview, DateTimeOffset? LastMessageAt, int Unread,
     IReadOnlyList<InboxChatPendingItem> Pending, InboxChatPendingItem? CaseItem, bool IsFavorite = false,
-    bool IsMuted = false, string? Description = null);
+    bool IsMuted = false, string? Description = null, string? Icon = null, string? Color = null);
 
 public interface IInboxChatService
 {
@@ -156,7 +156,9 @@ public sealed partial class InboxChatService : IInboxChatService
             .ToList();
 
         InboxChatRow WithSettings(InboxChatRow row, Conversation c)
-            => row with { IsMuted = muted.Contains(c.Id), Description = c.SubjectSource == ConversationSources.Direct ? null : c.Description };
+            => c.SubjectSource == ConversationSources.Direct
+                ? row with { IsMuted = muted.Contains(c.Id) }
+                : row with { IsMuted = muted.Contains(c.Id), Description = c.Description, Icon = c.Icon, Color = c.Color };
 
         InboxChatRow BuildRow(MemberConversation m)
             {

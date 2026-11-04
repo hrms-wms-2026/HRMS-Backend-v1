@@ -63,4 +63,7 @@ public sealed record LeaveRequestListItemResponse(
     string? ApprovedByName,
     DateTimeOffset CreatedAt,
     DateTimeOffset? UpdatedAt,
-    decimal ExceedsBalanceByHours = 0m);
+    decimal ExceedsBalanceByHours = 0m,
+    // Multi-step approval progress ("1 of 2 approved"); skipped and cancelled approver rows are not counted.
+    int ApprovedApproverCount = 0,
+    int ApproverCount = 0);

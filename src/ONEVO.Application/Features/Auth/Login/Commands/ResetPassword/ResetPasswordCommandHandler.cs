@@ -24,6 +24,7 @@ public class ResetPasswordCommandHandler : IRequestHandler<ResetPasswordCommand,
     private readonly IPermissionVersionService _permVersionService;
     private readonly IDateTimeProvider _clock;
     private readonly ITenantContext _tenantContext;
+    private readonly ISessionRepository _sessions;
 
     public ResetPasswordCommandHandler(
         IPasswordResetTokenRepository passwordResetTokens,
@@ -34,7 +35,8 @@ public class ResetPasswordCommandHandler : IRequestHandler<ResetPasswordCommand,
         IPasswordHasher passwordHasher,
         IPermissionVersionService permVersionService,
         IDateTimeProvider clock,
-        ITenantContext tenantContext)
+        ITenantContext tenantContext,
+        ISessionRepository sessions)
     {
         _passwordResetTokens = passwordResetTokens;
         _refreshTokens = refreshTokens;
@@ -45,6 +47,7 @@ public class ResetPasswordCommandHandler : IRequestHandler<ResetPasswordCommand,
         _permVersionService = permVersionService;
         _clock = clock;
         _tenantContext = tenantContext;
+        _sessions = sessions;
     }
 
     public async Task<Result> Handle(ResetPasswordCommand request, CancellationToken cancellationToken)
@@ -83,6 +86,10 @@ public class ResetPasswordCommandHandler : IRequestHandler<ResetPasswordCommand,
             var tokens = await _refreshTokens.ListActiveByUserIdAsync(user.Id, ct);
             foreach (var t in tokens)
                 t.RevokedAt = now;
+
+            // Browser sessions live in the sessions table, not refresh_tokens: end them too so a
+            // stolen session cannot outlive the password it was opened with.
+            await _sessions.RevokeAllActiveByUserIdAsync(user.Id, ct);
 
             await _permVersionService.IncrementVersionAsync(user.Id, ct);
             await _unitOfWork.SaveChangesAsync(ct);

@@ -14,7 +14,7 @@ public static class ProjectMapper
         project.Id, project.Name, project.Identifier, project.CategoryId, project.Description,
         project.LeadId, project.StartDate, project.TargetDate, project.Color,
         project.ActualHours, project.AllocatedHours, project.CompletedHours,
-        project.IsActive, project.CreatedAt);
+        project.IsActive, project.CreatedAt, project.Icon);
 
     public static ObjectiveSummaryDto ToSummary(Objective objective) => new(
         objective.Id, objective.ProjectId, objective.IsDefault, objective.Title, objective.OwnerId,
@@ -39,7 +39,7 @@ public static class ProjectMapper
         project.ActualHours, project.AllocatedHours, project.CompletedHours,
         project.IsActive, project.IsAchieved, project.AchievedAt,
         project.CreatedAt, project.UpdatedAt, isLead, logoFileId,
-        (labels ?? []).Select(ToSummary).ToList(), members ?? [], memberCount, project.SystemPurpose);
+        (labels ?? []).Select(ToSummary).ToList(), members ?? [], memberCount, project.SystemPurpose, project.Icon);
 
     public static ProjectCategoryListItemResponse ToListItem(ProjectCategory category) => new(category.Id, category.Name);
 
@@ -50,5 +50,5 @@ public static class ProjectMapper
         project.StartDate, project.TargetDate, project.Color, project.IsActive,
         project.AllocatedHours, project.CompletedHours, isLead,
         project.IsAchieved, project.AchievedAt, project.UpdatedAt, logoFileId,
-        (labels ?? []).Select(ToSummary).ToList(), members ?? [], memberCount, project.SystemPurpose);
+        (labels ?? []).Select(ToSummary).ToList(), members ?? [], memberCount, project.SystemPurpose, project.Icon);
 }

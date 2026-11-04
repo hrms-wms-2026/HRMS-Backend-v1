@@ -1,6 +1,7 @@
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
+using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Conversations.Contracts;
 using ONEVO.Application.Features.Conversations.Services;
@@ -24,6 +25,7 @@ public class ChatInfoHandlersTests
 
     private readonly InMemoryConversationRepository _repo = new();
     private readonly Mock<IConversationAccess> _access = new();
+    private readonly Mock<IPrimaryEntityAssetLinker> _assets = new();
     private readonly Conversation _group;
     private readonly Conversation _direct;
     private readonly ChatInfoHandlers _handlers;
@@ -31,6 +33,8 @@ public class ChatInfoHandlersTests
     public ChatInfoHandlersTests()
     {
         _group = AddChat(ConversationSources.Group);
+        _assets.Setup(a => a.RemoveAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result.Success());
         _direct = AddChat(ConversationSources.Direct);
         var currentUser = new Mock<ICurrentUser>();
         currentUser.Setup(u => u.IsAuthenticated).Returns(true);
@@ -41,7 +45,7 @@ public class ChatInfoHandlersTests
             .ReturnsAsync((Guid _, IReadOnlyList<Guid> ids, CancellationToken _) =>
                 ids.ToDictionary(id => id, id => new EmployeeIdentityDto(id == Ravi ? "Ravi" : "Me", null)));
         _handlers = new ChatInfoHandlers(new InboxCallerResolver(currentUser.Object, identity.Object), _access.Object, _repo, identity.Object,
-            Mock.Of<IPrimaryEntityAssetLinker>(), currentUser.Object, Mock.Of<IInboxRealtimePublisher>(), NullLogger<ChatInfoHandlers>.Instance);
+            _assets.Object, currentUser.Object, Mock.Of<IInboxRealtimePublisher>(), NullLogger<ChatInfoHandlers>.Instance);
     }
 
     private Conversation AddChat(string source)
@@ -115,6 +119,25 @@ public class ChatInfoHandlersTests
 
         _group.Description.Should().Be("Monthly payroll checks");
         _direct.Description.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task A_group_icon_is_validated_trimmed_and_belongs_to_groups_only()
+    {
+        (await _handlers.Handle(new SetChatIconCommand(_group.Id, " emoji:🚀 ", "#7C5CFF"), CancellationToken.None)).IsSuccess.Should().BeTrue();
+        _group.Icon.Should().Be("emoji:🚀");
+        _group.Color.Should().Be("#7C5CFF");
+        _assets.Verify(a => a.RemoveAsync(TenantId, It.IsAny<Guid>(), It.IsAny<string>(), _group.Id, It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
+
+        (await _handlers.Handle(new SetChatIconCommand(_group.Id, "lucide:<script>", null), CancellationToken.None)).IsSuccess.Should().BeFalse();
+        (await _handlers.Handle(new SetChatIconCommand(_group.Id, "lucide:rocket", "red"), CancellationToken.None)).IsSuccess.Should().BeFalse();
+        (await _handlers.Handle(new SetChatIconCommand(_direct.Id, "lucide:rocket", null), CancellationToken.None)).IsSuccess.Should().BeFalse();
+        _group.Icon.Should().Be("emoji:🚀");
+        _direct.Icon.Should().BeNull();
+
+        (await _handlers.Handle(new SetChatIconCommand(_group.Id, "", "#7C5CFF"), CancellationToken.None)).IsSuccess.Should().BeTrue();
+        _group.Icon.Should().BeNull();
+        _group.Color.Should().BeNull();
     }
 
     [Fact]

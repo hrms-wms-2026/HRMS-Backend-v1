@@ -13,4 +13,5 @@ public record LeaveTypeResponse(
     string[] AcceptedDocumentTypes,
     bool IsActive,
     DateTimeOffset CreatedAt,
-    int PolicyCount = 0);
+    int PolicyCount = 0,
+    string? Icon = null);

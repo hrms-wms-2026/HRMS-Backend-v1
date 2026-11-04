@@ -14,6 +14,10 @@ public class Conversation : BaseEntity
     public DateTimeOffset? LastMessageAt { get; set; }
     /// <summary>A group's description (plain text), shown in its info panel. Null for none and for 1-on-1 chats.</summary>
     public string? Description { get; set; }
+    /// <summary>A group's picked icon, "lucide:{name}" or "emoji:{emoji}", shown when it has no photo. Null for 1-on-1 chats.</summary>
+    public string? Icon { get; set; }
+    /// <summary>The tint behind <see cref="Icon"/> (a hex colour). Null uses the default.</summary>
+    public string? Color { get; set; }
 }
 
 /// <summary>The conversation sources that are not an inbox module.</summary>

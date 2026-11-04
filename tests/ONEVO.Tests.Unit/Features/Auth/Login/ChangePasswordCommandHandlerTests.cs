@@ -32,7 +32,8 @@ public class ChangePasswordCommandHandlerTests
 
         var handler = new ChangePasswordCommandHandler(
             users.Object, hasher.Object, auditLog.Object, outbox.Object,
-            new Mock<IUnitOfWork>().Object, currentUser.Object, new Mock<IDateTimeProvider>().Object);
+            new Mock<IUnitOfWork>().Object, currentUser.Object, new Mock<IDateTimeProvider>().Object,
+            new Mock<ISessionRepository>().Object);
 
         var result = await handler.Handle(
             new ChangePasswordCommand("wrong-password", "NewPassword123"), CancellationToken.None);
@@ -64,10 +65,11 @@ public class ChangePasswordCommandHandlerTests
         var auditLog = new Mock<IAuditLogRepository>();
         var outbox = new Mock<IOutboxWriter>();
         var unitOfWork = new Mock<IUnitOfWork>();
+        var sessions = new Mock<ISessionRepository>();
 
         var handler = new ChangePasswordCommandHandler(
             users.Object, hasher.Object, auditLog.Object, outbox.Object,
-            unitOfWork.Object, currentUser.Object, new Mock<IDateTimeProvider>().Object);
+            unitOfWork.Object, currentUser.Object, new Mock<IDateTimeProvider>().Object, sessions.Object);
 
         var result = await handler.Handle(new ChangePasswordCommand("current-password", "new-password"), CancellationToken.None);
 
@@ -75,5 +77,55 @@ public class ChangePasswordCommandHandlerTests
         Assert.Equal("new-hash", user.PasswordHash);
         auditLog.Verify(a => a.AddAsync(It.Is<ONEVO.Domain.Features.Auth.Entities.AuditLog>(l => l.Action == "user.password_changed"), It.IsAny<CancellationToken>()), Times.Once);
         unitOfWork.Verify(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_Succeeds_RevokesOtherSessions_KeepsCurrentOne()
+    {
+        var userId = Guid.NewGuid();
+        var currentSessionId = Guid.NewGuid();
+        var currentUser = new Mock<ICurrentUser>();
+        currentUser.SetupGet(c => c.IsAuthenticated).Returns(true);
+        currentUser.SetupGet(c => c.TenantId).Returns(Guid.NewGuid());
+        currentUser.SetupGet(c => c.UserId).Returns(userId);
+        currentUser.SetupGet(c => c.SessionId).Returns(currentSessionId);
+
+        var users = new Mock<IUserRepository>();
+        users.Setup(u => u.GetByIdAsync(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new User { Id = userId, PasswordHash = "old-hash" });
+        var hasher = new Mock<IPasswordHasher>();
+        hasher.Setup(h => h.Verify("current-password", "old-hash")).Returns(true);
+        var sessions = new Mock<ISessionRepository>();
+
+        var handler = new ChangePasswordCommandHandler(
+            users.Object, hasher.Object, new Mock<IAuditLogRepository>().Object, new Mock<IOutboxWriter>().Object,
+            new Mock<IUnitOfWork>().Object, currentUser.Object, new Mock<IDateTimeProvider>().Object, sessions.Object);
+
+        var result = await handler.Handle(new ChangePasswordCommand("current-password", "new-password"), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        sessions.Verify(s => s.RevokeAllActiveByUserIdExceptAsync(userId, currentSessionId, It.IsAny<CancellationToken>()), Times.Once);
+        sessions.Verify(s => s.RevokeAllActiveByUserIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Handle_WrongPassword_DoesNotRevokeSessions()
+    {
+        var userId = Guid.NewGuid();
+        var currentUser = new Mock<ICurrentUser>();
+        currentUser.SetupGet(c => c.IsAuthenticated).Returns(true);
+        currentUser.SetupGet(c => c.UserId).Returns(userId);
+        var users = new Mock<IUserRepository>();
+        users.Setup(u => u.GetByIdAsync(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new User { Id = userId, PasswordHash = "stored-hash" });
+        var sessions = new Mock<ISessionRepository>();
+
+        var handler = new ChangePasswordCommandHandler(
+            users.Object, new Mock<IPasswordHasher>().Object, new Mock<IAuditLogRepository>().Object, new Mock<IOutboxWriter>().Object,
+            new Mock<IUnitOfWork>().Object, currentUser.Object, new Mock<IDateTimeProvider>().Object, sessions.Object);
+
+        await handler.Handle(new ChangePasswordCommand("wrong", "new-password"), CancellationToken.None);
+
+        sessions.VerifyNoOtherCalls();
     }
 }

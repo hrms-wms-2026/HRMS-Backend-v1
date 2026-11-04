@@ -3,6 +3,7 @@ using System.Text.RegularExpressions;
 using MediatR;
 using Microsoft.Extensions.Logging;
 using ONEVO.Application.Common.Constants;
+using ONEVO.Application.Common.Helpers;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Conversations.Contracts;
@@ -22,6 +23,9 @@ public sealed record SetChatMutedCommand(Guid ConversationId, bool Muted) : IReq
 public sealed record SetChatDescriptionCommand(Guid ConversationId, string? Description) : IRequest<Result>;
 /// <summary>Sets a group's (or case group's) photo from an uploaded conversation_avatar file; null removes it.</summary>
 public sealed record SetChatPhotoCommand(Guid ConversationId, Guid? FileId) : IRequest<Result>;
+/// <summary>Sets a group's (or case group's) picked icon ("lucide:{name}" or "emoji:{emoji}") and tint; it replaces the
+/// photo. Null/empty icon clears it.</summary>
+public sealed record SetChatIconCommand(Guid ConversationId, string? Icon, string? Color) : IRequest<Result>;
 /// <summary>A page of the files posted in a chat. <see cref="Kind"/>: image, video, audio, document, or null for all.</summary>
 public sealed record ListChatMediaQuery(Guid ConversationId, string? Kind, int Page, int PageSize) : IRequest<Result<ChatMediaPageResponse>>;
 /// <summary>The chat's text messages that contain the text, newest first.</summary>
@@ -38,6 +42,7 @@ public sealed partial class ChatInfoHandlers :
     IRequestHandler<SetChatMutedCommand, Result>,
     IRequestHandler<SetChatDescriptionCommand, Result>,
     IRequestHandler<SetChatPhotoCommand, Result>,
+    IRequestHandler<SetChatIconCommand, Result>,
     IRequestHandler<ListChatMediaQuery, Result<ChatMediaPageResponse>>,
     IRequestHandler<SearchChatMessagesQuery, Result<IReadOnlyList<ChatSearchResult>>>
 {
@@ -112,6 +117,9 @@ public sealed partial class ChatInfoHandlers :
                 UploadPurposeCatalog.ConversationAvatar, fileId, ct);
             if (!linked.IsSuccess)
                 return Result.Failure(linked.Error ?? "The photo could not be saved.", linked.StatusCode ?? 400);
+            // A photo replaces a picked icon.
+            if (context.Conversation.Icon is not null)
+                await _conversations.SetIconAsync(caller.TenantId, command.ConversationId, null, null, ct);
         }
         else
         {
@@ -120,6 +128,34 @@ public sealed partial class ChatInfoHandlers :
             if (!removed.IsSuccess)
                 return Result.Failure(removed.Error ?? "The photo could not be removed.", removed.StatusCode ?? 400);
         }
+        await PublishChangedAsync(caller, context, ct);
+        return Result.Success();
+    }
+
+    public async Task<Result> Handle(SetChatIconCommand command, CancellationToken ct)
+    {
+        if (await _callers.ResolveAsync(ct) is not { } caller)
+            return Result.Forbidden(InboxCallerResolver.NoEmployeeMessage);
+        var icon = EntityIconRules.Normalize(command.Icon);
+        var color = icon is null ? null : EntityIconRules.Normalize(command.Color);
+        if (!EntityIconRules.IsValid(icon))
+            return Result.UnprocessableEntity(EntityIconRules.InvalidMessage);
+        if (!EntityIconRules.IsValidColor(color))
+            return Result.UnprocessableEntity("Colour must be a #RRGGBB hex colour.");
+        var context = await _access.LoadAsync(caller.TenantId, command.ConversationId, caller.EmployeeId, ct);
+        if (context is null)
+            return Result.NotFound(InboxChatHandlers.NotFoundMessage);
+        if (context.Conversation.SubjectSource == ConversationSources.Direct)
+            return Result.UnprocessableEntity(DirectChatMessage);
+        if (icon is not null)
+        {
+            // An icon replaces the photo.
+            var removed = await _assets.RemoveAsync(caller.TenantId, _currentUser.UserId, EntityAssetOwnerTypes.Conversation, command.ConversationId,
+                UploadPurposeCatalog.ConversationAvatar, ct);
+            if (!removed.IsSuccess)
+                return Result.Failure(removed.Error ?? "The photo could not be removed.", removed.StatusCode ?? 400);
+        }
+        await _conversations.SetIconAsync(caller.TenantId, command.ConversationId, icon, color, ct);
         await PublishChangedAsync(caller, context, ct);
         return Result.Success();
     }

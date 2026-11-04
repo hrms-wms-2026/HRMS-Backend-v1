@@ -14,6 +14,8 @@ public class LeaveType : ITenantOwnedEntity
     public string Code { get; set; } = string.Empty;
     public string? Description { get; set; }
     public string Color { get; set; } = DefaultColor;
+    /// <summary>The picked icon, "lucide:{name}" or "emoji:{emoji}"; null shows a picture guessed from the name.</summary>
+    public string? Icon { get; set; }
     public bool IsPaid { get; set; } = true;
     public bool RequiresDocument { get; set; }
     public decimal? DocumentRequiredAfterHours { get; set; }

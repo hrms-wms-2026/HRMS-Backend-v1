@@ -22,8 +22,9 @@ public class LeaveTypesControllerArchitectureTests
     public void Actions_UseExpectedPermissions()
     {
         // Employees (leave:read-own) pick a leave type in the New Request wizard, so they must be
-        // able to list active types - the handler hides inactive ones from them.
-        Assert.Equal(new[] { "leave:read", "leave:read-own" }, GetAnyPermissions(nameof(LeaveTypesController.List)));
+        // able to list active types - the handler hides inactive ones from them. leave:manage holders
+        // (who create the types) list them too, so the Time Off setup guide can tell nothing exists yet.
+        Assert.Equal(new[] { "leave:read", "leave:read-own", "leave:manage" },GetAnyPermissions(nameof(LeaveTypesController.List)));
         Assert.Equal("leave:read", GetPermission(nameof(LeaveTypesController.Get)));
         Assert.Equal("leave:manage", GetPermission(nameof(LeaveTypesController.Create)));
         Assert.Equal("leave:manage", GetPermission(nameof(LeaveTypesController.Update)));
