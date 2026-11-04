@@ -33,6 +33,9 @@ public sealed class EfPlannerRepository : IPlannerRepository
             .OrderBy(b => b.StartAt).ToListAsync(ct);
     }
 
+    public async Task<IReadOnlyList<PlannedTaskBlock>> ListTrackedBlocksOfTaskAsync(Guid tenantId, Guid taskId, CancellationToken ct = default)
+        => await _db.PlannedTaskBlocks.Where(b => b.TenantId == tenantId && b.TaskId == taskId && !b.IsDeleted).ToListAsync(ct);
+
     public async Task<PlannedTaskBlock?> GetBlockTrackedAsync(Guid tenantId, Guid employeeId, Guid blockId, CancellationToken ct = default)
         => await _db.PlannedTaskBlocks
             .FirstOrDefaultAsync(b => b.TenantId == tenantId && b.EmployeeId == employeeId && b.Id == blockId && !b.IsDeleted, ct);

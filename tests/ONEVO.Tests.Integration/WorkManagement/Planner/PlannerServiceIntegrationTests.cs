@@ -431,6 +431,23 @@ public sealed class PlannerServiceIntegrationTests
         Assert.Equal(420, yesterday.AttendanceMinutes);  // clocked out: the recorded worked minutes
     }
 
+    // Follow-up 2: a reverted work item request takes the blocks of the task it created off the Planner.
+    [Fact]
+    public async Task RemoveBlocksOfTask_takes_every_block_of_the_task_off_the_planner()
+    {
+        var w = await SeedAsync();
+        Assert.True((await PlanAsync(w, w.Task, Local(10), Local(11))).IsSuccess);
+        Assert.True((await PlanAsync(w, w.Task, Local(14), Local(15))).IsSuccess);
+
+        await using (var db = w.H.NewContext())
+        {
+            await ((IPlannerBlockWriter)Service(db)).RemoveBlocksOfTaskAsync(w.H.TenantId, w.Task, default);
+            await db.SaveChangesAsync();
+        }
+
+        Assert.Empty((await DayAsync(w, w.Employee, w.Employee)).Value!.Blocks);
+    }
+
     [Fact]
     public async Task Ancestor_can_view_peer_gets_404_and_private_meetings_are_masked()
     {

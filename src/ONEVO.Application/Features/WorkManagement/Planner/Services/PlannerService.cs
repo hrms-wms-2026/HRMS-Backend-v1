@@ -159,6 +159,12 @@ public sealed class PlannerService : IPlannerBlockWriter
         return planned.IsSuccess ? Result.Success() : Result.Failure(planned.Error!, planned.StatusCode ?? 400, planned.ErrorCode);
     }
 
+    async Task IPlannerBlockWriter.RemoveBlocksOfTaskAsync(Guid tenantId, Guid taskId, CancellationToken ct)
+    {
+        foreach (var block in await _planner.ListTrackedBlocksOfTaskAsync(tenantId, taskId, ct))
+            _planner.RemoveBlock(block);
+    }
+
     public async Task<Result<PlannerDayResponse>> MoveBlockAsync(Guid tenantId, Guid callerEmployeeId, Guid blockId,
         MovePlannedBlockRequest request, CancellationToken ct)
     {
