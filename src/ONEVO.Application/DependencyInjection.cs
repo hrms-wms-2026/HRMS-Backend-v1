@@ -64,6 +64,9 @@ public static class DependencyInjection
         services.AddScoped<
             ONEVO.Application.Features.TimeAttendance.Services.IEmployeeAttendancePeriodReader,
             ONEVO.Application.Features.TimeAttendance.Services.EmployeeAttendancePeriodReader>();
+        services.AddScoped<
+            ONEVO.Application.Features.TimeAttendance.Team.Services.ITeamAttendancePeriodReader,
+            ONEVO.Application.Features.TimeAttendance.Team.Services.TeamAttendancePeriodReader>();
         // Registered as concrete types too: TrayClockInCommandHandler/TrayClockOutCommandHandler/
         // TrayStartBreakCommandHandler/TrayEndBreakCommandHandler inject these directly to reuse
         // their mutation logic without duplicating it.

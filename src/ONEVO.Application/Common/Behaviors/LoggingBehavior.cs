@@ -27,7 +27,7 @@ public class LoggingBehavior<TRequest, TResponse> : IPipelineBehavior<TRequest, 
             _currentUser.IsAuthenticated ? _currentUser.UserId : Guid.Empty,
             _currentUser.IsAuthenticated ? _currentUser.TenantId : Guid.Empty);
 
-        var response = await next();
+        var response = await next(ct);
 
         _logger.LogInformation("Handled {RequestName}", requestName);
 

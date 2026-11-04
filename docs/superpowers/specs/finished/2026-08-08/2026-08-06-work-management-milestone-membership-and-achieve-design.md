@@ -3,7 +3,7 @@
 
 **Status:** Approved by user 2026-08-06, ready for implementation planning.
 
-**Builds on:** `docs/superpowers/specs/2026-08-04-work-management-milestone-hierarchy-design.md` (the tree-authorization model, Head/ReportingManager, and the request/approval workflow — all shipped and executed via `docs/superpowers/plans/2026-08-04-work-management-milestone-hierarchy.md`). This design does not change that plan's shipped tree-authorization rule (`OwnerId` = current Head has free control; creator never needs approval on their own creation) — it closes gaps found once the shipped feature was checked against the intended real-world user flow, and adds one new capability (Achieve) on top of it.
+**Builds on:** `docs/superpowers/specs/finished/2026-08-04/2026-08-04-work-management-milestone-hierarchy-design.md` (the tree-authorization model, Head/ReportingManager, and the request/approval workflow — all shipped and executed via `docs/superpowers/plans/finished/2026-08-04/2026-08-04-work-management-milestone-hierarchy.md`). This design does not change that plan's shipped tree-authorization rule (`OwnerId` = current Head has free control; creator never needs approval on their own creation) — it closes gaps found once the shipped feature was checked against the intended real-world user flow, and adds one new capability (Achieve) on top of it.
 
 **Origin:** brainstormed live with the user 2026-08-06 via `superpowers:brainstorming`, triggered by a final-review gap list (three Important findings parked, not fixed, at the end of the milestone-hierarchy plan) plus the user's own end-to-end flow walkthrough of the whole Work Management module.
 

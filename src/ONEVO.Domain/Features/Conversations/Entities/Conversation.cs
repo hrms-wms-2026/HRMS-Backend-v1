@@ -12,6 +12,8 @@ public class Conversation : BaseEntity
     public string SubjectKind { get; set; } = string.Empty;
     public Guid SubjectId { get; set; }
     public DateTimeOffset? LastMessageAt { get; set; }
+    /// <summary>A group's description (plain text), shown in its info panel. Null for none and for 1-on-1 chats.</summary>
+    public string? Description { get; set; }
 }
 
 /// <summary>The conversation sources that are not an inbox module.</summary>

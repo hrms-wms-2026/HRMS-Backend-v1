@@ -32,7 +32,8 @@ public static class Breakpoints
 
 public sealed record GridRect(int X, int Y, int W, int H);
 
-/// <summary>Sizes are desktop; tablet/mobile clamp W to the breakpoint column count.</summary>
+/// <summary>Sizes are desktop; tablet/mobile clamp W to the breakpoint column count. ShownOnWeb = false for a widget
+/// the web app keeps in the saved layout but never renders: the bootstrap loads no data for it.</summary>
 public sealed record WidgetDefinition(
     string Key,
     string DashboardKey,
@@ -42,4 +43,5 @@ public sealed record WidgetDefinition(
     int MinH,
     int MaxW,
     int MaxH,
-    bool HasProvider);
+    bool HasProvider,
+    bool ShownOnWeb = true);

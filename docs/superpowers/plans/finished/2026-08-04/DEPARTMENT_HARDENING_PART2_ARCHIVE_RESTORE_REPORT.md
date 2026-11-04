@@ -67,7 +67,7 @@
 - `src/ONEVO.Application/Features/OrgStructure/Department/Commands/RestoreDepartment/RestoreDepartmentCommandValidator.cs`
 - `src/ONEVO.Application/Features/OrgStructure/Department/Commands/RestoreDepartment/RestoreDepartmentCommandHandler.cs`
 - `tests/ONEVO.Tests.Architecture/DepartmentPart2ArchiveRestoreArchitectureTests.cs`
-- `docs/superpowers/plans/2026-08-04-department-hardening-part2.md`
+- `docs/superpowers/plans/finished/2026-08-04/2026-08-04-department-hardening-part2.md`
 - `DEPARTMENT_HARDENING_PART2_ARCHIVE_RESTORE_REPORT.md` (this file)
 
 **Modified:**
@@ -211,7 +211,7 @@ ASCII scan (PowerShell Select-String -Pattern '[^\x00-\x7F]', locale-independent
 own notes warned that `grep -qP` under Git Bash can silently no-op on a locale error and
 produce a false-clean result, so this task used the same PowerShell approach from the start):
   -> All 20 touched/created source and test files: 0 non-ASCII characters, clean on first scan.
-  -> This task's own plan document (docs/superpowers/plans/2026-08-04-department-hardening-part2.md)
+  -> This task's own plan document (docs/superpowers/plans/finished/2026-08-04/2026-08-04-department-hardening-part2.md)
      contained em-dash characters (prose formatting only, not code) - normalized to ASCII
      double-hyphens and rescanned clean, even though this constraint is really aimed at
      shipped source/test/migration files rather than planning docs.

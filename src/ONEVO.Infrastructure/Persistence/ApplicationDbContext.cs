@@ -324,6 +324,8 @@ public class ApplicationDbContext : DbContext
         => Set<ONEVO.Domain.Features.Conversations.Entities.ConversationParticipant>();
     public DbSet<ONEVO.Domain.Features.Conversations.Entities.ConversationFavorite> ConversationFavorites
         => Set<ONEVO.Domain.Features.Conversations.Entities.ConversationFavorite>();
+    public DbSet<ONEVO.Domain.Features.Conversations.Entities.ConversationMute> ConversationMutes
+        => Set<ONEVO.Domain.Features.Conversations.Entities.ConversationMute>();
     public DbSet<ONEVO.Domain.Features.Conversations.Entities.ConversationMessage> ConversationMessages
         => Set<ONEVO.Domain.Features.Conversations.Entities.ConversationMessage>();
     public DbSet<ONEVO.Domain.Features.Conversations.Entities.ConversationMessageRevision> ConversationMessageRevisions

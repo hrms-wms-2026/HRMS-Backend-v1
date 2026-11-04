@@ -8,7 +8,7 @@ using ONEVO.Application.Features.Storage.File.ServiceInterfaces;
 
 namespace ONEVO.Infrastructure.ExternalServices.Storage.CloudflareR2;
 
-public sealed class CloudflareR2ObjectStorageAdapter : IObjectStorageAdapter
+public sealed class CloudflareR2ObjectStorageAdapter : IObjectStorageAdapter, IDisposable
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -28,6 +28,8 @@ public sealed class CloudflareR2ObjectStorageAdapter : IObjectStorageAdapter
         _keyResolver = keyResolver;
         _logger = logger;
     }
+
+    public void Dispose() => _client?.Dispose();
 
     public async Task PutObjectAsync(string objectKey, Stream content, string contentType, CancellationToken ct = default)
     {

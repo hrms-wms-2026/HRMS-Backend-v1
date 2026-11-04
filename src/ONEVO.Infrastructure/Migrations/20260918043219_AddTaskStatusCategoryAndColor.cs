@@ -7,7 +7,7 @@ namespace ONEVO.Infrastructure.Migrations
     /// <summary>
     /// Adds Category (not_started/active/done) and Color to task_statuses, then backfills every
     /// existing row and repairs any (tenant, project, objective) scope left without an Active
-    /// category row - see docs/superpowers/specs/2026-09-18-task-status-groups-design.md for the
+    /// category row - see docs/superpowers/specs/finished/2026-09-18/2026-09-18-task-status-groups-design.md for the
     /// heuristic. SET LOCAL app.tenant_context_mode = 'admin' is required: task_statuses is FORCE
     /// ROW LEVEL SECURITY and migrations run as onevo_migrator (NOSUPERUSER NOBYPASSRLS) - without
     /// it every statement below silently matches zero rows (see BackfillTrayEmployeeIdentity's

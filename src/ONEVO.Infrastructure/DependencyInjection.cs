@@ -460,6 +460,8 @@ public static class DependencyInjection
         services.AddScoped<ONEVO.Application.Features.WorkManagement.Planner.Services.TeamPlannerService>();
         services.AddScoped<ONEVO.Application.Features.WorkManagement.Planner.Services.IPlannerBlockWriter>(
             sp => sp.GetRequiredService<ONEVO.Application.Features.WorkManagement.Planner.Services.PlannerService>());
+        services.AddScoped<ONEVO.Application.Features.WorkManagement.WeeklyProgress.RepositoryInterfaces.IWeeklyWorkProgressReadRepository,
+            ONEVO.Infrastructure.Persistence.Repositories.WorkManagement.WeeklyProgress.EfWeeklyWorkProgressReadRepository>();
         services.AddHostedService<Services.WorkManagement.Meetings.MeetingOccurrenceGeneratorJob>();
         services.AddScoped<ONEVO.Application.Features.WorkManagement.Meetings.Services.MeetingAttendanceSyncService>();
         services.AddScoped<ONEVO.Application.Features.WorkManagement.Meetings.Services.MeetingAttendanceReadService>();
@@ -511,6 +513,7 @@ public static class DependencyInjection
         services.AddScoped<IWorkNotificationLogRepository>(sp => sp.GetRequiredService<EfWorkNotificationLogRepository>());
         services.AddScoped<IMonitorAlertRepository, EfMonitorAlertRepository>();
         services.AddScoped<IModuleHourSummaryRepository, EfModuleHourSummaryRepository>();
+        services.AddScoped<ONEVO.Application.Features.WorkManagement.Leadership.RepositoryInterfaces.ILedProgressReadRepository, EfLedProgressReadRepository>();
         services.AddScoped<ONEVO.Application.Features.Dashboard.Layout.RepositoryInterfaces.IUserDashboardRepository, ONEVO.Infrastructure.Persistence.Repositories.Dashboard.EfUserDashboardRepository>();
         services.AddScoped<EfTaskEditLogRepository>();
         services.AddScoped<ITaskEditLogRepository>(sp => sp.GetRequiredService<EfTaskEditLogRepository>());
@@ -555,6 +558,7 @@ public static class DependencyInjection
             sp => sp.GetRequiredService<ONEVO.Infrastructure.Persistence.Repositories.EfEmployeeRepository>());
         services.AddScoped<ONEVO.Application.Features.Storage.EntityAssets.Services.EmployeeEntityAssetAccessPolicy>();
         services.AddScoped<ONEVO.Application.Features.Storage.EntityAssets.Services.LegalEntityEntityAssetAccessPolicy>();
+        services.AddScoped<ONEVO.Application.Features.Inbox.Chats.ConversationEntityAssetAccessPolicy>();
         services.AddScoped<
             ONEVO.Application.Features.CoreHr.Employee.Documents.IEmployeeDocumentAccess,
             ONEVO.Application.Features.CoreHr.Employee.Documents.EmployeeDocumentAccess>();
@@ -577,7 +581,9 @@ public static class DependencyInjection
                     [ONEVO.Application.Common.Constants.EntityAssetOwnerTypes.LegalEntity] =
                         sp.GetRequiredService<ONEVO.Application.Features.Storage.EntityAssets.Services.LegalEntityEntityAssetAccessPolicy>(),
                     [ONEVO.Application.Common.Constants.EntityAssetOwnerTypes.EmployeeDocument] =
-                        sp.GetRequiredService<ONEVO.Application.Features.Storage.EntityAssets.Services.EmployeeDocumentAccessPolicy>()
+                        sp.GetRequiredService<ONEVO.Application.Features.Storage.EntityAssets.Services.EmployeeDocumentAccessPolicy>(),
+                    [ONEVO.Application.Common.Constants.EntityAssetOwnerTypes.Conversation] =
+                        sp.GetRequiredService<ONEVO.Application.Features.Inbox.Chats.ConversationEntityAssetAccessPolicy>()
                     // Part 2 plan (Project/Objective/Task endpoint consolidation) adds the remaining
                     // three owner types here when their controllers migrate to the generic resolve endpoint.
                 }));
@@ -586,6 +592,7 @@ public static class DependencyInjection
         services.AddScoped<IMilestoneMembershipCoordinator, MilestoneMembershipCoordinator>();
         services.AddScoped<IWorkHierarchyService, WorkHierarchyService>();
         services.AddScoped<IModuleReadAccess, ModuleReadAccess>();
+        services.AddScoped<ONEVO.Application.Features.WorkManagement.Objectives.Services.ObjectiveAssetAccess>();
         services.AddScoped<IWorkCalendarResolver, WorkCalendarResolver>();
         services.AddScoped<IProjectMonitorSnapshotLoader, ProjectMonitorSnapshotLoader>();
         services.AddScoped<IProjectMonitorCallerResolver, ProjectMonitorCallerResolver>();
@@ -975,6 +982,13 @@ public static class DependencyInjection
             ONEVO.Application.Features.Monitoring.Screenshots.RepositoryInterfaces.IInactivityCaptureAttemptRepository,
             ONEVO.Infrastructure.Persistence.Repositories.Monitoring.Screenshots.EfInactivityCaptureAttemptRepository>();
         services.AddHostedService<ONEVO.Infrastructure.Services.Monitoring.Screenshots.AgentCommandExpiryJob>();
+
+        // Monitoring - Retention (MON-02: purges activity_raw_buffer and expired screenshot evidence)
+        services.AddScoped<
+            ONEVO.Application.Features.Monitoring.ActivityMonitoring.ServiceInterfaces.IMonitoringRetentionPurgeRunner,
+            ONEVO.Infrastructure.Services.Monitoring.Retention.MonitoringRetentionPurgeRunner>();
+        services.AddHostedService<ONEVO.Infrastructure.Services.Monitoring.Retention.MonitoringRetentionPurgeJob>();
+
         services.AddHostedService<Services.WorkManagement.ProjectMonitorJob>();
         services.AddHostedService<Services.Calendar.CalendarSyncJob>();
         services.AddHostedService<Services.Calendar.TeamsAttendanceSyncJob>();
@@ -1032,6 +1046,8 @@ public static class DependencyInjection
             configuration.GetSection(ONEVO.Infrastructure.Configuration.StorageQuotaOptions.SectionName));
         services.Configure<ONEVO.Infrastructure.Configuration.FileStorageOptions>(
             configuration.GetSection(ONEVO.Infrastructure.Configuration.FileStorageOptions.SectionName));
+        services.Configure<ONEVO.Application.Features.Monitoring.ActivityMonitoring.Options.MonitoringRetentionOptions>(
+            configuration.GetSection(ONEVO.Application.Features.Monitoring.ActivityMonitoring.Options.MonitoringRetentionOptions.SectionName));
         services.AddOptions<AwsRekognitionOptions>()
             .Bind(configuration.GetSection(AwsRekognitionOptions.SectionName))
             .ValidateDataAnnotations()

@@ -141,8 +141,8 @@ public sealed class TeamPlannerService
     private async Task<IReadOnlyList<PlannerPersonDay>> BuildDaysAsync(Guid tenantId, Guid employeeId, PlannerZones.Zone zone,
         DateOnly from, DateOnly to, bool detail, bool maskPrivate, bool canReadLeave, LeaveRows leave, CancellationToken ct)
     {
-        var (start, _) = PlannerService.Bounds(from, zone.Info);
-        var (_, end) = PlannerService.Bounds(to, zone.Info);
+        var (start, _) = PlannerActuals.DayBounds(from, zone.Info);
+        var (_, end) = PlannerActuals.DayBounds(to, zone.Info);
         var now = _clock.UtcNow;
         var blocks = await _planner.ListBlocksAsync(tenantId, employeeId, start, end, ct);
         var tasks = await _planner.GetTasksAsync(tenantId, employeeId, blocks.Select(b => b.TaskId).Distinct().ToList(), ct);
@@ -161,7 +161,7 @@ public sealed class TeamPlannerService
         var days = new List<PlannerPersonDay>(to.DayNumber - from.DayNumber + 1);
         for (var day = from; day <= to; day = day.AddDays(1))
         {
-            var (dayStart, dayEnd) = PlannerService.Bounds(day, zone.Info);
+            var (dayStart, dayEnd) = PlannerActuals.DayBounds(day, zone.Info);
             var window = PlannerWorkWindows.For(legalEntity, day);
             DateTimeOffset? workStart = window is { IsWorkingDay: true } ? PlannerZones.At(day, window.WorkStart, zone.Info) : null;
             DateTimeOffset? workEnd = window is { IsWorkingDay: true } ? PlannerZones.At(day, window.WorkEnd, zone.Info) : null;
@@ -178,7 +178,7 @@ public sealed class TeamPlannerService
 
             var meetingViews = meetings.Where(m => m.StartAt < dayEnd && m.EndAt > dayStart).Select(m =>
             {
-                var minutes = PlannerService.MinutesInDay(m.StartAt, m.EndAt, m.IsAllDay, dayStart, dayEnd);
+                var minutes = PlannerActuals.MeetingMinutesInDay(m.StartAt, m.EndAt, m.IsAllDay, dayStart, dayEnd);
                 var counts = !m.Cancelled && !m.Declined;
                 return new PlannerMeetingView(m.TaskId, m.SeriesId, m.OriginalStart, m.StartAt, m.EndAt,
                     maskPrivate && m.IsPrivate ? PlannerService.PrivateTitle : m.Title, m.IsPrivate, m.Cancelled, m.Declined,

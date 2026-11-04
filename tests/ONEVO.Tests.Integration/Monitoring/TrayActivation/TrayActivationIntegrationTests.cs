@@ -511,13 +511,42 @@ public sealed class TrayActivationIntegrationTests : IClassFixture<TrayActivatio
         const string fingerprint = "fp-refresh-used-001";
         var (_, firstRefreshToken) = await _fixture.ExchangeCodeAsync(code, fingerprint);
 
-        // Rotate once — old token is revoked
-        await _fixture.PostRefreshAsync(firstRefreshToken, fingerprint);
+        // Rotate once, then use the replacement — the client demonstrably received it
+        var second = await ReadRefreshTokenAsync(await _fixture.PostRefreshAsync(firstRefreshToken, fingerprint));
+        (await _fixture.PostRefreshAsync(second, fingerprint)).StatusCode.Should().Be(HttpStatusCode.OK);
 
         // Replay the original (now revoked) token
         var replay = await _fixture.PostRefreshAsync(firstRefreshToken, fingerprint);
 
         replay.StatusCode.Should().Be(HttpStatusCode.Unauthorized, "a rotated-away token must be rejected");
+    }
+
+    [Fact]
+    public async Task Refresh_RetryAfterLostResponse_IssuesNewTokenAndRevokesUnreceivedOne()
+    {
+        var user = await _fixture.SeedActiveUserAsync("refresh-retry-test", "refresh-retry@test.dev", "RefRetryPass1!");
+        var session = await _fixture.LoginAndGetSessionAsync(user);
+        var code = await _fixture.GenerateCodeAsync(session);
+        const string fingerprint = "fp-refresh-retry-001";
+        var (_, firstRefreshToken) = await _fixture.ExchangeCodeAsync(code, fingerprint);
+
+        // The tray never sees this response (timeout / dropped connection) and retries.
+        var lost = await ReadRefreshTokenAsync(await _fixture.PostRefreshAsync(firstRefreshToken, fingerprint));
+        var retry = await _fixture.PostRefreshAsync(firstRefreshToken, fingerprint);
+
+        retry.StatusCode.Should().Be(HttpStatusCode.OK, "a retry inside the grace window must not log the device out");
+        var current = await ReadRefreshTokenAsync(retry);
+        current.Should().NotBe(lost);
+        (await _fixture.PostRefreshAsync(lost, fingerprint)).StatusCode
+            .Should().Be(HttpStatusCode.Unauthorized, "the unreceived replacement is revoked by the retry");
+        (await _fixture.PostRefreshAsync(current, fingerprint)).StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    private static async Task<string> ReadRefreshTokenAsync(HttpResponseMessage response)
+    {
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        return doc.RootElement.GetProperty("refresh_token").GetString()!;
     }
 
     [Fact]

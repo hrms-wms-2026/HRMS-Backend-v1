@@ -13,7 +13,7 @@
 - Only files under `docs/superpowers/project_ core/` may receive content edits in this plan. Every other file this plan touches is a **new** file.
 - Do not modify any existing file in `docs/superpowers/plans/` or `docs/superpowers/workflow/`.
 - Do not touch the unrelated pending git changes already in the working tree (the `*_REPORT.md` root-to-`workflow/` move). Do not `git add -A`; stage only the files this plan creates/modifies if a commit is requested.
-- Spec reference: `docs/superpowers/specs/2026-08-03-doc-audit-and-process-setup-design.md`.
+- Spec reference: `docs/superpowers/specs/finished/2026-08-03/2026-08-03-doc-audit-and-process-setup-design.md`.
 
 ---
 
@@ -53,7 +53,7 @@ When a `workflow/` report explicitly states it is code-verified (for example `au
 
 Only `project_ core/` documents (the architecture docs, the tables file) get content edits during doc-sync work. Other folders (`plans/`, `workflow/`) only receive **new** files (new plans, new workflow reports) — an existing file there is only changed if the user explicitly asks for that specific file to change.
 
-**Origin:** established 2026-08-03, see `docs/superpowers/specs/2026-08-03-doc-audit-and-process-setup-design.md`.
+**Origin:** established 2026-08-03, see `docs/superpowers/specs/finished/2026-08-03/2026-08-03-doc-audit-and-process-setup-design.md`.
 ```
 
 - [x] **Step 2: Write `docs/superpowers/rules/SUMMARY.md`**
@@ -323,7 +323,7 @@ git commit -m "docs: reconcile architecture doc auth section with verified auth 
 ### Task 6: Record Phase 2 as queued future work (no execution)
 
 **Files:**
-- Modify: `docs/superpowers/plans/2026-08-03-doc-audit-and-process-setup.md` (this file — add the queued-phase record below as part of writing this plan; no separate edit needed once this plan file itself contains this task)
+- Modify: `docs/superpowers/plans/finished/2026-08-03/2026-08-03-doc-audit-and-process-setup.md` (this file — add the queued-phase record below as part of writing this plan; no separate edit needed once this plan file itself contains this task)
 
 **Interfaces:**
 - Produces: an explicit, actionable follow-up description so Phase 2 can be started on request without re-deriving scope.

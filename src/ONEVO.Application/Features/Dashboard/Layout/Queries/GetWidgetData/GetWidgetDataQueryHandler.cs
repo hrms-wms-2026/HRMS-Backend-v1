@@ -30,8 +30,8 @@ public sealed class GetWidgetDataQueryHandler(
         if (dashboard is null || widget is null || dashboard.UserId != currentUser.UserId)
             return Result<WidgetDataResponseDto>.NotFound("Widget not found.");
 
-        // A retired/unknown key has no definition, so no provider.
-        if (DashboardWidgetRegistry.Get(widget.WidgetKey) is null)
+        // A retired/unknown key has no definition, so no provider; a widget the web never renders loads nothing.
+        if (DashboardWidgetRegistry.Get(widget.WidgetKey) is not { ShownOnWeb: true })
             return Result<WidgetDataResponseDto>.NotFound(WidgetDataErrors.NoProvider);
 
         var allowed = await access.GetAllowedKeysAsync(dashboard.DashboardKey, ct);

@@ -98,20 +98,40 @@ public sealed class GetDashboardBootstrapQueryHandlerTests
         Allow(DashboardKeys.MyWork, PlainEmployeeWork);
         var payload = new object();
         var fetchedAt = new DateTimeOffset(2026, 10, 20, 9, 0, 0, TimeSpan.Zero);
-        _widgetData["my-tasks"] = (new WidgetDataStateDto("success", fetchedAt, null), payload);
-        _widgetData["active-projects"] = (new WidgetDataStateDto("error", fetchedAt, "FORBIDDEN"), null);
+        _widgetData["active-projects"] = (new WidgetDataStateDto("success", fetchedAt, null), payload);
+        _widgetData["today-at-a-glance"] = (new WidgetDataStateDto("error", fetchedAt, "FORBIDDEN"), null);
 
         var result = await Handler().Handle(new GetDashboardBootstrapQuery(d.Id, "desktop"), default);
 
         var keys = Assert.Single(_loadedKeys);
         Assert.DoesNotContain("action-center", keys);
-        Assert.Equal(result.Value!.Widgets.Select(w => w.WidgetKey).OrderBy(k => k), keys.OrderBy(k => k));
-        var tasks = Assert.Single(result.Value.Widgets, w => w.WidgetKey == "my-tasks");
-        Assert.Equal(new WidgetDataStateDto("success", fetchedAt, null), tasks.DataState);
-        Assert.Same(payload, tasks.Data);
+        Assert.Equal(
+            result.Value!.Widgets.Select(w => w.WidgetKey)
+                .Where(k => DashboardWidgetRegistry.Get(k)!.ShownOnWeb).OrderBy(k => k),
+            keys.OrderBy(k => k));
         var projects = Assert.Single(result.Value.Widgets, w => w.WidgetKey == "active-projects");
-        Assert.Equal(new WidgetDataStateDto("error", fetchedAt, "FORBIDDEN"), projects.DataState);
-        Assert.Null(projects.Data);
+        Assert.Equal(new WidgetDataStateDto("success", fetchedAt, null), projects.DataState);
+        Assert.Same(payload, projects.Data);
+        var glance = Assert.Single(result.Value.Widgets, w => w.WidgetKey == "today-at-a-glance");
+        Assert.Equal(new WidgetDataStateDto("error", fetchedAt, "FORBIDDEN"), glance.DataState);
+        Assert.Null(glance.Data);
+    }
+
+    [Fact]
+    public async Task Bootstrap_does_not_load_data_for_widgets_hidden_on_web()
+    {
+        var d = Seed(DashboardKeys.MyWork);
+        Allow(DashboardKeys.MyWork, PlainEmployeeWork);
+        _widgetData["my-tasks"] = (new WidgetDataStateDto("success", DateTimeOffset.UtcNow, null), new object());
+
+        var result = await Handler().Handle(new GetDashboardBootstrapQuery(d.Id, "desktop"), default);
+
+        var keys = Assert.Single(_loadedKeys);
+        Assert.DoesNotContain("my-tasks", keys);
+        Assert.DoesNotContain("work-pattern", keys);
+        var tasks = Assert.Single(result.Value!.Widgets, w => w.WidgetKey == "my-tasks");
+        Assert.Equal(WidgetDataStatus.Client, tasks.DataState.Status);
+        Assert.Null(tasks.Data);
     }
 
     [Fact]
@@ -145,16 +165,19 @@ public sealed class GetDashboardBootstrapQueryHandlerTests
 
         var byKey = result.Value!.Widgets.ToDictionary(w => w.WidgetKey, w => w.Layout);
         Assert.Equal(7, byKey.Count);
-        Assert.Equal(new GridRect(0, 0, 3, 4), byKey["today-at-a-glance"]);
-        Assert.Equal(new GridRect(3, 0, 3, 4), byKey["today-total-time"]);
-        Assert.Equal(new GridRect(6, 0, 3, 4), byKey["active-projects"]);
-        Assert.Equal(new GridRect(9, 0, 3, 4), byKey["quick-actions"]);
-        Assert.Equal(new GridRect(0, 4, 6, 4), byKey["todays-schedule"]);
-        Assert.Equal(new GridRect(6, 4, 6, 4), byKey["my-tasks"]);
-        Assert.Equal(new GridRect(0, 8, 12, 4), byKey["work-pattern"]);
-        for (var y = 0; y < 4; y++)
+        Assert.Equal(new GridRect(0, 0, 4, 3), byKey["today-at-a-glance"]);
+        Assert.Equal(new GridRect(4, 0, 4, 3), byKey["today-total-time"]);
+        Assert.Equal(new GridRect(8, 0, 4, 5), byKey["todays-schedule"]);
+        Assert.Equal(new GridRect(0, 3, 4, 3), byKey["active-projects"]);
+        Assert.Equal(new GridRect(4, 3, 4, 3), byKey["quick-actions"]);
+        Assert.Equal(new GridRect(0, 6, 6, 4), byKey["my-tasks"]);
+        Assert.Equal(new GridRect(0, 10, 12, 4), byKey["work-pattern"]);
+        // The first two rows are what the web app shows on My Work; my-tasks / work-pattern sit below them. The one
+        // row under Today's schedule (x 8-11, y 5) is open in the owner's own layout too, so it is not a hole here.
+        for (var y = 0; y < 6; y++)
             for (var x = 0; x < 12; x++)
-                Assert.Contains(byKey.Values, r => x >= r.X && x < r.X + r.W && y >= r.Y && y < r.Y + r.H);
+                if (!(y == 5 && x >= 8))
+                    Assert.Contains(byKey.Values, r => x >= r.X && x < r.X + r.W && y >= r.Y && y < r.Y + r.H);
     }
 
     [Theory]
@@ -207,18 +230,19 @@ public sealed class GetDashboardBootstrapQueryHandlerTests
     public async Task Customized_layout_keeps_stored_rects()
     {
         var d = Seed(DashboardKeys.MyWork);
-        // Customized: my-tasks moved into the right half of its row.
-        SetDesktop(d, "my-tasks", new GridRect(6, 8, 6, 4));
+        // Customized: my-tasks narrowed to four columns where it stands.
+        SetDesktop(d, "my-tasks", new GridRect(3, 6, 4, 4));
         Allow(DashboardKeys.MyWork, PlainEmployeeWork);
 
         var result = await Handler().Handle(new GetDashboardBootstrapQuery(d.Id, "desktop"), default);
 
         var byKey = result.Value!.Widgets.ToDictionary(w => w.WidgetKey, w => w.Layout);
-        // Not the variant: stored columns are kept, only gravity compaction applies (as before).
-        Assert.Equal(new GridRect(6, 0, 3, 4), byKey["today-total-time"]);
-        Assert.Equal(new GridRect(9, 4, 3, 4), byKey["active-projects"]);
-        Assert.Equal(new GridRect(6, 8, 6, 4), byKey["my-tasks"]);
-        Assert.Equal(new GridRect(9, 0, 3, 4), byKey["quick-actions"]);
+        // Not the variant: stored columns are kept, only gravity compaction applies (as before): quick-actions rises into
+        // the hidden action center's rows; my-tasks stays under active-projects.
+        Assert.Equal(new GridRect(4, 0, 4, 3), byKey["today-total-time"]);
+        Assert.Equal(new GridRect(5, 3, 3, 3), byKey["active-projects"]);
+        Assert.Equal(new GridRect(0, 3, 3, 3), byKey["quick-actions"]);
+        Assert.Equal(new GridRect(3, 6, 4, 4), byKey["my-tasks"]);
         _repo.Verify(r => r.SaveWithVersionAsync(d, 1, It.IsAny<CancellationToken>()), Times.Once);
     }
 
@@ -234,7 +258,7 @@ public sealed class GetDashboardBootstrapQueryHandlerTests
 
         var full = DashboardWidgetRegistry.DefaultLayout(DashboardKeys.MyWork, "desktop").ToDictionary(i => i.Key, i => i.Rect);
         Assert.Equal(8, result.Value!.Widgets.Count);
-        Assert.Equal(new GridRect(3, 0, 6, 4), result.Value.Widgets.Single(w => w.WidgetKey == "action-center").Layout);
+        Assert.Equal(new GridRect(0, 3, 5, 3), result.Value.Widgets.Single(w => w.WidgetKey == "action-center").Layout);
         Assert.All(result.Value.Widgets, w => Assert.Equal(full[w.WidgetKey], w.Layout));
     }
 
@@ -242,7 +266,7 @@ public sealed class GetDashboardBootstrapQueryHandlerTests
     public async Task Hidden_widget_that_becomes_allowed_is_reinserted_without_overlap()
     {
         var d = Seed(DashboardKeys.MyWork);
-        SetDesktop(d, "my-tasks", new GridRect(6, 8, 6, 4));
+        SetDesktop(d, "my-tasks", new GridRect(6, 6, 6, 4));
         Allow(DashboardKeys.MyWork, PlainEmployeeWork);
         await Handler().Handle(new GetDashboardBootstrapQuery(d.Id, "desktop"), default);
 

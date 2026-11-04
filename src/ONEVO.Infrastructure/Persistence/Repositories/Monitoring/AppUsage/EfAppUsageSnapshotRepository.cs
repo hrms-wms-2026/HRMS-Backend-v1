@@ -13,6 +13,26 @@ public class EfAppUsageSnapshotRepository : IAppUsageSnapshotRepository
     public async Task AddRangeAsync(IEnumerable<AppUsageSnapshot> snapshots, CancellationToken ct)
         => await _db.AppUsageSnapshots.AddRangeAsync(snapshots, ct);
 
+    public async Task<IReadOnlySet<DateTimeOffset>> GetExistingCapturedAtsAsync(
+        Guid tenantId,
+        Guid agentDeviceId,
+        IReadOnlyCollection<DateTimeOffset> capturedAts,
+        CancellationToken ct)
+    {
+        if (capturedAts.Count == 0)
+            return new HashSet<DateTimeOffset>();
+
+        var existing = await _db.AppUsageSnapshots
+            .AsNoTracking()
+            .Where(s => s.TenantId == tenantId
+                        && s.AgentDeviceId == agentDeviceId
+                        && capturedAts.Contains(s.CapturedAt))
+            .Select(s => s.CapturedAt)
+            .ToListAsync(ct);
+
+        return existing.ToHashSet();
+    }
+
     public async Task<IReadOnlyList<AppUsageSnapshot>> GetByEmployeeDateAsync(
         Guid tenantId, Guid employeeId, DateOnly date, int page, int pageSize, CancellationToken ct)
     {

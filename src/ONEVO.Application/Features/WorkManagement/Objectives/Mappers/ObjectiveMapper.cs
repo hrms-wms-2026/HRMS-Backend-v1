@@ -6,13 +6,15 @@ namespace ONEVO.Application.Features.WorkManagement.Objectives.Mappers;
 public static class ObjectiveMapper
 {
     public static ObjectiveDetailResponse ToDetail(
-        Objective objective, IReadOnlyDictionary<Guid, string>? namesByEmployeeId = null, Guid? callerEmployeeId = null) => new(
+        Objective objective, IReadOnlyDictionary<Guid, string>? namesByEmployeeId = null, Guid? callerEmployeeId = null,
+        IReadOnlyList<ObjectiveAssetResponse>? assets = null) => new(
         objective.Id, objective.ProjectId, objective.ParentObjectiveId, objective.IsDefault, objective.Title, objective.Description,
         objective.OwnerId, objective.ReportingManagerId, objective.CreatedById, objective.StartDate, objective.EndDate,
         objective.Progress, objective.ActualHours, objective.AllocatedHours, objective.CompletedHours,
         objective.IsActive, objective.IsAchieved, objective.AchievedAt, objective.CreatedAt, objective.UpdatedAt,
         ResolveName(objective.OwnerId, namesByEmployeeId), ResolveName(objective.ReportingManagerId, namesByEmployeeId),
-        callerEmployeeId.HasValue && objective.OwnerId == callerEmployeeId.Value);
+        callerEmployeeId.HasValue && objective.OwnerId == callerEmployeeId.Value,
+        assets);
 
     private static string? ResolveName(Guid? employeeId, IReadOnlyDictionary<Guid, string>? namesByEmployeeId)
         => employeeId.HasValue && namesByEmployeeId is not null && namesByEmployeeId.TryGetValue(employeeId.Value, out var name) ? name : null;

@@ -16,7 +16,7 @@ It also makes Plan 3B's `overview/activity` include today.
 
 **Tech Stack:** ASP.NET Core, MediatR, EF Core (Npgsql; InMemory in unit tests), xUnit, Moq, FluentAssertions.
 
-**Spec:** `docs/superpowers/specs/2026-09-30-employee-detail-redesign-design.md` plus the Work & Activity mockup. Sibling plans: 4A (`2026-09-30-employee-work-activity-tasks-backend.md`), frontend `Hrms--Web-application---front-end---v1/docs/superpowers/plans/next/2026-09-30-employee-work-activity-tab.md`.
+**Spec:** `docs/superpowers/specs/finished/2026-09-30/2026-09-30-employee-detail-redesign-design.md` plus the Work & Activity mockup. Sibling plans: 4A (`2026-09-30-employee-work-activity-tasks-backend.md`), frontend `Hrms--Web-application---front-end---v1/docs/superpowers/plans/next/2026-09-30-employee-work-activity-tab.md`.
 
 ## Prerequisites
 
