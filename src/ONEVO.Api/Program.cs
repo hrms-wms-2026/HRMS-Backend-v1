@@ -113,6 +113,9 @@ app.UseRouting();
 app.UseMiddleware<PublicApiRateLimitingMiddleware>();
 app.UseMiddleware<HostTenantResolutionMiddleware>();
 app.UseMiddleware<AuthRateLimitingMiddleware>();
+// Must run before UseAuthentication: hides the caller's old session cookie from the cookie handler
+// on sign-in endpoints so every login creates a fresh session (see NewSessionSignInMiddleware).
+app.UseMiddleware<NewSessionSignInMiddleware>();
 app.UseAuthentication();
 // Middleware removed as part of cookie auth migration
 app.UseMiddleware<CsrfProtectionMiddleware>();

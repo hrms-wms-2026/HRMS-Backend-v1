@@ -110,6 +110,7 @@ public class CsrfProtectionMiddlewareTests
     {
         var ctx = MakeContext("POST", "/api/v1/employees");
         ctx.Request.Headers["Cookie"] = "onevo_session=sess-1";
+        AuthenticateUser(ctx, "TenantScheme", "aabbccdd");
         ctx.Response.Body = new MemoryStream();
 
         var sut = CreateSut();
@@ -120,14 +121,45 @@ public class CsrfProtectionMiddlewareTests
     }
 
     [Fact]
-    public async Task UnsafeMethod_NotAuthenticated_Rejects403()
+    public async Task UnsafeMethod_StaleSessionCookieThatDoesNotAuthenticate_PassesThroughForAuthorizationToAnswer401()
     {
+        // A revoked/expired onevo_session (with or without a leftover onevo_csrf) carries no
+        // ambient authority, so it must be treated like "no session cookie" - not answered with a
+        // CSRF 403, which the SPA cannot distinguish from a permission error.
         var ctx = MakeContext("POST", "/api/v1/employees");
         ctx.Request.Headers["Cookie"] = "onevo_session=sess-1";
         ctx.Request.Headers["X-CSRF-Token"] = "raw-token";
         ctx.Response.Body = new MemoryStream();
 
-        // User is not authenticated in context
+        var sut = CreateSut();
+        await sut.InvokeAsync(ctx, _tokenService);
+
+        Assert.True(_nextCalled);
+        Assert.NotEqual(403, ctx.Response.StatusCode);
+    }
+
+    [Fact]
+    public async Task AdminUnsafeMethod_StaleAdminSessionCookieThatDoesNotAuthenticate_PassesThrough()
+    {
+        var ctx = MakeContext("POST", "/admin/v1/auth/logout");
+        ctx.Request.Headers["Cookie"] = "admin_session=revoked-sess; admin_csrf=old-token";
+        ctx.Request.Headers["X-CSRF-Token"] = "old-token";
+        ctx.Response.Body = new MemoryStream();
+
+        var sut = CreateSut();
+        await sut.InvokeAsync(ctx, _tokenService);
+
+        Assert.True(_nextCalled);
+        Assert.NotEqual(403, ctx.Response.StatusCode);
+    }
+
+    [Fact]
+    public async Task AdminUnsafeMethod_LiveSessionMissingCsrfHeader_Rejects403()
+    {
+        var ctx = MakeContext("POST", "/admin/v1/tenants");
+        ctx.Request.Headers["Cookie"] = "admin_session=admin-sess-1";
+        AuthenticateUser(ctx, "AdminScheme", "aabbccdd");
+        ctx.Response.Body = new MemoryStream();
 
         var sut = CreateSut();
         await sut.InvokeAsync(ctx, _tokenService);

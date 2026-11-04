@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
 using ONEVO.Api.Contracts.Auth;
+using ONEVO.Api.Middleware;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Features.Auth.Login.DTOs.Responses;
 using ONEVO.Infrastructure.Identity.Sessions;
@@ -53,14 +54,12 @@ internal static class TenantAuthResponseWriter
     public static async Task SignInAsync(
         this ControllerBase controller, LoginResponseDto dto, IWebHostEnvironment env)
     {
-        // A browser calling login/session-exchange while it still holds a valid onevo_session
-        // cookie (e.g. re-login without logging out first) must not be left with that old
-        // session's cookie dangling: SignInAsync only issues a fresh onevo_csrf cookie below, so
-        // an un-cleared old onevo_session cookie would keep resolving to a session whose stored
-        // csrf_token_hash can never match the new onevo_csrf value, permanently failing CSRF
-        // checks (including logout) for that browser. Signing out first guarantees a clean pair.
-        if (controller.User.Identity?.IsAuthenticated == true)
-            await controller.HttpContext.SignOutAsync("TenantScheme");
+        // A browser signing in while it still holds an onevo_session cookie (re-login without
+        // logging out, a second tab, ...) must get a brand-new session whose csrf_token_hash
+        // matches the onevo_csrf issued below. NewSessionSignInMiddleware already hid the old
+        // cookie from the cookie handler (otherwise it would reuse the old session key and keep
+        // the old csrf hash); here the superseded session is revoked server-side.
+        await NewSessionSignInMiddleware.RevokeSupersededSessionAsync(controller.HttpContext, "TenantScheme");
 
         var claims = new List<Claim>
         {
@@ -68,8 +67,12 @@ internal static class TenantAuthResponseWriter
         };
         var principal = new ClaimsPrincipal(new ClaimsIdentity(claims, "TenantScheme"));
 
+        // IsPersistent: onevo_session must carry the same Expires as onevo_csrf and the 30-day
+        // server-side session (SessionPolicy). Without it the browser drops onevo_session on
+        // restart while onevo_csrf survives, forcing a re-login and leaving a stale CSRF cookie.
         var props = new AuthenticationProperties
         {
+            IsPersistent = true,
             ExpiresUtc = dto.ExpiresAt
         };
         props.Items[TenantDatabaseTicketStore.TenantIdItemKey] = dto.User.TenantId.ToString();

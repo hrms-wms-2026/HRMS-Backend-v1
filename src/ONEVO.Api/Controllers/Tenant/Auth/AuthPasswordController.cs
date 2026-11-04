@@ -58,6 +58,7 @@ public class AuthPasswordController : ControllerBase
 
     /// <summary>Forced password change when must_change_password is true.</summary>
     [HttpPost("force-change-password")]
+    [ONEVO.Api.Middleware.IssuesNewSession("TenantScheme")]
     [AllowAnonymous]
     public async Task<IActionResult> ForceChangePassword([FromBody] ForcePasswordChangeRequest request, CancellationToken ct)
     {

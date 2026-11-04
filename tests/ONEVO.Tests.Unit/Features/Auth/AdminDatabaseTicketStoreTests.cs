@@ -120,6 +120,9 @@ public class AdminDatabaseTicketStoreTests
         Assert.Equal("admin@onevo.com", ticket.Principal.FindFirstValue(ClaimTypes.Email));
         Assert.Equal("Platform Super Admin", ticket.Principal.FindFirstValue("platform_role"));
         Assert.Equal("csrf-hash", ticket.Properties.Items[AdminDatabaseTicketStore.CsrfTokenHashItemKey]);
+        // Sliding renewal re-issues the session cookie from this ticket; it must stay persistent so
+        // the cookie keeps its 30-day Expires instead of becoming a browser-session cookie.
+        Assert.True(ticket.Properties.IsPersistent);
 
         var permissionClaims = ticket.Principal.Claims
             .Where(c => c.Type == PlatformPermissionCatalog.PermissionClaimType)

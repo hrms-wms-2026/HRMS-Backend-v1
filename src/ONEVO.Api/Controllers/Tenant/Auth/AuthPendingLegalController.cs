@@ -22,6 +22,7 @@ public class AuthPendingLegalController : ControllerBase
 
     /// <summary>Return pending required documents while a legal acceptance challenge is active.</summary>
     [HttpPost("/api/v1/legal/acceptances/complete-login")]
+    [ONEVO.Api.Middleware.IssuesNewSession("TenantScheme")]
     [AllowAnonymous]
     public async Task<IActionResult> AcceptPendingLegalDocuments(
         [FromBody] AcceptPendingLegalDocumentsRequest request,

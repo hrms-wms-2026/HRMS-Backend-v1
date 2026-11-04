@@ -211,7 +211,8 @@ public sealed class BaseDomainLoginIntegrationTestsFixture : IAsyncLifetime
     /// Extracts continue_url + opaque code from a fully-authenticated base-host response and
     /// completes the handoff by POSTing to the tenant host's session-exchange endpoint.
     /// </summary>
-    public async Task<HttpResponseMessage> CompleteTenantSessionExchangeAsync(HttpResponseMessage priorResponse)
+    public async Task<HttpResponseMessage> CompleteTenantSessionExchangeAsync(
+        HttpResponseMessage priorResponse, string? cookieHeader = null)
     {
         var priorBody = await priorResponse.Content.ReadAsStringAsync();
         using var priorDocument = JsonDocument.Parse(priorBody);
@@ -223,6 +224,8 @@ public sealed class BaseDomainLoginIntegrationTestsFixture : IAsyncLifetime
 
         using var request = new HttpRequestMessage(HttpMethod.Post, "/api/v1/auth/session-exchange");
         request.Headers.Host = continueUrl.Host;
+        if (cookieHeader is not null)
+            request.Headers.Add("Cookie", cookieHeader);
         request.Content = JsonContent.Create(new { code });
         return await _client.SendAsync(request);
     }

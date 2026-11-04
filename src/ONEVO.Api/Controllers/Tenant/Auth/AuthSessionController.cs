@@ -41,6 +41,7 @@ public class AuthSessionController : ControllerBase
     /// the request host by HostTenantResolutionMiddleware, never from the request body/headers.
     /// </summary>
         [HttpPost("session-exchange")]
+        [ONEVO.Api.Middleware.IssuesNewSession("TenantScheme")]
     [AllowAnonymous]
     [ONEVO.Api.Middleware.AllowWithoutActiveTray]
 

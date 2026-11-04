@@ -62,6 +62,7 @@ public class AuthLoginController : ControllerBase
 
     /// <summary>Complete base-domain login after multiple candidate workspaces were offered.</summary>
     [HttpPost("login/select-workspace")]
+    [ONEVO.Api.Middleware.IssuesNewSession("TenantScheme")]
     [AllowAnonymous]
     public async Task<IActionResult> SelectWorkspace([FromBody] SelectWorkspaceRequest request, CancellationToken ct)
     {

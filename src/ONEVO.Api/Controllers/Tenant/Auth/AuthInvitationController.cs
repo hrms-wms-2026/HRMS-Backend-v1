@@ -37,6 +37,7 @@ public class AuthInvitationController : ControllerBase
 
     /// <summary>Complete invitation by setting a password and accepting required legal documents.</summary>
     [HttpPost("invitations/{token}/accept-password")]
+    [ONEVO.Api.Middleware.IssuesNewSession("TenantScheme")]
     [AllowAnonymous]
     public async Task<IActionResult> AcceptInvitationPassword(
         string token,
@@ -72,6 +73,7 @@ public class AuthInvitationController : ControllerBase
     /// returns 404, mirroring AcceptInvitationPassword's own tenant-host check.
     /// </summary>
     [HttpPost("invitations/{token}/accept-employee")]
+    [ONEVO.Api.Middleware.IssuesNewSession("TenantScheme")]
     [AllowAnonymous]
     public async Task<IActionResult> AcceptEmployeeInvitation(
         string token,
@@ -102,6 +104,7 @@ public class AuthInvitationController : ControllerBase
 
     /// <summary>Complete invitation with Google Sign-In.</summary>
     [HttpPost("invitations/{token}/accept-google")]
+    [ONEVO.Api.Middleware.IssuesNewSession("TenantScheme")]
     [AllowAnonymous]
     public async Task<IActionResult> AcceptInvitationGoogle(
         string token,

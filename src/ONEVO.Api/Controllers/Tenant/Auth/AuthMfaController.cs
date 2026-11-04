@@ -36,6 +36,7 @@ public class AuthMfaController : ControllerBase
 
     /// <summary>Verify TOTP code for a login MFA challenge.</summary>
     [HttpPost("mfa/verify")]
+    [ONEVO.Api.Middleware.IssuesNewSession("TenantScheme")]
     [AllowAnonymous]
     public async Task<IActionResult> VerifyMfa([FromBody] VerifyMfaRequest request, CancellationToken ct)
     {

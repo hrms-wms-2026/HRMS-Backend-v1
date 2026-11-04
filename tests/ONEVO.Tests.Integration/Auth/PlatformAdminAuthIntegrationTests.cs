@@ -230,6 +230,80 @@ public class PlatformAdminAuthIntegrationTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Login_SessionCookie_IsPersistent_WithSameLifetimeAsCsrfCookie()
+    {
+        var response = await _client.PostAsJsonAsync(
+            "/admin/v1/auth/login", new { email = AdminEmail, password = AdminPassword });
+        response.EnsureSuccessStatusCode();
+
+        var cookies = response.Headers.GetValues("Set-Cookie").ToList();
+        var session = cookies.Last(c => c.StartsWith("admin_session="));
+        var csrf = cookies.Last(c => c.StartsWith("admin_csrf="));
+
+        // A session-only admin_session (no expires) is dropped on browser restart while admin_csrf
+        // survives for 30 days: the admin is logged out despite a live 30-day server session.
+        session.Should().Contain("expires=", "admin_session must survive a browser restart");
+        ExpiresOf(session).Should().BeCloseTo(ExpiresOf(csrf), TimeSpan.FromMinutes(1));
+    }
+
+    [Fact]
+    public async Task MutatingRequest_WithRevokedSessionAndOldCsrf_Returns401_NotCsrf403()
+    {
+        var (sessionCookie, csrf) = await LoginAsync();
+        var logout = await _client.SendAsync(BuildRequest(
+            HttpMethod.Post, "/admin/v1/auth/logout", sessionCookie, csrf));
+        logout.StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        // Browser still holds the (now revoked) cookie pair, e.g. session revoked from another
+        // device. The SPA only returns to the login page on 401 - a CSRF 403 left it stuck.
+        var again = await _client.SendAsync(BuildRequest(
+            HttpMethod.Post, "/admin/v1/auth/logout", sessionCookie, csrf));
+        again.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+
+        var mutate = await _client.SendAsync(BuildRequest(
+            HttpMethod.Post, "/admin/v1/tenants", sessionCookie, csrf));
+        mutate.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
+    public async Task ReLogin_WhileStillHoldingValidSession_IssuesFreshSessionWhoseCsrfMatches()
+    {
+        var (oldSession, oldCsrf) = await LoginAsync();
+
+        using var relogin = new HttpRequestMessage(HttpMethod.Post, "/admin/v1/auth/login")
+        {
+            Content = JsonContent.Create(new { email = AdminEmail, password = AdminPassword })
+        };
+        relogin.Headers.Add("Cookie", $"{oldSession}; admin_csrf={oldCsrf}");
+        var response = await _client.SendAsync(relogin);
+        response.EnsureSuccessStatusCode();
+
+        // Browser semantics: the last Set-Cookie for a name wins.
+        var cookies = response.Headers.GetValues("Set-Cookie").ToList();
+        var newSession = cookies.Last(c => c.StartsWith("admin_session=")).Split(';')[0];
+        var newCsrf = cookies.Last(c => c.StartsWith("admin_csrf=")).Split(';')[0].Split('=', 2)[1];
+        newCsrf.Should().NotBe(oldCsrf);
+
+        var logout = await _client.SendAsync(BuildRequest(
+            HttpMethod.Post, "/admin/v1/auth/logout", newSession, newCsrf));
+        logout.StatusCode.Should().Be(HttpStatusCode.NoContent,
+            "the new admin_csrf must match the session admin_session now points to");
+
+        var oldStillWorks = await _client.SendAsync(
+            BuildRequest(HttpMethod.Get, "/admin/v1/auth/me", oldSession));
+        oldStillWorks.StatusCode.Should().Be(HttpStatusCode.Unauthorized,
+            "the superseded session must be revoked by the new login");
+    }
+
+    private static DateTimeOffset ExpiresOf(string setCookie)
+    {
+        var attr = setCookie.Split(';')
+            .Select(p => p.Trim())
+            .First(p => p.StartsWith("expires=", StringComparison.OrdinalIgnoreCase));
+        return DateTimeOffset.Parse(attr["expires=".Length..], System.Globalization.CultureInfo.InvariantCulture);
+    }
+
+    [Fact]
     public async Task UnauthenticatedRequest_401Body_IncludesCorrelationId()
     {
         var request = new HttpRequestMessage(HttpMethod.Get, "/admin/v1/tenants");

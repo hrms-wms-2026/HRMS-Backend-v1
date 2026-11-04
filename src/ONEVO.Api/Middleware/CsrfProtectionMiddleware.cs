@@ -60,14 +60,25 @@ public class CsrfProtectionMiddleware
             return;
         }
 
-        var isValid = scope switch
-        {
-            CsrfScope.Tenant => await IsTokenValidAsync(context, tokenService, "TenantScheme"),
-            CsrfScope.Admin => await IsTokenValidAsync(context, tokenService, "AdminScheme"),
-            _ => false
-        };
+        var expectedScheme = scope == CsrfScope.Admin ? "AdminScheme" : "TenantScheme";
 
-        if (!isValid)
+        // UseAuthentication() only auto-populates context.User for the default scheme
+        // (TenantScheme). AdminScheme is never authenticated unless requested explicitly,
+        // so it must be authenticated here rather than read off the ambient context.User.
+        var authenticateResult = await context.AuthenticateAsync(expectedScheme);
+        if (!authenticateResult.Succeeded || authenticateResult.Principal is null)
+        {
+            // The session cookie is present but no longer resolves to a live session (revoked,
+            // expired, or left over from an earlier login). Such a request carries no ambient
+            // authority for CSRF to protect, so it is treated exactly like a request with no
+            // session cookie at all: authorization downstream answers 401 on protected endpoints,
+            // which is what lets the SPAs recognise an ended session and return to the login
+            // page. Answering 403 "CSRF" here instead left users stuck (even logout failed).
+            await _next(context);
+            return;
+        }
+
+        if (!IsTokenValid(context, tokenService, authenticateResult.Principal))
         {
             _logger.LogWarning(
                 "Rejected request with missing or invalid CSRF token for {Method} {Path}",
@@ -88,20 +99,14 @@ public class CsrfProtectionMiddleware
         await _next(context);
     }
 
-    private static async Task<bool> IsTokenValidAsync(HttpContext context, ISecureTokenGenerator tokenService, string expectedScheme)
+    private static bool IsTokenValid(
+        HttpContext context, ISecureTokenGenerator tokenService, System.Security.Claims.ClaimsPrincipal principal)
     {
         var headerToken = context.Request.Headers["X-CSRF-Token"].FirstOrDefault();
         if (string.IsNullOrWhiteSpace(headerToken))
             return false;
 
-        // UseAuthentication() only auto-populates context.User for the default scheme
-        // (TenantScheme). AdminScheme is never authenticated unless requested explicitly,
-        // so it must be authenticated here rather than read off the ambient context.User.
-        var authenticateResult = await context.AuthenticateAsync(expectedScheme);
-        if (!authenticateResult.Succeeded || authenticateResult.Principal is null)
-            return false;
-
-        var expectedHash = authenticateResult.Principal.FindFirst("csrf_token_hash")?.Value;
+        var expectedHash = principal.FindFirst("csrf_token_hash")?.Value;
         if (string.IsNullOrEmpty(expectedHash))
             return false;
 

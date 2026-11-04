@@ -143,8 +143,12 @@ public sealed class AdminDatabaseTicketStore : ITicketStore
         }
 
         var principal = new ClaimsPrincipal(new ClaimsIdentity(claims, "AdminScheme"));
+        // IsPersistent must be restored here: this rebuilt ticket is what sliding renewal re-issues
+        // the admin_session cookie from, and a non-persistent ticket would turn it back into a
+        // browser-session cookie on the first renewal.
         var properties = new AuthenticationProperties
         {
+            IsPersistent = true,
             IssuedUtc = session.CreatedAt,
             ExpiresUtc = session.ExpiresAt,
         };

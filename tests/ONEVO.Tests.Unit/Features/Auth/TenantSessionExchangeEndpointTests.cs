@@ -1,6 +1,7 @@
 using FluentAssertions;
 using MediatR;
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -10,6 +11,7 @@ using Microsoft.Extensions.Hosting;
 using Moq;
 using ONEVO.Api.Contracts.Auth;
 using ONEVO.Api.Controllers.Tenant.Auth;
+using ONEVO.Api.Middleware;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Login.DTOs.Responses;
@@ -103,14 +105,14 @@ public sealed class TenantSessionExchangeEndpointTests
     }
 
     [Fact]
-    public async Task SessionExchange_BrowserAlreadyHasValidSessionCookie_SignsOutOldSessionBeforeSigningInFresh()
+    public async Task SessionExchange_BrowserAlreadyHasValidSessionCookie_RevokesOldSession_AndSignsInFresh()
     {
         // Regression test: a browser that still holds a valid onevo_session cookie (e.g. logging
-        // in again without logging out first) must have that old ticket cleared before the new
-        // one is issued. Without this, SignInAsync always issues a fresh onevo_csrf cookie but the
-        // old onevo_session cookie/session survives untouched, so the new CSRF cookie can never
-        // match the still-active old session's stored csrf_token_hash - permanently failing CSRF
-        // validation (including on the app's own logout button) until that stale cookie expires.
+        // in again without logging out first) must end up with a brand-new session. Signing out
+        // first is not enough: the cookie handler would still reuse the old session key on
+        // SignInAsync (renewing a now-revoked row, keeping its old csrf_token_hash). Instead
+        // NewSessionSignInMiddleware hides the old cookie from the handler and the sign-in helper
+        // revokes the superseded session through the ticket store.
         var tenantId = Guid.NewGuid();
         var sessionDto = new LoginResponseDto(
             CsrfToken: "raw-csrf",
@@ -126,19 +128,24 @@ public sealed class TenantSessionExchangeEndpointTests
             .Setup(s => s.ConsumeAsync("good-code", tenantId, It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result<LoginResponseDto>.Success(sessionDto));
 
-        var (controller, authenticationService) = CreateController(
-            tenantSessionExchange.Object, TenantContextMode.Tenant, tenantId, alreadyAuthenticated: true);
+        var (controller, authenticationService, ticketStore) = CreateControllerWithStore(
+            tenantSessionExchange.Object, TenantContextMode.Tenant, tenantId, existingSessionKey: "old-session-key");
 
         await controller.SessionExchange(new TenantSessionExchangeRequest("good-code"), CancellationToken.None);
 
-        authenticationService.Verify(
-            a => a.SignOutAsync(It.IsAny<HttpContext>(), "TenantScheme", It.IsAny<AuthenticationProperties>()),
+        ticketStore.Verify(
+            s => s.RemoveAsync("old-session-key", It.IsAny<HttpContext>(), It.IsAny<CancellationToken>()),
             Times.Once);
+        authenticationService.Verify(
+            a => a.SignOutAsync(It.IsAny<HttpContext>(), It.IsAny<string>(), It.IsAny<AuthenticationProperties>()),
+            Times.Never);
         authenticationService.Verify(
             a => a.SignInAsync(
                 It.IsAny<HttpContext>(), "TenantScheme", It.IsAny<System.Security.Claims.ClaimsPrincipal>(),
-                It.IsAny<AuthenticationProperties>()),
+                It.Is<AuthenticationProperties>(p => p.IsPersistent)),
             Times.Once);
+        controller.Request.Cookies.ContainsKey("onevo_session").Should().BeFalse(
+            "the cookie handler must never see the old session cookie on a sign-in request");
     }
 
     [Fact]
@@ -159,13 +166,16 @@ public sealed class TenantSessionExchangeEndpointTests
             .Setup(s => s.ConsumeAsync("good-code", tenantId, It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result<LoginResponseDto>.Success(sessionDto));
 
-        var (controller, authenticationService) = CreateController(
-            tenantSessionExchange.Object, TenantContextMode.Tenant, tenantId, alreadyAuthenticated: false);
+        var (controller, authenticationService, ticketStore) = CreateControllerWithStore(
+            tenantSessionExchange.Object, TenantContextMode.Tenant, tenantId, existingSessionKey: null);
 
         await controller.SessionExchange(new TenantSessionExchangeRequest("good-code"), CancellationToken.None);
 
         authenticationService.Verify(
             a => a.SignOutAsync(It.IsAny<HttpContext>(), It.IsAny<string>(), It.IsAny<AuthenticationProperties>()),
+            Times.Never);
+        ticketStore.Verify(
+            s => s.RemoveAsync(It.IsAny<string>(), It.IsAny<HttpContext>(), It.IsAny<CancellationToken>()),
             Times.Never);
     }
 
@@ -183,8 +193,19 @@ public sealed class TenantSessionExchangeEndpointTests
         ITenantSessionExchangeService tenantSessionExchange,
         TenantContextMode contextMode,
         Guid? tenantId = null,
+        string? remoteIp = null)
+    {
+        var (controller, authenticationService, _) = CreateControllerWithStore(
+            tenantSessionExchange, contextMode, tenantId, remoteIp, existingSessionKey: null);
+        return (controller, authenticationService);
+    }
+
+    private static (AuthSessionController Controller, Mock<IAuthenticationService> AuthenticationService, Mock<ITicketStore> TicketStore) CreateControllerWithStore(
+        ITenantSessionExchangeService tenantSessionExchange,
+        TenantContextMode contextMode,
+        Guid? tenantId = null,
         string? remoteIp = null,
-        bool alreadyAuthenticated = false)
+        string? existingSessionKey = null)
     {
         var mediator = new Mock<IMediator>();
         var environment = new Mock<IWebHostEnvironment>();
@@ -213,27 +234,49 @@ public sealed class TenantSessionExchangeEndpointTests
         // minimal registration that provides it without pulling in unrelated MVC pipeline pieces.
         services.AddLogging();
         services.AddMvcCore();
+        // Real cookie options (name, cookie manager, ticket format) for TenantScheme, backed by a
+        // mock ticket store; the mocked IAuthenticationService above stays registered (TryAdd).
+        var ticketStore = new Mock<ITicketStore>();
+        services.AddAuthentication().AddCookie("TenantScheme", options =>
+        {
+            options.Cookie.Name = "onevo_session";
+            options.SessionStore = ticketStore.Object;
+        });
 
         var httpContext = new DefaultHttpContext { RequestServices = services.BuildServiceProvider() };
         if (remoteIp is not null)
             httpContext.Connection.RemoteIpAddress = System.Net.IPAddress.Parse(remoteIp);
 
-        // Simulates a browser that still carries a valid (but stale) onevo_session cookie from an
-        // earlier login: automatic authentication middleware would have already populated
-        // HttpContext.User from that old ticket by the time the controller action runs.
-        if (alreadyAuthenticated)
+        // Simulates a browser that still carries an onevo_session cookie from an earlier login,
+        // passed through NewSessionSignInMiddleware exactly as the real pipeline does (session-exchange
+        // is an [IssuesNewSession] endpoint).
+        httpContext.SetEndpoint(new Endpoint(
+            _ => Task.CompletedTask,
+            new EndpointMetadataCollection(new IssuesNewSessionAttribute("TenantScheme")),
+            "session-exchange"));
+        var cookieOptions = httpContext.RequestServices
+            .GetRequiredService<Microsoft.Extensions.Options.IOptionsMonitor<Microsoft.AspNetCore.Authentication.Cookies.CookieAuthenticationOptions>>()
+            .Get("TenantScheme");
+        if (existingSessionKey is not null)
         {
-            var oldTicketClaims = new System.Security.Claims.ClaimsIdentity(
-                [new System.Security.Claims.Claim(System.Security.Claims.ClaimTypes.NameIdentifier, Guid.NewGuid().ToString())],
+            var oldTicket = new AuthenticationTicket(
+                new System.Security.Claims.ClaimsPrincipal(new System.Security.Claims.ClaimsIdentity(
+                    [new System.Security.Claims.Claim("Microsoft.AspNetCore.Authentication.Cookies-SessionId", existingSessionKey)],
+                    "TenantScheme")),
                 "TenantScheme");
-            httpContext.User = new System.Security.Claims.ClaimsPrincipal(oldTicketClaims);
+            httpContext.Request.Headers.Cookie =
+                $"onevo_session={cookieOptions.TicketDataFormat.Protect(oldTicket)}; onevo_csrf=old-csrf";
         }
+        new NewSessionSignInMiddleware(_ => Task.CompletedTask)
+            .InvokeAsync(httpContext, httpContext.RequestServices
+                .GetRequiredService<Microsoft.Extensions.Options.IOptionsMonitor<Microsoft.AspNetCore.Authentication.Cookies.CookieAuthenticationOptions>>())
+            .GetAwaiter().GetResult();
 
         var controller = new AuthSessionController(mediator.Object, environment.Object, tenantContext.Object, tenantSessionExchange, configuration)
         {
             ControllerContext = new ControllerContext { HttpContext = httpContext }
         };
 
-        return (controller, authenticationService);
+        return (controller, authenticationService, ticketStore);
     }
 }

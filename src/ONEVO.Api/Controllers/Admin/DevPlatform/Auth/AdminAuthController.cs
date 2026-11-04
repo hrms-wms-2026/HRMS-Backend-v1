@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authentication;
 using System.Security.Claims;
+using ONEVO.Api.Middleware;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Infrastructure.Identity.Sessions;
 using ONEVO.Application.Features.Auth.Login.Commands.AdminGoogleLogin;
@@ -49,6 +50,7 @@ public sealed class AdminAuthController : ControllerBase
     /// <summary>Exchange a Google ID token for a cookie-backed platform-admin session.</summary>
     [HttpPost("google-callback")]
     [AllowAnonymous]
+    [IssuesNewSession("AdminScheme")]
     public async Task<IActionResult> GoogleCallback([FromBody] AdminGoogleCallbackRequest request, CancellationToken ct)
     {
         var ip = HttpContext.Connection.RemoteIpAddress?.ToString();
@@ -67,11 +69,10 @@ public sealed class AdminAuthController : ControllerBase
     /// </summary>
     [HttpPost("login")]
     [AllowAnonymous]
+    [IssuesNewSession("AdminScheme")]
     public async Task<IActionResult> Login(
         [FromBody] AdminLoginRequest request, CancellationToken ct)
     {
-        ClearStaleAdminSessionCookies();
-
         var ip = HttpContext.Connection.RemoteIpAddress?.ToString();
         var ua = Request.Headers.UserAgent.ToString();
 
@@ -173,6 +174,7 @@ public sealed class AdminAuthController : ControllerBase
     /// <summary>Login step 2 - completes an MFA-gated admin login using the admin_mfa challenge cookie.</summary>
     [HttpPost("mfa/verify")]
     [AllowAnonymous]
+    [IssuesNewSession("AdminScheme")]
     public async Task<IActionResult> VerifyMfa([FromBody] VerifyAdminMfaRequest request, CancellationToken ct)
     {
         if (!Request.Cookies.TryGetValue("admin_mfa", out var challenge) || string.IsNullOrWhiteSpace(challenge))
@@ -197,31 +199,6 @@ public sealed class AdminAuthController : ControllerBase
         return NoContent();
     }
 
-    /// <summary>
-    /// Deletes a leftover admin_session/admin_csrf pair before a fresh login attempt.
-    /// CsrfProtectionMiddleware only checks for the presence of admin_session to decide whether
-    /// CSRF must be validated - a stale cookie from an earlier session (still within its sliding
-    /// window) makes it wrongly demand a CSRF token on pre-auth calls like mfa/verify.
-    /// </summary>
-    private void ClearStaleAdminSessionCookies()
-    {
-        if (!Request.Cookies.ContainsKey("admin_session"))
-            return;
-
-        Response.Cookies.Delete("admin_session", new CookieOptions
-        {
-            HttpOnly = true,
-            Secure = !_env.IsDevelopment(),
-            SameSite = SameSiteMode.Strict,
-        });
-        Response.Cookies.Delete("admin_csrf", new CookieOptions
-        {
-            HttpOnly = false,
-            Secure = !_env.IsDevelopment(),
-            SameSite = SameSiteMode.Strict,
-        });
-    }
-
     private void SetAdminMfaChallengeCookie(string challenge)
     {
         Response.Cookies.Append("admin_mfa", challenge, new CookieOptions
@@ -244,13 +221,21 @@ public sealed class AdminAuthController : ControllerBase
         };
         var principal = new ClaimsPrincipal(new ClaimsIdentity(claims, "AdminScheme"));
 
+        // IsPersistent: admin_session must carry the same Expires as admin_csrf and the 30-day
+        // server-side session. Without it the browser drops admin_session on restart while
+        // admin_csrf survives, logging the admin out and leaving an orphaned CSRF cookie behind.
         var props = new AuthenticationProperties
         {
+            IsPersistent = true,
             ExpiresUtc = dto.ExpiresAt
         };
         props.Items[AdminDatabaseTicketStore.PlatformRoleItemKey] = dto.PlatformRole;
         props.Items[AdminDatabaseTicketStore.CsrfTokenHashItemKey] = dto.CsrfTokenHash;
 
+        // Re-login while still holding admin_session: NewSessionSignInMiddleware hid the old cookie
+        // so SignInAsync creates a new session (with this login's csrf hash) instead of renewing the
+        // old one; the superseded session is revoked here.
+        await NewSessionSignInMiddleware.RevokeSupersededSessionAsync(HttpContext, "AdminScheme");
         await HttpContext.SignInAsync("AdminScheme", principal, props);
 
         Response.Cookies.Append("admin_csrf", dto.CsrfToken, new CookieOptions

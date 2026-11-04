@@ -215,8 +215,12 @@ public sealed class TenantDatabaseTicketStore : ITicketStore
         claims.AddRange(permissions.Select(p => new Claim("permission", p)));
 
         var principal = new ClaimsPrincipal(new ClaimsIdentity(claims, "TenantScheme"));
+        // IsPersistent must be restored here: this rebuilt ticket is what sliding renewal re-issues
+        // the onevo_session cookie from, and a non-persistent ticket would turn it back into a
+        // browser-session cookie on the first renewal.
         var properties = new AuthenticationProperties
         {
+            IsPersistent = true,
             IssuedUtc = session.StartedAt,
             ExpiresUtc = session.ExpiresAt,
         };

@@ -222,6 +222,9 @@ public class TenantDatabaseTicketStoreTests
         Assert.Equal("perm.read", ticket.Principal.FindFirstValue("permission"));
         Assert.Equal(tenantId.ToString(), ticket.Properties.Items[TenantDatabaseTicketStore.TenantIdItemKey]);
         Assert.Equal("csrf-hash", ticket.Properties.Items[TenantDatabaseTicketStore.CsrfTokenHashItemKey]);
+        // Sliding renewal re-issues the session cookie from this ticket; it must stay persistent so
+        // the cookie keeps its 30-day Expires instead of becoming a browser-session cookie.
+        Assert.True(ticket.Properties.IsPersistent);
         Assert.Equal(session.Id.ToString(), ticket.Principal.FindFirstValue("session_id"));
 
         await _tenantSwitcher.Received(1).SwitchToTenantAsync(
