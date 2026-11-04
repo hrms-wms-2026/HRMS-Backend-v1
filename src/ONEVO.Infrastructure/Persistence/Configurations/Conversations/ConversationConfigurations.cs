@@ -1,3 +1,4 @@
+using ONEVO.Application.Common.Helpers;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using ONEVO.Domain.Features.Conversations.Entities;
@@ -13,6 +14,8 @@ public class ConversationConfiguration : IEntityTypeConfiguration<Conversation>
         builder.Property(c => c.SubjectSource).HasMaxLength(40).IsRequired();
         builder.Property(c => c.SubjectKind).HasMaxLength(40).IsRequired();
         builder.Property(c => c.Description).HasMaxLength(500);
+        builder.Property(c => c.Icon).HasMaxLength(EntityIconRules.MaxLength);
+        builder.Property(c => c.Color).HasMaxLength(9);
 
         builder.HasIndex(c => new { c.TenantId, c.SubjectSource, c.SubjectKind, c.SubjectId })
             .IsUnique()

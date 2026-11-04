@@ -9,4 +9,5 @@ public record CreateLeaveTypeRequest(
     string ApplicableGender,
     bool RequiresDocument,
     decimal? DocumentRequiredAfterHours,
-    string[] AcceptedDocumentTypes);
+    string[] AcceptedDocumentTypes,
+    string? Icon = null);

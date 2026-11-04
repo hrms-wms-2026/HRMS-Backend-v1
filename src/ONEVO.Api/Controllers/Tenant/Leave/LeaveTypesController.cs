@@ -24,9 +24,10 @@ public class LeaveTypesController : ControllerBase
     }
 
     /// <summary>List leave types for this tenant. Self-service employees (leave:read-own) need this
-    /// for the New Request wizard; they only ever get active types.</summary>
+    /// for the New Request wizard; they only ever get active types. leave:manage holders need it to
+    /// see whether Time Off is set up and to manage the types they create.</summary>
     [HttpGet]
-    [RequireAnyPermission("leave:read", "leave:read-own")]
+    [RequireAnyPermission("leave:read", "leave:read-own", "leave:manage")]
     public async Task<IActionResult> List([FromQuery] bool includeInactive = false, CancellationToken ct = default)
     {
         var result = await _mediator.Send(new ListLeaveTypesQuery(includeInactive), ct);
@@ -51,7 +52,7 @@ public class LeaveTypesController : ControllerBase
             new CreateLeaveTypeCommand(
                 request.Name, request.Code, request.Description, request.Color,
                 request.IsPaid, request.ApplicableGender, request.RequiresDocument,
-                request.DocumentRequiredAfterHours, request.AcceptedDocumentTypes),
+                request.DocumentRequiredAfterHours, request.AcceptedDocumentTypes, request.Icon),
             ct);
 
         return result.IsSuccess
@@ -68,7 +69,7 @@ public class LeaveTypesController : ControllerBase
             new UpdateLeaveTypeCommand(
                 leaveTypeId, request.Name, request.Description, request.Color,
                 request.IsPaid, request.ApplicableGender, request.RequiresDocument,
-                request.DocumentRequiredAfterHours, request.AcceptedDocumentTypes),
+                request.DocumentRequiredAfterHours, request.AcceptedDocumentTypes, request.Icon),
             ct);
 
         return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);

@@ -1,3 +1,4 @@
+using ONEVO.Application.Common.Helpers;
 using MediatR;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
@@ -93,6 +94,8 @@ public class EditProjectCommandHandler : IRequestHandler<EditProjectCommand, Res
         project.StartDate = request.StartDate;
         project.TargetDate = request.TargetDate;
         project.Color = request.Color;
+        if (request.Icon is not null)
+            project.Icon = EntityIconRules.Normalize(request.Icon);
         project.ActualHours = request.ActualHours;
         project.UpdatedAt = now;
 

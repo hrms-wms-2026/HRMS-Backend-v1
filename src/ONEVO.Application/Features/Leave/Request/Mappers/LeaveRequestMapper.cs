@@ -25,7 +25,9 @@ public static class LeaveRequestMapper
         LeaveRequest request,
         string leaveTypeName,
         string leaveTypeCode,
-        string? approvedByName = null) =>
+        string? approvedByName = null,
+        int approvedApproverCount = 0,
+        int approverCount = 0) =>
         new(
             request.Id,
             request.EmployeeId,
@@ -42,7 +44,9 @@ public static class LeaveRequestMapper
             approvedByName,
             request.CreatedAt,
             request.UpdatedAt,
-            request.ExceedsBalanceByHours);
+            request.ExceedsBalanceByHours,
+            approvedApproverCount,
+            approverCount);
 
     public static string ToConflictSnapshotJson(
         IReadOnlyList<LeaveRequestWarningResponse> warnings,

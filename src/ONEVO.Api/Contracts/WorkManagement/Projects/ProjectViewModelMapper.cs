@@ -21,7 +21,7 @@ public static class ProjectViewModelMapper
         dto.Id, dto.Name, dto.Identifier, dto.CategoryId, dto.Description,
         dto.LeadId, dto.StartDate, dto.TargetDate, dto.Color,
         dto.ActualHours, dto.AllocatedHours, dto.CompletedHours,
-        dto.IsActive, dto.CreatedAt);
+        dto.IsActive, dto.CreatedAt, dto.Icon);
 
     public static ObjectiveViewModel ToViewModel(this ObjectiveSummaryDto dto) => new(
         dto.Id, dto.ProjectId, dto.IsDefault, dto.Title, dto.OwnerId,
@@ -49,14 +49,14 @@ public static class ProjectViewModelMapper
         dto.ActualHours, dto.AllocatedHours, dto.CompletedHours,
         dto.IsActive, dto.IsAchieved, dto.AchievedAt,
         dto.CreatedAt, dto.UpdatedAt, dto.IsLead, dto.LogoFileId,
-        dto.Labels.Select(ToViewModel).ToList(), dto.Members.Select(ToViewModel).ToList(), dto.MemberCount, dto.SystemPurpose);
+        dto.Labels.Select(ToViewModel).ToList(), dto.Members.Select(ToViewModel).ToList(), dto.MemberCount, dto.SystemPurpose, dto.Icon);
 
     public static ProjectListItemViewModel ToViewModel(this ProjectListItemResponse dto) => new(
         dto.Id, dto.Name, dto.Identifier, dto.CategoryId, dto.Description, dto.LeadId,
         dto.StartDate, dto.TargetDate, dto.Color, dto.IsActive,
         dto.AllocatedHours, dto.CompletedHours, dto.IsLead,
         dto.IsAchieved, dto.AchievedAt, dto.UpdatedAt, dto.LogoFileId,
-        dto.Labels.Select(ToViewModel).ToList(), dto.Members.Select(ToViewModel).ToList(), dto.MemberCount, dto.SystemPurpose);
+        dto.Labels.Select(ToViewModel).ToList(), dto.Members.Select(ToViewModel).ToList(), dto.MemberCount, dto.SystemPurpose, dto.Icon);
 
     public static PagedResultViewModel<ProjectListItemViewModel> ToViewModel(this PagedResult<ProjectListItemResponse> page) => new(
         page.Items.Select(ToViewModel).ToList(), page.PageNumber, page.PageSize, page.TotalCount, page.TotalPages, page.HasNext, page.HasPrevious);

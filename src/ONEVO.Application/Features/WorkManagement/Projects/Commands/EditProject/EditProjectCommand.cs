@@ -14,5 +14,7 @@ public sealed record EditProjectCommand(
     string? Color,
     decimal? ActualHours,
     string? Identifier,
-    decimal? AllocatedHours = null
+    decimal? AllocatedHours = null,
+    // Icon: null keeps the current icon; empty clears it.
+    string? Icon = null
 ) : IRequest<Result<ProjectDetailResponse>>;

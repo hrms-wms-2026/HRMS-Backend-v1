@@ -18,5 +18,6 @@ public static class LeaveTypeMapper
         entity.AcceptedDocumentTypes,
         entity.IsActive,
         entity.CreatedAt,
-        policyCount);
+        policyCount,
+        entity.Icon);
 }

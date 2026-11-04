@@ -17,10 +17,12 @@ public class ChangePasswordCommandHandler : IRequestHandler<ChangePasswordComman
     private readonly IUnitOfWork _unitOfWork;
     private readonly ICurrentUser _currentUser;
     private readonly IDateTimeProvider _clock;
+    private readonly ISessionRepository _sessions;
 
     public ChangePasswordCommandHandler(
         IUserRepository users, IPasswordHasher passwordHasher, IAuditLogRepository auditLog,
-        IOutboxWriter outbox, IUnitOfWork unitOfWork, ICurrentUser currentUser, IDateTimeProvider clock)
+        IOutboxWriter outbox, IUnitOfWork unitOfWork, ICurrentUser currentUser, IDateTimeProvider clock,
+        ISessionRepository sessions)
     {
         _users = users;
         _passwordHasher = passwordHasher;
@@ -29,6 +31,7 @@ public class ChangePasswordCommandHandler : IRequestHandler<ChangePasswordComman
         _unitOfWork = unitOfWork;
         _currentUser = currentUser;
         _clock = clock;
+        _sessions = sessions;
     }
 
     public async Task<Result> Handle(ChangePasswordCommand request, CancellationToken ct)
@@ -45,6 +48,12 @@ public class ChangePasswordCommandHandler : IRequestHandler<ChangePasswordComman
 
         user.PasswordHash = _passwordHasher.Hash(request.NewPassword);
         user.UpdatedAt = _clock.UtcNow;
+
+        // Keep the session making this request; sign out every other device.
+        if (_currentUser.SessionId is Guid currentSessionId)
+            await _sessions.RevokeAllActiveByUserIdExceptAsync(user.Id, currentSessionId, ct);
+        else
+            await _sessions.RevokeAllActiveByUserIdAsync(user.Id, ct);
 
         await _auditLog.AddAsync(new AuditLog
         {

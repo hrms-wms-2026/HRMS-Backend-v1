@@ -23,6 +23,8 @@ public class Project : BaseEntity
     public DateOnly StartDate { get; set; }
     public DateOnly TargetDate { get; set; }
     public string? Color { get; set; }
+    /// <summary>The picked icon, "lucide:{name}" or "emoji:{emoji}" (EntityIconRules); null shows the logo or initials.</summary>
+    public string? Icon { get; set; }
     public decimal? ActualHours { get; set; }
     public decimal AllocatedHours { get; set; }
     public decimal CompletedHours { get; set; }

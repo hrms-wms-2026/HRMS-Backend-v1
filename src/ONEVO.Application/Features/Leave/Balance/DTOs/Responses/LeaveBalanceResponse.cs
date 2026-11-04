@@ -22,4 +22,5 @@ public record LeaveBalanceResponse(
     DateOnly? CarryForwardExpiresOn,
     string? PolicyName,
     decimal? AmountHours,
-    string? AmountPeriod);
+    string? AmountPeriod,
+    DateOnly ResetsOn);

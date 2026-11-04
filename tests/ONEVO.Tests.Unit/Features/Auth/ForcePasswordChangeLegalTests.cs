@@ -37,6 +37,8 @@ public sealed class ForcePasswordChangeLegalTests
         var continuation = new Mock<ILoginContinuationService>();
         var clock = new Mock<IDateTimeProvider>();
         var tenant = new Mock<ITenantContext>();
+        var sessions = new Mock<ISessionRepository>();
+        var calls = new List<string>();
 
         tenant.SetupGet(t => t.IsResolved).Returns(true);
         tenant.SetupGet(t => t.ContextMode).Returns(TenantContextMode.Tenant);
@@ -65,7 +67,11 @@ public sealed class ForcePasswordChangeLegalTests
                 "ua",
                 LoginFinalizationMode.TenantHostDirect,
                 It.IsAny<CancellationToken>()))
+            .Callback(() => calls.Add("finish"))
             .ReturnsAsync(Result<LoginResponseDto>.Success(legalRequired));
+        sessions.Setup(s => s.RevokeAllActiveByUserIdAsync(user.Id, It.IsAny<CancellationToken>()))
+            .Callback(() => calls.Add("revoke"))
+            .ReturnsAsync(0);
 
         var handler = new ForcePasswordChangeCommandHandler(
             users.Object,
@@ -74,7 +80,8 @@ public sealed class ForcePasswordChangeLegalTests
             permissions.Object,
             continuation.Object,
             clock.Object,
-            tenant.Object);
+            tenant.Object,
+            sessions.Object);
 
         var result = await handler.Handle(
             new ForcePasswordChangeCommand(
@@ -89,5 +96,7 @@ public sealed class ForcePasswordChangeLegalTests
         result.Value!.RequiresLegalAcceptance.Should().BeTrue();
         user.LastLoginAt.Should().BeNull();
         continuation.VerifyAll();
+        // Old-password sessions are ended before the new session is issued, never after.
+        calls.Should().Equal("revoke", "finish");
     }
 }

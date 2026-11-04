@@ -7,4 +7,4 @@ public sealed record ProjectDetailResponse(
     bool IsActive, bool IsAchieved, DateTimeOffset? AchievedAt,
     DateTimeOffset CreatedAt, DateTimeOffset? UpdatedAt, bool IsLead, Guid? LogoFileId,
     IReadOnlyList<LabelSummaryDto> Labels, IReadOnlyList<ProjectMemberAvatarDto> Members, int MemberCount,
-    string? SystemPurpose = null);
+    string? SystemPurpose = null, string? Icon = null);
