@@ -55,6 +55,8 @@ public sealed class AdminAuthController : ControllerBase
     [AllowAnonymous]
     public async Task<IActionResult> GoogleCallback([FromBody] AdminGoogleCallbackRequest request, CancellationToken ct)
     {
+        ClearStaleAdminSessionCookies();
+
         var ip = HttpContext.Connection.RemoteIpAddress?.ToString();
         var ua = Request.Headers.UserAgent.ToString();
 
@@ -62,9 +64,17 @@ public sealed class AdminAuthController : ControllerBase
         if (!result.IsSuccess)
             return Problem(result.Error, statusCode: result.StatusCode ?? 400);
 
-        var session = result.Value!;
-        await SignInAsync(session);
-        return Ok(session.ToSessionResponse());
+        var dto = result.Value!;
+
+        // Same MFA gate as password login: an enrolled admin gets a challenge cookie, not a session.
+        if (dto.RequiresMfa)
+        {
+            SetAdminMfaChallengeCookie(dto.MfaSessionToken!);
+            return StatusCode(202, dto.ToSessionResponse());
+        }
+
+        await SignInAsync(dto);
+        return Ok(dto.ToSessionResponse());
     }
 
     /// <summary>

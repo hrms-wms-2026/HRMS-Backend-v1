@@ -81,6 +81,91 @@ public sealed class VerifyAdminMfaCommandHandlerTests
     }
 
     [Fact]
+    public async Task Handle_ValidCode_ForGoogleLinkChallenge_BindsGoogleSubToUser()
+    {
+        var user = EnrolledUser(googleSub: null);
+        ArrangeValidCode(user, pendingGoogleSub: "google-sub-123");
+
+        var result = await BuildHandler().Handle(
+            new VerifyAdminMfaCommand("challenge", "123456"), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        user.GoogleSub.Should().Be("google-sub-123");
+    }
+
+    [Fact]
+    public async Task Handle_ValidCode_ForGoogleLinkChallenge_DoesNotOverwriteExistingBinding()
+    {
+        var user = EnrolledUser(googleSub: "existing-sub");
+        ArrangeValidCode(user, pendingGoogleSub: "google-sub-123");
+
+        var result = await BuildHandler().Handle(
+            new VerifyAdminMfaCommand("challenge", "123456"), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        user.GoogleSub.Should().Be("existing-sub");
+    }
+
+    [Fact]
+    public async Task Handle_InvalidCode_ForGoogleLinkChallenge_DoesNotBindGoogleSub()
+    {
+        var user = EnrolledUser(googleSub: null);
+        ArrangeValidCode(user, pendingGoogleSub: "google-sub-123");
+        _totpService.Setup(value => value.Verify("decrypted-secret", "000000")).Returns(false);
+        _mfaChallenges.Setup(value => value.RegisterFailedAttemptAsync(
+                "challenge", It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        var result = await BuildHandler().Handle(
+            new VerifyAdminMfaCommand("challenge", "000000"), CancellationToken.None);
+
+        result.IsSuccess.Should().BeFalse();
+        user.GoogleSub.Should().BeNull();
+    }
+
+    private static PlatformUser EnrolledUser(string? googleSub) => new()
+    {
+        Id = Guid.NewGuid(),
+        Email = "admin@onevo.io",
+        FullName = "Platform Admin",
+        Status = PlatformUser.StatusActive,
+        MfaStatus = PlatformUser.MfaEnrolled,
+        MfaSecret = "encrypted-secret",
+        GoogleSub = googleSub,
+    };
+
+    private void ArrangeValidCode(PlatformUser user, string? pendingGoogleSub)
+    {
+        var state = new PlatformMfaChallengeState(user.Id, _now.AddMinutes(5), 0, pendingGoogleSub);
+        _mfaChallenges.Setup(value => value.GetAsync("challenge", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(state);
+        _mfaChallenges.Setup(value => value.TryConsumeAsync("challenge", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(state);
+        _users.Setup(value => value.GetByIdAsync(user.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(user);
+        _encryption.Setup(value => value.Decrypt("encrypted-secret")).Returns("decrypted-secret");
+        _totpService.Setup(value => value.Verify("decrypted-secret", "123456")).Returns(true);
+        _resolver.Setup(value => value.ResolveActiveUserAsync(user.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PlatformAccessProfile
+            {
+                UserId = user.Id,
+                Email = user.Email,
+                Status = user.Status,
+                RoleNames = { "Platform Super Admin" },
+            });
+    }
+
+    private VerifyAdminMfaCommandHandler BuildHandler() => new(
+        _mfaChallenges.Object,
+        _users.Object,
+        _encryption.Object,
+        _totpService.Object,
+        _tokens.Object,
+        _resolver.Object,
+        _clock.Object,
+        _uow.Object);
+
+    [Fact]
     public async Task Handle_InvalidCode_ReturnsUnauthorized()
     {
         var user = new PlatformUser

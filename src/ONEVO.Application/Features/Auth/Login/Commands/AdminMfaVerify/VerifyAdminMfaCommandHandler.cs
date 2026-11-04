@@ -75,6 +75,11 @@ public sealed class VerifyAdminMfaCommandHandler : IRequestHandler<VerifyAdminMf
         if (profile is null)
             return Result<AdminLoginResultDto>.Failure("This account is not active.", 403);
 
+        // A Google sign-in that matched this user by email is linked only now, after the second
+        // factor proved the Google identity belongs to this admin. An existing link is never replaced.
+        if (!string.IsNullOrEmpty(consumed.PendingGoogleSub) && string.IsNullOrEmpty(user.GoogleSub))
+            user.GoogleSub = consumed.PendingGoogleSub;
+
         user.LastLoginAt = _clock.UtcNow;
         _platformUsers.UpdateUser(user);
         await _uow.SaveChangesAsync(ct);

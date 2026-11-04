@@ -35,11 +35,30 @@ public sealed class MemoryPlatformMfaChallengeStore : IPlatformMfaChallengeStore
         TimeSpan lifetime,
         CancellationToken ct = default)
     {
+        return CreateCoreAsync(platformUserId, pendingGoogleSub: null, lifetime, ct);
+    }
+
+    public Task<string> CreateForGoogleLinkAsync(
+        Guid platformUserId,
+        string googleSub,
+        TimeSpan lifetime,
+        CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(googleSub);
+        return CreateCoreAsync(platformUserId, googleSub, lifetime, ct);
+    }
+
+    private Task<string> CreateCoreAsync(
+        Guid platformUserId,
+        string? pendingGoogleSub,
+        TimeSpan lifetime,
+        CancellationToken ct)
+    {
         ct.ThrowIfCancellationRequested();
 
         var rawChallenge = _tokens.GenerateOpaqueToken();
         var expiresAt = _clock.UtcNow.Add(lifetime);
-        var state = new PlatformMfaChallengeState(platformUserId, expiresAt, FailedAttempts: 0);
+        var state = new PlatformMfaChallengeState(platformUserId, expiresAt, FailedAttempts: 0, pendingGoogleSub);
 
         _cache.Set(GetCacheKey(rawChallenge), state, expiresAt);
         return Task.FromResult(rawChallenge);
