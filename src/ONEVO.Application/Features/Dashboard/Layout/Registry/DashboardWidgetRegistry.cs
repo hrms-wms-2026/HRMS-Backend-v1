@@ -33,6 +33,7 @@ public static class DashboardWidgetRegistry
         new("team-attendance", DashboardKeys.MyTeam, "Team attendance", "Attendance across your team by week or month.", 2, 2, 12, 8, true),
         new("team-schedule", DashboardKeys.MyTeam, "Today's team schedule", "What your team planned for today and how far they are.", 2, 2, 12, 8, true),
         new("team-plan-today", DashboardKeys.MyTeam, "Team plan today", "Today's planned load for each direct report.", 2, 2, 12, 8, false),
+        new("team-work-vs-task", DashboardKeys.MyTeam, "Work vs task hours", "Your team's working hours against the hours of tasks they completed, by day, week or month.", 2, 2, 12, 8, false),
     ];
 
     private const string TeamPlanToday = "team-plan-today";

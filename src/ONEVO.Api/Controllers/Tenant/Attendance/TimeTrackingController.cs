@@ -142,6 +142,20 @@ public sealed class TimeTrackingController(IMediator mediator) : ControllerBase
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
+    /// <summary>Work vs task hours widget: working time (less breaks) against completed tasks' estimated hours.</summary>
+    [HttpGet("team/work-vs-task")]
+    [RequirePermission("attendance:read")]
+    public async Task<IActionResult> TeamWorkVsTask(
+        [FromQuery] string period = "week",
+        [FromQuery] DateOnly? anchor = null,
+        CancellationToken ct = default)
+    {
+        var result = await mediator.Send(new GetTeamWorkTaskHoursQuery(period, anchor), ct);
+        return result.IsSuccess
+            ? Ok(result.Value)
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
     [HttpGet("team/attendance-summary")]
     [RequirePermission("attendance:read")]
     public async Task<IActionResult> TeamAttendanceSummary(

@@ -54,6 +54,7 @@ public sealed class DashboardWidgetAccessTests
         Assert.Contains("team-progress", team);
         Assert.DoesNotContain("team-status", team);
         Assert.DoesNotContain("team-attendance", team);
+        Assert.DoesNotContain("team-work-vs-task", team);
     }
 
     [Fact]
@@ -77,6 +78,7 @@ public sealed class DashboardWidgetAccessTests
 
         Assert.Contains("team-status", team);
         Assert.Contains("team-attendance", team);
+        Assert.Contains("team-work-vs-task", team);
         Assert.Contains("team-quick-actions", team);
     }
 
