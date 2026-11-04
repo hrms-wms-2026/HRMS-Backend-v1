@@ -55,7 +55,7 @@ public sealed class TeamAttendanceQueryHandlerTests
             .ReturnsAsync(() => _days);
         _mediator.Setup(m => m.Send(It.IsAny<GetCoveredTeamTodayQuery>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(() => Result<TeamTodayResponse>.Success(new TeamTodayResponse(
-                Today, "UTC", LegalEntityId, _summary, _members.ToList(), _members.Count)));
+                Today, "UTC", LegalEntityId, _summary, _members.ToList(), _members.Count, DateTimeOffset.UnixEpoch)));
     }
 
     private TeamAttendanceQueryHandler Handler() => new(

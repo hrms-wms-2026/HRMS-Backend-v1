@@ -52,9 +52,17 @@ public sealed class GetMyTeamCapabilitiesQueryHandler(
         var canViewPeopleStatus = false;
         var leadsWork = false;
         var hasWorkApprovals = false;
+        var hasReports = false;
+
+        // One reporting-line probe feeds both Today's Team Schedule (hasReports) and the team planner (canViewTeamPlan).
+        var hasDirectReports = actor is not null && reportingLines is not null
+            && (await reportingLines.ListDirectReportEmployeeIdsAsync(currentUser.TenantId, [actor.Id], ct)).Count > 0;
 
         if (legalEntityId is Guid activeLegalEntityId)
         {
+            // The reporting line through the common repository, never the raw closure (My Team spec section 10 rule 1).
+            hasReports = hasDirectReports;
+
             if (currentUser.HasPermission(AttendanceReadPermission))
             {
                 canViewPeopleStatus = await authority.HasAnyManagedCoverageAsync(
@@ -75,8 +83,7 @@ public sealed class GetMyTeamCapabilitiesQueryHandler(
         }
 
         // Team planner (2026-11-03): a cheap existence probe on the reporting line, like the flags above.
-        var canViewTeamPlan = actor is not null && reportingLines is not null && plannerOptions?.Value.Enabled == true
-            && (await reportingLines.ListDirectReportEmployeeIdsAsync(currentUser.TenantId, [actor.Id], ct)).Count > 0;
+        var canViewTeamPlan = hasDirectReports && plannerOptions?.Value.Enabled == true;
 
         var isAvailable = canViewPeopleStatus || canReviewPeopleApprovals || canReviewExceptions || hasWorkApprovals || leadsWork
             || canViewTeamPlan;
@@ -89,6 +96,7 @@ public sealed class GetMyTeamCapabilitiesQueryHandler(
             hasWorkApprovals,
             leadsWork,
             CanViewLiveActivity: false,
+            hasReports,
             legalEntityId,
             canViewTeamPlan));
     }

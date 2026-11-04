@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Features.WorkManagement.Planner.Commands;
 using ONEVO.Application.Features.WorkManagement.Planner.Contracts;
+using ONEVO.Application.Features.WorkManagement.Planner.TeamSchedule;
 
 namespace ONEVO.Api.Controllers.Tenant.WorkManagement;
 
@@ -46,6 +47,19 @@ public sealed class PlannerController : ControllerBase
     [HttpGet("me/focus")]
     public async Task<IActionResult> MyFocus(CancellationToken ct)
         => Respond(await _mediator.Send(new GetMyPlannerFocusQuery(), ct));
+
+    /// <summary>Today's Team Schedule (My Team widgets, 2026-10-29): the caller's reports' day (moved off "team" 2026-11-04, which the team planner owns). Answers with
+    /// plannerEnabled = false instead of 503 while the Planner is off.</summary>
+    [HttpGet("team/schedule")]
+    public async Task<IActionResult> TeamSchedule([FromQuery] DateOnly? date, CancellationToken ct)
+        => Respond(await _mediator.Send(new GetTeamScheduleQuery(date), ct));
+
+    /// <summary>Team week planned vs actual (My Team widgets design match, 2026-11-02): the same population and gate as
+    /// <see cref="TeamSchedule"/>, each person on their own local days. weekStart must be a Monday; plannerEnabled = false keeps
+    /// clocked minutes.</summary>
+    [HttpGet("team/week")]
+    public async Task<IActionResult> TeamWeek([FromQuery] DateOnly? weekStart, CancellationToken ct)
+        => Respond(await _mediator.Send(new GetTeamScheduleWeekQuery(weekStart), ct));
 
     [HttpPost("me/blocks")]
     public async Task<IActionResult> CreateBlock([FromBody] CreatePlannedBlockRequest request, CancellationToken ct)

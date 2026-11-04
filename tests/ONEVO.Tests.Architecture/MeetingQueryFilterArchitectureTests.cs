@@ -64,7 +64,6 @@ public sealed class MeetingQueryFilterArchitectureTests
     [
         "EfWorkTaskRepository.cs#AnyActiveByStatusIdAsync",
         "EfWorkTaskRepository.cs#AnyActiveByCategoryIdAsync",
-        "DapiDueTodayTaskSeeder.cs",
         "WorkManagementDapiDemoSeeder.Tasks.cs",
     ];
 

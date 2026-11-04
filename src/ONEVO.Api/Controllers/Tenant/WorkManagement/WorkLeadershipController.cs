@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using ONEVO.Api.Filters;
 using ONEVO.Application.Features.WorkManagement.Leadership.Queries.GetLedEmployeeHours;
 using ONEVO.Application.Features.WorkManagement.Leadership.Queries.GetLedPeriodProgress;
+using ONEVO.Application.Features.WorkManagement.Leadership.Queries.GetLedTimeProgress;
 using ONEVO.Application.Features.WorkManagement.Leadership.Queries.GetLedProgressTasks;
 using ONEVO.Application.Features.WorkManagement.Leadership.Queries.GetLedWeeklyCompletion;
 using ONEVO.Application.Features.WorkManagement.Leadership.Queries.GetLedWorkProgress;
@@ -80,6 +81,22 @@ public sealed class WorkLeadershipController(IMediator mediator) : ControllerBas
         CancellationToken ct = default)
     {
         var result = await mediator.Send(new GetLedPeriodProgressQuery(period, projectId, objectiveId), ct);
+        return result.IsSuccess
+            ? Ok(result.Value)
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Team Progress planned vs worked (My Team widgets, 2026-10-29): Planner blocks and clocked task minutes on the
+    /// led scope's tasks for this week or month (UTC window, each person's minutes on their own local days), unscheduled
+    /// work and the workload ranking. period=week|month only; the filters narrow like led-progress/period.</summary>
+    [HttpGet("led-progress/time")]
+    public async Task<IActionResult> LedProgressTime(
+        [FromQuery] string? period = null,
+        [FromQuery] Guid? projectId = null,
+        [FromQuery] Guid? objectiveId = null,
+        CancellationToken ct = default)
+    {
+        var result = await mediator.Send(new GetLedTimeProgressQuery(period, projectId, objectiveId), ct);
         return result.IsSuccess
             ? Ok(result.Value)
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);

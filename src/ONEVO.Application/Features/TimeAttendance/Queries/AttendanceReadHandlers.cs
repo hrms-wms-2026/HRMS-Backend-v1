@@ -25,6 +25,7 @@ using ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces;
 using ONEVO.Application.Features.TimeAttendance.Services;
 using ONEVO.Application.Features.TimeAttendance.Team.DTOs;
 using ONEVO.Application.Features.TimeAttendance.Team.Services;
+using ONEVO.Application.Features.WorkManagement.Planner.Services;
 using ONEVO.Domain.Features.Monitoring.CheckIn.Entities;
 using ONEVO.Domain.Features.Monitoring.Exceptions.Entities;
 using ONEVO.Domain.Features.TimeAttendance.Entities;
@@ -557,17 +558,9 @@ public sealed class AttendanceReadHandler(
         if (legalEntity is null)
             return Result<TeamTodayResponse>.NotFound("Current employee record was not found.");
 
-        var visibility = await authority.ResolveVisibilityAsync(
-            new EmployeeAuthorityVisibilityRequest(
-                currentUser.UserId,
-                actor.LegalEntityId.Value,
-                AttendanceReadPermission,
-                IncludeSelf: false,
-                EmployeeAuthorityPurpose.TimeTrackingRead), ct);
-
-        // Same defensive strip as GetCoveredAttendanceHistoryQuery above: IncludeSelf:false stops
-        // the self channel, but company-wide/department coverage can still re-introduce the actor.
-        var coveredEmployeeIds = visibility.EmployeeIds.Where(id => id != actor.Id).ToList();
+        // Same defensive strip as GetCoveredAttendanceHistoryQuery above (shared with GetTeamWorkingHoursQuery).
+        var coveredEmployeeIds = await CoveredTeam.CoveredEmployeeIdsAsync(
+            authority, currentUser.UserId, actor.LegalEntityId.Value, actor.Id, ct);
 
         var utcNow = dateTimeProvider?.UtcNow ?? DateTimeOffset.UtcNow;
         var scheduleResolution = AttendanceScheduleResolver.Resolve(legalEntity, utcNow);
@@ -581,10 +574,12 @@ public sealed class AttendanceReadHandler(
                 legalEntity.Id,
                 new TeamTodaySummary(0, 0, 0, 0, 0, 0, 0, 0, 0, 0),
                 Array.Empty<TeamTodayMember>(),
-                0));
+                0,
+                utcNow));
         }
 
         var dayWindow = AttendanceTodayStateService.GetLocalDayWindow(workDate, scheduleResolution.TimeZone);
+        var scheduledEnd = TeamPresenceMath.ScheduledEnd(workDate, scheduleResolution.Schedule.End, scheduleResolution.TimeZone);
 
         var records = await attendance.ListRecordsForDateAsync(currentUser.TenantId, coveredEmployeeIds, workDate, ct);
         var recordsByEmployee = records.ToDictionary(r => r.EmployeeId);
@@ -620,21 +615,13 @@ public sealed class AttendanceReadHandler(
 
         var identities = await attendance.ListEmployeeIdentitiesAsync(
             currentUser.TenantId, legalEntity.Id, coveredEmployeeIds, ct);
-        var employeesById = await employees.ListByIdsAsync(currentUser.TenantId, coveredEmployeeIds, ct);
-        var primaryPositionByEmployee = positionAssignments is null
-            ? new Dictionary<Guid, ONEVO.Domain.Features.CoreHr.Entities.PositionAssignment>()
-            : await positionAssignments.GetActivePrimaryByEmployeeIdsAsync(currentUser.TenantId, coveredEmployeeIds, ct);
         var leaveTypeNames = leaveTypes is null
             ? new Dictionary<Guid, string>()
             : (await leaveTypes.ListAsync(currentUser.TenantId, includeInactive: true, ct))
                 .ToDictionary(type => type.Id, type => type.Name);
 
-        EmployeeVisibilityScope? leaveScope = null;
-        if (leaveVisibilityScope is not null)
-        {
-            var scopeResolution = await leaveVisibilityScope.ResolveForCurrentUserAsync(ct);
-            leaveScope = scopeResolution.Scope;
-        }
+        var leaveAuthorizedIds = await CoveredTeam.LeaveAuthorizedAsync(
+            currentUser.TenantId, coveredEmployeeIds, employees, positionAssignments, leaveVisibilityScope, ct);
 
         var members = new List<TeamTodayMember>(coveredEmployeeIds.Count);
         var counts = new int[7]; // working, onBreak, clockedOut, absent, notStarted, onLeave, notScheduled
@@ -663,10 +650,7 @@ public sealed class AttendanceReadHandler(
                 scheduleResolution.LocalNow,
                 utcNow);
 
-            employeesById.TryGetValue(employeeId, out var employeeRow);
-            primaryPositionByEmployee.TryGetValue(employeeId, out var primaryPosition);
-            var leaveAuthorized = leaveScope is not null && EmployeeVisibilityScopeMatcher.Includes(
-                leaveScope, employeeId, primaryPosition?.PositionId, employeeRow?.DepartmentId, employeeRow?.LegalEntityId);
+            var leaveAuthorized = leaveAuthorizedIds.Contains(employeeId);
 
             var arrivedLate = record?.Status == AttendanceRecord.StatusLate;
             var mapped = TeamStatusMapper.Map(resolution, arrivedLate, leaveAuthorized);
@@ -695,7 +679,15 @@ public sealed class AttendanceReadHandler(
                 mapped.AttentionType,
                 mapped.AttentionLabel,
                 mapped.AttentionSeverity,
-                leaveBlock));
+                leaveBlock,
+                TeamPresenceMath.StateSince(mapped.TeamStatus, record, employeeBreaks),
+                TeamPresenceMath.BreakRemainingMinutes(mapped.TeamStatus, legalEntity.BreakDurationMinutes, breakUsedMinutes),
+                TeamPresenceMath.ShiftEndsAt(mapped.TeamStatus, scheduledEnd),
+                record is null ? 0 : PlannerActuals.AttendanceMinutes(
+                    record.ActualStart, record.ActualEnd, record.WorkedMinutes, record.BreakMinutes, utcNow),
+                TeamPresenceMath.ExpectedMinutes(mapped.TeamStatus, scheduleResolution.Schedule.Start, scheduleResolution.Schedule.End),
+                employeeBreaks.OrderBy(b => b.BreakStart).Select(b => new TeamTodayBreak(b.BreakStart, b.BreakEnd)).ToList(),
+                TeamPresenceMath.LeaveMinutes(mapped.TeamStatus, scheduleResolution.Schedule.Start, scheduleResolution.Schedule.End)));
 
             var countIndex = mapped.TeamStatus switch
             {
@@ -731,7 +723,8 @@ public sealed class AttendanceReadHandler(
             legalEntity.Id,
             summary,
             ordered.Take(limit).ToList(),
-            members.Count));
+            members.Count,
+            utcNow));
     }
 
     private static int AttentionSeverityRank(string? severity) => severity switch

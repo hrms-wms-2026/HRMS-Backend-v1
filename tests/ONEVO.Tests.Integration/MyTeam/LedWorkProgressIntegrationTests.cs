@@ -125,6 +125,15 @@ public sealed class LedWorkProgressIntegrationTests
         lead.Value.ModulesAtRisk.Should().Be(1);
         lead.Value.OverdueTotal.Should().Be(2);
         lead.Value.OverdueTasks.Should().HaveCount(2).And.OnlyContain(t => t.DaysOverdue == 2 && t.Assignees.Count == 1);
+        lead.Value.OverdueTasks.Should().OnlyContain(t => t.EstimatedHours == 4m);
+        lead.Value.OverdueHours.Should().Be(8m, "two overdue 4 h tasks");
+        lead.Value.OverdueUnestimatedTaskCount.Should().Be(0);
+        var overdueProject = lead.Value.OverdueByProject.Should().ContainSingle().Subject;
+        (overdueProject.ProjectId, overdueProject.ProjectName, overdueProject.Hours, overdueProject.TaskCount)
+            .Should().Be((project.ProjectId, project.ProjectName, 8m, 2));
+        lead.Value.OverdueByModule.Should().ContainSingle().Which.Should().Be(
+            new LedOverdueModule(project.ProjectId, seeded.NestedId, 0m, 8m, 2),
+            "both overdue tasks sit at 0% progress, so they carve out of Not started like the hour summary counts them");
 
         member.Value!.Projects.Should().BeEmpty("plain membership never makes someone a lead");
     }
@@ -175,8 +184,7 @@ public sealed class LedWorkProgressIntegrationTests
         var small = await SeedAsync(tasksPerModule: 1);
         var large = await SeedAsync(tasksPerModule: 15);
 
-        // OverdueLimit 1 puts both seeds over the limit, so both run the overdue count query; below the limit the
-        // handler skips it and takes one query less.
+        // OverdueLimit 1 lists one overdue task; the per-project overdue totals are one grouped query either way.
         async Task<int> CountAsync(Seeded seeded)
         {
             var counter = new CountingDbCommandInterceptor();

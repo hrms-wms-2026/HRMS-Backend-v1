@@ -32,11 +32,24 @@ public sealed record LedProjectProgress(
 
 public sealed record LedTaskAssignee(Guid EmployeeId, string DisplayName);
 
+/// <param name="EstimatedHours">The task's estimate; null when it has none (it adds no hours).</param>
 public sealed record LedOverdueTask(
     Guid TaskId, string ShortId, string Title, Guid ProjectId, Guid ObjectiveId, DateOnly DueDate, int DaysOverdue,
-    IReadOnlyList<LedTaskAssignee> Assignees);
+    IReadOnlyList<LedTaskAssignee> Assignees, decimal? EstimatedHours);
+
+/// <summary>Every overdue top-level task of one project (not just the listed ones), summed.</summary>
+public sealed record LedOverdueProject(Guid ProjectId, string ProjectName, decimal Hours, int TaskCount, int UnestimatedTaskCount);
+
+/// <summary>Every overdue top-level task of one module, split like the module hour totals, so the Team Progress donut
+/// can show overdue as its own slice out of In progress / Not started, under any project or module filter.</summary>
+public sealed record LedOverdueModule(Guid ProjectId, Guid ObjectiveId, decimal InProgressHours, decimal NotStartedHours, int TaskCount);
 
 /// <param name="ModulesAtRisk">Head Modules whose subtree has overdue work.</param>
+/// <param name="OverdueHours">Estimated hours of every overdue top-level task (OverdueTotal of them).</param>
+/// <param name="OverdueUnestimatedTaskCount">Overdue tasks with no estimate, so not in OverdueHours.</param>
+/// <param name="OverdueByProject">OverdueHours by project, most hours first.</param>
+/// <param name="OverdueByModule">OverdueHours by module, split into in progress / not started.</param>
 public sealed record LedWorkProgressResponse(
     LedHourTotals Hours, IReadOnlyList<LedProjectProgress> Projects, IReadOnlyList<LedOverdueTask> OverdueTasks, int OverdueTotal,
-    int ModulesAtRisk);
+    int ModulesAtRisk, decimal OverdueHours, int OverdueUnestimatedTaskCount, IReadOnlyList<LedOverdueProject> OverdueByProject,
+    IReadOnlyList<LedOverdueModule> OverdueByModule);

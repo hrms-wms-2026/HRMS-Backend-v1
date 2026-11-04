@@ -32,7 +32,7 @@ public static class WeeklyWorkProgressCalculator
         {
             var (start, end) = PlannerActuals.DayBounds(date, input.Zone);
             var isExpected = workdays.ExpectedDates.Contains(date);
-            var leave = isExpected ? LeaveMinutes(input.LeaveHoursByDate, date, requiredMinutes) : 0;
+            var leave = isExpected ? LeaveWorkWindow.Minutes(input.LeaveHoursByDate, date, requiredMinutes) : 0;
             var expected = isExpected ? Math.Max(0, requiredMinutes - leave) : 0;
 
             var dayTask = input.PlannedBlocks.Sum(b => OverlapMinutes(b.Start, b.End, start, end));
@@ -78,13 +78,6 @@ public static class WeeklyWorkProgressCalculator
             Percent(worked, expectedTotal), Percent(scheduled, expectedTotal),
             adherenceScheduled > 0 ? Percent(adherenceMet, adherenceScheduled) : null,
             Status(expectedTotal, expectedToDate, worked), days);
-    }
-
-    private static int LeaveMinutes(IReadOnlyDictionary<DateOnly, decimal?> leave, DateOnly date, int requiredMinutes)
-    {
-        if (!leave.TryGetValue(date, out var hours))
-            return 0;
-        return hours is { } h ? Math.Min(requiredMinutes, (int)Math.Round(h * 60m)) : requiredMinutes;
     }
 
     private static int OverlapMinutes(DateTimeOffset from, DateTimeOffset to, DateTimeOffset dayStart, DateTimeOffset dayEnd)
