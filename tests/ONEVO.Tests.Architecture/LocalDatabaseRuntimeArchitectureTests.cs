@@ -271,7 +271,10 @@ public sealed class LocalDatabaseRuntimeArchitectureTests
 
         var gitignore = File.ReadAllLines(Path.Combine(root, ".gitignore"));
         Assert.Contains(".env", gitignore);
-        Assert.Contains(".env.*.local", gitignore);
+        // Every .env variant (.env.local, .env.bak-*, ...) carries the same secrets, so all are
+        // ignored; the committed template is re-included explicitly (SEC-04).
+        Assert.Contains(".env.*", gitignore);
+        Assert.Contains("!.env.example", gitignore);
         Assert.Contains("**/.env", gitignore);
         Assert.DoesNotContain(".env.example", gitignore);
 

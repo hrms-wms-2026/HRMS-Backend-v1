@@ -3,6 +3,7 @@ using FluentAssertions;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
 using Npgsql;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
@@ -204,7 +205,7 @@ public sealed class TenantSessionRlsIntegrationTests : IClassFixture<TenantSessi
         var (tenantId, userId) = await _fixture.SeedActiveTenantAndUserAsync();
 
         var scopeFactory = _fixture.BuildProductionLikeScopeFactory();
-        var sut = new TenantDatabaseTicketStore(scopeFactory, _fixture.Clock);
+        var sut = new TenantDatabaseTicketStore(scopeFactory, _fixture.Clock, NullLogger<TenantDatabaseTicketStore>.Instance);
         var ticket = TenantSessionRlsIntegrationTestsFixture.BuildTicket(tenantId, userId);
 
         var act = () => sut.StoreAsync(ticket, httpContext: null, CancellationToken.None);
@@ -226,7 +227,7 @@ public sealed class TenantSessionRlsIntegrationTests : IClassFixture<TenantSessi
         await _fixture.SetTenantStatusAsync(tenantId, TenantStatus.Cancelled);
 
         var scopeFactory = _fixture.BuildProductionLikeScopeFactory();
-        var sut = new TenantDatabaseTicketStore(scopeFactory, _fixture.Clock);
+        var sut = new TenantDatabaseTicketStore(scopeFactory, _fixture.Clock, NullLogger<TenantDatabaseTicketStore>.Instance);
         var ticket = TenantSessionRlsIntegrationTestsFixture.BuildTicket(tenantId, userId);
 
         var act = () => sut.StoreAsync(ticket, httpContext: null, CancellationToken.None);
@@ -248,7 +249,7 @@ public sealed class TenantSessionRlsIntegrationTests : IClassFixture<TenantSessi
         await _fixture.SetTenantStatusAsync(tenantId, TenantStatus.Provisioning);
 
         var scopeFactory = _fixture.BuildProductionLikeScopeFactory();
-        var sut = new TenantDatabaseTicketStore(scopeFactory, _fixture.Clock);
+        var sut = new TenantDatabaseTicketStore(scopeFactory, _fixture.Clock, NullLogger<TenantDatabaseTicketStore>.Instance);
         var ticket = TenantSessionRlsIntegrationTestsFixture.BuildTicket(tenantId, userId);
 
         var act = () => sut.StoreAsync(ticket, httpContext: null, CancellationToken.None);
@@ -265,7 +266,7 @@ public sealed class TenantSessionRlsIntegrationTests : IClassFixture<TenantSessi
         var (tenantId, userId) = await _fixture.SeedActiveTenantAndUserAsync();
 
         var scopeFactory = _fixture.BuildProductionLikeScopeFactory();
-        var sut = new TenantDatabaseTicketStore(scopeFactory, _fixture.Clock);
+        var sut = new TenantDatabaseTicketStore(scopeFactory, _fixture.Clock, NullLogger<TenantDatabaseTicketStore>.Instance);
         var storeTicket = TenantSessionRlsIntegrationTestsFixture.BuildTicket(tenantId, userId);
         var rawKey = await sut.StoreAsync(storeTicket, httpContext: null, CancellationToken.None);
 
@@ -290,7 +291,7 @@ public sealed class TenantSessionRlsIntegrationTests : IClassFixture<TenantSessi
         var (tenantId, userId) = await _fixture.SeedActiveTenantAndUserAsync();
 
         var scopeFactory = _fixture.BuildProductionLikeScopeFactory();
-        var sut = new TenantDatabaseTicketStore(scopeFactory, _fixture.Clock);
+        var sut = new TenantDatabaseTicketStore(scopeFactory, _fixture.Clock, NullLogger<TenantDatabaseTicketStore>.Instance);
         var storeTicket = TenantSessionRlsIntegrationTestsFixture.BuildTicket(tenantId, userId);
         var rawKey = await sut.StoreAsync(storeTicket, httpContext: null, CancellationToken.None);
 
@@ -317,7 +318,7 @@ public sealed class TenantSessionRlsIntegrationTests : IClassFixture<TenantSessi
         var (tenantId, userId) = await _fixture.SeedActiveTenantAndUserAsync();
 
         var scopeFactory = _fixture.BuildProductionLikeScopeFactory();
-        var sut = new TenantDatabaseTicketStore(scopeFactory, _fixture.Clock);
+        var sut = new TenantDatabaseTicketStore(scopeFactory, _fixture.Clock, NullLogger<TenantDatabaseTicketStore>.Instance);
         var storeTicket = TenantSessionRlsIntegrationTestsFixture.BuildTicket(tenantId, userId);
         var rawKey = await sut.StoreAsync(storeTicket, httpContext: null, CancellationToken.None);
 

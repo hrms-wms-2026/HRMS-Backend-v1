@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
@@ -7,6 +8,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using ONEVO.Application.Common.Models.Auth;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
@@ -33,11 +35,14 @@ public sealed class TenantDatabaseTicketStore : ITicketStore
 
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly IDateTimeProvider _clock;
+    private readonly ILogger<TenantDatabaseTicketStore> _logger;
 
-    public TenantDatabaseTicketStore(IServiceScopeFactory scopeFactory, IDateTimeProvider clock)
+    public TenantDatabaseTicketStore(
+        IServiceScopeFactory scopeFactory, IDateTimeProvider clock, ILogger<TenantDatabaseTicketStore> logger)
     {
         _scopeFactory = scopeFactory;
         _clock = clock;
+        _logger = logger;
     }
 
     // Classic overloads (forward to the HttpContext-aware ones)
@@ -163,6 +168,27 @@ public sealed class TenantDatabaseTicketStore : ITicketStore
     public async Task<AuthenticationTicket?> RetrieveAsync(
         string key, HttpContext? httpContext, CancellationToken cancellationToken)
     {
+        // PERF-01 instrumentation: this runs on every authenticated request and does several
+        // sequential DB round trips (session, tenant, user, employee, permission resolution).
+        // Logged at Debug so it costs nothing unless an operator turns Debug logging on for this
+        // category to measure real p95 before deciding whether further optimization is worth it.
+        var stopwatch = _logger.IsEnabled(LogLevel.Debug) ? Stopwatch.StartNew() : null;
+        try
+        {
+            return await RetrieveCoreAsync(key, cancellationToken);
+        }
+        finally
+        {
+            if (stopwatch is not null)
+            {
+                stopwatch.Stop();
+                _logger.LogDebug("TenantDatabaseTicketStore.RetrieveAsync took {ElapsedMs}ms.", stopwatch.Elapsed.TotalMilliseconds);
+            }
+        }
+    }
+
+    private async Task<AuthenticationTicket?> RetrieveCoreAsync(string key, CancellationToken cancellationToken)
+    {
         using var scope = _scopeFactory.CreateScope();
         var sessions = scope.ServiceProvider.GetRequiredService<ISessionRepository>();
         var users = scope.ServiceProvider.GetRequiredService<IUserRepository>();
@@ -191,12 +217,11 @@ public sealed class TenantDatabaseTicketStore : ITicketStore
         if (user is null || !user.IsActive)
             return null;
 
-        Guid? activeLegalEntityId = null;
-        if (session.ActiveEmployeeId is Guid activeEmployeeId)
-        {
-            var activeEmployee = await employees.GetByIdAsync(session.TenantId, activeEmployeeId, cancellationToken);
-            activeLegalEntityId = activeEmployee?.LegalEntityId;
-        }
+        // PERF-01: only the LegalEntityId column is needed here - GetLegalEntityIdAsync is a
+        // projection-only query, not a full Employee entity fetch, on every authenticated request.
+        Guid? activeLegalEntityId = session.ActiveEmployeeId is Guid activeEmployeeId
+            ? await employees.GetLegalEntityIdAsync(session.TenantId, activeEmployeeId, cancellationToken)
+            : null;
 
         var permissions = await permissionResolver.ResolveAsync(
             session.UserId, session.TenantId, activeLegalEntityId, cancellationToken);

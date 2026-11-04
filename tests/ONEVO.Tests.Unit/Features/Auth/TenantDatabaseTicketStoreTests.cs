@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using ONEVO.Application.Common.Models.Auth;
 using ONEVO.Application.Common.RepositoryInterfaces;
@@ -63,7 +64,7 @@ public class TenantDatabaseTicketStoreTests
     };
 
     private TenantDatabaseTicketStore CreateSut() =>
-        new(_scopeFactory, _clock);
+        new(_scopeFactory, _clock, NullLogger<TenantDatabaseTicketStore>.Instance);
 
     [Fact]
     public async Task StoreAsync_PersistsSession_ReturnsRawKey()
@@ -258,8 +259,7 @@ public class TenantDatabaseTicketStoreTests
         _tenants.GetByIdAsync(tenantId, Arg.Any<CancellationToken>()).Returns(ActiveTenant(tenantId));
         _users.GetByIdAsync(userId, Arg.Any<CancellationToken>()).Returns(
             new ONEVO.Domain.Features.InfrastructureModule.Entities.User { Id = userId, Email = "a@b.com", IsActive = true });
-        _employees.GetByIdAsync(tenantId, employeeId, Arg.Any<CancellationToken>()).Returns(
-            new Employee { Id = employeeId, TenantId = tenantId, UserId = userId, LegalEntityId = legalEntityId });
+        _employees.GetLegalEntityIdAsync(tenantId, employeeId, Arg.Any<CancellationToken>()).Returns(legalEntityId);
         _permissions.ResolveAsync(userId, tenantId, legalEntityId, Arg.Any<CancellationToken>())
                     .Returns(["employees:read"]);
 
