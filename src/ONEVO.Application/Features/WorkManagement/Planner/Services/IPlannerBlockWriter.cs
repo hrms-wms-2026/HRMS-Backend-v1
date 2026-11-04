@@ -8,4 +8,8 @@ public interface IPlannerBlockWriter
 {
     Task<Result> PlanForAsync(Guid tenantId, Guid employeeId, Guid taskId, DateTimeOffset startAt, DateTimeOffset endAt,
         CancellationToken ct);
+
+    /// <summary>Marks every block of the task, on anyone's planner, for removal with the caller's save (a reverted approval
+    /// takes the task it created off the Planner).</summary>
+    Task RemoveBlocksOfTaskAsync(Guid tenantId, Guid taskId, CancellationToken ct);
 }
