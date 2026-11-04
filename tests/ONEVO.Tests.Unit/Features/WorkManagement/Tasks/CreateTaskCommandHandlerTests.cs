@@ -184,6 +184,21 @@ public class CreateTaskCommandHandlerTests
         Assert.Empty(sent);
     }
 
+    // Follow-up 1: a slot is only planned for its assignee, so a slot without one is refused rather than dropped silently.
+    [Fact]
+    public async Task Handle_SlotWithoutAnAssignee_Is400()
+    {
+        var (engine, sent) = PendingEngine();
+        var (handler, _, _, _) = BuildHandler(Owned(100m), 0m, callerEmployeeId: MemberEmployeeId, callerIsEffectiveManager: true,
+            approvalEngine: engine);
+
+        var result = await handler.Handle(PlanCommand(null, SlotStart, SlotEnd), CancellationToken.None);
+
+        Assert.Equal((400, TaskErrorCodes.InvalidPlanRequest), (result.StatusCode, result.ErrorCode));
+        Assert.Equal("A planned time needs the assignee it is planned for.", result.Error);
+        Assert.Empty(sent);
+    }
+
     [Fact]
     public async Task Handle_OnlyOneSlotEnd_Is400()
     {

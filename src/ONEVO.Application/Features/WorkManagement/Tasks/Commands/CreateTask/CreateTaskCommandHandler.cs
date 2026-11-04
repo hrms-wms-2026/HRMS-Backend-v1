@@ -85,6 +85,8 @@ public class CreateTaskCommandHandler : IRequestHandler<CreateTaskCommand, Resul
         // caller can be the assignee; the direct path ignores both (the client assigns and plans itself).
         if (request.AssigneeEmployeeId is { } assignee && assignee != callerEmployeeId.Value)
             return InvalidPlan("A work item request can only be assigned to you.");
+        if ((request.PlanStartAt.HasValue || request.PlanEndAt.HasValue) && request.AssigneeEmployeeId is null)
+            return InvalidPlan("A planned time needs the assignee it is planned for.");
         if (request.PlanStartAt.HasValue != request.PlanEndAt.HasValue)
             return InvalidPlan("A planned time needs both a start and an end.");
         if (request.PlanStartAt is { } planStart && request.PlanEndAt is { } planEnd && planEnd <= planStart)
