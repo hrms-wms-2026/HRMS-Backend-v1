@@ -249,7 +249,8 @@ public class CalendarController : ControllerBase
     [RequirePermission("calendar:read")]
     public async Task<IActionResult> CheckConflicts([FromBody] CheckCalendarConflictsRequest request, CancellationToken ct)
     {
-        var result = await _mediator.Send(new CheckCalendarConflictsQuery(request.ParticipantEmployeeIds, request.StartDate, request.EndDate), ct);
+        var result = await _mediator.Send(new CheckCalendarConflictsQuery(request.ParticipantEmployeeIds, request.StartDate, request.EndDate,
+            request.IsAllDay, request.TimeZone, request.ExcludeMeetingSeriesId), ct);
         return result.IsSuccess
             ? Ok(result.Value!.ToViewModel())
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
