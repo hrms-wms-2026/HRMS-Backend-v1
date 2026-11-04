@@ -23,6 +23,9 @@ public interface IPlannerRepository
     Task<IReadOnlyList<PlannedTaskBlock>> ListBlocksAsync(Guid tenantId, Guid employeeId, DateTimeOffset from, DateTimeOffset to,
         CancellationToken ct = default);
 
+    /// <summary>Every live block of the task, on anyone's planner, tracked for removal.</summary>
+    Task<IReadOnlyList<PlannedTaskBlock>> ListTrackedBlocksOfTaskAsync(Guid tenantId, Guid taskId, CancellationToken ct = default);
+
     Task<PlannedTaskBlock?> GetBlockTrackedAsync(Guid tenantId, Guid employeeId, Guid blockId, CancellationToken ct = default);
 
     /// <summary>Whether another of the employee's blocks overlaps [start, end).</summary>

@@ -1,6 +1,7 @@
 using FluentAssertions;
 using Moq;
 using ONEVO.Application.Features.WorkManagement.Approvals.Services;
+using ONEVO.Application.Features.WorkManagement.Planner.Services;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.Reverters;
 using ONEVO.Application.Features.WorkManagement.Tasks.Services;
@@ -16,7 +17,23 @@ public class TaskCreateReverterTests
     private readonly Mock<ITaskWriteService> _writes = new();
     private readonly Mock<IWorkTaskRepository> _tasks = new();
 
-    private TaskCreateReverter Build() => new(_writes.Object, _tasks.Object);
+    private readonly Mock<IPlannerBlockWriter> _planner = new();
+
+    private TaskCreateReverter Build() => new(_writes.Object, _tasks.Object, _planner.Object);
+
+    // Follow-up 2: an approved request may have planned the task; the revert takes those blocks off the Planner too.
+    [Fact]
+    public async Task RevertAsync_RemovesThePlannerBlocksOfTheCreatedTask()
+    {
+        var taskId = Guid.NewGuid();
+        var request = new WorkApprovalRequest { Id = Guid.NewGuid(), TenantId = TenantId, TargetId = taskId, ActionType = WorkActionTypes.TaskCreate };
+        _tasks.Setup(x => x.GetTrackedByIdForTenantAsync(TenantId, taskId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new WorkTask { Id = taskId, TenantId = TenantId });
+
+        await Build().RevertAsync(new ApprovalRevertContext(request, Guid.NewGuid()), CancellationToken.None);
+
+        _planner.Verify(x => x.RemoveBlocksOfTaskAsync(TenantId, taskId, It.IsAny<CancellationToken>()), Times.Once);
+    }
 
     [Fact]
     public async Task RevertAsync_SoftDeletesTheCreatedTaskAndNullsTargetId()
