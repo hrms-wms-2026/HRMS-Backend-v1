@@ -86,6 +86,40 @@ public sealed class PlannerServiceIntegrationTests
         Assert.Contains(day.DueTasks, t => t.TaskId == w.Task);
     }
 
+    // Planner create popover (2026-11-03): an approved work item request is planned for its requester through
+    // IPlannerBlockWriter, under the same rules as the employee planning it themselves.
+    [Fact]
+    public async Task PlanFor_ATaskAssignedToTheEmployee_AddsTheBlock()
+    {
+        var w = await SeedAsync();
+
+        Result planned;
+        await using (var db = w.H.NewContext())
+            planned = await ((IPlannerBlockWriter)Service(db)).PlanForAsync(w.H.TenantId, w.Employee, w.Task, Local(9), Local(11), default);
+
+        Assert.True(planned.IsSuccess, planned.Error);
+        var block = Assert.Single((await DayAsync(w, w.Employee, w.Employee)).Value!.Blocks);
+        Assert.Equal((w.Task, 120), (block.TaskId, block.PlannedMinutes));
+    }
+
+    [Fact]
+    public async Task PlanFor_ATaskNotAssigned_IsTaskNotPlannable()
+    {
+        var w = await SeedAsync();
+        Guid unassigned;
+        await using (var db = w.H.NewContext())
+        {
+            unassigned = w.H.AddTask(db, w.At.ProjectId, w.At.ObjectiveId, w.At.StatusId, progress: 0, due: Today).Id;
+            await db.SaveChangesAsync();
+        }
+
+        Result planned;
+        await using (var db = w.H.NewContext())
+            planned = await ((IPlannerBlockWriter)Service(db)).PlanForAsync(w.H.TenantId, w.Employee, unassigned, Local(9), Local(11), default);
+
+        Assert.Equal(PlannerErrorCodes.TaskNotPlannable, planned.ErrorCode);
+    }
+
     [Fact]
     public async Task Today_uses_the_employee_zone()
     {
@@ -395,6 +429,23 @@ public sealed class PlannerServiceIntegrationTests
 
         Assert.Equal(75, today.AttendanceMinutes);       // still clocked in: 90 min since clock-in minus a 15 min break
         Assert.Equal(420, yesterday.AttendanceMinutes);  // clocked out: the recorded worked minutes
+    }
+
+    // Follow-up 2: a reverted work item request takes the blocks of the task it created off the Planner.
+    [Fact]
+    public async Task RemoveBlocksOfTask_takes_every_block_of_the_task_off_the_planner()
+    {
+        var w = await SeedAsync();
+        Assert.True((await PlanAsync(w, w.Task, Local(10), Local(11))).IsSuccess);
+        Assert.True((await PlanAsync(w, w.Task, Local(14), Local(15))).IsSuccess);
+
+        await using (var db = w.H.NewContext())
+        {
+            await ((IPlannerBlockWriter)Service(db)).RemoveBlocksOfTaskAsync(w.H.TenantId, w.Task, default);
+            await db.SaveChangesAsync();
+        }
+
+        Assert.Empty((await DayAsync(w, w.Employee, w.Employee)).Value!.Blocks);
     }
 
     [Fact]

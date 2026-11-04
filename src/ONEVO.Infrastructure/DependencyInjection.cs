@@ -457,6 +457,8 @@ public static class DependencyInjection
         services.AddScoped<ONEVO.Application.Features.WorkManagement.Planner.RepositoryInterfaces.IPlannerRepository,
             ONEVO.Infrastructure.Persistence.Repositories.WorkManagement.Planner.EfPlannerRepository>();
         services.AddScoped<ONEVO.Application.Features.WorkManagement.Planner.Services.PlannerService>();
+        services.AddScoped<ONEVO.Application.Features.WorkManagement.Planner.Services.IPlannerBlockWriter>(
+            sp => sp.GetRequiredService<ONEVO.Application.Features.WorkManagement.Planner.Services.PlannerService>());
         services.AddScoped<ONEVO.Application.Features.WorkManagement.WeeklyProgress.RepositoryInterfaces.IWeeklyWorkProgressReadRepository,
             ONEVO.Infrastructure.Persistence.Repositories.WorkManagement.WeeklyProgress.EfWeeklyWorkProgressReadRepository>();
         services.AddHostedService<Services.WorkManagement.Meetings.MeetingOccurrenceGeneratorJob>();

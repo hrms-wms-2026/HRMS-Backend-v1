@@ -27,6 +27,8 @@ If the Objective is a whole-module member of one or more active calendar Events,
 }
 ```
 
+Optional, for the Planner create popover: `assigneeEmployeeId` (must be the caller), `planStartAt` and `planEndAt` (both or neither; end after start). They matter only when the create goes for approval (`202`): once approved, the task is assigned to the requester and a Planner block is added at that slot (if the slot can still be planned). A direct create (`201`) ignores them. Otherwise `400 invalid_plan_request`.
+
 `categoryId` must be the id of a `TaskCategory` row belonging to this task's Project (categories are seeded per-Project; a dedicated listing endpoint is planned separately). `priority` is one of `low`, `medium`, `high`, `critical`. `estimatedHours`, `dueDate`, `description`, `storyPoints`, and `sprintId` are optional. Omit `sprintId` (or send `null`) to create a direct task under the Objective with no Sprint. When `sprintId` is provided, the Sprint must belong to this Objective and must not be Achieved.
 
 ## Response
@@ -60,7 +62,7 @@ If the Objective is a whole-module member of one or more active calendar Events,
 
 | Status | Cause |
 |---|---|
-| `400` | Validation failure (title, categoryId, priority, negative hours) |
+| `400` | Validation failure (title, categoryId, priority, negative hours); `invalid_plan_request`: `assigneeEmployeeId` is not the caller, or `planStartAt`/`planEndAt` is half-given or ends before it starts |
 | `403` | Not authenticated, no employee record, or caller is not an effective manager of the Objective (its owner, an active member, or the owner/an active member of any ancestor Objective) — non-cascaded, non-owner members must submit a task creation request instead |
 | `404` | Objective, Project, Category, or (when provided) Sprint not found / inactive |
 | `409` | `estimatedHours` exceeds remaining slack; body is `InsufficientAllocationResponse` (`availableSlackHours`, `suggestedAction: "extend_allocation"`). Also returned when the provided Sprint is Achieved (frozen), or when the Objective is in an active Event and `dueDate` is missing or outside the Event window. |
