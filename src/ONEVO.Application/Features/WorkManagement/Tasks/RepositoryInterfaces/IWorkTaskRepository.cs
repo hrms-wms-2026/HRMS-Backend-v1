@@ -68,9 +68,14 @@ public sealed record TaskProgressRow(
 public sealed record LedOverdueTaskRow(Guid TaskId, string ShortId, string Title, Guid ProjectId, Guid ObjectiveId, DateOnly DueDate, IReadOnlyList<Guid> AssigneeEmployeeIds,
     decimal? EstimatedHours = null);
 
-/// <summary>Every top-level overdue task of a project, summed: how many, their estimated hours, and how many have no
-/// estimate (they add no hours).</summary>
-public sealed record LedOverdueProjectRow(Guid ProjectId, int TaskCount, decimal EstimatedHours, int UnestimatedTaskCount);
+/// <summary>Every top-level overdue task of one module, summed: how many, their estimated hours split the way the module
+/// hour summary splits open work (ProgressPercent &gt; 0 is in progress, else not started), and how many have no estimate
+/// (they add no hours).</summary>
+public sealed record LedOverdueModuleRow(Guid ProjectId, Guid ObjectiveId, int TaskCount, decimal InProgressHours,
+    decimal NotStartedHours, int UnestimatedTaskCount)
+{
+    public decimal EstimatedHours => InProgressHours + NotStartedHours;
+}
 
 /// <summary>An employee's assigned task with its project and status, for the Work & Activity
 /// Needs attention and Recent tasks cards.</summary>
@@ -194,8 +199,8 @@ public interface IWorkTaskRepository
     /// <summary>How many tasks ListTopLevelOverdueAsync would return without a limit.</summary>
     Task<int> CountTopLevelOverdueAsync(Guid tenantId, IReadOnlyCollection<Guid> objectiveIds, DateOnly today, CancellationToken ct = default);
 
-    /// <summary>The tasks ListTopLevelOverdueAsync would return without a limit, grouped by project: one query.</summary>
-    Task<IReadOnlyList<LedOverdueProjectRow>> ListTopLevelOverdueByProjectAsync(Guid tenantId, IReadOnlyCollection<Guid> objectiveIds,
+    /// <summary>The tasks ListTopLevelOverdueAsync would return without a limit, grouped by module: one query.</summary>
+    Task<IReadOnlyList<LedOverdueModuleRow>> ListTopLevelOverdueByModuleAsync(Guid tenantId, IReadOnlyCollection<Guid> objectiveIds,
         DateOnly today, CancellationToken ct = default);
 
     void Update(WorkTask task);

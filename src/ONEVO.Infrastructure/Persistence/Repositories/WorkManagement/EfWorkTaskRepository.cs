@@ -351,29 +351,33 @@ public class EfWorkTaskRepository : IWorkTaskRepository
             assignees.TryGetValue(r.Id, out var assigneeIds) ? assigneeIds : new List<Guid>(), r.EstimatedHours)).ToList();
     }
 
-    public async Task<IReadOnlyList<LedOverdueProjectRow>> ListTopLevelOverdueByProjectAsync(Guid tenantId,
+    public async Task<IReadOnlyList<LedOverdueModuleRow>> ListTopLevelOverdueByModuleAsync(Guid tenantId,
         IReadOnlyCollection<Guid> objectiveIds, DateOnly today, CancellationToken ct = default)
     {
         if (objectiveIds.Count == 0)
-            return Array.Empty<LedOverdueProjectRow>();
+            return Array.Empty<LedOverdueModuleRow>();
         var ids = objectiveIds.ToList();
-        // The same predicate as ListTopLevelOverdueAsync, summed per project in the database.
+        // The same predicate as ListTopLevelOverdueAsync, summed per module in the database. In progress / not started
+        // match the module hour summary (progress_percent > 0), so the overdue hours carve out of those totals exactly.
         var rows = await (
             from t in _db.WorkTasks.AsNoTracking()
             join s in _db.TaskStatuses.AsNoTracking() on t.StatusId equals s.Id
             where t.TenantId == tenantId && t.ParentTaskId == null && ids.Contains(t.ObjectiveId)
                 && !s.MarksTaskComplete && t.ProgressPercent < 100
                 && t.DueDate != null && t.DueDate < today
-            group t by t.ProjectId into g
+            group t by new { t.ProjectId, t.ObjectiveId } into g
             select new
             {
-                ProjectId = g.Key,
+                g.Key.ProjectId,
+                g.Key.ObjectiveId,
                 TaskCount = g.Count(),
-                Hours = g.Sum(t => t.EstimatedHours ?? 0m),
+                InProgress = g.Sum(t => t.ProgressPercent > 0 ? t.EstimatedHours ?? 0m : 0m),
+                NotStarted = g.Sum(t => t.ProgressPercent > 0 ? 0m : t.EstimatedHours ?? 0m),
                 Unestimated = g.Count(t => t.EstimatedHours == null),
             }
         ).ToListAsync(ct);
-        return rows.Select(r => new LedOverdueProjectRow(r.ProjectId, r.TaskCount, r.Hours, r.Unestimated)).ToList();
+        return rows.Select(r => new LedOverdueModuleRow(r.ProjectId, r.ObjectiveId, r.TaskCount, r.InProgress, r.NotStarted, r.Unestimated))
+            .ToList();
     }
 
     public async Task<int> CountTopLevelOverdueAsync(Guid tenantId, IReadOnlyCollection<Guid> objectiveIds, DateOnly today, CancellationToken ct = default)

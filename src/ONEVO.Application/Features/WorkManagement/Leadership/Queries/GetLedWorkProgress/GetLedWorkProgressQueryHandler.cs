@@ -20,7 +20,7 @@ public sealed class GetLedWorkProgressQueryHandler(
     IProjectRepository projects)
     : IRequestHandler<GetLedWorkProgressQuery, Result<LedWorkProgressResponse>>
 {
-    private static readonly LedWorkProgressResponse Empty = new(LedHourTotals.Zero, [], [], 0, 0, 0, 0, []);
+    private static readonly LedWorkProgressResponse Empty = new(LedHourTotals.Zero, [], [], 0, 0, 0, 0, [], []);
 
     public async Task<Result<LedWorkProgressResponse>> Handle(GetLedWorkProgressQuery request, CancellationToken ct)
     {
@@ -46,9 +46,9 @@ public sealed class GetLedWorkProgressQueryHandler(
 
         var overdueLimit = Math.Clamp(request.OverdueLimit, 1, 50);
         var overdueRows = await tasks.ListTopLevelOverdueAsync(tenantId, allObjectiveIds, today, overdueLimit, ct);
-        // Every overdue task summed by project: the total count, hours and the pie, in one grouped query.
-        var overdueByProject = await tasks.ListTopLevelOverdueByProjectAsync(tenantId, allObjectiveIds, today, ct);
-        var overdueTotal = overdueByProject.Sum(p => p.TaskCount);
+        // Every overdue task summed by module (one grouped query): the donut's overdue slice, then by project for the pie.
+        var overdueByModule = await tasks.ListTopLevelOverdueByModuleAsync(tenantId, allObjectiveIds, today, ct);
+        var overdueTotal = overdueByModule.Sum(m => m.TaskCount);
         var projectRows = (await projects.ListByIdsAsync(tenantId, scope.HeadModules.Select(h => h.ProjectId).Distinct().ToList(), ct))
             .ToDictionary(p => p.Id);
         var assigneeIds = overdueRows.SelectMany(r => r.AssigneeEmployeeIds).Distinct().ToList();
@@ -79,15 +79,18 @@ public sealed class GetLedWorkProgressQueryHandler(
             r.AssigneeEmployeeIds.Select(id => new LedTaskAssignee(id,
                 names.TryGetValue(id, out var e) ? $"{e.FirstName} {e.LastName}".Trim() : "Unknown employee")).ToList(),
             r.EstimatedHours)).ToList();
-        var overdueProjects = overdueByProject
-            .Select(p => new LedOverdueProject(p.ProjectId,
-                projectRows.TryGetValue(p.ProjectId, out var project) ? project.Name : "Unknown project",
-                p.EstimatedHours, p.TaskCount, p.UnestimatedTaskCount))
+        var overdueProjects = overdueByModule
+            .GroupBy(m => m.ProjectId)
+            .Select(g => new LedOverdueProject(g.Key,
+                projectRows.TryGetValue(g.Key, out var project) ? project.Name : "Unknown project",
+                g.Sum(m => m.EstimatedHours), g.Sum(m => m.TaskCount), g.Sum(m => m.UnestimatedTaskCount)))
             .OrderByDescending(p => p.Hours)
             .ThenBy(p => p.ProjectName, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
         return Result<LedWorkProgressResponse>.Success(new LedWorkProgressResponse(hours, projectProgress, overdue, overdueTotal, modulesAtRisk,
-            overdueProjects.Sum(p => p.Hours), overdueProjects.Sum(p => p.UnestimatedTaskCount), overdueProjects));
+            overdueProjects.Sum(p => p.Hours), overdueProjects.Sum(p => p.UnestimatedTaskCount), overdueProjects,
+            overdueByModule.Select(m => new LedOverdueModule(m.ProjectId, m.ObjectiveId, m.InProgressHours, m.NotStartedHours, m.TaskCount))
+                .ToList()));
     }
 }

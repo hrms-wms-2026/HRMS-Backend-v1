@@ -131,6 +131,9 @@ public sealed class LedWorkProgressIntegrationTests
         var overdueProject = lead.Value.OverdueByProject.Should().ContainSingle().Subject;
         (overdueProject.ProjectId, overdueProject.ProjectName, overdueProject.Hours, overdueProject.TaskCount)
             .Should().Be((project.ProjectId, project.ProjectName, 8m, 2));
+        lead.Value.OverdueByModule.Should().ContainSingle().Which.Should().Be(
+            new LedOverdueModule(project.ProjectId, seeded.NestedId, 0m, 8m, 2),
+            "both overdue tasks sit at 0% progress, so they carve out of Not started like the hour summary counts them");
 
         member.Value!.Projects.Should().BeEmpty("plain membership never makes someone a lead");
     }
