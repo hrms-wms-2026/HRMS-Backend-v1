@@ -16,6 +16,9 @@ Feature flag `Planner:Enabled` (default off): while it is off, every endpoint an
 | GET | `/api/v1/planner/me/range?from=YYYY-MM-DD&to=YYYY-MM-DD` | the caller (at most 42 days) | — |
 | GET | `/api/v1/planner/me/focus` | the caller | — |
 | GET | `/api/v1/planner/employees/{employeeId}?date=` | the employee, or any manager in their reporting-line ancestor chain; anyone else 404 | — |
+| GET | `/api/v1/planner/employees/{employeeId}/range?from=&to=` | same as above (at most 42 days; read-only) | — |
+| GET | `/api/v1/planner/team?date=&managerId=` | the manager (default: the caller) or any of their reporting-line ancestors; anyone else 404 | — |
+| GET | `/api/v1/planner/team/range?from=&to=&managerId=` | same as above (at most 42 days) | — |
 | POST | `/api/v1/planner/me/blocks` | the caller | `{ taskId, startAt, endAt }` |
 | PATCH | `/api/v1/planner/me/blocks/{blockId}` | the block's owner | `{ startAt, endAt }` (may move to another editable day) |
 | DELETE | `/api/v1/planner/me/blocks/{blockId}` | the block's owner | — |
@@ -55,6 +58,47 @@ The calendar grid's days, one entry per date from `from` to `to`:
                             "endAt": "…", "plannedMinutes": 120, "actualMinutes": 45, "stillAssigned": true,
                             "categoryName": "bug", "categoryKind": "bug" } ],
               "blockMinutes": 120, "workingMinutes": 420 } ] }
+```
+
+### Person range (`/employees/{employeeId}/range`): team planner, 2026-11-03
+
+One person's days in **their** zone, read-only, for themself or a reporting-line ancestor (anyone else 404). It returns a `PlannerPersonRangeResponse`:
+
+```json
+{ "employeeId": "…", "name": "Ravi Kumar", "timezone": "Asia/Colombo", "today": "2026-11-02",
+  "days": [ { "date": "2026-11-02", "workWindow": { "…": "as in /me/range" },
+              "workStartAt": "2026-11-02T03:30:00Z", "workEndAt": "2026-11-02T11:30:00Z",
+              "blocks": [ "as in /me/range" ], "meetings": [ "as in /me" ],
+              "leaves": [ { "startAt": "…", "endAt": "…", "status": "approved" } ],
+              "blockMinutes": 120, "meetingMinutes": 30, "workingMinutes": 420, "capacityMinutes": 420, "onLeave": false } ] }
+```
+
+- **Meetings:** a private meeting reads `"Private meeting"` for anyone but the employee.
+- **Leave:**
+  - Leave appears by status only: `approved`, `pending` or `busy`.
+  - Without `leave:read` (and not the employee themself), approved leave reads as `busy` and pending leave is left out, the same rule as Team Status.
+- **Capacity:**
+  - `capacityMinutes` = `workingMinutes` less approved leave inside the work window, never below 0.
+  - `onLeave` is true when a working day is fully taken by approved leave, and only for viewers who may read leave.
+
+### Team (`/team`, `/team/range`): team planner, 2026-11-03
+
+A manager's direct reports, ordered by first then last name. Each member carries their days in **their own** zone, using the same `PlannerPersonDay` shape and the same masking and leave rules as the person range.
+
+- **`/team`:**
+  - Covers one day: `date`, or today in the caller's zone when `date` is omitted.
+  - Returns full detail.
+- **`/team/range`:**
+  - Covers `from` … `to`.
+  - Returns only the minute fields and `onLeave`; `blocks`, `meetings` and `leaves` are empty.
+- **`managerId`:**
+  - Drills down the reporting line.
+  - The caller must be that manager or above them.
+
+```json
+{ "managerEmployeeId": "…", "managerName": "Suresh M.", "from": "2026-11-02", "to": "2026-11-02",
+  "members": [ { "employeeId": "…", "name": "Ravi Kumar", "directReportCount": 0, "timezone": "Asia/Colombo",
+                 "days": [ "PlannerPersonDay" ] } ] }
 ```
 
 ### Focus (`/me/focus`)

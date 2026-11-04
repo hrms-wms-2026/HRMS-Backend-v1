@@ -31,7 +31,11 @@ public static class DashboardWidgetRegistry
         new("team-quick-actions", DashboardKeys.MyTeam, "Team quick actions", "Shortcuts for managing your team.", 2, 2, 6, 4, false),
         new("team-progress", DashboardKeys.MyTeam, "Team progress", "Estimated hours progress across your team.", 2, 2, 12, 8, true),
         new("team-attendance", DashboardKeys.MyTeam, "Team attendance", "Attendance across your team by week or month.", 2, 2, 12, 8, true),
+        new("team-plan-today", DashboardKeys.MyTeam, "Team plan today", "Today's planned load for each direct report.", 2, 2, 12, 8, false),
     ];
+
+    private const string TeamPlanToday = "team-plan-today";
+    private static readonly GridRect TeamPlanTodaySize = new(0, 0, 8, 6);
 
     private static readonly Dictionary<string, WidgetDefinition> ByKey =
         Definitions.ToDictionary(d => d.Key, StringComparer.Ordinal);
@@ -64,6 +68,7 @@ public static class DashboardWidgetRegistry
         ("team-quick-actions", new GridRect(8, 0, 4, 4)),
         ("team-progress", new GridRect(8, 4, 4, 6)),
         ("team-attendance", new GridRect(0, 6, 8, 6)),
+        ("team-plan-today", new GridRect(0, 12, 8, 6)),
     ];
 
     // team-attendance shares team-status's gate, so the variants below (team-status not allowed) never include it.
@@ -111,7 +116,21 @@ public static class DashboardWidgetRegistry
     /// </summary>
     public static IReadOnlyList<(string Key, GridRect Rect)> DefaultLayoutFor(
         string dashboardKey, IReadOnlySet<string> allowedKeys, string breakpoint) =>
-        Derive(VariantDesktop(dashboardKey, allowedKeys) ?? DesktopDefaults(dashboardKey), breakpoint);
+        Derive(VariantDesktop(dashboardKey, allowedKeys) is { } variant
+            ? WithTeamPlanToday(variant, allowedKeys)
+            : DesktopDefaults(dashboardKey), breakpoint);
+
+    /// <summary>A My Team variant plus "Team plan today" when it is allowed: 8 wide, in the first rows the left 8 columns leave
+    /// free, so a manager without Team Status still gets it.</summary>
+    private static IReadOnlyList<(string Key, GridRect Rect)> WithTeamPlanToday(
+        IReadOnlyList<(string Key, GridRect Rect)> variant, IReadOnlySet<string> allowedKeys)
+    {
+        if (!allowedKeys.Contains(TeamPlanToday) || variant.Any(i => i.Key == TeamPlanToday)
+            || variant.All(i => Get(i.Key)?.DashboardKey != DashboardKeys.MyTeam))
+            return variant;
+        var top = variant.Where(i => i.Rect.X < TeamPlanTodaySize.W).Select(i => i.Rect.Y + i.Rect.H).DefaultIfEmpty(0).Max();
+        return [.. variant, (TeamPlanToday, TeamPlanTodaySize with { Y = top })];
+    }
 
     /// <summary>Tablet width (6 columns) for a widget whose desktop width is <paramref name="desktopW"/> (Ruling 2).</summary>
     public static int TabletWidth(WidgetDefinition? def, int desktopW)

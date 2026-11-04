@@ -9,6 +9,7 @@ using ONEVO.Application.Features.WorkManagement.Meetings.Services;
 using ONEVO.Application.Features.WorkManagement.Planner.Contracts;
 using ONEVO.Application.Features.WorkManagement.Planner.RepositoryInterfaces;
 using ONEVO.Domain.Features.WorkManagement.Planner.Entities;
+using Zone = ONEVO.Application.Features.WorkManagement.Planner.Services.PlannerZones.Zone;
 
 namespace ONEVO.Application.Features.WorkManagement.Planner.Services;
 
@@ -77,8 +78,7 @@ public sealed class PlannerService : IPlannerBlockWriter
         if (!_options.Value.Enabled)
             return Disabled<PlannerRangeResponse>();
         if (to < from || to.DayNumber - from.DayNumber + 1 > MaxRangeDays)
-            return Result<PlannerRangeResponse>.Failure($"A range runs forwards and covers at most {MaxRangeDays} days.", 400,
-                PlannerErrorCodes.InvalidRange);
+            return InvalidRange<PlannerRangeResponse>();
         var zone = await ZoneOfAsync(tenantId, callerEmployeeId, ct);
         if (zone is null)
             return NotFound<PlannerRangeResponse>();
@@ -211,8 +211,6 @@ public sealed class PlannerService : IPlannerBlockWriter
         return Result<PlannerDayResponse>.Success(await ComposeDayOfAsync(tenantId, callerEmployeeId, block.StartAt, zone.Value, ct));
     }
 
-    private readonly record struct Zone(string Id, TimeZoneInfo Info);
-
     private readonly record struct WriteCheck(Zone Zone, Result<PlannerDayResponse>? Failure);
 
     /// <summary>Flag on, a valid block inside one editable day (today up to the horizon), no overlap with their other blocks.</summary>
@@ -296,25 +294,22 @@ public sealed class PlannerService : IPlannerBlockWriter
                 : PlannerActuals.AttendanceMinutes(attendance.ActualStart, attendance.ActualEnd, attendance.WorkedMinutes, attendance.BreakMinutes, now));
     }
 
-    private async Task<Zone?> ZoneOfAsync(Guid tenantId, Guid employeeId, CancellationToken ct)
-    {
-        var employee = (await _employees.ListByIdsAsync(tenantId, [employeeId], ct)).GetValueOrDefault(employeeId);
-        if (employee is null)
-            return null;
-        var id = await _timezones.ResolveForUserAsync(tenantId, employee.UserId, ct);
-        // A zone id this machine does not know (a typo in the profile or legal entity) plans in UTC instead of failing.
-        return TimeZoneInfo.TryFindSystemTimeZoneById(id, out var info) ? new Zone(id, info) : new Zone("UTC", TimeZoneInfo.Utc);
-    }
+    private Task<Zone?> ZoneOfAsync(Guid tenantId, Guid employeeId, CancellationToken ct)
+        => PlannerZones.ResolveAsync(_employees, _timezones, tenantId, employeeId, ct);
 
-    private DateOnly TodayIn(TimeZoneInfo zone) => DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(_clock.UtcNow, zone).DateTime);
+    private DateOnly TodayIn(TimeZoneInfo zone) => PlannerZones.TodayIn(_clock.UtcNow, zone);
 
-    private static DateOnly DayOf(DateTimeOffset instant, TimeZoneInfo zone)
-        => DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(instant, zone).DateTime);
+    private static DateOnly DayOf(DateTimeOffset instant, TimeZoneInfo zone) => PlannerZones.DayOf(instant, zone);
 
     private static Result<T> BeyondHorizon<T>() => Result<T>.Failure(
         $"You can plan up to {PlanningHorizonDays} days ahead.", 400, PlannerErrorCodes.BeyondHorizon);
 
-    private static Result<T> Disabled<T>() => Result<T>.Failure("The planner is not available.", 503, PlannerErrorCodes.Disabled);
+    internal static Result<T> Disabled<T>() => Result<T>.Failure("The planner is not available.", 503, PlannerErrorCodes.Disabled);
 
-    private static Result<T> NotFound<T>() => Result<T>.Failure(NotFoundMessage, 404, PlannerErrorCodes.NotFound);
+    internal static Result<T> NotFound<T>() => Result<T>.Failure(NotFoundMessage, 404, PlannerErrorCodes.NotFound);
+
+    internal static Result<T> InvalidRange<T>() => Result<T>.Failure(
+        $"A range runs forwards and covers at most {MaxRangeDays} days.", 400, PlannerErrorCodes.InvalidRange);
+
+    internal const string PrivateTitle = PrivateMeetingTitle;
 }

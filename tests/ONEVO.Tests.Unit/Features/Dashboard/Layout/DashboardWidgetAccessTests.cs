@@ -81,6 +81,17 @@ public sealed class DashboardWidgetAccessTests
     }
 
     [Fact]
+    public async Task Team_plan_today_requires_availability_and_CanViewTeamPlan()
+    {
+        var allowed = await With(Caps(available: true) with { CanViewTeamPlan = true })
+            .GetAllowedKeysAsync(DashboardKeys.MyTeam, default);
+        var notAllowed = await With(Caps(available: true, leads: true)).GetAllowedKeysAsync(DashboardKeys.MyTeam, default);
+
+        Assert.Contains("team-plan-today", allowed);
+        Assert.DoesNotContain("team-plan-today", notAllowed);
+    }
+
+    [Fact]
     public async Task Team_quick_actions_always_allowed()
     {
         var team = await With(Caps()).GetAllowedKeysAsync(DashboardKeys.MyTeam, default);

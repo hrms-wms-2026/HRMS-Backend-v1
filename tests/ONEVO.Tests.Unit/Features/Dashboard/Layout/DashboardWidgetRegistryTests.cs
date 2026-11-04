@@ -15,7 +15,7 @@ public sealed class DashboardWidgetRegistryTests
         var team = DashboardWidgetRegistry.ForDashboard(DashboardKeys.MyTeam).Select(d => d.Key).ToList();
 
         Assert.Equal(10, work.Count);
-        Assert.Equal(4, team.Count);
+        Assert.Equal(5, team.Count);
         Assert.Empty(work.Intersect(team));
         Assert.Equal(work.Count + team.Count, work.Concat(team).Distinct().Count());
         foreach (var key in work.Concat(team))
@@ -148,7 +148,26 @@ public sealed class DashboardWidgetRegistryTests
         { DashboardKeys.MyWork, AllWork.Where(k => k != "action-center").ToArray() },
         { DashboardKeys.MyTeam, ["team-quick-actions", "team-progress"] },
         { DashboardKeys.MyTeam, ["team-quick-actions"] },
+        { DashboardKeys.MyTeam, ["team-quick-actions", "team-progress", "team-plan-today"] },
+        { DashboardKeys.MyTeam, ["team-quick-actions", "team-plan-today"] },
     };
+
+    // Team planner (2026-11-03): a manager without Team Status still gets "Team plan today", below what is there.
+    [Fact]
+    public void My_team_variants_place_team_plan_today_in_the_first_free_rows()
+    {
+        Assert.Equal(
+            [("team-progress", new GridRect(0, 0, 8, 6)), ("team-quick-actions", new GridRect(8, 0, 4, 4)),
+                ("team-plan-today", new GridRect(0, 6, 8, 6))],
+            DashboardWidgetRegistry.DefaultLayoutFor(DashboardKeys.MyTeam,
+                new HashSet<string> { "team-quick-actions", "team-progress", "team-plan-today" }, Breakpoints.Desktop));
+        Assert.Equal(
+            [("team-quick-actions", new GridRect(8, 0, 4, 4)), ("team-plan-today", new GridRect(0, 0, 8, 6))],
+            DashboardWidgetRegistry.DefaultLayoutFor(DashboardKeys.MyTeam,
+                new HashSet<string> { "team-quick-actions", "team-plan-today" }, Breakpoints.Desktop));
+        Assert.Contains(("team-plan-today", new GridRect(0, 12, 8, 6)),
+            DashboardWidgetRegistry.DefaultLayout(DashboardKeys.MyTeam, Breakpoints.Desktop));
+    }
 
     [Theory]
     [MemberData(nameof(VariantCases))]
