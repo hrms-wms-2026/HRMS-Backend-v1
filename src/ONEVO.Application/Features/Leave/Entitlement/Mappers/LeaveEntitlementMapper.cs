@@ -81,8 +81,12 @@ public static class LeaveEntitlementMapper
             carryExpiresOn,
             policy?.PolicyName,
             policy?.Version.AmountHours,
-            policy?.Version.AmountPeriod);
+            policy?.Version.AmountPeriod,
+            ResetsOn(entitlement.Year));
     }
+
+    /// <summary>Leave years are calendar years, so a balance resets on 1 January of the next year.</summary>
+    public static DateOnly ResetsOn(int year) => new(year + 1, 1, 1);
 
     public static string EmployeeName(string firstName, string lastName) =>
         $"{firstName} {lastName}".Trim();

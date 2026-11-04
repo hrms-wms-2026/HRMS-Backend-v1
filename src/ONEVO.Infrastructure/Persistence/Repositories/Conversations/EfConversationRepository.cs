@@ -468,6 +468,11 @@ public class EfConversationRepository : IConversationRepository
             .Where(c => c.TenantId == tenantId && c.Id == conversationId)
             .ExecuteUpdateAsync(set => set.SetProperty(c => c.Description, description), ct);
 
+    public async Task SetIconAsync(Guid tenantId, Guid conversationId, string? icon, string? color, CancellationToken ct = default)
+        => await _db.Conversations
+            .Where(c => c.TenantId == tenantId && c.Id == conversationId)
+            .ExecuteUpdateAsync(set => set.SetProperty(c => c.Icon, icon).SetProperty(c => c.Color, color), ct);
+
     public async Task<ConversationMediaPage> ListMediaAsync(
         Guid tenantId, Guid conversationId, Guid employeeId, string? kind, int skip, int take, CancellationToken ct = default)
     {

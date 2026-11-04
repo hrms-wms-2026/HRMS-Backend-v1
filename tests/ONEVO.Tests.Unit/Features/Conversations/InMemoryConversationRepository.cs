@@ -270,6 +270,14 @@ internal sealed class InMemoryConversationRepository : IConversationRepository
         return Task.CompletedTask;
     }
 
+    public Task SetIconAsync(Guid tenantId, Guid conversationId, string? icon, string? color, CancellationToken ct = default)
+    {
+        var c = Conversations.FirstOrDefault(x => x.Id == conversationId);
+        if (c is not null)
+            (c.Icon, c.Color) = (icon, color);
+        return Task.CompletedTask;
+    }
+
     public Task<ConversationMediaPage> ListMediaAsync(
         Guid tenantId, Guid conversationId, Guid employeeId, string? kind, int skip, int take, CancellationToken ct = default)
     {

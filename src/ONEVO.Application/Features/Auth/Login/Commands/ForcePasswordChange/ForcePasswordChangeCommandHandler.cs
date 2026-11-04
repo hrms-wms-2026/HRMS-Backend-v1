@@ -22,6 +22,7 @@ public class ForcePasswordChangeCommandHandler : IRequestHandler<ForcePasswordCh
     private readonly ILoginContinuationService _continuation;
     private readonly IDateTimeProvider _clock;
     private readonly ITenantContext _tenantContext;
+    private readonly ISessionRepository _sessions;
 
     public ForcePasswordChangeCommandHandler(
         IUserRepository users,
@@ -30,7 +31,8 @@ public class ForcePasswordChangeCommandHandler : IRequestHandler<ForcePasswordCh
         IPermissionVersionService permVersionService,
         ILoginContinuationService continuation,
         IDateTimeProvider clock,
-        ITenantContext tenantContext)
+        ITenantContext tenantContext,
+        ISessionRepository sessions)
     {
         _users = users;
         _unitOfWork = unitOfWork;
@@ -39,6 +41,7 @@ public class ForcePasswordChangeCommandHandler : IRequestHandler<ForcePasswordCh
         _continuation = continuation;
         _clock = clock;
         _tenantContext = tenantContext;
+        _sessions = sessions;
     }
 
     public async Task<Result<LoginResponseDto>> Handle(ForcePasswordChangeCommand request, CancellationToken cancellationToken)
@@ -68,6 +71,9 @@ public class ForcePasswordChangeCommandHandler : IRequestHandler<ForcePasswordCh
         user.TemporaryPasswordExpiresAt = null;
         user.UpdatedAt = _clock.UtcNow;
 
+        // End any session opened with the old password before the new one is issued below
+        // (the bulk update runs immediately, so it must not run after FinishAuthenticatedLoginAsync).
+        await _sessions.RevokeAllActiveByUserIdAsync(user.Id, cancellationToken);
         await _permVersionService.IncrementVersionAsync(user.Id, cancellationToken);
         await _unitOfWork.SaveChangesAsync(cancellationToken);
 

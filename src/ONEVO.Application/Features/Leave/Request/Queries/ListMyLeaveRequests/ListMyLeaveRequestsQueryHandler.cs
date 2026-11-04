@@ -53,6 +53,7 @@ public sealed class ListMyLeaveRequestsQueryHandler
 
         return Result<IReadOnlyList<LeaveRequestListItemResponse>>.Success(
             rows.Select(row => LeaveRequestMapper.ToListItem(
-                row.Request, row.LeaveTypeName, row.LeaveTypeCode, row.ApprovedByName)).ToList());
+                row.Request, row.LeaveTypeName, row.LeaveTypeCode, row.ApprovedByName,
+                row.ApprovedApproverCount, row.ApproverCount)).ToList());
     }
 }

@@ -1,4 +1,5 @@
 using FluentValidation;
+using ONEVO.Application.Common.Helpers;
 using ONEVO.Application.Features.Leave.Calendar.Options;
 using ONEVO.Domain.Features.Leave.Common;
 
@@ -13,6 +14,9 @@ public class UpdateLeaveTypeCommandValidator : AbstractValidator<UpdateLeaveType
 
         RuleFor(x => x.Color).Must(LeaveCalendarOptions.IsValidHexColor)
             .WithMessage("Colour must be a #RRGGBB hex colour.");
+
+        RuleFor(x => x.Icon).Must(EntityIconRules.IsValid)
+            .WithMessage(EntityIconRules.InvalidMessage);
 
         RuleFor(x => x.ApplicableGender).Must(g => LeaveGenderRestrictions.AllValues.Contains(g))
             .WithMessage("Applicable gender must be one of: all, male, female.");

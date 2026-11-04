@@ -78,6 +78,12 @@ public sealed class EfSessionRepository : ISessionRepository
             .Where(s => s.UserId == userId && !s.IsRevoked)
             .ExecuteUpdateAsync(setters => setters.SetProperty(s => s.IsRevoked, true), ct);
 
+    public async Task<int> RevokeAllActiveByUserIdExceptAsync(
+        Guid userId, Guid keepSessionId, CancellationToken ct = default)
+        => await _db.Sessions
+            .Where(s => s.UserId == userId && !s.IsRevoked && s.Id != keepSessionId)
+            .ExecuteUpdateAsync(setters => setters.SetProperty(s => s.IsRevoked, true), ct);
+
     public Task AddAsync(Session session, CancellationToken ct = default)
     {
         var addTask = _db.Sessions.AddAsync(session, ct).AsTask();

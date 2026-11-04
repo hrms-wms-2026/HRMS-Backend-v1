@@ -2238,6 +2238,11 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<string>("Color")
+                        .HasMaxLength(9)
+                        .HasColumnType("character varying(9)")
+                        .HasColumnName("color");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
@@ -2254,6 +2259,11 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)")
                         .HasColumnName("description");
+
+                    b.Property<string>("Icon")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("icon");
 
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("boolean")
@@ -7171,6 +7181,11 @@ namespace ONEVO.Infrastructure.Migrations
                     b.Property<decimal?>("DocumentRequiredAfterHours")
                         .HasColumnType("numeric(7,2)")
                         .HasColumnName("document_required_after_hours");
+
+                    b.Property<string>("Icon")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("icon");
 
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean")
@@ -14612,6 +14627,11 @@ namespace ONEVO.Infrastructure.Migrations
                     b.Property<string>("Description")
                         .HasColumnType("text")
                         .HasColumnName("description");
+
+                    b.Property<string>("Icon")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("icon");
 
                     b.Property<string>("Identifier")
                         .IsRequired()

@@ -1,4 +1,5 @@
 using FluentValidation;
+using ONEVO.Application.Common.Helpers;
 
 namespace ONEVO.Application.Features.WorkManagement.Projects.Commands.CreateProject;
 
@@ -20,6 +21,9 @@ public class CreateProjectCommandValidator : AbstractValidator<CreateProjectComm
 
         RuleFor(x => x.TargetDate)
             .GreaterThanOrEqualTo(x => x.StartDate).WithMessage("Target date must not be earlier than start date.");
+
+        RuleFor(x => x.Icon)
+            .Must(EntityIconRules.IsValid).WithMessage(EntityIconRules.InvalidMessage);
 
         RuleFor(x => x.ActualHours)
             .GreaterThanOrEqualTo(0).WithMessage("Actual hours must not be negative.")

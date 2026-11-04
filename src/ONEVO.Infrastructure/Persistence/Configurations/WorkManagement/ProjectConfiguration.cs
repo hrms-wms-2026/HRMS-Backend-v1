@@ -1,3 +1,4 @@
+using ONEVO.Application.Common.Helpers;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using ONEVO.Domain.Features.OrgStructure.Entities;
@@ -15,6 +16,7 @@ public class ProjectConfiguration : IEntityTypeConfiguration<Project>
         builder.Property(p => p.Identifier).HasMaxLength(20).IsRequired();
         builder.Property(p => p.SystemPurpose).HasMaxLength(50);
         builder.Property(p => p.Color).HasMaxLength(20);
+        builder.Property(p => p.Icon).HasMaxLength(EntityIconRules.MaxLength);
         builder.Property(p => p.ActualHours).HasColumnType("numeric(18,2)");
         builder.Property(p => p.AllocatedHours).HasColumnType("numeric(18,2)").HasDefaultValue(0m);
         builder.Property(p => p.CompletedHours).HasColumnType("numeric(18,2)").HasDefaultValue(0m);
