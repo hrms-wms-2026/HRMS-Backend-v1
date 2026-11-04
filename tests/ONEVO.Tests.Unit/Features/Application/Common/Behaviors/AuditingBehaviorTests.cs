@@ -246,6 +246,23 @@ public class AuditingBehaviorTests
     }
 
     [Fact]
+    public async Task TargetId_RecordedByTheHandler_IsUsedWhenTheEntryHasNone()
+    {
+        var behavior = Build<UnitPlatformCommand, MediatR.Unit>();
+
+        await behavior.Handle(
+            new UnitPlatformCommand(Guid.NewGuid()),
+            _ =>
+            {
+                _auditTrail.RecordTarget("created-id-42");
+                return Task.FromResult(MediatR.Unit.Value);
+            },
+            CancellationToken.None);
+
+        _platformRows.Single().TargetId.Should().Be("created-id-42");
+    }
+
+    [Fact]
     public async Task BeforeState_RecordedOutsideAnAuditedCommand_IsIgnored()
     {
         _auditTrail.RecordBefore(new { stale = true });

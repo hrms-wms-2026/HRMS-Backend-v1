@@ -1,3 +1,4 @@
+using ONEVO.Application.Common.Auditing;
 using MediatR;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
@@ -29,6 +30,8 @@ public sealed class InvitePlatformManagerCommandHandler : IRequestHandler<Invite
     private readonly IDateTimeProvider _clock;
     private readonly IUnitOfWork _uow;
 
+    private readonly IAuditTrail _auditTrail;
+
     public InvitePlatformManagerCommandHandler(
         IPlatformUserRepository users,
         IPlatformRoleRepository roles,
@@ -38,7 +41,8 @@ public sealed class InvitePlatformManagerCommandHandler : IRequestHandler<Invite
         ISecureTokenGenerator tokens,
         IOutboxWriter outbox,
         IDateTimeProvider clock,
-        IUnitOfWork uow)
+        IUnitOfWork uow,
+        IAuditTrail auditTrail)
     {
         _users = users;
         _roles = roles;
@@ -49,6 +53,7 @@ public sealed class InvitePlatformManagerCommandHandler : IRequestHandler<Invite
         _outbox = outbox;
         _clock = clock;
         _uow = uow;
+        _auditTrail = auditTrail;
     }
 
     public async Task<Result> Handle(InvitePlatformManagerCommand request, CancellationToken ct)
@@ -81,6 +86,7 @@ public sealed class InvitePlatformManagerCommandHandler : IRequestHandler<Invite
             CreatedAt = now
         };
         await _users.AddAsync(user, ct);
+        _auditTrail.RecordTarget(user.Id.ToString());
 
         // ReplaceRolesAsync removes any existing roles for the user then adds the
         // given set; on this brand-new user there's nothing to remove, so it's

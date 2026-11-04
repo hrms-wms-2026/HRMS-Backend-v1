@@ -1,3 +1,4 @@
+using ONEVO.Application.Common.Auditing;
 using MediatR;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
@@ -30,6 +31,8 @@ public sealed class ApplyRoleTemplateCommandHandler
     private readonly IUnitOfWork _unitOfWork;
     private readonly IDateTimeProvider _clock;
 
+    private readonly IAuditTrail _auditTrail;
+
     public ApplyRoleTemplateCommandHandler(
         ITenantRepository tenants,
         IRoleTemplateRepository templates,
@@ -41,7 +44,8 @@ public sealed class ApplyRoleTemplateCommandHandler
         IUserRoleRepository userRoles,
         IPermissionVersionService permissionVersion,
         IUnitOfWork unitOfWork,
-        IDateTimeProvider clock)
+        IDateTimeProvider clock,
+        IAuditTrail auditTrail)
     {
         _tenants = tenants;
         _templates = templates;
@@ -54,6 +58,7 @@ public sealed class ApplyRoleTemplateCommandHandler
         _permissionVersion = permissionVersion;
         _unitOfWork = unitOfWork;
         _clock = clock;
+        _auditTrail = auditTrail;
     }
 
     public async Task<Result<ApplyRoleTemplateResultDto>> Handle(ApplyRoleTemplateCommand request, CancellationToken ct)
@@ -179,6 +184,7 @@ public sealed class ApplyRoleTemplateCommandHandler
         var requestedPermIds = appliedOrdered.Select(p => p.Id).ToList();
         var existingRps = await _rolePermissions.ListByRoleAsync(role.Id, ct);
         var existingPermIds = existingRps.Select(rp => rp.PermissionId).ToHashSet();
+        _auditTrail.RecordBefore(new { permissionIds = existingPermIds.OrderBy(id => id).ToArray() });
         var requestedSet = requestedPermIds.ToHashSet();
 
         var toRemove = existingRps.Where(rp => !requestedSet.Contains(rp.PermissionId)).ToList();

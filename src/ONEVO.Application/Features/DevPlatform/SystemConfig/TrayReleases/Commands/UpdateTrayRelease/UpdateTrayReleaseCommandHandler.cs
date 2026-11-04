@@ -4,6 +4,7 @@ using ONEVO.Application.Features.DevPlatform.SystemConfig.TrayReleases.DTOs;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.TrayReleases.Helpers;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.TrayReleases.Mappers;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.TrayReleases.RepositoryInterfaces;
+using ONEVO.Application.Common.Auditing;
 
 namespace ONEVO.Application.Features.DevPlatform.SystemConfig.TrayReleases.Commands.UpdateTrayRelease;
 
@@ -12,7 +13,21 @@ namespace ONEVO.Application.Features.DevPlatform.SystemConfig.TrayReleases.Comma
 /// Pass null to leave a field unchanged; pass "" for MinSupportedVersion/ReleaseNotes to clear.
 /// </summary>
 public sealed record UpdateTrayReleaseCommand(Guid Id, UpdateTrayReleaseRequest Request)
-    : IRequest<Result<TrayReleaseDto>>;
+    : IRequest<Result<TrayReleaseDto>>, IPlatformAuditedCommand<Result<TrayReleaseDto>>
+{
+    public AuditEntry DescribeAudit(Result<TrayReleaseDto> response) => new()
+    {
+        Action = "tray_release.updated",
+        TargetType = "tray_release",
+        TargetId = Id.ToString(),
+        After = new
+        {
+            channel = Request.Channel,
+            minSupportedVersion = Request.MinSupportedVersion,
+            isActive = Request.IsActive,
+        },
+    };
+}
 
 public sealed class UpdateTrayReleaseCommandHandler
     : IRequestHandler<UpdateTrayReleaseCommand, Result<TrayReleaseDto>>

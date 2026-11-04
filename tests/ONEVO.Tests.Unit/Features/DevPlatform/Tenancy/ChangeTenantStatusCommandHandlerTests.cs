@@ -1,3 +1,4 @@
+using ONEVO.Tests.Unit.Fakes;
 using FluentAssertions;
 using Moq;
 using ONEVO.Application.Common.RepositoryInterfaces;
@@ -16,6 +17,7 @@ public class ChangeTenantStatusCommandHandlerTests
     private readonly Mock<ICurrentUser> _currentUser = new();
     private readonly Mock<IUnitOfWork> _uow = new();
     private readonly Mock<IDateTimeProvider> _clock = new();
+    private readonly RecordingAuditTrail _auditTrail = new();
 
     private static readonly Guid AdminUserId = Guid.Parse("22222222-2222-2222-2222-222222222222");
     private static readonly DateTimeOffset Now = new(2026, 7, 17, 12, 0, 0, TimeSpan.Zero);
@@ -30,7 +32,8 @@ public class ChangeTenantStatusCommandHandlerTests
             _histories.Object,
             _currentUser.Object,
             _uow.Object,
-            _clock.Object);
+            _clock.Object,
+            _auditTrail);
     }
 
     private Tenant SetupTenant(TenantStatus status)
@@ -68,6 +71,7 @@ public class ChangeTenantStatusCommandHandlerTests
         written.ChangedAt.Should().Be(Now);
 
         _uow.Verify(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
+        _auditTrail.BeforeJson().GetProperty("status").GetString().Should().Be("Active");
     }
 
     [Fact]

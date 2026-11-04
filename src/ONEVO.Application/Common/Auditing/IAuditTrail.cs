@@ -8,4 +8,10 @@ namespace ONEVO.Application.Common.Auditing;
 public interface IAuditTrail
 {
     void RecordBefore(object before);
+
+    /// <summary>
+    /// Target id known only inside the handler (for example a row it created when the response
+    /// does not carry the id). Used when <see cref="AuditEntry.TargetId"/> is null.
+    /// </summary>
+    void RecordTarget(string targetId);
 }

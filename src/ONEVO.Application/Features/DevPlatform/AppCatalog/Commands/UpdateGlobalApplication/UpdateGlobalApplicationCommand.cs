@@ -4,6 +4,7 @@ using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Features.DevPlatform.AppCatalog.DTOs;
 using ONEVO.Application.Features.DevPlatform.AppCatalog.RepositoryInterfaces;
 using ONEVO.Domain.Features.DevPlatform.AppCatalog.Entities;
+using ONEVO.Application.Common.Auditing;
 
 namespace ONEVO.Application.Features.DevPlatform.AppCatalog.Commands.UpdateGlobalApplication;
 
@@ -14,7 +15,23 @@ public sealed record UpdateGlobalApplicationCommand(
     string? Publisher,
     bool IsPublic,
     bool IsProductiveDefault,
-    Guid ActorId) : IRequest<Result<GlobalApplicationDto>>;
+    Guid ActorId) : IRequest<Result<GlobalApplicationDto>>, IPlatformAuditedCommand<Result<GlobalApplicationDto>>
+{
+    public AuditEntry DescribeAudit(Result<GlobalApplicationDto> response) => new()
+    {
+        Action = "global_application.updated",
+        TargetType = "global_application",
+        TargetId = Id.ToString(),
+        After = new
+        {
+            appName = AppName,
+            category = Category,
+            publisher = Publisher,
+            isPublic = IsPublic,
+            isProductiveDefault = IsProductiveDefault,
+        },
+    };
+}
 
 public sealed class UpdateGlobalApplicationCommandHandler(
     IGlobalApplicationRepository applications,

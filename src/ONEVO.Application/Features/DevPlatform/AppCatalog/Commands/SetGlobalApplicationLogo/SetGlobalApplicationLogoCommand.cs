@@ -3,6 +3,7 @@ using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Features.DevPlatform.AppCatalog.DTOs;
 using ONEVO.Application.Features.DevPlatform.AppCatalog.RepositoryInterfaces;
+using ONEVO.Application.Common.Auditing;
 
 namespace ONEVO.Application.Features.DevPlatform.AppCatalog.Commands.SetGlobalApplicationLogo;
 
@@ -10,7 +11,17 @@ public sealed record SetGlobalApplicationLogoCommand(
     Guid Id,
     byte[] Content,
     string ContentType,
-    Guid ActorId) : IRequest<Result<GlobalApplicationDto>>;
+    Guid ActorId) : IRequest<Result<GlobalApplicationDto>>, IPlatformAuditedCommand<Result<GlobalApplicationDto>>
+{
+    // The image bytes are not recorded; only their type and size.
+    public AuditEntry DescribeAudit(Result<GlobalApplicationDto> response) => new()
+    {
+        Action = "global_application.logo_set",
+        TargetType = "global_application",
+        TargetId = Id.ToString(),
+        After = new { contentType = ContentType, sizeBytes = Content.Length },
+    };
+}
 
 public sealed class SetGlobalApplicationLogoCommandHandler(
     IGlobalApplicationRepository applications,

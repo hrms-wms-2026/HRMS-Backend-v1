@@ -7,6 +7,7 @@ using ONEVO.Application.Features.DevPlatform.Compliance.Helpers;
 using ONEVO.Application.Features.DevPlatform.Compliance.Mappers;
 using ONEVO.Application.Features.DevPlatform.Compliance.RepositoryInterfaces;
 using ONEVO.Domain.Features.DevPlatform.Compliance.Entities;
+using ONEVO.Application.Common.Auditing;
 
 namespace ONEVO.Application.Features.DevPlatform.Compliance.Commands.CreateLegalDocumentVersion;
 
@@ -23,7 +24,25 @@ public sealed record CreateLegalDocumentVersionCommand(
     string ContentText,
     bool IsRequired,
     string BlockScope,
-    Guid ActorPlatformUserId) : IRequest<Result<LegalDocumentVersionDetailDto>>;
+    Guid ActorPlatformUserId) : IRequest<Result<LegalDocumentVersionDetailDto>>, IPlatformAuditedCommand<Result<LegalDocumentVersionDetailDto>>
+{
+    // The document body is not copied into the audit row; the stored content hash identifies it.
+    public AuditEntry DescribeAudit(Result<LegalDocumentVersionDetailDto> response) => new()
+    {
+        Action = "legal_document_version.created",
+        TargetType = "legal_document_version",
+        TargetId = response.Value?.Id.ToString(),
+        After = new
+        {
+            documentType = DocumentType,
+            version = Version,
+            title = Title,
+            isRequired = IsRequired,
+            blockScope = BlockScope,
+            contentHash = response.Value?.ContentHash,
+        },
+    };
+}
 
 public sealed class CreateLegalDocumentVersionCommandHandler
     : IRequestHandler<CreateLegalDocumentVersionCommand, Result<LegalDocumentVersionDetailDto>>

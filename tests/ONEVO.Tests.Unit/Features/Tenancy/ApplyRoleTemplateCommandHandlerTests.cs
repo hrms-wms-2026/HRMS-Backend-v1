@@ -1,3 +1,4 @@
+using ONEVO.Tests.Unit.Fakes;
 using FluentAssertions;
 using Moq;
 using ONEVO.Application.Common.RepositoryInterfaces;
@@ -30,6 +31,7 @@ public sealed class ApplyRoleTemplateCommandHandlerTests
     private readonly Mock<IPermissionVersionService> _permVer = new();
     private readonly Mock<IUnitOfWork> _uow = new();
     private readonly Mock<IDateTimeProvider> _clock = new();
+    private readonly RecordingAuditTrail _auditTrail = new();
 
     private static readonly Guid TenantId = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
     private static readonly Guid TemplateId = Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
@@ -46,7 +48,8 @@ public sealed class ApplyRoleTemplateCommandHandlerTests
             _userRoles.Object,
             _permVer.Object,
             _uow.Object,
-            _clock.Object);
+            _clock.Object,
+            _auditTrail);
 
     [Fact]
     public async Task Handle_TenantMissing_ReturnsNotFound()

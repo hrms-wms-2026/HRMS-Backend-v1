@@ -1,3 +1,4 @@
+using ONEVO.Application.Common.Auditing;
 using MediatR;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
@@ -16,18 +17,22 @@ public class ChangeTenantStatusCommandHandler : IRequestHandler<ChangeTenantStat
     private readonly IUnitOfWork _unitOfWork;
     private readonly IDateTimeProvider _clock;
 
+    private readonly IAuditTrail _auditTrail;
+
     public ChangeTenantStatusCommandHandler(
         ITenantRepository tenants,
         ITenantStatusHistoryRepository statusHistories,
         ICurrentUser currentUser,
         IUnitOfWork unitOfWork,
-        IDateTimeProvider clock)
+        IDateTimeProvider clock,
+        IAuditTrail auditTrail)
     {
         _tenants = tenants;
         _statusHistories = statusHistories;
         _currentUser = currentUser;
         _unitOfWork = unitOfWork;
         _clock = clock;
+        _auditTrail = auditTrail;
     }
 
     public async Task<Result> Handle(ChangeTenantStatusCommand request, CancellationToken ct)
@@ -52,6 +57,7 @@ public class ChangeTenantStatusCommandHandler : IRequestHandler<ChangeTenantStat
 
         var now = _clock.UtcNow;
         var previousStatus = tenant.Status;
+        _auditTrail.RecordBefore(new { status = previousStatus.ToString() });
 
         tenant.Status = target.Value;
         tenant.UpdatedAt = now;

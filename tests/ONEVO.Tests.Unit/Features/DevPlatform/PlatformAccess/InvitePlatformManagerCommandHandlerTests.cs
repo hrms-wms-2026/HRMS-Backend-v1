@@ -1,3 +1,4 @@
+using ONEVO.Tests.Unit.Fakes;
 using Moq;
 using FluentAssertions;
 using ONEVO.Application.Common.RepositoryInterfaces;
@@ -22,6 +23,7 @@ public class InvitePlatformManagerCommandHandlerTests
     private readonly Mock<IOutboxWriter> _outbox = new();
     private readonly Mock<IUnitOfWork> _uow = new();
     private readonly Mock<IDateTimeProvider> _clock = new();
+    private readonly RecordingAuditTrail _auditTrail = new();
 
     private InvitePlatformManagerCommandHandler CreateHandler()
     {
@@ -29,7 +31,7 @@ public class InvitePlatformManagerCommandHandlerTests
         _currentUser.Setup(c => c.UserId).Returns(Guid.NewGuid());
         return new InvitePlatformManagerCommandHandler(
             _users.Object, _roles.Object, _invites.Object, _authEvents.Object, _currentUser.Object,
-            _tokens.Object, _outbox.Object, _clock.Object, _uow.Object);
+            _tokens.Object, _outbox.Object, _clock.Object, _uow.Object, _auditTrail);
     }
 
     [Fact]
@@ -106,6 +108,7 @@ public class InvitePlatformManagerCommandHandlerTests
         capturedUser.Should().NotBeNull();
         capturedUser!.Status.Should().Be(PlatformUser.StatusPending);
         capturedUser.Email.Should().Be("new@example.com");
+        _auditTrail.TargetId.Should().Be(capturedUser.Id.ToString());
 
         _invites.Verify(i => i.AddAsync(
             It.Is<PlatformUserInvite>(inv =>

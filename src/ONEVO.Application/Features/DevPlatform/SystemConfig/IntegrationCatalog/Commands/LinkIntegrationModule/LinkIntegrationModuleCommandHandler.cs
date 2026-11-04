@@ -4,9 +4,19 @@ using ONEVO.Application.Features.DevPlatform.ModuleCatalog.RepositoryInterfaces;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.IntegrationCatalog.Helpers;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.IntegrationCatalog.RepositoryInterfaces;
 using ONEVO.Domain.Features.DevPlatform.SystemConfig.IntegrationCatalog.Entities;
+using ONEVO.Application.Common.Auditing;
 
 namespace ONEVO.Application.Features.DevPlatform.SystemConfig.IntegrationCatalog.Commands.LinkIntegrationModule;
-public sealed record LinkIntegrationModuleCommand(string IntegrationKey, string ModuleKey, Guid ActorPlatformUserId) : IRequest<Result>;
+public sealed record LinkIntegrationModuleCommand(string IntegrationKey, string ModuleKey, Guid ActorPlatformUserId) : IRequest<Result>, IPlatformAuditedCommand<Result>
+{
+    public AuditEntry DescribeAudit(Result response) => new()
+    {
+        Action = "integration.module_linked",
+        TargetType = "integration",
+        TargetId = IntegrationKey,
+        After = new { moduleKey = ModuleKey },
+    };
+}
 public sealed class LinkIntegrationModuleCommandHandler : IRequestHandler<LinkIntegrationModuleCommand, Result>
 {
     private readonly IIntegrationCatalogRepository _repo;

@@ -8,7 +8,11 @@ public sealed class RecordingAuditTrail : IAuditTrail
 {
     public object? Before { get; private set; }
 
+    public string? TargetId { get; private set; }
+
     public void RecordBefore(object before) => Before = before;
+
+    public void RecordTarget(string targetId) => TargetId = targetId;
 
     public JsonElement BeforeJson() =>
         JsonDocument.Parse(JsonSerializer.Serialize(Before, new JsonSerializerOptions(JsonSerializerDefaults.Web))).RootElement;

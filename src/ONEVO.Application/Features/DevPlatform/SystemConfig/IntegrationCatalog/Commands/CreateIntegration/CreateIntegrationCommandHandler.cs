@@ -6,12 +6,30 @@ using ONEVO.Application.Features.DevPlatform.SystemConfig.IntegrationCatalog.Map
 using ONEVO.Application.Features.DevPlatform.SystemConfig.IntegrationCatalog.RepositoryInterfaces;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformOAuthApps.RepositoryInterfaces;
 using ONEVO.Domain.Features.DevPlatform.SystemConfig.IntegrationCatalog.Entities;
+using ONEVO.Application.Common.Auditing;
 
 namespace ONEVO.Application.Features.DevPlatform.SystemConfig.IntegrationCatalog.Commands.CreateIntegration;
 
 public sealed record CreateIntegrationCommand(string IntegrationKey, string DisplayName, string? Description,
     string ConnectionScope, string OnevoAppProvider, string? LogoUrl, bool IsActive, Guid ActorPlatformUserId)
-    : IRequest<Result<IntegrationCatalogDto>>;
+    : IRequest<Result<IntegrationCatalogDto>>, IPlatformAuditedCommand<Result<IntegrationCatalogDto>>
+{
+    public AuditEntry DescribeAudit(Result<IntegrationCatalogDto> response) => new()
+    {
+        Action = "integration.created",
+        TargetType = "integration",
+        TargetId = response.Value?.IntegrationKey ?? IntegrationKey,
+        After = new
+        {
+            displayName = DisplayName,
+            description = Description,
+            connectionScope = ConnectionScope,
+            onevoAppProvider = OnevoAppProvider,
+            logoUrl = LogoUrl,
+            isActive = IsActive,
+        },
+    };
+}
 
 public sealed class CreateIntegrationCommandHandler : IRequestHandler<CreateIntegrationCommand, Result<IntegrationCatalogDto>>
 {

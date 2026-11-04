@@ -12,6 +12,13 @@ public sealed class AuditTrail : IAuditTrail
             frame.Before = before;
     }
 
+    public void RecordTarget(string targetId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(targetId);
+        if (_frames.TryPeek(out var frame))
+            frame.TargetId = targetId;
+    }
+
     internal Frame BeginFrame()
     {
         var frame = new Frame(this);
@@ -26,6 +33,8 @@ public sealed class AuditTrail : IAuditTrail
         public Frame(AuditTrail owner) => _owner = owner;
 
         public object? Before { get; set; }
+
+        public string? TargetId { get; set; }
 
         public void Dispose()
         {

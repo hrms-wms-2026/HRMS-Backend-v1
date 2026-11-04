@@ -5,10 +5,28 @@ using ONEVO.Application.Features.DevPlatform.SystemConfig.IntegrationCatalog.Hel
 using ONEVO.Application.Features.DevPlatform.SystemConfig.IntegrationCatalog.Mappers;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.IntegrationCatalog.RepositoryInterfaces;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformOAuthApps.RepositoryInterfaces;
+using ONEVO.Application.Common.Auditing;
 
 namespace ONEVO.Application.Features.DevPlatform.SystemConfig.IntegrationCatalog.Commands.UpdateIntegration;
 
-public sealed record UpdateIntegrationCommand(string IntegrationKey, string DisplayName, string? Description, string ConnectionScope, string OnevoAppProvider, string? LogoUrl, bool IsActive) : IRequest<Result<IntegrationCatalogDto>>;
+public sealed record UpdateIntegrationCommand(string IntegrationKey, string DisplayName, string? Description, string ConnectionScope, string OnevoAppProvider, string? LogoUrl, bool IsActive) : IRequest<Result<IntegrationCatalogDto>>, IPlatformAuditedCommand<Result<IntegrationCatalogDto>>
+{
+    public AuditEntry DescribeAudit(Result<IntegrationCatalogDto> response) => new()
+    {
+        Action = "integration.updated",
+        TargetType = "integration",
+        TargetId = response.Value?.IntegrationKey ?? IntegrationKey,
+        After = new
+        {
+            displayName = DisplayName,
+            description = Description,
+            connectionScope = ConnectionScope,
+            onevoAppProvider = OnevoAppProvider,
+            logoUrl = LogoUrl,
+            isActive = IsActive,
+        },
+    };
+}
 public sealed class UpdateIntegrationCommandHandler : IRequestHandler<UpdateIntegrationCommand, Result<IntegrationCatalogDto>>
 {
     private readonly IIntegrationCatalogRepository _repo;

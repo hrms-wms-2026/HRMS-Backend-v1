@@ -1,3 +1,4 @@
+using ONEVO.Application.Common.Auditing;
 using MediatR;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
@@ -14,16 +15,20 @@ public class UpdateTenantCommandHandler : IRequestHandler<UpdateTenantCommand, R
     private readonly IUnitOfWork _unitOfWork;
     private readonly IDateTimeProvider _clock;
 
+    private readonly IAuditTrail _auditTrail;
+
     public UpdateTenantCommandHandler(
         ITenantRepository tenants,
         ICurrentUser currentUser,
         IUnitOfWork unitOfWork,
-        IDateTimeProvider clock)
+        IDateTimeProvider clock,
+        IAuditTrail auditTrail)
     {
         _tenants = tenants;
         _currentUser = currentUser;
         _unitOfWork = unitOfWork;
         _clock = clock;
+        _auditTrail = auditTrail;
     }
 
     public async Task<Result> Handle(UpdateTenantCommand request, CancellationToken ct)
@@ -34,6 +39,8 @@ public class UpdateTenantCommandHandler : IRequestHandler<UpdateTenantCommand, R
         var tenant = await _tenants.GetByIdAsync(request.TenantId, ct);
         if (tenant is null)
             return Result.NotFound($"Tenant '{request.TenantId}' not found.");
+
+        _auditTrail.RecordBefore(new { name = tenant.Name, slug = tenant.Slug, industryProfile = tenant.IndustryProfile });
 
         if (request.Name is not null)
         {

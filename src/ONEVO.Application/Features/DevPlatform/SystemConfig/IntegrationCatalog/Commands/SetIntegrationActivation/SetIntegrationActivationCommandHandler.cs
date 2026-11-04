@@ -4,9 +4,19 @@ using ONEVO.Application.Features.DevPlatform.SystemConfig.IntegrationCatalog.DTO
 using ONEVO.Application.Features.DevPlatform.SystemConfig.IntegrationCatalog.Helpers;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.IntegrationCatalog.Mappers;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.IntegrationCatalog.RepositoryInterfaces;
+using ONEVO.Application.Common.Auditing;
 
 namespace ONEVO.Application.Features.DevPlatform.SystemConfig.IntegrationCatalog.Commands.SetIntegrationActivation;
-public sealed record SetIntegrationActivationCommand(string IntegrationKey, bool IsActive) : IRequest<Result<IntegrationCatalogDto>>;
+public sealed record SetIntegrationActivationCommand(string IntegrationKey, bool IsActive) : IRequest<Result<IntegrationCatalogDto>>, IPlatformAuditedCommand<Result<IntegrationCatalogDto>>
+{
+    public AuditEntry DescribeAudit(Result<IntegrationCatalogDto> response) => new()
+    {
+        Action = IsActive ? "integration.activated" : "integration.deactivated",
+        TargetType = "integration",
+        TargetId = IntegrationKey,
+        After = new { isActive = IsActive },
+    };
+}
 public sealed class SetIntegrationActivationCommandHandler : IRequestHandler<SetIntegrationActivationCommand, Result<IntegrationCatalogDto>>
 {
     private readonly IIntegrationCatalogRepository _repo;

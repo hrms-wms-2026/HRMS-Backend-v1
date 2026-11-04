@@ -1,3 +1,4 @@
+using ONEVO.Application.Common.Auditing;
 using MediatR;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
@@ -20,16 +21,20 @@ public sealed class UpdateRoleTemplateCommandHandler
     private readonly IModuleCatalogService _moduleCatalog;
     private readonly IUnitOfWork _unitOfWork;
 
+    private readonly IAuditTrail _auditTrail;
+
     public UpdateRoleTemplateCommandHandler(
         IRoleTemplateRepository templates,
         IPermissionRepository permissions,
         IModuleCatalogService moduleCatalog,
-        IUnitOfWork unitOfWork)
+        IUnitOfWork unitOfWork,
+        IAuditTrail auditTrail)
     {
         _templates = templates;
         _permissions = permissions;
         _moduleCatalog = moduleCatalog;
         _unitOfWork = unitOfWork;
+        _auditTrail = auditTrail;
     }
 
     public async Task<Result<RoleTemplateDto>> Handle(UpdateRoleTemplateCommand request, CancellationToken ct)
@@ -89,6 +94,15 @@ public sealed class UpdateRoleTemplateCommandHandler
             || template.ModuleKeysJson != newModulesJson
             || template.PermissionCodesJson != newPermsJson
             || template.IsActive != request.IsActive;
+
+        _auditTrail.RecordBefore(new
+        {
+            name = template.Name,
+            description = template.Description,
+            moduleKeysJson = template.ModuleKeysJson,
+            permissionCodesJson = template.PermissionCodesJson,
+            isActive = template.IsActive,
+        });
 
         template.Name = name;
         template.Description = description;

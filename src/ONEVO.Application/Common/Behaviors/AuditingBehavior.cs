@@ -69,6 +69,7 @@ public class AuditingBehavior<TRequest, TResponse> : IPipelineBehavior<TRequest,
         {
             // A retried transaction re-runs the handler, which records its before-state again.
             frame.Before = null;
+            frame.TargetId = null;
 
             var response = await next(innerCt);
             if (response is IResultStatus { IsSuccess: false })
@@ -77,6 +78,8 @@ public class AuditingBehavior<TRequest, TResponse> : IPipelineBehavior<TRequest,
             try
             {
                 var entry = audited.DescribeAudit(response);
+                if (entry.TargetId is null && frame.TargetId is not null)
+                    entry = entry with { TargetId = frame.TargetId };
                 await WriteAsync(audited, entry, frame.Before, innerCt);
                 await _unitOfWork.SaveChangesAsync(innerCt);
             }
