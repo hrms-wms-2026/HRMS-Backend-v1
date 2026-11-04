@@ -106,7 +106,7 @@ Tests:
 - `tests/ONEVO.Tests.Architecture/LegalEntitiesControllerArchitectureTests.cs`
 - `tests/ONEVO.Tests.Integration/OrgStructure/LegalEntity/LegalEntitiesIntegrationTests.cs`
 
-Planning artifact (not code): `docs/superpowers/plans/2026-08-06-legal-entity-permission-access-filter.md`.
+Planning artifact (not code): `docs/superpowers/plans/finished/2026-08-06/2026-08-06-legal-entity-permission-access-filter.md`.
 
 **Pre-existing unrelated uncommitted changes found in the working tree, left untouched by this task:** `.postman/resources.yaml`, `postman/environments/New Environment.environment.yaml`, `src/ONEVO.Infrastructure/Persistence/Seeders/DevSmokeTestTenantSeeder.cs`, `tests/ONEVO.Tests.Unit/Features/DevPlatform/Tenancy/DevSmokeTestTenantSeederTests.cs`, and an untracked `DEV_SMOKE_ORG_MODULE_PERMISSION_SEED_FIX_REPORT.md` at the repo root. These predate this session (last commit: `1fdb97f` on 2026-08-05) and are unrelated to Legal Entity permissions — flagging so they are not mistaken for this task's output or accidentally swept into a future commit alongside it.
 

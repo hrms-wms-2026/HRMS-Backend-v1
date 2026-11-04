@@ -75,15 +75,19 @@ public sealed class LedWorkProgressIntegrationTests
         await using var db = helper.NewContext();
         var creator = helper.AddEmployee(db);   // owns the project root - leads the whole project
         var lead = helper.AddEmployee(db);      // owns one module (and a nested one below it)
-        var member = helper.AddEmployee(db);    // plain member of a sub-module only
+        var member = helper.AddEmployee(db);    // plain member of a sub-module only - owns nothing
         var (projectId, rootId) = helper.AddProject(db, creator.Id);
         var module = helper.AddModule(db, projectId, rootId, lead.Id, allocatedHours: 100);
-        var sub = helper.AddModule(db, projectId, module, member.Id, allocatedHours: 40);
+        // Owned by the creator: owning a Module makes you its lead, so the member must not own it.
+        var sub = helper.AddModule(db, projectId, module, creator.Id, allocatedHours: 40);
         var nestedOwned = helper.AddModule(db, projectId, sub, lead.Id, allocatedHours: 20); // nested ownership: must not double count
         helper.AddMember(db, projectId, module, lead.Id);
         helper.AddMember(db, projectId, sub, member.Id);
         var doing = helper.AddStatus(db, projectId, false);
         var done = helper.AddStatus(db, projectId, true);
+        // tasks.objective_id has no EF relationship, so save the Modules first: the summary
+        // trigger reads the objectives row and writes nothing if the task lands before it.
+        await db.SaveChangesAsync();
         var inProgress = new List<Guid>();
         for (var i = 0; i < tasksPerModule; i++)
         {
@@ -171,11 +175,13 @@ public sealed class LedWorkProgressIntegrationTests
         var small = await SeedAsync(tasksPerModule: 1);
         var large = await SeedAsync(tasksPerModule: 15);
 
+        // OverdueLimit 1 puts both seeds over the limit, so both run the overdue count query; below the limit the
+        // handler skips it and takes one query less.
         async Task<int> CountAsync(Seeded seeded)
         {
             var counter = new CountingDbCommandInterceptor();
             await using var db = seeded.Db.NewContext(counter);
-            await Handler(db, seeded.Db.TenantId, seeded.LeadUserId).Handle(new GetLedWorkProgressQuery(), default);
+            await Handler(db, seeded.Db.TenantId, seeded.LeadUserId).Handle(new GetLedWorkProgressQuery(OverdueLimit: 1), default);
             return counter.Count;
         }
 
@@ -183,6 +189,6 @@ public sealed class LedWorkProgressIntegrationTests
         var largeCount = await CountAsync(large);
 
         smallCount.Should().Be(largeCount);
-        largeCount.Should().BeLessThanOrEqualTo(9);
+        largeCount.Should().BeLessThanOrEqualTo(10);
     }
 }

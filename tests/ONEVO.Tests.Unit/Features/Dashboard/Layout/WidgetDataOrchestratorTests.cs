@@ -154,7 +154,9 @@ public sealed class WidgetDataOrchestratorTests
             });
         }
 
-        var data = await Build().LoadAsync(keys, default);
+        // This test is about the concurrency cap, not the deadline: on a busy CI runner the 60 ms
+        // delays can be starved past the 3 s default and turn into timeout errors.
+        var data = await Build(TimeSpan.FromSeconds(30)).LoadAsync(keys, default);
 
         Assert.Equal(WidgetDataOrchestrator.MaxConcurrency, peak);
         Assert.All(keys, k => Assert.Equal(WidgetDataStatus.Success, data[k].State.Status));

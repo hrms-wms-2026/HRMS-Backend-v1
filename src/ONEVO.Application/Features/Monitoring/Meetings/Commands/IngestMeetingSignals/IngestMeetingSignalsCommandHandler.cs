@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.Monitoring.ActivityMonitoring.Helpers;
 using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.ServiceInterfaces;
 using ONEVO.Application.Features.Monitoring.CheckIn.ServiceInterfaces;
@@ -12,7 +13,7 @@ using ONEVO.Domain.Errors;
 
 namespace ONEVO.Application.Features.Monitoring.Meetings.Commands.IngestMeetingSignals;
 
-public class IngestMeetingSignalsCommandHandler : IRequestHandler<IngestMeetingSignalsCommand, Result>
+public class IngestMeetingSignalsCommandHandler : IRequestHandler<IngestMeetingSignalsCommand, Result<SnapshotIngestOutcome>>
 {
     private readonly IMeetingSignalRepository _signals;
     private readonly IMonitoringToggleResolver _toggleResolver;
@@ -46,19 +47,19 @@ public class IngestMeetingSignalsCommandHandler : IRequestHandler<IngestMeetingS
         _logger = logger;
     }
 
-    public async Task<Result> Handle(IngestMeetingSignalsCommand request, CancellationToken ct)
+    public async Task<Result<SnapshotIngestOutcome>> Handle(IngestMeetingSignalsCommand request, CancellationToken ct)
     {
         if (!_device.IsAuthenticated
             || _device.TenantId == Guid.Empty
             || _device.UserId == Guid.Empty
             || _device.DeviceRegistrationId == Guid.Empty)
         {
-            return Result.Failure("A valid tray device token is required.", 401);
+            return Result<SnapshotIngestOutcome>.Failure("A valid tray device token is required.", 401);
         }
 
         var tenant = await _tenants.GetByIdAsync(_device.TenantId, ct);
         if (tenant is null)
-            return Result.Failure("Tenant not found.", 401);
+            return Result<SnapshotIngestOutcome>.Failure("Tenant not found.", 401);
 
         await _tenantSwitcher.SwitchToTenantAsync(
             new TenantRegistryEntry(tenant.Id, tenant.Slug, tenant.Status, PlanCode: null), ct);
@@ -76,7 +77,7 @@ public class IngestMeetingSignalsCommandHandler : IRequestHandler<IngestMeetingS
             _logger.LogInformation(
                 "Meeting-signal batch rejected: monitoring disabled. TenantId={TenantId} DeviceId={DeviceId} UserId={UserId} Count={Count}",
                 tenantId, agentDeviceId, userId, request.Signals.Count);
-            return Result.Failure(MonitoringErrors.MeetingDetectionDisabled, 403);
+            return Result<SnapshotIngestOutcome>.Failure(MonitoringErrors.MeetingDetectionDisabled, 403, MonitoringErrors.MeetingDetectionDisabledCode);
         }
 
         // Resolves the real CoreHR Employee.Id to store, falling back to the raw UserId when no
@@ -84,21 +85,37 @@ public class IngestMeetingSignalsCommandHandler : IRequestHandler<IngestMeetingS
         var employeeId = await _employeeIdentity.ResolveEmployeeIdAsync(
             tenantId, userId, _device.LegalEntityId, ct);
 
-        foreach (var item in request.Signals)
+        // Judged per item: out-of-window items are skipped, the rest of the batch is still stored.
+        var window = SnapshotTimeWindow.Partition(
+            request.Signals.Select(s => s with { CapturedAt = SnapshotTimeWindow.Normalize(s.CapturedAt) }).ToList(),
+            s => s.CapturedAt,
+            now);
+        if (window.AllRejected)
+            return Result<SnapshotIngestOutcome>.Failure(window.RejectionError, 400, window.RejectionErrorCode);
+
+        if (window.RejectedCount > 0)
         {
-            if (item.CapturedAt > now.AddMinutes(5))
-                return Result.Failure(MonitoringErrors.SnapshotFutureTime, 400);
-            if (item.CapturedAt < now.AddHours(-24))
-                return Result.Failure(MonitoringErrors.SnapshotTooOld, 400);
+            _logger.LogWarning(
+                "Skipped {Rejected} out-of-window meeting signal(s) (too old={TooOld}, future={Future}); storing {Accepted}. TenantId={TenantId} DeviceId={DeviceId}",
+                window.RejectedCount, window.TooOldCount, window.FutureCount, window.Accepted.Count,
+                tenantId, agentDeviceId);
         }
 
-        var entities = request.Signals
+        // Idempotency: a retry after a lost 202 re-sends rows that are already stored.
+        var alreadyStored = await _signals.GetExistingCapturedAtsAsync(
+            tenantId, agentDeviceId, window.Accepted.Select(s => s.CapturedAt).ToList(), ct);
+        var fresh = SnapshotTimeWindow.WithoutDuplicates(window.Accepted, s => s.CapturedAt, alreadyStored);
+
+        var entities = fresh
             .Select(item => MeetingSignalMapper.ToEntity(item, tenantId, employeeId, agentDeviceId, now))
             .ToList();
 
-        await _signals.AddRangeAsync(entities, ct);
-        await _unitOfWork.SaveChangesAsync(ct);
+        if (entities.Count > 0)
+        {
+            await _signals.AddRangeAsync(entities, ct);
+            await _unitOfWork.SaveChangesAsync(ct);
+        }
 
-        return Result.Success();
+        return Result<SnapshotIngestOutcome>.Success(window.ToOutcome(entities.Count));
     }
 }

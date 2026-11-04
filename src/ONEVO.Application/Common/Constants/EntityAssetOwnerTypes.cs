@@ -15,4 +15,6 @@ public static class EntityAssetOwnerTypes
     /// <summary>Attachments on a checklist template's tasks (owner = template id). Copied into the
     /// real Work task's own attachments when the checklist is provisioned for an employee.</summary>
     public const string ChecklistTemplate = "checklist_template";
+    /// <summary>A group chat's photo (owner = conversation id): readable by the chat's members only.</summary>
+    public const string Conversation = "conversation";
 }

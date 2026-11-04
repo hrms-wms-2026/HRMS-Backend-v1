@@ -11,7 +11,8 @@ namespace ONEVO.Application.Features.Dashboard.Team.Queries;
 /// <summary>Composes the Approvals &amp; Exceptions widget from every registered
 /// ITeamActionSource (spec §9.4). Sources run sequentially - the scoped DbContext is not
 /// thread-safe, so no Task.WhenAll - and each one is isolated in its own try/catch so one
-/// source's failure never takes down the others.</summary>
+/// source's failure never takes down the others. Only the <see cref="MaxItemsTotal"/> longest-waiting
+/// items across all sources are returned; each source's PendingCount stays its real total.</summary>
 public sealed class GetTeamActionItemsQueryHandler(
     ICurrentUser currentUser,
     IEmployeeRepository employees,
@@ -19,6 +20,9 @@ public sealed class GetTeamActionItemsQueryHandler(
     ILogger<GetTeamActionItemsQueryHandler> logger)
     : IRequestHandler<GetTeamActionItemsQuery, Result<TeamActionItemsResponse>>
 {
+    /// <summary>Items returned across every source together - what the Action Center card shows.</summary>
+    public const int MaxItemsTotal = 4;
+
     public async Task<Result<TeamActionItemsResponse>> Handle(GetTeamActionItemsQuery query, CancellationToken ct)
     {
         if (!currentUser.IsAuthenticated)
@@ -28,7 +32,7 @@ public sealed class GetTeamActionItemsQueryHandler(
         if (actor?.LegalEntityId is null)
             return Result<TeamActionItemsResponse>.NotFound("Current employee record was not found.");
 
-        var top = query.TopPerSource <= 0 ? 5 : query.TopPerSource;
+        var top = Math.Min(query.TopPerSource <= 0 ? 5 : query.TopPerSource, MaxItemsTotal);
         var legalEntityId = actor.LegalEntityId.Value;
         var summaries = new List<ActionSourceSummary>();
 
@@ -48,6 +52,21 @@ public sealed class GetTeamActionItemsQueryHandler(
             }
         }
 
-        return Result<TeamActionItemsResponse>.Success(new TeamActionItemsResponse(legalEntityId, summaries));
+        return Result<TeamActionItemsResponse>.Success(new TeamActionItemsResponse(legalEntityId, KeepOldest(summaries)));
+    }
+
+    /// <summary>Trims every source's TopItems to the overall oldest <see cref="MaxItemsTotal"/>.</summary>
+    private static List<ActionSourceSummary> KeepOldest(List<ActionSourceSummary> summaries)
+    {
+        var keep = summaries
+            .SelectMany(s => s.TopItems)
+            .OrderBy(i => i.CreatedAt)
+            .ThenBy(i => i.SourceKey, StringComparer.Ordinal)
+            .ThenBy(i => i.EntityId)
+            .Take(MaxItemsTotal)
+            .ToHashSet();
+        return summaries
+            .Select(s => s with { TopItems = s.TopItems.Where(keep.Contains).ToList() })
+            .ToList();
     }
 }

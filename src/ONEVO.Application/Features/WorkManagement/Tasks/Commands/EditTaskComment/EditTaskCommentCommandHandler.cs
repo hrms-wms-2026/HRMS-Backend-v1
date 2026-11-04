@@ -1,4 +1,5 @@
 using MediatR;
+using ONEVO.Application.Common.Helpers;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
@@ -37,6 +38,8 @@ public sealed class EditTaskCommentCommandHandler : IRequestHandler<EditTaskComm
     {
         if (!_currentUser.IsAuthenticated)
             return Result<TaskCommentResponse>.Forbidden("Authentication required.");
+        if (RichTextRules.HasActiveContent(request.Content))
+            return Result<TaskCommentResponse>.Failure(RichTextRules.ActiveContentError, 400);
 
         var tenantId = _currentUser.TenantId;
         var userId = _currentUser.UserId;

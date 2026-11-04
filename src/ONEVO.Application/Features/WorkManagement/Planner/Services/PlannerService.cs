@@ -84,8 +84,8 @@ public sealed class PlannerService : IPlannerBlockWriter
             return NotFound<PlannerRangeResponse>();
 
         var today = TodayIn(zone.Value.Info);
-        var (start, _) = Bounds(from, zone.Value.Info);
-        var (_, end) = Bounds(to, zone.Value.Info);
+        var (start, _) = PlannerActuals.DayBounds(from, zone.Value.Info);
+        var (_, end) = PlannerActuals.DayBounds(to, zone.Value.Info);
         var now = _clock.UtcNow;
         var blocks = await _planner.ListBlocksAsync(tenantId, callerEmployeeId, start, end, ct);
         var tasks = await _planner.GetTasksAsync(tenantId, callerEmployeeId, blocks.Select(b => b.TaskId).Distinct().ToList(), ct);
@@ -96,7 +96,7 @@ public sealed class PlannerService : IPlannerBlockWriter
         var days = new List<PlannerRangeDay>(to.DayNumber - from.DayNumber + 1);
         for (var day = from; day <= to; day = day.AddDays(1))
         {
-            var (dayStart, dayEnd) = Bounds(day, zone.Value.Info);
+            var (dayStart, dayEnd) = PlannerActuals.DayBounds(day, zone.Value.Info);
             var views = blocksByDay[day].Select(b =>
             {
                 var task = tasks.GetValueOrDefault(b.TaskId);
@@ -123,8 +123,8 @@ public sealed class PlannerService : IPlannerBlockWriter
             return NotFound<PlannerFocusResponse>();
 
         var today = TodayIn(zone.Value.Info);
-        var (start, _) = Bounds(today, zone.Value.Info);
-        var (_, end) = Bounds(today.AddDays(PlanningHorizonDays), zone.Value.Info);
+        var (start, _) = PlannerActuals.DayBounds(today, zone.Value.Info);
+        var (_, end) = PlannerActuals.DayBounds(today.AddDays(PlanningHorizonDays), zone.Value.Info);
         var rows = await _planner.ListFocusTasksAsync(tenantId, callerEmployeeId, _clock.UtcNow, ct);
         var blocks = await _planner.ListBlocksAsync(tenantId, callerEmployeeId, start, end, ct);
         return Result<PlannerFocusResponse>.Success(PlannerFocus.Build(rows, blocks, today, zone.Value.Info));
@@ -256,7 +256,7 @@ public sealed class PlannerService : IPlannerBlockWriter
     private async Task<PlannerDayResponse> ComposeAsync(Guid tenantId, Guid employeeId, DateOnly day, Zone zone, bool editable,
         bool maskPrivate, CancellationToken ct)
     {
-        var (start, end) = Bounds(day, zone.Info);
+        var (start, end) = PlannerActuals.DayBounds(day, zone.Info);
         var now = _clock.UtcNow;
         var blocks = await _planner.ListBlocksAsync(tenantId, employeeId, start, end, ct);
         var meetings = await _meetings.ListEmployeeDayMeetingsAsync(tenantId, employeeId, start, end, ct);
@@ -269,7 +269,7 @@ public sealed class PlannerService : IPlannerBlockWriter
             g => PlannerActuals.TaskMinutes(g.Select(s => (s.ClockInAt, s.ClockOutAt)), start, end, now));
         var meetingViews = meetings.Select(m =>
         {
-            var minutes = MinutesInDay(m.StartAt, m.EndAt, m.IsAllDay, start, end);
+            var minutes = PlannerActuals.MeetingMinutesInDay(m.StartAt, m.EndAt, m.IsAllDay, start, end);
             var counts = !m.Cancelled && !m.Declined;
             return new PlannerMeetingView(m.TaskId, m.SeriesId, m.OriginalStart, m.StartAt, m.EndAt,
                 maskPrivate && m.IsPrivate ? PrivateMeetingTitle : m.Title, m.IsPrivate, m.Cancelled, m.Declined,
@@ -292,29 +292,8 @@ public sealed class PlannerService : IPlannerBlockWriter
         var actual = blocks.Select(b => b.TaskId).Distinct().Sum(id => actualByTask.GetValueOrDefault(id)) + meetingViews.Sum(m => m.ActualMinutes);
         return new PlannerDayResponse(day, zone.Id, editable, blockViews, meetingViews,
             due.Select(t => new PlannerDueTaskView(t.TaskId, t.Title, t.DueDate, t.EstimatedHours)).ToList(),
-            new PlannerTotals(planned, actual), AttendanceMinutes(attendance, now));
-    }
-
-    /// <summary>A meeting's minutes on this day only: its overlap with the day, or one workday when an all-day meeting
-    /// covers the day (MeetingPersonHours.AllDayMinutesPerDay).</summary>
-    private static int MinutesInDay(DateTimeOffset meetingStart, DateTimeOffset meetingEnd, bool isAllDay, DateTimeOffset dayStart,
-        DateTimeOffset dayEnd)
-    {
-        var from = meetingStart > dayStart ? meetingStart : dayStart;
-        var to = meetingEnd < dayEnd ? meetingEnd : dayEnd;
-        if (to <= from)
-            return 0;
-        return isAllDay ? MeetingPersonHours.AllDayMinutesPerDay : (int)Math.Round((to - from).TotalMinutes);
-    }
-
-    /// <summary>Worked minutes once clocked out; while still clocked in, the time since clock-in less breaks so far.</summary>
-    private static int AttendanceMinutes(PlannerAttendance? attendance, DateTimeOffset now)
-    {
-        if (attendance is null)
-            return 0;
-        if (attendance.ActualStart is { } start && attendance.ActualEnd is null)
-            return Math.Max(0, (int)Math.Round((now - start).TotalMinutes) - attendance.BreakMinutes);
-        return attendance.WorkedMinutes;
+            new PlannerTotals(planned, actual), attendance is null ? 0
+                : PlannerActuals.AttendanceMinutes(attendance.ActualStart, attendance.ActualEnd, attendance.WorkedMinutes, attendance.BreakMinutes, now));
     }
 
     private async Task<Zone?> ZoneOfAsync(Guid tenantId, Guid employeeId, CancellationToken ct)
@@ -331,16 +310,6 @@ public sealed class PlannerService : IPlannerBlockWriter
 
     private static DateOnly DayOf(DateTimeOffset instant, TimeZoneInfo zone)
         => DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(instant, zone).DateTime);
-
-    private static (DateTimeOffset Start, DateTimeOffset End) Bounds(DateOnly day, TimeZoneInfo zone)
-    {
-        DateTimeOffset At(DateOnly d)
-        {
-            var local = d.ToDateTime(TimeOnly.MinValue);
-            return new DateTimeOffset(local, zone.GetUtcOffset(local));
-        }
-        return (At(day), At(day.AddDays(1)));
-    }
 
     private static Result<T> BeyondHorizon<T>() => Result<T>.Failure(
         $"You can plan up to {PlanningHorizonDays} days ahead.", 400, PlannerErrorCodes.BeyondHorizon);

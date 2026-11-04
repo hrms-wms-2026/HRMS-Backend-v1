@@ -53,6 +53,7 @@ public sealed class DashboardWidgetAccessTests
         Assert.Contains("action-center", work);
         Assert.Contains("team-progress", team);
         Assert.DoesNotContain("team-status", team);
+        Assert.DoesNotContain("team-attendance", team);
     }
 
     [Fact]
@@ -75,6 +76,7 @@ public sealed class DashboardWidgetAccessTests
             .GetAllowedKeysAsync(DashboardKeys.MyTeam, default);
 
         Assert.Contains("team-status", team);
+        Assert.Contains("team-attendance", team);
         Assert.Contains("team-quick-actions", team);
     }
 

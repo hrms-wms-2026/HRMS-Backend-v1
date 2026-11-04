@@ -1,4 +1,5 @@
 using MediatR;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PaymentGateway.Helpers;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PaymentGateway.ServiceInterfaces;
@@ -8,7 +9,10 @@ using Stripe.Checkout;
 
 namespace ONEVO.Api.Controllers.Webhooks;
 
+// Stripe calls these without a session; every request is authenticated by its Stripe-Signature
+// header against the gateway's webhook secret (EventUtility.ConstructEvent below).
 [ApiController]
+[AllowAnonymous]
 [Route("api/payment-gateways/stripe/{gatewayKey}/webhook")]
 public class StripeWebhookController : ControllerBase
 {

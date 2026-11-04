@@ -8,7 +8,7 @@ namespace ONEVO.Application.Features.Dashboard.Layout.Registry;
 /// Client-sourced on purpose (identical behaviour beats coverage):
 /// todays-schedule - two dependent calls (my-timezone, then events) and a browser Intl-based
 ///   local-midnight-to-UTC conversion (hour12:false can render midnight as "24" in some engines);
-/// today-at-a-glance / today-total-time - the timeline call is conditional on the TimeTrackingStore's
+/// today-at-a-glance - the timeline call is conditional on the TimeTrackingStore's
 ///   today summary (desktopTray clock-in) and merged client-side with that shared store;
 /// work-pattern - from/to come from the browser's local date and the user-selected period, and the card
 ///   merges the result with TimeTrackingStore history.
@@ -17,19 +17,20 @@ public static class DashboardWidgetRegistry
 {
     private static readonly WidgetDefinition[] Definitions =
     [
-        new("today-at-a-glance", DashboardKeys.MyWork, "Today at a glance", "Your day at a glance: attendance, leave and key counts.", 3, 3, 6, 5, false),
+        new("today-at-a-glance", DashboardKeys.MyWork, "Today at a glance", "Your day at a glance: attendance, leave and key counts.", 3, 3, 6, 8, false),
         new("action-center", DashboardKeys.MyWork, "Action center", "Items waiting for your action.", 4, 3, 12, 6, false),
         new("quick-actions", DashboardKeys.MyWork, "Quick actions", "Shortcuts to common tasks.", 3, 3, 6, 4, false),
         new("todays-schedule", DashboardKeys.MyWork, "Today's schedule", "Your shifts and events for today.", 3, 3, 12, 6, false),
-        new("today-total-time", DashboardKeys.MyWork, "Today's total time", "Time worked so far today.", 3, 3, 6, 5, false),
+        new("today-total-time", DashboardKeys.MyWork, "Weekly work progress", "Your week's worked hours against expected and planned time.", 2, 2, 12, 8, true),
         new("active-projects", DashboardKeys.MyWork, "Active projects", "Projects you are currently working on.", 3, 3, 6, 6, true),
-        new("my-tasks", DashboardKeys.MyWork, "My tasks", "Tasks assigned to you.", 3, 3, 12, 6, true),
-        new("work-pattern", DashboardKeys.MyWork, "Work pattern", "Your recent working pattern.", 6, 3, 12, 5, false),
-        new("notifications", DashboardKeys.MyWork, "Notifications", "Your latest notifications.", 3, 3, 6, 6, false),
-        new("wellbeing", DashboardKeys.MyWork, "Wellbeing", "Wellbeing insights for you.", 3, 3, 6, 4, true),
-        new("team-status", DashboardKeys.MyTeam, "Team status", "Who in your team is working, away or off.", 6, 4, 12, 8, true),
-        new("team-quick-actions", DashboardKeys.MyTeam, "Team quick actions", "Shortcuts for managing your team.", 3, 3, 6, 4, false),
-        new("team-progress", DashboardKeys.MyTeam, "Team progress", "Estimated hours progress across your team.", 4, 4, 12, 8, true),
+        new("my-tasks", DashboardKeys.MyWork, "My tasks", "Tasks assigned to you.", 3, 3, 12, 6, true, ShownOnWeb: false),
+        new("work-pattern", DashboardKeys.MyWork, "Work pattern", "Your recent working pattern.", 6, 3, 12, 5, false, ShownOnWeb: false),
+        new("notifications", DashboardKeys.MyWork, "Notifications", "Your latest notifications.", 3, 3, 6, 6, false, ShownOnWeb: false),
+        new("wellbeing", DashboardKeys.MyWork, "Wellbeing", "Wellbeing insights for you.", 3, 3, 6, 4, true, ShownOnWeb: false),
+        new("team-status", DashboardKeys.MyTeam, "Team status", "Who in your team is working, away or off.", 2, 2, 12, 8, true),
+        new("team-quick-actions", DashboardKeys.MyTeam, "Team quick actions", "Shortcuts for managing your team.", 2, 2, 6, 4, false),
+        new("team-progress", DashboardKeys.MyTeam, "Team progress", "Estimated hours progress across your team.", 2, 2, 12, 8, true),
+        new("team-attendance", DashboardKeys.MyTeam, "Team attendance", "Attendance across your team by week or month.", 2, 2, 12, 8, true),
     ];
 
     private static readonly Dictionary<string, WidgetDefinition> ByKey =
@@ -42,16 +43,19 @@ public static class DashboardWidgetRegistry
         Definitions.Where(d => d.DashboardKey == dashboardKey).ToList();
 
     // Desktop default placements. Widgets absent here are in the catalog but not placed by default.
+    // Taken from the Dapi owner's tuned dashboard (2026-10-27). Row 1: Today at a glance (the greeting hero),
+    // Today's schedule, Quick actions; row 2: Action center, Weekly progress, Active projects - all three rows tall.
+    // The web app does not show my-tasks / work-pattern on My Work, so they sit below the rest and leave no hole.
     private static readonly (string Key, GridRect Rect)[] MyWorkDefaults =
     [
-        ("today-at-a-glance", new GridRect(0, 0, 3, 4)),
-        ("action-center", new GridRect(3, 0, 6, 4)),
-        ("quick-actions", new GridRect(9, 0, 3, 4)),
-        ("todays-schedule", new GridRect(0, 4, 6, 4)),
-        ("today-total-time", new GridRect(6, 4, 3, 4)),
-        ("active-projects", new GridRect(9, 4, 3, 4)),
-        ("my-tasks", new GridRect(0, 8, 6, 4)),
-        ("work-pattern", new GridRect(0, 12, 12, 4)),
+        ("today-at-a-glance", new GridRect(0, 0, 4, 3)),
+        ("todays-schedule", new GridRect(4, 0, 5, 3)),
+        ("quick-actions", new GridRect(9, 0, 3, 3)),
+        ("action-center", new GridRect(0, 3, 5, 3)),
+        ("today-total-time", new GridRect(5, 3, 4, 3)),
+        ("active-projects", new GridRect(9, 3, 3, 3)),
+        ("my-tasks", new GridRect(0, 6, 6, 4)),
+        ("work-pattern", new GridRect(0, 10, 12, 4)),
     ];
 
     private static readonly (string Key, GridRect Rect)[] MyTeamDefaults =
@@ -59,19 +63,21 @@ public static class DashboardWidgetRegistry
         ("team-status", new GridRect(0, 0, 8, 6)),
         ("team-quick-actions", new GridRect(8, 0, 4, 4)),
         ("team-progress", new GridRect(8, 4, 4, 6)),
+        ("team-attendance", new GridRect(0, 6, 8, 6)),
     ];
 
+    // team-attendance shares team-status's gate, so the variants below (team-status not allowed) never include it.
     // Permission variants (spec 6.2): when a gated widget is not allowed, an untouched default layout is shown with
     // the remaining widgets rearranged so no hole is left. Display only; seeding and Reset store the full default.
     private static readonly (string Key, GridRect Rect)[] MyWorkWithoutActionCenter =
     [
-        ("today-at-a-glance", new GridRect(0, 0, 3, 4)),
-        ("today-total-time", new GridRect(3, 0, 3, 4)),
-        ("active-projects", new GridRect(6, 0, 3, 4)),
-        ("quick-actions", new GridRect(9, 0, 3, 4)),
-        ("todays-schedule", new GridRect(0, 4, 6, 4)),
-        ("my-tasks", new GridRect(6, 4, 6, 4)),
-        ("work-pattern", new GridRect(0, 8, 12, 4)),
+        ("today-at-a-glance", new GridRect(0, 0, 4, 3)),
+        ("todays-schedule", new GridRect(4, 0, 5, 3)),
+        ("quick-actions", new GridRect(9, 0, 3, 3)),
+        ("today-total-time", new GridRect(0, 3, 6, 3)),
+        ("active-projects", new GridRect(6, 3, 6, 3)),
+        ("my-tasks", new GridRect(0, 6, 6, 4)),
+        ("work-pattern", new GridRect(0, 10, 12, 4)),
     ];
 
     private static readonly (string Key, GridRect Rect)[] MyTeamWithoutTeamStatus =

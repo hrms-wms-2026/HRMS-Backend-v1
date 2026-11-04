@@ -104,7 +104,8 @@ public sealed class MeetingReadIntegrationTests
         var outsiderView = await Reads(db).ListAsync(w.H.TenantId, w.Outsider, First.AddDays(-30), First.AddDays(30), null, CancellationToken.None);
 
         var item = Assert.Single(attendeeView.Value!);
-        Assert.Equal((w.Occ1, MeetingRoles.Attendee, CalendarEventParticipantStatuses.Pending), (item.TaskId, item.MyRole, item.MyResponse));
+        Assert.Equal((w.Occ1, MeetingRoles.Attendee, CalendarEventParticipantStatuses.Pending, w.Organizer),
+            (item.TaskId, item.MyRole, item.MyResponse, item.OrganizerEmployeeId));
         Assert.Empty(outsiderView.Value!);
     }
 

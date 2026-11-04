@@ -32,8 +32,11 @@ public sealed class ConversationUnreadCounts : IConversationUnreadCounts
         var members = await _conversations.ListMemberConversationsAsync(tenantId, employeeId, ct);
         var caseIds = members.Where(m => !ConversationSources.IsPeopleChat(m.Conversation.SubjectSource)).Select(m => m.Conversation.Id).ToList();
         var groups = await _conversations.LatestSystemEventsAsync(tenantId, caseIds, [PeopleChatEvents.CaseGroup], ct);
+        // A muted chat's messages do not count towards the inbox badge.
+        var muted = await _conversations.ListMutedConversationIdsAsync(tenantId, employeeId, ct);
         var listed = members
             .Where(m => ConversationSources.IsPeopleChat(m.Conversation.SubjectSource) || groups.ContainsKey(m.Conversation.Id))
+            .Where(m => !muted.Contains(m.Conversation.Id))
             .Select(m => m.Conversation.Id)
             .ToList();
         var unread = await _conversations.CountUnreadByConversationAsync(tenantId, employeeId, listed, ct);

@@ -1,9 +1,10 @@
 using MediatR;
 using ONEVO.Application.Common.Models;
+using ONEVO.Application.Features.Monitoring.ActivityMonitoring.Helpers;
 
 namespace ONEVO.Application.Features.Monitoring.DeviceState.Commands.IngestDeviceStateSnapshots;
 
-public record IngestDeviceStateSnapshotsCommand : IRequest<Result>
+public record IngestDeviceStateSnapshotsCommand : IRequest<Result<SnapshotIngestOutcome>>
 {
     public List<DeviceStateSnapshotItem> Snapshots { get; init; } = [];
 }

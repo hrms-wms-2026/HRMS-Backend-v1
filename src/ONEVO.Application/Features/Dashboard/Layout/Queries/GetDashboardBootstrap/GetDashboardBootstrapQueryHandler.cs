@@ -78,9 +78,10 @@ public sealed class GetDashboardBootstrapQueryHandler(
                 version = dashboard.LayoutVersion;
         }
 
-        // Bounded, concurrent provider loads; a failing provider becomes that widget's error state.
+        // Bounded, concurrent provider loads; a failing provider becomes that widget's error state. A widget the web
+        // keeps in the layout but never renders loads nothing (ToDto gives it the client state).
         var data = await widgetData.LoadAsync(
-            visible.Where(w => DashboardWidgetRegistry.Get(w.WidgetKey) is not null).Select(w => w.WidgetKey).ToList(), ct);
+            visible.Where(w => DashboardWidgetRegistry.Get(w.WidgetKey) is { ShownOnWeb: true }).Select(w => w.WidgetKey).ToList(), ct);
 
         var widgets = visible
             .Select(w => ToDto(w, final[w.Id], columns, data))
@@ -170,7 +171,8 @@ public sealed class GetDashboardBootstrapQueryHandler(
 
         var loaded = data.TryGetValue(widget.WidgetKey, out var value)
             ? value
-            : (State: new WidgetDataStateDto(WidgetDataStatus.NotLoaded, null, null), Data: (object?)null);
+            : (State: new WidgetDataStateDto(def.ShownOnWeb ? WidgetDataStatus.NotLoaded : WidgetDataStatus.Client, null, null),
+                Data: (object?)null);
         return new BootstrapWidgetDto(
             widget.Id, widget.WidgetKey, def.Title, rect,
             new WidgetSizeDto(Math.Min(def.MinW, columns), def.MinH, Math.Min(def.MaxW, columns), def.MaxH),

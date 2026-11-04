@@ -33,6 +33,6 @@ public class AdminTenantContextBehavior<TRequest, TResponse> : IPipelineBehavior
             _tenantContext.SetAdminMode();
         }
 
-        return next();
+        return next(ct);
     }
 }

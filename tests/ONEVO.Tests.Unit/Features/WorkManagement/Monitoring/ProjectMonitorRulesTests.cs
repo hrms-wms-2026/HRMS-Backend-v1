@@ -62,6 +62,11 @@ public class ProjectMonitorRulesTests
         Assert.NotNull(finding);
         Assert.Equal(220m, finding!.Details["remainingHours"]);
         Assert.Equal(200m, finding.Details["capacityHours"]);
+        Assert.Equal(20m, finding.Details["shortfallHours"]);
+        Assert.Equal("2026-10-16", finding.Details["endDate"]);
+        // 220h at 40h a day = 6 working days from Mon 12: done Mon 19, one working day after the deadline.
+        Assert.Equal("2026-10-19", finding.Details["expectedFinish"]);
+        Assert.Equal(1, finding.Details["lateDays"]);
     }
 
     [Fact]
