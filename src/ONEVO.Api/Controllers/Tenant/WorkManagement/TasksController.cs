@@ -297,7 +297,7 @@ public class TasksController : ControllerBase
     [HttpPost("projects/{projectId:guid}/task-categories")]
     public async Task<IActionResult> CreateCategory(Guid projectId, [FromBody] CreateTaskCategoryRequest request, CancellationToken ct)
     {
-        var result = await _mediator.Send(new CreateTaskCategoryCommand(projectId, request.Name, request.DisplayOrder), ct);
+        var result = await _mediator.Send(new CreateTaskCategoryCommand(projectId, request.Name, request.DisplayOrder, request.Kind), ct);
         return result.IsSuccess
             ? StatusCode(201, result.Value!.ToViewModel())
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
@@ -317,7 +317,7 @@ public class TasksController : ControllerBase
     [HttpPatch("task-categories/{id:guid}")]
     public async Task<IActionResult> EditCategory(Guid id, [FromBody] EditTaskCategoryRequest request, CancellationToken ct)
     {
-        var result = await _mediator.Send(new EditTaskCategoryCommand(id, request.Name, request.DisplayOrder), ct);
+        var result = await _mediator.Send(new EditTaskCategoryCommand(id, request.Name, request.DisplayOrder, request.Kind), ct);
         return result.IsSuccess ? NoContent() : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 

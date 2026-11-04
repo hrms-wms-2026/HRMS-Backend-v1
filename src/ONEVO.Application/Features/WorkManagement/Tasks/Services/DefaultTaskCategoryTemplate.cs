@@ -8,11 +8,11 @@ public static class DefaultTaskCategoryTemplate
     {
         return new List<TaskCategory>
         {
-            new() { Id = Guid.NewGuid(), TenantId = tenantId, ProjectId = projectId, Name = "task", DisplayOrder = 0, CreatedById = createdById, CreatedAt = now },
-            new() { Id = Guid.NewGuid(), TenantId = tenantId, ProjectId = projectId, Name = "bug", DisplayOrder = 1, CreatedById = createdById, CreatedAt = now },
-            new() { Id = Guid.NewGuid(), TenantId = tenantId, ProjectId = projectId, Name = "story", DisplayOrder = 2, CreatedById = createdById, CreatedAt = now },
-            new() { Id = Guid.NewGuid(), TenantId = tenantId, ProjectId = projectId, Name = "feature", DisplayOrder = 3, CreatedById = createdById, CreatedAt = now },
-            new() { Id = Guid.NewGuid(), TenantId = tenantId, ProjectId = projectId, Name = TaskCategorySystemKeys.Meeting, DisplayOrder = 4, SystemKey = TaskCategorySystemKeys.Meeting, CreatedById = createdById, CreatedAt = now }
+            new() { Id = Guid.NewGuid(), TenantId = tenantId, ProjectId = projectId, Name = "task", Kind = TaskCategoryKinds.Infer("task", null), DisplayOrder = 0, CreatedById = createdById, CreatedAt = now },
+            new() { Id = Guid.NewGuid(), TenantId = tenantId, ProjectId = projectId, Name = "bug", Kind = TaskCategoryKinds.Infer("bug", null), DisplayOrder = 1, CreatedById = createdById, CreatedAt = now },
+            new() { Id = Guid.NewGuid(), TenantId = tenantId, ProjectId = projectId, Name = "story", Kind = TaskCategoryKinds.Infer("story", null), DisplayOrder = 2, CreatedById = createdById, CreatedAt = now },
+            new() { Id = Guid.NewGuid(), TenantId = tenantId, ProjectId = projectId, Name = "feature", Kind = TaskCategoryKinds.Infer("feature", null), DisplayOrder = 3, CreatedById = createdById, CreatedAt = now },
+            new() { Id = Guid.NewGuid(), TenantId = tenantId, ProjectId = projectId, Name = TaskCategorySystemKeys.Meeting, DisplayOrder = 4, SystemKey = TaskCategorySystemKeys.Meeting, Kind = TaskCategoryKinds.Meeting, CreatedById = createdById, CreatedAt = now }
         };
     }
 }

@@ -46,15 +46,15 @@ public sealed record TaskStatusOrderUpdateRequest(
 
 public sealed record ReorderTaskStatusesRequest(List<TaskStatusOrderUpdateRequest> Updates);
 
-public sealed record EditTaskCategoryRequest(string Name, int DisplayOrder);
+public sealed record EditTaskCategoryRequest(string Name, int DisplayOrder, string? Kind = null);
 
-public sealed record CreateTaskCategoryRequest(string Name, int DisplayOrder);
+public sealed record CreateTaskCategoryRequest(string Name, int DisplayOrder, string? Kind = null);
 
 public sealed record TaskCategoryOrderUpdateRequest(Guid CategoryId, int DisplayOrder);
 
 public sealed record ReorderTaskCategoriesRequest(List<TaskCategoryOrderUpdateRequest> Updates);
 
-public sealed record TaskCategoryViewModel(Guid Id, string Name, int DisplayOrder, string? SystemKey, bool IsSystem);
+public sealed record TaskCategoryViewModel(Guid Id, string Name, int DisplayOrder, string? SystemKey, bool IsSystem, string Kind);
 
 public sealed record TaskAttachmentViewModel(Guid FileId, string FileName, long FileSizeBytes, string ContentType);
 

@@ -121,6 +121,18 @@ public sealed class MeetingCalendarIntegrationTests
     }
 
     [Fact]
+    public async Task TheFeed_ListsAMeetingsSeriesAttendees_OrganizerFirst()
+    {
+        var w = await SeedAsync();
+
+        var items = (await CalendarAsync(w, w.Attendee)).Where(i => i.MeetingSeriesId == w.SeriesId).ToList();
+
+        Assert.NotEmpty(items);
+        Assert.All(items, item => Assert.Equal([w.Organizer, w.Attendee], item.Participants!.Select(p => p.EmployeeId)));
+        Assert.All(items, item => Assert.All(item.Participants!, p => Assert.False(string.IsNullOrWhiteSpace(p.EmployeeName))));
+    }
+
+    [Fact]
     public async Task Outsider_SeesNoMeeting()
     {
         var w = await SeedAsync();

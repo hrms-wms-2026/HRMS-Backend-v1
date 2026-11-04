@@ -223,6 +223,9 @@ the meeting the meeting application was used for (spec D17).
   occurrences, cancelled series and moved-away slots are not listed. Open a meeting item with
   `GET /meetings/series/{meetingSeriesId}/occurrences/{originalStart}`.
 - Only meetings you organize or attend are listed; `hasConflict` counts them.
+- Each meeting item carries `participants` (the Planner draws them as avatars): the organizer first, then the series'
+  participants by name, each `{ employeeId, employeeName, responseStatus }`. These are series-level participants only;
+  people added to a single occurrence are not reflected here.
 - The conflict check includes the participants' task meetings. A meeting you cannot see comes back as
   `{ "conflictingEventId": "00000000-…", "conflictingEventTitle": "Busy", "isBusyOnly": true }` with its time only.
 - **Availability warnings (2026-10-28):** each conflict has a `kind`: `event` (above), `leave`, `holiday` or
