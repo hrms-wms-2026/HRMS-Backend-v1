@@ -303,7 +303,16 @@ public sealed class EfMeetingRepository : IMeetingRepository
 
     public async Task<IReadOnlyList<EmployeeDayMeeting>> ListEmployeeDayMeetingsAsync(Guid tenantId, Guid employeeId,
         DateTimeOffset from, DateTimeOffset to, CancellationToken ct = default)
+        => (await ListEmployeesDayMeetingsAsync(tenantId, [employeeId], from, to, ct))[employeeId];
+
+    public async Task<IReadOnlyDictionary<Guid, IReadOnlyList<EmployeeDayMeeting>>> ListEmployeesDayMeetingsAsync(Guid tenantId,
+        IReadOnlyCollection<Guid> employeeIds, DateTimeOffset from, DateTimeOffset to, CancellationToken ct = default)
     {
+        var result = employeeIds.Distinct().ToDictionary(id => id, _ => new List<EmployeeDayMeeting>());
+        if (result.Count == 0)
+            return new Dictionary<Guid, IReadOnlyList<EmployeeDayMeeting>>();
+        var ids = result.Keys.ToList();
+
         var (fromUtc, toUtc) = (from.ToUniversalTime(), to.ToUniversalTime());
         var candidates = await (
             from d in _db.MeetingDetails.AsNoTracking()
@@ -311,42 +320,48 @@ public sealed class EfMeetingRepository : IMeetingRepository
             join s in _db.MeetingSeries.AsNoTracking() on d.SeriesId equals s.Id
             where d.TenantId == tenantId && t.TenantId == tenantId && s.TenantId == tenantId
                   && d.StartAt < toUtc && d.EndAt > fromUtc
-                  && (s.OrganizerEmployeeId == employeeId
-                      || _db.CalendarEventParticipants.Any(p => p.MeetingSeriesId == d.SeriesId && p.EmployeeId == employeeId && !p.IsDeleted)
+                  && (ids.Contains(s.OrganizerEmployeeId)
+                      || _db.CalendarEventParticipants.Any(p => p.MeetingSeriesId == d.SeriesId
+                          && ids.Contains(p.EmployeeId) && !p.IsDeleted)
                       || _db.MeetingOccurrenceAttendees.Any(a => a.OccurrenceTaskId == d.TaskId
-                          && a.AttendeeKind == MeetingAttendeeKinds.Employee && a.EmployeeId == employeeId
+                          && a.AttendeeKind == MeetingAttendeeKinds.Employee && a.EmployeeId != null && ids.Contains(a.EmployeeId.Value)
                           && a.Change == MeetingAttendeeChanges.Add))
             orderby d.StartAt
             select new { Details = d, Series = s, t.Title })
             .ToListAsync(ct);
         if (candidates.Count == 0)
-            return [];
+            return result.ToDictionary(r => r.Key, r => (IReadOnlyList<EmployeeDayMeeting>)r.Value);
 
         var seriesIds = candidates.Select(c => c.Series.Id).Distinct().ToList();
         var taskIds = candidates.Select(c => c.Details.TaskId).ToList();
         var participants = await _db.CalendarEventParticipants.AsNoTracking()
-            .Where(p => p.TenantId == tenantId && p.EmployeeId == employeeId && !p.IsDeleted
+            .Where(p => p.TenantId == tenantId && ids.Contains(p.EmployeeId) && !p.IsDeleted
                 && p.MeetingSeriesId != null && seriesIds.Contains(p.MeetingSeriesId.Value))
             .ToListAsync(ct);
         var overrides = await _db.MeetingOccurrenceAttendees.AsNoTracking()
             .Where(a => a.TenantId == tenantId && taskIds.Contains(a.OccurrenceTaskId)
-                && a.AttendeeKind == MeetingAttendeeKinds.Employee && a.EmployeeId == employeeId)
+                && a.AttendeeKind == MeetingAttendeeKinds.Employee && a.EmployeeId != null && ids.Contains(a.EmployeeId.Value))
             .ToListAsync(ct);
 
-        var result = new List<EmployeeDayMeeting>();
         foreach (var c in candidates)
         {
-            var organizer = c.Series.OrganizerEmployeeId == employeeId;
-            var own = overrides.FirstOrDefault(a => a.OccurrenceTaskId == c.Details.TaskId);
-            if (own is { Change: MeetingAttendeeChanges.Remove } && !organizer)
-                continue;   // removed from this occurrence
-            var response = own?.ResponseStatus ?? participants.FirstOrDefault(p => p.MeetingSeriesId == c.Series.Id)?.ResponseStatus;
-            var cancelled = c.Details.CancelledAt is not null || MeetingStatusCalculator.CancelledWithSeries(c.Details, c.Series);
-            result.Add(new EmployeeDayMeeting(c.Details.TaskId, c.Series.Id, c.Details.OriginalStart, c.Details.StartAt, c.Details.EndAt,
-                c.Details.IsAllDay, c.Title, c.Details.IsPrivate, cancelled,
-                Declined: !organizer && response == CalendarEventParticipantStatuses.Rejected));
+            foreach (var employeeId in ids)
+            {
+                var organizer = c.Series.OrganizerEmployeeId == employeeId;
+                var participant = participants.FirstOrDefault(p => p.MeetingSeriesId == c.Series.Id && p.EmployeeId == employeeId);
+                var own = overrides.FirstOrDefault(a => a.OccurrenceTaskId == c.Details.TaskId && a.EmployeeId == employeeId);
+                if (!organizer && participant is null && own is not { Change: MeetingAttendeeChanges.Add })
+                    continue;   // not this employee's meeting
+                if (own is { Change: MeetingAttendeeChanges.Remove } && !organizer)
+                    continue;   // removed from this occurrence
+                var response = own?.ResponseStatus ?? participant?.ResponseStatus;
+                var cancelled = c.Details.CancelledAt is not null || MeetingStatusCalculator.CancelledWithSeries(c.Details, c.Series);
+                result[employeeId].Add(new EmployeeDayMeeting(c.Details.TaskId, c.Series.Id, c.Details.OriginalStart, c.Details.StartAt,
+                    c.Details.EndAt, c.Details.IsAllDay, c.Title, c.Details.IsPrivate, cancelled,
+                    Declined: !organizer && response == CalendarEventParticipantStatuses.Rejected));
+            }
         }
-        return result;
+        return result.ToDictionary(r => r.Key, r => (IReadOnlyList<EmployeeDayMeeting>)r.Value);
     }
 
     public async Task<IReadOnlyList<MeetingOccurrenceSuppression>> ListSuppressionsFromAsync(

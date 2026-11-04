@@ -10,6 +10,7 @@ using ONEVO.Application.Features.Monitoring.ActivityMonitoring.Queries.GetMyFocu
 using ONEVO.Application.Features.TimeAttendance.Queries;
 using ONEVO.Application.Features.TimeAttendance.Team.Queries;
 using ONEVO.Application.Features.WorkManagement.Leadership.Queries.GetLedWorkProgress;
+using ONEVO.Application.Features.WorkManagement.Planner.TeamSchedule;
 using ONEVO.Application.Features.WorkManagement.Projects.Queries.ListProjects;
 using ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetMyActiveTasks;
 using ONEVO.Application.Features.WorkManagement.WeeklyProgress.Queries.GetMyWeeklyWorkProgress;
@@ -96,6 +97,25 @@ public sealed class TeamStatusWidgetDataProvider(IMediator mediator, ICurrentUse
         Map(await Mediator.Send(new GetCoveredTeamTodayQuery(Limit), ct), value => value);
 }
 
+/// <summary>team-schedule (Today's team schedule): mirrors GET api/v1/planner/team/schedule (PlannerController.TeamSchedule) for
+/// today; the card sends no date on load.</summary>
+public sealed class TeamScheduleWidgetDataProvider(IMediator mediator, ICurrentUser currentUser, IModuleEntitlementService entitlements)
+    : EndpointMirrorWidgetDataProvider(mediator, currentUser, entitlements)
+{
+    public const string Key = "team-schedule";
+
+    private static readonly EndpointGate MirroredGate =
+        EndpointGate.For<PlannerController>(nameof(PlannerController.TeamDay));
+
+    public override string WidgetKey => Key;
+
+    protected override EndpointGate Gate => MirroredGate;
+
+    // The action returns Ok(result.Value) - no view-model mapping.
+    protected override async Task<Result<object>> LoadAsync(CancellationToken ct) =>
+        Map(await Mediator.Send(new GetTeamScheduleQuery(null), ct), value => value);
+}
+
 /// <summary>team-attendance: mirrors GET api/v1/attendance/time-tracking/team/attendance-summary
 /// (TimeTrackingController.TeamAttendanceSummary) with the card's first request: this week, no department.</summary>
 public sealed class TeamAttendanceWidgetDataProvider(IMediator mediator, ICurrentUser currentUser, IModuleEntitlementService entitlements)
@@ -170,6 +190,7 @@ public static class WidgetDataProviderRegistration
         Add<TeamProgressWidgetDataProvider>(services, TeamProgressWidgetDataProvider.Key);
         Add<TeamStatusWidgetDataProvider>(services, TeamStatusWidgetDataProvider.Key);
         Add<TeamAttendanceWidgetDataProvider>(services, TeamAttendanceWidgetDataProvider.Key);
+        Add<TeamScheduleWidgetDataProvider>(services, TeamScheduleWidgetDataProvider.Key);
         Add<WellbeingWidgetDataProvider>(services, WellbeingWidgetDataProvider.Key);
         Add<ActiveProjectsWidgetDataProvider>(services, ActiveProjectsWidgetDataProvider.Key);
         Add<WeeklyWorkProgressWidgetDataProvider>(services, WeeklyWorkProgressWidgetDataProvider.Key);

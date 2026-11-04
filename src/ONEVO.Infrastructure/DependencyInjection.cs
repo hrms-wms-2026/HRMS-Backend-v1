@@ -456,12 +456,16 @@ public static class DependencyInjection
         services.AddScoped<ONEVO.Application.Features.Calendar.Services.CalendarMeetingGuard>();
         services.AddScoped<ONEVO.Application.Features.WorkManagement.Planner.RepositoryInterfaces.IPlannerRepository,
             ONEVO.Infrastructure.Persistence.Repositories.WorkManagement.Planner.EfPlannerRepository>();
+        services.AddScoped<ONEVO.Application.Features.WorkManagement.Planner.RepositoryInterfaces.ITeamTimeReadRepository,
+            ONEVO.Infrastructure.Persistence.Repositories.WorkManagement.Planner.EfTeamTimeReadRepository>();
         services.AddScoped<ONEVO.Application.Features.WorkManagement.Planner.Services.PlannerService>();
         services.AddScoped<ONEVO.Application.Features.WorkManagement.Planner.Services.TeamPlannerService>();
         services.AddScoped<ONEVO.Application.Features.WorkManagement.Planner.Services.IPlannerBlockWriter>(
             sp => sp.GetRequiredService<ONEVO.Application.Features.WorkManagement.Planner.Services.PlannerService>());
         services.AddScoped<ONEVO.Application.Features.WorkManagement.WeeklyProgress.RepositoryInterfaces.IWeeklyWorkProgressReadRepository,
             ONEVO.Infrastructure.Persistence.Repositories.WorkManagement.WeeklyProgress.EfWeeklyWorkProgressReadRepository>();
+        services.AddScoped<ONEVO.Application.Features.TimeAttendance.Team.Services.ITeamCompletedTaskReader,
+            ONEVO.Infrastructure.Persistence.Repositories.TimeAttendance.EfTeamCompletedTaskReader>();
         services.AddHostedService<Services.WorkManagement.Meetings.MeetingOccurrenceGeneratorJob>();
         services.AddScoped<ONEVO.Application.Features.WorkManagement.Meetings.Services.MeetingAttendanceSyncService>();
         services.AddScoped<ONEVO.Application.Features.WorkManagement.Meetings.Services.MeetingAttendanceReadService>();
@@ -1131,7 +1135,6 @@ public static class DependencyInjection
         services.AddHostedService<DapiHistorySeeder>();
         services.AddHostedService<PlatformOAuthProviderMetadataSeeder>();
         services.AddHostedService<WorkManagementSampleDataSeeder>();
-        services.AddHostedService<DapiDueTodayTaskSeeder>();
 
         // Boot-time configuration audit (warns about missing keys; never fatal).
         services.AddHostedService<ConfigurationStartupValidator>();

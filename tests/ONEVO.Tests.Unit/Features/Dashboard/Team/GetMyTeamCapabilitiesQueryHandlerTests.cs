@@ -145,6 +145,30 @@ public sealed class GetMyTeamCapabilitiesQueryHandlerTests
         Assert.False(result.Value.CanViewLiveActivity);
     }
 
+    [Fact]
+    public async Task HasReports_follows_direct_reports()
+    {
+        var withReports = await CreateHandler(CurrentUser(permissions: []), out _, out _, out _, directReports: [Guid.NewGuid()])
+            .Handle(new GetMyTeamCapabilitiesQuery(), CancellationToken.None);
+        var without = await CreateHandler(CurrentUser(permissions: []), out _, out _, out _)
+            .Handle(new GetMyTeamCapabilitiesQuery(), CancellationToken.None);
+
+        Assert.True(withReports.Value!.HasReports);
+        Assert.False(without.Value!.HasReports);
+    }
+
+    [Fact]
+    public async Task HasReports_is_false_without_an_employee_record()
+    {
+        var employees = new Mock<IEmployeeRepository>();
+        employees.Setup(x => x.GetDefaultForUserAsync(TenantId, UserId, It.IsAny<CancellationToken>())).ReturnsAsync((Employee?)null);
+
+        var result = await CreateHandler(CurrentUser(permissions: []), out _, out _, out _, employees: employees, directReports: [Guid.NewGuid()])
+            .Handle(new GetMyTeamCapabilitiesQuery(), CancellationToken.None);
+
+        Assert.False(result.Value!.HasReports);
+    }
+
     // Team planner (2026-11-03): offered to someone with direct reports while the planner is on.
     [Theory]
     [InlineData(true, 2, true)]
@@ -172,6 +196,7 @@ public sealed class GetMyTeamCapabilitiesQueryHandlerTests
         out Mock<IWorkLeadershipService> workLeadership,
         Mock<IEmployeeRepository>? employees = null,
         string[]? activeModules = null,
+        Guid[]? directReports = null,
         Mock<ONEVO.Application.Common.RepositoryInterfaces.IEmployeeRepository>? reportingLines = null,
         bool plannerOn = true)
     {
@@ -189,8 +214,9 @@ public sealed class GetMyTeamCapabilitiesQueryHandlerTests
         if (reportingLines is null)
         {
             reportingLines = new Mock<ONEVO.Application.Common.RepositoryInterfaces.IEmployeeRepository>();
-            reportingLines.Setup(x => x.ListDirectReportEmployeeIdsAsync(It.IsAny<Guid>(), It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
-                .ReturnsAsync(Array.Empty<Guid>());
+            reportingLines.Setup(x => x.ListDirectReportEmployeeIdsAsync(TenantId,
+                    It.Is<IReadOnlyCollection<Guid>>(ids => ids.Count == 1 && ids.Contains(ActorId)), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(directReports ?? []);
         }
         return new GetMyTeamCapabilitiesQueryHandler(
             currentUser.Object, employees.Object, authority.Object, modules.Object, workLeadership.Object, reportingLines.Object,

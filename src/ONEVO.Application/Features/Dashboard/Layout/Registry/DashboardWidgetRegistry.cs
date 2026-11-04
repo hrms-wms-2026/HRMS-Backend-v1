@@ -27,11 +27,13 @@ public static class DashboardWidgetRegistry
         new("work-pattern", DashboardKeys.MyWork, "Work pattern", "Your recent working pattern.", 6, 3, 12, 5, false, ShownOnWeb: false),
         new("notifications", DashboardKeys.MyWork, "Notifications", "Your latest notifications.", 3, 3, 6, 6, false, ShownOnWeb: false),
         new("wellbeing", DashboardKeys.MyWork, "Wellbeing", "Wellbeing insights for you.", 3, 3, 6, 4, true, ShownOnWeb: false),
-        new("team-status", DashboardKeys.MyTeam, "Team status", "Who in your team is working, away or off.", 2, 2, 12, 8, true),
+        new("team-status", DashboardKeys.MyTeam, "Working / Break / Leave", "Who in your team is working, on a break or on leave right now.", 2, 2, 12, 8, true),
         new("team-quick-actions", DashboardKeys.MyTeam, "Team quick actions", "Shortcuts for managing your team.", 2, 2, 6, 4, false),
         new("team-progress", DashboardKeys.MyTeam, "Team progress", "Estimated hours progress across your team.", 2, 2, 12, 8, true),
         new("team-attendance", DashboardKeys.MyTeam, "Team attendance", "Attendance across your team by week or month.", 2, 2, 12, 8, true),
+        new("team-schedule", DashboardKeys.MyTeam, "Today's team schedule", "What your team planned for today and how far they are.", 2, 2, 12, 8, true),
         new("team-plan-today", DashboardKeys.MyTeam, "Team plan today", "Today's planned load for each direct report.", 2, 2, 12, 8, false),
+        new("team-work-vs-task", DashboardKeys.MyTeam, "Work vs task hours", "Your team's working hours against the hours of tasks they completed, by day, week or month.", 2, 2, 12, 8, false),
     ];
 
     private const string TeamPlanToday = "team-plan-today";
@@ -69,6 +71,7 @@ public static class DashboardWidgetRegistry
         ("team-progress", new GridRect(8, 4, 4, 6)),
         ("team-attendance", new GridRect(0, 6, 8, 6)),
         ("team-plan-today", new GridRect(0, 12, 8, 6)),
+        ("team-schedule", new GridRect(0, 18, 8, 6)),
     ];
 
     // team-attendance shares team-status's gate, so the variants below (team-status not allowed) never include it.

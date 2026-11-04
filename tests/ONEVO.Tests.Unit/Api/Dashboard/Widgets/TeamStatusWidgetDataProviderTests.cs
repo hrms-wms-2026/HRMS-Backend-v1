@@ -34,7 +34,8 @@ public sealed class TeamStatusWidgetDataProviderTests
             new TeamTodaySummary(1, 1, 0, 0, 0, 0, 0, 0, 0, 0),
             [new TeamTodayMember(Guid.NewGuid(), "Ada Lovelace", null, "Engineer", "working", "Working", false,
                 new DateTimeOffset(2026, 10, 20, 3, 30, 0, TimeSpan.Zero), null, null, null, null, null)],
-            1);
+            1,
+            new DateTimeOffset(2026, 10, 20, 6, 0, 0, TimeSpan.Zero));
         kit.Mediator.Setup(m => m.Send(It.IsAny<GetCoveredTeamTodayQuery>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result<TeamTodayResponse>.Success(response));
 

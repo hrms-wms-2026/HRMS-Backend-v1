@@ -83,6 +83,11 @@ public interface IMeetingRepository
     Task<IReadOnlyList<EmployeeDayMeeting>> ListEmployeeDayMeetingsAsync(Guid tenantId, Guid employeeId, DateTimeOffset from,
         DateTimeOffset to, CancellationToken ct = default);
 
+    /// <summary><see cref="ListEmployeeDayMeetingsAsync"/> for a set of employees in one query per table (My Team widgets,
+    /// 2026-10-29). Every given employee has an entry, empty when they have no meeting.</summary>
+    Task<IReadOnlyDictionary<Guid, IReadOnlyList<EmployeeDayMeeting>>> ListEmployeesDayMeetingsAsync(Guid tenantId,
+        IReadOnlyCollection<Guid> employeeIds, DateTimeOffset from, DateTimeOffset to, CancellationToken ct = default);
+
     /// <summary>Non-cancelled series the employee organizes or is a (non-removed) series attendee of.</summary>
     Task<IReadOnlyList<MeetingSeries>> ListSeriesForAttendeeAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default);
 

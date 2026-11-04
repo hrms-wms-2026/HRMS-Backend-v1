@@ -17,7 +17,6 @@ using ONEVO.Application.Features.WorkManagement.Planner.Services;
 using ONEVO.Application.Features.WorkManagement.WeeklyProgress.DTOs;
 using ONEVO.Application.Features.WorkManagement.WeeklyProgress.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.WeeklyProgress.Services;
-using ONEVO.Domain.Features.Leave.Request.Entities;
 using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
 
 namespace ONEVO.Application.Features.WorkManagement.WeeklyProgress.Queries.GetMyWeeklyWorkProgress;
@@ -89,7 +88,7 @@ public sealed class GetMyWeeklyWorkProgressQueryHandler(
         var leaves = await leaveRequests.ListApprovedCoveringAsync(tenantId, [employeeId], lastWeekStart, weekEnd, ct);
         var weights = await weekly.ListWeekTaskWeightsAsync(tenantId, employeeId, weekStart, weekEnd, thisWeekStartUtc, rangeEnd, ct);
 
-        var leaveHours = LeaveHoursByDate(leaves.Where(l => l.EmployeeId == employeeId), lastWeekStart, weekEnd, zone, workStart, workEnd);
+        var leaveHours = LeaveWorkWindow.HoursByDate(leaves.Where(l => l.EmployeeId == employeeId), lastWeekStart, weekEnd, zone, workStart, workEnd);
         WeeklyWorkProgressInput Input(DateOnly start) => new(
             start, zone, now, weekdays, workStart, workEnd, holidays, employee.HireDate, employee.TerminationDate, leaveHours,
             blocks.Select(b => (b.StartAt, b.EndAt)).ToList(),
@@ -106,37 +105,6 @@ public sealed class GetMyWeeklyWorkProgressQueryHandler(
     }
 
     private static DateOnly MondayOf(DateOnly day) => day.AddDays(-(((int)day.DayOfWeek + 6) % 7));
-
-    /// <summary>Per day, approved leave's overlap with that day's work window: null when it covers the whole window (a
-    /// full leave day), else its hours. A partial cancellation ends the leave the day before its effective date.</summary>
-    private static Dictionary<DateOnly, decimal?> LeaveHoursByDate(IEnumerable<LeaveRequest> leaves, DateOnly from, DateOnly to,
-        TimeZoneInfo zone, TimeOnly? workStart, TimeOnly? workEnd)
-    {
-        var result = new Dictionary<DateOnly, decimal?>();
-        if (workStart is not { } ws || workEnd is not { } we || ws >= we)
-            return result;
-        var windowMinutes = (we - ws).TotalMinutes;
-        foreach (var leave in leaves)
-        {
-            for (var day = from; day <= to; day = day.AddDays(1))
-            {
-                if (leave.PartialCancelEffectiveDate is { } cancelledFrom && day >= cancelledFrom)
-                    break;
-                var dayStart = PlannerActuals.DayBounds(day, zone).Start;
-                var windowStart = dayStart.Add(ws.ToTimeSpan());
-                var windowEnd = dayStart.Add(we.ToTimeSpan());
-                var overlapStart = leave.StartAt > windowStart ? leave.StartAt : windowStart;
-                var overlapEnd = leave.EndAt < windowEnd ? leave.EndAt : windowEnd;
-                if (overlapEnd <= overlapStart)
-                    continue;
-                // Two leaves on one day add up; a day already fully on leave stays full (null).
-                var prior = result.TryGetValue(day, out var hours) ? hours is { } h ? (double)h * 60 : windowMinutes : 0;
-                var minutes = prior + (overlapEnd - overlapStart).TotalMinutes;
-                result[day] = minutes >= windowMinutes ? null : Math.Round((decimal)minutes / 60m, 2);
-            }
-        }
-        return result;
-    }
 
     private static WeekTaskWeightsDto TaskWeights(IReadOnlyList<WeekTaskWeight> weights)
     {

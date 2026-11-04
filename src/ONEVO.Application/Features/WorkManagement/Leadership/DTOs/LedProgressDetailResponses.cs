@@ -89,3 +89,28 @@ public sealed record LedProgressTaskItem(
     string ObjectiveTitle,
     IReadOnlyList<LedTaskAssignee> Assignees,
     bool IsShared);
+
+/// <summary>The previous period over the same elapsed span: planned task minutes elapsed by then, clocked minutes and
+/// coverage (null without a plan).</summary>
+public sealed record LedTimeComparison(int PlannedMinutes, int ClockedMinutes, decimal? CoveragePercent);
+
+/// <summary>A day (week period) or an ISO week clipped to the month (month period). Minutes, never estimate hours.</summary>
+public sealed record LedTimeBucket(DateOnly From, DateOnly To, int PlannedMinutes, int ScheduledMinutes, int UnscheduledMinutes);
+
+/// <summary>Workload ranking by planned commitment (in-scope Planner blocks). ExpectedMinutes is null when the person's legal
+/// entity has no working hours; utilization is not capped. More workload is not better performance.</summary>
+public sealed record LedWorkloadRow(Guid EmployeeId, string DisplayName, int Rank, int PlannedMinutes, int ClockedMinutes,
+    int UnscheduledMinutes, int? ExpectedMinutes, decimal? UtilizationPercent);
+
+/// <param name="Kind">no_plan | outside_slot.</param>
+public sealed record LedUnscheduledRow(Guid EmployeeId, string DisplayName, Guid TaskId, string ShortId, string Title,
+    DateTimeOffset Start, DateTimeOffset End, int Minutes, string Kind);
+
+/// <summary>Team Progress planned vs worked (My Team widgets design 2026-10-29, section 6.1): clocked task time and Planner
+/// blocks on the led scope's tasks, each person's minutes on their own local days. PlannedMinutes is the whole period's
+/// commitment; CoveragePercent = scheduled ÷ planned task minutes elapsed by now. Planner off: every plan figure is 0 and
+/// coverage null, clocked still filled. No allocation figure is read or changed here.</summary>
+public sealed record LedTimeProgressResponse(string Period, DateOnly From, DateOnly To, bool PlannerEnabled, DateTimeOffset AsOf,
+    int PlannedMinutes, int ClockedMinutes, int ScheduledMinutes, int OutsideSlotMinutes, int NoPlanMinutes, decimal? CoveragePercent,
+    int PeopleWithUnscheduledWork, LedTimeComparison Previous, IReadOnlyList<LedTimeBucket> Buckets,
+    IReadOnlyList<LedWorkloadRow> Workload, IReadOnlyList<LedUnscheduledRow> Unscheduled, int UnscheduledTotal);

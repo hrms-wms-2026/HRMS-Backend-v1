@@ -14,8 +14,8 @@ public sealed class DashboardWidgetAccessTests
 {
     private static MyTeamCapabilitiesResponse Caps(
         bool available = false, bool status = false, bool people = false,
-        bool exceptions = false, bool work = false, bool leads = false) =>
-        new(available, status, people, exceptions, work, leads, false, null);
+        bool exceptions = false, bool work = false, bool leads = false, bool reports = false) =>
+        new(available, status, people, exceptions, work, leads, false, reports, null);
 
     private static (DashboardWidgetAccess Sut, Mock<IMediator> Mediator) Create(
         Func<Task<Result<MyTeamCapabilitiesResponse>>> reply)
@@ -54,6 +54,7 @@ public sealed class DashboardWidgetAccessTests
         Assert.Contains("team-progress", team);
         Assert.DoesNotContain("team-status", team);
         Assert.DoesNotContain("team-attendance", team);
+        Assert.DoesNotContain("team-work-vs-task", team);
     }
 
     [Fact]
@@ -77,7 +78,20 @@ public sealed class DashboardWidgetAccessTests
 
         Assert.Contains("team-status", team);
         Assert.Contains("team-attendance", team);
+        Assert.Contains("team-work-vs-task", team);
         Assert.Contains("team-quick-actions", team);
+    }
+
+    [Fact]
+    public async Task Team_schedule_needs_reports()
+    {
+        var withReports = await With(Caps(available: true, reports: true)).GetAllowedKeysAsync(DashboardKeys.MyTeam, default);
+        var withoutReports = await With(Caps(available: true, status: true, leads: true)).GetAllowedKeysAsync(DashboardKeys.MyTeam, default);
+        var reportsButUnavailable = await With(Caps(available: false, reports: true)).GetAllowedKeysAsync(DashboardKeys.MyTeam, default);
+
+        Assert.Contains("team-schedule", withReports);
+        Assert.DoesNotContain("team-schedule", withoutReports);
+        Assert.DoesNotContain("team-schedule", reportsButUnavailable);
     }
 
     [Fact]
