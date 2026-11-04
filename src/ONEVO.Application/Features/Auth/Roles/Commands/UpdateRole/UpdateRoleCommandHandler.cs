@@ -1,3 +1,4 @@
+using ONEVO.Application.Common.Auditing;
 using MediatR;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
@@ -18,17 +19,20 @@ public class UpdateRoleCommandHandler : IRequestHandler<UpdateRoleCommand, Resul
     private readonly IRolePermissionRepository _rolePermissions;
     private readonly ICurrentUser _currentUser;
     private readonly IUnitOfWork _unitOfWork;
+    private readonly IAuditTrail _auditTrail;
 
     public UpdateRoleCommandHandler(
         IRoleRepository roles,
         IRolePermissionRepository rolePermissions,
         ICurrentUser currentUser,
-        IUnitOfWork unitOfWork)
+        IUnitOfWork unitOfWork,
+        IAuditTrail auditTrail)
     {
         _roles = roles;
         _rolePermissions = rolePermissions;
         _currentUser = currentUser;
         _unitOfWork = unitOfWork;
+        _auditTrail = auditTrail;
     }
 
     public async Task<Result<RoleSummaryDto>> Handle(UpdateRoleCommand request, CancellationToken ct)
@@ -54,6 +58,8 @@ public class UpdateRoleCommandHandler : IRequestHandler<UpdateRoleCommand, Resul
             if (nameClash is not null && nameClash.Id != role.Id)
                 return Result<RoleSummaryDto>.Conflict($"A role named '{name}' already exists.");
         }
+
+        _auditTrail.RecordBefore(new { name = role.Name, description = role.Description });
 
         role.Name = name;
         role.Description = request.Description?.Trim() ?? string.Empty;

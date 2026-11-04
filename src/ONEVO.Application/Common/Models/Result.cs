@@ -1,6 +1,6 @@
 namespace ONEVO.Application.Common.Models;
 
-public class Result<T>
+public class Result<T> : IResultStatus
 {
     public bool IsSuccess { get; }
     public T? Value { get; }
@@ -35,7 +35,7 @@ public class Result<T>
         => new(false, default, error, 422, null);
 }
 
-public class Result
+public class Result : IResultStatus
 {
     public bool IsSuccess { get; }
     public string? Error { get; }

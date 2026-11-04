@@ -15,6 +15,7 @@ using CalendarEventMeetingAttendance = ONEVO.Domain.Features.Calendar.Entities.C
 using CalendarEventGuest = ONEVO.Domain.Features.Calendar.Entities.CalendarEventGuest;
 using TimeAttendanceWorkMode = ONEVO.Domain.Features.TimeAttendance.Entities.WorkMode;
 using ONEVO.Domain.Features.CoreHr.Entities;
+using ONEVO.Domain.Features.DevPlatform.Audit.Entities;
 using ONEVO.Domain.Features.DevPlatform.Compliance.Entities;
 using ONEVO.Domain.Features.DevPlatform.ConfigurationTemplates.Entities;
 using ONEVO.Domain.Features.DevPlatform.PlatformAccess.Entities;
@@ -190,6 +191,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<PlatformUserRole> PlatformUserRoles => Set<PlatformUserRole>();
     public DbSet<PlatformUserSession> PlatformUserSessions => Set<PlatformUserSession>();
     public DbSet<PlatformAuthEvent> PlatformAuthEvents => Set<PlatformAuthEvent>();
+    public DbSet<PlatformAuditLog> PlatformAuditLogs => Set<PlatformAuditLog>();
 
     // Developer Platform
     public DbSet<Tenant> Tenants => Set<Tenant>();

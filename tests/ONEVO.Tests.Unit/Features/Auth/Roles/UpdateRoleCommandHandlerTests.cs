@@ -1,3 +1,4 @@
+using ONEVO.Tests.Unit.Fakes;
 using FluentAssertions;
 using Moq;
 using ONEVO.Application.Common.RepositoryInterfaces;
@@ -18,6 +19,7 @@ public class UpdateRoleCommandHandlerTests
     private readonly Mock<IRolePermissionRepository> _rolePermissions = new();
     private readonly Mock<ICurrentUser> _currentUser = new();
     private readonly Mock<IUnitOfWork> _uow = new();
+    private readonly RecordingAuditTrail _auditTrail = new();
 
     private static readonly Guid TenantId = Guid.Parse("11111111-1111-1111-1111-111111111111");
 
@@ -25,7 +27,7 @@ public class UpdateRoleCommandHandlerTests
     {
         _currentUser.SetupGet(c => c.IsAuthenticated).Returns(true);
         _currentUser.SetupGet(c => c.TenantId).Returns(TenantId);
-        return new UpdateRoleCommandHandler(_roles.Object, _rolePermissions.Object, _currentUser.Object, _uow.Object);
+        return new UpdateRoleCommandHandler(_roles.Object, _rolePermissions.Object, _currentUser.Object, _uow.Object, _auditTrail);
     }
 
     [Fact]
@@ -56,6 +58,9 @@ public class UpdateRoleCommandHandlerTests
         role.Name.Should().Be("New");
         role.Description.Should().Be("New desc");
         _uow.Verify(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
+        var before = _auditTrail.BeforeJson();
+        before.GetProperty("name").GetString().Should().Be("Old");
+        before.GetProperty("description").GetString().Should().Be("Old desc");
     }
 
     [Fact]

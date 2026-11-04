@@ -4,6 +4,7 @@ using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformOAuthApps.DTOs
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformOAuthApps.Helpers;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformOAuthApps.Mappers;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformOAuthApps.RepositoryInterfaces;
+using ONEVO.Application.Common.Auditing;
 
 namespace ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformOAuthApps.Commands.SetPlatformOAuthAppActivation;
 
@@ -16,7 +17,16 @@ namespace ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformOAuthApps.
 public sealed record SetPlatformOAuthAppActivationCommand(
     string Provider,
     bool IsActive,
-    Guid ActorPlatformUserId) : IRequest<Result<PlatformOAuthAppDto>>;
+    Guid ActorPlatformUserId) : IRequest<Result<PlatformOAuthAppDto>>, IPlatformAuditedCommand<Result<PlatformOAuthAppDto>>
+{
+    public AuditEntry DescribeAudit(Result<PlatformOAuthAppDto> response) => new()
+    {
+        Action = IsActive ? "platform_oauth_app.activated" : "platform_oauth_app.deactivated",
+        TargetType = "platform_oauth_app",
+        TargetId = response.Value?.Provider,
+        After = new { isActive = IsActive },
+    };
+}
 
 public sealed class SetPlatformOAuthAppActivationCommandHandler
     : IRequestHandler<SetPlatformOAuthAppActivationCommand, Result<PlatformOAuthAppDto>>

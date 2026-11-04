@@ -9,6 +9,7 @@ using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformServiceKeys.Re
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformProviders.RepositoryInterfaces;
 using ONEVO.Domain.Features.DevPlatform.SystemConfig.PlatformProviders.Entities;
 using ONEVO.Domain.Features.DevPlatform.SystemConfig.PlatformServiceKeys.Entities;
+using ONEVO.Application.Common.Auditing;
 
 namespace ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformServiceKeys.Commands.CreatePlatformServiceKey;
 
@@ -22,7 +23,23 @@ public sealed record CreatePlatformServiceKeyCommand(
     string DisplayName,
     string? ApiKey,
     Guid ActorPlatformUserId,
-    IReadOnlyDictionary<string, string>? Fields = null) : IRequest<Result<PlatformServiceKeyDto>>;
+    IReadOnlyDictionary<string, string>? Fields = null) : IRequest<Result<PlatformServiceKeyDto>>, IPlatformAuditedCommand<Result<PlatformServiceKeyDto>>
+{
+    // ApiKey and Fields values are never included: Fields can carry secrets, so only its keys are kept.
+    public AuditEntry DescribeAudit(Result<PlatformServiceKeyDto> response) => new()
+    {
+        Action = "platform_service_key.created",
+        TargetType = "platform_service_key",
+        TargetId = ServiceKey,
+        After = new
+        {
+            displayName = DisplayName,
+            isActive = response.Value?.IsActive,
+            apiKeySet = ApiKey is not null,
+            fieldNames = Fields?.Keys.OrderBy(k => k, StringComparer.Ordinal).ToArray(),
+        },
+    };
+}
 
 public sealed class CreatePlatformServiceKeyCommandHandler
     : IRequestHandler<CreatePlatformServiceKeyCommand, Result<PlatformServiceKeyDto>>

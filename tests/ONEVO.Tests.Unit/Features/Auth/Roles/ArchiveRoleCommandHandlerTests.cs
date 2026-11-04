@@ -1,3 +1,4 @@
+using ONEVO.Tests.Unit.Fakes;
 using FluentAssertions;
 using Moq;
 using ONEVO.Application.Common.RepositoryInterfaces;
@@ -17,6 +18,7 @@ public class ArchiveRoleCommandHandlerTests
     private readonly Mock<IRoleRepository> _roles = new();
     private readonly Mock<ICurrentUser> _currentUser = new();
     private readonly Mock<IUnitOfWork> _uow = new();
+    private readonly RecordingAuditTrail _auditTrail = new();
 
     private static readonly Guid TenantId = Guid.Parse("11111111-1111-1111-1111-111111111111");
 
@@ -24,7 +26,7 @@ public class ArchiveRoleCommandHandlerTests
     {
         _currentUser.SetupGet(c => c.IsAuthenticated).Returns(true);
         _currentUser.SetupGet(c => c.TenantId).Returns(TenantId);
-        return new ArchiveRoleCommandHandler(_roles.Object, _currentUser.Object, _uow.Object);
+        return new ArchiveRoleCommandHandler(_roles.Object, _currentUser.Object, _uow.Object, _auditTrail);
     }
 
     [Fact]

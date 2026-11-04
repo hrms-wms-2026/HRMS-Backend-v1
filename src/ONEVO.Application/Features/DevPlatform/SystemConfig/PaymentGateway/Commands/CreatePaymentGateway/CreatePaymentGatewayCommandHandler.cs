@@ -5,6 +5,7 @@ using ONEVO.Application.Features.DevPlatform.SystemConfig.PaymentGateway.DTOs;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PaymentGateway.Helpers;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PaymentGateway.RepositoryInterfaces;
 using ONEVO.Domain.Features.SharedPlatform.PaymentGateway.Entities;
+using ONEVO.Application.Common.Auditing;
 
 namespace ONEVO.Application.Features.DevPlatform.SystemConfig.PaymentGateway.Commands.CreatePaymentGateway;
 
@@ -28,7 +29,30 @@ public sealed record CreatePaymentGatewayCommand(
     string? WebhookSecret,
     IReadOnlyList<string> CountryCodes,
     IReadOnlyList<string?> CountryNameSnapshots,
-    Guid ActorPlatformUserId) : IRequest<Result<PaymentGatewayConfigDto>>;
+    Guid ActorPlatformUserId) : IRequest<Result<PaymentGatewayConfigDto>>, IPlatformAuditedCommand<Result<PaymentGatewayConfigDto>>
+{
+    // SecretKey and WebhookSecret values are never included; only that they were set.
+    public AuditEntry DescribeAudit(Result<PaymentGatewayConfigDto> response) => new()
+    {
+        Action = "payment_gateway.created",
+        TargetType = "payment_gateway",
+        TargetId = response.Value?.Id.ToString(),
+        After = new
+        {
+            gatewayKey = GatewayKey,
+            provider = Provider,
+            environment = Environment,
+            displayName = DisplayName,
+            publicKey = PublicKey,
+            merchantId = MerchantId,
+            webhookUrl = WebhookUrl,
+            isActive = IsActive,
+            countryCodes = CountryCodes,
+            webhookSecretSet = WebhookSecret is not null,
+            credentialVersion = response.Value?.ActiveCredentialVersion,
+        },
+    };
+}
 
 public sealed class CreatePaymentGatewayCommandHandler
     : IRequestHandler<CreatePaymentGatewayCommand, Result<PaymentGatewayConfigDto>>

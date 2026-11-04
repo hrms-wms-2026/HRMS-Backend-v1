@@ -1,3 +1,4 @@
+using ONEVO.Application.Common.Auditing;
 using MediatR;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
@@ -29,6 +30,7 @@ public class AssignRolePermissionsCommandHandler
     private readonly ICurrentUser _currentUser;
     private readonly IUnitOfWork _unitOfWork;
     private readonly IDateTimeProvider _clock;
+    private readonly IAuditTrail _auditTrail;
 
     public AssignRolePermissionsCommandHandler(
         IRoleRepository roles,
@@ -40,7 +42,8 @@ public class AssignRolePermissionsCommandHandler
         IPermissionVersionService permissionVersion,
         ICurrentUser currentUser,
         IUnitOfWork unitOfWork,
-        IDateTimeProvider clock)
+        IDateTimeProvider clock,
+        IAuditTrail auditTrail)
     {
         _roles = roles;
         _rolePermissions = rolePermissions;
@@ -52,6 +55,7 @@ public class AssignRolePermissionsCommandHandler
         _currentUser = currentUser;
         _unitOfWork = unitOfWork;
         _clock = clock;
+        _auditTrail = auditTrail;
     }
 
     public async Task<Result<RoleDetailDto>> Handle(AssignRolePermissionsCommand request, CancellationToken ct)
@@ -90,6 +94,7 @@ public class AssignRolePermissionsCommandHandler
 
         var existing = await _rolePermissions.ListByRoleAsync(role.Id, ct);
         var existingPermissionIds = existing.Select(rp => rp.PermissionId).ToHashSet();
+        _auditTrail.RecordBefore(new { permissionIds = existingPermissionIds.OrderBy(id => id).ToArray() });
         var requestedSet = requestedIds.ToHashSet();
 
         var toRemove = existing.Where(rp => !requestedSet.Contains(rp.PermissionId)).ToList();

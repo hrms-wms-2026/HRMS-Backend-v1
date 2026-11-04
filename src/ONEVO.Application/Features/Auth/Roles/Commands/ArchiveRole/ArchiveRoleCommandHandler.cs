@@ -1,3 +1,4 @@
+using ONEVO.Application.Common.Auditing;
 using MediatR;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
@@ -14,15 +15,18 @@ public class ArchiveRoleCommandHandler : IRequestHandler<ArchiveRoleCommand, Res
     private readonly IRoleRepository _roles;
     private readonly ICurrentUser _currentUser;
     private readonly IUnitOfWork _unitOfWork;
+    private readonly IAuditTrail _auditTrail;
 
     public ArchiveRoleCommandHandler(
         IRoleRepository roles,
         ICurrentUser currentUser,
-        IUnitOfWork unitOfWork)
+        IUnitOfWork unitOfWork,
+        IAuditTrail auditTrail)
     {
         _roles = roles;
         _currentUser = currentUser;
         _unitOfWork = unitOfWork;
+        _auditTrail = auditTrail;
     }
 
     public async Task<Result> Handle(ArchiveRoleCommand request, CancellationToken ct)
@@ -40,6 +44,8 @@ public class ArchiveRoleCommandHandler : IRequestHandler<ArchiveRoleCommand, Res
 
         if (role.IsSystem)
             return Result.Failure("System roles cannot be archived.", 403);
+
+        _auditTrail.RecordBefore(new { name = role.Name });
 
         // Soft delete via SoftDeleteInterceptor (sets IsDeleted + DeletedAt on Remove call).
         _roles.Remove(role);

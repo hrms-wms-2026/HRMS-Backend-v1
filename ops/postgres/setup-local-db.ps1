@@ -282,6 +282,7 @@ if ($RunMigrations) {
         $postMigrationGrantsArguments = $commonArguments + @(
             '--dbname', $databaseName,
             '--set', "base_login_fn_owner=$baseLoginFnOwner",
+            '--set', "app_user=$appUser",
             '--file', $postMigrationGrantsPath
         )
         Invoke-PsqlChecked -Executable $psqlExecutable -Arguments $postMigrationGrantsArguments `

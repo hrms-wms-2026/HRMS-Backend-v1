@@ -11,8 +11,8 @@
 -- ops/postgres/local-bootstrap-roles.sql for the pre-migration role bootstrap
 -- step that runs before migrations.
 --
--- The base_login_fn_owner name is a required psql variable supplied by
--- ops/postgres/setup-local-db.ps1, matching the value passed to
+-- The base_login_fn_owner and app_user names are required psql variables
+-- supplied by ops/postgres/setup-local-db.ps1, matching the values passed to
 -- local-bootstrap-roles.sql.
 
 \set ON_ERROR_STOP on
@@ -31,4 +31,13 @@ SELECT format(
 SELECT format(
     'GRANT SELECT (id, slug, name, status) ON public.tenants TO %I',
     :'base_login_fn_owner')
+\gexec
+
+-- Append-only audit tables. local-bootstrap-roles.sql grants the runtime role
+-- UPDATE and DELETE on every existing table each time it re-runs, so take them
+-- back here, after migrations, to keep platform_audit_logs insert-and-read only.
+-- The AddPlatformAuditLogs migration applies the same restriction.
+SELECT format(
+    'REVOKE UPDATE, DELETE, TRUNCATE ON TABLE public.platform_audit_logs FROM %I',
+    :'app_user')
 \gexec

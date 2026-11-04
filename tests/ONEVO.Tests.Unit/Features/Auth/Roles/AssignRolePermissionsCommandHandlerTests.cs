@@ -1,3 +1,4 @@
+using ONEVO.Tests.Unit.Fakes;
 using FluentAssertions;
 using Moq;
 using ONEVO.Application.Common.RepositoryInterfaces;
@@ -27,6 +28,7 @@ public class AssignRolePermissionsCommandHandlerTests
     private readonly Mock<ICurrentUser> _currentUser = new();
     private readonly Mock<IUnitOfWork> _uow = new();
     private readonly Mock<IDateTimeProvider> _clock = new();
+    private readonly RecordingAuditTrail _auditTrail = new();
 
     private static readonly Guid TenantId = Guid.Parse("11111111-1111-1111-1111-111111111111");
     private static readonly DateTimeOffset FixedNow = new(2026, 7, 23, 12, 0, 0, TimeSpan.Zero);
@@ -53,7 +55,8 @@ public class AssignRolePermissionsCommandHandlerTests
             _permissionVersion.Object,
             _currentUser.Object,
             _uow.Object,
-            _clock.Object);
+            _clock.Object,
+            _auditTrail);
     }
 
     [Fact]
@@ -110,6 +113,9 @@ public class AssignRolePermissionsCommandHandlerTests
         _permissionVersion.Verify(
             v => v.IncrementVersionAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()),
             Times.Never);
+        _auditTrail.BeforeJson().GetProperty("permissionIds").EnumerateArray()
+            .Select(e => e.GetGuid())
+            .Should().BeEquivalentTo(new[] { permKept.Id, permOld.Id });
     }
 
     [Fact]

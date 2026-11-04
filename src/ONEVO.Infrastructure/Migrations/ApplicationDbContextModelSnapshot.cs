@@ -4741,6 +4741,83 @@ namespace ONEVO.Infrastructure.Migrations
                     b.ToTable("global_app_catalog", (string)null);
                 });
 
+            modelBuilder.Entity("ONEVO.Domain.Features.DevPlatform.Audit.Entities.PlatformAuditLog", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("action");
+
+                    b.Property<Guid?>("ActorPlatformUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("actor_platform_user_id");
+
+                    b.Property<string>("AfterJson")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("after_json");
+
+                    b.Property<string>("BeforeJson")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("before_json");
+
+                    b.Property<string>("CorrelationId")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("correlation_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("IpAddress")
+                        .HasMaxLength(45)
+                        .HasColumnType("character varying(45)")
+                        .HasColumnName("ip_address");
+
+                    b.Property<string>("TargetId")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("target_id");
+
+                    b.Property<Guid?>("TargetTenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("target_tenant_id");
+
+                    b.Property<string>("TargetType")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("target_type");
+
+                    b.Property<string>("UserAgent")
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)")
+                        .HasColumnName("user_agent");
+
+                    b.HasKey("Id")
+                        .HasName("pk_platform_audit_logs");
+
+                    b.HasIndex("CreatedAt")
+                        .HasDatabaseName("ix_platform_audit_logs_created_at");
+
+                    b.HasIndex("ActorPlatformUserId", "CreatedAt")
+                        .HasDatabaseName("ix_platform_audit_logs_actor_platform_user_id_created_at");
+
+                    b.HasIndex("TargetTenantId", "CreatedAt")
+                        .HasDatabaseName("ix_platform_audit_logs_target_tenant_id_created_at");
+
+                    b.HasIndex("TargetType", "TargetId")
+                        .HasDatabaseName("ix_platform_audit_logs_target_type_target_id");
+
+                    b.ToTable("platform_audit_logs", (string)null);
+                });
+
             modelBuilder.Entity("ONEVO.Domain.Features.DevPlatform.Compliance.Entities.LegalDocumentVersion", b =>
                 {
                     b.Property<Guid>("Id")

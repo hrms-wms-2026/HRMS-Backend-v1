@@ -31,11 +31,18 @@ public static class DependencyInjection
             cfg.AddBehavior(typeof(IPipelineBehavior<,>), typeof(UnhandledExceptionBehavior<,>));
             cfg.AddBehavior(typeof(IPipelineBehavior<,>), typeof(AdminTenantContextBehavior<,>));
             cfg.AddBehavior(typeof(IPipelineBehavior<,>), typeof(ValidationBehavior<,>));
+            // After AdminTenantContext (admin mode / tenant context must be set before the audit
+            // row is written) and Validation (invalid requests never open a transaction).
+            cfg.AddBehavior(typeof(IPipelineBehavior<,>), typeof(AuditingBehavior<,>));
             cfg.AddBehavior(typeof(IPipelineBehavior<,>), typeof(LoggingBehavior<,>));
             cfg.AddBehavior(typeof(IPipelineBehavior<,>), typeof(PerformanceBehavior<,>));
         });
 
         services.AddValidatorsFromAssembly(assembly);
+
+        services.AddScoped<ONEVO.Application.Common.Auditing.AuditTrail>();
+        services.AddScoped<ONEVO.Application.Common.Auditing.IAuditTrail>(sp =>
+            sp.GetRequiredService<ONEVO.Application.Common.Auditing.AuditTrail>());
 
         services.AddScoped<
             ONEVO.Application.Features.Dashboard.Layout.Access.IDashboardWidgetAccess,

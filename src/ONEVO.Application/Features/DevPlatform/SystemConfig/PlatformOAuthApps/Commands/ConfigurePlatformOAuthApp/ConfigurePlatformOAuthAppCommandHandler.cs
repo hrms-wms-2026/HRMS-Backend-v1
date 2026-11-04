@@ -6,6 +6,7 @@ using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformOAuthApps.Help
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformOAuthApps.Mappers;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformOAuthApps.RepositoryInterfaces;
 using ONEVO.Domain.Features.DevPlatform.SystemConfig.PlatformOAuthApps.Entities;
+using ONEVO.Application.Common.Auditing;
 
 namespace ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformOAuthApps.Commands.ConfigurePlatformOAuthApp;
 
@@ -27,7 +28,27 @@ public sealed record ConfigurePlatformOAuthAppCommand(
     string? ClientSecret,
     string? PrivateKey,
     bool? IsActive,
-    Guid ActorPlatformUserId) : IRequest<Result<PlatformOAuthAppDto>>;
+    Guid ActorPlatformUserId) : IRequest<Result<PlatformOAuthAppDto>>, IPlatformAuditedCommand<Result<PlatformOAuthAppDto>>
+{
+    // Records which settings were set and whether secrets were replaced. ClientSecret and
+    // PrivateKey values are never included.
+    public AuditEntry DescribeAudit(Result<PlatformOAuthAppDto> response) => new()
+    {
+        Action = "platform_oauth_app.configured",
+        TargetType = "platform_oauth_app",
+        TargetId = response.Value?.Provider,
+        After = new
+        {
+            appName = AppName,
+            logoUrl = LogoUrl,
+            clientId = ClientId,
+            isActive = response.Value?.IsActive,
+            clientSecretReplaced = ClientSecret is not null,
+            privateKeyReplaced = PrivateKey is not null,
+            credentialVersion = response.Value?.ActiveCredentialVersion,
+        },
+    };
+}
 
 public sealed class ConfigurePlatformOAuthAppCommandHandler
     : IRequestHandler<ConfigurePlatformOAuthAppCommand, Result<PlatformOAuthAppDto>>
