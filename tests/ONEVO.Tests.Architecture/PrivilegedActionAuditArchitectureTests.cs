@@ -1,4 +1,11 @@
+using System.Reflection;
 using MediatR;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Routing;
+using ONEVO.Api.Controllers.Admin.DevPlatform.Audit;
+using ONEVO.Api.Filters;
+using ONEVO.Application.Features.DevPlatform.PlatformAccess.Helpers;
 using ONEVO.Application.Common.Auditing;
 using ONEVO.Application.Common.Behaviors;
 using ONEVO.Domain.Common;
@@ -169,6 +176,25 @@ public sealed class PrivilegedActionAuditArchitectureTests
         // post-migration script must take them back.
         var postMigration = File.ReadAllText(Path.Combine(root, "ops", "postgres", "local-post-migration-grants.sql"));
         Assert.Contains("REVOKE UPDATE, DELETE, TRUNCATE ON TABLE public.platform_audit_logs FROM %I", postMigration, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void PlatformAuditLogController_IsAdminOnly_ReadOnly_AndRequiresAuditRead()
+    {
+        var type = typeof(PlatformAuditLogController);
+        Assert.Contains(type.GetCustomAttributes<AuthorizeAttribute>(), a => a.Policy == "AdminPolicy");
+
+        var actions = type.GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.DeclaredOnly)
+            .Where(m => !m.IsSpecialName)
+            .ToList();
+        Assert.NotEmpty(actions);
+        foreach (var action in actions)
+        {
+            Assert.Equal(PlatformPermissionCatalog.AuditRead, action.GetCustomAttribute<RequirePlatformPermissionAttribute>()?.Permission);
+            var verbs = action.GetCustomAttributes<HttpMethodAttribute>().SelectMany(a => a.HttpMethods).ToList();
+            Assert.Equal(new[] { "GET" }, verbs);
+            Assert.Null(action.GetCustomAttribute<AllowAnonymousAttribute>());
+        }
     }
 
     private static string FindRepositoryRoot()

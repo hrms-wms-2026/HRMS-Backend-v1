@@ -151,6 +151,10 @@ public static class SharedPostgresTemplate
 
                 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO onevo_app;
                 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO onevo_app;
+
+                -- Append-only tables: same restriction as the AddPlatformAuditLogs migration and
+                -- ops/postgres/local-post-migration-grants.sql, which the blanket grant above undoes.
+                REVOKE UPDATE, DELETE, TRUNCATE ON TABLE public.platform_audit_logs FROM onevo_app;
                 """;
             await grantCommand.ExecuteNonQueryAsync();
         }
