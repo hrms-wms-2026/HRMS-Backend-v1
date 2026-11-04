@@ -1135,7 +1135,6 @@ public static class DependencyInjection
         services.AddHostedService<DapiHistorySeeder>();
         services.AddHostedService<PlatformOAuthProviderMetadataSeeder>();
         services.AddHostedService<WorkManagementSampleDataSeeder>();
-        services.AddHostedService<DapiDueTodayTaskSeeder>();
 
         // Boot-time configuration audit (warns about missing keys; never fatal).
         services.AddHostedService<ConfigurationStartupValidator>();
