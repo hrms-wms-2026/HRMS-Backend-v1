@@ -26,7 +26,7 @@ public class EditTaskCategoryCommandHandlerTests
     private static readonly Guid CategoryId = Guid.NewGuid();
 
     private (EditTaskCategoryCommandHandler Handler, Mock<ITaskCategoryRepository> Categories) Build(
-        Guid? callerEmployeeId = null, bool? callerIsEffectiveManager = null, string? systemKey = null)
+        Guid? callerEmployeeId = null, bool? callerIsEffectiveManager = null, string? systemKey = null, string kind = TaskCategoryKinds.Task)
     {
         var resolvedCallerEmployeeId = callerEmployeeId ?? OwnerEmployeeId;
 
@@ -46,6 +46,7 @@ public class EditTaskCategoryCommandHandlerTests
             ProjectId = ProjectId,
             Name = systemKey ?? "Bug",
             SystemKey = systemKey,
+            Kind = kind,
             DisplayOrder = 0,
             CreatedAt = DateTimeOffset.UtcNow
         };
@@ -211,6 +212,43 @@ public class EditTaskCategoryCommandHandlerTests
 
         var result = await handler.Handle(
             new EditTaskCategoryCommand(CategoryId, TaskCategorySystemKeys.Meeting, 0, TaskCategoryKinds.Bug), CancellationToken.None);
+
+        Assert.Equal((400, "invalid_category_kind"), (result.StatusCode, result.ErrorCode));
+        categories.Verify(x => x.Update(It.IsAny<TaskCategory>()), Times.Never);
+    }
+
+    // An existing user category the AddTaskCategoryKind backfill gave a system kind by its name (e.g. "Onboarding" in a
+    // normal project): it keeps that kind on a rename, and its owner can still move it to a user kind.
+    [Fact]
+    public async Task Handle_ExistingBackfilledCategory_Rename_KeepsItsStoredKind()
+    {
+        var (handler, categories) = Build(kind: TaskCategoryKinds.Checklist);
+
+        var result = await handler.Handle(new EditTaskCategoryCommand(CategoryId, "Onboarding steps", 0), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        categories.Verify(x => x.Update(It.Is<TaskCategory>(c => c.Kind == TaskCategoryKinds.Checklist)), Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_ExistingBackfilledCategory_CanMoveToAUserKind()
+    {
+        var (handler, categories) = Build(kind: TaskCategoryKinds.Checklist);
+
+        var result = await handler.Handle(new EditTaskCategoryCommand(CategoryId, "Onboarding", 0, TaskCategoryKinds.Task), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        categories.Verify(x => x.Update(It.Is<TaskCategory>(c => c.Kind == TaskCategoryKinds.Task)), Times.Once);
+    }
+
+    [Theory]
+    [InlineData(TaskCategoryKinds.Meeting)]
+    [InlineData(TaskCategoryKinds.Checklist)]
+    public async Task Handle_UserCategory_CannotMoveToASystemKind(string kind)
+    {
+        var (handler, categories) = Build();
+
+        var result = await handler.Handle(new EditTaskCategoryCommand(CategoryId, "Bug", 0, kind), CancellationToken.None);
 
         Assert.Equal((400, "invalid_category_kind"), (result.StatusCode, result.ErrorCode));
         categories.Verify(x => x.Update(It.IsAny<TaskCategory>()), Times.Never);

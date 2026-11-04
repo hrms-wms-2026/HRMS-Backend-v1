@@ -62,4 +62,24 @@ public sealed class OfficeProjectProvisionerRlsIntegrationTests
         Assert.Equal("Meeting", meeting.Name);
         Assert.True(context.CategoryIds.ContainsKey("meeting"));
     }
+
+    [Fact]
+    public async Task EnsureAsync_NewOfficeProject_GivesTheSystemCategoriesTheirKinds()
+    {
+        await using var harness = await OfficeProjectDb.CreateAsync();
+        var hr = await harness.SeedEmployeeAsync(harness.LegalEntityId);
+        var scopes = harness.BuildAppScopeFactory();
+
+        await using var scope = scopes.CreateAsyncScope();
+        var context = await scope.ServiceProvider.GetRequiredService<IOfficeProjectProvisioner>()
+            .EnsureAsync(harness.TenantId, harness.LegalEntityId, hr.UserId, hr.Id, DateOnly.FromDateTime(DateTime.UtcNow));
+
+        await using var admin = harness.AdminContext();
+        var rows = await admin.TaskCategories.Where(c => c.ProjectId == context.ProjectId).OrderBy(c => c.DisplayOrder)
+            .Select(c => new { c.Name, c.SystemKey, c.Kind }).ToListAsync();
+        Assert.Equal(
+            new[] { ("Onboarding", (string?)null, "checklist"), ("Offboarding", null, "checklist"), ("Meeting", "meeting", "meeting") },
+            rows.Select(r => (r.Name, r.SystemKey, r.Kind)));
+        Assert.True(context.CategoryIds.ContainsKey("onboarding") && context.CategoryIds.ContainsKey("offboarding"));
+    }
 }

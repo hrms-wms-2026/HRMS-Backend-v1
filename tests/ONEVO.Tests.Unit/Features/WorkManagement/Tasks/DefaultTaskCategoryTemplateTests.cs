@@ -16,4 +16,14 @@ public class DefaultTaskCategoryTemplateTests
         Assert.Equal(TaskCategorySystemKeys.Meeting, meeting.SystemKey);
         Assert.Equal(4, meeting.DisplayOrder);
     }
+
+    [Fact]
+    public void BuildRows_GivesEachDefaultCategoryItsKind()
+    {
+        var rows = DefaultTaskCategoryTemplate.BuildRows(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), DateTimeOffset.UtcNow);
+
+        Assert.Equal(
+            new[] { ("task", "task"), ("bug", "bug"), ("story", "story"), ("feature", "feature"), ("meeting", "meeting") },
+            rows.OrderBy(r => r.DisplayOrder).Select(r => (r.Name, r.Kind)));
+    }
 }
