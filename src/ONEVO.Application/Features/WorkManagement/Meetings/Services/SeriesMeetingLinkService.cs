@@ -101,6 +101,9 @@ public sealed class SeriesMeetingLinkService
             var current = open.FirstOrDefault(s => s.Id == seriesId) ?? open.FirstOrDefault();
             var now = _clock.UtcNow;
             link.UpdatedAt = now;
+            // Read before it is cleared: only a first release invites anyone (not a regenerate, or a retry after the fallback).
+            var heldBack = link.InvitesPending;
+            link.InvitesPending = false;
 
             if (outcome.Kind == MeetingProvisioningOutcomeKind.Created)
             {
@@ -111,7 +114,6 @@ public sealed class SeriesMeetingLinkService
                 link.PasscodeOrPin = meeting.PasscodeOrPin;
                 link.FailureReason = null;
                 link.ProvisioningStartedAt = null;
-                link.InvitesPending = false;
                 if (current is null)
                 {
                     // Every series using it was cancelled during the call: nobody gets a link, the new remote meeting goes away.
@@ -123,7 +125,7 @@ public sealed class SeriesMeetingLinkService
                 link.Status = CalendarEventMeetingStatuses.Active;
                 await _unitOfWork.SaveChangesAsync(innerCt);
                 foreach (var referencing in open)
-                    await _notifier.LinkReadyAsync(referencing, link, innerCt);
+                    await _notifier.LinkReadyAsync(referencing, link, heldBack, innerCt);
                 await _unitOfWork.SaveChangesAsync(innerCt);
                 return Result<MeetingLinkResponse>.Success(Describe(link));
             }
@@ -133,8 +135,6 @@ public sealed class SeriesMeetingLinkService
             link.FailureReason = outcome.Reason;
             if (!ambiguous)
                 link.ProvisioningStartedAt = null;
-            var heldBack = link.InvitesPending;
-            link.InvitesPending = false;
             await _unitOfWork.SaveChangesAsync(innerCt);
             if (current is not null)
             {
