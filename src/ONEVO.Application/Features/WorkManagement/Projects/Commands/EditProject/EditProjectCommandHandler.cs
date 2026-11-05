@@ -1,8 +1,11 @@
 using ONEVO.Application.Common.Helpers;
 using MediatR;
+using ONEVO.Application.Common.Constants;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.Storage.EntityAssets.ServiceInterfaces;
+using ONEVO.Application.Features.Storage.File.Helpers;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Projects.DTOs.Responses;
@@ -19,6 +22,7 @@ public class EditProjectCommandHandler : IRequestHandler<EditProjectCommand, Res
     private readonly IProjectRepository _projects;
     private readonly IObjectiveRepository _objectives;
     private readonly IProjectCategoryRepository _categories;
+    private readonly IPrimaryEntityAssetLinker _linker;
     private readonly IUnitOfWork _unitOfWork;
 
     public EditProjectCommandHandler(
@@ -27,6 +31,7 @@ public class EditProjectCommandHandler : IRequestHandler<EditProjectCommand, Res
         IProjectRepository projects,
         IObjectiveRepository objectives,
         IProjectCategoryRepository categories,
+        IPrimaryEntityAssetLinker linker,
         IUnitOfWork unitOfWork)
     {
         _currentUser = currentUser;
@@ -34,6 +39,7 @@ public class EditProjectCommandHandler : IRequestHandler<EditProjectCommand, Res
         _projects = projects;
         _objectives = objectives;
         _categories = categories;
+        _linker = linker;
         _unitOfWork = unitOfWork;
     }
 
@@ -94,8 +100,13 @@ public class EditProjectCommandHandler : IRequestHandler<EditProjectCommand, Res
         project.StartDate = request.StartDate;
         project.TargetDate = request.TargetDate;
         project.Color = request.Color;
+        var pickedNewIcon = false;
         if (request.Icon is not null)
-            project.Icon = EntityIconRules.Normalize(request.Icon);
+        {
+            var icon = EntityIconRules.Normalize(request.Icon);
+            pickedNewIcon = icon is not null && icon != project.Icon;
+            project.Icon = icon;
+        }
         project.ActualHours = request.ActualHours;
         project.UpdatedAt = now;
 
@@ -125,6 +136,16 @@ public class EditProjectCommandHandler : IRequestHandler<EditProjectCommand, Res
         // stale values read at the start of this request - the exact bug this tracked-fetch
         // change fixes.
         await _unitOfWork.SaveChangesAsync(ct);
+
+        // A project has one picture, so a newly picked icon replaces the logo. Only on a change:
+        // re-saving an older project that has both must not delete its logo.
+        if (pickedNewIcon)
+        {
+            var removed = await _linker.RemoveAsync(
+                tenantId, userId, EntityAssetOwnerTypes.Project, project.Id, UploadPurposeCatalog.ProjectCover, ct);
+            if (!removed.IsSuccess)
+                return Result<ProjectDetailResponse>.Failure(removed.Error!, removed.StatusCode ?? 400);
+        }
 
         // Always true here - the lead-only check above already rejected any non-lead caller.
         return Result<ProjectDetailResponse>.Success(ProjectMapper.ToDetail(project, isLead: true));
