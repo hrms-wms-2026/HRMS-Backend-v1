@@ -74,6 +74,42 @@ public class CreateTaskCategoryCommandHandlerTests
     }
 
     [Fact]
+    public async Task Handle_WithIcon_StoresAndReturnsIt()
+    {
+        var (handler, categories) = Build(OwnerEmployeeId);
+
+        var result = await handler.Handle(new CreateTaskCategoryCommand(ProjectId, "Bug", 1, TaskCategoryKinds.Bug, "lucide:bug"), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("lucide:bug", result.Value!.Icon);
+        categories.Verify(x => x.AddAsync(It.Is<TaskCategory>(c => c.Icon == "lucide:bug"), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_WithoutIcon_LeavesItEmpty()
+    {
+        var (handler, categories) = Build(OwnerEmployeeId);
+
+        var result = await handler.Handle(new CreateTaskCategoryCommand(ProjectId, "Bug", 1, TaskCategoryKinds.Bug), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Null(result.Value!.Icon);
+        categories.Verify(x => x.AddAsync(It.Is<TaskCategory>(c => c.Icon == null), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Theory]
+    [InlineData("lucide:bug", true)]
+    [InlineData(null, true)]
+    [InlineData("<script>", false)]
+    [InlineData("lucide:Not Valid", false)]
+    public void Validator_ChecksTheIconFormat(string? icon, bool valid)
+    {
+        var result = new CreateTaskCategoryCommandValidator().Validate(new CreateTaskCategoryCommand(ProjectId, "Bug", 1, TaskCategoryKinds.Bug, icon));
+
+        Assert.Equal(valid, result.IsValid);
+    }
+
+    [Fact]
     public async Task Handle_PlainMemberOfDefaultObjective_CreatesCategory()
     {
         // Category is Project-level configuration any effective manager of the Project's default

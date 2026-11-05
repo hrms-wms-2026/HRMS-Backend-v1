@@ -1,4 +1,5 @@
 using MediatR;
+using ONEVO.Application.Common.Helpers;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
@@ -74,6 +75,9 @@ public class EditTaskCategoryCommandHandler : IRequestHandler<EditTaskCategoryCo
             && (category.SystemKey is not null || !TaskCategoryKinds.UserSelectable.Contains(request.Kind)))
             return Result.Failure(category.SystemKey is not null ? "A system category's type can't change." : "Choose Task, Bug, Story, Feature or Testing.",
                 400, TaskCategoryErrorCodes.InvalidKind);
+        var newIcon = EntityIconRules.Normalize(request.Icon);
+        if (request.Icon is not null && category.SystemKey is not null && newIcon != category.Icon)
+            return Result.Conflict("A system category's icon can't change.");
 
         return await _unitOfWork.ExecuteInTransactionAsync(async innerCt =>
         {
@@ -81,6 +85,8 @@ public class EditTaskCategoryCommandHandler : IRequestHandler<EditTaskCategoryCo
             category.DisplayOrder = request.DisplayOrder;
             if (request.Kind is not null)
                 category.Kind = request.Kind;
+            if (request.Icon is not null)
+                category.Icon = newIcon;
             category.UpdatedAt = DateTimeOffset.UtcNow;
             _categories.Update(category);
             await _unitOfWork.SaveChangesAsync(innerCt);
