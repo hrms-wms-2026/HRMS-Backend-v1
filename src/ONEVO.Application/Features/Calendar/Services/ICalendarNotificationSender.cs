@@ -34,7 +34,7 @@ public interface ICalendarNotificationSender
     Task SendMeetingLinkRemovedAsync(
         Guid tenantId, string eventTitle, DateTimeOffset startDate, string? location,
         IReadOnlyList<CalendarParticipantRecipient> participants, IReadOnlyList<CalendarGuestRecipient> guests,
-        string organizerName, CancellationToken ct = default);
+        string organizerName, CancellationToken ct = default, string? timeZoneId = null);
 
     /// <summary>In-app notice to the organizer about their online meeting (see CalendarMeetingNoticeCodes).</summary>
     Task NotifyOrganizerAboutMeetingAsync(

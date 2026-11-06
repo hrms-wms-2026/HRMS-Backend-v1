@@ -47,7 +47,7 @@ public sealed class RemoveCalendarEventGuestCommandHandler(
         {
             var organizerName = await CalendarOrganizer.NameAsync(employees, tenantId, currentUser.UserId, ct);
             await notifications.EmailEventChangedAsync(tenantId, CalendarEventEmailKinds.Removed,
-                CalendarEventIcs.For(existing.Id, existing.EndDate, existing.RecurrenceRule, DateTimeOffset.UtcNow),
+                CalendarEventIcs.For(existing.Id, existing.EndDate, existing.RecurrenceRule, DateTimeOffset.UtcNow, existing.Timezone),
                 existing.Title, existing.StartDate, existing.Location, null, [], [guest.Email], organizerName, ct);
         }
         await unitOfWork.SaveChangesAsync(ct);

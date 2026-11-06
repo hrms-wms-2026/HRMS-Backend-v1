@@ -168,6 +168,20 @@ public sealed class EmailProviderIdempotencyTests
     }
 
     [Fact]
+    public async Task EmailService_CalendarEmail_ShowsTheStartInTheMessagesTimeZone()
+    {
+        var sender = new FakeSender();
+        var service = new TransactionalEmailService(sender,
+            new EmailTemplateRenderer(Microsoft.Extensions.Options.Options.Create(new EmailOptions())),
+            NullLogger<TransactionalEmailService>.Instance, new OutboxDispatchContext());
+
+        await service.SendCalendarEventEmailAsync(new CalendarEventEmailMessage("guest@example.com", "Guest", "invite", "Sync",
+            new DateTimeOffset(2026, 11, 6, 12, 15, 0, TimeSpan.Zero), null, "Dapi Owner", null, TimeZoneId: "Asia/Colombo"));
+
+        Assert.Contains("5:45 PM (Asia/Colombo)", Assert.Single(sender.Requests).HtmlBody);
+    }
+
+    [Fact]
     public async Task EmailService_OutsideAnOutboxDispatch_SendsWithoutAKey()
     {
         var sender = new FakeSender();

@@ -66,6 +66,7 @@ public class TransactionalEmailService : IEmailService
         {
             recipientName = message.RecipientName, eventTitle = message.EventTitle, startDateUtc = message.StartDateUtc,
             location = message.Location, organizerName = message.OrganizerName, meetingLink = message.MeetingLink,
+            timeZoneId = message.TimeZoneId,
         });
         IReadOnlyList<EmailAttachment>? attachments = message.IcsContent is null
             ? null
