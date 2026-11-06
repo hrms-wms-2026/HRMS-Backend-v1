@@ -5,5 +5,5 @@ using ONEVO.Application.Features.WorkManagement.Tasks.DTOs.Responses;
 namespace ONEVO.Application.Features.WorkManagement.Tasks.Commands.CreateTaskCategory;
 
 public sealed record CreateTaskCategoryCommand(
-    Guid ProjectId, string Name, int DisplayOrder, string? Kind
+    Guid ProjectId, string Name, int DisplayOrder, string? Kind, string? Icon = null
 ) : IRequest<Result<TaskCategoryResponse>>;

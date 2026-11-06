@@ -13,4 +13,12 @@ public class TaskCategoryViewModelMapperTests
 
         Assert.Equal(("Defects", "bug", false), (vm.Name, vm.Kind, vm.IsSystem));
     }
+
+    [Fact]
+    public void A_category_view_model_carries_its_icon()
+    {
+        var vm = new TaskCategoryResponse(Guid.NewGuid(), "Defects", 1, null, "bug", "lucide:bug").ToViewModel();
+
+        Assert.Equal("lucide:bug", vm.Icon);
+    }
 }

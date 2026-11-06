@@ -173,7 +173,7 @@ public sealed class TeamPlannerService
                     dayStart, dayEnd, now);
                 return new PlannerRangeBlockView(b.Id, b.TaskId, task?.ProjectId ?? Guid.Empty, task?.ProjectName ?? string.Empty,
                     task?.Title ?? string.Empty, b.StartAt, b.EndAt, (int)(b.EndAt - b.StartAt).TotalMinutes, actual,
-                    task?.AssignedToEmployee ?? false, task?.CategoryName ?? string.Empty, task?.CategoryKind ?? TaskCategoryKinds.Task);
+                    task?.AssignedToEmployee ?? false, task?.CategoryName ?? string.Empty, task?.CategoryKind ?? TaskCategoryKinds.Task, task?.CategoryIcon);
             }).ToList();
 
             var meetingViews = meetings.Where(m => m.StartAt < dayEnd && m.EndAt > dayStart).Select(m =>

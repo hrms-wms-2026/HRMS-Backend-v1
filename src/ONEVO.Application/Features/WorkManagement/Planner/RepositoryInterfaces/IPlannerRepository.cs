@@ -5,7 +5,7 @@ namespace ONEVO.Application.Features.WorkManagement.Planner.RepositoryInterfaces
 
 /// <param name="AssignedToEmployee">The task is currently assigned to the employee the query was for.</param>
 public sealed record PlannerTaskInfo(Guid TaskId, string Title, DateOnly? DueDate, decimal? EstimatedHours, bool IsMeeting,
-    bool AssignedToEmployee, Guid ProjectId, string ProjectName = "", string CategoryName = "", string CategoryKind = "task");
+    bool AssignedToEmployee, Guid ProjectId, string ProjectName = "", string CategoryName = "", string CategoryKind = "task", string? CategoryIcon = null);
 
 public sealed record PlannerSession(Guid TaskId, DateTimeOffset ClockInAt, DateTimeOffset? ClockOutAt);
 
@@ -13,7 +13,7 @@ public sealed record PlannerSession(Guid TaskId, DateTimeOffset ClockInAt, DateT
 /// <param name="LoggedMinutes">Every non-deleted clocking session on the task, by anyone; an open one up to now.</param>
 public sealed record PlannerFocusTaskRow(Guid TaskId, Guid ProjectId, string ProjectName, string Title, string Priority, DateOnly? DueDate,
     decimal? EstimatedHours, int LoggedMinutes, string CategoryName = "", string CategoryKind = "task",
-    DateTimeOffset CreatedAt = default);
+    DateTimeOffset CreatedAt = default, string? CategoryIcon = null);
 
 public sealed record PlannerAttendance(DateTimeOffset? ActualStart, DateTimeOffset? ActualEnd, int WorkedMinutes, int BreakMinutes);
 
