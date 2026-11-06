@@ -5,6 +5,7 @@ using ONEVO.Api.Filters;
 using ONEVO.Application.Features.WorkManagement.Leadership.Queries.GetLedEmployeeHours;
 using ONEVO.Application.Features.WorkManagement.Leadership.Queries.GetLedPeriodProgress;
 using ONEVO.Application.Features.WorkManagement.Leadership.Queries.GetLedTimeProgress;
+using ONEVO.Application.Features.WorkManagement.Leadership.Queries.GetLedUnscheduledWork;
 using ONEVO.Application.Features.WorkManagement.Leadership.Queries.GetLedProgressTasks;
 using ONEVO.Application.Features.WorkManagement.Leadership.Queries.GetLedWeeklyCompletion;
 using ONEVO.Application.Features.WorkManagement.Leadership.Queries.GetLedWorkProgress;
@@ -97,6 +98,25 @@ public sealed class WorkLeadershipController(IMediator mediator) : ControllerBas
         CancellationToken ct = default)
     {
         var result = await mediator.Send(new GetLedTimeProgressQuery(period, projectId, objectiveId), ct);
+        return result.IsSuccess
+            ? Ok(result.Value)
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Team Progress unscheduled work, paged: time worked on the led scope's tasks outside a Planner slot or with no
+    /// plan that day, newest first, for this week or month. kind=all|no_plan|outside_slot; the response also carries every
+    /// kind's count and minutes for the tabs. Same scope and filters as led-progress/time.</summary>
+    [HttpGet("led-progress/time/unscheduled")]
+    public async Task<IActionResult> LedProgressUnscheduled(
+        [FromQuery] string? period = null,
+        [FromQuery] string? kind = null,
+        [FromQuery] int pageNumber = 1,
+        [FromQuery] int pageSize = 20,
+        [FromQuery] Guid? projectId = null,
+        [FromQuery] Guid? objectiveId = null,
+        CancellationToken ct = default)
+    {
+        var result = await mediator.Send(new GetLedUnscheduledWorkQuery(period, kind, pageNumber, pageSize, projectId, objectiveId), ct);
         return result.IsSuccess
             ? Ok(result.Value)
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);

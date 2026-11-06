@@ -114,3 +114,27 @@ public sealed record LedTimeProgressResponse(string Period, DateOnly From, DateO
     int PlannedMinutes, int ClockedMinutes, int ScheduledMinutes, int OutsideSlotMinutes, int NoPlanMinutes, decimal? CoveragePercent,
     int PeopleWithUnscheduledWork, LedTimeComparison Previous, IReadOnlyList<LedTimeBucket> Buckets,
     IReadOnlyList<LedWorkloadRow> Workload, IReadOnlyList<LedUnscheduledRow> Unscheduled, int UnscheduledTotal);
+
+/// <summary>Rows and minutes of one unscheduled-work kind (or all of them) in the window.</summary>
+public sealed record LedUnscheduledKindTotal(int Count, int Minutes)
+{
+    public static readonly LedUnscheduledKindTotal Zero = new(0, 0);
+}
+
+/// <summary>GET led-progress/time/unscheduled: one page of the window's unscheduled work (newest first) for the selected
+/// <see cref="Kind"/> (all | no_plan | outside_slot), plus every kind's totals for the tabs. Minutes only, never estimate hours.</summary>
+public sealed class LedUnscheduledPage(
+    IReadOnlyList<LedUnscheduledRow> items, int pageNumber, int pageSize, int totalCount,
+    string period, DateOnly from, DateOnly to, bool plannerEnabled, string kind,
+    LedUnscheduledKindTotal all, LedUnscheduledKindTotal noPlan, LedUnscheduledKindTotal outsideSlot)
+    : PagedResult<LedUnscheduledRow>(items, pageNumber, pageSize, totalCount)
+{
+    public string Period { get; } = period;
+    public DateOnly From { get; } = from;
+    public DateOnly To { get; } = to;
+    public bool PlannerEnabled { get; } = plannerEnabled;
+    public string Kind { get; } = kind;
+    public LedUnscheduledKindTotal All { get; } = all;
+    public LedUnscheduledKindTotal NoPlan { get; } = noPlan;
+    public LedUnscheduledKindTotal OutsideSlot { get; } = outsideSlot;
+}
