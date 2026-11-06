@@ -36,6 +36,36 @@ public class EfTaskClockingSessionRepository : ITaskClockingSessionRepository
                 (session, task) => new OpenEmployeeTaskSession(task.Id, task.Title))
             .ToListAsync(ct);
 
+    public async Task<IReadOnlyList<EmployeeTaskSessionRow>> GetForEmployeeOverlappingAsync(
+        Guid tenantId, Guid employeeId, DateTimeOffset fromUtc, DateTimeOffset toUtcExclusive, CancellationToken ct = default)
+        => await (
+                from session in _db.TaskClockingSessions.AsNoTracking()
+                where session.TenantId == tenantId
+                    && session.EmployeeId == employeeId
+                    && session.ClockInAt < toUtcExclusive
+                    && (session.ClockOutAt == null || session.ClockOutAt > fromUtc)
+                join task in _db.WorkTasks.AsNoTracking() on session.TaskId equals task.Id
+                where task.TenantId == tenantId && !task.IsDeleted
+                join status in _db.TaskStatuses.AsNoTracking() on task.StatusId equals status.Id into statuses
+                from status in statuses.DefaultIfEmpty()
+                join project in _db.Projects.AsNoTracking() on task.ProjectId equals project.Id into projects
+                from project in projects.DefaultIfEmpty()
+                orderby session.ClockInAt
+                select new EmployeeTaskSessionRow(
+                    task.Id,
+                    task.ShortId,
+                    task.Title,
+                    project != null ? project.Name : null,
+                    task.ProgressPercent,
+                    status != null ? status.Name : null,
+                    status != null ? status.Color : null,
+                    status != null ? status.Category : null,
+                    status != null && status.MarksTaskComplete,
+                    task.CompletedAt,
+                    session.ClockInAt,
+                    session.ClockOutAt))
+            .ToListAsync(ct);
+
     public async Task<IReadOnlyDictionary<Guid, int>> GetTotalClosedSessionMinutesForTasksAsync(
         Guid tenantId, IReadOnlyList<Guid> taskIds, CancellationToken ct = default)
     {

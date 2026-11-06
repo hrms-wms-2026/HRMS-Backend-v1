@@ -67,6 +67,64 @@ public sealed class AttendanceTodayMissingClockOutTests
         result.Value.AttentionWorkDate.Should().BeNull();
     }
 
+    [Fact]
+    public async Task Today_SessionOpenAcrossMidnight_StaysClockedInOnItsOwnWorkDay()
+    {
+        // Clocked in yesterday at 23:00, it's now 09:00 - midnight must not end the session.
+        var openRecord = new AttendanceRecord
+        {
+            Id = Guid.NewGuid(), TenantId = TenantId, EmployeeId = EmployeeId,
+            Date = new DateOnly(2026, 8, 20), ActualStart = UtcNow.AddHours(-10), ActualEnd = null,
+            Status = AttendanceRecord.StatusActive
+        };
+        var fixture = CreateFixture(todayRecord: null, openRecordFromPriorDay: openRecord);
+
+        var result = await fixture.Service.GetTodayAsync();
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.WorkDate.Should().Be(new DateOnly(2026, 8, 20));
+        result.Value.ClockInAt.Should().Be(openRecord.ActualStart);
+        result.Value.ClockOutAt.Should().BeNull();
+        result.Value.CanClockOut.Should().BeTrue();
+        result.Value.CanClockIn.Should().BeFalse();
+        result.Value.TotalWorkedMinutes.Should().Be(600);
+    }
+
+    [Fact]
+    public async Task Context_SessionOpenAcrossMidnight_UsesSessionDayAndCoversBreaksAfterMidnight()
+    {
+        var openRecord = new AttendanceRecord
+        {
+            Id = Guid.NewGuid(), TenantId = TenantId, EmployeeId = EmployeeId,
+            Date = new DateOnly(2026, 8, 20), ActualStart = UtcNow.AddHours(-10), ActualEnd = null,
+            Status = AttendanceRecord.StatusActive
+        };
+        var fixture = CreateFixture(todayRecord: null, openRecordFromPriorDay: openRecord);
+
+        var context = (await fixture.Service.ResolveContextAsync()).Value!;
+
+        context.WorkDate.Should().Be(new DateOnly(2026, 8, 20));
+        context.LocalDayWindow.Start.Should().Be(new DateTimeOffset(2026, 8, 20, 0, 0, 0, TimeSpan.Zero));
+        context.LocalDayWindow.End.Should().Be(new DateTimeOffset(2026, 8, 22, 0, 0, 0, TimeSpan.Zero));
+    }
+
+    [Fact]
+    public async Task Context_PriorDaySessionPastThreshold_FallsBackToCalendarDay()
+    {
+        var openRecord = new AttendanceRecord
+        {
+            Id = Guid.NewGuid(), TenantId = TenantId, EmployeeId = EmployeeId,
+            Date = new DateOnly(2026, 8, 20), ActualStart = UtcNow.AddHours(-16), ActualEnd = null,
+            Status = AttendanceRecord.StatusActive
+        };
+        var fixture = CreateFixture(todayRecord: null, openRecordFromPriorDay: openRecord);
+
+        var context = (await fixture.Service.ResolveContextAsync()).Value!;
+
+        context.WorkDate.Should().Be(new DateOnly(2026, 8, 21));
+        context.LocalDayWindow.Start.Should().Be(new DateTimeOffset(2026, 8, 21, 0, 0, 0, TimeSpan.Zero));
+    }
+
     private static Fixture CreateFixture(
         AttendanceRecord? todayRecord,
         AttendanceRecord? openRecordFromPriorDay)
@@ -108,6 +166,9 @@ public sealed class AttendanceTodayMissingClockOutTests
         var attendance = new Mock<IAttendanceReadRepository>();
         attendance.Setup(x => x.GetRecordAsync(TenantId, EmployeeId, It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(todayRecord);
+        if (openRecordFromPriorDay is not null)
+            attendance.Setup(x => x.GetRecordAsync(TenantId, EmployeeId, openRecordFromPriorDay.Date, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(openRecordFromPriorDay);
         attendance.Setup(x => x.GetAnyOpenRecordAsync(TenantId, EmployeeId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(openRecordFromPriorDay);
         attendance.Setup(x => x.ListBreaksAsync(TenantId, EmployeeId, It.IsAny<DateTimeOffset>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))

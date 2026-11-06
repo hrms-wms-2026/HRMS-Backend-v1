@@ -2,6 +2,7 @@ using System.Text.Json;
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using ONEVO.Api.Contracts.Storage;
 using ONEVO.Api.Contracts.WorkManagement.Objectives;
 using ONEVO.Api.Contracts.WorkManagement.Projects;
 using ONEVO.Api.Filters;
@@ -11,6 +12,8 @@ using ONEVO.Application.Features.WorkManagement.Projects.Commands.AddProjectMemb
 using ONEVO.Application.Features.WorkManagement.Projects.Commands.CreateProject;
 using ONEVO.Application.Features.WorkManagement.Projects.Commands.DeleteProject;
 using ONEVO.Application.Features.WorkManagement.Projects.Commands.EditProject;
+using ONEVO.Application.Features.WorkManagement.Projects.Commands.LinkProjectLogo;
+using ONEVO.Application.Features.WorkManagement.Projects.Commands.RemoveProjectLogo;
 using ONEVO.Application.Features.WorkManagement.Projects.Commands.UnachieveProject;
 using ONEVO.Application.Features.WorkManagement.Projects.DTOs.Requests;
 using ONEVO.Application.Features.WorkManagement.Projects.Queries.GetProjectBanner;
@@ -171,6 +174,26 @@ public class ProjectsController : ControllerBase
             return Problem(result.Error, statusCode: result.StatusCode ?? 400);
 
         return File(result.Value!.Content, result.Value!.ContentType);
+    }
+
+    /// <summary>Links a pending project_cover upload as this Project's logo and clears its icon. Project lead only.</summary>
+    [HttpPut("{id:guid}/logo")]
+    public async Task<IActionResult> LinkLogo(Guid id, [FromBody] LinkFileRequest request, CancellationToken ct)
+    {
+        var result = await _mediator.Send(new LinkProjectLogoCommand(id, request.FileId), ct);
+        return result.IsSuccess
+            ? Ok(result.Value)
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Unlinks and deletes this Project's logo. Project lead only.</summary>
+    [HttpDelete("{id:guid}/logo")]
+    public async Task<IActionResult> RemoveLogo(Guid id, CancellationToken ct)
+    {
+        var result = await _mediator.Send(new RemoveProjectLogoCommand(id), ct);
+        return result.IsSuccess
+            ? NoContent()
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
     /// <summary>Streams a Project's banner image. Requires active project membership. 404 if no banner is set.</summary>

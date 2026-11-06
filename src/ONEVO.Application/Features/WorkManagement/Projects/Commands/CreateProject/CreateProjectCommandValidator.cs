@@ -23,7 +23,9 @@ public class CreateProjectCommandValidator : AbstractValidator<CreateProjectComm
             .GreaterThanOrEqualTo(x => x.StartDate).WithMessage("Target date must not be earlier than start date.");
 
         RuleFor(x => x.Icon)
-            .Must(EntityIconRules.IsValid).WithMessage(EntityIconRules.InvalidMessage);
+            .Must(EntityIconRules.IsValid).WithMessage(EntityIconRules.InvalidMessage)
+            .Must((command, icon) => string.IsNullOrWhiteSpace(icon) || command.LogoContent is null)
+            .WithMessage("Choose an icon or a logo, not both.");
 
         RuleFor(x => x.ActualHours)
             .GreaterThanOrEqualTo(0).WithMessage("Actual hours must not be negative.")

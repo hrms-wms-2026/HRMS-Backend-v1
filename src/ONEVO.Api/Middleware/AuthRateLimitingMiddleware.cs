@@ -45,6 +45,9 @@ public sealed class AuthRateLimitingMiddleware
         new("/admin/v1/auth/login", "ip", null, 20, TimeSpan.FromSeconds(300)),
         new("/admin/v1/auth/login", "email", "email", 5, TimeSpan.FromSeconds(300)),
 
+        new("/admin/v1/auth/google-callback", "ip", null, 20, TimeSpan.FromSeconds(300)),
+        new("/admin/v1/auth/google-callback", "token", "google_id_token", 5, TimeSpan.FromSeconds(300)),
+
         new("/admin/v1/auth/mfa/verify", "ip", null, 20, TimeSpan.FromMinutes(5)),
         new("/admin/v1/auth/mfa/verify", "mfa", null, 5, TimeSpan.FromMinutes(10), CookieName: AdminMfaCookieName),
 
