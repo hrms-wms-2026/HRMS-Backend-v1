@@ -189,6 +189,34 @@ public sealed class TeamAttendanceQueryHandlerTests
     }
 
     [Fact]
+    public async Task Summary_DepartmentRates_PerDepartmentForThePeriod_BestFirst()
+    {
+        Member("Ann", DeptA, ("2026-10-26", "present"), ("2026-10-27", "absent"));
+        Member("Amy", DeptA, ("2026-10-26", "late"), ("2026-10-27", "leave"));
+        Member("Bob", DeptB, ("2026-10-26", "present"));
+        Member("Cy", null, ("2026-10-26", "absent"));
+
+        var r = (await Handler().Handle(Week(), CancellationToken.None)).Value!;
+
+        r.DepartmentRates.Should().Equal(
+            new TeamAttendanceDepartmentRate(DeptB, "Beta", 1, 1, 1, 100m),
+            new TeamAttendanceDepartmentRate(DeptA, "Alpha", 2, 2, 3, 66.7m),
+            new TeamAttendanceDepartmentRate(null, "No department", 1, 0, 1, 0m));
+    }
+
+    [Fact]
+    public async Task Summary_DepartmentRates_NothingExpected_HasNullRateAndSortsLast()
+    {
+        Member("Ann", DeptA, ("2026-10-26", "leave"));
+        Member("Bob", DeptB, ("2026-10-26", "absent"));
+
+        var r = (await Handler().Handle(Week(), CancellationToken.None)).Value!;
+
+        r.DepartmentRates.Select(d => d.Name).Should().Equal("Beta", "Alpha");
+        r.DepartmentRates[1].Rate.Should().BeNull();
+    }
+
+    [Fact]
     public async Task Summary_UnknownDepartment_ReturnsEmptyNotOthers()
     {
         Member("Ann", DeptA, ("2026-10-26", "present"));

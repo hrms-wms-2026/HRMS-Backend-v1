@@ -10,6 +10,10 @@ public sealed record TeamAttendancePreviewRow(
 
 public sealed record TeamAttendanceDepartment(Guid Id, string Name);
 
+/// <summary>One department's attendance over the selected period: Attended = present + late employee-days, Expected = present +
+/// late + absent (leave and pending excluded, as in every rate). Id null = people without a department.</summary>
+public sealed record TeamAttendanceDepartmentRate(Guid? Id, string Name, int People, int Attended, int Expected, decimal? Rate);
+
 /// <summary>
 /// The Team attendance widget. Today* fields are today's snapshot (Team Status's engine); Period*, Trend and the
 /// comparison cover the selected week or month. Rates are (Present + Late) / (Present + Late + Absent) as a
@@ -33,7 +37,9 @@ public sealed record TeamAttendanceSummaryResponse(
     IReadOnlyList<TeamAttendanceDepartment> Departments,
     int TeamSize,
     DateTimeOffset CalculatedAtUtc,
-    bool IsProvisional);
+    bool IsProvisional,
+    /// <summary>The department comparison for the period, best rate first (no rate last), over the filtered rows.</summary>
+    IReadOnlyList<TeamAttendanceDepartmentRate> DepartmentRates);
 
 public sealed record TeamAttendanceDayCell(DateOnly Date, string Bucket);
 

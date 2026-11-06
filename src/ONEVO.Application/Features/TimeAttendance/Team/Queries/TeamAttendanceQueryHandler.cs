@@ -100,8 +100,28 @@ public sealed class TeamAttendanceQueryHandler(
             ctx.Departments,
             ctx.Rows.Count,
             clock.UtcNow,
-            range.InProgress));
+            range.InProgress,
+            DepartmentRates(ctx.Rows, range.From, range.To)));
     }
+
+    private const string NoDepartment = "No department";
+
+    /// <summary>Per department over the period, best rate first; departments with nothing expected go last.</summary>
+    private static List<TeamAttendanceDepartmentRate> DepartmentRates(IReadOnlyList<Row> rows, DateOnly from, DateOnly to) =>
+        rows
+            .GroupBy(r => r.DepartmentId)
+            .Select(g =>
+            {
+                var c = Count(g, from, to);
+                var attended = c.Present + c.Late;
+                return new TeamAttendanceDepartmentRate(
+                    g.Key, g.Key is null ? NoDepartment : g.First().Department ?? NoDepartment, g.Count(),
+                    attended, attended + c.Absent, RateOf(c));
+            })
+            .OrderBy(d => d.Rate is null)
+            .ThenByDescending(d => d.Rate)
+            .ThenBy(d => d.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
 
     public async Task<Result<PagedResult<TeamAttendanceEmployeeRow>>> Handle(GetTeamAttendanceEmployeesQuery query, CancellationToken ct)
     {
@@ -202,6 +222,7 @@ public sealed class TeamAttendanceQueryHandler(
                     : d.BucketByDate.GetValueOrDefault(today, TeamAttendanceBuckets.Off);
                 return new Row(
                     d.EmployeeId,
+                    d.DepartmentId,
                     identity?.DisplayName ?? member?.DisplayName ?? "Unknown",
                     identity?.AvatarFileId ?? member?.AvatarFileId,
                     identity?.Department,
@@ -261,6 +282,7 @@ public sealed class TeamAttendanceQueryHandler(
 
     private sealed record Row(
         Guid EmployeeId,
+        Guid? DepartmentId,
         string Name,
         Guid? AvatarFileId,
         string? Department,
