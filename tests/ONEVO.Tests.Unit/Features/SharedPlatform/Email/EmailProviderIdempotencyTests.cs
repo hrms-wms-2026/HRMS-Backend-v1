@@ -24,11 +24,13 @@ public sealed class EmailProviderIdempotencyTests
     private sealed class CapturingHandler(HttpResponseMessage response) : HttpMessageHandler
     {
         public HttpRequestMessage? LastRequest { get; private set; }
+        public string? LastBody { get; private set; }
 
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             LastRequest = request;
-            return Task.FromResult(response);
+            LastBody = request.Content is null ? null : await request.Content.ReadAsStringAsync(cancellationToken);
+            return response;
         }
     }
 
@@ -122,6 +124,26 @@ public sealed class EmailProviderIdempotencyTests
 
         Assert.True(result.Success);
         Assert.False(handler.LastRequest!.Headers.Contains("Idempotency-Key"));
+    }
+
+    // SendGrid answers 400 to an attachment type holding ';', so the .ics parameters cannot go in it.
+    [Fact]
+    public async Task SendGridAdapter_SendsAnIcsAttachmentTypeWithoutParameters()
+    {
+        var handler = new CapturingHandler(new HttpResponseMessage(HttpStatusCode.Accepted));
+        var adapter = new SendGridEmailAdapter(new FakeHttpClientFactory(handler), Clock(), NullLogger<SendGridEmailAdapter>.Instance);
+        var request = Request(null) with
+        {
+            Attachments = [new EmailAttachment("invite.ics", "text/calendar; method=REQUEST; charset=UTF-8", [1, 2, 3])]
+        };
+
+        var result = await adapter.SendAsync(FakeKey, Options(), request, CancellationToken.None);
+
+        Assert.True(result.Success);
+        using var body = System.Text.Json.JsonDocument.Parse(handler.LastBody!);
+        var attachment = Assert.Single(body.RootElement.GetProperty("attachments").EnumerateArray());
+        Assert.Equal("text/calendar", attachment.GetProperty("type").GetString());
+        Assert.Equal("invite.ics", attachment.GetProperty("filename").GetString());
     }
 
     [Fact]
