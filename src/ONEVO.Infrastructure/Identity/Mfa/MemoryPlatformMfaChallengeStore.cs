@@ -60,7 +60,7 @@ public sealed class MemoryPlatformMfaChallengeStore : IPlatformMfaChallengeStore
         var expiresAt = _clock.UtcNow.Add(lifetime);
         var state = new PlatformMfaChallengeState(platformUserId, expiresAt, FailedAttempts: 0, pendingGoogleSub);
 
-        _cache.Set(GetCacheKey(rawChallenge), state, expiresAt);
+        SetUntil(GetCacheKey(rawChallenge), state);
         return Task.FromResult(rawChallenge);
     }
 
@@ -114,7 +114,7 @@ public sealed class MemoryPlatformMfaChallengeStore : IPlatformMfaChallengeStore
             }
 
             var updated = state with { FailedAttempts = failedAttempts };
-            _cache.Set(cacheKey, updated, state.ExpiresAt);
+            SetUntil(cacheKey, updated);
             return Task.FromResult(true);
         }
     }
@@ -139,6 +139,24 @@ public sealed class MemoryPlatformMfaChallengeStore : IPlatformMfaChallengeStore
             _cache.Remove(cacheKey);
             return Task.FromResult<PlatformMfaChallengeState?>(state);
         }
+    }
+
+    /// <summary>
+    /// Stores <paramref name="state"/> until its <see cref="PlatformMfaChallengeState.ExpiresAt"/>.
+    /// The TTL is relative to the injected clock rather than an absolute expiry, because
+    /// <see cref="IMemoryCache"/> evaluates absolute expirations against its own system clock;
+    /// mixing the two would evict entries early (or late) whenever they disagree.
+    /// </summary>
+    private void SetUntil(string cacheKey, PlatformMfaChallengeState state)
+    {
+        var remaining = state.ExpiresAt - _clock.UtcNow;
+        if (remaining <= TimeSpan.Zero)
+        {
+            _cache.Remove(cacheKey);
+            return;
+        }
+
+        _cache.Set(cacheKey, state, remaining);
     }
 
     private string GetCacheKey(string challenge)

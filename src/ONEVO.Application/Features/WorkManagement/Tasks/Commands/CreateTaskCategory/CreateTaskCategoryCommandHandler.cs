@@ -1,4 +1,5 @@
 using MediatR;
+using ONEVO.Application.Common.Helpers;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
@@ -72,7 +73,7 @@ public class CreateTaskCategoryCommandHandler : IRequestHandler<CreateTaskCatego
             {
                 Id = Guid.NewGuid(), TenantId = tenantId, ProjectId = project.Id,
                 Name = request.Name.Trim(), DisplayOrder = request.DisplayOrder,
-                Kind = request.Kind,
+                Kind = request.Kind, Icon = EntityIconRules.Normalize(request.Icon),
                 CreatedById = _currentUser.UserId, CreatedAt = now
             };
 
@@ -80,7 +81,7 @@ public class CreateTaskCategoryCommandHandler : IRequestHandler<CreateTaskCatego
             await _unitOfWork.SaveChangesAsync(innerCt);
 
             return Result<TaskCategoryResponse>.Success(new TaskCategoryResponse(
-                category.Id, category.Name, category.DisplayOrder, category.SystemKey, category.Kind));
+                category.Id, category.Name, category.DisplayOrder, category.SystemKey, category.Kind, category.Icon));
         }, ct);
     }
 }

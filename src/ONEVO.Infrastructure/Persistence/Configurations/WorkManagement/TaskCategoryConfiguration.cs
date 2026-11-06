@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
+using ONEVO.Application.Common.Helpers;
 using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
 
 namespace ONEVO.Infrastructure.Persistence.Configurations.WorkManagement;
@@ -21,6 +22,7 @@ public class TaskCategoryConfiguration : IEntityTypeConfiguration<TaskCategory>
 
         builder.Property(c => c.SystemKey).HasMaxLength(32);
         builder.Property(c => c.Kind).HasMaxLength(20).IsRequired().HasDefaultValue(TaskCategoryKinds.Task);
+        builder.Property(c => c.Icon).HasMaxLength(EntityIconRules.MaxLength);
 
         builder.HasIndex(c => new { c.TenantId, c.ProjectId, c.SystemKey })
             .IsUnique()
