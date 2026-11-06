@@ -72,7 +72,7 @@ public class EnableMfaCommandHandler : IRequestHandler<EnableMfaCommand, Result<
 
         await _unitOfWork.SaveChangesAsync(cancellationToken);
 
-        var qrCodeUri = $"otpauth://totp/ONEVO:{user.Email}?secret={secretBase32}&issuer=ONEVO";
+        var qrCodeUri = $"otpauth://totp/CROWNUS:{user.Email}?secret={secretBase32}&issuer=CROWNUS";
         return Result<MfaSetupDto>.Success(new MfaSetupDto(secretBase32, qrCodeUri));
     }
 

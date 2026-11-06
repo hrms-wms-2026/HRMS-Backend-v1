@@ -384,7 +384,7 @@ public class TransactionalEmailPlatformKeyTests
         await service.SendPasswordResetAsync("user@example.com", "tok-123");
 
         var request = Assert.Single(sender.Requests);
-        Assert.Equal("Reset your ONEVO password", request.Subject);
+        Assert.Equal("Reset your CROWNUS password", request.Subject);
         Assert.Contains("tok-123", request.HtmlBody);
     }
 

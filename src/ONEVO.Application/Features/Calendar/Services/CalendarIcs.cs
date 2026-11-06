@@ -54,7 +54,7 @@ public static class CalendarIcs
         var lines = new List<string>
         {
             "BEGIN:VCALENDAR",
-            "PRODID:-//ONEVO//Calendar//EN",
+            "PRODID:-//CROWNUS//Calendar//EN",
             "VERSION:2.0",
             "CALSCALE:GREGORIAN",
             $"METHOD:{(cancel ? "CANCEL" : "REQUEST")}",

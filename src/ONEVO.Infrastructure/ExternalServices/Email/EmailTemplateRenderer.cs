@@ -58,15 +58,15 @@ public class EmailTemplateRenderer : IEmailTemplateRenderer
             ? $"[invite_url placeholder - set Email:AppBaseUrl] token={token}"
             : $"{appBaseUrl.TrimEnd('/')}/auth/invitations/{Uri.EscapeDataString(token)}";
 
-        var subject = $"You're invited to manage {company} on ONEVO";
+        var subject = $"You're invited to manage {company} on CROWNUS";
 
         var html = $"""
             <!doctype html>
             <html>
               <body style="font-family: -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; line-height:1.5; color:#0f172a;">
-                <h2 style="margin:0 0 12px;">Welcome to ONEVO</h2>
+                <h2 style="margin:0 0 12px;">Welcome to CROWNUS</h2>
                 <p>Hi {Escape(firstName)},</p>
-                <p>You've been invited to manage <strong>{Escape(company)}</strong> on the ONEVO platform.</p>
+                <p>You've been invited to manage <strong>{Escape(company)}</strong> on the CROWNUS platform.</p>
                 <p>To finish setting up your account, click the link below before <em>{Escape(expires)}</em>:</p>
                 <p><a href="{Escape(inviteUrl)}" style="display:inline-block; padding:10px 16px; background:#0f172a; color:#fff; text-decoration:none; border-radius:6px;">Accept your invitation</a></p>
                 <p>If the button doesn't work, copy this link into your browser:</p>
@@ -80,7 +80,7 @@ public class EmailTemplateRenderer : IEmailTemplateRenderer
         var text = $"""
             Hi {firstName},
 
-            You've been invited to manage {company} on ONEVO.
+            You've been invited to manage {company} on CROWNUS.
 
             Accept your invitation before {expires}:
             {inviteUrl}
@@ -103,15 +103,15 @@ public class EmailTemplateRenderer : IEmailTemplateRenderer
             ? $"[reset_url placeholder - set Email:AppBaseUrl] token={token}"
             : $"{appBaseUrl.TrimEnd('/')}/auth/reset-password?token={Uri.EscapeDataString(token)}";
 
-        var subject = "Reset your ONEVO password";
+        var subject = "Reset your CROWNUS password";
         var html = $"""
             <!doctype html><html><body>
-              <p>We received a request to reset your ONEVO password.</p>
+              <p>We received a request to reset your CROWNUS password.</p>
               <p><a href="{Escape(resetUrl)}">Reset password</a></p>
               <p>If you didn't request this, you can ignore this email.</p>
             </body></html>
             """;
-        var text = $"Reset your ONEVO password: {resetUrl}";
+        var text = $"Reset your CROWNUS password: {resetUrl}";
         return new RenderedEmail(subject, html, text);
     }
 
@@ -122,7 +122,7 @@ public class EmailTemplateRenderer : IEmailTemplateRenderer
             ? $"[reset_url placeholder - set Email:AdminConsoleBaseUrl] token={token}"
             : $"{_options.AdminConsoleBaseUrl.TrimEnd('/')}/auth/reset-password?token={Uri.EscapeDataString(token)}";
 
-        var subject = "Reset your ONEXSO Platform Administration password";
+        var subject = "Reset your CROWNUS Platform Administration password";
         var html = $"""
             <!doctype html><html><body>
               <p>A password reset was requested for your Platform Administration account.</p>
@@ -136,7 +136,7 @@ public class EmailTemplateRenderer : IEmailTemplateRenderer
 
     private RenderedEmail RenderAdminPasswordChanged()
     {
-        const string subject = "Your ONEXSO Platform Administration password was changed";
+        const string subject = "Your CROWNUS Platform Administration password was changed";
         const string html = """
             <!doctype html><html><body>
               <p>Your Platform Administration password was changed.</p>
@@ -156,16 +156,16 @@ public class EmailTemplateRenderer : IEmailTemplateRenderer
             ? $"[invite_url placeholder - set Email:AdminConsoleBaseUrl] token={token}"
             : $"{_options.AdminConsoleBaseUrl.TrimEnd('/')}/auth/accept-invite?token={Uri.EscapeDataString(token)}";
 
-        var subject = "You've been invited to ONEXSO Platform Administration";
+        var subject = "You've been invited to CROWNUS Platform Administration";
         var html = $"""
             <!doctype html><html><body>
               <p>Hi {Escape(fullName)},</p>
-              <p>You've been invited to join ONEXSO Platform Administration.</p>
+              <p>You've been invited to join CROWNUS Platform Administration.</p>
               <p><a href="{Escape(inviteUrl)}">Accept invitation</a></p>
               <p>This link expires in 72 hours.</p>
             </body></html>
             """;
-        var text = $"Hi {fullName},\n\nYou've been invited to join ONEXSO Platform Administration.\nAccept: {inviteUrl}\nThis link expires in 72 hours.";
+        var text = $"Hi {fullName},\n\nYou've been invited to join CROWNUS Platform Administration.\nAccept: {inviteUrl}\nThis link expires in 72 hours.";
         return new RenderedEmail(subject, html, text);
     }
 
@@ -182,13 +182,13 @@ public class EmailTemplateRenderer : IEmailTemplateRenderer
             ? $"[invite_url placeholder - set Email:AppBaseUrl] token={token}"
             : $"{appBaseUrl.TrimEnd('/')}/auth/invitations/{Uri.EscapeDataString(token)}";
 
-        var subject = "You're invited to ONEVO — set up your account";
+        var subject = "You're invited to CROWNUS — set up your account";
 
         var html = $"""
             <!doctype html>
             <html>
               <body style="font-family: -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; line-height:1.5; color:#0f172a;">
-                <h2 style="margin:0 0 12px;">Welcome to ONEVO</h2>
+                <h2 style="margin:0 0 12px;">Welcome to CROWNUS</h2>
                 <p>Hi {Escape(firstName)},</p>
                 <p>An account has been set up for you. Click the link below to finish setting up your account and sign in:</p>
                 <p><a href="{Escape(inviteUrl)}" style="display:inline-block; padding:10px 16px; background:#0f172a; color:#fff; text-decoration:none; border-radius:6px;">Set up your account</a></p>
@@ -203,7 +203,7 @@ public class EmailTemplateRenderer : IEmailTemplateRenderer
         var text = $"""
             Hi {firstName},
 
-            An account has been set up for you on ONEVO.
+            An account has been set up for you on CROWNUS.
 
             Set up your account and sign in:
             {inviteUrl}
