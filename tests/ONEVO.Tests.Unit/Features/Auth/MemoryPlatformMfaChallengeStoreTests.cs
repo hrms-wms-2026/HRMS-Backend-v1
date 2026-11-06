@@ -12,7 +12,9 @@ public sealed class MemoryPlatformMfaChallengeStoreTests
 {
     private readonly Mock<ISecureTokenGenerator> _tokens = new();
     private readonly Mock<IDateTimeProvider> _clock = new();
-    private readonly DateTimeOffset _now = new(2026, 11, 5, 9, 0, 0, TimeSpan.Zero);
+    // Deliberately fixed and far from the real date: the store must honour the injected clock,
+    // not MemoryCache's system clock.
+    private DateTimeOffset _now = new(2026, 11, 5, 9, 0, 0, TimeSpan.Zero);
 
     public MemoryPlatformMfaChallengeStoreTests()
     {
@@ -62,5 +64,17 @@ public sealed class MemoryPlatformMfaChallengeStoreTests
 
         consumed.Should().NotBeNull();
         consumed!.PendingGoogleSub.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Challenge_ExpiresByInjectedClock()
+    {
+        var store = Build();
+
+        var challenge = await store.CreateAsync(Guid.NewGuid(), TimeSpan.FromMinutes(10));
+        _now = _now.AddMinutes(11);
+
+        (await store.GetAsync(challenge)).Should().BeNull();
+        (await store.TryConsumeAsync(challenge)).Should().BeNull();
     }
 }
