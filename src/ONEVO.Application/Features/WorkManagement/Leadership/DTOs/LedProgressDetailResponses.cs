@@ -54,9 +54,11 @@ public sealed record LedPeriodProgressResponse(
     int NotStartedTaskCount,
     int UnestimatedTaskCount);
 
-/// <summary>One ISO week (Monday..Sunday, serialized yyyy-MM-dd) of the weekly-completion chart:
+/// <summary>One bucket (serialized yyyy-MM-dd, both inclusive) of the weekly-completion chart - an ISO
+/// week Monday..Sunday, a day (WeekStart = WeekEnd, period=week) or an ISO week clipped to the month
+/// (period=month):
 /// estimated hours (null estimate = 0) and count of the in-scope top-level tasks that are done now
-/// and whose CompletedAt UTC date falls in the week.</summary>
+/// and whose CompletedAt UTC date falls in the bucket.</summary>
 public sealed record LedWeeklyCompletionWeek(
     DateOnly WeekStart,
     DateOnly WeekEnd,
@@ -66,12 +68,14 @@ public sealed record LedWeeklyCompletionWeek(
 /// <summary>GET led-progress/weekly-completion. Weeks are oldest first, the last is the current
 /// (partial) week, all present even at 0. AllocatedHours is the (narrowed) led scope's allocation -
 /// the same number as led-progress's hours.allocatedHours when unfiltered. Undated* are done tasks
-/// with no CompletedAt: reported, never guessed into a week.</summary>
+/// with no CompletedAt: reported, never guessed into a week. Granularity is "day" (period=week) or
+/// "week" (period=month, or no period).</summary>
 public sealed record LedWeeklyCompletionResponse(
     IReadOnlyList<LedWeeklyCompletionWeek> Weeks,
     decimal AllocatedHours,
     decimal UndatedCompletedHours,
-    int UndatedCompletedTaskCount);
+    int UndatedCompletedTaskCount,
+    string Granularity);
 
 /// <param name="Status">completed | inProgress | notStarted (same classification as wm_module_hour_summaries).</param>
 /// <param name="StatusName">The task's configured status name.</param>
