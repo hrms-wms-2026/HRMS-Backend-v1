@@ -84,7 +84,7 @@ These were rewritten, not retired: `RestrictedRole_CannotSelectUsersTableDirectl
 
 ## Open questions
 
-- Why SQL Server, and whether existing PostgreSQL data has to move. This work creates a clean database only; **no data migration exists**.
+- Whether existing PostgreSQL data has to move. This work creates a clean database only; **no data migration exists**.
 - Should NULL sort order be restored on user-facing sorts?
 
 ## Appendix: decisions made during the work
