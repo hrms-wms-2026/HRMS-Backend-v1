@@ -41,7 +41,7 @@ jobs:
 
   # Focused integration routing - pull requests only. Maps changed file paths to the smallest
   # correct set of ONEVO.Tests.Integration tests instead of always running the full,
-  # Testcontainers-backed suite (real PostgreSQL, not faked/InMemory). See
+  # Testcontainers-backed suite (real SQL Server, not faked/InMemory). See
   # .github/scripts/select-integration-filter.ps1 for the routing rules and
   # CI_FOCUSED_INTEGRATION_TEST_ROUTING_REPORT.md for the full design and examples.
   #

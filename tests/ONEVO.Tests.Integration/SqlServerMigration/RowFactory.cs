@@ -1,7 +1,7 @@
 using System.Text;
 using Microsoft.Data.SqlClient;
 
-namespace ONEVO.Tests.SqlServer;
+namespace ONEVO.Tests.Integration.SqlServerMigration;
 
 /// <summary>
 /// Inserts a row into any table with dummy values for required columns, so tests can cover every

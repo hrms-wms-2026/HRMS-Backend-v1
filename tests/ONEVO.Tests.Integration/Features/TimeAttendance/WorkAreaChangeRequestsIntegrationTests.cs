@@ -246,8 +246,20 @@ public sealed class WorkAreaChangeRequestsIntegrationTests : IClassFixture<WorkA
         insert.Parameters.AddPositional(Guid.NewGuid());
         insert.Parameters.AddPositional(Guid.NewGuid());
         var act = async () => await insert.ExecuteNonQueryAsync();
-        await act.Should().ThrowAsync<SqlException>()
-            .Where(ex => ex.Number == 33504);
+
+        // The row uses synthetic ids, and foreign keys are checked before the block predicate.
+        await using var admin = TestDb.CreateConnection(_fixture.ConnectionString);
+        await admin.OpenAsync();
+        await ExecuteAsync(admin, TestDb.DisableForeignKeysSql("work_area_change_requests"));
+        try
+        {
+            await act.Should().ThrowAsync<SqlException>()
+                .Where(ex => ex.Number == 33504);
+        }
+        finally
+        {
+            await ExecuteAsync(admin, TestDb.EnableForeignKeysSql("work_area_change_requests"));
+        }
     }
 
     [Fact]

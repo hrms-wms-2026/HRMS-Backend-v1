@@ -27,7 +27,7 @@ using ONEVO.Infrastructure.Services.SharedPlatform.Jobs;
 using ONEVO.Infrastructure.Services.SharedPlatform.Outbox;
 using Xunit;
 
-namespace ONEVO.Tests.SqlServer;
+namespace ONEVO.Tests.Integration.SqlServerMigration;
 
 /// <summary>Every rewritten statement, run as onevo_app under RLS against real SQL Server.</summary>
 [Collection(SqlServerCollection.Name)]

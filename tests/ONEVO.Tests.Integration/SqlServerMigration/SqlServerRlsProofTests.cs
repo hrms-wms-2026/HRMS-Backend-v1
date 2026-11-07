@@ -14,7 +14,7 @@ using ONEVO.Infrastructure.Persistence.Repositories.Auth.Login;
 using ONEVO.Infrastructure.Persistence.Rls;
 using Xunit;
 
-namespace ONEVO.Tests.SqlServer;
+namespace ONEVO.Tests.Integration.SqlServerMigration;
 
 /// <summary>One database with constraints off, so a row can be made in any table.</summary>
 public sealed class RlsProofDatabase : IAsyncLifetime

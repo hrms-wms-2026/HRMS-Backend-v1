@@ -12,7 +12,7 @@ using ONEVO.Infrastructure.Persistence;
 using ONEVO.Infrastructure.Persistence.Interceptors;
 using Xunit;
 
-namespace ONEVO.Tests.SqlServer;
+namespace ONEVO.Tests.Integration.SqlServerMigration;
 
 /// <summary>The rules PostgreSQL's deferred constraint triggers enforced, now checked just before commit.</summary>
 [Collection(SqlServerCollection.Name)]

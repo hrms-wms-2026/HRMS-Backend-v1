@@ -91,7 +91,7 @@
 .EXAMPLE
     # Only ONEVO.Tests.Unit/ONEVO.Tests.Architecture files changed -> skip integration entirely;
     # build-and-test's unit/architecture runs already cover them and neither suite touches
-    # Testcontainers/Postgres.
+    # Testcontainers/SQL Server.
     .\select-integration-filter.ps1 -ChangedFiles @('tests/ONEVO.Tests.Unit/Features/CoreHr/Onboarding/ListOnboardingAccessGrantRequestsQueryHandlerTests.cs')
     # -> Skip=$true
 
@@ -342,7 +342,7 @@ function Get-IntegrationDecision {
     }
 
     # Skip rule: only ONEVO.Tests.Unit and/or ONEVO.Tests.Architecture files changed - no src/
-    # and no ONEVO.Tests.Integration file. Those two suites don't touch Testcontainers/Postgres
+    # and no ONEVO.Tests.Integration file. Those two suites don't touch Testcontainers/SQL Server
     # at all, and the always-run build-and-test job already covers them, so running (focused or
     # full) integration on top would be pure waste.
     $srcOrIntegrationFiles = $Files | Where-Object { $_ -like 'src/*' -or $_ -like 'tests/ONEVO.Tests.Integration/*' }

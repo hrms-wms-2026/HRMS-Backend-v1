@@ -15,7 +15,7 @@ using ONEVO.Infrastructure.Persistence.Repositories.DevPlatform.Tenancy;
 using ONEVO.Infrastructure.Services.SharedPlatform.Outbox;
 using Xunit;
 
-namespace ONEVO.Tests.SqlServer;
+namespace ONEVO.Tests.Integration.SqlServerMigration;
 
 /// <summary>
 /// outbox_messages and billing_audit_logs allow a null tenant_id and are written by anonymous paths,

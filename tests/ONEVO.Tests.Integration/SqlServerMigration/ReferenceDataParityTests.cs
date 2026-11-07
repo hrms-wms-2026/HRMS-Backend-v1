@@ -7,7 +7,7 @@ using ONEVO.Infrastructure.Persistence.Interceptors;
 using Xunit;
 using Xunit.Abstractions;
 
-namespace ONEVO.Tests.SqlServer;
+namespace ONEVO.Tests.Integration.SqlServerMigration;
 
 /// <summary>
 /// An empty database booted in Production must hold the same reference data PostgreSQL did

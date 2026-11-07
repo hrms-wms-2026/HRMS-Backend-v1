@@ -10,7 +10,7 @@ using ONEVO.Infrastructure.Persistence.Interceptors;
 using Testcontainers.MsSql;
 using Xunit;
 
-namespace ONEVO.Tests.SqlServer;
+namespace ONEVO.Tests.Integration.SqlServerMigration;
 
 /// <summary>One container per run; each caller gets its own database, set up as ops/sqlserver does.</summary>
 public sealed class SqlServerFixture : IAsyncLifetime

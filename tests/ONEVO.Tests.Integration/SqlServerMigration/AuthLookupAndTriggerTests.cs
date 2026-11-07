@@ -3,7 +3,7 @@ using ONEVO.Infrastructure.Persistence.Interceptors;
 using ONEVO.Infrastructure.Persistence.Repositories.Auth.Login;
 using Xunit;
 
-namespace ONEVO.Tests.SqlServer;
+namespace ONEVO.Tests.Integration.SqlServerMigration;
 
 [Collection(SqlServerCollection.Name)]
 public sealed class AuthLookupAndTriggerTests(SqlServerFixture fixture) : IAsyncLifetime

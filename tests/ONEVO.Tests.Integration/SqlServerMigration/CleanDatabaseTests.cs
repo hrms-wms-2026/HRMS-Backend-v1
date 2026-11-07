@@ -3,7 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using ONEVO.Infrastructure.Persistence.Rls;
 using Xunit;
 
-namespace ONEVO.Tests.SqlServer;
+namespace ONEVO.Tests.Integration.SqlServerMigration;
 
 [Collection(SqlServerCollection.Name)]
 public sealed class CleanDatabaseTests(SqlServerFixture fixture)

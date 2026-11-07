@@ -194,7 +194,7 @@ public sealed class MeetingSchemaIntegrationTests
                 INSERT INTO meeting_details (task_id, tenant_id, series_id, original_start, start_at, end_at, is_all_day,
                     is_private, is_detached, revision, attendance_checkpoint)
                 VALUES ('{taskId}', '{h.TenantId}', '{seriesId}', '2026-11-02T09:00:00Z', '2026-11-02T09:00:00Z',
-                    '2026-11-02T09:30:00Z', false, false, false, 0, 0)
+                    '2026-11-02T09:30:00Z', 0, 0, 0, 0, 0)
                 """, tx);
             await tx.CommitAsync();
         }

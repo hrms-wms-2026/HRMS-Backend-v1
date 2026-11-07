@@ -2,7 +2,7 @@ using System.Text.Json.Nodes;
 using Microsoft.Data.SqlClient;
 using Xunit;
 
-namespace ONEVO.Tests.SqlServer;
+namespace ONEVO.Tests.Integration.SqlServerMigration;
 
 /// <summary>
 /// Every foreign key, check constraint and index PostgreSQL really held must exist here. Many were
