@@ -234,7 +234,7 @@ public sealed class LeaveRequestSubmissionEvaluator
                 LeaveRequestMessages.DocumentRequired(leaveType.Name, documentAfter));
         }
 
-        if (!await _requests.AreAvailableFileRecordsAsync(tenantId, fileRecordIds, ct))
+        if (!await _requests.AreAvailableFileRecordsAsync(tenantId, requesterUserId, fileRecordIds, ct))
             return Result<LeaveRequestEvaluation>.Failure(LeaveRequestMessages.FileNotAvailable);
 
         var carryPolicy = await _resolver.ResolveAsync(

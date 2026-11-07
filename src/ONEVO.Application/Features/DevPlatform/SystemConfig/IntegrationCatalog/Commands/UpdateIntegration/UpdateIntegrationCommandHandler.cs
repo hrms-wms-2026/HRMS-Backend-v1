@@ -56,7 +56,7 @@ public sealed class UpdateIntegrationCommandHandler : IRequestHandler<UpdateInte
         if (oauthApp is null)
         {
             return Result<IntegrationCatalogDto>.Failure(
-                $"ONEVO OAuth app provider '{provider}' does not exist.",
+                $"CROWNUS OAuth app provider '{provider}' does not exist.",
                 400);
         }
 

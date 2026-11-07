@@ -44,7 +44,7 @@ public sealed class DashboardWidgetRegistryTests
     {
         var def = DashboardWidgetRegistry.Get("today-total-time")!;
 
-        Assert.Equal("Weekly work progress", def.Title);
+        Assert.Equal("My weekly progress", def.Title);
         Assert.Equal((2, 2, 12, 8), (def.MinW, def.MinH, def.MaxW, def.MaxH));
     }
 

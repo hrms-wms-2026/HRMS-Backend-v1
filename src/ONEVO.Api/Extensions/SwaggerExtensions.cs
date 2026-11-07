@@ -9,8 +9,8 @@ internal static class SwaggerExtensions
         services.AddEndpointsApiExplorer();
         services.AddSwaggerGen(c =>
         {
-            c.SwaggerDoc("v1", new() { Title = "ONEVO Tenant API", Version = "v1" });
-            c.SwaggerDoc("admin-v1", new() { Title = "ONEVO Admin API", Version = "admin-v1" });
+            c.SwaggerDoc("v1", new() { Title = "CROWNUS Tenant API", Version = "v1" });
+            c.SwaggerDoc("admin-v1", new() { Title = "CROWNUS Admin API", Version = "admin-v1" });
             c.DocInclusionPredicate((docName, api) =>
             {
                 var path = api.RelativePath ?? "";
@@ -47,8 +47,8 @@ internal static class SwaggerExtensions
         app.UseSwagger();
         app.UseSwaggerUI(c =>
         {
-            c.SwaggerEndpoint("/swagger/v1/swagger.json", "ONEVO Tenant API v1");
-            c.SwaggerEndpoint("/swagger/admin-v1/swagger.json", "ONEVO Admin API");
+            c.SwaggerEndpoint("/swagger/v1/swagger.json", "CROWNUS Tenant API v1");
+            c.SwaggerEndpoint("/swagger/admin-v1/swagger.json", "CROWNUS Admin API");
         });
 
         return app;
