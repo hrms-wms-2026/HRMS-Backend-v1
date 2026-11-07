@@ -24,16 +24,27 @@ $baselineId = '20261107081808_InitialSqlServer'
 $root = Resolve-Path (Join-Path $PSScriptRoot '..\..')
 $migrations = Join-Path $root 'src\ONEVO.Infrastructure\Migrations'
 
+$backup = Join-Path ([IO.Path]::GetTempPath()) "crownus-baseline-$([Guid]::NewGuid())"
+$generated = @(
+    (Join-Path $migrations "$baselineId.cs"),
+    (Join-Path $migrations "$baselineId.Designer.cs"),
+    (Join-Path $migrations 'ApplicationDbContextModelSnapshot.cs')
+)
+
 Push-Location $root
 try {
-    Remove-Item (Join-Path $migrations '*_InitialSqlServer*.cs')
-    Remove-Item (Join-Path $migrations 'ApplicationDbContextModelSnapshot.cs')
+    New-Item -ItemType Directory $backup | Out-Null
+    Copy-Item $generated $backup
+    Remove-Item $generated
 
     # The model builds without a database, but the design-time factory needs a connection string.
+    # Release, so a running local API, which locks the Debug output, does not fail the build.
     $env:ConnectionStrings__MigrationConnection = 'Server=localhost;Database=model_only;User ID=x;Password=x'
-    dotnet ef migrations add InitialSqlServer -p src/ONEVO.Infrastructure -s src/ONEVO.Api -o Migrations
+    dotnet ef migrations add InitialSqlServer -p src/ONEVO.Infrastructure -s src/ONEVO.Api -o Migrations --configuration Release
     if ($LASTEXITCODE -ne 0) {
-        throw "dotnet ef migrations add failed with exit code $LASTEXITCODE."
+        Get-ChildItem $migrations -Filter '*_InitialSqlServer*.cs' | Remove-Item
+        Copy-Item (Join-Path $backup '*') $migrations
+        throw "dotnet ef migrations add failed with exit code $LASTEXITCODE. The previous baseline was restored."
     }
 
     Get-ChildItem $migrations -Filter '*_InitialSqlServer*.cs' | ForEach-Object {
@@ -46,6 +57,7 @@ try {
     Write-Host "Regenerated $baselineId. Review the diff, then run the SqlServerMigration tests."
 }
 finally {
+    Remove-Item $backup -Recurse -Force -ErrorAction SilentlyContinue
     Remove-Item Env:\ConnectionStrings__MigrationConnection -ErrorAction SilentlyContinue
     Pop-Location
 }
