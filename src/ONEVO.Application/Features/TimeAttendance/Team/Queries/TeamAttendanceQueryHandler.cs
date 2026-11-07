@@ -138,12 +138,18 @@ public sealed class TeamAttendanceQueryHandler(
 
         var search = query.Search?.Trim();
         var filtered = counted.Where(x => string.IsNullOrEmpty(search) || x.Row.Name.Contains(search, StringComparison.OrdinalIgnoreCase));
-        var matching = (string.Equals(query.Sort, "rate", StringComparison.OrdinalIgnoreCase)
-                ? filtered
+        var matching = (query.Sort?.Trim().ToLowerInvariant() switch
+            {
+                "rate" => filtered
                     .OrderBy(x => RateOf(x.Counts) is null)
                     .ThenByDescending(x => RateOf(x.Counts))
-                    .ThenBy(x => x.Row.Name, StringComparer.OrdinalIgnoreCase)
-                : filtered.OrderBy(x => x.Row.Name, StringComparer.OrdinalIgnoreCase))
+                    .ThenBy(x => x.Row.Name, StringComparer.OrdinalIgnoreCase),
+                // Who needs attention: the most late, absent and leave days in the period first.
+                "attention" => filtered
+                    .OrderByDescending(x => x.Counts.Late + x.Counts.Absent + x.Counts.OnLeave)
+                    .ThenBy(x => x.Row.Name, StringComparer.OrdinalIgnoreCase),
+                _ => filtered.OrderBy(x => x.Row.Name, StringComparer.OrdinalIgnoreCase),
+            })
             .ToList();
 
         var pageSize = Math.Clamp(query.PageSize <= 0 ? 20 : query.PageSize, 1, MaxPageSize);

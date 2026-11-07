@@ -322,6 +322,23 @@ public sealed class TeamAttendanceQueryHandlerTests
     }
 
     [Fact]
+    public async Task Employees_SortByAttention_MostLateAbsentAndLeaveDaysFirst()
+    {
+        // Week of 26 Oct. Ann 2 late, Bob 1 absent + 2 leave, Cat none, Dan 2 absent (ties Ann on 2 -> name order).
+        Member("Ann", null, ("2026-10-26", "late"), ("2026-10-27", "late"));
+        Member("Bob", null, ("2026-10-26", "absent"), ("2026-10-27", "leave"), ("2026-10-28", "leave"));
+        Member("Cat", null, ("2026-10-26", "present"), ("2026-10-27", "present"));
+        Member("Dan", null, ("2026-10-26", "absent"), ("2026-10-27", "absent"));
+
+        var page = (await Handler().Handle(
+            new GetTeamAttendanceEmployeesQuery("week", null, null, null, 1, 20, "attention"), CancellationToken.None)).Value!;
+
+        page.Items.Select(r => r.Name).Should().Equal("Bob", "Ann", "Dan", "Cat");
+        // The rate rank is unchanged by the sort.
+        page.Items.Single(r => r.Name == "Cat").Rank.Should().Be(1);
+    }
+
+    [Fact]
     public async Task Employees_SortByRate_TiesShareARank()
     {
         Member("Zoe", null, ("2026-10-26", "present"));

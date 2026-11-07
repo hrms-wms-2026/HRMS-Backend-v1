@@ -259,6 +259,11 @@ public sealed class LedProgressDetailIntegrationTests
             .Select(i => i.EmployeeId).Should().Equal(s.BobId, s.AliceId);
         (await Employees(s, new GetLedEmployeeHoursQuery(Sort: "name", Direction: "desc"))).Items
             .Select(i => i.EmployeeId).Should().Equal(s.BobId, s.AliceId);
+        // Completed share of hours: Bob 0 of 3, Alice 7 of 11.
+        (await Employees(s, new GetLedEmployeeHoursQuery(Sort: "completionRate", Direction: "asc"))).Items
+            .Select(i => i.EmployeeId).Should().Equal(s.BobId, s.AliceId);
+        (await Employees(s, new GetLedEmployeeHoursQuery(Sort: "completionRate", Direction: "desc"))).Items
+            .Select(i => i.EmployeeId).Should().Equal(s.AliceId, s.BobId);
 
         var second = (await Employees(s, new GetLedEmployeeHoursQuery(PageNumber: 2, PageSize: 1)));
         second.Items.Select(i => i.EmployeeId).Should().Equal(s.BobId);
