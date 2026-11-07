@@ -4,6 +4,8 @@ using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.ServiceInterfaces;
+using ONEVO.Application.Features.Monitoring.CheckIn.ServiceInterfaces;
+using ONEVO.Application.Features.Monitoring.PermissionConsent.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.Screenshots.DTOs.Responses;
 using ONEVO.Application.Features.Monitoring.Screenshots.Mappers;
 using ONEVO.Application.Features.Monitoring.Screenshots.RepositoryInterfaces;
@@ -23,6 +25,8 @@ public class RequestScreenshotCommandHandler
     private readonly ITrayActivationRepository _trayRepo;
     private readonly IMonitoringToggleResolver _toggleResolver;
     private readonly ICurrentUser _currentUser;
+    private readonly ITrayEmployeeIdentityResolver _employeeIdentity;
+    private readonly IMonitoringPermissionConsentRepository _consents;
     private readonly IDateTimeProvider _clock;
     private readonly IUnitOfWork _unitOfWork;
     private readonly ILogger<RequestScreenshotCommandHandler> _logger;
@@ -32,6 +36,8 @@ public class RequestScreenshotCommandHandler
         ITrayActivationRepository trayRepo,
         IMonitoringToggleResolver toggleResolver,
         ICurrentUser currentUser,
+        ITrayEmployeeIdentityResolver employeeIdentity,
+        IMonitoringPermissionConsentRepository consents,
         IDateTimeProvider clock,
         IUnitOfWork unitOfWork,
         ILogger<RequestScreenshotCommandHandler> logger)
@@ -40,6 +46,8 @@ public class RequestScreenshotCommandHandler
         _trayRepo = trayRepo;
         _toggleResolver = toggleResolver;
         _currentUser = currentUser;
+        _employeeIdentity = employeeIdentity;
+        _consents = consents;
         _clock = clock;
         _unitOfWork = unitOfWork;
         _logger = logger;
@@ -69,7 +77,23 @@ public class RequestScreenshotCommandHandler
         if (!enabled)
             return Result<AgentCommandDto>.Failure(MonitoringErrors.ScreenshotCapabilityDisabled, 403);
 
-        // TODO: Phase 2 — consent gate: verify legal_acceptance_records for "screenshot_notice"
+        // Consent gate: the company toggle alone is not enough - the employee must have allowed
+        // screen monitoring on the tray's Privacy & Transparency screen. Consent rows are keyed
+        // by the resolved Employee.Id for the device's legal entity, the same key
+        // RecordPermissionConsentCommandHandler writes them under. No row, or a row with
+        // ScreenMonitoring = false, means no screenshot command is ever created.
+        var consentEmployeeId = await _employeeIdentity.ResolveEmployeeIdAsync(
+            tenantId, device.UserId, device.LegalEntityId, cancellationToken);
+        var consent = await _consents.GetLatestAsync(tenantId, consentEmployeeId, cancellationToken);
+
+        if (consent is null || !consent.ScreenMonitoring)
+        {
+            _logger.LogWarning(
+                "Screenshot request rejected - no screen-monitoring consent. TenantId={TenantId} DeviceId={DeviceId}",
+                tenantId, request.AgentDeviceId);
+            return Result<AgentCommandDto>.Failure(
+                MonitoringErrors.ScreenshotConsentMissing, 403, MonitoringErrors.ScreenshotConsentMissingCode);
+        }
 
         var now = _clock.UtcNow;
         var command = new AgentCommand

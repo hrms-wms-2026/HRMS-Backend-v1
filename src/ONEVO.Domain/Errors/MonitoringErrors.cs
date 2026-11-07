@@ -26,6 +26,10 @@ public static class MonitoringErrors
     public const string ScreenshotCapabilityDisabled =
         "Screenshot capture is not enabled for this employee.";
 
+    public const string ScreenshotConsentMissingCode = "monitoring.screenshot_consent_missing";
+    public const string ScreenshotConsentMissing =
+        "The employee has not consented to screen monitoring on their tray app.";
+
     public const string AppTrackingDisabledCode = "monitoring.app_tracking_disabled";
     public const string AppTrackingDisabled =
         "Application tracking is not enabled for this employee.";
