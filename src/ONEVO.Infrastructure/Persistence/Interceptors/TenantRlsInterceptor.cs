@@ -8,7 +8,7 @@ namespace ONEVO.Infrastructure.Persistence.Interceptors;
 public sealed class TenantRlsInterceptor : DbConnectionInterceptor, IDbTransactionInterceptor
 {
     private readonly ITenantContext _tenantContext;
-    private (string TenantId, string Mode)? _restoreOnRollback;
+    private (DbTransaction Transaction, string TenantId, string Mode)? _restoreOnRollback;
 
     public TenantRlsInterceptor(ITenantContext tenantContext)
         => _tenantContext = tenantContext;
@@ -32,6 +32,7 @@ public sealed class TenantRlsInterceptor : DbConnectionInterceptor, IDbTransacti
     public override InterceptionResult ConnectionClosing(
         DbConnection connection, ConnectionEventData eventData, InterceptionResult result)
     {
+        _restoreOnRollback = null;
         using var cmd = SetTenantCommand(connection, string.Empty, string.Empty);
         cmd.ExecuteNonQuery();
         return result;
@@ -39,14 +40,20 @@ public sealed class TenantRlsInterceptor : DbConnectionInterceptor, IDbTransacti
 
     /// <summary>
     /// SESSION_CONTEXT is not transactional, so a tenant switch inside a transaction would outlive
-    /// a rollback. TenantContextSwitcher records the values to put back here.
+    /// a rollback. TenantContextSwitcher records the values to put back here. They belong to that
+    /// one transaction: the first switch in it wins, and any other transaction ignores them.
     /// </summary>
-    public void RestoreOnRollback(string tenantId, string mode)
-        => _restoreOnRollback ??= (tenantId, mode);
+    public void RestoreOnRollback(DbTransaction transaction, string tenantId, string mode)
+    {
+        if (_restoreOnRollback?.Transaction != transaction)
+        {
+            _restoreOnRollback = (transaction, tenantId, mode);
+        }
+    }
 
     public void TransactionRolledBack(DbTransaction transaction, TransactionEndEventData eventData)
     {
-        if (TakeRestore() is not { } restore)
+        if (TakeRestore(transaction) is not { } restore)
         {
             return;
         }
@@ -60,7 +67,7 @@ public sealed class TenantRlsInterceptor : DbConnectionInterceptor, IDbTransacti
         TransactionEndEventData eventData,
         CancellationToken cancellationToken = default)
     {
-        if (TakeRestore() is not { } restore)
+        if (TakeRestore(transaction) is not { } restore)
         {
             return;
         }
@@ -82,11 +89,11 @@ public sealed class TenantRlsInterceptor : DbConnectionInterceptor, IDbTransacti
         return Task.CompletedTask;
     }
 
-    private (string TenantId, string Mode)? TakeRestore()
+    private (DbTransaction Transaction, string TenantId, string Mode)? TakeRestore(DbTransaction transaction)
     {
         var restore = _restoreOnRollback;
         _restoreOnRollback = null;
-        return restore;
+        return restore?.Transaction == transaction ? restore : null;
     }
 
     private string ResolveTenantId() =>

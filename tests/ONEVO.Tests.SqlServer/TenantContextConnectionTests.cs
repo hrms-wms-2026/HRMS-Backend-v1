@@ -96,6 +96,27 @@ public sealed class TenantContextConnectionTests(SqlServerFixture fixture) : IAs
     }
 
     [Fact]
+    public async Task RollbackOfALaterTransaction_DoesNotRestoreAnEarlierDisposedSwitch()
+    {
+        var (db, tenant, rls) = Create();
+        tenant.Resolve(Entry(TenantA));
+        await db.Database.OpenConnectionAsync();
+        var switcher = new TenantContextSwitcher(db, tenant, rls);
+
+        await using (await db.Database.BeginTransactionAsync())
+        {
+            await switcher.SwitchToTenantAsync(Entry(TenantB));
+        }
+
+        await using (var later = await db.Database.BeginTransactionAsync())
+        {
+            await later.RollbackAsync();
+        }
+
+        Assert.Equal(TenantB.ToString(), await ReadContextAsync(db, "app.current_tenant_id"));
+    }
+
+    [Fact]
     public async Task CommitAfterSwitch_KeepsSwitchedTenant()
     {
         var (db, tenant, rls) = Create();

@@ -62,6 +62,7 @@ public sealed class TenantContextSwitcher : ITenantContextSwitcher
         await using var reader = await command.ExecuteReaderAsync(ct);
         await reader.ReadAsync(ct);
         _rlsInterceptor.RestoreOnRollback(
+            transaction,
             reader.IsDBNull(0) ? string.Empty : reader.GetString(0),
             reader.IsDBNull(1) ? string.Empty : reader.GetString(1));
     }

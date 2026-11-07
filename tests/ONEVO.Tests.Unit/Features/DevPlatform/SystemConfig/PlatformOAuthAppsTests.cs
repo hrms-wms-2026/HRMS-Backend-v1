@@ -140,7 +140,7 @@ public class PlatformOAuthAppsTests
         var providerProp = entityType.FindProperty(nameof(PlatformOAuthApp.Provider));
         Assert.NotNull(providerProp);
         Assert.False(providerProp!.IsNullable);
-        Assert.Equal(30, providerProp.GetMaxLength());
+        Assert.Equal(50, providerProp.GetMaxLength());
         var uniqueIndex = entityType.GetIndexes()
             .FirstOrDefault(i => i.Properties.Count == 1 && i.Properties[0].Name == nameof(PlatformOAuthApp.Provider));
         Assert.NotNull(uniqueIndex);
