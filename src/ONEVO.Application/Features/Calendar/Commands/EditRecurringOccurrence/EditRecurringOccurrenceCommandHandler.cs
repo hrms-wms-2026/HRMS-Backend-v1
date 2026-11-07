@@ -56,7 +56,7 @@ public sealed class EditRecurringOccurrenceCommandHandler(
         events.Update(master);
 
         await NotifyAttendeesAsync(master.TenantId, attendeesOf: master.Id, changed: master,
-            CalendarEventIcs.For(master.Id, master.EndDate, master.RecurrenceRule, DateTimeOffset.UtcNow), ct);
+            CalendarEventIcs.For(master.Id, master.EndDate, master.RecurrenceRule, DateTimeOffset.UtcNow, master.Timezone), ct);
 
         await unitOfWork.SaveChangesAsync(ct);
         return Result<CalendarEventItem>.Success(ToItem(master, isOccurrence: false, masterId: null, originalStart: null));
@@ -113,7 +113,7 @@ public sealed class EditRecurringOccurrenceCommandHandler(
 
         // The occurrence has no attendee rows of its own: the series' attendees are its attendees.
         await NotifyAttendeesAsync(tenantId, attendeesOf: master.Id, changed: child,
-            CalendarEventIcs.For(master.Id, child.EndDate, master.RecurrenceRule, DateTimeOffset.UtcNow) with { RecurrenceId = request.OriginalStart }, ct);
+            CalendarEventIcs.For(master.Id, child.EndDate, master.RecurrenceRule, DateTimeOffset.UtcNow, master.Timezone) with { RecurrenceId = request.OriginalStart }, ct);
 
         await unitOfWork.SaveChangesAsync(ct);
         return Result<CalendarEventItem>.Success(ToItem(child, isOccurrence: true, masterId: master.Id, originalStart: request.OriginalStart));
@@ -172,7 +172,7 @@ public sealed class EditRecurringOccurrenceCommandHandler(
 
             // The copied attendee rows are not saved yet, so the new series' audience is passed directly.
             await NotifyAsync(tenantId, participants.Select(x => x.EmployeeId).ToList(), guestEmails, newMaster,
-                CalendarEventIcs.For(newMaster.Id, newMaster.EndDate, newMaster.RecurrenceRule, DateTimeOffset.UtcNow), innerCt);
+                CalendarEventIcs.For(newMaster.Id, newMaster.EndDate, newMaster.RecurrenceRule, DateTimeOffset.UtcNow, newMaster.Timezone), innerCt);
 
             await unitOfWork.SaveChangesAsync(innerCt);
             return Result<CalendarEventItem>.Success(ToItem(newMaster, isOccurrence: true, masterId: newMaster.Id, originalStart: request.StartDate));

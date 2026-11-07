@@ -78,7 +78,7 @@ public sealed class AddCalendarEventParticipantsCommandHandler(
                 await notifications.NotifyParticipantsAddedAsync(
                     tenantId, existing.Title, existing.StartDate, existing.Location,
                     newEmployeeIds, organizerName, innerCt, existing.MeetingLink,
-                    ics: CalendarEventIcs.For(existing.Id, existing.EndDate, existing.RecurrenceRule, DateTimeOffset.UtcNow));
+                    ics: CalendarEventIcs.For(existing.Id, existing.EndDate, existing.RecurrenceRule, DateTimeOffset.UtcNow, existing.Timezone));
 
                 await unitOfWork.SaveChangesAsync(innerCt);
             }

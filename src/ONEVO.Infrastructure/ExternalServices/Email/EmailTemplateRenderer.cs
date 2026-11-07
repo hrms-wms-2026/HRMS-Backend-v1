@@ -332,7 +332,7 @@ public class EmailTemplateRenderer : IEmailTemplateRenderer
     {
         var recipientName = Get(f, "recipientName");
         var eventTitle = Get(f, "eventTitle");
-        var startDateUtc = FormatCalendarEventStart(Get(f, "startDateUtc"));
+        var startDateUtc = FormatCalendarEventStart(Get(f, "startDateUtc"), Get(f, "timeZoneId"));
         var location = Get(f, "location");
         var organizerName = Get(f, "organizerName");
         var meetingLink = kind is "cancelled" or "removed" or "link_removed" ? "" : Get(f, "meetingLink");
@@ -382,15 +382,21 @@ public class EmailTemplateRenderer : IEmailTemplateRenderer
         return new RenderedEmail(subject, html, text);
     }
 
-    /// <summary>Renders a calendar event's start time as e.g. "Monday, October 5, 2026 at 9:30 AM UTC".
+    /// <summary>Renders a calendar event's start time in its zone, e.g. "Friday, November 6, 2026 at 5:45 PM (Asia/Colombo)",
+    /// or "Monday, October 5, 2026 at 9:30 AM UTC" without a zone this machine knows.
     /// The value always arrives here as an ISO 8601 string (SendTemplateAsync's anonymous object is
     /// JSON-round-tripped before Render() sees it, which turns a DateTimeOffset into its default JSON
     /// string form before Get()'s DateTimeOffset-formatting branch ever gets a chance to run) - falls
     /// back to the raw string only if it somehow isn't parseable, rather than showing nothing.</summary>
-    private static string FormatCalendarEventStart(string startDateUtc) =>
-        DateTimeOffset.TryParse(startDateUtc, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var parsed)
-            ? $"{parsed.UtcDateTime:dddd, MMMM d, yyyy} at {parsed.UtcDateTime:h:mm tt} UTC"
-            : startDateUtc;
+    private static string FormatCalendarEventStart(string startDateUtc, string timeZoneId)
+    {
+        if (!DateTimeOffset.TryParse(startDateUtc, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var parsed))
+            return startDateUtc;
+        if (string.IsNullOrWhiteSpace(timeZoneId) || !TimeZoneInfo.TryFindSystemTimeZoneById(timeZoneId, out var zone))
+            return string.Create(CultureInfo.InvariantCulture, $"{parsed.UtcDateTime:dddd, MMMM d, yyyy} at {parsed.UtcDateTime:h:mm tt} UTC");
+        var local = TimeZoneInfo.ConvertTime(parsed, zone);
+        return string.Create(CultureInfo.InvariantCulture, $"{local:dddd, MMMM d, yyyy} at {local:h:mm tt} ({timeZoneId})");
+    }
 
     private static string Get(
         IReadOnlyDictionary<string, object?> fields,

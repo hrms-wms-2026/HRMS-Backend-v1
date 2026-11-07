@@ -87,7 +87,7 @@ public sealed class CalendarNotificationSender(
     public async Task SendMeetingLinkRemovedAsync(
         Guid tenantId, string eventTitle, DateTimeOffset startDate, string? location,
         IReadOnlyList<CalendarParticipantRecipient> participants, IReadOnlyList<CalendarGuestRecipient> guests,
-        string organizerName, CancellationToken ct = default)
+        string organizerName, CancellationToken ct = default, string? timeZoneId = null)
     {
         foreach (var recipient in participants)
         {
@@ -99,13 +99,13 @@ public sealed class CalendarNotificationSender(
             if (string.IsNullOrWhiteSpace(employee.Email)) continue;
             await KeyedEmailAsync(tenantId,
                 new CalendarEventInviteEmailPayload(tenantId, employee.Email, $"{employee.FirstName} {employee.LastName}",
-                    eventTitle, startDate, location, organizerName, MeetingLink: null, Kind: CalendarEventEmailKinds.LinkRemoved),
+                    eventTitle, startDate, location, organizerName, MeetingLink: null, Kind: CalendarEventEmailKinds.LinkRemoved, TimeZoneId: timeZoneId),
                 recipient.EmailKey, ct);
         }
         foreach (var guest in guests)
             await KeyedEmailAsync(tenantId,
                 new CalendarEventInviteEmailPayload(tenantId, guest.Email, guest.Email.Split('@')[0],
-                    eventTitle, startDate, location, organizerName, MeetingLink: null, Kind: CalendarEventEmailKinds.LinkRemoved),
+                    eventTitle, startDate, location, organizerName, MeetingLink: null, Kind: CalendarEventEmailKinds.LinkRemoved, TimeZoneId: timeZoneId),
                 guest.EmailKey, ct);
     }
 

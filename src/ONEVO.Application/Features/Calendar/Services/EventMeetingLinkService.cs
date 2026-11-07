@@ -226,7 +226,7 @@ public sealed class EventMeetingLinkService(
             evt.TenantId, evt.Title, evt.StartDate, evt.Location,
             participants.Select(p => new CalendarParticipantRecipient(p.EmployeeId, CalendarEmailKeys.LinkRemoved(meeting.Id, meeting.LinkGeneration, p.Id))).ToList(),
             guests.Select(g => new CalendarGuestRecipient(g.Email, CalendarEmailKeys.LinkRemoved(meeting.Id, meeting.LinkGeneration, g.Id))).ToList(),
-            organizerName, ct);
+            organizerName, ct, evt.Timezone);
     }
 
     private async Task SendLinkEmailsAsync(CalendarEvent evt, CalendarEventMeeting meeting, string organizerName, CancellationToken ct)
@@ -242,7 +242,7 @@ public sealed class EventMeetingLinkService(
     }
 
     /// <summary>The invite's .ics identity (plan C1 P2-1): stable UID per event, SEQUENCE from now.</summary>
-    private CalendarEventIcs Ics(CalendarEvent evt) => CalendarEventIcs.For(evt.Id, evt.EndDate, evt.RecurrenceRule, clock.UtcNow);
+    private CalendarEventIcs Ics(CalendarEvent evt) => CalendarEventIcs.For(evt.Id, evt.EndDate, evt.RecurrenceRule, clock.UtcNow, evt.Timezone);
 
     private async Task<IReadOnlyList<string>> AttendeeEmailsAsync(CalendarEvent evt, CancellationToken ct)
     {
