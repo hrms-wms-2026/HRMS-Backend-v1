@@ -38,7 +38,7 @@ public class CalendarEventConfiguration : IEntityTypeConfiguration<CalendarEvent
         builder.HasOne<CalendarEvent>()
             .WithMany()
             .HasForeignKey(e => e.RecurrenceParentId)
-            .OnDelete(DeleteBehavior.Cascade)
+            .OnDelete(DeleteBehavior.NoAction)
             .HasConstraintName("fk_personal_calendar_events_recurrence_parent_id");
     }
 }

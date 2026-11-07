@@ -86,6 +86,21 @@ public sealed class SqlServerModelArchitectureTests
     }
 
     [Fact]
+    public void ForeignKeyColumnsMatchTheirPrincipalTypes()
+    {
+        var offenders = Model().GetEntityTypes()
+            .SelectMany(entity => entity.GetForeignKeys())
+            .SelectMany(foreignKey => foreignKey.Properties.Zip(foreignKey.PrincipalKey.Properties,
+                (dependent, principal) => (foreignKey, dependent, principal)))
+            .Where(item => item.dependent.GetColumnType() != item.principal.GetColumnType())
+            .Select(item => $"{item.foreignKey.GetConstraintName()}: " +
+                $"{item.dependent.GetColumnType()} vs {item.principal.GetColumnType()}")
+            .ToList();
+
+        Assert.True(offenders.Count == 0, string.Join(Environment.NewLine, offenders));
+    }
+
+    [Fact]
     public void DatabaseCollationIsCaseSensitive()
         => Assert.Equal("Latin1_General_100_CS_AS_SC", Model().GetCollation());
 

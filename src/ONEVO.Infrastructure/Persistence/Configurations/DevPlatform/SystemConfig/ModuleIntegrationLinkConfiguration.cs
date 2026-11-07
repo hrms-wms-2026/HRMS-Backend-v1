@@ -20,7 +20,7 @@ public class ModuleIntegrationLinkConfiguration : IEntityTypeConfiguration<Modul
         builder.HasKey(l => new { l.ModuleKey, l.IntegrationKey });
 
         builder.Property(l => l.ModuleKey)
-            .HasMaxLength(80)
+            .HasMaxLength(100)
             .IsRequired();
 
         builder.Property(l => l.IntegrationKey)

@@ -47,6 +47,6 @@ public class MonitoringEvidenceAssetConfiguration : IEntityTypeConfiguration<Mon
         builder.HasOne<AgentCommand>()
             .WithMany()
             .HasForeignKey(e => e.AgentCommandId)
-            .OnDelete(DeleteBehavior.SetNull);
+            .OnDelete(DeleteBehavior.NoAction);
     }
 }

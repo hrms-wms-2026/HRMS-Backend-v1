@@ -25,7 +25,7 @@ public class PaymentGatewayConfigConfiguration : IEntityTypeConfiguration<Paymen
             .IsUnique();
 
         builder.Property(g => g.Provider)
-            .HasMaxLength(30)
+            .HasMaxLength(50)
             .IsRequired();
 
         builder.HasOne<PlatformProvider>()
