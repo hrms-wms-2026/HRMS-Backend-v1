@@ -155,12 +155,14 @@ public sealed class EfMeetingOccurrenceWriter : IMeetingOccurrenceWriter
         }
         sql.Append(") AS m(task_id, original_start, start_at, end_at) ON d.task_id = m.task_id WHERE d.tenant_id = @tenant");
 
+        // Raw SQL, so the commit check is told about these rows directly.
+        _db.PendingMeetingTaskIds.UnionWith(mapping.Select(m => m.TaskId));
         var updated = await _db.Database.ExecuteSqlRawAsync(sql.ToString(), parameters, ct);
         if (updated != mapping.Count)
             throw new InvalidOperationException($"Remap updated {updated} of {mapping.Count} occurrences; every task must be a meeting occurrence of this tenant.");
     }
 
-    // The series lock is transaction-scoped and an orphaned task only fails at COMMIT: outside a transaction neither
+    // The series lock is transaction-scoped and an orphaned task only fails at commit: outside a transaction neither
     // guarantee holds, so every write is refused there.
     private void RequireTransaction(string operation)
     {

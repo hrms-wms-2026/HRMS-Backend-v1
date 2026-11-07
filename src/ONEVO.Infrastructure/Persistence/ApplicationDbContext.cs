@@ -73,6 +73,11 @@ public class ApplicationDbContext : DbContext
     private readonly DomainEventDispatchInterceptor _domainEventInterceptor;
     private readonly ITenantContext _tenantContext;
 
+    /// <summary>Meeting rows to check at commit. See MeetingIntegrityInterceptor.</summary>
+    public HashSet<Guid> PendingMeetingTaskIds { get; } = [];
+
+    public HashSet<Guid> PendingMeetingSeriesIds { get; } = [];
+
     public ApplicationDbContext(
         DbContextOptions<ApplicationDbContext> options,
         AuditableEntityInterceptor auditInterceptor,
@@ -393,7 +398,7 @@ public class ApplicationDbContext : DbContext
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
         optionsBuilder
-            .AddInterceptors(_auditInterceptor, _softDeleteInterceptor, _domainEventInterceptor);
+            .AddInterceptors(_auditInterceptor, _softDeleteInterceptor, _domainEventInterceptor, MeetingIntegrityInterceptor.Instance);
     }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)

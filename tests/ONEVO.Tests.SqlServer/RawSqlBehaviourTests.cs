@@ -11,7 +11,11 @@ using ONEVO.Infrastructure.Identity.Tenancy;
 using ONEVO.Infrastructure.Identity.Time;
 using ONEVO.Infrastructure.Persistence;
 using ONEVO.Infrastructure.Persistence.Interceptors;
+using ONEVO.Domain.Features.Calendar.Entities;
 using ONEVO.Infrastructure.Persistence.Repositories.Auth.Login;
+using ONEVO.Infrastructure.Persistence.Repositories.Calendar;
+using ONEVO.Infrastructure.Persistence.Repositories.DevPlatform.Tenancy;
+using ONEVO.Infrastructure.Persistence.Repositories.Monitoring.TrayActivation;
 using ONEVO.Infrastructure.Persistence.Repositories.DevPlatform.AppCatalog;
 using ONEVO.Infrastructure.Persistence.Repositories.OrgStructure;
 using ONEVO.Infrastructure.Persistence.Repositories.Storage.Quota;
@@ -326,6 +330,79 @@ public sealed class RawSqlBehaviourTests(SqlServerFixture fixture) : IAsyncLifet
 
         Assert.Equal(later, await ScalarAsync<DateTimeOffset>(
             "SELECT last_seen_at FROM global_app_catalog WHERE process_name = 'raw-test.exe'"));
+    }
+
+    [Fact]
+    public async Task CalendarMeetingClaim_OnlyTheFirstInsertWins()
+    {
+        var calendarEvent = Guid.NewGuid();
+        var now = DateTimeOffset.UtcNow;
+        CalendarEventMeeting Row() => new()
+        {
+            Id = Guid.NewGuid(),
+            TenantId = _tenant,
+            CalendarEventId = calendarEvent,
+            ExternalCalendarConnectionId = Guid.NewGuid(),
+            Provider = "zoom",
+            ProvisioningStartedAt = now,
+            CreatedAt = now,
+        };
+
+        await using var db = Db();
+        var repository = new EfCalendarEventMeetingRepository(db, new SystemDateTimeProvider());
+
+        Assert.True(await repository.TryInsertProvisioningAsync(Row()));
+        Assert.False(await repository.TryInsertProvisioningAsync(Row()));
+    }
+
+    [Fact]
+    public async Task TrayActivationCode_IsFoundThroughTheLockedQuery()
+    {
+        var hash = Guid.NewGuid().ToString("N");
+        await SeedAsync("tray_activation_codes",
+            ("id", Guid.NewGuid()),
+            ("tenant_id", _tenant),
+            ("code_hash", hash),
+            ("used_at", null),
+            ("expires_at", DateTimeOffset.UtcNow.AddHours(1)));
+
+        await using var db = Db();
+        var repository = new EfTrayActivationRepository(db, new SystemDateTimeProvider());
+        await InTransactionAsync(db, async () =>
+            Assert.NotNull(await repository.FindActiveCodeByHashAsync(hash, default)));
+    }
+
+    [Theory]
+    [InlineData("acme", 1)]
+    [InlineData("ACME", 1)]
+    [InlineData("nothing", 0)]
+    public async Task TenantSearch_IsCaseInsensitive(string term, int expected)
+    {
+        var slug = $"AcMe-{Guid.NewGuid():N}"[..20];
+        await SeedAsync("tenants", ("id", Guid.NewGuid()), ("name", "Acme Ltd"), ("slug", slug), ("status", "Active"));
+
+        await using var admin = AdminDb();
+        var found = await new EfTenantRepository(admin).CountAsync(null, term);
+
+        Assert.Equal(expected, found);
+    }
+
+    private ApplicationDbContext AdminDb()
+    {
+        var context = new TenantContextAccessor();
+        context.SetAdminMode();
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseSqlServer(_database.App)
+            .UseSnakeCaseNamingConvention()
+            .AddInterceptors(new TenantRlsInterceptor(context))
+            .Options;
+        var clock = new SystemDateTimeProvider();
+        return new ApplicationDbContext(
+            options,
+            new AuditableEntityInterceptor(new AnonymousCurrentUser(), clock),
+            new SoftDeleteInterceptor(clock),
+            new DomainEventDispatchInterceptor(new NoOpPublisher()),
+            context);
     }
 
     // ---- Trees ----

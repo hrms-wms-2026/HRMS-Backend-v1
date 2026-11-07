@@ -472,7 +472,7 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
                 INSERT INTO global_email_directory (email, tenant_id)
                 SELECT {email}, {tenantId}
                 WHERE NOT EXISTS (
-                    SELECT 1 FROM global_email_directory WITH (UPDLOCK, HOLDLOCK)
+                    SELECT 1 FROM global_email_directory
                     WHERE email = {email} AND tenant_id = {tenantId})
                 """,
                 ct);

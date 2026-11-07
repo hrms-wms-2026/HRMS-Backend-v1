@@ -91,18 +91,18 @@ public sealed class AuthRepositoryArchitectureTests
     /// <summary>
     /// Phase 1G guard: proves the readability cleanup did not disturb the intentional
     /// PostgreSQL upsert statement. This method deliberately uses raw SQL with
-    /// ON CONFLICT DO NOTHING instead of EF load/check/insert logic to avoid a race between
+    /// one guarded INSERT instead of EF load/check/insert logic to avoid a race between
     /// concurrent upserts for the same email + tenant, so the exact SQL markers must survive.
     /// </summary>
     [Fact]
-    public void EfGlobalEmailDirectoryRepository_PreservesPostgresUpsertSql()
+    public void EfGlobalEmailDirectoryRepository_PreservesAtomicUpsertSql()
     {
         var path = FindGlobalEmailDirectoryRepositoryFile();
         var source = File.ReadAllText(path);
 
         Assert.Contains("ExecuteSqlInterpolatedAsync", source);
         Assert.Contains("INSERT INTO global_email_directory", source);
-        Assert.Contains("ON CONFLICT (email, tenant_id) DO NOTHING", source);
+        Assert.Contains("WITH (UPDLOCK, HOLDLOCK)", source);
     }
 
     private static string FindGlobalEmailDirectoryRepositoryFile()

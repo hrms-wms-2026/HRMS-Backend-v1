@@ -185,8 +185,8 @@ public class StorageQuotaArchitectureTests
         var source = ReadTenantStorageStatsRepositorySource();
 
         Assert.Contains("ExecuteSqlInterpolatedAsync", source);
-        Assert.Contains("ON CONFLICT", source);
-        Assert.Contains("GREATEST(0", source);
+        Assert.Contains("MERGE tenant_storage_stats WITH (HOLDLOCK)", source);
+        Assert.Contains("ELSE 0 END", source);
         Assert.Contains("tenant_storage_stats", source);
         Assert.Contains("reserved_r2_bytes", source);
         Assert.Contains("used_r2_bytes", source);
