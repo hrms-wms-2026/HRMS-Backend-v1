@@ -94,7 +94,7 @@ builder.Services.AddApiSwagger();
 builder.Services.AddApiCors(builder.Configuration);
 builder.Services.AddHealthChecks()
     .AddCheck("api", () => Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckResult.Healthy("API is running"))
-    .AddAsyncCheck("postgres", async () =>
+    .AddAsyncCheck("sqlserver", async () =>
     {
         // Readiness must fail when the database is unreachable; liveness (/health)
         // deliberately excludes this check so a brief DB outage does not restart the app.

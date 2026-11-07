@@ -177,6 +177,7 @@ public class TenantIsolationArchitectureTests
 
             var username = ExtractUsername(connectionString);
             var looksLikeSuperuser = username is not null && (
+                username.Equals("sa", StringComparison.OrdinalIgnoreCase) ||
                 username.Contains("postgres", StringComparison.OrdinalIgnoreCase) ||
                 username.Contains("superuser", StringComparison.OrdinalIgnoreCase));
 

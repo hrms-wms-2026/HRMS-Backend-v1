@@ -26,7 +26,7 @@ public class ApplicationDbContextFactory : IDesignTimeDbContextFactory<Applicati
         // connection. Never fall back to the restricted runtime role.
         var connectionString = configuration.GetConnectionString("MigrationConnection")
             ?? throw new InvalidOperationException(
-                "Connection string 'MigrationConnection' not found. Run ops/postgres/setup-local-db.ps1 " +
+                "Connection string 'MigrationConnection' not found. Run ops/sqlserver/setup-local-db.ps1 " +
                 "before using dotnet ef.");
 
         var optionsBuilder = new DbContextOptionsBuilder<ApplicationDbContext>();

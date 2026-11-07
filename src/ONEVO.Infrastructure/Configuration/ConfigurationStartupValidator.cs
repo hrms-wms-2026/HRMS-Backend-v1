@@ -1,4 +1,5 @@
 using System.Text;
+using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -115,7 +116,7 @@ public class ConfigurationStartupValidator : IHostedService
     {
         var checks = new (string Key, string Purpose, bool RequiredInProd)[]
         {
-            ("ConnectionStrings:DefaultConnection", "PostgreSQL connection string", true),
+            ("ConnectionStrings:DefaultConnection", "SQL Server connection string", true),
             ("Jwt:Secret", "MFA challenge/device JWT signing key", false),
             ("Jwt:TenantIssuer", "MFA challenge/device JWT issuer", false),
             ("Jwt:TenantAudience", "MFA challenge/device JWT audience", false),
@@ -174,37 +175,17 @@ public class ConfigurationStartupValidator : IHostedService
         if (string.IsNullOrWhiteSpace(connectionString))
             return;
 
-        var username = ExtractUsername(connectionString);
-        if (username is null)
-            return;
-
-        if (username.Contains("postgres", StringComparison.OrdinalIgnoreCase) ||
-            username.Contains("superuser", StringComparison.OrdinalIgnoreCase))
+        if (UsesAdminLogin(connectionString))
         {
             _logger.LogWarning(
-                "[CONFIG] ConnectionStrings:DefaultConnection username '{Username}' looks like a " +
-                "superuser role. The runtime app connection must use a restricted, non-superuser, " +
-                "non-BYPASSRLS role so PostgreSQL Row-Level Security is actually enforced. Use " +
-                "ConnectionStrings:MigrationConnection for schema migrations instead.",
-                username);
+                "[CONFIG] ConnectionStrings:DefaultConnection uses the sa login. The runtime app " +
+                "connection must use the restricted onevo_app login, because sa can drop the " +
+                "security policies. Use ConnectionStrings:MigrationConnection for schema migrations.");
         }
     }
 
-    private static string? ExtractUsername(string connectionString)
-    {
-        foreach (var part in connectionString.Split(';', StringSplitOptions.RemoveEmptyEntries))
-        {
-            var separatorIndex = part.IndexOf('=');
-            if (separatorIndex < 0)
-                continue;
-
-            var key = part[..separatorIndex].Trim();
-            if (key.Equals("Username", StringComparison.OrdinalIgnoreCase))
-                return part[(separatorIndex + 1)..].Trim();
-        }
-
-        return null;
-    }
+    public static bool UsesAdminLogin(string connectionString)
+        => string.Equals(new SqlConnectionStringBuilder(connectionString).UserID, "sa", StringComparison.OrdinalIgnoreCase);
 
     private static bool IsMissingOrPlaceholder(string? value)
     {
