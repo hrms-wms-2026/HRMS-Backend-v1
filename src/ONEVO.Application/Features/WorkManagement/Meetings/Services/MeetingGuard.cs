@@ -32,6 +32,4 @@ public static class MeetingGuard
             : Result<T>.Failure("Only the organizer can change this meeting.", 403, MeetingErrorCodes.OrganizerRequired);
     }
 
-    /// <summary>PostgreSQL's lock_not_available (lock_timeout expired).</summary>
-    public const string LockNotAvailableSqlState = "55P03";
 }

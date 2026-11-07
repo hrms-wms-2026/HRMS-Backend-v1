@@ -93,9 +93,8 @@ public class EfWorkApprovalRequestRepository : IWorkApprovalRequestRepository
         if (_db.Database.CurrentTransaction is null)
             throw new InvalidOperationException($"{nameof(LockIfPendingAsync)} needs a transaction.");
         var locked = await _db.Database.SqlQuery<int>($"""
-            SELECT 1 AS "Value" FROM wm_approval_requests
+            SELECT 1 AS [Value] FROM wm_approval_requests WITH (UPDLOCK, ROWLOCK)
             WHERE tenant_id = {tenantId} AND id = {id} AND status = {WorkApprovalRequestStatuses.Pending}
-            FOR UPDATE
             """).ToListAsync(ct);
         return locked.Count > 0;
     }

@@ -60,9 +60,10 @@ public sealed class OutboxWriter : IOutboxWriter
         var inserted = await _db.Database.ExecuteSqlInterpolatedAsync($"""
             INSERT INTO outbox_messages
                 (id, type, encrypted_payload, tenant_id, status, attempt_count, created_at, next_attempt_at, deduplication_key)
-            VALUES
-                ({Guid.NewGuid()}, {type}, {encryptedPayload}, {tenantId}, {OutboxMessageStatus.Pending}, 0, {now}, {now}, {deduplicationKey})
-            ON CONFLICT (deduplication_key) WHERE deduplication_key IS NOT NULL DO NOTHING
+            SELECT
+                {Guid.NewGuid()}, {type}, {encryptedPayload}, {tenantId}, {OutboxMessageStatus.Pending}, 0, {now}, {now}, {deduplicationKey}
+            WHERE NOT EXISTS (
+                SELECT 1 FROM outbox_messages WITH (UPDLOCK, HOLDLOCK) WHERE deduplication_key = {deduplicationKey})
             """, ct);
         return inserted == 1;
     }

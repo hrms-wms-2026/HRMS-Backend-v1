@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using ONEVO.Application.Features.WorkManagement.Planner.RepositoryInterfaces;
 using ONEVO.Domain.Features.OrgStructure.Entities;
 using ONEVO.Domain.Features.WorkManagement.Planner.Entities;
+using ONEVO.Infrastructure.Persistence.SqlServer;
 
 namespace ONEVO.Infrastructure.Persistence.Repositories.WorkManagement.Planner;
 
@@ -13,15 +14,14 @@ public sealed class EfPlannerRepository : IPlannerRepository
 
     public EfPlannerRepository(ApplicationDbContext db) => _db = db;
 
-    /// <summary>The advisory-lock key of one employee's plan.</summary>
+    /// <summary>The app lock key of one employee's plan.</summary>
     public static string PlanLockKey(Guid tenantId, Guid employeeId) => $"planner:{tenantId}:{employeeId}";
 
     public async Task LockPlanAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default)
     {
         if (_db.Database.CurrentTransaction is null)
             throw new InvalidOperationException($"{nameof(LockPlanAsync)} needs a transaction.");
-        await _db.Database.ExecuteSqlInterpolatedAsync(
-            $"SELECT pg_advisory_xact_lock(hashtextextended({PlanLockKey(tenantId, employeeId)}, 0))", ct);
+        await SqlAppLock.TryAcquireAsync(_db, PlanLockKey(tenantId, employeeId), SqlAppLock.WaitForever, ct);
     }
 
     public async Task<IReadOnlyList<PlannedTaskBlock>> ListBlocksAsync(Guid tenantId, Guid employeeId, DateTimeOffset from,

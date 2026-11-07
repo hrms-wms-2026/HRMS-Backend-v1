@@ -64,8 +64,8 @@ public sealed class EfMeetingLinkRepository : IMeetingLinkRepository
     {
         var released = await _db.Database.SqlQuery<Guid>($"""
             UPDATE meeting_series_links SET released_at = {now}
+            OUTPUT inserted.calendar_event_meeting_id AS [Value]
             WHERE tenant_id = {tenantId} AND series_id = {seriesId} AND released_at IS NULL
-            RETURNING calendar_event_meeting_id AS "Value"
             """).ToListAsync(ct);
         return released.Count == 0 ? null : released[0];
     }
@@ -149,6 +149,6 @@ public sealed class EfMeetingLinkRepository : IMeetingLinkRepository
         if (_db.Database.CurrentTransaction is null)
             throw new InvalidOperationException($"{nameof(LockLinkAsync)} needs a transaction.");
         await _db.Database.ExecuteSqlInterpolatedAsync(
-            $"SELECT 1 FROM calendar_event_meetings WHERE tenant_id = {tenantId} AND id = {linkId} FOR UPDATE", ct);
+            $"SELECT 1 FROM calendar_event_meetings WITH (UPDLOCK, ROWLOCK) WHERE tenant_id = {tenantId} AND id = {linkId}", ct);
     }
 }

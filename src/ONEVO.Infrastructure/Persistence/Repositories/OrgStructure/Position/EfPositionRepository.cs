@@ -168,7 +168,7 @@ public class EfPositionRepository : IPositionRepository
         Guid tenantId, Guid legalEntityId, Guid positionId, Guid possibleDescendantId, CancellationToken ct = default)
     {
         var descendantIds = _db.Database.SqlQuery<Guid>($@"
-            WITH RECURSIVE descendants AS (
+            WITH descendants AS (
                 SELECT id FROM positions
                 WHERE tenant_id = {tenantId} AND legal_entity_id = {legalEntityId}
                     AND reports_to_position_id = {positionId}
@@ -177,11 +177,12 @@ public class EfPositionRepository : IPositionRepository
                 INNER JOIN descendants ON p.reports_to_position_id = descendants.id
                 WHERE p.tenant_id = {tenantId} AND p.legal_entity_id = {legalEntityId}
             )
-            SELECT id AS ""Value"" FROM descendants
+            SELECT id AS [Value] FROM descendants
         ");
 
-        var isDescendant = await descendantIds.AnyAsync(id => id == possibleDescendantId, ct);
-        return isDescendant;
+        // Not composed: SQL Server cannot wrap a WITH query in a subquery.
+        var ids = await descendantIds.ToListAsync(ct);
+        return ids.Contains(possibleDescendantId);
     }
 
     public async Task<int> CountActiveByDepartmentAsync(

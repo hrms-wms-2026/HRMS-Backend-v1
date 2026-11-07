@@ -33,9 +33,8 @@ public sealed class MeetingsStartupCheck : IHostedService
         scope.ServiceProvider.GetRequiredService<IWritableTenantContext>().SetAdminMode();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         var hasClaimFix = await db.Database.SqlQuery<bool>($"""
-            SELECT EXISTS (SELECT 1 FROM information_schema.columns
-                           WHERE table_schema = current_schema() AND table_name = 'outbox_messages'
-                             AND column_name = 'locked_by') AS "Value"
+            SELECT CASE WHEN COL_LENGTH('outbox_messages', 'locked_by') IS NULL
+                        THEN CAST(0 AS bit) ELSE CAST(1 AS bit) END AS [Value]
             """).ToListAsync(cancellationToken);
         if (!hasClaimFix.Single())
             throw new InvalidOperationException("Meetings:BulkInvite needs the outbox claim fix (P-1)");

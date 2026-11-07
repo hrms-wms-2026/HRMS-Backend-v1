@@ -239,7 +239,7 @@ public class EfDepartmentRepository : IDepartmentRepository
         CancellationToken ct = default)
     {
         var descendantIds = _db.Database.SqlQuery<Guid>($@"
-            WITH RECURSIVE descendants AS (
+            WITH descendants AS (
                 SELECT id FROM departments
                 WHERE tenant_id = {tenantId} AND legal_entity_id = {legalEntityId}
                     AND parent_department_id = {departmentId}
@@ -248,11 +248,12 @@ public class EfDepartmentRepository : IDepartmentRepository
                 INNER JOIN descendants ON d.parent_department_id = descendants.id
                 WHERE d.tenant_id = {tenantId} AND d.legal_entity_id = {legalEntityId}
             )
-            SELECT id AS ""Value"" FROM descendants
+            SELECT id AS [Value] FROM descendants
         ");
 
-        var isDescendant = await descendantIds.AnyAsync(id => id == possibleDescendantId, ct);
-        return isDescendant;
+        // Not composed: SQL Server cannot wrap a WITH query in a subquery.
+        var ids = await descendantIds.ToListAsync(ct);
+        return ids.Contains(possibleDescendantId);
     }
 
     public async Task<IReadOnlyList<Guid>> GetDescendantDepartmentIdsAsync(
@@ -262,17 +263,19 @@ public class EfDepartmentRepository : IDepartmentRepository
             return Array.Empty<Guid>();
 
         var roots = departmentIds.Distinct().ToArray();
+        var rootsJson = System.Text.Json.JsonSerializer.Serialize(roots);
         var descendantIds = _db.Database.SqlQuery<Guid>($@"
-            WITH RECURSIVE descendants AS (
+            WITH descendants AS (
                 SELECT id FROM departments
                 WHERE tenant_id = {tenantId} AND legal_entity_id = {legalEntityId}
-                    AND parent_department_id = ANY({roots}) AND is_active = true
-                UNION
+                    AND parent_department_id IN (SELECT CAST([value] AS uniqueidentifier) FROM OPENJSON({rootsJson}))
+                    AND is_active = 1
+                UNION ALL
                 SELECT d.id FROM departments d
                 INNER JOIN descendants ON d.parent_department_id = descendants.id
-                WHERE d.tenant_id = {tenantId} AND d.legal_entity_id = {legalEntityId} AND d.is_active = true
+                WHERE d.tenant_id = {tenantId} AND d.legal_entity_id = {legalEntityId} AND d.is_active = 1
             )
-            SELECT id AS ""Value"" FROM descendants
+            SELECT id AS [Value] FROM descendants
         ");
 
         var ids = await descendantIds.ToListAsync(ct);

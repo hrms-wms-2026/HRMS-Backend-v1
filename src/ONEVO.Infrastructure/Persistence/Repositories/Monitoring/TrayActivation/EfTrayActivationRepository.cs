@@ -35,7 +35,7 @@ public class EfTrayActivationRepository : ITrayActivationRepository
     {
         var now = _clock.UtcNow;
         return await _db.TrayActivationCodes
-            .FromSqlInterpolated($"SELECT * FROM tray_activation_codes WHERE code_hash = {codeHash} AND used_at IS NULL AND expires_at > {now} FOR UPDATE")
+            .FromSqlInterpolated($"SELECT * FROM tray_activation_codes WITH (UPDLOCK, ROWLOCK) WHERE code_hash = {codeHash} AND used_at IS NULL AND expires_at > {now}")
             .AsTracking()
             .FirstOrDefaultAsync(ct);
     }
@@ -107,7 +107,7 @@ public class EfTrayActivationRepository : ITrayActivationRepository
         string deviceCodeHash, CancellationToken ct)
     {
         return await _db.TrayDeviceAuthorizations
-            .FromSqlInterpolated($"SELECT * FROM tray_device_authorizations WHERE device_code_hash = {deviceCodeHash} FOR UPDATE")
+            .FromSqlInterpolated($"SELECT * FROM tray_device_authorizations WITH (UPDLOCK, ROWLOCK) WHERE device_code_hash = {deviceCodeHash}")
             .AsTracking()
             .FirstOrDefaultAsync(ct);
     }
