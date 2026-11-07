@@ -36,6 +36,10 @@ await DatabaseConnectionStartupValidator.ValidateAndOpenAsync(
     DotEnvLoader.DefaultConnectionProcessOverrideActive
         || DotEnvLoader.MigrationConnectionProcessOverrideActive);
 
+await ONEVO.Infrastructure.Configuration.DatabaseSettingsStartupValidator.ValidateAsync(
+    builder.Configuration.GetConnectionString("DefaultConnection")!,
+    CancellationToken.None);
+
 // Development only: Test bootstraps its own Testcontainers database via
 // IntegrationDatabaseBootstrap before this process starts, and Production/Staging must apply
 // migrations through their own deployment pipeline, never automatically on process start.
