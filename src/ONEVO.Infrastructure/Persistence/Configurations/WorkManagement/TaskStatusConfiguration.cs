@@ -9,7 +9,7 @@ public class TaskStatusConfiguration : IEntityTypeConfiguration<TaskStatusEntity
 {
     public void Configure(EntityTypeBuilder<TaskStatusEntity> builder)
     {
-        builder.ToTable("task_statuses");
+        builder.ToTable("task_statuses", table => table.HasTrigger("trg_task_statuses_module_hour_summary"));
         builder.HasKey(s => s.Id);
         builder.Property(s => s.Name).HasMaxLength(100).IsRequired();
         builder.Property(s => s.Visibility).HasMaxLength(20).IsRequired().HasDefaultValue(TaskStatusVisibilities.Public);

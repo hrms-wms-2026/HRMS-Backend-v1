@@ -9,7 +9,7 @@ public class ObjectiveConfiguration : IEntityTypeConfiguration<Objective>
 {
     public void Configure(EntityTypeBuilder<Objective> builder)
     {
-        builder.ToTable("objectives");
+        builder.ToTable("objectives", table => table.HasTrigger("trg_objectives_module_hour_summary_insert"));
         builder.HasKey(o => o.Id);
         builder.Property(o => o.Title).HasMaxLength(255).IsRequired();
         builder.Property(o => o.Progress).HasColumnType("decimal(5,2)").HasDefaultValue(0m);

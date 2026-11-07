@@ -5,9 +5,9 @@ using ONEVO.Infrastructure.Persistence;
 namespace ONEVO.Infrastructure.Persistence.Repositories.Auth.Login;
 
 /// <summary>
-/// Executes the allowlisted auth_lookup_base_login_candidates function via a parameterized
-/// SELECT. Columns are left unaliased (already snake_case, matching the function's own OUT
-/// parameter names) because ApplicationDbContext's UseSnakeCaseNamingConvention() applies to
+/// Executes the allowlisted auth_lookup_base_login_candidates procedure via a parameterized
+/// EXEC. Columns are left unaliased (already snake_case, matching the procedure's result
+/// columns) because ApplicationDbContext's UseSnakeCaseNamingConvention() applies to
 /// SqlQueryRaw's ad-hoc materialization too - a PascalCase alias would mismatch the naming
 /// convention's expected snake_case column name and fail with "required column ... was not
 /// present". Materializes into the internal RawRow class (not the public BaseLoginCandidateRow
@@ -30,8 +30,7 @@ public sealed class EfBaseLoginCandidateRepository : IBaseLoginCandidateReposito
         var rawRows = await _db.Database
             .SqlQueryRaw<RawRow>(
                 """
-                SELECT tenant_id, user_id, slug, display_name, password_hash
-                FROM auth_internal.auth_lookup_base_login_candidates({0})
+                EXEC auth_internal.auth_lookup_base_login_candidates @normalized_email = {0}
                 """,
                 normalizedEmail)
             .ToListAsync(ct);

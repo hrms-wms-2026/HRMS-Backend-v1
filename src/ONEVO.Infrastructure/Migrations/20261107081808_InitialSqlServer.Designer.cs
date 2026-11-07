@@ -12,7 +12,7 @@ using ONEVO.Infrastructure.Persistence;
 namespace ONEVO.Infrastructure.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    [Migration("20261107080622_InitialSqlServer")]
+    [Migration("20261107081808_InitialSqlServer")]
     partial class InitialSqlServer
     {
         /// <inheritdoc />
@@ -13861,7 +13861,12 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasIndex("TenantId", "StartAt")
                         .HasDatabaseName("ix_meeting_details_tenant_id_start_at");
 
-                    b.ToTable("meeting_details", (string)null);
+                    b.ToTable("meeting_details", null, t =>
+                        {
+                            t.HasTrigger("trg_meeting_details_key_immutable");
+                        });
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Meetings.Entities.MeetingOccurrenceAttendee", b =>
@@ -14558,7 +14563,12 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasIndex("TenantId", "ProjectId", "ParentObjectiveId")
                         .HasDatabaseName("ix_objectives_tenant_id_project_id_parent_objective_id");
 
-                    b.ToTable("objectives", (string)null);
+                    b.ToTable("objectives", null, t =>
+                        {
+                            t.HasTrigger("trg_objectives_module_hour_summary_insert");
+                        });
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Planner.Entities.PlannedTaskBlock", b =>
@@ -15943,7 +15953,12 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasDatabaseName("ix_task_statuses_one_name_per_scope")
                         .HasFilter("[objective_id] IS NOT NULL");
 
-                    b.ToTable("task_statuses", (string)null);
+                    b.ToTable("task_statuses", null, t =>
+                        {
+                            t.HasTrigger("trg_task_statuses_module_hour_summary");
+                        });
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Tasks.Entities.TaskStatusChangeLog", b =>
@@ -16171,7 +16186,12 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasIndex("TenantId", "ProjectId", "VisibilityScope")
                         .HasDatabaseName("ix_tasks_tenant_id_project_id_visibility_scope");
 
-                    b.ToTable("tasks", (string)null);
+                    b.ToTable("tasks", null, t =>
+                        {
+                            t.HasTrigger("trg_tasks_module_hour_summary");
+                        });
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Versions.Entities.ProjectVersion", b =>

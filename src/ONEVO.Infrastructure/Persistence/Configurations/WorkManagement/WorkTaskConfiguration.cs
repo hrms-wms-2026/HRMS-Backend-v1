@@ -10,7 +10,7 @@ public class WorkTaskConfiguration : IEntityTypeConfiguration<WorkTask>
 {
     public void Configure(EntityTypeBuilder<WorkTask> builder)
     {
-        builder.ToTable("tasks");
+        builder.ToTable("tasks", table => table.HasTrigger("trg_tasks_module_hour_summary"));
         builder.HasKey(t => t.Id);
         builder.Property(t => t.ShortId).HasMaxLength(50).IsRequired();
         builder.Property(t => t.Title).HasMaxLength(500).IsRequired();
