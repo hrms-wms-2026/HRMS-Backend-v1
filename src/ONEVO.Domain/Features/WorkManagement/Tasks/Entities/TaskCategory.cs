@@ -48,4 +48,6 @@ public class TaskCategory : BaseEntity
     public string? SystemKey { get; set; }
     /// <summary>One of <see cref="TaskCategoryKinds"/>. A rename never changes it.</summary>
     public string Kind { get; set; } = TaskCategoryKinds.Task;
+    /// <summary>The picked icon, "lucide:{name}" or "emoji:{emoji}" (EntityIconRules); null shows the kind's own icon.</summary>
+    public string? Icon { get; set; }
 }

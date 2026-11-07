@@ -52,6 +52,7 @@ public sealed class AdminGoogleLoginPlatformOAuthAppTests
             Mock.Of<IPlatformUserRepository>(),
             Mock.Of<IPlatformPermissionResolver>(),
             authEvents.Object,
+            Mock.Of<IPlatformMfaChallengeStore>(),
             unitOfWork.Object);
 
         var result = await handler.Handle(
@@ -90,6 +91,7 @@ public sealed class AdminGoogleLoginPlatformOAuthAppTests
             Mock.Of<IPlatformUserRepository>(),
             Mock.Of<IPlatformPermissionResolver>(),
             Mock.Of<IPlatformAuthEventRepository>(),
+            Mock.Of<IPlatformMfaChallengeStore>(),
             Mock.Of<IUnitOfWork>());
 
         var result = await handler.Handle(

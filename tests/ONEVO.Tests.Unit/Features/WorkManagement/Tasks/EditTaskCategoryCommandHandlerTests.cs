@@ -26,7 +26,7 @@ public class EditTaskCategoryCommandHandlerTests
     private static readonly Guid CategoryId = Guid.NewGuid();
 
     private (EditTaskCategoryCommandHandler Handler, Mock<ITaskCategoryRepository> Categories) Build(
-        Guid? callerEmployeeId = null, bool? callerIsEffectiveManager = null, string? systemKey = null, string kind = TaskCategoryKinds.Task)
+        Guid? callerEmployeeId = null, bool? callerIsEffectiveManager = null, string? systemKey = null, string kind = TaskCategoryKinds.Task, string? icon = null)
     {
         var resolvedCallerEmployeeId = callerEmployeeId ?? OwnerEmployeeId;
 
@@ -47,6 +47,7 @@ public class EditTaskCategoryCommandHandlerTests
             Name = systemKey ?? "Bug",
             SystemKey = systemKey,
             Kind = kind,
+            Icon = icon,
             DisplayOrder = 0,
             CreatedAt = DateTimeOffset.UtcNow
         };
@@ -94,6 +95,74 @@ public class EditTaskCategoryCommandHandlerTests
         var handler = new EditTaskCategoryCommandHandler(
             currentUser.Object, identity.Object, categories.Object, objectives.Object, projects.Object, unitOfWork.Object, membership.Object);
         return (handler, categories);
+    }
+
+    [Fact]
+    public async Task Handle_Icon_IsStored()
+    {
+        var (handler, categories) = Build();
+
+        var result = await handler.Handle(new EditTaskCategoryCommand(CategoryId, "Bug", 0, Icon: "emoji:🐞"), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        categories.Verify(x => x.Update(It.Is<TaskCategory>(c => c.Icon == "emoji:🐞")), Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_OmittedIcon_KeepsTheCurrentOne()
+    {
+        var (handler, categories) = Build(icon: "lucide:bug");
+
+        var result = await handler.Handle(new EditTaskCategoryCommand(CategoryId, "Defect", 0), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        categories.Verify(x => x.Update(It.Is<TaskCategory>(c => c.Name == "Defect" && c.Icon == "lucide:bug")), Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_EmptyIcon_ClearsIt()
+    {
+        var (handler, categories) = Build(icon: "lucide:bug");
+
+        var result = await handler.Handle(new EditTaskCategoryCommand(CategoryId, "Bug", 0, Icon: ""), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        categories.Verify(x => x.Update(It.Is<TaskCategory>(c => c.Icon == null)), Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_SystemCategory_IconChange_IsRefused()
+    {
+        var (handler, categories) = Build(systemKey: TaskCategorySystemKeys.Meeting, kind: TaskCategoryKinds.Meeting);
+
+        var result = await handler.Handle(
+            new EditTaskCategoryCommand(CategoryId, TaskCategorySystemKeys.Meeting, 0, Icon: "lucide:bug"), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(409, result.StatusCode);
+        categories.Verify(x => x.Update(It.IsAny<TaskCategory>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Handle_SystemCategory_WithNoIconSent_StillSaves()
+    {
+        var (handler, categories) = Build(systemKey: TaskCategorySystemKeys.Meeting, kind: TaskCategoryKinds.Meeting);
+
+        var result = await handler.Handle(new EditTaskCategoryCommand(CategoryId, TaskCategorySystemKeys.Meeting, 3), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        categories.Verify(x => x.Update(It.Is<TaskCategory>(c => c.DisplayOrder == 3)), Times.Once);
+    }
+
+    [Theory]
+    [InlineData("lucide:bug", true)]
+    [InlineData("", true)]
+    [InlineData("javascript:alert(1)", false)]
+    public void Validator_ChecksTheIconFormat(string icon, bool valid)
+    {
+        var result = new EditTaskCategoryCommandValidator().Validate(new EditTaskCategoryCommand(CategoryId, "Bug", 0, Icon: icon));
+
+        Assert.Equal(valid, result.IsValid);
     }
 
     [Fact]
