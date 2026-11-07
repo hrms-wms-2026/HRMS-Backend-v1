@@ -61,7 +61,7 @@ public class EfOnboardingDraftRepository : IOnboardingDraftRepository
                 d.DraftReason,
                 d.LastSavedStep,
                 d.StartedById,
-                EF.Property<uint>(d, "xmin").ToString(),
+                RowVersionToken.ToToken(EF.Property<ulong>(d, "xmin")),
                 d.ReportsToEmployeeId,
                 manager != null ? manager.FirstName + " " + manager.LastName : null,
                 reportsToPosition != null ? reportsToPosition.Name : null,
@@ -116,7 +116,7 @@ public class EfOnboardingDraftRepository : IOnboardingDraftRepository
                 d.DraftReason,
                 d.LastSavedStep,
                 d.StartedById,
-                EF.Property<uint>(d, "xmin").ToString(),
+                RowVersionToken.ToToken(EF.Property<ulong>(d, "xmin")),
                 d.ReportsToEmployeeId,
                 manager != null ? manager.FirstName + " " + manager.LastName : null,
                 reportsToPosition != null ? reportsToPosition.Name : null,
@@ -182,7 +182,7 @@ public class EfOnboardingDraftRepository : IOnboardingDraftRepository
 
     public void SetExpectedVersion(OnboardingDraftEntity draft, string expectedVersion)
     {
-        if (!uint.TryParse(expectedVersion, out var expectedXmin))
+        if (!RowVersionToken.TryParse(expectedVersion, out var expectedXmin))
         {
             return;
         }

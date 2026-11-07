@@ -20,7 +20,7 @@ public class TrayAppReleaseConfiguration : IEntityTypeConfiguration<TrayAppRelea
         builder.Property(r => r.Publisher).HasMaxLength(200).IsRequired();
         builder.Property(r => r.MinimumWindowsVersion).HasMaxLength(32).IsRequired();
         builder.Property(r => r.MinSupportedVersion).HasMaxLength(32);
-        builder.Property(r => r.ReleaseNotes).HasColumnType("text");
+        builder.Property(r => r.ReleaseNotes);
         builder.Property(r => r.IsActive).IsRequired();
         builder.Property(r => r.Source).HasMaxLength(16).IsRequired();
         builder.Property(r => r.CreatedById);

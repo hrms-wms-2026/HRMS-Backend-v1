@@ -18,7 +18,7 @@ public class UserDashboardConfiguration : IEntityTypeConfiguration<UserDashboard
         // Partial: a soft-deleted row must not block re-creating the dashboard.
         builder.HasIndex(d => new { d.TenantId, d.UserId, d.DashboardKey })
             .IsUnique()
-            .HasFilter("is_deleted = false")
+            .HasFilter("is_deleted = 0")
             .HasDatabaseName("ux_user_dashboards_tenant_id_user_id_dashboard_key");
 
         builder.HasMany(d => d.Widgets)

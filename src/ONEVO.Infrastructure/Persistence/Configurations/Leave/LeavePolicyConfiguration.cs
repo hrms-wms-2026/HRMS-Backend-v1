@@ -26,13 +26,13 @@ public class LeavePolicyVersionConfiguration : IEntityTypeConfiguration<LeavePol
     {
         builder.ToTable("leave_policy_versions");
         builder.HasKey(v => v.Id);
-        builder.Property(v => v.AmountHours).HasColumnType("numeric(7,2)");
+        builder.Property(v => v.AmountHours).HasColumnType("decimal(7,2)");
         builder.Property(v => v.AmountPeriod).HasMaxLength(10).IsRequired();
-        builder.Property(v => v.CarryForwardCapHours).HasColumnType("numeric(7,2)");
+        builder.Property(v => v.CarryForwardCapHours).HasColumnType("decimal(7,2)");
         builder.Property(v => v.EligibleFrom).HasMaxLength(20).IsRequired();
-        builder.Property(v => v.MinRequestHours).HasColumnType("numeric(7,2)");
-        builder.Property(v => v.MaxRequestHours).HasColumnType("numeric(7,2)");
-        builder.Property(v => v.MaxTeamAbsencePercent).HasColumnType("numeric(5,2)");
+        builder.Property(v => v.MinRequestHours).HasColumnType("decimal(7,2)");
+        builder.Property(v => v.MaxRequestHours).HasColumnType("decimal(7,2)");
+        builder.Property(v => v.MaxTeamAbsencePercent).HasColumnType("decimal(5,2)");
         builder.Property(v => v.ApprovalMode).HasMaxLength(20).IsRequired();
 
         builder.HasIndex(v => new { v.LeavePolicyId, v.VersionNumber })

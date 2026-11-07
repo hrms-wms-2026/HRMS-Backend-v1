@@ -10,7 +10,7 @@ public class TaskClockingSessionConfiguration : IEntityTypeConfiguration<TaskClo
     {
         builder.ToTable("task_clocking_sessions");
         builder.HasKey(session => session.Id);
-        builder.Property(session => session.Reason).HasColumnType("text");
+        builder.Property(session => session.Reason);
 
         builder.HasIndex(session => new { session.TenantId, session.TaskId })
             .HasDatabaseName("ix_task_clocking_sessions_one_open_per_task")

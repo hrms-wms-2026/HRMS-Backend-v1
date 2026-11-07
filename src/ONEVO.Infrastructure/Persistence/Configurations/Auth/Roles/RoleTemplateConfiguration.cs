@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using ONEVO.Domain.Features.Auth.Entities;
+using ONEVO.Infrastructure.Persistence.SqlServer;
 
 namespace ONEVO.Infrastructure.Persistence.Configurations.Auth.Roles;
 
@@ -15,8 +16,8 @@ public class RoleTemplateConfiguration : IEntityTypeConfiguration<RoleTemplate>
         builder.HasIndex(t => t.Name).IsUnique();
 
         builder.Property(t => t.Description).HasMaxLength(255);
-        builder.Property(t => t.ModuleKeysJson).HasColumnName("module_keys_json").HasColumnType("jsonb").IsRequired();
-        builder.Property(t => t.PermissionCodesJson).HasColumnName("permission_codes_json").HasColumnType("jsonb").IsRequired();
+        builder.Property(t => t.ModuleKeysJson).HasColumnName("module_keys_json").IsJsonColumn().IsRequired();
+        builder.Property(t => t.PermissionCodesJson).HasColumnName("permission_codes_json").IsJsonColumn().IsRequired();
         builder.Property(t => t.IsSystem).HasColumnName("is_system");
         builder.Property(t => t.Version);
         builder.Property(t => t.IsActive).HasColumnName("is_active");

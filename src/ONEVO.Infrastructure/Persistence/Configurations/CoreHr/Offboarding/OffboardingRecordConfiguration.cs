@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using ONEVO.Domain.Features.CoreHr.Entities;
+using ONEVO.Infrastructure.Persistence.SqlServer;
 
 namespace ONEVO.Infrastructure.Persistence.Configurations.CoreHr.Offboarding;
 
@@ -13,7 +14,7 @@ public sealed class OffboardingRecordConfiguration : IEntityTypeConfiguration<Of
         builder.Property(x => x.Reason).HasMaxLength(30).IsRequired();
         builder.Property(x => x.KnowledgeRiskLevel).HasMaxLength(10).IsRequired();
         builder.Property(x => x.RehireEligibility).HasMaxLength(20);
-        builder.Property(x => x.PenaltiesJson).HasColumnType("jsonb").HasDefaultValue("{}").IsRequired();
+        builder.Property(x => x.PenaltiesJson).IsJsonColumn().HasDefaultValue("{}").IsRequired();
         builder.Property(x => x.Status).HasMaxLength(20).IsRequired();
         builder.HasIndex(x => new { x.TenantId, x.EmployeeId, x.Status });
         builder.HasIndex(x => new { x.TenantId, x.EmployeeId })

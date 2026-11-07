@@ -12,10 +12,10 @@ public class ObjectiveConfiguration : IEntityTypeConfiguration<Objective>
         builder.ToTable("objectives");
         builder.HasKey(o => o.Id);
         builder.Property(o => o.Title).HasMaxLength(255).IsRequired();
-        builder.Property(o => o.Progress).HasColumnType("numeric(5,2)").HasDefaultValue(0m);
-        builder.Property(o => o.ActualHours).HasColumnType("numeric(18,2)");
-        builder.Property(o => o.AllocatedHours).HasColumnType("numeric(18,2)").HasDefaultValue(0m);
-        builder.Property(o => o.CompletedHours).HasColumnType("numeric(18,2)").HasDefaultValue(0m);
+        builder.Property(o => o.Progress).HasColumnType("decimal(5,2)").HasDefaultValue(0m);
+        builder.Property(o => o.ActualHours).HasColumnType("decimal(18,2)");
+        builder.Property(o => o.AllocatedHours).HasColumnType("decimal(18,2)").HasDefaultValue(0m);
+        builder.Property(o => o.CompletedHours).HasColumnType("decimal(18,2)").HasDefaultValue(0m);
 
         builder.HasIndex(o => new { o.TenantId, o.ProjectId, o.ParentObjectiveId })
             .HasDatabaseName("ix_objectives_tenant_id_project_id_parent_objective_id");
@@ -25,7 +25,7 @@ public class ObjectiveConfiguration : IEntityTypeConfiguration<Objective>
             .HasDatabaseName("ix_objectives_tenant_id_reporting_manager_id");
         builder.HasIndex(o => new { o.TenantId, o.ProjectId })
             .IsUnique()
-            .HasFilter("is_default = true")
+            .HasFilter("is_default = 1")
             .HasDatabaseName("ix_objectives_one_default_per_project");
         builder.HasIndex(o => new { o.TenantId, o.ProjectId, o.IsAchieved })
             .HasDatabaseName("ix_objectives_tenant_id_project_id_is_achieved");

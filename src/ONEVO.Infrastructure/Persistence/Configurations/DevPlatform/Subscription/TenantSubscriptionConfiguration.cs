@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using ONEVO.Domain.Features.SharedPlatform.Entities;
+using ONEVO.Infrastructure.Persistence.SqlServer;
 
 namespace ONEVO.Infrastructure.Persistence.Configurations.DevPlatform.Subscription;
 
@@ -40,7 +41,7 @@ public class TenantSubscriptionConfiguration : IEntityTypeConfiguration<TenantSu
         builder.Property(t => t.MaintenanceRate).HasColumnName("maintenance_rate").HasColumnType("decimal(5,2)");
         builder.Property(t => t.MaintenanceAmount).HasColumnName("maintenance_amount").HasColumnType("decimal(14,2)");
         builder.Property(t => t.CompanySizeRange).HasColumnName("company_size_range").HasMaxLength(30).IsRequired();
-        builder.Property(t => t.SelectedModulesJson).HasColumnName("selected_modules").HasColumnType("jsonb").IsRequired();
+        builder.Property(t => t.SelectedModulesJson).HasColumnName("selected_modules").IsJsonColumn().IsRequired();
         builder.Property(t => t.CalculatedMonthlyPrice).HasColumnName("calculated_monthly_price").HasColumnType("decimal(10,2)");
         builder.Property(t => t.CalculatedAnnualPrice).HasColumnName("calculated_annual_price").HasColumnType("decimal(10,2)");
         builder.Property(t => t.OverrideMonthlyPrice).HasColumnName("override_monthly_price").HasColumnType("decimal(10,2)");

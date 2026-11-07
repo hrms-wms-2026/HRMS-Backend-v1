@@ -19,7 +19,7 @@ public sealed class TenantIntegrationCredentialConfiguration : IEntityTypeConfig
         builder.Property(x => x.IntegrationKey).HasMaxLength(50).IsRequired();
         builder.Property(x => x.AccessTokenEncrypted);
         builder.Property(x => x.RefreshTokenEncrypted);
-        builder.Property(x => x.ScopesGranted).HasColumnType("text[]").IsRequired();
+        builder.Property(x => x.ScopesGranted).IsRequired();
         builder.Property(x => x.ExternalAccountId).HasMaxLength(200);
         builder.Property(x => x.ExternalAccountName).HasMaxLength(200);
         builder.Property(x => x.Status).HasMaxLength(20).IsRequired();

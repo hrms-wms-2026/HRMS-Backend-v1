@@ -53,7 +53,7 @@ public class LeaveLedgerArchitectureTests
         var request = context.Model.FindEntityType(typeof(LeaveRequest))!;
 
         Assert.True(request.FindProperty(nameof(LeaveRequest.LeavePolicyVersionId))!.IsNullable);
-        Assert.Equal("numeric(8,2)", request.FindProperty(nameof(LeaveRequest.ExceedsBalanceByHours))!.GetColumnType());
+        Assert.Equal("decimal(8,2)", request.FindProperty(nameof(LeaveRequest.ExceedsBalanceByHours))!.GetColumnType());
     }
 
     private static ApplicationDbContext CreateModelInspectionContext()

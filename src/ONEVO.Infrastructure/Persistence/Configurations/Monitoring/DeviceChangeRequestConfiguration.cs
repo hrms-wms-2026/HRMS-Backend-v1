@@ -14,7 +14,7 @@ public sealed class DeviceChangeRequestConfiguration : IEntityTypeConfiguration<
         builder.Property(x => x.NewDeviceName).HasMaxLength(256).IsRequired();
         builder.Property(x => x.NewDeviceOs).HasMaxLength(64).IsRequired();
         builder.Property(x => x.Status).HasMaxLength(20).IsRequired().IsConcurrencyToken();
-        builder.Property(x => x.ReviewComment).HasColumnType("text");
+        builder.Property(x => x.ReviewComment);
 
         builder.HasIndex(x => new { x.TenantId, x.Status })
             .HasDatabaseName("ix_device_change_requests_tenant_status");

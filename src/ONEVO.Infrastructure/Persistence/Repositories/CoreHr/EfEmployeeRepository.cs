@@ -8,6 +8,7 @@ using ONEVO.Application.Features.Monitoring.ActivityMonitoring.ServiceInterfaces
 using ONEVO.Application.Features.Monitoring.CheckIn.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.Notifications.RepositoryInterfaces;
 using ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces;
+using ONEVO.Infrastructure.Persistence.SqlServer;
 
 using ONEVO.Application.Features.TimeAttendance.Services;
 using ONEVO.Domain.Features.TimeAttendance.Alerts;
@@ -879,15 +880,15 @@ public class EfEmployeeRepository : IEmployeeRepository
     public async Task<EmployeeEntity?> GetTrackedByIdAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default)
         => await _db.Employees.FirstOrDefaultAsync(e => e.TenantId == tenantId && e.Id == employeeId, ct);
 
-    public async Task<uint?> GetVersionTokenAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default)
+    public async Task<ulong?> GetVersionTokenAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default)
         => await _db.Employees.AsNoTracking()
             .Where(e => e.TenantId == tenantId && e.Id == employeeId)
-            .Select(e => EF.Property<uint?>(e, "xmin"))
+            .Select(e => EF.Property<ulong?>(e, "xmin"))
             .FirstOrDefaultAsync(ct);
 
     public void SetExpectedVersion(EmployeeEntity employee, string expectedVersion)
     {
-        if (!uint.TryParse(expectedVersion, out var expectedXmin))
+        if (!RowVersionToken.TryParse(expectedVersion, out var expectedXmin))
         {
             return;
         }

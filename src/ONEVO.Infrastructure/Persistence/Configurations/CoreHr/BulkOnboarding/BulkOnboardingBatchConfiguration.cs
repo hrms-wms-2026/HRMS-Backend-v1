@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using ONEVO.Domain.Features.CoreHr.Entities;
+using ONEVO.Infrastructure.Persistence.SqlServer;
 
 namespace ONEVO.Infrastructure.Persistence.Configurations.CoreHr.BulkOnboarding;
 
@@ -11,14 +12,14 @@ public class BulkOnboardingBatchConfiguration : IEntityTypeConfiguration<BulkOnb
         builder.ToTable("bulk_onboarding_batches");
         builder.HasKey(b => b.Id);
 
-        builder.Property<uint>("xmin")
-            .HasColumnName("xmin").HasColumnType("xid")
-            .ValueGeneratedOnAddOrUpdate().IsConcurrencyToken();
+        builder.Property<ulong>("xmin")
+            .HasColumnName("xmin")
+            .IsRowVersion();
 
         builder.Property(b => b.DefaultEmploymentType).HasMaxLength(30);
-        builder.Property(b => b.ColumnMappingJson).HasColumnType("jsonb");
-        builder.Property(b => b.SelectedDraftIdsJson).HasColumnType("jsonb");
-        builder.Property(b => b.ResolutionStateJson).HasColumnType("jsonb");
+        builder.Property(b => b.ColumnMappingJson).IsJsonColumn();
+        builder.Property(b => b.SelectedDraftIdsJson).IsJsonColumn();
+        builder.Property(b => b.ResolutionStateJson).IsJsonColumn();
         builder.Property(b => b.OriginalFileName).HasMaxLength(255).IsRequired();
         builder.Property(b => b.Status).HasMaxLength(30).IsRequired();
 

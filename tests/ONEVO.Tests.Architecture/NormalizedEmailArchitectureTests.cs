@@ -26,7 +26,7 @@ public sealed class NormalizedEmailArchitectureTests
             "InfrastructureModule", "User", "UserConfiguration.cs");
 
         source.Should().Contain("normalized_email");
-        source.Should().Contain("lower(trim(email))");
+        source.Should().Contain("LOWER(LTRIM(RTRIM([email])))");
         source.Should().Contain("stored: true");
     }
 

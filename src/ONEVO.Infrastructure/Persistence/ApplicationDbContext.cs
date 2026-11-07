@@ -400,6 +400,13 @@ public class ApplicationDbContext : DbContext
     {
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(ApplicationDbContext).Assembly);
 
+        // Case-sensitive so = keeps PostgreSQL behaviour on hashes, tokens and unique indexes.
+        modelBuilder.UseCollation("Latin1_General_100_CS_AS_SC");
+        if (Database.IsSqlServer())
+        {
+            ONEVO.Infrastructure.Persistence.SqlServer.JsonColumnConvention.Apply(modelBuilder);
+        }
+
         var dbContextConst = Expression.Constant(this, typeof(ApplicationDbContext));
         var isTenantFilterActiveProperty = typeof(ApplicationDbContext).GetProperty(nameof(IsTenantFilterActive))!;
         var currentTenantIdProperty = typeof(ApplicationDbContext).GetProperty(nameof(CurrentTenantId))!;

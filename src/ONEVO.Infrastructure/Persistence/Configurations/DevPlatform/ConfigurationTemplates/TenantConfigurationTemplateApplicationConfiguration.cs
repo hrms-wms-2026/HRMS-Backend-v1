@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using ONEVO.Domain.Features.DevPlatform.ConfigurationTemplates.Entities;
 using ONEVO.Domain.Features.DevPlatform.PlatformAccess.Entities;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
+using ONEVO.Infrastructure.Persistence.SqlServer;
 
 namespace ONEVO.Infrastructure.Persistence.Configurations.DevPlatform.ConfigurationTemplates;
 
@@ -22,9 +23,9 @@ public sealed class TenantConfigurationTemplateApplicationConfiguration
         builder.Property(a => a.ConfigurationTemplateId).HasColumnName("configuration_template_id").IsRequired();
         builder.Property(a => a.TemplateType).HasColumnName("template_type").HasMaxLength(50).IsRequired();
         builder.Property(a => a.AppliedVersion).HasColumnName("applied_version").IsRequired();
-        builder.Property(a => a.AppliedPayloadJson).HasColumnName("applied_payload_json").HasColumnType("jsonb").IsRequired();
-        builder.Property(a => a.CustomPayloadJson).HasColumnName("custom_payload_json").HasColumnType("jsonb");
-        builder.Property(a => a.WarningsJson).HasColumnName("warnings_json").HasColumnType("jsonb");
+        builder.Property(a => a.AppliedPayloadJson).HasColumnName("applied_payload_json").IsJsonColumn().IsRequired();
+        builder.Property(a => a.CustomPayloadJson).HasColumnName("custom_payload_json").IsJsonColumn();
+        builder.Property(a => a.WarningsJson).HasColumnName("warnings_json").IsJsonColumn();
         builder.Property(a => a.Status).HasColumnName("status").HasMaxLength(20).IsRequired();
         builder.Property(a => a.AppliedById).HasColumnName("applied_by_id").IsRequired();
         builder.Property(a => a.AppliedAt).HasColumnName("applied_at").IsRequired();

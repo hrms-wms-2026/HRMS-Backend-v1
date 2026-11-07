@@ -22,11 +22,9 @@ public class PaymentGatewayCredentialConfiguration : IEntityTypeConfiguration<Pa
 
         // Encrypted bytea columns - never returned by API
         builder.Property(c => c.SecretEncrypted)
-            .HasColumnType("bytea")
             .IsRequired();
 
-        builder.Property(c => c.WebhookSecretEncrypted)
-            .HasColumnType("bytea");
+        builder.Property(c => c.WebhookSecretEncrypted);
 
         builder.Property(c => c.EncryptionKeyVersion)
             .HasMaxLength(50)

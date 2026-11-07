@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using ONEVO.Domain.Features.Calendar.Entities;
+using ONEVO.Infrastructure.Persistence.SqlServer;
 
 namespace ONEVO.Infrastructure.Persistence.Configurations.Calendar;
 
@@ -23,7 +24,7 @@ public class CalendarEventConfiguration : IEntityTypeConfiguration<CalendarEvent
         builder.Property(e => e.OrganizerEmail).HasMaxLength(255);
         builder.Property(e => e.Location).HasMaxLength(500);
         builder.Property(e => e.MeetingLink).HasMaxLength(500);
-        builder.Property(e => e.ExternalAttendeesJson).HasColumnName("external_attendees").HasColumnType("jsonb");
+        builder.Property(e => e.ExternalAttendeesJson).HasColumnName("external_attendees").IsJsonColumn();
 
         builder.HasIndex(e => new { e.TenantId, e.StartDate, e.EndDate })
             .HasDatabaseName("ix_personal_calendar_events_tenant_id_start_date_end_date");
