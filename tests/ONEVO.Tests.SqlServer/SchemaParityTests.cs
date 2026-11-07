@@ -60,6 +60,33 @@ public sealed class SchemaParityTests(SqlServerFixture fixture)
         Assert.True(missing.Count == 0, string.Join(Environment.NewLine, missing));
     }
 
+    // legal_entities.address_json: left behind on PostgreSQL, no code uses it.
+    private static readonly string[] DroppedColumns = ["legal_entities.address_json"];
+
+    // Not on PostgreSQL: rowversion replaces xmin, and these back case-insensitive unique indexes.
+    private static readonly string[] AddedColumns =
+        ["xmin", "code_lower", "email_lower", "MigrationId", "ProductVersion"];
+
+    [Fact]
+    public async Task EveryPostgresColumn_ExistsOnSqlServer_AndNothingExtra()
+    {
+        var database = await fixture.CreateDatabaseAsync();
+        var expected = JsonNode.Parse(await File.ReadAllTextAsync(ReportPath()))!["columns"]!.AsArray()
+            .Select(c => $"{(string)c!["table"]!}.{(string)c["name"]!}")
+            .Where(c => !c.StartsWith("__EFMigrationsHistory.", StringComparison.Ordinal))
+            .ToHashSet(StringComparer.Ordinal);
+        await using var connection = new SqlConnection(database.Admin);
+        await connection.OpenAsync();
+        var actual = await NamesAsync(connection, """
+            SELECT t.name + '.' + c.name
+            FROM sys.columns c JOIN sys.tables t ON t.object_id = c.object_id
+            WHERE t.name <> '__EFMigrationsHistory'
+            """);
+
+        Assert.Empty(expected.Except(actual).Except(DroppedColumns));
+        Assert.Empty(actual.Except(expected).Where(c => !AddedColumns.Contains(c.Split('.')[1])));
+    }
+
     [Fact]
     public async Task TenantForeignKey_RejectsARowPointingAtAnotherTenantsParent()
     {
