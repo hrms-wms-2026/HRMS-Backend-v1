@@ -217,7 +217,7 @@ public sealed class MeetingNotifier : IMeetingNotifier
         if (participants.Count == 0 && guests.Count == 0)
             return;
         await _sender.SendMeetingLinkRemovedAsync(series.TenantId, series.Title, series.DtStart, series.Location, participants, guests,
-            await OrganizerNameAsync(series, ct), ct);
+            await OrganizerNameAsync(series, ct), ct, series.Timezone);
     }
 
     public async Task NotifyOrganizerAsync(MeetingSeries series, string noticeCode, string provider, CancellationToken ct)

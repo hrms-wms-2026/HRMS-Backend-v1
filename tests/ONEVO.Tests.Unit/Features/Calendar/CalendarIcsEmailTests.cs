@@ -88,7 +88,12 @@ public sealed class CalendarIcsEmailTests
             bstNine.AddHours(1), 7, "FREQ=WEEKLY", TimeZoneId: "Europe/London")), default);
 
         sent.Single().IcsContent.Should().Contain("DTSTART;TZID=Europe/London:20261019T090000");
+        sent.Single().TimeZoneId.Should().Be("Europe/London");
     }
+
+    [Fact]
+    public void An_events_ics_identity_carries_its_time_zone()
+        => CalendarEventIcs.For(EventId, Start, null, Start, "Asia/Colombo").TimeZoneId.Should().Be("Asia/Colombo");
 
     [Fact]
     public void The_sequence_only_grows_with_time()

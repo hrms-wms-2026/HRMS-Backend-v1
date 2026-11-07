@@ -62,7 +62,7 @@ public sealed class CreateCalendarEventCommandHandler(
                 Color = request.Color, Recurrence = request.Recurrence, RecurrenceRule = request.RecurrenceRule
             };
             await events.AddAsync(calendarEvent, innerCt);
-            var ics = CalendarEventIcs.For(calendarEvent.Id, calendarEvent.EndDate, calendarEvent.RecurrenceRule, DateTimeOffset.UtcNow);
+            var ics = CalendarEventIcs.For(calendarEvent.Id, calendarEvent.EndDate, calendarEvent.RecurrenceRule, DateTimeOffset.UtcNow, calendarEvent.Timezone);
 
             if (request.ParticipantEmployeeIds.Count > 0)
             {

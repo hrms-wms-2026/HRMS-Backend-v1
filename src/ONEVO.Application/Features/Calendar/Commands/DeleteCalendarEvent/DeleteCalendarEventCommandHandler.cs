@@ -76,7 +76,7 @@ public sealed class DeleteCalendarEventCommandHandler(
                     await notifications.NotifyEventCancelledAsync(tenantId, existing.Title, participantEmployeeIds, organizerName, innerCt);
                 // The cancellation email removes the entry from participants' and guests' own calendars (CANCEL .ics).
                 await notifications.EmailEventChangedAsync(tenantId, CalendarEventEmailKinds.Cancelled,
-                    CalendarEventIcs.For(existing.Id, existing.EndDate, existing.RecurrenceRule, DateTimeOffset.UtcNow),
+                    CalendarEventIcs.For(existing.Id, existing.EndDate, existing.RecurrenceRule, DateTimeOffset.UtcNow, existing.Timezone),
                     existing.Title, existing.StartDate, existing.Location, null, participantEmployeeIds, guestEmails, organizerName, innerCt);
             }
             await notifications.QueueIncidentEvaluationAsync(tenantId, participantEmployeeIds, innerCt);

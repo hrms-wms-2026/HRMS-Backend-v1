@@ -12,8 +12,8 @@ public sealed record CalendarEventIcs(
     string? TimeZoneId = null)
 {
     /// <summary>The .ics identity of an event as it is now: SEQUENCE from the current time, so it grows with every email.</summary>
-    public static CalendarEventIcs For(Guid eventId, DateTimeOffset endUtc, string? recurrenceRule, DateTimeOffset now)
-        => new(eventId, endUtc, CalendarIcs.Sequence(now), string.IsNullOrWhiteSpace(recurrenceRule) ? null : recurrenceRule);
+    public static CalendarEventIcs For(Guid eventId, DateTimeOffset endUtc, string? recurrenceRule, DateTimeOffset now, string? timeZoneId = null)
+        => new(eventId, endUtc, CalendarIcs.Sequence(now), string.IsNullOrWhiteSpace(recurrenceRule) ? null : recurrenceRule, TimeZoneId: timeZoneId);
 }
 
 /// <summary>The kinds of calendar emails. Invite/updated carry an iCalendar REQUEST; cancelled/removed a CANCEL.</summary>

@@ -373,6 +373,44 @@ public sealed class EmailTemplateRendererTests
     }
 
     [Fact]
+    public void RenderCalendarEvent_ShowsTheStartInTheEventsTimeZone()
+    {
+        var renderer = new EmailTemplateRenderer(Options.Create(new EmailOptions()));
+
+        var rendered = renderer.Render("calendar_event_invite", new
+        {
+            recipientName = "Guest",
+            eventTitle = "Sync",
+            startDateUtc = "2026-11-06T12:15:00+00:00",
+            timeZoneId = "Asia/Colombo",
+            organizerName = "Dapi Owner"
+        });
+
+        rendered.HtmlBody.Should().Contain("Friday, November 6, 2026 at 5:45 PM (Asia/Colombo)").And.NotContain("UTC");
+        rendered.TextBody.Should().Contain("Friday, November 6, 2026 at 5:45 PM (Asia/Colombo)").And.NotContain("UTC");
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("Not/AZone")]
+    public void RenderCalendarEvent_WithoutAKnownTimeZone_StaysInUtc(string? timeZoneId)
+    {
+        var renderer = new EmailTemplateRenderer(Options.Create(new EmailOptions()));
+
+        var rendered = renderer.Render("calendar_event_invite", new
+        {
+            recipientName = "Guest",
+            eventTitle = "Sync",
+            startDateUtc = "2026-11-06T12:15:00+00:00",
+            timeZoneId,
+            organizerName = "Dapi Owner"
+        });
+
+        rendered.HtmlBody.Should().Contain("Friday, November 6, 2026 at 12:15 PM UTC");
+    }
+
+    [Fact]
     public void RenderCalendarEventInvite_WithMeetingLink_IncludesJoinUrlInBothBodies()
     {
         var renderer = new EmailTemplateRenderer(Options.Create(new EmailOptions()));

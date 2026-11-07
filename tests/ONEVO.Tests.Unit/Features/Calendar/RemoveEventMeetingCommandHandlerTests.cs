@@ -95,7 +95,7 @@ public sealed class RemoveEventMeetingCommandHandlerTests
         _notifications.Verify(n => n.SendMeetingLinkRemovedAsync(
             TenantId, "Review", _evt.StartDate, null, It.IsAny<IReadOnlyList<CalendarParticipantRecipient>>(),
             It.Is<IReadOnlyList<CalendarGuestRecipient>>(g => g.Single().EmailKey == $"link-removed:{_row.Id}:2:{guest.Id}"),
-            "Ada Owner", It.IsAny<CancellationToken>()), Times.Once);
+            "Ada Owner", It.IsAny<CancellationToken>(), It.IsAny<string?>()), Times.Once);
     }
 
     [Fact]
