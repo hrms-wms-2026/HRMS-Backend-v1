@@ -185,7 +185,17 @@ public class ConfigurationStartupValidator : IHostedService
     }
 
     public static bool UsesAdminLogin(string connectionString)
-        => string.Equals(new SqlConnectionStringBuilder(connectionString).UserID, "sa", StringComparison.OrdinalIgnoreCase);
+    {
+        try
+        {
+            return string.Equals(new SqlConnectionStringBuilder(connectionString).UserID, "sa", StringComparison.OrdinalIgnoreCase);
+        }
+        catch (ArgumentException)
+        {
+            // Not a SQL Server connection string. Connecting reports that; a warning must not.
+            return false;
+        }
+    }
 
     private static bool IsMissingOrPlaceholder(string? value)
     {

@@ -183,7 +183,7 @@ public sealed class LocalDatabaseRuntimeArchitectureTests
         Assert.DoesNotContain(".env.example", gitignore);
 
         var template = File.ReadAllText(Path.Combine(root, ".env.example"));
-        Assert.Contains("ONEVO_DB_ADMIN_PASSWORD=<local-postgres-admin-password>", template, StringComparison.Ordinal);
+        Assert.Contains("ONEVO_DB_ADMIN_PASSWORD=<local-sqlserver-admin-password>", template, StringComparison.Ordinal);
         Assert.Contains("ONEVO_DB_APP_PASSWORD=<local-runtime-password>", template, StringComparison.Ordinal);
         Assert.Contains("ONEVO_DB_MIGRATOR_PASSWORD=<local-migration-password>", template, StringComparison.Ordinal);
         Assert.DoesNotMatch(new Regex("^ConnectionStrings__.*=", RegexOptions.Multiline), template);

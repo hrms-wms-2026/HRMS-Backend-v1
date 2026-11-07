@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
@@ -6473,7 +6473,7 @@ namespace ONEVO.Infrastructure.Migrations
                 table: "access_grant_requests",
                 columns: new[] { "tenant_id", "onboarding_draft_id", "target_position_id", "position_access_template_id" },
                 unique: true,
-                filter: "approval_status = 'Pending'");
+                filter: "approval_status = 'Pending' AND onboarding_draft_id IS NOT NULL");
 
             migrationBuilder.CreateIndex(
                 name: "ix_access_grant_requests_user_id",
@@ -6747,7 +6747,7 @@ namespace ONEVO.Infrastructure.Migrations
                 table: "calendar_event_meeting_attendances",
                 columns: new[] { "attendance_session_id", "participant_key", "joined_at" },
                 unique: true,
-                filter: "attendance_session_id IS NOT NULL");
+                filter: "attendance_session_id IS NOT NULL AND participant_key IS NOT NULL");
 
             migrationBuilder.CreateIndex(
                 name: "ix_calendar_event_meetings_one_per_event",
@@ -7821,14 +7821,14 @@ namespace ONEVO.Infrastructure.Migrations
                 table: "management_coverage_records",
                 columns: new[] { "tenant_id", "legal_entity_id", "covered_department_id", "owner_order" },
                 unique: true,
-                filter: "covered_target_type = 'Department' AND status = 'active'");
+                filter: "covered_target_type = 'Department' AND status = 'active' AND covered_department_id IS NOT NULL");
 
             migrationBuilder.CreateIndex(
                 name: "ix_management_coverage_records_active_position_order",
                 table: "management_coverage_records",
                 columns: new[] { "tenant_id", "legal_entity_id", "covered_position_id", "owner_order" },
                 unique: true,
-                filter: "covered_target_type = 'Position' AND status = 'active'");
+                filter: "covered_target_type = 'Position' AND status = 'active' AND covered_position_id IS NOT NULL");
 
             migrationBuilder.CreateIndex(
                 name: "ix_management_coverage_records_covered_department_id",
@@ -7928,7 +7928,7 @@ namespace ONEVO.Infrastructure.Migrations
                 table: "meeting_occurrence_attendees",
                 columns: new[] { "occurrence_task_id", "employee_id" },
                 unique: true,
-                filter: "attendee_kind = 'employee'");
+                filter: "attendee_kind = 'employee' AND employee_id IS NOT NULL");
 
             migrationBuilder.CreateIndex(
                 name: "ix_meeting_occurrence_suppressions_moved_to",

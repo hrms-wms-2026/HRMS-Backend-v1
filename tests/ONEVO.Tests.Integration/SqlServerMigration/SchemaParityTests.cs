@@ -87,6 +87,50 @@ public sealed class SchemaParityTests(SqlServerFixture fixture)
         Assert.Empty(actual.Except(expected).Where(c => !AddedColumns.Contains(c.Split('.')[1])));
     }
 
+    /// <summary>
+    /// PostgreSQL treats NULL keys as distinct in a unique index, SQL Server as equal. So a nullable
+    /// key must be filtered out, or a second row with a NULL key is wrongly rejected. Only indexes
+    /// listed below may keep a nullable key.
+    /// </summary>
+    [Fact]
+    public async Task UniqueIndexes_KeepNullKeysDistinct_AsOnPostgres()
+    {
+        string[] allowed =
+        [
+            // NULLS NOT DISTINCT on PostgreSQL, so SQL Server already behaves the same.
+            "ux_attendance_alerts_tenant_employee_date_signal_source",
+            "ux_wm_monitor_alerts_open_key",
+            // Computed columns reported as nullable, whose source the column, filter or a check keeps non-null.
+            "ix_users_tenant_id_normalized_email",
+            "ux_departments_tenant_legal_entity_code_lower",
+            "ux_meeting_occurrence_attendees_guest_email",
+        ];
+        var database = await fixture.CreateDatabaseAsync();
+        await using var connection = new SqlConnection(database.Admin);
+        await connection.OpenAsync();
+        await using var command = new SqlCommand("""
+            SELECT i.name, c.name
+            FROM sys.indexes i
+            JOIN sys.index_columns ic ON ic.object_id = i.object_id AND ic.index_id = i.index_id AND ic.is_included_column = 0
+            JOIN sys.columns c ON c.object_id = ic.object_id AND c.column_id = ic.column_id
+            JOIN sys.tables t ON t.object_id = i.object_id
+            WHERE i.is_unique = 1 AND i.is_primary_key = 0 AND c.is_nullable = 1 AND t.name <> '__EFMigrationsHistory'
+              AND ISNULL(REPLACE(REPLACE(i.filter_definition, '[', ''), ']', ''), '') NOT LIKE '%' + c.name + ' IS NOT NULL%'
+            """, connection);
+
+        var nullableKeys = new List<string>();
+        await using var reader = await command.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            if (!allowed.Contains(reader.GetString(0)))
+            {
+                nullableKeys.Add($"{reader.GetString(0)}.{reader.GetString(1)}");
+            }
+        }
+
+        Assert.True(nullableKeys.Count == 0, string.Join(", ", nullableKeys));
+    }
+
     [Fact]
     public async Task TenantForeignKey_RejectsARowPointingAtAnotherTenantsParent()
     {

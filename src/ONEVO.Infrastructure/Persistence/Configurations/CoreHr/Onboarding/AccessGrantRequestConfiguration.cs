@@ -27,7 +27,7 @@ public sealed class AccessGrantRequestConfiguration : IEntityTypeConfiguration<A
         // this request before the employee/user exist (see EmployeeId/UserId doc comment on the
         // entity), so the draft is the only stable correlation key while a request is pending.
         builder.HasIndex(x => new { x.TenantId, x.OnboardingDraftId, x.TargetPositionId, x.PositionAccessTemplateId })
-            .IsUnique().HasFilter("approval_status = 'Pending'");
+            .IsUnique().HasFilter("approval_status = 'Pending' AND onboarding_draft_id IS NOT NULL");
         builder.HasOne<ONEVO.Domain.Features.CoreHr.Entities.Employee>().WithMany().HasForeignKey(x => x.EmployeeId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne<ONEVO.Domain.Features.InfrastructureModule.Entities.User>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne<ONEVO.Domain.Features.CoreHr.Entities.OnboardingDraft>().WithMany().HasForeignKey(x => x.OnboardingDraftId).OnDelete(DeleteBehavior.Restrict);

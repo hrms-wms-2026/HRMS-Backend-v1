@@ -1673,7 +1673,7 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasIndex("AttendanceSessionId", "ParticipantKey", "JoinedAt")
                         .IsUnique()
                         .HasDatabaseName("ux_calendar_event_meeting_attendances_session_participant_joined")
-                        .HasFilter("attendance_session_id IS NOT NULL");
+                        .HasFilter("attendance_session_id IS NOT NULL AND participant_key IS NOT NULL");
 
                     b.ToTable("calendar_event_meeting_attendances", (string)null);
                 });
@@ -3032,7 +3032,7 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasIndex("TenantId", "OnboardingDraftId", "TargetPositionId", "PositionAccessTemplateId")
                         .IsUnique()
                         .HasDatabaseName("ix_access_grant_requests_tenant_id_onboarding_draft_id_target_position_id_position_access_template_id")
-                        .HasFilter("approval_status = 'Pending'");
+                        .HasFilter("approval_status = 'Pending' AND onboarding_draft_id IS NOT NULL");
 
                     b.ToTable("access_grant_requests", (string)null);
                 });
@@ -9641,12 +9641,12 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasIndex("TenantId", "LegalEntityId", "CoveredDepartmentId", "OwnerOrder")
                         .IsUnique()
                         .HasDatabaseName("ix_management_coverage_records_active_department_order")
-                        .HasFilter("covered_target_type = 'Department' AND status = 'active'");
+                        .HasFilter("covered_target_type = 'Department' AND status = 'active' AND covered_department_id IS NOT NULL");
 
                     b.HasIndex("TenantId", "LegalEntityId", "CoveredPositionId", "OwnerOrder")
                         .IsUnique()
                         .HasDatabaseName("ix_management_coverage_records_active_position_order")
-                        .HasFilter("covered_target_type = 'Position' AND status = 'active'");
+                        .HasFilter("covered_target_type = 'Position' AND status = 'active' AND covered_position_id IS NOT NULL");
 
                     b.ToTable("management_coverage_records", (string)null);
                 });
@@ -13924,7 +13924,7 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasIndex("OccurrenceTaskId", "EmployeeId")
                         .IsUnique()
                         .HasDatabaseName("ux_meeting_occurrence_attendees_employee")
-                        .HasFilter("attendee_kind = 'employee'");
+                        .HasFilter("attendee_kind = 'employee' AND employee_id IS NOT NULL");
 
                     b.HasIndex("TenantId", "EmployeeId")
                         .HasDatabaseName("ix_meeting_occurrence_attendees_tenant_id_employee_id");
