@@ -67,6 +67,7 @@ public sealed class SqlServerFixture : IAsyncLifetime
 
             await using var command = connection.CreateCommand();
             command.CommandText = batch;
+            command.CommandTimeout = 300; // CREATE DATABASE competes with the whole suite's restores.
             await command.ExecuteNonQueryAsync();
         }
     }

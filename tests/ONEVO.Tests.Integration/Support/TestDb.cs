@@ -119,6 +119,9 @@ public static class TestDb
 
     private sealed class AdminContextInterceptor : DbConnectionInterceptor
     {
+        // Under the full suite's restores the Docker host can stall trivial statements past 30 s.
+        private const int StalledHostTimeoutSeconds = 300;
+
         private const string SetUnlessTenant = """
             IF ISNULL(CAST(SESSION_CONTEXT(N'app.tenant_context_mode') AS nvarchar(16)), N'') <> N'tenant'
             BEGIN
@@ -131,6 +134,7 @@ public static class TestDb
         {
             using var command = connection.CreateCommand();
             command.CommandText = SetUnlessTenant;
+            command.CommandTimeout = StalledHostTimeoutSeconds;
             command.ExecuteNonQuery();
         }
 
@@ -139,6 +143,7 @@ public static class TestDb
         {
             await using var command = connection.CreateCommand();
             command.CommandText = SetUnlessTenant;
+            command.CommandTimeout = StalledHostTimeoutSeconds;
             await command.ExecuteNonQueryAsync(cancellationToken);
         }
     }
