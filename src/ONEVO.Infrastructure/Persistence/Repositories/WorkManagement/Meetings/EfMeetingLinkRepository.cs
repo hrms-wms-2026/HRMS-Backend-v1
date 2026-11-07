@@ -90,6 +90,8 @@ public sealed class EfMeetingLinkRepository : IMeetingLinkRepository
     {
         var from = fromStart.ToUniversalTime();
         var occurrences = _db.MeetingDetails.Where(d => d.TenantId == tenantId && d.SeriesId == seriesId && d.StartAt >= from);
+        // DATEADD takes a whole number; checkpoints are whole minutes.
+        var firstCheckpointSeconds = firstCheckpoint.TotalSeconds;
         if (linkId is null)
             await occurrences.ExecuteUpdateAsync(s => s
                 .SetProperty(d => d.CalendarEventMeetingId, (Guid?)null)
@@ -100,7 +102,7 @@ public sealed class EfMeetingLinkRepository : IMeetingLinkRepository
             await occurrences.ExecuteUpdateAsync(s => s
                 .SetProperty(d => d.CalendarEventMeetingId, linkId)
                 .SetProperty(d => d.AttendanceStatus, MeetingAttendanceStatuses.Pending)
-                .SetProperty(d => d.AttendanceNextCheckAt, d => (DateTimeOffset?)(d.EndAt + firstCheckpoint))
+                .SetProperty(d => d.AttendanceNextCheckAt, d => (DateTimeOffset?)d.EndAt.AddSeconds(firstCheckpointSeconds))
                 .SetProperty(d => d.AttendanceCheckpoint, 0)
                 .SetProperty(d => d.AttendanceFinalizedAt, (DateTimeOffset?)null), ct);
     }

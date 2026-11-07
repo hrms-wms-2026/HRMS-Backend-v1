@@ -61,20 +61,11 @@ public sealed class StorageQuotaIntegrationTests : IAsyncLifetime
             Currency = "USD"
         };
 
-        var module = new ModuleCatalogItem
-        {
-            ModuleKey = "core_hr",
-            Name = "Core HR",
-            Pillar = "hr",
-            Phase = "phase_1",
-            PricingUnit = "per_employee",
-            PricingReference = "[]",
-            AiTokenReference = "[]",
-            IsStorageConsuming = true,
-            IsActive = true,
-            StorageReference =
-                """[{"min_employees":51,"max_employees":200,"storage_gb":100}]"""
-        };
+        // core_hr is reference data; only its storage allowance is specific to this test.
+        var module = await db.ModuleCatalog.SingleAsync(m => m.ModuleKey == "core_hr");
+        module.IsStorageConsuming = true;
+        module.IsActive = true;
+        module.StorageReference = """[{"min_employees":51,"max_employees":200,"storage_gb":100}]""";
 
         // Only tenant A has an active subscription; tenant B has nothing.
         var subscriptionA = new TenantSubscription
@@ -100,7 +91,6 @@ public sealed class StorageQuotaIntegrationTests : IAsyncLifetime
 
         db.Tenants.AddRange(tenantA, tenantB);
         db.SubscriptionPlans.Add(plan);
-        db.ModuleCatalog.Add(module);
         db.TenantSubscriptions.Add(subscriptionA);
         db.TenantStorageStats.AddRange(statsA, statsB);
         await db.SaveChangesAsync();

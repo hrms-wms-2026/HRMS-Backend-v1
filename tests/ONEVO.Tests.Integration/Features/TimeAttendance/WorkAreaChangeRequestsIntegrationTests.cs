@@ -2,6 +2,7 @@ using FluentAssertions;
 using ONEVO.Tests.Integration.Support;
 using ONEVO.Tests.Integration.Tenancy;
 using Xunit;
+using ONEVO.Infrastructure.Persistence.Interceptors;
 
 namespace ONEVO.Tests.Integration.Features.TimeAttendance;
 
@@ -45,36 +46,40 @@ public sealed class WorkAreaChangeRequestsIntegrationTestsFixture : IAsyncLifeti
     {
         await using var connection = TestDb.CreateConnection(ConnectionString);
         await connection.OpenAsync();
-        await ExecuteAsync(connection, "EXEC sp_MSforeachtable 'ALTER TABLE ? NOCHECK CONSTRAINT ALL';");
+        await ExecuteAsync(connection, TestDb.DisableForeignKeysSql("work_area_change_requests"));
         try
         {
-            await using var command = connection.CreateCommand();
-            command.CommandText = """
-                INSERT INTO work_area_change_requests
-                    (id, tenant_id, employee_id, legal_entity_id, date,
-                     current_work_mode_id, current_work_mode_name, requested_work_mode_id, requested_work_mode_name,
-                     reason, status, requested_at)
-                VALUES (@p1, @p2, @p3, @p4, CURRENT_DATE, @p5, 'onsite', @p6, 'remote', 'fixture', 'pending', SYSDATETIMEOFFSET()),
-                       (@p7, @p8, @p9, @p10, CURRENT_DATE, @p11, 'onsite', @p12, 'remote', 'fixture', 'pending', SYSDATETIMEOFFSET());
-                """;
-            command.Parameters.AddPositional(rowA);
-            command.Parameters.AddPositional(tenantA);
-            command.Parameters.AddPositional(Guid.NewGuid());
-            command.Parameters.AddPositional(Guid.NewGuid());
-            command.Parameters.AddPositional(Guid.NewGuid());
-            command.Parameters.AddPositional(Guid.NewGuid());
-            command.Parameters.AddPositional(rowB);
-            command.Parameters.AddPositional(tenantB);
-            command.Parameters.AddPositional(Guid.NewGuid());
-            command.Parameters.AddPositional(Guid.NewGuid());
-            command.Parameters.AddPositional(Guid.NewGuid());
-            command.Parameters.AddPositional(Guid.NewGuid());
-            await command.ExecuteNonQueryAsync();
+            await InsertSyntheticRowAsync(connection, rowA, tenantA);
+            await InsertSyntheticRowAsync(connection, rowB, tenantB);
         }
         finally
         {
-            await ExecuteAsync(connection, "EXEC sp_MSforeachtable 'ALTER TABLE ? CHECK CONSTRAINT ALL';");
+            await ExecuteAsync(connection, TestDb.EnableForeignKeysSql("work_area_change_requests"));
         }
+    }
+
+    private static async Task InsertSyntheticRowAsync(SqlConnection connection, Guid id, Guid tenantId)
+    {
+        await using (var tenantMode = TenantRlsInterceptor.SetTenantCommand(connection, tenantId.ToString(), "tenant"))
+        {
+            await tenantMode.ExecuteNonQueryAsync();
+        }
+
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            INSERT INTO work_area_change_requests
+                (id, tenant_id, employee_id, legal_entity_id, date,
+                 current_work_mode_id, current_work_mode_name, requested_work_mode_id, requested_work_mode_name,
+                 reason, status, requested_at)
+            VALUES (@p1, @p2, @p3, @p4, CAST(SYSDATETIME() AS date), @p5, 'onsite', @p6, 'remote', 'fixture', 'pending', SYSDATETIMEOFFSET());
+            """;
+        command.Parameters.AddPositional(id);
+        command.Parameters.AddPositional(tenantId);
+        command.Parameters.AddPositional(Guid.NewGuid());
+        command.Parameters.AddPositional(Guid.NewGuid());
+        command.Parameters.AddPositional(Guid.NewGuid());
+        command.Parameters.AddPositional(Guid.NewGuid());
+        await command.ExecuteNonQueryAsync();
     }
 
     public SqlConnection OpenAppRoleConnection()
@@ -118,10 +123,9 @@ public sealed class WorkAreaChangeRequestsIntegrationTests : IClassFixture<WorkA
         await connection.OpenAsync();
 
         var columns = await QueryStringsAsync(connection, """
-            SELECT column_name
-            FROM information_schema.columns
-            WHERE table_schema = 'public' AND table_name = 'work_area_change_requests'
-            ORDER BY ordinal_position;
+            SELECT name FROM sys.columns
+            WHERE object_id = OBJECT_ID('work_area_change_requests')
+            ORDER BY column_id;
             """);
         columns.Should().Contain(new[]
         {
@@ -132,17 +136,15 @@ public sealed class WorkAreaChangeRequestsIntegrationTests : IClassFixture<WorkA
         });
 
         var restrictiveForeignKeys = await QueryStringsAsync(connection, """
-            SELECT conname
-            FROM pg_constraint
-            WHERE conrelid = 'work_area_change_requests'::regclass
-              AND contype = 'f' AND confdeltype = 'r';
+            SELECT name FROM sys.foreign_keys
+            WHERE parent_object_id = OBJECT_ID('work_area_change_requests')
+              AND delete_referential_action = 0;
             """);
         restrictiveForeignKeys.Should().HaveCount(5);
 
         var indexes = await QueryStringsAsync(connection, """
-            SELECT indexname
-            FROM pg_indexes
-            WHERE schemaname = 'public' AND tablename = 'work_area_change_requests';
+            SELECT name FROM sys.indexes
+            WHERE object_id = OBJECT_ID('work_area_change_requests') AND name IS NOT NULL;
             """);
         indexes.Should().Contain(new[]
         {
@@ -163,35 +165,26 @@ public sealed class WorkAreaChangeRequestsIntegrationTests : IClassFixture<WorkA
         await connection.OpenAsync();
 
         await using var rls = connection.CreateCommand();
-        rls.CommandText = """
-            SELECT relrowsecurity, relforcerowsecurity
-            FROM pg_class
-            WHERE oid = 'work_area_change_requests'::regclass;
-            """;
-        await using var reader = await rls.ExecuteReaderAsync();
-        (await reader.ReadAsync()).Should().BeTrue();
-        reader.GetBoolean(0).Should().BeTrue();
-        reader.GetBoolean(1).Should().BeTrue();
-        await reader.CloseAsync();
+        rls.CommandText = TestDb.HasRlsSql;
+        rls.Parameters.AddWithValue("@table", "dbo.work_area_change_requests");
+        ((bool)(await rls.ExecuteScalarAsync())!).Should().BeTrue();
 
         var policies = await QueryStringsAsync(connection, """
-            SELECT policyname
-            FROM pg_policies
-            WHERE schemaname = 'public' AND tablename = 'work_area_change_requests';
+            SELECT name FROM sys.security_policies
+            WHERE object_id = OBJECT_ID('rls.policy_work_area_change_requests');
             """);
-        policies.Should().Contain("tenant_isolation");
+        policies.Should().ContainSingle();
 
         await using var index = connection.CreateCommand();
         index.CommandText = """
-            SELECT indexdef
-            FROM pg_indexes
-            WHERE schemaname = 'public'
-              AND indexname = 'ux_work_area_change_requests_active_employee_date';
+            SELECT filter_definition FROM sys.indexes
+            WHERE object_id = OBJECT_ID('work_area_change_requests')
+              AND name = 'ux_work_area_change_requests_active_employee_date'
+              AND is_unique = 1 AND has_filter = 1;
             """;
-        var indexDefinition = (string?)await index.ExecuteScalarAsync();
-        indexDefinition.Should().Contain("UNIQUE");
-        indexDefinition.Should().Contain("pending");
-        indexDefinition.Should().Contain("approved");
+        var filter = (string?)await index.ExecuteScalarAsync();
+        filter.Should().Contain("pending");
+        filter.Should().Contain("approved");
     }
 
     [Fact]
@@ -206,15 +199,15 @@ public sealed class WorkAreaChangeRequestsIntegrationTests : IClassFixture<WorkA
         await using var connection = _fixture.OpenAppRoleConnection();
         await connection.OpenAsync();
         await SetTenantAsync(connection, tenantA);
-        (await ScalarAsync(connection, "SELECT count(*) FROM work_area_change_requests;"))
+        (await ScalarAsync(connection, "SELECT COUNT_BIG(*) FROM work_area_change_requests;"))
             .Should().Be(1L);
 
         await SetTenantAsync(connection, tenantA);
-        (await ScalarAsync(connection, "SELECT count(*) FROM work_area_change_requests WHERE id = @p1;", rowB))
+        (await ScalarAsync(connection, "SELECT COUNT_BIG(*) FROM work_area_change_requests WHERE id = @p1;", rowB))
             .Should().Be(0L);
 
         await ResetTenantAsync(connection);
-        (await ScalarAsync(connection, "SELECT count(*) FROM work_area_change_requests;"))
+        (await ScalarAsync(connection, "SELECT COUNT_BIG(*) FROM work_area_change_requests;"))
             .Should().Be(0L);
     }
 
@@ -232,10 +225,10 @@ public sealed class WorkAreaChangeRequestsIntegrationTests : IClassFixture<WorkA
         await SetTenantAsync(connection, tenantA);
 
         (await ScalarAsync(connection,
-            "UPDATE work_area_change_requests SET reason = 'blocked' WHERE id = @p1 RETURNING id;", rowB))
+            "UPDATE work_area_change_requests SET reason = 'blocked' OUTPUT inserted.id WHERE id = @p1;", rowB))
             .Should().BeNull();
         (await ScalarAsync(connection,
-            "DELETE FROM work_area_change_requests WHERE id = @p1 RETURNING id;", rowB))
+            "DELETE FROM work_area_change_requests OUTPUT deleted.id WHERE id = @p1;", rowB))
             .Should().BeNull();
 
         var insert = connection.CreateCommand();
@@ -244,9 +237,9 @@ public sealed class WorkAreaChangeRequestsIntegrationTests : IClassFixture<WorkA
                 (id, tenant_id, employee_id, legal_entity_id, date,
                  current_work_mode_id, current_work_mode_name, requested_work_mode_id, requested_work_mode_name,
                  reason, status, requested_at)
-            VALUES (@p1, @p2, @p3, @p4, CURRENT_DATE, @p5, 'onsite', @p6, 'remote', 'blocked', 'pending', SYSDATETIMEOFFSET());
+            VALUES (@p1, @p2, @p3, @p4, CAST(SYSDATETIME() AS date), @p5, 'onsite', @p6, 'remote', 'blocked', 'pending', SYSDATETIMEOFFSET());
             """;
-        insert.Parameters.AddPositional(rowB);
+        insert.Parameters.AddPositional(Guid.NewGuid());
         insert.Parameters.AddPositional(tenantB);
         insert.Parameters.AddPositional(Guid.NewGuid());
         insert.Parameters.AddPositional(Guid.NewGuid());
@@ -271,7 +264,7 @@ public sealed class WorkAreaChangeRequestsIntegrationTests : IClassFixture<WorkA
             InsertRequestAsync(connection, Guid.NewGuid(), tenantId, employeeId, legalEntityId, date, "pending"));
 
         (await ScalarAsync(connection,
-            "SELECT count(*) FROM work_area_change_requests WHERE tenant_id = @p1 AND employee_id = @p2;", tenantId, employeeId))
+            "SELECT COUNT_BIG(*) FROM work_area_change_requests WHERE tenant_id = @p1 AND employee_id = @p2;", tenantId, employeeId))
             .Should().Be(1L);
     }
 
@@ -356,7 +349,7 @@ public sealed class WorkAreaChangeRequestsIntegrationTests : IClassFixture<WorkA
         });
 
         (await ScalarAsync(connection,
-            "SELECT count(*) FROM work_area_change_requests WHERE tenant_id = @p1 AND employee_id = @p2;", tenantId, employeeId))
+            "SELECT COUNT_BIG(*) FROM work_area_change_requests WHERE tenant_id = @p1 AND employee_id = @p2;", tenantId, employeeId))
             .Should().Be(2L);
     }
 
@@ -377,7 +370,7 @@ public sealed class WorkAreaChangeRequestsIntegrationTests : IClassFixture<WorkA
         });
 
         (await ScalarAsync(connection,
-            "SELECT count(*) FROM work_area_change_requests WHERE tenant_id = @p1 AND employee_id = @p2;", tenantId, employeeId))
+            "SELECT COUNT_BIG(*) FROM work_area_change_requests WHERE tenant_id = @p1 AND employee_id = @p2;", tenantId, employeeId))
             .Should().Be(2L);
     }
 
@@ -399,10 +392,10 @@ public sealed class WorkAreaChangeRequestsIntegrationTests : IClassFixture<WorkA
         });
 
         (await ScalarAsync(connection,
-            "SELECT count(*) FROM work_area_change_requests WHERE tenant_id = @p1 AND employee_id = @p2;", tenantId, employeeId1))
+            "SELECT COUNT_BIG(*) FROM work_area_change_requests WHERE tenant_id = @p1 AND employee_id = @p2;", tenantId, employeeId1))
             .Should().Be(1L);
         (await ScalarAsync(connection,
-            "SELECT count(*) FROM work_area_change_requests WHERE tenant_id = @p1 AND employee_id = @p2;", tenantId, employeeId2))
+            "SELECT COUNT_BIG(*) FROM work_area_change_requests WHERE tenant_id = @p1 AND employee_id = @p2;", tenantId, employeeId2))
             .Should().Be(1L);
     }
 
@@ -426,11 +419,13 @@ public sealed class WorkAreaChangeRequestsIntegrationTests : IClassFixture<WorkA
             await InsertRequestAsync(connection, Guid.NewGuid(), tenantId2, employeeId, legalEntityId, date, "pending");
         });
 
+        await SetTenantAsync(connection, tenantId1);
         (await ScalarAsync(connection,
-            "SELECT count(*) FROM work_area_change_requests WHERE tenant_id = @p1 AND employee_id = @p2;", tenantId1, employeeId))
+            "SELECT COUNT_BIG(*) FROM work_area_change_requests WHERE tenant_id = @p1 AND employee_id = @p2;", tenantId1, employeeId))
             .Should().Be(1L);
+        await SetTenantAsync(connection, tenantId2);
         (await ScalarAsync(connection,
-            "SELECT count(*) FROM work_area_change_requests WHERE tenant_id = @p1 AND employee_id = @p2;", tenantId2, employeeId))
+            "SELECT COUNT_BIG(*) FROM work_area_change_requests WHERE tenant_id = @p1 AND employee_id = @p2;", tenantId2, employeeId))
             .Should().Be(1L);
     }
 
@@ -452,31 +447,33 @@ public sealed class WorkAreaChangeRequestsIntegrationTests : IClassFixture<WorkA
         });
 
         (await ScalarAsync(connection,
-            "SELECT count(*) FROM work_area_change_requests WHERE tenant_id = @p1 AND employee_id = @p2;", tenantId, employeeId))
+            "SELECT COUNT_BIG(*) FROM work_area_change_requests WHERE tenant_id = @p1 AND employee_id = @p2;", tenantId, employeeId))
             .Should().Be(2L);
     }
 
-    /// <summary>Runs action with FK-trigger enforcement suspended (session_replication_role =
-    /// replica), the same technique SeedSyntheticRowsAsync below uses, since these tests insert
-    /// synthetic employee_id/legal_entity_id values that don't exist in employees/legal_entities.
-    /// This does NOT suspend unique-index enforcement - only ordinary/FK triggers - so the
-    /// partial unique index under test is still checked exactly as it would be for a real insert.</summary>
+    /// <summary>Runs action with this table's foreign keys suspended, the same technique
+    /// SeedSyntheticRowsAsync uses, since these tests insert synthetic employee_id/legal_entity_id
+    /// values. Unique indexes stay on, so the filtered unique index under test is still checked
+    /// exactly as it would be for a real insert.</summary>
     private static async Task WithReplicaRoleAsync(SqlConnection connection, Func<Task> action)
     {
-        await ExecuteAsync(connection, "EXEC sp_MSforeachtable 'ALTER TABLE ? NOCHECK CONSTRAINT ALL';");
+        await ExecuteAsync(connection, TestDb.DisableForeignKeysSql("work_area_change_requests"));
         try
         {
             await action();
         }
         finally
         {
-            await ExecuteAsync(connection, "EXEC sp_MSforeachtable 'ALTER TABLE ? CHECK CONSTRAINT ALL';");
+            await ExecuteAsync(connection, TestDb.EnableForeignKeysSql("work_area_change_requests"));
         }
     }
 
     private static async Task InsertRequestAsync(
         SqlConnection connection, Guid id, Guid tenantId, Guid employeeId, Guid legalEntityId, DateOnly date, string status)
     {
+        // A strict tenant table: only its own tenant can write it, and the session stays there so
+        // the test can read the row back.
+        await SetTenantAsync(connection, tenantId);
         await using var command = connection.CreateCommand();
         command.CommandText = """
             INSERT INTO work_area_change_requests
@@ -497,11 +494,17 @@ public sealed class WorkAreaChangeRequestsIntegrationTests : IClassFixture<WorkA
     }
 
     private static async Task SetTenantAsync(SqlConnection connection, Guid tenantId)
-        => await ExecuteAsync(connection, "SELECT set_config('app.current_tenant_id', @p1, false);", tenantId.ToString());
+    {
+        await using var command = TenantRlsInterceptor.SetTenantCommand(connection, tenantId.ToString(), "tenant");
+        await command.ExecuteNonQueryAsync();
+    }
 
 
     private static async Task ResetTenantAsync(SqlConnection connection)
-        => await ExecuteAsync(connection, "RESET app.current_tenant_id;");
+    {
+        await using var command = TenantRlsInterceptor.SetTenantCommand(connection, string.Empty, "system");
+        await command.ExecuteNonQueryAsync();
+    }
 
 
     private static async Task ExecuteAsync(SqlConnection connection, string sql, params object[] values)

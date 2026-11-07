@@ -76,7 +76,6 @@ public sealed class EmployeesListIntegrationTestsFixture : IAsyncLifetime
         // catalog must be seeded explicitly for EmployeeAuthorityResolver's DB-backed checks
         // (employment_statuses inner join, IPermissionRepository.UserHasPermissionCodeAsync) to
         // see anything.
-        db.EmploymentStatuses.Add(new EmploymentStatus { Id = 1, Code = "active", Label = "Active" });
         var employeesReadPermission = new Permission
         {
             Id = Guid.NewGuid(),
@@ -488,7 +487,9 @@ public sealed class EmployeesListIntegrationTests : IClassFixture<EmployeesListI
         Guid selfUserId;
         await using (var seedDb = _fixture.CreateContext(_fixture.TenantAId, "employees-list-rls-a", useRestrictedRole: true))
         {
-            var self = await seedDb.Employees.AsNoTracking().Select(e => new { e.Id, e.UserId }).FirstAsync();
+            // A plain employee, not the company-wide caller, whose coverage would show everyone.
+            var self = await seedDb.Employees.AsNoTracking().Where(e => e.EmployeeNumber == "E-001")
+                .Select(e => new { e.Id, e.UserId }).SingleAsync();
             selfEmployeeId = self.Id;
             selfUserId = self.UserId;
         }

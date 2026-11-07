@@ -101,7 +101,7 @@ public sealed class UserIntegrationConnectionPersistenceTests : IAsyncLifetime
         await using var connection = TestDb.CreateConnection(_connectionString);
         await connection.OpenAsync();
 
-        await ExecuteAsync(connection, "EXEC sp_MSforeachtable 'ALTER TABLE ? NOCHECK CONSTRAINT ALL'");
+        await ExecuteAsync(connection, TestDb.DisableForeignKeysSql("user_integration_connections"));
         await ExecuteAsync(connection, "EXEC sp_set_session_context N'app.tenant_context_mode', N'admin'");
         await InsertConnectionAsync(connection, tenantA, "connected");
         await InsertConnectionAsync(connection, tenantB, "connected");
@@ -110,24 +110,20 @@ public sealed class UserIntegrationConnectionPersistenceTests : IAsyncLifetime
             () => InsertConnectionAsync(connection, Guid.NewGuid(), "invalid"));
         Assert.Equal(547, invalid.Number);
 
-        await ExecuteAsync(connection, "EXEC sp_MSforeachtable 'ALTER TABLE ? CHECK CONSTRAINT ALL'");
-        await ExecuteAsync(connection, "SELECT 1;");
-        await ExecuteAsync(
-            connection,
-            "SELECT 1;");
-        await ExecuteAsync(connection, "SET ROLE onevo_tenant_runtime");
+        await ExecuteAsync(connection, TestDb.EnableForeignKeysSql("user_integration_connections"));
+        await ExecuteAsync(connection, "EXECUTE AS USER = 'onevo_app'");
         await ExecuteAsync(connection, "EXEC sp_set_session_context N'app.tenant_context_mode', N'tenant'");
         await ExecuteAsync(
             connection,
             $"EXEC sp_set_session_context N'app.current_tenant_id', N'{tenantA}'");
 
         await using var countCommand = new SqlCommand(
-            "SELECT count(*) FROM user_integration_connections",
+            "SELECT COUNT_BIG(*) FROM user_integration_connections",
             connection);
         var visibleCount = (long)(await countCommand.ExecuteScalarAsync())!;
         Assert.Equal(1, visibleCount);
 
-        await ExecuteAsync(connection, "RESET ROLE");
+        await ExecuteAsync(connection, "REVERT");
     }
 
     private static async Task InsertConnectionAsync(

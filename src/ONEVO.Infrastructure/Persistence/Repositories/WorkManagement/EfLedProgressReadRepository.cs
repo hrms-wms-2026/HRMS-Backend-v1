@@ -291,8 +291,7 @@ public sealed class EfLedProgressReadRepository(ApplicationDbContext db) : ILedP
             return LedCompletionRows.Empty;
 
         var ids = objectiveIds.ToList();
-        // [first Monday 00:00 UTC, day after the last Sunday 00:00 UTC). Offset zero: Npgsql only
-        // accepts UTC DateTimeOffset parameters for timestamptz.
+        // [first Monday 00:00 UTC, day after the last Sunday 00:00 UTC).
         var spanStart = new DateTimeOffset(span.From.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero);
         var toExclusive = new DateTimeOffset(span.To.AddDays(1).ToDateTime(TimeOnly.MinValue), TimeSpan.Zero);
 
@@ -304,7 +303,7 @@ public sealed class EfLedProgressReadRepository(ApplicationDbContext db) : ILedP
             join s in db.TaskStatuses.AsNoTracking() on t.StatusId equals s.Id
             where s.MarksTaskComplete || t.ProgressPercent >= 100
             where t.CompletedAt == null || (t.CompletedAt >= spanStart && t.CompletedAt < toExclusive)
-            group t by t.CompletedAt == null ? (DateOnly?)null : DateOnly.FromDateTime(t.CompletedAt.Value.UtcDateTime) into g
+            group t by t.CompletedAt == null ? (DateOnly?)null : DateOnly.FromDateTime(EF.Functions.AtTimeZone(t.CompletedAt.Value, "UTC").Date) into g
             select new { Day = g.Key, Hours = g.Sum(x => x.EstimatedHours ?? 0m), Count = g.Count() }
         ).ToListAsync(ct);
 

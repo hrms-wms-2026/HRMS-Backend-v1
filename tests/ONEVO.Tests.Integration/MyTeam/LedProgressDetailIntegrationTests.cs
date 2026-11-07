@@ -198,8 +198,9 @@ public sealed class LedProgressDetailIntegrationTests
         // Recompute with the trigger's own function so the comparison does not depend on the order
         // EF happened to batch the seed INSERTs in (a task row inserted before its objective or
         // status row is summarised against a missing row).
+        var objectiveIds = System.Text.Json.JsonSerializer.Serialize(new[] { new { id = s.ModuleId }, new { id = s.SubId } });
         await db.Database.ExecuteSqlInterpolatedAsync(
-            $"SELECT wm_refresh_module_hour_summary({s.ModuleId}), wm_refresh_module_hour_summary({s.SubId})");
+            $"EXEC dbo.wm_refresh_module_hour_summary @objective_ids = {objectiveIds}");
         var summaries = await new EfModuleHourSummaryRepository(db)
             .ListByObjectiveIdsAsync(s.Db.TenantId, new[] { s.ModuleId, s.SubId });
         var page = (await Employees(s, new GetLedEmployeeHoursQuery()));
@@ -222,7 +223,7 @@ public sealed class LedProgressDetailIntegrationTests
             // The schema currently allows one assignee per task (EnforceSingleTaskAssignee). The
             // contract still requires shared-task handling, so lift the index in this test's own
             // cloned database only, to exercise the aggregation SQL with two assignees.
-            await db.Database.ExecuteSqlRawAsync("DROP INDEX IF EXISTS ix_task_assignments_one_per_task");
+            await db.Database.ExecuteSqlRawAsync("DROP INDEX IF EXISTS ix_task_assignments_one_per_task ON task_assignments");
             db.TaskAssignments.Add(new TaskAssignment
             {
                 Id = Guid.NewGuid(), TaskId = s.Tasks["t3"], EmployeeId = s.AliceId, UserId = Guid.NewGuid(),

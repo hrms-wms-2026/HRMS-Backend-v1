@@ -19,6 +19,34 @@ public static class TestDb
     public static SqlParameter AddPositional(this SqlParameterCollection parameters, object? value)
         => parameters.AddWithValue($"@p{parameters.Count + 1}", value ?? DBNull.Value);
 
+    /// <summary>
+    /// Suspends one table's foreign keys, for rows with synthetic ids. CHECK constraints and unique
+    /// indexes stay on, which is what the old session_replication_role = replica technique did.
+    /// </summary>
+    public static string DisableForeignKeysSql(string table) => ForeignKeysSql(table, "NOCHECK");
+
+    public static string EnableForeignKeysSql(string table) => ForeignKeysSql(table, "CHECK");
+
+    private static string ForeignKeysSql(string table, string action) => $"""
+        DECLARE @sql nvarchar(max) = N'';
+        SELECT @sql += N'ALTER TABLE dbo.{table} {action} CONSTRAINT ' + QUOTENAME(name) + N';'
+        FROM sys.foreign_keys WHERE parent_object_id = OBJECT_ID(N'dbo.{table}');
+        EXEC (@sql);
+        """;
+
+    /// <summary>Whether a table has an enabled security policy with both filter and block predicates.</summary>
+    public const string HasRlsSql = """
+        SELECT CAST(CASE WHEN EXISTS (
+            SELECT 1 FROM sys.security_predicates pr
+            JOIN sys.security_policies sp ON sp.object_id = pr.object_id
+            WHERE sp.is_enabled = 1 AND pr.target_object_id = OBJECT_ID(@table) AND pr.predicate_type = 0)
+        AND EXISTS (
+            SELECT 1 FROM sys.security_predicates pr
+            JOIN sys.security_policies sp ON sp.object_id = pr.object_id
+            WHERE sp.is_enabled = 1 AND pr.target_object_id = OBJECT_ID(@table) AND pr.predicate_type = 1)
+        THEN 1 ELSE 0 END AS bit)
+        """;
+
     public static bool IsAdmin(string connectionString)
         => string.Equals(new SqlConnectionStringBuilder(connectionString).UserID, "sa", StringComparison.OrdinalIgnoreCase);
 

@@ -197,6 +197,7 @@ public sealed class BulkOnboardingCreateDraftsTests : IAsyncLifetime
         services.AddScoped(_ => CreateContext(tenantContext));
         services.AddScoped<IBulkOnboardingBatchRepository, EfBulkOnboardingBatchRepository>();
         services.AddScoped<ITenantRepository, EfTenantRepository>();
+        services.AddScoped(_ => new TenantRlsInterceptor(tenantContext));
         services.AddScoped<ITenantContextSwitcher, TenantContextSwitcher>();
         services.AddScoped<IOnboardingDraftRepository, EfOnboardingDraftRepository>();
         services.AddScoped<IEmployeeRepository, EfEmployeeRepository>();

@@ -401,6 +401,12 @@ public class ApplicationDbContext : DbContext
             .AddInterceptors(_auditInterceptor, _softDeleteInterceptor, _domainEventInterceptor, MeetingIntegrityInterceptor.Instance);
     }
 
+    protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
+    {
+        configurationBuilder.Properties<DateTimeOffset>()
+            .HaveConversion<ONEVO.Infrastructure.Persistence.SqlServer.UtcDateTimeOffsetConverter>();
+    }
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(ApplicationDbContext).Assembly);

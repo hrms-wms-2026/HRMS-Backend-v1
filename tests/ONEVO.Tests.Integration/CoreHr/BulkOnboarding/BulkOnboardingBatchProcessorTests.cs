@@ -288,6 +288,7 @@ public sealed class BulkOnboardingBatchProcessorTests : IAsyncLifetime
         services.AddScoped(sp => CreateContext(sp.GetRequiredService<TenantContextAccessor>()));
         services.AddScoped<IBulkOnboardingBatchRepository, EfBulkOnboardingBatchRepository>();
         services.AddScoped<ITenantRepository, EfTenantRepository>();
+        services.AddScoped(sp => new TenantRlsInterceptor(sp.GetRequiredService<TenantContextAccessor>()));
         services.AddScoped<ITenantContextSwitcher, TenantContextSwitcher>();
         services.AddScoped<IOnboardingDraftRepository, EfOnboardingDraftRepository>();
         services.AddScoped<IEmployeeRepository, EfEmployeeRepository>();

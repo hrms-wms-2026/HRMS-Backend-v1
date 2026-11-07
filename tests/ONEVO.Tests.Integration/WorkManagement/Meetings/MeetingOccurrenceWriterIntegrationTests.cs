@@ -75,10 +75,10 @@ public sealed class MeetingOccurrenceWriterIntegrationTests
     }
 
     private static Task<long> OrphanMeetingTasksAsync(Fixture f) => CountAsync(f,
-        "SELECT count(*) FROM tasks t WHERE t.task_kind = 'meeting' AND NOT EXISTS (SELECT 1 FROM meeting_details d WHERE d.task_id = t.id)");
+        "SELECT COUNT_BIG(*) FROM tasks t WHERE t.task_kind = 'meeting' AND NOT EXISTS (SELECT 1 FROM meeting_details d WHERE d.task_id = t.id)");
 
     private static Task<long> DetailsAtAsync(Fixture f, Guid seriesId, DateTimeOffset originalStart) => CountAsync(f,
-        $"SELECT count(*) FROM meeting_details WHERE series_id = '{seriesId}' AND original_start = '{originalStart.UtcDateTime:O}'");
+        $"SELECT COUNT_BIG(*) FROM meeting_details WHERE series_id = '{seriesId}' AND original_start = '{originalStart.UtcDateTime:O}'");
 
     [Fact]
     public async Task RacingForASlotWhoseDeterministicIdIsHeld_LosersGetARetryableSignal_NoOrphan()
@@ -141,15 +141,15 @@ public sealed class MeetingOccurrenceWriterIntegrationTests
     }
 
     [Fact]
-    public async Task Constraint_IsNotDeferrable()
+    public async Task SeriesOriginalStart_HasAUniqueIndex()
     {
         var f = await SeedAsync();
         await using var connection = TestDb.CreateConnection(f.H.ConnectionString);
         await connection.OpenAsync();
         await using var command = new SqlCommand(
-            "SELECT condeferrable FROM pg_constraint WHERE conname = 'uq_meeting_details_series_original_start'", connection);
+            "SELECT is_unique FROM sys.indexes WHERE name = 'uq_meeting_details_series_original_start'", connection);
 
-        Assert.Equal(false, await command.ExecuteScalarAsync());
+        Assert.Equal(true, await command.ExecuteScalarAsync());
     }
 
     [Fact]
@@ -163,7 +163,7 @@ public sealed class MeetingOccurrenceWriterIntegrationTests
         Assert.Equal(MeetingOccurrenceIds.For(f.Series.Id, FirstStart), first);
         Assert.Null(second);
         Assert.Equal(1, await DetailsAtAsync(f, f.Series.Id, FirstStart));
-        Assert.Equal(1, await CountAsync(f, "SELECT count(*) FROM tasks WHERE task_kind = 'meeting'"));
+        Assert.Equal(1, await CountAsync(f, "SELECT COUNT_BIG(*) FROM tasks WHERE task_kind = 'meeting'"));
     }
 
     [Fact]
@@ -303,7 +303,7 @@ public sealed class MeetingOccurrenceWriterIntegrationTests
         await using var connection = TestDb.CreateConnection(f.H.ConnectionString);
         await connection.OpenAsync();
         await using var command = new SqlCommand(
-            "UPDATE meeting_details SET original_start = original_start + interval '1 day'", connection);
+            "UPDATE meeting_details SET original_start = DATEADD(day, 1, original_start)", connection);
         var error = await Assert.ThrowsAsync<SqlException>(() => command.ExecuteNonQueryAsync());
 
         Assert.Contains("trg_meeting_details_key_immutable", error.Message);
@@ -335,7 +335,7 @@ public sealed class MeetingOccurrenceWriterIntegrationTests
 
         Assert.Equal(1, await DetailsAtAsync(f, f.Series.Id, FirstStart));
         Assert.Equal(1, await DetailsAtAsync(f, f.Series.Id, FirstStart.AddDays(7)));
-        Assert.Equal(0, await CountAsync(f, $"SELECT count(*) FROM meeting_details WHERE series_id = '{target.Id}'"));
+        Assert.Equal(0, await CountAsync(f, $"SELECT COUNT_BIG(*) FROM meeting_details WHERE series_id = '{target.Id}'"));
     }
 
     [Fact]

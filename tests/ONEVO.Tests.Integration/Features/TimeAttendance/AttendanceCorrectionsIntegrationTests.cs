@@ -700,7 +700,7 @@ public sealed class AttendanceCorrectionsIntegrationTests : IClassFixture<Attend
 
         var indexNames = await db.Database
             .SqlQuery<string>(
-                $"SELECT indexname AS \"Value\" FROM pg_indexes WHERE tablename = 'attendance_corrections'")
+                $"SELECT name AS [Value] FROM sys.indexes WHERE object_id = OBJECT_ID('attendance_corrections') AND name IS NOT NULL")
             .ToListAsync();
 
         indexNames.Should().Contain(new[]

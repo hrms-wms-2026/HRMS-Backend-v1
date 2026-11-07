@@ -35,10 +35,10 @@ public sealed class PlannerSchemaIntegrationTests
 
         await using var connection = TestDb.CreateConnection(a.ConnectionString);
         await connection.OpenAsync();
-        await using (var role = new SqlCommand("SET ROLE onevo_app", connection))
+        await using (var role = new SqlCommand("EXECUTE AS USER = 'onevo_app'", connection))
             await role.ExecuteNonQueryAsync();
         await using (var mode = new SqlCommand(
-            $"EXEC sp_set_session_context N'app.tenant_context_mode', N'tenant', set_config('app.current_tenant_id', '{a.TenantId}', false)",
+            $"EXEC sp_set_session_context N'app.tenant_context_mode', N'tenant'; EXEC sp_set_session_context N'app.current_tenant_id', N'{a.TenantId}'",
             connection))
             await mode.ExecuteNonQueryAsync();
 

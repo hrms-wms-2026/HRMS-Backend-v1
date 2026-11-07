@@ -75,12 +75,12 @@ public sealed class PositionAssignmentRlsIntegrationTests : IAsyncLifetime
         await connection.OpenAsync();
 
         await using var command = connection.CreateCommand();
-        command.CommandText = "SELECT rolsuper, rolbypassrls FROM pg_roles WHERE rolname = current_user";
+        command.CommandText = "SELECT CAST(IS_SRVROLEMEMBER('sysadmin') AS bit), CAST(IS_ROLEMEMBER('db_owner') AS bit)";
         await using var reader = await command.ExecuteReaderAsync();
         (await reader.ReadAsync()).Should().BeTrue();
 
-        reader.GetBoolean(0).Should().BeFalse("the runtime test role must not be a PostgreSQL superuser");
-        reader.GetBoolean(1).Should().BeFalse("the runtime test role must not have BYPASSRLS");
+        reader.GetBoolean(0).Should().BeFalse("the runtime test role must not be sysadmin");
+        reader.GetBoolean(1).Should().BeFalse("the runtime test role must not be db_owner, which could drop a security policy");
     }
 
     [Fact]
@@ -143,7 +143,8 @@ public sealed class PositionAssignmentRlsIntegrationTests : IAsyncLifetime
         var act = async () => await secondRepo.SaveChangesAsync();
 
         await act.Should().ThrowAsync<DbUpdateException>(
-            "the partial unique index must reject a second active PrimaryEmployment assignment for the same employee");
+            "the partial unique index must reject a second active PrimaryEmployment assignment for the same employee")
+            .Where(e => ((SqlException)e.InnerException!).Number == 2601 || ((SqlException)e.InnerException!).Number == 2627);
     }
 
     private async Task CreateRestrictedRoleAsync()

@@ -80,7 +80,6 @@ public sealed class SwitchActiveCompanyIntegrationTests : IAsyncLifetime
             LastName = "User",
             IsActive = true,
         });
-        db.EmploymentStatuses.Add(new EmploymentStatus { Id = 1, Code = "active", Label = "Active" });
         db.Employees.AddRange(
             new EmployeeEntity
             {
