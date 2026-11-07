@@ -9,14 +9,12 @@ The API builds and runs on SQL Server, a clean database is created from migratio
 
 | Check | Result | Commit |
 |---|---|---|
-| API Release build | Succeeded | 2ff62f81 |
-| `ONEVO.Tests.Unit` | 7742 of 7742 passed | 2ff62f81 |
-| `ONEVO.Tests.Architecture` | 711 of 711 passed | 2ff62f81 |
-| `ONEVO.Tests.Integration` | 1200 of 1201 passed, 0 failed, 1 skipped | 342fdf3f |
+| API Release build | Succeeded | b42cdcc1 |
+| `ONEVO.Tests.Unit` | 7742 of 7742 passed | b42cdcc1 |
+| `ONEVO.Tests.Architecture` | 711 of 711 passed | b42cdcc1 |
+| `ONEVO.Tests.Integration` | 1207 of 1208 passed, 0 failed, 1 skipped | b42cdcc1 |
 
-The only commit between those two changes test harness timeouts in the integration project, so the unit and architecture results still apply.
-
-The final full run had no failures. The run before it had one: a 30-second timeout in test setup, on trivial statements, while the Docker host was stalled. Test setup timeouts were raised to 300 seconds, which changes no product code. In the final run all 65 test hosts seeded without error, but this is one clean run after the change, so a rare stall could still appear on a slower machine.
+The last two full runs had no failures. An earlier run had one: a 30-second timeout in test setup, on trivial statements, while the Docker host was stalled. Test setup timeouts were raised to 300 seconds, which changes no product code. In both clean runs all 65 test hosts seeded without error, but a rare stall could still appear on a slower machine.
 
 - `verify.ps1` could not run: `../dev-env` does not exist on this machine and `pwsh` is not installed. These are the equivalent raw `dotnet` commands, except that `find-unauthorized-endpoints.ps1` and `security-scan.ps1` did **not** run.
 - The skipped test is `NotificationReleaseSmokeTests.FirstSliceEvent_EndToEnd_AgainstAMigratedDatabase`. It runs only with `NOTIF_SMOKE=1` against a real database, and was opt-in before this work too.
@@ -38,11 +36,12 @@ The API refuses to start without the required collation, `READ_COMMITTED_SNAPSHO
 | SQL Server keeps any timestamp offset, where the PostgreSQL driver refused non-UTC | Date grouping and API output could shift | All `DateTimeOffset` values are now stored as UTC |
 | Five unique indexes treated NULL keys as equal | A second pending position move with no draft got a false 409 | Filters exclude NULL keys; `UniqueIndexes_KeepNullKeysDistinct_AsOnPostgres` covers every unique index |
 | The `sa` warning could never fire | The startup warning looked for a PostgreSQL role name | Now detects `sa` |
+| NULLs sorted the opposite way on list screens | Rows with an empty value moved to the other end of the list | Department, position, employee and checklist lists keep the PostgreSQL order; `NullSortOrderTests` covers them |
 | Vulnerable `System.Security.Cryptography.Pkcs` 9.0.4 | High severity advisory | Pinned to 10.0.14; no vulnerable packages remain |
 
 ## Behaviour differences to know about
 
-- **NULL sort order flips.** SQL Server sorts NULLs first on ascending sorts; PostgreSQL sorted them last. Confirmed on department `Code` and `UpdatedAt`, and the same pattern is in positions. Not fixed.
+- **Sort order of ids.** The position list sorts by `DepartmentId` and `ReportsToPositionId`, which are GUIDs. SQL Server orders GUIDs differently from PostgreSQL, so those two sorts give a different, equally arbitrary order among non-empty values.
 - **Meeting pairing rules run in the app.** The commit-time checks moved from deferred triggers to `MeetingIntegrityInterceptor`. Raw SQL that bypasses EF is not checked.
 - **Recursive department query.** A data cycle now errors at depth 100 instead of stopping quietly.
 - **`storage_key` is limited to 850 characters.** Three foreign keys became `NO ACTION`; see the cascade report.
@@ -85,7 +84,6 @@ These were rewritten, not retired: `RestrictedRole_CannotSelectUsersTableDirectl
 ## Open questions
 
 - Whether existing PostgreSQL data has to move. This work creates a clean database only; **no data migration exists**.
-- Should NULL sort order be restored on user-facing sorts?
 
 ## Appendix: decisions made during the work
 
@@ -115,4 +113,4 @@ Copied from the working ledger, in order. Each ends with what it costs if wrong.
 - Final: Ruling: reviewer finding on rollback restore stands as a correction, not a code change: production transactions are disposed, so RestoreOnRollback rarely fires, and after a failed in-transaction switch the next open reapplies the app's tenant context, the switched tenant. The earlier "fails closed" wording was wrong. Same as PostgreSQL, no cross-tenant read found — cost if wrong: a failed tray enrolment retry runs as the code's owning tenant.
 - Final: minor (deferred): TenantRlsInterceptor has no ConnectionClosingAsync, so async close does not clear context; safety rests on set-at-open and pool reset.
 - Final: minor (deferred): retry test does not cover a mid-transaction drop or deadlock retry.
-- Final: minor (deferred): NULL sort order flips on user sorts (departments Code/UpdatedAt, positions).
+- Final: NULL sort order was deferred, then fixed at the user's request on 2026-11-08.
