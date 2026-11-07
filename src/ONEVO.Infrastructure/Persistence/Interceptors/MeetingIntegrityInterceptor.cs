@@ -143,7 +143,16 @@ public sealed class MeetingIntegrityInterceptor : SaveChangesInterceptor, IDbTra
         }
         finally
         {
-            await SetContextAsync(connection, transaction, tenantId, mode, ct);
+            // Never cancellable, and fails closed: a connection must not outlive this in admin mode.
+            try
+            {
+                await SetContextAsync(connection, transaction, tenantId, mode, CancellationToken.None);
+            }
+            catch
+            {
+                await connection.CloseAsync();
+                throw;
+            }
         }
 
         if (violation is not null)
