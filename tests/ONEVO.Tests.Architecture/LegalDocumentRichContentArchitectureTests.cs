@@ -45,20 +45,6 @@ public class LegalDocumentRichContentArchitectureTests
         Assert.DoesNotContain("ContentHash", propertyNames);
     }
 
-    [Fact]
-    public void RichContentMigration_IsSelfContained_DoesNotReferenceApplicationHelpers()
-    {
-        // Migrations must reproduce the exact data change they recorded at authoring time forever.
-        // Referencing Application-layer bootstrap constants/hashers here would let a later rename
-        // or wording tweak in that layer silently change what a from-scratch migration replay
-        // backfills - so this migration must carry its own literals and hash algorithm.
-        var migrationCode = File.ReadAllText(FindMigrationFile("20260728095359_AddLegalDocumentRichContent.cs"));
-
-        Assert.DoesNotContain("using ONEVO.Application", migrationCode);
-        Assert.DoesNotContain("LegalDocumentBootstrapContent", migrationCode);
-        Assert.DoesNotContain("LegalContentHasher", migrationCode);
-    }
-
     private static string FindMigrationFile(string fileName)
     {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);

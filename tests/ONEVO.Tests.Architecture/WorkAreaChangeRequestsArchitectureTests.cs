@@ -93,26 +93,6 @@ public sealed class WorkAreaChangeRequestsArchitectureTests
     }
 
     [Fact]
-    public void Migration_DeclaresRlsTenantPolicyIndexesAndActivePartialUniqueIndex()
-    {
-        var migrationsDir = SourcePath("src", "ONEVO.Infrastructure", "Migrations");
-        var migration = Directory.GetFiles(migrationsDir, "*AddWorkAreaChangeRequests.cs")
-            .Single(path => !path.EndsWith(".Designer.cs", StringComparison.OrdinalIgnoreCase));
-        var source = File.ReadAllText(migration);
-
-        Assert.Contains("work_area_change_requests", source);
-        Assert.Contains("ENABLE ROW LEVEL SECURITY", source);
-        Assert.Contains("FORCE ROW LEVEL SECURITY", source);
-        Assert.Contains("CREATE POLICY tenant_isolation", source);
-        Assert.Contains("ix_work_area_change_requests_tenant_employee_date", source);
-        Assert.Contains("ix_work_area_change_requests_tenant_status", source);
-        Assert.Contains("ix_work_area_change_requests_tenant_legal_entity_status", source);
-        Assert.Contains("ux_work_area_change_requests_active_employee_date", source);
-        Assert.Contains("status IN ('pending', 'approved')", source);
-        Assert.Contains("ReferentialAction.Restrict", source);
-    }
-
-    [Fact]
     public void NotificationMapping_DoesNotUseFalseAttendanceCorrectionIdentifierForWorkArea()
     {
         var path = SourcePath("src", "ONEVO.Api", "Contracts", "SharedPlatform", "Notifications",

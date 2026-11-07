@@ -7,80 +7,11 @@ using Microsoft.Extensions.DependencyInjection;
 using ONEVO.Application.Features.Auth.Login.ServiceInterfaces;
 using ONEVO.Infrastructure;
 using ONEVO.Infrastructure.Identity.Mfa;
-#if LEGACY_MIGRATION_TESTS
-using ONEVO.Infrastructure.Migrations;
-#endif
 
 namespace ONEVO.Tests.Architecture;
 
 public sealed class MfaChallengeStorageArchitectureTests
 {
-#if LEGACY_MIGRATION_TESTS
-    [Fact]
-    public void AddMfaChallengesMigration_CreatesOnlyTheMfaChallengesTable()
-    {
-        var migration = (Migration)new AddMfaChallenges();
-
-        var createTableOperations = migration.UpOperations.OfType<CreateTableOperation>().ToList();
-        createTableOperations.Should().HaveCount(1);
-        createTableOperations[0].Name.Should().Be("mfa_challenges");
-    }
-
-    [Fact]
-    public void AddMfaChallengesMigration_TouchesNoOtherTable()
-    {
-        var migration = (Migration)new AddMfaChallenges();
-
-        foreach (var operation in migration.UpOperations)
-        {
-            var tableName = operation switch
-            {
-                CreateTableOperation createTable => createTable.Name,
-                CreateIndexOperation createIndex => createIndex.Table,
-                _ => null
-            };
-
-            tableName.Should().Be(
-                "mfa_challenges",
-                $"the AddMfaChallenges migration must only create mfa_challenges, but found {operation.GetType().Name}");
-        }
-    }
-
-    [Fact]
-    public void AddMfaChallengesMigration_HasNoRawChallengeColumn()
-    {
-        var migration = (Migration)new AddMfaChallenges();
-
-        var table = migration.UpOperations.OfType<CreateTableOperation>().Single();
-        var columnNames = table.Columns.Select(c => c.Name).ToList();
-
-        columnNames.Should().BeEquivalentTo(new[]
-        {
-            "id",
-            "tenant_id",
-            "user_id",
-            "challenge_hash",
-            "origin",
-            "failed_attempt_count",
-            "expires_at",
-            "consumed_at",
-            "created_at"
-        });
-    }
-
-    [Fact]
-    public void AddMfaChallengesMigration_DeclaresRequiredIndexes()
-    {
-        var migration = (Migration)new AddMfaChallenges();
-
-        var indexes = migration.UpOperations.OfType<CreateIndexOperation>().ToList();
-
-        indexes.Should().Contain(i => i.IsUnique && i.Columns.SequenceEqual(new[] { "challenge_hash" }));
-        indexes.Should().Contain(i => i.Columns.SequenceEqual(new[] { "tenant_id", "user_id", "expires_at" }));
-        indexes.Should().Contain(i => i.Columns.SequenceEqual(new[] { "expires_at" }));
-    }
-
-#endif
     [Fact]
     public void InfrastructureRegistration_UsesPostgresBackedMfaChallengeStoreAsNormalRuntime()
     {
@@ -190,30 +121,6 @@ public sealed class MfaChallengeStorageArchitectureTests
             "production source under 'src' must not use DateTimeOffsetToBinaryConverter");
     }
 
-#if LEGACY_MIGRATION_TESTS
-    [Fact]
-    public void InfrastructureAssembly_ContainsAddMfaChallengesMigration()
-    {
-        // The SQLite cleanup around the MFA challenge store must not introduce any new
-        // migration. The original guard pinned AddMfaChallenges as the newest migration,
-        // which broke as soon as unrelated later work (storage quota) legitimately added
-        // its own migration; assert the MFA migration exists instead.
-        var migrationIds = typeof(AddMfaChallenges).Assembly
-            .GetTypes()
-            .Where(t => !t.IsAbstract && typeof(Migration).IsAssignableFrom(t))
-            .Select(t => t.GetCustomAttribute<MigrationAttribute>())
-            .Where(a => a is not null)
-            .Select(a => a!.Id)
-            .OrderBy(id => id, StringComparer.Ordinal)
-            .ToList();
-
-        migrationIds.Should().NotBeEmpty();
-        migrationIds.Should().Contain(
-            id => id.EndsWith("_AddMfaChallenges", StringComparison.Ordinal),
-            "the MFA challenge store must keep its dedicated migration");
-    }
-
-#endif
     private static IReadOnlyList<string> ScanProductionSourceFor(string token)
     {
         var sourceRoot = FindProductionSourceRoot();

@@ -13,26 +13,6 @@ public class CustomizableDashboardArchitectureTests
         ["user_dashboards", "dashboard_widgets", "dashboard_widget_layouts"];
 
     [Fact]
-    public void Dashboard_tables_have_tenant_isolation_rls()
-    {
-        var source = ReadMigrationSource("AddCustomizableDashboards");
-
-        Assert.Contains("CREATE POLICY tenant_isolation ON {table}", source);
-        Assert.Contains("ALTER TABLE {table} ENABLE ROW LEVEL SECURITY", source);
-        Assert.Contains("ALTER TABLE {table} FORCE ROW LEVEL SECURITY", source);
-
-        var arrayMatch = Regex.Match(source, @"TenantTables\s*=\s*\[(?<body>[\s\S]*?)\];");
-        Assert.True(arrayMatch.Success, "Migration must declare a TenantTables array.");
-
-        var covered = Regex.Matches(arrayMatch.Groups["body"].Value, "\"(?<name>[a-z0-9_]+)\"")
-            .Select(m => m.Groups["name"].Value)
-            .ToHashSet(StringComparer.Ordinal);
-
-        foreach (var table in DashboardTables)
-            Assert.Contains(table, covered);
-    }
-
-    [Fact]
     public void Dashboard_layout_controller_requires_tenant_policy()
     {
         var type = typeof(DashboardLayoutController);

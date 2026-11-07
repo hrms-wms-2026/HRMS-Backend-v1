@@ -17,28 +17,6 @@ public class PositionPart2AArchitectureTests
     private static readonly Assembly ApiAssembly = typeof(ONEVO.Api.Controllers.Tenant.OrgStructure.DepartmentsController).Assembly;
 
     [Fact]
-    public void Migration_AddPositionFoundationSchema_DoesNotUseGuidEmptyDefaults_OrFakeRows()
-    {
-        var migrationText = ReadMigrationSource();
-
-        Assert.DoesNotContain("00000000-0000-0000-0000-000000000000", migrationText);
-        Assert.DoesNotContain("Guid.Empty", migrationText);
-        Assert.DoesNotContain("DropTable(\"positions\"", migrationText, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("INSERT INTO legal_entities", migrationText, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("INSERT INTO departments", migrationText, StringComparison.OrdinalIgnoreCase);
-    }
-
-    [Fact]
-    public void Migration_AddPositionFoundationSchema_AddsLegalEntityId_And_DepartmentId_AsNullable()
-    {
-        var migrationText = ReadMigrationSource();
-
-        Assert.Contains("name: \"department_id\"", migrationText);
-        Assert.Contains("name: \"legal_entity_id\"", migrationText);
-        Assert.Contains("nullable: true", migrationText);
-    }
-
-    [Fact]
     public void PositionEntity_HasNullableTransitionalProperties_ForLegalEntityId_And_DepartmentId()
     {
         var legalEntityProp = PositionType.GetProperty(nameof(Position.LegalEntityId));

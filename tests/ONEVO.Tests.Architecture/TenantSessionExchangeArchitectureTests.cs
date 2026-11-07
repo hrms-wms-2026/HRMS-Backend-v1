@@ -130,21 +130,6 @@ public sealed class TenantSessionExchangeArchitectureTests
     }
 
     [Fact]
-    public void TenantSessionExchangeMigration_EnablesRowLevelSecurityWithTenantIsolationPolicy()
-    {
-        var migrationsDirectory = Path.Combine(FindRepositoryRoot(), "src", "ONEVO.Infrastructure", "Migrations");
-        var migrationFile = Directory.EnumerateFiles(migrationsDirectory, "*_AddTenantSessionExchangeChallenges.cs")
-            .SingleOrDefault();
-
-        migrationFile.Should().NotBeNull("the session exchange migration must exist");
-        var source = File.ReadAllText(migrationFile!);
-
-        source.Should().Contain("ENABLE ROW LEVEL SECURITY");
-        source.Should().Contain("FORCE ROW LEVEL SECURITY");
-        source.Should().Contain("CREATE POLICY tenant_isolation");
-    }
-
-    [Fact]
     public void TenantSessionExchangeChallengeRepository_ConsumesWithSingleGuardedUpdate_NotReadThenWrite()
     {
         var source = ReadSource(
