@@ -390,6 +390,90 @@ public sealed class EmailTemplateRendererTests
         rendered.TextBody.Should().Contain("Friday, November 6, 2026 at 5:45 PM (Asia/Colombo)").And.NotContain("UTC");
     }
 
+    private static RenderedEmail RenderInvite(string template = "calendar_event_invite", string? endDateUtc = "2026-11-06T13:45:00+00:00",
+        string title = "Design review", string? location = null, string? meetingLink = null, string? recurrenceRule = null, string? timeZoneId = null)
+        => new EmailTemplateRenderer(Options.Create(new EmailOptions())).Render(template, new
+        {
+            recipientName = "Guest",
+            eventTitle = title,
+            startDateUtc = "2026-11-06T12:15:00+00:00",
+            endDateUtc,
+            location,
+            meetingLink,
+            recurrenceRule,
+            timeZoneId,
+            organizerName = "Dapi Owner"
+        });
+
+    [Fact]
+    public void RenderCalendarEvent_AnInvite_OffersGoogleAndOutlookLinksForTheEventsTime()
+    {
+        var rendered = RenderInvite();
+
+        rendered.TextBody.Should().Contain(
+            "https://calendar.google.com/calendar/render?action=TEMPLATE&text=Design%20review&dates=20261106T121500Z/20261106T134500Z");
+        rendered.TextBody.Should().Contain(
+            "https://outlook.office.com/calendar/action/compose?rru=addevent&subject=Design%20review&startdt=2026-11-06T12%3A15%3A00Z&enddt=2026-11-06T13%3A45%3A00Z");
+        // The & in a link's query is an HTML entity inside the href.
+        rendered.HtmlBody.Should().Contain("Add to Google Calendar").And.Contain("Add to Outlook")
+            .And.Contain("render?action=TEMPLATE&amp;text=Design%20review");
+    }
+
+    [Fact]
+    public void RenderCalendarEvent_TheLinksCarryTheLocationAndTheJoinLink()
+    {
+        var rendered = RenderInvite(location: "Room 1", meetingLink: "https://zoom.us/j/1?pwd=a&b=c");
+
+        const string details = "Join%3A%20https%3A%2F%2Fzoom.us%2Fj%2F1%3Fpwd%3Da%26b%3Dc";
+        rendered.TextBody.Should().Contain($"&details={details}&location=Room%201");
+        rendered.TextBody.Should().Contain($"&body={details}&location=Room%201");
+    }
+
+    [Fact]
+    public void RenderCalendarEvent_AnUnsafeTitle_IsEncodedInTheLinks()
+    {
+        var rendered = RenderInvite(title: "A&B \"<script>\"");
+
+        rendered.TextBody.Should().Contain("&text=A%26B%20%22%3Cscript%3E%22&");
+        rendered.HtmlBody.Should().NotContain("<script>");
+    }
+
+    [Theory]
+    [InlineData("calendar_event_updated")]
+    [InlineData("calendar_event_cancelled")]
+    [InlineData("calendar_event_removed")]
+    [InlineData("calendar_event_link_removed")]
+    public void RenderCalendarEvent_OnlyAnInvite_OffersTheLinks(string template)
+    {
+        // Someone who already added the event would get a second copy from an update's link.
+        var rendered = RenderInvite(template);
+
+        rendered.HtmlBody.Should().NotContain("calendar.google.com").And.NotContain("outlook.office.com");
+        rendered.TextBody.Should().NotContain("calendar.google.com").And.NotContain("outlook.office.com");
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("not-a-date")]
+    [InlineData("2026-11-06T11:00:00+00:00")]
+    public void RenderCalendarEvent_WithoutAUsableEndTime_OffersNoLinks(string? endDateUtc)
+    {
+        var rendered = RenderInvite(endDateUtc: endDateUtc);
+
+        rendered.HtmlBody.Should().NotContain("calendar.google.com").And.NotContain("outlook.office.com");
+    }
+
+    [Fact]
+    public void RenderCalendarEvent_ARepeatingEvent_OffersOnlyGoogleWithItsRule()
+    {
+        // Outlook's compose link cannot repeat, so it would add a single meeting of a series.
+        var rendered = RenderInvite(recurrenceRule: "FREQ=WEEKLY;BYDAY=FR", timeZoneId: "Asia/Colombo");
+
+        rendered.TextBody.Should().Contain("&recur=RRULE%3AFREQ%3DWEEKLY%3BBYDAY%3DFR&ctz=Asia%2FColombo");
+        rendered.TextBody.Should().NotContain("outlook.office.com");
+    }
+
     [Theory]
     [InlineData(null)]
     [InlineData("")]

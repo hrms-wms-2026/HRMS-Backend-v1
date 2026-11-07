@@ -92,6 +92,39 @@ public sealed class CalendarIcsEmailTests
     }
 
     [Fact]
+    public async Task The_outbox_email_keeps_the_end_time_and_the_series_rule()
+    {
+        var sent = await SendFromOutboxAsync(recurrenceId: null);
+
+        sent.EndDateUtc.Should().Be(Start.AddHours(1));
+        sent.RecurrenceRule.Should().Be("FREQ=WEEKLY");
+    }
+
+    [Fact]
+    public async Task One_occurrences_outbox_email_has_no_series_rule()
+    {
+        // Adding one meeting of a series to a calendar must not add the whole series.
+        var sent = await SendFromOutboxAsync(recurrenceId: Start);
+
+        sent.EndDateUtc.Should().Be(Start.AddHours(1));
+        sent.RecurrenceRule.Should().BeNull();
+    }
+
+    private static async Task<CalendarEventEmailMessage> SendFromOutboxAsync(DateTimeOffset? recurrenceId)
+    {
+        var email = new Mock<IEmailService>();
+        var sent = new List<CalendarEventEmailMessage>();
+        email.Setup(e => e.SendCalendarEventEmailAsync(It.IsAny<CalendarEventEmailMessage>(), It.IsAny<CancellationToken>()))
+            .Callback((CalendarEventEmailMessage m, CancellationToken _) => sent.Add(m)).Returns(Task.CompletedTask);
+
+        await new CalendarEventInviteEmailOutboxHandler(email.Object).HandleAsync(JsonSerializer.Serialize(new CalendarEventInviteEmailPayload(
+            Guid.NewGuid(), "bob@acme.com", "Bob", "Weekly sync", Start, null, "Ada", null, CalendarEventEmailKinds.Invite, EventId,
+            Start.AddHours(1), 7, "FREQ=WEEKLY", recurrenceId)), default);
+
+        return sent.Single();
+    }
+
+    [Fact]
     public void An_events_ics_identity_carries_its_time_zone()
         => CalendarEventIcs.For(EventId, Start, null, Start, "Asia/Colombo").TimeZoneId.Should().Be("Asia/Colombo");
 

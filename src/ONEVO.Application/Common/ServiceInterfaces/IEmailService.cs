@@ -25,4 +25,5 @@ public interface IEmailService
 /// <see cref="TimeZoneId"/> is the IANA zone the email shows the start in (null or unknown = UTC).</summary>
 public sealed record CalendarEventEmailMessage(
     string To, string RecipientName, string Kind, string EventTitle, DateTimeOffset StartDateUtc, string? Location, string OrganizerName,
-    string? MeetingLink, string? IcsContent = null, string? IcsMethod = null, string? TimeZoneId = null);
+    string? MeetingLink, string? IcsContent = null, string? IcsMethod = null, string? TimeZoneId = null,
+    DateTimeOffset? EndDateUtc = null, string? RecurrenceRule = null);

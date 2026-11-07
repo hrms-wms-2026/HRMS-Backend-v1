@@ -352,6 +352,16 @@ public class EmailTemplateRenderer : IEmailTemplateRenderer
         var meetingLinkLine = string.IsNullOrWhiteSpace(meetingLink)
             ? ""
             : $"""<p><a href="{Escape(meetingLink)}" style="display:inline-block; padding:10px 16px; background:#0f172a; color:#fff; text-decoration:none; border-radius:6px;">Join meeting</a></p>""";
+        // Only an invite: someone who already added the event would get a second copy from an update's link.
+        var addLinks = kind == "invite"
+            ? CalendarAddLinks.For(eventTitle, Get(f, "startDateUtc"), Get(f, "endDateUtc"), location, meetingLink, Get(f, "recurrenceRule"), Get(f, "timeZoneId"))
+            : null;
+        var addLinksLine = addLinks is null
+            ? ""
+            : $"""<p>{AddToCalendarButton(addLinks.Google, "Add to Google Calendar")}{(addLinks.Outlook is null ? "" : AddToCalendarButton(addLinks.Outlook, "Add to Outlook"))}</p>""";
+        var addLinksText = addLinks is null
+            ? ""
+            : $"Add to Google Calendar: {addLinks.Google}\n{(addLinks.Outlook is null ? "" : $"Add to Outlook: {addLinks.Outlook}\n")}";
         var html = $"""
             <!doctype html>
             <html>
@@ -365,6 +375,7 @@ public class EmailTemplateRenderer : IEmailTemplateRenderer
                   {whereRow}
                 </table>
                 {meetingLinkLine}
+                {addLinksLine}
                 <hr style="border:none; border-top:1px solid #e2e8f0; margin:20px 0;" />
                 <p style="font-size:12px; color:#64748b;">If you weren't expecting this invitation, you can disregard this email.</p>
               </body>
@@ -376,11 +387,14 @@ public class EmailTemplateRenderer : IEmailTemplateRenderer
             {textIntro}
 
             When: {startDateUtc}
-            {(string.IsNullOrWhiteSpace(location) ? "" : $"Where: {location}\n")}{(string.IsNullOrWhiteSpace(meetingLink) ? "" : $"Join: {meetingLink}\n")}
+            {(string.IsNullOrWhiteSpace(location) ? "" : $"Where: {location}\n")}{(string.IsNullOrWhiteSpace(meetingLink) ? "" : $"Join: {meetingLink}\n")}{addLinksText}
             If you weren't expecting this invitation, you can disregard this email.
             """;
         return new RenderedEmail(subject, html, text);
     }
+
+    private static string AddToCalendarButton(string url, string label) =>
+        $"""<a href="{Escape(url)}" style="display:inline-block; margin:0 8px 8px 0; padding:8px 14px; border:1px solid #cbd5e1; color:#0f172a; text-decoration:none; border-radius:6px; font-size:14px;">{Escape(label)}</a>""";
 
     /// <summary>Renders a calendar event's start time in its zone, e.g. "Friday, November 6, 2026 at 5:45 PM (Asia/Colombo)",
     /// or "Monday, October 5, 2026 at 9:30 AM UTC" without a zone this machine knows.

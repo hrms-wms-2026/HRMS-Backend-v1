@@ -182,6 +182,23 @@ public sealed class EmailProviderIdempotencyTests
     }
 
     [Fact]
+    public async Task EmailService_CalendarInvite_OffersTheAddToCalendarLinks()
+    {
+        var sender = new FakeSender();
+        var service = new TransactionalEmailService(sender,
+            new EmailTemplateRenderer(Microsoft.Extensions.Options.Options.Create(new EmailOptions())),
+            NullLogger<TransactionalEmailService>.Instance, new OutboxDispatchContext());
+        var start = new DateTimeOffset(2026, 11, 6, 12, 15, 0, TimeSpan.Zero);
+
+        await service.SendCalendarEventEmailAsync(new CalendarEventEmailMessage("guest@example.com", "Guest", "invite", "Sync",
+            start, null, "Dapi Owner", null, EndDateUtc: start.AddHours(1), RecurrenceRule: "FREQ=WEEKLY", TimeZoneId: "Asia/Colombo"));
+
+        var body = Assert.Single(sender.Requests).TextBody;
+        Assert.Contains("dates=20261106T121500Z/20261106T131500Z", body);
+        Assert.Contains("recur=RRULE%3AFREQ%3DWEEKLY", body);
+    }
+
+    [Fact]
     public async Task EmailService_OutsideAnOutboxDispatch_SendsWithoutAKey()
     {
         var sender = new FakeSender();
