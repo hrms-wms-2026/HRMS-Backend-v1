@@ -21,7 +21,6 @@ public class AttendanceAlertConfiguration : IEntityTypeConfiguration<AttendanceA
         // Soft-deleted rows (a day that stopped qualifying) do not block the day qualifying again.
         builder.HasIndex(a => new { a.TenantId, a.EmployeeId, a.WorkDate, a.SignalKey, a.SourceId })
             .IsUnique()
-            .AreNullsDistinct(false)
             .HasFilter("is_deleted = false")
             .HasDatabaseName("ux_attendance_alerts_tenant_employee_date_signal_source");
         builder.HasIndex(a => new { a.TenantId, a.Status, a.EmployeeId })

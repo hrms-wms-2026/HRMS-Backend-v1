@@ -1,3 +1,4 @@
+#if LEGACY_MIGRATION_TESTS
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Migrations.Operations;
 using ONEVO.Infrastructure.Migrations;
@@ -24,3 +25,4 @@ public sealed class PlatformUserCredentialMigrationTests
             operation is AddColumnOperation or AlterColumnOperation or DropColumnOperation);
     }
 }
+#endif

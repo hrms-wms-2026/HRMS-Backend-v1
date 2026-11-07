@@ -161,10 +161,10 @@ public static class DependencyInjection
         services.AddDbContext<ApplicationDbContext>((sp, options) =>
         {
             options
-                .UseNpgsql(connectionString, npgsql =>
+                .UseSqlServer(connectionString, sqlServer =>
                 {
-                    npgsql.EnableRetryOnFailure(3);
-                    npgsql.CommandTimeout(30);
+                    sqlServer.EnableRetryOnFailure(3);
+                    sqlServer.CommandTimeout(30);
                 })
                 .UseSnakeCaseNamingConvention()
                 .AddInterceptors(sp.GetRequiredService<TenantRlsInterceptor>());

@@ -1,5 +1,5 @@
 using Microsoft.EntityFrameworkCore;
-using Npgsql;
+using ONEVO.Infrastructure.Persistence.SqlServer;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Domain.Features.SharedPlatform.Entities;
 using ONEVO.Infrastructure.Persistence;
@@ -47,7 +47,7 @@ public sealed class EfIdempotencyStore : IIdempotencyStore
             await _db.SaveChangesAsync(ct);
             return new IdempotencyBeginResult(IdempotencyOutcome.Started, record.Id);
         }
-        catch (DbUpdateException ex) when (ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
+        catch (DbUpdateException ex) when (SqlServerErrors.IsUniqueViolation(ex))
         {
             // Detach the failed insert so it does not poison the shared DbContext
             // used by the action's own unit of work afterwards.

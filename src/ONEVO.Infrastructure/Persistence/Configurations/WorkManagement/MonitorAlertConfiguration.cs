@@ -23,7 +23,6 @@ public class MonitorAlertConfiguration : IEntityTypeConfiguration<MonitorAlert>
         builder.HasIndex(a => new { a.TenantId, a.TargetId, a.RuleCode, a.SubjectEmployeeId })
             .HasDatabaseName("ux_wm_monitor_alerts_open_key")
             .IsUnique()
-            .AreNullsDistinct(false)
             .HasFilter("resolved_at IS NULL");
     }
 }

@@ -1,4 +1,4 @@
-using Npgsql;
+using Microsoft.Data.SqlClient;
 using ONEVO.Api.Configuration;
 using Xunit;
 
@@ -57,15 +57,15 @@ public sealed class DotEnvLoaderTests
 
             DotEnvLoader.LoadIfPresent(envPath, 0);
 
-            var runtime = new NpgsqlConnectionStringBuilder(
+            var runtime = new SqlConnectionStringBuilder(
                 Environment.GetEnvironmentVariable("ConnectionStrings__DefaultConnection"));
-            var migration = new NpgsqlConnectionStringBuilder(
+            var migration = new SqlConnectionStringBuilder(
                 Environment.GetEnvironmentVariable("ConnectionStrings__MigrationConnection"));
 
             Assert.Equal("OnevoDb", Environment.GetEnvironmentVariable("ONEVO_DB_NAME"));
-            Assert.Equal("onevo_app", runtime.Username);
+            Assert.Equal("onevo_app", runtime.UserID);
             Assert.Equal("unit-test-app-value", runtime.Password);
-            Assert.Equal("onevo_migrator", migration.Username);
+            Assert.Equal("onevo_migrator", migration.UserID);
             Assert.Equal("unit-test-migrator-value", migration.Password);
             Assert.NotEqual("unit-test-admin-value", runtime.Password);
             Assert.NotEqual("unit-test-admin-value", migration.Password);
@@ -181,15 +181,15 @@ public sealed class DotEnvLoaderTests
 
             DotEnvLoader.LoadIfPresent();
 
-            var runtime = new NpgsqlConnectionStringBuilder(
+            var runtime = new SqlConnectionStringBuilder(
                 Environment.GetEnvironmentVariable("ConnectionStrings__DefaultConnection"));
-            var migration = new NpgsqlConnectionStringBuilder(
+            var migration = new SqlConnectionStringBuilder(
                 Environment.GetEnvironmentVariable("ConnectionStrings__MigrationConnection"));
 
-            Assert.Equal("root-host", runtime.Host);
-            Assert.Equal("onevo_app", runtime.Username);
-            Assert.Equal("root-host", migration.Host);
-            Assert.Equal("onevo_migrator", migration.Username);
+            Assert.StartsWith("root-host,", runtime.DataSource);
+            Assert.Equal("onevo_app", runtime.UserID);
+            Assert.StartsWith("root-host,", migration.DataSource);
+            Assert.Equal("onevo_migrator", migration.UserID);
         }
         finally
         {

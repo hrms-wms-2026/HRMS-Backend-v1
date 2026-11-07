@@ -1,5 +1,5 @@
 using Microsoft.EntityFrameworkCore;
-using Npgsql;
+using ONEVO.Infrastructure.Persistence.SqlServer;
 using ONEVO.Application.Common.Exceptions;
 using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
 using ONEVO.Domain.Features.OrgStructure.Entities;
@@ -14,7 +14,7 @@ public class EfPositionRepository : IPositionRepository
     // Names of the partial unique indexes declared in ManagementCoverageRecordConfiguration that
     // enforce "one active record per covered target per responsibility order". A violation of any
     // of these under concurrent writes is translated into a CoverageOrderConflictException instead
-    // of surfacing the raw Postgres unique-violation as an unhandled 500.
+    // of surfacing the raw unique violation as an unhandled 500.
     private static readonly string[] CoverageOrderUniqueConstraintNames =
     [
         "ix_management_coverage_records_active_position_order",
@@ -560,10 +560,8 @@ public class EfPositionRepository : IPositionRepository
             var affectedRows = await _db.SaveChangesAsync(ct);
             return affectedRows;
         }
-        catch (DbUpdateException ex) when (ex.InnerException is PostgresException
-        {
-            SqlState: PostgresErrorCodes.UniqueViolation
-        } pgEx && CoverageOrderUniqueConstraintNames.Contains(pgEx.ConstraintName))
+        catch (DbUpdateException ex) when (SqlServerErrors.IsUniqueViolation(ex)
+            && CoverageOrderUniqueConstraintNames.Contains(SqlServerErrors.ConstraintName(ex)))
         {
             throw new CoverageOrderConflictException(
                 "An active coverage record already exists for this covered target at this responsibility level.",

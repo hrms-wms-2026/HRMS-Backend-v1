@@ -31,10 +31,10 @@ public static class DatabaseMigrationRunner
         var connectionString = configuration.GetConnectionString("MigrationConnection")
             ?? throw new InvalidOperationException(
                 "Connection string 'MigrationConnection' not found. Run " +
-                "ops/postgres/setup-local-db.ps1 from the repository root before starting the API.");
+                "ops/sqlserver/setup-local-db.ps1 from the repository root before starting the API.");
 
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
-            .UseNpgsql(connectionString)
+            .UseSqlServer(connectionString)
             .UseSnakeCaseNamingConvention()
             .Options;
 

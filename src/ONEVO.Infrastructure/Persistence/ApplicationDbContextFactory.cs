@@ -31,7 +31,7 @@ public class ApplicationDbContextFactory : IDesignTimeDbContextFactory<Applicati
 
         var optionsBuilder = new DbContextOptionsBuilder<ApplicationDbContext>();
         optionsBuilder
-            .UseNpgsql(connectionString)
+            .UseSqlServer(connectionString)
             .UseSnakeCaseNamingConvention();
 
         var dateTimeProvider = new SystemDateTimeProvider();

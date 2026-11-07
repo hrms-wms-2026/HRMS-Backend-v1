@@ -59,7 +59,7 @@ public class LeaveLedgerArchitectureTests
     private static ApplicationDbContext CreateModelInspectionContext()
     {
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
-            .UseNpgsql("Host=localhost;Database=model_only")
+            .UseSqlServer("Server=localhost;Database=model_only")
             .UseSnakeCaseNamingConvention()
             .Options;
 

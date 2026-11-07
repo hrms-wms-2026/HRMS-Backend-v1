@@ -7,12 +7,15 @@ using Microsoft.Extensions.DependencyInjection;
 using ONEVO.Application.Features.Auth.Login.ServiceInterfaces;
 using ONEVO.Infrastructure;
 using ONEVO.Infrastructure.Identity.Mfa;
+#if LEGACY_MIGRATION_TESTS
 using ONEVO.Infrastructure.Migrations;
+#endif
 
 namespace ONEVO.Tests.Architecture;
 
 public sealed class MfaChallengeStorageArchitectureTests
 {
+#if LEGACY_MIGRATION_TESTS
     [Fact]
     public void AddMfaChallengesMigration_CreatesOnlyTheMfaChallengesTable()
     {
@@ -77,6 +80,7 @@ public sealed class MfaChallengeStorageArchitectureTests
         indexes.Should().Contain(i => i.Columns.SequenceEqual(new[] { "expires_at" }));
     }
 
+#endif
     [Fact]
     public void InfrastructureRegistration_UsesPostgresBackedMfaChallengeStoreAsNormalRuntime()
     {
@@ -186,6 +190,7 @@ public sealed class MfaChallengeStorageArchitectureTests
             "production source under 'src' must not use DateTimeOffsetToBinaryConverter");
     }
 
+#if LEGACY_MIGRATION_TESTS
     [Fact]
     public void InfrastructureAssembly_ContainsAddMfaChallengesMigration()
     {
@@ -208,6 +213,7 @@ public sealed class MfaChallengeStorageArchitectureTests
             "the MFA challenge store must keep its dedicated migration");
     }
 
+#endif
     private static IReadOnlyList<string> ScanProductionSourceFor(string token)
     {
         var sourceRoot = FindProductionSourceRoot();

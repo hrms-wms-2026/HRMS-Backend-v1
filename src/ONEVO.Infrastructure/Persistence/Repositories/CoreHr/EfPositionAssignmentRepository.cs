@@ -1,5 +1,5 @@
 using Microsoft.EntityFrameworkCore;
-using Npgsql;
+using ONEVO.Infrastructure.Persistence.SqlServer;
 using ONEVO.Application.Common.Constants;
 using ONEVO.Application.Common.Exceptions;
 using ONEVO.Application.Features.Storage.File.Helpers;
@@ -314,13 +314,13 @@ public class EfPositionAssignmentRepository : IPositionAssignmentRepository
 
             return null;
         }
-        catch (DbUpdateException ex) when (ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
+        catch (DbUpdateException ex) when (SqlServerErrors.IsUniqueViolation(ex))
         {
             throw new UniqueConstraintConflictException(ex);
         }
-        catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.UniqueViolation)
+        catch (Microsoft.Data.SqlClient.SqlException ex) when (SqlServerErrors.IsUniqueViolation(ex))
         {
-            // ExecuteSqlInterpolatedAsync typically surfaces Npgsql's PostgresException directly
+            // ExecuteSqlInterpolatedAsync surfaces SqlException directly
             // (unlike SaveChanges, which wraps it in DbUpdateException).
             throw new UniqueConstraintConflictException(ex);
         }

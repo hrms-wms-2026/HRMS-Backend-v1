@@ -1,8 +1,8 @@
 using System.Globalization;
 using System.Text;
 using Microsoft.EntityFrameworkCore;
-using Npgsql;
-using NpgsqlTypes;
+using Microsoft.Data.SqlClient;
+using System.Data;
 using ONEVO.Application.Features.WorkManagement.Meetings;
 using ONEVO.Application.Features.WorkManagement.Meetings.RepositoryInterfaces;
 using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
@@ -32,7 +32,7 @@ public sealed class EfMeetingOccurrenceWriter : IMeetingOccurrenceWriter
             await _db.Database.ExecuteSqlInterpolatedAsync(
                 $"SELECT pg_advisory_xact_lock(hashtextextended({tenantId.ToString()}::text || ':' || {seriesId.ToString()}::text, 0))", ct);
         }
-        catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.LockNotAvailable)
+        catch (SqlException ex) when (ONEVO.Infrastructure.Persistence.SqlServer.SqlServerErrors.IsLockTimeout(ex))
         {
             throw new MeetingBusyException(seriesId, ex);
         }
@@ -144,10 +144,10 @@ public sealed class EfMeetingOccurrenceWriter : IMeetingOccurrenceWriter
             "end_at = m.end_at, revision = d.revision + 1, " +
             // A pending attendance check is counted from the end (spec 5.8), so it moves by the same shift.
             "attendance_next_check_at = d.attendance_next_check_at + (m.end_at - d.end_at) FROM (VALUES ");
-        var parameters = new List<NpgsqlParameter>
+        var parameters = new List<SqlParameter>
         {
-            new("target", NpgsqlDbType.Uuid) { Value = targetSeriesId },
-            new("tenant", NpgsqlDbType.Uuid) { Value = tenantId },
+            new("target", SqlDbType.UniqueIdentifier) { Value = targetSeriesId },
+            new("tenant", SqlDbType.UniqueIdentifier) { Value = tenantId },
         };
         for (var i = 0; i < mapping.Count; i++)
         {
@@ -155,10 +155,10 @@ public sealed class EfMeetingOccurrenceWriter : IMeetingOccurrenceWriter
             var n = i.ToString(CultureInfo.InvariantCulture);
             sql.Append(i == 0 ? "" : ", ")
                 .Append($"(@task{n}, @original{n}, @start{n}, @end{n})");
-            parameters.Add(new NpgsqlParameter($"task{n}", NpgsqlDbType.Uuid) { Value = taskId });
-            parameters.Add(new NpgsqlParameter($"original{n}", NpgsqlDbType.TimestampTz) { Value = newOriginalStart.ToUniversalTime() });
-            parameters.Add(new NpgsqlParameter($"start{n}", NpgsqlDbType.TimestampTz) { Value = newStartAt.ToUniversalTime() });
-            parameters.Add(new NpgsqlParameter($"end{n}", NpgsqlDbType.TimestampTz) { Value = newEndAt.ToUniversalTime() });
+            parameters.Add(new SqlParameter($"task{n}", SqlDbType.UniqueIdentifier) { Value = taskId });
+            parameters.Add(new SqlParameter($"original{n}", SqlDbType.DateTimeOffset) { Value = newOriginalStart.ToUniversalTime() });
+            parameters.Add(new SqlParameter($"start{n}", SqlDbType.DateTimeOffset) { Value = newStartAt.ToUniversalTime() });
+            parameters.Add(new SqlParameter($"end{n}", SqlDbType.DateTimeOffset) { Value = newEndAt.ToUniversalTime() });
         }
         sql.Append(") AS m(task_id, original_start, start_at, end_at) WHERE d.task_id = m.task_id AND d.tenant_id = @tenant");
 

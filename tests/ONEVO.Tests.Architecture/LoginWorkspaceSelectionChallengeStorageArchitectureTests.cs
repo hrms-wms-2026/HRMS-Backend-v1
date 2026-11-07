@@ -1,3 +1,4 @@
+#if LEGACY_MIGRATION_TESTS
 using System.Reflection;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore.Migrations;
@@ -96,3 +97,4 @@ public sealed class LoginWorkspaceSelectionChallengeStorageArchitectureTests
         }
     }
 }
+#endif

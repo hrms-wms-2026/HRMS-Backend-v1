@@ -97,15 +97,15 @@ builder.Services.AddHealthChecks()
         try
         {
             var cs = builder.Configuration.GetConnectionString("DefaultConnection");
-            await using var conn = new Npgsql.NpgsqlConnection(cs);
+            await using var conn = new Microsoft.Data.SqlClient.SqlConnection(cs);
             await conn.OpenAsync();
-            await using var cmd = new Npgsql.NpgsqlCommand("SELECT 1", conn);
+            await using var cmd = new Microsoft.Data.SqlClient.SqlCommand("SELECT 1", conn);
             await cmd.ExecuteScalarAsync();
-            return Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckResult.Healthy("PostgreSQL reachable");
+            return Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckResult.Healthy("SQL Server reachable");
         }
         catch (Exception ex)
         {
-            return Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckResult.Unhealthy("PostgreSQL unreachable", ex);
+            return Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckResult.Unhealthy("SQL Server unreachable", ex);
         }
     }, ["ready"]);
 

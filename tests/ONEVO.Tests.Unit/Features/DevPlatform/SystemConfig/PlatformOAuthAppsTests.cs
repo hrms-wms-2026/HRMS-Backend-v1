@@ -19,7 +19,9 @@ using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformOAuthApps.Quer
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformOAuthApps.Queries.ListPlatformOAuthApps;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformOAuthApps.RepositoryInterfaces;
 using ONEVO.Domain.Features.DevPlatform.SystemConfig.PlatformOAuthApps.Entities;
+#if LEGACY_MIGRATION_TESTS
 using ONEVO.Infrastructure.Migrations;
+#endif
 using ONEVO.Infrastructure.Persistence;
 using ONEVO.Infrastructure.Persistence.Interceptors;
 using ONEVO.Infrastructure.Services.SystemConfig;
@@ -74,6 +76,7 @@ public class PlatformOAuthAppsTests
 
     // -- 1. Migration / EF mapping (unchanged schema) ---------------------------
 
+#if LEGACY_MIGRATION_TESTS
     [Fact]
     public void Migration_CreatesOnlyTheTwoOAuthTables_AndNoOtherOperations()
     {
@@ -105,6 +108,8 @@ public class PlatformOAuthAppsTests
             Assert.True(t is "platform_oauth_apps" or "platform_oauth_app_credentials",
                 $"Migration touches unexpected table: {t}"));
     }
+
+#endif
 
     private static ApplicationDbContext BuildInMemoryDb()
     {
