@@ -1,0 +1,1505 @@
+[
+  {
+    "table": "access_grant_requests",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "activity_daily_summary",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "activity_raw_buffer",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "activity_snapshots",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "agent_commands",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "app_usage_snapshots",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "attendance_alert_deductions",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "attendance_alerts",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "attendance_corrections",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "attendance_records",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "audit_logs",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "biometric_enrollment_attempts",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "biometric_profiles",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "break_records",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "bulk_onboarding_batch_rows",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "bulk_onboarding_batches",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "calendar_event_activity_logs",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "calendar_event_guests",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "calendar_event_meeting_attendances",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "calendar_event_meetings",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "calendar_event_participant_rsvp_history",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "calendar_event_participants",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "calendar_event_reminders_sent",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "calendar_events",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "calendar_meeting_incidents",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "checklist_templates",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "clock_in_late_deduction_rules",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "clock_in_policies",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "conversation_favorites",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "conversation_message_attachments",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "conversation_message_hides",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "conversation_message_mentions",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "conversation_message_reactions",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "conversation_message_revisions",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "conversation_messages",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "conversation_mutes",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "conversation_participants",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "conversations",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "daily_work_location_confirmations",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "dashboard_widget_layouts",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "dashboard_widgets",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "departments",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "device_change_requests",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "device_state_snapshots",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "employee_addresses",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "employee_bank_details",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "employee_check_ins",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "employee_checklist_tasks",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "employee_dependents",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "employee_emergency_contacts",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "employee_hierarchy_closure",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "employee_monitoring_overrides",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "employee_work_locations",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "employee_work_sessions",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "employees",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "entity_assets",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "exceptions",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "external_calendar_connections",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "external_calendar_event_links",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "face_verification_attempts",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "feature_access_grants",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "file_records",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))",
+    "withCheck": "((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "file_upload_reservations",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))",
+    "withCheck": "((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "holiday_calendar_settings",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "inactivity_capture_attempts",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "inbox_decision_journal",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "invitation_tokens",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "labels",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "leave_approval_delegates",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "leave_balance_audits",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "leave_entitlements",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "leave_policies",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "leave_policy_assignments",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "leave_policy_blackout_periods",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "leave_policy_versions",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "leave_request_approvers",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "leave_request_day_allocations",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "leave_request_documents",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "leave_requests",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "leave_types",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "legal_acceptance_records",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "legal_entities",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "legal_login_challenges",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "location_change_requests",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "management_coverage_records",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "meeting_action_items",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "meeting_attendance_sessions",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "meeting_details",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "meeting_occurrence_attendees",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "meeting_occurrence_suppressions",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "meeting_series",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "meeting_series_links",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "meeting_signals",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "mfa_challenges",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "monitoring_evidence_assets",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "monitoring_face_scans",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "monitoring_feature_toggles",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "monitoring_notifications",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "monitoring_permission_consents",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "monitoring_policy_overrides",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "notification_deliveries",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "notifications",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "objectives",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "offboarding_records",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "offboarding_task_bypass_requests",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "onboarding_drafts",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "password_reset_tokens",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "personal_calendar_events",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "planned_task_blocks",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "position_assignments",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "position_reporting_history",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "positions",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "presence_sessions",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "project_categories",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "project_member_invitations",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "project_members",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "projects",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "refresh_tokens",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "release_calendar",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "reporting_manager_changes",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "role_permissions",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "roles",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "seat_increase_requests",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "sessions",
+    "policy": "session_key_lookup",
+    "cmd": "SELECT",
+    "using": "((key_hash)::text = current_setting(\u0027app.session_lookup_key_hash\u0027::text, true))",
+    "withCheck": null,
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "sessions",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "sprint_activity_logs",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "sprints",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "subscription_invoices",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "task_categories",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "task_clocking_sessions",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "task_comment_logs",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "task_comment_reactions",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "task_comments",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "task_drafts",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "task_edit_logs",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "task_percentage_logs",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "task_status_change_logs",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "task_statuses",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "tasks",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "tenant_auth_policies",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "tenant_configuration_template_applications",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "tenant_integration_credentials",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "tenant_notification_rules",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "tenant_one_time_charges",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "tenant_provisioning_states",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "tenant_session_exchange_challenges",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "tenant_setup_selections",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "tenant_status_histories",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "tenant_storage_stats",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "tenant_subscriptions",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "tenant_work_modes",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "tray_activation_codes",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR (current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027system\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR (current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027system\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "tray_device_refresh_tokens",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR (current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027system\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR (current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027system\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "tray_device_registrations",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR (current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027system\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR (current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027system\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "user_dashboards",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "user_external_identities",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "user_integration_connections",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "user_mfa",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "user_permission_overrides",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "user_roles",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "users",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "versions",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "wm_approval_requests",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "wm_module_hour_summaries",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "wm_monitor_alerts",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "wm_notification_log",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "withCheck": "((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027admin\u0027::text) OR ((current_setting(\u0027app.tenant_context_mode\u0027::text, true) = \u0027tenant\u0027::text) AND ((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))))",
+    "rlsEnabled": true,
+    "forceRls": true
+  },
+  {
+    "table": "work_area_change_requests",
+    "policy": "tenant_isolation",
+    "cmd": "ALL",
+    "using": "((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))",
+    "withCheck": "((tenant_id)::text = current_setting(\u0027app.current_tenant_id\u0027::text, true))",
+    "rlsEnabled": true,
+    "forceRls": true
+  }
+]
