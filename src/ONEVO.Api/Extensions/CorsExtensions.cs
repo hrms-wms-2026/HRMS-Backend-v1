@@ -1,8 +1,8 @@
 namespace ONEVO.Api.Extensions;
 
-internal static class CorsExtensions
+public static class CorsExtensions
 {
-    internal static IServiceCollection AddApiCors(
+    public static IServiceCollection AddApiCors(
         this IServiceCollection services,
         IConfiguration configuration)
     {
@@ -22,7 +22,7 @@ internal static class CorsExtensions
     /// <summary>
     /// Origins are allowed either by exact match against the configured AllowedOrigins list (e.g.
     /// tooling that doesn't live under the tenant root domain), or by being a "{anything}.{RootDomain}"
-    /// subdomain - mirroring HostTenantResolutionMiddleware's own host check, since every tenant's
+    /// subdomain over https only - mirroring HostTenantResolutionMiddleware's own host check, since every tenant's
     /// frontend origin is created dynamically (one per Tenant row) and can never be enumerated in a
     /// static config list.
     /// </summary>
@@ -32,6 +32,12 @@ internal static class CorsExtensions
             return true;
 
         if (string.IsNullOrWhiteSpace(rootDomain) || !Uri.TryCreate(origin, UriKind.Absolute, out var originUri))
+            return false;
+
+        // Credentialed requests are allowed from these origins, so a plain-http tenant origin
+        // would let a network attacker (or a forgotten http listener on any subdomain) read
+        // authenticated responses. Only exact AllowedOrigins entries may use another scheme.
+        if (originUri.Scheme != Uri.UriSchemeHttps)
             return false;
 
         var host = originUri.Host;
