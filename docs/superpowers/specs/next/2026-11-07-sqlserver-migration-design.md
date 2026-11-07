@@ -58,9 +58,10 @@ Predicates live in a dedicated `rls` schema, as schema-bound inline functions. T
 | Function | Rule | Tables |
 |---|---|---|
 | `rls.fn_tenant` | admin, or tenant with matching `tenant_id` | Standard tenant tables |
+| `rls.fn_tenant_strict` | matching `tenant_id` only, no admin exception | `file_records`, `file_upload_reservations`, `work_area_change_requests` (found in the Postgres capture) |
 | `rls.fn_tenant_or_system` | also allows `system` | Tables with the existing system-mode exception (3 tray activation tables, and any others found in the parity check) |
-| `rls.fn_sessions` | standard rule, or `key_hash` equals the lookup key | `sessions` (SQL Server allows one filter per table, so the two Postgres policies merge) |
-| Login lookup clause | allows only the dedicated lookup user | `users`, `tenants` (section 4.4) |
+| `rls.fn_sessions_read` | filter only: standard rule, or `key_hash` equals the lookup key | `sessions` (SQL Server allows one filter per table, so the two Postgres policies merge) |
+| `rls.fn_users_read` | filter only: standard rule, or the dedicated lookup user | `users` (section 4.4). `tenants` has no `tenant_id` and no policy |
 
 One policy per table, created through one shared helper in migrations, so a new table is one call.
 
@@ -92,7 +93,7 @@ On SQL Server: a stored procedure `auth_internal.auth_lookup_base_login_candidat
 Names stay `onevo_app`, `onevo_migrator` and `onevo_auth_base_login_fn_owner`.
 
 - `onevo_app`: data read/write and execute on named procedures only. Not `db_owner`, no `ALTER ANY SECURITY POLICY`, no DDL.
-- `onevo_migrator`: DDL and policy rights, not `sysadmin`.
+- `onevo_migrator`: DDL and policy rights, plus `SELECT, ALTER` on schema `rls`, not `sysadmin`. The app login must not get that grant.
 - Migrations never create logins, matching today's rule. New `ops/sqlserver/` scripts replace `ops/postgres/` and run as a privileged step before migrations.
 
 SQL Server predicates apply to everyone, including `db_owner`, so `FORCE ROW LEVEL SECURITY` has no equivalent to carry. The real risk is that `db_owner` can alter policies, which is why the test in section 9 checks the app login's rights directly.

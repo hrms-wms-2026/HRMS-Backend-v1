@@ -89,7 +89,7 @@ Run: `dotnet test tests/ONEVO.Tests.Architecture/ONEVO.Tests.Architecture.csproj
 
 **Interfaces:**
 - Produces:
-  - `enum RlsPredicate { Tenant, TenantOrSystem, Sessions }`
+  - `enum RlsPredicate { Tenant, TenantOrSystem, TenantStrict, Sessions, Users }`
   - `static class RlsTableRegistry { IReadOnlyDictionary<string, RlsPredicate> Tables }`: built from `postgres-policy-inventory.json`
   - `static class RlsSql { string CreateFunctions(); string CreatePolicy(string table, RlsPredicate predicate); string DropPolicy(string table); }`
   - Policy name: `rls.policy_<table>`
@@ -109,7 +109,7 @@ Run the migration against a container. For each "may cause cycles or multiple ca
 
 - [ ] **Step 4: Write `RlsSql`, `RlsTableRegistry` and `AddRowLevelSecurity`**
 
-Use the spike's T-SQL. The migration loops the registry. The `users` and `tenants` predicates also allow the lookup user (spec 4.4).
+Use the spike's T-SQL. The migration loops the registry. `Sessions` and `Users` use their read functions for the filter and `rls.fn_tenant` for all four block predicates. `tenants` gets no policy.
 
 - [ ] **Step 5: Write the ops scripts**
 
