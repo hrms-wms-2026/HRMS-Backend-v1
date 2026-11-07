@@ -289,14 +289,14 @@ public class EfPositionRepository : IPositionRepository
         return sortBy switch
         {
             "code" => ascending
-                ? query.OrderBy(position => position.Code).ThenBy(position => position.Id)
-                : query.OrderByDescending(position => position.Code).ThenBy(position => position.Id),
+                ? query.OrderByNullsLast(position => position.Code).ThenBy(position => position.Id)
+                : query.OrderByDescendingNullsFirst(position => position.Code).ThenBy(position => position.Id),
             "department" => ascending
-                ? query.OrderBy(position => position.DepartmentId).ThenBy(position => position.Id)
-                : query.OrderByDescending(position => position.DepartmentId).ThenBy(position => position.Id),
+                ? query.OrderByNullsLast(position => position.DepartmentId).ThenBy(position => position.Id)
+                : query.OrderByDescendingNullsFirst(position => position.DepartmentId).ThenBy(position => position.Id),
             "reportsto" => ascending
-                ? query.OrderBy(position => position.ReportsToPositionId).ThenBy(position => position.Id)
-                : query.OrderByDescending(position => position.ReportsToPositionId).ThenBy(position => position.Id),
+                ? query.OrderByNullsLast(position => position.ReportsToPositionId).ThenBy(position => position.Id)
+                : query.OrderByDescendingNullsFirst(position => position.ReportsToPositionId).ThenBy(position => position.Id),
             "type" => ascending
                 ? query.OrderBy(position => position.PositionType).ThenBy(position => position.Id)
                 : query.OrderByDescending(position => position.PositionType).ThenBy(position => position.Id),
@@ -310,8 +310,8 @@ public class EfPositionRepository : IPositionRepository
                 ? query.OrderBy(position => position.CreatedAt).ThenBy(position => position.Id)
                 : query.OrderByDescending(position => position.CreatedAt).ThenBy(position => position.Id),
             "updatedat" => ascending
-                ? query.OrderBy(position => position.UpdatedAt).ThenBy(position => position.Id)
-                : query.OrderByDescending(position => position.UpdatedAt).ThenBy(position => position.Id),
+                ? query.OrderByNullsLast(position => position.UpdatedAt).ThenBy(position => position.Id)
+                : query.OrderByDescendingNullsFirst(position => position.UpdatedAt).ThenBy(position => position.Id),
             _ => ascending
                 ? query.OrderBy(position => position.Name).ThenBy(position => position.Id)
                 : query.OrderByDescending(position => position.Name).ThenBy(position => position.Id),

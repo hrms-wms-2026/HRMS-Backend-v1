@@ -312,7 +312,7 @@ public sealed class EfEmployeeChecklistTaskRepository(ApplicationDbContext db) :
 
     public async Task<IReadOnlyList<EmployeeChecklistTask>> ListByEmployeeAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default)
         => await db.EmployeeChecklistTasks.AsNoTracking().Where(x => x.TenantId == tenantId && x.EmployeeId == employeeId)
-            .OrderBy(x => x.Sequence).ThenBy(x => x.Id).ToListAsync(ct);
+            .OrderByNullsLast(x => x.Sequence).ThenBy(x => x.Id).ToListAsync(ct);
 
     public async Task<IReadOnlyList<EmployeeChecklistTaskEffectiveState>> ListEffectiveByEmployeeAsync(
         Guid tenantId, Guid employeeId, CancellationToken ct = default)
@@ -376,7 +376,7 @@ public sealed class EfEmployeeChecklistTaskRepository(ApplicationDbContext db) :
     public Task<IReadOnlyList<EmployeeChecklistTask>> ListByOffboardingRecordAsync(Guid tenantId, Guid offboardingRecordId, CancellationToken ct = default)
         => db.EmployeeChecklistTasks.AsNoTracking()
             .Where(x => x.TenantId == tenantId && x.OffboardingRecordId == offboardingRecordId)
-            .OrderBy(x => x.Sequence).ThenBy(x => x.Id)
+            .OrderByNullsLast(x => x.Sequence).ThenBy(x => x.Id)
             .ToListAsync(ct)
             .ContinueWith(t => (IReadOnlyList<EmployeeChecklistTask>)t.Result, ct);
 

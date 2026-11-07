@@ -196,17 +196,17 @@ public class EfEmployeeRepository : IEmployeeRepository
                 ? joined.OrderByDescending(row => row.e.EmployeeNumber).ThenBy(row => row.e.Id)
                 : joined.OrderBy(row => row.e.EmployeeNumber).ThenBy(row => row.e.Id),
             "position" => descending
-                ? joined.OrderByDescending(row => row.position != null ? row.position.Name : null).ThenBy(row => row.e.LastName).ThenBy(row => row.e.Id)
-                : joined.OrderBy(row => row.position != null ? row.position.Name : null).ThenBy(row => row.e.LastName).ThenBy(row => row.e.Id),
+                ? joined.OrderByDescendingNullsFirst(row => row.position != null ? row.position.Name : null).ThenBy(row => row.e.LastName).ThenBy(row => row.e.Id)
+                : joined.OrderByNullsLast(row => row.position != null ? row.position.Name : null).ThenBy(row => row.e.LastName).ThenBy(row => row.e.Id),
             "department" => descending
-                ? joined.OrderByDescending(row => row.dept != null ? row.dept.Name : null).ThenBy(row => row.e.LastName).ThenBy(row => row.e.Id)
-                : joined.OrderBy(row => row.dept != null ? row.dept.Name : null).ThenBy(row => row.e.LastName).ThenBy(row => row.e.Id),
+                ? joined.OrderByDescendingNullsFirst(row => row.dept != null ? row.dept.Name : null).ThenBy(row => row.e.LastName).ThenBy(row => row.e.Id)
+                : joined.OrderByNullsLast(row => row.dept != null ? row.dept.Name : null).ThenBy(row => row.e.LastName).ThenBy(row => row.e.Id),
             "employmentType" => descending
-                ? joined.OrderByDescending(row => row.empType != null ? row.empType.Label : null).ThenBy(row => row.e.LastName).ThenBy(row => row.e.Id)
-                : joined.OrderBy(row => row.empType != null ? row.empType.Label : null).ThenBy(row => row.e.LastName).ThenBy(row => row.e.Id),
+                ? joined.OrderByDescendingNullsFirst(row => row.empType != null ? row.empType.Label : null).ThenBy(row => row.e.LastName).ThenBy(row => row.e.Id)
+                : joined.OrderByNullsLast(row => row.empType != null ? row.empType.Label : null).ThenBy(row => row.e.LastName).ThenBy(row => row.e.Id),
             "manager" => descending
-                ? joined.OrderByDescending(row => row.manager != null ? row.manager.LastName : null).ThenBy(row => row.e.LastName).ThenBy(row => row.e.Id)
-                : joined.OrderBy(row => row.manager != null ? row.manager.LastName : null).ThenBy(row => row.e.LastName).ThenBy(row => row.e.Id),
+                ? joined.OrderByDescendingNullsFirst(row => row.manager != null ? row.manager.LastName : null).ThenBy(row => row.e.LastName).ThenBy(row => row.e.Id)
+                : joined.OrderByNullsLast(row => row.manager != null ? row.manager.LastName : null).ThenBy(row => row.e.LastName).ThenBy(row => row.e.Id),
             _ => joined.OrderBy(row => row.e.LastName).ThenBy(row => row.e.Id),
         };
 

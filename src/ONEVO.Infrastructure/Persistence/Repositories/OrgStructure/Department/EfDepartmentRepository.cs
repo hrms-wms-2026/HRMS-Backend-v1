@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
 using ONEVO.Domain.Features.OrgStructure.Entities;
+using ONEVO.Infrastructure.Persistence.SqlServer;
 
 // Namespace deliberately stops at the feature segment: a ".Department" segment would
 // collide with the Department entity type and force using-aliases everywhere (same
@@ -118,14 +119,14 @@ public class EfDepartmentRepository : IDepartmentRepository
         return sortBy switch
         {
             DepartmentSortBy.Code => ascending
-                ? query.OrderBy(department => department.Code).ThenBy(department => department.Id)
-                : query.OrderByDescending(department => department.Code).ThenBy(department => department.Id),
+                ? query.OrderByNullsLast(department => department.Code).ThenBy(department => department.Id)
+                : query.OrderByDescendingNullsFirst(department => department.Code).ThenBy(department => department.Id),
             DepartmentSortBy.CreatedAt => ascending
                 ? query.OrderBy(department => department.CreatedAt).ThenBy(department => department.Id)
                 : query.OrderByDescending(department => department.CreatedAt).ThenBy(department => department.Id),
             DepartmentSortBy.UpdatedAt => ascending
-                ? query.OrderBy(department => department.UpdatedAt).ThenBy(department => department.Id)
-                : query.OrderByDescending(department => department.UpdatedAt).ThenBy(department => department.Id),
+                ? query.OrderByNullsLast(department => department.UpdatedAt).ThenBy(department => department.Id)
+                : query.OrderByDescendingNullsFirst(department => department.UpdatedAt).ThenBy(department => department.Id),
             _ => ascending
                 ? query.OrderBy(department => department.Name).ThenBy(department => department.Id)
                 : query.OrderByDescending(department => department.Name).ThenBy(department => department.Id),
