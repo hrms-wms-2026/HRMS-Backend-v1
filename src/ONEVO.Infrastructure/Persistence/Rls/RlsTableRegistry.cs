@@ -2,13 +2,19 @@ namespace ONEVO.Infrastructure.Persistence.Rls;
 
 /// <summary>
 /// Every table under tenant isolation and its rule. The list came from the policies PostgreSQL
-/// really held (docs/reports/database/2026-11-07-postgres-policy-inventory.json).
+/// really held (docs/reports/database/2026-11-07-postgres-policy-inventory.json), plus the four
+/// tenant_id tables PostgreSQL left uncovered: billing_audit_logs, global_email_directory,
+/// outbox_messages and position_access_templates.
 /// </summary>
 public static class RlsTableRegistry
 {
     public static IReadOnlyDictionary<string, RlsPredicate> Tables { get; } =
         new Dictionary<string, RlsPredicate>(StringComparer.Ordinal)
         {
+            ["billing_audit_logs"] = RlsPredicate.PlatformShared,
+            ["global_email_directory"] = RlsPredicate.Tenant,
+            ["outbox_messages"] = RlsPredicate.PlatformShared,
+            ["position_access_templates"] = RlsPredicate.Tenant,
             ["access_grant_requests"] = RlsPredicate.Tenant,
             ["activity_daily_summary"] = RlsPredicate.Tenant,
             ["activity_raw_buffer"] = RlsPredicate.Tenant,

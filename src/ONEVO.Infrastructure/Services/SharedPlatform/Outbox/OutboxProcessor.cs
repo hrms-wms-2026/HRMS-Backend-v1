@@ -112,6 +112,18 @@ public sealed class OutboxProcessor : BackgroundService
             {
                 ct.ThrowIfCancellationRequested();
 
+                // outbox_messages is under RLS, so even parking this message needs its own context.
+                // A tenant-scoped row a handler writes (e.g. Notification) needs it too. Same mechanism
+                // request-time middleware and LeaveYearEndEntitlementJob use.
+                var tenant = message.TenantId is { } tenantId
+                    ? await tenantRepository.GetByIdAsync(tenantId, ct)
+                    : null;
+                if (tenant is not null)
+                    await tenantSwitcher.SwitchToTenantAsync(
+                        new TenantRegistryEntry(tenant.Id, tenant.Slug, tenant.Status, PlanCode: null), ct);
+                else
+                    await ReturnToSystemModeAsync(db, writableTenantContext);
+
                 if (OutboxRetryPolicy.ShouldPark(message.AttemptCount))
                 {
                     // Reclaimed after its attempts kept dying with their instance (lease expired
@@ -119,22 +131,6 @@ public sealed class OutboxProcessor : BackgroundService
                     notStarted.Dequeue();
                     await ParkAsync(db, clock, message);
                     continue;
-                }
-
-                // This scope's DbContext/connection starts in system mode (no RLS tenant set), which
-                // is correct for the platform-scoped outbox table but wrong for any tenant-scoped row
-                // a handler writes (e.g. Notification) - RLS rejects it outright. Switch to the
-                // message's own tenant before invoking its handler, same mechanism request-time
-                // middleware and LeaveYearEndEntitlementJob use.
-                if (message.TenantId is { } tenantId)
-                {
-                    var tenant = await tenantRepository.GetByIdAsync(tenantId, ct);
-                    if (tenant is not null)
-                        await tenantSwitcher.SwitchToTenantAsync(new TenantRegistryEntry(tenant.Id, tenant.Slug, tenant.Status, PlanCode: null), ct);
-                }
-                else
-                {
-                    writableTenantContext.SetSystemMode();
                 }
 
                 notStarted.Dequeue();
@@ -146,10 +142,22 @@ public sealed class OutboxProcessor : BackgroundService
             // Shutdown (or an unexpected error) before these messages started: hand them back now
             // rather than leaving them to wait for lease expiry.
             if (notStarted.Count > 0)
+            {
+                // These can belong to several tenants, which only system mode can reach.
+                await ReturnToSystemModeAsync(db, writableTenantContext);
                 await ReleaseQuietlyAsync(db, notStarted.Select(m => m.Id).ToList());
+            }
         }
 
         return claimed.Count;
+    }
+
+    // Closing makes the next command reopen the connection, which applies the new mode.
+    private static async Task ReturnToSystemModeAsync(
+        ApplicationDbContext db, IWritableTenantContext writableTenantContext)
+    {
+        writableTenantContext.SetSystemMode();
+        await db.Database.CloseConnectionAsync();
     }
 
     private async Task DispatchAsync(

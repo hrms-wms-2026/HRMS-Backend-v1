@@ -16,6 +16,12 @@ public enum RlsPredicate
 
     /// <summary>Reads: the Tenant rule, or the login lookup user. Writes: the Tenant rule.</summary>
     Users,
+
+    /// <summary>
+    /// For tables with a nullable tenant_id written by anonymous paths: the TenantOrSystem rule, except
+    /// that a tenant may also insert an unowned row. It can never read one back.
+    /// </summary>
+    PlatformShared,
 }
 
 /// <summary>
@@ -43,6 +49,10 @@ public static class RlsSql
             $"{Mode} IN (N'admin', N'system') OR ({Mode} = N'tenant' AND {TenantMatch})"),
         Function("fn_tenant_strict", "@tenant_id uniqueidentifier", TenantMatch),
         Function(
+            "fn_platform_shared_insert",
+            "@tenant_id uniqueidentifier",
+            $"@tenant_id IS NULL OR {Mode} IN (N'admin', N'system') OR ({Mode} = N'tenant' AND {TenantMatch})"),
+        Function(
             "fn_sessions_read",
             "@tenant_id uniqueidentifier, @key_hash nvarchar(128)",
             $"{TenantRule} OR @key_hash = CAST(SESSION_CONTEXT(N'app.session_lookup_key_hash') AS nvarchar(128))"),
@@ -57,18 +67,19 @@ public static class RlsSql
         var filter = predicate switch
         {
             RlsPredicate.Tenant => "rls.fn_tenant(tenant_id)",
-            RlsPredicate.TenantOrSystem => "rls.fn_tenant_or_system(tenant_id)",
+            RlsPredicate.TenantOrSystem or RlsPredicate.PlatformShared => "rls.fn_tenant_or_system(tenant_id)",
             RlsPredicate.TenantStrict => "rls.fn_tenant_strict(tenant_id)",
             RlsPredicate.Sessions => "rls.fn_sessions_read(tenant_id, key_hash)",
             RlsPredicate.Users => "rls.fn_users_read(tenant_id)",
             _ => throw new ArgumentOutOfRangeException(nameof(predicate)),
         };
         var block = predicate is RlsPredicate.Sessions or RlsPredicate.Users ? "rls.fn_tenant(tenant_id)" : filter;
+        var insert = predicate == RlsPredicate.PlatformShared ? "rls.fn_platform_shared_insert(tenant_id)" : block;
 
         return $"""
             CREATE SECURITY POLICY rls.policy_{table}
                 ADD FILTER PREDICATE {filter} ON dbo.{table},
-                ADD BLOCK PREDICATE {block} ON dbo.{table} AFTER INSERT,
+                ADD BLOCK PREDICATE {insert} ON dbo.{table} AFTER INSERT,
                 ADD BLOCK PREDICATE {block} ON dbo.{table} AFTER UPDATE,
                 ADD BLOCK PREDICATE {block} ON dbo.{table} BEFORE UPDATE,
                 ADD BLOCK PREDICATE {block} ON dbo.{table} BEFORE DELETE

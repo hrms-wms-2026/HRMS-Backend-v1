@@ -15,7 +15,16 @@
 
 `EveryRegistryTable_HasAnEnabledPolicy` checks both directions: every table in the registry has an enabled policy, and no policy exists outside it.
 
-**Gap carried over:** `position_access_templates`, `billing_audit_logs` and `outbox_messages` have `tenant_id` but no RLS, on PostgreSQL and here.
+**Stricter than PostgreSQL:** four tables with `tenant_id` had no RLS there and now do, at the user's request, taking the total to 170.
+
+| Table | Rule | Why |
+|---|---|---|
+| `position_access_templates` | Standard tenant rule | Only used with a tenant set. |
+| `global_email_directory` | Standard tenant rule | Written while accepting an invitation, in that tenant's context. Nothing reads it. |
+| `outbox_messages` | `PlatformShared` | Null `tenant_id` is valid, and anonymous paths write it. System mode processes every tenant's messages. |
+| `billing_audit_logs` | `PlatformShared` | Null `tenant_id` is valid, and Stripe webhooks write it with no tenant context. |
+
+`PlatformShared` allows admin and system mode, limits tenants to their own rows, and lets a tenant insert an unowned row that it can never read back.
 
 ## Reference data
 

@@ -18,6 +18,7 @@
 | `part-2-provider-baseline-rls.md` | API builds on SQL Server, clean database from migrations, RLS on | Clean database created; policy parity report clean |
 | `part-3-raw-sql-and-behaviour.md` | All Postgres-only SQL gone | No `Npgsql` reference left in `src` |
 | `part-4-tests-and-gate.md` | Tests moved, live RLS proof, full gate | Final report |
+| `part-5-finish.md` | Replaces unfinished Part 4 tasks: architecture tests, integration port, CI, final gate | Final report |
 
 ## Global Constraints
 

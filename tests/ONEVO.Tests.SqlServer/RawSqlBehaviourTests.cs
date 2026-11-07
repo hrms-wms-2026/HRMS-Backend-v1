@@ -49,10 +49,17 @@ public sealed class RawSqlBehaviourTests(SqlServerFixture fixture) : IAsyncLifet
 
     public async Task DisposeAsync() => await _admin.DisposeAsync();
 
+    private ApplicationDbContext SystemDb() => Create(new TenantContextAccessor());
+
     private ApplicationDbContext Db(Guid? tenant = null)
     {
         var context = new TenantContextAccessor();
         context.Resolve(new TenantRegistryEntry(tenant ?? _tenant, "t", TenantStatus.Active, null));
+        return Create(context);
+    }
+
+    private ApplicationDbContext Create(TenantContextAccessor context)
+    {
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
             .UseSqlServer(_database.App, sql => sql.EnableRetryOnFailure(3))
             .UseSnakeCaseNamingConvention()
@@ -107,7 +114,7 @@ public sealed class RawSqlBehaviourTests(SqlServerFixture fixture) : IAsyncLifet
         {
             while (true)
             {
-                await using var db = Db();
+                await using var db = SystemDb();
                 var batch = await OutboxClaimStore.ClaimBatchAsync(db, $"w{worker}", TimeSpan.FromMinutes(5), 10, default);
                 if (batch.Count == 0)
                 {
@@ -139,7 +146,7 @@ public sealed class RawSqlBehaviourTests(SqlServerFixture fixture) : IAsyncLifet
             ("next_attempt_at", DateTimeOffset.UtcNow.AddHours(-1)),
             ("created_at", DateTimeOffset.UtcNow));
 
-        await using var db = Db();
+        await using var db = SystemDb();
         var batch = await OutboxClaimStore.ClaimBatchAsync(db, "new", TimeSpan.FromMinutes(5), 10, default);
 
         var message = Assert.Single(batch, m => m.Id == id);
@@ -173,10 +180,33 @@ public sealed class RawSqlBehaviourTests(SqlServerFixture fixture) : IAsyncLifet
         Assert.False(second);
     }
 
+    [Fact]
+    public async Task OutboxWrite_KeyHeldByAnotherTenant_IsIgnoredAndLeavesTheTransactionUsable()
+    {
+        var key = Guid.NewGuid().ToString();
+        await using var other = Db(Guid.NewGuid());
+        await InTransactionAsync(other, () => new OutboxWriter(other, new PlainEncryption(), new SystemDateTimeProvider())
+            .EnqueueKeyedAsync("type", new { a = 1 }, key));
+
+        await using var db = Db();
+        var writer = new OutboxWriter(db, new PlainEncryption(), new SystemDateTimeProvider());
+        var fresh = Guid.NewGuid().ToString();
+        bool duplicate = true, next = false;
+        await InTransactionAsync(db, async () =>
+        {
+            duplicate = await writer.EnqueueKeyedAsync("type", new { a = 1 }, key);
+            next = await writer.EnqueueKeyedAsync("type", new { a = 1 }, fresh);
+        });
+
+        Assert.False(duplicate);
+        Assert.True(next);
+        Assert.Equal(1, await ScalarAsync<int>($"SELECT COUNT(*) FROM outbox_messages WHERE deduplication_key = '{fresh}'"));
+    }
+
     private JobLeaseService Leases(string instance)
     {
         var services = new ServiceCollection();
-        services.AddScoped(_ => Db());
+        services.AddScoped(_ => SystemDb());
         return new JobLeaseService(services.BuildServiceProvider().GetRequiredService<IServiceScopeFactory>(), instance);
     }
 

@@ -146,11 +146,6 @@ public sealed class SqlServerRlsCrossTenantTests(SqlServerFixture fixture) : IAs
 [Collection(SqlServerCollection.Name)]
 public sealed class SqlServerRlsCoverageTests(SqlServerFixture fixture)
 {
-    // Tenant-owned tables that have no RLS on PostgreSQL either. Adding to this list is a security
-    // decision, not a test fix.
-    private static readonly string[] KnownUncovered =
-        ["billing_audit_logs", "outbox_messages", "position_access_templates"];
-
     [Fact]
     public async Task EveryCoveredTable_HasAFilterAndFourBlockPredicates()
     {
@@ -188,7 +183,7 @@ public sealed class SqlServerRlsCoverageTests(SqlServerFixture fixture)
     }
 
     [Fact]
-    public async Task EveryModelTenantTable_IsCovered_OrKnownUncovered()
+    public async Task EveryModelTenantTable_IsCovered()
     {
         var database = await fixture.CreateDatabaseAsync(migrate: false);
         await using var context = database.CreateMigratorContext();
@@ -199,7 +194,7 @@ public sealed class SqlServerRlsCoverageTests(SqlServerFixture fixture)
             .Select(entity => entity.GetTableName()!)
             .ToHashSet();
 
-        Assert.Empty(tenantTables.Except(RlsTableRegistry.Tables.Keys).Except(KnownUncovered));
+        Assert.Empty(tenantTables.Except(RlsTableRegistry.Tables.Keys));
     }
 }
 

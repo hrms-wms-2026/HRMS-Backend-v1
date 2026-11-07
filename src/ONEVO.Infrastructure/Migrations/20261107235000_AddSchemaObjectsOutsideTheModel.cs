@@ -12,7 +12,7 @@ namespace ONEVO.Infrastructure.Migrations
     /// SchemaParityTests compares this against docs/reports/database/2026-11-07-postgres-schema.json.
     /// </summary>
     [DbContext(typeof(ApplicationDbContext))]
-    [Migration("20261108000300_AddSchemaObjectsOutsideTheModel")]
+    [Migration("20261107235000_AddSchemaObjectsOutsideTheModel")]
     public class AddSchemaObjectsOutsideTheModel : Migration
     {
         protected override void Up(MigrationBuilder migrationBuilder)

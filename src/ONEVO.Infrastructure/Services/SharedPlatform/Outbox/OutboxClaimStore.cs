@@ -25,9 +25,9 @@ namespace ONEVO.Infrastructure.Services.SharedPlatform.Outbox;
 /// claim was taken over can never overwrite the new owner's outcome. Lease times use the database
 /// clock so instances with skewed clocks still agree on when a lease has expired.
 ///
-/// outbox_messages is platform-scoped and has no RLS policy, so these statements behave the same
-/// for onevo_app (NOBYPASSRLS) whatever tenant context the connection is in, exactly like the
-/// unclaimed SELECT the processor used before.
+/// outbox_messages is under RLS (RlsPredicate.PlatformShared): claiming and releasing need system
+/// mode, and a message's own tenant context can only reach that tenant's rows. OutboxProcessor sets
+/// the right context before touching each message.
 /// </summary>
 public static class OutboxClaimStore
 {
