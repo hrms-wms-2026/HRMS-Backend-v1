@@ -24,7 +24,7 @@ public sealed class TryReservePositionAssignmentTests : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        _connectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
+        _connectionString = await SharedSqlServerTemplate.CreateDatabaseAsync();
 
         await using var db = CreateContext();
 
@@ -133,7 +133,7 @@ public sealed class TryReservePositionAssignmentTests : IAsyncLifetime
         }
 
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
-            .UseNpgsql(_connectionString)
+            .UseTestSqlServer(_connectionString)
             .UseSnakeCaseNamingConvention()
             .AddInterceptors(new TenantRlsInterceptor(tenantContext))
             .Options;

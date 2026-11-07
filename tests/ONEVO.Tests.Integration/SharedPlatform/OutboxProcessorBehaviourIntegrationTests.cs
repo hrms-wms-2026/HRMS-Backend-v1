@@ -3,7 +3,6 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.Extensions.DependencyInjection;
-using Npgsql;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Domain.Features.SharedPlatform.Entities;
 using ONEVO.Domain.Features.SharedPlatform.Notifications.Entities;
@@ -270,9 +269,9 @@ public sealed class OutboxProcessorBehaviourIntegrationTests
 
         await RunClaimLeaseMigrationAsync(host, down: true);
 
-        await using var connection = new NpgsqlConnection(host.AdminConnectionString);
+        await using var connection = TestDb.CreateConnection(host.AdminConnectionString);
         await connection.OpenAsync();
-        await using var command = new NpgsqlCommand("SELECT status FROM outbox_messages WHERE id = @id", connection);
+        await using var command = new SqlCommand("SELECT status FROM outbox_messages WHERE id = @id", connection);
         command.Parameters.AddWithValue("id", id);
         Assert.Equal(OutboxMessageStatus.Pending, (string)(await command.ExecuteScalarAsync())!);
     }
@@ -292,9 +291,9 @@ public sealed class OutboxProcessorBehaviourIntegrationTests
             script = down ? migrator.GenerateScript(ClaimLease, MigrationBeforeClaimLease)
                 : migrator.GenerateScript(MigrationBeforeClaimLease, ClaimLease);
         }
-        await using var connection = new NpgsqlConnection(host.AdminConnectionString);
+        await using var connection = TestDb.CreateConnection(host.AdminConnectionString);
         await connection.OpenAsync();
-        await using var command = new NpgsqlCommand(script, connection) { CommandTimeout = 120 };
+        await using var command = new SqlCommand(script, connection) { CommandTimeout = 120 };
         await command.ExecuteNonQueryAsync();
     }
 
@@ -311,9 +310,9 @@ public sealed class OutboxProcessorBehaviourIntegrationTests
 
     private static async Task<bool> IsForceRlsAsync(OutboxTestHost host, string table)
     {
-        await using var connection = new NpgsqlConnection(host.AdminConnectionString);
+        await using var connection = TestDb.CreateConnection(host.AdminConnectionString);
         await connection.OpenAsync();
-        await using var command = new NpgsqlCommand(
+        await using var command = new SqlCommand(
             "SELECT relrowsecurity AND relforcerowsecurity FROM pg_class WHERE relname = @t AND relkind = 'r'", connection);
         command.Parameters.AddWithValue("t", table);
         return (bool)(await command.ExecuteScalarAsync())!;

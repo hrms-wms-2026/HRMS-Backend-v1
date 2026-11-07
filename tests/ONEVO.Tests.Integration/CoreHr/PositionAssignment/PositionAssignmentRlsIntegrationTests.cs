@@ -1,6 +1,5 @@
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
-using Npgsql;
 using ONEVO.Domain.Features.Auth.Entities;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
@@ -42,7 +41,7 @@ public sealed class PositionAssignmentRlsIntegrationTests : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        _connectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
+        _connectionString = await SharedSqlServerTemplate.CreateDatabaseAsync();
 
         await using var db = CreateContext();
 
@@ -72,7 +71,7 @@ public sealed class PositionAssignmentRlsIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task RestrictedRole_IsNotSuperuserAndDoesNotBypassRls()
     {
-        await using var connection = new NpgsqlConnection(_restrictedConnectionString);
+        await using var connection = TestDb.CreateConnection(_restrictedConnectionString);
         await connection.OpenAsync();
 
         await using var command = connection.CreateCommand();
@@ -149,7 +148,7 @@ public sealed class PositionAssignmentRlsIntegrationTests : IAsyncLifetime
 
     private async Task CreateRestrictedRoleAsync()
     {
-        await using var connection = new NpgsqlConnection(_connectionString);
+        await using var connection = TestDb.CreateConnection(_connectionString);
         await connection.OpenAsync();
 
         await using (var createRole = connection.CreateCommand())
@@ -183,9 +182,9 @@ public sealed class PositionAssignmentRlsIntegrationTests : IAsyncLifetime
             await grantTables.ExecuteNonQueryAsync();
         }
 
-        var restrictedBuilder = new NpgsqlConnectionStringBuilder(_connectionString)
+        var restrictedBuilder = new SqlConnectionStringBuilder(_connectionString)
         {
-            Username = RestrictedRoleName,
+            UserID = RestrictedRoleName,
             Password = RestrictedRolePassword
         };
         _restrictedConnectionString = restrictedBuilder.ConnectionString;
@@ -241,7 +240,7 @@ public sealed class PositionAssignmentRlsIntegrationTests : IAsyncLifetime
 
         var connectionString = useRestrictedRole ? _restrictedConnectionString : _connectionString;
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
-            .UseNpgsql(connectionString)
+            .UseTestSqlServer(connectionString)
             .UseSnakeCaseNamingConvention()
             .AddInterceptors(new TenantRlsInterceptor(tenantContext))
             .Options;

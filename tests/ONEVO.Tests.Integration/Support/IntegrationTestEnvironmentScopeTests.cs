@@ -1,5 +1,4 @@
 using FluentAssertions;
-using Npgsql;
 
 namespace ONEVO.Tests.Integration.Support;
 
@@ -47,8 +46,8 @@ public sealed class IntegrationTestEnvironmentScopeTests
     {
         using var scope = new IntegrationTestEnvironmentScope(AdminConnectionString);
 
-        new NpgsqlConnectionStringBuilder(scope.DefaultConnectionString).Username.Should().Be("onevo_app");
-        new NpgsqlConnectionStringBuilder(scope.MigrationConnectionString).Username.Should().Be("onevo_migrator");
+        new SqlConnectionStringBuilder(scope.DefaultConnectionString).UserID.Should().Be("onevo_app");
+        new SqlConnectionStringBuilder(scope.MigrationConnectionString).UserID.Should().Be("onevo_migrator");
     }
 
     [Fact]

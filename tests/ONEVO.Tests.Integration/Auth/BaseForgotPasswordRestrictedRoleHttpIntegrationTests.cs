@@ -4,7 +4,6 @@ using System.Text.Json;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
-using Npgsql;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Login.OutboxHandlers;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
@@ -40,7 +39,7 @@ public sealed class BaseForgotPasswordRestrictedRoleHttpIntegrationTests : IAsyn
 
     public async Task InitializeAsync()
     {
-        _adminConnectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
+        _adminConnectionString = await SharedSqlServerTemplate.CreateDatabaseAsync();
 
         _environmentScope = new IntegrationTestEnvironmentScope(_adminConnectionString);
 
@@ -147,7 +146,7 @@ public sealed class BaseForgotPasswordRestrictedRoleHttpIntegrationTests : IAsyn
     /// </summary>
     private async Task GrantOnevoAppTablePrivilegesAsync()
     {
-        await using var connection = new NpgsqlConnection(_adminConnectionString);
+        await using var connection = TestDb.CreateConnection(_adminConnectionString);
         await connection.OpenAsync();
 
         await using var command = connection.CreateCommand();
@@ -194,7 +193,7 @@ public sealed class BaseForgotPasswordRestrictedRoleHttpIntegrationTests : IAsyn
     {
         var clock = new SystemDateTimeProvider();
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
-            .UseNpgsql(_adminConnectionString)
+            .UseTestSqlServer(_adminConnectionString)
             .UseSnakeCaseNamingConvention()
             .Options;
         return new ApplicationDbContext(

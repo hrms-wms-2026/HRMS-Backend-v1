@@ -66,7 +66,7 @@ public sealed class CalendarNotificationDb
 
     public static async Task<CalendarNotificationDb> CreateAsync()
     {
-        var h = new CalendarNotificationDb { _connectionString = await SharedPostgresTemplate.CreateDatabaseAsync() };
+        var h = new CalendarNotificationDb { _connectionString = await SharedSqlServerTemplate.CreateDatabaseAsync() };
         h.TenantId = Guid.NewGuid();
         h.Organizer = NewEmployee(h.TenantId, "Ada", "Owner");
         await using var db = h.Context(new StubCurrentUser(h.TenantId, h.Organizer.UserId));
@@ -94,7 +94,7 @@ public sealed class CalendarNotificationDb
     {
         var tenantContext = new TenantContextAccessor();
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
-            .UseNpgsql(_connectionString)
+            .UseTestSqlServer(_connectionString)
             .UseSnakeCaseNamingConvention()
             .AddInterceptors(new TenantRlsInterceptor(tenantContext))
             .Options;

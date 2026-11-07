@@ -5,7 +5,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
-using Npgsql;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Login.Commands.BaseForgotPassword;
@@ -60,7 +59,7 @@ public sealed class BaseForgotPasswordRlsIntegrationTests : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        _adminConnectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
+        _adminConnectionString = await SharedSqlServerTemplate.CreateDatabaseAsync();
 
         _environmentScope = new IntegrationTestEnvironmentScope(_adminConnectionString);
         _appConnectionString = _environmentScope.DefaultConnectionString;
@@ -177,7 +176,7 @@ public sealed class BaseForgotPasswordRlsIntegrationTests : IAsyncLifetime
 
         services.AddDbContext<ApplicationDbContext>((sp, options) =>
         {
-            options.UseNpgsql(_appConnectionString)
+            options.UseTestSqlServer(_appConnectionString)
                    .UseSnakeCaseNamingConvention()
                    .AddInterceptors(sp.GetRequiredService<TenantRlsInterceptor>());
         });
@@ -195,7 +194,7 @@ public sealed class BaseForgotPasswordRlsIntegrationTests : IAsyncLifetime
     private ApplicationDbContext BuildAdminDbContext()
     {
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
-            .UseNpgsql(_adminConnectionString)
+            .UseTestSqlServer(_adminConnectionString)
             .UseSnakeCaseNamingConvention()
             .Options;
         return new ApplicationDbContext(
@@ -217,7 +216,7 @@ public sealed class BaseForgotPasswordRlsIntegrationTests : IAsyncLifetime
     /// </summary>
     private async Task GrantOnevoAppTablePrivilegesAsync()
     {
-        await using var connection = new NpgsqlConnection(_adminConnectionString);
+        await using var connection = TestDb.CreateConnection(_adminConnectionString);
         await connection.OpenAsync();
 
         await using var command = connection.CreateCommand();

@@ -71,7 +71,7 @@ public class AdminTestFactory : WebApplicationFactory<Program>
 
             services.AddDbContext<ApplicationDbContext>((sp, options) =>
             {
-                options.UseNpgsql(_connectionString)
+                options.UseTestSqlServer(_connectionString)
                        .UseSnakeCaseNamingConvention();
             });
         });

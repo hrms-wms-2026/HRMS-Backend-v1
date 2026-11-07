@@ -45,7 +45,7 @@ public sealed class ChecklistTemplatesIntegrationTests : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        _connectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
+        _connectionString = await SharedSqlServerTemplate.CreateDatabaseAsync();
 
         await using var db = CreateContext();
 
@@ -200,7 +200,7 @@ public sealed class ChecklistTemplatesIntegrationTests : IAsyncLifetime
 
     private async Task CreateRestrictedRoleAsync()
     {
-        await using var connection = new Npgsql.NpgsqlConnection(_connectionString);
+        await using var connection = TestDb.CreateConnection(_connectionString);
         await connection.OpenAsync();
 
         await using (var createRole = connection.CreateCommand())
@@ -234,9 +234,9 @@ public sealed class ChecklistTemplatesIntegrationTests : IAsyncLifetime
             await grantTables.ExecuteNonQueryAsync();
         }
 
-        var restrictedBuilder = new Npgsql.NpgsqlConnectionStringBuilder(_connectionString)
+        var restrictedBuilder = new SqlConnectionStringBuilder(_connectionString)
         {
-            Username = RestrictedRoleName,
+            UserID = RestrictedRoleName,
             Password = RestrictedRolePassword
         };
         _restrictedConnectionString = restrictedBuilder.ConnectionString;
@@ -253,7 +253,7 @@ public sealed class ChecklistTemplatesIntegrationTests : IAsyncLifetime
 
         var connectionString = useRestrictedRole ? _restrictedConnectionString : _connectionString;
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
-            .UseNpgsql(connectionString)
+            .UseTestSqlServer(connectionString)
             .UseSnakeCaseNamingConvention()
             .AddInterceptors(new TenantRlsInterceptor(tenantContext))
             .Options;

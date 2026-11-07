@@ -1,7 +1,6 @@
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
-using Npgsql;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.DevPlatform.ConfigurationTemplates.Commands.ApplyConfigurationTemplateToTenant;
@@ -33,7 +32,7 @@ public sealed class ConfigurationTemplateManagerIntegrationTests : IAsyncLifetim
 
     public async Task InitializeAsync()
     {
-        _connectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
+        _connectionString = await SharedSqlServerTemplate.CreateDatabaseAsync();
         _environmentScope = new IntegrationTestEnvironmentScope(_connectionString);
 
         _factory = new AdminTestFactory(_connectionString);
@@ -58,7 +57,7 @@ public sealed class ConfigurationTemplateManagerIntegrationTests : IAsyncLifetim
         await db.Database.OpenConnectionAsync();
         await db.Database.ExecuteSqlRawAsync(
             "SET session_replication_role = replica; " +
-            "SELECT set_config('app.tenant_context_mode', 'admin', false);");
+            "EXEC sp_set_session_context N'app.tenant_context_mode', N'admin';");
 
         var platformUser = new PlatformUser { Id = Guid.NewGuid(), Email = "op@onevo.test", FullName = "Op" };
         db.PlatformUsers.Add(platformUser);
@@ -108,33 +107,33 @@ public sealed class ConfigurationTemplateManagerIntegrationTests : IAsyncLifetim
     [Fact]
     public async Task Migration_rejects_nonexistent_tenant_and_template_foreign_keys()
     {
-        await using var connection = new NpgsqlConnection(_connectionString);
+        await using var connection = TestDb.CreateConnection(_connectionString);
         await connection.OpenAsync();
 
         // Bypass the tenant_isolation RLS policy via the admin context-mode escape
         // hatch (not session_replication_role = replica, which also disables the
         // FK-constraint triggers this test needs to actually fire).
-        await ExecuteAsync(connection, "SELECT set_config('app.tenant_context_mode', 'admin', false)");
+        await ExecuteAsync(connection, "EXEC sp_set_session_context N'app.tenant_context_mode', N'admin'");
 
-        var badTenant = await Assert.ThrowsAsync<PostgresException>(() => InsertApplicationAsync(
+        var badTenant = await Assert.ThrowsAsync<SqlException>(() => InsertApplicationAsync(
             connection, tenantId: Guid.NewGuid(), configurationTemplateId: null, appliedById: Guid.NewGuid()));
-        Assert.Equal(PostgresErrorCodes.ForeignKeyViolation, badTenant.SqlState);
+        Assert.Equal(547, badTenant.Number);
     }
 
     private static async Task InsertApplicationAsync(
-        NpgsqlConnection connection,
+        SqlConnection connection,
         Guid tenantId,
         Guid? configurationTemplateId,
         Guid appliedById)
     {
-        await using var command = new NpgsqlCommand(
+        await using var command = new SqlCommand(
             """
             INSERT INTO tenant_configuration_template_applications
                 (id, tenant_id, configuration_template_id, template_type, applied_version,
                  applied_payload_json, status, applied_by_id, applied_at)
             VALUES
                 (@id, @tenant_id, @configuration_template_id, 'configuration', 1,
-                 '{}', 'applied', @applied_by_id, now())
+                 '{}', 'applied', @applied_by_id, SYSDATETIMEOFFSET())
             """,
             connection);
         command.Parameters.AddWithValue("id", Guid.NewGuid());
@@ -144,9 +143,9 @@ public sealed class ConfigurationTemplateManagerIntegrationTests : IAsyncLifetim
         await command.ExecuteNonQueryAsync();
     }
 
-    private static async Task ExecuteAsync(NpgsqlConnection connection, string sql)
+    private static async Task ExecuteAsync(SqlConnection connection, string sql)
     {
-        await using var command = new NpgsqlCommand(sql, connection);
+        await using var command = new SqlCommand(sql, connection);
         await command.ExecuteNonQueryAsync();
     }
 }

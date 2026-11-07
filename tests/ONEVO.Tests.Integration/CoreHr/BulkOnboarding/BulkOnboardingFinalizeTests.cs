@@ -28,7 +28,7 @@ public sealed class BulkOnboardingFinalizeTests : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        _connectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
+        _connectionString = await SharedSqlServerTemplate.CreateDatabaseAsync();
 
         await using var db = CreateContext();
         var tenant = new Tenant
@@ -115,7 +115,7 @@ public sealed class BulkOnboardingFinalizeTests : IAsyncLifetime
     {
         var tenantContext = new TenantContextAccessor();
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
-            .UseNpgsql(_connectionString)
+            .UseTestSqlServer(_connectionString)
             .UseSnakeCaseNamingConvention()
             .AddInterceptors(new TenantRlsInterceptor(tenantContext))
             .Options;

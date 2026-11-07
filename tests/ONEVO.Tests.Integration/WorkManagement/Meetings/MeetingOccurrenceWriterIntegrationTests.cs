@@ -1,5 +1,4 @@
 using Microsoft.EntityFrameworkCore;
-using Npgsql;
 using ONEVO.Application.Features.WorkManagement.Meetings;
 using ONEVO.Application.Features.WorkManagement.Meetings.RepositoryInterfaces;
 using ONEVO.Domain.Features.WorkManagement.Meetings.Entities;
@@ -69,9 +68,9 @@ public sealed class MeetingOccurrenceWriterIntegrationTests
 
     private static async Task<long> CountAsync(Fixture f, string sql)
     {
-        await using var connection = new NpgsqlConnection(f.H.ConnectionString);
+        await using var connection = TestDb.CreateConnection(f.H.ConnectionString);
         await connection.OpenAsync();
-        await using var command = new NpgsqlCommand(sql, connection);
+        await using var command = new SqlCommand(sql, connection);
         return (long)(await command.ExecuteScalarAsync())!;
     }
 
@@ -79,7 +78,7 @@ public sealed class MeetingOccurrenceWriterIntegrationTests
         "SELECT count(*) FROM tasks t WHERE t.task_kind = 'meeting' AND NOT EXISTS (SELECT 1 FROM meeting_details d WHERE d.task_id = t.id)");
 
     private static Task<long> DetailsAtAsync(Fixture f, Guid seriesId, DateTimeOffset originalStart) => CountAsync(f,
-        $"SELECT count(*) FROM meeting_details WHERE series_id = '{seriesId}' AND original_start = '{originalStart.UtcDateTime:O}'::timestamptz");
+        $"SELECT count(*) FROM meeting_details WHERE series_id = '{seriesId}' AND original_start = '{originalStart.UtcDateTime:O}'");
 
     [Fact]
     public async Task RacingForASlotWhoseDeterministicIdIsHeld_LosersGetARetryableSignal_NoOrphan()
@@ -145,9 +144,9 @@ public sealed class MeetingOccurrenceWriterIntegrationTests
     public async Task Constraint_IsNotDeferrable()
     {
         var f = await SeedAsync();
-        await using var connection = new NpgsqlConnection(f.H.ConnectionString);
+        await using var connection = TestDb.CreateConnection(f.H.ConnectionString);
         await connection.OpenAsync();
-        await using var command = new NpgsqlCommand(
+        await using var command = new SqlCommand(
             "SELECT condeferrable FROM pg_constraint WHERE conname = 'uq_meeting_details_series_original_start'", connection);
 
         Assert.Equal(false, await command.ExecuteScalarAsync());
@@ -198,10 +197,10 @@ public sealed class MeetingOccurrenceWriterIntegrationTests
         // (the meeting number) like any task create; when that row is busy for longer, it waits instead of failing
         // with an unmapped lock_not_available (55P03, a 500).
         var f = await SeedAsync();
-        await using var holder = new NpgsqlConnection(f.H.ConnectionString);
+        await using var holder = TestDb.CreateConnection(f.H.ConnectionString);
         await holder.OpenAsync();
         await using var holderTx = await holder.BeginTransactionAsync();
-        await using (var lockRow = new NpgsqlCommand("SELECT 1 FROM projects WHERE id = @id FOR UPDATE", holder, holderTx))
+        await using (var lockRow = new SqlCommand("SELECT 1 FROM projects WITH (UPDLOCK, ROWLOCK) WHERE id = @id", holder, (SqlTransaction)holderTx))
         {
             lockRow.Parameters.AddWithValue("id", f.Series.ProjectId);
             await lockRow.ExecuteNonQueryAsync();
@@ -301,13 +300,13 @@ public sealed class MeetingOccurrenceWriterIntegrationTests
         var f = await SeedAsync();
         await MaterializeInTransactionAsync(f, Draft(f, FirstStart), takeLock: true);
 
-        await using var connection = new NpgsqlConnection(f.H.ConnectionString);
+        await using var connection = TestDb.CreateConnection(f.H.ConnectionString);
         await connection.OpenAsync();
-        await using var command = new NpgsqlCommand(
+        await using var command = new SqlCommand(
             "UPDATE meeting_details SET original_start = original_start + interval '1 day'", connection);
-        var error = await Assert.ThrowsAsync<PostgresException>(() => command.ExecuteNonQueryAsync());
+        var error = await Assert.ThrowsAsync<SqlException>(() => command.ExecuteNonQueryAsync());
 
-        Assert.Contains("trg_meeting_details_key_immutable", error.MessageText);
+        Assert.Contains("trg_meeting_details_key_immutable", error.Message);
     }
 
     [Fact]

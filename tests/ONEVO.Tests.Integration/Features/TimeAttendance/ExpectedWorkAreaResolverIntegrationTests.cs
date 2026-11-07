@@ -1,7 +1,6 @@
 using FluentAssertions;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
-using Npgsql;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces;
@@ -40,8 +39,8 @@ public sealed class ExpectedWorkAreaResolverIntegrationTestsFixture : IAsyncLife
         }
         else
         {
-            // Cloned from the shared, already-migrated template - see SharedPostgresTemplate.
-            _connectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
+            // Cloned from the shared, already-migrated template - see SharedSqlServerTemplate.
+            _connectionString = await SharedSqlServerTemplate.CreateDatabaseAsync();
         }
     }
 
@@ -63,7 +62,7 @@ public sealed class ExpectedWorkAreaResolverIntegrationTestsFixture : IAsyncLife
     private ApplicationDbContext BuildDbContext()
     {
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
-            .UseNpgsql(_connectionString)
+            .UseTestSqlServer(_connectionString)
             .UseSnakeCaseNamingConvention()
             .Options;
         return new ApplicationDbContext(options,
@@ -102,7 +101,7 @@ public sealed class ExpectedWorkAreaResolverIntegrationTestsFixture : IAsyncLife
         // (matching WorkAreaChangeRequestsIntegrationTests' established technique). This does not
         // suspend the resolver's own tenant/legal-entity/employee/date/status filtering, which is
         // exactly what these tests exercise.
-        await using var connection = new NpgsqlConnection(_connectionString);
+        await using var connection = TestDb.CreateConnection(_connectionString);
         await connection.OpenAsync();
         await using (var setReplica = connection.CreateCommand())
         {
@@ -116,17 +115,17 @@ public sealed class ExpectedWorkAreaResolverIntegrationTestsFixture : IAsyncLife
                 (id, tenant_id, employee_id, legal_entity_id, date,
                  current_work_mode_id, current_work_mode_name, requested_work_mode_id, requested_work_mode_name,
                  reason, status, requested_at)
-            VALUES ($1, $2, $3, $4, $5, $6, 'onsite', $7, $8, 'fixture', $9, now());
+            VALUES (@p1, @p2, @p3, @p4, @p5, @p6, 'onsite', @p7, @p8, 'fixture', @p9, SYSDATETIMEOFFSET());
             """;
-        command.Parameters.AddWithValue(Guid.NewGuid());
-        command.Parameters.AddWithValue(tenantId);
-        command.Parameters.AddWithValue(employeeId);
-        command.Parameters.AddWithValue(legalEntityId);
-        command.Parameters.AddWithValue(date);
-        command.Parameters.AddWithValue(Guid.NewGuid());
-        command.Parameters.AddWithValue(Guid.NewGuid());
-        command.Parameters.AddWithValue(requestedWorkArea);
-        command.Parameters.AddWithValue(status);
+        command.Parameters.AddPositional(Guid.NewGuid());
+        command.Parameters.AddPositional(tenantId);
+        command.Parameters.AddPositional(employeeId);
+        command.Parameters.AddPositional(legalEntityId);
+        command.Parameters.AddPositional(date);
+        command.Parameters.AddPositional(Guid.NewGuid());
+        command.Parameters.AddPositional(Guid.NewGuid());
+        command.Parameters.AddPositional(requestedWorkArea);
+        command.Parameters.AddPositional(status);
         await command.ExecuteNonQueryAsync();
 
         await using var resetReplica = connection.CreateCommand();

@@ -43,7 +43,7 @@ public sealed class MyTeamDb
 
     public static async Task<MyTeamDb> CreateAsync()
     {
-        var helper = new MyTeamDb { _connectionString = await SharedPostgresTemplate.CreateDatabaseAsync() };
+        var helper = new MyTeamDb { _connectionString = await SharedSqlServerTemplate.CreateDatabaseAsync() };
         await helper.SeedTenantAsync();
         return helper;
     }
@@ -85,7 +85,7 @@ public sealed class MyTeamDb
     {
         var tenantContext = new TenantContextAccessor();
         var builder = new DbContextOptionsBuilder<ApplicationDbContext>()
-            .UseNpgsql(_connectionString)
+            .UseTestSqlServer(_connectionString)
             .UseSnakeCaseNamingConvention()
             .AddInterceptors(new TenantRlsInterceptor(tenantContext));
         if (counter is not null)
@@ -106,7 +106,7 @@ public sealed class MyTeamDb
         tenantContext.Resolve(new ONEVO.Application.Common.ServiceInterfaces.TenantRegistryEntry(
             tenantId ?? TenantId, "my-team", TenantStatus.Active, PlanCode: null));
         var builder = new DbContextOptionsBuilder<ApplicationDbContext>()
-            .UseNpgsql(_connectionString)
+            .UseTestSqlServer(_connectionString)
             .UseSnakeCaseNamingConvention()
             .AddInterceptors(new TenantRlsInterceptor(tenantContext));
         return new ApplicationDbContext(

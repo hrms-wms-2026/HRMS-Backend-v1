@@ -1,6 +1,5 @@
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
-using Npgsql;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
 using ONEVO.Infrastructure.ExternalServices.Messaging;
 using ONEVO.Infrastructure.Identity.CurrentUser;
@@ -32,7 +31,7 @@ public sealed class AuthLookupBaseLoginCandidatesFunctionTests : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        _connectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
+        _connectionString = await SharedSqlServerTemplate.CreateDatabaseAsync();
 
         await using var db = CreateContext();
 
@@ -90,7 +89,7 @@ public sealed class AuthLookupBaseLoginCandidatesFunctionTests : IAsyncLifetime
 
     private async Task CreateRestrictedRoleAsync()
     {
-        await using var connection = new NpgsqlConnection(_connectionString);
+        await using var connection = TestDb.CreateConnection(_connectionString);
         await connection.OpenAsync();
 
         await using (var createRole = connection.CreateCommand())
@@ -116,9 +115,9 @@ public sealed class AuthLookupBaseLoginCandidatesFunctionTests : IAsyncLifetime
             await grantExecute.ExecuteNonQueryAsync();
         }
 
-        var restrictedBuilder = new NpgsqlConnectionStringBuilder(_connectionString)
+        var restrictedBuilder = new SqlConnectionStringBuilder(_connectionString)
         {
-            Username = RestrictedRoleName,
+            UserID = RestrictedRoleName,
             Password = RestrictedRolePassword
         };
         _restrictedConnectionString = restrictedBuilder.ConnectionString;
@@ -129,7 +128,7 @@ public sealed class AuthLookupBaseLoginCandidatesFunctionTests : IAsyncLifetime
     [Fact]
     public async Task RestrictedRole_CanCallFunctionAndSeesBothTenantsCandidates()
     {
-        await using var connection = new NpgsqlConnection(_restrictedConnectionString);
+        await using var connection = TestDb.CreateConnection(_restrictedConnectionString);
         await connection.OpenAsync();
 
         await using var command = connection.CreateCommand();
@@ -150,7 +149,7 @@ public sealed class AuthLookupBaseLoginCandidatesFunctionTests : IAsyncLifetime
     [Fact]
     public async Task RestrictedRole_CannotSelectUsersTableDirectlyAcrossTenants()
     {
-        await using var connection = new NpgsqlConnection(_restrictedConnectionString);
+        await using var connection = TestDb.CreateConnection(_restrictedConnectionString);
         await connection.OpenAsync();
 
         var act = async () =>
@@ -160,14 +159,14 @@ public sealed class AuthLookupBaseLoginCandidatesFunctionTests : IAsyncLifetime
             await command.ExecuteReaderAsync();
         };
 
-        await act.Should().ThrowAsync<PostgresException>(
+        await act.Should().ThrowAsync<SqlException>(
             "the restricted role has no direct table grant on users; only EXECUTE on the function");
     }
 
     [Fact]
     public async Task RestrictedRole_CannotSelectEmailColumn_OnlyNormalizedEmail()
     {
-        await using var connection = new NpgsqlConnection(_restrictedConnectionString);
+        await using var connection = TestDb.CreateConnection(_restrictedConnectionString);
         await connection.OpenAsync();
 
         var act = async () =>
@@ -177,14 +176,14 @@ public sealed class AuthLookupBaseLoginCandidatesFunctionTests : IAsyncLifetime
             await command.ExecuteReaderAsync();
         };
 
-        await act.Should().ThrowAsync<PostgresException>(
+        await act.Should().ThrowAsync<SqlException>(
             "the restricted role has no direct column grant on users; only EXECUTE on the function");
     }
 
     [Fact]
     public async Task PublicRole_CannotExecuteFunction()
     {
-        await using var adminConnection = new NpgsqlConnection(_connectionString);
+        await using var adminConnection = TestDb.CreateConnection(_connectionString);
         await adminConnection.OpenAsync();
 
         await using var checkGrant = adminConnection.CreateCommand();
@@ -202,7 +201,7 @@ public sealed class AuthLookupBaseLoginCandidatesFunctionTests : IAsyncLifetime
         tenantContext.SetSystemMode();
 
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
-            .UseNpgsql(_connectionString)
+            .UseTestSqlServer(_connectionString)
             .UseSnakeCaseNamingConvention()
             .AddInterceptors(new TenantRlsInterceptor(tenantContext))
             .Options;

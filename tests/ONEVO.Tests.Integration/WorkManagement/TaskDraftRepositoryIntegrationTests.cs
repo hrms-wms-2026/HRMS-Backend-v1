@@ -33,7 +33,7 @@ public sealed class TaskDraftRepositoryIntegrationTests : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        _connectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
+        _connectionString = await SharedSqlServerTemplate.CreateDatabaseAsync();
 
         await using var db = CreateContext(tenantId: null);
         var tenant = new Tenant { Id = Guid.NewGuid(), Name = "Task Draft Tenant", Slug = "task-drafts-a", CompanySizeRange = "51-200", Status = TenantStatus.Active };
@@ -117,7 +117,7 @@ public sealed class TaskDraftRepositoryIntegrationTests : IAsyncLifetime
 
     private async Task CreateRestrictedRoleAsync()
     {
-        await using var connection = new Npgsql.NpgsqlConnection(_connectionString);
+        await using var connection = TestDb.CreateConnection(_connectionString);
         await connection.OpenAsync();
 
         await using var command = connection.CreateCommand();
@@ -136,9 +136,9 @@ public sealed class TaskDraftRepositoryIntegrationTests : IAsyncLifetime
         ";
         await command.ExecuteNonQueryAsync();
 
-        _restrictedConnectionString = new Npgsql.NpgsqlConnectionStringBuilder(_connectionString)
+        _restrictedConnectionString = new SqlConnectionStringBuilder(_connectionString)
         {
-            Username = RestrictedRoleName,
+            UserID = RestrictedRoleName,
             Password = RestrictedRolePassword
         }.ConnectionString;
     }
@@ -152,7 +152,7 @@ public sealed class TaskDraftRepositoryIntegrationTests : IAsyncLifetime
         }
 
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
-            .UseNpgsql(restricted ? _restrictedConnectionString : _connectionString)
+            .UseTestSqlServer(restricted ? _restrictedConnectionString : _connectionString)
             .UseSnakeCaseNamingConvention()
             .AddInterceptors(new TenantRlsInterceptor(tenantContext))
             .Options;

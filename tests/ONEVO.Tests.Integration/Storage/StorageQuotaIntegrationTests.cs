@@ -41,7 +41,7 @@ public sealed class StorageQuotaIntegrationTests : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        _connectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
+        _connectionString = await SharedSqlServerTemplate.CreateDatabaseAsync();
 
         await using var db = CreateContext();
 
@@ -166,8 +166,8 @@ public sealed class StorageQuotaIntegrationTests : IAsyncLifetime
 
         var failure = await act.Should().ThrowAsync<DbUpdateException>(
             "tenant_storage_stats.tenant_id must be a foreign key to tenants.id");
-        failure.Which.InnerException.Should().BeOfType<Npgsql.PostgresException>()
-            .Which.SqlState.Should().Be("23503", "23503 is the PostgreSQL foreign_key_violation code");
+        failure.Which.InnerException.Should().BeOfType<SqlException>()
+            .Which.Number.Should().Be(547);
     }
 
     private IStorageQuotaService CreateService(ApplicationDbContext db) =>
@@ -189,7 +189,7 @@ public sealed class StorageQuotaIntegrationTests : IAsyncLifetime
     private ApplicationDbContext CreateContext()
     {
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
-            .UseNpgsql(_connectionString)
+            .UseTestSqlServer(_connectionString)
             .UseSnakeCaseNamingConvention()
             .Options;
 
