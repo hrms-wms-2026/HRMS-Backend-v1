@@ -151,7 +151,7 @@ public sealed class OutboxTestHost
             // transaction the processor starts outside the strategy, so leaving it out would hide that bug.
             options.UseTestSqlServer(AppConnectionString, npgsql => npgsql.EnableRetryOnFailure(3))
                    .UseSnakeCaseNamingConvention()
-                   .AddInterceptors(sp.GetRequiredService<TenantRlsInterceptor>());
+                   .AddTestRls(sp.GetRequiredService<TenantRlsInterceptor>());
         });
         services.AddScoped<ITenantRepository, EfTenantRepository>();
         services.AddScoped<ITenantContextSwitcher, TenantContextSwitcher>();

@@ -191,7 +191,7 @@ public sealed class ListUserIdsWithPermissionCodeAsyncTests : IAsyncLifetime
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
             .UseTestSqlServer(_connectionString)
             .UseSnakeCaseNamingConvention()
-            .AddInterceptors(new TenantRlsInterceptor(tenantContext))
+            .AddTestRls(new TenantRlsInterceptor(tenantContext))
             .Options;
 
         return new ApplicationDbContext(

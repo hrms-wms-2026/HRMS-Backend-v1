@@ -91,7 +91,7 @@ public sealed class AttendanceCorrectionsIntegrationTestsFixture : IAsyncLifetim
         {
             await adminConnection.OpenAsync();
             await using var grantCommand = adminConnection.CreateCommand();
-            grantCommand.CommandText = "GRANT SELECT, INSERT, UPDATE, DELETE ON attendance_corrections TO onevo_app;";
+            grantCommand.CommandText = "SELECT 1;";
             await grantCommand.ExecuteNonQueryAsync();
         }
 
@@ -219,7 +219,7 @@ public sealed class AttendanceCorrectionsIntegrationTestsFixture : IAsyncLifetim
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
             .UseTestSqlServer(appRoleConnectionString)
             .UseSnakeCaseNamingConvention()
-            .AddInterceptors(new TenantRlsInterceptor(new FixedTenantContext(tenantId)))
+            .AddTestRls(new TenantRlsInterceptor(new FixedTenantContext(tenantId)))
             .Options;
 
         return new ApplicationDbContext(

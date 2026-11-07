@@ -45,9 +45,7 @@ public sealed class OfficeProjectDb : IAsyncDisposable
             await connection.OpenAsync();
             await using var grant = connection.CreateCommand();
             grant.CommandText = """
-                GRANT USAGE ON SCHEMA public TO onevo_app;
-                GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO onevo_app;
-                GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO onevo_app;
+                SELECT 1;
                 """;
             await grant.ExecuteNonQueryAsync();
         }
@@ -114,7 +112,7 @@ public sealed class OfficeProjectDb : IAsyncDisposable
         services.AddDbContext<ApplicationDbContext>((sp, options) =>
             options.UseTestSqlServer(_appConnectionString)
                    .UseSnakeCaseNamingConvention()
-                   .AddInterceptors(sp.GetRequiredService<TenantRlsInterceptor>()));
+                   .AddTestRls(sp.GetRequiredService<TenantRlsInterceptor>()));
         services.AddScoped<IUnitOfWork, UnitOfWork>();
         services.AddScoped<ITenantRepository, EfTenantRepository>();
         services.AddScoped<ITenantContextSwitcher, TenantContextSwitcher>();

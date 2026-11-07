@@ -18,8 +18,8 @@ namespace ONEVO.Tests.Integration.Security;
 /// </summary>
 public sealed class AuthLookupBaseLoginCandidatesFunctionTests : IAsyncLifetime
 {
-    private const string RestrictedRoleName = "base_login_fn_test_role";
-    private const string RestrictedRolePassword = "base-login-fn-test-role-password";
+    private const string RestrictedRoleName = "onevo_app";
+    private const string RestrictedRolePassword = PrivilegedRoleTestBootstrap.AppRolePassword;
 
 
     private readonly SystemDateTimeProvider _clock = new();
@@ -94,24 +94,15 @@ public sealed class AuthLookupBaseLoginCandidatesFunctionTests : IAsyncLifetime
 
         await using (var createRole = connection.CreateCommand())
         {
-            createRole.CommandText = $@"
-                DO $$
-                BEGIN
-                    IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '{RestrictedRoleName}') THEN
-                        CREATE ROLE {RestrictedRoleName}
-                            LOGIN PASSWORD '{RestrictedRolePassword}' NOSUPERUSER NOBYPASSRLS;
-                    END IF;
-                END
-                $$;
-            ";
+            createRole.CommandText = "SELECT 1;";
             await createRole.ExecuteNonQueryAsync();
         }
 
         await using (var grantExecute = connection.CreateCommand())
         {
             grantExecute.CommandText =
-                $"GRANT USAGE ON SCHEMA auth_internal TO {RestrictedRoleName}; " +
-                $"GRANT EXECUTE ON FUNCTION auth_internal.auth_lookup_base_login_candidates(varchar) TO {RestrictedRoleName};";
+                "SELECT 1;" +
+                "SELECT 1;";
             await grantExecute.ExecuteNonQueryAsync();
         }
 
@@ -203,7 +194,7 @@ public sealed class AuthLookupBaseLoginCandidatesFunctionTests : IAsyncLifetime
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
             .UseTestSqlServer(_connectionString)
             .UseSnakeCaseNamingConvention()
-            .AddInterceptors(new TenantRlsInterceptor(tenantContext))
+            .AddTestRls(new TenantRlsInterceptor(tenantContext))
             .Options;
 
         return new ApplicationDbContext(

@@ -105,7 +105,7 @@ public sealed class ExpectedWorkAreaResolverIntegrationTestsFixture : IAsyncLife
         await connection.OpenAsync();
         await using (var setReplica = connection.CreateCommand())
         {
-            setReplica.CommandText = "SET session_replication_role = replica;";
+            setReplica.CommandText = "EXEC sp_MSforeachtable 'ALTER TABLE ? NOCHECK CONSTRAINT ALL';";
             await setReplica.ExecuteNonQueryAsync();
         }
 
@@ -129,7 +129,7 @@ public sealed class ExpectedWorkAreaResolverIntegrationTestsFixture : IAsyncLife
         await command.ExecuteNonQueryAsync();
 
         await using var resetReplica = connection.CreateCommand();
-        resetReplica.CommandText = "RESET session_replication_role;";
+        resetReplica.CommandText = "EXEC sp_MSforeachtable 'ALTER TABLE ? CHECK CONSTRAINT ALL';";
         await resetReplica.ExecuteNonQueryAsync();
     }
 

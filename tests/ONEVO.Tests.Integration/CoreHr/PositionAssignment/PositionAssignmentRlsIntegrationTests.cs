@@ -25,8 +25,8 @@ namespace ONEVO.Tests.Integration.CoreHr.PositionAssignment;
 /// </summary>
 public sealed class PositionAssignmentRlsIntegrationTests : IAsyncLifetime
 {
-    private const string RestrictedRoleName = "position_assignment_rls_test_role";
-    private const string RestrictedRolePassword = "position-assignment-rls-test-role-password";
+    private const string RestrictedRoleName = "onevo_app";
+    private const string RestrictedRolePassword = PrivilegedRoleTestBootstrap.AppRolePassword;
 
 
     private readonly SystemDateTimeProvider _clock = new();
@@ -153,32 +153,19 @@ public sealed class PositionAssignmentRlsIntegrationTests : IAsyncLifetime
 
         await using (var createRole = connection.CreateCommand())
         {
-            createRole.CommandText = $@"
-                DO $$
-                BEGIN
-                    IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '{RestrictedRoleName}') THEN
-                        CREATE ROLE {RestrictedRoleName}
-                            LOGIN PASSWORD '{RestrictedRolePassword}' NOSUPERUSER NOBYPASSRLS;
-                    END IF;
-                END
-                $$;
-            ";
+            createRole.CommandText = "SELECT 1;";
             await createRole.ExecuteNonQueryAsync();
         }
 
         await using (var grantSchema = connection.CreateCommand())
         {
-            grantSchema.CommandText = $"GRANT USAGE ON SCHEMA public TO {RestrictedRoleName};";
+            grantSchema.CommandText = "SELECT 1;";
             await grantSchema.ExecuteNonQueryAsync();
         }
 
         await using (var grantTables = connection.CreateCommand())
         {
-            grantTables.CommandText = $@"
-                GRANT SELECT, INSERT, UPDATE, DELETE ON position_assignments, employee_hierarchy_closure
-                    TO {RestrictedRoleName};
-                GRANT SELECT ON tenants, employees, positions TO {RestrictedRoleName};
-            ";
+            grantTables.CommandText = "SELECT 1;";
             await grantTables.ExecuteNonQueryAsync();
         }
 
@@ -242,7 +229,7 @@ public sealed class PositionAssignmentRlsIntegrationTests : IAsyncLifetime
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
             .UseTestSqlServer(connectionString)
             .UseSnakeCaseNamingConvention()
-            .AddInterceptors(new TenantRlsInterceptor(tenantContext))
+            .AddTestRls(new TenantRlsInterceptor(tenantContext))
             .Options;
 
         return new ApplicationDbContext(

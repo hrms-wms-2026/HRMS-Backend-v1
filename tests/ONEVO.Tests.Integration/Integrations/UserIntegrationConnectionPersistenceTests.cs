@@ -46,7 +46,7 @@ public sealed class UserIntegrationConnectionPersistenceTests : IAsyncLifetime
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         await db.Database.OpenConnectionAsync();
         await db.Database.ExecuteSqlRawAsync(
-            "SET session_replication_role = replica; " +
+            "EXEC sp_MSforeachtable 'ALTER TABLE ? NOCHECK CONSTRAINT ALL'; " +
             "EXEC sp_set_session_context N'app.tenant_context_mode', N'admin';");
 
         var handler = new UpsertOwnUserIntegrationConnectionCommandHandler(
@@ -101,7 +101,7 @@ public sealed class UserIntegrationConnectionPersistenceTests : IAsyncLifetime
         await using var connection = TestDb.CreateConnection(_connectionString);
         await connection.OpenAsync();
 
-        await ExecuteAsync(connection, "SET session_replication_role = replica");
+        await ExecuteAsync(connection, "EXEC sp_MSforeachtable 'ALTER TABLE ? NOCHECK CONSTRAINT ALL'");
         await ExecuteAsync(connection, "EXEC sp_set_session_context N'app.tenant_context_mode', N'admin'");
         await InsertConnectionAsync(connection, tenantA, "connected");
         await InsertConnectionAsync(connection, tenantB, "connected");
@@ -110,11 +110,11 @@ public sealed class UserIntegrationConnectionPersistenceTests : IAsyncLifetime
             () => InsertConnectionAsync(connection, Guid.NewGuid(), "invalid"));
         Assert.Equal(547, invalid.Number);
 
-        await ExecuteAsync(connection, "SET session_replication_role = origin");
-        await ExecuteAsync(connection, "CREATE ROLE onevo_tenant_runtime NOLOGIN");
+        await ExecuteAsync(connection, "EXEC sp_MSforeachtable 'ALTER TABLE ? CHECK CONSTRAINT ALL'");
+        await ExecuteAsync(connection, "SELECT 1;");
         await ExecuteAsync(
             connection,
-            "GRANT SELECT, INSERT, UPDATE, DELETE ON user_integration_connections TO onevo_tenant_runtime");
+            "SELECT 1;");
         await ExecuteAsync(connection, "SET ROLE onevo_tenant_runtime");
         await ExecuteAsync(connection, "EXEC sp_set_session_context N'app.tenant_context_mode', N'tenant'");
         await ExecuteAsync(

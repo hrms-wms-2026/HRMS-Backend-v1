@@ -64,18 +64,53 @@ public static class TestDb
         return options;
     }
 
+    /// <summary>
+    /// Adds the app's RLS interceptor. On an admin connection it would reset the session to system
+    /// mode, so admin context is applied again after it. A tenant context is left alone, so
+    /// deliberately tenant-scoped test contexts keep real RLS.
+    /// </summary>
+    public static DbContextOptionsBuilder<TContext> AddTestRls<TContext>(
+        this DbContextOptionsBuilder<TContext> options, IInterceptor rls)
+        where TContext : DbContext
+    {
+        ((DbContextOptionsBuilder)options).AddTestRls(rls);
+        return options;
+    }
+
+    public static DbContextOptionsBuilder AddTestRls(this DbContextOptionsBuilder options, IInterceptor rls)
+    {
+        options.AddInterceptors(rls);
+        var connectionString = RelationalOptionsExtension.Extract(options.Options).ConnectionString;
+        if (connectionString is not null && IsAdmin(connectionString))
+        {
+            options.AddInterceptors(new AdminContextInterceptor());
+        }
+
+        return options;
+    }
+
     private sealed class AdminContextInterceptor : DbConnectionInterceptor
     {
+        private const string SetUnlessTenant = """
+            IF ISNULL(CAST(SESSION_CONTEXT(N'app.tenant_context_mode') AS nvarchar(16)), N'') <> N'tenant'
+            BEGIN
+                EXEC sp_set_session_context N'app.current_tenant_id', N'';
+                EXEC sp_set_session_context N'app.tenant_context_mode', N'admin';
+            END
+            """;
+
         public override void ConnectionOpened(DbConnection connection, ConnectionEndEventData eventData)
         {
-            using var command = TenantRlsInterceptor.SetTenantCommand(connection, string.Empty, "admin");
+            using var command = connection.CreateCommand();
+            command.CommandText = SetUnlessTenant;
             command.ExecuteNonQuery();
         }
 
         public override async Task ConnectionOpenedAsync(
             DbConnection connection, ConnectionEndEventData eventData, CancellationToken cancellationToken = default)
         {
-            await using var command = TenantRlsInterceptor.SetTenantCommand(connection, string.Empty, "admin");
+            await using var command = connection.CreateCommand();
+            command.CommandText = SetUnlessTenant;
             await command.ExecuteNonQueryAsync(cancellationToken);
         }
     }

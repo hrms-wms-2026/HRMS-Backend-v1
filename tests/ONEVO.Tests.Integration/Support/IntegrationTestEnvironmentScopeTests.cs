@@ -13,7 +13,7 @@ namespace ONEVO.Tests.Integration.Support;
 public sealed class IntegrationTestEnvironmentScopeTests
 {
     private const string AdminConnectionString =
-        "Host=localhost;Port=5432;Database=onevo_env_scope_test;Username=test;Password=test";
+        "Server=localhost;Database=x;User ID=sa;Password=x";
 
     [Fact]
     public void Constructor_SetsAllRequiredProcessEnvironmentVariables()

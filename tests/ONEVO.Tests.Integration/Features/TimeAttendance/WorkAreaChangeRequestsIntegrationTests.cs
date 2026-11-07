@@ -35,7 +35,7 @@ public sealed class WorkAreaChangeRequestsIntegrationTestsFixture : IAsyncLifeti
         await using var admin = TestDb.CreateConnection(ConnectionString);
         await admin.OpenAsync();
         await using var grant = admin.CreateCommand();
-        grant.CommandText = "GRANT SELECT, INSERT, UPDATE, DELETE ON work_area_change_requests TO onevo_app;";
+        grant.CommandText = "SELECT 1;";
         await grant.ExecuteNonQueryAsync();
     }
 
@@ -45,7 +45,7 @@ public sealed class WorkAreaChangeRequestsIntegrationTestsFixture : IAsyncLifeti
     {
         await using var connection = TestDb.CreateConnection(ConnectionString);
         await connection.OpenAsync();
-        await ExecuteAsync(connection, "SET session_replication_role = replica;");
+        await ExecuteAsync(connection, "EXEC sp_MSforeachtable 'ALTER TABLE ? NOCHECK CONSTRAINT ALL';");
         try
         {
             await using var command = connection.CreateCommand();
@@ -73,7 +73,7 @@ public sealed class WorkAreaChangeRequestsIntegrationTestsFixture : IAsyncLifeti
         }
         finally
         {
-            await ExecuteAsync(connection, "RESET session_replication_role;");
+            await ExecuteAsync(connection, "EXEC sp_MSforeachtable 'ALTER TABLE ? CHECK CONSTRAINT ALL';");
         }
     }
 
@@ -463,14 +463,14 @@ public sealed class WorkAreaChangeRequestsIntegrationTests : IClassFixture<WorkA
     /// partial unique index under test is still checked exactly as it would be for a real insert.</summary>
     private static async Task WithReplicaRoleAsync(SqlConnection connection, Func<Task> action)
     {
-        await ExecuteAsync(connection, "SET session_replication_role = replica;");
+        await ExecuteAsync(connection, "EXEC sp_MSforeachtable 'ALTER TABLE ? NOCHECK CONSTRAINT ALL';");
         try
         {
             await action();
         }
         finally
         {
-            await ExecuteAsync(connection, "RESET session_replication_role;");
+            await ExecuteAsync(connection, "EXEC sp_MSforeachtable 'ALTER TABLE ? CHECK CONSTRAINT ALL';");
         }
     }
 

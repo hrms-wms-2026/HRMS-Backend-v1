@@ -87,7 +87,7 @@ public sealed class MyTeamDb
         var builder = new DbContextOptionsBuilder<ApplicationDbContext>()
             .UseTestSqlServer(_connectionString)
             .UseSnakeCaseNamingConvention()
-            .AddInterceptors(new TenantRlsInterceptor(tenantContext));
+            .AddTestRls(new TenantRlsInterceptor(tenantContext));
         if (counter is not null)
             builder.AddInterceptors(counter);
 
@@ -108,7 +108,7 @@ public sealed class MyTeamDb
         var builder = new DbContextOptionsBuilder<ApplicationDbContext>()
             .UseTestSqlServer(_connectionString)
             .UseSnakeCaseNamingConvention()
-            .AddInterceptors(new TenantRlsInterceptor(tenantContext));
+            .AddTestRls(new TenantRlsInterceptor(tenantContext));
         return new ApplicationDbContext(
             builder.Options,
             new AuditableEntityInterceptor(new AnonymousCurrentUser(), _clock),

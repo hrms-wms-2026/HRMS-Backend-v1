@@ -56,7 +56,7 @@ public sealed class ConfigurationTemplateManagerIntegrationTests : IAsyncLifetim
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         await db.Database.OpenConnectionAsync();
         await db.Database.ExecuteSqlRawAsync(
-            "SET session_replication_role = replica; " +
+            "EXEC sp_MSforeachtable 'ALTER TABLE ? NOCHECK CONSTRAINT ALL'; " +
             "EXEC sp_set_session_context N'app.tenant_context_mode', N'admin';");
 
         var platformUser = new PlatformUser { Id = Guid.NewGuid(), Email = "op@onevo.test", FullName = "Op" };

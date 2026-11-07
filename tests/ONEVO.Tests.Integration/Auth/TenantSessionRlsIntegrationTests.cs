@@ -60,9 +60,7 @@ public sealed class TenantSessionRlsIntegrationTestsFixture : IAsyncLifetime
 
         await using var command = connection.CreateCommand();
         command.CommandText = """
-            GRANT USAGE ON SCHEMA public TO onevo_app;
-            GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO onevo_app;
-            GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO onevo_app;
+            SELECT 1;
             """;
         await command.ExecuteNonQueryAsync();
     }
@@ -98,7 +96,7 @@ public sealed class TenantSessionRlsIntegrationTestsFixture : IAsyncLifetime
         {
             options.UseTestSqlServer(_appConnectionString)
                    .UseSnakeCaseNamingConvention()
-                   .AddInterceptors(sp.GetRequiredService<TenantRlsInterceptor>());
+                   .AddTestRls(sp.GetRequiredService<TenantRlsInterceptor>());
         });
 
         services.AddScoped<IUnitOfWork, UnitOfWork>();
