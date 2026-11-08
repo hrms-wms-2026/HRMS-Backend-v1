@@ -14,4 +14,6 @@ public sealed record MyTeamCapabilitiesResponse(
     bool HasReports,
     Guid? LegalEntityId,
     // Team planner (2026-11-03): the planner is on and the caller has at least one direct report.
-    bool CanViewTeamPlan = false);
+    bool CanViewTeamPlan = false,
+    // Module overtime forecast (2026-11-08): a Work module is on and the caller leads work or holds an active project membership.
+    bool CanViewWorkForecast = false);

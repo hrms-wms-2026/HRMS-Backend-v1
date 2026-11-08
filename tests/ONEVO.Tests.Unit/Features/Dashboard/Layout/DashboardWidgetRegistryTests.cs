@@ -15,7 +15,7 @@ public sealed class DashboardWidgetRegistryTests
         var team = DashboardWidgetRegistry.ForDashboard(DashboardKeys.MyTeam).Select(d => d.Key).ToList();
 
         Assert.Equal(10, work.Count);
-        Assert.Equal(7, team.Count); // team-schedule (ours), team-plan-today (team planner) and team-work-vs-task all live on My Team
+        Assert.Equal(9, team.Count); // team-schedule, team-plan-today, team-work-vs-task and the two overtime forecasts all live on My Team
         Assert.Empty(work.Intersect(team));
         Assert.Equal(work.Count + team.Count, work.Concat(team).Distinct().Count());
         foreach (var key in work.Concat(team))
