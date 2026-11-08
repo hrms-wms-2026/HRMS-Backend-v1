@@ -139,8 +139,9 @@ The figures above come from the unit-test scenarios (`GetModuleForecastQueryHand
 - `verify.ps1 backend`: the Release build passes. Unit tests: 7751 pass and 3 fail. All 3 failures are in
   `MemoryPlatformMfaChallengeStoreTests` (Auth). They are pre-existing and unrelated to this branch, which touches
   no auth code: the test pins its clock to 2026-11-05, but `MemoryCache` expires on the real clock, so the
-  challenges have already expired today. All WorkManagement / Dashboard / TimeAttendance tests pass (2395). The
-  architecture tests ran in the same gate.
+  challenges have already expired today. All WorkManagement / Dashboard / TimeAttendance tests pass (2395).
+- Architecture tests: the gate stops after the unit step fails, so they were run directly with
+  `dotnet test tests/ONEVO.Tests.Architecture -c Release`. 755 pass, 0 fail.
 - `find-unauthorized-endpoints.ps1 backend`: 0 actions without an authorization attribute.
 - Not done: the Testcontainers integration suite (`-Full`) and a live browser or API pass.
 
