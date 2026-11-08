@@ -30,6 +30,8 @@ public class MonitorCheckQueryHandlerTests
     private readonly Mock<IProjectMonitorSnapshotLoader> _snapshots = new();
     private readonly Mock<ICallerIdentityResolver> _identity = new();
     private readonly Mock<IDateTimeProvider> _clock = new();
+    private readonly Mock<IConversionRateReader> _rates = new();
+    private ConversionRateSet _rateSet = ConversionRateSet.Empty(Mon5);
 
     public MonitorCheckQueryHandlerTests()
     {
@@ -39,10 +41,17 @@ public class MonitorCheckQueryHandlerTests
         _clock.SetupGet(x => x.Today).Returns(Mon5);
         _identity.Setup(x => x.ResolveDisplayNamesByEmployeeIdAsync(TenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Dictionary<Guid, string> { [Caller] = "Kaja" });
+        _rates.Setup(x => x.ReadAsync(TenantId, It.IsAny<ONEVO.Domain.Features.OrgStructure.Entities.LegalEntity?>(),
+                It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(() => _rateSet);
     }
 
+    private static ConversionRateSet RatesOf(params (Guid Id, int Worked, int Task)[] people)
+        => new(Mon5, Mon5.AddDays(-28), Mon5.AddDays(-1), people.ToDictionary(p => p.Id,
+            p => new EmployeeConversionRate(p.Id, p.Worked, p.Task, OvertimeForecast.Rate(p.Task, p.Worked), [], [])));
+
     private CheckModuleCapacityQueryHandler ModuleHandler()
-        => new(_callers.Object, _calendars.Object, _objectives.Object, _members.Object, _clock.Object);
+        => new(_callers.Object, _calendars.Object, _objectives.Object, _members.Object, _clock.Object, _rates.Object);
 
     private CheckTaskLoadQueryHandler TaskHandler()
         => new(_callers.Object, _snapshots.Object, _identity.Object, _clock.Object);
@@ -61,6 +70,36 @@ public class MonitorCheckQueryHandlerTests
         Assert.Equal(10, result.Value.WorkingDays);
         var warning = Assert.Single(result.Value.Warnings);
         Assert.Equal(MonitorRuleCodes.ModuleOverCapacity, warning.Code);
+    }
+
+    [Fact]
+    public async Task ModuleCheck_PoolsTheTeamsRate_AndWarnsWhenThePredictionFallsShort()
+    {
+        // 5 people x 10 days x 8h = 400h; pooled rate (240 + 0) / (480 + 480) = 25% -> 100h predicted < 300h.
+        var others = FourOthers();
+        _rateSet = RatesOf((Caller, 480, 240), (others[0], 480, 0));
+
+        var result = await ModuleHandler().Handle(new CheckModuleCapacityQuery(ProjectId, null, Mon5, Fri16, 300m, others), default);
+
+        Assert.Equal(0.25m, result.Value!.ConversionRate);
+        Assert.Equal(100m, result.Value.PredictedHours);
+        Assert.Equal(400m, result.Value.CapacityHours);
+        var warning = Assert.Single(result.Value.Warnings);
+        Assert.Equal(MonitorRuleCodes.ModuleOverCapacity, warning.Code);
+        Assert.Contains("25% task rate (last 4 weeks)", warning.Message);
+    }
+
+    [Fact]
+    public async Task TaskCheck_UsesTheAssigneesRate()
+    {
+        // Mon 5 -> Wed 7 = 24h of working time, x 50% = 12h; a new 16h task due Wed 7.
+        _snapshots.Setup(x => x.LoadAsync(TenantId, ProjectId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ProjectMonitorSnapshot(ProjectId, WorkCalendar.Default, [], [], [], RatesOf((Caller, 600, 300))));
+
+        var result = await TaskHandler().Handle(new CheckTaskLoadQuery(ProjectId, null, [Caller], Wed7, 16m), default);
+
+        var warning = Assert.Single(result.Value!.Warnings);
+        Assert.Equal("Kaja has 16 h of work due by Oct 7; at their 50% task rate (last 4 weeks) they will complete about 12 h.", warning.Message);
     }
 
     [Fact]

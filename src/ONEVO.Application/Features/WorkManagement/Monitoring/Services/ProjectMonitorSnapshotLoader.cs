@@ -23,12 +23,14 @@ public sealed class ProjectMonitorSnapshotLoader : IProjectMonitorSnapshotLoader
     private readonly ITaskAssignmentRepository _assignments;
     private readonly ITaskClockingSessionRepository _sessions;
     private readonly IWorkCalendarResolver _calendars;
+    private readonly IConversionRateReader _rates;
 
     public ProjectMonitorSnapshotLoader(
         IObjectiveRepository objectives, IProjectMemberRepository members, ISprintRepository sprints,
         IWorkTaskRepository tasks, ITaskStatusRepository statuses, ITaskAssignmentRepository assignments,
-        ITaskClockingSessionRepository sessions, IWorkCalendarResolver calendars)
+        ITaskClockingSessionRepository sessions, IWorkCalendarResolver calendars, IConversionRateReader rates)
     {
+        _rates = rates;
         _objectives = objectives;
         _members = members;
         _sprints = sprints;
@@ -41,7 +43,8 @@ public sealed class ProjectMonitorSnapshotLoader : IProjectMonitorSnapshotLoader
 
     public async Task<ProjectMonitorSnapshot> LoadAsync(Guid tenantId, Guid projectId, CancellationToken ct = default)
     {
-        var calendar = await _calendars.ForProjectAsync(tenantId, projectId, ct);
+        var legalEntity = await _calendars.LegalEntityForProjectAsync(tenantId, projectId, ct);
+        var calendar = WorkCapacityCalculator.FromLegalEntity(legalEntity);
 
         var objectives = (await _objectives.GetAllByProjectIdAsync(tenantId, projectId, ct))
             .Where(o => o.IsActive && !o.IsDeleted)
@@ -51,10 +54,7 @@ public sealed class ProjectMonitorSnapshotLoader : IProjectMonitorSnapshotLoader
             .ToDictionary(g => g.Key, g => (IReadOnlySet<Guid>)g.Select(m => m.EmployeeId).ToHashSet());
         // Manpower = everyone at or below the Module: its allocation is split across its sub-Modules.
         var tree = new ProjectModuleTree(objectives);
-        var modules = objectives.Select(o => new MonitorModule(o.Id, o.ParentObjectiveId, o.CreatorPositionObjectiveId, o.Title, o.StartDate, o.EndDate,
-                o.AllocatedHours, o.CompletedHours, o.IsAchieved,
-                ModuleManpower.Count(tree, o.Id, memberIdsByModule)))
-            .ToList();
+        var peopleByModule = objectives.ToDictionary(o => o.Id, o => ModuleManpower.People(tree, o.Id, memberIdsByModule));
 
         var sprints = (await _sprints.GetByProjectAsync(tenantId, projectId, ct))
             .Where(s => !s.IsDeleted)
@@ -85,6 +85,13 @@ public sealed class ProjectMonitorSnapshotLoader : IProjectMonitorSnapshotLoader
             ? new Dictionary<Guid, int>()
             : await _sessions.GetTotalClosedSessionMinutesForTasksAsync(tenantId, taskIds, ct);
 
+        // The 4-week conversion rate of everyone the rules look at: module manpower and task assignees.
+        var everyone = peopleByModule.Values.SelectMany(p => p).Concat(assigneesByTask.Values.SelectMany(a => a)).ToHashSet();
+        var rates = await _rates.ReadAsync(tenantId, legalEntity, everyone, ct);
+        var modules = objectives.Select(o => new MonitorModule(o.Id, o.ParentObjectiveId, o.CreatorPositionObjectiveId, o.Title, o.StartDate, o.EndDate,
+                o.AllocatedHours, o.CompletedHours, o.IsAchieved, peopleByModule[o.Id].Count, rates.Pool(peopleByModule[o.Id]).Rate))
+            .ToList();
+
         var tasks = workTasks.Select(t => new MonitorTask(
             t.Id, t.ObjectiveId, t.CreatorPositionObjectiveId, t.SprintId, t.Title, t.DueDate, t.EstimatedHours,
             t.CompletedHours, completeStatusIds.Contains(t.StatusId),
@@ -92,6 +99,6 @@ public sealed class ProjectMonitorSnapshotLoader : IProjectMonitorSnapshotLoader
             assigneesByTask.GetValueOrDefault(t.Id) ?? []))
             .ToList();
 
-        return new ProjectMonitorSnapshot(projectId, calendar, modules, sprints, tasks);
+        return new ProjectMonitorSnapshot(projectId, calendar, modules, sprints, tasks, rates);
     }
 }

@@ -21,10 +21,11 @@ public static class MonitorTargetTypes
 
 /// <summary>A Module as the monitor sees it. MemberCount = its manpower: distinct active members and owners of
 /// the Module and all its sub-Modules (see ModuleManpower).
-/// CompletedHours already includes child Modules (it is rolled up when tasks complete).</summary>
+/// CompletedHours already includes child Modules (it is rolled up when tasks complete).
+/// ConversionRate = the pooled 4-week task rate of that manpower (null = no history: the rules then assume 100%).</summary>
 public sealed record MonitorModule(
     Guid Id, Guid? ParentId, Guid? CreatorPositionModuleId, string Title, DateOnly StartDate, DateOnly EndDate,
-    decimal AllocatedHours, decimal CompletedHours, bool IsAchieved, int MemberCount);
+    decimal AllocatedHours, decimal CompletedHours, bool IsAchieved, int MemberCount, decimal? ConversionRate = null);
 
 public sealed record MonitorSprint(Guid Id, Guid? CreatorPositionModuleId, string Name, string Status, DateOnly? EndDate);
 
@@ -34,10 +35,12 @@ public sealed record MonitorTask(
     Guid Id, Guid ModuleId, Guid? CreatorPositionModuleId, Guid? SprintId, string Title, DateOnly? DueDate,
     decimal? EstimatedHours, decimal CompletedHours, bool IsComplete, decimal ClockedHours, IReadOnlyList<Guid> AssigneeIds);
 
-/// <summary>Everything the monitor rules read about one project, loaded once.</summary>
+/// <summary>Everything the monitor rules read about one project, loaded once. Rates = the 4-week conversion rate of
+/// every member, owner and assignee (null = none known: every rule assumes 100%).</summary>
 public sealed record ProjectMonitorSnapshot(
     Guid ProjectId, WorkCalendar Calendar,
-    IReadOnlyList<MonitorModule> Modules, IReadOnlyList<MonitorSprint> Sprints, IReadOnlyList<MonitorTask> Tasks);
+    IReadOnlyList<MonitorModule> Modules, IReadOnlyList<MonitorSprint> Sprints, IReadOnlyList<MonitorTask> Tasks,
+    ConversionRateSet? Rates = null);
 
 /// <summary>One detected problem. (TargetId, RuleCode, SubjectEmployeeId) identifies it across runs.</summary>
 public sealed record MonitorFinding(

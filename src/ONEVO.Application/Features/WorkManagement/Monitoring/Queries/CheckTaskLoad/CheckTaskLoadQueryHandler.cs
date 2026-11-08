@@ -52,7 +52,8 @@ public sealed class CheckTaskLoadQueryHandler : IRequestHandler<CheckTaskLoadQue
         var warnings = new List<MonitorWarning>();
         foreach (var employeeId in assignees)
         {
-            var finding = ProjectMonitorRules.EmployeeDeadlineOverload(employeeId, tasks, snapshot.Calendar, today)
+            var rate = snapshot.Rates?.RateOf(employeeId);
+            var finding = ProjectMonitorRules.EmployeeDeadlineOverload(employeeId, tasks, snapshot.Calendar, today, rate)
                 .FirstOrDefault(f => f.TargetId == candidate.Id);
             if (finding is null)
                 continue;
@@ -60,9 +61,12 @@ public sealed class CheckTaskLoadQueryHandler : IRequestHandler<CheckTaskLoadQue
             var name = names.GetValueOrDefault(employeeId) ?? "An assignee";
             var demand = (decimal)finding.Details["demandHours"]!;
             var capacity = (decimal)finding.Details["capacityHours"]!;
+            var predicted = (decimal)finding.Details["predictedHours"]!;
             var deadline = DateOnly.ParseExact((string)finding.Details["dueDate"]!, "yyyy-MM-dd", CultureInfo.InvariantCulture);
-            warnings.Add(new MonitorWarning(finding.RuleCode,
-                $"{name} has {ProjectMonitorRules.Hours(demand)} h of work due by {deadline.ToString("MMM d", CultureInfo.InvariantCulture)} but only {ProjectMonitorRules.Hours(capacity)} h of working time.",
+            var day = deadline.ToString("MMM d", CultureInfo.InvariantCulture);
+            warnings.Add(new MonitorWarning(finding.RuleCode, rate is { } r
+                ? $"{name} has {ProjectMonitorRules.Hours(demand)} h of work due by {day}; at their {ProjectMonitorRules.Percent(r)} task rate (last 4 weeks) they will complete about {ProjectMonitorRules.Hours(predicted)} h."
+                : $"{name} has {ProjectMonitorRules.Hours(demand)} h of work due by {day} but only {ProjectMonitorRules.Hours(capacity)} h of working time.",
                 employeeId));
         }
 

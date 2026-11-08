@@ -16,11 +16,13 @@ public sealed class CheckModuleCapacityQueryHandler : IRequestHandler<CheckModul
     private readonly IObjectiveRepository _objectives;
     private readonly IProjectMemberRepository _members;
     private readonly IDateTimeProvider _clock;
+    private readonly IConversionRateReader _rates;
 
     public CheckModuleCapacityQueryHandler(
         IProjectMonitorCallerResolver callers, IWorkCalendarResolver calendars, IObjectiveRepository objectives,
-        IProjectMemberRepository members, IDateTimeProvider clock)
+        IProjectMemberRepository members, IDateTimeProvider clock, IConversionRateReader rates)
     {
+        _rates = rates;
         _callers = callers;
         _calendars = calendars;
         _objectives = objectives;
@@ -35,7 +37,7 @@ public sealed class CheckModuleCapacityQueryHandler : IRequestHandler<CheckModul
             return Result<ModuleCapacityCheckResponse>.Failure(caller.Error!, caller.StatusCode ?? 403);
         var tenantId = caller.Value!.TenantId;
 
-        int manpower;
+        IReadOnlySet<Guid> people;
         var completedHours = 0m;
         var title = "This module";
         var existing = query.ModuleId is { } moduleId
@@ -48,19 +50,23 @@ public sealed class CheckModuleCapacityQueryHandler : IRequestHandler<CheckModul
             var membersByModule = (await _members.ListActiveForProjectAsync(tenantId, query.ProjectId, ct))
                 .GroupBy(m => m.ObjectiveId)
                 .ToDictionary(g => g.Key, g => (IReadOnlySet<Guid>)g.Select(m => m.EmployeeId).ToHashSet());
-            manpower = ModuleManpower.Count(tree, existing.Id, membersByModule, query.MemberEmployeeIds);
+            people = ModuleManpower.People(tree, existing.Id, membersByModule, query.MemberEmployeeIds);
             completedHours = existing.CompletedHours;
             title = existing.Title;
         }
         else
         {
             // Creating: a new Module has no sub-Modules yet - the picked members plus the creator.
-            manpower = new HashSet<Guid>(query.MemberEmployeeIds ?? []) { caller.Value.EmployeeId }.Count;
+            people = new HashSet<Guid>(query.MemberEmployeeIds ?? []) { caller.Value.EmployeeId };
         }
+        var manpower = people.Count;
 
-        var calendar = await _calendars.ForProjectAsync(tenantId, query.ProjectId, ct);
+        // Same prediction as the hourly monitor: capacity x the team's pooled 4-week task rate.
+        var legalEntity = await _calendars.LegalEntityForProjectAsync(tenantId, query.ProjectId, ct);
+        var calendar = WorkCapacityCalculator.FromLegalEntity(legalEntity);
+        var rate = (await _rates.ReadAsync(tenantId, legalEntity, people.ToList(), ct)).Pool(people).Rate;
         var module = new MonitorModule(query.ModuleId ?? Guid.Empty, null, null, title, query.StartDate, query.EndDate,
-            query.AllocatedHours, completedHours, IsAchieved: false, manpower);
+            query.AllocatedHours, completedHours, IsAchieved: false, manpower, rate);
 
         var warnings = new[]
             {
@@ -72,8 +78,10 @@ public sealed class CheckModuleCapacityQueryHandler : IRequestHandler<CheckModul
             .Select(f => new MonitorWarning(f.RuleCode, f.Message))
             .ToList();
 
+        var capacity = calendar.Capacity(manpower, query.StartDate, query.EndDate);
         return Result<ModuleCapacityCheckResponse>.Success(new ModuleCapacityCheckResponse(
             calendar.DailyHours, calendar.WorkingDaysBetween(query.StartDate, query.EndDate), manpower,
-            calendar.Capacity(manpower, query.StartDate, query.EndDate), query.AllocatedHours, warnings));
+            capacity, query.AllocatedHours, warnings,
+            rate is { } r ? Math.Round(r, 4) : null, Math.Round(capacity * OvertimeForecast.Effective(rate), 2)));
     }
 }
