@@ -466,6 +466,8 @@ public static class DependencyInjection
             ONEVO.Infrastructure.Persistence.Repositories.WorkManagement.WeeklyProgress.EfWeeklyWorkProgressReadRepository>();
         services.AddScoped<ONEVO.Application.Features.TimeAttendance.Team.Services.ITeamCompletedTaskReader,
             ONEVO.Infrastructure.Persistence.Repositories.TimeAttendance.EfTeamCompletedTaskReader>();
+        services.AddScoped<ONEVO.Application.Features.TimeAttendance.Team.Services.IForecastTaskReader,
+            ONEVO.Infrastructure.Persistence.Repositories.TimeAttendance.EfForecastTaskReader>();
         services.AddHostedService<Services.WorkManagement.Meetings.MeetingOccurrenceGeneratorJob>();
         services.AddScoped<ONEVO.Application.Features.WorkManagement.Meetings.Services.MeetingAttendanceSyncService>();
         services.AddScoped<ONEVO.Application.Features.WorkManagement.Meetings.Services.MeetingAttendanceReadService>();
