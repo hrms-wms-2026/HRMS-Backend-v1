@@ -598,6 +598,7 @@ public static class DependencyInjection
         services.AddScoped<IModuleReadAccess, ModuleReadAccess>();
         services.AddScoped<ONEVO.Application.Features.WorkManagement.Objectives.Services.ObjectiveAssetAccess>();
         services.AddScoped<IWorkCalendarResolver, WorkCalendarResolver>();
+        services.AddScoped<IConversionRateReader, ConversionRateReader>();
         services.AddScoped<IProjectMonitorSnapshotLoader, ProjectMonitorSnapshotLoader>();
         services.AddScoped<IProjectMonitorCallerResolver, ProjectMonitorCallerResolver>();
         services.AddScoped<IProjectMonitorService, ProjectMonitorService>();
