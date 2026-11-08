@@ -71,7 +71,9 @@ public sealed class CheckModuleCapacityQueryHandler : IRequestHandler<CheckModul
         var pooled = people.Where(pooledAllowed.Contains).ToList();
         var rate = (await _rates.ReadAsync(tenantId, legalEntity, pooled, ct)).Pool(pooled).Rate;
         var module = new MonitorModule(query.ModuleId ?? Guid.Empty, null, null, title, query.StartDate, query.EndDate,
-            query.AllocatedHours, completedHours, IsAchieved: false, manpower, rate);
+            query.AllocatedHours, completedHours, IsAchieved: false, manpower, rate, pooled.Count);
+        // The rate (and predicted hours, which reveal it) is returned only for a pool the caller cannot take apart.
+        var disclose = rate is not null && pooled.Count >= ProjectMonitorRules.MinRatePool;
 
         var warnings = new[]
             {
@@ -87,6 +89,6 @@ public sealed class CheckModuleCapacityQueryHandler : IRequestHandler<CheckModul
         return Result<ModuleCapacityCheckResponse>.Success(new ModuleCapacityCheckResponse(
             calendar.DailyHours, calendar.WorkingDaysBetween(query.StartDate, query.EndDate), manpower,
             capacity, query.AllocatedHours, warnings,
-            rate is { } r ? Math.Round(r, 4) : null, Math.Round(capacity * OvertimeForecast.Effective(rate), 2)));
+            disclose ? Math.Round(rate!.Value, 4) : null, disclose ? Math.Round(capacity * rate!.Value, 2) : null));
     }
 }

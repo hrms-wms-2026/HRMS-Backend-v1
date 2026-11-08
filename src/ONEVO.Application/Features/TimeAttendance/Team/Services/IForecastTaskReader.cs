@@ -10,13 +10,14 @@ public sealed record ForecastOpenTask(
 public sealed record ForecastMemberModule(
     Guid EmployeeId, Guid ModuleId, string ModuleTitle, Guid ProjectId, string ProjectName, DateOnly ModuleEndDate);
 
-/// <summary>Reads for the employee overtime forecast. Only active, non-deleted Modules of active, non-system projects;
+/// <summary>Reads for the employee overtime forecast. Only active, non-deleted Modules of active, non-system projects
+/// owned by the given legal entity (the viewer's: project and module names of other legal entities are never returned);
 /// tasks not deleted and not meetings (subtasks included, like the monitor's EDF rule).</summary>
 public interface IForecastTaskReader
 {
-    Task<IReadOnlyList<ForecastOpenTask>> ListOpenAssignedAsync(Guid tenantId, IReadOnlyCollection<Guid> employeeIds,
+    Task<IReadOnlyList<ForecastOpenTask>> ListOpenAssignedAsync(Guid tenantId, Guid legalEntityId, IReadOnlyCollection<Guid> employeeIds,
         CancellationToken ct = default);
 
-    Task<IReadOnlyList<ForecastMemberModule>> ListMemberModulesAsync(Guid tenantId, IReadOnlyCollection<Guid> employeeIds,
+    Task<IReadOnlyList<ForecastMemberModule>> ListMemberModulesAsync(Guid tenantId, Guid legalEntityId, IReadOnlyCollection<Guid> employeeIds,
         CancellationToken ct = default);
 }

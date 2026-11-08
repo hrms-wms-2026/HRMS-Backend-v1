@@ -18,7 +18,7 @@ namespace ONEVO.Application.Features.TimeAttendance.Team.Queries;
 /// <summary>
 /// Employee overtime forecast (spec 2026-11-08 §4b). Population is Team Status's and Work vs task hours' (CoveredTeam:
 /// attendance:read TimeTrackingRead coverage, the actor stripped). Per employee, the open estimated tasks due today or
-/// later (every project) are run through the monitor's EDF windows at the employee's 4-week task rate
+/// later (projects of the viewer's legal entity) are run through the monitor's EDF windows at the employee's 4-week task rate
 /// (<see cref="OvertimeForecast.EmployeeWindows"/>, shares from <see cref="ProjectMonitorRules.RemainingShare"/>), on the
 /// legal entity's working calendar. With no such task the employee is on_track with zeros.
 /// </summary>
@@ -67,8 +67,8 @@ public sealed class GetTeamEmployeeForecastQueryHandler(
         if (covered.Count > 0)
         {
             identities = await attendance.ListEmployeeIdentitiesAsync(tenantId, legalEntityId, covered, ct);
-            openTasks = await tasks.ListOpenAssignedAsync(tenantId, covered, ct);
-            memberModules = await tasks.ListMemberModulesAsync(tenantId, covered, ct);
+            openTasks = await tasks.ListOpenAssignedAsync(tenantId, legalEntityId, covered, ct);
+            memberModules = await tasks.ListMemberModulesAsync(tenantId, legalEntityId, covered, ct);
         }
         var rateSet = await rates.ReadAsync(tenantId, legalEntity, covered, ct);
         var tasksByEmployee = openTasks.ToLookup(t => t.EmployeeId);

@@ -10,7 +10,6 @@ using ONEVO.Application.Features.Dashboard.Team.DTOs;
 using ONEVO.Application.Features.Monitoring.Exceptions.Services;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Leadership.Services;
-using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
 
 namespace ONEVO.Application.Features.Dashboard.Team.Queries;
 
@@ -28,8 +27,7 @@ public sealed class GetMyTeamCapabilitiesQueryHandler(
     IModuleEntitlementService modules,
     IWorkLeadershipService workLeadership,
     ONEVO.Application.Common.RepositoryInterfaces.IEmployeeRepository? reportingLines = null,
-    IOptions<PlannerOptions>? plannerOptions = null,
-    IProjectMemberRepository? projectMembers = null)
+    IOptions<PlannerOptions>? plannerOptions = null)
     : IRequestHandler<GetMyTeamCapabilitiesQuery, Result<MyTeamCapabilitiesResponse>>
 {
     private const string AttendanceReadPermission = "attendance:read";
@@ -55,7 +53,6 @@ public sealed class GetMyTeamCapabilitiesQueryHandler(
         var leadsWork = false;
         var hasWorkApprovals = false;
         var hasReports = false;
-        var canViewWorkForecast = false;
 
         // One reporting-line probe feeds both Today's Team Schedule (hasReports) and the team planner (canViewTeamPlan).
         var hasDirectReports = actor is not null && reportingLines is not null
@@ -82,10 +79,6 @@ public sealed class GetMyTeamCapabilitiesQueryHandler(
                     currentUser.TenantId, actor!.Id, activeLegalEntityId, ct);
                 hasWorkApprovals = await workLeadership.HasPendingWorkApprovalsAsync(
                     currentUser.TenantId, actor.Id, activeLegalEntityId, ct);
-                // Module overtime forecast: Work Management read access to at least one project.
-                canViewWorkForecast = leadsWork
-                    || (projectMembers is not null
-                        && (await projectMembers.ListActiveForEmployeeAsync(currentUser.TenantId, actor.Id, ct)).Any(m => m.IsActive));
             }
         }
 
@@ -105,7 +98,6 @@ public sealed class GetMyTeamCapabilitiesQueryHandler(
             CanViewLiveActivity: false,
             hasReports,
             legalEntityId,
-            canViewTeamPlan,
-            canViewWorkForecast));
+            canViewTeamPlan));
     }
 }

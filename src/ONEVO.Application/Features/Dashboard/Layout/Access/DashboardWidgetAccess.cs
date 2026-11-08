@@ -52,7 +52,7 @@ public sealed class DashboardWidgetAccess(
                     keys.Add(TeamWorkVsTask);
                     keys.Add(TeamEmployeeForecast);
                 }
-                if (caps is { IsAvailable: true, CanViewWorkForecast: true }) keys.Add(TeamModuleForecast);
+                if (caps is { IsAvailable: true, LeadsWork: true }) keys.Add(TeamModuleForecast);
                 if (caps is { IsAvailable: true, LeadsWork: true }) keys.Add(TeamProgress);
                 if (caps is { IsAvailable: true, HasReports: true }) keys.Add(TeamSchedule);
                 if (caps is { IsAvailable: true, CanViewTeamPlan: true }) keys.Add(TeamPlanToday);

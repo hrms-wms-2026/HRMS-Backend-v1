@@ -8,7 +8,7 @@ namespace ONEVO.Infrastructure.Persistence.Repositories.TimeAttendance;
 /// meeting tasks explicitly, as EfTeamCompletedTaskReader does.</summary>
 public sealed class EfForecastTaskReader(ApplicationDbContext db) : IForecastTaskReader
 {
-    public async Task<IReadOnlyList<ForecastOpenTask>> ListOpenAssignedAsync(Guid tenantId, IReadOnlyCollection<Guid> employeeIds,
+    public async Task<IReadOnlyList<ForecastOpenTask>> ListOpenAssignedAsync(Guid tenantId, Guid legalEntityId, IReadOnlyCollection<Guid> employeeIds,
         CancellationToken ct = default)
     {
         if (employeeIds.Count == 0)
@@ -24,7 +24,7 @@ public sealed class EfForecastTaskReader(ApplicationDbContext db) : IForecastTas
             where t.TenantId == tenantId && !t.IsDeleted && t.TaskKind != WorkTaskKinds.Meeting
                   && ids.Contains(a.EmployeeId)
                   && o.TenantId == tenantId && o.IsActive && !o.IsDeleted
-                  && p.TenantId == tenantId && p.IsActive && !p.IsDeleted && p.SystemPurpose == null
+                  && p.TenantId == tenantId && p.IsActive && !p.IsDeleted && p.SystemPurpose == null && p.OwningLegalEntityId == legalEntityId
                   && !(s != null && s.MarksTaskComplete)
             select new { t.Id, a.EmployeeId, t.ProjectId, ProjectName = p.Name, ModuleId = o.Id, ModuleTitle = o.Title, o.EndDate,
                 t.DueDate, t.EstimatedHours, t.CompletedHours })
@@ -46,7 +46,7 @@ public sealed class EfForecastTaskReader(ApplicationDbContext db) : IForecastTas
             .ToList();
     }
 
-    public async Task<IReadOnlyList<ForecastMemberModule>> ListMemberModulesAsync(Guid tenantId, IReadOnlyCollection<Guid> employeeIds,
+    public async Task<IReadOnlyList<ForecastMemberModule>> ListMemberModulesAsync(Guid tenantId, Guid legalEntityId, IReadOnlyCollection<Guid> employeeIds,
         CancellationToken ct = default)
     {
         if (employeeIds.Count == 0)
@@ -58,7 +58,7 @@ public sealed class EfForecastTaskReader(ApplicationDbContext db) : IForecastTas
             join p in db.Projects.AsNoTracking() on m.ProjectId equals p.Id
             where m.TenantId == tenantId && m.IsActive && !m.IsDeleted && ids.Contains(m.EmployeeId)
                   && o.TenantId == tenantId && o.IsActive && !o.IsDeleted
-                  && p.TenantId == tenantId && p.IsActive && !p.IsDeleted && p.SystemPurpose == null
+                  && p.TenantId == tenantId && p.IsActive && !p.IsDeleted && p.SystemPurpose == null && p.OwningLegalEntityId == legalEntityId
             select new ForecastMemberModule(m.EmployeeId, o.Id, o.Title, p.Id, p.Name, o.EndDate))
             .ToListAsync(ct);
         return rows.DistinctBy(r => (r.EmployeeId, r.ModuleId)).ToList();

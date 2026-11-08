@@ -22,10 +22,13 @@ public static class MonitorTargetTypes
 /// <summary>A Module as the monitor sees it. MemberCount = its manpower: distinct active members and owners of
 /// the Module and all its sub-Modules (see ModuleManpower).
 /// CompletedHours already includes child Modules (it is rolled up when tasks complete).
-/// ConversionRate = the pooled 4-week task rate of that manpower (null = no history: the rules then assume 100%).</summary>
+/// ConversionRate = the pooled 4-week task rate of that manpower (null = no history: the rules then assume 100%).
+/// RatePoolSize = how many people that rate is pooled over; module alerts are visible to every module member, so the
+/// rate is printed only for pools of at least ProjectMonitorRules.MinRatePool people.</summary>
 public sealed record MonitorModule(
     Guid Id, Guid? ParentId, Guid? CreatorPositionModuleId, string Title, DateOnly StartDate, DateOnly EndDate,
-    decimal AllocatedHours, decimal CompletedHours, bool IsAchieved, int MemberCount, decimal? ConversionRate = null);
+    decimal AllocatedHours, decimal CompletedHours, bool IsAchieved, int MemberCount, decimal? ConversionRate = null,
+    int RatePoolSize = 0);
 
 public sealed record MonitorSprint(Guid Id, Guid? CreatorPositionModuleId, string Name, string Status, DateOnly? EndDate);
 

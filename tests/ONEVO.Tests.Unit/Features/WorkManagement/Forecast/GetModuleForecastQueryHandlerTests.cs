@@ -115,7 +115,7 @@ public class GetModuleForecastQueryHandlerTests
         => Assert.Equal(422, (await Handler().Handle(new GetModuleForecastQuery(Sort: "bogus"), default)).StatusCode);
 
     [Fact]
-    public async Task Member_SeesTheirModuleAndItsChildren_WithRateAwareFigures()
+    public async Task Owner_SeesTheirModuleAndItsChildren_WithRateAwareFigures()
     {
         var r = (await Handler().Handle(new GetModuleForecastQuery(), default)).Value!;
 
@@ -152,19 +152,18 @@ public class GetModuleForecastQueryHandlerTests
     }
 
     [Fact]
-    public async Task EffectiveOwner_SeesMemberRates_PlainMemberSeesOnlyTheirOwn()
+    public async Task Owner_SeesEachMembersRate_PlainMemberSeesNothing()
     {
         var owner = (await Handler().Handle(new GetModuleForecastQuery(), default)).Value!;
         var nila = owner.Items[0].Members.Single(m => m.EmployeeId == M1);
         Assert.Equal(("Nila", 0.5m, 600, 300), (nila.Name, nila.ConversionRate!.Value, nila.WorkedMinutes, nila.TaskMinutes));
 
+        // A plain member of Checkout (not its owner, not the project lead) leads nothing here.
         _parent.OwnerId = Guid.NewGuid();
         _owned = [];
         var member = (await Handler().Handle(new GetModuleForecastQuery(), default)).Value!;
-        var hidden = member.Items[0].Members.Single(m => m.EmployeeId == M1);
-        Assert.Equal(("Nila", null, 0, 0), (hidden.Name, hidden.ConversionRate, hidden.WorkedMinutes, hidden.TaskMinutes));
-        Assert.Equal(0.5m, member.Items[0].Members.Single(m => m.EmployeeId == Actor).ConversionRate);
-        Assert.Equal(0.5m, member.Items[0].ConversionRate);   // the pooled module rate stays
+        Assert.Empty(member.Items);
+        Assert.Equal(0, member.Totals.Modules);
     }
 
     [Fact]

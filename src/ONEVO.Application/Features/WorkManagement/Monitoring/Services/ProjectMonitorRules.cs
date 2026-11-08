@@ -9,6 +9,10 @@ namespace ONEVO.Application.Features.WorkManagement.Monitoring.Services;
 /// </summary>
 public static class ProjectMonitorRules
 {
+    /// <summary>A pooled rate is printed only when it covers at least this many people, so a member who knows their
+    /// own rate can never work out a single colleague's.</summary>
+    public const int MinRatePool = 3;
+
     public static IReadOnlyList<MonitorFinding> Evaluate(ProjectMonitorSnapshot snapshot, DateOnly today)
     {
         var calendar = snapshot.Calendar;
@@ -79,9 +83,13 @@ public static class ProjectMonitorRules
         if (module.AllocatedHours <= forecast.Predicted)
             return null;
 
-        var message = module.ConversionRate is { } rate
-            ? $"Allocated {Hours(module.AllocatedHours)} h, but at the team's {Percent(rate)} task rate (last 4 weeks) {people} member(s) will complete about {Hours(forecast.Predicted)} h between {Day(module.StartDate)} and {Day(module.EndDate)}."
-            : $"Allocated {Hours(module.AllocatedHours)} h, but {people} member(s) can produce at most {Hours(capacity)} h between {Day(module.StartDate)} and {Day(module.EndDate)}.";
+        var message = module.ConversionRate switch
+        {
+            { } rate when module.RatePoolSize >= MinRatePool =>
+                $"Allocated {Hours(module.AllocatedHours)} h, but at the team's {Percent(rate)} task rate (last 4 weeks) {people} member(s) will complete about {Hours(forecast.Predicted)} h between {Day(module.StartDate)} and {Day(module.EndDate)}.",
+            not null => $"Allocated {Hours(module.AllocatedHours)} h, more than {people} member(s) are likely to complete between {Day(module.StartDate)} and {Day(module.EndDate)} at their task rate of the last 4 weeks.",
+            null => $"Allocated {Hours(module.AllocatedHours)} h, but {people} member(s) can produce at most {Hours(capacity)} h between {Day(module.StartDate)} and {Day(module.EndDate)}.",
+        };
         return new(MonitorRuleCodes.ModuleOverCapacity, MonitorTargetTypes.Module, module.Id, module.Title, null, message,
             Details([("allocatedHours", module.AllocatedHours), ("capacityHours", capacity), ("memberCount", people)], forecast));
     }
@@ -103,9 +111,13 @@ public static class ProjectMonitorRules
 
         // At the team's pace and rate from today: when the work would really finish, and how many working days past the deadline.
         var finish = calendar.FinishDate(people, from, remaining, OvertimeForecast.Effective(module.ConversionRate));
-        var message = module.ConversionRate is { } rate
-            ? $"{Hours(remaining)} h of work remain; at the team's {Percent(rate)} task rate (last 4 weeks) they will complete about {Hours(forecast.Predicted)} h before {Day(module.EndDate)}."
-            : $"{Hours(remaining)} h of work remain, but the team can produce only {Hours(capacity)} h before the {Day(module.EndDate)} deadline.";
+        var message = module.ConversionRate switch
+        {
+            { } rate when module.RatePoolSize >= MinRatePool =>
+                $"{Hours(remaining)} h of work remain; at the team's {Percent(rate)} task rate (last 4 weeks) they will complete about {Hours(forecast.Predicted)} h before {Day(module.EndDate)}.",
+            not null => $"{Hours(remaining)} h of work remain, more than the team is likely to complete before {Day(module.EndDate)} at its task rate of the last 4 weeks.",
+            null => $"{Hours(remaining)} h of work remain, but the team can produce only {Hours(capacity)} h before the {Day(module.EndDate)} deadline.",
+        };
         return new(MonitorRuleCodes.ModuleCapacityShortfall, MonitorTargetTypes.Module, module.Id, module.Title, null, message,
             Details([("endDate", Iso(module.EndDate)), ("expectedFinish", finish is { } f ? Iso(f) : null),
                 ("lateDays", finish is { } d ? calendar.WorkingDaysBetween(module.EndDate.AddDays(1), d) : null),

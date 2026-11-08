@@ -14,21 +14,21 @@ public sealed class DashboardWidgetAccessTests
 {
     private static MyTeamCapabilitiesResponse Caps(
         bool available = false, bool status = false, bool people = false,
-        bool exceptions = false, bool work = false, bool leads = false, bool reports = false, bool forecast = false) =>
-        new(available, status, people, exceptions, work, leads, false, reports, null, CanViewWorkForecast: forecast);
+        bool exceptions = false, bool work = false, bool leads = false, bool reports = false) =>
+        new(available, status, people, exceptions, work, leads, false, reports, null);
 
     [Fact]
-    public async Task Employee_forecast_follows_work_vs_task_and_module_forecast_needs_project_access()
+    public async Task Employee_forecast_follows_work_vs_task_and_module_forecast_follows_team_progress()
     {
         var people = await With(Caps(available: true, status: true)).GetAllowedKeysAsync(DashboardKeys.MyTeam, default);
         Assert.Contains("team-employee-forecast", people);
         Assert.DoesNotContain("team-module-forecast", people);
 
-        var work = await With(Caps(available: true, forecast: true)).GetAllowedKeysAsync(DashboardKeys.MyTeam, default);
+        var work = await With(Caps(available: true, leads: true)).GetAllowedKeysAsync(DashboardKeys.MyTeam, default);
         Assert.Contains("team-module-forecast", work);
         Assert.DoesNotContain("team-employee-forecast", work);
 
-        var unavailable = await With(Caps(available: false, forecast: true)).GetAllowedKeysAsync(DashboardKeys.MyTeam, default);
+        var unavailable = await With(Caps(available: false, leads: true)).GetAllowedKeysAsync(DashboardKeys.MyTeam, default);
         Assert.DoesNotContain("team-module-forecast", unavailable);
     }
 

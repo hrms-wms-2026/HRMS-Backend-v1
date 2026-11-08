@@ -89,7 +89,8 @@ public sealed class ProjectMonitorSnapshotLoader : IProjectMonitorSnapshotLoader
         var everyone = peopleByModule.Values.SelectMany(p => p).Concat(assigneesByTask.Values.SelectMany(a => a)).ToHashSet();
         var rates = await _rates.ReadAsync(tenantId, legalEntity, everyone, ct);
         var modules = objectives.Select(o => new MonitorModule(o.Id, o.ParentObjectiveId, o.CreatorPositionObjectiveId, o.Title, o.StartDate, o.EndDate,
-                o.AllocatedHours, o.CompletedHours, o.IsAchieved, peopleByModule[o.Id].Count, rates.Pool(peopleByModule[o.Id]).Rate))
+                o.AllocatedHours, o.CompletedHours, o.IsAchieved, peopleByModule[o.Id].Count, rates.Pool(peopleByModule[o.Id]).Rate,
+                peopleByModule[o.Id].Count))
             .ToList();
 
         var tasks = workTasks.Select(t => new MonitorTask(

@@ -80,7 +80,7 @@ public class MonitorCheckQueryHandlerTests
         var others = FourOthers();
         _rateSet = RatesOf((Caller, 480, 240), (others[0], 480, 0));
         _members.Setup(x => x.ListActiveForProjectAsync(TenantId, ProjectId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync([new ProjectMember { ProjectId = ProjectId, ObjectiveId = Guid.NewGuid(), EmployeeId = others[0] }]);
+            .ReturnsAsync(others.Select(o => new ProjectMember { ProjectId = ProjectId, ObjectiveId = Guid.NewGuid(), EmployeeId = o }).ToList());
 
         var result = await ModuleHandler().Handle(new CheckModuleCapacityQuery(ProjectId, null, Mon5, Fri16, 300m, others), default);
 
@@ -100,8 +100,9 @@ public class MonitorCheckQueryHandlerTests
 
         var result = await ModuleHandler().Handle(new CheckModuleCapacityQuery(ProjectId, null, Mon5, Fri16, 10m, [outsider]), default);
 
-        Assert.Equal(1m, result.Value!.ConversionRate);   // the caller's own rate only
-        Assert.Equal(2, result.Value.MemberCount);         // the outsider still counts as capacity
+        Assert.Null(result.Value!.ConversionRate);   // pooled over the caller alone: never returned
+        Assert.Null(result.Value.PredictedHours);
+        Assert.Equal(2, result.Value.MemberCount);   // the outsider still counts as capacity
     }
 
     [Fact]

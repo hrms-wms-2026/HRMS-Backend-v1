@@ -69,9 +69,9 @@ public class GetTeamEmployeeForecastQueryHandlerTests
                 [B] = new(B, 600, 600, 1m, [600, 0, 0, 0], [600, 0, 0, 0]),
                 [C] = new(C, 30, 0, null, [30, 0, 0, 0], [0, 0, 0, 0]),
             }));
-        _tasks.Setup(x => x.ListOpenAssignedAsync(TenantId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+        _tasks.Setup(x => x.ListOpenAssignedAsync(TenantId, LegalEntityId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(() => _open);
-        _tasks.Setup(x => x.ListMemberModulesAsync(TenantId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+        _tasks.Setup(x => x.ListMemberModulesAsync(TenantId, LegalEntityId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync([new ForecastMemberModule(B, ModuleY, "Refunds", ProjectId, "Payments", Fri20)]);
     }
 

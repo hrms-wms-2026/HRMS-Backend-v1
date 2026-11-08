@@ -17,8 +17,10 @@ public class ProjectMonitorRulesTests
     private static readonly Guid Emp = Guid.NewGuid();
 
     private static MonitorModule Module(decimal allocated, decimal completed = 0m, int members = 5,
-        DateOnly? start = null, DateOnly? end = null, bool achieved = false, Guid? id = null, Guid? parentId = null, decimal? rate = null)
-        => new(id ?? Guid.NewGuid(), parentId, null, "Payments", start ?? Mon5, end ?? Fri16, allocated, completed, achieved, members, rate);
+        DateOnly? start = null, DateOnly? end = null, bool achieved = false, Guid? id = null, Guid? parentId = null, decimal? rate = null,
+        int? pool = null)
+        => new(id ?? Guid.NewGuid(), parentId, null, "Payments", start ?? Mon5, end ?? Fri16, allocated, completed, achieved, members, rate,
+            pool ?? members);
 
     private static MonitorTask Task(DateOnly? due, decimal? estimate, Guid? moduleId = null, bool complete = false,
         decimal completed = 0m, decimal clocked = 0m, Guid? sprintId = null, params Guid[] assignees)
@@ -55,6 +57,16 @@ public class ProjectMonitorRulesTests
         Assert.Equal("none", finding.Details["rateSource"]);
         Assert.Null(finding.Details["conversionRate"]);
         Assert.DoesNotContain("task rate", finding.Message);
+    }
+
+    [Fact]
+    public void ModuleRate_IsNotPrintedForPoolsUnderThree_ButStillDrivesTheRule()
+    {
+        var finding = ProjectMonitorRules.ModuleCapacityShortfall(Module(allocated: 100m, members: 2, rate: 0.4m), Cal, Mon12)!;
+
+        Assert.DoesNotContain("40%", finding.Message);
+        Assert.Equal("100 h of work remain, more than the team is likely to complete before Oct 16 at its task rate of the last 4 weeks.", finding.Message);
+        Assert.Equal(32m, finding.Details["predictedHours"]);   // 2 x 5 x 8 = 80h x 40%
     }
 
     [Fact]

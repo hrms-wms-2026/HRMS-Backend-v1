@@ -18,14 +18,13 @@ using ONEVO.Domain.Features.WorkManagement.Projects.Entities;
 namespace ONEVO.Application.Features.WorkManagement.Forecast.Queries.GetModuleForecast;
 
 /// <summary>
-/// Module overtime forecast (spec 2026-11-08 §4a). Population: the Modules the viewer can read under Work Management's
-/// relationship rules - every Module of a project they lead, otherwise the Modules at or below one they are an active
-/// member of (IModuleReadAccess) or own - in active, not-achieved, non-system projects of the viewer's legal entity;
-/// only Modules that are active, not achieved and end today or later. Each Module's figures come from
+/// Module overtime forecast (spec 2026-11-08 §4a). Population: the Modules the viewer leads under Work Management's
+/// relationship rules - every Module of a project they lead, otherwise the Modules at or below one they own (effective
+/// owner, the "Work I Lead" relationship) - in active, not-achieved, non-system projects of the viewer's legal entity;
+/// only Modules that are active, not achieved and end today or later. Plain membership does not qualify: the widget
+/// shows every member's individual task rate, which is a lead's view, not a peer's. Each Module's figures come from
 /// <see cref="OvertimeForecast"/> with the pooled 4-week rate of its manpower (ModuleManpower), exactly like the monitor's
 /// ModuleCapacityShortfall rule, so the widget and the Tree dots agree.
-/// Individual member rates (and worked / task minutes) are shown only to the project lead and the Module's effective
-/// owner (owner of it or an ancestor); other viewers see the names, the pooled module rate and their own figures.
 /// </summary>
 public sealed class GetModuleForecastQueryHandler(
     ICurrentUser currentUser,
@@ -44,7 +43,7 @@ public sealed class GetModuleForecastQueryHandler(
     private const string PathSeparator = " › ";
 
     private sealed record Row(Objective Module, Project Project, string Path, IReadOnlySet<Guid> People, PooledRate Rate,
-        ForecastFigures Figures, int WorkingDaysLeft, bool IsTopMost, bool SeesMemberRates);
+        ForecastFigures Figures, int WorkingDaysLeft, bool IsTopMost);
 
     public async Task<Result<ModuleForecastResponse>> Handle(GetModuleForecastQuery query, CancellationToken ct)
     {
@@ -68,7 +67,8 @@ public sealed class GetModuleForecastQueryHandler(
         var today = AttendanceScheduleResolver.Resolve(legalEntity, clock.UtcNow).WorkDate;
         var calendar = WorkCapacityCalculator.FromLegalEntity(legalEntity);
 
-        // Relationship-based access, evaluated in bulk: memberships and owned Modules give the candidate projects.
+        // Relationship-based access, evaluated in bulk: projects the viewer is a member of (a lead holds a membership)
+        // and owned Modules give the candidate projects.
         var memberships = (await members.ListActiveForEmployeeAsync(tenantId, actor.Id, ct)).Where(m => m.IsActive).ToList();
         var owned = await objectives.ListActiveOwnedIdsAsync(tenantId, actor.Id, legalEntityId, ct);
         var projectIds = memberships.Select(m => m.ProjectId).Concat(owned.Select(o => o.ProjectId)).Distinct().ToList();
@@ -87,8 +87,7 @@ public sealed class GetModuleForecastQueryHandler(
             var tree = new ProjectModuleTree(modules);
             IReadOnlySet<Guid> readable = project.LeadId == actor.Id
                 ? modules.Select(m => m.Id).ToHashSet()
-                : tree.AtOrBelow(memberships.Where(m => m.ProjectId == project.Id).Select(m => m.ObjectiveId)
-                    .Concat(owned.Where(o => o.ProjectId == project.Id).Select(o => o.ObjectiveId)));
+                : tree.AtOrBelow(owned.Where(o => o.ProjectId == project.Id).Select(o => o.ObjectiveId));
             var membersByModule = (await members.ListActiveForProjectAsync(tenantId, project.Id, ct))
                 .GroupBy(m => m.ObjectiveId)
                 .ToDictionary(g => g.Key, g => (IReadOnlySet<Guid>)g.Select(m => m.EmployeeId).ToHashSet());
@@ -107,9 +106,8 @@ public sealed class GetModuleForecastQueryHandler(
             var figures = OvertimeForecast.Compute(
                 c.Module.AllocatedHours - c.Module.CompletedHours, calendar.Capacity(people, from, c.Module.EndDate), pooled.Rate);
             var topMost = !c.Tree.AncestorChain(c.Module.Id).Skip(1).Any(a => listedIds.Contains(a.Id));
-            var seesMemberRates = c.Project.LeadId == actor.Id || c.Tree.IsAtOrAbove(actor.Id, c.Module.Id);
             return new Row(c.Module, c.Project, c.Path, c.People, pooled, figures,
-                calendar.WorkingDaysBetween(from, c.Module.EndDate), topMost, seesMemberRates);
+                calendar.WorkingDaysBetween(from, c.Module.EndDate), topMost);
         }).ToList();
 
         var top = rows.Where(r => r.IsTopMost).ToList();
@@ -172,7 +170,7 @@ public sealed class GetModuleForecastQueryHandler(
             r.People.Select(id =>
                 {
                     identities.TryGetValue(id, out var identity);
-                    var rate = r.SeesMemberRates || id == actor.Id ? rateSet.ByEmployee.GetValueOrDefault(id) : null;
+                    var rate = rateSet.ByEmployee.GetValueOrDefault(id);
                     return new ModuleForecastMember(id, identity?.DisplayName ?? "Unknown", identity?.AvatarFileId,
                         ForecastRounding.Rate(rate?.Rate), rate?.WorkedMinutes ?? 0, rate?.TaskMinutes ?? 0);
                 })
