@@ -100,7 +100,7 @@ public sealed class MyTeamDb
     }
 
     /// <summary>A context resolved to this tenant, so the tenant query filter (and RLS) apply as in a request.</summary>
-    public ApplicationDbContext NewTenantContext(Guid? tenantId = null)
+    public ApplicationDbContext NewTenantContext(Guid? tenantId = null, IInterceptor? counter = null)
     {
         var tenantContext = new TenantContextAccessor();
         tenantContext.Resolve(new ONEVO.Application.Common.ServiceInterfaces.TenantRegistryEntry(
@@ -109,6 +109,9 @@ public sealed class MyTeamDb
             .UseTestSqlServer(_connectionString)
             .UseSnakeCaseNamingConvention()
             .AddTestRls(new TenantRlsInterceptor(tenantContext));
+        if (counter is not null)
+            builder.AddInterceptors(counter);
+
         return new ApplicationDbContext(
             builder.Options,
             new AuditableEntityInterceptor(new AnonymousCurrentUser(), _clock),

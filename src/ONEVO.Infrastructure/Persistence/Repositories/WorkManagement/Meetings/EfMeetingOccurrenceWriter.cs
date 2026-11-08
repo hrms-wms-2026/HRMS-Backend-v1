@@ -11,8 +11,8 @@ using ONEVO.Infrastructure.Persistence.SqlServer;
 namespace ONEVO.Infrastructure.Persistence.Repositories.WorkManagement.Meetings;
 
 /// <summary>
-/// Spec 5.6 on PostgreSQL. The insert is one statement: a candidate row exists only when the occurrence key is free and
-/// not suppressed; the task and its meeting_details row are inserted together, each ON CONFLICT DO NOTHING. A writer
+/// Spec 5.6. The insert is one batch: it runs only when the occurrence key is free and not suppressed; the task and its
+/// meeting_details row are inserted together, each treating a unique violation (2601, 2627) as nothing inserted. A writer
 /// that loses the details race leaves a meeting task without details, which the deferred pairing trigger rejects at
 /// commit - the generator retries, and the retry finds the key taken. Raw SQL on tasks: allow-listed in
 /// MeetingQueryFilterArchitectureTests.

@@ -6,7 +6,7 @@ using ONEVO.Infrastructure.Persistence;
 namespace ONEVO.Infrastructure.Services.SharedPlatform.Jobs;
 
 /// <summary>
-/// <see cref="IJobLeaseService"/> over job_leases. Every time comparison uses the database clock (now()), so instances
+/// <see cref="IJobLeaseService"/> over job_leases. Every time comparison uses the database clock (SYSDATETIMEOFFSET()), so instances
 /// with skewed clocks agree on expiry. job_leases has no RLS, so no tenant context is needed. Singleton: each call opens
 /// its own scope and short transaction.
 /// </summary>
