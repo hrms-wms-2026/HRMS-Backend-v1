@@ -88,7 +88,7 @@ public class ConversionRateReaderTests
         var set = await Reader().ReadAsync(TenantId, Entity, [a, b]);
         var pooled = set.Pool([a, b, a]);
 
-        Assert.Equal((600, 180), (pooled.WorkedMinutes, pooled.TaskMinutes));
+        Assert.Equal((600, 180, 2), (pooled.WorkedMinutes, pooled.TaskMinutes, pooled.Contributors));
         Assert.Equal(0.3m, pooled.Rate);
         var trend = set.Trend([a, b]);
         Assert.Equal(4, trend.Count);

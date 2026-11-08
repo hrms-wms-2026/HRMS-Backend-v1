@@ -88,9 +88,12 @@ public sealed class ProjectMonitorSnapshotLoader : IProjectMonitorSnapshotLoader
         // The 4-week conversion rate of everyone the rules look at: module manpower and task assignees.
         var everyone = peopleByModule.Values.SelectMany(p => p).Concat(assigneesByTask.Values.SelectMany(a => a)).ToHashSet();
         var rates = await _rates.ReadAsync(tenantId, legalEntity, everyone, ct);
-        var modules = objectives.Select(o => new MonitorModule(o.Id, o.ParentObjectiveId, o.CreatorPositionObjectiveId, o.Title, o.StartDate, o.EndDate,
-                o.AllocatedHours, o.CompletedHours, o.IsAchieved, peopleByModule[o.Id].Count, rates.Pool(peopleByModule[o.Id]).Rate,
-                peopleByModule[o.Id].Count))
+        var modules = objectives.Select(o =>
+            {
+                var pooled = rates.Pool(peopleByModule[o.Id]);
+                return new MonitorModule(o.Id, o.ParentObjectiveId, o.CreatorPositionObjectiveId, o.Title, o.StartDate, o.EndDate,
+                    o.AllocatedHours, o.CompletedHours, o.IsAchieved, peopleByModule[o.Id].Count, pooled.Rate, pooled.Contributors);
+            })
             .ToList();
 
         var tasks = workTasks.Select(t => new MonitorTask(

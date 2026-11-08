@@ -69,11 +69,13 @@ public sealed class CheckModuleCapacityQueryHandler : IRequestHandler<CheckModul
         var legalEntity = await _calendars.LegalEntityForProjectAsync(tenantId, query.ProjectId, ct);
         var calendar = WorkCapacityCalculator.FromLegalEntity(legalEntity);
         var pooled = people.Where(pooledAllowed.Contains).ToList();
-        var rate = (await _rates.ReadAsync(tenantId, legalEntity, pooled, ct)).Pool(pooled).Rate;
+        var pool = (await _rates.ReadAsync(tenantId, legalEntity, pooled, ct)).Pool(pooled);
+        // The caller controls the form's numbers, so warnings on a small pool would be an oracle for its rate: below
+        // MinRatePool contributors the check assumes 100%, exactly as without history.
+        var rate = pool.Contributors >= ProjectMonitorRules.MinRatePool ? pool.Rate : null;
         var module = new MonitorModule(query.ModuleId ?? Guid.Empty, null, null, title, query.StartDate, query.EndDate,
-            query.AllocatedHours, completedHours, IsAchieved: false, manpower, rate, pooled.Count);
-        // The rate (and predicted hours, which reveal it) is returned only for a pool the caller cannot take apart.
-        var disclose = rate is not null && pooled.Count >= ProjectMonitorRules.MinRatePool;
+            query.AllocatedHours, completedHours, IsAchieved: false, manpower, rate, pool.Contributors);
+        var disclose = rate is not null;
 
         var warnings = new[]
             {

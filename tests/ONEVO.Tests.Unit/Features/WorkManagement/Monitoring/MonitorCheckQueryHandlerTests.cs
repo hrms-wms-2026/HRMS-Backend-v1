@@ -76,9 +76,9 @@ public class MonitorCheckQueryHandlerTests
     [Fact]
     public async Task ModuleCheck_PoolsTheTeamsRate_AndWarnsWhenThePredictionFallsShort()
     {
-        // 5 people x 10 days x 8h = 400h; pooled rate (240 + 0) / (480 + 480) = 25% -> 100h predicted < 300h.
+        // 5 people x 10 days x 8h = 400h; pooled rate 480 / (4 x 480) = 25% -> 100h predicted < 300h.
         var others = FourOthers();
-        _rateSet = RatesOf((Caller, 480, 240), (others[0], 480, 0));
+        _rateSet = RatesOf((Caller, 480, 480), (others[0], 480, 0), (others[1], 480, 0), (others[2], 480, 0));
         _members.Setup(x => x.ListActiveForProjectAsync(TenantId, ProjectId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(others.Select(o => new ProjectMember { ProjectId = ProjectId, ObjectiveId = Guid.NewGuid(), EmployeeId = o }).ToList());
 
@@ -103,6 +103,21 @@ public class MonitorCheckQueryHandlerTests
         Assert.Null(result.Value!.ConversionRate);   // pooled over the caller alone: never returned
         Assert.Null(result.Value.PredictedHours);
         Assert.Equal(2, result.Value.MemberCount);   // the outsider still counts as capacity
+        Assert.Empty(result.Value.Warnings);         // 10h fits; and a small pool is checked at 100%, never at its rate
+    }
+
+    [Fact]
+    public async Task ModuleCheck_SmallPool_IsCheckedAtFullCapacity_SoTheWarningsAreNoRateOracle()
+    {
+        var others = FourOthers();
+        _rateSet = RatesOf((Caller, 480, 48), (others[0], 480, 0));   // 2 contributors at 5%
+        _members.Setup(x => x.ListActiveForProjectAsync(TenantId, ProjectId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(others.Select(o => new ProjectMember { ProjectId = ProjectId, ObjectiveId = Guid.NewGuid(), EmployeeId = o }).ToList());
+
+        var result = await ModuleHandler().Handle(new CheckModuleCapacityQuery(ProjectId, null, Mon5, Fri16, 300m, others), default);
+
+        Assert.Empty(result.Value!.Warnings);   // 300h <= 400h at 100%
+        Assert.Null(result.Value.ConversionRate);
     }
 
     [Fact]

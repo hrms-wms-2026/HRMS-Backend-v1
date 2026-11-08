@@ -5,7 +5,8 @@ namespace ONEVO.Application.Features.WorkManagement.Monitoring.Services;
 public sealed record EmployeeConversionRate(
     Guid EmployeeId, int WorkedMinutes, int TaskMinutes, decimal? Rate, IReadOnlyList<int> WeekWorked, IReadOnlyList<int> WeekTask);
 
-public sealed record PooledRate(int WorkedMinutes, int TaskMinutes, decimal? Rate);
+/// <param name="Contributors">People in the pool with worked time in the window: the real size of the pool.</param>
+public sealed record PooledRate(int WorkedMinutes, int TaskMinutes, decimal? Rate, int Contributors = 0);
 
 public sealed record RateTrendPoint(DateOnly WeekStart, decimal? Rate);
 
@@ -26,15 +27,17 @@ public sealed record ConversionRateSet(
 
     public PooledRate Pool(IEnumerable<Guid> employeeIds)
     {
-        int worked = 0, task = 0;
+        int worked = 0, task = 0, contributors = 0;
         foreach (var id in employeeIds.Distinct())
         {
             if (!ByEmployee.TryGetValue(id, out var r))
                 continue;
             worked += r.WorkedMinutes;
             task += r.TaskMinutes;
+            if (r.WorkedMinutes > 0)
+                contributors++;
         }
-        return new PooledRate(worked, task, OvertimeForecast.Rate(task, worked));
+        return new PooledRate(worked, task, OvertimeForecast.Rate(task, worked), contributors);
     }
 
     public IReadOnlyList<RateTrendPoint> Trend(IEnumerable<Guid> employeeIds)
