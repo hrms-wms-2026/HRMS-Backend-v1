@@ -119,6 +119,8 @@ public static class ProjectMonitorRules
     /// (capacity(1, today, d) x rateEff; 100% when <paramref name="rate"/> is null). A shared task's remaining hours
     /// are split evenly between its assignees. Every task inside the first window that overflows (and later
     /// overflowing windows) is flagged once.
+    /// Task alerts are visible to every member of the Module, so an individual's rate is never printed: the message
+    /// and details carry no figure the rate can be derived from (no conversionRate, predictedHours or overtimeHours).
     /// </summary>
     public static IReadOnlyList<MonitorFinding> EmployeeDeadlineOverload(
         Guid employeeId, IReadOnlyList<MonitorTask> tasks, WorkCalendar calendar, DateOnly today, decimal? rate = null)
@@ -136,12 +138,14 @@ public static class ProjectMonitorRules
             if (demand <= forecast.Predicted)
                 continue;
 
-            var message = rate is { } r
-                ? $"The assignee has {Hours(demand)} h of work due by {Day(deadline)}; at their {Percent(r)} task rate (last 4 weeks) they will complete about {Hours(forecast.Predicted)} h."
+            var message = rate is not null
+                ? $"The assignee has {Hours(demand)} h of work due by {Day(deadline)}, more than they are likely to complete by then at their task rate of the last 4 weeks."
                 : $"The assignee has {Hours(demand)} h of work due by {Day(deadline)} but only {Hours(capacity)} h of working time.";
             foreach (var (task, _, _) in inWindow.Where(x => flagged.Add(x.Task.Id)))
                 findings.Add(new(MonitorRuleCodes.EmployeeDeadlineOverload, MonitorTargetTypes.Task, task.Id, task.Title, employeeId, message,
-                    Details([("employeeId", employeeId), ("dueDate", Iso(deadline)), ("demandHours", demand), ("capacityHours", capacity)], forecast)));
+                    Details(("employeeId", employeeId), ("dueDate", Iso(deadline)), ("demandHours", demand), ("capacityHours", capacity),
+                        ("requiredRate", forecast.RequiredRate is { } q ? Math.Round(q, 4) : null),
+                        ("rateSource", rate is null ? "none" : "history"))));
         }
         return findings;
     }

@@ -44,6 +44,7 @@ public class MonitorCheckQueryHandlerTests
         _rates.Setup(x => x.ReadAsync(TenantId, It.IsAny<ONEVO.Domain.Features.OrgStructure.Entities.LegalEntity?>(),
                 It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(() => _rateSet);
+        _members.Setup(x => x.ListActiveForProjectAsync(TenantId, ProjectId, It.IsAny<CancellationToken>())).ReturnsAsync([]);
     }
 
     private static ConversionRateSet RatesOf(params (Guid Id, int Worked, int Task)[] people)
@@ -78,6 +79,8 @@ public class MonitorCheckQueryHandlerTests
         // 5 people x 10 days x 8h = 400h; pooled rate (240 + 0) / (480 + 480) = 25% -> 100h predicted < 300h.
         var others = FourOthers();
         _rateSet = RatesOf((Caller, 480, 240), (others[0], 480, 0));
+        _members.Setup(x => x.ListActiveForProjectAsync(TenantId, ProjectId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([new ProjectMember { ProjectId = ProjectId, ObjectiveId = Guid.NewGuid(), EmployeeId = others[0] }]);
 
         var result = await ModuleHandler().Handle(new CheckModuleCapacityQuery(ProjectId, null, Mon5, Fri16, 300m, others), default);
 
@@ -90,6 +93,33 @@ public class MonitorCheckQueryHandlerTests
     }
 
     [Fact]
+    public async Task ModuleCheck_PoolsOnlyProjectMembers_NeverAnArbitraryEmployee()
+    {
+        var outsider = Guid.NewGuid();
+        _rateSet = RatesOf((Caller, 480, 480), (outsider, 4800, 0));
+
+        var result = await ModuleHandler().Handle(new CheckModuleCapacityQuery(ProjectId, null, Mon5, Fri16, 10m, [outsider]), default);
+
+        Assert.Equal(1m, result.Value!.ConversionRate);   // the caller's own rate only
+        Assert.Equal(2, result.Value.MemberCount);         // the outsider still counts as capacity
+    }
+
+    [Fact]
+    public async Task TaskCheck_SomeoneElsesRate_IsNeverPrinted()
+    {
+        var other = Guid.NewGuid();
+        _identity.Setup(x => x.ResolveDisplayNamesByEmployeeIdAsync(TenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, string> { [other] = "Nila" });
+        _snapshots.Setup(x => x.LoadAsync(TenantId, ProjectId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ProjectMonitorSnapshot(ProjectId, WorkCalendar.Default, [], [], [], RatesOf((other, 600, 300))));
+
+        var result = await TaskHandler().Handle(new CheckTaskLoadQuery(ProjectId, null, [other], Wed7, 16m), default);
+
+        var warning = Assert.Single(result.Value!.Warnings);
+        Assert.Equal("Nila has 16 h of work due by Oct 7, more than they are likely to complete by then at their task rate of the last 4 weeks.", warning.Message);
+    }
+
+    [Fact]
     public async Task TaskCheck_UsesTheAssigneesRate()
     {
         // Mon 5 -> Wed 7 = 24h of working time, x 50% = 12h; a new 16h task due Wed 7.
@@ -99,7 +129,7 @@ public class MonitorCheckQueryHandlerTests
         var result = await TaskHandler().Handle(new CheckTaskLoadQuery(ProjectId, null, [Caller], Wed7, 16m), default);
 
         var warning = Assert.Single(result.Value!.Warnings);
-        Assert.Equal("Kaja has 16 h of work due by Oct 7; at their 50% task rate (last 4 weeks) they will complete about 12 h.", warning.Message);
+        Assert.Equal("Kaja has 16 h of work due by Oct 7; at your 50% task rate (last 4 weeks) you will complete about 12 h.", warning.Message);
     }
 
     [Fact]

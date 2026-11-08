@@ -38,6 +38,10 @@ public sealed class CheckModuleCapacityQueryHandler : IRequestHandler<CheckModul
         var tenantId = caller.Value!.TenantId;
 
         IReadOnlySet<Guid> people;
+        // Only the project's active members (and the caller) are pooled into the rate: an arbitrary employee id typed
+        // into the form must not reveal anyone's task rate. Others still count as capacity.
+        var projectMembers = (await _members.ListActiveForProjectAsync(tenantId, query.ProjectId, ct)).ToList();
+        var pooledAllowed = projectMembers.Select(m => m.EmployeeId).Append(caller.Value.EmployeeId).ToHashSet();
         var completedHours = 0m;
         var title = "This module";
         var existing = query.ModuleId is { } moduleId
@@ -47,7 +51,7 @@ public sealed class CheckModuleCapacityQueryHandler : IRequestHandler<CheckModul
         {
             // Editing: the allocation is split across the sub-Modules, so everyone at or below counts.
             var tree = new ProjectModuleTree(await _objectives.GetAllByProjectIdAsync(tenantId, query.ProjectId, ct));
-            var membersByModule = (await _members.ListActiveForProjectAsync(tenantId, query.ProjectId, ct))
+            var membersByModule = projectMembers
                 .GroupBy(m => m.ObjectiveId)
                 .ToDictionary(g => g.Key, g => (IReadOnlySet<Guid>)g.Select(m => m.EmployeeId).ToHashSet());
             people = ModuleManpower.People(tree, existing.Id, membersByModule, query.MemberEmployeeIds);
@@ -64,7 +68,8 @@ public sealed class CheckModuleCapacityQueryHandler : IRequestHandler<CheckModul
         // Same prediction as the hourly monitor: capacity x the team's pooled 4-week task rate.
         var legalEntity = await _calendars.LegalEntityForProjectAsync(tenantId, query.ProjectId, ct);
         var calendar = WorkCapacityCalculator.FromLegalEntity(legalEntity);
-        var rate = (await _rates.ReadAsync(tenantId, legalEntity, people.ToList(), ct)).Pool(people).Rate;
+        var pooled = people.Where(pooledAllowed.Contains).ToList();
+        var rate = (await _rates.ReadAsync(tenantId, legalEntity, pooled, ct)).Pool(pooled).Rate;
         var module = new MonitorModule(query.ModuleId ?? Guid.Empty, null, null, title, query.StartDate, query.EndDate,
             query.AllocatedHours, completedHours, IsAchieved: false, manpower, rate);
 

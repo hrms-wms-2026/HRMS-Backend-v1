@@ -93,8 +93,14 @@ public class ProjectMonitorRulesTests
         var findings = ProjectMonitorRules.EmployeeDeadlineOverload(Emp, [Task(Fri9, 30m)], Cal, Mon5, rate: 0.5m);
 
         var finding = Assert.Single(findings);
-        Assert.Equal(20m, finding.Details["predictedHours"]);
-        Assert.Contains("at their 50% task rate (last 4 weeks) they will complete about 20 h", finding.Message);
+        Assert.Equal("history", finding.Details["rateSource"]);
+        Assert.Equal(0.75m, finding.Details["requiredRate"]);
+        // Task alerts are visible to the whole Module: no figure that reveals the individual's rate.
+        Assert.False(finding.Details.ContainsKey("conversionRate"));
+        Assert.False(finding.Details.ContainsKey("predictedHours"));
+        Assert.False(finding.Details.ContainsKey("overtimeHours"));
+        Assert.DoesNotContain("50%", finding.Message);
+        Assert.Contains("task rate of the last 4 weeks", finding.Message);
         Assert.Empty(ProjectMonitorRules.EmployeeDeadlineOverload(Emp, [Task(Fri9, 30m)], Cal, Mon5));
     }
 

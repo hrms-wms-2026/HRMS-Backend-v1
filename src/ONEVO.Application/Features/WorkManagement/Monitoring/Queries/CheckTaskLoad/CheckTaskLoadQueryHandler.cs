@@ -61,13 +61,18 @@ public sealed class CheckTaskLoadQueryHandler : IRequestHandler<CheckTaskLoadQue
             var name = names.GetValueOrDefault(employeeId) ?? "An assignee";
             var demand = (decimal)finding.Details["demandHours"]!;
             var capacity = (decimal)finding.Details["capacityHours"]!;
-            var predicted = (decimal)finding.Details["predictedHours"]!;
+            var predicted = capacity * OvertimeForecast.Effective(rate);
             var deadline = DateOnly.ParseExact((string)finding.Details["dueDate"]!, "yyyy-MM-dd", CultureInfo.InvariantCulture);
             var day = deadline.ToString("MMM d", CultureInfo.InvariantCulture);
-            warnings.Add(new MonitorWarning(finding.RuleCode, rate is { } r
-                ? $"{name} has {ProjectMonitorRules.Hours(demand)} h of work due by {day}; at their {ProjectMonitorRules.Percent(r)} task rate (last 4 weeks) they will complete about {ProjectMonitorRules.Hours(predicted)} h."
-                : $"{name} has {ProjectMonitorRules.Hours(demand)} h of work due by {day} but only {ProjectMonitorRules.Hours(capacity)} h of working time.",
-                employeeId));
+            // An individual's rate is shown to themself only; anyone else gets the rule's rate-free wording.
+            var message = rate switch
+            {
+                { } r when employeeId == caller.Value.EmployeeId =>
+                    $"{name} has {ProjectMonitorRules.Hours(demand)} h of work due by {day}; at your {ProjectMonitorRules.Percent(r)} task rate (last 4 weeks) you will complete about {ProjectMonitorRules.Hours(predicted)} h.",
+                not null => $"{name} has {ProjectMonitorRules.Hours(demand)} h of work due by {day}, more than they are likely to complete by then at their task rate of the last 4 weeks.",
+                null => $"{name} has {ProjectMonitorRules.Hours(demand)} h of work due by {day} but only {ProjectMonitorRules.Hours(capacity)} h of working time.",
+            };
+            warnings.Add(new MonitorWarning(finding.RuleCode, message, employeeId));
         }
 
         return Result<TaskLoadCheckResponse>.Success(new TaskLoadCheckResponse(warnings));
