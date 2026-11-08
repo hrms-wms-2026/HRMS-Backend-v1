@@ -9,12 +9,14 @@ The API builds and runs on SQL Server, a clean database is created from migratio
 
 | Check | Result | Commit |
 |---|---|---|
-| API Release build | Succeeded | b42cdcc1 |
-| `ONEVO.Tests.Unit` | 7742 of 7742 passed | b42cdcc1 |
-| `ONEVO.Tests.Architecture` | 711 of 711 passed | b42cdcc1 |
-| `ONEVO.Tests.Integration` | 1207 of 1208 passed, 0 failed, 1 skipped | b42cdcc1 |
+| API Release build | Succeeded | 70a5b4fb |
+| `ONEVO.Tests.Unit` | 7745 of 7745 passed | 70a5b4fb |
+| `ONEVO.Tests.Architecture` | 711 of 711 passed | 70a5b4fb |
+| `ONEVO.Tests.Integration` | 1214 of 1215 passed, 0 failed, 1 skipped | 70a5b4fb |
 
-The last two full runs had no failures. An earlier run had one: a 30-second timeout in test setup, on trivial statements, while the Docker host was stalled. Test setup timeouts were raised to 300 seconds, which changes no product code. In both clean runs all 65 test hosts seeded without error, but a rare stall could still appear on a slower machine.
+Updated 2026-11-08 after the follow-up fixes (position sort by name, strict test seeding, query sweep). The full run at 70a5b4fb had no failures. Before that, two clean full runs at b42cdcc1, and a coverage run on the follow-up code had no seeding failures across all test hosts.
+
+One test is timing-sensitive: `OutboxProcessorConcurrencyIntegrationTests.FourProcessors_…` asserts that at least two of four processors win some messages. It failed once under coverage load, with one processor claiming all 60. Its exactly-once and no-overlap checks are separate. It passed in every other run.
 
 - `verify.ps1` could not run: `../dev-env` does not exist on this machine and `pwsh` is not installed. These are the equivalent raw `dotnet` commands, except that `find-unauthorized-endpoints.ps1` and `security-scan.ps1` did **not** run.
 - The skipped test is `NotificationReleaseSmokeTests.FirstSliceEvent_EndToEnd_AgainstAMigratedDatabase`. It runs only with `NOTIF_SMOKE=1` against a real database, and was opt-in before this work too.
@@ -41,7 +43,7 @@ The API refuses to start without the required collation, `READ_COMMITTED_SNAPSHO
 
 ## Behaviour differences to know about
 
-- **Sort order of ids.** The position list sorts by `DepartmentId` and `ReportsToPositionId`, which are GUIDs. SQL Server orders GUIDs differently from PostgreSQL, so those two sorts give a different, equally arbitrary order among non-empty values.
+- **Position list sorted by department or reports-to.** These used to sort by the referenced GUID, an arbitrary order that also differed between the databases. Since 2026-11-08 they sort by the department name and the reports-to position's name (`PositionSortTests`). This is a small API behaviour change.
 - **Meeting pairing rules run in the app.** The commit-time checks moved from deferred triggers to `MeetingIntegrityInterceptor`. Raw SQL that bypasses EF is not checked.
 - **Recursive department query.** A data cycle now errors at depth 100 instead of stopping quietly.
 - **`storage_key` is limited to 850 characters.** Three foreign keys became `NO ACTION`; see the cascade report.
@@ -49,11 +51,11 @@ The API refuses to start without the required collation, `READ_COMMITTED_SNAPSHO
 
 ## Known risks
 
-- **Queries with no test.** LINQ translation fails only when a query runs. Two such failures were found through integration tests, and a pattern scan found no others, but a query no test reaches could still fail.
+- **Queries with no test (much reduced 2026-11-08).** LINQ translation fails only when a query runs. `QueryTranslationSweepTests` now runs every Infrastructure query method on SQL Server, with 0 failures. Query call sites never run fell from 553 to 37 of 1155. The 37 were read and use only equality and `IN` filters, so they are reviewed, not run. Details: `2026-11-08-sqlserver-query-coverage.md`.
 - **Rollback after a tenant switch.** Production transactions are disposed rather than rolled back, so `RestoreOnRollback` rarely fires. After a failed in-transaction switch, the next connection reapplies the app's tenant context, which is the switched tenant. The earlier "fails closed" wording was wrong. PostgreSQL behaved the same, and the review found no cross-tenant read: the known case is tray enrolment, where that tenant owns the code.
 - **Retry coverage.** The code looks safe, but no test covers a mid-transaction drop or a deadlock retry.
 - **Async close.** `TenantRlsInterceptor` has no async closing override, so safety rests on setting context at open and the pool reset.
-- **Dev seeder failures are silent.** `DevSmokeTestTenantSeeder` logs and continues. Under a stalled Docker host it timed out, which caused the intermittent `onevo_legal_pending` test failures. It runs only in Development and Test.
+- **Dev seeder failures (fixed for tests 2026-11-08).** `DevSmokeTestTenantSeeder` used to log and continue, so a seeding timeout on a stalled Docker host surfaced later as unrelated test failures. In the Test environment it now retries a SQL timeout once and otherwise stops startup with the real error. Development still logs and continues. A stall can still fail a run, but it now says why.
 - **Review limits.** The reviewer did not assess `SeedReferenceData`, the setup scripts, SqlClient's transparent reconnect, `HOLDLOCK` deadlock rates under load, or non-ASCII email casing.
 
 ## Retired tests
