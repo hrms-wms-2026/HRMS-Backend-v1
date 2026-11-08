@@ -282,9 +282,12 @@ public class EfPositionRepository : IPositionRepository
         return new PositionPage(items, totalCount, page, pageSize, totalPages);
     }
 
-    private static IQueryable<Position> ApplySort(IQueryable<Position> query, string sortBy, string sortDirection)
+    // Department and reports-to sort by the name shown in the list, not by the referenced id.
+    private IQueryable<Position> ApplySort(IQueryable<Position> query, string sortBy, string sortDirection)
     {
         var ascending = sortDirection == "asc";
+        var departments = _db.Departments;
+        var positions = _db.Positions;
 
         return sortBy switch
         {
@@ -292,11 +295,23 @@ public class EfPositionRepository : IPositionRepository
                 ? query.OrderByNullsLast(position => position.Code).ThenBy(position => position.Id)
                 : query.OrderByDescendingNullsFirst(position => position.Code).ThenBy(position => position.Id),
             "department" => ascending
-                ? query.OrderByNullsLast(position => position.DepartmentId).ThenBy(position => position.Id)
-                : query.OrderByDescendingNullsFirst(position => position.DepartmentId).ThenBy(position => position.Id),
+                ? query.OrderByNullsLast(position => departments
+                        .Where(department => department.Id == position.DepartmentId)
+                        .Select(department => department.Name).FirstOrDefault())
+                    .ThenBy(position => position.Id)
+                : query.OrderByDescendingNullsFirst(position => departments
+                        .Where(department => department.Id == position.DepartmentId)
+                        .Select(department => department.Name).FirstOrDefault())
+                    .ThenBy(position => position.Id),
             "reportsto" => ascending
-                ? query.OrderByNullsLast(position => position.ReportsToPositionId).ThenBy(position => position.Id)
-                : query.OrderByDescendingNullsFirst(position => position.ReportsToPositionId).ThenBy(position => position.Id),
+                ? query.OrderByNullsLast(position => positions
+                        .Where(manager => manager.Id == position.ReportsToPositionId)
+                        .Select(manager => manager.Name).FirstOrDefault())
+                    .ThenBy(position => position.Id)
+                : query.OrderByDescendingNullsFirst(position => positions
+                        .Where(manager => manager.Id == position.ReportsToPositionId)
+                        .Select(manager => manager.Name).FirstOrDefault())
+                    .ThenBy(position => position.Id),
             "type" => ascending
                 ? query.OrderBy(position => position.PositionType).ThenBy(position => position.Id)
                 : query.OrderByDescending(position => position.PositionType).ThenBy(position => position.Id),
