@@ -56,22 +56,18 @@ public sealed class QueryTranslationSweepTests
     public async Task EveryQueryMethod_RunsOnSqlServer()
     {
         var h = await MyTeamDb.CreateAsync();
-        var results = new List<(string Name, string Outcome, string Detail)>();
+        var methods = QueryTypes().SelectMany(type => QueryMethods(type).Select(method => (type, method))).ToList();
 
-        foreach (var type in QueryTypes())
-        {
-            foreach (var method in QueryMethods(type))
-            {
-                var name = $"{type.Name}.{method.Name}({string.Join(",", method.GetParameters().Select(p => p.ParameterType.Name))})";
-                if (Skipped.ContainsKey(type.Name) || Skipped.ContainsKey($"{type.Name}.{method.Name}"))
-                {
-                    results.Add((name, "skipped", Skipped.GetValueOrDefault(type.Name) ?? Skipped[$"{type.Name}.{method.Name}"]));
-                    continue;
-                }
-
-                results.Add(await RunAsync(h, type, method, name));
-            }
-        }
+        // Pass 1 on an empty tenant; pass 2 after seeding, with ids of real rows, so methods that
+        // return early when a first lookup finds nothing reach their later queries.
+        var empty = await RunPassAsync(h, methods, seeded: null);
+        var seeded = await Seeded.CreateAsync(h);
+        var withData = await RunPassAsync(h, methods, seeded);
+        var results = empty.Zip(withData, (a, b) =>
+            a.Outcome == "failed" ? a
+            : b.Outcome == "failed" ? b
+            : a.Outcome == "ran" ? a
+            : b).ToList();
 
         var report = new StringBuilder();
         foreach (var group in results.GroupBy(r => r.Outcome).OrderBy(g => g.Key))
@@ -88,26 +84,41 @@ public sealed class QueryTranslationSweepTests
         Assert.True(failed.Count == 0, $"{failed.Count} queries failed on SQL Server:\n{string.Join("\n", failed)}");
     }
 
-    private static async Task<(string, string, string)> RunAsync(MyTeamDb h, Type type, MethodInfo method, string name)
+    private static async Task<List<(string Name, string Outcome, string Detail)>> RunPassAsync(
+        MyTeamDb h, List<(Type Type, MethodInfo Method)> methods, Seeded? seeded)
     {
-        var result = await RunOnceAsync(h, type, method, name, preTenant: false, inTransaction: false);
+        var results = new List<(string Name, string Outcome, string Detail)>();
+        foreach (var (type, method) in methods)
+        {
+            var name = $"{type.Name}.{method.Name}({string.Join(",", method.GetParameters().Select(p => p.ParameterType.Name))})";
+            var reason = Skipped.GetValueOrDefault(type.Name) ?? Skipped.GetValueOrDefault($"{type.Name}.{method.Name}");
+            results.Add(reason is not null ? (name, "skipped", reason) : await RunAsync(h, type, method, name, seeded));
+        }
+
+        return results;
+    }
+
+    private static async Task<(string Name, string Outcome, string Detail)> RunAsync(
+        MyTeamDb h, Type type, MethodInfo method, string name, Seeded? seeded)
+    {
+        var result = await RunOnceAsync(h, type, method, name, seeded, preTenant: false, inTransaction: false);
         // Some methods must run inside the caller's transaction, or before a tenant is resolved
         // (login lookups). Run those once more the way they're meant to be called.
         if (result.Outcome == "unreached" && result.Detail.Contains("transaction", StringComparison.Ordinal))
-            result = await RunOnceAsync(h, type, method, name, preTenant: false, inTransaction: true);
+            result = await RunOnceAsync(h, type, method, name, seeded, preTenant: false, inTransaction: true);
         else if (result.Outcome == "unreached" && result.Detail.Contains("Pre-tenant", StringComparison.Ordinal))
-            result = await RunOnceAsync(h, type, method, name, preTenant: true, inTransaction: false);
+            result = await RunOnceAsync(h, type, method, name, seeded, preTenant: true, inTransaction: false);
         return result;
     }
 
     private static async Task<(string Name, string Outcome, string Detail)> RunOnceAsync(
-        MyTeamDb h, Type type, MethodInfo method, string name, bool preTenant, bool inTransaction)
+        MyTeamDb h, Type type, MethodInfo method, string name, Seeded? seeded, bool preTenant, bool inTransaction)
     {
         var counter = new CommandCounter();
         await using var db = preTenant ? h.NewContext(counter) : h.NewTenantContext(counter: counter);
         await using var transaction = inTransaction ? await db.Database.BeginTransactionAsync() : null;
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
-        var factory = new Factory(h, db, timeout.Token);
+        var factory = new Factory(h, db, timeout.Token, seeded);
 
         object? instance;
         object?[] args;
@@ -204,9 +215,27 @@ public sealed class QueryTranslationSweepTests
     }
 
     /// <summary>Builds constructor dependencies and method arguments.</summary>
-    private sealed class Factory(MyTeamDb h, ApplicationDbContext db, CancellationToken ct)
+    private sealed class Factory(MyTeamDb h, ApplicationDbContext db, CancellationToken ct, Seeded? seeded)
     {
         private readonly SystemDateTimeProvider _clock = new();
+
+        // In the seeded pass, an id parameter gets the id of a real row whose kind its name says.
+        private Guid? SeededId(string name)
+        {
+            if (seeded is null || name is "id" or "Id")
+                return null;
+            var n = name.ToLowerInvariant();
+            return n.Contains("manager") ? seeded.ManagerEmployeeId
+                : n.Contains("user") || n.Contains("actor") ? seeded.UserId
+                : n.Contains("employee") || n.Contains("member") || n.Contains("target") ? seeded.EmployeeId
+                : n.Contains("department") ? seeded.DepartmentId
+                : n.Contains("position") ? seeded.PositionId
+                : n.Contains("leavetype") ? seeded.LeaveTypeId
+                : n.Contains("request") ? seeded.LeaveRequestId
+                : n.Contains("project") ? seeded.ProjectId
+                : n.Contains("objective") ? seeded.ObjectiveId
+                : null;
+        }
 
         public object? Construct(Type type, int depth)
         {
@@ -281,7 +310,7 @@ public sealed class QueryTranslationSweepTests
             if (t == typeof(Guid))
                 return name.Equals("tenantId", StringComparison.OrdinalIgnoreCase) ? h.TenantId
                     : name.Equals("legalEntityId", StringComparison.OrdinalIgnoreCase) ? h.LegalEntityId
-                    : Guid.NewGuid();
+                    : SeededId(name) ?? Guid.NewGuid();
             if (t == typeof(string))
                 return "x";
             if (t == typeof(bool))
@@ -305,11 +334,15 @@ public sealed class QueryTranslationSweepTests
                 return OneItem(t.GetElementType()!, name, depth);
             if (t.IsGenericType && typeof(IEnumerable).IsAssignableFrom(t) && t.GetGenericArguments().Length == 1)
             {
-                var list = OneItem(t.GetGenericArguments()[0], name, depth);
-                if (t.IsInterface)
+                var element = t.GetGenericArguments()[0];
+                var list = OneItem(element, name, depth);
+                if (t.IsInterface && t.IsAssignableFrom(list.GetType()))
                     return list;
-                var set = Activator.CreateInstance(t);
-                t.GetMethod("Add")?.Invoke(set, [((Array)list).GetValue(0)]);
+                var concrete = !t.IsInterface ? t
+                    : t.IsAssignableFrom(typeof(List<>).MakeGenericType(element)) ? typeof(List<>).MakeGenericType(element)
+                    : typeof(HashSet<>).MakeGenericType(element);
+                var set = Activator.CreateInstance(concrete);
+                concrete.GetMethod("Add")?.Invoke(set, [list.GetValue(0)]);
                 return set;
             }
             if (t.IsGenericType && t.GetGenericTypeDefinition() == typeof(IReadOnlyDictionary<,>)
@@ -357,6 +390,39 @@ public sealed class QueryTranslationSweepTests
             }
 
             return instance;
+        }
+    }
+
+    /// <summary>A small connected org: a manager covering a department, an employee with a user
+    /// account and a position reporting to the manager's, an approved leave, and a project.</summary>
+    private sealed record Seeded(
+        Guid EmployeeId, Guid UserId, Guid ManagerEmployeeId, Guid DepartmentId, Guid PositionId,
+        Guid LeaveTypeId, Guid LeaveRequestId, Guid ProjectId, Guid ObjectiveId)
+    {
+        public static async Task<Seeded> CreateAsync(MyTeamDb h)
+        {
+            await using var db = h.NewContext();
+            var departmentId = h.AddDepartment(db);
+            var manager = h.AddEmployee(db, departmentId);
+            var employee = h.AddEmployee(db, departmentId);
+            db.Users.Add(new ONEVO.Domain.Features.InfrastructureModule.Entities.User
+            {
+                Id = employee.UserId, TenantId = h.TenantId, Email = $"sweep-{Guid.NewGuid():N}@example.test",
+                PasswordHash = "x", FirstName = "Sweep", LastName = "User", IsActive = true,
+            });
+            var managerPositionId = h.AddPositionHeldBy(db, manager.Id);
+            var positionId = h.AddPositionHeldBy(db, employee.Id);
+            h.AddCoverage(db, managerPositionId, ONEVO.Domain.Features.OrgStructure.Entities.ManagementCoverageRecord.TargetDepartment,
+                coveredDepartmentId: departmentId);
+            var leaveTypeId = h.AddLeaveType(db);
+            var today = DateOnly.FromDateTime(DateTime.UtcNow);
+            var leave = h.AddApprovedLeave(db, employee.Id, leaveTypeId, today, today.AddDays(1));
+            var (projectId, objectiveId) = h.AddProject(db, manager.Id);
+            await db.SaveChangesAsync();
+            (await db.Positions.SingleAsync(p => p.Id == positionId)).ReportsToPositionId = managerPositionId;
+            await db.SaveChangesAsync();
+            return new Seeded(employee.Id, employee.UserId, manager.Id, departmentId, positionId,
+                leaveTypeId, leave.Id, projectId, objectiveId);
         }
     }
 
