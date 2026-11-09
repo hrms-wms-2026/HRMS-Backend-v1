@@ -62,7 +62,7 @@ public sealed class CancelRecurringOccurrenceCommandHandler(
             if (participantEmployeeIds.Count > 0)
                 await notifications.NotifyEventCancelledAsync(tenantId, master.Title, participantEmployeeIds, organizerName, ct);
             // Only that occurrence is cancelled in the recipients' calendars: the .ics addresses it by RECURRENCE-ID.
-            var ics = CalendarEventIcs.For(master.Id, request.OriginalStart + (master.EndDate - master.StartDate), master.RecurrenceRule, DateTimeOffset.UtcNow)
+            var ics = CalendarEventIcs.For(master.Id, request.OriginalStart + (master.EndDate - master.StartDate), master.RecurrenceRule, DateTimeOffset.UtcNow, master.Timezone)
                 with { RecurrenceId = request.OriginalStart };
             await notifications.EmailEventChangedAsync(tenantId, CalendarEventEmailKinds.Cancelled, ics, master.Title, request.OriginalStart,
                 master.Location, null, participantEmployeeIds, guestEmails, organizerName, ct);

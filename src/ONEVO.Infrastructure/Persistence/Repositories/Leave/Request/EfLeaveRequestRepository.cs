@@ -246,6 +246,7 @@ public class EfLeaveRequestRepository : ILeaveRequestRepository
 
     public async Task<bool> AreAvailableFileRecordsAsync(
         Guid tenantId,
+        Guid uploadedByUserId,
         IReadOnlyCollection<Guid> fileRecordIds,
         CancellationToken ct = default)
     {
@@ -256,7 +257,10 @@ public class EfLeaveRequestRepository : ILeaveRequestRepository
         var available = await _db.FileRecords.AsNoTracking()
             .CountAsync(f => f.TenantId == tenantId
                 && distinct.Contains(f.Id)
-                && f.Status == FileRecordStatus.Available,
+                && f.UploadedByUserId == uploadedByUserId
+                && f.DeletedAt == null
+                && f.Status != FileRecordStatus.Quarantined
+                && f.Status != FileRecordStatus.Deleted,
                 ct);
         return available == distinct.Length;
     }

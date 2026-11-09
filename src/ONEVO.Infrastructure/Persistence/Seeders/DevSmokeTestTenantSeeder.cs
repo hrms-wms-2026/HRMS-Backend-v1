@@ -848,7 +848,7 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
             {
                 Id = Guid.NewGuid(),
                 Provider = GitHubProvider,
-                AppName = "ONEVO GitHub Development",
+                AppName = "CROWNUS GitHub Development",
                 ClientId = clientId!.Trim(),
                 AuthorizationUrl = GitHubAuthorizationUrl,
                 TokenUrl = GitHubTokenUrl,
@@ -866,7 +866,7 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
             app.ClientId = clientId.Trim();
         }
 
-        app.AppName = "ONEVO GitHub Development";
+        app.AppName = "CROWNUS GitHub Development";
         app.AuthorizationUrl = GitHubAuthorizationUrl;
         app.TokenUrl = GitHubTokenUrl;
         app.DefaultScopes = ["read:user"];

@@ -63,12 +63,13 @@ public sealed class EfPlannerRepository : IPlannerRepository
             {
                 t.Id, t.Title, t.DueDate, t.EstimatedHours, t.ProjectId, ProjectName = p.Name,
                 CategoryName = c == null ? "" : c.Name, CategoryKind = c == null ? TaskCategoryKinds.Task : c.Kind,
+                CategoryIcon = c == null ? null : c.Icon,
                 Assigned = _db.TaskAssignments.Any(a => a.TaskId == t.Id && a.EmployeeId == employeeId),
             })
             .ToListAsync(ct);
         return rows.ToDictionary(r => r.Id,
             r => new PlannerTaskInfo(r.Id, r.Title, r.DueDate, r.EstimatedHours, IsMeeting: false, r.Assigned, r.ProjectId, r.ProjectName,
-                r.CategoryName, r.CategoryKind));
+                r.CategoryName, r.CategoryKind, r.CategoryIcon));
     }
 
     public async Task<IReadOnlyList<PlannerTaskInfo>> ListDueAssignedTasksAsync(Guid tenantId, Guid employeeId, DateOnly date,
@@ -112,6 +113,7 @@ public sealed class EfPlannerRepository : IPlannerRepository
             {
                 t.Id, t.ProjectId, ProjectName = p.Name, t.Title, t.Priority, t.DueDate, t.EstimatedHours, t.CreatedAt,
                 CategoryName = c == null ? "" : c.Name, CategoryKind = c == null ? TaskCategoryKinds.Task : c.Kind,
+                CategoryIcon = c == null ? null : c.Icon,
             })
             .ToListAsync(ct);
         if (tasks.Count == 0)
@@ -127,7 +129,7 @@ public sealed class EfPlannerRepository : IPlannerRepository
             g => g.Sum(s => Math.Max(0, (int)((s.ClockOutAt ?? now) - s.ClockInAt).TotalMinutes)));
 
         return tasks.Select(t => new PlannerFocusTaskRow(t.Id, t.ProjectId, t.ProjectName, t.Title, t.Priority, t.DueDate,
-            t.EstimatedHours, logged.GetValueOrDefault(t.Id), t.CategoryName, t.CategoryKind, t.CreatedAt)).ToList();
+            t.EstimatedHours, logged.GetValueOrDefault(t.Id), t.CategoryName, t.CategoryKind, t.CreatedAt, t.CategoryIcon)).ToList();
     }
 
     public async Task<LegalEntity?> GetEmployeeLegalEntityAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default)

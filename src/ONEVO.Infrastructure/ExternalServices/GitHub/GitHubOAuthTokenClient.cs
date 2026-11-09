@@ -70,7 +70,7 @@ public sealed class GitHubOAuthTokenClient : IGitHubOAuthClient
             HttpMethod.Get,
             "https://api.github.com/user");
         message.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
-        message.Headers.UserAgent.ParseAdd("ONEVO/1.0");
+        message.Headers.UserAgent.ParseAdd("CROWNUS/1.0");
         message.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
 
         using var response = await _httpClient.SendAsync(

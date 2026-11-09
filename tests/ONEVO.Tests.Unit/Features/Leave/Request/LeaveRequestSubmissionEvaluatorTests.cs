@@ -245,6 +245,40 @@ public class LeaveRequestSubmissionEvaluatorTests
     }
 
     [Fact]
+    public async Task Evaluate_WhenRequiredDocumentIsAttached_ChecksItIsTheRequestersOwnFile()
+    {
+        var harness = Harness.Create();
+        harness.LeaveType.RequiresDocument = true;
+        harness.LeaveType.DocumentRequiredAfterHours = null;
+        var fileId = Guid.NewGuid();
+
+        var result = await harness.Sut.EvaluateAsync(
+            harness.TenantId, harness.UserId, null, harness.LeaveTypeId,
+            At(2026, 8, 18, 9), At(2026, 8, 18, 18), null, [fileId], CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        harness.Requests.Verify(x => x.AreAvailableFileRecordsAsync(
+            harness.TenantId, harness.UserId,
+            It.Is<IReadOnlyCollection<Guid>>(ids => ids.Contains(fileId)),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Evaluate_WhenAttachedFileIsNotUsable_Fails()
+    {
+        var harness = Harness.Create();
+        harness.Requests.Setup(x => x.AreAvailableFileRecordsAsync(
+                harness.TenantId, harness.UserId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+
+        var result = await harness.Sut.EvaluateAsync(
+            harness.TenantId, harness.UserId, null, harness.LeaveTypeId,
+            At(2026, 8, 18, 9), At(2026, 8, 18, 18), null, [Guid.NewGuid()], CancellationToken.None);
+
+        result.Error.Should().Be(LeaveRequestMessages.FileNotAvailable);
+    }
+
+    [Fact]
     public async Task Evaluate_CrossYear_Fails()
     {
         var harness = Harness.Create();
@@ -368,7 +402,7 @@ public class LeaveRequestSubmissionEvaluatorTests
 
             Requests.Setup(x => x.HasOverlappingPendingOrApprovedRequestAsync(TenantId, Employee.Id, It.IsAny<DateTimeOffset>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(false);
-            Requests.Setup(x => x.AreAvailableFileRecordsAsync(TenantId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            Requests.Setup(x => x.AreAvailableFileRecordsAsync(TenantId, It.IsAny<Guid>(), It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(true);
 
             Approvers.Setup(x => x.ResolveAsync(TenantId, Employee.Id, It.IsAny<DateOnly>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))

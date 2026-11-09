@@ -199,13 +199,13 @@ public sealed class CalendarNotificationSenderTests
     {
         await BuildSut().SendMeetingLinkRemovedAsync(TenantId, "Standup", DateTimeOffset.UtcNow, null,
             [new CalendarParticipantRecipient(EmployeeId, "link-removed:m:1:p")], [new CalendarGuestRecipient("client@example.com", "link-removed:m:1:g")],
-            "Ada Owner", CancellationToken.None);
+            "Ada Owner", CancellationToken.None, "Asia/Colombo");
 
         _outbox.Verify(x => x.EnqueueAsync(OutboxMessageTypes.WorkNotification,
             It.Is<WorkNotificationPayload>(p => p.RecipientUserId == UserId && p.TemplateCode == "calendar_event_meeting_link_removed"),
             TenantId, It.IsAny<CancellationToken>()), Times.Once);
         _outbox.Verify(x => x.EnqueueKeyedAsync(OutboxMessageTypes.CalendarEventInviteEmail,
-            It.Is<CalendarEventInviteEmailPayload>(p => p.Kind == CalendarEventEmailKinds.LinkRemoved && p.MeetingLink == null),
+            It.Is<CalendarEventInviteEmailPayload>(p => p.Kind == CalendarEventEmailKinds.LinkRemoved && p.MeetingLink == null && p.TimeZoneId == "Asia/Colombo"),
             It.Is<string>(k => k.StartsWith("link-removed:")), TenantId, It.IsAny<CancellationToken>()), Times.Exactly(2));
     }
 

@@ -7,11 +7,14 @@ using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.ServiceInterfaces;
 using ONEVO.Application.Features.Monitoring.CheckIn.ServiceInterfaces;
+using ONEVO.Application.Features.Monitoring.PermissionConsent.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.Screenshots.Commands.SubmitInactivityCaptureAttempt;
 using ONEVO.Application.Features.Monitoring.Screenshots.RepositoryInterfaces;
 using ONEVO.Application.Features.Storage.File.DTOs.Responses;
 using ONEVO.Application.Features.Storage.File.ServiceInterfaces;
+using ONEVO.Domain.Errors;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
+using ONEVO.Domain.Features.Monitoring.PermissionConsent.Entities;
 using ONEVO.Domain.Features.Monitoring.Screenshots.Entities;
 using ONEVO.Tests.Unit.Fakes;
 using Xunit;
@@ -28,6 +31,7 @@ public class SubmitInactivityCaptureAttemptCommandHandlerTests
     private readonly Mock<ITenantContextSwitcher> _tenantSwitcher = new();
     private readonly Mock<IMonitoringToggleResolver> _toggles = new();
     private readonly Mock<ITrayEmployeeIdentityResolver> _employeeIdentity = new();
+    private readonly Mock<IMonitoringPermissionConsentRepository> _consents = new();
     private readonly FakeDateTimeProvider _clock = new();
     private readonly FakeUnitOfWork _uow = new();
 
@@ -70,7 +74,23 @@ public class SubmitInactivityCaptureAttemptCommandHandlerTests
             .ReturnsAsync(true);
         _toggles.Setup(t => t.GetIdleThresholdMinutesAsync(_tenantId, _userId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(2);
+
+        // Consent is keyed by the resolved Employee.Id, the same key the tray's consent
+        // screen writes it under (RecordPermissionConsentCommandHandler).
+        _consents.Setup(c => c.GetLatestAsync(_tenantId, _employeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Consent(screenMonitoring: true));
     }
+
+    private MonitoringPermissionConsent Consent(bool screenMonitoring) => new()
+    {
+        Id = Guid.NewGuid(),
+        TenantId = _tenantId,
+        EmployeeId = _employeeId,
+        DeviceRegistrationId = _deviceId,
+        AcceptedAt = DateTimeOffset.UtcNow.AddDays(-1),
+        ScreenMonitoring = screenMonitoring,
+        CreatedAt = DateTimeOffset.UtcNow.AddDays(-1)
+    };
 
     private SubmitInactivityCaptureAttemptCommandHandler CreateHandler() => new(
         _fileStorage.Object,
@@ -81,6 +101,7 @@ public class SubmitInactivityCaptureAttemptCommandHandlerTests
         _tenantSwitcher.Object,
         _toggles.Object,
         _employeeIdentity.Object,
+        _consents.Object,
         _clock,
         _uow,
         NullLogger<SubmitInactivityCaptureAttemptCommandHandler>.Instance);
@@ -228,6 +249,56 @@ public class SubmitInactivityCaptureAttemptCommandHandlerTests
         _fileStorage.Verify(f => f.UploadAsync(
             _tenantId, _employeeId, It.IsAny<string>(), "image/jpeg",
             It.IsAny<string>(), It.IsAny<Stream>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_Captured_NoConsentOnFile_ReturnsForbidden_WithoutUpload()
+    {
+        _consents.Setup(c => c.GetLatestAsync(_tenantId, _employeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((MonitoringPermissionConsent?)null);
+
+        var result = await CreateHandler().Handle(
+            MakeCommand(InactivityCaptureOutcomes.Captured, new MemoryStream(new byte[] { 1 })), CancellationToken.None);
+
+        result.IsSuccess.Should().BeFalse();
+        result.StatusCode.Should().Be(403);
+        result.ErrorCode.Should().Be(MonitoringErrors.ScreenshotConsentMissingCode);
+        _fileStorage.Verify(f => f.UploadAsync(
+            It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<string>(),
+            It.IsAny<string>(), It.IsAny<Stream>(), It.IsAny<CancellationToken>()), Times.Never);
+        _attemptsRepo.Verify(r => r.Add(It.IsAny<InactivityCaptureAttempt>()), Times.Never);
+        _uow.SaveCallCount.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Handle_Captured_ScreenMonitoringDeclined_ReturnsForbidden_WithoutUpload()
+    {
+        _consents.Setup(c => c.GetLatestAsync(_tenantId, _employeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Consent(screenMonitoring: false));
+
+        var result = await CreateHandler().Handle(
+            MakeCommand(InactivityCaptureOutcomes.Captured, new MemoryStream(new byte[] { 1 })), CancellationToken.None);
+
+        result.IsSuccess.Should().BeFalse();
+        result.StatusCode.Should().Be(403);
+        _fileStorage.Verify(f => f.UploadAsync(
+            It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<string>(),
+            It.IsAny<string>(), It.IsAny<Stream>(), It.IsAny<CancellationToken>()), Times.Never);
+        _uow.SaveCallCount.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Handle_Declined_NoConsentOnFile_StillRecordsAttempt()
+    {
+        // A declined prompt carries no image, so recording it needs no screen-monitoring consent.
+        _consents.Setup(c => c.GetLatestAsync(_tenantId, _employeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((MonitoringPermissionConsent?)null);
+
+        var result = await CreateHandler().Handle(
+            MakeCommand(InactivityCaptureOutcomes.Declined), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        _uow.SaveCallCount.Should().Be(1);
     }
 
     [Fact]

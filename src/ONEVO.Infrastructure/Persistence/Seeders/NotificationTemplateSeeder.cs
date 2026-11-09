@@ -345,7 +345,7 @@ public class NotificationTemplateSeeder : IHostedService
             {
                 Id = Guid.NewGuid(), Code = "calendar_connection_sync_conflict",
                 InAppTitleTemplate = "Calendar sync conflict",
-                InAppBodyTemplate = "Some events in your {{provider}} calendar conflicted with ONEVO and were not synced."
+                InAppBodyTemplate = "Some events in your {{provider}} calendar conflicted with CROWNUS and were not synced."
             },
             new()
             {

@@ -71,7 +71,7 @@ public sealed class AddCalendarEventGuestsCommandHandler(
                 await notifications.NotifyGuestsAsync(
                     tenantId, existing.Title, existing.StartDate, existing.Location,
                     newEmails, organizerName, existing.MeetingLink, innerCt,
-                    CalendarEventIcs.For(existing.Id, existing.EndDate, existing.RecurrenceRule, DateTimeOffset.UtcNow));
+                    CalendarEventIcs.For(existing.Id, existing.EndDate, existing.RecurrenceRule, DateTimeOffset.UtcNow, existing.Timezone));
 
                 await unitOfWork.SaveChangesAsync(innerCt);
             }
