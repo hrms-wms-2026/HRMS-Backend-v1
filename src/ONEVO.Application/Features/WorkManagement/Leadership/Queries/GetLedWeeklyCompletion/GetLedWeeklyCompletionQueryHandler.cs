@@ -10,7 +10,8 @@ using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
 namespace ONEVO.Application.Features.WorkManagement.Leadership.Queries.GetLedWeeklyCompletion;
 
 /// <summary>Same gate and scope as GetLedWorkProgressQueryHandler / GetLedPeriodProgressQueryHandler.
-/// The weeks come from today's UTC date (LedCompletionWeeks). Filters only ever narrow the led
+/// The buckets come from today's UTC date (LedCompletionWeeks): the last Weeks ISO weeks, or with a
+/// period the days of the week / the ISO weeks of the month clipped to it, as led-progress/time. Filters only ever narrow the led
 /// scope; a filter outside it, or a caller who leads nothing, gets zero-filled weeks and 0
 /// allocation. AllocatedHours is totalled like led-progress (LedScopeFilter.AllocatedHours).</summary>
 public sealed class GetLedWeeklyCompletionQueryHandler(
@@ -27,9 +28,15 @@ public sealed class GetLedWeeklyCompletionQueryHandler(
         if (!currentUser.IsAuthenticated || currentUser.TenantId == Guid.Empty)
             return Result<LedWeeklyCompletionResponse>.Forbidden("Authentication required.");
 
-        // The validator rejects anything outside 1..26; Windows clamps as a second line of defence.
-        var weeks = LedCompletionWeeks.Windows(LedProgressPeriod.UtcToday(clock.UtcNow), request.Weeks);
-        var zero = new LedWeeklyCompletionResponse(LedCompletionWeeks.Bucket(weeks, []), 0, 0, 0);
+        // The validator rejects anything outside 1..26 / week|month; Windows clamps as a second line
+        // of defence and an unknown period falls back to the default weeks.
+        var today = LedProgressPeriod.UtcToday(clock.UtcNow);
+        LedPeriod? period = LedProgressPeriod.IsWindowed(request.Period) ? LedProgressPeriod.Parse(request.Period) : null;
+        var weeks = period is { } windowed
+            ? LedCompletionWeeks.PeriodBuckets(windowed, today)
+            : LedCompletionWeeks.Windows(today, request.Weeks);
+        var granularity = LedCompletionWeeks.Granularity(period);
+        var zero = new LedWeeklyCompletionResponse(LedCompletionWeeks.Bucket(weeks, []), 0, 0, 0, granularity);
 
         var tenantId = currentUser.TenantId;
         var caller = await employees.GetDefaultForUserAsync(tenantId, currentUser.UserId, ct);
@@ -51,6 +58,6 @@ public sealed class GetLedWeeklyCompletionQueryHandler(
 
         var rows = await reads.GetCompletionsByDayAsync(tenantId, objectiveIds, LedCompletionWeeks.Span(weeks), ct);
         return Result<LedWeeklyCompletionResponse>.Success(new LedWeeklyCompletionResponse(
-            LedCompletionWeeks.Bucket(weeks, rows.Days), allocated, rows.UndatedHours, rows.UndatedTaskCount));
+            LedCompletionWeeks.Bucket(weeks, rows.Days), allocated, rows.UndatedHours, rows.UndatedTaskCount, granularity));
     }
 }

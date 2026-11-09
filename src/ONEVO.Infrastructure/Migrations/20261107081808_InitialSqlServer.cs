@@ -1744,6 +1744,8 @@ namespace ONEVO.Infrastructure.Migrations
                     user_id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                     dashboard_key = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: false),
                     layout_version = table.Column<long>(type: "bigint", nullable: false),
+                    applied_role_ids = table.Column<string>(type: "nvarchar(max)", nullable: false, defaultValueSql: "'[]'"),
+                    applied_no_role = table.Column<bool>(type: "bit", nullable: false, defaultValue: false),
                     tenant_id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                     created_at = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
                     updated_at = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true),
@@ -1754,6 +1756,7 @@ namespace ONEVO.Infrastructure.Migrations
                 constraints: table =>
                 {
                     table.PrimaryKey("pk_user_dashboards", x => x.id);
+                    table.CheckConstraint("ck_user_dashboards_applied_role_ids_json", "ISJSON([applied_role_ids]) = 1");
                 });
 
             migrationBuilder.CreateTable(
@@ -1954,6 +1957,26 @@ namespace ONEVO.Infrastructure.Migrations
                 constraints: table =>
                 {
                     table.PrimaryKey("pk_wm_notification_log", x => x.id);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "wm_task_rate_settings",
+                columns: table => new
+                {
+                    id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    legal_entity_id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    max_task_rate = table.Column<decimal>(type: "decimal(5,4)", nullable: false),
+                    updated_by_employee_id = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
+                    tenant_id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    created_at = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
+                    updated_at = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true),
+                    created_by_id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    is_deleted = table.Column<bool>(type: "bit", nullable: false),
+                    deleted_at = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("pk_wm_task_rate_settings", x => x.id);
                 });
 
             migrationBuilder.CreateTable(
@@ -3931,6 +3954,36 @@ namespace ONEVO.Infrastructure.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "dashboard_templates",
+                columns: table => new
+                {
+                    id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    dashboard_key = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: false),
+                    role_id = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
+                    is_no_role_template = table.Column<bool>(type: "bit", nullable: false, defaultValue: false),
+                    name = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: false),
+                    is_active = table.Column<bool>(type: "bit", nullable: false),
+                    version = table.Column<int>(type: "int", nullable: false),
+                    tenant_id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    created_at = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
+                    updated_at = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true),
+                    created_by_id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    is_deleted = table.Column<bool>(type: "bit", nullable: false),
+                    deleted_at = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("pk_dashboard_templates", x => x.id);
+                    table.CheckConstraint("ck_dashboard_templates_no_role_flag", "(is_no_role_template = 1 AND role_id IS NULL) OR (is_no_role_template = 0 AND role_id IS NOT NULL)");
+                    table.ForeignKey(
+                        name: "fk_dashboard_templates_roles_role_id",
+                        column: x => x.role_id,
+                        principalTable: "roles",
+                        principalColumn: "id",
+                        onDelete: ReferentialAction.Restrict);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "role_permissions",
                 columns: table => new
                 {
@@ -5241,6 +5294,33 @@ namespace ONEVO.Infrastructure.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "dashboard_template_widgets",
+                columns: table => new
+                {
+                    id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    template_id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    widget_key = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: false),
+                    settings = table.Column<string>(type: "nvarchar(max)", nullable: false, defaultValue: "{}"),
+                    tenant_id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    created_at = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
+                    updated_at = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true),
+                    created_by_id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    is_deleted = table.Column<bool>(type: "bit", nullable: false),
+                    deleted_at = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("pk_dashboard_template_widgets", x => x.id);
+                    table.CheckConstraint("ck_dashboard_template_widgets_settings_json", "ISJSON([settings]) = 1");
+                    table.ForeignKey(
+                        name: "fk_dashboard_template_widgets_dashboard_templates_template_id",
+                        column: x => x.template_id,
+                        principalTable: "dashboard_templates",
+                        principalColumn: "id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "task_percentage_logs",
                 columns: table => new
                 {
@@ -5659,6 +5739,40 @@ namespace ONEVO.Infrastructure.Migrations
                         principalTable: "tray_device_registrations",
                         principalColumn: "id",
                         onDelete: ReferentialAction.Restrict);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "dashboard_template_widget_layouts",
+                columns: table => new
+                {
+                    id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    template_widget_id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    breakpoint = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: false),
+                    x = table.Column<int>(type: "int", nullable: false),
+                    y = table.Column<int>(type: "int", nullable: false),
+                    w = table.Column<int>(type: "int", nullable: false),
+                    h = table.Column<int>(type: "int", nullable: false),
+                    tenant_id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    created_at = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
+                    updated_at = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true),
+                    created_by_id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    is_deleted = table.Column<bool>(type: "bit", nullable: false),
+                    deleted_at = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("pk_dashboard_template_widget_layouts", x => x.id);
+                    table.CheckConstraint("ck_dashboard_template_widget_layouts_breakpoint", "breakpoint IN ('desktop', 'tablet', 'mobile')");
+                    table.CheckConstraint("ck_dashboard_template_widget_layouts_h", "h > 0");
+                    table.CheckConstraint("ck_dashboard_template_widget_layouts_w", "w > 0");
+                    table.CheckConstraint("ck_dashboard_template_widget_layouts_x", "x >= 0");
+                    table.CheckConstraint("ck_dashboard_template_widget_layouts_y", "y >= 0");
+                    table.ForeignKey(
+                        name: "fk_dashboard_template_widget_layouts_dashboard_template_widgets_template_widget_id",
+                        column: x => x.template_widget_id,
+                        principalTable: "dashboard_template_widgets",
+                        principalColumn: "id",
+                        onDelete: ReferentialAction.Cascade);
                 });
 
             migrationBuilder.CreateTable(
@@ -7028,6 +7142,39 @@ namespace ONEVO.Infrastructure.Migrations
                 table: "daily_work_location_confirmations",
                 columns: new[] { "tenant_id", "employee_id", "work_date" },
                 unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "ux_dashboard_template_widget_layouts_template_widget_id_breakpoint",
+                table: "dashboard_template_widget_layouts",
+                columns: new[] { "template_widget_id", "breakpoint" },
+                unique: true,
+                filter: "is_deleted = 0");
+
+            migrationBuilder.CreateIndex(
+                name: "ux_dashboard_template_widgets_template_id_widget_key",
+                table: "dashboard_template_widgets",
+                columns: new[] { "template_id", "widget_key" },
+                unique: true,
+                filter: "is_deleted = 0");
+
+            migrationBuilder.CreateIndex(
+                name: "ix_dashboard_templates_role_id",
+                table: "dashboard_templates",
+                column: "role_id");
+
+            migrationBuilder.CreateIndex(
+                name: "ux_dashboard_templates_tenant_id_dashboard_key_no_role",
+                table: "dashboard_templates",
+                columns: new[] { "tenant_id", "dashboard_key" },
+                unique: true,
+                filter: "is_no_role_template = 1 AND is_deleted = 0");
+
+            migrationBuilder.CreateIndex(
+                name: "ux_dashboard_templates_tenant_id_role_id_dashboard_key",
+                table: "dashboard_templates",
+                columns: new[] { "tenant_id", "role_id", "dashboard_key" },
+                unique: true,
+                filter: "role_id IS NOT NULL AND is_deleted = 0");
 
             migrationBuilder.CreateIndex(
                 name: "ux_dashboard_widget_layouts_widget_id_breakpoint",
@@ -9498,6 +9645,12 @@ namespace ONEVO.Infrastructure.Migrations
                 descending: new[] { false, false, false, true });
 
             migrationBuilder.CreateIndex(
+                name: "ux_wm_task_rate_settings_tenant_id_legal_entity_id",
+                table: "wm_task_rate_settings",
+                columns: new[] { "tenant_id", "legal_entity_id" },
+                unique: true);
+
+            migrationBuilder.CreateIndex(
                 name: "ix_work_area_change_requests_current_work_mode_id",
                 table: "work_area_change_requests",
                 column: "current_work_mode_id");
@@ -9709,6 +9862,9 @@ namespace ONEVO.Infrastructure.Migrations
 
             migrationBuilder.DropTable(
                 name: "daily_work_location_confirmations");
+
+            migrationBuilder.DropTable(
+                name: "dashboard_template_widget_layouts");
 
             migrationBuilder.DropTable(
                 name: "dashboard_widget_layouts");
@@ -10068,6 +10224,9 @@ namespace ONEVO.Infrastructure.Migrations
                 name: "wm_notification_log");
 
             migrationBuilder.DropTable(
+                name: "wm_task_rate_settings");
+
+            migrationBuilder.DropTable(
                 name: "work_area_change_requests");
 
             migrationBuilder.DropTable(
@@ -10096,6 +10255,9 @@ namespace ONEVO.Infrastructure.Migrations
 
             migrationBuilder.DropTable(
                 name: "conversation_messages");
+
+            migrationBuilder.DropTable(
+                name: "dashboard_template_widgets");
 
             migrationBuilder.DropTable(
                 name: "dashboard_widgets");
@@ -10152,9 +10314,6 @@ namespace ONEVO.Infrastructure.Migrations
                 name: "permissions");
 
             migrationBuilder.DropTable(
-                name: "roles");
-
-            migrationBuilder.DropTable(
                 name: "tenant_subscriptions");
 
             migrationBuilder.DropTable(
@@ -10162,6 +10321,9 @@ namespace ONEVO.Infrastructure.Migrations
 
             migrationBuilder.DropTable(
                 name: "conversations");
+
+            migrationBuilder.DropTable(
+                name: "dashboard_templates");
 
             migrationBuilder.DropTable(
                 name: "user_dashboards");
@@ -10188,9 +10350,6 @@ namespace ONEVO.Infrastructure.Migrations
                 name: "platform_oauth_apps");
 
             migrationBuilder.DropTable(
-                name: "role_templates");
-
-            migrationBuilder.DropTable(
                 name: "calendar_event_meetings");
 
             migrationBuilder.DropTable(
@@ -10198,6 +10357,9 @@ namespace ONEVO.Infrastructure.Migrations
 
             migrationBuilder.DropTable(
                 name: "tasks");
+
+            migrationBuilder.DropTable(
+                name: "roles");
 
             migrationBuilder.DropTable(
                 name: "tray_device_registrations");
@@ -10234,6 +10396,9 @@ namespace ONEVO.Infrastructure.Migrations
 
             migrationBuilder.DropTable(
                 name: "task_statuses");
+
+            migrationBuilder.DropTable(
+                name: "role_templates");
 
             migrationBuilder.DropTable(
                 name: "tenant_work_modes");

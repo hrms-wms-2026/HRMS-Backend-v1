@@ -351,6 +351,7 @@ public class ApplicationDbContext : DbContext
         => Set<ONEVO.Domain.Features.Conversations.Entities.ConversationMessageReaction>();
     public DbSet<WorkNotificationLog> WorkNotificationLogs => Set<WorkNotificationLog>();
     public DbSet<MonitorAlert> MonitorAlerts => Set<MonitorAlert>();
+    public DbSet<TaskRateSetting> TaskRateSettings => Set<TaskRateSetting>();
     public DbSet<ModuleHourSummary> ModuleHourSummaries => Set<ModuleHourSummary>();
     public DbSet<ONEVO.Domain.Features.Dashboard.Entities.UserDashboard> UserDashboards
         => Set<ONEVO.Domain.Features.Dashboard.Entities.UserDashboard>();
@@ -358,6 +359,12 @@ public class ApplicationDbContext : DbContext
         => Set<ONEVO.Domain.Features.Dashboard.Entities.DashboardWidget>();
     public DbSet<ONEVO.Domain.Features.Dashboard.Entities.DashboardWidgetLayout> DashboardWidgetLayouts
         => Set<ONEVO.Domain.Features.Dashboard.Entities.DashboardWidgetLayout>();
+    public DbSet<ONEVO.Domain.Features.Dashboard.Entities.DashboardTemplate> DashboardTemplates
+        => Set<ONEVO.Domain.Features.Dashboard.Entities.DashboardTemplate>();
+    public DbSet<ONEVO.Domain.Features.Dashboard.Entities.DashboardTemplateWidget> DashboardTemplateWidgets
+        => Set<ONEVO.Domain.Features.Dashboard.Entities.DashboardTemplateWidget>();
+    public DbSet<ONEVO.Domain.Features.Dashboard.Entities.DashboardTemplateWidgetLayout> DashboardTemplateWidgetLayouts
+        => Set<ONEVO.Domain.Features.Dashboard.Entities.DashboardTemplateWidgetLayout>();
     public DbSet<TaskEditLog> TaskEditLogs => Set<TaskEditLog>();
     public DbSet<TaskStatusChangeLog> TaskStatusChangeLogs => Set<TaskStatusChangeLog>();
     public DbSet<TaskClockingSession> TaskClockingSessions => Set<TaskClockingSession>();

@@ -466,6 +466,8 @@ public static class DependencyInjection
             ONEVO.Infrastructure.Persistence.Repositories.WorkManagement.WeeklyProgress.EfWeeklyWorkProgressReadRepository>();
         services.AddScoped<ONEVO.Application.Features.TimeAttendance.Team.Services.ITeamCompletedTaskReader,
             ONEVO.Infrastructure.Persistence.Repositories.TimeAttendance.EfTeamCompletedTaskReader>();
+        services.AddScoped<ONEVO.Application.Features.TimeAttendance.Team.Services.IForecastTaskReader,
+            ONEVO.Infrastructure.Persistence.Repositories.TimeAttendance.EfForecastTaskReader>();
         services.AddHostedService<Services.WorkManagement.Meetings.MeetingOccurrenceGeneratorJob>();
         services.AddScoped<ONEVO.Application.Features.WorkManagement.Meetings.Services.MeetingAttendanceSyncService>();
         services.AddScoped<ONEVO.Application.Features.WorkManagement.Meetings.Services.MeetingAttendanceReadService>();
@@ -516,9 +518,11 @@ public static class DependencyInjection
         services.AddScoped<EfWorkNotificationLogRepository>();
         services.AddScoped<IWorkNotificationLogRepository>(sp => sp.GetRequiredService<EfWorkNotificationLogRepository>());
         services.AddScoped<IMonitorAlertRepository, EfMonitorAlertRepository>();
+        services.AddScoped<ITaskRateSettingRepository, EfTaskRateSettingRepository>();
         services.AddScoped<IModuleHourSummaryRepository, EfModuleHourSummaryRepository>();
         services.AddScoped<ONEVO.Application.Features.WorkManagement.Leadership.RepositoryInterfaces.ILedProgressReadRepository, EfLedProgressReadRepository>();
         services.AddScoped<ONEVO.Application.Features.Dashboard.Layout.RepositoryInterfaces.IUserDashboardRepository, ONEVO.Infrastructure.Persistence.Repositories.Dashboard.EfUserDashboardRepository>();
+        services.AddScoped<ONEVO.Application.Features.Dashboard.Layout.RepositoryInterfaces.IDashboardTemplateRepository, ONEVO.Infrastructure.Persistence.Repositories.Dashboard.EfDashboardTemplateRepository>();
         services.AddScoped<EfTaskEditLogRepository>();
         services.AddScoped<ITaskEditLogRepository>(sp => sp.GetRequiredService<EfTaskEditLogRepository>());
         services.AddScoped<EfTaskStatusChangeLogRepository>();
@@ -598,6 +602,7 @@ public static class DependencyInjection
         services.AddScoped<IModuleReadAccess, ModuleReadAccess>();
         services.AddScoped<ONEVO.Application.Features.WorkManagement.Objectives.Services.ObjectiveAssetAccess>();
         services.AddScoped<IWorkCalendarResolver, WorkCalendarResolver>();
+        services.AddScoped<IConversionRateReader, ConversionRateReader>();
         services.AddScoped<IProjectMonitorSnapshotLoader, ProjectMonitorSnapshotLoader>();
         services.AddScoped<IProjectMonitorCallerResolver, ProjectMonitorCallerResolver>();
         services.AddScoped<IProjectMonitorService, ProjectMonitorService>();

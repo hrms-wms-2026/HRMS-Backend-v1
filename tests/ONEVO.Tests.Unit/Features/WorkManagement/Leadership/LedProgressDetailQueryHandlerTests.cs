@@ -369,6 +369,7 @@ public sealed class LedProgressDetailQueryHandlerTests
     [InlineData("totalHours", "desc", true)]
     [InlineData("notstartedhours", "ASC", true)]
     [InlineData("name", "", true)]
+    [InlineData("completionRate", "asc", true)]
     [InlineData("bogus", "desc", false)]
     [InlineData("totalHours", "sideways", false)]
     public void Employee_validator_accepts_only_known_sort_and_direction(string? sort, string? direction, bool valid)

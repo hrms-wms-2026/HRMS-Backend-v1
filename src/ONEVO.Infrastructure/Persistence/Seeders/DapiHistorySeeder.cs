@@ -85,14 +85,14 @@ public sealed partial class DapiHistorySeeder : IHostedService
 
             tenantContext.SetAdminMode();
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            timeout.CancelAfter(TimeSpan.FromMinutes(6));
+            timeout.CancelAfter(TimeSpan.FromMinutes(15));
 
             // The real routes (coverage, reporting line, HR fallback, delegation). A hosted service has no signed-in
             // user, so the authority resolver is pinned to the Dapi tenant instead of read from ICurrentUser.
             var authority = scope.ServiceProvider.GetRequiredService<IEmployeeAuthorityResolverFactory>().CreateForTenant(DapiTenantId);
             var approvers = ActivatorUtilities.CreateInstance<LeaveApproverResolver>(scope.ServiceProvider, authority);
             var employeeCount = await SeedAsync(
-                db, tenantContext, timeout.Token, approvers, authority, scope.ServiceProvider, DateTimeOffset.UtcNow);
+                db, tenantContext, timeout.Token, approvers, authority, scope.ServiceProvider, DateTimeOffset.UtcNow, _logger);
             _logger.LogInformation(
                 "Dapi rolling {Days}-day history seeded for {EmployeeCount} employees.", HistoryDays, employeeCount);
         }
@@ -112,7 +112,8 @@ public sealed partial class DapiHistorySeeder : IHostedService
         ILeaveApproverResolver? approvers = null,
         IEmployeeAuthorityResolver? authority = null,
         IServiceProvider? services = null,
-        DateTimeOffset? utcNow = null)
+        DateTimeOffset? utcNow = null,
+        ILogger? logger = null)
     {
         var tenant = await db.Tenants.FirstOrDefaultAsync(t => t.Id == DapiTenantId, ct);
         if (tenant is null)
@@ -145,19 +146,37 @@ public sealed partial class DapiHistorySeeder : IHostedService
             .OrderBy(t => t.Code)
             .ToListAsync(ct);
         var leavePlans = PlanLeave(ctx, leaveTypes);
+        AddShowcaseLeave(ctx, leavePlans, leaveTypes);
         var approvedDays = leavePlans
             .Where(p => p.Status == LeaveRequestStatuses.Approved)
             .GroupBy(p => p.EmployeeId)
             .ToDictionary(g => g.Key, g => g.Select(p => p.Date).ToHashSet());
 
-        await SeedAttendanceAndMonitoringAsync(ctx, approvedDays, ct);
-        await SeedLeaveAsync(ctx, leavePlans, ct);
+        // Each step on its own: a failure is logged with its name and the later steps still run.
+        async Task Step(string name, Func<Task> run)
+        {
+            var started = DateTimeOffset.UtcNow;
+            try
+            {
+                await run();
+                logger?.LogInformation("Dapi history step {Step} done in {Seconds:0.0}s.", name, (DateTimeOffset.UtcNow - started).TotalSeconds);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                logger?.LogError(ex, "Dapi history step {Step} failed; the next steps still run.", name);
+                db.ChangeTracker.Clear();
+            }
+        }
 
-        await SeedWorkHistoryAsync(ctx, ct);
-        await SeedPlannerAsync(ctx, approvedDays, ct);
-        await SeedExceptionCasesAsync(ctx, ct);
-        // Last: it goes through the app's meeting writer (raw SQL, series locks); a failure there leaves the rest seeded.
-        await SeedMeetingsAsync(ctx, ct);
+        await Step("attendance", () => SeedAttendanceAndMonitoringAsync(ctx, approvedDays, ct));
+        await Step("leave", () => SeedLeaveAsync(ctx, leavePlans, ct));
+        await Step("work", () => SeedWorkHistoryAsync(ctx, ct));
+        await Step("planner", () => SeedPlannerAsync(ctx, approvedDays, ct));
+        await Step("exceptions", () => SeedExceptionCasesAsync(ctx, ct));
+        // Last: it goes through the app's meeting writer (raw SQL, series locks).
+        await Step("meetings", () => SeedMeetingsAsync(ctx, ct));
+        // After the meetings: rebuilds the showcase people's today around the boot time.
+        await Step("today-showcase", () => SeedTodayShowcaseAsync(ctx, ct));
         return employees.Count;
     }
 

@@ -19,6 +19,7 @@ public static class LedProgressQueryOptions
             ["inProgressHours"] = LedEmployeeHoursSort.InProgressHours,
             ["notStartedHours"] = LedEmployeeHoursSort.NotStartedHours,
             ["name"] = LedEmployeeHoursSort.Name,
+            ["completionRate"] = LedEmployeeHoursSort.CompletionRate,
         };
 
     public static readonly IReadOnlyDictionary<string, LedProgressTaskSort> TaskSorts =

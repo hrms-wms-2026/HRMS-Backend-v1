@@ -54,6 +54,9 @@ public static class RlsTableRegistry
             ["conversation_participants"] = RlsPredicate.Tenant,
             ["conversations"] = RlsPredicate.Tenant,
             ["daily_work_location_confirmations"] = RlsPredicate.Tenant,
+            ["dashboard_template_widget_layouts"] = RlsPredicate.Tenant,
+            ["dashboard_template_widgets"] = RlsPredicate.Tenant,
+            ["dashboard_templates"] = RlsPredicate.Tenant,
             ["dashboard_widget_layouts"] = RlsPredicate.Tenant,
             ["dashboard_widgets"] = RlsPredicate.Tenant,
             ["departments"] = RlsPredicate.Tenant,
@@ -180,6 +183,7 @@ public static class RlsTableRegistry
             ["wm_module_hour_summaries"] = RlsPredicate.Tenant,
             ["wm_monitor_alerts"] = RlsPredicate.Tenant,
             ["wm_notification_log"] = RlsPredicate.Tenant,
+            ["wm_task_rate_settings"] = RlsPredicate.Tenant,
             ["work_area_change_requests"] = RlsPredicate.TenantStrict,
         };
 }

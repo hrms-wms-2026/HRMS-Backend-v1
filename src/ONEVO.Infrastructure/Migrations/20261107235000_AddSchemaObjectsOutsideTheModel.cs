@@ -27,6 +27,12 @@ namespace ONEVO.Infrastructure.Migrations
             migrationBuilder.Sql("""
                 CREATE INDEX ix_global_email_directory_email ON dbo.global_email_directory (email);
                 """);
+            // AddRoleDashboardTemplates set these defaults in the migration only: a model default on
+            // a bool whose CLR default differs would turn an explicit false into the database default.
+            migrationBuilder.Sql("""
+                ALTER TABLE dbo.dashboard_templates ADD CONSTRAINT df_dashboard_templates_is_active DEFAULT CAST(1 AS bit) FOR is_active;
+                ALTER TABLE dbo.dashboard_templates ADD CONSTRAINT df_dashboard_templates_version DEFAULT 1 FOR version;
+                """);
             migrationBuilder.Sql("""
                 CREATE UNIQUE INDEX ux_calendar_event_meetings_tenant_id_id ON dbo.calendar_event_meetings (tenant_id, id);
                 """);

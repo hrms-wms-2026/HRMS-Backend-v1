@@ -3191,6 +3191,97 @@
    "name": "pk_work_area_change_requests",
    "type": "p",
    "def": "PRIMARY KEY (id)"
+  },
+  {
+   "table": "wm_task_rate_settings",
+   "name": "pk_wm_task_rate_settings",
+   "type": "p",
+   "def": null,
+   "source": "20261109043220_AddTaskRateSettings"
+  },
+  {
+   "table": "dashboard_templates",
+   "name": "pk_dashboard_templates",
+   "type": "p",
+   "def": null,
+   "source": "20261109050755_AddRoleDashboardTemplates"
+  },
+  {
+   "table": "dashboard_templates",
+   "name": "fk_dashboard_templates_roles_role_id",
+   "type": "f",
+   "def": null,
+   "source": "20261109050755_AddRoleDashboardTemplates"
+  },
+  {
+   "table": "dashboard_templates",
+   "name": "ck_dashboard_templates_no_role_flag",
+   "type": "c",
+   "def": "(is_no_role_template AND role_id IS NULL) OR (NOT is_no_role_template AND role_id IS NOT NULL)",
+   "source": "20261109050755_AddRoleDashboardTemplates"
+  },
+  {
+   "table": "dashboard_template_widgets",
+   "name": "pk_dashboard_template_widgets",
+   "type": "p",
+   "def": null,
+   "source": "20261109050755_AddRoleDashboardTemplates"
+  },
+  {
+   "table": "dashboard_template_widgets",
+   "name": "fk_dashboard_template_widgets_dashboard_templates_template_id",
+   "type": "f",
+   "def": null,
+   "source": "20261109050755_AddRoleDashboardTemplates"
+  },
+  {
+   "table": "dashboard_template_widget_layouts",
+   "name": "pk_dashboard_template_widget_layouts",
+   "type": "p",
+   "def": null,
+   "source": "20261109050755_AddRoleDashboardTemplates"
+  },
+  {
+   "table": "dashboard_template_widget_layouts",
+   "name": "fk_dashboard_template_widget_layouts_dashboard_template_widget",
+   "type": "f",
+   "def": null,
+   "source": "20261109050755_AddRoleDashboardTemplates"
+  },
+  {
+   "table": "dashboard_template_widget_layouts",
+   "name": "ck_dashboard_template_widget_layouts_breakpoint",
+   "type": "c",
+   "def": "breakpoint IN ('desktop', 'tablet', 'mobile')",
+   "source": "20261109050755_AddRoleDashboardTemplates"
+  },
+  {
+   "table": "dashboard_template_widget_layouts",
+   "name": "ck_dashboard_template_widget_layouts_h",
+   "type": "c",
+   "def": "h > 0",
+   "source": "20261109050755_AddRoleDashboardTemplates"
+  },
+  {
+   "table": "dashboard_template_widget_layouts",
+   "name": "ck_dashboard_template_widget_layouts_w",
+   "type": "c",
+   "def": "w > 0",
+   "source": "20261109050755_AddRoleDashboardTemplates"
+  },
+  {
+   "table": "dashboard_template_widget_layouts",
+   "name": "ck_dashboard_template_widget_layouts_x",
+   "type": "c",
+   "def": "x >= 0",
+   "source": "20261109050755_AddRoleDashboardTemplates"
+  },
+  {
+   "table": "dashboard_template_widget_layouts",
+   "name": "ck_dashboard_template_widget_layouts_y",
+   "type": "c",
+   "def": "y >= 0",
+   "source": "20261109050755_AddRoleDashboardTemplates"
   }
  ],
  "indexes": [
@@ -7218,6 +7309,42 @@
    "table": "work_area_change_requests",
    "name": "ux_work_area_change_requests_active_employee_date",
    "def": "CREATE UNIQUE INDEX ux_work_area_change_requests_active_employee_date ON public.work_area_change_requests USING btree (tenant_id, employee_id, date) WHERE ((status)::text = ANY ((ARRAY['pending'::character varying, 'approved'::character varying])::text[]))"
+  },
+  {
+   "table": "wm_task_rate_settings",
+   "name": "ux_wm_task_rate_settings_tenant_id_legal_entity_id",
+   "def": null,
+   "source": "20261109043220_AddTaskRateSettings"
+  },
+  {
+   "table": "dashboard_template_widget_layouts",
+   "name": "ux_dashboard_template_widget_layouts_template_widget_id_breakpoint",
+   "def": null,
+   "source": "20261109050755_AddRoleDashboardTemplates"
+  },
+  {
+   "table": "dashboard_template_widgets",
+   "name": "ux_dashboard_template_widgets_template_id_widget_key",
+   "def": null,
+   "source": "20261109050755_AddRoleDashboardTemplates"
+  },
+  {
+   "table": "dashboard_templates",
+   "name": "ix_dashboard_templates_role_id",
+   "def": null,
+   "source": "20261109050755_AddRoleDashboardTemplates"
+  },
+  {
+   "table": "dashboard_templates",
+   "name": "ux_dashboard_templates_tenant_id_dashboard_key_no_role",
+   "def": null,
+   "source": "20261109050755_AddRoleDashboardTemplates"
+  },
+  {
+   "table": "dashboard_templates",
+   "name": "ux_dashboard_templates_tenant_id_role_id_dashboard_key",
+   "def": null,
+   "source": "20261109050755_AddRoleDashboardTemplates"
   }
  ],
  "triggers": [
@@ -26289,6 +26416,390 @@
    "type": "uuid",
    "is_nullable": "NO",
    "column_default": null
+  },
+  {
+   "table": "wm_task_rate_settings",
+   "name": "id",
+   "type": "uuid",
+   "is_nullable": "NO",
+   "column_default": null,
+   "source": "20261109043220_AddTaskRateSettings"
+  },
+  {
+   "table": "wm_task_rate_settings",
+   "name": "legal_entity_id",
+   "type": "uuid",
+   "is_nullable": "NO",
+   "column_default": null,
+   "source": "20261109043220_AddTaskRateSettings"
+  },
+  {
+   "table": "wm_task_rate_settings",
+   "name": "max_task_rate",
+   "type": "numeric(5,4)",
+   "is_nullable": "NO",
+   "column_default": null,
+   "source": "20261109043220_AddTaskRateSettings"
+  },
+  {
+   "table": "wm_task_rate_settings",
+   "name": "updated_by_employee_id",
+   "type": "uuid",
+   "is_nullable": "YES",
+   "column_default": null,
+   "source": "20261109043220_AddTaskRateSettings"
+  },
+  {
+   "table": "wm_task_rate_settings",
+   "name": "tenant_id",
+   "type": "uuid",
+   "is_nullable": "NO",
+   "column_default": null,
+   "source": "20261109043220_AddTaskRateSettings"
+  },
+  {
+   "table": "wm_task_rate_settings",
+   "name": "created_at",
+   "type": "timestamp with time zone",
+   "is_nullable": "NO",
+   "column_default": null,
+   "source": "20261109043220_AddTaskRateSettings"
+  },
+  {
+   "table": "wm_task_rate_settings",
+   "name": "updated_at",
+   "type": "timestamp with time zone",
+   "is_nullable": "YES",
+   "column_default": null,
+   "source": "20261109043220_AddTaskRateSettings"
+  },
+  {
+   "table": "wm_task_rate_settings",
+   "name": "created_by_id",
+   "type": "uuid",
+   "is_nullable": "NO",
+   "column_default": null,
+   "source": "20261109043220_AddTaskRateSettings"
+  },
+  {
+   "table": "wm_task_rate_settings",
+   "name": "is_deleted",
+   "type": "boolean",
+   "is_nullable": "NO",
+   "column_default": null,
+   "source": "20261109043220_AddTaskRateSettings"
+  },
+  {
+   "table": "wm_task_rate_settings",
+   "name": "deleted_at",
+   "type": "timestamp with time zone",
+   "is_nullable": "YES",
+   "column_default": null,
+   "source": "20261109043220_AddTaskRateSettings"
+  },
+  {
+   "table": "dashboard_templates",
+   "name": "id",
+   "type": "uuid",
+   "is_nullable": "NO",
+   "column_default": null,
+   "source": "20261109050755_AddRoleDashboardTemplates"
+  },
+  {
+   "table": "dashboard_templates",
+   "name": "dashboard_key",
+   "type": "character varying(50)",
+   "is_nullable": "NO",
+   "column_default": null,
+   "source": "20261109050755_AddRoleDashboardTemplates"
+  },
+  {
+   "table": "dashboard_templates",
+   "name": "role_id",
+   "type": "uuid",
+   "is_nullable": "YES",
+   "column_default": null,
+   "source": "20261109050755_AddRoleDashboardTemplates"
+  },
+  {
+   "table": "dashboard_templates",
+   "name": "is_no_role_template",
+   "type": "boolean",
+   "is_nullable": "NO",
+   "column_default": "false",
+   "source": "20261109050755_AddRoleDashboardTemplates"
+  },
+  {
+   "table": "dashboard_templates",
+   "name": "name",
+   "type": "character varying(200)",
+   "is_nullable": "NO",
+   "column_default": null,
+   "source": "20261109050755_AddRoleDashboardTemplates"
+  },
+  {
+   "table": "dashboard_templates",
+   "name": "is_active",
+   "type": "boolean",
+   "is_nullable": "NO",
+   "column_default": "true",
+   "source": "20261109050755_AddRoleDashboardTemplates"
+  },
+  {
+   "table": "dashboard_templates",
+   "name": "version",
+   "type": "integer",
+   "is_nullable": "NO",
+   "column_default": "1",
+   "source": "20261109050755_AddRoleDashboardTemplates"
+  },
+  {
+   "table": "dashboard_templates",
+   "name": "tenant_id",
+   "type": "uuid",
+   "is_nullable": "NO",
+   "column_default": null,
+   "source": "20261109050755_AddRoleDashboardTemplates"
+  },
+  {
+   "table": "dashboard_templates",
+   "name": "created_at",
+   "type": "timestamp with time zone",
+   "is_nullable": "NO",
+   "column_default": null,
+   "source": "20261109050755_AddRoleDashboardTemplates"
+  },
+  {
+   "table": "dashboard_templates",
+   "name": "updated_at",
+   "type": "timestamp with time zone",
+   "is_nullable": "YES",
+   "column_default": null,
+   "source": "20261109050755_AddRoleDashboardTemplates"
+  },
+  {
+   "table": "dashboard_templates",
+   "name": "created_by_id",
+   "type": "uuid",
+   "is_nullable": "NO",
+   "column_default": null,
+   "source": "20261109050755_AddRoleDashboardTemplates"
+  },
+  {
+   "table": "dashboard_templates",
+   "name": "is_deleted",
+   "type": "boolean",
+   "is_nullable": "NO",
+   "column_default": null,
+   "source": "20261109050755_AddRoleDashboardTemplates"
+  },
+  {
+   "table": "dashboard_templates",
+   "name": "deleted_at",
+   "type": "timestamp with time zone",
+   "is_nullable": "YES",
+   "column_default": null,
+   "source": "20261109050755_AddRoleDashboardTemplates"
+  },
+  {
+   "table": "dashboard_template_widgets",
+   "name": "id",
+   "type": "uuid",
+   "is_nullable": "NO",
+   "column_default": null,
+   "source": "20261109050755_AddRoleDashboardTemplates"
+  },
+  {
+   "table": "dashboard_template_widgets",
+   "name": "template_id",
+   "type": "uuid",
+   "is_nullable": "NO",
+   "column_default": null,
+   "source": "20261109050755_AddRoleDashboardTemplates"
+  },
+  {
+   "table": "dashboard_template_widgets",
+   "name": "widget_key",
+   "type": "character varying(100)",
+   "is_nullable": "NO",
+   "column_default": null,
+   "source": "20261109050755_AddRoleDashboardTemplates"
+  },
+  {
+   "table": "dashboard_template_widgets",
+   "name": "settings",
+   "type": "jsonb",
+   "is_nullable": "NO",
+   "column_default": "\"{}\"",
+   "source": "20261109050755_AddRoleDashboardTemplates"
+  },
+  {
+   "table": "dashboard_template_widgets",
+   "name": "tenant_id",
+   "type": "uuid",
+   "is_nullable": "NO",
+   "column_default": null,
+   "source": "20261109050755_AddRoleDashboardTemplates"
+  },
+  {
+   "table": "dashboard_template_widgets",
+   "name": "created_at",
+   "type": "timestamp with time zone",
+   "is_nullable": "NO",
+   "column_default": null,
+   "source": "20261109050755_AddRoleDashboardTemplates"
+  },
+  {
+   "table": "dashboard_template_widgets",
+   "name": "updated_at",
+   "type": "timestamp with time zone",
+   "is_nullable": "YES",
+   "column_default": null,
+   "source": "20261109050755_AddRoleDashboardTemplates"
+  },
+  {
+   "table": "dashboard_template_widgets",
+   "name": "created_by_id",
+   "type": "uuid",
+   "is_nullable": "NO",
+   "column_default": null,
+   "source": "20261109050755_AddRoleDashboardTemplates"
+  },
+  {
+   "table": "dashboard_template_widgets",
+   "name": "is_deleted",
+   "type": "boolean",
+   "is_nullable": "NO",
+   "column_default": null,
+   "source": "20261109050755_AddRoleDashboardTemplates"
+  },
+  {
+   "table": "dashboard_template_widgets",
+   "name": "deleted_at",
+   "type": "timestamp with time zone",
+   "is_nullable": "YES",
+   "column_default": null,
+   "source": "20261109050755_AddRoleDashboardTemplates"
+  },
+  {
+   "table": "dashboard_template_widget_layouts",
+   "name": "id",
+   "type": "uuid",
+   "is_nullable": "NO",
+   "column_default": null,
+   "source": "20261109050755_AddRoleDashboardTemplates"
+  },
+  {
+   "table": "dashboard_template_widget_layouts",
+   "name": "template_widget_id",
+   "type": "uuid",
+   "is_nullable": "NO",
+   "column_default": null,
+   "source": "20261109050755_AddRoleDashboardTemplates"
+  },
+  {
+   "table": "dashboard_template_widget_layouts",
+   "name": "breakpoint",
+   "type": "character varying(20)",
+   "is_nullable": "NO",
+   "column_default": null,
+   "source": "20261109050755_AddRoleDashboardTemplates"
+  },
+  {
+   "table": "dashboard_template_widget_layouts",
+   "name": "x",
+   "type": "integer",
+   "is_nullable": "NO",
+   "column_default": null,
+   "source": "20261109050755_AddRoleDashboardTemplates"
+  },
+  {
+   "table": "dashboard_template_widget_layouts",
+   "name": "y",
+   "type": "integer",
+   "is_nullable": "NO",
+   "column_default": null,
+   "source": "20261109050755_AddRoleDashboardTemplates"
+  },
+  {
+   "table": "dashboard_template_widget_layouts",
+   "name": "w",
+   "type": "integer",
+   "is_nullable": "NO",
+   "column_default": null,
+   "source": "20261109050755_AddRoleDashboardTemplates"
+  },
+  {
+   "table": "dashboard_template_widget_layouts",
+   "name": "h",
+   "type": "integer",
+   "is_nullable": "NO",
+   "column_default": null,
+   "source": "20261109050755_AddRoleDashboardTemplates"
+  },
+  {
+   "table": "dashboard_template_widget_layouts",
+   "name": "tenant_id",
+   "type": "uuid",
+   "is_nullable": "NO",
+   "column_default": null,
+   "source": "20261109050755_AddRoleDashboardTemplates"
+  },
+  {
+   "table": "dashboard_template_widget_layouts",
+   "name": "created_at",
+   "type": "timestamp with time zone",
+   "is_nullable": "NO",
+   "column_default": null,
+   "source": "20261109050755_AddRoleDashboardTemplates"
+  },
+  {
+   "table": "dashboard_template_widget_layouts",
+   "name": "updated_at",
+   "type": "timestamp with time zone",
+   "is_nullable": "YES",
+   "column_default": null,
+   "source": "20261109050755_AddRoleDashboardTemplates"
+  },
+  {
+   "table": "dashboard_template_widget_layouts",
+   "name": "created_by_id",
+   "type": "uuid",
+   "is_nullable": "NO",
+   "column_default": null,
+   "source": "20261109050755_AddRoleDashboardTemplates"
+  },
+  {
+   "table": "dashboard_template_widget_layouts",
+   "name": "is_deleted",
+   "type": "boolean",
+   "is_nullable": "NO",
+   "column_default": null,
+   "source": "20261109050755_AddRoleDashboardTemplates"
+  },
+  {
+   "table": "dashboard_template_widget_layouts",
+   "name": "deleted_at",
+   "type": "timestamp with time zone",
+   "is_nullable": "YES",
+   "column_default": null,
+   "source": "20261109050755_AddRoleDashboardTemplates"
+  },
+  {
+   "table": "user_dashboards",
+   "name": "applied_no_role",
+   "type": "boolean",
+   "is_nullable": "NO",
+   "column_default": "false",
+   "source": "20261109050755_AddRoleDashboardTemplates"
+  },
+  {
+   "table": "user_dashboards",
+   "name": "applied_role_ids",
+   "type": "jsonb",
+   "is_nullable": "NO",
+   "column_default": "\"'[]'\"",
+   "source": "20261109050755_AddRoleDashboardTemplates"
   }
  ]
 }
