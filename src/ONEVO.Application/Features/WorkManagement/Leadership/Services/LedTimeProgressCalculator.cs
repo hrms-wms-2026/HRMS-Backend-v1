@@ -146,6 +146,38 @@ public static class LedTimeProgressCalculator
             segments.Count);
     }
 
+    /// <summary>Every unscheduled segment of the window (time worked outside a Planner slot or with no plan that day), newest
+    /// first, then by person name. Empty with the Planner off, as in <see cref="Build"/>.</summary>
+    public static IReadOnlyList<LedUnscheduledRow> UnscheduledRows(DateOnly from, DateOnly to, DateTimeOffset now, bool plannerEnabled,
+        IReadOnlyList<LedTimePerson> people, IReadOnlyDictionary<Guid, TeamTaskRow> tasks)
+    {
+        if (!plannerEnabled)
+            return [];
+        var rows = new List<LedUnscheduledRow>();
+        foreach (var person in people)
+        {
+            for (var day = from; day <= to; day = day.AddDays(1))
+            {
+                var (dayStart, dayEnd) = PlannerActuals.DayBounds(day, person.Zone);
+                var r = TaskTimeAttribution.Attribute(person.Blocks, person.Sessions, dayStart, dayEnd, now);
+                foreach (var s in r.Unscheduled)
+                {
+                    var task = tasks.GetValueOrDefault(s.TaskId);
+                    rows.Add(new LedUnscheduledRow(person.EmployeeId, person.DisplayName, s.TaskId, task?.ShortId ?? string.Empty,
+                        task?.Title ?? string.Empty, s.Start, s.End, s.Minutes, s.Kind == UnscheduledKind.NoPlan ? NoPlanKind : OutsideSlotKind));
+                }
+            }
+        }
+        return rows
+            .OrderByDescending(s => s.Start)
+            .ThenBy(s => s.DisplayName, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(s => s.TaskId)
+            .ToList();
+    }
+
+    public const string NoPlanKind = "no_plan";
+    public const string OutsideSlotKind = "outside_slot";
+
     /// <summary>Planned block minutes of one day elapsed by <paramref name="now"/>.</summary>
     private static int ElapsedPlanned(IReadOnlyList<AttributionBlock> blocks, DateTimeOffset dayStart, DateTimeOffset dayEnd,
         DateTimeOffset now)

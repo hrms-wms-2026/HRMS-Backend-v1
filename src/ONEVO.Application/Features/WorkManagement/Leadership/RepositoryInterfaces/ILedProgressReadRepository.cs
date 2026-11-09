@@ -17,6 +17,8 @@ public enum LedEmployeeHoursSort
     InProgressHours,
     NotStartedHours,
     Name,
+    /// <summary>Completed share of the person's hours; people with no hours sort last either way.</summary>
+    CompletionRate,
 }
 
 public enum LedProgressTaskSort

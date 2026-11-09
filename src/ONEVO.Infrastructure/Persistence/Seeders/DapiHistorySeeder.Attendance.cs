@@ -104,6 +104,7 @@ public sealed partial class DapiHistorySeeder
         if (ctx.ClockInTester is not null)
             await RemoveSeededAttendanceAsync(db, ctx.ClockInTester.Id, allDates, ct);
 
+        var showcase = ShowcaseEmployeeIds();
         for (var index = 0; index < ctx.Employees.Count; index++)
         {
             var employee = ctx.Employees[index];
@@ -127,7 +128,7 @@ public sealed partial class DapiHistorySeeder
                 }
             }
 
-            if (seedsAttendance && IsWorkday(today) && !leaveDays.Contains(today))
+            if (seedsAttendance && IsWorkday(today) && !leaveDays.Contains(today) && !showcase.Contains(employee.Id))
                 SeedToday(db, ctx, employee.Id, index, onsite, attendanceKeys, ids);
 
             if ((index + 1) % 4 == 0)

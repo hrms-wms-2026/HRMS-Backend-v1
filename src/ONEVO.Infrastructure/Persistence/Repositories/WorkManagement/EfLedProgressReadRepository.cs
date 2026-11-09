@@ -156,6 +156,10 @@ public sealed class EfLedProgressReadRepository(ApplicationDbContext db) : ILedP
             LedEmployeeHoursSort.CompletedHours => descending ? rows.OrderByDescending(r => r.Completed) : rows.OrderBy(r => r.Completed),
             LedEmployeeHoursSort.InProgressHours => descending ? rows.OrderByDescending(r => r.InProgress) : rows.OrderBy(r => r.InProgress),
             LedEmployeeHoursSort.NotStartedHours => descending ? rows.OrderByDescending(r => r.NotStarted) : rows.OrderBy(r => r.NotStarted),
+            // People with no hours have no rate: last in both directions.
+            LedEmployeeHoursSort.CompletionRate => descending
+                ? rows.OrderBy(r => r.Total == 0).ThenByDescending(r => r.Total == 0 ? 0 : r.Completed / r.Total)
+                : rows.OrderBy(r => r.Total == 0).ThenBy(r => r.Total == 0 ? 0 : r.Completed / r.Total),
             _ => descending ? rows.OrderByDescending(r => r.Total) : rows.OrderBy(r => r.Total),
         };
         // Deterministic paging: equal values fall back to name, then the unique employee id.

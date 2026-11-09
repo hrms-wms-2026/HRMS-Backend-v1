@@ -15,7 +15,7 @@ public sealed class DashboardWidgetRegistryTests
         var team = DashboardWidgetRegistry.ForDashboard(DashboardKeys.MyTeam).Select(d => d.Key).ToList();
 
         Assert.Equal(10, work.Count);
-        Assert.Equal(7, team.Count); // team-schedule (ours), team-plan-today (team planner) and team-work-vs-task all live on My Team
+        Assert.Equal(9, team.Count); // team-schedule, team-plan-today, team-work-vs-task and the two overtime forecasts all live on My Team
         Assert.Empty(work.Intersect(team));
         Assert.Equal(work.Count + team.Count, work.Concat(team).Distinct().Count());
         foreach (var key in work.Concat(team))
@@ -143,6 +143,16 @@ public sealed class DashboardWidgetRegistryTests
         Assert.Equal((3, 3), DashboardWidgetRegistry.DefaultSize("wellbeing"));
         Assert.Equal((8, 6), DashboardWidgetRegistry.DefaultSize("team-status"));
         Assert.Equal((8, 6), DashboardWidgetRegistry.DefaultSize("team-attendance"));
+    }
+
+    [Theory]
+    [InlineData("team-module-forecast")]
+    [InlineData("team-employee-forecast")]
+    public void Forecast_widgets_are_offered_at_4x4_but_still_shrink_to_2x2(string key)
+    {
+        Assert.Equal((4, 4), DashboardWidgetRegistry.DefaultSize(key));
+        var def = DashboardWidgetRegistry.Get(key)!;
+        Assert.Equal((2, 2, 12, 8), (def.MinW, def.MinH, def.MaxW, def.MaxH));
     }
 
     [Fact]

@@ -3,9 +3,11 @@ namespace ONEVO.Application.Features.WorkManagement.Monitoring.DTOs;
 /// <summary>An advisory warning shown while planning. It never blocks saving.</summary>
 public sealed record MonitorWarning(string Code, string Message, Guid? EmployeeId = null);
 
+/// <param name="ConversionRate">The module team's pooled 4-week task rate; null = no history (capacity assumed at 100%).</param>
+/// <param name="PredictedHours">CapacityHours x the rate (x 1 without history): what the team will really complete.</param>
 public sealed record ModuleCapacityCheckResponse(
     decimal DailyHours, int WorkingDays, int MemberCount, decimal CapacityHours, decimal AllocatedHours,
-    IReadOnlyList<MonitorWarning> Warnings);
+    IReadOnlyList<MonitorWarning> Warnings, decimal? ConversionRate = null, decimal? PredictedHours = null);
 
 public sealed record TaskLoadCheckResponse(IReadOnlyList<MonitorWarning> Warnings);
 

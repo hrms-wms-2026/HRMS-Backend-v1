@@ -188,6 +188,87 @@ public sealed class GetLedWeeklyCompletionQueryHandlerTests
         => new GetLedWeeklyCompletionQueryValidator().Validate(new GetLedWeeklyCompletionQuery(weeks)).IsValid.Should().Be(valid);
 
     [Fact]
+    public async Task No_period_reports_week_granularity()
+        => (await Handler().Handle(new GetLedWeeklyCompletionQuery(), default)).Value!.Granularity.Should().Be("week");
+
+    [Fact]
+    public async Task Week_period_gives_the_seven_days_of_the_current_week_and_ignores_weeks()
+    {
+        var r = (await Handler().Handle(new GetLedWeeklyCompletionQuery(Weeks: 99, Period: "week"), default)).Value!;
+
+        r.Granularity.Should().Be("day");
+        r.Weeks.Should().HaveCount(7).And.OnlyContain(d => d.WeekStart == d.WeekEnd);
+        r.Weeks.Select(d => d.WeekStart).Should().Equal(Enumerable.Range(0, 7).Select(i => new DateOnly(2026, 10, 19).AddDays(i)));
+        r.Weeks.Select(d => d.CompletedHours).Should().Equal(0m, 0m, 4.5m, 0m, 0m, 0m, 0m); // only the 21 Oct row is in the week
+        r.Weeks[2].CompletedTaskCount.Should().Be(1);
+        (r.UndatedCompletedHours, r.UndatedCompletedTaskCount, r.AllocatedHours).Should().Be((6m, 2, 130m));
+        _span.Should().Be(new LedDueWindow(new DateOnly(2026, 10, 19), new DateOnly(2026, 10, 25)));
+    }
+
+    [Fact]
+    public async Task Month_period_gives_the_iso_weeks_of_a_month_starting_mid_week_clipped_to_it()
+    {
+        // October 2026 starts on a Thursday and ends on a Saturday.
+        var r = (await Handler().Handle(new GetLedWeeklyCompletionQuery(Period: "MONTH"), default)).Value!;
+
+        r.Granularity.Should().Be("week");
+        r.Weeks.Select(w => (w.WeekStart, w.WeekEnd, w.CompletedHours, w.CompletedTaskCount)).Should().Equal(
+            (new DateOnly(2026, 10, 1), new DateOnly(2026, 10, 4), 0m, 0),
+            (new DateOnly(2026, 10, 5), new DateOnly(2026, 10, 11), 0m, 0),
+            (new DateOnly(2026, 10, 12), new DateOnly(2026, 10, 18), 3m, 2),
+            (new DateOnly(2026, 10, 19), new DateOnly(2026, 10, 25), 4.5m, 1),
+            (new DateOnly(2026, 10, 26), new DateOnly(2026, 10, 31), 0m, 0));
+        _span.Should().Be(new LedDueWindow(new DateOnly(2026, 10, 1), new DateOnly(2026, 10, 31)));
+    }
+
+    [Fact]
+    public async Task Month_period_in_a_month_starting_on_monday_has_whole_first_week()
+    {
+        _clock.UtcNow = new DateTimeOffset(2027, 2, 10, 23, 30, 0, TimeSpan.Zero); // Feb 2027: Mon 1 .. Sun 28
+
+        var r = (await Handler().Handle(new GetLedWeeklyCompletionQuery(Period: "month"), default)).Value!;
+
+        r.Weeks.Select(w => (w.WeekStart, w.WeekEnd)).Should().Equal(
+            (new DateOnly(2027, 2, 1), new DateOnly(2027, 2, 7)),
+            (new DateOnly(2027, 2, 8), new DateOnly(2027, 2, 14)),
+            (new DateOnly(2027, 2, 15), new DateOnly(2027, 2, 21)),
+            (new DateOnly(2027, 2, 22), new DateOnly(2027, 2, 28)));
+    }
+
+    [Fact]
+    public async Task Period_with_out_of_scope_filter_gives_zero_filled_period_buckets()
+    {
+        var r = (await Handler().Handle(new GetLedWeeklyCompletionQuery(ProjectId: Guid.NewGuid(), Period: "week"), default)).Value!;
+
+        (r.Weeks.Count, r.Granularity, r.AllocatedHours).Should().Be((7, "day", 0m));
+        r.Weeks.Should().OnlyContain(d => d.CompletedHours == 0 && d.CompletedTaskCount == 0);
+        _reads.VerifyNoOtherCalls();
+    }
+
+    [Fact]
+    public async Task Period_filters_still_narrow_the_scope()
+    {
+        var r = (await Handler().Handle(new GetLedWeeklyCompletionQuery(ProjectId: _p2, Period: "month"), default)).Value!;
+
+        _ids.Should().BeEquivalentTo(new[] { _d });
+        r.AllocatedHours.Should().Be(30m);
+    }
+
+    [Theory]
+    [InlineData(null, 10, true)]
+    [InlineData("", 10, true)]
+    [InlineData("week", 10, true)]
+    [InlineData("Month", 10, true)]
+    [InlineData("week", 0, true)]   // weeks is ignored with a period
+    [InlineData("month", 99, true)]
+    [InlineData("all", 10, false)]
+    [InlineData("day", 10, false)]
+    [InlineData(null, 0, false)]
+    public void Validator_accepts_week_or_month_period_and_ignores_weeks_with_one(string? period, int weeks, bool valid)
+        => new GetLedWeeklyCompletionQueryValidator().Validate(new GetLedWeeklyCompletionQuery(weeks, Period: period))
+            .IsValid.Should().Be(valid);
+
+    [Fact]
     public void Default_weeks_is_10()
         => new GetLedWeeklyCompletionQuery().Weeks.Should().Be(10);
 }
