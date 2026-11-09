@@ -16,11 +16,11 @@ public sealed record WorkCalendar(decimal DailyHours, IReadOnlySet<DayOfWeek> Wo
     /// <summary>The most hours this many people can produce from..to (inclusive).</summary>
     public decimal Capacity(int people, DateOnly from, DateOnly to) => people * WorkingDaysBetween(from, to) * DailyHours;
 
-    /// <summary>The working day on which this many people, starting on from, would finish the hours;
-    /// null when the calendar has no working time.</summary>
-    public DateOnly? FinishDate(int people, DateOnly from, decimal hours)
+    /// <summary>The working day on which this many people, starting on from, would finish the hours at the given
+    /// conversion rate (task hours produced per working hour); null when that produces nothing per day.</summary>
+    public DateOnly? FinishDate(int people, DateOnly from, decimal hours, decimal rate = 1m)
     {
-        var perDay = people * DailyHours;
+        var perDay = people * DailyHours * rate;
         if (perDay <= 0 || WorkingDays.Count == 0)
             return null;
 

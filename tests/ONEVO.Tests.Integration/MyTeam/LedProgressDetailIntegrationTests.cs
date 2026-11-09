@@ -259,6 +259,11 @@ public sealed class LedProgressDetailIntegrationTests
             .Select(i => i.EmployeeId).Should().Equal(s.BobId, s.AliceId);
         (await Employees(s, new GetLedEmployeeHoursQuery(Sort: "name", Direction: "desc"))).Items
             .Select(i => i.EmployeeId).Should().Equal(s.BobId, s.AliceId);
+        // Completed share of hours: Bob 0 of 3, Alice 7 of 11.
+        (await Employees(s, new GetLedEmployeeHoursQuery(Sort: "completionRate", Direction: "asc"))).Items
+            .Select(i => i.EmployeeId).Should().Equal(s.BobId, s.AliceId);
+        (await Employees(s, new GetLedEmployeeHoursQuery(Sort: "completionRate", Direction: "desc"))).Items
+            .Select(i => i.EmployeeId).Should().Equal(s.AliceId, s.BobId);
 
         var second = (await Employees(s, new GetLedEmployeeHoursQuery(PageNumber: 2, PageSize: 1)));
         second.Items.Select(i => i.EmployeeId).Should().Equal(s.BobId);
@@ -614,6 +619,59 @@ public sealed class LedProgressDetailIntegrationTests
             (5m, 2));  // 19 Oct: cNow + cMonday 00:00 - not reopened, subtask or the foreign task
 
         (r.UndatedCompletedHours, r.UndatedCompletedTaskCount).Should().Be((8m, 3), "t1, t2, t9 are done with no CompletedAt");
+    }
+
+    [Fact]
+    public async Task Weekly_completion_without_period_keeps_ten_weeks_with_week_granularity()
+    {
+        var s = await SeedWithCompletionsAsync();
+
+        var r = await Weekly(s, new GetLedWeeklyCompletionQuery());
+
+        (r.Weeks.Count, r.Granularity).Should().Be((10, "week"));
+    }
+
+    [Fact]
+    public async Task Weekly_completion_week_period_buckets_by_utc_day_of_the_current_week()
+    {
+        var s = await SeedWithCompletionsAsync();
+
+        var r = await Weekly(s, new GetLedWeeklyCompletionQuery(Weeks: 2, Period: "week"));
+
+        r.Granularity.Should().Be("day");
+        r.Weeks.Select(d => (d.WeekStart, d.WeekEnd)).Should().Equal(
+            Enumerable.Range(0, 7).Select(i => (new DateOnly(2026, 10, 19).AddDays(i), new DateOnly(2026, 10, 19).AddDays(i))));
+        r.Weeks.Select(d => (d.CompletedHours, d.CompletedTaskCount)).Should().Equal(
+            (2m, 1),   // Mon 19: cMonday 00:00 (cSunday 18 Oct 23:59:59 is not in the week)
+            (0m, 0),   // Tue 20: reopened is not done
+            (3m, 1),   // Wed 21: cNow - not the subtask or the foreign task
+            (0m, 0), (0m, 0), (0m, 0), (0m, 0));
+        (r.UndatedCompletedHours, r.UndatedCompletedTaskCount, r.AllocatedHours).Should().Be((8m, 3, 100m));
+
+        var sub = await Weekly(s, new GetLedWeeklyCompletionQuery(ObjectiveId: s.SubId, Period: "week"));
+        (sub.Weeks.Count, sub.Weeks.Sum(d => d.CompletedTaskCount), sub.AllocatedHours).Should().Be((7, 0, 40m));
+    }
+
+    [Fact]
+    public async Task Weekly_completion_month_period_buckets_iso_weeks_clipped_to_a_month_starting_mid_week()
+    {
+        var s = await SeedWithCompletionsAsync();
+
+        // October 2026: Thursday 1 .. Saturday 31.
+        var r = await Weekly(s, new GetLedWeeklyCompletionQuery(Period: "month"));
+
+        r.Granularity.Should().Be("week");
+        r.Weeks.Select(w => (w.WeekStart, w.WeekEnd, w.CompletedHours, w.CompletedTaskCount)).Should().Equal(
+            (new DateOnly(2026, 10, 1), new DateOnly(2026, 10, 4), 0m, 0),   // cSub 30 Sep is before the month
+            (new DateOnly(2026, 10, 5), new DateOnly(2026, 10, 11), 0m, 0),
+            (new DateOnly(2026, 10, 12), new DateOnly(2026, 10, 18), 4m, 1), // cSunday 23:59:59
+            (new DateOnly(2026, 10, 19), new DateOnly(2026, 10, 25), 5m, 2), // cNow + cMonday
+            (new DateOnly(2026, 10, 26), new DateOnly(2026, 10, 31), 0m, 0));
+        (r.UndatedCompletedHours, r.UndatedCompletedTaskCount).Should().Be((8m, 3));
+
+        var foreign = await Weekly(s, new GetLedWeeklyCompletionQuery(ProjectId: s.OtherProjectId, Period: "month"));
+        foreign.Weeks.Should().HaveCount(5).And.OnlyContain(w => w.CompletedHours == 0 && w.CompletedTaskCount == 0);
+        foreign.AllocatedHours.Should().Be(0m);
     }
 
     [Fact]

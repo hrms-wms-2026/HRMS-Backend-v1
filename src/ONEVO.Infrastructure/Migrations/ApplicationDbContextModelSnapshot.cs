@@ -4472,6 +4472,224 @@ namespace ONEVO.Infrastructure.Migrations
                     b.ToTable("seat_increase_requests", (string)null);
                 });
 
+            modelBuilder.Entity("ONEVO.Domain.Features.Dashboard.Entities.DashboardTemplate", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("CreatedById")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by_id");
+
+                    b.Property<string>("DashboardKey")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("dashboard_key");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("deleted_at");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_active");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_deleted");
+
+                    b.Property<bool>("IsNoRoleTemplate")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false)
+                        .HasColumnName("is_no_role_template");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("name");
+
+                    b.Property<Guid?>("RoleId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("role_id");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<int>("Version")
+                        .HasColumnType("integer")
+                        .HasColumnName("version");
+
+                    b.HasKey("Id")
+                        .HasName("pk_dashboard_templates");
+
+                    b.HasIndex("RoleId")
+                        .HasDatabaseName("ix_dashboard_templates_role_id");
+
+                    b.HasIndex("TenantId", "DashboardKey")
+                        .IsUnique()
+                        .HasDatabaseName("ux_dashboard_templates_tenant_id_dashboard_key_no_role")
+                        .HasFilter("is_no_role_template = true AND is_deleted = false");
+
+                    b.HasIndex("TenantId", "RoleId", "DashboardKey")
+                        .IsUnique()
+                        .HasDatabaseName("ux_dashboard_templates_tenant_id_role_id_dashboard_key")
+                        .HasFilter("role_id IS NOT NULL AND is_deleted = false");
+
+                    b.ToTable("dashboard_templates", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_dashboard_templates_no_role_flag", "(is_no_role_template AND role_id IS NULL) OR (NOT is_no_role_template AND role_id IS NOT NULL)");
+                        });
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.Dashboard.Entities.DashboardTemplateWidget", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("CreatedById")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by_id");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("deleted_at");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_deleted");
+
+                    b.Property<string>("SettingsJson")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("settings")
+                        .HasDefaultValue("{}");
+
+                    b.Property<Guid>("TemplateId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("template_id");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<string>("WidgetKey")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("widget_key");
+
+                    b.HasKey("Id")
+                        .HasName("pk_dashboard_template_widgets");
+
+                    b.HasIndex("TemplateId", "WidgetKey")
+                        .IsUnique()
+                        .HasDatabaseName("ux_dashboard_template_widgets_template_id_widget_key")
+                        .HasFilter("is_deleted = false");
+
+                    b.ToTable("dashboard_template_widgets", (string)null);
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.Dashboard.Entities.DashboardTemplateWidgetLayout", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Breakpoint")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("breakpoint");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("CreatedById")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by_id");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("deleted_at");
+
+                    b.Property<int>("H")
+                        .HasColumnType("integer")
+                        .HasColumnName("h");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_deleted");
+
+                    b.Property<Guid>("TemplateWidgetId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("template_widget_id");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<int>("W")
+                        .HasColumnType("integer")
+                        .HasColumnName("w");
+
+                    b.Property<int>("X")
+                        .HasColumnType("integer")
+                        .HasColumnName("x");
+
+                    b.Property<int>("Y")
+                        .HasColumnType("integer")
+                        .HasColumnName("y");
+
+                    b.HasKey("Id")
+                        .HasName("pk_dashboard_template_widget_layouts");
+
+                    b.HasIndex("TemplateWidgetId", "Breakpoint")
+                        .IsUnique()
+                        .HasDatabaseName("ux_dashboard_template_widget_layouts_template_widget_id_breakpoint")
+                        .HasFilter("is_deleted = false");
+
+                    b.ToTable("dashboard_template_widget_layouts", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_dashboard_template_widget_layouts_breakpoint", "breakpoint IN ('desktop', 'tablet', 'mobile')");
+
+                            t.HasCheckConstraint("ck_dashboard_template_widget_layouts_h", "h > 0");
+
+                            t.HasCheckConstraint("ck_dashboard_template_widget_layouts_w", "w > 0");
+
+                            t.HasCheckConstraint("ck_dashboard_template_widget_layouts_x", "x >= 0");
+
+                            t.HasCheckConstraint("ck_dashboard_template_widget_layouts_y", "y >= 0");
+                        });
+                });
+
             modelBuilder.Entity("ONEVO.Domain.Features.Dashboard.Entities.DashboardWidget", b =>
                 {
                     b.Property<Guid>("Id")
@@ -4611,6 +4829,19 @@ namespace ONEVO.Infrastructure.Migrations
                     b.Property<Guid>("Id")
                         .HasColumnType("uuid")
                         .HasColumnName("id");
+
+                    b.Property<bool>("AppliedNoRole")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false)
+                        .HasColumnName("applied_no_role");
+
+                    b.Property<string>("AppliedRoleIds")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("applied_role_ids")
+                        .HasDefaultValueSql("'[]'");
 
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
@@ -14046,6 +14277,59 @@ namespace ONEVO.Infrastructure.Migrations
                     b.ToTable("wm_monitor_alerts", (string)null);
                 });
 
+            modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Monitoring.Entities.TaskRateSetting", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("CreatedById")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by_id");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("deleted_at");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_deleted");
+
+                    b.Property<Guid>("LegalEntityId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("legal_entity_id");
+
+                    b.Property<decimal>("MaxTaskRate")
+                        .HasColumnType("numeric(5,4)")
+                        .HasColumnName("max_task_rate");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid?>("UpdatedByEmployeeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by_employee_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_wm_task_rate_settings");
+
+                    b.HasIndex("TenantId", "LegalEntityId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_wm_task_rate_settings_tenant_id_legal_entity_id");
+
+                    b.ToTable("wm_task_rate_settings", (string)null);
+                });
+
             modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Notifications.Entities.WorkNotificationLog", b =>
                 {
                     b.Property<Guid>("Id")
@@ -16716,6 +17000,35 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasConstraintName("fk_seat_increase_requests_users_requested_by_user_id");
                 });
 
+            modelBuilder.Entity("ONEVO.Domain.Features.Dashboard.Entities.DashboardTemplate", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.Auth.Entities.Role", null)
+                        .WithMany()
+                        .HasForeignKey("RoleId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_dashboard_templates_roles_role_id");
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.Dashboard.Entities.DashboardTemplateWidget", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.Dashboard.Entities.DashboardTemplate", null)
+                        .WithMany("Widgets")
+                        .HasForeignKey("TemplateId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_dashboard_template_widgets_dashboard_templates_template_id");
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.Dashboard.Entities.DashboardTemplateWidgetLayout", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.Dashboard.Entities.DashboardTemplateWidget", null)
+                        .WithMany("Layouts")
+                        .HasForeignKey("TemplateWidgetId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_dashboard_template_widget_layouts_dashboard_template_widget");
+                });
+
             modelBuilder.Entity("ONEVO.Domain.Features.Dashboard.Entities.DashboardWidget", b =>
                 {
                     b.HasOne("ONEVO.Domain.Features.Dashboard.Entities.UserDashboard", null)
@@ -18255,6 +18568,16 @@ namespace ONEVO.Infrastructure.Migrations
                     b.Navigation("RolePermissions");
 
                     b.Navigation("UserRoles");
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.Dashboard.Entities.DashboardTemplate", b =>
+                {
+                    b.Navigation("Widgets");
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.Dashboard.Entities.DashboardTemplateWidget", b =>
+                {
+                    b.Navigation("Layouts");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.Dashboard.Entities.DashboardWidget", b =>

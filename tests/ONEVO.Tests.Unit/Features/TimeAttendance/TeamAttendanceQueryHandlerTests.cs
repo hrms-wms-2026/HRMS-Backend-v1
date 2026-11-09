@@ -189,6 +189,34 @@ public sealed class TeamAttendanceQueryHandlerTests
     }
 
     [Fact]
+    public async Task Summary_DepartmentRates_PerDepartmentForThePeriod_BestFirst()
+    {
+        Member("Ann", DeptA, ("2026-10-26", "present"), ("2026-10-27", "absent"));
+        Member("Amy", DeptA, ("2026-10-26", "late"), ("2026-10-27", "leave"));
+        Member("Bob", DeptB, ("2026-10-26", "present"));
+        Member("Cy", null, ("2026-10-26", "absent"));
+
+        var r = (await Handler().Handle(Week(), CancellationToken.None)).Value!;
+
+        r.DepartmentRates.Should().Equal(
+            new TeamAttendanceDepartmentRate(DeptB, "Beta", 1, 1, 1, 100m),
+            new TeamAttendanceDepartmentRate(DeptA, "Alpha", 2, 2, 3, 66.7m),
+            new TeamAttendanceDepartmentRate(null, "No department", 1, 0, 1, 0m));
+    }
+
+    [Fact]
+    public async Task Summary_DepartmentRates_NothingExpected_HasNullRateAndSortsLast()
+    {
+        Member("Ann", DeptA, ("2026-10-26", "leave"));
+        Member("Bob", DeptB, ("2026-10-26", "absent"));
+
+        var r = (await Handler().Handle(Week(), CancellationToken.None)).Value!;
+
+        r.DepartmentRates.Select(d => d.Name).Should().Equal("Beta", "Alpha");
+        r.DepartmentRates[1].Rate.Should().BeNull();
+    }
+
+    [Fact]
     public async Task Summary_UnknownDepartment_ReturnsEmptyNotOthers()
     {
         Member("Ann", DeptA, ("2026-10-26", "present"));
@@ -291,6 +319,23 @@ public sealed class TeamAttendanceQueryHandlerTests
             new GetTeamAttendanceEmployeesQuery("week", null, null, null, 1, 20), CancellationToken.None)).Value!;
         byName.Items.Select(r => r.Name).Should().Equal("Ann", "Bob", "Cat", "Dan");
         byName.Items.Single(r => r.Name == "Bob").Rank.Should().Be(2);
+    }
+
+    [Fact]
+    public async Task Employees_SortByAttention_MostLateAbsentAndLeaveDaysFirst()
+    {
+        // Week of 26 Oct. Ann 2 late, Bob 1 absent + 2 leave, Cat none, Dan 2 absent (ties Ann on 2 -> name order).
+        Member("Ann", null, ("2026-10-26", "late"), ("2026-10-27", "late"));
+        Member("Bob", null, ("2026-10-26", "absent"), ("2026-10-27", "leave"), ("2026-10-28", "leave"));
+        Member("Cat", null, ("2026-10-26", "present"), ("2026-10-27", "present"));
+        Member("Dan", null, ("2026-10-26", "absent"), ("2026-10-27", "absent"));
+
+        var page = (await Handler().Handle(
+            new GetTeamAttendanceEmployeesQuery("week", null, null, null, 1, 20, "attention"), CancellationToken.None)).Value!;
+
+        page.Items.Select(r => r.Name).Should().Equal("Bob", "Ann", "Dan", "Cat");
+        // The rate rank is unchanged by the sort.
+        page.Items.Single(r => r.Name == "Cat").Rank.Should().Be(1);
     }
 
     [Fact]
