@@ -13,7 +13,8 @@ public sealed record GetModuleForecastQuery(
 
 public static class ForecastQueryOptions
 {
-    public const int MaxPageSize = 100;
+    /// <summary>The popup's CSV export asks for every row in one page.</summary>
+    public const int MaxPageSize = 500;
 
     public static (int Page, int PageSize) Clamp(int page, int pageSize)
         => (Math.Max(1, page), pageSize < 1 ? 10 : Math.Min(MaxPageSize, pageSize));

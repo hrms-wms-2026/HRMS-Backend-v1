@@ -36,14 +36,16 @@ No migration and no new table.
 2. **Employee widget gate.** Same as `team-work-vs-task`: `isAvailable && canViewPeopleStatus`. The endpoint needs
    `attendance:read`.
 3. **Extra optional query param.** `search` on `/modules` matches module title, path or project name.
-4. **Paging.** `pageSize` is clamped to 1..100 (default 10). `page` is 1-based.
+4. **Paging.** `pageSize` is clamped to 1..500 (default 10; the CSV export may ask for 500). `page` is 1-based.
+   Sort directions: `overtime` and `requiredRate` descending, `rate` ascending (no history last), `endDate` and
+   `name` ascending.
 5. **`rateTrend` week starts.** `rateTrend[i].weekStart = windowStart + 7i` (the window's own 7-day buckets,
    not ISO Mondays). There are always 4 points. `rate` is null for a week with under 60 worked minutes.
 6. **Rounding.** Rates are fractions rounded to 4 decimals, hours to 2. `requiredRate` may be > 1. It is null when
    capacity is 0.
 7. **Rate 0.** `overtimeHours` = the shortfall itself, because no finite number of hours helps at a 0% rate.
-8. **Module totals.** Status counts (`modules`, `onTrack`, …) cover every listed module, after `projectId` and
-   before `status`/`search`. Hour sums, `teamRate`, `requiredRate` and `projects[]` use top-most listed modules
+8. **Module totals.** `totals`, `projects[]` and `rateTrend` cover the whole population: `projectId`, `status`,
+   `search` and paging narrow only `items` and `total`. Status counts cover every listed module. Hour sums, `teamRate`, `requiredRate` and `projects[]` use top-most listed modules
    only (no listed ancestor). `total` is the row count after the filters.
 9. **Employee with no open estimated task due today or later.** `status: "on_track"`, `deadline: null`,
    hours 0, `requiredRate: 0`.

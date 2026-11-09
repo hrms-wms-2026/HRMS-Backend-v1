@@ -186,6 +186,14 @@ public class GetModuleForecastQueryHandlerTests
         Assert.Equal(0, none.Total);
         Assert.Equal(2, none.Totals.Modules);
 
+        var otherProject = (await Handler().Handle(new GetModuleForecastQuery(ProjectId: Guid.NewGuid()), default)).Value!;
+        Assert.Empty(otherProject.Items);
+        Assert.Equal((2, 200m), (otherProject.Totals.Modules, otherProject.Totals.AllocatedHours));
+        Assert.Single(otherProject.Projects);
+
+        var all = (await Handler().Handle(new GetModuleForecastQuery(PageSize: 500), default)).Value!;
+        Assert.Equal(500, all.PageSize);
+
         var paged = (await Handler().Handle(new GetModuleForecastQuery(Page: 2, PageSize: 1), default)).Value!;
         Assert.Equal("Card form", Assert.Single(paged.Items).Title);
         Assert.Equal((2, 2, 1), (paged.Total, paged.Page, paged.PageSize));

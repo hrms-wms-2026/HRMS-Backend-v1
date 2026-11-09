@@ -76,7 +76,6 @@ public sealed class GetModuleForecastQueryHandler(
             ? []
             : (await projects.GetActiveByIdsForTenantAsync(tenantId, projectIds, ct))
                 .Where(p => p.IsActive && !p.IsDeleted && !p.IsAchieved && p.SystemPurpose is null && p.OwningLegalEntityId == legalEntityId)
-                .Where(p => query.ProjectId is not Guid only || p.Id == only)
                 .OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase)
                 .ToList();
 
@@ -143,7 +142,10 @@ public sealed class GetModuleForecastQueryHandler(
             .OrderByDescending(p => p.OvertimeHours).ThenBy(p => p.Name, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
+        // Totals, project bars and the trend cover the whole population; projectId, status and search narrow the rows only.
         IEnumerable<Row> selected = rows;
+        if (query.ProjectId is Guid only)
+            selected = selected.Where(r => r.Project.Id == only);
         if (query.Status is { } status)
             selected = selected.Where(r => r.Figures.Status == status);
         if (!string.IsNullOrWhiteSpace(query.Search))
