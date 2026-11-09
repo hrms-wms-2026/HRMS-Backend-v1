@@ -2,10 +2,12 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using ONEVO.Application.Features.CoreHr.Onboarding.Services;
 using ONEVO.Domain.Features.WorkManagement.Projects.Entities;
+using ONEVO.Tests.Integration.Support;
 using Xunit;
 
 namespace ONEVO.Tests.Integration.WorkManagement;
 
+[Collection(WebApplicationFactoryCollection.Name)]
 public sealed class OfficeProjectProvisionerRlsIntegrationTests
 {
     [Fact]

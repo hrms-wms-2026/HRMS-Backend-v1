@@ -5,10 +5,12 @@ using ONEVO.Domain.Features.InfrastructureModule.Entities;
 using ONEVO.Domain.Features.WorkManagement.Projects.Entities;
 using ONEVO.Domain.Lookups;
 using ONEVO.Infrastructure.Services.CoreHr;
+using ONEVO.Tests.Integration.Support;
 using Xunit;
 
 namespace ONEVO.Tests.Integration.WorkManagement;
 
+[Collection(WebApplicationFactoryCollection.Name)]
 public sealed class OfficeProjectReconcilerIntegrationTests
 {
     private static async Task<OfficeProjectReconcileOutcome> ReconcileAsync(OfficeProjectDb harness)

@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Data.SqlClient;
 using ONEVO.Infrastructure.Persistence.Interceptors;
+using ONEVO.Tests.Integration.Support;
 using Xunit;
 using Xunit.Abstractions;
 
@@ -13,8 +14,12 @@ namespace ONEVO.Tests.Integration.SqlServerMigration;
 /// An empty database booted in Production must hold the same reference data PostgreSQL did
 /// (docs/reports/database/2026-11-07-postgres-reference-data.json).
 /// </summary>
-[Collection(SqlServerCollection.Name)]
+// Sets process-wide environment variables (Program.cs reads them before ConfigureWebHost runs),
+// so it shares the WebApplicationFactory collection with every other test that does; its own
+// SqlServerFixture comes as a class fixture.
+[Collection(WebApplicationFactoryCollection.Name)]
 public sealed class ReferenceDataParityTests(SqlServerFixture fixture, ITestOutputHelper output)
+    : IClassFixture<SqlServerFixture>
 {
     private static readonly string[] Settings =
     [
