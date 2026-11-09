@@ -38,6 +38,13 @@ public static class DashboardWidgetRegistry
         new("team-employee-forecast", DashboardKeys.MyTeam, "Employee overtime forecast", "Whether each person can finish the work due before their deadlines at their task rate of the last 4 weeks, or needs a higher rate or overtime.", 2, 2, 12, 8, false),
     ];
 
+    // Catalog-only widgets are added at their min size unless listed here (the widget store reads DefaultSize).
+    private static readonly Dictionary<string, (int W, int H)> CatalogDefaultSizes = new(StringComparer.Ordinal)
+    {
+        ["team-module-forecast"] = (4, 4),
+        ["team-employee-forecast"] = (4, 4),
+    };
+
     private const string TeamPlanToday = "team-plan-today";
     private static readonly GridRect TeamPlanTodaySize = new(0, 0, 8, 6);
 
@@ -167,7 +174,7 @@ public static class DashboardWidgetRegistry
             }
         }
 
-        return (def.MinW, def.MinH);
+        return CatalogDefaultSizes.TryGetValue(key, out var size) ? size : (def.MinW, def.MinH);
     }
 
     /// <summary>Derives a tablet/mobile layout from a desktop layout. Desktop is returned unchanged.</summary>

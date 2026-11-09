@@ -145,6 +145,16 @@ public sealed class DashboardWidgetRegistryTests
         Assert.Equal((8, 6), DashboardWidgetRegistry.DefaultSize("team-attendance"));
     }
 
+    [Theory]
+    [InlineData("team-module-forecast")]
+    [InlineData("team-employee-forecast")]
+    public void Forecast_widgets_are_offered_at_4x4_but_still_shrink_to_2x2(string key)
+    {
+        Assert.Equal((4, 4), DashboardWidgetRegistry.DefaultSize(key));
+        var def = DashboardWidgetRegistry.Get(key)!;
+        Assert.Equal((2, 2, 12, 8), (def.MinW, def.MinH, def.MaxW, def.MaxH));
+    }
+
     [Fact]
     public void Tablet_derive_keeps_widgets_at_least_their_min_width()
     {
