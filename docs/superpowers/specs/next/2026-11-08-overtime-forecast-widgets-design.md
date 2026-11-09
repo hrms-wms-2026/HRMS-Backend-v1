@@ -37,11 +37,19 @@ rateEff       = rate ?? 1
 predicted     = capacity × rateEff
 requiredRate  = remaining / capacity          (may be > 1; null when capacity = 0)
 overtimeHours = max(0, remaining − predicted)     (TASK hours that won't get done in normal hours at the current rate; never > remaining)
+maxTaskRate   = the tenant's limit (wm_task_rate_settings.max_task_rate; no row = 0.90; clamped to 0.5–1.0)
 status        = on_track    if predicted ≥ remaining
-                raise_rate  if predicted < remaining and requiredRate ≤ 1   (raise the rate to requiredRate, or do overtimeHours)
-                overtime    if requiredRate > 1 or capacity = 0             (even at 100% it can't fit in normal hours)
+                raise_rate  if predicted < remaining and requiredRate ≤ maxTaskRate   (UI: "Overtime risk")
+                overload    if requiredRate > maxTaskRate or capacity = 0           (even pushing hard won't finish it)
                 no_history  if rate is null (figures still filled using rateEff = 1)
+overload flag = requiredRate > maxTaskRate or capacity = 0, whatever the history (alert details `overload`)
 ```
+
+**Max task rate (2026-11-09, user).** A team realistically converts at most ~90–95% of work hours into task hours.
+Work that needs more is **overload**, which is different from "raise the rate or do overtime". The limit is stored
+per tenant in the tenant-owned table `wm_task_rate_settings` (one row per tenant: `max_task_rate numeric(5,4)`,
+`updated_by_employee_id`). A teammate builds the Settings edit UI later, so there is no edit endpoint yet. The
+`overload` status replaces the earlier `overtime` status code.
 
 ## 3. Part 1, backend engine change (Project Monitoring Engine)
 
@@ -55,7 +63,7 @@ Files: `Features/WorkManagement/Monitoring/Services/*`.
   - Messages name the rate, e.g. "68 h of work remain; at the team's 42% task rate (last 4 weeks) they will complete about 50 h before Nov 20." Details add `conversionRate`, `predictedHours`, `requiredRate`, `overtimeHours`, `rateSource` (`"history"` or `"none"`).
 - The live form checks (`CheckModuleCapacity`, `CheckTaskLoad`), the hourly job and the Tree-load refresh all go through the same rules, so the Tree red dots follow the new prediction automatically.
 - Rule codes don't change, so existing open alerts keep their identity.
-- Keep the rules pure. Unit-test every branch: no history, rate 0, rate capped, on_track / raise_rate / overtime, the EDF windows with a rate.
+- Keep the rules pure. Unit-test every branch: no history, rate 0, rate capped, on_track / raise_rate / overload (exactly at the limit, above it, capacity 0, missing row → 0.90, clamp), the EDF windows with a rate.
 
 ## 4. Part 2, backend widget endpoints
 
@@ -65,12 +73,12 @@ Put the forecast maths in one shared service (e.g. `IOvertimeForecastService`). 
 
 Population **(call)**: modules the viewer can read under the existing WM read access (`IModuleReadAccess` / project lead / owner), in active projects of the viewer's legal entity, **not achieved**, with **end date ≥ today**. The table lists every such module, with its path. **(call)** Totals, the pie and the project bars use only modules whose parent is not also in the list, because a parent's allocation already contains its children's.
 
-Query: `status?` (`on_track|raise_rate|overtime|no_history`), `projectId?`, `sort` (`overtime` default | `requiredRate` | `endDate` | `name`), `page`, `pageSize` (card asks for 10, popup pages 25).
+Query: `status?` (`on_track|raise_rate|overload|no_history`), `projectId?`, `sort` (`overtime` default | `requiredRate` | `endDate` | `name`), `page`, `pageSize` (card asks for 10, popup pages 25).
 
 ```jsonc
 {
   "asOf": "2026-11-08", "windowStart": "2026-10-11", "windowEnd": "2026-11-07",
-  "totals": { "modules": 14, "onTrack": 6, "raiseRate": 4, "overtime": 3, "noHistory": 1,
+  "totals": { "modules": 14, "onTrack": 6, "raiseRate": 4, "overload": 3, "noHistory": 1, "maxTaskRate": 0.9,
               "allocatedHours": 2400, "completedHours": 900, "remainingHours": 1500,
               "capacityHours": 2600, "predictedHours": 1100, "overtimeHours": 950,
               "teamRate": 0.42, "requiredRate": 0.58 },
@@ -101,7 +109,7 @@ Query: `status?`, `sort` (`overtime` default | `requiredRate` | `rate` | `name`)
 ```jsonc
 {
   "asOf": "…", "windowStart": "…", "windowEnd": "…",
-  "totals": { "people": 12, "onTrack": 7, "raiseRate": 2, "overtime": 2, "noHistory": 1,
+  "totals": { "people": 12, "onTrack": 7, "raiseRate": 2, "overload": 2, "noHistory": 1, "maxTaskRate": 0.9,
               "remainingHours": 0, "capacityHours": 0, "predictedHours": 0, "overtimeHours": 0,
               "teamRate": 0.4, "requiredRate": 0.55 },
   "rateTrend": [ { "weekStart": "…", "rate": 0.3 } ],
@@ -137,7 +145,7 @@ Query: `status?`, `sort` (`overtime` default | `requiredRate` | `rate` | `name`)
   - amber `#fbbf24` **Needs a higher rate** = min(capacity, remaining) − covered
   - red `#f87171` **Needs overtime** = max(0, remaining − capacity)
   - The centre shows the **team rate %**, with "task rate · last 4 wk" under it.
-- **Status chips:** On track (green), Raise rate (amber), Overtime (red), No history (slate).
+- **Status chips:** On track (green), Overtime risk (amber, `raise_rate`), Overload (red, `overload`), No history (slate).
 - **Hero figure:** the overtime hours ("~950 h overtime"), or "On track" when 0. The caption reads "Needs 58% task rate · now 42%".
 
 ### Module widget (`team-module-forecast`)

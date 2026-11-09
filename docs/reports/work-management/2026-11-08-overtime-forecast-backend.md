@@ -26,6 +26,28 @@ Plan: `docs/superpowers/plans/next/2026-11-08-overtime-forecast-backend.md`.
 
 No migration and no new table.
 
+## Overload and the max task rate (2026-11-09)
+
+- **Status codes:** `on_track`, `raise_rate` (the UI says "Overtime risk": current rate < required ≤ max task rate),
+  `overload` (required > max task rate, or no capacity left) and `no_history`. **`overload` replaces `overtime`**
+  everywhere: the `status` values, the `status` filter and the counts (`totals.overload` instead of
+  `totals.overtime`). The `sort=overtime` key stays: it sorts by `overtimeHours`. `overtimeHours` is still
+  `max(0, remaining − predicted)`.
+- **`totals.maxTaskRate`** (a fraction, e.g. 0.9) is on both endpoints, so the UI can draw the threshold line.
+- **Monitor alert details** add `maxTaskRate` and `overload` (true/false). An overloaded module alert reads
+  "… h of work remain before Nov 20; overloaded: needs 125% task rate, above the 90% limit." The required rate is
+  remaining ÷ capacity and reveals nobody's own rate, so it is printed for any pool size.
+- **Settings table** `wm_task_rate_settings`:
+  - Columns: tenant-owned `BaseEntity` columns, `max_task_rate numeric(5,4)` and `updated_by_employee_id`. Unique
+    index on `tenant_id`.
+  - With no row the code uses 0.90. Read values are clamped to 0.5–1.0.
+  - Repository `ITaskRateSettingRepository`: `GetForTenantAsync`, plus `UpsertAsync` for the Settings UI to come.
+    There is no edit endpoint.
+  - Read once per evaluation by the snapshot loader, and by the module check and both endpoints.
+- **Migrations (created, NOT applied — the developer applies them):**
+  - `20261109042105_AddTaskRateSettings`
+  - `20261109042221_AddTaskRateSettingsRlsPolicyCoverage` (the standard `tenant_isolation` policy)
+
 ## Deviations from the spec contract (frontend, please align)
 
 1. **Who sees the module forecast.** The spec's call said "the modules the viewer can read". The table shows every
@@ -86,7 +108,7 @@ Individual task rates are performance data, so:
 ```json
 {
   "asOf": "2026-11-09", "windowStart": "2026-10-12", "windowEnd": "2026-11-08",
-  "totals": { "modules": 2, "onTrack": 0, "raiseRate": 0, "overtime": 2, "noHistory": 0,
+  "totals": { "modules": 2, "onTrack": 0, "raiseRate": 0, "overload": 2, "noHistory": 0, "maxTaskRate": 0.9,
               "allocatedHours": 200, "completedHours": 0, "remainingHours": 200, "capacityHours": 160,
               "predictedHours": 80, "overtimeHours": 120, "teamRate": 0.5, "requiredRate": 1.25 },
   "rateTrend": [ { "weekStart": "2026-10-12", "rate": 0.5 }, { "weekStart": "2026-10-19", "rate": null },
@@ -98,14 +120,14 @@ Individual task rates are performance data, so:
       "startDate": "2026-10-26", "endDate": "2026-11-20", "workingDaysLeft": 10,
       "allocatedHours": 200, "completedHours": 0, "remainingHours": 200, "capacityHours": 160,
       "conversionRate": 0.5, "predictedHours": 80, "requiredRate": 1.25, "overtimeHours": 120,
-      "status": "overtime", "memberCount": 2,
+      "status": "overload", "memberCount": 2,
       "members": [ { "employeeId": "…", "name": "Kaja", "avatarFileId": null, "conversionRate": 0.5, "workedMinutes": 600, "taskMinutes": 300 },
                    { "employeeId": "…", "name": "Nila", "avatarFileId": null, "conversionRate": 0.5, "workedMinutes": 600, "taskMinutes": 300 } ] },
     { "moduleId": "…", "projectId": "…", "projectName": "Payments", "title": "Card form", "path": "Checkout › Card form",
       "startDate": "2026-10-26", "endDate": "2026-11-13", "workingDaysLeft": 5,
       "allocatedHours": 80, "completedHours": 0, "remainingHours": 80, "capacityHours": 40,
       "conversionRate": 0.5, "predictedHours": 20, "requiredRate": 2, "overtimeHours": 60,
-      "status": "overtime", "memberCount": 1, "members": [ … ] }
+      "status": "overload", "memberCount": 1, "members": [ … ] }
   ],
   "total": 2, "page": 1, "pageSize": 10
 }
@@ -116,7 +138,7 @@ Individual task rates are performance data, so:
 ```json
 {
   "asOf": "2026-11-09", "windowStart": "2026-10-12", "windowEnd": "2026-11-08",
-  "totals": { "people": 3, "onTrack": 2, "raiseRate": 1, "overtime": 0, "noHistory": 0,
+  "totals": { "people": 3, "onTrack": 2, "raiseRate": 1, "overload": 0, "noHistory": 0, "maxTaskRate": 0.9,
               "remainingHours": 30, "capacityHours": 40, "predictedHours": 20, "overtimeHours": 10,
               "teamRate": 0.7317, "requiredRate": 0.75 },
   "rateTrend": [ { "weekStart": "2026-10-12", "rate": 0.7317 }, { "weekStart": "2026-10-19", "rate": null },
