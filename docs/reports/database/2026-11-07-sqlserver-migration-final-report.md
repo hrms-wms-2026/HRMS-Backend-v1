@@ -9,16 +9,17 @@ The API builds and runs on SQL Server, a clean database is created from migratio
 
 | Check | Result | Commit |
 |---|---|---|
-| API Release build | Succeeded | 70a5b4fb |
-| `ONEVO.Tests.Unit` | 7745 of 7745 passed | 70a5b4fb |
-| `ONEVO.Tests.Architecture` | 711 of 711 passed | 70a5b4fb |
-| `ONEVO.Tests.Integration` | 1214 of 1215 passed, 0 failed, 1 skipped | 70a5b4fb |
+| API Release build | Succeeded | 13bddf94 |
+| `ONEVO.Tests.Unit` | 7745 of 7745 passed | 13bddf94 |
+| `ONEVO.Tests.Architecture` | 711 of 711 passed | 13bddf94 |
+| `ONEVO.Tests.Integration` | 1221 of 1222 passed, 0 failed, 1 skipped, in two consecutive full runs | 4e0ce63d |
 
-Updated 2026-11-08 after the follow-up fixes (position sort by name, strict test seeding, query sweep). The full run at 70a5b4fb had no failures. Before that, two clean full runs at b42cdcc1, and a coverage run on the follow-up code had no seeding failures across all test hosts.
+Updated 2026-11-09 after the follow-up fixes: position sort by name, strict test seeding, the query sweep, outbox claim locking and test isolation. 4e0ce63d changed only test attributes after 13bddf94.
 
-One test is timing-sensitive: `OutboxProcessorConcurrencyIntegrationTests.FourProcessors_…` asserts that at least two of four processors win some messages. It failed once under coverage load, with one processor claiming all 60. Its exactly-once and no-overlap checks are separate. It passed in every other run.
-
-- `verify.ps1` could not run: `../dev-env` does not exist on this machine and `pwsh` is not installed. These are the equivalent raw `dotnet` commands, except that `find-unauthorized-endpoints.ps1` and `security-scan.ps1` did **not** run.
+- `verify.ps1`, `find-unauthorized-endpoints.ps1` and `security-scan.ps1` could not run: `../dev-env` does not exist on this machine and `pwsh` is not installed. Equivalents were run instead:
+  - **Build and tests:** the raw `dotnet` commands above.
+  - **Endpoints:** a reflection scan of the Release API found 752 controller actions, 0 without `[Authorize]` or `[AllowAnonymous]`, and 32 explicitly anonymous. Both SignalR hubs require authorization. The two health checks are anonymous by design. The branch changes no authorization attribute.
+  - **Security:** `semgrep scan` with `p/csharp`, `p/secrets` and `p/sql-injection`, compared with `origin/development`, reported 0 new findings. Semgrep partly skipped 11 files whose newer C# syntax it can't parse, and one rule timed out on `DependencyInjection.cs`. This may not be the exact rule set `security-scan.ps1` uses.
 - The skipped test is `NotificationReleaseSmokeTests.FirstSliceEvent_EndToEnd_AgainstAMigratedDatabase`. It runs only with `NOTIF_SMOKE=1` against a real database, and was opt-in before this work too.
 - CI has not run: the branch has not been pushed.
 
@@ -40,6 +41,8 @@ The API refuses to start without the required collation, `READ_COMMITTED_SNAPSHO
 | The `sa` warning could never fire | The startup warning looked for a PostgreSQL role name | Now detects `sa` |
 | NULLs sorted the opposite way on list screens | Rows with an empty value moved to the other end of the list | Department, position, employee and checklist lists keep the PostgreSQL order; `NullSortOrderTests` covers them |
 | Vulnerable `System.Security.Cryptography.Pkcs` 9.0.4 | High severity advisory | Pinned to 10.0.14; no vulnerable packages remain |
+| Outbox claim locked every claimable row, not just the batch (found 2026-11-09) | Scaled-out instances saw an empty outbox during each claim and stopped sharing work; delivery stayed exactly once | Pending and expired-lease rows claimed by separate index-ordered statements; `OutboxClaimLockingTests` checks only 20 rows stay locked |
+| Tests setting process-wide environment variables outside the host collection (found 2026-11-09) | A parallel test host could read another test's database: one intermittent forgot-password failure | `ReferenceDataParityTests` and the office project tests joined `WebApplicationFactoryCollection` |
 
 ## Behaviour differences to know about
 
@@ -51,7 +54,7 @@ The API refuses to start without the required collation, `READ_COMMITTED_SNAPSHO
 
 ## Known risks
 
-- **Queries with no test (much reduced 2026-11-08).** LINQ translation fails only when a query runs. `QueryTranslationSweepTests` now runs every Infrastructure query method on SQL Server, with 0 failures. Query call sites never run fell from 553 to 37 of 1155. The 37 were read and use only equality and `IN` filters, so they are reviewed, not run. Details: `2026-11-08-sqlserver-query-coverage.md`.
+- **Queries with no test (closed 2026-11-09).** LINQ translation fails only when a query runs. Every one of the 1157 query call sites in Infrastructure has now run on SQL Server (553 had never run before this work), with 0 translation failures. What remains: a query is proven to run, not to return the right rows, and argument-dependent SQL may have run in only one shape. Details: `2026-11-08-sqlserver-query-coverage.md`.
 - **Rollback after a tenant switch.** Production transactions are disposed rather than rolled back, so `RestoreOnRollback` rarely fires. After a failed in-transaction switch, the next connection reapplies the app's tenant context, which is the switched tenant. The earlier "fails closed" wording was wrong. PostgreSQL behaved the same, and the review found no cross-tenant read: the known case is tray enrolment, where that tenant owns the code.
 - **Retry coverage.** The code looks safe, but no test covers a mid-transaction drop or a deadlock retry.
 - **Async close.** `TenantRlsInterceptor` has no async closing override, so safety rests on setting context at open and the pool reset.
