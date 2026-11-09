@@ -15,6 +15,7 @@ using ONEVO.Domain.Features.WorkManagement.Objectives.Entities;
 using ONEVO.Domain.Features.WorkManagement.ProjectMembers.Entities;
 using ONEVO.Domain.Features.WorkManagement.Projects.Entities;
 using Xunit;
+using TaskRateSettingEntity = ONEVO.Domain.Features.WorkManagement.Monitoring.Entities.TaskRateSetting;
 
 namespace ONEVO.Tests.Unit.Features.WorkManagement.Forecast;
 
@@ -141,6 +142,7 @@ public class GetModuleForecastQueryHandlerTests
         // Both need more than the 90% default limit (125% and 200%): overload.
         Assert.Equal((2, 0, 0, 2, 0), (r.Totals.Modules, r.Totals.OnTrack, r.Totals.RaiseRate, r.Totals.Overload, r.Totals.NoHistory));
         Assert.Equal(0.9m, r.Totals.MaxTaskRate);
+        Assert.All(r.Items, i => Assert.Equal(0.9m, i.MaxTaskRate));
         Assert.Equal((200m, 200m, 160m, 80m, 120m), (r.Totals.AllocatedHours, r.Totals.RemainingHours, r.Totals.CapacityHours,
             r.Totals.PredictedHours, r.Totals.OvertimeHours));
         Assert.Equal(0.5m, r.Totals.TeamRate);
@@ -167,6 +169,20 @@ public class GetModuleForecastQueryHandlerTests
         var member = (await Handler().Handle(new GetModuleForecastQuery(), default)).Value!;
         Assert.Empty(member.Items);
         Assert.Equal(0, member.Totals.Modules);
+    }
+
+    [Fact]
+    public async Task EachModule_UsesItsLegalEntitysLimit()
+    {
+        // The project's Legal Entity stores 95%: every item carries the limit it was judged by, read once.
+        _rateSettings.Setup(x => x.GetForLegalEntityAsync(TenantId, LegalEntityId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new TaskRateSettingEntity { TenantId = TenantId, LegalEntityId = LegalEntityId, MaxTaskRate = 0.95m });
+
+        var r = (await Handler().Handle(new GetModuleForecastQuery(), default)).Value!;
+
+        Assert.Equal(0.95m, r.Totals.MaxTaskRate);
+        Assert.All(r.Items, i => Assert.Equal(0.95m, i.MaxTaskRate));
+        _rateSettings.Verify(x => x.GetForLegalEntityAsync(TenantId, LegalEntityId, It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]

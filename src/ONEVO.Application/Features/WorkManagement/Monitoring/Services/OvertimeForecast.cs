@@ -31,7 +31,7 @@ public sealed record ForecastFigures(
 
 /// <summary>
 /// The max task rate: the most of their working time a team can realistically turn into task hours (~90-95%). Needing
-/// more is overload. Stored per tenant in wm_task_rate_settings; no row means <see cref="Default"/>, and stored values
+/// more is overload. Stored per Legal Entity in wm_task_rate_settings; no row means <see cref="Default"/>, and stored values
 /// are clamped to [<see cref="Min"/>, <see cref="Max"/>].
 /// </summary>
 public static class TaskRateLimit

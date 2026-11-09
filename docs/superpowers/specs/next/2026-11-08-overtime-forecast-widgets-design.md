@@ -37,7 +37,7 @@ rateEff       = rate ?? 1
 predicted     = capacity × rateEff
 requiredRate  = remaining / capacity          (may be > 1; null when capacity = 0)
 overtimeHours = max(0, remaining − predicted)     (TASK hours that won't get done in normal hours at the current rate; never > remaining)
-maxTaskRate   = the tenant's limit (wm_task_rate_settings.max_task_rate; no row = 0.90; clamped to 0.5–1.0)
+maxTaskRate   = the Legal Entity's limit (wm_task_rate_settings.max_task_rate; no row = 0.90; clamped to 0.5–1.0)
 status        = on_track    if predicted ≥ remaining
                 raise_rate  if predicted < remaining and requiredRate ≤ maxTaskRate   (UI: "Overtime risk")
                 overload    if requiredRate > maxTaskRate or capacity = 0           (even pushing hard won't finish it)
@@ -47,8 +47,11 @@ overload flag = requiredRate > maxTaskRate or capacity = 0, whatever the history
 
 **Max task rate (2026-11-09, user).** A team realistically converts at most ~90–95% of work hours into task hours.
 Work that needs more is **overload**, which is different from "raise the rate or do overtime". The limit is stored
-per tenant in the tenant-owned table `wm_task_rate_settings` (one row per tenant: `max_task_rate numeric(5,4)`,
-`updated_by_employee_id`). A teammate builds the Settings edit UI later, so there is no edit endpoint yet. The
+**per Legal Entity** in the tenant-owned table `wm_task_rate_settings` (one row per tenant and Legal Entity:
+`legal_entity_id`, `max_task_rate numeric(5,4)`, `updated_by_employee_id`; unique on `tenant_id, legal_entity_id`).
+The engine uses the project's owning Legal Entity (the one the working calendar comes from). Each module item
+carries its project's limit as `maxTaskRate`. Both endpoints' `totals.maxTaskRate` is the viewer's Legal Entity
+limit. A teammate builds the Settings edit UI later, so there is no edit endpoint yet. The
 `overload` status replaces the earlier `overtime` status code.
 
 ## 3. Part 1, backend engine change (Project Monitoring Engine)

@@ -72,7 +72,7 @@ public sealed class CheckModuleCapacityQueryHandler : IRequestHandler<CheckModul
         // Same prediction as the hourly monitor: capacity x the team's pooled 4-week task rate.
         var legalEntity = await _calendars.LegalEntityForProjectAsync(tenantId, query.ProjectId, ct);
         var calendar = WorkCapacityCalculator.FromLegalEntity(legalEntity);
-        var maxTaskRate = TaskRateLimit.Resolve((await _rateSettings.GetForTenantAsync(tenantId, ct))?.MaxTaskRate);
+        var maxTaskRate = await _rateSettings.MaxTaskRateAsync(tenantId, legalEntity?.Id, ct);
         var pooled = people.Where(pooledAllowed.Contains).ToList();
         var pool = (await _rates.ReadAsync(tenantId, legalEntity, pooled, ct)).Pool(pooled);
         // The caller controls the form's numbers, so warnings on a small pool would be an oracle for its rate: below

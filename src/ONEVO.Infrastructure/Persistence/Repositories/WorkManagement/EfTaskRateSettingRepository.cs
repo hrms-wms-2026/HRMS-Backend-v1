@@ -7,18 +7,24 @@ namespace ONEVO.Infrastructure.Persistence.Repositories.WorkManagement;
 
 public sealed class EfTaskRateSettingRepository(ApplicationDbContext db) : ITaskRateSettingRepository
 {
-    public Task<TaskRateSetting?> GetForTenantAsync(Guid tenantId, CancellationToken ct = default)
+    public Task<TaskRateSetting?> GetForLegalEntityAsync(Guid tenantId, Guid legalEntityId, CancellationToken ct = default)
         => db.TaskRateSettings.AsNoTracking()
-            .Where(s => s.TenantId == tenantId && !s.IsDeleted)
+            .Where(s => s.TenantId == tenantId && s.LegalEntityId == legalEntityId && !s.IsDeleted)
             .FirstOrDefaultAsync(ct);
 
-    public async Task<TaskRateSetting> UpsertAsync(Guid tenantId, decimal maxTaskRate, Guid? updatedByEmployeeId, CancellationToken ct = default)
+    public async Task<TaskRateSetting> UpsertAsync(Guid tenantId, Guid legalEntityId, decimal maxTaskRate, Guid? updatedByEmployeeId,
+        CancellationToken ct = default)
     {
         var value = TaskRateLimit.Resolve(maxTaskRate);
-        var row = await db.TaskRateSettings.FirstOrDefaultAsync(s => s.TenantId == tenantId && !s.IsDeleted, ct);
+        var row = await db.TaskRateSettings
+            .FirstOrDefaultAsync(s => s.TenantId == tenantId && s.LegalEntityId == legalEntityId && !s.IsDeleted, ct);
         if (row is null)
         {
-            row = new TaskRateSetting { Id = Guid.NewGuid(), TenantId = tenantId, MaxTaskRate = value, UpdatedByEmployeeId = updatedByEmployeeId };
+            row = new TaskRateSetting
+            {
+                Id = Guid.NewGuid(), TenantId = tenantId, LegalEntityId = legalEntityId, MaxTaskRate = value,
+                UpdatedByEmployeeId = updatedByEmployeeId,
+            };
             await db.TaskRateSettings.AddAsync(row, ct);
             return row;
         }

@@ -141,8 +141,9 @@ public class GetTeamEmployeeForecastQueryHandlerTests
     {
         // Arun needs 75% in his Fri 13 window: raise_rate at the 90% default, overload at a stored 70%.
         _open = [Task(A, ModuleX, Fri13, 30m)];
-        _rateSettings.Setup(x => x.GetForTenantAsync(TenantId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new ONEVO.Domain.Features.WorkManagement.Monitoring.Entities.TaskRateSetting { TenantId = TenantId, MaxTaskRate = 0.70m });
+        _rateSettings.Setup(x => x.GetForLegalEntityAsync(TenantId, LegalEntityId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ONEVO.Domain.Features.WorkManagement.Monitoring.Entities.TaskRateSetting
+                { TenantId = TenantId, LegalEntityId = LegalEntityId, MaxTaskRate = 0.70m });
 
         var r = (await Handler().Handle(new GetTeamEmployeeForecastQuery(Status: ForecastStatuses.Overload), default)).Value!;
 

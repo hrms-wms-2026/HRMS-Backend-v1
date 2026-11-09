@@ -12,7 +12,7 @@ using ONEVO.Infrastructure.Persistence;
 namespace ONEVO.Infrastructure.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    [Migration("20261109042221_AddTaskRateSettingsRlsPolicyCoverage")]
+    [Migration("20261109043340_AddTaskRateSettingsRlsPolicyCoverage")]
     partial class AddTaskRateSettingsRlsPolicyCoverage
     {
         /// <inheritdoc />
@@ -14072,6 +14072,10 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("boolean")
                         .HasColumnName("is_deleted");
 
+                    b.Property<Guid>("LegalEntityId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("legal_entity_id");
+
                     b.Property<decimal>("MaxTaskRate")
                         .HasColumnType("numeric(5,4)")
                         .HasColumnName("max_task_rate");
@@ -14091,9 +14095,9 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasKey("Id")
                         .HasName("pk_wm_task_rate_settings");
 
-                    b.HasIndex("TenantId")
+                    b.HasIndex("TenantId", "LegalEntityId")
                         .IsUnique()
-                        .HasDatabaseName("ux_wm_task_rate_settings_tenant_id");
+                        .HasDatabaseName("ux_wm_task_rate_settings_tenant_id_legal_entity_id");
 
                     b.ToTable("wm_task_rate_settings", (string)null);
                 });

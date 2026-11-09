@@ -49,7 +49,8 @@ public sealed class ProjectMonitorSnapshotLoader : IProjectMonitorSnapshotLoader
     {
         var legalEntity = await _calendars.LegalEntityForProjectAsync(tenantId, projectId, ct);
         var calendar = WorkCapacityCalculator.FromLegalEntity(legalEntity);
-        var maxTaskRate = TaskRateLimit.Resolve((await _rateSettings.GetForTenantAsync(tenantId, ct))?.MaxTaskRate);
+        // The same Legal Entity the working calendar comes from.
+        var maxTaskRate = await _rateSettings.MaxTaskRateAsync(tenantId, legalEntity?.Id, ct);
 
         var objectives = (await _objectives.GetAllByProjectIdAsync(tenantId, projectId, ct))
             .Where(o => o.IsActive && !o.IsDeleted)

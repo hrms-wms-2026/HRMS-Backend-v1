@@ -28,7 +28,7 @@ public sealed record ModuleForecastItem(
     DateOnly StartDate, DateOnly EndDate, int WorkingDaysLeft,
     decimal AllocatedHours, decimal CompletedHours, decimal RemainingHours, decimal CapacityHours,
     decimal? ConversionRate, decimal PredictedHours, decimal? RequiredRate, decimal OvertimeHours,
-    string Status, int MemberCount, IReadOnlyList<ModuleForecastMember> Members);
+    string Status, int MemberCount, decimal MaxTaskRate, IReadOnlyList<ModuleForecastMember> Members);
 
 public sealed record ModuleForecastMember(
     Guid EmployeeId, string Name, Guid? AvatarFileId, decimal? ConversionRate, int WorkedMinutes, int TaskMinutes);

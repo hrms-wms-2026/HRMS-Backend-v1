@@ -33,20 +33,25 @@ No migration and no new table.
   everywhere: the `status` values, the `status` filter and the counts (`totals.overload` instead of
   `totals.overtime`). The `sort=overtime` key stays: it sorts by `overtimeHours`. `overtimeHours` is still
   `max(0, remaining − predicted)`.
-- **`totals.maxTaskRate`** (a fraction, e.g. 0.9) is on both endpoints, so the UI can draw the threshold line.
+- **`totals.maxTaskRate`** (a fraction, e.g. 0.9) is on both endpoints: the viewer's Legal Entity limit, for the
+  chart's threshold line. Each module item also has its own **`maxTaskRate`**: the limit of its project's Legal
+  Entity, the one its status was judged by. The employee endpoint uses the viewer's Legal Entity limit.
 - **Monitor alert details** add `maxTaskRate` and `overload` (true/false). An overloaded module alert reads
   "… h of work remain before Nov 20; overloaded: needs 125% task rate, above the 90% limit." The required rate is
   remaining ÷ capacity and reveals nobody's own rate, so it is printed for any pool size.
-- **Settings table** `wm_task_rate_settings`:
-  - Columns: tenant-owned `BaseEntity` columns, `max_task_rate numeric(5,4)` and `updated_by_employee_id`. Unique
-    index on `tenant_id`.
+- **Settings table** `wm_task_rate_settings` holds the limit **per Legal Entity**:
+  - Columns: tenant-owned `BaseEntity` columns, `legal_entity_id`, `max_task_rate numeric(5,4)` and
+    `updated_by_employee_id`. Unique on (`tenant_id`, `legal_entity_id`). RLS coverage is in place.
   - With no row the code uses 0.90. Read values are clamped to 0.5–1.0.
-  - Repository `ITaskRateSettingRepository`: `GetForTenantAsync`, plus `UpsertAsync` for the Settings UI to come.
-    There is no edit endpoint.
-  - Read once per evaluation by the snapshot loader, and by the module check and both endpoints.
+  - Repository `ITaskRateSettingRepository`: `GetForLegalEntityAsync(tenantId, legalEntityId)`, plus
+    `UpsertAsync(tenantId, legalEntityId, …)` for the Settings UI to come. There is no edit endpoint.
+  - The engine reads the project's owning Legal Entity limit, the same one `WorkCalendar` comes from. It reads it
+    once per evaluation in the snapshot loader, and in the module check.
 - **Migrations (created, NOT applied — the developer applies them):**
-  - `20261109042105_AddTaskRateSettings`
-  - `20261109042221_AddTaskRateSettingsRlsPolicyCoverage` (the standard `tenant_isolation` policy)
+  - `20261109043220_AddTaskRateSettings`
+  - `20261109043340_AddTaskRateSettingsRlsPolicyCoverage` (the standard `tenant_isolation` policy)
+  - An earlier per-tenant pair (`20261109042105_…`, `20261109042221_…`) existed briefly in commit `f172043f`. It
+    was never applied anywhere and is replaced by the pair above.
 
 ## Deviations from the spec contract (frontend, please align)
 
@@ -120,14 +125,14 @@ Individual task rates are performance data, so:
       "startDate": "2026-10-26", "endDate": "2026-11-20", "workingDaysLeft": 10,
       "allocatedHours": 200, "completedHours": 0, "remainingHours": 200, "capacityHours": 160,
       "conversionRate": 0.5, "predictedHours": 80, "requiredRate": 1.25, "overtimeHours": 120,
-      "status": "overload", "memberCount": 2,
+      "status": "overload", "memberCount": 2, "maxTaskRate": 0.9,
       "members": [ { "employeeId": "…", "name": "Kaja", "avatarFileId": null, "conversionRate": 0.5, "workedMinutes": 600, "taskMinutes": 300 },
                    { "employeeId": "…", "name": "Nila", "avatarFileId": null, "conversionRate": 0.5, "workedMinutes": 600, "taskMinutes": 300 } ] },
     { "moduleId": "…", "projectId": "…", "projectName": "Payments", "title": "Card form", "path": "Checkout › Card form",
       "startDate": "2026-10-26", "endDate": "2026-11-13", "workingDaysLeft": 5,
       "allocatedHours": 80, "completedHours": 0, "remainingHours": 80, "capacityHours": 40,
       "conversionRate": 0.5, "predictedHours": 20, "requiredRate": 2, "overtimeHours": 60,
-      "status": "overload", "memberCount": 1, "members": [ … ] }
+      "status": "overload", "memberCount": 1, "maxTaskRate": 0.9, "members": [ … ] }
   ],
   "total": 2, "page": 1, "pageSize": 10
 }

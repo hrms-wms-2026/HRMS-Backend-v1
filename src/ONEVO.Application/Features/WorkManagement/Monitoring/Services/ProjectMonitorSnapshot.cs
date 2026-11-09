@@ -39,8 +39,8 @@ public sealed record MonitorTask(
     decimal? EstimatedHours, decimal CompletedHours, bool IsComplete, decimal ClockedHours, IReadOnlyList<Guid> AssigneeIds);
 
 /// <summary>Everything the monitor rules read about one project, loaded once. Rates = the 4-week conversion rate of
-/// every member, owner and assignee (null = none known: every rule assumes 100%). MaxTaskRate = the tenant's overload
-/// threshold (wm_task_rate_settings, read once per evaluation).</summary>
+/// every member, owner and assignee (null = none known: every rule assumes 100%). MaxTaskRate = the overload threshold
+/// of the project's owning Legal Entity (wm_task_rate_settings, read once per evaluation).</summary>
 public sealed record ProjectMonitorSnapshot(
     Guid ProjectId, WorkCalendar Calendar,
     IReadOnlyList<MonitorModule> Modules, IReadOnlyList<MonitorSprint> Sprints, IReadOnlyList<MonitorTask> Tasks,

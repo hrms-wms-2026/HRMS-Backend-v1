@@ -68,7 +68,9 @@ public sealed class GetModuleForecastQueryHandler(
 
         var today = AttendanceScheduleResolver.Resolve(legalEntity, clock.UtcNow).WorkDate;
         var calendar = WorkCapacityCalculator.FromLegalEntity(legalEntity);
-        var maxTaskRate = TaskRateLimit.Resolve((await rateSettings.GetForTenantAsync(tenantId, ct))?.MaxTaskRate);
+        // totals.maxTaskRate = the viewer's Legal Entity limit (the chart line); each module uses its project's own.
+        var maxTaskRate = await rateSettings.MaxTaskRateAsync(tenantId, legalEntityId, ct);
+        var limitByLegalEntity = new Dictionary<Guid, decimal> { [legalEntityId] = maxTaskRate };
 
         // Relationship-based access, evaluated in bulk: projects the viewer is a member of (a lead holds a membership)
         // and owned Modules give the candidate projects.
@@ -98,6 +100,10 @@ public sealed class GetModuleForecastQueryHandler(
                 candidates.Add((module, project, PathOf(tree, module), ModuleManpower.People(tree, module.Id, membersByModule), tree));
         }
 
+        foreach (var owningLegalEntityId in visibleProjects.Select(p => p.OwningLegalEntityId).Distinct())
+            if (!limitByLegalEntity.ContainsKey(owningLegalEntityId))
+                limitByLegalEntity[owningLegalEntityId] = await rateSettings.MaxTaskRateAsync(tenantId, owningLegalEntityId, ct);
+
         var rateSet = await rates.ReadAsync(tenantId, legalEntity, candidates.SelectMany(c => c.People).ToHashSet(), ct);
         var listedIds = candidates.Select(c => c.Module.Id).ToHashSet();
         var rows = candidates.Select(c =>
@@ -106,7 +112,8 @@ public sealed class GetModuleForecastQueryHandler(
             var people = Math.Max(1, c.People.Count);
             var pooled = rateSet.Pool(c.People);
             var figures = OvertimeForecast.Compute(
-                c.Module.AllocatedHours - c.Module.CompletedHours, calendar.Capacity(people, from, c.Module.EndDate), pooled.Rate, maxTaskRate);
+                c.Module.AllocatedHours - c.Module.CompletedHours, calendar.Capacity(people, from, c.Module.EndDate), pooled.Rate,
+                limitByLegalEntity[c.Project.OwningLegalEntityId]);
             var topMost = !c.Tree.AncestorChain(c.Module.Id).Skip(1).Any(a => listedIds.Contains(a.Id));
             return new Row(c.Module, c.Project, c.Path, c.People, pooled, figures,
                 calendar.WorkingDaysBetween(from, c.Module.EndDate), topMost);
@@ -173,6 +180,7 @@ public sealed class GetModuleForecastQueryHandler(
             ForecastRounding.Hours(r.Figures.Remaining), ForecastRounding.Hours(r.Figures.Capacity),
             ForecastRounding.Rate(r.Figures.Rate), ForecastRounding.Hours(r.Figures.Predicted), ForecastRounding.Rate(r.Figures.RequiredRate),
             ForecastRounding.Hours(r.Figures.OvertimeHours), r.Figures.Status, r.People.Count,
+            limitByLegalEntity[r.Project.OwningLegalEntityId],
             r.People.Select(id =>
                 {
                     identities.TryGetValue(id, out var identity);

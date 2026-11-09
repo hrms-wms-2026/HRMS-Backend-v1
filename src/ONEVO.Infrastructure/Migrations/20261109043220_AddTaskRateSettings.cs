@@ -16,6 +16,7 @@ namespace ONEVO.Infrastructure.Migrations
                 columns: table => new
                 {
                     id = table.Column<Guid>(type: "uuid", nullable: false),
+                    legal_entity_id = table.Column<Guid>(type: "uuid", nullable: false),
                     max_task_rate = table.Column<decimal>(type: "numeric(5,4)", nullable: false),
                     updated_by_employee_id = table.Column<Guid>(type: "uuid", nullable: true),
                     tenant_id = table.Column<Guid>(type: "uuid", nullable: false),
@@ -31,9 +32,9 @@ namespace ONEVO.Infrastructure.Migrations
                 });
 
             migrationBuilder.CreateIndex(
-                name: "ux_wm_task_rate_settings_tenant_id",
+                name: "ux_wm_task_rate_settings_tenant_id_legal_entity_id",
                 table: "wm_task_rate_settings",
-                column: "tenant_id",
+                columns: new[] { "tenant_id", "legal_entity_id" },
                 unique: true);
         }
 

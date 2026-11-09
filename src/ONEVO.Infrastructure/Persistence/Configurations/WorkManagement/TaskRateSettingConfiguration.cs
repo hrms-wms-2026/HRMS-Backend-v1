@@ -12,9 +12,9 @@ public class TaskRateSettingConfiguration : IEntityTypeConfiguration<TaskRateSet
         builder.HasKey(s => s.Id);
         builder.Property(s => s.MaxTaskRate).HasColumnType("numeric(5,4)").IsRequired();
 
-        // One row per tenant.
-        builder.HasIndex(s => s.TenantId)
-            .HasDatabaseName("ux_wm_task_rate_settings_tenant_id")
+        // One row per Legal Entity.
+        builder.HasIndex(s => new { s.TenantId, s.LegalEntityId })
+            .HasDatabaseName("ux_wm_task_rate_settings_tenant_id_legal_entity_id")
             .IsUnique();
     }
 }

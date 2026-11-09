@@ -61,7 +61,8 @@ public sealed class GetTeamEmployeeForecastQueryHandler(
 
         var today = AttendanceScheduleResolver.Resolve(legalEntity, clock.UtcNow).WorkDate;
         var calendar = WorkCapacityCalculator.FromLegalEntity(legalEntity);
-        var maxTaskRate = TaskRateLimit.Resolve((await rateSettings.GetForTenantAsync(tenantId, ct))?.MaxTaskRate);
+        // The viewer's Legal Entity: the population and the tasks are scoped to it.
+        var maxTaskRate = await rateSettings.MaxTaskRateAsync(tenantId, legalEntityId, ct);
         var covered = await CoveredTeam.CoveredEmployeeIdsAsync(authority, currentUser.UserId, legalEntityId, actor.Id, ct);
 
         IReadOnlyDictionary<Guid, AttendanceHistoryEmployee> identities = new Dictionary<Guid, AttendanceHistoryEmployee>();
