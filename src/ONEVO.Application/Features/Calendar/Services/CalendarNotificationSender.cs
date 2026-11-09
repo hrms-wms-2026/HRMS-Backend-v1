@@ -33,7 +33,7 @@ public sealed class CalendarNotificationSender(
                 OutboxMessageTypes.WorkNotification,
                 new WorkNotificationPayload(
                     tenantId, employee.UserId, "calendar_event_participant_added",
-                    new Dictionary<string, string> { ["organizerName"] = organizerName, ["eventTitle"] = eventTitle, ["eventDate"] = startDate.ToString("u") },
+                    new Dictionary<string, string> { ["organizerName"] = organizerName, ["eventTitle"] = eventTitle, ["eventDate"] = FormatStart(startDate, ics?.TimeZoneId, "dddd, MMMM d, yyyy 'at' h:mm tt") },
                     "calendar_event", null, EventId: Guid.NewGuid()),
                 tenantId, ct);
 
@@ -210,15 +210,14 @@ public sealed class CalendarNotificationSender(
 
     public async Task NotifyEventReminderAsync(Guid tenantId, Guid userId, string eventTitle, DateTimeOffset startDate, string? timeZoneId, CancellationToken ct = default)
         => await InAppAsync(tenantId, userId, "calendar_event_reminder",
-            new Dictionary<string, string> { ["eventTitle"] = eventTitle, ["eventTime"] = FormatReminderTime(startDate, timeZoneId) }, ct);
+            new Dictionary<string, string> { ["eventTitle"] = eventTitle, ["eventTime"] = FormatStart(startDate, timeZoneId, "h:mm tt") }, ct);
 
     /// <summary>The start as people read it, in the event's own zone and named so; UTC when the zone is missing or unknown.</summary>
-    private static string FormatReminderTime(DateTimeOffset start, string? timeZoneId)
+    private static string FormatStart(DateTimeOffset start, string? timeZoneId, string format)
     {
         if (string.IsNullOrWhiteSpace(timeZoneId) || !TimeZoneInfo.TryFindSystemTimeZoneById(timeZoneId, out var zone))
-            return string.Create(CultureInfo.InvariantCulture, $"{start.UtcDateTime:h:mm tt} UTC");
-        var local = TimeZoneInfo.ConvertTime(start, zone);
-        return string.Create(CultureInfo.InvariantCulture, $"{local:h:mm tt} ({timeZoneId})");
+            return $"{start.UtcDateTime.ToString(format, CultureInfo.InvariantCulture)} UTC";
+        return $"{TimeZoneInfo.ConvertTime(start, zone).ToString(format, CultureInfo.InvariantCulture)} ({timeZoneId})";
     }
 
     public async Task QueueIncidentEvaluationAsync(Guid tenantId, IReadOnlyCollection<Guid> employeeIds, CancellationToken ct = default)

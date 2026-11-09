@@ -78,7 +78,7 @@ public sealed class MeetingNotifierTests
         Assert.Equal((_series.Id, "FREQ=WEEKLY", (DateTimeOffset?)null), (ics!.EventId, ics.RecurrenceRule, ics.RecurrenceId));
         _sender.Verify(s => s.NotifyParticipantsAddedAsync(Tenant, "Weekly sync", Start, "Room 4",
             It.Is<IReadOnlyList<Guid>>(ids => ids.SequenceEqual(new[] { _attendeeRow.EmployeeId })), "Ada Lead", It.IsAny<CancellationToken>(),
-            null, false, It.IsAny<CalendarEventIcs?>()), Times.Once);
+            null, false, It.Is<CalendarEventIcs?>(i => i != null && i.TimeZoneId == _series.Timezone)), Times.Once);
     }
 
     [Fact]
@@ -182,5 +182,19 @@ public sealed class MeetingNotifierTests
         Assert.Equal(CalendarIcs.Sequence(Now), series.Sequence);
         // Both carry the series' zone, so the .ics keeps the local time across DST (Plan C minor M5).
         Assert.Equal((_series.Timezone, _series.Timezone), (series.TimeZoneId, one.TimeZoneId));
+    }
+
+    [Fact]
+    public async Task InviteToOccurrenceAsync_GivesTheInAppNoticeTheSeriesZone()
+    {
+        var occurrence = Occurrence();
+
+        await Sut().InviteToOccurrenceAsync(_series, occurrence, "Weekly sync",
+            [new MeetingOccurrenceAttendee { Id = Guid.NewGuid(), TenantId = Tenant, OccurrenceTaskId = occurrence.TaskId, EmployeeId = _attendeeRow.EmployeeId }],
+            CancellationToken.None);
+
+        _sender.Verify(s => s.NotifyParticipantsAddedAsync(Tenant, "Weekly sync", occurrence.StartAt, It.IsAny<string?>(),
+            It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<string>(), It.IsAny<CancellationToken>(), It.IsAny<string?>(), false,
+            It.Is<CalendarEventIcs?>(i => i != null && i.TimeZoneId == _series.Timezone)), Times.Once);
     }
 }

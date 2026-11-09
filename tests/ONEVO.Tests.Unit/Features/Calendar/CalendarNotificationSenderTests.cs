@@ -257,4 +257,21 @@ public sealed class CalendarNotificationSenderTests
                 && p.Placeholders["eventTitle"] == "test meeting" && p.Placeholders["eventTime"] == expected),
             TenantId, It.IsAny<CancellationToken>()), Times.Once);
     }
+
+    [Theory]
+    [InlineData("Asia/Colombo", "Monday, November 9, 2026 at 4:15 PM (Asia/Colombo)")]
+    [InlineData(null, "Monday, November 9, 2026 at 10:45 AM UTC")]
+    public async Task NotifyParticipantsAddedAsync_ShowsTheDateReadablyInTheEventsZone(string? timeZoneId, string expected)
+    {
+        var start = new DateTimeOffset(2026, 11, 9, 10, 45, 0, TimeSpan.Zero);
+        var ics = timeZoneId is null ? null : new CalendarEventIcs(Guid.NewGuid(), start.AddMinutes(30), 1, TimeZoneId: timeZoneId);
+
+        await BuildSut().NotifyParticipantsAddedAsync(TenantId, "test meeting", start, null, [EmployeeId], "Ada Owner", CancellationToken.None,
+            sendInviteEmail: false, ics: ics);
+
+        _outbox.Verify(x => x.EnqueueAsync(
+            OutboxMessageTypes.WorkNotification,
+            It.Is<WorkNotificationPayload>(p => p.TemplateCode == "calendar_event_participant_added" && p.Placeholders["eventDate"] == expected),
+            TenantId, It.IsAny<CancellationToken>()), Times.Once);
+    }
 }

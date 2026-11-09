@@ -97,7 +97,7 @@ public sealed class MeetingNotifier : IMeetingNotifier
         var joinUrl = JoinUrl(link);
         if (invitees.Count > 0)
             await _sender.NotifyParticipantsAddedAsync(series.TenantId, series.Title, series.DtStart, series.Location,
-                invitees.Select(p => p.EmployeeId).ToList(), organizer, ct, joinUrl, sendInviteEmail: false);
+                invitees.Select(p => p.EmployeeId).ToList(), organizer, ct, joinUrl, sendInviteEmail: false, ics: MeetingIcs.ForSeries(series, _clock.UtcNow));
         await _sender.SendMeetingLinkAsync(series.TenantId, series.Title, series.DtStart, series.Location,
             invitees.Select(p => new CalendarParticipantRecipient(p.EmployeeId, reinvited is not null && reinvited.TryGetValue(p.Id, out var removedAt)
                 ? CalendarEmailKeys.ReInvite(p.Id, removedAt) : CalendarEmailKeys.Invite(p.Id))).ToList(),
@@ -117,7 +117,7 @@ public sealed class MeetingNotifier : IMeetingNotifier
         var joinUrl = JoinUrl(await _links.GetActiveForSeriesAsync(series.TenantId, series.Id, ct));
         if (employees.Count > 0)
             await _sender.NotifyParticipantsAddedAsync(series.TenantId, title, occurrence.StartAt, occurrence.Location,
-                employees.Select(a => a.EmployeeId!.Value).ToList(), organizer, ct, joinUrl, sendInviteEmail: false);
+                employees.Select(a => a.EmployeeId!.Value).ToList(), organizer, ct, joinUrl, sendInviteEmail: false, ics: MeetingIcs.ForOccurrence(series, occurrence, _clock.UtcNow));
         await _sender.SendMeetingLinkAsync(series.TenantId, title, occurrence.StartAt, occurrence.Location,
             employees.Select(a => new CalendarParticipantRecipient(a.EmployeeId!.Value, CalendarEmailKeys.Invite(a.Id))).ToList(),
             guests.Select(a => new CalendarGuestRecipient(a.Email!, CalendarEmailKeys.Invite(a.Id))).ToList(),
