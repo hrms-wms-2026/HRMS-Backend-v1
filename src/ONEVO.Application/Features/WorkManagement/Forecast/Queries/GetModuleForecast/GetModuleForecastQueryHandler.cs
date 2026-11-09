@@ -8,6 +8,7 @@ using ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces;
 using ONEVO.Application.Features.TimeAttendance.Services;
 using ONEVO.Application.Features.WorkManagement.Forecast.DTOs;
 using ONEVO.Application.Features.WorkManagement.Hierarchy;
+using ONEVO.Application.Features.WorkManagement.Monitoring.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Monitoring.Services;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
@@ -35,7 +36,8 @@ public sealed class GetModuleForecastQueryHandler(
     IProjectMemberRepository members,
     IConversionRateReader rates,
     IAttendanceReadRepository attendance,
-    IDateTimeProvider clock)
+    IDateTimeProvider clock,
+    ITaskRateSettingRepository rateSettings)
     : IRequestHandler<GetModuleForecastQuery, Result<ModuleForecastResponse>>
 {
     public static readonly IReadOnlyList<string> Sorts = ["overtime", "requiredRate", "endDate", "name"];
@@ -66,6 +68,7 @@ public sealed class GetModuleForecastQueryHandler(
 
         var today = AttendanceScheduleResolver.Resolve(legalEntity, clock.UtcNow).WorkDate;
         var calendar = WorkCapacityCalculator.FromLegalEntity(legalEntity);
+        var maxTaskRate = TaskRateLimit.Resolve((await rateSettings.GetForTenantAsync(tenantId, ct))?.MaxTaskRate);
 
         // Relationship-based access, evaluated in bulk: projects the viewer is a member of (a lead holds a membership)
         // and owned Modules give the candidate projects.
@@ -103,7 +106,7 @@ public sealed class GetModuleForecastQueryHandler(
             var people = Math.Max(1, c.People.Count);
             var pooled = rateSet.Pool(c.People);
             var figures = OvertimeForecast.Compute(
-                c.Module.AllocatedHours - c.Module.CompletedHours, calendar.Capacity(people, from, c.Module.EndDate), pooled.Rate);
+                c.Module.AllocatedHours - c.Module.CompletedHours, calendar.Capacity(people, from, c.Module.EndDate), pooled.Rate, maxTaskRate);
             var topMost = !c.Tree.AncestorChain(c.Module.Id).Skip(1).Any(a => listedIds.Contains(a.Id));
             return new Row(c.Module, c.Project, c.Path, c.People, pooled, figures,
                 calendar.WorkingDaysBetween(from, c.Module.EndDate), topMost);
@@ -116,7 +119,7 @@ public sealed class GetModuleForecastQueryHandler(
             rows.Count,
             rows.Count(r => r.Figures.Status == ForecastStatuses.OnTrack),
             rows.Count(r => r.Figures.Status == ForecastStatuses.RaiseRate),
-            rows.Count(r => r.Figures.Status == ForecastStatuses.Overtime),
+            rows.Count(r => r.Figures.Status == ForecastStatuses.Overload),
             rows.Count(r => r.Figures.Status == ForecastStatuses.NoHistory),
             ForecastRounding.Hours(top.Sum(r => r.Module.AllocatedHours)),
             ForecastRounding.Hours(top.Sum(r => r.Module.CompletedHours)),
@@ -125,7 +128,8 @@ public sealed class GetModuleForecastQueryHandler(
             ForecastRounding.Hours(top.Sum(r => r.Figures.Predicted)),
             ForecastRounding.Hours(top.Sum(r => r.Figures.OvertimeHours)),
             ForecastRounding.Rate(rateSet.Pool(top.SelectMany(r => r.People)).Rate),
-            ForecastRounding.Rate(totalCapacity > 0 ? totalRemaining / totalCapacity : null));
+            ForecastRounding.Rate(totalCapacity > 0 ? totalRemaining / totalCapacity : null),
+            maxTaskRate);
 
         var projectBars = rows.GroupBy(r => r.Project.Id)
             .Select(g =>
@@ -137,7 +141,7 @@ public sealed class GetModuleForecastQueryHandler(
                     ForecastRounding.Hours(heads.Sum(r => r.Figures.Predicted)),
                     ForecastRounding.Hours(heads.Sum(r => r.Figures.Capacity)),
                     ForecastRounding.Hours(heads.Sum(r => r.Figures.OvertimeHours)),
-                    g.Count(r => r.Figures.Status is ForecastStatuses.RaiseRate or ForecastStatuses.Overtime));
+                    g.Count(r => r.Figures.Status is ForecastStatuses.RaiseRate or ForecastStatuses.Overload));
             })
             .OrderByDescending(p => p.OvertimeHours).ThenBy(p => p.Name, StringComparer.OrdinalIgnoreCase)
             .ToList();

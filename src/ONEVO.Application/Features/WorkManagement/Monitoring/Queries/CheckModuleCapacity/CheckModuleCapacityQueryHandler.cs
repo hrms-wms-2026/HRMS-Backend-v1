@@ -3,6 +3,7 @@ using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Hierarchy;
 using ONEVO.Application.Features.WorkManagement.Monitoring.DTOs;
+using ONEVO.Application.Features.WorkManagement.Monitoring.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Monitoring.Services;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
@@ -17,11 +18,14 @@ public sealed class CheckModuleCapacityQueryHandler : IRequestHandler<CheckModul
     private readonly IProjectMemberRepository _members;
     private readonly IDateTimeProvider _clock;
     private readonly IConversionRateReader _rates;
+    private readonly ITaskRateSettingRepository _rateSettings;
 
     public CheckModuleCapacityQueryHandler(
         IProjectMonitorCallerResolver callers, IWorkCalendarResolver calendars, IObjectiveRepository objectives,
-        IProjectMemberRepository members, IDateTimeProvider clock, IConversionRateReader rates)
+        IProjectMemberRepository members, IDateTimeProvider clock, IConversionRateReader rates,
+        ITaskRateSettingRepository rateSettings)
     {
+        _rateSettings = rateSettings;
         _rates = rates;
         _callers = callers;
         _calendars = calendars;
@@ -68,6 +72,7 @@ public sealed class CheckModuleCapacityQueryHandler : IRequestHandler<CheckModul
         // Same prediction as the hourly monitor: capacity x the team's pooled 4-week task rate.
         var legalEntity = await _calendars.LegalEntityForProjectAsync(tenantId, query.ProjectId, ct);
         var calendar = WorkCapacityCalculator.FromLegalEntity(legalEntity);
+        var maxTaskRate = TaskRateLimit.Resolve((await _rateSettings.GetForTenantAsync(tenantId, ct))?.MaxTaskRate);
         var pooled = people.Where(pooledAllowed.Contains).ToList();
         var pool = (await _rates.ReadAsync(tenantId, legalEntity, pooled, ct)).Pool(pooled);
         // The caller controls the form's numbers, so warnings on a small pool would be an oracle for its rate: below
@@ -79,8 +84,8 @@ public sealed class CheckModuleCapacityQueryHandler : IRequestHandler<CheckModul
 
         var warnings = new[]
             {
-                ProjectMonitorRules.ModuleOverCapacity(module, calendar),
-                ProjectMonitorRules.ModuleCapacityShortfall(module, calendar, _clock.Today)
+                ProjectMonitorRules.ModuleOverCapacity(module, calendar, maxTaskRate),
+                ProjectMonitorRules.ModuleCapacityShortfall(module, calendar, _clock.Today, maxTaskRate)
             }
             .OfType<MonitorFinding>()
             .Take(1)   // over capacity already implies the shortfall; show the planning problem only

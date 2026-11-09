@@ -56,17 +56,57 @@ public class ProjectMonitorRulesTests
         var finding = ProjectMonitorRules.ModuleOverCapacity(Module(allocated: 500m, rate: null), Cal)!;
         Assert.Equal("none", finding.Details["rateSource"]);
         Assert.Null(finding.Details["conversionRate"]);
-        Assert.DoesNotContain("task rate", finding.Message);
+        // 500h on 400h needs 125% even at full rate: over the 90% limit, so it reads as overloaded.
+        Assert.Equal("Allocated 500 h between Oct 5 and Oct 16; overloaded: needs 125% task rate, above the 90% limit.", finding.Message);
+        Assert.Equal(true, finding.Details["overload"]);
     }
 
     [Fact]
     public void ModuleRate_IsNotPrintedForPoolsUnderThree_ButStillDrivesTheRule()
     {
-        var finding = ProjectMonitorRules.ModuleCapacityShortfall(Module(allocated: 100m, members: 2, rate: 0.4m), Cal, Mon12)!;
+        // 2 x 5 x 8 = 80h x 40% = 32h; 60h left needs 75%, under the limit.
+        var finding = ProjectMonitorRules.ModuleCapacityShortfall(Module(allocated: 60m, members: 2, rate: 0.4m), Cal, Mon12)!;
 
         Assert.DoesNotContain("40%", finding.Message);
-        Assert.Equal("100 h of work remain, more than the team is likely to complete before Oct 16 at its task rate of the last 4 weeks.", finding.Message);
-        Assert.Equal(32m, finding.Details["predictedHours"]);   // 2 x 5 x 8 = 80h x 40%
+        Assert.Equal("60 h of work remain, more than the team is likely to complete before Oct 16 at its task rate of the last 4 weeks.", finding.Message);
+        Assert.Equal(32m, finding.Details["predictedHours"]);
+    }
+
+    [Fact]
+    public void Shortfall_NeedingMoreThanTheLimit_SaysOverloaded()
+    {
+        // Mon 12 -> Fri 16: 200h capacity; 190h left needs 95%, above the 90% limit.
+        var finding = ProjectMonitorRules.ModuleCapacityShortfall(Module(allocated: 190m, rate: 0.5m), Cal, Mon12, maxTaskRate: 0.9m)!;
+
+        Assert.Equal("190 h of work remain before Oct 16; overloaded: needs 95% task rate, above the 90% limit.", finding.Message);
+        Assert.Equal(true, finding.Details["overload"]);
+        Assert.Equal(0.9m, finding.Details["maxTaskRate"]);
+        Assert.Equal(90m, finding.Details["overtimeHours"]);   // 190 - 100 predicted
+
+        var under = ProjectMonitorRules.ModuleCapacityShortfall(Module(allocated: 190m, rate: 0.5m), Cal, Mon12, maxTaskRate: 1m)!;
+        Assert.Equal(false, under.Details["overload"]);
+        Assert.DoesNotContain("overloaded", under.Message);
+    }
+
+    [Fact]
+    public void Evaluate_UsesTheSnapshotsMaxTaskRate()
+    {
+        var module = Module(allocated: 190m, rate: 0.5m, start: Mon12);
+        var snapshot = new ProjectMonitorSnapshot(Guid.NewGuid(), Cal, [module], [], [], null, MaxTaskRate: 0.95m);
+
+        // Mon 12 -> Fri 16 is the module's whole span, so the planning rule reports it: 190h on 200h = 95%.
+        var finding = ProjectMonitorRules.Evaluate(snapshot, Mon12).Single(f => f.RuleCode == MonitorRuleCodes.ModuleOverCapacity);
+
+        Assert.Equal(false, finding.Details["overload"]);   // exactly at a 95% limit: not overload
+        Assert.Equal(0.95m, finding.Details["maxTaskRate"]);
+    }
+
+    [Fact]
+    public void Overload_EmployeeDetailsCarryTheLimit()
+    {
+        var finding = ProjectMonitorRules.EmployeeDeadlineOverload(Emp, [Task(Fri9, 39m)], Cal, Mon5, rate: 0.5m, maxTaskRate: 0.9m).Single();
+        Assert.Equal(true, finding.Details["overload"]);   // 39 / 40 = 97.5%
+        Assert.Equal(0.9m, finding.Details["maxTaskRate"]);
     }
 
     [Fact]

@@ -51,19 +51,19 @@ public class OvertimeForecastTests
     }
 
     [Fact]
-    public void Compute_CannotFitEvenAtFullRate_Overtime()
+    public void Compute_CannotFitEvenAtFullRate_Overload()
     {
         var f = OvertimeForecast.Compute(remaining: 120m, capacity: 100m, rate: 0.5m);
-        Assert.Equal(ForecastStatuses.Overtime, f.Status);
+        Assert.Equal(ForecastStatuses.Overload, f.Status);
         Assert.Equal(1.2m, f.RequiredRate);
         Assert.Equal(70m, f.OvertimeHours);
     }
 
     [Fact]
-    public void Compute_NoCapacityLeft_OvertimeWithNullRequiredRate()
+    public void Compute_NoCapacityLeft_OverloadWithNullRequiredRate()
     {
         var f = OvertimeForecast.Compute(remaining: 10m, capacity: 0m, rate: 0.5m);
-        Assert.Equal(ForecastStatuses.Overtime, f.Status);
+        Assert.Equal(ForecastStatuses.Overload, f.Status);
         Assert.Null(f.RequiredRate);
         Assert.Equal(10m, f.OvertimeHours);
     }
@@ -126,15 +126,68 @@ public class OvertimeForecastTests
         Assert.Equal(Mon5, w.Deadline);
         Assert.Equal((20m, 8m, 4m, 16m), (w.Figures.Remaining, w.Figures.Capacity, w.Figures.Predicted, w.Figures.OvertimeHours));
         Assert.Equal(2.5m, w.RequiredRate);
-        Assert.Equal(ForecastStatuses.Overtime, w.Status);
+        Assert.Equal(ForecastStatuses.Overload, w.Status);
     }
 
     [Fact]
-    public void EmployeeWindows_AnyWindowOverFullRate_StatusOvertime()
+    public void EmployeeWindows_AnyWindowOverTheLimit_StatusOverload()
     {
         var w = OvertimeForecast.EmployeeWindows([(Fri9, 45m), (Fri16, 1m)], Cal, Mon5, 0.9m)!;
-        Assert.Equal(ForecastStatuses.Overtime, w.Status);
+        Assert.Equal(ForecastStatuses.Overload, w.Status);
         Assert.True(w.RequiredRate > 1m);
+    }
+
+    // --- the max task rate (overload threshold) ---
+
+    [Fact]
+    public void Compute_RequiredExactlyAtTheLimit_IsRaiseRate_NotOverload()
+    {
+        var f = OvertimeForecast.Compute(remaining: 90m, capacity: 100m, rate: 0.5m, maxTaskRate: 0.9m);
+        Assert.Equal(ForecastStatuses.RaiseRate, f.Status);
+        Assert.False(f.Overload);
+        Assert.Equal(40m, f.OvertimeHours);
+    }
+
+    [Fact]
+    public void Compute_RequiredAboveTheLimit_IsOverload_EvenUnderFullRate()
+    {
+        var f = OvertimeForecast.Compute(remaining: 95m, capacity: 100m, rate: 0.5m, maxTaskRate: 0.9m);
+        Assert.Equal(ForecastStatuses.Overload, f.Status);
+        Assert.True(f.Overload);
+        Assert.Equal(45m, f.OvertimeHours);   // overtime hours are unchanged by the limit
+        Assert.Equal(ForecastStatuses.RaiseRate, OvertimeForecast.Compute(95m, 100m, 0.5m, maxTaskRate: 1m).Status);
+    }
+
+    [Fact]
+    public void Compute_NoCapacity_IsOverload_AndNoHistoryStillFlagsOverload()
+    {
+        Assert.Equal(ForecastStatuses.Overload, OvertimeForecast.Compute(10m, 0m, 0.5m, maxTaskRate: 0.9m).Status);
+        var none = OvertimeForecast.Compute(95m, 100m, rate: null, maxTaskRate: 0.9m);
+        Assert.Equal(ForecastStatuses.NoHistory, none.Status);
+        Assert.True(none.Overload);
+    }
+
+    [Fact]
+    public void Compute_DefaultLimit_Is90Percent()
+    {
+        Assert.Equal(ForecastStatuses.RaiseRate, OvertimeForecast.Compute(90m, 100m, 0.5m).Status);
+        Assert.Equal(ForecastStatuses.Overload, OvertimeForecast.Compute(91m, 100m, 0.5m).Status);
+    }
+
+    [Theory]
+    [InlineData(null, 0.90)]    // no settings row
+    [InlineData(0.95, 0.95)]
+    [InlineData(0.30, 0.50)]    // clamped up
+    [InlineData(1.20, 1.00)]    // clamped down
+    public void TaskRateLimit_DefaultsAndClamps(double? stored, double expected)
+        => Assert.Equal((decimal)expected, TaskRateLimit.Resolve(stored is { } v ? (decimal)v : null));
+
+    [Fact]
+    public void EmployeeWindows_UseTheLimit()
+    {
+        // Fri 9 window: 40h capacity, 37h due -> required 0.925: overload at 90%, raise_rate at 95%.
+        Assert.Equal(ForecastStatuses.Overload, OvertimeForecast.EmployeeWindows([(Fri9, 37m)], Cal, Mon5, 0.5m, 0.9m)!.Status);
+        Assert.Equal(ForecastStatuses.RaiseRate, OvertimeForecast.EmployeeWindows([(Fri9, 37m)], Cal, Mon5, 0.5m, 0.95m)!.Status);
     }
 
     [Fact]

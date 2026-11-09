@@ -40,6 +40,7 @@ public class GetTeamEmployeeForecastQueryHandlerTests
     private readonly Mock<IConversionRateReader> _rates = new();
     private readonly Mock<IForecastTaskReader> _tasks = new();
     private readonly Mock<IDateTimeProvider> _clock = new();
+    private readonly Mock<ONEVO.Application.Features.WorkManagement.Monitoring.RepositoryInterfaces.ITaskRateSettingRepository> _rateSettings = new();
     private List<ForecastOpenTask> _open = [];
 
     public GetTeamEmployeeForecastQueryHandlerTests()
@@ -80,7 +81,7 @@ public class GetTeamEmployeeForecastQueryHandlerTests
             due, estimate, completed, assignees);
 
     private GetTeamEmployeeForecastQueryHandler Handler() => new(_user.Object, _employees.Object, _legalEntities.Object, _authority.Object,
-        _attendance.Object, _rates.Object, _tasks.Object, _clock.Object);
+        _attendance.Object, _rates.Object, _tasks.Object, _clock.Object, _rateSettings.Object);
 
     [Fact]
     public async Task WithoutAttendanceRead_IsForbidden()
@@ -127,11 +128,27 @@ public class GetTeamEmployeeForecastQueryHandlerTests
         // Chitra: under an hour of attendance and nothing due -> on_track (no tasks beats no history).
         Assert.Equal(ForecastStatuses.OnTrack, r.Items.Single(i => i.Name == "Chitra").Status);
 
-        Assert.Equal((3, 2, 1, 0, 0), (r.Totals.People, r.Totals.OnTrack, r.Totals.RaiseRate, r.Totals.Overtime, r.Totals.NoHistory));
+        Assert.Equal((3, 2, 1, 0, 0), (r.Totals.People, r.Totals.OnTrack, r.Totals.RaiseRate, r.Totals.Overload, r.Totals.NoHistory));
+        Assert.Equal(0.9m, r.Totals.MaxTaskRate);   // no settings row: the default
         Assert.Equal((30m, 40m, 20m, 10m), (r.Totals.RemainingHours, r.Totals.CapacityHours, r.Totals.PredictedHours, r.Totals.OvertimeHours));
         Assert.Equal(0.75m, r.Totals.RequiredRate);   // 30 / 40, from the same binding windows as the rows
         Assert.Equal(Math.Round(900m / 1230m, 4), r.Totals.TeamRate);
         Assert.Equal(4, r.RateTrend.Count);
+    }
+
+    [Fact]
+    public async Task TheTenantsMaxTaskRate_DecidesOverload()
+    {
+        // Arun needs 75% in his Fri 13 window: raise_rate at the 90% default, overload at a stored 70%.
+        _open = [Task(A, ModuleX, Fri13, 30m)];
+        _rateSettings.Setup(x => x.GetForTenantAsync(TenantId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ONEVO.Domain.Features.WorkManagement.Monitoring.Entities.TaskRateSetting { TenantId = TenantId, MaxTaskRate = 0.70m });
+
+        var r = (await Handler().Handle(new GetTeamEmployeeForecastQuery(Status: ForecastStatuses.Overload), default)).Value!;
+
+        Assert.Equal("Arun", Assert.Single(r.Items).Name);
+        Assert.Equal(ForecastStatuses.Overload, r.Items[0].Status);
+        Assert.Equal((1, 0.7m), (r.Totals.Overload, r.Totals.MaxTaskRate));
     }
 
     [Fact]

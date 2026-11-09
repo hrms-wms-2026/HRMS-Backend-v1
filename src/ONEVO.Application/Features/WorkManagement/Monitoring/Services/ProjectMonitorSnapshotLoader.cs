@@ -1,4 +1,5 @@
 using ONEVO.Application.Features.WorkManagement.Hierarchy;
+using ONEVO.Application.Features.WorkManagement.Monitoring.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Sprints.RepositoryInterfaces;
@@ -24,12 +25,15 @@ public sealed class ProjectMonitorSnapshotLoader : IProjectMonitorSnapshotLoader
     private readonly ITaskClockingSessionRepository _sessions;
     private readonly IWorkCalendarResolver _calendars;
     private readonly IConversionRateReader _rates;
+    private readonly ITaskRateSettingRepository _rateSettings;
 
     public ProjectMonitorSnapshotLoader(
         IObjectiveRepository objectives, IProjectMemberRepository members, ISprintRepository sprints,
         IWorkTaskRepository tasks, ITaskStatusRepository statuses, ITaskAssignmentRepository assignments,
-        ITaskClockingSessionRepository sessions, IWorkCalendarResolver calendars, IConversionRateReader rates)
+        ITaskClockingSessionRepository sessions, IWorkCalendarResolver calendars, IConversionRateReader rates,
+        ITaskRateSettingRepository rateSettings)
     {
+        _rateSettings = rateSettings;
         _rates = rates;
         _objectives = objectives;
         _members = members;
@@ -45,6 +49,7 @@ public sealed class ProjectMonitorSnapshotLoader : IProjectMonitorSnapshotLoader
     {
         var legalEntity = await _calendars.LegalEntityForProjectAsync(tenantId, projectId, ct);
         var calendar = WorkCapacityCalculator.FromLegalEntity(legalEntity);
+        var maxTaskRate = TaskRateLimit.Resolve((await _rateSettings.GetForTenantAsync(tenantId, ct))?.MaxTaskRate);
 
         var objectives = (await _objectives.GetAllByProjectIdAsync(tenantId, projectId, ct))
             .Where(o => o.IsActive && !o.IsDeleted)
@@ -103,6 +108,6 @@ public sealed class ProjectMonitorSnapshotLoader : IProjectMonitorSnapshotLoader
             assigneesByTask.GetValueOrDefault(t.Id) ?? []))
             .ToList();
 
-        return new ProjectMonitorSnapshot(projectId, calendar, modules, sprints, tasks, rates);
+        return new ProjectMonitorSnapshot(projectId, calendar, modules, sprints, tasks, rates, maxTaskRate);
     }
 }

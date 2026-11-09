@@ -346,6 +346,7 @@ public class ApplicationDbContext : DbContext
         => Set<ONEVO.Domain.Features.Conversations.Entities.ConversationMessageReaction>();
     public DbSet<WorkNotificationLog> WorkNotificationLogs => Set<WorkNotificationLog>();
     public DbSet<MonitorAlert> MonitorAlerts => Set<MonitorAlert>();
+    public DbSet<TaskRateSetting> TaskRateSettings => Set<TaskRateSetting>();
     public DbSet<ModuleHourSummary> ModuleHourSummaries => Set<ModuleHourSummary>();
     public DbSet<ONEVO.Domain.Features.Dashboard.Entities.UserDashboard> UserDashboards
         => Set<ONEVO.Domain.Features.Dashboard.Entities.UserDashboard>();

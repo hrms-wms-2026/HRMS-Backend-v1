@@ -40,6 +40,7 @@ public class GetModuleForecastQueryHandlerTests
     private readonly Mock<IConversionRateReader> _rates = new();
     private readonly Mock<IAttendanceReadRepository> _attendance = new();
     private readonly Mock<IDateTimeProvider> _clock = new();
+    private readonly Mock<ONEVO.Application.Features.WorkManagement.Monitoring.RepositoryInterfaces.ITaskRateSettingRepository> _rateSettings = new();
 
     private readonly Project _project;
     private readonly Objective _root;
@@ -100,7 +101,7 @@ public class GetModuleForecastQueryHandlerTests
     };
 
     private GetModuleForecastQueryHandler Handler() => new(_user.Object, _employees.Object, _legalEntities.Object, _projects.Object,
-        _objectives.Object, _members.Object, _rates.Object, _attendance.Object, _clock.Object);
+        _objectives.Object, _members.Object, _rates.Object, _attendance.Object, _clock.Object, _rateSettings.Object);
 
     [Fact]
     public async Task Unauthenticated_IsForbidden()
@@ -127,7 +128,7 @@ public class GetModuleForecastQueryHandlerTests
         var parent = r.Items[0];
         Assert.Equal((200m, 160m, 80m, 0.5m, 1.25m, 120m), (parent.RemainingHours, parent.CapacityHours, parent.PredictedHours,
             parent.ConversionRate!.Value, parent.RequiredRate!.Value, parent.OvertimeHours));
-        Assert.Equal(ForecastStatuses.Overtime, parent.Status);
+        Assert.Equal(ForecastStatuses.Overload, parent.Status);
         Assert.Equal(10, parent.WorkingDaysLeft);
         Assert.Equal(2, parent.MemberCount);
         Assert.Equal("Checkout", parent.Path);
@@ -137,7 +138,9 @@ public class GetModuleForecastQueryHandlerTests
         Assert.Equal((80m, 40m, 20m, 60m), (child.RemainingHours, child.CapacityHours, child.PredictedHours, child.OvertimeHours));
 
         // Totals count the top-most module only (Checkout already holds Card form's allocation); counts every listed module.
-        Assert.Equal((2, 0, 0, 2, 0), (r.Totals.Modules, r.Totals.OnTrack, r.Totals.RaiseRate, r.Totals.Overtime, r.Totals.NoHistory));
+        // Both need more than the 90% default limit (125% and 200%): overload.
+        Assert.Equal((2, 0, 0, 2, 0), (r.Totals.Modules, r.Totals.OnTrack, r.Totals.RaiseRate, r.Totals.Overload, r.Totals.NoHistory));
+        Assert.Equal(0.9m, r.Totals.MaxTaskRate);
         Assert.Equal((200m, 200m, 160m, 80m, 120m), (r.Totals.AllocatedHours, r.Totals.RemainingHours, r.Totals.CapacityHours,
             r.Totals.PredictedHours, r.Totals.OvertimeHours));
         Assert.Equal(0.5m, r.Totals.TeamRate);

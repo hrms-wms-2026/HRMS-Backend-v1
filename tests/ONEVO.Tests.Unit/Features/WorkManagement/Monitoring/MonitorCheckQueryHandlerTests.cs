@@ -31,6 +31,7 @@ public class MonitorCheckQueryHandlerTests
     private readonly Mock<ICallerIdentityResolver> _identity = new();
     private readonly Mock<IDateTimeProvider> _clock = new();
     private readonly Mock<IConversionRateReader> _rates = new();
+    private readonly Mock<ONEVO.Application.Features.WorkManagement.Monitoring.RepositoryInterfaces.ITaskRateSettingRepository> _rateSettings = new();
     private ConversionRateSet _rateSet = ConversionRateSet.Empty(Mon5);
 
     public MonitorCheckQueryHandlerTests()
@@ -52,7 +53,7 @@ public class MonitorCheckQueryHandlerTests
             p => new EmployeeConversionRate(p.Id, p.Worked, p.Task, OvertimeForecast.Rate(p.Task, p.Worked), [], [])));
 
     private CheckModuleCapacityQueryHandler ModuleHandler()
-        => new(_callers.Object, _calendars.Object, _objectives.Object, _members.Object, _clock.Object, _rates.Object);
+        => new(_callers.Object, _calendars.Object, _objectives.Object, _members.Object, _clock.Object, _rates.Object, _rateSettings.Object);
 
     private CheckTaskLoadQueryHandler TaskHandler()
         => new(_callers.Object, _snapshots.Object, _identity.Object, _clock.Object);

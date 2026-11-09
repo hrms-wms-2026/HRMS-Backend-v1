@@ -12,9 +12,10 @@ public sealed record TeamEmployeeForecastResponse(
     int Total, int Page, int PageSize);
 
 public sealed record TeamEmployeeForecastTotals(
-    int People, int OnTrack, int RaiseRate, int Overtime, int NoHistory,
+    int People, int OnTrack, int RaiseRate, int Overload, int NoHistory,
     decimal RemainingHours, decimal CapacityHours, decimal PredictedHours, decimal OvertimeHours,
-    decimal? TeamRate, decimal? RequiredRate);
+    decimal? TeamRate, decimal? RequiredRate,
+    decimal MaxTaskRate);
 
 /// <param name="Deadline">The worst window's deadline; null when the employee has no open estimated task due today or later.</param>
 public sealed record TeamEmployeeForecastItem(

@@ -11,6 +11,7 @@ using ONEVO.Application.Features.TimeAttendance.Team.DTOs;
 using ONEVO.Application.Features.TimeAttendance.Team.Services;
 using ONEVO.Application.Features.WorkManagement.Forecast.DTOs;
 using ONEVO.Application.Features.WorkManagement.Forecast.Queries.GetModuleForecast;
+using ONEVO.Application.Features.WorkManagement.Monitoring.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Monitoring.Services;
 
 namespace ONEVO.Application.Features.TimeAttendance.Team.Queries;
@@ -30,7 +31,8 @@ public sealed class GetTeamEmployeeForecastQueryHandler(
     IAttendanceReadRepository attendance,
     IConversionRateReader rates,
     IForecastTaskReader tasks,
-    IDateTimeProvider clock)
+    IDateTimeProvider clock,
+    ITaskRateSettingRepository rateSettings)
     : IRequestHandler<GetTeamEmployeeForecastQuery, Result<TeamEmployeeForecastResponse>>
 {
     public static readonly IReadOnlyList<string> Sorts = ["overtime", "requiredRate", "rate", "name"];
@@ -59,6 +61,7 @@ public sealed class GetTeamEmployeeForecastQueryHandler(
 
         var today = AttendanceScheduleResolver.Resolve(legalEntity, clock.UtcNow).WorkDate;
         var calendar = WorkCapacityCalculator.FromLegalEntity(legalEntity);
+        var maxTaskRate = TaskRateLimit.Resolve((await rateSettings.GetForTenantAsync(tenantId, ct))?.MaxTaskRate);
         var covered = await CoveredTeam.CoveredEmployeeIdsAsync(authority, currentUser.UserId, legalEntityId, actor.Id, ct);
 
         IReadOnlyDictionary<Guid, AttendanceHistoryEmployee> identities = new Dictionary<Guid, AttendanceHistoryEmployee>();
@@ -82,7 +85,7 @@ public sealed class GetTeamEmployeeForecastQueryHandler(
             var window = OvertimeForecast.EmployeeWindows(
                 mine.Where(t => t.DueDate is not null && t.EstimatedHours is > 0)
                     .Select(t => (t.DueDate!.Value, Share(t))),
-                calendar, today, rate?.Rate);
+                calendar, today, rate?.Rate, maxTaskRate);
             var figures = window?.Figures
                 ?? new ForecastFigures(0m, 0m, rate?.Rate, 0m, 0m, 0m, ForecastStatuses.OnTrack);
             var status = window?.Status ?? ForecastStatuses.OnTrack;
@@ -112,12 +115,13 @@ public sealed class GetTeamEmployeeForecastQueryHandler(
             rows.Count,
             rows.Count(r => r.Item.Status == ForecastStatuses.OnTrack),
             rows.Count(r => r.Item.Status == ForecastStatuses.RaiseRate),
-            rows.Count(r => r.Item.Status == ForecastStatuses.Overtime),
+            rows.Count(r => r.Item.Status == ForecastStatuses.Overload),
             rows.Count(r => r.Item.Status == ForecastStatuses.NoHistory),
             ForecastRounding.Hours(totalRemaining), ForecastRounding.Hours(totalCapacity),
             ForecastRounding.Hours(rows.Sum(r => r.Figures.Predicted)), ForecastRounding.Hours(rows.Sum(r => r.Figures.OvertimeHours)),
             ForecastRounding.Rate(rateSet.Pool(covered).Rate),
-            ForecastRounding.Rate(totalCapacity > 0 ? totalRemaining / totalCapacity : null));
+            ForecastRounding.Rate(totalCapacity > 0 ? totalRemaining / totalCapacity : null),
+            maxTaskRate);
 
         IEnumerable<TeamEmployeeForecastItem> selected = rows.Select(r => r.Item);
         if (query.Status is { } status)

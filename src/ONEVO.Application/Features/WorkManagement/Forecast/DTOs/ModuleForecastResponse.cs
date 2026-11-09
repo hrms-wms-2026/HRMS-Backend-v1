@@ -14,9 +14,10 @@ public sealed record ModuleForecastResponse(
     int Total, int Page, int PageSize);
 
 public sealed record ModuleForecastTotals(
-    int Modules, int OnTrack, int RaiseRate, int Overtime, int NoHistory,
+    int Modules, int OnTrack, int RaiseRate, int Overload, int NoHistory,
     decimal AllocatedHours, decimal CompletedHours, decimal RemainingHours, decimal CapacityHours, decimal PredictedHours,
-    decimal OvertimeHours, decimal? TeamRate, decimal? RequiredRate);
+    decimal OvertimeHours, decimal? TeamRate, decimal? RequiredRate,
+    decimal MaxTaskRate);
 
 public sealed record ModuleForecastProject(
     Guid ProjectId, string Name, decimal AllocatedHours, decimal RemainingHours, decimal PredictedHours, decimal CapacityHours,
