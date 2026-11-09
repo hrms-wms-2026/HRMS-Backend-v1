@@ -15,7 +15,7 @@ public class DashboardTemplateWidgetConfiguration : IEntityTypeConfiguration<Das
         builder.Property(w => w.SettingsJson)
             .HasColumnName("settings")
             .HasColumnType("jsonb")
-            .HasDefaultValueSql("'{}'::jsonb")
+            .HasDefaultValue("{}")
             .IsRequired();
 
         builder.HasIndex(w => new { w.TemplateId, w.WidgetKey })

@@ -4584,7 +4584,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("jsonb")
                         .HasColumnName("settings")
-                        .HasDefaultValueSql("'{}'::jsonb");
+                        .HasDefaultValue("{}");
 
                     b.Property<Guid>("TemplateId")
                         .HasColumnType("uuid")
@@ -4844,7 +4844,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("jsonb")
                         .HasColumnName("applied_role_ids")
-                        .HasDefaultValueSql("'[]'::jsonb");
+                        .HasDefaultValueSql("'[]'");
 
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone")

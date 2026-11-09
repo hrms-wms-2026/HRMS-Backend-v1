@@ -28,7 +28,7 @@ public class UserDashboardConfiguration : IEntityTypeConfiguration<UserDashboard
                     (a, b) => (a ?? new List<Guid>()).SequenceEqual(b ?? new List<Guid>()),
                     v => v.Aggregate(0, (h, g) => HashCode.Combine(h, g.GetHashCode())),
                     v => v.ToList()))
-            .HasDefaultValueSql("'[]'::jsonb")
+            .HasDefaultValueSql("'[]'")
             .IsRequired();
         builder.Property(d => d.AppliedNoRole)
             .HasColumnName("applied_no_role")

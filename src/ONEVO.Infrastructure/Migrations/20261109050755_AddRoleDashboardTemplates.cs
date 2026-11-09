@@ -25,7 +25,7 @@ namespace ONEVO.Infrastructure.Migrations
                 table: "user_dashboards",
                 type: "jsonb",
                 nullable: false,
-                defaultValueSql: "'[]'::jsonb");
+                defaultValueSql: "'[]'");
 
             migrationBuilder.CreateTable(
                 name: "dashboard_templates",
@@ -64,7 +64,7 @@ namespace ONEVO.Infrastructure.Migrations
                     id = table.Column<Guid>(type: "uuid", nullable: false),
                     template_id = table.Column<Guid>(type: "uuid", nullable: false),
                     widget_key = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: false),
-                    settings = table.Column<string>(type: "jsonb", nullable: false, defaultValueSql: "'{}'::jsonb"),
+                    settings = table.Column<string>(type: "jsonb", nullable: false, defaultValue: "{}"),
                     tenant_id = table.Column<Guid>(type: "uuid", nullable: false),
                     created_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
                     updated_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
