@@ -85,6 +85,14 @@ jobs:
         with:
           dotnet-version: "10.0.x"
 
+      # SQL Server test databases (one per test class, in Docker) need several GB at the start of a
+      # run; the runner image's unused toolchains are removed to make room.
+      - name: Free disk space
+        if: steps.select-filter.outputs.skip != 'true'
+        run: |
+          sudo rm -rf /usr/local/lib/android /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL
+          df -h /
+
       - name: Restore - Integration tests
         if: steps.select-filter.outputs.skip != 'true'
         run: dotnet restore tests/ONEVO.Tests.Integration/ONEVO.Tests.Integration.csproj
@@ -123,6 +131,13 @@ jobs:
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4
+
+      # SQL Server test databases (one per test class, in Docker) need several GB at the start of a
+      # run; the runner image's unused toolchains are removed to make room.
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/local/lib/android /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL
+          df -h /
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4

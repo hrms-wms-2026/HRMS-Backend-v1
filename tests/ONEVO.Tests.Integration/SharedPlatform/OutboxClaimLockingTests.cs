@@ -66,7 +66,8 @@ public sealed class OutboxClaimLockingTests
     {
         await using var admin = host.NewAdminContext();
         var batch = Guid.NewGuid().ToString("N");
-        await admin.Database.ExecuteSqlRawAsync($"""
+        // set is a fixed SQL fragment from this test; the rest are generated ids and counts.
+        var copy = $"""
             DECLARE @cols nvarchar(max) = (
                 SELECT STRING_AGG(QUOTENAME(name), ',') FROM sys.columns
                 WHERE object_id = OBJECT_ID('outbox_messages') AND is_computed = 0
@@ -78,7 +79,8 @@ public sealed class OutboxClaimLockingTests
                   WHERE id = ''{templateId}''';
             EXEC sp_executesql @sql;
             UPDATE outbox_messages SET {set}, last_error = NULL WHERE last_error = N'{batch}';
-            """);
+            """;
+        await admin.Database.ExecuteSqlRawAsync(copy);
     }
 
     /// <summary>Row locks the session behind <paramref name="db"/> holds on the table's clustered

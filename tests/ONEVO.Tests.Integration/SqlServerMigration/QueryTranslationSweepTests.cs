@@ -125,13 +125,13 @@ public sealed class QueryTranslationSweepTests
         var populated = await Seeded.PopulateEveryTableAsync(h);
         int populatedTables;
         await using (var check = h.NewContext())
-            populatedTables = await check.Database.SqlQueryRaw<int>($"""
-                DECLARE @n int = 0, @sql nvarchar(max) = N'';
-                SELECT @sql += N'IF EXISTS (SELECT 1 FROM ' + QUOTENAME(t.name) + N' WHERE ' + QUOTENAME(c.name) + N' = ''{populated.EmployeeId}'') SET @n += 1;'
+            populatedTables = (await check.Database.SqlQuery<int>($"""
+                DECLARE @u uniqueidentifier = {populated.EmployeeId}, @n int = 0, @sql nvarchar(max) = N'';
+                SELECT @sql += N'IF EXISTS (SELECT 1 FROM ' + QUOTENAME(t.name) + N' WHERE ' + QUOTENAME(c.name) + N' = @u) SET @n += 1;'
                 FROM sys.tables t JOIN sys.columns c ON c.object_id = t.object_id AND c.name = 'id' AND c.system_type_id = 36;
-                EXEC sp_executesql @sql, N'@n int OUTPUT', @n OUTPUT;
+                EXEC sp_executesql @sql, N'@u uniqueidentifier, @n int OUTPUT', @u, @n OUTPUT;
                 SELECT @n AS Value;
-                """).ToListAsync().ContinueWith(t => t.Result.Single());
+                """).ToListAsync()).Single();
         var everywhere = await RunPassAsync(h, methods, populated);
         var results = empty.Zip(withData, everywhere).Select(r =>
             new[] { r.First, r.Second, r.Third }.FirstOrDefault(x => x.Outcome == "failed") is { Name: not null } f ? f
@@ -544,7 +544,8 @@ public sealed class QueryTranslationSweepTests
         {
             var u = Guid.NewGuid();
             await using var db = h.NewContext();
-            await db.Database.ExecuteSqlRawAsync($"""
+            // Built from test-generated ids only; the statements are assembled from sys.columns.
+            var populate = $"""
                 DECLARE @sql nvarchar(max) = N'';
                 SELECT @sql += N'ALTER TABLE ' + QUOTENAME(name) + N' NOCHECK CONSTRAINT ALL;' FROM sys.tables;
                 EXEC sp_executesql @sql;
@@ -589,7 +590,8 @@ public sealed class QueryTranslationSweepTests
                 END;
                 CLOSE tables;
                 DEALLOCATE tables;
-                """);
+                """;
+            await db.Database.ExecuteSqlRawAsync(populate);
             return new Seeded(u, u, u, u, u, u, u, u, u, Populated: true);
         }
 

@@ -33,7 +33,8 @@ public static class SharedSqlServerTemplate
     // Restores are disk-bound; unbounded concurrency only makes each one slower.
     private static readonly SemaphoreSlim RestoreGate = new(4, 4);
 
-    private sealed record TemplateServer(string MasterConnectionString, string LogicalData, string LogicalLog);
+    private sealed record TemplateServer(
+        string MasterConnectionString, string LogicalData, string LogicalLog, TestDatabaseReaper Reaper);
 
     /// <summary>
     /// Returns an admin connection string to a fresh, fully migrated, isolated database. Open it with
@@ -43,6 +44,7 @@ public static class SharedSqlServerTemplate
     {
         var template = await Template.Value;
         var databaseName = $"onevo_it_{Guid.NewGuid():N}";
+        await template.Reaper.DropFinishedAsync();
 
         await RestoreGate.WaitAsync(ct);
         try
@@ -65,6 +67,7 @@ public static class SharedSqlServerTemplate
             RestoreGate.Release();
         }
 
+        template.Reaper.Track(databaseName);
         return new SqlConnectionStringBuilder(template.MasterConnectionString)
         {
             InitialCatalog = databaseName,
@@ -108,19 +111,40 @@ public static class SharedSqlServerTemplate
 
         await using var connection = new SqlConnection(master);
         await connection.OpenAsync();
+        string logicalData, logicalLog;
+        await using (var files = connection.CreateCommand())
+        {
+            files.CommandText = $"""
+                SELECT MAX(CASE WHEN type = 0 THEN name END), MAX(CASE WHEN type = 1 THEN name END)
+                FROM sys.master_files WHERE database_id = DB_ID(N'{TemplateDatabaseName}')
+                """;
+            await using var reader = await files.ExecuteReaderAsync();
+            await reader.ReadAsync();
+            (logicalData, logicalLog) = (reader.GetString(0), reader.GetString(1));
+        }
+
+        // A restore recreates the files at the template's size, and migrations leave a ~72 MB log:
+        // shrink before the backup so every copy starts at about 10 MB (see TestDatabaseReaper).
+        await using (var shrink = connection.CreateCommand())
+        {
+            shrink.CommandTimeout = 300;
+            shrink.CommandText = $"""
+                {TestDatabaseReaper.CompactSettingsSql(TemplateDatabaseName, logicalData, logicalLog)}
+                USE [{TemplateDatabaseName}];
+                CHECKPOINT;
+                DBCC SHRINKFILE (N'{logicalLog}', 1) WITH NO_INFOMSGS;
+                DBCC SHRINKFILE (N'{logicalData}', 1) WITH NO_INFOMSGS;
+                USE [master];
+                """;
+            await shrink.ExecuteNonQueryAsync();
+        }
+
         await using var backup = connection.CreateCommand();
         backup.CommandTimeout = 300;
         backup.CommandText = $"BACKUP DATABASE [{TemplateDatabaseName}] TO DISK = N'{BackupPath}' WITH INIT, COPY_ONLY;";
         await backup.ExecuteNonQueryAsync();
 
-        await using var files = connection.CreateCommand();
-        files.CommandText = $"""
-            SELECT MAX(CASE WHEN type = 0 THEN name END), MAX(CASE WHEN type = 1 THEN name END)
-            FROM sys.master_files WHERE database_id = DB_ID(N'{TemplateDatabaseName}')
-            """;
-        await using var reader = await files.ExecuteReaderAsync();
-        await reader.ReadAsync();
-        return new TemplateServer(master, reader.GetString(0), reader.GetString(1));
+        return new TemplateServer(master, logicalData, logicalLog, new TestDatabaseReaper(master));
     }
 
     private static async Task RunOpsScriptAsync(string masterConnectionString, string fileName)

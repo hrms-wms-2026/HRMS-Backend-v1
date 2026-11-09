@@ -7,6 +7,7 @@ using ONEVO.Infrastructure.Identity.Tenancy;
 using ONEVO.Infrastructure.Identity.Time;
 using ONEVO.Infrastructure.Persistence;
 using ONEVO.Infrastructure.Persistence.Interceptors;
+using ONEVO.Tests.Integration.Support;
 using Testcontainers.MsSql;
 using Xunit;
 
@@ -18,6 +19,7 @@ public sealed class SqlServerFixture : IAsyncLifetime
     public const string AppPassword = "Fixture_App_Pw_12345!";
     public const string MigratorPassword = "Fixture_Mig_Pw_12345!";
     private MsSqlContainer _container = null!;
+    private TestDatabaseReaper? _reaper;
 
     public string MasterConnection { get; private set; } = "";
 
@@ -36,8 +38,12 @@ public sealed class SqlServerFixture : IAsyncLifetime
 
     public async Task<TestDatabase> CreateDatabaseAsync(bool migrate = true)
     {
+        _reaper ??= new TestDatabaseReaper(MasterConnection);
+        await _reaper.DropFinishedAsync();
         var name = $"crownus_{Guid.NewGuid():N}";
         await RunScriptAsync("bootstrap-logins.sql", name);
+        _reaper.Track(name);
+        await CompactAsync(name);
         var database = new TestDatabase(MasterConnection, name);
         if (migrate)
         {
@@ -47,6 +53,30 @@ public sealed class SqlServerFixture : IAsyncLifetime
         }
 
         return database;
+    }
+
+    /// <summary>Each database is created and migrated from scratch: without this its migration log
+    /// and 64 MB growth steps make it ~85 MB, and a run's 90 of them fill a CI runner's disk.</summary>
+    private async Task CompactAsync(string databaseName)
+    {
+        await using var connection = new SqlConnection(MasterConnection);
+        await connection.OpenAsync();
+        string logicalData, logicalLog;
+        await using (var files = connection.CreateCommand())
+        {
+            files.CommandText = $"""
+                SELECT MAX(CASE WHEN type = 0 THEN name END), MAX(CASE WHEN type = 1 THEN name END)
+                FROM sys.master_files WHERE database_id = DB_ID(N'{databaseName}')
+                """;
+            await using var reader = await files.ExecuteReaderAsync();
+            await reader.ReadAsync();
+            (logicalData, logicalLog) = (reader.GetString(0), reader.GetString(1));
+        }
+
+        await using var compact = connection.CreateCommand();
+        compact.CommandTimeout = 300;
+        compact.CommandText = TestDatabaseReaper.CompactSettingsSql(databaseName, logicalData, logicalLog);
+        await compact.ExecuteNonQueryAsync();
     }
 
     private async Task RunScriptAsync(string fileName, string databaseName)
