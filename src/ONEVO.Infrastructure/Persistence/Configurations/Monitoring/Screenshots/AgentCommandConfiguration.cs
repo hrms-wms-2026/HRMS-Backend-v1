@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using ONEVO.Domain.Features.Monitoring.Screenshots.Entities;
 using ONEVO.Domain.Features.Monitoring.TrayActivation.Entities;
+using ONEVO.Infrastructure.Persistence.SqlServer;
 
 namespace ONEVO.Infrastructure.Persistence.Configurations.Monitoring.Screenshots;
 
@@ -14,8 +15,8 @@ public class AgentCommandConfiguration : IEntityTypeConfiguration<AgentCommand>
 
         builder.Property(e => e.CommandType).HasMaxLength(100).IsRequired();
         builder.Property(e => e.Status).HasMaxLength(50).IsRequired();
-        builder.Property(e => e.PayloadJson).HasColumnType("jsonb").HasDefaultValue("{}");
-        builder.Property(e => e.ResultJson).HasColumnType("jsonb");
+        builder.Property(e => e.PayloadJson).IsJsonColumn().HasDefaultValue("{}");
+        builder.Property(e => e.ResultJson).IsJsonColumn();
 
         // Agent polling: fetch pending non-expired commands for a device
         builder.HasIndex(e => new { e.AgentDeviceId, e.Status, e.ExpiresAt })

@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using ONEVO.Domain.Features.SharedPlatform.Entities;
+using ONEVO.Infrastructure.Persistence.SqlServer;
 
 namespace ONEVO.Infrastructure.Persistence.Configurations.DevPlatform.Subscription;
 
@@ -13,8 +14,8 @@ public class SubscriptionPlanConfiguration : IEntityTypeConfiguration<Subscripti
         builder.Property(p => p.Name).HasMaxLength(100).IsRequired();
         builder.Property(p => p.Code).HasMaxLength(20).IsRequired();
         builder.Property(p => p.Tier).HasMaxLength(20).IsRequired();
-        builder.Property(p => p.FeatureLimitsJson).HasColumnType("jsonb");
-        builder.Property(p => p.IncludedModulesJson).HasColumnType("jsonb");
+        builder.Property(p => p.FeatureLimitsJson).IsJsonColumn();
+        builder.Property(p => p.IncludedModulesJson).IsJsonColumn();
         builder.Property(p => p.CompanySizeRange).HasMaxLength(30).IsRequired();
         builder.Property(p => p.PricingUnit).HasMaxLength(30).IsRequired();
         builder.Property(p => p.CalculatedMonthlyPrice).HasColumnType("decimal(10,2)");

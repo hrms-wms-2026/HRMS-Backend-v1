@@ -16,10 +16,10 @@ using ONEVO.Infrastructure.Persistence.Repositories.CoreHr;
 using ONEVO.Tests.Integration.E2E;
 using ONEVO.Tests.Integration.Support;
 using ONEVO.Tests.Integration.Tenancy;
-using Npgsql;
 using Xunit;
 using WorkAreaSources = ONEVO.Application.Features.TimeAttendance.Services.ExpectedWorkAreaResolver;
 using TodaySnapshotSource = ONEVO.Application.Features.TimeAttendance.Services.AttendanceTodayStateService;
+using ONEVO.Infrastructure.Persistence.Interceptors;
 
 namespace ONEVO.Tests.Integration.Features.TimeAttendance;
 
@@ -111,8 +111,8 @@ public sealed class WorkAreaChangeRequestRuntimeHttpIntegrationTestsFixture : IA
         _connectionString = Environment.GetEnvironmentVariable("ONEVO_TEST_DB") ?? string.Empty;
         if (string.IsNullOrWhiteSpace(_connectionString))
         {
-            // Cloned from the shared, already-migrated template - see SharedPostgresTemplate.
-            _connectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
+            // Cloned from the shared, already-migrated template - see SharedSqlServerTemplate.
+            _connectionString = await SharedSqlServerTemplate.CreateDatabaseAsync();
         }
         else
         {
@@ -755,6 +755,14 @@ public sealed class WorkAreaChangeRequestRuntimeHttpIntegrationTests : IClassFix
 
         // Step 10: database invariants.
         await using var db = _fixture.OpenScopedDb();
+        // A strict tenant table: visible only inside its own tenant, never to a system session.
+        await db.Database.OpenConnectionAsync();
+        await using (var tenantMode = TenantRlsInterceptor.SetTenantCommand(
+            db.Database.GetDbConnection(), _fixture.TenantAId.ToString(), "tenant"))
+        {
+            await tenantMode.ExecuteNonQueryAsync();
+        }
+
         (await db.WorkAreaChangeRequests.AsNoTracking()
             .CountAsync(x => x.TenantId == _fixture.TenantAId && x.EmployeeId == _fixture.RequesterAEmployeeId
                 && x.Date == _fixture.WorkDate && x.Status == WorkAreaChangeRequest.StatusApproved))

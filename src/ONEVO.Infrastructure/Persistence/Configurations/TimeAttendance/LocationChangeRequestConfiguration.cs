@@ -20,9 +20,9 @@ public sealed class LocationChangeRequestConfiguration : IEntityTypeConfiguratio
         builder.HasKey(x => x.Id);
         builder.Property(x => x.RequestedLatitude).IsRequired();
         builder.Property(x => x.RequestedLongitude).IsRequired();
-        builder.Property(x => x.Reason).HasColumnType("text").IsRequired();
+        builder.Property(x => x.Reason).IsRequired();
         builder.Property(x => x.Status).HasMaxLength(20).IsRequired().IsConcurrencyToken();
-        builder.Property(x => x.ReviewComment).HasColumnType("text");
+        builder.Property(x => x.ReviewComment);
 
         builder.HasIndex(x => new { x.TenantId, x.Status })
             .HasDatabaseName("ix_location_change_requests_tenant_status");

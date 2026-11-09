@@ -1,7 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Npgsql;
+using ONEVO.Infrastructure.Persistence.SqlServer;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.Onboarding.Services;
 using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
@@ -198,7 +198,7 @@ public sealed class OfficeProjectReconciler(
         {
             await db.SaveChangesAsync(ct);
         }
-        catch (DbUpdateException ex) when (ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
+        catch (DbUpdateException ex) when (SqlServerErrors.IsUniqueViolation(ex))
         {
             logger.LogInformation("Owner membership for the Office project of tenant {TenantId} was added concurrently.", tenantId);
         }

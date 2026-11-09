@@ -33,7 +33,7 @@ public sealed class BreakRecordConfiguration : IEntityTypeConfiguration<BreakRec
     {
         b.ToTable("break_records"); b.HasKey(x => x.Id);
         b.Property(x => x.BreakType).HasMaxLength(30);
-        b.Property<uint>("xmin")
+        b.Property<ulong>("xmin")
             .HasColumnName("xmin")
             .IsRowVersion();
         b.HasIndex(x => new { x.TenantId, x.EmployeeId, x.BreakStart });

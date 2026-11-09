@@ -1,5 +1,5 @@
 using Microsoft.EntityFrameworkCore;
-using Npgsql;
+using ONEVO.Infrastructure.Persistence.SqlServer;
 using ONEVO.Application.Common.Constants;
 using ONEVO.Application.Common.Exceptions;
 using ONEVO.Application.Features.Storage.File.Helpers;
@@ -206,7 +206,7 @@ public sealed class EfAttendanceReadRepository(ApplicationDbContext db) : IAtten
             throw new ConcurrencyConflictException(ex);
         }
         catch (DbUpdateException ex) when (
-            ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
+            SqlServerErrors.IsUniqueViolation(ex))
         {
             throw new UniqueConstraintConflictException(ex);
         }

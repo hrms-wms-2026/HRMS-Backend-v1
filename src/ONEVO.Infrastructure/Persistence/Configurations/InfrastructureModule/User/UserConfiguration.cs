@@ -13,9 +13,8 @@ public class UserConfiguration : IEntityTypeConfiguration<UserEntity>
         builder.Property(u => u.Email).HasMaxLength(255).IsRequired();
         builder.Property(u => u.NormalizedEmail)
             .HasMaxLength(255)
-            .HasColumnType("character varying(255)")
             .HasColumnName("normalized_email")
-            .HasComputedColumnSql("lower(trim(email))", stored: true)
+            .HasComputedColumnSql("LOWER(LTRIM(RTRIM([email])))", stored: true)
             .IsRequired();
         builder.Property(u => u.PasswordHash).HasMaxLength(255).IsRequired();
         builder.Property(u => u.FirstName).HasMaxLength(100).IsRequired();
@@ -34,6 +33,6 @@ public class UserConfiguration : IEntityTypeConfiguration<UserEntity>
         // the function actually selects (active, not deleted) to keep the index small.
         builder.HasIndex(u => new { u.NormalizedEmail, u.TenantId, u.Id })
             .HasDatabaseName("ix_users_normalized_email_active_lookup")
-            .HasFilter("is_active = true AND is_deleted = false");
+            .HasFilter("is_active = 1 AND is_deleted = 0");
     }
 }

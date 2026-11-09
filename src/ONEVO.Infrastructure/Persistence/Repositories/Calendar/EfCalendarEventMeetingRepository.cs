@@ -66,10 +66,11 @@ public class EfCalendarEventMeetingRepository : ICalendarEventMeetingRepository
             INSERT INTO calendar_event_meetings
                 (id, tenant_id, calendar_event_id, external_calendar_connection_id, provider, external_meeting_id, join_url,
                  status, link_generation, provisioning_started_at, created_at, invites_pending)
-            VALUES
-                ({row.Id}, {row.TenantId}, {row.CalendarEventId}, {row.ExternalCalendarConnectionId}, {row.Provider}, '', '',
-                 {CalendarEventMeetingStatuses.Provisioning}, 1, {row.ProvisioningStartedAt}, {row.CreatedAt}, {row.InvitesPending})
-            ON CONFLICT (calendar_event_id) DO NOTHING
+            SELECT
+                {row.Id}, {row.TenantId}, {row.CalendarEventId}, {row.ExternalCalendarConnectionId}, {row.Provider}, N'', N'',
+                {CalendarEventMeetingStatuses.Provisioning}, 1, {row.ProvisioningStartedAt}, {row.CreatedAt}, {row.InvitesPending}
+            WHERE NOT EXISTS (
+                SELECT 1 FROM calendar_event_meetings WITH (UPDLOCK, HOLDLOCK) WHERE calendar_event_id = {row.CalendarEventId})
             """, ct) == 1;
 
     public async Task<int?> TryClaimNewGenerationAsync(
@@ -83,9 +84,9 @@ public class EfCalendarEventMeetingRepository : ICalendarEventMeetingRepository
                 external_meeting_id = '', join_url = '', organizer_join_url = NULL, passcode_or_pin = NULL,
                 failure_reason = NULL, last_attendance_synced_at = NULL, attendance_unavailable_at = NULL,
                 attendance_sync_failed_at = NULL, attendance_sync_error = NULL, invites_pending = {invitesPending}, updated_at = {now}
+            OUTPUT inserted.link_generation AS [Value]
             WHERE tenant_id = {tenantId} AND id = {meetingId}
               AND status IN ({CalendarEventMeetingStatuses.Failed}, {CalendarEventMeetingStatuses.Cancelled})
-            RETURNING link_generation AS "Value"
             """).ToListAsync(ct);
         return generations.Count == 1 ? generations[0] : null;
     }

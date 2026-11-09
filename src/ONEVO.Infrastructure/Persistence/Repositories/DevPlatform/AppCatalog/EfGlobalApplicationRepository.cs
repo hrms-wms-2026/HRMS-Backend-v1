@@ -29,17 +29,19 @@ public sealed class EfGlobalApplicationRepository(ApplicationDbContext db) : IGl
                      .Select(GlobalApplication.NormalizeProcessName)
                      .Distinct(StringComparer.Ordinal))
         {
-            // PostgreSQL upsert makes first observation safe when different tenants report
+            // MERGE with HOLDLOCK makes first observation safe when different tenants report
             // the same new process concurrently. Allocation fields are deliberately untouched.
             await db.Database.ExecuteSqlInterpolatedAsync($"""
-                INSERT INTO global_app_catalog
-                    (id, app_name, process_name, is_public, is_productive_default,
-                     first_seen_at, last_seen_at, created_at)
-                VALUES
-                    ({Guid.NewGuid()}, {GlobalApplication.DefaultDisplayName(processName)}, {processName},
-                     TRUE, FALSE, {observedAt}, {observedAt}, {observedAt})
-                ON CONFLICT (process_name) DO UPDATE
-                SET last_seen_at = GREATEST(global_app_catalog.last_seen_at, EXCLUDED.last_seen_at)
+                MERGE global_app_catalog WITH (HOLDLOCK) AS target
+                USING (SELECT {processName} AS process_name) AS source
+                    ON target.process_name = source.process_name
+                WHEN MATCHED AND target.last_seen_at < {observedAt} THEN
+                    UPDATE SET last_seen_at = {observedAt}
+                WHEN NOT MATCHED THEN
+                    INSERT (id, app_name, process_name, is_public, is_productive_default,
+                            first_seen_at, last_seen_at, created_at)
+                    VALUES ({Guid.NewGuid()}, {GlobalApplication.DefaultDisplayName(processName)}, {processName},
+                            1, 0, {observedAt}, {observedAt}, {observedAt});
                 """, ct);
         }
     }

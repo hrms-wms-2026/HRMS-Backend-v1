@@ -53,13 +53,13 @@ public class LeaveLedgerArchitectureTests
         var request = context.Model.FindEntityType(typeof(LeaveRequest))!;
 
         Assert.True(request.FindProperty(nameof(LeaveRequest.LeavePolicyVersionId))!.IsNullable);
-        Assert.Equal("numeric(8,2)", request.FindProperty(nameof(LeaveRequest.ExceedsBalanceByHours))!.GetColumnType());
+        Assert.Equal("decimal(8,2)", request.FindProperty(nameof(LeaveRequest.ExceedsBalanceByHours))!.GetColumnType());
     }
 
     private static ApplicationDbContext CreateModelInspectionContext()
     {
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
-            .UseNpgsql("Host=localhost;Database=model_only")
+            .UseSqlServer("Server=localhost;Database=model_only")
             .UseSnakeCaseNamingConvention()
             .Options;
 

@@ -61,42 +61,6 @@ public sealed class AttendanceCorrectionsArchitectureTests
         Assert.DoesNotContain(refs, x => x is "Microsoft.EntityFrameworkCore" or "Npgsql.EntityFrameworkCore.PostgreSQL");
     }
 
-    [Fact]
-    public void ApprovalSnapshotMigration_AddsNonNullColumnAndBackfillsExistingRows()
-    {
-        var migrationsDir = Path.GetFullPath(Path.Combine(
-            AppContext.BaseDirectory, "..", "..", "..", "..", "..",
-            "src", "ONEVO.Infrastructure", "Migrations"));
-        var migration = Directory.GetFiles(migrationsDir, "*AddAttendanceCorrectionApprovalRequired.cs")
-            .Single(x => !x.EndsWith(".Designer.cs", StringComparison.OrdinalIgnoreCase));
-        var source = File.ReadAllText(migration);
-
-        Assert.Contains("AddColumn<bool>", source);
-        Assert.Contains("name: \"approval_required\"", source);
-        Assert.Contains("nullable: false", source);
-        Assert.Contains("SET approval_required = TRUE", source);
-        Assert.Contains("status IN ('pending', 'rejected', 'cancelled')", source);
-        Assert.Contains("reviewed_by_id IS NOT NULL", source);
-        Assert.Contains("reviewed_at IS NOT NULL", source);
-        Assert.DoesNotContain("tenant_isolation", source);
-    }
-
-    [Fact]
-    public void Migration_DeclaresAttendanceCorrectionsRlsAndPendingUniqueIndex()
-    {
-        var migrationsDir = Path.GetFullPath(Path.Combine(
-            AppContext.BaseDirectory, "..", "..", "..", "..", "..",
-            "src", "ONEVO.Infrastructure", "Migrations"));
-        var migration = Directory.GetFiles(migrationsDir, "*AddAttendanceCorrections.cs")
-            .Single(x => !x.EndsWith(".Designer.cs", StringComparison.OrdinalIgnoreCase));
-        var source = File.ReadAllText(migration);
-        Assert.Contains("TenantTables", source);
-        Assert.Contains("attendance_corrections", source);
-        Assert.Contains("tenant_isolation", source);
-        Assert.Contains("status = 'pending'", source);
-        Assert.Contains("ENABLE ROW LEVEL SECURITY", source);
-    }
-
     private static void AssertPermission(string methodName, string expected)
     {
         var attribute = ControllerType.GetMethod(methodName)!.GetCustomAttribute<RequirePermissionAttribute>();

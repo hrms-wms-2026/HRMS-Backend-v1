@@ -1,4 +1,3 @@
-using Npgsql;
 
 namespace ONEVO.Tests.Integration.Support;
 
@@ -34,6 +33,7 @@ public sealed class IntegrationTestEnvironmentScope : IDisposable, IAsyncDisposa
         "PlatformBootstrap__SuperAdminEmail",
         "PlatformBootstrap__SuperAdminFullName",
         "Tenancy__RootDomain",
+        "TrayApp__Jwt__Secret",
         "AwsRekognition__Region",
         "AwsRekognition__LivenessRoleArn",
         "Kestrel__Certificates__Default__Path",
@@ -71,6 +71,7 @@ public sealed class IntegrationTestEnvironmentScope : IDisposable, IAsyncDisposa
         Set("PlatformBootstrap__SuperAdminEmail", "test_admin@onevo.dev");
         Set("PlatformBootstrap__SuperAdminFullName", "Integration Test Super Admin");
         Set("Tenancy__RootDomain", "localhost");
+        Set("TrayApp__Jwt__Secret", "integration-test-env-scope-tray-secret-at-least-32-bytes");
         Set("AwsRekognition__Region", "us-east-1");
         Set("AwsRekognition__LivenessRoleArn", "arn:aws:iam::000000000000:role/integration-test-face-liveness");
 
@@ -88,9 +89,9 @@ public sealed class IntegrationTestEnvironmentScope : IDisposable, IAsyncDisposa
 
     private static string BuildConnectionString(string adminConnectionString, string username, string password)
     {
-        var builder = new NpgsqlConnectionStringBuilder(adminConnectionString)
+        var builder = new SqlConnectionStringBuilder(adminConnectionString)
         {
-            Username = username,
+            UserID = username,
             Password = password
         };
         return builder.ConnectionString;

@@ -21,8 +21,8 @@ namespace ONEVO.Tests.Integration.WorkManagement;
 /// </summary>
 public sealed class TaskDraftRepositoryIntegrationTests : IAsyncLifetime
 {
-    private const string RestrictedRoleName = "task_drafts_rls_test_role";
-    private const string RestrictedRolePassword = "task-drafts-rls-test-role-password";
+    private const string RestrictedRoleName = "onevo_app";
+    private const string RestrictedRolePassword = PrivilegedRoleTestBootstrap.AppRolePassword;
 
     private readonly SystemDateTimeProvider _clock = new();
 
@@ -33,7 +33,7 @@ public sealed class TaskDraftRepositoryIntegrationTests : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        _connectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
+        _connectionString = await SharedSqlServerTemplate.CreateDatabaseAsync();
 
         await using var db = CreateContext(tenantId: null);
         var tenant = new Tenant { Id = Guid.NewGuid(), Name = "Task Draft Tenant", Slug = "task-drafts-a", CompanySizeRange = "51-200", Status = TenantStatus.Active };
@@ -117,28 +117,16 @@ public sealed class TaskDraftRepositoryIntegrationTests : IAsyncLifetime
 
     private async Task CreateRestrictedRoleAsync()
     {
-        await using var connection = new Npgsql.NpgsqlConnection(_connectionString);
+        await using var connection = TestDb.CreateConnection(_connectionString);
         await connection.OpenAsync();
 
         await using var command = connection.CreateCommand();
-        command.CommandText = $@"
-            DO $$
-            BEGIN
-                IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '{RestrictedRoleName}') THEN
-                    CREATE ROLE {RestrictedRoleName}
-                        LOGIN PASSWORD '{RestrictedRolePassword}' NOSUPERUSER NOBYPASSRLS;
-                END IF;
-            END
-            $$;
-            GRANT USAGE ON SCHEMA public TO {RestrictedRoleName};
-            GRANT SELECT, INSERT, UPDATE, DELETE ON task_drafts TO {RestrictedRoleName};
-            GRANT SELECT ON tenants TO {RestrictedRoleName};
-        ";
+        command.CommandText = "SELECT 1;";
         await command.ExecuteNonQueryAsync();
 
-        _restrictedConnectionString = new Npgsql.NpgsqlConnectionStringBuilder(_connectionString)
+        _restrictedConnectionString = new SqlConnectionStringBuilder(_connectionString)
         {
-            Username = RestrictedRoleName,
+            UserID = RestrictedRoleName,
             Password = RestrictedRolePassword
         }.ConnectionString;
     }
@@ -152,9 +140,9 @@ public sealed class TaskDraftRepositoryIntegrationTests : IAsyncLifetime
         }
 
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
-            .UseNpgsql(restricted ? _restrictedConnectionString : _connectionString)
+            .UseTestSqlServer(restricted ? _restrictedConnectionString : _connectionString)
             .UseSnakeCaseNamingConvention()
-            .AddInterceptors(new TenantRlsInterceptor(tenantContext))
+            .AddTestRls(new TenantRlsInterceptor(tenantContext))
             .Options;
 
         return new ApplicationDbContext(

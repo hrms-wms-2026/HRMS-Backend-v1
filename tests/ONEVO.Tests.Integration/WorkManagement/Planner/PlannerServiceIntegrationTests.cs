@@ -264,11 +264,11 @@ public sealed class PlannerServiceIntegrationTests
         // The overlap check and the insert run under the employee's plan lock, so a second device's write waits for the
         // first one instead of checking against a plan that is about to change.
         var w = await SeedAsync();
-        await using var holder = new Npgsql.NpgsqlConnection(w.H.ConnectionString);
+        await using var holder = TestDb.CreateConnection(w.H.ConnectionString);
         await holder.OpenAsync();
         await using var holderTx = await holder.BeginTransactionAsync();
-        await using (var take = new Npgsql.NpgsqlCommand(
-            "SELECT pg_advisory_xact_lock(hashtextextended(@key, 0))", holder, holderTx))
+        await using (var take = new SqlCommand(
+            "EXEC sp_getapplock @Resource = @key, @LockMode = 'Exclusive', @LockOwner = 'Transaction'", holder, (SqlTransaction)holderTx))
         {
             take.Parameters.AddWithValue("key", EfPlannerRepository.PlanLockKey(w.H.TenantId, w.Employee));
             await take.ExecuteNonQueryAsync();

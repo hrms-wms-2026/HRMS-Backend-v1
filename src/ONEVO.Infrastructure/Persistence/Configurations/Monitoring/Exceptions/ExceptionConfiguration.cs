@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using MonitoringException = ONEVO.Domain.Features.Monitoring.Exceptions.Entities.Exception;
+using ONEVO.Infrastructure.Persistence.SqlServer;
 
 namespace ONEVO.Infrastructure.Persistence.Configurations.Monitoring.Exceptions;
 
@@ -16,7 +17,7 @@ public class ExceptionConfiguration : IEntityTypeConfiguration<MonitoringExcepti
         builder.Property(e => e.Description).HasMaxLength(2000);
         builder.Property(e => e.ResolutionNote).HasMaxLength(1000);
         builder.Property(e => e.MetadataJson)
-            .HasColumnType("jsonb")
+            .IsJsonColumn()
             .HasDefaultValue("{}");
 
         builder.HasIndex(e => new { e.TenantId, e.Status, e.DetectedAt })

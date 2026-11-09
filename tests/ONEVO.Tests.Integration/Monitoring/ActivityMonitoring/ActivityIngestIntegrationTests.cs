@@ -34,7 +34,7 @@ public sealed class ActivityIngestIntegrationTestsFixture : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        var connectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
+        var connectionString = await SharedSqlServerTemplate.CreateDatabaseAsync();
         _environmentScope = new IntegrationTestEnvironmentScope(connectionString);
 
         _factory = new ActivityMonitoringTestFactory(connectionString);

@@ -111,6 +111,7 @@ See `finished/SUMMARY.md` for the full file-by-file list, grouped by date folder
 | Reporting Manager Resolution Implementation Plan | `finished/2026-08-19/2026-08-19-reporting-manager-resolution.md` | finished |  |
 | Attendance List Pagination Implementation Plan | `finished/2026-08-25/2026-08-25-attendance-list-pagination.md` | finished |  |
 | Tray App Employee Access Toggle (Phase A) Implementation Plan | `next/2026-08-25-tray-app-employee-access-toggle-backend.md` | pending | backend endpoint POST /employees/{id}/tray-app-access was never built (only this plan was committed) |
+| SQL Server Migration Implementation Plan | `next/2026-11-07-sqlserver-migration/` | pending | PostgreSQL to SQL Server, including RLS |
 | Work Area Change Request Backend Part 1 — Final Hardening Implementation Plan | `finished/2026-08-25/2026-08-25-work-area-hardening-part1-final.md` | finished |  |
 | Calendar Invites, RSVP, and Conflict Detection — Backend Implementation Plan | `finished/2026-08-31/2026-08-31-calendar-invites-rsvp-conflicts-backend.md` | finished |  |
 | Calendar Recurrence Engine Implementation Plan | `finished/2026-08-31/2026-08-31-calendar-recurrence-engine.md` | finished |  |

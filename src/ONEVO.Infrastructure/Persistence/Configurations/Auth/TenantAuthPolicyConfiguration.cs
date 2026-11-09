@@ -13,6 +13,6 @@ public class TenantAuthPolicyConfiguration : IEntityTypeConfiguration<TenantAuth
 
         builder.HasIndex(x => x.TenantId).IsUnique();
 
-        builder.Property(x => x.AllowedLoginDomainsJson).HasColumnType("text");
+        builder.Property(x => x.AllowedLoginDomainsJson);
     }
 }

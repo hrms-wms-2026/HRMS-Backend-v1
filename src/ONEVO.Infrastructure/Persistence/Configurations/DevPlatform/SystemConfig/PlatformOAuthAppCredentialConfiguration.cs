@@ -34,11 +34,9 @@ public class PlatformOAuthAppCredentialConfiguration : IEntityTypeConfiguration<
 
         // Encrypted text columns — never returned by API
         builder.Property(c => c.ClientSecretEncrypted)
-            .HasColumnType("text")
             .IsRequired();
 
-        builder.Property(c => c.PrivateKeyEncrypted)
-            .HasColumnType("text");
+        builder.Property(c => c.PrivateKeyEncrypted);
 
         builder.Property(c => c.EncryptionKeyVersion)
             .HasMaxLength(50)

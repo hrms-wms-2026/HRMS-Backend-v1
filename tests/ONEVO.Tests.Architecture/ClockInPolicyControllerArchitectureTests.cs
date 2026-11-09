@@ -89,21 +89,6 @@ public sealed class ClockInPolicyControllerArchitectureTests
         Assert.DoesNotContain(refs, n => n is "Microsoft.EntityFrameworkCore" or "Npgsql.EntityFrameworkCore.PostgreSQL");
     }
 
-    [Fact]
-    public void Migration_Declares_Rls_TenantTables()
-    {
-        var migrationsDir = Path.GetFullPath(Path.Combine(
-            AppContext.BaseDirectory, "..", "..", "..", "..", "..",
-            "src", "ONEVO.Infrastructure", "Migrations"));
-        var migration = Directory.GetFiles(migrationsDir, "*AddClockInPolicies.cs")
-            .Single(f => !f.EndsWith(".Designer.cs", StringComparison.OrdinalIgnoreCase));
-        var source = File.ReadAllText(migration);
-        Assert.Contains("TenantTables", source);
-        Assert.Contains("\"clock_in_policies\"", source);
-        Assert.Contains("\"clock_in_late_deduction_rules\"", source);
-        Assert.Contains("tenant_isolation", source);
-    }
-
     private static void AssertPermission(MethodInfo method, string expected)
     {
         var permission = method.GetCustomAttribute<RequirePermissionAttribute>();

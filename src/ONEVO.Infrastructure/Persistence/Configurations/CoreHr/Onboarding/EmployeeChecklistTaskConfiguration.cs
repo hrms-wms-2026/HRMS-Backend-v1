@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using ONEVO.Domain.Features.CoreHr.Entities;
+using ONEVO.Infrastructure.Persistence.SqlServer;
 
 namespace ONEVO.Infrastructure.Persistence.Configurations.CoreHr.Onboarding;
 
@@ -19,7 +20,7 @@ public sealed class EmployeeChecklistTaskConfiguration : IEntityTypeConfiguratio
         builder.Property(x => x.BypassPenaltyDescription).HasMaxLength(500);
         builder.Property(x => x.Category).HasMaxLength(40);
         builder.Property(x => x.Priority).HasMaxLength(20);
-        builder.Property(x => x.AttachmentFileIdsJson).HasColumnType("jsonb");
+        builder.Property(x => x.AttachmentFileIdsJson).IsJsonColumn();
         builder.HasIndex(x => new { x.TenantId, x.OffboardingRecordId });
         builder.HasOne<ONEVO.Domain.Features.CoreHr.Entities.OffboardingRecord>().WithMany()
             .HasForeignKey(x => x.OffboardingRecordId).OnDelete(DeleteBehavior.Restrict);

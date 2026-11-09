@@ -69,36 +69,6 @@ public class ConfigurationTemplateManagerArchitectureTests
     }
 
     [Fact]
-    public void Migration_CreatesOnlyTheTwoCanonicalConfigurationTemplateTables()
-    {
-        var migrationsDir = FindRepositoryPath("src", "ONEVO.Infrastructure", "Migrations");
-        var migrationFile = Directory.EnumerateFiles(migrationsDir, "*_AddConfigurationTemplates.cs")
-            .FirstOrDefault(f => !f.EndsWith(".Designer.cs", StringComparison.Ordinal));
-        Assert.True(migrationFile is not null,
-            "Expected a migration file matching *_AddConfigurationTemplates.cs under src/ONEVO.Infrastructure/Migrations.");
-
-        var text = File.ReadAllText(migrationFile!);
-        var createTableCount = System.Text.RegularExpressions.Regex.Matches(text, "migrationBuilder\\.CreateTable").Count;
-        Assert.Equal(2, createTableCount);
-
-        Assert.Contains("\"configuration_templates\"", text);
-        Assert.Contains("\"tenant_configuration_template_applications\"", text);
-
-        var forbidden = new[]
-        {
-            "\"setup_services\"",
-            "\"tenant_setup_services\"",
-            "\"tenant_setup_selections\"",
-            "\"setup_options\"",
-            "\"tenant_one_time_charges\""
-        };
-        foreach (var term in forbidden)
-        {
-            Assert.DoesNotContain(term, text);
-        }
-    }
-
-    [Fact]
     public void SourceTree_ConfigurationTemplateFeature_DoesNotReintroduceRetiredSetupServiceIdentifiers()
     {
         var srcDir = FindRepositoryPath("src");

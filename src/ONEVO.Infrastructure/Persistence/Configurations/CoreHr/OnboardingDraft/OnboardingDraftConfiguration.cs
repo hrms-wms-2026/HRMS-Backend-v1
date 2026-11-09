@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using OnboardingDraftEntity = ONEVO.Domain.Features.CoreHr.Entities.OnboardingDraft;
+using ONEVO.Infrastructure.Persistence.SqlServer;
 
 namespace ONEVO.Infrastructure.Persistence.Configurations.CoreHr.OnboardingDraft;
 
@@ -11,15 +12,13 @@ public class OnboardingDraftConfiguration : IEntityTypeConfiguration<OnboardingD
         builder.ToTable("onboarding_drafts");
         builder.HasKey(d => d.Id);
 
-        // Concurrency token mapped to the PostgreSQL system column xmin, which already exists
+        // Concurrency token, a rowversion column named xmin, which already exists
         // on every table - not a real column to add. The migration this produces is hand-edited
         // to a no-op (see AddOnboardingDraftXminConcurrencyToken); the provider version pinned
         // here does not expose the UseXminAsConcurrencyToken() convenience method.
-        builder.Property<uint>("xmin")
+        builder.Property<ulong>("xmin")
             .HasColumnName("xmin")
-            .HasColumnType("xid")
-            .ValueGeneratedOnAddOrUpdate()
-            .IsConcurrencyToken();
+            .IsRowVersion();
 
         builder.Property(d => d.FirstName).HasMaxLength(100).IsRequired();
         builder.Property(d => d.LastName).HasMaxLength(100).IsRequired();
@@ -29,7 +28,7 @@ public class OnboardingDraftConfiguration : IEntityTypeConfiguration<OnboardingD
         builder.Property(d => d.Status).HasMaxLength(30).IsRequired();
         builder.Property(d => d.DraftReason).HasMaxLength(50);
         builder.Property(d => d.LastSavedStep).HasMaxLength(50).IsRequired();
-        builder.Property(d => d.EditedTasksJson).HasColumnType("jsonb");
+        builder.Property(d => d.EditedTasksJson).IsJsonColumn();
 
         builder.HasIndex(d => new { d.TenantId, d.Status });
         builder.HasIndex(d => new { d.TenantId, d.StartedById });

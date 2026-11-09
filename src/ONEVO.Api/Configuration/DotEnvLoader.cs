@@ -1,4 +1,4 @@
-using Npgsql;
+using Microsoft.Data.SqlClient;
 
 namespace ONEVO.Api.Configuration;
 
@@ -318,19 +318,23 @@ public static class DotEnvLoader
             return;
         }
 
-        var connection = new NpgsqlConnectionStringBuilder
+        var connection = new SqlConnectionStringBuilder
         {
-            Host = host,
-            Port = port,
-            Database = database,
-            Username = username,
-            Password = password
+            DataSource = $"{host},{port}",
+            InitialCatalog = database,
+            UserID = username,
+            Password = password,
+            // Local development only: a local server uses a self-signed certificate.
+            TrustServerCertificate = IsLocalHost(host)
         };
 
         Environment.SetEnvironmentVariable(
             connectionEnvironmentKey,
             connection.ConnectionString);
     }
+
+    private static bool IsLocalHost(string host)
+        => host.Equals("localhost", StringComparison.OrdinalIgnoreCase) || host == "127.0.0.1";
 
     private static bool IsMissingOrPlaceholder(string? value)
     {

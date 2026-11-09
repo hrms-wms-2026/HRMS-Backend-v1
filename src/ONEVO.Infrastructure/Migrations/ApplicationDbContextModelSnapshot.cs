@@ -2,8 +2,8 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
-using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using ONEVO.Infrastructure.Persistence;
 
 #nullable disable
@@ -17,61 +17,64 @@ namespace ONEVO.Infrastructure.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
+                .UseCollation("Latin1_General_100_CS_AS_SC")
                 .HasAnnotation("ProductVersion", "10.0.9")
-                .HasAnnotation("Relational:MaxIdentifierLength", 63);
+                .HasAnnotation("Relational:MaxIdentifierLength", 128);
 
-            NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
+            SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
 
             modelBuilder.Entity("ONEVO.Domain.Features.Auth.Entities.AuditLog", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<string>("Action")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
+                        .HasColumnType("nvarchar(100)")
                         .HasColumnName("action");
 
                     b.Property<Guid?>("CorrelationId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("correlation_id");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<string>("IpAddress")
                         .HasMaxLength(45)
-                        .HasColumnType("character varying(45)")
+                        .HasColumnType("nvarchar(45)")
                         .HasColumnName("ip_address");
 
                     b.Property<string>("NewValuesJson")
-                        .HasColumnType("jsonb")
-                        .HasColumnName("new_values_json");
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("new_values_json")
+                        .HasAnnotation("Crownus:JsonColumn", true);
 
                     b.Property<string>("OldValuesJson")
-                        .HasColumnType("jsonb")
-                        .HasColumnName("old_values_json");
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("old_values_json")
+                        .HasAnnotation("Crownus:JsonColumn", true);
 
                     b.Property<Guid?>("ResourceId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("resource_id");
 
                     b.Property<string>("ResourceType")
                         .IsRequired()
                         .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
+                        .HasColumnType("nvarchar(50)")
                         .HasColumnName("resource_type");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<Guid?>("UserId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("user_id");
 
                     b.HasKey("Id")
@@ -83,50 +86,55 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasIndex("UserId", "CreatedAt")
                         .HasDatabaseName("ix_audit_logs_user_id_created_at");
 
-                    b.ToTable("audit_logs", (string)null);
+                    b.ToTable("audit_logs", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_audit_logs_new_values_json_json", "ISJSON([new_values_json]) = 1");
+
+                            t.HasCheckConstraint("ck_audit_logs_old_values_json_json", "ISJSON([old_values_json]) = 1");
+                        });
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.Auth.Entities.FeatureAccessGrant", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid>("GrantedBy")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("granted_by");
 
                     b.Property<Guid>("GranteeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("grantee_id");
 
                     b.Property<string>("GranteeType")
                         .IsRequired()
                         .HasMaxLength(10)
-                        .HasColumnType("character varying(10)")
+                        .HasColumnType("nvarchar(10)")
                         .HasColumnName("grantee_type");
 
                     b.Property<bool>("IsEnabled")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_enabled");
 
                     b.Property<string>("Module")
                         .IsRequired()
                         .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
+                        .HasColumnType("nvarchar(50)")
                         .HasColumnName("module");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id")
@@ -134,7 +142,7 @@ namespace ONEVO.Infrastructure.Migrations
 
                     b.HasIndex("TenantId", "GranteeType", "GranteeId", "Module")
                         .IsUnique()
-                        .HasDatabaseName("ix_feature_access_grants_tenant_id_grantee_type_grantee_id_mod");
+                        .HasDatabaseName("ix_feature_access_grants_tenant_id_grantee_type_grantee_id_module");
 
                     b.ToTable("feature_access_grants", (string)null);
                 });
@@ -143,110 +151,112 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<bool?>("AllowGoogleEmailMismatch")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("allow_google_email_mismatch");
 
                     b.Property<string>("AllowedEmailDomainsJson")
-                        .HasColumnType("jsonb")
-                        .HasColumnName("allowed_email_domains_json");
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("allowed_email_domains_json")
+                        .HasAnnotation("Crownus:JsonColumn", true);
 
                     b.Property<string>("CompletedWith")
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("completed_with");
 
                     b.Property<string>("CompletionMethodsJson")
-                        .HasColumnType("jsonb")
-                        .HasColumnName("completion_methods_json");
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("completion_methods_json")
+                        .HasAnnotation("Crownus:JsonColumn", true);
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid?>("CreatedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
                     b.Property<Guid?>("EmployeeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("employee_id");
 
                     b.Property<DateTimeOffset>("ExpiresAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("expires_at");
 
                     b.Property<string>("InvitedEmail")
                         .IsRequired()
                         .HasMaxLength(254)
-                        .HasColumnType("character varying(254)")
+                        .HasColumnType("nvarchar(254)")
                         .HasColumnName("invited_email");
 
                     b.Property<string>("InvitedFullName")
                         .IsRequired()
                         .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
+                        .HasColumnType("nvarchar(255)")
                         .HasColumnName("invited_full_name");
 
                     b.Property<Guid?>("LegalEntityId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("legal_entity_id");
 
                     b.Property<Guid?>("OnboardingDraftId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("onboarding_draft_id");
 
                     b.Property<Guid?>("PositionAssignmentId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("position_assignment_id");
 
                     b.Property<Guid?>("PositionId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("position_id");
 
                     b.Property<string>("Purpose")
                         .IsRequired()
                         .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
+                        .HasColumnType("nvarchar(50)")
                         .HasColumnName("purpose");
 
                     b.Property<DateTimeOffset?>("RevokedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("revoked_at");
 
                     b.Property<Guid?>("RevokedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("revoked_by_id");
 
                     b.Property<Guid?>("RoleId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("role_id");
 
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("status");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<string>("TokenHash")
                         .IsRequired()
                         .HasMaxLength(128)
-                        .HasColumnType("character varying(128)")
+                        .HasColumnType("nvarchar(128)")
                         .HasColumnName("token_hash");
 
                     b.Property<DateTimeOffset?>("UsedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("used_at");
 
                     b.Property<Guid>("UserId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("user_id");
 
                     b.HasKey("Id")
@@ -262,64 +272,69 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasIndex("TenantId", "InvitedEmail")
                         .HasDatabaseName("ix_invitation_tokens_tenant_id_invited_email");
 
-                    b.ToTable("invitation_tokens", (string)null);
+                    b.ToTable("invitation_tokens", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_invitation_tokens_allowed_email_domains_json_json", "ISJSON([allowed_email_domains_json]) = 1");
+
+                            t.HasCheckConstraint("ck_invitation_tokens_completion_methods_json_json", "ISJSON([completion_methods_json]) = 1");
+                        });
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.Auth.Entities.LegalAcceptanceRecord", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<DateTimeOffset>("DecidedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("decided_at");
 
                     b.Property<string>("Decision")
                         .IsRequired()
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("decision");
 
                     b.Property<string>("DocumentType")
                         .IsRequired()
                         .HasMaxLength(80)
-                        .HasColumnType("character varying(80)")
+                        .HasColumnType("nvarchar(80)")
                         .HasColumnName("document_type");
 
                     b.Property<string>("DocumentVersion")
                         .IsRequired()
                         .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
+                        .HasColumnType("nvarchar(50)")
                         .HasColumnName("document_version");
 
                     b.Property<string>("IpAddress")
                         .HasMaxLength(45)
-                        .HasColumnType("character varying(45)")
+                        .HasColumnType("nvarchar(45)")
                         .HasColumnName("ip_address");
 
                     b.Property<bool>("Required")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("required");
 
                     b.Property<string>("Source")
                         .IsRequired()
                         .HasMaxLength(30)
-                        .HasColumnType("character varying(30)")
+                        .HasColumnType("nvarchar(30)")
                         .HasColumnName("source");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<string>("UserAgent")
                         .HasMaxLength(500)
-                        .HasColumnType("character varying(500)")
+                        .HasColumnType("nvarchar(500)")
                         .HasColumnName("user_agent");
 
                     b.Property<Guid>("UserId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("user_id");
 
                     b.HasKey("Id")
@@ -335,54 +350,54 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<string>("ChallengeHash")
                         .IsRequired()
                         .HasMaxLength(128)
-                        .HasColumnType("character varying(128)")
+                        .HasColumnType("nvarchar(128)")
                         .HasColumnName("challenge_hash");
 
                     b.Property<DateTimeOffset?>("ConsumedAt")
                         .IsConcurrencyToken()
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("consumed_at");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<string>("CsrfTokenHash")
                         .IsRequired()
                         .HasMaxLength(128)
-                        .HasColumnType("character varying(128)")
+                        .HasColumnType("nvarchar(128)")
                         .HasColumnName("csrf_token_hash");
 
                     b.Property<DateTimeOffset>("ExpiresAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("expires_at");
 
                     b.Property<string>("Origin")
                         .IsRequired()
                         .HasMaxLength(30)
-                        .HasColumnType("character varying(30)")
+                        .HasColumnType("nvarchar(30)")
                         .HasColumnName("origin");
 
                     b.Property<DateTimeOffset?>("SupersededAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("superseded_at");
 
                     b.Property<Guid?>("SupersededById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("superseded_by_id");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<Guid>("UserId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("user_id");
 
                     b.HasKey("Id")
@@ -411,61 +426,62 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<string>("CandidateWorkspacesJson")
                         .IsRequired()
-                        .HasColumnType("jsonb")
-                        .HasColumnName("candidate_workspaces_json");
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("candidate_workspaces_json")
+                        .HasAnnotation("Crownus:JsonColumn", true);
 
                     b.Property<string>("ChallengeHash")
                         .IsRequired()
                         .HasMaxLength(128)
-                        .HasColumnType("character varying(128)")
+                        .HasColumnType("nvarchar(128)")
                         .HasColumnName("challenge_hash");
 
                     b.Property<DateTimeOffset?>("ConsumedAt")
                         .IsConcurrencyToken()
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("consumed_at");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<DateTimeOffset>("ExpiresAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("expires_at");
 
                     b.Property<int>("FailedAttemptCount")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasDefaultValue(0)
                         .HasColumnName("failed_attempt_count");
 
                     b.Property<string>("IpAddress")
                         .HasMaxLength(45)
-                        .HasColumnType("character varying(45)")
+                        .HasColumnType("nvarchar(45)")
                         .HasColumnName("ip_address");
 
                     b.Property<string>("NormalizedEmail")
                         .IsRequired()
                         .HasMaxLength(320)
-                        .HasColumnType("character varying(320)")
+                        .HasColumnType("nvarchar(320)")
                         .HasColumnName("normalized_email");
 
                     b.Property<string>("Purpose")
                         .IsRequired()
                         .ValueGeneratedOnAdd()
                         .HasMaxLength(40)
-                        .HasColumnType("character varying(40)")
+                        .HasColumnType("nvarchar(40)")
                         .HasDefaultValue("workspace_selection")
                         .HasColumnName("purpose");
 
                     b.Property<string>("UserAgent")
                         .HasMaxLength(500)
-                        .HasColumnType("character varying(500)")
+                        .HasColumnType("nvarchar(500)")
                         .HasColumnName("user_agent");
 
                     b.HasKey("Id")
@@ -479,10 +495,12 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasDatabaseName("ix_login_workspace_selection_challenges_expires_at");
 
                     b.HasIndex("NormalizedEmail", "CreatedAt")
-                        .HasDatabaseName("ix_login_workspace_selection_challenges_normalized_email_creat");
+                        .HasDatabaseName("ix_login_workspace_selection_challenges_normalized_email_created_at");
 
                     b.ToTable("login_workspace_selection_challenges", null, t =>
                         {
+                            t.HasCheckConstraint("ck_login_workspace_selection_challenges_candidate_workspaces_json_json", "ISJSON([candidate_workspaces_json]) = 1");
+
                             t.HasCheckConstraint("ck_login_workspace_selection_challenges_failed_attempt_count", "failed_attempt_count BETWEEN 0 AND 5");
 
                             t.HasCheckConstraint("ck_login_workspace_selection_challenges_purpose", "purpose = 'workspace_selection'");
@@ -493,31 +511,31 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<string>("ChallengeHash")
                         .IsRequired()
                         .HasMaxLength(128)
-                        .HasColumnType("character varying(128)")
+                        .HasColumnType("nvarchar(128)")
                         .HasColumnName("challenge_hash");
 
                     b.Property<DateTimeOffset?>("ConsumedAt")
                         .IsConcurrencyToken()
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("consumed_at");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<DateTimeOffset>("ExpiresAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("expires_at");
 
                     b.Property<int>("FailedAttemptCount")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasDefaultValue(0)
                         .HasColumnName("failed_attempt_count");
 
@@ -525,16 +543,16 @@ namespace ONEVO.Infrastructure.Migrations
                         .IsRequired()
                         .ValueGeneratedOnAdd()
                         .HasMaxLength(30)
-                        .HasColumnType("character varying(30)")
+                        .HasColumnType("nvarchar(30)")
                         .HasDefaultValue("password")
                         .HasColumnName("origin");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<Guid>("UserId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("user_id");
 
                     b.HasKey("Id")
@@ -560,33 +578,33 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<DateTimeOffset>("ExpiresAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("expires_at");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<string>("TokenHash")
                         .IsRequired()
                         .HasMaxLength(128)
-                        .HasColumnType("character varying(128)")
+                        .HasColumnType("nvarchar(128)")
                         .HasColumnName("token_hash");
 
                     b.Property<DateTimeOffset?>("UsedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("used_at");
 
                     b.Property<Guid>("UserId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("user_id");
 
                     b.HasKey("Id")
@@ -606,25 +624,25 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<string>("Code")
                         .IsRequired()
                         .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
+                        .HasColumnType("nvarchar(50)")
                         .HasColumnName("code");
 
                     b.Property<string>("Description")
                         .IsRequired()
                         .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
+                        .HasColumnType("nvarchar(255)")
                         .HasColumnName("description");
 
                     b.Property<string>("Module")
                         .IsRequired()
                         .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
+                        .HasColumnType("nvarchar(50)")
                         .HasColumnName("module");
 
                     b.HasKey("Id")
@@ -641,37 +659,37 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<DateTimeOffset>("ExpiresAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("expires_at");
 
                     b.Property<Guid?>("ReplacedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("replaced_by_id");
 
                     b.Property<DateTimeOffset?>("RevokedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("revoked_at");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<string>("TokenHash")
                         .IsRequired()
                         .HasMaxLength(128)
-                        .HasColumnType("character varying(128)")
+                        .HasColumnType("nvarchar(128)")
                         .HasColumnName("token_hash");
 
                     b.Property<Guid>("UserId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("user_id");
 
                     b.HasKey("Id")
@@ -694,51 +712,51 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid>("CreatedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
                     b.Property<DateTimeOffset?>("DeletedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("deleted_at");
 
                     b.Property<string>("Description")
                         .IsRequired()
                         .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
+                        .HasColumnType("nvarchar(255)")
                         .HasColumnName("description");
 
                     b.Property<bool>("IsDeleted")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_deleted");
 
                     b.Property<bool>("IsSystem")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_system");
 
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
+                        .HasColumnType("nvarchar(100)")
                         .HasColumnName("name");
 
                     b.Property<Guid?>("SourceTemplateId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("source_template_id");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id")
@@ -762,15 +780,15 @@ namespace ONEVO.Infrastructure.Migrations
             modelBuilder.Entity("ONEVO.Domain.Features.Auth.Entities.RolePermission", b =>
                 {
                     b.Property<Guid>("RoleId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("role_id");
 
                     b.Property<Guid>("PermissionId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("permission_id");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.HasKey("RoleId", "PermissionId")
@@ -786,49 +804,51 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<string>("Description")
                         .IsRequired()
                         .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
+                        .HasColumnType("nvarchar(255)")
                         .HasColumnName("description");
 
                     b.Property<bool>("IsActive")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_active");
 
                     b.Property<bool>("IsSystem")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_system");
 
                     b.Property<string>("ModuleKeysJson")
                         .IsRequired()
-                        .HasColumnType("jsonb")
-                        .HasColumnName("module_keys_json");
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("module_keys_json")
+                        .HasAnnotation("Crownus:JsonColumn", true);
 
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
+                        .HasColumnType("nvarchar(100)")
                         .HasColumnName("name");
 
                     b.Property<string>("PermissionCodesJson")
                         .IsRequired()
-                        .HasColumnType("jsonb")
-                        .HasColumnName("permission_codes_json");
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("permission_codes_json")
+                        .HasAnnotation("Crownus:JsonColumn", true);
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.Property<int>("Version")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("version");
 
                     b.HasKey("Id")
@@ -838,66 +858,71 @@ namespace ONEVO.Infrastructure.Migrations
                         .IsUnique()
                         .HasDatabaseName("ix_role_templates_name");
 
-                    b.ToTable("role_templates", (string)null);
+                    b.ToTable("role_templates", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_role_templates_module_keys_json_json", "ISJSON([module_keys_json]) = 1");
+
+                            t.HasCheckConstraint("ck_role_templates_permission_codes_json_json", "ISJSON([permission_codes_json]) = 1");
+                        });
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.Auth.Entities.Session", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<Guid?>("ActiveEmployeeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("active_employee_id");
 
                     b.Property<string>("CsrfTokenHash")
                         .IsRequired()
                         .HasMaxLength(128)
-                        .HasColumnType("character varying(128)")
+                        .HasColumnType("nvarchar(128)")
                         .HasColumnName("csrf_token_hash");
 
                     b.Property<DateTimeOffset>("ExpiresAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("expires_at");
 
                     b.Property<string>("IpAddress")
                         .IsRequired()
                         .HasMaxLength(45)
-                        .HasColumnType("character varying(45)")
+                        .HasColumnType("nvarchar(45)")
                         .HasColumnName("ip_address");
 
                     b.Property<bool>("IsRevoked")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_revoked");
 
                     b.Property<string>("KeyHash")
                         .IsRequired()
                         .HasMaxLength(128)
-                        .HasColumnType("character varying(128)")
+                        .HasColumnType("nvarchar(128)")
                         .HasColumnName("key_hash");
 
                     b.Property<DateTimeOffset>("LastActivityAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("last_activity_at");
 
                     b.Property<DateTimeOffset>("StartedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("started_at");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<string>("UserAgent")
                         .IsRequired()
                         .HasMaxLength(500)
-                        .HasColumnType("character varying(500)")
+                        .HasColumnType("nvarchar(500)")
                         .HasColumnName("user_agent");
 
                     b.Property<Guid>("UserId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("user_id");
 
                     b.HasKey("Id")
@@ -920,39 +945,39 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<string>("AllowedLoginDomainsJson")
-                        .HasColumnType("text")
+                        .HasColumnType("nvarchar(max)")
                         .HasColumnName("allowed_login_domains_json");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<bool>("GoogleCompletionAllowed")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("google_completion_allowed");
 
                     b.Property<bool>("GoogleEmailMismatchDefault")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("google_email_mismatch_default");
 
                     b.Property<bool>("MfaRequired")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("mfa_required");
 
                     b.Property<bool>("PasswordCompletionAllowed")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("password_completion_allowed");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id")
@@ -969,54 +994,54 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<string>("AuthOrigin")
                         .IsRequired()
                         .HasMaxLength(64)
-                        .HasColumnType("character varying(64)")
+                        .HasColumnType("nvarchar(64)")
                         .HasColumnName("auth_origin");
 
                     b.Property<string>("CodeHash")
                         .IsRequired()
                         .HasMaxLength(128)
-                        .HasColumnType("character varying(128)")
+                        .HasColumnType("nvarchar(128)")
                         .HasColumnName("code_hash");
 
                     b.Property<DateTimeOffset?>("ConsumedAt")
                         .IsConcurrencyToken()
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("consumed_at");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<DateTimeOffset>("ExpiresAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("expires_at");
 
                     b.Property<string>("IpAddress")
                         .HasMaxLength(128)
-                        .HasColumnType("character varying(128)")
+                        .HasColumnType("nvarchar(128)")
                         .HasColumnName("ip_address");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<DateTimeOffset>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.Property<string>("UserAgent")
                         .HasMaxLength(512)
-                        .HasColumnType("character varying(512)")
+                        .HasColumnType("nvarchar(512)")
                         .HasColumnName("user_agent");
 
                     b.Property<Guid>("UserId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("user_id");
 
                     b.HasKey("Id")
@@ -1043,45 +1068,45 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<bool>("EmailVerified")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("email_verified");
 
                     b.Property<DateTimeOffset?>("LastUsedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("last_used_at");
 
                     b.Property<DateTimeOffset>("LinkedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("linked_at");
 
                     b.Property<string>("Provider")
                         .IsRequired()
                         .HasMaxLength(32)
-                        .HasColumnType("character varying(32)")
+                        .HasColumnType("nvarchar(32)")
                         .HasColumnName("provider");
 
                     b.Property<string>("ProviderEmail")
                         .IsRequired()
                         .HasMaxLength(254)
-                        .HasColumnType("character varying(254)")
+                        .HasColumnType("nvarchar(254)")
                         .HasColumnName("provider_email");
 
                     b.Property<string>("ProviderSubject")
                         .IsRequired()
                         .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
+                        .HasColumnType("nvarchar(255)")
                         .HasColumnName("provider_subject");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<Guid>("UserId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("user_id");
 
                     b.HasKey("Id")
@@ -1101,35 +1126,35 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<bool>("IsVerified")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_verified");
 
                     b.Property<string>("MethodType")
                         .IsRequired()
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("method_type");
 
                     b.Property<string>("Secret")
                         .IsRequired()
                         .HasMaxLength(512)
-                        .HasColumnType("character varying(512)")
+                        .HasColumnType("nvarchar(512)")
                         .HasColumnName("secret");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<Guid>("UserId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("user_id");
 
                     b.HasKey("Id")
@@ -1145,39 +1170,39 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<string>("GrantType")
                         .IsRequired()
                         .HasMaxLength(10)
-                        .HasColumnType("character varying(10)")
+                        .HasColumnType("nvarchar(10)")
                         .HasColumnName("grant_type");
 
                     b.Property<Guid>("GrantedBy")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("granted_by");
 
                     b.Property<Guid>("PermissionId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("permission_id");
 
                     b.Property<string>("Reason")
                         .IsRequired()
                         .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
+                        .HasColumnType("nvarchar(255)")
                         .HasColumnName("reason");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<Guid>("UserId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("user_id");
 
                     b.HasKey("Id")
@@ -1196,35 +1221,35 @@ namespace ONEVO.Infrastructure.Migrations
             modelBuilder.Entity("ONEVO.Domain.Features.Auth.Entities.UserRole", b =>
                 {
                     b.Property<Guid>("UserId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("user_id");
 
                     b.Property<Guid>("RoleId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("role_id");
 
                     b.Property<DateTimeOffset>("AssignedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("assigned_at");
 
                     b.Property<Guid>("AssignedBy")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("assigned_by");
 
                     b.Property<DateTimeOffset?>("ExpiresAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("expires_at");
 
                     b.Property<Guid?>("SourcePositionAccessTemplateId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("source_position_access_template_id");
 
                     b.Property<Guid?>("SourcePositionId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("source_position_id");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.HasKey("UserId", "RoleId")
@@ -1246,144 +1271,145 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<string>("Color")
                         .HasMaxLength(7)
-                        .HasColumnType("character varying(7)")
+                        .HasColumnType("nvarchar(7)")
                         .HasColumnName("color");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid>("CreatedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
                     b.Property<DateTimeOffset?>("DeletedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("deleted_at");
 
                     b.Property<string>("Description")
-                        .HasColumnType("text")
+                        .HasColumnType("nvarchar(max)")
                         .HasColumnName("description");
 
                     b.Property<DateTimeOffset>("EndDate")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("end_date");
 
                     b.Property<string>("EventStatus")
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("event_status");
 
                     b.Property<string>("ExternalAttendeesJson")
-                        .HasColumnType("jsonb")
-                        .HasColumnName("external_attendees");
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("external_attendees")
+                        .HasAnnotation("Crownus:JsonColumn", true);
 
                     b.Property<string>("ExternalId")
                         .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
+                        .HasColumnType("nvarchar(255)")
                         .HasColumnName("external_id");
 
                     b.Property<string>("ExternalSource")
                         .HasMaxLength(30)
-                        .HasColumnType("character varying(30)")
+                        .HasColumnType("nvarchar(30)")
                         .HasColumnName("external_source");
 
                     b.Property<DateTimeOffset?>("ExternalUpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("external_updated_at");
 
                     b.Property<bool>("IsAllDay")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_all_day");
 
                     b.Property<bool>("IsDeleted")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_deleted");
 
                     b.Property<bool>("IsPrivate")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_private");
 
                     b.Property<bool>("IsRecurrenceCancelled")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_recurrence_cancelled");
 
                     b.Property<string>("Location")
                         .HasMaxLength(500)
-                        .HasColumnType("character varying(500)")
+                        .HasColumnType("nvarchar(500)")
                         .HasColumnName("location");
 
                     b.Property<string>("MeetingLink")
                         .HasMaxLength(500)
-                        .HasColumnType("character varying(500)")
+                        .HasColumnType("nvarchar(500)")
                         .HasColumnName("meeting_link");
 
                     b.Property<string>("OrganizerEmail")
                         .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
+                        .HasColumnType("nvarchar(255)")
                         .HasColumnName("organizer_email");
 
                     b.Property<string>("OrganizerName")
                         .HasMaxLength(200)
-                        .HasColumnType("character varying(200)")
+                        .HasColumnType("nvarchar(200)")
                         .HasColumnName("organizer_name");
 
                     b.Property<string>("Recurrence")
                         .IsRequired()
                         .ValueGeneratedOnAdd()
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasDefaultValue("none")
                         .HasColumnName("recurrence");
 
                     b.Property<DateTimeOffset?>("RecurrenceOriginalStart")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("recurrence_original_start");
 
                     b.Property<Guid?>("RecurrenceParentId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("recurrence_parent_id");
 
                     b.Property<string>("RecurrenceRule")
-                        .HasColumnType("text")
+                        .HasColumnType("nvarchar(max)")
                         .HasColumnName("recurrence_rule");
 
                     b.Property<Guid?>("SourceId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("source_id");
 
                     b.Property<string>("SourceType")
                         .IsRequired()
                         .HasMaxLength(30)
-                        .HasColumnType("character varying(30)")
+                        .HasColumnType("nvarchar(30)")
                         .HasColumnName("source_type");
 
                     b.Property<DateTimeOffset>("StartDate")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("start_date");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<string>("Timezone")
                         .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
+                        .HasColumnType("nvarchar(50)")
                         .HasColumnName("timezone");
 
                     b.Property<string>("Title")
                         .IsRequired()
                         .HasMaxLength(200)
-                        .HasColumnType("character varying(200)")
+                        .HasColumnType("nvarchar(200)")
                         .HasColumnName("title");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id")
@@ -1401,36 +1427,39 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasIndex("TenantId", "StartDate", "EndDate")
                         .HasDatabaseName("ix_personal_calendar_events_tenant_id_start_date_end_date");
 
-                    b.ToTable("personal_calendar_events", (string)null);
+                    b.ToTable("personal_calendar_events", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_personal_calendar_events_external_attendees_json", "ISJSON([external_attendees]) = 1");
+                        });
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.Calendar.Entities.CalendarEventGuest", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<string>("Email")
                         .IsRequired()
                         .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
+                        .HasColumnType("nvarchar(255)")
                         .HasColumnName("email");
 
                     b.Property<Guid?>("EventId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("event_id");
 
                     b.Property<Guid?>("MeetingSeriesId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("meeting_series_id");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.HasKey("Id")
@@ -1441,7 +1470,8 @@ namespace ONEVO.Infrastructure.Migrations
 
                     b.HasIndex("TenantId", "EventId", "Email")
                         .IsUnique()
-                        .HasDatabaseName("ix_calendar_event_guests_one_row_per_email");
+                        .HasDatabaseName("ix_calendar_event_guests_one_row_per_email")
+                        .HasFilter("[event_id] IS NOT NULL");
 
                     b.HasIndex("TenantId", "MeetingSeriesId", "Email")
                         .IsUnique()
@@ -1455,105 +1485,105 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<string>("AttendanceSyncError")
                         .HasMaxLength(40)
-                        .HasColumnType("character varying(40)")
+                        .HasColumnType("nvarchar(40)")
                         .HasColumnName("attendance_sync_error");
 
                     b.Property<DateTimeOffset?>("AttendanceSyncFailedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("attendance_sync_failed_at");
 
                     b.Property<DateTimeOffset?>("AttendanceUnavailableAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("attendance_unavailable_at");
 
                     b.Property<Guid?>("CalendarEventId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("calendar_event_id");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid>("ExternalCalendarConnectionId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("external_calendar_connection_id");
 
                     b.Property<string>("ExternalMeetingId")
                         .IsRequired()
                         .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
+                        .HasColumnType("nvarchar(255)")
                         .HasColumnName("external_meeting_id");
 
                     b.Property<string>("FailureReason")
                         .HasMaxLength(40)
-                        .HasColumnType("character varying(40)")
+                        .HasColumnType("nvarchar(40)")
                         .HasColumnName("failure_reason");
 
                     b.Property<bool>("InvitesPending")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("invites_pending");
 
                     b.Property<string>("JoinUrl")
                         .IsRequired()
                         .HasMaxLength(500)
-                        .HasColumnType("character varying(500)")
+                        .HasColumnType("nvarchar(500)")
                         .HasColumnName("join_url");
 
                     b.Property<DateTimeOffset?>("LastAttendanceSyncedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("last_attendance_synced_at");
 
                     b.Property<int>("LinkGeneration")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasDefaultValue(1)
                         .HasColumnName("link_generation");
 
                     b.Property<string>("OrganizerJoinUrl")
                         .HasMaxLength(500)
-                        .HasColumnType("character varying(500)")
+                        .HasColumnType("nvarchar(500)")
                         .HasColumnName("organizer_join_url");
 
                     b.Property<string>("OwnerKind")
                         .IsRequired()
                         .ValueGeneratedOnAdd()
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasDefaultValue("calendar_event")
                         .HasColumnName("owner_kind");
 
                     b.Property<string>("PasscodeOrPin")
                         .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
+                        .HasColumnType("nvarchar(50)")
                         .HasColumnName("passcode_or_pin");
 
                     b.Property<string>("Provider")
                         .IsRequired()
                         .HasMaxLength(30)
-                        .HasColumnType("character varying(30)")
+                        .HasColumnType("nvarchar(30)")
                         .HasColumnName("provider");
 
                     b.Property<DateTimeOffset?>("ProvisioningStartedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("provisioning_started_at");
 
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("status");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id")
@@ -1561,7 +1591,8 @@ namespace ONEVO.Infrastructure.Migrations
 
                     b.HasIndex("CalendarEventId")
                         .IsUnique()
-                        .HasDatabaseName("ix_calendar_event_meetings_one_per_event");
+                        .HasDatabaseName("ix_calendar_event_meetings_one_per_event")
+                        .HasFilter("[calendar_event_id] IS NOT NULL");
 
                     b.HasIndex("TenantId", "ExternalCalendarConnectionId")
                         .HasDatabaseName("ix_calendar_event_meetings_tenant_id_connection_id");
@@ -1573,58 +1604,58 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<Guid?>("AttendanceSessionId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("attendance_session_id");
 
                     b.Property<Guid>("CalendarEventMeetingId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("calendar_event_meeting_id");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<int?>("DurationSeconds")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("duration_seconds");
 
                     b.Property<Guid?>("EmployeeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("employee_id");
 
                     b.Property<string>("ExternalParticipantEmail")
                         .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
+                        .HasColumnType("nvarchar(255)")
                         .HasColumnName("external_participant_email");
 
                     b.Property<string>("ExternalParticipantName")
                         .HasMaxLength(200)
-                        .HasColumnType("character varying(200)")
+                        .HasColumnType("nvarchar(200)")
                         .HasColumnName("external_participant_name");
 
                     b.Property<DateTimeOffset>("JoinedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("joined_at");
 
                     b.Property<DateTimeOffset?>("LeftAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("left_at");
 
                     b.Property<Guid?>("OccurrenceTaskId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("occurrence_task_id");
 
                     b.Property<string>("ParticipantKey")
                         .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
+                        .HasColumnType("nvarchar(255)")
                         .HasColumnName("participant_key");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.HasKey("Id")
@@ -1642,7 +1673,7 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasIndex("AttendanceSessionId", "ParticipantKey", "JoinedAt")
                         .IsUnique()
                         .HasDatabaseName("ux_calendar_event_meeting_attendances_session_participant_joined")
-                        .HasFilter("attendance_session_id IS NOT NULL");
+                        .HasFilter("attendance_session_id IS NOT NULL AND participant_key IS NOT NULL");
 
                     b.ToTable("calendar_event_meeting_attendances", (string)null);
                 });
@@ -1651,59 +1682,59 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid>("CreatedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
                     b.Property<DateTimeOffset?>("DeletedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("deleted_at");
 
                     b.Property<Guid>("EmployeeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("employee_id");
 
                     b.Property<Guid?>("EventId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("event_id");
 
                     b.Property<bool>("IsDeleted")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_deleted");
 
                     b.Property<Guid?>("MeetingSeriesId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("meeting_series_id");
 
                     b.Property<DateTimeOffset?>("RespondedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("responded_at");
 
                     b.Property<string>("ResponseReason")
-                        .HasColumnType("text")
+                        .HasColumnType("nvarchar(max)")
                         .HasColumnName("response_reason");
 
                     b.Property<string>("ResponseStatus")
                         .IsRequired()
                         .ValueGeneratedOnAdd()
                         .HasMaxLength(30)
-                        .HasColumnType("character varying(30)")
+                        .HasColumnType("nvarchar(30)")
                         .HasDefaultValue("pending")
                         .HasColumnName("response_status");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id")
@@ -1717,7 +1748,8 @@ namespace ONEVO.Infrastructure.Migrations
 
                     b.HasIndex("TenantId", "EventId", "EmployeeId")
                         .IsUnique()
-                        .HasDatabaseName("ix_calendar_event_participants_one_row_per_employee");
+                        .HasDatabaseName("ix_calendar_event_participants_one_row_per_employee")
+                        .HasFilter("[event_id] IS NOT NULL");
 
                     b.HasIndex("TenantId", "MeetingSeriesId", "EmployeeId")
                         .IsUnique()
@@ -1731,64 +1763,64 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<DateTimeOffset>("ChangedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("changed_at");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid>("CreatedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
                     b.Property<DateTimeOffset?>("DeletedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("deleted_at");
 
                     b.Property<Guid>("EmployeeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("employee_id");
 
                     b.Property<Guid>("EventId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("event_id");
 
                     b.Property<string>("FromStatus")
                         .IsRequired()
                         .HasMaxLength(30)
-                        .HasColumnType("character varying(30)")
+                        .HasColumnType("nvarchar(30)")
                         .HasColumnName("from_status");
 
                     b.Property<bool>("IsDeleted")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_deleted");
 
                     b.Property<Guid>("ParticipantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("participant_id");
 
                     b.Property<string>("Reason")
                         .HasMaxLength(2000)
-                        .HasColumnType("character varying(2000)")
+                        .HasColumnType("nvarchar(2000)")
                         .HasColumnName("reason");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<string>("ToStatus")
                         .IsRequired()
                         .HasMaxLength(30)
-                        .HasColumnType("character varying(30)")
+                        .HasColumnType("nvarchar(30)")
                         .HasColumnName("to_status");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id")
@@ -1804,47 +1836,47 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid>("CreatedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
                     b.Property<DateTimeOffset?>("DeletedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("deleted_at");
 
                     b.Property<Guid>("EmployeeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("employee_id");
 
                     b.Property<Guid>("EventId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("event_id");
 
                     b.Property<bool>("IsDeleted")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_deleted");
 
                     b.Property<DateTimeOffset>("OccurrenceStart")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("occurrence_start");
 
                     b.Property<DateTimeOffset>("SentAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("sent_at");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id")
@@ -1861,68 +1893,69 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<string>("Confidence")
                         .IsRequired()
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("confidence");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid>("CreatedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
                     b.Property<DateTimeOffset?>("DeletedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("deleted_at");
 
                     b.Property<DateTimeOffset>("DetectedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("detected_at");
 
                     b.Property<Guid>("EmployeeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("employee_id");
 
                     b.Property<Guid>("EventId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("event_id");
 
                     b.Property<string>("EvidenceJson")
                         .IsRequired()
-                        .HasColumnType("jsonb")
-                        .HasColumnName("evidence_json");
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("evidence_json")
+                        .HasAnnotation("Crownus:JsonColumn", true);
 
                     b.Property<Guid?>("ExceptionId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("exception_id");
 
                     b.Property<bool>("IsDeleted")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_deleted");
 
                     b.Property<DateTimeOffset>("OccurrenceStart")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("occurrence_start");
 
                     b.Property<string>("RuleCode")
                         .IsRequired()
                         .HasMaxLength(40)
-                        .HasColumnType("character varying(40)")
+                        .HasColumnType("nvarchar(40)")
                         .HasColumnName("rule_code");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id")
@@ -1934,108 +1967,112 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasIndex("TenantId", "EmployeeId", "RuleCode", "EventId", "OccurrenceStart")
                         .IsUnique()
                         .HasDatabaseName("ux_calendar_meeting_incidents_once")
-                        .HasFilter("is_deleted = false");
+                        .HasFilter("is_deleted = 0");
 
-                    b.ToTable("calendar_meeting_incidents", (string)null);
+                    b.ToTable("calendar_meeting_incidents", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_calendar_meeting_incidents_evidence_json_json", "ISJSON([evidence_json]) = 1");
+                        });
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.Calendar.Entities.ExternalCalendarConnection", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<byte[]>("AccessTokenEncrypted")
-                        .HasColumnType("bytea")
+                        .HasColumnType("varbinary(max)")
                         .HasColumnName("access_token_encrypted");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<byte[]>("DeltaLinkEncrypted")
-                        .HasColumnType("bytea")
+                        .HasColumnType("varbinary(max)")
                         .HasColumnName("delta_link_encrypted");
 
                     b.Property<DateTimeOffset?>("ExpiresAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("expires_at");
 
                     b.Property<string>("ExternalAccountEmail")
                         .IsRequired()
                         .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
+                        .HasColumnType("nvarchar(255)")
                         .HasColumnName("external_account_email");
 
                     b.Property<string>("ExternalCalendarId")
                         .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
+                        .HasColumnType("nvarchar(255)")
                         .HasColumnName("external_calendar_id");
 
                     b.Property<string>("ExternalCalendarName")
                         .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
+                        .HasColumnType("nvarchar(255)")
                         .HasColumnName("external_calendar_name");
 
                     b.Property<int>("FailureCount")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("failure_count");
 
                     b.Property<string>("LastError")
-                        .HasColumnType("text")
+                        .HasColumnType("nvarchar(max)")
                         .HasColumnName("last_error");
 
                     b.Property<DateTimeOffset?>("LastSuccessfulSyncAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("last_successful_sync_at");
 
                     b.Property<DateTimeOffset?>("LastSyncedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("last_synced_at");
 
                     b.Property<string>("Provider")
                         .IsRequired()
                         .HasMaxLength(30)
-                        .HasColumnType("character varying(30)")
+                        .HasColumnType("nvarchar(30)")
                         .HasColumnName("provider");
 
                     b.Property<byte[]>("RefreshTokenEncrypted")
                         .IsRequired()
-                        .HasColumnType("bytea")
+                        .HasColumnType("varbinary(max)")
                         .HasColumnName("refresh_token_encrypted");
 
                     b.Property<string>("ScopesJson")
                         .IsRequired()
-                        .HasColumnType("jsonb")
-                        .HasColumnName("scopes");
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("scopes")
+                        .HasAnnotation("Crownus:JsonColumn", true);
 
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("status");
 
                     b.Property<string>("SyncDirection")
                         .IsRequired()
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("sync_direction");
 
                     b.Property<byte[]>("SyncTokenEncrypted")
-                        .HasColumnType("bytea")
+                        .HasColumnType("varbinary(max)")
                         .HasColumnName("sync_token_encrypted");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.Property<Guid>("UserId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("user_id");
 
                     b.HasKey("Id")
@@ -2048,86 +2085,89 @@ namespace ONEVO.Infrastructure.Migrations
                         .IsUnique()
                         .HasDatabaseName("ix_external_calendar_connections_one_per_user_provider");
 
-                    b.ToTable("external_calendar_connections", (string)null);
+                    b.ToTable("external_calendar_connections", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_external_calendar_connections_scopes_json", "ISJSON([scopes]) = 1");
+                        });
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.Calendar.Entities.ExternalCalendarEventLink", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<Guid?>("CalendarEventId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("calendar_event_id");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid>("ExternalCalendarConnectionId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("external_calendar_connection_id");
 
                     b.Property<string>("ExternalCalendarId")
                         .IsRequired()
                         .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
+                        .HasColumnType("nvarchar(255)")
                         .HasColumnName("external_calendar_id");
 
                     b.Property<string>("ExternalEtag")
                         .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
+                        .HasColumnType("nvarchar(255)")
                         .HasColumnName("external_etag");
 
                     b.Property<string>("ExternalEventId")
                         .IsRequired()
                         .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
+                        .HasColumnType("nvarchar(255)")
                         .HasColumnName("external_event_id");
 
                     b.Property<string>("LastError")
-                        .HasColumnType("text")
+                        .HasColumnType("nvarchar(max)")
                         .HasColumnName("last_error");
 
                     b.Property<DateTimeOffset?>("LastSyncedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("last_synced_at");
 
                     b.Property<Guid?>("MeetingTaskId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("meeting_task_id");
 
                     b.Property<string>("Provider")
                         .IsRequired()
                         .HasMaxLength(30)
-                        .HasColumnType("character varying(30)")
+                        .HasColumnType("nvarchar(30)")
                         .HasColumnName("provider");
 
                     b.Property<string>("PushedFingerprint")
                         .HasMaxLength(64)
-                        .HasColumnType("character varying(64)")
+                        .HasColumnType("nvarchar(64)")
                         .HasColumnName("pushed_fingerprint");
 
                     b.Property<string>("SyncDirection")
                         .IsRequired()
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("sync_direction");
 
                     b.Property<string>("SyncStatus")
                         .IsRequired()
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("sync_status");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id")
@@ -2155,70 +2195,70 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid>("CreatedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
                     b.Property<string>("DefaultCountryCode")
                         .IsRequired()
                         .HasMaxLength(2)
-                        .HasColumnType("character varying(2)")
+                        .HasColumnType("nvarchar(2)")
                         .HasColumnName("default_country_code");
 
                     b.Property<DateTimeOffset?>("DeletedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("deleted_at");
 
                     b.Property<bool>("HolidaySyncEnabled")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("holiday_sync_enabled");
 
                     b.Property<bool>("IsDeleted")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_deleted");
 
                     b.Property<DateTimeOffset?>("LastSyncedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("last_synced_at");
 
                     b.Property<int?>("LastSyncedYear")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("last_synced_year");
 
                     b.Property<Guid>("LegalEntityId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("legal_entity_id");
 
                     b.Property<string>("OverrideCountryCode")
                         .HasMaxLength(2)
-                        .HasColumnType("character varying(2)")
+                        .HasColumnType("nvarchar(2)")
                         .HasColumnName("override_country_code");
 
                     b.Property<string>("Provider")
                         .IsRequired()
                         .ValueGeneratedOnAdd()
                         .HasMaxLength(30)
-                        .HasColumnType("character varying(30)")
+                        .HasColumnType("nvarchar(30)")
                         .HasDefaultValue("nager_holidays")
                         .HasColumnName("provider");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.Property<Guid?>("UpdatedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("updated_by_id");
 
                     b.HasKey("Id")
@@ -2235,66 +2275,66 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<string>("Color")
                         .HasMaxLength(9)
-                        .HasColumnType("character varying(9)")
+                        .HasColumnType("nvarchar(9)")
                         .HasColumnName("color");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid>("CreatedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
                     b.Property<DateTimeOffset?>("DeletedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("deleted_at");
 
                     b.Property<string>("Description")
                         .HasMaxLength(500)
-                        .HasColumnType("character varying(500)")
+                        .HasColumnType("nvarchar(500)")
                         .HasColumnName("description");
 
                     b.Property<string>("Icon")
                         .HasMaxLength(64)
-                        .HasColumnType("character varying(64)")
+                        .HasColumnType("nvarchar(64)")
                         .HasColumnName("icon");
 
                     b.Property<bool>("IsDeleted")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_deleted");
 
                     b.Property<DateTimeOffset?>("LastMessageAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("last_message_at");
 
                     b.Property<Guid>("SubjectId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("subject_id");
 
                     b.Property<string>("SubjectKind")
                         .IsRequired()
                         .HasMaxLength(40)
-                        .HasColumnType("character varying(40)")
+                        .HasColumnType("nvarchar(40)")
                         .HasColumnName("subject_kind");
 
                     b.Property<string>("SubjectSource")
                         .IsRequired()
                         .HasMaxLength(40)
-                        .HasColumnType("character varying(40)")
+                        .HasColumnType("nvarchar(40)")
                         .HasColumnName("subject_source");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id")
@@ -2311,39 +2351,39 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<Guid>("ConversationId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("conversation_id");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid>("CreatedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
                     b.Property<DateTimeOffset?>("DeletedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("deleted_at");
 
                     b.Property<Guid>("EmployeeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("employee_id");
 
                     b.Property<bool>("IsDeleted")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_deleted");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id")
@@ -2366,73 +2406,73 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<Guid?>("AuthorEmployeeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("author_employee_id");
 
                     b.Property<string>("BodyHtml")
                         .IsRequired()
                         .HasMaxLength(10000)
-                        .HasColumnType("character varying(10000)")
+                        .HasColumnType("nvarchar(max)")
                         .HasColumnName("body_html");
 
                     b.Property<Guid>("ConversationId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("conversation_id");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid>("CreatedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
                     b.Property<DateTimeOffset?>("DeletedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("deleted_at");
 
                     b.Property<Guid?>("DeletedByEmployeeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("deleted_by_employee_id");
 
                     b.Property<DateTimeOffset?>("EditedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("edited_at");
 
                     b.Property<bool>("IsDeleted")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_deleted");
 
                     b.Property<string>("Kind")
                         .IsRequired()
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("kind");
 
                     b.Property<Guid?>("ReplyToMessageId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("reply_to_message_id");
 
                     b.Property<string>("SystemEventJson")
                         .HasMaxLength(2000)
-                        .HasColumnType("character varying(2000)")
+                        .HasColumnType("nvarchar(2000)")
                         .HasColumnName("system_event_json");
 
                     b.Property<string>("Tag")
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("tag");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id")
@@ -2448,43 +2488,43 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<string>("ContentType")
                         .IsRequired()
                         .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
+                        .HasColumnType("nvarchar(255)")
                         .HasColumnName("content_type");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid>("CreatedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
                     b.Property<DateTimeOffset?>("DeletedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("deleted_at");
 
                     b.Property<string>("FileName")
                         .IsRequired()
                         .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
+                        .HasColumnType("nvarchar(255)")
                         .HasColumnName("file_name");
 
                     b.Property<Guid>("FileRecordId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("file_record_id");
 
                     b.Property<bool>("IsDeleted")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_deleted");
 
                     b.Property<Guid>("MessageId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("message_id");
 
                     b.Property<long>("SizeBytes")
@@ -2492,11 +2532,11 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnName("size_bytes");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id")
@@ -2512,39 +2552,39 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid>("CreatedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
                     b.Property<DateTimeOffset?>("DeletedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("deleted_at");
 
                     b.Property<Guid>("EmployeeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("employee_id");
 
                     b.Property<bool>("IsDeleted")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_deleted");
 
                     b.Property<Guid>("MessageId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("message_id");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id")
@@ -2564,39 +2604,39 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid>("CreatedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
                     b.Property<DateTimeOffset?>("DeletedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("deleted_at");
 
                     b.Property<Guid>("EmployeeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("employee_id");
 
                     b.Property<bool>("IsDeleted")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_deleted");
 
                     b.Property<Guid>("MessageId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("message_id");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id")
@@ -2613,45 +2653,45 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid>("CreatedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
                     b.Property<DateTimeOffset?>("DeletedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("deleted_at");
 
                     b.Property<string>("Emoji")
                         .IsRequired()
                         .HasMaxLength(32)
-                        .HasColumnType("character varying(32)")
+                        .HasColumnType("nvarchar(32)")
                         .HasColumnName("emoji");
 
                     b.Property<Guid>("EmployeeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("employee_id");
 
                     b.Property<bool>("IsDeleted")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_deleted");
 
                     b.Property<Guid>("MessageId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("message_id");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id")
@@ -2668,55 +2708,55 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<string>("BodyHtml")
                         .IsRequired()
                         .HasMaxLength(10000)
-                        .HasColumnType("character varying(10000)")
+                        .HasColumnType("nvarchar(max)")
                         .HasColumnName("body_html");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid>("CreatedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
                     b.Property<DateTimeOffset?>("DeletedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("deleted_at");
 
                     b.Property<bool>("IsDeleted")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_deleted");
 
                     b.Property<string>("Kind")
                         .IsRequired()
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("kind");
 
                     b.Property<Guid>("MessageId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("message_id");
 
                     b.Property<DateTimeOffset>("RevisedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("revised_at");
 
                     b.Property<Guid>("RevisedByEmployeeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("revised_by_employee_id");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id")
@@ -2732,39 +2772,39 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<Guid>("ConversationId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("conversation_id");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid>("CreatedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
                     b.Property<DateTimeOffset?>("DeletedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("deleted_at");
 
                     b.Property<Guid>("EmployeeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("employee_id");
 
                     b.Property<bool>("IsDeleted")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_deleted");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id")
@@ -2787,69 +2827,69 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<DateTimeOffset>("AddedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("added_at");
 
                     b.Property<Guid?>("AddedByEmployeeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("added_by_employee_id");
 
                     b.Property<Guid>("ConversationId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("conversation_id");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid>("CreatedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
                     b.Property<DateTimeOffset?>("DeletedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("deleted_at");
 
                     b.Property<Guid>("EmployeeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("employee_id");
 
                     b.Property<bool>("IsDeleted")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_deleted");
 
                     b.Property<string>("JoinReason")
                         .IsRequired()
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("join_reason");
 
                     b.Property<DateTimeOffset?>("LastReadAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("last_read_at");
 
                     b.Property<DateTimeOffset?>("LeftAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("left_at");
 
                     b.Property<DateTimeOffset?>("RemovedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("removed_at");
 
                     b.Property<Guid?>("RemovedByEmployeeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("removed_by_employee_id");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id")
@@ -2869,94 +2909,94 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<string>("ActionType")
                         .IsRequired()
                         .HasMaxLength(30)
-                        .HasColumnType("character varying(30)")
+                        .HasColumnType("nvarchar(30)")
                         .HasColumnName("action_type");
 
                     b.Property<string>("ApprovalStatus")
                         .IsRequired()
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("approval_status");
 
                     b.Property<string>("ChangeReason")
-                        .HasColumnType("text")
+                        .HasColumnType("nvarchar(max)")
                         .HasColumnName("change_reason");
 
                     b.Property<DateTimeOffset?>("DecidedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("decided_at");
 
                     b.Property<Guid?>("DecidedByUserId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("decided_by_user_id");
 
                     b.Property<string>("DecisionNote")
                         .HasMaxLength(500)
-                        .HasColumnType("character varying(500)")
+                        .HasColumnType("nvarchar(500)")
                         .HasColumnName("decision_note");
 
                     b.Property<DateTimeOffset>("EffectiveFrom")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("effective_from");
 
                     b.Property<DateTimeOffset?>("EffectiveTo")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("effective_to");
 
                     b.Property<Guid?>("EmployeeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("employee_id");
 
                     b.Property<Guid?>("OnboardingDraftId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("onboarding_draft_id");
 
                     b.Property<Guid>("PositionAccessTemplateId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("position_access_template_id");
 
                     b.Property<DateTimeOffset>("RequestedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("requested_at");
 
                     b.Property<Guid>("RequestedByUserId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("requested_by_user_id");
 
                     b.Property<Guid>("RequestedRoleId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("requested_role_id");
 
                     b.Property<Guid?>("ReservedPositionAssignmentId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("reserved_position_assignment_id");
 
                     b.Property<Guid>("TargetDepartmentId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("target_department_id");
 
                     b.Property<Guid>("TargetPositionId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("target_position_id");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<Guid?>("UserId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("user_id");
 
-                    b.Property<uint?>("xmin")
+                    b.Property<byte[]>("xmin")
                         .IsConcurrencyToken()
                         .ValueGeneratedOnAddOrUpdate()
-                        .HasColumnType("xid")
+                        .HasColumnType("rowversion")
                         .HasColumnName("xmin");
 
                     b.HasKey("Id")
@@ -2991,8 +3031,8 @@ namespace ONEVO.Infrastructure.Migrations
 
                     b.HasIndex("TenantId", "OnboardingDraftId", "TargetPositionId", "PositionAccessTemplateId")
                         .IsUnique()
-                        .HasDatabaseName("ix_access_grant_requests_tenant_id_onboarding_draft_id_target_")
-                        .HasFilter("approval_status = 'Pending'");
+                        .HasDatabaseName("ix_access_grant_requests_tenant_id_onboarding_draft_id_target_position_id_position_access_template_id")
+                        .HasFilter("approval_status = 'Pending' AND onboarding_draft_id IS NOT NULL");
 
                     b.ToTable("access_grant_requests", (string)null);
                 });
@@ -3001,98 +3041,102 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<string>("ColumnMappingJson")
-                        .HasColumnType("jsonb")
-                        .HasColumnName("column_mapping_json");
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("column_mapping_json")
+                        .HasAnnotation("Crownus:JsonColumn", true);
 
                     b.Property<DateTimeOffset?>("CompletedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("completed_at");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid>("CreatedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
                     b.Property<Guid>("CreatedByUserId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_user_id");
 
                     b.Property<Guid?>("DefaultChecklistTemplateId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("default_checklist_template_id");
 
                     b.Property<string>("DefaultEmploymentType")
                         .HasMaxLength(30)
-                        .HasColumnType("character varying(30)")
+                        .HasColumnType("nvarchar(30)")
                         .HasColumnName("default_employment_type");
 
                     b.Property<Guid?>("DefaultWorkModeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("default_work_mode_id");
 
                     b.Property<DateTimeOffset?>("DeletedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("deleted_at");
 
                     b.Property<int?>("InvalidRows")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("invalid_rows");
 
                     b.Property<bool>("IsDeleted")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_deleted");
 
                     b.Property<Guid>("LegalEntityId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("legal_entity_id");
 
                     b.Property<string>("OriginalFileName")
                         .IsRequired()
                         .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
+                        .HasColumnType("nvarchar(255)")
                         .HasColumnName("original_file_name");
 
                     b.Property<string>("ResolutionStateJson")
-                        .HasColumnType("jsonb")
-                        .HasColumnName("resolution_state_json");
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("resolution_state_json")
+                        .HasAnnotation("Crownus:JsonColumn", true);
 
                     b.Property<string>("SelectedDraftIdsJson")
-                        .HasColumnType("jsonb")
-                        .HasColumnName("selected_draft_ids_json");
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("selected_draft_ids_json")
+                        .HasAnnotation("Crownus:JsonColumn", true);
 
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(30)
-                        .HasColumnType("character varying(30)")
+                        .HasColumnType("nvarchar(30)")
                         .HasColumnName("status");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<int>("TotalRows")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("total_rows");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.Property<int?>("ValidRows")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("valid_rows");
 
-                    b.Property<uint>("xmin")
+                    b.Property<byte[]>("xmin")
                         .IsConcurrencyToken()
+                        .IsRequired()
                         .ValueGeneratedOnAddOrUpdate()
-                        .HasColumnType("xid")
+                        .HasColumnType("rowversion")
                         .HasColumnName("xmin");
 
                     b.HasKey("Id")
@@ -3104,91 +3148,100 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasIndex("TenantId", "Status")
                         .HasDatabaseName("ix_bulk_onboarding_batches_tenant_id_status");
 
-                    b.ToTable("bulk_onboarding_batches", (string)null);
+                    b.ToTable("bulk_onboarding_batches", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_bulk_onboarding_batches_column_mapping_json_json", "ISJSON([column_mapping_json]) = 1");
+
+                            t.HasCheckConstraint("ck_bulk_onboarding_batches_resolution_state_json_json", "ISJSON([resolution_state_json]) = 1");
+
+                            t.HasCheckConstraint("ck_bulk_onboarding_batches_selected_draft_ids_json_json", "ISJSON([selected_draft_ids_json]) = 1");
+                        });
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.CoreHr.Entities.BulkOnboardingBatchRow", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<Guid>("BatchId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("batch_id");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid>("CreatedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
                     b.Property<DateTimeOffset?>("DeletedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("deleted_at");
 
                     b.Property<string>("ErrorMessage")
-                        .HasColumnType("text")
+                        .HasColumnType("nvarchar(max)")
                         .HasColumnName("error_message");
 
                     b.Property<bool>("IsDeleted")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_deleted");
 
                     b.Property<Guid?>("OnboardingDraftId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("onboarding_draft_id");
 
                     b.Property<string>("RawDataJson")
                         .IsRequired()
-                        .HasColumnType("jsonb")
-                        .HasColumnName("raw_data_json");
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("raw_data_json")
+                        .HasAnnotation("Crownus:JsonColumn", true);
 
                     b.Property<Guid?>("ResolvedDepartmentId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("resolved_department_id");
 
                     b.Property<Guid?>("ResolvedPositionId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("resolved_position_id");
 
                     b.Property<Guid?>("ResolvedReportsToEmployeeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("resolved_reports_to_employee_id");
 
                     b.Property<Guid?>("ResolvedTemplateId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("resolved_template_id");
 
                     b.Property<Guid?>("ResolvedWorkModeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("resolved_work_mode_id");
 
                     b.Property<int>("RowNumber")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("row_number");
 
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(30)
-                        .HasColumnType("character varying(30)")
+                        .HasColumnType("nvarchar(30)")
                         .HasColumnName("status");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
-                    b.Property<uint>("xmin")
+                    b.Property<byte[]>("xmin")
                         .IsConcurrencyToken()
+                        .IsRequired()
                         .ValueGeneratedOnAddOrUpdate()
-                        .HasColumnType("xid")
+                        .HasColumnType("rowversion")
                         .HasColumnName("xmin");
 
                     b.HasKey("Id")
@@ -3207,53 +3260,57 @@ namespace ONEVO.Infrastructure.Migrations
                         .IsUnique()
                         .HasDatabaseName("ix_bulk_onboarding_batch_rows_tenant_id_batch_id_row_number");
 
-                    b.ToTable("bulk_onboarding_batch_rows", (string)null);
+                    b.ToTable("bulk_onboarding_batch_rows", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_bulk_onboarding_batch_rows_raw_data_json_json", "ISJSON([raw_data_json]) = 1");
+                        });
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.CoreHr.Entities.ChecklistTemplate", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<Guid?>("DepartmentId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("department_id");
 
                     b.Property<bool>("IsActive")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasDefaultValue(true)
                         .HasColumnName("is_active");
 
                     b.Property<Guid?>("LegalEntityId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("legal_entity_id");
 
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
+                        .HasColumnType("nvarchar(100)")
                         .HasColumnName("name");
 
                     b.Property<Guid?>("PositionId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("position_id");
 
                     b.Property<string>("TasksJson")
                         .IsRequired()
-                        .HasColumnType("jsonb")
-                        .HasColumnName("tasks_json");
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("tasks_json")
+                        .HasAnnotation("Crownus:JsonColumn", true);
 
                     b.Property<string>("TemplateType")
                         .IsRequired()
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("template_type");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.HasKey("Id")
@@ -3278,24 +3335,27 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasDatabaseName("ix_checklist_templates_tenant_id_template_type_is_active");
 
                     b.HasIndex("TenantId", "LegalEntityId", "TemplateType", "IsActive")
-                        .HasDatabaseName("ix_checklist_templates_tenant_id_legal_entity_id_template_type");
+                        .HasDatabaseName("ix_checklist_templates_tenant_id_legal_entity_id_template_type_is_active");
 
-                    b.ToTable("checklist_templates", (string)null);
+                    b.ToTable("checklist_templates", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_checklist_templates_tasks_json_json", "ISJSON([tasks_json]) = 1");
+                        });
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.CoreHr.Entities.Employee", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid>("CreatedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
                     b.Property<DateOnly?>("DateOfBirth")
@@ -3303,47 +3363,47 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnName("date_of_birth");
 
                     b.Property<DateTimeOffset?>("DeletedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("deleted_at");
 
                     b.Property<Guid?>("DepartmentId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("department_id");
 
                     b.Property<string>("DisplayTimezone")
                         .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
+                        .HasColumnType("nvarchar(50)")
                         .HasColumnName("display_timezone");
 
                     b.Property<string>("Email")
                         .IsRequired()
                         .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
+                        .HasColumnType("nvarchar(255)")
                         .HasColumnName("email");
 
                     b.Property<string>("EmployeeNumber")
                         .IsRequired()
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("employee_number");
 
                     b.Property<int>("EmploymentStatusId")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("employment_status_id");
 
                     b.Property<int>("EmploymentTypeId")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("employment_type_id");
 
                     b.Property<string>("FirstName")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
+                        .HasColumnType("nvarchar(100)")
                         .HasColumnName("first_name");
 
                     b.Property<string>("Gender")
                         .HasMaxLength(10)
-                        .HasColumnType("character varying(10)")
+                        .HasColumnType("nvarchar(10)")
                         .HasColumnName("gender");
 
                     b.Property<DateOnly>("HireDate")
@@ -3351,26 +3411,26 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnName("hire_date");
 
                     b.Property<bool>("IsDeleted")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_deleted");
 
                     b.Property<string>("LastName")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
+                        .HasColumnType("nvarchar(100)")
                         .HasColumnName("last_name");
 
                     b.Property<Guid?>("LegalEntityId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("legal_entity_id");
 
                     b.Property<Guid?>("NationalityId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("nationality_id");
 
                     b.Property<string>("Phone")
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("phone");
 
                     b.Property<DateOnly?>("ProbationEndDate")
@@ -3378,7 +3438,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnName("probation_end_date");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<DateOnly?>("TerminationDate")
@@ -3386,21 +3446,21 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnName("termination_date");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.Property<Guid>("UserId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("user_id");
 
                     b.Property<Guid?>("WorkModeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("work_mode_id");
 
-                    b.Property<uint?>("xmin")
+                    b.Property<byte[]>("xmin")
                         .IsConcurrencyToken()
                         .ValueGeneratedOnAddOrUpdate()
-                        .HasColumnType("xid")
+                        .HasColumnType("rowversion")
                         .HasColumnName("xmin");
 
                     b.HasKey("Id")
@@ -3418,7 +3478,8 @@ namespace ONEVO.Infrastructure.Migrations
 
                     b.HasIndex("UserId", "LegalEntityId")
                         .IsUnique()
-                        .HasDatabaseName("ix_employees_user_id_legal_entity_id");
+                        .HasDatabaseName("ix_employees_user_id_legal_entity_id")
+                        .HasFilter("[legal_entity_id] IS NOT NULL");
 
                     b.ToTable("employees", (string)null);
                 });
@@ -3427,50 +3488,51 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<string>("AddressJson")
                         .IsRequired()
-                        .HasColumnType("jsonb")
-                        .HasColumnName("address_json");
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("address_json")
+                        .HasAnnotation("Crownus:JsonColumn", true);
 
                     b.Property<string>("AddressType")
                         .IsRequired()
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("address_type");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid>("CreatedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
                     b.Property<DateTimeOffset?>("DeletedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("deleted_at");
 
                     b.Property<Guid>("EmployeeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("employee_id");
 
                     b.Property<bool>("IsDeleted")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_deleted");
 
                     b.Property<bool>("IsPrimary")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_primary");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id")
@@ -3482,81 +3544,84 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasIndex("TenantId", "EmployeeId")
                         .HasDatabaseName("ix_employee_addresses_tenant_id_employee_id");
 
-                    b.ToTable("employee_addresses", (string)null);
+                    b.ToTable("employee_addresses", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_employee_addresses_address_json_json", "ISJSON([address_json]) = 1");
+                        });
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.CoreHr.Entities.EmployeeBankDetail", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<string>("AccountHolderName")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
+                        .HasColumnType("nvarchar(100)")
                         .HasColumnName("account_holder_name");
 
                     b.Property<string>("AccountNumberEncrypted")
                         .IsRequired()
                         .HasMaxLength(500)
-                        .HasColumnType("character varying(500)")
+                        .HasColumnType("nvarchar(500)")
                         .HasColumnName("account_number_encrypted");
 
                     b.Property<string>("AccountType")
                         .IsRequired()
                         .HasMaxLength(30)
-                        .HasColumnType("character varying(30)")
+                        .HasColumnType("nvarchar(30)")
                         .HasColumnName("account_type");
 
                     b.Property<string>("BankName")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
+                        .HasColumnType("nvarchar(100)")
                         .HasColumnName("bank_name");
 
                     b.Property<string>("BranchName")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
+                        .HasColumnType("nvarchar(100)")
                         .HasColumnName("branch_name");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid>("CreatedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
                     b.Property<DateTimeOffset?>("DeletedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("deleted_at");
 
                     b.Property<Guid>("EmployeeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("employee_id");
 
                     b.Property<bool>("IsDeleted")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_deleted");
 
                     b.Property<bool>("IsPrimary")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_primary");
 
                     b.Property<string>("RoutingNumber")
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("routing_number");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id")
@@ -3575,33 +3640,34 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<Guid>("AssignedToId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("assigned_to_id");
 
                     b.Property<string>("AttachmentFileIdsJson")
-                        .HasColumnType("jsonb")
-                        .HasColumnName("attachment_file_ids_json");
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("attachment_file_ids_json")
+                        .HasAnnotation("Crownus:JsonColumn", true);
 
                     b.Property<string>("BypassPenaltyDescription")
                         .HasMaxLength(500)
-                        .HasColumnType("character varying(500)")
+                        .HasColumnType("nvarchar(500)")
                         .HasColumnName("bypass_penalty_description");
 
                     b.Property<string>("Category")
                         .HasMaxLength(40)
-                        .HasColumnType("character varying(40)")
+                        .HasColumnType("nvarchar(40)")
                         .HasColumnName("category");
 
                     b.Property<DateTimeOffset?>("CompletedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("completed_at");
 
                     b.Property<string>("Description")
-                        .HasColumnType("text")
+                        .HasColumnType("nvarchar(max)")
                         .HasColumnName("description");
 
                     b.Property<DateOnly>("DueDate")
@@ -3609,68 +3675,68 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnName("due_date");
 
                     b.Property<Guid>("EmployeeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("employee_id");
 
                     b.Property<bool>("IsBypassable")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasDefaultValue(false)
                         .HasColumnName("is_bypassable");
 
                     b.Property<bool>("IsRequired")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasDefaultValue(true)
                         .HasColumnName("is_required");
 
                     b.Property<string>("LifecycleType")
                         .IsRequired()
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("lifecycle_type");
 
                     b.Property<Guid?>("OffboardingRecordId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("offboarding_record_id");
 
                     b.Property<string>("OwnerType")
                         .IsRequired()
                         .HasMaxLength(30)
-                        .HasColumnType("character varying(30)")
+                        .HasColumnType("nvarchar(30)")
                         .HasColumnName("owner_type");
 
                     b.Property<string>("Priority")
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("priority");
 
                     b.Property<int?>("Sequence")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("sequence");
 
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("status");
 
                     b.Property<string>("TaskTitle")
                         .IsRequired()
                         .HasMaxLength(200)
-                        .HasColumnType("character varying(200)")
+                        .HasColumnType("nvarchar(200)")
                         .HasColumnName("task_title");
 
                     b.Property<Guid?>("TemplateId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("template_id");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<Guid?>("WorkTaskId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("work_task_id");
 
                     b.HasKey("Id")
@@ -3697,24 +3763,27 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasDatabaseName("ix_employee_checklist_tasks_tenant_id_offboarding_record_id");
 
                     b.HasIndex("TenantId", "EmployeeId", "LifecycleType", "Sequence")
-                        .HasDatabaseName("ix_employee_checklist_tasks_tenant_id_employee_id_lifecycle_ty");
+                        .HasDatabaseName("ix_employee_checklist_tasks_tenant_id_employee_id_lifecycle_type_sequence");
 
-                    b.ToTable("employee_checklist_tasks", (string)null);
+                    b.ToTable("employee_checklist_tasks", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_employee_checklist_tasks_attachment_file_ids_json_json", "ISJSON([attachment_file_ids_json]) = 1");
+                        });
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.CoreHr.Entities.EmployeeDependent", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid>("CreatedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
                     b.Property<DateOnly>("DateOfBirth")
@@ -3722,44 +3791,44 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnName("date_of_birth");
 
                     b.Property<DateTimeOffset?>("DeletedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("deleted_at");
 
                     b.Property<Guid>("EmployeeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("employee_id");
 
                     b.Property<bool>("IsDeleted")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_deleted");
 
                     b.Property<bool>("IsEmergencyContact")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_emergency_contact");
 
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
+                        .HasColumnType("nvarchar(100)")
                         .HasColumnName("name");
 
                     b.Property<string>("Phone")
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("phone");
 
                     b.Property<string>("Relationship")
                         .IsRequired()
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("relationship");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id")
@@ -3778,62 +3847,62 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid>("CreatedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
                     b.Property<DateTimeOffset?>("DeletedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("deleted_at");
 
                     b.Property<string>("Email")
                         .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
+                        .HasColumnType("nvarchar(255)")
                         .HasColumnName("email");
 
                     b.Property<Guid>("EmployeeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("employee_id");
 
                     b.Property<bool>("IsDeleted")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_deleted");
 
                     b.Property<bool>("IsPrimary")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_primary");
 
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
+                        .HasColumnType("nvarchar(100)")
                         .HasColumnName("name");
 
                     b.Property<string>("Phone")
                         .IsRequired()
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("phone");
 
                     b.Property<string>("Relationship")
                         .IsRequired()
                         .HasMaxLength(30)
-                        .HasColumnType("character varying(30)")
+                        .HasColumnType("nvarchar(30)")
                         .HasColumnName("relationship");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id")
@@ -3851,27 +3920,27 @@ namespace ONEVO.Infrastructure.Migrations
             modelBuilder.Entity("ONEVO.Domain.Features.CoreHr.Entities.EmployeeHierarchyClosure", b =>
                 {
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<Guid>("AncestorEmployeeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("ancestor_employee_id");
 
                     b.Property<Guid>("DescendantEmployeeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("descendant_employee_id");
 
                     b.Property<int>("Depth")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("depth");
 
                     b.Property<DateTimeOffset>("GeneratedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("generated_at");
 
                     b.Property<Guid>("SourcePositionAssignmentId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("source_position_assignment_id");
 
                     b.HasKey("TenantId", "AncestorEmployeeId", "DescendantEmployeeId")
@@ -3881,7 +3950,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasDatabaseName("ix_employee_hierarchy_closure_tenant_id_descendant_employee_id");
 
                     b.HasIndex("TenantId", "AncestorEmployeeId", "Depth")
-                        .HasDatabaseName("ix_employee_hierarchy_closure_tenant_id_ancestor_employee_id_d");
+                        .HasDatabaseName("ix_employee_hierarchy_closure_tenant_id_ancestor_employee_id_depth");
 
                     b.ToTable("employee_hierarchy_closure", (string)null);
                 });
@@ -3890,37 +3959,37 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<Guid?>("ChecklistTemplateId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("checklist_template_id");
 
                     b.Property<DateTimeOffset?>("CompletedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("completed_at");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid>("EmployeeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("employee_id");
 
                     b.Property<string>("ExitInterviewNotes")
-                        .HasColumnType("text")
+                        .HasColumnType("nvarchar(max)")
                         .HasColumnName("exit_interview_notes");
 
                     b.Property<Guid>("InitiatedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("initiated_by_id");
 
                     b.Property<string>("KnowledgeRiskLevel")
                         .IsRequired()
                         .HasMaxLength(10)
-                        .HasColumnType("character varying(10)")
+                        .HasColumnType("nvarchar(10)")
                         .HasColumnName("knowledge_risk_level");
 
                     b.Property<DateOnly>("LastWorkingDate")
@@ -3928,43 +3997,44 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnName("last_working_date");
 
                     b.Property<string>("Notes")
-                        .HasColumnType("text")
+                        .HasColumnType("nvarchar(max)")
                         .HasColumnName("notes");
 
                     b.Property<string>("PenaltiesJson")
                         .IsRequired()
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("jsonb")
+                        .HasColumnType("nvarchar(max)")
                         .HasDefaultValue("{}")
-                        .HasColumnName("penalties_json");
+                        .HasColumnName("penalties_json")
+                        .HasAnnotation("Crownus:JsonColumn", true);
 
                     b.Property<int?>("PreviousEmploymentStatusId")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("previous_employment_status_id");
 
                     b.Property<string>("Reason")
                         .IsRequired()
                         .HasMaxLength(30)
-                        .HasColumnType("character varying(30)")
+                        .HasColumnType("nvarchar(30)")
                         .HasColumnName("reason");
 
                     b.Property<string>("RehireEligibility")
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("rehire_eligibility");
 
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("status");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id")
@@ -3984,70 +4054,73 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasIndex("TenantId", "EmployeeId", "Status")
                         .HasDatabaseName("ix_offboarding_records_tenant_id_employee_id_status");
 
-                    b.ToTable("offboarding_records", (string)null);
+                    b.ToTable("offboarding_records", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_offboarding_records_penalties_json_json", "ISJSON([penalties_json]) = 1");
+                        });
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.CoreHr.Entities.OffboardingTaskBypassRequest", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<Guid>("ApproverId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("approver_id");
 
                     b.Property<string>("BypassReason")
                         .IsRequired()
                         .HasMaxLength(500)
-                        .HasColumnType("character varying(500)")
+                        .HasColumnType("nvarchar(500)")
                         .HasColumnName("bypass_reason");
 
                     b.Property<DateTimeOffset?>("DecidedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("decided_at");
 
                     b.Property<string>("DecisionComment")
                         .HasMaxLength(500)
-                        .HasColumnType("character varying(500)")
+                        .HasColumnType("nvarchar(500)")
                         .HasColumnName("decision_comment");
 
                     b.Property<Guid>("EmployeeChecklistTaskId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("employee_checklist_task_id");
 
                     b.Property<Guid>("OffboardingRecordId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("offboarding_record_id");
 
                     b.Property<string>("PenaltyDescription")
                         .HasMaxLength(500)
-                        .HasColumnType("character varying(500)")
+                        .HasColumnType("nvarchar(500)")
                         .HasColumnName("penalty_description");
 
                     b.Property<string>("PriorTaskStatus")
                         .IsRequired()
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("prior_task_status");
 
                     b.Property<DateTimeOffset>("RequestedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("requested_at");
 
                     b.Property<Guid>("RequestedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("requested_by_id");
 
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("status");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.HasKey("Id")
@@ -4062,7 +4135,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasDatabaseName("ix_offboarding_task_bypass_requests_offboarding_record_id");
 
                     b.HasIndex("TenantId", "ApproverId", "Status")
-                        .HasDatabaseName("ix_offboarding_task_bypass_requests_tenant_id_approver_id_stat");
+                        .HasDatabaseName("ix_offboarding_task_bypass_requests_tenant_id_approver_id_status");
 
                     b.ToTable("offboarding_task_bypass_requests", (string)null);
                 });
@@ -4071,97 +4144,98 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<Guid?>("AvatarFileId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("avatar_file_id");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid>("CreatedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
                     b.Property<DateTimeOffset?>("DeletedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("deleted_at");
 
                     b.Property<Guid?>("DepartmentId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("department_id");
 
                     b.Property<string>("DraftReason")
                         .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
+                        .HasColumnType("nvarchar(50)")
                         .HasColumnName("draft_reason");
 
                     b.Property<string>("EditedTasksJson")
-                        .HasColumnType("jsonb")
-                        .HasColumnName("edited_tasks_json");
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("edited_tasks_json")
+                        .HasAnnotation("Crownus:JsonColumn", true);
 
                     b.Property<string>("EmployeeNumber")
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("employee_number");
 
                     b.Property<string>("EmploymentType")
                         .IsRequired()
                         .HasMaxLength(30)
-                        .HasColumnType("character varying(30)")
+                        .HasColumnType("nvarchar(30)")
                         .HasColumnName("employment_type");
 
                     b.Property<DateTimeOffset?>("FinalizedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("finalized_at");
 
                     b.Property<string>("FirstName")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
+                        .HasColumnType("nvarchar(100)")
                         .HasColumnName("first_name");
 
                     b.Property<bool>("IsDeleted")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_deleted");
 
                     b.Property<string>("LastName")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
+                        .HasColumnType("nvarchar(100)")
                         .HasColumnName("last_name");
 
                     b.Property<string>("LastSavedStep")
                         .IsRequired()
                         .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
+                        .HasColumnType("nvarchar(50)")
                         .HasColumnName("last_saved_step");
 
                     b.Property<Guid>("LegalEntityId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("legal_entity_id");
 
                     b.Property<bool?>("LocationCaptureOverride")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("location_capture_override");
 
                     b.Property<bool?>("PhotoRequiredOverride")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("photo_required_override");
 
                     b.Property<Guid?>("PositionId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("position_id");
 
                     b.Property<Guid?>("ReportsToEmployeeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("reports_to_employee_id");
 
                     b.Property<Guid?>("SelectedTemplateId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("selected_template_id");
 
                     b.Property<DateOnly?>("StartDate")
@@ -4169,37 +4243,38 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnName("start_date");
 
                     b.Property<Guid>("StartedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("started_by_id");
 
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(30)
-                        .HasColumnType("character varying(30)")
+                        .HasColumnType("nvarchar(30)")
                         .HasColumnName("status");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.Property<string>("WorkEmail")
                         .IsRequired()
                         .HasMaxLength(320)
-                        .HasColumnType("character varying(320)")
+                        .HasColumnType("nvarchar(320)")
                         .HasColumnName("work_email");
 
                     b.Property<Guid?>("WorkModeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("work_mode_id");
 
-                    b.Property<uint>("xmin")
+                    b.Property<byte[]>("xmin")
                         .IsConcurrencyToken()
+                        .IsRequired()
                         .ValueGeneratedOnAddOrUpdate()
-                        .HasColumnType("xid")
+                        .HasColumnType("rowversion")
                         .HasColumnName("xmin");
 
                     b.HasKey("Id")
@@ -4223,42 +4298,45 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasIndex("TenantId", "Status")
                         .HasDatabaseName("ix_onboarding_drafts_tenant_id_status");
 
-                    b.ToTable("onboarding_drafts", (string)null);
+                    b.ToTable("onboarding_drafts", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_onboarding_drafts_edited_tasks_json_json", "ISJSON([edited_tasks_json]) = 1");
+                        });
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.CoreHr.Entities.PositionAssignment", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<string>("AssignmentKind")
                         .IsRequired()
                         .HasMaxLength(30)
-                        .HasColumnType("character varying(30)")
+                        .HasColumnType("nvarchar(30)")
                         .HasColumnName("assignment_kind");
 
                     b.Property<string>("AssignmentStatus")
                         .IsRequired()
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("assignment_status");
 
                     b.Property<string>("ChangeReason")
-                        .HasColumnType("text")
+                        .HasColumnType("nvarchar(max)")
                         .HasColumnName("change_reason");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid>("CreatedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
                     b.Property<DateTimeOffset?>("DeletedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("deleted_at");
 
                     b.Property<DateOnly>("EffectiveFrom")
@@ -4270,27 +4348,27 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnName("effective_to");
 
                     b.Property<Guid>("EmployeeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("employee_id");
 
                     b.Property<bool>("IsDeleted")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_deleted");
 
                     b.Property<Guid>("PositionId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("position_id");
 
                     b.Property<Guid?>("ReportsToEmployeeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("reports_to_employee_id");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id")
@@ -4317,60 +4395,60 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<Guid>("BatchId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("batch_id");
 
                     b.Property<string>("ChangeReason")
                         .HasMaxLength(500)
-                        .HasColumnType("character varying(500)")
+                        .HasColumnType("nvarchar(500)")
                         .HasColumnName("change_reason");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid>("CreatedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
                     b.Property<DateTimeOffset?>("DeletedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("deleted_at");
 
                     b.Property<DateTimeOffset>("EffectiveAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("effective_at");
 
                     b.Property<Guid>("EmployeeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("employee_id");
 
                     b.Property<bool>("IsDeleted")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_deleted");
 
                     b.Property<Guid>("LegalEntityId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("legal_entity_id");
 
                     b.Property<Guid>("NewManagerEmployeeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("new_manager_employee_id");
 
                     b.Property<Guid?>("PreviousManagerEmployeeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("previous_manager_employee_id");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id")
@@ -4398,55 +4476,55 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<DateTimeOffset?>("DecidedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("decided_at");
 
                     b.Property<Guid?>("DecidedByUserId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("decided_by_user_id");
 
                     b.Property<string>("DecisionNote")
                         .HasMaxLength(500)
-                        .HasColumnType("character varying(500)")
+                        .HasColumnType("nvarchar(500)")
                         .HasColumnName("decision_note");
 
                     b.Property<Guid?>("OnboardingDraftId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("onboarding_draft_id");
 
                     b.Property<string>("Reason")
                         .HasMaxLength(500)
-                        .HasColumnType("character varying(500)")
+                        .HasColumnType("nvarchar(500)")
                         .HasColumnName("reason");
 
                     b.Property<DateTimeOffset>("RequestedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("requested_at");
 
                     b.Property<Guid>("RequestedByUserId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("requested_by_user_id");
 
                     b.Property<int>("RequestedSeats")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("requested_seats");
 
                     b.Property<int?>("SeatsAtRequest")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("seats_at_request");
 
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("status");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.HasKey("Id")
@@ -4472,49 +4550,272 @@ namespace ONEVO.Infrastructure.Migrations
                     b.ToTable("seat_increase_requests", (string)null);
                 });
 
-            modelBuilder.Entity("ONEVO.Domain.Features.Dashboard.Entities.DashboardWidget", b =>
+            modelBuilder.Entity("ONEVO.Domain.Features.Dashboard.Entities.DashboardTemplate", b =>
                 {
                     b.Property<Guid>("Id")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid>("CreatedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
-                    b.Property<Guid>("DashboardId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("dashboard_id");
+                    b.Property<string>("DashboardKey")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)")
+                        .HasColumnName("dashboard_key");
 
                     b.Property<DateTimeOffset?>("DeletedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
+                        .HasColumnName("deleted_at");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit")
+                        .HasColumnName("is_active");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit")
+                        .HasColumnName("is_deleted");
+
+                    b.Property<bool>("IsNoRoleTemplate")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false)
+                        .HasColumnName("is_no_role_template");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)")
+                        .HasColumnName("name");
+
+                    b.Property<Guid?>("RoleId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("role_id");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("datetimeoffset")
+                        .HasColumnName("updated_at");
+
+                    b.Property<int>("Version")
+                        .HasColumnType("int")
+                        .HasColumnName("version");
+
+                    b.HasKey("Id")
+                        .HasName("pk_dashboard_templates");
+
+                    b.HasIndex("RoleId")
+                        .HasDatabaseName("ix_dashboard_templates_role_id");
+
+                    b.HasIndex("TenantId", "DashboardKey")
+                        .IsUnique()
+                        .HasDatabaseName("ux_dashboard_templates_tenant_id_dashboard_key_no_role")
+                        .HasFilter("is_no_role_template = 1 AND is_deleted = 0");
+
+                    b.HasIndex("TenantId", "RoleId", "DashboardKey")
+                        .IsUnique()
+                        .HasDatabaseName("ux_dashboard_templates_tenant_id_role_id_dashboard_key")
+                        .HasFilter("role_id IS NOT NULL AND is_deleted = 0");
+
+                    b.ToTable("dashboard_templates", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_dashboard_templates_no_role_flag", "(is_no_role_template = 1 AND role_id IS NULL) OR (is_no_role_template = 0 AND role_id IS NOT NULL)");
+                        });
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.Dashboard.Entities.DashboardTemplateWidget", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("CreatedById")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("created_by_id");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("deleted_at");
 
                     b.Property<bool>("IsDeleted")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_deleted");
 
                     b.Property<string>("SettingsJson")
                         .IsRequired()
-                        .HasColumnType("jsonb")
-                        .HasColumnName("settings");
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("nvarchar(max)")
+                        .HasDefaultValue("{}")
+                        .HasColumnName("settings")
+                        .HasAnnotation("Crownus:JsonColumn", true);
+
+                    b.Property<Guid>("TemplateId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("template_id");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.Property<string>("WidgetKey")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
+                        .HasColumnType("nvarchar(100)")
+                        .HasColumnName("widget_key");
+
+                    b.HasKey("Id")
+                        .HasName("pk_dashboard_template_widgets");
+
+                    b.HasIndex("TemplateId", "WidgetKey")
+                        .IsUnique()
+                        .HasDatabaseName("ux_dashboard_template_widgets_template_id_widget_key")
+                        .HasFilter("is_deleted = 0");
+
+                    b.ToTable("dashboard_template_widgets", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_dashboard_template_widgets_settings_json", "ISJSON([settings]) = 1");
+                        });
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.Dashboard.Entities.DashboardTemplateWidgetLayout", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Breakpoint")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasColumnName("breakpoint");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("CreatedById")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("created_by_id");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("datetimeoffset")
+                        .HasColumnName("deleted_at");
+
+                    b.Property<int>("H")
+                        .HasColumnType("int")
+                        .HasColumnName("h");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit")
+                        .HasColumnName("is_deleted");
+
+                    b.Property<Guid>("TemplateWidgetId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("template_widget_id");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("datetimeoffset")
+                        .HasColumnName("updated_at");
+
+                    b.Property<int>("W")
+                        .HasColumnType("int")
+                        .HasColumnName("w");
+
+                    b.Property<int>("X")
+                        .HasColumnType("int")
+                        .HasColumnName("x");
+
+                    b.Property<int>("Y")
+                        .HasColumnType("int")
+                        .HasColumnName("y");
+
+                    b.HasKey("Id")
+                        .HasName("pk_dashboard_template_widget_layouts");
+
+                    b.HasIndex("TemplateWidgetId", "Breakpoint")
+                        .IsUnique()
+                        .HasDatabaseName("ux_dashboard_template_widget_layouts_template_widget_id_breakpoint")
+                        .HasFilter("is_deleted = 0");
+
+                    b.ToTable("dashboard_template_widget_layouts", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_dashboard_template_widget_layouts_breakpoint", "breakpoint IN ('desktop', 'tablet', 'mobile')");
+
+                            t.HasCheckConstraint("ck_dashboard_template_widget_layouts_h", "h > 0");
+
+                            t.HasCheckConstraint("ck_dashboard_template_widget_layouts_w", "w > 0");
+
+                            t.HasCheckConstraint("ck_dashboard_template_widget_layouts_x", "x >= 0");
+
+                            t.HasCheckConstraint("ck_dashboard_template_widget_layouts_y", "y >= 0");
+                        });
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.Dashboard.Entities.DashboardWidget", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("CreatedById")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("created_by_id");
+
+                    b.Property<Guid>("DashboardId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("dashboard_id");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("datetimeoffset")
+                        .HasColumnName("deleted_at");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit")
+                        .HasColumnName("is_deleted");
+
+                    b.Property<string>("SettingsJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("settings")
+                        .HasAnnotation("Crownus:JsonColumn", true);
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("datetimeoffset")
+                        .HasColumnName("updated_at");
+
+                    b.Property<string>("WidgetKey")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)")
                         .HasColumnName("widget_key");
 
                     b.HasKey("Id")
@@ -4523,65 +4824,68 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasIndex("DashboardId", "WidgetKey")
                         .IsUnique()
                         .HasDatabaseName("ux_dashboard_widgets_dashboard_id_widget_key")
-                        .HasFilter("is_deleted = false");
+                        .HasFilter("is_deleted = 0");
 
-                    b.ToTable("dashboard_widgets", (string)null);
+                    b.ToTable("dashboard_widgets", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_dashboard_widgets_settings_json", "ISJSON([settings]) = 1");
+                        });
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.Dashboard.Entities.DashboardWidgetLayout", b =>
                 {
                     b.Property<Guid>("Id")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<string>("Breakpoint")
                         .IsRequired()
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("breakpoint");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid>("CreatedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
                     b.Property<DateTimeOffset?>("DeletedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("deleted_at");
 
                     b.Property<int>("H")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("h");
 
                     b.Property<bool>("IsDeleted")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_deleted");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.Property<int>("W")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("w");
 
                     b.Property<Guid>("WidgetId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("widget_id");
 
                     b.Property<int>("X")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("x");
 
                     b.Property<int>("Y")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("y");
 
                     b.HasKey("Id")
@@ -4590,7 +4894,7 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasIndex("WidgetId", "Breakpoint")
                         .IsUnique()
                         .HasDatabaseName("ux_dashboard_widget_layouts_widget_id_breakpoint")
-                        .HasFilter("is_deleted = false");
+                        .HasFilter("is_deleted = 0");
 
                     b.ToTable("dashboard_widget_layouts", null, t =>
                         {
@@ -4609,29 +4913,43 @@ namespace ONEVO.Infrastructure.Migrations
             modelBuilder.Entity("ONEVO.Domain.Features.Dashboard.Entities.UserDashboard", b =>
                 {
                     b.Property<Guid>("Id")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
+                    b.Property<bool>("AppliedNoRole")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false)
+                        .HasColumnName("applied_no_role");
+
+                    b.Property<string>("AppliedRoleIds")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("applied_role_ids")
+                        .HasDefaultValueSql("'[]'")
+                        .HasAnnotation("Crownus:JsonColumn", true);
+
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid>("CreatedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
                     b.Property<string>("DashboardKey")
                         .IsRequired()
                         .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
+                        .HasColumnType("nvarchar(50)")
                         .HasColumnName("dashboard_key");
 
                     b.Property<DateTimeOffset?>("DeletedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("deleted_at");
 
                     b.Property<bool>("IsDeleted")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_deleted");
 
                     b.Property<long>("LayoutVersion")
@@ -4640,15 +4958,15 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnName("layout_version");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.Property<Guid>("UserId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("user_id");
 
                     b.HasKey("Id")
@@ -4657,75 +4975,78 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasIndex("TenantId", "UserId", "DashboardKey")
                         .IsUnique()
                         .HasDatabaseName("ux_user_dashboards_tenant_id_user_id_dashboard_key")
-                        .HasFilter("is_deleted = false");
+                        .HasFilter("is_deleted = 0");
 
-                    b.ToTable("user_dashboards", (string)null);
+                    b.ToTable("user_dashboards", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_user_dashboards_applied_role_ids_json", "ISJSON([applied_role_ids]) = 1");
+                        });
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.DevPlatform.AppCatalog.Entities.GlobalApplication", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<string>("AppName")
                         .IsRequired()
                         .HasMaxLength(200)
-                        .HasColumnType("character varying(200)")
+                        .HasColumnType("nvarchar(200)")
                         .HasColumnName("app_name");
 
                     b.Property<string>("Category")
                         .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
+                        .HasColumnType("nvarchar(50)")
                         .HasColumnName("category");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid?>("CreatedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
                     b.Property<DateTimeOffset>("FirstSeenAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("first_seen_at");
 
                     b.Property<bool>("IsProductiveDefault")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_productive_default");
 
                     b.Property<bool>("IsPublic")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_public");
 
                     b.Property<DateTimeOffset>("LastSeenAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("last_seen_at");
 
                     b.Property<byte[]>("Logo")
-                        .HasColumnType("bytea")
+                        .HasColumnType("varbinary(max)")
                         .HasColumnName("logo");
 
                     b.Property<string>("LogoContentType")
                         .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
+                        .HasColumnType("nvarchar(100)")
                         .HasColumnName("logo_content_type");
 
                     b.Property<string>("ProcessName")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
+                        .HasColumnType("nvarchar(100)")
                         .HasColumnName("process_name");
 
                     b.Property<string>("Publisher")
                         .HasMaxLength(200)
-                        .HasColumnType("character varying(200)")
+                        .HasColumnType("nvarchar(200)")
                         .HasColumnName("publisher");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id")
@@ -4745,87 +5066,88 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<string>("BlockScope")
                         .IsRequired()
                         .HasMaxLength(40)
-                        .HasColumnType("character varying(40)")
+                        .HasColumnType("nvarchar(40)")
                         .HasColumnName("block_scope");
 
                     b.Property<string>("ContentHash")
                         .IsRequired()
                         .HasMaxLength(128)
-                        .HasColumnType("character varying(128)")
+                        .HasColumnType("nvarchar(128)")
                         .HasColumnName("content_hash");
 
                     b.Property<string>("ContentHtml")
                         .IsRequired()
-                        .HasColumnType("text")
+                        .HasColumnType("nvarchar(max)")
                         .HasColumnName("content_html");
 
                     b.Property<string>("ContentJson")
                         .IsRequired()
-                        .HasColumnType("jsonb")
-                        .HasColumnName("content_json");
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("content_json")
+                        .HasAnnotation("Crownus:JsonColumn", true);
 
                     b.Property<string>("ContentText")
                         .IsRequired()
-                        .HasColumnType("text")
+                        .HasColumnType("nvarchar(max)")
                         .HasColumnName("content_text");
 
                     b.Property<string>("ContentUrl")
                         .HasMaxLength(500)
-                        .HasColumnType("character varying(500)")
+                        .HasColumnType("nvarchar(500)")
                         .HasColumnName("content_url");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<string>("DocumentType")
                         .IsRequired()
                         .HasMaxLength(80)
-                        .HasColumnType("character varying(80)")
+                        .HasColumnType("nvarchar(80)")
                         .HasColumnName("document_type");
 
                     b.Property<bool>("IsRequired")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_required");
 
                     b.Property<string>("PublishReason")
-                        .HasColumnType("text")
+                        .HasColumnType("nvarchar(max)")
                         .HasColumnName("publish_reason");
 
                     b.Property<DateTimeOffset?>("PublishedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("published_at");
 
                     b.Property<Guid?>("PublishedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("published_by_id");
 
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("status");
 
                     b.Property<string>("Title")
                         .IsRequired()
                         .HasMaxLength(200)
-                        .HasColumnType("character varying(200)")
+                        .HasColumnType("nvarchar(200)")
                         .HasColumnName("title");
 
                     b.Property<DateTimeOffset>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.Property<string>("Version")
                         .IsRequired()
                         .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
+                        .HasColumnType("nvarchar(50)")
                         .HasColumnName("version");
 
                     b.HasKey("Id")
@@ -4847,78 +5169,83 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasDatabaseName("ix_legal_document_versions_document_type_version");
 
                     b.HasIndex("DocumentType", "Status", "IsRequired", "PublishedAt")
-                        .HasDatabaseName("ix_legal_document_versions_document_type_status_is_required_pu");
+                        .HasDatabaseName("ix_legal_document_versions_document_type_status_is_required_published_at");
 
-                    b.ToTable("legal_document_versions", (string)null);
+                    b.ToTable("legal_document_versions", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_legal_document_versions_content_json_json", "ISJSON([content_json]) = 1");
+                        });
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.DevPlatform.ConfigurationTemplates.Entities.ConfigurationTemplate", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid>("CreatedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
                     b.Property<string>("Description")
                         .HasMaxLength(500)
-                        .HasColumnType("character varying(500)")
+                        .HasColumnType("nvarchar(500)")
                         .HasColumnName("description");
 
                     b.Property<string>("IndustryProfileTag")
                         .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
+                        .HasColumnType("nvarchar(50)")
                         .HasColumnName("industry_profile_tag");
 
                     b.Property<bool>("IsActive")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_active");
 
                     b.Property<bool>("IsSystem")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_system");
 
                     b.Property<string>("ModuleKeysJson")
                         .IsRequired()
-                        .HasColumnType("jsonb")
-                        .HasColumnName("module_keys_json");
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("module_keys_json")
+                        .HasAnnotation("Crownus:JsonColumn", true);
 
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(150)
-                        .HasColumnType("character varying(150)")
+                        .HasColumnType("nvarchar(150)")
                         .HasColumnName("name");
 
                     b.Property<string>("PayloadJson")
                         .IsRequired()
-                        .HasColumnType("jsonb")
-                        .HasColumnName("payload_json");
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("payload_json")
+                        .HasAnnotation("Crownus:JsonColumn", true);
 
                     b.Property<string>("TemplateKey")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
+                        .HasColumnType("nvarchar(100)")
                         .HasColumnName("template_key");
 
                     b.Property<string>("TemplateType")
                         .IsRequired()
                         .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
+                        .HasColumnType("nvarchar(50)")
                         .HasColumnName("template_type");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.Property<int>("Version")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("version");
 
                     b.HasKey("Id")
@@ -4934,60 +5261,68 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasIndex("TemplateType")
                         .HasDatabaseName("ix_configuration_templates_template_type");
 
-                    b.ToTable("configuration_templates", (string)null);
+                    b.ToTable("configuration_templates", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_configuration_templates_module_keys_json_json", "ISJSON([module_keys_json]) = 1");
+
+                            t.HasCheckConstraint("ck_configuration_templates_payload_json_json", "ISJSON([payload_json]) = 1");
+                        });
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.DevPlatform.ConfigurationTemplates.Entities.TenantConfigurationTemplateApplication", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<DateTimeOffset>("AppliedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("applied_at");
 
                     b.Property<Guid>("AppliedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("applied_by_id");
 
                     b.Property<string>("AppliedPayloadJson")
                         .IsRequired()
-                        .HasColumnType("jsonb")
-                        .HasColumnName("applied_payload_json");
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("applied_payload_json")
+                        .HasAnnotation("Crownus:JsonColumn", true);
 
                     b.Property<int>("AppliedVersion")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("applied_version");
 
                     b.Property<Guid>("ConfigurationTemplateId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("configuration_template_id");
 
                     b.Property<string>("CustomPayloadJson")
-                        .HasColumnType("jsonb")
-                        .HasColumnName("custom_payload_json");
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("custom_payload_json")
+                        .HasAnnotation("Crownus:JsonColumn", true);
 
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("status");
 
                     b.Property<string>("TemplateType")
                         .IsRequired()
                         .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
+                        .HasColumnType("nvarchar(50)")
                         .HasColumnName("template_type");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<string>("WarningsJson")
-                        .HasColumnType("jsonb")
-                        .HasColumnName("warnings_json");
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("warnings_json")
+                        .HasAnnotation("Crownus:JsonColumn", true);
 
                     b.HasKey("Id")
                         .HasName("pk_tenant_configuration_template_applications");
@@ -4996,14 +5331,20 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasDatabaseName("ix_tenant_configuration_template_applications_applied_by_id");
 
                     b.HasIndex("ConfigurationTemplateId")
-                        .HasDatabaseName("ix_tenant_configuration_template_applications_configuration_te");
+                        .HasDatabaseName("ix_tenant_configuration_template_applications_configuration_template_id");
 
                     b.HasIndex("TenantId", "AppliedAt")
-                        .HasDatabaseName("ix_tenant_configuration_template_applications_tenant_id_applie");
+                        .HasDatabaseName("ix_tenant_configuration_template_applications_tenant_id_applied_at");
 
                     b.ToTable("tenant_configuration_template_applications", null, t =>
                         {
                             t.HasCheckConstraint("ck_tenant_config_template_apps_status", "status IN ('applied')");
+
+                            t.HasCheckConstraint("ck_tenant_configuration_template_applications_applied_payload_json_json", "ISJSON([applied_payload_json]) = 1");
+
+                            t.HasCheckConstraint("ck_tenant_configuration_template_applications_custom_payload_json_json", "ISJSON([custom_payload_json]) = 1");
+
+                            t.HasCheckConstraint("ck_tenant_configuration_template_applications_warnings_json_json", "ISJSON([warnings_json]) = 1");
                         });
                 });
 
@@ -5011,34 +5352,35 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<string>("EventType")
                         .IsRequired()
                         .HasMaxLength(80)
-                        .HasColumnType("character varying(80)")
+                        .HasColumnType("nvarchar(80)")
                         .HasColumnName("event_type");
 
                     b.Property<string>("MetadataJson")
-                        .HasColumnType("jsonb")
-                        .HasColumnName("metadata_json");
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("metadata_json")
+                        .HasAnnotation("Crownus:JsonColumn", true);
 
                     b.Property<string>("SourceIp")
                         .HasMaxLength(45)
-                        .HasColumnType("character varying(45)")
+                        .HasColumnType("nvarchar(45)")
                         .HasColumnName("source_ip");
 
                     b.Property<string>("UserAgent")
-                        .HasColumnType("text")
+                        .HasColumnType("nvarchar(max)")
                         .HasColumnName("user_agent");
 
                     b.Property<Guid?>("UserId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("user_id");
 
                     b.HasKey("Id")
@@ -5050,28 +5392,31 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasIndex("UserId")
                         .HasDatabaseName("ix_platform_auth_events_user_id");
 
-                    b.ToTable("platform_auth_events", (string)null);
+                    b.ToTable("platform_auth_events", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_platform_auth_events_metadata_json_json", "ISJSON([metadata_json]) = 1");
+                        });
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.DevPlatform.PlatformAccess.Entities.PlatformPermission", b =>
                 {
                     b.Property<string>("Code")
                         .HasMaxLength(120)
-                        .HasColumnType("character varying(120)")
+                        .HasColumnType("nvarchar(120)")
                         .HasColumnName("code");
 
                     b.Property<string>("Description")
-                        .HasColumnType("text")
+                        .HasColumnType("nvarchar(max)")
                         .HasColumnName("description");
 
                     b.Property<bool>("IsHighRisk")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_high_risk");
 
                     b.Property<string>("ModuleKey")
                         .IsRequired()
                         .HasMaxLength(80)
-                        .HasColumnType("character varying(80)")
+                        .HasColumnType("nvarchar(80)")
                         .HasColumnName("module_key");
 
                     b.HasKey("Code")
@@ -5084,37 +5429,37 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid?>("CreatedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
                     b.Property<string>("Description")
-                        .HasColumnType("text")
+                        .HasColumnType("nvarchar(max)")
                         .HasColumnName("description");
 
                     b.Property<bool>("IsActive")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_active");
 
                     b.Property<bool>("IsSystem")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_system");
 
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
+                        .HasColumnType("nvarchar(100)")
                         .HasColumnName("name");
 
                     b.Property<DateTimeOffset>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id")
@@ -5133,20 +5478,20 @@ namespace ONEVO.Infrastructure.Migrations
             modelBuilder.Entity("ONEVO.Domain.Features.DevPlatform.PlatformAccess.Entities.PlatformRolePermission", b =>
                 {
                     b.Property<Guid>("RoleId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("role_id");
 
                     b.Property<string>("PermissionCode")
                         .HasMaxLength(120)
-                        .HasColumnType("character varying(120)")
+                        .HasColumnType("nvarchar(120)")
                         .HasColumnName("permission_code");
 
                     b.Property<DateTimeOffset>("GrantedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("granted_at");
 
                     b.Property<Guid?>("GrantedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("granted_by_id");
 
                     b.HasKey("RoleId", "PermissionCode")
@@ -5165,59 +5510,59 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid?>("CreatedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
                     b.Property<string>("Email")
                         .IsRequired()
                         .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
+                        .HasColumnType("nvarchar(255)")
                         .HasColumnName("email");
 
                     b.Property<string>("FullName")
                         .IsRequired()
                         .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
+                        .HasColumnType("nvarchar(255)")
                         .HasColumnName("full_name");
 
                     b.Property<string>("GoogleSub")
                         .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
+                        .HasColumnType("nvarchar(255)")
                         .HasColumnName("google_sub");
 
                     b.Property<string>("InviteStatus")
                         .IsRequired()
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("invite_status");
 
                     b.Property<DateTimeOffset?>("LastLoginAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("last_login_at");
 
                     b.Property<string>("MfaSecret")
                         .HasMaxLength(500)
-                        .HasColumnType("character varying(500)")
+                        .HasColumnType("nvarchar(500)")
                         .HasColumnName("mfa_secret");
 
                     b.Property<string>("MfaStatus")
                         .IsRequired()
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("mfa_status");
 
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("status");
 
                     b.HasKey("Id")
@@ -5243,72 +5588,72 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<string>("CredentialType")
                         .IsRequired()
                         .HasMaxLength(40)
-                        .HasColumnType("character varying(40)")
+                        .HasColumnType("nvarchar(40)")
                         .HasColumnName("credential_type");
 
                     b.Property<int>("FailedLoginCount")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasDefaultValue(0)
                         .HasColumnName("failed_login_count");
 
                     b.Property<DateTimeOffset?>("LastUsedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("last_used_at");
 
                     b.Property<DateTimeOffset?>("LockedUntil")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("locked_until");
 
                     b.Property<bool>("MustChangePassword")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasDefaultValue(false)
                         .HasColumnName("must_change_password");
 
                     b.Property<string>("PasswordAlgorithm")
                         .HasMaxLength(80)
-                        .HasColumnType("character varying(80)")
+                        .HasColumnType("nvarchar(80)")
                         .HasColumnName("password_algorithm");
 
                     b.Property<DateTimeOffset?>("PasswordChangedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("password_changed_at");
 
                     b.Property<string>("PasswordHash")
                         .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
+                        .HasColumnType("nvarchar(255)")
                         .HasColumnName("password_hash");
 
                     b.Property<Guid>("PlatformUserId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("platform_user_id");
 
                     b.Property<DateTimeOffset?>("ResetTokenExpiresAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("reset_token_expires_at");
 
                     b.Property<string>("ResetTokenHash")
                         .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
+                        .HasColumnType("nvarchar(255)")
                         .HasColumnName("reset_token_hash");
 
                     b.Property<DateTimeOffset?>("RevokedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("revoked_at");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id")
@@ -5337,49 +5682,49 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<DateTimeOffset?>("AcceptedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("accepted_at");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<string>("Email")
                         .IsRequired()
                         .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
+                        .HasColumnType("nvarchar(255)")
                         .HasColumnName("email");
 
                     b.Property<DateTimeOffset>("ExpiresAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("expires_at");
 
                     b.Property<string>("FullName")
                         .IsRequired()
                         .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
+                        .HasColumnType("nvarchar(255)")
                         .HasColumnName("full_name");
 
                     b.Property<string>("InviteTokenHash")
                         .IsRequired()
                         .HasMaxLength(64)
-                        .HasColumnType("character varying(64)")
+                        .HasColumnType("nvarchar(64)")
                         .HasColumnName("invite_token_hash");
 
                     b.Property<Guid>("InvitedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("invited_by_id");
 
                     b.Property<Guid?>("PlatformUserId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("platform_user_id");
 
                     b.Property<DateTimeOffset?>("RevokedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("revoked_at");
 
                     b.HasKey("Id")
@@ -5404,19 +5749,19 @@ namespace ONEVO.Infrastructure.Migrations
             modelBuilder.Entity("ONEVO.Domain.Features.DevPlatform.PlatformAccess.Entities.PlatformUserRole", b =>
                 {
                     b.Property<Guid>("UserId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("user_id");
 
                     b.Property<Guid>("RoleId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("role_id");
 
                     b.Property<DateTimeOffset>("AssignedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("assigned_at");
 
                     b.Property<Guid?>("AssignedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("assigned_by_id");
 
                     b.HasKey("UserId", "RoleId")
@@ -5435,49 +5780,49 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<Guid>("AccountId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("account_id");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<string>("CsrfTokenHash")
                         .IsRequired()
                         .HasMaxLength(128)
-                        .HasColumnType("character varying(128)")
+                        .HasColumnType("nvarchar(128)")
                         .HasColumnName("csrf_token_hash");
 
                     b.Property<DateTimeOffset>("ExpiresAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("expires_at");
 
                     b.Property<string>("IpAddress")
                         .HasMaxLength(45)
-                        .HasColumnType("character varying(45)")
+                        .HasColumnType("nvarchar(45)")
                         .HasColumnName("ip_address");
 
                     b.Property<DateTimeOffset>("LastActivityAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("last_activity_at");
 
                     b.Property<DateTimeOffset?>("RevokedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("revoked_at");
 
                     b.Property<string>("TokenHash")
                         .IsRequired()
                         .HasMaxLength(64)
-                        .HasColumnType("character varying(64)")
+                        .HasColumnType("nvarchar(64)")
                         .HasColumnName("token_hash");
 
                     b.Property<string>("UserAgent")
                         .HasMaxLength(500)
-                        .HasColumnType("character varying(500)")
+                        .HasColumnType("nvarchar(500)")
                         .HasColumnName("user_agent");
 
                     b.HasKey("Id")
@@ -5500,46 +5845,46 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<string>("IntegrationKey")
                         .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
+                        .HasColumnType("nvarchar(50)")
                         .HasColumnName("integration_key");
 
                     b.Property<string>("ConnectionScope")
                         .IsRequired()
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("connection_scope");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid>("CreatedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
                     b.Property<string>("Description")
-                        .HasColumnType("text")
+                        .HasColumnType("nvarchar(max)")
                         .HasColumnName("description");
 
                     b.Property<string>("DisplayName")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
+                        .HasColumnType("nvarchar(100)")
                         .HasColumnName("display_name");
 
                     b.Property<bool>("IsActive")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_active");
 
                     b.Property<string>("LogoUrl")
                         .HasMaxLength(500)
-                        .HasColumnType("character varying(500)")
+                        .HasColumnType("nvarchar(500)")
                         .HasColumnName("logo_url");
 
                     b.Property<string>("OnevoAppProvider")
                         .IsRequired()
-                        .HasMaxLength(30)
-                        .HasColumnType("character varying(30)")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)")
                         .HasColumnName("onevo_app_provider");
 
                     b.HasKey("IntegrationKey")
@@ -5557,21 +5902,21 @@ namespace ONEVO.Infrastructure.Migrations
             modelBuilder.Entity("ONEVO.Domain.Features.DevPlatform.SystemConfig.IntegrationCatalog.Entities.ModuleIntegrationLink", b =>
                 {
                     b.Property<string>("ModuleKey")
-                        .HasMaxLength(80)
-                        .HasColumnType("character varying(80)")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)")
                         .HasColumnName("module_key");
 
                     b.Property<string>("IntegrationKey")
                         .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
+                        .HasColumnType("nvarchar(50)")
                         .HasColumnName("integration_key");
 
                     b.Property<DateTimeOffset>("LinkedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("linked_at");
 
                     b.Property<Guid>("LinkedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("linked_by_id");
 
                     b.HasKey("ModuleKey", "IntegrationKey")
@@ -5590,63 +5935,63 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<string>("AppName")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
+                        .HasColumnType("nvarchar(100)")
                         .HasColumnName("app_name");
 
                     b.Property<string>("AuthorizationUrl")
                         .IsRequired()
                         .HasMaxLength(500)
-                        .HasColumnType("character varying(500)")
+                        .HasColumnType("nvarchar(500)")
                         .HasColumnName("authorization_url");
 
                     b.Property<string>("ClientId")
                         .IsRequired()
                         .HasMaxLength(200)
-                        .HasColumnType("character varying(200)")
+                        .HasColumnType("nvarchar(200)")
                         .HasColumnName("client_id");
 
-                    b.PrimitiveCollection<string[]>("DefaultScopes")
+                    b.PrimitiveCollection<string>("DefaultScopes")
                         .IsRequired()
-                        .HasColumnType("text[]")
+                        .HasColumnType("nvarchar(max)")
                         .HasColumnName("default_scopes");
 
                     b.Property<bool>("IsActive")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_active");
 
                     b.Property<DateTimeOffset?>("LastVerifiedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("last_verified_at");
 
                     b.Property<string>("LogoUrl")
                         .HasMaxLength(500)
-                        .HasColumnType("character varying(500)")
+                        .HasColumnType("nvarchar(500)")
                         .HasColumnName("logo_url");
 
                     b.Property<string>("Provider")
                         .IsRequired()
-                        .HasMaxLength(30)
-                        .HasColumnType("character varying(30)")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)")
                         .HasColumnName("provider");
 
                     b.Property<string>("TokenUrl")
                         .IsRequired()
                         .HasMaxLength(500)
-                        .HasColumnType("character varying(500)")
+                        .HasColumnType("nvarchar(500)")
                         .HasColumnName("token_url");
 
                     b.Property<DateTimeOffset>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.Property<Guid>("UpdatedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("updated_by_id");
 
                     b.HasKey("Id")
@@ -5669,50 +6014,50 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<string>("ClientSecretEncrypted")
                         .IsRequired()
-                        .HasColumnType("text")
+                        .HasColumnType("nvarchar(max)")
                         .HasColumnName("client_secret_encrypted");
 
                     b.Property<int>("CredentialVersion")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("credential_version");
 
                     b.Property<DateTimeOffset?>("DeactivatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("deactivated_at");
 
                     b.Property<Guid?>("DeactivatedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("deactivated_by_id");
 
                     b.Property<string>("EncryptionKeyVersion")
                         .IsRequired()
                         .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
+                        .HasColumnType("nvarchar(50)")
                         .HasColumnName("encryption_key_version");
 
                     b.Property<bool>("IsActive")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_active");
 
                     b.Property<Guid>("PlatformOAuthAppId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("platform_oauth_app_id");
 
                     b.Property<string>("PrivateKeyEncrypted")
-                        .HasColumnType("text")
+                        .HasColumnType("nvarchar(max)")
                         .HasColumnName("private_key_encrypted");
 
                     b.Property<DateTimeOffset>("RotatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("rotated_at");
 
                     b.Property<Guid>("RotatedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("rotated_by_id");
 
                     b.HasKey("Id")
@@ -5734,39 +6079,39 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<string>("DisplayName")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
+                        .HasColumnType("nvarchar(100)")
                         .HasColumnName("display_name");
 
                     b.Property<bool>("IsActive")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasDefaultValue(true)
                         .HasColumnName("is_active");
 
                     b.Property<string>("ProviderFamily")
                         .IsRequired()
                         .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
+                        .HasColumnType("nvarchar(50)")
                         .HasColumnName("provider_family");
 
                     b.Property<string>("ProviderKey")
                         .IsRequired()
                         .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
+                        .HasColumnType("nvarchar(50)")
                         .HasColumnName("provider_key");
 
                     b.Property<DateTimeOffset>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id")
@@ -5910,40 +6255,40 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<string>("ApiKeyEncrypted")
                         .IsRequired()
-                        .HasColumnType("text")
+                        .HasColumnType("nvarchar(max)")
                         .HasColumnName("api_key_encrypted");
 
                     b.Property<string>("DisplayName")
                         .IsRequired()
                         .HasMaxLength(80)
-                        .HasColumnType("character varying(80)")
+                        .HasColumnType("nvarchar(80)")
                         .HasColumnName("display_name");
 
                     b.Property<bool>("IsActive")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_active");
 
                     b.Property<DateTimeOffset?>("LastVerifiedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("last_verified_at");
 
                     b.Property<string>("ServiceKey")
                         .IsRequired()
                         .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
+                        .HasColumnType("nvarchar(50)")
                         .HasColumnName("service_key");
 
                     b.Property<DateTimeOffset>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.Property<Guid>("UpdatedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("updated_by_id");
 
                     b.HasKey("Id")
@@ -5963,27 +6308,27 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<string>("Channel")
                         .IsRequired()
                         .HasMaxLength(16)
-                        .HasColumnType("character varying(16)")
+                        .HasColumnType("nvarchar(16)")
                         .HasColumnName("channel");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid?>("CreatedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
                     b.Property<string>("DownloadUrl")
                         .IsRequired()
                         .HasMaxLength(2048)
-                        .HasColumnType("character varying(2048)")
+                        .HasColumnType("nvarchar(2048)")
                         .HasColumnName("download_url");
 
                     b.Property<long>("FileSizeBytes")
@@ -5991,50 +6336,50 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnName("file_size_bytes");
 
                     b.Property<bool>("IsActive")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_active");
 
                     b.Property<string>("MinSupportedVersion")
                         .HasMaxLength(32)
-                        .HasColumnType("character varying(32)")
+                        .HasColumnType("nvarchar(32)")
                         .HasColumnName("min_supported_version");
 
                     b.Property<string>("MinimumWindowsVersion")
                         .IsRequired()
                         .HasMaxLength(32)
-                        .HasColumnType("character varying(32)")
+                        .HasColumnType("nvarchar(32)")
                         .HasColumnName("minimum_windows_version");
 
                     b.Property<string>("Publisher")
                         .IsRequired()
                         .HasMaxLength(200)
-                        .HasColumnType("character varying(200)")
+                        .HasColumnType("nvarchar(200)")
                         .HasColumnName("publisher");
 
                     b.Property<string>("ReleaseNotes")
-                        .HasColumnType("text")
+                        .HasColumnType("nvarchar(max)")
                         .HasColumnName("release_notes");
 
                     b.Property<string>("Sha256")
                         .IsRequired()
                         .HasMaxLength(64)
-                        .HasColumnType("character varying(64)")
+                        .HasColumnType("nvarchar(64)")
                         .HasColumnName("sha256");
 
                     b.Property<string>("Source")
                         .IsRequired()
                         .HasMaxLength(16)
-                        .HasColumnType("character varying(16)")
+                        .HasColumnType("nvarchar(16)")
                         .HasColumnName("source");
 
                     b.Property<DateTimeOffset>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.Property<string>("Version")
                         .IsRequired()
                         .HasMaxLength(32)
-                        .HasColumnType("character varying(32)")
+                        .HasColumnType("nvarchar(32)")
                         .HasColumnName("version");
 
                     b.HasKey("Id")
@@ -6054,78 +6399,80 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<string>("Action")
                         .IsRequired()
                         .HasMaxLength(60)
-                        .HasColumnType("character varying(60)")
+                        .HasColumnType("nvarchar(60)")
                         .HasColumnName("action");
 
                     b.Property<Guid>("ActorEmployeeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("actor_employee_id");
 
                     b.Property<string>("AfterJson")
-                        .HasColumnType("jsonb")
-                        .HasColumnName("after_json");
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("after_json")
+                        .HasAnnotation("Crownus:JsonColumn", true);
 
                     b.Property<string>("BeforeJson")
-                        .HasColumnType("jsonb")
-                        .HasColumnName("before_json");
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("before_json")
+                        .HasAnnotation("Crownus:JsonColumn", true);
 
                     b.Property<string>("Comment")
                         .HasMaxLength(4000)
-                        .HasColumnType("character varying(4000)")
+                        .HasColumnType("nvarchar(4000)")
                         .HasColumnName("comment");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid>("CreatedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
                     b.Property<DateTimeOffset>("DecidedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("decided_at");
 
                     b.Property<DateTimeOffset?>("DeletedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("deleted_at");
 
                     b.Property<bool>("IsDeleted")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_deleted");
 
                     b.Property<Guid>("ItemId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("item_id");
 
                     b.Property<string>("Kind")
                         .IsRequired()
                         .HasMaxLength(40)
-                        .HasColumnType("character varying(40)")
+                        .HasColumnType("nvarchar(40)")
                         .HasColumnName("kind");
 
                     b.Property<Guid?>("RevertedByJournalId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("reverted_by_journal_id");
 
                     b.Property<string>("Source")
                         .IsRequired()
                         .HasMaxLength(40)
-                        .HasColumnType("character varying(40)")
+                        .HasColumnType("nvarchar(40)")
                         .HasColumnName("source");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id")
@@ -6138,60 +6485,66 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasIndex("TenantId", "Source", "Kind", "ItemId", "DecidedAt")
                         .HasDatabaseName("ix_inbox_decision_journal_tenant_id_source_kind_item_id_decided_at");
 
-                    b.ToTable("inbox_decision_journal", (string)null);
+                    b.ToTable("inbox_decision_journal", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_inbox_decision_journal_after_json_json", "ISJSON([after_json]) = 1");
+
+                            t.HasCheckConstraint("ck_inbox_decision_journal_before_json_json", "ISJSON([before_json]) = 1");
+                        });
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<string>("CompanySizeRange")
                         .IsRequired()
                         .HasMaxLength(30)
-                        .HasColumnType("character varying(30)")
+                        .HasColumnType("nvarchar(30)")
                         .HasColumnName("company_size_range");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<string>("IndustryProfile")
                         .IsRequired()
                         .HasMaxLength(30)
-                        .HasColumnType("character varying(30)")
+                        .HasColumnType("nvarchar(30)")
                         .HasColumnName("industry_profile");
 
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(200)
-                        .HasColumnType("character varying(200)")
+                        .HasColumnType("nvarchar(200)")
                         .HasColumnName("name");
 
                     b.Property<string>("SettingsJson")
-                        .HasColumnType("jsonb")
-                        .HasColumnName("settings_json");
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("settings_json")
+                        .HasAnnotation("Crownus:JsonColumn", true);
 
                     b.Property<string>("Slug")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
+                        .HasColumnType("nvarchar(100)")
                         .HasColumnName("slug");
 
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("status");
 
                     b.Property<Guid?>("SubscriptionPlanId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("subscription_plan_id");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id")
@@ -6201,43 +6554,46 @@ namespace ONEVO.Infrastructure.Migrations
                         .IsUnique()
                         .HasDatabaseName("ix_tenants_slug");
 
-                    b.ToTable("tenants", (string)null);
+                    b.ToTable("tenants", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_tenants_settings_json_json", "ISJSON([settings_json]) = 1");
+                        });
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.InfrastructureModule.Entities.TenantStatusHistory", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<DateTimeOffset>("ChangedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("changed_at");
 
                     b.Property<Guid?>("ChangedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("changed_by_id");
 
                     b.Property<string>("FromStatus")
                         .IsRequired()
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("from_status");
 
                     b.Property<string>("Reason")
                         .HasMaxLength(500)
-                        .HasColumnType("character varying(500)")
+                        .HasColumnType("nvarchar(500)")
                         .HasColumnName("reason");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<string>("ToStatus")
                         .IsRequired()
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("to_status");
 
                     b.HasKey("Id")
@@ -6259,104 +6615,104 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid>("CreatedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
                     b.Property<DateTimeOffset?>("DeletedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("deleted_at");
 
                     b.Property<string>("Email")
                         .IsRequired()
                         .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
+                        .HasColumnType("nvarchar(255)")
                         .HasColumnName("email");
 
                     b.Property<bool>("EmailVerified")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("email_verified");
 
                     b.Property<string>("FirstName")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
+                        .HasColumnType("nvarchar(100)")
                         .HasColumnName("first_name");
 
                     b.Property<bool>("IsActive")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_active");
 
                     b.Property<bool>("IsDeleted")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_deleted");
 
                     b.Property<DateTimeOffset?>("LastLoginAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("last_login_at");
 
                     b.Property<string>("LastName")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
+                        .HasColumnType("nvarchar(100)")
                         .HasColumnName("last_name");
 
                     b.Property<bool>("MustChangePassword")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("must_change_password");
 
                     b.Property<string>("NormalizedEmail")
                         .IsRequired()
                         .ValueGeneratedOnAddOrUpdate()
                         .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
+                        .HasColumnType("nvarchar(255)")
                         .HasColumnName("normalized_email")
-                        .HasComputedColumnSql("lower(trim(email))", true);
+                        .HasComputedColumnSql("LOWER(LTRIM(RTRIM([email])))", true);
 
                     b.Property<string>("PasswordHash")
                         .IsRequired()
                         .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
+                        .HasColumnType("nvarchar(255)")
                         .HasColumnName("password_hash");
 
                     b.Property<DateTimeOffset?>("PasswordResetTokenExpiresAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("password_reset_token_expires_at");
 
                     b.Property<string>("PasswordResetTokenHash")
                         .HasMaxLength(128)
-                        .HasColumnType("character varying(128)")
+                        .HasColumnType("nvarchar(128)")
                         .HasColumnName("password_reset_token_hash");
 
                     b.Property<bool>("PasswordSetByAdmin")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("password_set_by_admin");
 
                     b.Property<DateTimeOffset?>("SuspendedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("suspended_at");
 
                     b.Property<Guid?>("SuspendedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("suspended_by_id");
 
                     b.Property<DateTimeOffset?>("TemporaryPasswordExpiresAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("temporary_password_expires_at");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id")
@@ -6372,7 +6728,7 @@ namespace ONEVO.Infrastructure.Migrations
 
                     b.HasIndex("NormalizedEmail", "TenantId", "Id")
                         .HasDatabaseName("ix_users_normalized_email_active_lookup")
-                        .HasFilter("is_active = true AND is_deleted = false");
+                        .HasFilter("is_active = 1 AND is_deleted = 0");
 
                     b.ToTable("users", (string)null);
                 });
@@ -6381,70 +6737,70 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<decimal>("BalanceAfter")
-                        .HasColumnType("numeric(8,2)")
+                        .HasColumnType("decimal(8,2)")
                         .HasColumnName("balance_after");
 
                     b.Property<string>("ChangeType")
                         .IsRequired()
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("change_type");
 
                     b.Property<int?>("CoversFromMonth")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("covers_from_month");
 
                     b.Property<int?>("CoversToMonth")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("covers_to_month");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid?>("CreatedBy")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by");
 
                     b.Property<Guid>("EmployeeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("employee_id");
 
                     b.Property<decimal>("HoursChanged")
-                        .HasColumnType("numeric(8,2)")
+                        .HasColumnType("decimal(8,2)")
                         .HasColumnName("hours_changed");
 
                     b.Property<Guid?>("LeavePolicyId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("leave_policy_id");
 
                     b.Property<Guid?>("LeavePolicyVersionId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("leave_policy_version_id");
 
                     b.Property<Guid>("LeaveTypeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("leave_type_id");
 
                     b.Property<string>("Reason")
                         .HasMaxLength(500)
-                        .HasColumnType("character varying(500)")
+                        .HasColumnType("nvarchar(500)")
                         .HasColumnName("reason");
 
                     b.Property<Guid?>("RelatedRequestId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("related_request_id");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<int?>("Year")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("year");
 
                     b.HasKey("Id")
@@ -6475,71 +6831,71 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<decimal>("CarriedForwardHours")
-                        .HasColumnType("numeric(8,2)")
+                        .HasColumnType("decimal(8,2)")
                         .HasColumnName("carried_forward_hours");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid>("EmployeeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("employee_id");
 
                     b.Property<Guid?>("LeavePolicyId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("leave_policy_id");
 
                     b.Property<Guid?>("LeavePolicyVersionId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("leave_policy_version_id");
 
                     b.Property<Guid>("LeaveTypeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("leave_type_id");
 
                     b.Property<string>("ManualReason")
-                        .HasColumnType("text")
+                        .HasColumnType("nvarchar(max)")
                         .HasColumnName("manual_reason");
 
                     b.Property<decimal>("PendingHours")
-                        .HasColumnType("numeric(8,2)")
+                        .HasColumnType("decimal(8,2)")
                         .HasColumnName("pending_hours");
 
                     b.Property<string>("Source")
                         .IsRequired()
                         .HasMaxLength(10)
-                        .HasColumnType("character varying(10)")
+                        .HasColumnType("nvarchar(10)")
                         .HasColumnName("source");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<decimal>("TotalHours")
-                        .HasColumnType("numeric(8,2)")
+                        .HasColumnType("decimal(8,2)")
                         .HasColumnName("total_hours");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.Property<decimal>("UsedHours")
-                        .HasColumnType("numeric(8,2)")
+                        .HasColumnType("decimal(8,2)")
                         .HasColumnName("used_hours");
 
                     b.Property<int>("Year")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("year");
 
-                    b.Property<uint?>("xmin")
+                    b.Property<byte[]>("xmin")
                         .IsConcurrencyToken()
                         .ValueGeneratedOnAddOrUpdate()
-                        .HasColumnType("xid")
+                        .HasColumnType("rowversion")
                         .HasColumnName("xmin");
 
                     b.HasKey("Id")
@@ -6562,38 +6918,38 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<string>("Description")
                         .HasMaxLength(1000)
-                        .HasColumnType("character varying(1000)")
+                        .HasColumnType("nvarchar(1000)")
                         .HasColumnName("description");
 
                     b.Property<bool>("IsActive")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_active");
 
                     b.Property<Guid>("LeaveTypeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("leave_type_id");
 
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(150)
-                        .HasColumnType("character varying(150)")
+                        .HasColumnType("nvarchar(150)")
                         .HasColumnName("name");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id")
@@ -6615,15 +6971,15 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid?>("CreatedBy")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by");
 
                     b.Property<DateOnly>("EffectiveFrom")
@@ -6635,29 +6991,29 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnName("effective_to");
 
                     b.Property<Guid?>("EndedBy")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("ended_by");
 
                     b.Property<Guid>("LeavePolicyId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("leave_policy_id");
 
                     b.Property<Guid>("LeaveTypeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("leave_type_id");
 
                     b.Property<Guid>("TargetId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("target_id");
 
                     b.Property<string>("TargetKind")
                         .IsRequired()
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("target_kind");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.HasKey("Id")
@@ -6687,7 +7043,7 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<DateOnly>("EndDate")
@@ -6695,12 +7051,12 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnName("end_date");
 
                     b.Property<Guid>("LeavePolicyVersionId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("leave_policy_version_id");
 
                     b.Property<string>("Reason")
                         .HasMaxLength(200)
-                        .HasColumnType("character varying(200)")
+                        .HasColumnType("nvarchar(200)")
                         .HasColumnName("reason");
 
                     b.Property<DateOnly>("StartDate")
@@ -6708,7 +7064,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnName("start_date");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.HasKey("Id")
@@ -6727,39 +7083,39 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<decimal>("AmountHours")
-                        .HasColumnType("numeric(7,2)")
+                        .HasColumnType("decimal(7,2)")
                         .HasColumnName("amount_hours");
 
                     b.Property<string>("AmountPeriod")
                         .IsRequired()
                         .HasMaxLength(10)
-                        .HasColumnType("character varying(10)")
+                        .HasColumnType("nvarchar(10)")
                         .HasColumnName("amount_period");
 
                     b.Property<string>("ApprovalMode")
                         .IsRequired()
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("approval_mode");
 
                     b.Property<decimal?>("CarryForwardCapHours")
-                        .HasColumnType("numeric(7,2)")
+                        .HasColumnType("decimal(7,2)")
                         .HasColumnName("carry_forward_cap_hours");
 
                     b.Property<int?>("CarryForwardExpiryMonths")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("carry_forward_expiry_months");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid?>("CreatedBy")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by");
 
                     b.Property<DateOnly>("EffectiveFrom")
@@ -6767,41 +7123,41 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnName("effective_from");
 
                     b.Property<int?>("EligibleAfterMonths")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("eligible_after_months");
 
                     b.Property<string>("EligibleFrom")
                         .IsRequired()
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("eligible_from");
 
                     b.Property<Guid>("LeavePolicyId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("leave_policy_id");
 
                     b.Property<decimal?>("MaxRequestHours")
-                        .HasColumnType("numeric(7,2)")
+                        .HasColumnType("decimal(7,2)")
                         .HasColumnName("max_request_hours");
 
                     b.Property<decimal?>("MaxTeamAbsencePercent")
-                        .HasColumnType("numeric(5,2)")
+                        .HasColumnType("decimal(5,2)")
                         .HasColumnName("max_team_absence_percent");
 
                     b.Property<decimal>("MinRequestHours")
-                        .HasColumnType("numeric(7,2)")
+                        .HasColumnType("decimal(7,2)")
                         .HasColumnName("min_request_hours");
 
                     b.Property<int>("MinimumNoticeDays")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("minimum_notice_days");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<int>("VersionNumber")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("version_number");
 
                     b.HasKey("Id")
@@ -6825,15 +7181,15 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<Guid>("ApproverEmployeeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("approver_employee_id");
 
                     b.Property<Guid>("DelegateEmployeeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("delegate_employee_id");
 
                     b.Property<DateOnly>("EndDate")
@@ -6845,7 +7201,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnName("start_date");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.HasKey("Id")
@@ -6867,55 +7223,56 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<DateTimeOffset?>("ApprovedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("approved_at");
 
                     b.Property<Guid?>("ApprovedBy")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("approved_by");
 
                     b.Property<string>("CancellationReason")
-                        .HasColumnType("text")
+                        .HasColumnType("nvarchar(max)")
                         .HasColumnName("cancellation_reason");
 
                     b.Property<string>("ConflictSnapshotJson")
-                        .HasColumnType("jsonb")
-                        .HasColumnName("conflict_snapshot_json");
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("conflict_snapshot_json")
+                        .HasAnnotation("Crownus:JsonColumn", true);
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid>("EmployeeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("employee_id");
 
                     b.Property<DateTimeOffset>("EndAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("end_at");
 
                     b.Property<decimal>("ExceedsBalanceByHours")
-                        .HasColumnType("numeric(8,2)")
+                        .HasColumnType("decimal(8,2)")
                         .HasColumnName("exceeds_balance_by_hours");
 
                     b.Property<Guid?>("LeavePolicyVersionId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("leave_policy_version_id");
 
                     b.Property<Guid>("LeaveTypeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("leave_type_id");
 
                     b.Property<bool>("NoticePeriodMissed")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("notice_period_missed");
 
                     b.Property<decimal>("PaidHours")
-                        .HasColumnType("numeric(8,2)")
+                        .HasColumnType("decimal(8,2)")
                         .HasColumnName("paid_hours");
 
                     b.Property<DateOnly?>("PartialCancelEffectiveDate")
@@ -6923,43 +7280,43 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnName("partial_cancel_effective_date");
 
                     b.Property<string>("Reason")
-                        .HasColumnType("text")
+                        .HasColumnType("nvarchar(max)")
                         .HasColumnName("reason");
 
                     b.Property<DateTimeOffset>("StartAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("start_at");
 
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(40)
-                        .HasColumnType("character varying(40)")
+                        .HasColumnType("nvarchar(40)")
                         .HasColumnName("status");
 
                     b.Property<Guid?>("SubmittedOnBehalfOfBy")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("submitted_on_behalf_of_by");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<decimal>("TotalHours")
-                        .HasColumnType("numeric(8,2)")
+                        .HasColumnType("decimal(8,2)")
                         .HasColumnName("total_hours");
 
                     b.Property<decimal>("UnpaidHours")
-                        .HasColumnType("numeric(8,2)")
+                        .HasColumnType("decimal(8,2)")
                         .HasColumnName("unpaid_hours");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
-                    b.Property<uint?>("xmin")
+                    b.Property<byte[]>("xmin")
                         .IsConcurrencyToken()
                         .ValueGeneratedOnAddOrUpdate()
-                        .HasColumnType("xid")
+                        .HasColumnType("rowversion")
                         .HasColumnName("xmin");
 
                     b.HasKey("Id")
@@ -6980,49 +7337,52 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasIndex("TenantId", "StartAt", "EndAt")
                         .HasDatabaseName("ix_leave_requests_tenant_start_end");
 
-                    b.ToTable("leave_requests", (string)null);
+                    b.ToTable("leave_requests", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_leave_requests_conflict_snapshot_json_json", "ISJSON([conflict_snapshot_json]) = 1");
+                        });
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.Leave.Request.Entities.LeaveRequestApprover", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<Guid>("ApproverEmployeeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("approver_employee_id");
 
                     b.Property<string>("Comment")
                         .HasMaxLength(2000)
-                        .HasColumnType("character varying(2000)")
+                        .HasColumnType("nvarchar(2000)")
                         .HasColumnName("comment");
 
                     b.Property<DateTimeOffset?>("DecidedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("decided_at");
 
                     b.Property<Guid?>("DelegatedFromApproverId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("delegated_from_approver_id");
 
                     b.Property<Guid>("LeaveRequestId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("leave_request_id");
 
                     b.Property<int>("SequenceOrder")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("sequence_order");
 
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(40)
-                        .HasColumnType("character varying(40)")
+                        .HasColumnType("nvarchar(40)")
                         .HasColumnName("status");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.HasKey("Id")
@@ -7047,19 +7407,19 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<DateTimeOffset?>("CancelledAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("cancelled_at");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<decimal>("HoursUnit")
-                        .HasColumnType("numeric(8,2)")
+                        .HasColumnType("decimal(8,2)")
                         .HasColumnName("hours_unit");
 
                     b.Property<DateOnly>("LeaveDate")
@@ -7067,25 +7427,25 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnName("leave_date");
 
                     b.Property<Guid>("LeaveRequestId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("leave_request_id");
 
                     b.Property<decimal>("PaidHoursUnit")
-                        .HasColumnType("numeric(8,2)")
+                        .HasColumnType("decimal(8,2)")
                         .HasColumnName("paid_hours_unit");
 
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("status");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<decimal>("UnpaidHoursUnit")
-                        .HasColumnType("numeric(8,2)")
+                        .HasColumnType("decimal(8,2)")
                         .HasColumnName("unpaid_hours_unit");
 
                     b.HasKey("Id")
@@ -7108,19 +7468,19 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<Guid>("FileRecordId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("file_record_id");
 
                     b.Property<Guid>("LeaveRequestId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("leave_request_id");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.HasKey("Id")
@@ -7142,75 +7502,75 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
-                    b.PrimitiveCollection<string[]>("AcceptedDocumentTypes")
+                    b.PrimitiveCollection<string>("AcceptedDocumentTypes")
                         .IsRequired()
-                        .HasColumnType("text[]")
+                        .HasColumnType("nvarchar(max)")
                         .HasColumnName("accepted_document_types");
 
                     b.Property<string>("ApplicableGender")
                         .IsRequired()
                         .HasMaxLength(10)
-                        .HasColumnType("character varying(10)")
+                        .HasColumnType("nvarchar(10)")
                         .HasColumnName("applicable_gender");
 
                     b.Property<string>("Code")
                         .IsRequired()
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("code");
 
                     b.Property<string>("Color")
                         .IsRequired()
                         .ValueGeneratedOnAdd()
                         .HasMaxLength(9)
-                        .HasColumnType("character varying(9)")
+                        .HasColumnType("nvarchar(9)")
                         .HasDefaultValue("#3B82F6")
                         .HasColumnName("color");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<string>("Description")
-                        .HasColumnType("text")
+                        .HasColumnType("nvarchar(max)")
                         .HasColumnName("description");
 
                     b.Property<decimal?>("DocumentRequiredAfterHours")
-                        .HasColumnType("numeric(7,2)")
+                        .HasColumnType("decimal(7,2)")
                         .HasColumnName("document_required_after_hours");
 
                     b.Property<string>("Icon")
                         .HasMaxLength(64)
-                        .HasColumnType("character varying(64)")
+                        .HasColumnType("nvarchar(64)")
                         .HasColumnName("icon");
 
                     b.Property<bool>("IsActive")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_active");
 
                     b.Property<bool>("IsPaid")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_paid");
 
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
+                        .HasColumnType("nvarchar(100)")
                         .HasColumnName("name");
 
                     b.Property<bool>("RequiresDocument")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("requires_document");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id")
@@ -7234,32 +7594,32 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<decimal>("ActivePercentage")
                         .HasPrecision(5, 2)
-                        .HasColumnType("numeric(5,2)")
+                        .HasColumnType("decimal(5,2)")
                         .HasColumnName("active_percentage");
 
                     b.Property<decimal>("ActivityScore")
                         .HasPrecision(5, 2)
-                        .HasColumnType("numeric(5,2)")
+                        .HasColumnType("decimal(5,2)")
                         .HasColumnName("activity_score");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<decimal>("DataCoveragePercentage")
                         .HasPrecision(5, 2)
-                        .HasColumnType("numeric(5,2)")
+                        .HasColumnType("decimal(5,2)")
                         .HasColumnName("data_coverage_percentage");
 
                     b.Property<string>("DataSource")
                         .IsRequired()
                         .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
+                        .HasColumnType("nvarchar(50)")
                         .HasColumnName("data_source");
 
                     b.Property<DateOnly>("Date")
@@ -7267,71 +7627,72 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnName("date");
 
                     b.Property<int>("DeepFocusSessionsCount")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("deep_focus_sessions_count");
 
                     b.Property<int>("DocumentTimeMinutes")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("document_time_minutes");
 
                     b.Property<Guid>("EmployeeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("employee_id");
 
                     b.Property<int>("FocusMinutes")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("focus_minutes");
 
                     b.Property<decimal>("IntensityAvg")
                         .HasPrecision(5, 2)
-                        .HasColumnType("numeric(5,2)")
+                        .HasColumnType("decimal(5,2)")
                         .HasColumnName("intensity_avg");
 
                     b.Property<int>("KeyboardTotal")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("keyboard_total");
 
                     b.Property<int>("MouseTotal")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("mouse_total");
 
                     b.Property<int>("PersonalAppMinutes")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("personal_app_minutes");
 
                     b.Property<int>("ProductiveAppMinutes")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("productive_app_minutes");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<string>("TopAppsJson")
                         .IsRequired()
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("jsonb")
+                        .HasColumnType("nvarchar(max)")
                         .HasDefaultValue("[]")
-                        .HasColumnName("top_apps_json");
+                        .HasColumnName("top_apps_json")
+                        .HasAnnotation("Crownus:JsonColumn", true);
 
                     b.Property<int>("TotalActiveMinutes")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("total_active_minutes");
 
                     b.Property<int>("TotalIdleMinutes")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("total_idle_minutes");
 
                     b.Property<int>("TotalMeetingMinutes")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("total_meeting_minutes");
 
                     b.Property<int>("UnknownAppMinutes")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("unknown_app_minutes");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id")
@@ -7342,31 +7703,35 @@ namespace ONEVO.Infrastructure.Migrations
                         .IsDescending(false, false, true)
                         .HasDatabaseName("ix_activity_daily_summary_tenant_employee_date_desc");
 
-                    b.ToTable("activity_daily_summary", (string)null);
+                    b.ToTable("activity_daily_summary", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_activity_daily_summary_top_apps_json_json", "ISJSON([top_apps_json]) = 1");
+                        });
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.Monitoring.ActivityMonitoring.Entities.ActivityRawBuffer", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<Guid>("AgentDeviceId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("agent_device_id");
 
                     b.Property<string>("PayloadJson")
                         .IsRequired()
-                        .HasColumnType("jsonb")
-                        .HasColumnName("payload_json");
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("payload_json")
+                        .HasAnnotation("Crownus:JsonColumn", true);
 
                     b.Property<DateTimeOffset>("ReceivedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("received_at");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.HasKey("Id")
@@ -7379,60 +7744,63 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasIndex("TenantId", "ReceivedAt")
                         .HasDatabaseName("ix_activity_raw_buffer_tenant_received");
 
-                    b.ToTable("activity_raw_buffer", (string)null);
+                    b.ToTable("activity_raw_buffer", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_activity_raw_buffer_payload_json_json", "ISJSON([payload_json]) = 1");
+                        });
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.Monitoring.ActivityMonitoring.Entities.ActivitySnapshot", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<int>("ActiveSeconds")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("active_seconds");
 
                     b.Property<Guid>("AgentDeviceId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("agent_device_id");
 
                     b.Property<DateTimeOffset>("CapturedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("captured_at");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid>("EmployeeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("employee_id");
 
                     b.Property<string>("ForegroundProcessName")
                         .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
+                        .HasColumnType("nvarchar(100)")
                         .HasColumnName("foreground_process_name");
 
                     b.Property<int>("IdleSeconds")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("idle_seconds");
 
                     b.Property<decimal>("IntensityScore")
                         .HasPrecision(5, 2)
-                        .HasColumnType("numeric(5,2)")
+                        .HasColumnType("decimal(5,2)")
                         .HasColumnName("intensity_score");
 
                     b.Property<int>("KeyboardEventsCount")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("keyboard_events_count");
 
                     b.Property<int>("MouseEventsCount")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("mouse_events_count");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.HasKey("Id")
@@ -7453,37 +7821,37 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<Guid>("AgentDeviceId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("agent_device_id");
 
                     b.Property<DateTimeOffset>("CapturedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("captured_at");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid>("EmployeeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("employee_id");
 
                     b.Property<string>("ProcessName")
                         .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
+                        .HasColumnType("nvarchar(100)")
                         .HasColumnName("process_name");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<string>("WindowTitleHash")
                         .HasMaxLength(128)
-                        .HasColumnType("character varying(128)")
+                        .HasColumnType("nvarchar(128)")
                         .HasColumnName("window_title_hash");
 
                     b.HasKey("Id")
@@ -7503,27 +7871,27 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<Guid>("AgentDeviceId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("agent_device_id");
 
                     b.Property<string>("AwsSessionId")
                         .IsRequired()
                         .HasMaxLength(200)
-                        .HasColumnType("character varying(200)")
+                        .HasColumnType("nvarchar(200)")
                         .HasColumnName("aws_session_id");
 
                     b.Property<string>("ChallengeType")
                         .IsRequired()
                         .HasMaxLength(64)
-                        .HasColumnType("character varying(64)")
+                        .HasColumnType("nvarchar(64)")
                         .HasColumnName("challenge_type");
 
                     b.Property<DateTimeOffset?>("CompletedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("completed_at");
 
                     b.Property<float?>("Confidence")
@@ -7531,31 +7899,31 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnName("confidence");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid>("EmployeeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("employee_id");
 
                     b.Property<string>("FailureReason")
-                        .HasColumnType("text")
+                        .HasColumnType("nvarchar(max)")
                         .HasColumnName("failure_reason");
 
                     b.Property<string>("Region")
                         .IsRequired()
                         .HasMaxLength(32)
-                        .HasColumnType("character varying(32)")
+                        .HasColumnType("nvarchar(32)")
                         .HasColumnName("region");
 
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("status");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.HasKey("Id")
@@ -7571,45 +7939,45 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid>("EmployeeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("employee_id");
 
                     b.Property<DateTimeOffset>("EnrolledAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("enrolled_at");
 
                     b.Property<Guid?>("LeftReferencePhotoFileId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("left_reference_photo_file_id");
 
                     b.Property<Guid?>("ReferencePhotoFileId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("reference_photo_file_id");
 
                     b.Property<Guid?>("RightReferencePhotoFileId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("right_reference_photo_file_id");
 
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("status");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<DateTimeOffset>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id")
@@ -7626,53 +7994,53 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<DateTimeOffset>("CheckedInAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("checked_in_at");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid>("DeviceRegistrationId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("device_registration_id");
 
                     b.Property<string>("DeviceSerialNumber")
                         .HasMaxLength(200)
-                        .HasColumnType("character varying(200)")
+                        .HasColumnType("nvarchar(200)")
                         .HasColumnName("device_serial_number");
 
                     b.Property<Guid?>("FaceScanId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("face_scan_id");
 
                     b.Property<double?>("Latitude")
-                        .HasColumnType("double precision")
+                        .HasColumnType("float")
                         .HasColumnName("latitude");
 
                     b.Property<double?>("LocationAccuracy")
-                        .HasColumnType("double precision")
+                        .HasColumnType("float")
                         .HasColumnName("location_accuracy");
 
                     b.Property<string>("LocationAddress")
                         .HasMaxLength(500)
-                        .HasColumnType("character varying(500)")
+                        .HasColumnType("nvarchar(500)")
                         .HasColumnName("location_address");
 
                     b.Property<double?>("Longitude")
-                        .HasColumnType("double precision")
+                        .HasColumnType("float")
                         .HasColumnName("longitude");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<Guid>("UserId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("user_id");
 
                     b.HasKey("Id")
@@ -7680,7 +8048,8 @@ namespace ONEVO.Infrastructure.Migrations
 
                     b.HasIndex("FaceScanId")
                         .IsUnique()
-                        .HasDatabaseName("ix_employee_check_ins_face_scan_id");
+                        .HasDatabaseName("ix_employee_check_ins_face_scan_id")
+                        .HasFilter("[face_scan_id] IS NOT NULL");
 
                     b.HasIndex("TenantId", "DeviceRegistrationId")
                         .HasDatabaseName("ix_employee_check_ins_tenant_id_device_registration_id");
@@ -7695,36 +8064,36 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid>("EmployeeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("employee_id");
 
                     b.Property<string>("FailureReason")
                         .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
+                        .HasColumnType("nvarchar(50)")
                         .HasColumnName("failure_reason");
 
                     b.Property<string>("Outcome")
                         .IsRequired()
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("outcome");
 
                     b.Property<Guid?>("PhotoFileId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("photo_file_id");
 
                     b.Property<string>("Purpose")
                         .IsRequired()
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("purpose");
 
                     b.Property<float?>("SimilarityScore")
@@ -7732,7 +8101,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnName("similarity_score");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.HasKey("Id")
@@ -7748,21 +8117,21 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<Guid>("CheckInId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("check_in_id");
 
                     b.Property<string>("ContentType")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
+                        .HasColumnType("nvarchar(100)")
                         .HasColumnName("content_type");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<long>("FileSizeBytes")
@@ -7776,21 +8145,21 @@ namespace ONEVO.Infrastructure.Migrations
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
+                        .HasColumnType("nvarchar(50)")
                         .HasColumnName("status");
 
                     b.Property<string>("StorageKey")
                         .IsRequired()
-                        .HasMaxLength(1000)
-                        .HasColumnType("character varying(1000)")
+                        .HasMaxLength(850)
+                        .HasColumnType("nvarchar(850)")
                         .HasColumnName("storage_key");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id")
@@ -7811,47 +8180,47 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<double?>("AccuracyMeters")
-                        .HasColumnType("double precision")
+                        .HasColumnType("float")
                         .HasColumnName("accuracy_meters");
 
                     b.Property<Guid>("AgentDeviceId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("agent_device_id");
 
                     b.Property<DateTimeOffset>("CapturedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("captured_at");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid>("EmployeeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("employee_id");
 
                     b.Property<int>("IdleSeconds")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("idle_seconds");
 
                     b.Property<bool>("IsIdle")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_idle");
 
                     b.Property<double?>("Latitude")
-                        .HasColumnType("double precision")
+                        .HasColumnType("float")
                         .HasColumnName("latitude");
 
                     b.Property<double?>("Longitude")
-                        .HasColumnType("double precision")
+                        .HasColumnType("float")
                         .HasColumnName("longitude");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.HasKey("Id")
@@ -7871,83 +8240,84 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<DateTimeOffset?>("AcknowledgedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("acknowledged_at");
 
                     b.Property<Guid?>("AcknowledgedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("acknowledged_by_id");
 
                     b.Property<string>("Description")
                         .IsRequired()
                         .HasMaxLength(2000)
-                        .HasColumnType("character varying(2000)")
+                        .HasColumnType("nvarchar(2000)")
                         .HasColumnName("description");
 
                     b.Property<DateTimeOffset>("DetectedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("detected_at");
 
                     b.Property<Guid>("EmployeeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("employee_id");
 
                     b.Property<DateTimeOffset?>("EscalatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("escalated_at");
 
                     b.Property<Guid?>("EscalatedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("escalated_by_id");
 
                     b.Property<string>("MetadataJson")
                         .IsRequired()
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("jsonb")
+                        .HasColumnType("nvarchar(max)")
                         .HasDefaultValue("{}")
-                        .HasColumnName("metadata_json");
+                        .HasColumnName("metadata_json")
+                        .HasAnnotation("Crownus:JsonColumn", true);
 
                     b.Property<string>("Outcome")
-                        .HasColumnType("text")
+                        .HasColumnType("nvarchar(max)")
                         .HasColumnName("outcome");
 
                     b.Property<string>("ResolutionNote")
                         .HasMaxLength(1000)
-                        .HasColumnType("character varying(1000)")
+                        .HasColumnType("nvarchar(1000)")
                         .HasColumnName("resolution_note");
 
                     b.Property<DateTimeOffset?>("ResolvedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("resolved_at");
 
                     b.Property<Guid?>("ResolvedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("resolved_by_id");
 
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("status");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<string>("Title")
                         .IsRequired()
                         .HasMaxLength(200)
-                        .HasColumnType("character varying(200)")
+                        .HasColumnType("nvarchar(200)")
                         .HasColumnName("title");
 
                     b.Property<string>("Type")
                         .IsRequired()
                         .HasMaxLength(30)
-                        .HasColumnType("character varying(30)")
+                        .HasColumnType("nvarchar(30)")
                         .HasColumnName("type");
 
                     b.HasKey("Id")
@@ -7959,42 +8329,45 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasIndex("TenantId", "EmployeeId", "Type", "Status")
                         .HasDatabaseName("ix_exceptions_tenant_employee_type_status");
 
-                    b.ToTable("exceptions", (string)null);
+                    b.ToTable("exceptions", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_exceptions_metadata_json_json", "ISJSON([metadata_json]) = 1");
+                        });
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.Monitoring.Meetings.Entities.MeetingSignal", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<Guid>("AgentDeviceId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("agent_device_id");
 
                     b.Property<DateTimeOffset>("CapturedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("captured_at");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid>("EmployeeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("employee_id");
 
                     b.Property<bool>("IsMeetingAppRunning")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_meeting_app_running");
 
                     b.Property<string>("ProcessName")
-                        .HasColumnType("text")
+                        .HasColumnType("nvarchar(max)")
                         .HasColumnName("process_name");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.HasKey("Id")
@@ -8011,50 +8384,50 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<DateTimeOffset?>("DeliveredToTrayAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("delivered_to_tray_at");
 
                     b.Property<Guid>("EmployeeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("employee_id");
 
                     b.Property<string>("Message")
                         .IsRequired()
                         .HasMaxLength(1000)
-                        .HasColumnType("character varying(1000)")
+                        .HasColumnType("nvarchar(1000)")
                         .HasColumnName("message");
 
                     b.Property<string>("MetadataJson")
                         .IsRequired()
-                        .HasColumnType("text")
+                        .HasColumnType("nvarchar(max)")
                         .HasColumnName("metadata_json");
 
                     b.Property<DateTimeOffset?>("ReadAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("read_at");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<string>("Title")
                         .IsRequired()
                         .HasMaxLength(200)
-                        .HasColumnType("character varying(200)")
+                        .HasColumnType("nvarchar(200)")
                         .HasColumnName("title");
 
                     b.Property<string>("Type")
                         .IsRequired()
                         .HasMaxLength(30)
-                        .HasColumnType("character varying(30)")
+                        .HasColumnType("nvarchar(30)")
                         .HasColumnName("type");
 
                     b.HasKey("Id")
@@ -8075,51 +8448,51 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<DateTimeOffset>("AcceptedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("accepted_at");
 
                     b.Property<bool>("AppTracking")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("app_tracking");
 
                     b.Property<bool>("CameraAccess")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("camera_access");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid>("DeviceRegistrationId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("device_registration_id");
 
                     b.Property<Guid>("EmployeeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("employee_id");
 
                     b.Property<bool>("KeyboardMouse")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("keyboard_mouse");
 
                     b.Property<bool>("LocationAccess")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("location_access");
 
                     b.Property<bool>("Notifications")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("notifications");
 
                     b.Property<bool>("ScreenMonitoring")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("screen_monitoring");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.HasKey("Id")
@@ -8135,58 +8508,60 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<Guid>("AgentDeviceId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("agent_device_id");
 
                     b.Property<string>("CommandType")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
+                        .HasColumnType("nvarchar(100)")
                         .HasColumnName("command_type");
 
                     b.Property<DateTimeOffset?>("CompletedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("completed_at");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<DateTimeOffset?>("DeliveredAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("delivered_at");
 
                     b.Property<DateTimeOffset>("ExpiresAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("expires_at");
 
                     b.Property<string>("PayloadJson")
                         .IsRequired()
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("jsonb")
+                        .HasColumnType("nvarchar(max)")
                         .HasDefaultValue("{}")
-                        .HasColumnName("payload_json");
+                        .HasColumnName("payload_json")
+                        .HasAnnotation("Crownus:JsonColumn", true);
 
                     b.Property<Guid>("RequestedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("requested_by_id");
 
                     b.Property<string>("ResultJson")
-                        .HasColumnType("jsonb")
-                        .HasColumnName("result_json");
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("result_json")
+                        .HasAnnotation("Crownus:JsonColumn", true);
 
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
+                        .HasColumnType("nvarchar(50)")
                         .HasColumnName("status");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.HasKey("Id")
@@ -8199,82 +8574,87 @@ namespace ONEVO.Infrastructure.Migrations
                         .IsDescending(false, false, true)
                         .HasDatabaseName("ix_agent_commands_tenant_device_created");
 
-                    b.ToTable("agent_commands", (string)null);
+                    b.ToTable("agent_commands", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_agent_commands_payload_json_json", "ISJSON([payload_json]) = 1");
+
+                            t.HasCheckConstraint("ck_agent_commands_result_json_json", "ISJSON([result_json]) = 1");
+                        });
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.Monitoring.Screenshots.Entities.InactivityCaptureAttempt", b =>
                 {
                     b.Property<Guid>("Id")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<Guid>("AgentDeviceId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("agent_device_id");
 
                     b.Property<DateTimeOffset?>("CapturedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("captured_at");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<DateTimeOffset?>("DecisionAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("decision_at");
 
                     b.Property<Guid>("EmployeeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("employee_id");
 
                     b.Property<Guid?>("EvidenceAssetId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("evidence_asset_id");
 
                     b.Property<string>("FailureCode")
                         .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
+                        .HasColumnType("nvarchar(50)")
                         .HasColumnName("failure_code");
 
                     b.Property<int>("IdleDurationSeconds")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("idle_duration_seconds");
 
                     b.Property<DateTimeOffset>("IdleStartedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("idle_started_at");
 
                     b.Property<int>("MonitorCount")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("monitor_count");
 
                     b.Property<string>("Outcome")
                         .IsRequired()
                         .HasMaxLength(30)
-                        .HasColumnType("character varying(30)")
+                        .HasColumnType("nvarchar(30)")
                         .HasColumnName("outcome");
 
                     b.Property<string>("PolicyVersion")
                         .IsRequired()
                         .HasMaxLength(64)
-                        .HasColumnType("character varying(64)")
+                        .HasColumnType("nvarchar(64)")
                         .HasColumnName("policy_version");
 
                     b.Property<DateTimeOffset>("PromptedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("prompted_at");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<DateTimeOffset>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.Property<Guid?>("WorkSessionId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("work_session_id");
 
                     b.HasKey("Id")
@@ -8296,72 +8676,73 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<Guid?>("ActivitySnapshotId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("activity_snapshot_id");
 
                     b.Property<Guid?>("AgentCommandId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("agent_command_id");
 
                     b.Property<Guid?>("AgentDeviceId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("agent_device_id");
 
                     b.Property<DateTimeOffset>("CapturedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("captured_at");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid>("EmployeeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("employee_id");
 
                     b.Property<string>("EvidenceType")
                         .IsRequired()
                         .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
+                        .HasColumnType("nvarchar(50)")
                         .HasColumnName("evidence_type");
 
                     b.Property<Guid>("FileRecordId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("file_record_id");
 
                     b.Property<Guid?>("LegalHoldId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("legal_hold_id");
 
                     b.Property<string>("MetadataJson")
                         .IsRequired()
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("jsonb")
+                        .HasColumnType("nvarchar(max)")
                         .HasDefaultValue("{}")
-                        .HasColumnName("metadata_json");
+                        .HasColumnName("metadata_json")
+                        .HasAnnotation("Crownus:JsonColumn", true);
 
                     b.Property<Guid?>("RetentionPolicyId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("retention_policy_id");
 
                     b.Property<string>("Source")
                         .IsRequired()
                         .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
+                        .HasColumnType("nvarchar(50)")
                         .HasColumnName("source");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<string>("TriggerType")
                         .IsRequired()
                         .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
+                        .HasColumnType("nvarchar(50)")
                         .HasColumnName("trigger_type");
 
                     b.HasKey("Id")
@@ -8386,96 +8767,99 @@ namespace ONEVO.Infrastructure.Migrations
                         .IsDescending(false, false, true)
                         .HasDatabaseName("ix_monitoring_evidence_assets_tenant_employee_captured");
 
-                    b.ToTable("monitoring_evidence_assets", (string)null);
+                    b.ToTable("monitoring_evidence_assets", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_monitoring_evidence_assets_metadata_json_json", "ISJSON([metadata_json]) = 1");
+                        });
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.Monitoring.Settings.Entities.EmployeeMonitoringOverride", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<bool?>("ActivityMonitoring")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("activity_monitoring");
 
                     b.Property<int?>("AllowedRadiusMeters")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("allowed_radius_meters");
 
                     b.Property<bool?>("ApplicationTracking")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("application_tracking");
 
                     b.Property<bool?>("AutoScreenshotCapture")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("auto_screenshot_capture");
 
                     b.Property<bool?>("Biometric")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("biometric");
 
                     b.Property<bool?>("CommunicationTracking")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("communication_tracking");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<bool?>("DeviceTracking")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("device_tracking");
 
                     b.Property<bool?>("DocumentTracking")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("document_tracking");
 
                     b.Property<Guid>("EmployeeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("employee_id");
 
                     b.Property<bool?>("IdentityVerification")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("identity_verification");
 
                     b.Property<int?>("IdleThresholdMinutes")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("idle_threshold_minutes");
 
                     b.Property<bool?>("MeetingDetection")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("meeting_detection");
 
                     b.Property<string>("OverrideReason")
                         .IsRequired()
                         .HasMaxLength(500)
-                        .HasColumnType("character varying(500)")
+                        .HasColumnType("nvarchar(500)")
                         .HasColumnName("override_reason");
 
                     b.Property<bool?>("PhotoRequired")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("photo_required");
 
                     b.Property<bool?>("ScreenshotCapture")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("screenshot_capture");
 
                     b.Property<Guid>("SetById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("set_by_id");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<DateTimeOffset>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.Property<bool?>("WorkLocationVerification")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("work_location_verification");
 
                     b.HasKey("Id")
@@ -8492,75 +8876,75 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<bool>("ActivityMonitoring")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("activity_monitoring");
 
                     b.Property<int?>("AllowedRadiusMeters")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("allowed_radius_meters");
 
                     b.Property<bool>("ApplicationTracking")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("application_tracking");
 
                     b.Property<bool>("AutoScreenshotCapture")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("auto_screenshot_capture");
 
                     b.Property<bool>("Biometric")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("biometric");
 
                     b.Property<bool>("CommunicationTracking")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("communication_tracking");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<bool>("DeviceTracking")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("device_tracking");
 
                     b.Property<bool>("DocumentTracking")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("document_tracking");
 
                     b.Property<bool>("IdentityVerification")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("identity_verification");
 
                     b.Property<int?>("IdleThresholdMinutes")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("idle_threshold_minutes");
 
                     b.Property<Guid?>("LegalEntityId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("legal_entity_id");
 
                     b.Property<bool>("MeetingDetection")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("meeting_detection");
 
                     b.Property<bool>("ScreenshotCapture")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("screenshot_capture");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<DateTimeOffset>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.Property<bool>("WorkLocationVerification")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("work_location_verification");
 
                     b.HasKey("Id")
@@ -8576,7 +8960,8 @@ namespace ONEVO.Infrastructure.Migrations
 
                     b.HasIndex("TenantId", "LegalEntityId")
                         .IsUnique()
-                        .HasDatabaseName("ux_monitoring_feature_toggles_tenant_legal_entity");
+                        .HasDatabaseName("ux_monitoring_feature_toggles_tenant_legal_entity")
+                        .HasFilter("[legal_entity_id] IS NOT NULL");
 
                     b.ToTable("monitoring_feature_toggles", (string)null);
                 });
@@ -8585,91 +8970,91 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<bool?>("ActivityMonitoring")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("activity_monitoring");
 
                     b.Property<int?>("AllowedRadiusMeters")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("allowed_radius_meters");
 
                     b.Property<bool?>("ApplicationTracking")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("application_tracking");
 
                     b.Property<bool?>("AutoScreenshotCapture")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("auto_screenshot_capture");
 
                     b.Property<bool?>("Biometric")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("biometric");
 
                     b.Property<bool?>("CommunicationTracking")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("communication_tracking");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<bool?>("DeviceTracking")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("device_tracking");
 
                     b.Property<bool?>("DocumentTracking")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("document_tracking");
 
                     b.Property<bool?>("IdentityVerification")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("identity_verification");
 
                     b.Property<int?>("IdleThresholdMinutes")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("idle_threshold_minutes");
 
                     b.Property<bool?>("MeetingDetection")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("meeting_detection");
 
                     b.Property<string>("OverrideReason")
                         .IsRequired()
                         .HasMaxLength(500)
-                        .HasColumnType("character varying(500)")
+                        .HasColumnType("nvarchar(500)")
                         .HasColumnName("override_reason");
 
                     b.Property<Guid>("ScopeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("scope_id");
 
                     b.Property<string>("ScopeType")
                         .IsRequired()
                         .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
+                        .HasColumnType("nvarchar(50)")
                         .HasColumnName("scope_type");
 
                     b.Property<bool?>("ScreenshotCapture")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("screenshot_capture");
 
                     b.Property<Guid>("SetById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("set_by_id");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<DateTimeOffset>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.Property<bool?>("WorkLocationVerification")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("work_location_verification");
 
                     b.HasKey("Id")
@@ -8686,64 +9071,64 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<Guid?>("CurrentDeviceRegistrationId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("current_device_registration_id");
 
                     b.Property<Guid>("EmployeeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("employee_id");
 
                     b.Property<Guid?>("LegalEntityId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("legal_entity_id");
 
                     b.Property<string>("NewDeviceFingerprint")
                         .IsRequired()
                         .HasMaxLength(128)
-                        .HasColumnType("character varying(128)")
+                        .HasColumnType("nvarchar(128)")
                         .HasColumnName("new_device_fingerprint");
 
                     b.Property<string>("NewDeviceName")
                         .IsRequired()
                         .HasMaxLength(256)
-                        .HasColumnType("character varying(256)")
+                        .HasColumnType("nvarchar(256)")
                         .HasColumnName("new_device_name");
 
                     b.Property<string>("NewDeviceOs")
                         .IsRequired()
                         .HasMaxLength(64)
-                        .HasColumnType("character varying(64)")
+                        .HasColumnType("nvarchar(64)")
                         .HasColumnName("new_device_os");
 
                     b.Property<DateTimeOffset>("RequestedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("requested_at");
 
                     b.Property<string>("ReviewComment")
-                        .HasColumnType("text")
+                        .HasColumnType("nvarchar(max)")
                         .HasColumnName("review_comment");
 
                     b.Property<DateTimeOffset?>("ReviewedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("reviewed_at");
 
                     b.Property<Guid?>("ReviewedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("reviewed_by_id");
 
                     b.Property<string>("Status")
                         .IsConcurrencyToken()
                         .IsRequired()
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("status");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.HasKey("Id")
@@ -8770,37 +9155,37 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<string>("CodeHash")
                         .IsRequired()
                         .HasMaxLength(128)
-                        .HasColumnType("character varying(128)")
+                        .HasColumnType("nvarchar(128)")
                         .HasColumnName("code_hash");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<DateTimeOffset>("ExpiresAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("expires_at");
 
                     b.Property<Guid?>("LegalEntityId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("legal_entity_id");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<DateTimeOffset?>("UsedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("used_at");
 
                     b.Property<Guid>("UserId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("user_id");
 
                     b.HasKey("Id")
@@ -8823,85 +9208,85 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<DateTimeOffset?>("ApprovedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("approved_at");
 
                     b.Property<Guid?>("ApprovedLegalEntityId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("approved_legal_entity_id");
 
                     b.Property<Guid?>("ApprovedTenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("approved_tenant_id");
 
                     b.Property<Guid?>("ApprovedUserId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("approved_user_id");
 
                     b.Property<string>("ClientVersion")
                         .IsRequired()
                         .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
+                        .HasColumnType("nvarchar(50)")
                         .HasColumnName("client_version");
 
                     b.Property<DateTimeOffset?>("ConsumedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("consumed_at");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<string>("DeviceCodeHash")
                         .IsRequired()
                         .HasMaxLength(128)
-                        .HasColumnType("character varying(128)")
+                        .HasColumnType("nvarchar(128)")
                         .HasColumnName("device_code_hash");
 
                     b.Property<string>("DeviceFingerprintHash")
                         .IsRequired()
                         .HasMaxLength(128)
-                        .HasColumnType("character varying(128)")
+                        .HasColumnType("nvarchar(128)")
                         .HasColumnName("device_fingerprint_hash");
 
                     b.Property<string>("DeviceName")
                         .IsRequired()
                         .HasMaxLength(200)
-                        .HasColumnType("character varying(200)")
+                        .HasColumnType("nvarchar(200)")
                         .HasColumnName("device_name");
 
                     b.Property<string>("DeviceOs")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
+                        .HasColumnType("nvarchar(100)")
                         .HasColumnName("device_os");
 
                     b.Property<DateTimeOffset>("ExpiresAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("expires_at");
 
                     b.Property<DateTimeOffset?>("LastPolledAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("last_polled_at");
 
                     b.Property<int>("PollViolationCount")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("poll_violation_count");
 
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("status");
 
                     b.Property<string>("UserCodeHash")
                         .IsRequired()
                         .HasMaxLength(128)
-                        .HasColumnType("character varying(128)")
+                        .HasColumnType("nvarchar(128)")
                         .HasColumnName("user_code_hash");
 
                     b.HasKey("Id")
@@ -8915,7 +9300,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasDatabaseName("ix_tray_device_authorizations_device_code_hash");
 
                     b.HasIndex("DeviceFingerprintHash", "CreatedAt")
-                        .HasDatabaseName("ix_tray_device_authorizations_device_fingerprint_hash_created_");
+                        .HasDatabaseName("ix_tray_device_authorizations_device_fingerprint_hash_created_at");
 
                     b.HasIndex("Status", "ExpiresAt")
                         .HasDatabaseName("ix_tray_device_authorizations_status_expires_at");
@@ -8935,46 +9320,46 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid>("DeviceRegistrationId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("device_registration_id");
 
                     b.Property<DateTimeOffset>("ExpiresAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("expires_at");
 
                     b.Property<bool>("IsRevoked")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_revoked");
 
                     b.Property<DateTimeOffset?>("RevokedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("revoked_at");
 
                     b.Property<string>("RevokedReason")
                         .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
+                        .HasColumnType("nvarchar(100)")
                         .HasColumnName("revoked_reason");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<string>("TokenHash")
                         .IsRequired()
                         .HasMaxLength(128)
-                        .HasColumnType("character varying(128)")
+                        .HasColumnType("nvarchar(128)")
                         .HasColumnName("token_hash");
 
                     b.Property<Guid>("UserId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("user_id");
 
                     b.HasKey("Id")
@@ -8994,57 +9379,57 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<DateTimeOffset>("ActivatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("activated_at");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<DateTimeOffset?>("DeactivatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("deactivated_at");
 
                     b.Property<string>("DeviceFingerprint")
                         .IsRequired()
                         .HasMaxLength(512)
-                        .HasColumnType("character varying(512)")
+                        .HasColumnType("nvarchar(512)")
                         .HasColumnName("device_fingerprint");
 
                     b.Property<string>("DeviceName")
                         .IsRequired()
                         .HasMaxLength(200)
-                        .HasColumnType("character varying(200)")
+                        .HasColumnType("nvarchar(200)")
                         .HasColumnName("device_name");
 
                     b.Property<string>("DeviceOs")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
+                        .HasColumnType("nvarchar(100)")
                         .HasColumnName("device_os");
 
                     b.Property<bool>("IsActive")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_active");
 
                     b.Property<DateTimeOffset?>("LastSeenAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("last_seen_at");
 
                     b.Property<Guid?>("LegalEntityId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("legal_entity_id");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<Guid>("UserId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("user_id");
 
                     b.HasKey("Id")
@@ -9060,7 +9445,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasDatabaseName("ix_tray_device_registrations_tenant_id_user_id_is_active");
 
                     b.HasIndex("TenantId", "UserId", "IsActive", "LastSeenAt")
-                        .HasDatabaseName("ix_tray_device_registrations_tenant_id_user_id_is_active_last_");
+                        .HasDatabaseName("ix_tray_device_registrations_tenant_id_user_id_is_active_last_seen_at");
 
                     b.ToTable("tray_device_registrations", (string)null);
                 });
@@ -9069,48 +9454,48 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<int>("AccumulatedBreakSeconds")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("accumulated_break_seconds");
 
                     b.Property<int>("AccumulatedWorkSeconds")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("accumulated_work_seconds");
 
                     b.Property<int>("BreakSessionCount")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("break_session_count");
 
                     b.Property<DateTimeOffset>("ClockInAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("clock_in_at");
 
                     b.Property<DateTimeOffset>("ClockOutAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("clock_out_at");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid>("DeviceRegistrationId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("device_registration_id");
 
                     b.Property<string>("ScheduleDisplay")
                         .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
+                        .HasColumnType("nvarchar(100)")
                         .HasColumnName("schedule_display");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<Guid>("UserId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("user_id");
 
                     b.HasKey("Id")
@@ -9129,46 +9514,46 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<string>("Code")
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("code");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid?>("HeadPositionId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("head_position_id");
 
                     b.Property<bool>("IsActive")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_active");
 
                     b.Property<Guid>("LegalEntityId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("legal_entity_id");
 
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
+                        .HasColumnType("nvarchar(100)")
                         .HasColumnName("name");
 
                     b.Property<Guid?>("ParentDepartmentId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("parent_department_id");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id")
@@ -9200,39 +9585,39 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<int?>("BreakDurationMinutes")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("break_duration_minutes");
 
                     b.Property<string>("CompanyCode")
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("company_code");
 
                     b.Property<string>("CountryCode")
                         .IsRequired()
                         .HasMaxLength(3)
-                        .HasColumnType("character varying(3)")
+                        .HasColumnType("nvarchar(3)")
                         .HasColumnName("country_code");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<string>("CurrencyCode")
                         .IsRequired()
                         .HasMaxLength(3)
-                        .HasColumnType("character varying(3)")
+                        .HasColumnType("nvarchar(3)")
                         .HasColumnName("currency_code");
 
                     b.Property<string>("DateFormat")
                         .IsRequired()
                         .ValueGeneratedOnAdd()
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasDefaultValue("DD MMM YYYY")
                         .HasColumnName("date_format");
 
@@ -9240,109 +9625,110 @@ namespace ONEVO.Infrastructure.Migrations
                         .IsRequired()
                         .ValueGeneratedOnAdd()
                         .HasMaxLength(10)
-                        .HasColumnType("character varying(10)")
+                        .HasColumnType("nvarchar(10)")
                         .HasDefaultValue("en-US")
                         .HasColumnName("default_language");
 
                     b.Property<string>("Email")
                         .HasMaxLength(254)
-                        .HasColumnType("character varying(254)")
+                        .HasColumnType("nvarchar(254)")
                         .HasColumnName("email");
 
                     b.Property<int>("FinancialYearStartMonth")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasDefaultValue(1)
                         .HasColumnName("financial_year_start_month");
 
                     b.Property<int>("FirstDayOfWeek")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasDefaultValue(1)
                         .HasColumnName("week_start_day");
 
                     b.Property<bool>("IsActive")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_active");
 
                     b.Property<bool>("IsPrimary")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_primary");
 
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(200)
-                        .HasColumnType("character varying(200)")
+                        .HasColumnType("nvarchar(200)")
                         .HasColumnName("name");
 
                     b.Property<string>("OfficeAddress")
                         .HasMaxLength(500)
-                        .HasColumnType("character varying(500)")
+                        .HasColumnType("nvarchar(500)")
                         .HasColumnName("office_address");
 
                     b.Property<double?>("OfficeLatitude")
-                        .HasColumnType("double precision")
+                        .HasColumnType("float")
                         .HasColumnName("office_latitude");
 
                     b.Property<double?>("OfficeLongitude")
-                        .HasColumnType("double precision")
+                        .HasColumnType("float")
                         .HasColumnName("office_longitude");
 
                     b.Property<Guid?>("ParentLegalEntityId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("parent_legal_entity_id");
 
                     b.Property<string>("PhoneNumber")
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("phone_number");
 
                     b.Property<string>("RegistrationNumber")
                         .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
+                        .HasColumnType("nvarchar(50)")
                         .HasColumnName("registration_number");
 
                     b.Property<string>("StandardWorkingDays")
                         .IsRequired()
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("jsonb")
+                        .HasColumnType("nvarchar(max)")
                         .HasDefaultValue("[1,2,3,4,5]")
-                        .HasColumnName("standard_working_days");
+                        .HasColumnName("standard_working_days")
+                        .HasAnnotation("Crownus:JsonColumn", true);
 
                     b.Property<string>("TaxRegistrationNumber")
                         .HasMaxLength(80)
-                        .HasColumnType("character varying(80)")
+                        .HasColumnType("nvarchar(80)")
                         .HasColumnName("tax_registration_number");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<string>("TimeFormat")
                         .IsRequired()
                         .ValueGeneratedOnAdd()
                         .HasMaxLength(10)
-                        .HasColumnType("character varying(10)")
+                        .HasColumnType("nvarchar(10)")
                         .HasDefaultValue("12h")
                         .HasColumnName("time_format");
 
                     b.Property<string>("Timezone")
                         .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
+                        .HasColumnType("nvarchar(50)")
                         .HasColumnName("timezone");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.Property<string>("VatGstNumber")
                         .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
+                        .HasColumnType("nvarchar(50)")
                         .HasColumnName("vat_gst_number");
 
                     b.Property<string>("Website")
                         .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
+                        .HasColumnType("nvarchar(255)")
                         .HasColumnName("website");
 
                     b.Property<TimeOnly?>("WorkEndTime")
@@ -9384,6 +9770,8 @@ namespace ONEVO.Infrastructure.Migrations
 
                             t.HasCheckConstraint("ck_legal_entities_office_location", "(office_latitude IS NULL AND office_longitude IS NULL) OR (office_latitude IS NOT NULL AND office_longitude IS NOT NULL AND office_latitude BETWEEN -90 AND 90 AND office_longitude BETWEEN -180 AND 180)");
 
+                            t.HasCheckConstraint("ck_legal_entities_standard_working_days_json", "ISJSON([standard_working_days]) = 1");
+
                             t.HasCheckConstraint("ck_legal_entities_time_format", "time_format IN ('12h', '24h')");
 
                             t.HasCheckConstraint("ck_legal_entities_week_start_day", "week_start_day BETWEEN 1 AND 7");
@@ -9396,71 +9784,71 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<Guid?>("CoveredDepartmentId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("covered_department_id");
 
                     b.Property<Guid?>("CoveredPositionId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("covered_position_id");
 
                     b.Property<string>("CoveredTargetType")
                         .IsRequired()
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("covered_target_type");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<bool>("IsLocked")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasDefaultValue(true)
                         .HasColumnName("is_locked");
 
                     b.Property<Guid>("LegalEntityId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("legal_entity_id");
 
                     b.Property<int>("OwnerOrder")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasDefaultValue(1)
                         .HasColumnName("owner_order");
 
                     b.Property<Guid>("OwnerPositionId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("owner_position_id");
 
                     b.Property<Guid?>("ResponsibleEmployeeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("responsible_employee_id");
 
                     b.Property<string>("Source")
                         .IsRequired()
                         .HasMaxLength(30)
-                        .HasColumnType("character varying(30)")
+                        .HasColumnType("nvarchar(30)")
                         .HasColumnName("source");
 
                     b.Property<string>("Status")
                         .IsRequired()
                         .ValueGeneratedOnAdd()
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasDefaultValue("active")
                         .HasColumnName("status");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id")
@@ -9492,12 +9880,12 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasIndex("TenantId", "LegalEntityId", "CoveredDepartmentId", "OwnerOrder")
                         .IsUnique()
                         .HasDatabaseName("ix_management_coverage_records_active_department_order")
-                        .HasFilter("covered_target_type = 'Department' AND status = 'active'");
+                        .HasFilter("covered_target_type = 'Department' AND status = 'active' AND covered_department_id IS NOT NULL");
 
                     b.HasIndex("TenantId", "LegalEntityId", "CoveredPositionId", "OwnerOrder")
                         .IsUnique()
                         .HasDatabaseName("ix_management_coverage_records_active_position_order")
-                        .HasFilter("covered_target_type = 'Position' AND status = 'active'");
+                        .HasFilter("covered_target_type = 'Position' AND status = 'active' AND covered_position_id IS NOT NULL");
 
                     b.ToTable("management_coverage_records", (string)null);
                 });
@@ -9506,78 +9894,78 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<string>("Code")
                         .HasMaxLength(5)
-                        .HasColumnType("character varying(5)")
+                        .HasColumnType("nvarchar(5)")
                         .HasColumnName("code");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid>("CreatedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
                     b.Property<Guid?>("DefaultRoleId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("default_role_id");
 
                     b.Property<DateTimeOffset?>("DeletedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("deleted_at");
 
                     b.Property<Guid?>("DepartmentId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("department_id");
 
                     b.Property<bool>("IsActive")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasDefaultValue(true)
                         .HasColumnName("is_active");
 
                     b.Property<bool>("IsDeleted")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_deleted");
 
                     b.Property<Guid?>("LegalEntityId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("legal_entity_id");
 
                     b.Property<int>("MaxOccupancy")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasDefaultValue(1)
                         .HasColumnName("max_occupancy");
 
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
+                        .HasColumnType("nvarchar(100)")
                         .HasColumnName("name");
 
                     b.Property<string>("PositionType")
                         .IsRequired()
                         .ValueGeneratedOnAdd()
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasDefaultValue("unique")
                         .HasColumnName("position_type");
 
                     b.Property<Guid?>("ReportsToPositionId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("reports_to_position_id");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id")
@@ -9618,39 +10006,39 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<bool>("IsActive")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasDefaultValue(true)
                         .HasColumnName("is_active");
 
                     b.Property<Guid>("PositionId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("position_id");
 
                     b.Property<bool>("RequiresApproval")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasDefaultValue(false)
                         .HasColumnName("requires_approval");
 
                     b.Property<Guid>("RoleId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("role_id");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id")
@@ -9676,20 +10064,20 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<string>("ChangeReason")
                         .HasMaxLength(250)
-                        .HasColumnType("character varying(250)")
+                        .HasColumnType("nvarchar(250)")
                         .HasColumnName("change_reason");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid?>("CreatedByUserId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_user_id");
 
                     b.Property<DateOnly>("EffectiveFrom")
@@ -9701,15 +10089,15 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnName("effective_to");
 
                     b.Property<Guid>("PositionId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("position_id");
 
                     b.Property<Guid?>("ReportsToPositionId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("reports_to_position_id");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.HasKey("Id")
@@ -9734,39 +10122,40 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<string>("Action")
                         .IsRequired()
                         .HasMaxLength(80)
-                        .HasColumnType("character varying(80)")
+                        .HasColumnType("nvarchar(80)")
                         .HasColumnName("action");
 
                     b.Property<Guid?>("ActorAdminUserId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("actor_admin_user_id");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid?>("InvoiceId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("invoice_id");
 
                     b.Property<string>("Message")
                         .IsRequired()
                         .HasMaxLength(1000)
-                        .HasColumnType("character varying(1000)")
+                        .HasColumnType("nvarchar(1000)")
                         .HasColumnName("message");
 
                     b.Property<string>("MetadataJson")
-                        .HasColumnType("jsonb")
-                        .HasColumnName("metadata_json");
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("metadata_json")
+                        .HasAnnotation("Crownus:JsonColumn", true);
 
                     b.Property<Guid?>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.HasKey("Id")
@@ -9781,64 +10170,67 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasIndex("TenantId", "CreatedAt")
                         .HasDatabaseName("ix_billing_audit_logs_tenant_id_created_at");
 
-                    b.ToTable("billing_audit_logs", (string)null);
+                    b.ToTable("billing_audit_logs", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_billing_audit_logs_metadata_json_json", "ISJSON([metadata_json]) = 1");
+                        });
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.SharedPlatform.Entities.IdempotencyRecord", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<DateTimeOffset?>("CompletedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("completed_at");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<DateTimeOffset>("ExpiresAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("expires_at");
 
                     b.Property<string>("Key")
                         .IsRequired()
                         .HasMaxLength(200)
-                        .HasColumnType("character varying(200)")
+                        .HasColumnType("nvarchar(200)")
                         .HasColumnName("key");
 
                     b.Property<string>("RequestHash")
                         .IsRequired()
                         .HasMaxLength(64)
-                        .HasColumnType("character varying(64)")
+                        .HasColumnType("nvarchar(64)")
                         .HasColumnName("request_hash");
 
                     b.Property<string>("RequesterId")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
+                        .HasColumnType("nvarchar(100)")
                         .HasColumnName("requester_id");
 
                     b.Property<string>("ResponseBody")
-                        .HasColumnType("text")
+                        .HasColumnType("nvarchar(max)")
                         .HasColumnName("response_body");
 
                     b.Property<int?>("ResponseStatusCode")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("response_status_code");
 
                     b.Property<string>("Scope")
                         .IsRequired()
                         .HasMaxLength(200)
-                        .HasColumnType("character varying(200)")
+                        .HasColumnType("nvarchar(200)")
                         .HasColumnName("scope");
 
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("status");
 
                     b.HasKey("Id")
@@ -9858,132 +10250,148 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<string>("ModuleKey")
                         .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
+                        .HasColumnType("nvarchar(100)")
                         .HasColumnName("module_key");
 
                     b.Property<string>("AiTokenReference")
                         .IsRequired()
-                        .HasColumnType("jsonb")
-                        .HasColumnName("ai_token_reference");
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("ai_token_reference")
+                        .HasAnnotation("Crownus:JsonColumn", true);
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<bool>("IsActive")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_active");
 
                     b.Property<bool>("IsAiEnabled")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_ai_enabled");
 
                     b.Property<bool>("IsStorageConsuming")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_storage_consuming");
 
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(150)
-                        .HasColumnType("character varying(150)")
+                        .HasColumnType("nvarchar(150)")
                         .HasColumnName("name");
 
                     b.Property<string>("Phase")
                         .IsRequired()
                         .HasMaxLength(30)
-                        .HasColumnType("character varying(30)")
+                        .HasColumnType("nvarchar(30)")
                         .HasColumnName("phase");
 
                     b.Property<string>("Pillar")
                         .IsRequired()
                         .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
+                        .HasColumnType("nvarchar(50)")
                         .HasColumnName("pillar");
 
                     b.Property<string>("PricingReference")
                         .IsRequired()
-                        .HasColumnType("jsonb")
-                        .HasColumnName("pricing_reference");
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("pricing_reference")
+                        .HasAnnotation("Crownus:JsonColumn", true);
 
                     b.Property<string>("PricingUnit")
                         .IsRequired()
                         .HasMaxLength(30)
-                        .HasColumnType("character varying(30)")
+                        .HasColumnType("nvarchar(30)")
                         .HasColumnName("pricing_unit");
 
                     b.Property<string>("StorageReference")
                         .IsRequired()
-                        .HasColumnType("jsonb")
-                        .HasColumnName("storage_reference");
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("storage_reference")
+                        .HasAnnotation("Crownus:JsonColumn", true);
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.HasKey("ModuleKey")
                         .HasName("pk_module_catalog");
 
-                    b.ToTable("module_catalog", (string)null);
+                    b.ToTable("module_catalog", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_module_catalog_ai_token_reference_json", "ISJSON([ai_token_reference]) = 1");
+
+                            t.HasCheckConstraint("ck_module_catalog_pricing_reference_json", "ISJSON([pricing_reference]) = 1");
+
+                            t.HasCheckConstraint("ck_module_catalog_storage_reference_json", "ISJSON([storage_reference]) = 1");
+                        });
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.SharedPlatform.Entities.ModuleCatalogPriceHistory", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<DateTimeOffset>("ChangedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("changed_at");
 
                     b.Property<Guid>("ChangedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("changed_by_id");
 
                     b.Property<string>("ModuleKey")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
+                        .HasColumnType("nvarchar(100)")
                         .HasColumnName("module_key");
 
                     b.Property<string>("NewAiTokenReference")
-                        .HasColumnType("jsonb")
-                        .HasColumnName("new_ai_token_reference");
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("new_ai_token_reference")
+                        .HasAnnotation("Crownus:JsonColumn", true);
 
                     b.Property<string>("NewPricingReference")
-                        .HasColumnType("jsonb")
-                        .HasColumnName("new_pricing_reference");
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("new_pricing_reference")
+                        .HasAnnotation("Crownus:JsonColumn", true);
 
                     b.Property<string>("NewPricingUnit")
                         .HasMaxLength(30)
-                        .HasColumnType("character varying(30)")
+                        .HasColumnType("nvarchar(30)")
                         .HasColumnName("new_pricing_unit");
 
                     b.Property<string>("NewStorageReference")
-                        .HasColumnType("jsonb")
-                        .HasColumnName("new_storage_reference");
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("new_storage_reference")
+                        .HasAnnotation("Crownus:JsonColumn", true);
 
                     b.Property<string>("OldAiTokenReference")
-                        .HasColumnType("jsonb")
-                        .HasColumnName("old_ai_token_reference");
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("old_ai_token_reference")
+                        .HasAnnotation("Crownus:JsonColumn", true);
 
                     b.Property<string>("OldPricingReference")
-                        .HasColumnType("jsonb")
-                        .HasColumnName("old_pricing_reference");
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("old_pricing_reference")
+                        .HasAnnotation("Crownus:JsonColumn", true);
 
                     b.Property<string>("OldPricingUnit")
                         .HasMaxLength(30)
-                        .HasColumnType("character varying(30)")
+                        .HasColumnType("nvarchar(30)")
                         .HasColumnName("old_pricing_unit");
 
                     b.Property<string>("OldStorageReference")
-                        .HasColumnType("jsonb")
-                        .HasColumnName("old_storage_reference");
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("old_storage_reference")
+                        .HasAnnotation("Crownus:JsonColumn", true);
 
                     b.Property<string>("Reason")
                         .IsRequired()
-                        .HasColumnType("text")
+                        .HasColumnType("nvarchar(max)")
                         .HasColumnName("reason");
 
                     b.HasKey("Id")
@@ -9992,46 +10400,59 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasIndex("ModuleKey")
                         .HasDatabaseName("ix_module_catalog_price_history_module_key");
 
-                    b.ToTable("module_catalog_price_history", (string)null);
+                    b.ToTable("module_catalog_price_history", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_module_catalog_price_history_new_ai_token_reference_json", "ISJSON([new_ai_token_reference]) = 1");
+
+                            t.HasCheckConstraint("ck_module_catalog_price_history_new_pricing_reference_json", "ISJSON([new_pricing_reference]) = 1");
+
+                            t.HasCheckConstraint("ck_module_catalog_price_history_new_storage_reference_json", "ISJSON([new_storage_reference]) = 1");
+
+                            t.HasCheckConstraint("ck_module_catalog_price_history_old_ai_token_reference_json", "ISJSON([old_ai_token_reference]) = 1");
+
+                            t.HasCheckConstraint("ck_module_catalog_price_history_old_pricing_reference_json", "ISJSON([old_pricing_reference]) = 1");
+
+                            t.HasCheckConstraint("ck_module_catalog_price_history_old_storage_reference_json", "ISJSON([old_storage_reference]) = 1");
+                        });
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.SharedPlatform.Entities.ModuleFeature", b =>
                 {
                     b.Property<string>("FeatureKey")
                         .HasMaxLength(120)
-                        .HasColumnType("character varying(120)")
+                        .HasColumnType("nvarchar(120)")
                         .HasColumnName("feature_key");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<string>("Description")
-                        .HasColumnType("text")
+                        .HasColumnType("nvarchar(max)")
                         .HasColumnName("description");
 
                     b.Property<bool>("IsActive")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_active");
 
                     b.Property<bool>("IsDefaultIncluded")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_default_included");
 
                     b.Property<string>("ModuleKey")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
+                        .HasColumnType("nvarchar(100)")
                         .HasColumnName("module_key");
 
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(150)
-                        .HasColumnType("character varying(150)")
+                        .HasColumnType("nvarchar(150)")
                         .HasColumnName("name");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.HasKey("FeatureKey")
@@ -10047,24 +10468,24 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<string>("ModuleKey")
                         .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
+                        .HasColumnType("nvarchar(100)")
                         .HasColumnName("module_key");
 
                     b.Property<string>("PermissionCode")
                         .HasMaxLength(120)
-                        .HasColumnType("character varying(120)")
+                        .HasColumnType("nvarchar(120)")
                         .HasColumnName("permission_code");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<bool>("IsDefaultPermission")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_default_permission");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.HasKey("ModuleKey", "PermissionCode")
@@ -10081,67 +10502,67 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<int>("AttemptCount")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("attempt_count");
 
                     b.Property<DateTimeOffset?>("AttemptStartedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("attempt_started_at");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<string>("DeduplicationKey")
                         .HasMaxLength(200)
-                        .HasColumnType("character varying(200)")
+                        .HasColumnType("nvarchar(200)")
                         .HasColumnName("deduplication_key");
 
                     b.Property<string>("EncryptedPayload")
                         .IsRequired()
-                        .HasColumnType("text")
+                        .HasColumnType("nvarchar(max)")
                         .HasColumnName("encrypted_payload");
 
                     b.Property<string>("LastError")
                         .HasMaxLength(2000)
-                        .HasColumnType("character varying(2000)")
+                        .HasColumnType("nvarchar(2000)")
                         .HasColumnName("last_error");
 
                     b.Property<string>("LockedBy")
                         .HasMaxLength(200)
-                        .HasColumnType("character varying(200)")
+                        .HasColumnType("nvarchar(200)")
                         .HasColumnName("locked_by");
 
                     b.Property<DateTimeOffset?>("LockedUntil")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("locked_until");
 
                     b.Property<DateTimeOffset>("NextAttemptAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("next_attempt_at");
 
                     b.Property<DateTimeOffset?>("ProcessedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("processed_at");
 
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("status");
 
                     b.Property<Guid?>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<string>("Type")
                         .IsRequired()
                         .HasMaxLength(150)
-                        .HasColumnType("character varying(150)")
+                        .HasColumnType("nvarchar(150)")
                         .HasColumnName("type");
 
                     b.HasKey("Id")
@@ -10166,17 +10587,17 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<string>("Currency")
                         .IsRequired()
                         .HasMaxLength(3)
-                        .HasColumnType("character varying(3)")
+                        .HasColumnType("nvarchar(3)")
                         .HasColumnName("currency");
 
                     b.Property<decimal>("DiscountAmount")
@@ -10184,31 +10605,31 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnName("discount_amount");
 
                     b.Property<DateTimeOffset?>("DueAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("due_at");
 
                     b.Property<string>("ExternalInvoiceId")
                         .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
+                        .HasColumnType("nvarchar(100)")
                         .HasColumnName("external_invoice_id");
 
                     b.Property<string>("GatewayProvider")
                         .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
+                        .HasColumnType("nvarchar(50)")
                         .HasColumnName("gateway_provider");
 
                     b.Property<string>("InvoiceNumber")
                         .IsRequired()
                         .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
+                        .HasColumnType("nvarchar(50)")
                         .HasColumnName("invoice_number");
 
                     b.Property<DateTimeOffset?>("IssuedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("issued_at");
 
                     b.Property<DateTimeOffset?>("PaidAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("paid_at");
 
                     b.Property<DateOnly?>("PeriodEnd")
@@ -10222,7 +10643,7 @@ namespace ONEVO.Infrastructure.Migrations
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("status");
 
                     b.Property<decimal>("SubtotalAmount")
@@ -10234,11 +10655,11 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnName("tax_amount");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<Guid?>("TenantSubscriptionId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_subscription_id");
 
                     b.Property<decimal>("TotalAmount")
@@ -10246,11 +10667,11 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnName("total_amount");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.Property<DateTimeOffset?>("VoidedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("voided_at");
 
                     b.HasKey("Id")
@@ -10281,11 +10702,11 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<int?>("AiTokenLimitPerMonth")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("ai_token_limit_per_month");
 
                     b.Property<decimal>("CalculatedAnnualPrice")
@@ -10299,41 +10720,43 @@ namespace ONEVO.Infrastructure.Migrations
                     b.Property<string>("Code")
                         .IsRequired()
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("code");
 
                     b.Property<string>("CompanySizeRange")
                         .IsRequired()
                         .HasMaxLength(30)
-                        .HasColumnType("character varying(30)")
+                        .HasColumnType("nvarchar(30)")
                         .HasColumnName("company_size_range");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<string>("Currency")
                         .IsRequired()
                         .HasMaxLength(3)
-                        .HasColumnType("character varying(3)")
+                        .HasColumnType("nvarchar(3)")
                         .HasColumnName("currency");
 
                     b.Property<string>("FeatureLimitsJson")
-                        .HasColumnType("jsonb")
-                        .HasColumnName("feature_limits_json");
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("feature_limits_json")
+                        .HasAnnotation("Crownus:JsonColumn", true);
 
                     b.Property<string>("IncludedModulesJson")
-                        .HasColumnType("jsonb")
-                        .HasColumnName("included_modules_json");
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("included_modules_json")
+                        .HasAnnotation("Crownus:JsonColumn", true);
 
                     b.Property<bool>("IsActive")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_active");
 
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
+                        .HasColumnType("nvarchar(100)")
                         .HasColumnName("name");
 
                     b.Property<decimal?>("OverrideAnnualPrice")
@@ -10347,25 +10770,25 @@ namespace ONEVO.Infrastructure.Migrations
                     b.Property<string>("PricingUnit")
                         .IsRequired()
                         .HasMaxLength(30)
-                        .HasColumnType("character varying(30)")
+                        .HasColumnType("nvarchar(30)")
                         .HasColumnName("pricing_unit");
 
                     b.Property<string>("Tier")
                         .IsRequired()
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("tier");
 
                     b.Property<int>("TrialPeriodDays")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("trial_period_days");
 
                     b.Property<int>("UnpaidGracePeriodDays")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("unpaid_grace_period_days");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id")
@@ -10375,7 +10798,12 @@ namespace ONEVO.Infrastructure.Migrations
                         .IsUnique()
                         .HasDatabaseName("ix_subscription_plans_code");
 
-                    b.ToTable("subscription_plans", (string)null);
+                    b.ToTable("subscription_plans", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_subscription_plans_feature_limits_json_json", "ISJSON([feature_limits_json]) = 1");
+
+                            t.HasCheckConstraint("ck_subscription_plans_included_modules_json_json", "ISJSON([included_modules_json]) = 1");
+                        });
 
                     b.HasData(
                         new
@@ -10401,7 +10829,7 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<decimal>("Amount")
@@ -10409,55 +10837,55 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnName("amount");
 
                     b.Property<bool>("ChargedOnce")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("charged_once");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid>("CreatedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
                     b.Property<string>("Currency")
                         .IsRequired()
                         .HasMaxLength(3)
-                        .HasColumnType("character varying(3)")
+                        .HasColumnType("nvarchar(3)")
                         .HasColumnName("currency");
 
                     b.Property<DateTimeOffset?>("DeletedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("deleted_at");
 
                     b.Property<string>("Description")
                         .IsRequired()
                         .HasMaxLength(500)
-                        .HasColumnType("character varying(500)")
+                        .HasColumnType("nvarchar(500)")
                         .HasColumnName("description");
 
                     b.Property<bool>("IsDeleted")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_deleted");
 
                     b.Property<string>("SetupOptionKey")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
+                        .HasColumnType("nvarchar(100)")
                         .HasColumnName("setup_option_key");
 
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("status");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id")
@@ -10473,53 +10901,53 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("TenantId")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<DateTimeOffset?>("ActivatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("activated_at");
 
                     b.Property<bool>("ActivationReady")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("activation_ready");
 
                     b.Property<string>("CurrentStep")
                         .IsRequired()
                         .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
+                        .HasColumnType("nvarchar(50)")
                         .HasColumnName("current_step");
 
                     b.Property<Guid?>("LastUpdatedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("last_updated_by_id");
 
                     b.Property<DateTimeOffset?>("ModulesCompletedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("modules_completed_at");
 
                     b.Property<DateTimeOffset?>("OwnerInviteCompletedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("owner_invite_completed_at");
 
                     b.Property<DateTimeOffset?>("RolesCompletedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("roles_completed_at");
 
                     b.Property<DateTimeOffset?>("SettingsCompletedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("settings_completed_at");
 
                     b.Property<DateTimeOffset?>("SubscriptionCompletedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("subscription_completed_at");
 
                     b.Property<DateTimeOffset?>("TenantDetailsCompletedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("tenant_details_completed_at");
 
                     b.Property<DateTimeOffset>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.HasKey("TenantId")
@@ -10532,35 +10960,35 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<DateTimeOffset?>("CompletedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("completed_at");
 
                     b.Property<Guid?>("CompletedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("completed_by_id");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<string>("SetupOptionKey")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
+                        .HasColumnType("nvarchar(100)")
                         .HasColumnName("setup_option_key");
 
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
+                        .HasColumnType("nvarchar(50)")
                         .HasColumnName("status");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.HasKey("Id")
@@ -10577,27 +11005,27 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<DateTimeOffset?>("AccessEndsAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("access_ends_at");
 
                     b.Property<int?>("AiTokenLimitPerMonth")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("ai_token_limit_per_month");
 
                     b.Property<string>("BillingCurrency")
                         .IsRequired()
                         .HasMaxLength(3)
-                        .HasColumnType("character varying(3)")
+                        .HasColumnType("nvarchar(3)")
                         .HasColumnName("billing_currency");
 
                     b.Property<string>("BillingCycle")
                         .IsRequired()
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("billing_cycle");
 
                     b.Property<decimal>("CalculatedAnnualPrice")
@@ -10611,13 +11039,13 @@ namespace ONEVO.Infrastructure.Migrations
                     b.Property<string>("CommercialModel")
                         .IsRequired()
                         .HasMaxLength(30)
-                        .HasColumnType("character varying(30)")
+                        .HasColumnType("nvarchar(30)")
                         .HasColumnName("commercial_model");
 
                     b.Property<string>("CompanySizeRange")
                         .IsRequired()
                         .HasMaxLength(30)
-                        .HasColumnType("character varying(30)")
+                        .HasColumnType("nvarchar(30)")
                         .HasColumnName("company_size_range");
 
                     b.Property<DateOnly?>("ContractEndDate")
@@ -10629,11 +11057,11 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnName("contract_start_date");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid?>("CreatedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
                     b.Property<DateOnly>("CurrentPeriodEnd")
@@ -10658,21 +11086,21 @@ namespace ONEVO.Infrastructure.Migrations
 
                     b.Property<string>("GatewayCustomerRef")
                         .HasMaxLength(200)
-                        .HasColumnType("character varying(200)")
+                        .HasColumnType("nvarchar(200)")
                         .HasColumnName("gateway_customer_ref");
 
                     b.Property<string>("GatewayProvider")
                         .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
+                        .HasColumnType("nvarchar(50)")
                         .HasColumnName("gateway_provider");
 
                     b.Property<string>("GatewaySubscriptionRef")
                         .HasMaxLength(200)
-                        .HasColumnType("character varying(200)")
+                        .HasColumnType("nvarchar(200)")
                         .HasColumnName("gateway_subscription_ref");
 
                     b.Property<int?>("IncludedSeats")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("included_seats");
 
                     b.Property<DateOnly?>("LicensePaidAt")
@@ -10681,12 +11109,12 @@ namespace ONEVO.Infrastructure.Migrations
 
                     b.Property<string>("LicensePaymentMode")
                         .HasMaxLength(30)
-                        .HasColumnType("character varying(30)")
+                        .HasColumnType("nvarchar(30)")
                         .HasColumnName("license_payment_mode");
 
                     b.Property<string>("LicenseReference")
                         .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
+                        .HasColumnType("nvarchar(100)")
                         .HasColumnName("license_reference");
 
                     b.Property<decimal?>("MaintenanceAmount")
@@ -10695,12 +11123,12 @@ namespace ONEVO.Infrastructure.Migrations
 
                     b.Property<string>("MaintenanceBillingCycle")
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("maintenance_billing_cycle");
 
                     b.Property<string>("MaintenanceCollectionMode")
                         .HasMaxLength(30)
-                        .HasColumnType("character varying(30)")
+                        .HasColumnType("nvarchar(30)")
                         .HasColumnName("maintenance_collection_mode");
 
                     b.Property<decimal?>("MaintenanceRate")
@@ -10717,11 +11145,11 @@ namespace ONEVO.Infrastructure.Migrations
 
                     b.Property<string>("MaintenanceStatus")
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("maintenance_status");
 
                     b.Property<bool?>("OverageAllowed")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("overage_allowed");
 
                     b.Property<decimal?>("OverrideAnnualPrice")
@@ -10734,47 +11162,48 @@ namespace ONEVO.Infrastructure.Migrations
 
                     b.Property<string>("PaymentProviderRef")
                         .HasMaxLength(200)
-                        .HasColumnType("character varying(200)")
+                        .HasColumnType("nvarchar(200)")
                         .HasColumnName("payment_provider_ref");
 
                     b.Property<Guid>("PlanId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("plan_id");
 
                     b.Property<string>("SelectedModulesJson")
                         .IsRequired()
-                        .HasColumnType("jsonb")
-                        .HasColumnName("selected_modules");
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("selected_modules")
+                        .HasAnnotation("Crownus:JsonColumn", true);
 
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("status");
 
                     b.Property<string>("SubscriptionCollectionMode")
                         .HasMaxLength(30)
-                        .HasColumnType("character varying(30)")
+                        .HasColumnType("nvarchar(30)")
                         .HasColumnName("subscription_collection_mode");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<DateTimeOffset?>("TrialEndDate")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("trial_end_date");
 
                     b.Property<DateTimeOffset?>("TrialStartDate")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("trial_start_date");
 
                     b.Property<int>("UnpaidGracePeriodDays")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("unpaid_grace_period_days");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id")
@@ -10783,28 +11212,31 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasIndex("TenantId")
                         .HasDatabaseName("ix_tenant_subscriptions_tenant_id");
 
-                    b.ToTable("tenant_subscriptions", (string)null);
+                    b.ToTable("tenant_subscriptions", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_tenant_subscriptions_selected_modules_json", "ISJSON([selected_modules]) = 1");
+                        });
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.SharedPlatform.Jobs.Entities.JobLease", b =>
                 {
                     b.Property<string>("JobName")
                         .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
+                        .HasColumnType("nvarchar(100)")
                         .HasColumnName("job_name");
 
                     b.Property<DateTimeOffset>("HeartbeatAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("heartbeat_at");
 
                     b.Property<DateTimeOffset>("LeaseUntil")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("lease_until");
 
                     b.Property<string>("OwnerInstanceId")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
+                        .HasColumnType("nvarchar(100)")
                         .HasColumnName("owner_instance_id");
 
                     b.HasKey("JobName")
@@ -10817,53 +11249,53 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<string>("Body")
                         .IsRequired()
-                        .HasColumnType("text")
+                        .HasColumnType("nvarchar(max)")
                         .HasColumnName("body");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<bool>("IsRead")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_read");
 
                     b.Property<DateTimeOffset?>("ReadAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("read_at");
 
                     b.Property<Guid>("RecipientUserId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("recipient_user_id");
 
                     b.Property<Guid?>("RelatedEntityId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("related_entity_id");
 
                     b.Property<string>("RelatedEntityType")
                         .HasMaxLength(40)
-                        .HasColumnType("character varying(40)")
+                        .HasColumnType("nvarchar(40)")
                         .HasColumnName("related_entity_type");
 
                     b.Property<string>("TemplateCode")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
+                        .HasColumnType("nvarchar(100)")
                         .HasColumnName("template_code");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<string>("Title")
                         .IsRequired()
                         .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
+                        .HasColumnType("nvarchar(255)")
                         .HasColumnName("title");
 
                     b.HasKey("Id")
@@ -10879,107 +11311,107 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<string>("ActionKey")
                         .IsRequired()
                         .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
+                        .HasColumnType("nvarchar(50)")
                         .HasColumnName("action_key");
 
                     b.Property<int>("AttemptCount")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("attempt_count");
 
                     b.Property<string>("Body")
                         .IsRequired()
-                        .HasColumnType("text")
+                        .HasColumnType("nvarchar(max)")
                         .HasColumnName("body");
 
                     b.Property<int>("Channel")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("channel");
 
                     b.Property<DateTimeOffset?>("CompletedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("completed_at");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<string>("EmailHtml")
-                        .HasColumnType("text")
+                        .HasColumnType("nvarchar(max)")
                         .HasColumnName("email_html");
 
                     b.Property<string>("EmailSubject")
                         .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
+                        .HasColumnType("nvarchar(255)")
                         .HasColumnName("email_subject");
 
                     b.Property<string>("EmailText")
-                        .HasColumnType("text")
+                        .HasColumnType("nvarchar(max)")
                         .HasColumnName("email_text");
 
                     b.Property<Guid>("EventId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("event_id");
 
                     b.Property<string>("EventKey")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
+                        .HasColumnType("nvarchar(100)")
                         .HasColumnName("event_key");
 
                     b.Property<DateTimeOffset?>("ExpiresAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("expires_at");
 
                     b.Property<Guid?>("NotificationId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("notification_id");
 
                     b.Property<Guid>("RecipientUserId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("recipient_user_id");
 
                     b.Property<Guid?>("RelatedEntityId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("related_entity_id");
 
                     b.Property<string>("RelatedEntityType")
                         .HasMaxLength(40)
-                        .HasColumnType("character varying(40)")
+                        .HasColumnType("nvarchar(40)")
                         .HasColumnName("related_entity_type");
 
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(30)
-                        .HasColumnType("character varying(30)")
+                        .HasColumnType("nvarchar(30)")
                         .HasColumnName("status");
 
                     b.Property<string>("StatusReason")
                         .HasMaxLength(500)
-                        .HasColumnType("character varying(500)")
+                        .HasColumnType("nvarchar(500)")
                         .HasColumnName("status_reason");
 
                     b.Property<Guid?>("TemplateVersionId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("template_version_id");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<string>("Title")
                         .IsRequired()
                         .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
+                        .HasColumnType("nvarchar(255)")
                         .HasColumnName("title");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id")
@@ -10999,70 +11431,70 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<Guid?>("ActiveVersionId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("active_version_id");
 
                     b.Property<string>("Code")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
+                        .HasColumnType("nvarchar(100)")
                         .HasColumnName("code");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<string>("EventKey")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
+                        .HasColumnType("nvarchar(100)")
                         .HasColumnName("event_key");
 
                     b.Property<string>("InAppBodyTemplate")
                         .IsRequired()
-                        .HasColumnType("text")
+                        .HasColumnType("nvarchar(max)")
                         .HasColumnName("in_app_body_template");
 
                     b.Property<bool>("InAppEnabled")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("in_app_enabled");
 
                     b.Property<string>("InAppTitleTemplate")
                         .IsRequired()
                         .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
+                        .HasColumnType("nvarchar(255)")
                         .HasColumnName("in_app_title_template");
 
                     b.Property<string>("Locale")
                         .IsRequired()
                         .HasMaxLength(10)
-                        .HasColumnType("character varying(10)")
+                        .HasColumnType("nvarchar(10)")
                         .HasColumnName("locale");
 
                     b.Property<string>("MailBodyTemplate")
-                        .HasColumnType("text")
+                        .HasColumnType("nvarchar(max)")
                         .HasColumnName("mail_body_template");
 
                     b.Property<bool>("MailEnabled")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("mail_enabled");
 
                     b.Property<string>("MailSubjectTemplate")
-                        .HasColumnType("text")
+                        .HasColumnType("nvarchar(max)")
                         .HasColumnName("mail_subject_template");
 
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(150)
-                        .HasColumnType("character varying(150)")
+                        .HasColumnType("nvarchar(150)")
                         .HasColumnName("name");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id")
@@ -11082,93 +11514,93 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<string>("ActionKey")
                         .IsRequired()
                         .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
+                        .HasColumnType("nvarchar(50)")
                         .HasColumnName("action_key");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid?>("CreatedByUserId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_user_id");
 
                     b.Property<string>("EmailCss")
-                        .HasColumnType("text")
+                        .HasColumnType("nvarchar(max)")
                         .HasColumnName("email_css");
 
                     b.Property<string>("EmailHtml")
-                        .HasColumnType("text")
+                        .HasColumnType("nvarchar(max)")
                         .HasColumnName("email_html");
 
                     b.Property<string>("EmailSubject")
                         .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
+                        .HasColumnType("nvarchar(255)")
                         .HasColumnName("email_subject");
 
                     b.Property<string>("EmailText")
-                        .HasColumnType("text")
+                        .HasColumnType("nvarchar(max)")
                         .HasColumnName("email_text");
 
                     b.Property<string>("InAppBody")
                         .IsRequired()
-                        .HasColumnType("text")
+                        .HasColumnType("nvarchar(max)")
                         .HasColumnName("in_app_body");
 
                     b.Property<string>("InAppTitle")
                         .IsRequired()
                         .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
+                        .HasColumnType("nvarchar(255)")
                         .HasColumnName("in_app_title");
 
                     b.Property<DateTimeOffset?>("PublishedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("published_at");
 
                     b.Property<Guid?>("PublishedByUserId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("published_by_user_id");
 
                     b.Property<int>("Revision")
                         .IsConcurrencyToken()
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("revision");
 
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("status");
 
                     b.Property<Guid>("TemplateId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("template_id");
 
                     b.Property<string>("TrayBody")
-                        .HasColumnType("text")
+                        .HasColumnType("nvarchar(max)")
                         .HasColumnName("tray_body");
 
                     b.Property<string>("TrayTitle")
                         .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
+                        .HasColumnType("nvarchar(255)")
                         .HasColumnName("tray_title");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.Property<Guid?>("UpdatedByUserId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("updated_by_user_id");
 
                     b.Property<int>("Version")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("version");
 
                     b.HasKey("Id")
@@ -11190,48 +11622,48 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<int>("EnabledChannels")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("enabled_channels");
 
                     b.Property<string>("EventKey")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
+                        .HasColumnType("nvarchar(100)")
                         .HasColumnName("event_key");
 
                     b.Property<string>("RecipientRule")
                         .IsRequired()
                         .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
+                        .HasColumnType("nvarchar(50)")
                         .HasColumnName("recipient_rule");
 
                     b.Property<int>("Revision")
                         .IsConcurrencyToken()
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("revision");
 
                     b.Property<Guid?>("TemplateId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("template_id");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.Property<Guid?>("UpdatedByUserId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("updated_by_user_id");
 
                     b.HasKey("Id")
@@ -11251,67 +11683,67 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid?>("CreatedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
                     b.Property<string>("DisplayName")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
+                        .HasColumnType("nvarchar(100)")
                         .HasColumnName("display_name");
 
                     b.Property<string>("Environment")
                         .IsRequired()
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("environment");
 
                     b.Property<string>("GatewayKey")
                         .IsRequired()
                         .HasMaxLength(80)
-                        .HasColumnType("character varying(80)")
+                        .HasColumnType("nvarchar(80)")
                         .HasColumnName("gateway_key");
 
                     b.Property<bool>("IsActive")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_active");
 
                     b.Property<string>("LogoUrl")
                         .HasMaxLength(500)
-                        .HasColumnType("character varying(500)")
+                        .HasColumnType("nvarchar(500)")
                         .HasColumnName("logo_url");
 
                     b.Property<string>("MerchantId")
                         .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
+                        .HasColumnType("nvarchar(100)")
                         .HasColumnName("merchant_id");
 
                     b.Property<string>("Provider")
                         .IsRequired()
-                        .HasMaxLength(30)
-                        .HasColumnType("character varying(30)")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)")
                         .HasColumnName("provider");
 
                     b.Property<string>("PublicKey")
                         .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
+                        .HasColumnType("nvarchar(255)")
                         .HasColumnName("public_key");
 
                     b.Property<DateTimeOffset>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.Property<string>("WebhookUrl")
                         .HasMaxLength(500)
-                        .HasColumnType("character varying(500)")
+                        .HasColumnType("nvarchar(500)")
                         .HasColumnName("webhook_url");
 
                     b.HasKey("Id")
@@ -11331,44 +11763,44 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<string>("CountryCode")
                         .IsRequired()
                         .HasMaxLength(2)
-                        .HasColumnType("character varying(2)")
+                        .HasColumnType("nvarchar(2)")
                         .HasColumnName("country_code");
 
                     b.Property<string>("CountryNameSnapshot")
                         .HasMaxLength(120)
-                        .HasColumnType("character varying(120)")
+                        .HasColumnType("nvarchar(120)")
                         .HasColumnName("country_name_snapshot");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid?>("CreatedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
                     b.Property<string>("Environment")
                         .IsRequired()
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("environment");
 
                     b.Property<Guid>("GatewayConfigId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("gateway_config_id");
 
                     b.Property<bool>("IsActive")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_active");
 
                     b.Property<DateTimeOffset>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id")
@@ -11378,7 +11810,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasDatabaseName("ix_payment_gateway_country_routes_gateway_config_id");
 
                     b.HasIndex("CountryCode", "Environment", "IsActive")
-                        .HasDatabaseName("ix_payment_gateway_country_routes_country_code_environment_is_");
+                        .HasDatabaseName("ix_payment_gateway_country_routes_country_code_environment_is_active");
 
                     b.ToTable("payment_gateway_country_routes", (string)null);
                 });
@@ -11387,57 +11819,57 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<int>("CredentialVersion")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("credential_version");
 
                     b.Property<DateTimeOffset?>("DeactivatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("deactivated_at");
 
                     b.Property<Guid?>("DeactivatedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("deactivated_by_id");
 
                     b.Property<string>("EncryptionKeyVersion")
                         .IsRequired()
                         .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
+                        .HasColumnType("nvarchar(50)")
                         .HasColumnName("encryption_key_version");
 
                     b.Property<bool>("IsActive")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_active");
 
                     b.Property<Guid>("PaymentGatewayConfigId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("payment_gateway_config_id");
 
                     b.Property<DateTimeOffset>("RotatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("rotated_at");
 
                     b.Property<Guid>("RotatedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("rotated_by_id");
 
                     b.Property<byte[]>("SecretEncrypted")
                         .IsRequired()
-                        .HasColumnType("bytea")
+                        .HasColumnType("varbinary(max)")
                         .HasColumnName("secret_encrypted");
 
                     b.Property<byte[]>("WebhookSecretEncrypted")
-                        .HasColumnType("bytea")
+                        .HasColumnType("varbinary(max)")
                         .HasColumnName("webhook_secret_encrypted");
 
                     b.HasKey("Id")
                         .HasName("pk_payment_gateway_credentials");
 
                     b.HasIndex("PaymentGatewayConfigId", "IsActive")
-                        .HasDatabaseName("ix_payment_gateway_credentials_payment_gateway_config_id_is_ac");
+                        .HasDatabaseName("ix_payment_gateway_credentials_payment_gateway_config_id_is_active");
 
                     b.ToTable("payment_gateway_credentials", (string)null);
                 });
@@ -11446,70 +11878,70 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<string>("AccessTokenEncrypted")
-                        .HasColumnType("text")
+                        .HasColumnType("nvarchar(max)")
                         .HasColumnName("access_token_encrypted");
 
                     b.Property<DateTimeOffset>("ConnectedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("connected_at");
 
                     b.Property<Guid>("ConnectedByUserId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("connected_by_user_id");
 
                     b.Property<DateTimeOffset?>("DisconnectedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("disconnected_at");
 
                     b.Property<string>("ErrorMessage")
-                        .HasColumnType("text")
+                        .HasColumnType("nvarchar(max)")
                         .HasColumnName("error_message");
 
                     b.Property<string>("ExternalAccountId")
                         .HasMaxLength(200)
-                        .HasColumnType("character varying(200)")
+                        .HasColumnType("nvarchar(200)")
                         .HasColumnName("external_account_id");
 
                     b.Property<string>("ExternalAccountName")
                         .HasMaxLength(200)
-                        .HasColumnType("character varying(200)")
+                        .HasColumnType("nvarchar(200)")
                         .HasColumnName("external_account_name");
 
                     b.Property<string>("IntegrationKey")
                         .IsRequired()
                         .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
+                        .HasColumnType("nvarchar(50)")
                         .HasColumnName("integration_key");
 
                     b.Property<DateTimeOffset?>("LastSyncAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("last_sync_at");
 
                     b.Property<string>("RefreshTokenEncrypted")
-                        .HasColumnType("text")
+                        .HasColumnType("nvarchar(max)")
                         .HasColumnName("refresh_token_encrypted");
 
-                    b.PrimitiveCollection<string[]>("ScopesGranted")
+                    b.PrimitiveCollection<string>("ScopesGranted")
                         .IsRequired()
-                        .HasColumnType("text[]")
+                        .HasColumnType("nvarchar(max)")
                         .HasColumnName("scopes_granted");
 
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("status");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<DateTimeOffset?>("TokenExpiresAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("token_expires_at");
 
                     b.HasKey("Id")
@@ -11538,86 +11970,86 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<string>("AccessTokenEncrypted")
-                        .HasColumnType("text")
+                        .HasColumnType("nvarchar(max)")
                         .HasColumnName("access_token_encrypted");
 
                     b.Property<DateTimeOffset>("ConnectedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("connected_at");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<DateTimeOffset?>("DisconnectedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("disconnected_at");
 
                     b.Property<string>("ErrorMessage")
-                        .HasColumnType("text")
+                        .HasColumnType("nvarchar(max)")
                         .HasColumnName("error_message");
 
                     b.Property<string>("IntegrationKey")
                         .IsRequired()
                         .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
+                        .HasColumnType("nvarchar(50)")
                         .HasColumnName("integration_key");
 
                     b.Property<DateTimeOffset?>("LastSyncAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("last_sync_at");
 
                     b.Property<DateTimeOffset?>("LastUsedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("last_used_at");
 
                     b.Property<string>("ProviderEmail")
                         .HasMaxLength(320)
-                        .HasColumnType("character varying(320)")
+                        .HasColumnType("nvarchar(320)")
                         .HasColumnName("provider_email");
 
                     b.Property<string>("ProviderUserId")
                         .HasMaxLength(200)
-                        .HasColumnType("character varying(200)")
+                        .HasColumnType("nvarchar(200)")
                         .HasColumnName("provider_user_id");
 
                     b.Property<string>("ProviderUsername")
                         .HasMaxLength(200)
-                        .HasColumnType("character varying(200)")
+                        .HasColumnType("nvarchar(200)")
                         .HasColumnName("provider_username");
 
                     b.Property<string>("RefreshTokenEncrypted")
-                        .HasColumnType("text")
+                        .HasColumnType("nvarchar(max)")
                         .HasColumnName("refresh_token_encrypted");
 
-                    b.PrimitiveCollection<string[]>("ScopesGranted")
-                        .HasColumnType("text[]")
+                    b.PrimitiveCollection<string>("ScopesGranted")
+                        .HasColumnType("nvarchar(max)")
                         .HasColumnName("scopes_granted");
 
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("status");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<DateTimeOffset?>("TokenExpiresAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("token_expires_at");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.Property<Guid>("UserId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("user_id");
 
                     b.HasKey("Id")
@@ -11640,7 +12072,7 @@ namespace ONEVO.Infrastructure.Migrations
 
                     b.HasIndex("TenantId", "UserId", "IntegrationKey")
                         .IsUnique()
-                        .HasDatabaseName("ix_user_integration_connections_tenant_id_user_id_integration_")
+                        .HasDatabaseName("ix_user_integration_connections_tenant_id_user_id_integration_key")
                         .HasFilter("disconnected_at IS NULL");
 
                     b.ToTable("user_integration_connections", null, t =>
@@ -11653,69 +12085,70 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<string>("AssetPurpose")
                         .IsRequired()
                         .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
+                        .HasColumnType("nvarchar(50)")
                         .HasColumnName("asset_purpose");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid>("CreatedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
                     b.Property<string>("CreatedByType")
                         .IsRequired()
                         .HasMaxLength(30)
-                        .HasColumnType("character varying(30)")
+                        .HasColumnType("nvarchar(30)")
                         .HasColumnName("created_by_type");
 
                     b.Property<DateTimeOffset?>("DeletedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("deleted_at");
 
                     b.Property<Guid>("FileRecordId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("file_record_id");
 
                     b.Property<bool>("IsDeleted")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_deleted");
 
                     b.Property<bool>("IsPrimary")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_primary");
 
                     b.Property<string>("MetadataJson")
-                        .HasColumnType("jsonb")
-                        .HasColumnName("metadata_json");
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("metadata_json")
+                        .HasAnnotation("Crownus:JsonColumn", true);
 
                     b.Property<Guid>("OwnerId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("owner_id");
 
                     b.Property<string>("OwnerType")
                         .IsRequired()
                         .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
+                        .HasColumnType("nvarchar(50)")
                         .HasColumnName("owner_type");
 
                     b.Property<int?>("SortOrder")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("sort_order");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id")
@@ -11727,38 +12160,41 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasIndex("OwnerType", "OwnerId")
                         .HasDatabaseName("ix_entity_assets_owner_type_owner_id");
 
-                    b.ToTable("entity_assets", (string)null);
+                    b.ToTable("entity_assets", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_entity_assets_metadata_json_json", "ISJSON([metadata_json]) = 1");
+                        });
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.Storage.File.Entities.FileRecord", b =>
                 {
                     b.Property<Guid>("Id")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<string>("ChecksumSha256")
                         .IsRequired()
                         .HasMaxLength(64)
-                        .HasColumnType("character varying(64)")
+                        .HasColumnType("nvarchar(64)")
                         .HasColumnName("checksum_sha256");
 
                     b.Property<string>("ContentType")
                         .IsRequired()
                         .HasMaxLength(150)
-                        .HasColumnType("character varying(150)")
+                        .HasColumnType("nvarchar(150)")
                         .HasColumnName("content_type");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<DateTimeOffset?>("DeletedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("deleted_at");
 
                     b.Property<string>("DetectedContentType")
                         .HasMaxLength(150)
-                        .HasColumnType("character varying(150)")
+                        .HasColumnType("nvarchar(150)")
                         .HasColumnName("detected_content_type");
 
                     b.Property<long>("FileSizeBytes")
@@ -11768,55 +12204,55 @@ namespace ONEVO.Infrastructure.Migrations
                     b.Property<string>("OriginalFileName")
                         .IsRequired()
                         .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
+                        .HasColumnType("nvarchar(255)")
                         .HasColumnName("original_file_name");
 
                     b.Property<string>("SafeFileName")
                         .IsRequired()
                         .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
+                        .HasColumnType("nvarchar(255)")
                         .HasColumnName("safe_file_name");
 
                     b.Property<DateTimeOffset?>("ScanCompletedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("scan_completed_at");
 
                     b.Property<string>("ScanProvider")
                         .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
+                        .HasColumnType("nvarchar(50)")
                         .HasColumnName("scan_provider");
 
                     b.Property<string>("ScanResultCode")
                         .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
+                        .HasColumnType("nvarchar(100)")
                         .HasColumnName("scan_result_code");
 
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(30)
-                        .HasColumnType("character varying(30)")
+                        .HasColumnType("nvarchar(30)")
                         .HasColumnName("status");
 
                     b.Property<DateTimeOffset?>("StorageDeletedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("storage_deleted_at");
 
                     b.Property<string>("StorageKey")
                         .IsRequired()
                         .HasMaxLength(700)
-                        .HasColumnType("character varying(700)")
+                        .HasColumnType("nvarchar(700)")
                         .HasColumnName("storage_key");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.Property<Guid>("UploadedByUserId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("uploaded_by_user_id");
 
                     b.HasKey("Id")
@@ -11834,23 +12270,23 @@ namespace ONEVO.Infrastructure.Migrations
             modelBuilder.Entity("ONEVO.Domain.Features.Storage.File.Entities.FileUploadReservation", b =>
                 {
                     b.Property<Guid>("Id")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<Guid?>("CompletedFileRecordId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("completed_file_record_id");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<DateTimeOffset>("ExpiresAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("expires_at");
 
                     b.Property<Guid>("ReservedByUserId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("reserved_by_user_id");
 
                     b.Property<long>("ReservedBytes")
@@ -11860,15 +12296,15 @@ namespace ONEVO.Infrastructure.Migrations
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(30)
-                        .HasColumnType("character varying(30)")
+                        .HasColumnType("nvarchar(30)")
                         .HasColumnName("status");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id")
@@ -11889,11 +12325,11 @@ namespace ONEVO.Infrastructure.Migrations
             modelBuilder.Entity("ONEVO.Domain.Features.Storage.Quota.Entities.TenantStorageStats", b =>
                 {
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<DateTimeOffset?>("LastCalculatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("last_calculated_at");
 
                     b.Property<long>("ReservedR2Bytes")
@@ -11901,7 +12337,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnName("reserved_r2_bytes");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.Property<long>("UsedDbBytes")
@@ -11922,91 +12358,92 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<Guid?>("ConvertedLeaveRequestId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("converted_leave_request_id");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid>("CreatedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
                     b.Property<DateTimeOffset?>("DeletedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("deleted_at");
 
                     b.Property<string>("DetailsJson")
-                        .HasColumnType("jsonb")
-                        .HasColumnName("details_json");
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("details_json")
+                        .HasAnnotation("Crownus:JsonColumn", true);
 
                     b.Property<DateTimeOffset>("DetectedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("detected_at");
 
                     b.Property<Guid>("EmployeeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("employee_id");
 
                     b.Property<bool>("IsDeleted")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_deleted");
 
                     b.Property<Guid?>("LegalEntityId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("legal_entity_id");
 
                     b.Property<string>("Note")
                         .HasMaxLength(2000)
-                        .HasColumnType("character varying(2000)")
+                        .HasColumnType("nvarchar(2000)")
                         .HasColumnName("note");
 
                     b.Property<string>("Outcome")
                         .HasMaxLength(30)
-                        .HasColumnType("character varying(30)")
+                        .HasColumnType("nvarchar(30)")
                         .HasColumnName("outcome");
 
                     b.Property<DateTimeOffset?>("ResolvedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("resolved_at");
 
                     b.Property<Guid?>("ResolvedByEmployeeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("resolved_by_employee_id");
 
                     b.Property<string>("Severity")
                         .IsRequired()
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("severity");
 
                     b.Property<string>("SignalKey")
                         .IsRequired()
                         .HasMaxLength(40)
-                        .HasColumnType("character varying(40)")
+                        .HasColumnType("nvarchar(40)")
                         .HasColumnName("signal_key");
 
                     b.Property<Guid?>("SourceId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("source_id");
 
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("status");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.Property<DateOnly>("WorkDate")
@@ -12022,100 +12459,102 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasIndex("TenantId", "EmployeeId", "WorkDate", "SignalKey", "SourceId")
                         .IsUnique()
                         .HasDatabaseName("ux_attendance_alerts_tenant_employee_date_signal_source")
-                        .HasFilter("is_deleted = false");
+                        .HasFilter("is_deleted = 0");
 
-                    NpgsqlIndexBuilderExtensions.AreNullsDistinct(b.HasIndex("TenantId", "EmployeeId", "WorkDate", "SignalKey", "SourceId"), false);
-
-                    b.ToTable("attendance_alerts", (string)null);
+                    b.ToTable("attendance_alerts", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_attendance_alerts_details_json_json", "ISJSON([details_json]) = 1");
+                        });
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.TimeAttendance.Alerts.AttendanceAlertDeduction", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<Guid>("AlertId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("alert_id");
 
                     b.Property<Guid?>("ChargeAuditId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("charge_audit_id");
 
                     b.Property<DateTimeOffset?>("ChargedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("charged_at");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid>("CreatedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
                     b.Property<DateTimeOffset?>("DeletedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("deleted_at");
 
                     b.Property<Guid>("EmployeeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("employee_id");
 
                     b.Property<decimal>("Hours")
                         .HasPrecision(10, 2)
-                        .HasColumnType("numeric(10,2)")
+                        .HasColumnType("decimal(10,2)")
                         .HasColumnName("hours");
 
                     b.Property<bool>("IsDeleted")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_deleted");
 
                     b.Property<Guid>("LeaveTypeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("leave_type_id");
 
                     b.Property<int>("Minutes")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("minutes");
 
                     b.Property<decimal>("Multiplier")
                         .HasPrecision(6, 2)
-                        .HasColumnType("numeric(6,2)")
+                        .HasColumnType("decimal(6,2)")
                         .HasColumnName("multiplier");
 
                     b.Property<Guid?>("RefundAuditId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("refund_audit_id");
 
                     b.Property<DateTimeOffset?>("RefundedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("refunded_at");
 
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("status");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.Property<int>("Year")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("year");
 
-                    b.Property<uint>("xmin")
+                    b.Property<byte[]>("xmin")
                         .IsConcurrencyToken()
+                        .IsRequired()
                         .ValueGeneratedOnAddOrUpdate()
-                        .HasColumnType("xid")
+                        .HasColumnType("rowversion")
                         .HasColumnName("xmin");
 
                     b.HasKey("Id")
@@ -12135,113 +12574,115 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<bool>("ApprovalRequired")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("approval_required");
 
                     b.Property<string>("ApprovedBreakJson")
-                        .HasColumnType("text")
+                        .HasColumnType("nvarchar(max)")
                         .HasColumnName("approved_break_json");
 
                     b.Property<DateTimeOffset?>("ApprovedClockInAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("approved_clock_in_at");
 
                     b.Property<DateTimeOffset?>("ApprovedClockOutAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("approved_clock_out_at");
 
                     b.Property<Guid?>("AttendanceRecordId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("attendance_record_id");
 
                     b.Property<string>("CorrectionType")
                         .IsRequired()
                         .HasMaxLength(30)
-                        .HasColumnType("character varying(30)")
+                        .HasColumnType("nvarchar(30)")
                         .HasColumnName("correction_type");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid>("EmployeeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("employee_id");
 
                     b.Property<Guid>("LegalEntityId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("legal_entity_id");
 
                     b.Property<string>("Notes")
-                        .HasColumnType("text")
+                        .HasColumnType("nvarchar(max)")
                         .HasColumnName("notes");
 
                     b.Property<string>("OriginalBreakJson")
-                        .HasColumnType("jsonb")
-                        .HasColumnName("original_break_json");
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("original_break_json")
+                        .HasAnnotation("Crownus:JsonColumn", true);
 
                     b.Property<DateTimeOffset?>("OriginalClockInAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("original_clock_in_at");
 
                     b.Property<DateTimeOffset?>("OriginalClockOutAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("original_clock_out_at");
 
                     b.Property<Guid?>("PresenceSessionId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("presence_session_id");
 
                     b.Property<string>("Reason")
                         .IsRequired()
                         .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
+                        .HasColumnType("nvarchar(255)")
                         .HasColumnName("reason");
 
                     b.Property<string>("RequestedBreakJson")
-                        .HasColumnType("jsonb")
-                        .HasColumnName("requested_break_json");
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("requested_break_json")
+                        .HasAnnotation("Crownus:JsonColumn", true);
 
                     b.Property<Guid>("RequestedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("requested_by_id");
 
                     b.Property<DateTimeOffset?>("RequestedClockInAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("requested_clock_in_at");
 
                     b.Property<DateTimeOffset?>("RequestedClockOutAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("requested_clock_out_at");
 
                     b.Property<string>("ReviewComment")
-                        .HasColumnType("text")
+                        .HasColumnType("nvarchar(max)")
                         .HasColumnName("review_comment");
 
                     b.Property<DateTimeOffset?>("ReviewedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("reviewed_at");
 
                     b.Property<Guid?>("ReviewedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("reviewed_by_id");
 
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("status");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<DateTimeOffset>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.Property<DateOnly>("WorkDate")
@@ -12280,35 +12721,40 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasIndex("TenantId", "LegalEntityId", "Status", "CreatedAt")
                         .HasDatabaseName("ix_attendance_corrections_tenant_legal_entity_status_created_at");
 
-                    b.ToTable("attendance_corrections", (string)null);
+                    b.ToTable("attendance_corrections", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_attendance_corrections_original_break_json_json", "ISJSON([original_break_json]) = 1");
+
+                            t.HasCheckConstraint("ck_attendance_corrections_requested_break_json_json", "ISJSON([requested_break_json]) = 1");
+                        });
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.TimeAttendance.Entities.AttendanceRecord", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<DateTimeOffset?>("ActualEnd")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("actual_end");
 
                     b.Property<DateTimeOffset?>("ActualStart")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("actual_start");
 
                     b.Property<string>("AttendanceSource")
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("attendance_source");
 
                     b.Property<int>("BreakMinutes")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("break_minutes");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<DateOnly>("Date")
@@ -12316,72 +12762,72 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnName("date");
 
                     b.Property<Guid>("EmployeeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("employee_id");
 
                     b.Property<Guid?>("ExpectedWorkModeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("expected_work_mode_id");
 
                     b.Property<string>("ExpectedWorkModeName")
-                        .HasColumnType("text")
+                        .HasColumnType("nvarchar(max)")
                         .HasColumnName("expected_work_mode_name");
 
                     b.Property<bool>("ExpectedWorkingDay")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("expected_working_day");
 
                     b.Property<string>("HolidayName")
                         .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
+                        .HasColumnType("nvarchar(100)")
                         .HasColumnName("holiday_name");
 
                     b.Property<bool>("IsHoliday")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_holiday");
 
                     b.Property<int?>("LateMinutes")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("late_minutes");
 
                     b.Property<int?>("RequiredWorkMinutes")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("required_work_minutes");
 
                     b.Property<string>("ScheduleTimezone")
                         .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
+                        .HasColumnType("nvarchar(50)")
                         .HasColumnName("schedule_timezone");
 
                     b.Property<TimeOnly?>("ScheduledEnd")
-                        .HasColumnType("time without time zone")
+                        .HasColumnType("time")
                         .HasColumnName("scheduled_end");
 
                     b.Property<TimeOnly?>("ScheduledStart")
-                        .HasColumnType("time without time zone")
+                        .HasColumnType("time")
                         .HasColumnName("scheduled_start");
 
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(30)
-                        .HasColumnType("character varying(30)")
+                        .HasColumnType("nvarchar(30)")
                         .HasColumnName("status");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<DateTimeOffset>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.Property<string>("WorkTimeType")
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("work_time_type");
 
                     b.Property<int>("WorkedMinutes")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("worked_minutes");
 
                     b.HasKey("Id")
@@ -12401,42 +12847,43 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<bool>("AutoDetected")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("auto_detected");
 
                     b.Property<DateTimeOffset?>("BreakEnd")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("break_end");
 
                     b.Property<DateTimeOffset>("BreakStart")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("break_start");
 
                     b.Property<string>("BreakType")
                         .HasMaxLength(30)
-                        .HasColumnType("character varying(30)")
+                        .HasColumnType("nvarchar(30)")
                         .HasColumnName("break_type");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid>("EmployeeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("employee_id");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
-                    b.Property<uint>("xmin")
+                    b.Property<byte[]>("xmin")
                         .IsConcurrencyToken()
+                        .IsRequired()
                         .ValueGeneratedOnAddOrUpdate()
-                        .HasColumnType("xid")
+                        .HasColumnType("rowversion")
                         .HasColumnName("xmin");
 
                     b.HasKey("Id")
@@ -12457,40 +12904,40 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<Guid>("ClockInPolicyId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("clock_in_policy_id");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<bool>("IsActive")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_active");
 
                     b.Property<int>("LateArrivalMinute")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("late_arrival_minute");
 
                     b.Property<decimal>("Multiplier")
                         .HasPrecision(5, 2)
-                        .HasColumnType("numeric(5,2)")
+                        .HasColumnType("decimal(5,2)")
                         .HasColumnName("multiplier");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<Guid>("TimeOffTypeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("time_off_type_id");
 
                     b.Property<DateTimeOffset>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id")
@@ -12516,27 +12963,27 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<bool>("CorrectionRequiresApproval")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("correction_requires_approval");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid>("CreatedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
                     b.Property<DateTimeOffset?>("DeductionRulesChangedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("deduction_rules_changed_at");
 
-                    b.PrimitiveCollection<Guid[]>("DepartmentIds")
-                        .HasColumnType("uuid[]")
+                    b.PrimitiveCollection<string>("DepartmentIds")
+                        .HasColumnType("nvarchar(max)")
                         .HasColumnName("department_ids");
 
                     b.Property<DateOnly>("EffectiveFrom")
@@ -12547,46 +12994,46 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("date")
                         .HasColumnName("effective_to");
 
-                    b.PrimitiveCollection<Guid[]>("EmployeeIds")
-                        .HasColumnType("uuid[]")
+                    b.PrimitiveCollection<string>("EmployeeIds")
+                        .HasColumnType("nvarchar(max)")
                         .HasColumnName("employee_ids");
 
                     b.Property<bool>("IsActive")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_active");
 
                     b.Property<Guid>("LegalEntityId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("legal_entity_id");
 
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(120)
-                        .HasColumnType("character varying(120)")
+                        .HasColumnType("nvarchar(120)")
                         .HasColumnName("name");
 
                     b.Property<string>("NotificationRecipientResolver")
                         .IsRequired()
                         .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
+                        .HasColumnType("nvarchar(50)")
                         .HasColumnName("notification_recipient_resolver");
 
-                    b.PrimitiveCollection<Guid[]>("PositionIds")
-                        .HasColumnType("uuid[]")
+                    b.PrimitiveCollection<string>("PositionIds")
+                        .HasColumnType("nvarchar(max)")
                         .HasColumnName("position_ids");
 
                     b.Property<string>("ScopeType")
                         .IsRequired()
                         .HasMaxLength(30)
-                        .HasColumnType("character varying(30)")
+                        .HasColumnType("nvarchar(30)")
                         .HasColumnName("scope_type");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<DateTimeOffset>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id")
@@ -12611,37 +13058,37 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<double?>("AccuracyMeters")
-                        .HasColumnType("double precision")
+                        .HasColumnType("float")
                         .HasColumnName("accuracy_meters");
 
                     b.Property<DateTimeOffset>("ConfirmedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("confirmed_at");
 
                     b.Property<Guid>("EmployeeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("employee_id");
 
                     b.Property<double?>("Latitude")
-                        .HasColumnType("double precision")
+                        .HasColumnType("float")
                         .HasColumnName("latitude");
 
                     b.Property<string>("LocationType")
                         .IsRequired()
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("location_type");
 
                     b.Property<double?>("Longitude")
-                        .HasColumnType("double precision")
+                        .HasColumnType("float")
                         .HasColumnName("longitude");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<DateOnly>("WorkDate")
@@ -12665,35 +13112,35 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<double?>("AccuracyMeters")
-                        .HasColumnType("double precision")
+                        .HasColumnType("float")
                         .HasColumnName("accuracy_meters");
 
                     b.Property<Guid>("EmployeeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("employee_id");
 
                     b.Property<double>("Latitude")
-                        .HasColumnType("double precision")
+                        .HasColumnType("float")
                         .HasColumnName("latitude");
 
                     b.Property<double>("Longitude")
-                        .HasColumnType("double precision")
+                        .HasColumnType("float")
                         .HasColumnName("longitude");
 
                     b.Property<DateTimeOffset>("RegisteredAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("registered_at");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<DateTimeOffset>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id")
@@ -12718,63 +13165,63 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<DateTimeOffset?>("AppliedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("applied_at");
 
                     b.Property<Guid>("EmployeeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("employee_id");
 
                     b.Property<Guid>("LegalEntityId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("legal_entity_id");
 
                     b.Property<string>("Reason")
                         .IsRequired()
-                        .HasColumnType("text")
+                        .HasColumnType("nvarchar(max)")
                         .HasColumnName("reason");
 
                     b.Property<double?>("RequestedAccuracyMeters")
-                        .HasColumnType("double precision")
+                        .HasColumnType("float")
                         .HasColumnName("requested_accuracy_meters");
 
                     b.Property<DateTimeOffset>("RequestedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("requested_at");
 
                     b.Property<double>("RequestedLatitude")
-                        .HasColumnType("double precision")
+                        .HasColumnType("float")
                         .HasColumnName("requested_latitude");
 
                     b.Property<double>("RequestedLongitude")
-                        .HasColumnType("double precision")
+                        .HasColumnType("float")
                         .HasColumnName("requested_longitude");
 
                     b.Property<string>("ReviewComment")
-                        .HasColumnType("text")
+                        .HasColumnType("nvarchar(max)")
                         .HasColumnName("review_comment");
 
                     b.Property<DateTimeOffset?>("ReviewedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("reviewed_at");
 
                     b.Property<Guid?>("ReviewedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("reviewed_by_id");
 
                     b.Property<string>("Status")
                         .IsConcurrencyToken()
                         .IsRequired()
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("status");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.HasKey("Id")
@@ -12812,11 +13259,11 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<DateOnly>("Date")
@@ -12824,41 +13271,41 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnName("date");
 
                     b.Property<Guid>("EmployeeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("employee_id");
 
                     b.Property<DateTimeOffset?>("FirstSeenAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("first_seen_at");
 
                     b.Property<DateTimeOffset?>("LastSeenAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("last_seen_at");
 
                     b.Property<string>("Source")
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("source");
 
                     b.Property<string>("Status")
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("status");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<int>("TotalBreakMinutes")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("total_break_minutes");
 
                     b.Property<int>("TotalPresentMinutes")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("total_present_minutes");
 
                     b.Property<DateTimeOffset>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id")
@@ -12875,17 +13322,17 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<Guid?>("CurrentWorkModeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("current_work_mode_id");
 
                     b.Property<string>("CurrentWorkModeName")
                         .IsRequired()
                         .HasMaxLength(120)
-                        .HasColumnType("character varying(120)")
+                        .HasColumnType("nvarchar(120)")
                         .HasColumnName("current_work_mode_name");
 
                     b.Property<DateOnly>("Date")
@@ -12893,58 +13340,58 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnName("date");
 
                     b.Property<Guid>("EmployeeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("employee_id");
 
                     b.Property<string>("LegacyWorkAreaLabel")
                         .HasMaxLength(10)
-                        .HasColumnType("character varying(10)")
+                        .HasColumnType("nvarchar(10)")
                         .HasColumnName("legacy_work_area_label");
 
                     b.Property<Guid>("LegalEntityId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("legal_entity_id");
 
                     b.Property<string>("Reason")
                         .IsRequired()
-                        .HasColumnType("text")
+                        .HasColumnType("nvarchar(max)")
                         .HasColumnName("reason");
 
                     b.Property<DateTimeOffset>("RequestedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("requested_at");
 
                     b.Property<Guid?>("RequestedWorkModeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("requested_work_mode_id");
 
                     b.Property<string>("RequestedWorkModeName")
                         .IsRequired()
                         .HasMaxLength(120)
-                        .HasColumnType("character varying(120)")
+                        .HasColumnType("nvarchar(120)")
                         .HasColumnName("requested_work_mode_name");
 
                     b.Property<string>("ReviewComment")
-                        .HasColumnType("text")
+                        .HasColumnType("nvarchar(max)")
                         .HasColumnName("review_comment");
 
                     b.Property<DateTimeOffset?>("ReviewedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("reviewed_at");
 
                     b.Property<Guid?>("ReviewedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("reviewed_by_id");
 
                     b.Property<string>("Status")
                         .IsConcurrencyToken()
                         .IsRequired()
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("status");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.HasKey("Id")
@@ -12983,65 +13430,65 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<bool>("AllowsDailyLocationChoice")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("allows_daily_location_choice");
 
                     b.Property<bool>("BiometricEnabled")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("biometric_enabled");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<int>("DisplayOrder")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("display_order");
 
                     b.Property<bool>("IsActive")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_active");
 
                     b.Property<bool>("IsSystemSeeded")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_system_seeded");
 
                     b.Property<Guid>("LegalEntityId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("legal_entity_id");
 
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(120)
-                        .HasColumnType("character varying(120)")
+                        .HasColumnType("nvarchar(120)")
                         .HasColumnName("name");
 
                     b.Property<bool>("PhotoRequired")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("photo_required");
 
                     b.Property<bool>("SelfRegistersLocation")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("self_registers_location");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<bool>("TrayEnabled")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("tray_enabled");
 
                     b.Property<DateTimeOffset>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.Property<bool>("WebEnabled")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("web_enabled");
 
                     b.HasKey("Id")
@@ -13066,118 +13513,121 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<string>("ActionType")
                         .IsRequired()
                         .HasMaxLength(40)
-                        .HasColumnType("character varying(40)")
+                        .HasColumnType("nvarchar(40)")
                         .HasColumnName("action_type");
 
                     b.Property<string>("AppliedPayloadJson")
-                        .HasColumnType("jsonb")
-                        .HasColumnName("applied_payload_json");
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("applied_payload_json")
+                        .HasAnnotation("Crownus:JsonColumn", true);
 
                     b.Property<Guid>("ApproverEmployeeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("approver_employee_id");
 
                     b.Property<string>("ApproverSource")
                         .IsRequired()
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("approver_source");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid>("CreatedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
                     b.Property<DateTimeOffset?>("DecidedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("decided_at");
 
                     b.Property<Guid?>("DecidedByEmployeeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("decided_by_employee_id");
 
                     b.Property<string>("DecisionComment")
-                        .HasColumnType("text")
+                        .HasColumnType("nvarchar(max)")
                         .HasColumnName("decision_comment");
 
                     b.Property<DateTimeOffset?>("DeletedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("deleted_at");
 
                     b.Property<bool>("IsDeleted")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_deleted");
 
                     b.Property<string>("PayloadJson")
                         .IsRequired()
-                        .HasColumnType("jsonb")
-                        .HasColumnName("payload_json");
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("payload_json")
+                        .HasAnnotation("Crownus:JsonColumn", true);
 
                     b.Property<Guid?>("PositionObjectiveId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("position_objective_id");
 
                     b.Property<Guid>("ProjectId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("project_id");
 
                     b.Property<Guid>("RequestedByEmployeeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("requested_by_employee_id");
 
                     b.Property<DateTimeOffset?>("RevertedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("reverted_at");
 
                     b.Property<Guid?>("RevertedByEmployeeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("reverted_by_employee_id");
 
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("status");
 
                     b.Property<Guid?>("TargetId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("target_id");
 
                     b.Property<string>("TargetTitle")
                         .IsRequired()
                         .HasMaxLength(500)
-                        .HasColumnType("character varying(500)")
+                        .HasColumnType("nvarchar(500)")
                         .HasColumnName("target_title");
 
                     b.Property<string>("TargetType")
                         .IsRequired()
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("target_type");
 
                     b.Property<DateTimeOffset?>("TargetUpdatedAtSnapshot")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("target_updated_at_snapshot");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<string>("UndoStateJson")
-                        .HasColumnType("jsonb")
-                        .HasColumnName("undo_state_json");
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("undo_state_json")
+                        .HasAnnotation("Crownus:JsonColumn", true);
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id")
@@ -13194,40 +13644,47 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasDatabaseName("ux_wm_approval_requests_one_pending_per_target_action")
                         .HasFilter("status = 'pending' AND target_id IS NOT NULL");
 
-                    b.ToTable("wm_approval_requests", (string)null);
+                    b.ToTable("wm_approval_requests", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_wm_approval_requests_applied_payload_json_json", "ISJSON([applied_payload_json]) = 1");
+
+                            t.HasCheckConstraint("ck_wm_approval_requests_payload_json_json", "ISJSON([payload_json]) = 1");
+
+                            t.HasCheckConstraint("ck_wm_approval_requests_undo_state_json_json", "ISJSON([undo_state_json]) = 1");
+                        });
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.CalendarEvents.Entities.CalendarEvent", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<DateTimeOffset?>("ArchivedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("archived_at");
 
                     b.Property<Guid?>("ArchivedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("archived_by_id");
 
                     b.Property<string>("Color")
                         .IsRequired()
                         .HasMaxLength(7)
-                        .HasColumnType("character varying(7)")
+                        .HasColumnType("nvarchar(7)")
                         .HasColumnName("color");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid>("CreatedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
                     b.Property<string>("Description")
-                        .HasColumnType("text")
+                        .HasColumnType("nvarchar(max)")
                         .HasColumnName("description");
 
                     b.Property<DateOnly>("EndDate")
@@ -13237,11 +13694,11 @@ namespace ONEVO.Infrastructure.Migrations
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
+                        .HasColumnType("nvarchar(255)")
                         .HasColumnName("name");
 
                     b.Property<Guid>("ProjectId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("project_id");
 
                     b.Property<DateOnly>("StartDate")
@@ -13251,11 +13708,11 @@ namespace ONEVO.Infrastructure.Migrations
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("status");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.HasKey("Id")
@@ -13274,34 +13731,35 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<string>("Action")
                         .IsRequired()
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("action");
 
                     b.Property<Guid>("CalendarEventId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("calendar_event_id");
 
                     b.Property<string>("DetailsJson")
                         .IsRequired()
-                        .HasColumnType("jsonb")
-                        .HasColumnName("details_json");
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("details_json")
+                        .HasAnnotation("Crownus:JsonColumn", true);
 
                     b.Property<DateTimeOffset>("PerformedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("performed_at");
 
                     b.Property<Guid>("PerformedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("performed_by_id");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.HasKey("Id")
@@ -13313,26 +13771,29 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasIndex("TenantId", "CalendarEventId", "PerformedAt")
                         .HasDatabaseName("ix_calendar_event_activity_logs_tenant_event_performed_at");
 
-                    b.ToTable("calendar_event_activity_logs", (string)null);
+                    b.ToTable("calendar_event_activity_logs", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_calendar_event_activity_logs_details_json_json", "ISJSON([details_json]) = 1");
+                        });
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.CalendarEvents.Entities.CalendarEventObjective", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<DateTimeOffset>("AddedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("added_at");
 
                     b.Property<Guid>("CalendarEventId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("calendar_event_id");
 
                     b.Property<Guid>("ObjectiveId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("objective_id");
 
                     b.HasKey("Id")
@@ -13351,19 +13812,19 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<DateTimeOffset>("AddedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("added_at");
 
                     b.Property<Guid>("CalendarEventId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("calendar_event_id");
 
                     b.Property<Guid>("TaskId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("task_id");
 
                     b.HasKey("Id")
@@ -13383,47 +13844,47 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<string>("Color")
                         .IsRequired()
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("color");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid>("CreatedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
                     b.Property<DateTimeOffset?>("DeletedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("deleted_at");
 
                     b.Property<bool>("IsDeleted")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_deleted");
 
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
+                        .HasColumnType("nvarchar(50)")
                         .HasColumnName("name");
 
                     b.Property<Guid>("ProjectId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("project_id");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id")
@@ -13443,27 +13904,27 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid>("CreatedByEmployeeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_employee_id");
 
                     b.Property<Guid>("OccurrenceTaskId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("occurrence_task_id");
 
                     b.Property<Guid>("TaskId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("task_id");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.HasKey("Id")
@@ -13486,37 +13947,37 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<Guid>("CalendarEventMeetingId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("calendar_event_meeting_id");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid?>("OccurrenceTaskId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("occurrence_task_id");
 
                     b.Property<string>("ProviderSessionId")
                         .IsRequired()
                         .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
+                        .HasColumnType("nvarchar(255)")
                         .HasColumnName("provider_session_id");
 
                     b.Property<DateTimeOffset?>("SessionEnd")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("session_end");
 
                     b.Property<DateTimeOffset>("SessionStart")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("session_start");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.HasKey("Id")
@@ -13538,83 +13999,83 @@ namespace ONEVO.Infrastructure.Migrations
             modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Meetings.Entities.MeetingDetails", b =>
                 {
                     b.Property<Guid>("TaskId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("task_id");
 
                     b.Property<int>("AttendanceCheckpoint")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("attendance_checkpoint");
 
                     b.Property<DateTimeOffset?>("AttendanceFinalizedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("attendance_finalized_at");
 
                     b.Property<string>("AttendanceLastError")
                         .HasMaxLength(40)
-                        .HasColumnType("character varying(40)")
+                        .HasColumnType("nvarchar(40)")
                         .HasColumnName("attendance_last_error");
 
                     b.Property<DateTimeOffset?>("AttendanceNextCheckAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("attendance_next_check_at");
 
                     b.Property<string>("AttendanceStatus")
                         .HasMaxLength(30)
-                        .HasColumnType("character varying(30)")
+                        .HasColumnType("nvarchar(30)")
                         .HasColumnName("attendance_status");
 
                     b.Property<Guid?>("CalendarEventMeetingId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("calendar_event_meeting_id");
 
                     b.Property<DateTimeOffset?>("CancelledAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("cancelled_at");
 
                     b.Property<DateTimeOffset>("EndAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("end_at");
 
                     b.Property<DateTimeOffset?>("HoursStampedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("hours_stamped_at");
 
                     b.Property<bool>("IsAllDay")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_all_day");
 
                     b.Property<bool>("IsDetached")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_detached");
 
                     b.Property<bool>("IsPrivate")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_private");
 
                     b.Property<string>("Location")
                         .HasMaxLength(500)
-                        .HasColumnType("character varying(500)")
+                        .HasColumnType("nvarchar(500)")
                         .HasColumnName("location");
 
                     b.Property<DateTimeOffset>("OriginalStart")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("original_start");
 
                     b.Property<int>("Revision")
                         .IsConcurrencyToken()
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("revision");
 
                     b.Property<Guid>("SeriesId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("series_id");
 
                     b.Property<DateTimeOffset>("StartAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("start_at");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.HasKey("TaskId")
@@ -13636,56 +14097,61 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasIndex("TenantId", "StartAt")
                         .HasDatabaseName("ix_meeting_details_tenant_id_start_at");
 
-                    b.ToTable("meeting_details", (string)null);
+                    b.ToTable("meeting_details", null, t =>
+                        {
+                            t.HasTrigger("trg_meeting_details_key_immutable");
+                        });
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Meetings.Entities.MeetingOccurrenceAttendee", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<string>("AttendeeKind")
                         .IsRequired()
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("attendee_kind");
 
                     b.Property<string>("Change")
                         .IsRequired()
                         .HasMaxLength(10)
-                        .HasColumnType("character varying(10)")
+                        .HasColumnType("nvarchar(10)")
                         .HasColumnName("change");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<string>("Email")
                         .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
+                        .HasColumnType("nvarchar(255)")
                         .HasColumnName("email");
 
                     b.Property<Guid?>("EmployeeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("employee_id");
 
                     b.Property<Guid>("OccurrenceTaskId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("occurrence_task_id");
 
                     b.Property<string>("ResponseReason")
-                        .HasColumnType("text")
+                        .HasColumnType("nvarchar(max)")
                         .HasColumnName("response_reason");
 
                     b.Property<string>("ResponseStatus")
                         .HasMaxLength(30)
-                        .HasColumnType("character varying(30)")
+                        .HasColumnType("nvarchar(30)")
                         .HasColumnName("response_status");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.HasKey("Id")
@@ -13697,7 +14163,7 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasIndex("OccurrenceTaskId", "EmployeeId")
                         .IsUnique()
                         .HasDatabaseName("ux_meeting_occurrence_attendees_employee")
-                        .HasFilter("attendee_kind = 'employee'");
+                        .HasFilter("attendee_kind = 'employee' AND employee_id IS NOT NULL");
 
                     b.HasIndex("TenantId", "EmployeeId")
                         .HasDatabaseName("ix_meeting_occurrence_attendees_tenant_id_employee_id");
@@ -13708,33 +14174,33 @@ namespace ONEVO.Infrastructure.Migrations
             modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Meetings.Entities.MeetingOccurrenceSuppression", b =>
                 {
                     b.Property<Guid>("SeriesId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("series_id");
 
                     b.Property<DateTimeOffset>("OriginalStart")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("original_start");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid>("CreatedByEmployeeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_employee_id");
 
                     b.Property<Guid>("MovedToTaskId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("moved_to_task_id");
 
                     b.Property<string>("Reason")
                         .IsRequired()
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("reason");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.HasKey("SeriesId", "OriginalStart")
@@ -13753,109 +14219,109 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<Guid?>("ApprovalRequestId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("approval_request_id");
 
                     b.Property<DateTimeOffset?>("CancelledAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("cancelled_at");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid>("CreatedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
                     b.Property<string>("CreationPath")
                         .IsRequired()
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("creation_path");
 
                     b.Property<string>("Description")
-                        .HasColumnType("text")
+                        .HasColumnType("nvarchar(max)")
                         .HasColumnName("description");
 
                     b.Property<DateTimeOffset>("DtStart")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("dt_start");
 
                     b.Property<int>("DurationMinutes")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("duration_minutes");
 
                     b.Property<bool>("IsAllDay")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_all_day");
 
                     b.Property<bool>("IsPrivate")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_private");
 
                     b.Property<string>("Location")
                         .HasMaxLength(500)
-                        .HasColumnType("character varying(500)")
+                        .HasColumnType("nvarchar(500)")
                         .HasColumnName("location");
 
                     b.Property<Guid>("ObjectiveId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("objective_id");
 
                     b.Property<Guid>("OrganizerEmployeeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("organizer_employee_id");
 
                     b.Property<Guid>("ProjectId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("project_id");
 
                     b.Property<string>("RecurrenceRule")
                         .HasMaxLength(500)
-                        .HasColumnType("character varying(500)")
+                        .HasColumnType("nvarchar(500)")
                         .HasColumnName("recurrence_rule");
 
                     b.Property<int>("Revision")
                         .IsConcurrencyToken()
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("revision");
 
                     b.Property<DateTimeOffset?>("SplitAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("split_at");
 
                     b.Property<Guid?>("SplitFromSeriesId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("split_from_series_id");
 
                     b.Property<string>("SplitReason")
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("split_reason");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<string>("Timezone")
                         .IsRequired()
                         .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
+                        .HasColumnType("nvarchar(50)")
                         .HasColumnName("timezone");
 
                     b.Property<string>("Title")
                         .IsRequired()
                         .HasMaxLength(500)
-                        .HasColumnType("character varying(500)")
+                        .HasColumnType("nvarchar(500)")
                         .HasColumnName("title");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id")
@@ -13891,33 +14357,33 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<DateTimeOffset>("AttachedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("attached_at");
 
                     b.Property<Guid>("CalendarEventMeetingId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("calendar_event_meeting_id");
 
                     b.Property<string>("Origin")
                         .IsRequired()
                         .HasMaxLength(30)
-                        .HasColumnType("character varying(30)")
+                        .HasColumnType("nvarchar(30)")
                         .HasColumnName("origin");
 
                     b.Property<DateTimeOffset?>("ReleasedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("released_at");
 
                     b.Property<Guid>("SeriesId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("series_id");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.HasKey("Id")
@@ -13946,88 +14412,89 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid>("CreatedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
                     b.Property<DateTimeOffset?>("DeletedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("deleted_at");
 
                     b.Property<string>("DetailsJson")
                         .IsRequired()
-                        .HasColumnType("jsonb")
-                        .HasColumnName("details_json");
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("details_json")
+                        .HasAnnotation("Crownus:JsonColumn", true);
 
                     b.Property<DateTimeOffset>("FirstDetectedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("first_detected_at");
 
                     b.Property<bool>("IsDeleted")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_deleted");
 
                     b.Property<DateTimeOffset>("LastSeenAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("last_seen_at");
 
                     b.Property<string>("Message")
                         .IsRequired()
                         .HasMaxLength(1000)
-                        .HasColumnType("character varying(1000)")
+                        .HasColumnType("nvarchar(1000)")
                         .HasColumnName("message");
 
                     b.Property<DateTimeOffset?>("NotifiedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("notified_at");
 
                     b.Property<Guid>("ProjectId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("project_id");
 
                     b.Property<DateTimeOffset?>("ResolvedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("resolved_at");
 
                     b.Property<string>("RuleCode")
                         .IsRequired()
                         .HasMaxLength(40)
-                        .HasColumnType("character varying(40)")
+                        .HasColumnType("nvarchar(40)")
                         .HasColumnName("rule_code");
 
                     b.Property<Guid?>("SubjectEmployeeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("subject_employee_id");
 
                     b.Property<Guid>("TargetId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("target_id");
 
                     b.Property<string>("TargetTitle")
                         .IsRequired()
                         .HasMaxLength(500)
-                        .HasColumnType("character varying(500)")
+                        .HasColumnType("nvarchar(500)")
                         .HasColumnName("target_title");
 
                     b.Property<string>("TargetType")
                         .IsRequired()
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("target_type");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id")
@@ -14041,84 +14508,138 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasDatabaseName("ux_wm_monitor_alerts_open_key")
                         .HasFilter("resolved_at IS NULL");
 
-                    NpgsqlIndexBuilderExtensions.AreNullsDistinct(b.HasIndex("TenantId", "TargetId", "RuleCode", "SubjectEmployeeId"), false);
+                    b.ToTable("wm_monitor_alerts", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_wm_monitor_alerts_details_json_json", "ISJSON([details_json]) = 1");
+                        });
+                });
 
-                    b.ToTable("wm_monitor_alerts", (string)null);
+            modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Monitoring.Entities.TaskRateSetting", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("CreatedById")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("created_by_id");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("datetimeoffset")
+                        .HasColumnName("deleted_at");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit")
+                        .HasColumnName("is_deleted");
+
+                    b.Property<Guid>("LegalEntityId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("legal_entity_id");
+
+                    b.Property<decimal>("MaxTaskRate")
+                        .HasColumnType("decimal(5,4)")
+                        .HasColumnName("max_task_rate");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("datetimeoffset")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid?>("UpdatedByEmployeeId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("updated_by_employee_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_wm_task_rate_settings");
+
+                    b.HasIndex("TenantId", "LegalEntityId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_wm_task_rate_settings_tenant_id_legal_entity_id");
+
+                    b.ToTable("wm_task_rate_settings", (string)null);
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Notifications.Entities.WorkNotificationLog", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<string>("ActionType")
                         .IsRequired()
                         .HasMaxLength(40)
-                        .HasColumnType("character varying(40)")
+                        .HasColumnType("nvarchar(40)")
                         .HasColumnName("action_type");
 
                     b.Property<Guid>("ActorEmployeeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("actor_employee_id");
 
                     b.Property<Guid?>("ApprovalRequestId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("approval_request_id");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid>("CreatedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
                     b.Property<DateTimeOffset?>("DeletedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("deleted_at");
 
                     b.Property<bool>("IsDeleted")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_deleted");
 
                     b.Property<string>("Kind")
                         .IsRequired()
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("kind");
 
                     b.Property<Guid>("ProjectId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("project_id");
 
                     b.Property<Guid>("RecipientEmployeeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("recipient_employee_id");
 
                     b.Property<Guid?>("TargetId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("target_id");
 
                     b.Property<string>("TargetTitle")
                         .IsRequired()
                         .HasMaxLength(500)
-                        .HasColumnType("character varying(500)")
+                        .HasColumnType("nvarchar(500)")
                         .HasColumnName("target_title");
 
                     b.Property<string>("TargetType")
                         .IsRequired()
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("target_type");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id")
@@ -14134,23 +14655,23 @@ namespace ONEVO.Infrastructure.Migrations
             modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Objectives.Entities.ModuleHourSummary", b =>
                 {
                     b.Property<Guid>("Id")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<decimal>("CompletedHours")
-                        .HasColumnType("numeric(18,2)")
+                        .HasColumnType("decimal(18,2)")
                         .HasColumnName("completed_hours");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid>("CreatedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
                     b.Property<DateTimeOffset?>("DeletedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("deleted_at");
 
                     b.Property<DateOnly?>("EarliestOpenDueDate")
@@ -14158,35 +14679,35 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnName("earliest_open_due_date");
 
                     b.Property<decimal>("InProgressHours")
-                        .HasColumnType("numeric(18,2)")
+                        .HasColumnType("decimal(18,2)")
                         .HasColumnName("in_progress_hours");
 
                     b.Property<bool>("IsDeleted")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_deleted");
 
                     b.Property<decimal>("NotStartedHours")
-                        .HasColumnType("numeric(18,2)")
+                        .HasColumnType("decimal(18,2)")
                         .HasColumnName("not_started_hours");
 
                     b.Property<Guid>("ProjectId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("project_id");
 
                     b.Property<int>("TaskCount")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("task_count");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<int>("UnestimatedTaskCount")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("unestimated_task_count");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id")
@@ -14202,47 +14723,47 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<DateTimeOffset?>("AchievedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("achieved_at");
 
                     b.Property<decimal?>("ActualHours")
-                        .HasColumnType("numeric(18,2)")
+                        .HasColumnType("decimal(18,2)")
                         .HasColumnName("actual_hours");
 
                     b.Property<decimal>("AllocatedHours")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("numeric(18,2)")
+                        .HasColumnType("decimal(18,2)")
                         .HasDefaultValue(0m)
                         .HasColumnName("allocated_hours");
 
                     b.Property<decimal>("CompletedHours")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("numeric(18,2)")
+                        .HasColumnType("decimal(18,2)")
                         .HasDefaultValue(0m)
                         .HasColumnName("completed_hours");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid>("CreatedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
                     b.Property<Guid?>("CreatorPositionObjectiveId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("creator_position_objective_id");
 
                     b.Property<DateTimeOffset?>("DeletedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("deleted_at");
 
                     b.Property<string>("Description")
-                        .HasColumnType("text")
+                        .HasColumnType("nvarchar(max)")
                         .HasColumnName("description");
 
                     b.Property<DateOnly>("EndDate")
@@ -14250,41 +14771,41 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnName("end_date");
 
                     b.Property<bool>("IsAchieved")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_achieved");
 
                     b.Property<bool>("IsActive")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_active");
 
                     b.Property<bool>("IsDefault")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_default");
 
                     b.Property<bool>("IsDeleted")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_deleted");
 
                     b.Property<Guid>("OwnerId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("owner_id");
 
                     b.Property<Guid?>("ParentObjectiveId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("parent_objective_id");
 
                     b.Property<decimal>("Progress")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("numeric(5,2)")
+                        .HasColumnType("decimal(5,2)")
                         .HasDefaultValue(0m)
                         .HasColumnName("progress");
 
                     b.Property<Guid>("ProjectId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("project_id");
 
                     b.Property<Guid?>("ReportingManagerId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("reporting_manager_id");
 
                     b.Property<DateOnly>("StartDate")
@@ -14292,17 +14813,17 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnName("start_date");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<string>("Title")
                         .IsRequired()
                         .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
+                        .HasColumnType("nvarchar(255)")
                         .HasColumnName("title");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id")
@@ -14317,7 +14838,7 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasIndex("TenantId", "ProjectId")
                         .IsUnique()
                         .HasDatabaseName("ix_objectives_one_default_per_project")
-                        .HasFilter("is_default = true");
+                        .HasFilter("is_default = 1");
 
                     b.HasIndex("TenantId", "ReportingManagerId")
                         .HasDatabaseName("ix_objectives_tenant_id_reporting_manager_id");
@@ -14331,54 +14852,59 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasIndex("TenantId", "ProjectId", "ParentObjectiveId")
                         .HasDatabaseName("ix_objectives_tenant_id_project_id_parent_objective_id");
 
-                    b.ToTable("objectives", (string)null);
+                    b.ToTable("objectives", null, t =>
+                        {
+                            t.HasTrigger("trg_objectives_module_hour_summary_insert");
+                        });
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Planner.Entities.PlannedTaskBlock", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid>("CreatedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
                     b.Property<DateTimeOffset?>("DeletedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("deleted_at");
 
                     b.Property<Guid>("EmployeeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("employee_id");
 
                     b.Property<DateTimeOffset>("EndAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("end_at");
 
                     b.Property<bool>("IsDeleted")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_deleted");
 
                     b.Property<DateTimeOffset>("StartAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("start_at");
 
                     b.Property<Guid>("TaskId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("task_id");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id")
@@ -14403,69 +14929,69 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid>("CreatedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
                     b.Property<DateTimeOffset?>("DecidedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("decided_at");
 
                     b.Property<DateTimeOffset?>("DeletedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("deleted_at");
 
                     b.Property<DateTimeOffset?>("ExpiresAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("expires_at");
 
                     b.Property<string>("InviteType")
                         .IsRequired()
                         .ValueGeneratedOnAdd()
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasDefaultValue("member")
                         .HasColumnName("invite_type");
 
                     b.Property<Guid>("InvitedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("invited_by_id");
 
                     b.Property<Guid>("InvitedEmployeeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("invited_employee_id");
 
                     b.Property<bool>("IsDeleted")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_deleted");
 
                     b.Property<Guid>("ObjectiveId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("objective_id");
 
                     b.Property<Guid>("ProjectId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("project_id");
 
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("status");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id")
@@ -14497,61 +15023,61 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid>("CreatedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
                     b.Property<DateTimeOffset?>("DeletedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("deleted_at");
 
                     b.Property<Guid>("EmployeeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("employee_id");
 
                     b.Property<bool>("IsActive")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_active");
 
                     b.Property<bool>("IsDeleted")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_deleted");
 
                     b.Property<DateTimeOffset>("JoinedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("joined_at");
 
                     b.Property<string>("MembershipSource")
                         .IsRequired()
                         .HasMaxLength(30)
-                        .HasColumnType("character varying(30)")
+                        .HasColumnType("nvarchar(30)")
                         .HasColumnName("membership_source");
 
                     b.Property<Guid>("ObjectiveId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("objective_id");
 
                     b.Property<Guid>("ProjectId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("project_id");
 
                     b.Property<DateTimeOffset?>("RemovedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("removed_at");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id")
@@ -14580,85 +15106,85 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<DateTimeOffset?>("AchievedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("achieved_at");
 
                     b.Property<decimal?>("ActualHours")
-                        .HasColumnType("numeric(18,2)")
+                        .HasColumnType("decimal(18,2)")
                         .HasColumnName("actual_hours");
 
                     b.Property<decimal>("AllocatedHours")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("numeric(18,2)")
+                        .HasColumnType("decimal(18,2)")
                         .HasDefaultValue(0m)
                         .HasColumnName("allocated_hours");
 
                     b.Property<Guid>("CategoryId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("category_id");
 
                     b.Property<string>("Color")
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("color");
 
                     b.Property<decimal>("CompletedHours")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("numeric(18,2)")
+                        .HasColumnType("decimal(18,2)")
                         .HasDefaultValue(0m)
                         .HasColumnName("completed_hours");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid>("CreatedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
                     b.Property<DateTimeOffset?>("DeletedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("deleted_at");
 
                     b.Property<string>("Description")
-                        .HasColumnType("text")
+                        .HasColumnType("nvarchar(max)")
                         .HasColumnName("description");
 
                     b.Property<string>("Icon")
                         .HasMaxLength(64)
-                        .HasColumnType("character varying(64)")
+                        .HasColumnType("nvarchar(64)")
                         .HasColumnName("icon");
 
                     b.Property<string>("Identifier")
                         .IsRequired()
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("identifier");
 
                     b.Property<bool>("IsAchieved")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_achieved");
 
                     b.Property<bool>("IsActive")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_active");
 
                     b.Property<bool>("IsDeleted")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_deleted");
 
                     b.Property<Guid>("LeadId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("lead_id");
 
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(200)
-                        .HasColumnType("character varying(200)")
+                        .HasColumnType("nvarchar(200)")
                         .HasColumnName("name");
 
                     b.Property<long>("NextMeetingNumber")
@@ -14672,7 +15198,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnName("next_task_number");
 
                     b.Property<Guid>("OwningLegalEntityId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("owning_legal_entity_id");
 
                     b.Property<DateOnly>("StartDate")
@@ -14681,7 +15207,7 @@ namespace ONEVO.Infrastructure.Migrations
 
                     b.Property<string>("SystemPurpose")
                         .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
+                        .HasColumnType("nvarchar(50)")
                         .HasColumnName("system_purpose");
 
                     b.Property<DateOnly>("TargetDate")
@@ -14689,11 +15215,11 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnName("target_date");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id")
@@ -14727,41 +15253,41 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid>("CreatedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
                     b.Property<DateTimeOffset?>("DeletedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("deleted_at");
 
                     b.Property<bool>("IsActive")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_active");
 
                     b.Property<bool>("IsDeleted")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_deleted");
 
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
+                        .HasColumnType("nvarchar(100)")
                         .HasColumnName("name");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id")
@@ -14778,45 +15304,45 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid>("CreatedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
                     b.Property<DateTimeOffset?>("DeletedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("deleted_at");
 
                     b.Property<bool>("IsActive")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_active");
 
                     b.Property<bool>("IsDeleted")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_deleted");
 
                     b.Property<string>("Notes")
-                        .HasColumnType("text")
+                        .HasColumnType("nvarchar(max)")
                         .HasColumnName("notes");
 
                     b.Property<Guid>("ProjectId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("project_id");
 
                     b.Property<Guid>("RecipientUserId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("recipient_user_id");
 
                     b.Property<string>("ReminderType")
                         .IsRequired()
                         .HasMaxLength(30)
-                        .HasColumnType("character varying(30)")
+                        .HasColumnType("nvarchar(30)")
                         .HasColumnName("reminder_type");
 
                     b.Property<DateOnly>("ScheduledDate")
@@ -14824,15 +15350,15 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnName("scheduled_date");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.Property<Guid>("VersionId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("version_id");
 
                     b.HasKey("Id")
@@ -14844,7 +15370,7 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasIndex("VersionId", "RecipientUserId")
                         .IsUnique()
                         .HasDatabaseName("ix_release_calendar_one_active_project_release")
-                        .HasFilter("is_active = true AND reminder_type = 'project_release'");
+                        .HasFilter("is_active = 1 AND reminder_type = 'project_release'");
 
                     b.HasIndex("TenantId", "RecipientUserId", "ScheduledDate", "IsActive")
                         .HasDatabaseName("ix_release_calendar_tenant_recipient_scheduled_active");
@@ -14856,31 +15382,31 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<DateTimeOffset?>("AchievedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("achieved_at");
 
                     b.Property<DateTimeOffset?>("CompletedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("completed_at");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid>("CreatedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
                     b.Property<Guid?>("CreatorPositionObjectiveId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("creator_position_objective_id");
 
                     b.Property<DateTimeOffset?>("DeletedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("deleted_at");
 
                     b.Property<DateOnly?>("EndDate")
@@ -14888,21 +15414,21 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnName("end_date");
 
                     b.Property<string>("Goal")
-                        .HasColumnType("text")
+                        .HasColumnType("nvarchar(max)")
                         .HasColumnName("goal");
 
                     b.Property<bool>("IsDeleted")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_deleted");
 
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
+                        .HasColumnType("nvarchar(100)")
                         .HasColumnName("name");
 
                     b.Property<Guid>("ProjectId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("project_id");
 
                     b.Property<DateOnly?>("StartDate")
@@ -14913,15 +15439,15 @@ namespace ONEVO.Infrastructure.Migrations
                         .IsConcurrencyToken()
                         .IsRequired()
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("status");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id")
@@ -14937,63 +15463,63 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<string>("Action")
                         .IsRequired()
                         .HasMaxLength(30)
-                        .HasColumnType("character varying(30)")
+                        .HasColumnType("nvarchar(30)")
                         .HasColumnName("action");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid>("CreatedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
                     b.Property<DateTimeOffset?>("DeletedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("deleted_at");
 
                     b.Property<string>("DetailsJson")
-                        .HasColumnType("text")
+                        .HasColumnType("nvarchar(max)")
                         .HasColumnName("details_json");
 
                     b.Property<Guid>("EmployeeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("employee_id");
 
                     b.Property<string>("FromStatus")
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("from_status");
 
                     b.Property<bool>("IsDeleted")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_deleted");
 
                     b.Property<DateTimeOffset>("OccurredAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("occurred_at");
 
                     b.Property<Guid>("SprintId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("sprint_id");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<string>("ToStatus")
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("to_status");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id")
@@ -15012,27 +15538,27 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<DateTimeOffset>("AssignedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("assigned_at");
 
                     b.Property<Guid>("AssignedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("assigned_by_id");
 
                     b.Property<Guid>("EmployeeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("employee_id");
 
                     b.Property<Guid>("TaskId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("task_id");
 
                     b.Property<Guid>("UserId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("user_id");
 
                     b.HasKey("Id")
@@ -15049,63 +15575,63 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid>("CreatedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
                     b.Property<DateTimeOffset?>("DeletedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("deleted_at");
 
                     b.Property<int>("DisplayOrder")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("display_order");
 
                     b.Property<string>("Icon")
                         .HasMaxLength(64)
-                        .HasColumnType("character varying(64)")
+                        .HasColumnType("nvarchar(64)")
                         .HasColumnName("icon");
 
                     b.Property<bool>("IsDeleted")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_deleted");
 
                     b.Property<string>("Kind")
                         .IsRequired()
                         .ValueGeneratedOnAdd()
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasDefaultValue("task")
                         .HasColumnName("kind");
 
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
+                        .HasColumnType("nvarchar(100)")
                         .HasColumnName("name");
 
                     b.Property<Guid>("ProjectId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("project_id");
 
                     b.Property<string>("SystemKey")
                         .HasMaxLength(32)
-                        .HasColumnType("character varying(32)")
+                        .HasColumnType("nvarchar(32)")
                         .HasColumnName("system_key");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id")
@@ -15130,55 +15656,55 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<DateTimeOffset>("ClockInAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("clock_in_at");
 
                     b.Property<DateTimeOffset?>("ClockOutAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("clock_out_at");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid>("CreatedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
                     b.Property<DateTimeOffset?>("DeletedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("deleted_at");
 
                     b.Property<int?>("DurationMinutes")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("duration_minutes");
 
                     b.Property<Guid>("EmployeeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("employee_id");
 
                     b.Property<bool>("IsDeleted")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_deleted");
 
                     b.Property<string>("Reason")
-                        .HasColumnType("text")
+                        .HasColumnType("nvarchar(max)")
                         .HasColumnName("reason");
 
                     b.Property<Guid>("TaskId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("task_id");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id")
@@ -15205,52 +15731,52 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<string>("Content")
                         .IsRequired()
-                        .HasColumnType("text")
+                        .HasColumnType("nvarchar(max)")
                         .HasColumnName("content");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid>("CreatedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
                     b.Property<DateTimeOffset?>("DeletedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("deleted_at");
 
                     b.Property<Guid>("EmployeeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("employee_id");
 
                     b.Property<bool>("IsDeleted")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_deleted");
 
                     b.Property<bool>("IsEdited")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_edited");
 
                     b.Property<Guid?>("ParentCommentId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("parent_comment_id");
 
                     b.Property<Guid>("TaskId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("task_id");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id")
@@ -15272,53 +15798,53 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<string>("Action")
                         .IsRequired()
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("action");
 
                     b.Property<Guid>("CommentId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("comment_id");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid>("CreatedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
                     b.Property<DateTimeOffset?>("DeletedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("deleted_at");
 
                     b.Property<Guid>("EmployeeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("employee_id");
 
                     b.Property<bool>("IsDeleted")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_deleted");
 
                     b.Property<DateTimeOffset>("OccurredAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("occurred_at");
 
                     b.Property<Guid>("TaskId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("task_id");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id")
@@ -15340,45 +15866,45 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<Guid>("CommentId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("comment_id");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid>("CreatedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
                     b.Property<DateTimeOffset?>("DeletedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("deleted_at");
 
                     b.Property<string>("Emoji")
                         .IsRequired()
                         .HasMaxLength(32)
-                        .HasColumnType("character varying(32)")
+                        .HasColumnType("nvarchar(32)")
                         .HasColumnName("emoji");
 
                     b.Property<Guid>("EmployeeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("employee_id");
 
                     b.Property<bool>("IsDeleted")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_deleted");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id")
@@ -15395,50 +15921,51 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid>("CreatedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
                     b.Property<DateTimeOffset?>("DeletedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("deleted_at");
 
                     b.Property<bool>("IsDeleted")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_deleted");
 
                     b.Property<Guid>("OwnerUserId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("owner_user_id");
 
                     b.Property<string>("PayloadJson")
                         .IsRequired()
-                        .HasColumnType("jsonb")
-                        .HasColumnName("payload_json");
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("payload_json")
+                        .HasAnnotation("Crownus:JsonColumn", true);
 
                     b.Property<Guid>("ProjectId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("project_id");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<string>("Title")
                         .IsRequired()
                         .HasMaxLength(500)
-                        .HasColumnType("character varying(500)")
+                        .HasColumnType("nvarchar(500)")
                         .HasColumnName("title");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id")
@@ -15447,74 +15974,79 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasIndex("TenantId", "OwnerUserId")
                         .HasDatabaseName("ix_task_drafts_tenant_id_owner_user_id");
 
-                    b.ToTable("task_drafts", (string)null);
+                    b.ToTable("task_drafts", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_task_drafts_payload_json_json", "ISJSON([payload_json]) = 1");
+                        });
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Tasks.Entities.TaskEditLog", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<DateTimeOffset>("ChangedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("changed_at");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid>("CreatedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
                     b.Property<DateTimeOffset?>("DeletedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("deleted_at");
 
                     b.Property<Guid?>("EditRequestId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("edit_request_id");
 
                     b.Property<Guid>("EmployeeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("employee_id");
 
                     b.Property<bool>("IsDeleted")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_deleted");
 
                     b.Property<string>("NewValuesJson")
                         .IsRequired()
-                        .HasColumnType("jsonb")
-                        .HasColumnName("new_values_json");
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("new_values_json")
+                        .HasAnnotation("Crownus:JsonColumn", true);
 
                     b.Property<string>("OldValuesJson")
                         .IsRequired()
-                        .HasColumnType("jsonb")
-                        .HasColumnName("old_values_json");
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("old_values_json")
+                        .HasAnnotation("Crownus:JsonColumn", true);
 
                     b.Property<string>("Reason")
-                        .HasColumnType("text")
+                        .HasColumnType("nvarchar(max)")
                         .HasColumnName("reason");
 
                     b.Property<string>("Source")
                         .IsRequired()
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("source");
 
                     b.Property<Guid>("TaskId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("task_id");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id")
@@ -15526,72 +16058,77 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasIndex("TenantId", "TaskId", "ChangedAt")
                         .HasDatabaseName("ix_task_edit_logs_tenant_id_task_id_changed_at");
 
-                    b.ToTable("task_edit_logs", (string)null);
+                    b.ToTable("task_edit_logs", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_task_edit_logs_new_values_json_json", "ISJSON([new_values_json]) = 1");
+
+                            t.HasCheckConstraint("ck_task_edit_logs_old_values_json_json", "ISJSON([old_values_json]) = 1");
+                        });
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Tasks.Entities.TaskPercentageLog", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<DateTimeOffset>("ChangedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("changed_at");
 
                     b.Property<Guid?>("ClockingSessionId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("clocking_session_id");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid>("CreatedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
                     b.Property<DateTimeOffset?>("DeletedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("deleted_at");
 
                     b.Property<Guid>("EmployeeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("employee_id");
 
                     b.Property<bool>("IsDeleted")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_deleted");
 
                     b.Property<int>("NewPercent")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("new_percent");
 
                     b.Property<int>("PreviousPercent")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("previous_percent");
 
                     b.Property<string>("Reason")
-                        .HasColumnType("text")
+                        .HasColumnType("nvarchar(max)")
                         .HasColumnName("reason");
 
                     b.Property<string>("Source")
                         .IsRequired()
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("source");
 
                     b.Property<Guid>("TaskId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("task_id");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id")
@@ -15613,18 +16150,18 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<Guid?>("ApproverId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("approver_id");
 
                     b.Property<string>("Category")
                         .IsRequired()
                         .ValueGeneratedOnAdd()
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasDefaultValue("not_started")
                         .HasColumnName("category");
 
@@ -15632,65 +16169,65 @@ namespace ONEVO.Infrastructure.Migrations
                         .IsRequired()
                         .ValueGeneratedOnAdd()
                         .HasMaxLength(7)
-                        .HasColumnType("character varying(7)")
+                        .HasColumnType("nvarchar(7)")
                         .HasDefaultValue("#94A3B8")
                         .HasColumnName("color");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid>("CreatedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
                     b.Property<DateTimeOffset?>("DeletedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("deleted_at");
 
                     b.Property<int>("DisplayOrder")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("display_order");
 
                     b.Property<bool>("IsDeleted")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_deleted");
 
                     b.Property<bool>("MarksTaskComplete")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("marks_task_complete");
 
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
+                        .HasColumnType("nvarchar(100)")
                         .HasColumnName("name");
 
                     b.Property<Guid?>("ObjectiveId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("objective_id");
 
                     b.Property<Guid>("ProjectId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("project_id");
 
                     b.Property<bool>("RequiresApproval")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("requires_approval");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.Property<string>("Visibility")
                         .IsRequired()
                         .ValueGeneratedOnAdd()
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasDefaultValue("public")
                         .HasColumnName("visibility");
 
@@ -15702,60 +16239,66 @@ namespace ONEVO.Infrastructure.Migrations
 
                     b.HasIndex("TenantId", "ProjectId", "ObjectiveId", "Name")
                         .IsUnique()
-                        .HasDatabaseName("ix_task_statuses_one_name_per_scope");
+                        .HasDatabaseName("ix_task_statuses_one_name_per_scope")
+                        .HasFilter("[objective_id] IS NOT NULL");
 
-                    b.ToTable("task_statuses", (string)null);
+                    b.ToTable("task_statuses", null, t =>
+                        {
+                            t.HasTrigger("trg_task_statuses_module_hour_summary");
+                        });
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Tasks.Entities.TaskStatusChangeLog", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<DateTimeOffset>("ChangedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("changed_at");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid>("CreatedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
                     b.Property<DateTimeOffset?>("DeletedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("deleted_at");
 
                     b.Property<Guid>("EmployeeId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("employee_id");
 
                     b.Property<Guid>("FromStatusId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("from_status_id");
 
                     b.Property<bool>("IsDeleted")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_deleted");
 
                     b.Property<Guid>("TaskId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("task_id");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<Guid>("ToStatusId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("to_status_id");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id")
@@ -15780,39 +16323,39 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<Guid>("CategoryId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("category_id");
 
                     b.Property<DateTimeOffset?>("CompletedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("completed_at");
 
                     b.Property<decimal>("CompletedHours")
-                        .HasColumnType("numeric(18,2)")
+                        .HasColumnType("decimal(18,2)")
                         .HasColumnName("completed_hours");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid>("CreatedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
                     b.Property<Guid?>("CreatorPositionObjectiveId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("creator_position_objective_id");
 
                     b.Property<DateTimeOffset?>("DeletedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("deleted_at");
 
                     b.Property<string>("Description")
-                        .HasColumnType("text")
+                        .HasColumnType("nvarchar(max)")
                         .HasColumnName("description");
 
                     b.Property<DateOnly?>("DueDate")
@@ -15820,84 +16363,84 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnName("due_date");
 
                     b.Property<decimal?>("EstimatedHours")
-                        .HasColumnType("numeric(18,2)")
+                        .HasColumnType("decimal(18,2)")
                         .HasColumnName("estimated_hours");
 
                     b.Property<bool>("IsDeleted")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_deleted");
 
                     b.Property<Guid>("ObjectiveId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("objective_id");
 
                     b.Property<Guid?>("ParentTaskId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("parent_task_id");
 
                     b.Property<string>("Priority")
                         .IsRequired()
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("priority");
 
                     b.Property<int>("ProgressPercent")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("progress_percent");
 
                     b.Property<Guid>("ProjectId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("project_id");
 
                     b.Property<string>("ShortId")
                         .IsRequired()
                         .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
+                        .HasColumnType("nvarchar(50)")
                         .HasColumnName("short_id");
 
                     b.Property<Guid?>("SprintId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("sprint_id");
 
                     b.Property<DateTimeOffset?>("StartedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("started_at");
 
                     b.Property<Guid>("StatusId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("status_id");
 
                     b.Property<int?>("StoryPoints")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("story_points");
 
                     b.Property<string>("TaskKind")
                         .IsRequired()
                         .ValueGeneratedOnAdd()
                         .HasMaxLength(40)
-                        .HasColumnType("character varying(40)")
+                        .HasColumnType("nvarchar(40)")
                         .HasDefaultValue("standard")
                         .HasColumnName("task_kind");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<string>("Title")
                         .IsRequired()
                         .HasMaxLength(500)
-                        .HasColumnType("character varying(500)")
+                        .HasColumnType("nvarchar(500)")
                         .HasColumnName("title");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.Property<string>("VisibilityScope")
                         .IsRequired()
                         .ValueGeneratedOnAdd()
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasDefaultValue("module")
                         .HasColumnName("visibility_scope");
 
@@ -15932,56 +16475,61 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasIndex("TenantId", "ProjectId", "VisibilityScope")
                         .HasDatabaseName("ix_tasks_tenant_id_project_id_visibility_scope");
 
-                    b.ToTable("tasks", (string)null);
+                    b.ToTable("tasks", null, t =>
+                        {
+                            t.HasTrigger("trg_tasks_module_hour_summary");
+                        });
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Versions.Entities.ProjectVersion", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
                     b.Property<Guid>("CreatedById")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
                     b.Property<DateTimeOffset?>("DeletedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("deleted_at");
 
                     b.Property<string>("Description")
-                        .HasColumnType("text")
+                        .HasColumnType("nvarchar(max)")
                         .HasColumnName("description");
 
                     b.Property<bool>("IsDeleted")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_deleted");
 
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
+                        .HasColumnType("nvarchar(100)")
                         .HasColumnName("name");
 
                     b.Property<Guid>("ProjectId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("project_id");
 
                     b.Property<int>("StatusId")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("status_id");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id")
@@ -16002,19 +16550,19 @@ namespace ONEVO.Infrastructure.Migrations
             modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Versions.Entities.VersionStatus", b =>
                 {
                     b.Property<int>("Id")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("id");
 
                     b.Property<string>("Code")
                         .IsRequired()
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("code");
 
                     b.Property<string>("Label")
                         .IsRequired()
                         .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
+                        .HasColumnType("nvarchar(50)")
                         .HasColumnName("label");
 
                     b.HasKey("Id")
@@ -16030,19 +16578,19 @@ namespace ONEVO.Infrastructure.Migrations
             modelBuilder.Entity("ONEVO.Domain.Lookups.ApprovalStatus", b =>
                 {
                     b.Property<int>("Id")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("id");
 
                     b.Property<string>("Code")
                         .IsRequired()
                         .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
+                        .HasColumnType("nvarchar(50)")
                         .HasColumnName("code");
 
                     b.Property<string>("Label")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
+                        .HasColumnType("nvarchar(100)")
                         .HasColumnName("label");
 
                     b.HasKey("Id")
@@ -16058,19 +16606,19 @@ namespace ONEVO.Infrastructure.Migrations
             modelBuilder.Entity("ONEVO.Domain.Lookups.EmploymentStatus", b =>
                 {
                     b.Property<int>("Id")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("id");
 
                     b.Property<string>("Code")
                         .IsRequired()
                         .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
+                        .HasColumnType("nvarchar(50)")
                         .HasColumnName("code");
 
                     b.Property<string>("Label")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
+                        .HasColumnType("nvarchar(100)")
                         .HasColumnName("label");
 
                     b.HasKey("Id")
@@ -16086,19 +16634,19 @@ namespace ONEVO.Infrastructure.Migrations
             modelBuilder.Entity("ONEVO.Domain.Lookups.EmploymentType", b =>
                 {
                     b.Property<int>("Id")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("id");
 
                     b.Property<string>("Code")
                         .IsRequired()
                         .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
+                        .HasColumnType("nvarchar(50)")
                         .HasColumnName("code");
 
                     b.Property<string>("Label")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
+                        .HasColumnType("nvarchar(100)")
                         .HasColumnName("label");
 
                     b.HasKey("Id")
@@ -16114,19 +16662,19 @@ namespace ONEVO.Infrastructure.Migrations
             modelBuilder.Entity("ONEVO.Domain.Lookups.Severity", b =>
                 {
                     b.Property<int>("Id")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("id");
 
                     b.Property<string>("Code")
                         .IsRequired()
                         .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
+                        .HasColumnType("nvarchar(50)")
                         .HasColumnName("code");
 
                     b.Property<string>("Label")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
+                        .HasColumnType("nvarchar(100)")
                         .HasColumnName("label");
 
                     b.HasKey("Id")
@@ -16145,7 +16693,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .WithMany()
                         .HasForeignKey("SupersededById")
                         .OnDelete(DeleteBehavior.Restrict)
-                        .HasConstraintName("fk_legal_login_challenges_legal_login_challenges_superseded_by");
+                        .HasConstraintName("fk_legal_login_challenges_legal_login_challenges_superseded_by_id");
 
                     b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
                         .WithMany()
@@ -16184,7 +16732,7 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasOne("ONEVO.Domain.Features.Auth.Entities.RefreshToken", null)
                         .WithMany()
                         .HasForeignKey("ReplacedById")
-                        .OnDelete(DeleteBehavior.SetNull)
+                        .OnDelete(DeleteBehavior.NoAction)
                         .HasConstraintName("fk_refresh_tokens_refresh_tokens_replaced_by_id");
                 });
 
@@ -16264,7 +16812,7 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasOne("ONEVO.Domain.Features.Calendar.Entities.CalendarEvent", null)
                         .WithMany()
                         .HasForeignKey("RecurrenceParentId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.NoAction)
                         .HasConstraintName("fk_personal_calendar_events_recurrence_parent_id");
                 });
 
@@ -16283,13 +16831,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .WithMany()
                         .HasForeignKey("AttendanceSessionId")
                         .OnDelete(DeleteBehavior.Restrict)
-                        .HasConstraintName("fk_calendar_event_meeting_attendances_meeting_attendance_sessi");
+                        .HasConstraintName("fk_calendar_event_meeting_attendances_meeting_attendance_sessions_attendance_session_id");
 
                     b.HasOne("ONEVO.Domain.Features.WorkManagement.Meetings.Entities.MeetingDetails", null)
                         .WithMany()
                         .HasForeignKey("OccurrenceTaskId")
                         .OnDelete(DeleteBehavior.Restrict)
-                        .HasConstraintName("fk_calendar_event_meeting_attendances_meeting_details_occurren");
+                        .HasConstraintName("fk_calendar_event_meeting_attendances_meeting_details_occurrence_task_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.Calendar.Entities.CalendarEventParticipant", b =>
@@ -16307,7 +16855,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .WithMany()
                         .HasForeignKey("MeetingTaskId")
                         .OnDelete(DeleteBehavior.Restrict)
-                        .HasConstraintName("fk_external_calendar_event_links_meeting_details_meeting_task_");
+                        .HasConstraintName("fk_external_calendar_event_links_meeting_details_meeting_task_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.Conversations.Entities.ConversationFavorite", b =>
@@ -16337,7 +16885,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasForeignKey("MessageId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
-                        .HasConstraintName("fk_conversation_message_attachments_conversation_messages_mess");
+                        .HasConstraintName("fk_conversation_message_attachments_conversation_messages_message_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.Conversations.Entities.ConversationMessageHide", b =>
@@ -16357,7 +16905,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasForeignKey("MessageId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
-                        .HasConstraintName("fk_conversation_message_mentions_conversation_messages_message");
+                        .HasConstraintName("fk_conversation_message_mentions_conversation_messages_message_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.Conversations.Entities.ConversationMessageReaction", b =>
@@ -16367,7 +16915,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasForeignKey("MessageId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
-                        .HasConstraintName("fk_conversation_message_reactions_conversation_messages_messag");
+                        .HasConstraintName("fk_conversation_message_reactions_conversation_messages_message_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.Conversations.Entities.ConversationMessageRevision", b =>
@@ -16377,7 +16925,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasForeignKey("MessageId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
-                        .HasConstraintName("fk_conversation_message_revisions_conversation_messages_messag");
+                        .HasConstraintName("fk_conversation_message_revisions_conversation_messages_message_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.Conversations.Entities.ConversationMute", b =>
@@ -16425,7 +16973,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasForeignKey("PositionAccessTemplateId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
-                        .HasConstraintName("fk_access_grant_requests_position_access_templates_position_ac");
+                        .HasConstraintName("fk_access_grant_requests_position_access_templates_position_access_template_id");
 
                     b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.User", null)
                         .WithMany()
@@ -16485,7 +17033,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .WithMany()
                         .HasForeignKey("OnboardingDraftId")
                         .OnDelete(DeleteBehavior.SetNull)
-                        .HasConstraintName("fk_bulk_onboarding_batch_rows_onboarding_drafts_onboarding_dra");
+                        .HasConstraintName("fk_bulk_onboarding_batch_rows_onboarding_drafts_onboarding_draft_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.CoreHr.Entities.ChecklistTemplate", b =>
@@ -16558,7 +17106,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .WithMany()
                         .HasForeignKey("OffboardingRecordId")
                         .OnDelete(DeleteBehavior.Restrict)
-                        .HasConstraintName("fk_employee_checklist_tasks_offboarding_records_offboarding_re");
+                        .HasConstraintName("fk_employee_checklist_tasks_offboarding_records_offboarding_record_id");
 
                     b.HasOne("ONEVO.Domain.Features.CoreHr.Entities.ChecklistTemplate", null)
                         .WithMany()
@@ -16599,7 +17147,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .WithMany()
                         .HasForeignKey("ChecklistTemplateId")
                         .OnDelete(DeleteBehavior.Restrict)
-                        .HasConstraintName("fk_offboarding_records_checklist_templates_checklist_template_");
+                        .HasConstraintName("fk_offboarding_records_checklist_templates_checklist_template_id");
 
                     b.HasOne("ONEVO.Domain.Features.CoreHr.Entities.Employee", null)
                         .WithMany()
@@ -16616,14 +17164,14 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasForeignKey("EmployeeChecklistTaskId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
-                        .HasConstraintName("fk_offboarding_task_bypass_requests_employee_checklist_tasks_e");
+                        .HasConstraintName("fk_offboarding_task_bypass_requests_employee_checklist_tasks_employee_checklist_task_id");
 
                     b.HasOne("ONEVO.Domain.Features.CoreHr.Entities.OffboardingRecord", null)
                         .WithMany()
                         .HasForeignKey("OffboardingRecordId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
-                        .HasConstraintName("fk_offboarding_task_bypass_requests_offboarding_records_offboa");
+                        .HasConstraintName("fk_offboarding_task_bypass_requests_offboarding_records_offboarding_record_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.CoreHr.Entities.OnboardingDraft", b =>
@@ -16691,7 +17239,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .WithMany()
                         .HasForeignKey("PreviousManagerEmployeeId")
                         .OnDelete(DeleteBehavior.Restrict)
-                        .HasConstraintName("fk_reporting_manager_changes_employees_previous_manager_employ");
+                        .HasConstraintName("fk_reporting_manager_changes_employees_previous_manager_employee_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.CoreHr.Entities.SeatIncreaseRequest", b =>
@@ -16714,6 +17262,35 @@ namespace ONEVO.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_seat_increase_requests_users_requested_by_user_id");
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.Dashboard.Entities.DashboardTemplate", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.Auth.Entities.Role", null)
+                        .WithMany()
+                        .HasForeignKey("RoleId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_dashboard_templates_roles_role_id");
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.Dashboard.Entities.DashboardTemplateWidget", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.Dashboard.Entities.DashboardTemplate", null)
+                        .WithMany("Widgets")
+                        .HasForeignKey("TemplateId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_dashboard_template_widgets_dashboard_templates_template_id");
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.Dashboard.Entities.DashboardTemplateWidgetLayout", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.Dashboard.Entities.DashboardTemplateWidget", null)
+                        .WithMany("Layouts")
+                        .HasForeignKey("TemplateWidgetId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_dashboard_template_widget_layouts_dashboard_template_widgets_template_widget_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.Dashboard.Entities.DashboardWidget", b =>
@@ -16762,14 +17339,14 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasForeignKey("AppliedById")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
-                        .HasConstraintName("fk_tenant_configuration_template_applications_platform_users_a");
+                        .HasConstraintName("fk_tenant_configuration_template_applications_platform_users_applied_by_id");
 
                     b.HasOne("ONEVO.Domain.Features.DevPlatform.ConfigurationTemplates.Entities.ConfigurationTemplate", null)
                         .WithMany()
                         .HasForeignKey("ConfigurationTemplateId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
-                        .HasConstraintName("fk_tenant_configuration_template_applications_configuration_te");
+                        .HasConstraintName("fk_tenant_configuration_template_applications_configuration_templates_configuration_template_id");
 
                     b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
                         .WithMany()
@@ -16810,7 +17387,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasForeignKey("PermissionCode")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
-                        .HasConstraintName("fk_platform_role_permissions_platform_permissions_permission_c");
+                        .HasConstraintName("fk_platform_role_permissions_platform_permissions_permission_code");
 
                     b.HasOne("ONEVO.Domain.Features.DevPlatform.PlatformAccess.Entities.PlatformRole", null)
                         .WithMany()
@@ -16954,14 +17531,14 @@ namespace ONEVO.Infrastructure.Migrations
                         .WithMany()
                         .HasForeignKey("DeactivatedById")
                         .OnDelete(DeleteBehavior.Restrict)
-                        .HasConstraintName("fk_platform_oauth_app_credentials_platform_users_deactivated_b");
+                        .HasConstraintName("fk_platform_oauth_app_credentials_platform_users_deactivated_by_id");
 
                     b.HasOne("ONEVO.Domain.Features.DevPlatform.SystemConfig.PlatformOAuthApps.Entities.PlatformOAuthApp", null)
                         .WithMany()
                         .HasForeignKey("PlatformOAuthAppId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
-                        .HasConstraintName("fk_platform_oauth_app_credentials_platform_oauth_apps_platform");
+                        .HasConstraintName("fk_platform_oauth_app_credentials_platform_oauth_apps_platform_oauth_app_id");
 
                     b.HasOne("ONEVO.Domain.Features.DevPlatform.PlatformAccess.Entities.PlatformUser", null)
                         .WithMany()
@@ -17079,7 +17656,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasForeignKey("LeavePolicyVersionId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
-                        .HasConstraintName("fk_leave_policy_blackout_periods_leave_policy_versions_leave_p");
+                        .HasConstraintName("fk_leave_policy_blackout_periods_leave_policy_versions_leave_policy_version_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.Leave.Policy.Entities.LeavePolicyVersion", b =>
@@ -17150,7 +17727,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasForeignKey("LeaveRequestId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
-                        .HasConstraintName("fk_leave_request_day_allocations_leave_requests_leave_request_");
+                        .HasConstraintName("fk_leave_request_day_allocations_leave_requests_leave_request_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.Leave.Request.Entities.LeaveRequestDocument", b =>
@@ -17198,13 +17775,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasForeignKey("AgentDeviceId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
-                        .HasConstraintName("fk_inactivity_capture_attempts_tray_device_registrations_agent");
+                        .HasConstraintName("fk_inactivity_capture_attempts_tray_device_registrations_agent_device_id");
 
                     b.HasOne("ONEVO.Domain.Features.Monitoring.Screenshots.Entities.MonitoringEvidenceAsset", null)
                         .WithMany()
                         .HasForeignKey("EvidenceAssetId")
                         .OnDelete(DeleteBehavior.Restrict)
-                        .HasConstraintName("fk_inactivity_capture_attempts_monitoring_evidence_assets_evid");
+                        .HasConstraintName("fk_inactivity_capture_attempts_monitoring_evidence_assets_evidence_asset_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.Monitoring.Screenshots.Entities.MonitoringEvidenceAsset", b =>
@@ -17213,19 +17790,19 @@ namespace ONEVO.Infrastructure.Migrations
                         .WithMany()
                         .HasForeignKey("ActivitySnapshotId")
                         .OnDelete(DeleteBehavior.SetNull)
-                        .HasConstraintName("fk_monitoring_evidence_assets_activity_snapshots_activity_snap");
+                        .HasConstraintName("fk_monitoring_evidence_assets_activity_snapshots_activity_snapshot_id");
 
                     b.HasOne("ONEVO.Domain.Features.Monitoring.Screenshots.Entities.AgentCommand", null)
                         .WithMany()
                         .HasForeignKey("AgentCommandId")
-                        .OnDelete(DeleteBehavior.SetNull)
+                        .OnDelete(DeleteBehavior.NoAction)
                         .HasConstraintName("fk_monitoring_evidence_assets_agent_commands_agent_command_id");
 
                     b.HasOne("ONEVO.Domain.Features.Monitoring.TrayActivation.Entities.TrayDeviceRegistration", null)
                         .WithMany()
                         .HasForeignKey("AgentDeviceId")
                         .OnDelete(DeleteBehavior.SetNull)
-                        .HasConstraintName("fk_monitoring_evidence_assets_tray_device_registrations_agent_");
+                        .HasConstraintName("fk_monitoring_evidence_assets_tray_device_registrations_agent_device_id");
 
                     b.HasOne("ONEVO.Domain.Features.Storage.File.Entities.FileRecord", null)
                         .WithMany()
@@ -17250,7 +17827,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .WithMany()
                         .HasForeignKey("CurrentDeviceRegistrationId")
                         .OnDelete(DeleteBehavior.SetNull)
-                        .HasConstraintName("fk_device_change_requests_tray_device_registrations_current_de");
+                        .HasConstraintName("fk_device_change_requests_tray_device_registrations_current_device_registration_id");
 
                     b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.User", null)
                         .WithMany()
@@ -17274,7 +17851,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .WithMany()
                         .HasForeignKey("ApprovedLegalEntityId")
                         .OnDelete(DeleteBehavior.Restrict)
-                        .HasConstraintName("fk_tray_device_authorizations_legal_entities_approved_legal_en");
+                        .HasConstraintName("fk_tray_device_authorizations_legal_entities_approved_legal_entity_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.Monitoring.TrayActivation.Entities.TrayDeviceRegistration", b =>
@@ -17323,7 +17900,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .WithMany()
                         .HasForeignKey("CoveredDepartmentId")
                         .OnDelete(DeleteBehavior.Restrict)
-                        .HasConstraintName("fk_management_coverage_records_departments_covered_department_");
+                        .HasConstraintName("fk_management_coverage_records_departments_covered_department_id");
 
                     b.HasOne("ONEVO.Domain.Features.OrgStructure.Entities.Position", null)
                         .WithMany()
@@ -17470,7 +18047,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .WithMany()
                         .HasForeignKey("TenantSubscriptionId")
                         .OnDelete(DeleteBehavior.SetNull)
-                        .HasConstraintName("fk_subscription_invoices_tenant_subscriptions_tenant_subscript");
+                        .HasConstraintName("fk_subscription_invoices_tenant_subscriptions_tenant_subscription_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.SharedPlatform.Notifications.Entities.NotificationTemplateVersion", b =>
@@ -17480,7 +18057,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasForeignKey("TemplateId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
-                        .HasConstraintName("fk_notification_template_versions_notification_templates_templ");
+                        .HasConstraintName("fk_notification_template_versions_notification_templates_template_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.SharedPlatform.Notifications.Entities.TenantNotificationRule", b =>
@@ -17510,7 +18087,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasForeignKey("GatewayConfigId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
-                        .HasConstraintName("fk_payment_gateway_country_routes_payment_gateway_configs_gate");
+                        .HasConstraintName("fk_payment_gateway_country_routes_payment_gateway_configs_gateway_config_id");
 
                     b.Navigation("GatewayConfig");
                 });
@@ -17522,7 +18099,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasForeignKey("PaymentGatewayConfigId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
-                        .HasConstraintName("fk_payment_gateway_credentials_payment_gateway_configs_payment");
+                        .HasConstraintName("fk_payment_gateway_credentials_payment_gateway_configs_payment_gateway_config_id");
 
                     b.Navigation("GatewayConfig");
                 });
@@ -17541,7 +18118,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasForeignKey("IntegrationKey")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
-                        .HasConstraintName("fk_tenant_integration_credentials_integration_catalog_integrat");
+                        .HasConstraintName("fk_tenant_integration_credentials_integration_catalog_integration_key");
 
                     b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
                         .WithMany()
@@ -17558,7 +18135,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasForeignKey("IntegrationKey")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
-                        .HasConstraintName("fk_user_integration_connections_integration_catalog_integratio");
+                        .HasConstraintName("fk_user_integration_connections_integration_catalog_integration_key");
 
                     b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
                         .WithMany()
@@ -17608,7 +18185,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .WithMany()
                         .HasForeignKey("CompletedFileRecordId")
                         .OnDelete(DeleteBehavior.Restrict)
-                        .HasConstraintName("fk_file_upload_reservations_file_records_completed_file_record");
+                        .HasConstraintName("fk_file_upload_reservations_file_records_completed_file_record_id");
 
                     b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.User", null)
                         .WithMany()
@@ -17641,7 +18218,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .WithMany()
                         .HasForeignKey("AttendanceRecordId")
                         .OnDelete(DeleteBehavior.Restrict)
-                        .HasConstraintName("fk_attendance_corrections_attendance_records_attendance_record");
+                        .HasConstraintName("fk_attendance_corrections_attendance_records_attendance_record_id");
 
                     b.HasOne("ONEVO.Domain.Features.CoreHr.Entities.Employee", null)
                         .WithMany()
@@ -17684,7 +18261,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasForeignKey("ClockInPolicyId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
-                        .HasConstraintName("fk_clock_in_late_deduction_rules_clock_in_policies_clock_in_po");
+                        .HasConstraintName("fk_clock_in_late_deduction_rules_clock_in_policies_clock_in_policy_id");
 
                     b.Navigation("ClockInPolicy");
                 });
@@ -17748,7 +18325,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .WithMany()
                         .HasForeignKey("CurrentWorkModeId")
                         .OnDelete(DeleteBehavior.Restrict)
-                        .HasConstraintName("fk_work_area_change_requests_time_attendance_work_modes_curren");
+                        .HasConstraintName("fk_work_area_change_requests_time_attendance_work_modes_current_work_mode_id");
 
                     b.HasOne("ONEVO.Domain.Features.CoreHr.Entities.Employee", null)
                         .WithMany()
@@ -17768,7 +18345,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .WithMany()
                         .HasForeignKey("RequestedWorkModeId")
                         .OnDelete(DeleteBehavior.Restrict)
-                        .HasConstraintName("fk_work_area_change_requests_time_attendance_work_modes_reques");
+                        .HasConstraintName("fk_work_area_change_requests_time_attendance_work_modes_requested_work_mode_id");
 
                     b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.User", null)
                         .WithMany()
@@ -17804,7 +18381,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasForeignKey("CalendarEventId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
-                        .HasConstraintName("fk_calendar_event_activity_logs_calendar_events_calendar_event");
+                        .HasConstraintName("fk_calendar_event_activity_logs_calendar_events_calendar_event_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.CalendarEvents.Entities.CalendarEventObjective", b =>
@@ -17875,13 +18452,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasForeignKey("CalendarEventMeetingId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
-                        .HasConstraintName("fk_meeting_attendance_sessions_calendar_event_meetings_calenda");
+                        .HasConstraintName("fk_meeting_attendance_sessions_calendar_event_meetings_calendar_event_meeting_id");
 
                     b.HasOne("ONEVO.Domain.Features.WorkManagement.Meetings.Entities.MeetingDetails", null)
                         .WithMany()
                         .HasForeignKey("OccurrenceTaskId")
                         .OnDelete(DeleteBehavior.Restrict)
-                        .HasConstraintName("fk_meeting_attendance_sessions_meeting_details_occurrence_task");
+                        .HasConstraintName("fk_meeting_attendance_sessions_meeting_details_occurrence_task_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Meetings.Entities.MeetingDetails", b =>
@@ -17890,7 +18467,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .WithMany()
                         .HasForeignKey("CalendarEventMeetingId")
                         .OnDelete(DeleteBehavior.Restrict)
-                        .HasConstraintName("fk_meeting_details_calendar_event_meetings_calendar_event_meet");
+                        .HasConstraintName("fk_meeting_details_calendar_event_meetings_calendar_event_meeting_id");
 
                     b.HasOne("ONEVO.Domain.Features.WorkManagement.Meetings.Entities.MeetingSeries", null)
                         .WithMany()
@@ -17920,7 +18497,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasForeignKey("OccurrenceTaskId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
-                        .HasConstraintName("fk_meeting_occurrence_attendees_meeting_details_occurrence_tas");
+                        .HasConstraintName("fk_meeting_occurrence_attendees_meeting_details_occurrence_task_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Meetings.Entities.MeetingOccurrenceSuppression", b =>
@@ -17970,7 +18547,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasForeignKey("CalendarEventMeetingId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
-                        .HasConstraintName("fk_meeting_series_links_calendar_event_meetings_calendar_event");
+                        .HasConstraintName("fk_meeting_series_links_calendar_event_meetings_calendar_event_meeting_id");
 
                     b.HasOne("ONEVO.Domain.Features.WorkManagement.Meetings.Entities.MeetingSeries", null)
                         .WithMany()
@@ -18163,7 +18740,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .WithMany()
                         .HasForeignKey("ClockingSessionId")
                         .OnDelete(DeleteBehavior.Restrict)
-                        .HasConstraintName("fk_task_percentage_logs_task_clocking_sessions_clocking_sessio");
+                        .HasConstraintName("fk_task_percentage_logs_task_clocking_sessions_clocking_session_id");
 
                     b.HasOne("ONEVO.Domain.Features.WorkManagement.Tasks.Entities.WorkTask", null)
                         .WithMany()
@@ -18255,6 +18832,16 @@ namespace ONEVO.Infrastructure.Migrations
                     b.Navigation("RolePermissions");
 
                     b.Navigation("UserRoles");
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.Dashboard.Entities.DashboardTemplate", b =>
+                {
+                    b.Navigation("Widgets");
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.Dashboard.Entities.DashboardTemplateWidget", b =>
+                {
+                    b.Navigation("Layouts");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.Dashboard.Entities.DashboardWidget", b =>

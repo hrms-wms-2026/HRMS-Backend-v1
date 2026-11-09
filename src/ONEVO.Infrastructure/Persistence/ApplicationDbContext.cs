@@ -73,6 +73,11 @@ public class ApplicationDbContext : DbContext
     private readonly DomainEventDispatchInterceptor _domainEventInterceptor;
     private readonly ITenantContext _tenantContext;
 
+    /// <summary>Meeting rows to check at commit. See MeetingIntegrityInterceptor.</summary>
+    public HashSet<Guid> PendingMeetingTaskIds { get; } = [];
+
+    public HashSet<Guid> PendingMeetingSeriesIds { get; } = [];
+
     public ApplicationDbContext(
         DbContextOptions<ApplicationDbContext> options,
         AuditableEntityInterceptor auditInterceptor,
@@ -346,6 +351,7 @@ public class ApplicationDbContext : DbContext
         => Set<ONEVO.Domain.Features.Conversations.Entities.ConversationMessageReaction>();
     public DbSet<WorkNotificationLog> WorkNotificationLogs => Set<WorkNotificationLog>();
     public DbSet<MonitorAlert> MonitorAlerts => Set<MonitorAlert>();
+    public DbSet<TaskRateSetting> TaskRateSettings => Set<TaskRateSetting>();
     public DbSet<ModuleHourSummary> ModuleHourSummaries => Set<ModuleHourSummary>();
     public DbSet<ONEVO.Domain.Features.Dashboard.Entities.UserDashboard> UserDashboards
         => Set<ONEVO.Domain.Features.Dashboard.Entities.UserDashboard>();
@@ -353,6 +359,12 @@ public class ApplicationDbContext : DbContext
         => Set<ONEVO.Domain.Features.Dashboard.Entities.DashboardWidget>();
     public DbSet<ONEVO.Domain.Features.Dashboard.Entities.DashboardWidgetLayout> DashboardWidgetLayouts
         => Set<ONEVO.Domain.Features.Dashboard.Entities.DashboardWidgetLayout>();
+    public DbSet<ONEVO.Domain.Features.Dashboard.Entities.DashboardTemplate> DashboardTemplates
+        => Set<ONEVO.Domain.Features.Dashboard.Entities.DashboardTemplate>();
+    public DbSet<ONEVO.Domain.Features.Dashboard.Entities.DashboardTemplateWidget> DashboardTemplateWidgets
+        => Set<ONEVO.Domain.Features.Dashboard.Entities.DashboardTemplateWidget>();
+    public DbSet<ONEVO.Domain.Features.Dashboard.Entities.DashboardTemplateWidgetLayout> DashboardTemplateWidgetLayouts
+        => Set<ONEVO.Domain.Features.Dashboard.Entities.DashboardTemplateWidgetLayout>();
     public DbSet<TaskEditLog> TaskEditLogs => Set<TaskEditLog>();
     public DbSet<TaskStatusChangeLog> TaskStatusChangeLogs => Set<TaskStatusChangeLog>();
     public DbSet<TaskClockingSession> TaskClockingSessions => Set<TaskClockingSession>();
@@ -393,12 +405,25 @@ public class ApplicationDbContext : DbContext
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
         optionsBuilder
-            .AddInterceptors(_auditInterceptor, _softDeleteInterceptor, _domainEventInterceptor);
+            .AddInterceptors(_auditInterceptor, _softDeleteInterceptor, _domainEventInterceptor, MeetingIntegrityInterceptor.Instance);
+    }
+
+    protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
+    {
+        configurationBuilder.Properties<DateTimeOffset>()
+            .HaveConversion<ONEVO.Infrastructure.Persistence.SqlServer.UtcDateTimeOffsetConverter>();
     }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(ApplicationDbContext).Assembly);
+
+        // Case-sensitive so = keeps PostgreSQL behaviour on hashes, tokens and unique indexes.
+        modelBuilder.UseCollation("Latin1_General_100_CS_AS_SC");
+        if (Database.IsSqlServer())
+        {
+            ONEVO.Infrastructure.Persistence.SqlServer.JsonColumnConvention.Apply(modelBuilder);
+        }
 
         var dbContextConst = Expression.Constant(this, typeof(ApplicationDbContext));
         var isTenantFilterActiveProperty = typeof(ApplicationDbContext).GetProperty(nameof(IsTenantFilterActive))!;

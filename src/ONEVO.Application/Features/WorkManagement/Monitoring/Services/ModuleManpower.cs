@@ -14,6 +14,12 @@ public static class ModuleManpower
     public static int Count(
         ProjectModuleTree tree, Guid moduleId, IReadOnlyDictionary<Guid, IReadOnlySet<Guid>> membersByModule,
         IEnumerable<Guid>? extraEmployeeIds = null)
+        => People(tree, moduleId, membersByModule, extraEmployeeIds).Count;
+
+    /// <summary>The people themselves (see <see cref="Count"/>): the module's conversion rate is pooled over them.</summary>
+    public static IReadOnlySet<Guid> People(
+        ProjectModuleTree tree, Guid moduleId, IReadOnlyDictionary<Guid, IReadOnlySet<Guid>> membersByModule,
+        IEnumerable<Guid>? extraEmployeeIds = null)
     {
         var people = new HashSet<Guid>(extraEmployeeIds ?? []);
         foreach (var id in tree.AtOrBelow([moduleId]))
@@ -26,6 +32,6 @@ public static class ModuleManpower
                 people.UnionWith(members);
         }
         people.Remove(Guid.Empty);
-        return people.Count;
+        return people;
     }
 }

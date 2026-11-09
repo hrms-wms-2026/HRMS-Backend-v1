@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using ONEVO.Domain.Features.DevPlatform.PlatformAccess.Entities;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
 using ONEVO.Domain.Features.SharedPlatform.Entities;
+using ONEVO.Infrastructure.Persistence.SqlServer;
 
 namespace ONEVO.Infrastructure.Persistence.Configurations.DevPlatform.Billing;
 
@@ -18,7 +19,7 @@ public class BillingAuditLogConfiguration : IEntityTypeConfiguration<BillingAudi
         builder.Property(l => l.ActorAdminUserId).HasColumnName("actor_admin_user_id");
         builder.Property(l => l.Action).HasMaxLength(80).IsRequired();
         builder.Property(l => l.Message).HasMaxLength(1000).IsRequired();
-        builder.Property(l => l.MetadataJson).HasColumnName("metadata_json").HasColumnType("jsonb");
+        builder.Property(l => l.MetadataJson).HasColumnName("metadata_json").IsJsonColumn();
         builder.Property(l => l.CreatedAt).HasColumnName("created_at").IsRequired();
 
         builder.HasIndex(l => new { l.InvoiceId, l.CreatedAt })

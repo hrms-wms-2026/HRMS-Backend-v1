@@ -50,6 +50,7 @@ public sealed partial class DapiHistorySeeder
             .Where(s => s.TenantId == DapiTenantId && s.ClockInAt >= rangeStart && s.ClockInAt < rangeEnd).Select(s => s.Id), ct);
         var days = ctx.Window.PastWorkdays().Append(ctx.Window.Today).Where(IsWorkday).ToList();
         var minutesByTask = new Dictionary<Guid, int>();
+        var showcase = ShowcaseEmployeeIds();
 
         foreach (var employee in ctx.Employees)
         {
@@ -62,6 +63,9 @@ public sealed partial class DapiHistorySeeder
             {
                 var date = days[dayIndex];
                 if (off.Contains(date))
+                    continue;
+                // The showcase people's today is laid out by SeedTodayShowcaseAsync.
+                if (date == ctx.Window.Today && showcase.Contains(employee.Id))
                     continue;
                 var open = tasks.Where(t => PlannableOn(t, date)).ToList();
                 if (open.Count == 0)
@@ -192,7 +196,8 @@ public sealed partial class DapiHistorySeeder
         var candidates = await db.WorkTasks
             .Where(t => t.TenantId == DapiTenantId && t.ProjectId == projectId && !t.IsDeleted
                 && t.ParentTaskId == null && !doneStatusIds.Contains(t.StatusId)
-                && !db.TaskAssignments.Any(a => a.TaskId == t.Id && a.EmployeeId == ownerId))
+                // A task has one assignee (ix_task_assignments_one_per_task): only unassigned tasks can go to the owner.
+                && !db.TaskAssignments.Any(a => a.TaskId == t.Id))
             .OrderBy(t => t.ShortId)
             .Take(OwnerTaskCount - have)
             .Select(t => t.Id)

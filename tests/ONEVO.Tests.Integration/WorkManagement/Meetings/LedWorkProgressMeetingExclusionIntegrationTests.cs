@@ -3,7 +3,6 @@ using FluentAssertions;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Migrations.Operations;
 using Microsoft.Extensions.Logging.Abstractions;
-using Npgsql;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Hierarchy;
@@ -96,17 +95,6 @@ public sealed class LedWorkProgressMeetingExclusionIntegrationTests
         return (GetLedWorkProgressQueryHandler)ctor.Invoke(args);
     }
 
-    private static async Task ApplyMigrationAsync(NpgsqlConnection conn)
-    {
-        var migration = new ExcludeMeetingTasksFromModuleHourSummaries();
-        foreach (var sql in migration.UpOperations.OfType<SqlOperation>())
-        {
-            await using var cmd = conn.CreateCommand();
-            cmd.CommandText = sql.Sql;
-            await cmd.ExecuteNonQueryAsync();
-        }
-    }
-
     /// <summary>Reads a named integer property off an object, wherever it sits in the shape.</summary>
     private static int? TryReadInt(object obj, string property)
         => obj.GetType().GetProperty(property, BindingFlags.Public | BindingFlags.Instance)?.GetValue(obj) is { } value
@@ -147,17 +135,6 @@ public sealed class LedWorkProgressMeetingExclusionIntegrationTests
         // The branch that has the summary table needs the fix in place. The cloned template
         // already carries AddModuleHourSummaries there, so the fix migration is applied over it
         // as production applies it; its backfill recomputes the rows seeded above.
-        await using (var conn = new NpgsqlConnection(helper.ConnectionString))
-        {
-            await conn.OpenAsync();
-            await using (var cmd = conn.CreateCommand())
-            {
-                cmd.CommandText = "SELECT count(*) FROM pg_class WHERE relname = 'wm_module_hour_summaries'";
-                var exists = (long)(await cmd.ExecuteScalarAsync())!;
-                if (exists > 0)
-                    await ApplyMigrationAsync(conn);
-            }
-        }
 
         await using (var db = helper.NewContext())
         {

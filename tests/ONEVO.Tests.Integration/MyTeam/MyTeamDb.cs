@@ -43,7 +43,7 @@ public sealed class MyTeamDb
 
     public static async Task<MyTeamDb> CreateAsync()
     {
-        var helper = new MyTeamDb { _connectionString = await SharedPostgresTemplate.CreateDatabaseAsync() };
+        var helper = new MyTeamDb { _connectionString = await SharedSqlServerTemplate.CreateDatabaseAsync() };
         await helper.SeedTenantAsync();
         return helper;
     }
@@ -85,9 +85,9 @@ public sealed class MyTeamDb
     {
         var tenantContext = new TenantContextAccessor();
         var builder = new DbContextOptionsBuilder<ApplicationDbContext>()
-            .UseNpgsql(_connectionString)
+            .UseTestSqlServer(_connectionString)
             .UseSnakeCaseNamingConvention()
-            .AddInterceptors(new TenantRlsInterceptor(tenantContext));
+            .AddTestRls(new TenantRlsInterceptor(tenantContext));
         if (counter is not null)
             builder.AddInterceptors(counter);
 
@@ -100,15 +100,18 @@ public sealed class MyTeamDb
     }
 
     /// <summary>A context resolved to this tenant, so the tenant query filter (and RLS) apply as in a request.</summary>
-    public ApplicationDbContext NewTenantContext(Guid? tenantId = null)
+    public ApplicationDbContext NewTenantContext(Guid? tenantId = null, IInterceptor? counter = null)
     {
         var tenantContext = new TenantContextAccessor();
         tenantContext.Resolve(new ONEVO.Application.Common.ServiceInterfaces.TenantRegistryEntry(
             tenantId ?? TenantId, "my-team", TenantStatus.Active, PlanCode: null));
         var builder = new DbContextOptionsBuilder<ApplicationDbContext>()
-            .UseNpgsql(_connectionString)
+            .UseTestSqlServer(_connectionString)
             .UseSnakeCaseNamingConvention()
-            .AddInterceptors(new TenantRlsInterceptor(tenantContext));
+            .AddTestRls(new TenantRlsInterceptor(tenantContext));
+        if (counter is not null)
+            builder.AddInterceptors(counter);
+
         return new ApplicationDbContext(
             builder.Options,
             new AuditableEntityInterceptor(new AnonymousCurrentUser(), _clock),

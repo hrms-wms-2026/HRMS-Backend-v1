@@ -1,5 +1,4 @@
 using Microsoft.Extensions.DependencyInjection;
-using Npgsql;
 using ONEVO.Infrastructure.Persistence;
 using ONEVO.Infrastructure.Services.SharedPlatform.Jobs;
 using ONEVO.Tests.Integration.MyTeam;
@@ -25,14 +24,14 @@ public sealed class JobLeaseIntegrationTests
 
     private static async Task<object?> ScalarAsync(MyTeamDb h, string sql)
     {
-        await using var connection = new NpgsqlConnection(h.ConnectionString);
+        await using var connection = TestDb.CreateConnection(h.ConnectionString);
         await connection.OpenAsync();
-        await using var command = new NpgsqlCommand(sql, connection);
+        await using var command = new SqlCommand(sql, connection);
         return await command.ExecuteScalarAsync();
     }
 
-    private static async Task<DateTime> LeaseUntilAsync(MyTeamDb h)
-        => (DateTime)(await ScalarAsync(h, $"SELECT lease_until FROM job_leases WHERE job_name = '{Job}'"))!;
+    private static async Task<DateTimeOffset> LeaseUntilAsync(MyTeamDb h)
+        => (DateTimeOffset)(await ScalarAsync(h, $"SELECT lease_until FROM job_leases WHERE job_name = '{Job}'"))!;
 
     [Fact]
     public async Task FirstCaller_Acquires_SecondInstance_IsRefused()
@@ -63,7 +62,7 @@ public sealed class JobLeaseIntegrationTests
         Assert.True(await a.TryAcquireAsync(Job, TimeSpan.FromSeconds(1), CancellationToken.None));
 
         var deadline = DateTime.UtcNow.AddSeconds(15);
-        while ((bool)(await ScalarAsync(h, $"SELECT lease_until >= now() FROM job_leases WHERE job_name = '{Job}'"))!)
+        while ((bool)(await ScalarAsync(h, $"SELECT CAST(CASE WHEN lease_until >= SYSDATETIMEOFFSET() THEN 1 ELSE 0 END AS bit) FROM job_leases WHERE job_name = '{Job}'"))!)
         {
             Assert.True(DateTime.UtcNow < deadline, "the 1 s lease never expired");
             await Task.Delay(200);
@@ -79,7 +78,7 @@ public sealed class JobLeaseIntegrationTests
         var (h, a, b) = await CreateAsync();
         Assert.True(await a.TryAcquireAsync(Job, TimeSpan.FromSeconds(1), CancellationToken.None));
         var deadline = DateTime.UtcNow.AddSeconds(15);
-        while ((bool)(await ScalarAsync(h, $"SELECT lease_until >= now() FROM job_leases WHERE job_name = '{Job}'"))!)
+        while ((bool)(await ScalarAsync(h, $"SELECT CAST(CASE WHEN lease_until >= SYSDATETIMEOFFSET() THEN 1 ELSE 0 END AS bit) FROM job_leases WHERE job_name = '{Job}'"))!)
         {
             Assert.True(DateTime.UtcNow < deadline, "the 1 s lease never expired");
             await Task.Delay(200);

@@ -24,7 +24,7 @@ public sealed class UserIntegrationConnectionConfiguration
         builder.Property(connection => connection.ProviderUserId).HasMaxLength(200);
         builder.Property(connection => connection.ProviderUsername).HasMaxLength(200);
         builder.Property(connection => connection.ProviderEmail).HasMaxLength(320);
-        builder.Property(connection => connection.ScopesGranted).HasColumnType("text[]");
+        builder.Property(connection => connection.ScopesGranted);
         builder.Property(connection => connection.Status).HasMaxLength(20).IsRequired();
         builder.Property(connection => connection.ConnectedAt).IsRequired();
         builder.Property(connection => connection.CreatedAt).IsRequired();

@@ -52,7 +52,10 @@ public sealed class CheckTaskLoadQueryHandler : IRequestHandler<CheckTaskLoadQue
         var warnings = new List<MonitorWarning>();
         foreach (var employeeId in assignees)
         {
-            var finding = ProjectMonitorRules.EmployeeDeadlineOverload(employeeId, tasks, snapshot.Calendar, today)
+            // The caller controls the form's hours and due date, so a warning that used someone else's rate would be an
+            // oracle for it: only the caller's own rate is applied; every other assignee is checked at 100%.
+            var rate = employeeId == caller.Value.EmployeeId ? snapshot.Rates?.RateOf(employeeId) : null;
+            var finding = ProjectMonitorRules.EmployeeDeadlineOverload(employeeId, tasks, snapshot.Calendar, today, rate)
                 .FirstOrDefault(f => f.TargetId == candidate.Id);
             if (finding is null)
                 continue;
@@ -60,10 +63,13 @@ public sealed class CheckTaskLoadQueryHandler : IRequestHandler<CheckTaskLoadQue
             var name = names.GetValueOrDefault(employeeId) ?? "An assignee";
             var demand = (decimal)finding.Details["demandHours"]!;
             var capacity = (decimal)finding.Details["capacityHours"]!;
+            var predicted = capacity * OvertimeForecast.Effective(rate);
             var deadline = DateOnly.ParseExact((string)finding.Details["dueDate"]!, "yyyy-MM-dd", CultureInfo.InvariantCulture);
-            warnings.Add(new MonitorWarning(finding.RuleCode,
-                $"{name} has {ProjectMonitorRules.Hours(demand)} h of work due by {deadline.ToString("MMM d", CultureInfo.InvariantCulture)} but only {ProjectMonitorRules.Hours(capacity)} h of working time.",
-                employeeId));
+            var day = deadline.ToString("MMM d", CultureInfo.InvariantCulture);
+            var message = rate is { } r
+                ? $"{name} has {ProjectMonitorRules.Hours(demand)} h of work due by {day}; at your {ProjectMonitorRules.Percent(r)} task rate (last 4 weeks) you will complete about {ProjectMonitorRules.Hours(predicted)} h."
+                : $"{name} has {ProjectMonitorRules.Hours(demand)} h of work due by {day} but only {ProjectMonitorRules.Hours(capacity)} h of working time.";
+            warnings.Add(new MonitorWarning(finding.RuleCode, message, employeeId));
         }
 
         return Result<TaskLoadCheckResponse>.Success(new TaskLoadCheckResponse(warnings));

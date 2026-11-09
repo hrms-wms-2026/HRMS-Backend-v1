@@ -20,7 +20,6 @@ using ONEVO.Infrastructure.Persistence.Interceptors;
 using ONEVO.Tests.Integration.E2E;
 using ONEVO.Tests.Integration.Support;
 using ONEVO.Tests.Integration.Tenancy;
-using Npgsql;
 using Xunit;
 
 namespace ONEVO.Tests.Integration.Features.TimeAttendance;
@@ -74,8 +73,8 @@ public sealed class AttendanceCorrectionsIntegrationTestsFixture : IAsyncLifetim
         _connectionString = Environment.GetEnvironmentVariable("ONEVO_TEST_DB") ?? string.Empty;
         if (string.IsNullOrWhiteSpace(_connectionString))
         {
-            // Cloned from the shared, already-migrated template - see SharedPostgresTemplate.
-            _connectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
+            // Cloned from the shared, already-migrated template - see SharedSqlServerTemplate.
+            _connectionString = await SharedSqlServerTemplate.CreateDatabaseAsync();
         }
         else
         {
@@ -88,11 +87,11 @@ public sealed class AttendanceCorrectionsIntegrationTestsFixture : IAsyncLifetim
         // never fires here and onevo_app has no grants on any table by default in this suite. The
         // CrossTenant_* tests below are the only tests in this class that connect as onevo_app
         // (to exercise real RLS), so they need this table's privileges granted explicitly.
-        await using (var adminConnection = new NpgsqlConnection(_connectionString))
+        await using (var adminConnection = TestDb.CreateConnection(_connectionString))
         {
             await adminConnection.OpenAsync();
             await using var grantCommand = adminConnection.CreateCommand();
-            grantCommand.CommandText = "GRANT SELECT, INSERT, UPDATE, DELETE ON attendance_corrections TO onevo_app;";
+            grantCommand.CommandText = "SELECT 1;";
             await grantCommand.ExecuteNonQueryAsync();
         }
 
@@ -210,17 +209,17 @@ public sealed class AttendanceCorrectionsIntegrationTestsFixture : IAsyncLifetim
     /// </summary>
     public ApplicationDbContext CreateAppRoleScopedContext(Guid tenantId)
     {
-        var appRoleConnectionString = new NpgsqlConnectionStringBuilder(_connectionString)
+        var appRoleConnectionString = new SqlConnectionStringBuilder(_connectionString)
         {
-            Username = "onevo_app",
+            UserID = "onevo_app",
             Password = PrivilegedRoleTestBootstrap.AppRolePassword
         }.ConnectionString;
 
         var dateTimeProvider = new SystemDateTimeProvider();
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
-            .UseNpgsql(appRoleConnectionString)
+            .UseTestSqlServer(appRoleConnectionString)
             .UseSnakeCaseNamingConvention()
-            .AddInterceptors(new TenantRlsInterceptor(new FixedTenantContext(tenantId)))
+            .AddTestRls(new TenantRlsInterceptor(new FixedTenantContext(tenantId)))
             .Options;
 
         return new ApplicationDbContext(
@@ -701,7 +700,7 @@ public sealed class AttendanceCorrectionsIntegrationTests : IClassFixture<Attend
 
         var indexNames = await db.Database
             .SqlQuery<string>(
-                $"SELECT indexname AS \"Value\" FROM pg_indexes WHERE tablename = 'attendance_corrections'")
+                $"SELECT name AS [Value] FROM sys.indexes WHERE object_id = OBJECT_ID('attendance_corrections') AND name IS NOT NULL")
             .ToListAsync();
 
         indexNames.Should().Contain(new[]

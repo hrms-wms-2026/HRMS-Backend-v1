@@ -314,7 +314,7 @@ public sealed class ListEmployeesQueryHandlerAuthorityResolverIntegrationTests
         public Task<EmployeeEntity?> GetTrackedByIdAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default)
             => throw new NotImplementedException();
         public void SetExpectedVersion(EmployeeEntity employee, string expectedVersion) => throw new NotImplementedException();
-        public Task<uint?> GetVersionTokenAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default)
+        public Task<ulong?> GetVersionTokenAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default)
             => throw new NotImplementedException();
         public Task<bool> EmailExistsAsync(Guid tenantId, string email, Guid? excludeId, CancellationToken ct = default)
             => throw new NotImplementedException();

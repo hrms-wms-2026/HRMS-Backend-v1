@@ -122,30 +122,6 @@ public sealed class DepartmentPart2AArchitectureTests
     }
 
     [Fact]
-    public void AddDepartmentsMigration_EnablesRowLevelSecurityWithTenantIsolationPolicy()
-    {
-        var source = ReadMigrationSourceContaining("CreateTable(", "name: \"departments\"");
-
-        Assert.Contains("TenantTables = [\"departments\"]", source);
-        Assert.Contains("ALTER TABLE {table} ENABLE ROW LEVEL SECURITY", source);
-        Assert.Contains("ALTER TABLE {table} FORCE ROW LEVEL SECURITY", source);
-        Assert.Contains("CREATE POLICY tenant_isolation ON {table}", source);
-    }
-
-    [Fact]
-    public void CorrectiveMigration_AddsHeadPositionIdColumn_AsNullableWithRestrictForeignKey()
-    {
-        var source = ReadMigrationSourceContaining("AddColumn", "head_position_id", "departments");
-
-        Assert.Contains("name: \"head_position_id\"", source);
-        Assert.Contains("table: \"departments\"", source);
-        Assert.Contains("nullable: true", source);
-        Assert.Contains("principalTable: \"positions\"", source);
-        Assert.Contains("principalColumn: \"id\"", source);
-        Assert.Contains("onDelete: ReferentialAction.Restrict", source);
-    }
-
-    [Fact]
     public void DepartmentEfConfiguration_MapsHeadPositionId_WithIndexAndRestrictForeignKey()
     {
         var source = ReadDepartmentConfigurationSource();
@@ -174,18 +150,6 @@ public sealed class DepartmentPart2AArchitectureTests
         Assert.DoesNotContain("AddColumn", source);
         Assert.DoesNotContain("DropColumn", source);
         Assert.DoesNotContain("AlterColumn", source);
-    }
-
-    [Fact]
-    public void CodeUniqueIndexMigration_PrechecksDuplicatesAndCreatesCaseInsensitiveExpressionIndex()
-    {
-        var source = ReadMigrationSourceContaining("ux_departments_tenant_legal_entity_code_lower");
-
-        Assert.Contains("RAISE EXCEPTION", source);
-        Assert.Contains("lower(code)", source);
-        Assert.Contains("CREATE UNIQUE INDEX ux_departments_tenant_legal_entity_code_lower", source);
-        Assert.Contains("WHERE code IS NOT NULL", source);
-        Assert.Contains("DROP INDEX IF EXISTS ux_departments_tenant_legal_entity_code_lower", source);
     }
 
     private static string FindRepositoryFile()

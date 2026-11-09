@@ -80,9 +80,9 @@ public interface IEmployeeRepository
     Task<ONEVO.Domain.Features.CoreHr.Entities.Employee?> GetTrackedByIdAsync(
         Guid tenantId, Guid employeeId, CancellationToken ct = default);
 
-    /// <summary>Reads the current PostgreSQL xmin system-column value for optimistic-concurrency
+    /// <summary>Reads the current rowversion value for optimistic-concurrency
     /// display to the client (returned as the profile's "version" token).</summary>
-    Task<uint?> GetVersionTokenAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default);
+    Task<ulong?> GetVersionTokenAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default);
 
     /// <summary>Sets the EF shadow "xmin" original value on a tracked Employee instance so
     /// SaveChangesAsync raises DbUpdateConcurrencyException when the row was modified since the

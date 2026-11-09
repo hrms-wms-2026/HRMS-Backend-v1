@@ -20,13 +20,13 @@ public sealed class ApiBootTests : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        // Cloned from the shared, already-migrated template (see SharedPostgresTemplate) before
+        // Cloned from the shared, already-migrated template (see SharedSqlServerTemplate) before
         // the WebApplicationFactory is ever touched. Accessing _factory.Services/CreateClient()
         // starts hosted services (such as DevSmokeTestTenantSeeder and PermissionSeeder)
         // synchronously during host startup, which query database tables that must already exist.
         // The environment scope must exist before that same CreateClient()/Services access too,
         // since that is what first triggers Program.cs's pre-Build() startup validators.
-        var connectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
+        var connectionString = await SharedSqlServerTemplate.CreateDatabaseAsync();
         _environmentScope = new IntegrationTestEnvironmentScope(connectionString);
 
         _factory = new ApiBootTestFactory(connectionString);

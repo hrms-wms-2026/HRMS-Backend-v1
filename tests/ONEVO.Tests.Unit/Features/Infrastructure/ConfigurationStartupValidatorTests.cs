@@ -78,10 +78,10 @@ public class ConfigurationStartupValidatorTests
     }
 
     [Theory]
-    [InlineData("Host=localhost;Port=5432;Database=OnevoDb;Username=postgres;Password=x", true)]
-    [InlineData("Host=localhost;Port=5432;Database=OnevoDb;Username=some_superuser_role;Password=x", true)]
-    [InlineData("Host=localhost;Port=5432;Database=OnevoDb;Username=onevo_app;Password=x", false)]
-    public async Task StartAsync_WarnsOnlyWhenDefaultConnectionUsernameLooksLikeSuperuser(
+    [InlineData("Server=localhost;Database=OnevoDb;User ID=sa;Password=x", true)]
+    [InlineData("Server=localhost;Database=OnevoDb;User ID=onevo_app;Password=x", false)]
+    [InlineData("Host=localhost;Database=OnevoDb;Username=sa;Password=x", false)]
+    public async Task StartAsync_WarnsOnlyWhenDefaultConnectionUsesTheAdminLogin(
         string connectionString, bool expectWarning)
     {
         var configuration = new ConfigurationBuilder()
@@ -96,7 +96,7 @@ public class ConfigurationStartupValidatorTests
 
         await validator.StartAsync(CancellationToken.None);
 
-        var warnedAboutRole = logger.Messages.Exists(m => m.Contains("superuser", StringComparison.OrdinalIgnoreCase));
+        var warnedAboutRole = logger.Messages.Exists(m => m.Contains("sa login", StringComparison.OrdinalIgnoreCase));
         Assert.Equal(expectWarning, warnedAboutRole);
     }
 

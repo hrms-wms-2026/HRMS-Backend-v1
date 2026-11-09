@@ -20,14 +20,14 @@ public sealed class UserDashboardRepositoryTestsFixture : IAsyncLifetime
     private readonly SystemDateTimeProvider _clock = new();
     private string _connectionString = string.Empty;
 
-    public async Task InitializeAsync() => _connectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
+    public async Task InitializeAsync() => _connectionString = await SharedSqlServerTemplate.CreateDatabaseAsync();
 
     public Task DisposeAsync() => Task.CompletedTask;
 
     public ApplicationDbContext CreateContext()
     {
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
-            .UseNpgsql(_connectionString)
+            .UseTestSqlServer(_connectionString)
             .UseSnakeCaseNamingConvention()
             .Options;
 

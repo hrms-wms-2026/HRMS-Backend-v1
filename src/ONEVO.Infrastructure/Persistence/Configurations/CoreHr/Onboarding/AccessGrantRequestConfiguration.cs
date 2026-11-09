@@ -13,23 +13,21 @@ public sealed class AccessGrantRequestConfiguration : IEntityTypeConfiguration<A
         builder.Property(x => x.ActionType).HasMaxLength(30).IsRequired();
         builder.Property(x => x.ApprovalStatus).HasMaxLength(20).IsRequired();
         builder.Property(x => x.DecisionNote).HasMaxLength(500);
-        // Concurrency token mapped to the PostgreSQL system column xmin - see
+        // Concurrency token, a rowversion column named xmin - see
         // OnboardingDraftConfiguration.cs for the identical precedent and rationale. Declared
         // nullable (uint?, not uint) so EF does not emit a NOT NULL constraint: PostgreSQL always
         // populates its own xmin system column regardless of this metadata, but
         // OnboardingPersistenceRepositoryTests / DevSmokeTestTenantSeederTests exercise a real
         // non-PostgreSQL schema via InMemory/EnsureCreated, and that provider has no such system
         // column - a NOT NULL "xmin" there would reject every insert.
-        builder.Property<uint?>("xmin")
+        builder.Property<ulong?>("xmin")
             .HasColumnName("xmin")
-            .HasColumnType("xid")
-            .ValueGeneratedOnAddOrUpdate()
-            .IsConcurrencyToken();
+            .IsRowVersion();
         // Keyed on OnboardingDraftId rather than EmployeeId: onboarding finalization submits
         // this request before the employee/user exist (see EmployeeId/UserId doc comment on the
         // entity), so the draft is the only stable correlation key while a request is pending.
         builder.HasIndex(x => new { x.TenantId, x.OnboardingDraftId, x.TargetPositionId, x.PositionAccessTemplateId })
-            .IsUnique().HasFilter("approval_status = 'Pending'");
+            .IsUnique().HasFilter("approval_status = 'Pending' AND onboarding_draft_id IS NOT NULL");
         builder.HasOne<ONEVO.Domain.Features.CoreHr.Entities.Employee>().WithMany().HasForeignKey(x => x.EmployeeId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne<ONEVO.Domain.Features.InfrastructureModule.Entities.User>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne<ONEVO.Domain.Features.CoreHr.Entities.OnboardingDraft>().WithMany().HasForeignKey(x => x.OnboardingDraftId).OnDelete(DeleteBehavior.Restrict);

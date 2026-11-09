@@ -10,7 +10,7 @@ public class WorkTaskConfiguration : IEntityTypeConfiguration<WorkTask>
 {
     public void Configure(EntityTypeBuilder<WorkTask> builder)
     {
-        builder.ToTable("tasks");
+        builder.ToTable("tasks", table => table.HasTrigger("trg_tasks_module_hour_summary"));
         builder.HasKey(t => t.Id);
         builder.Property(t => t.ShortId).HasMaxLength(50).IsRequired();
         builder.Property(t => t.Title).HasMaxLength(500).IsRequired();
@@ -20,8 +20,8 @@ public class WorkTaskConfiguration : IEntityTypeConfiguration<WorkTask>
         // query can ignore just this one; the tenant filter is then also registered by name (ApplicationDbContext).
         builder.HasQueryFilter(WorkTaskQueryFilters.ExcludeMeetings, t => t.TaskKind != WorkTaskKinds.Meeting);
         builder.Property(t => t.VisibilityScope).HasMaxLength(20).HasDefaultValue(WorkTaskVisibilityScopes.Module).IsRequired();
-        builder.Property(t => t.EstimatedHours).HasColumnType("numeric(18,2)");
-        builder.Property(t => t.CompletedHours).HasColumnType("numeric(18,2)");
+        builder.Property(t => t.EstimatedHours).HasColumnType("decimal(18,2)");
+        builder.Property(t => t.CompletedHours).HasColumnType("decimal(18,2)");
 
         builder.HasIndex(t => new { t.TenantId, t.ObjectiveId, t.StatusId })
             .HasDatabaseName("ix_tasks_tenant_id_objective_id_status_id");
