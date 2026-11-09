@@ -64,7 +64,9 @@ Individual task rates are performance data, so:
 - **Task-overload alerts are visible to the whole module.** They never print the assignee's rate, predicted hours
   or overtime. Details keep `requiredRate` and `rateSource`. The `conversionRate`, `predictedHours` and
   `overtimeHours` details from spec §3 are therefore present on the module rules only.
-- **`CheckTaskLoad`.** The rate appears in the message only when the assignee is the caller.
+- **`CheckTaskLoad`.** Only the caller's own rate is applied (and shown). Every other assignee is checked at 100%,
+  because the caller controls the form's hours and due date and could otherwise probe a colleague's rate through
+  the warning. The hourly monitor and the Tree still use each assignee's rate.
 - **Module rules print the team rate only when it is pooled over 3 or more contributors.** A member who knows
   their own rate can't work out a single colleague's. Module alert details go only to Inbox recipients (the holder
   above), so they keep all the forecast fields.

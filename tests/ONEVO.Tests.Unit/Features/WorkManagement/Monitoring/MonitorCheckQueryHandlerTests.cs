@@ -121,7 +121,7 @@ public class MonitorCheckQueryHandlerTests
     }
 
     [Fact]
-    public async Task TaskCheck_SomeoneElsesRate_IsNeverPrinted()
+    public async Task TaskCheck_SomeoneElsesRate_IsNeverApplied_SoTheWarningIsNoRateOracle()
     {
         var other = Guid.NewGuid();
         _identity.Setup(x => x.ResolveDisplayNamesByEmployeeIdAsync(TenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
@@ -129,10 +129,13 @@ public class MonitorCheckQueryHandlerTests
         _snapshots.Setup(x => x.LoadAsync(TenantId, ProjectId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ProjectMonitorSnapshot(ProjectId, WorkCalendar.Default, [], [], [], RatesOf((other, 600, 300))));
 
-        var result = await TaskHandler().Handle(new CheckTaskLoadQuery(ProjectId, null, [other], Wed7, 16m), default);
+        // 16h fits Mon 5 -> Wed 7 (24h) at 100%; at Nila's 50% it would not, but her rate is never applied for the caller.
+        var fits = await TaskHandler().Handle(new CheckTaskLoadQuery(ProjectId, null, [other], Wed7, 16m), default);
+        Assert.Empty(fits.Value!.Warnings);
 
+        var result = await TaskHandler().Handle(new CheckTaskLoadQuery(ProjectId, null, [other], Wed7, 30m), default);
         var warning = Assert.Single(result.Value!.Warnings);
-        Assert.Equal("Nila has 16 h of work due by Oct 7, more than they are likely to complete by then at their task rate of the last 4 weeks.", warning.Message);
+        Assert.Equal("Nila has 30 h of work due by Oct 7 but only 24 h of working time.", warning.Message);
     }
 
     [Fact]

@@ -52,7 +52,9 @@ public sealed class CheckTaskLoadQueryHandler : IRequestHandler<CheckTaskLoadQue
         var warnings = new List<MonitorWarning>();
         foreach (var employeeId in assignees)
         {
-            var rate = snapshot.Rates?.RateOf(employeeId);
+            // The caller controls the form's hours and due date, so a warning that used someone else's rate would be an
+            // oracle for it: only the caller's own rate is applied; every other assignee is checked at 100%.
+            var rate = employeeId == caller.Value.EmployeeId ? snapshot.Rates?.RateOf(employeeId) : null;
             var finding = ProjectMonitorRules.EmployeeDeadlineOverload(employeeId, tasks, snapshot.Calendar, today, rate)
                 .FirstOrDefault(f => f.TargetId == candidate.Id);
             if (finding is null)
@@ -64,14 +66,9 @@ public sealed class CheckTaskLoadQueryHandler : IRequestHandler<CheckTaskLoadQue
             var predicted = capacity * OvertimeForecast.Effective(rate);
             var deadline = DateOnly.ParseExact((string)finding.Details["dueDate"]!, "yyyy-MM-dd", CultureInfo.InvariantCulture);
             var day = deadline.ToString("MMM d", CultureInfo.InvariantCulture);
-            // An individual's rate is shown to themself only; anyone else gets the rule's rate-free wording.
-            var message = rate switch
-            {
-                { } r when employeeId == caller.Value.EmployeeId =>
-                    $"{name} has {ProjectMonitorRules.Hours(demand)} h of work due by {day}; at your {ProjectMonitorRules.Percent(r)} task rate (last 4 weeks) you will complete about {ProjectMonitorRules.Hours(predicted)} h.",
-                not null => $"{name} has {ProjectMonitorRules.Hours(demand)} h of work due by {day}, more than they are likely to complete by then at their task rate of the last 4 weeks.",
-                null => $"{name} has {ProjectMonitorRules.Hours(demand)} h of work due by {day} but only {ProjectMonitorRules.Hours(capacity)} h of working time.",
-            };
+            var message = rate is { } r
+                ? $"{name} has {ProjectMonitorRules.Hours(demand)} h of work due by {day}; at your {ProjectMonitorRules.Percent(r)} task rate (last 4 weeks) you will complete about {ProjectMonitorRules.Hours(predicted)} h."
+                : $"{name} has {ProjectMonitorRules.Hours(demand)} h of work due by {day} but only {ProjectMonitorRules.Hours(capacity)} h of working time.";
             warnings.Add(new MonitorWarning(finding.RuleCode, message, employeeId));
         }
 
