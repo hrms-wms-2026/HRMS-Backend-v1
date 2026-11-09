@@ -41,34 +41,60 @@ public static class OutboxClaimStore
     /// before the handler runs, and a claim clears it - so OutboxRetryPolicy's max-attempts rule
     /// bounds messages whose attempts never finish, while a message that only waited behind slow
     /// work in the previous owner's batch is reclaimed without losing an attempt.
-    /// SET expressions read the row's old values, so the CASEs see the old status.
+    ///
+    /// Expired leases and due pending rows are claimed by two statements, each reading one index in
+    /// its key order, so TOP stops after the rows it takes and only those rows are locked. One
+    /// statement over both conditions made SQL Server read and sort every claimable row, locking
+    /// all of them: while it ran, other instances saw an empty outbox and backed off. The status
+    /// values are written as literals ('pending', 'processing' = OutboxMessageStatus) so the
+    /// filtered locked_until index matches. Expired leases go first, so abandoned work is not starved.
     /// </summary>
     public static async Task<List<OutboxMessage>> ClaimBatchAsync(
         ApplicationDbContext db, string owner, TimeSpan lease, int batchSize, CancellationToken ct)
     {
+        var leaseMs = (int)lease.TotalMilliseconds;
         var claimed = await db.Set<OutboxMessage>()
             .FromSqlInterpolated($"""
                 WITH claimable AS (
                     SELECT TOP ({batchSize}) *
-                    FROM outbox_messages WITH (UPDLOCK, READPAST, ROWLOCK)
-                    WHERE (status = {OutboxMessageStatus.Pending} AND next_attempt_at <= SYSDATETIMEOFFSET())
-                       OR (status = {OutboxMessageStatus.Processing} AND locked_until < SYSDATETIMEOFFSET())
-                    ORDER BY next_attempt_at, created_at
+                    FROM outbox_messages WITH (UPDLOCK, READPAST, ROWLOCK, INDEX(ix_outbox_messages_processing_locked_until))
+                    WHERE status = 'processing' AND locked_until < SYSDATETIMEOFFSET()
+                    ORDER BY locked_until
                 )
                 UPDATE claimable
-                SET status = {OutboxMessageStatus.Processing},
-                    attempt_count = CASE WHEN status = {OutboxMessageStatus.Processing} AND attempt_started_at IS NOT NULL
-                                         THEN attempt_count + 1 ELSE attempt_count END,
-                    last_error = CASE WHEN status = {OutboxMessageStatus.Processing} AND attempt_started_at IS NOT NULL
+                SET attempt_count = CASE WHEN attempt_started_at IS NOT NULL THEN attempt_count + 1 ELSE attempt_count END,
+                    last_error = CASE WHEN attempt_started_at IS NOT NULL
                                       THEN 'Attempt by ' + COALESCE(locked_by, 'unknown instance') + ' did not finish before its lease expired; reclaimed.'
                                       ELSE last_error END,
                     locked_by = {owner},
-                    locked_until = DATEADD(millisecond, {(int)lease.TotalMilliseconds}, SYSDATETIMEOFFSET()),
+                    locked_until = DATEADD(millisecond, {leaseMs}, SYSDATETIMEOFFSET()),
                     attempt_started_at = NULL
                 OUTPUT inserted.*
                 """)
             .AsNoTracking()
             .ToListAsync(ct);
+
+        var remaining = batchSize - claimed.Count;
+        if (remaining > 0)
+        {
+            claimed.AddRange(await db.Set<OutboxMessage>()
+                .FromSqlInterpolated($"""
+                    WITH claimable AS (
+                        SELECT TOP ({remaining}) *
+                        FROM outbox_messages WITH (UPDLOCK, READPAST, ROWLOCK, INDEX(ix_outbox_messages_status_next_attempt_at))
+                        WHERE status = 'pending' AND next_attempt_at <= SYSDATETIMEOFFSET()
+                        ORDER BY next_attempt_at, id
+                    )
+                    UPDATE claimable
+                    SET status = 'processing',
+                        locked_by = {owner},
+                        locked_until = DATEADD(millisecond, {leaseMs}, SYSDATETIMEOFFSET()),
+                        attempt_started_at = NULL
+                    OUTPUT inserted.*
+                    """)
+                .AsNoTracking()
+                .ToListAsync(ct));
+        }
 
         return claimed.OrderBy(m => m.NextAttemptAt).ThenBy(m => m.CreatedAt).ToList();
     }
