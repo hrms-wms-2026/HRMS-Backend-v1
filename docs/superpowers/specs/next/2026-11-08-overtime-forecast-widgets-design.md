@@ -36,7 +36,7 @@ remaining     = hours still to do (module: Allocated − Completed; employee: ED
 rateEff       = rate ?? 1
 predicted     = capacity × rateEff
 requiredRate  = remaining / capacity          (may be > 1; null when capacity = 0)
-overtimeHours = max(0, remaining − predicted) / rateEff     (extra WORK hours needed at the current rate)
+overtimeHours = max(0, remaining − predicted)     (TASK hours that won't get done in normal hours at the current rate; never > remaining)
 status        = on_track    if predicted ≥ remaining
                 raise_rate  if predicted < remaining and requiredRate ≤ 1   (raise the rate to requiredRate, or do overtimeHours)
                 overtime    if requiredRate > 1 or capacity = 0             (even at 100% it can't fit in normal hours)
@@ -93,7 +93,7 @@ Query: `status?` (`on_track|raise_rate|overtime|no_history`), `projectId?`, `sor
 Population: `CoveredTeam`, the same as Team Status and Work vs task hours.
 
 Per employee, take the open, estimated tasks that are due on or after today. Each shared task's remaining hours are split evenly between its assignees, exactly as the current EDF rule does. **(call)** For every distinct deadline d: `demand_d` vs `capacity(1, today, d) × r_e,eff`.
-- The **worst window** (largest `overtimeHours`) supplies `remainingHours`, `capacityHours`, `predictedHours`, `requiredRate` (the max over the windows), `overtimeHours` and `deadline`.
+- The **binding window** (highest `requiredRate`; ties go to the larger shortfall; no capacity with work due counts as highest) supplies every figure: `remainingHours`, `capacityHours`, `predictedHours`, `requiredRate`, `overtimeHours` and `deadline`. The status is the most severe across all windows.
 - With no open estimated tasks, the employee is `on_track` with zeros.
 
 Query: `status?`, `sort` (`overtime` default | `requiredRate` | `rate` | `name`), `search?`, `page`, `pageSize`.

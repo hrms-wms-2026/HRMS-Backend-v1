@@ -44,7 +44,7 @@ public class ProjectMonitorRulesTests
         Assert.Equal(200m, finding.Details["predictedHours"]);
         Assert.Equal(0.5m, finding.Details["conversionRate"]);
         Assert.Equal(0.75m, finding.Details["requiredRate"]);
-        Assert.Equal(200m, finding.Details["overtimeHours"]);
+        Assert.Equal(100m, finding.Details["overtimeHours"]);   // 300 - 200 task hours left over
         Assert.Equal("history", finding.Details["rateSource"]);
         Assert.Contains("50% task rate (last 4 weeks)", finding.Message);
     }
@@ -87,7 +87,7 @@ public class ProjectMonitorRulesTests
         Assert.Equal(80m, finding.Details["predictedHours"]);
         Assert.Equal(20m, finding.Details["shortfallHours"]);
         Assert.Equal(0.5m, finding.Details["requiredRate"]);
-        Assert.Equal(50m, finding.Details["overtimeHours"]);
+        Assert.Equal(20m, finding.Details["overtimeHours"]);
         // 5 people x 8h x 40% = 16h a day -> 7 working days from Mon 12 -> Tue 20, 2 days late.
         Assert.Equal("2026-10-20", finding.Details["expectedFinish"]);
         Assert.Equal(2, finding.Details["lateDays"]);

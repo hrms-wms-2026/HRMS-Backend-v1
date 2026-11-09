@@ -125,7 +125,7 @@ public class GetModuleForecastQueryHandlerTests
 
         // Checkout: Actor + M1 (child manpower) = 2 people x 10 days x 8h = 160h, x 50% = 80h vs 200h.
         var parent = r.Items[0];
-        Assert.Equal((200m, 160m, 80m, 0.5m, 1.25m, 240m), (parent.RemainingHours, parent.CapacityHours, parent.PredictedHours,
+        Assert.Equal((200m, 160m, 80m, 0.5m, 1.25m, 120m), (parent.RemainingHours, parent.CapacityHours, parent.PredictedHours,
             parent.ConversionRate!.Value, parent.RequiredRate!.Value, parent.OvertimeHours));
         Assert.Equal(ForecastStatuses.Overtime, parent.Status);
         Assert.Equal(10, parent.WorkingDaysLeft);
@@ -134,11 +134,11 @@ public class GetModuleForecastQueryHandlerTests
 
         var child = r.Items[1];
         Assert.Equal("Checkout › Card form", child.Path);
-        Assert.Equal((80m, 40m, 20m, 120m), (child.RemainingHours, child.CapacityHours, child.PredictedHours, child.OvertimeHours));
+        Assert.Equal((80m, 40m, 20m, 60m), (child.RemainingHours, child.CapacityHours, child.PredictedHours, child.OvertimeHours));
 
         // Totals count the top-most module only (Checkout already holds Card form's allocation); counts every listed module.
         Assert.Equal((2, 0, 0, 2, 0), (r.Totals.Modules, r.Totals.OnTrack, r.Totals.RaiseRate, r.Totals.Overtime, r.Totals.NoHistory));
-        Assert.Equal((200m, 200m, 160m, 80m, 240m), (r.Totals.AllocatedHours, r.Totals.RemainingHours, r.Totals.CapacityHours,
+        Assert.Equal((200m, 200m, 160m, 80m, 120m), (r.Totals.AllocatedHours, r.Totals.RemainingHours, r.Totals.CapacityHours,
             r.Totals.PredictedHours, r.Totals.OvertimeHours));
         Assert.Equal(0.5m, r.Totals.TeamRate);
         Assert.Equal(1.25m, r.Totals.RequiredRate);

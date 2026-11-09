@@ -43,14 +43,18 @@ No migration and no new table.
    not ISO Mondays). There are always 4 points. `rate` is null for a week with under 60 worked minutes.
 6. **Rounding.** Rates are fractions rounded to 4 decimals, hours to 2. `requiredRate` may be > 1. It is null when
    capacity is 0.
-7. **Rate 0.** `overtimeHours` = the shortfall itself, because no finite number of hours helps at a 0% rate.
+7. **Overtime hours (changed 2026-11-09 after the browser pass).** `overtimeHours = max(0, remaining − predicted)`:
+   the task hours that won't get done in normal hours at the current rate, so it never exceeds `remainingHours`.
+   It used to be divided by the rate, which exploded at low rates (27,035 h against 17,170 h remaining on real data).
+   The same rule applies to items, totals, `projects[]` and the monitor alert details. Status is unchanged.
 8. **Module totals.** `totals`, `projects[]` and `rateTrend` cover the whole population: `projectId`, `status`,
    `search` and paging narrow only `items` and `total`. Status counts cover every listed module. Hour sums, `teamRate`, `requiredRate` and `projects[]` use top-most listed modules
    only (no listed ancestor). `total` is the row count after the filters.
 9. **Employee with no open estimated task due today or later.** `status: "on_track"`, `deadline: null`,
    hours 0, `requiredRate: 0`.
-   Employee `status` is the most severe status across their EDF windows. The figures come from the worst window
-   (largest overtime). `requiredRate` is the maximum over the windows.
+   Employee `status` is the most severe status across their EDF windows. Every figure (`deadline`, hours and
+   `requiredRate`) comes from ONE binding window: the one with the highest required rate, ties broken by the larger
+   shortfall. Totals `requiredRate` = Σ remaining ÷ Σ capacity of those same windows.
    `sort=rate` puts the lowest rate first and no-history last.
 10. **Employee forecast scope.** It reads tasks and memberships only from projects in the **viewer's legal
     entity**, so project and module names from other legal entities never leak. The spec said "every project".
@@ -84,23 +88,23 @@ Individual task rates are performance data, so:
   "asOf": "2026-11-09", "windowStart": "2026-10-12", "windowEnd": "2026-11-08",
   "totals": { "modules": 2, "onTrack": 0, "raiseRate": 0, "overtime": 2, "noHistory": 0,
               "allocatedHours": 200, "completedHours": 0, "remainingHours": 200, "capacityHours": 160,
-              "predictedHours": 80, "overtimeHours": 240, "teamRate": 0.5, "requiredRate": 1.25 },
+              "predictedHours": 80, "overtimeHours": 120, "teamRate": 0.5, "requiredRate": 1.25 },
   "rateTrend": [ { "weekStart": "2026-10-12", "rate": 0.5 }, { "weekStart": "2026-10-19", "rate": null },
                  { "weekStart": "2026-10-26", "rate": null }, { "weekStart": "2026-11-02", "rate": 0.5 } ],
   "projects": [ { "projectId": "…", "name": "Payments", "allocatedHours": 200, "remainingHours": 200,
-                  "predictedHours": 80, "capacityHours": 160, "overtimeHours": 240, "modulesAtRisk": 2 } ],
+                  "predictedHours": 80, "capacityHours": 160, "overtimeHours": 120, "modulesAtRisk": 2 } ],
   "items": [
     { "moduleId": "…", "projectId": "…", "projectName": "Payments", "title": "Checkout", "path": "Checkout",
       "startDate": "2026-10-26", "endDate": "2026-11-20", "workingDaysLeft": 10,
       "allocatedHours": 200, "completedHours": 0, "remainingHours": 200, "capacityHours": 160,
-      "conversionRate": 0.5, "predictedHours": 80, "requiredRate": 1.25, "overtimeHours": 240,
+      "conversionRate": 0.5, "predictedHours": 80, "requiredRate": 1.25, "overtimeHours": 120,
       "status": "overtime", "memberCount": 2,
       "members": [ { "employeeId": "…", "name": "Kaja", "avatarFileId": null, "conversionRate": 0.5, "workedMinutes": 600, "taskMinutes": 300 },
                    { "employeeId": "…", "name": "Nila", "avatarFileId": null, "conversionRate": 0.5, "workedMinutes": 600, "taskMinutes": 300 } ] },
     { "moduleId": "…", "projectId": "…", "projectName": "Payments", "title": "Card form", "path": "Checkout › Card form",
       "startDate": "2026-10-26", "endDate": "2026-11-13", "workingDaysLeft": 5,
       "allocatedHours": 80, "completedHours": 0, "remainingHours": 80, "capacityHours": 40,
-      "conversionRate": 0.5, "predictedHours": 20, "requiredRate": 2, "overtimeHours": 120,
+      "conversionRate": 0.5, "predictedHours": 20, "requiredRate": 2, "overtimeHours": 60,
       "status": "overtime", "memberCount": 1, "members": [ … ] }
   ],
   "total": 2, "page": 1, "pageSize": 10
@@ -113,7 +117,7 @@ Individual task rates are performance data, so:
 {
   "asOf": "2026-11-09", "windowStart": "2026-10-12", "windowEnd": "2026-11-08",
   "totals": { "people": 3, "onTrack": 2, "raiseRate": 1, "overtime": 0, "noHistory": 0,
-              "remainingHours": 30, "capacityHours": 40, "predictedHours": 20, "overtimeHours": 20,
+              "remainingHours": 30, "capacityHours": 40, "predictedHours": 20, "overtimeHours": 10,
               "teamRate": 0.7317, "requiredRate": 0.75 },
   "rateTrend": [ { "weekStart": "2026-10-12", "rate": 0.7317 }, { "weekStart": "2026-10-19", "rate": null },
                  { "weekStart": "2026-10-26", "rate": null }, { "weekStart": "2026-11-02", "rate": null } ],
@@ -121,7 +125,7 @@ Individual task rates are performance data, so:
     { "employeeId": "…", "name": "Arun", "avatarFileId": null, "department": "Eng",
       "workedMinutes": 600, "taskMinutes": 300, "conversionRate": 0.5,
       "deadline": "2026-11-13", "remainingHours": 30, "capacityHours": 40, "predictedHours": 20,
-      "requiredRate": 0.75, "overtimeHours": 20, "status": "raise_rate",
+      "requiredRate": 0.75, "overtimeHours": 10, "status": "raise_rate",
       "modules": [ { "moduleId": "…", "projectId": "…", "projectName": "Payments", "title": "Checkout",
                      "endDate": "2026-11-20", "remainingHours": 141, "openTasks": 4 } ] },
     { "employeeId": "…", "name": "Bala", "avatarFileId": null, "department": "Eng",

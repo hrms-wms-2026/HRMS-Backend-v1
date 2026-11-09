@@ -25,15 +25,15 @@ public static class ForecastStatuses
 public sealed record ForecastFigures(
     decimal Remaining, decimal Capacity, decimal? Rate, decimal Predicted, decimal? RequiredRate, decimal OvertimeHours, string Status);
 
-/// <summary>The worst EDF window of one employee (largest overtime). RequiredRate is the max over all windows and
-/// Status the most severe window status.</summary>
+/// <summary>The binding EDF window of one employee: the one with the highest required rate (ties: larger shortfall).
+/// Every figure, RequiredRate included, comes from that one window; Status is the most severe window status.</summary>
 public sealed record EmployeeWindowForecast(DateOnly Deadline, ForecastFigures Figures, decimal? RequiredRate, string Status);
 
 /// <summary>
 /// The overtime forecast maths (spec 2026-11-08 §2), shared by the monitor rules, the live form checks and the
 /// forecast widgets so they can never disagree. Pure.
-/// predicted = capacity x rateEff; requiredRate = remaining / capacity; overtimeHours = max(0, remaining - predicted) / rateEff
-/// (the extra WORK hours needed at the current rate; at rate 0 the shortfall itself, since no finite number of hours helps).
+/// predicted = capacity x rateEff; requiredRate = remaining / capacity; overtimeHours = max(0, remaining - predicted):
+/// the TASK hours that won't get done in normal hours at the current rate, so it never exceeds remaining.
 /// </summary>
 public static class OvertimeForecast
 {
@@ -59,8 +59,7 @@ public static class OvertimeForecast
         var rateEff = Effective(rate);
         var predicted = capacity * rateEff;
         decimal? requiredRate = capacity > 0 ? remaining / capacity : null;
-        var shortfall = Math.Max(0m, remaining - predicted);
-        var overtime = rateEff > 0 ? shortfall / rateEff : shortfall;
+        var overtime = Math.Max(0m, remaining - predicted);
 
         string status;
         if (rate is null)
@@ -89,17 +88,16 @@ public static class OvertimeForecast
                 open.Where(x => x.Due <= deadline).Sum(x => x.Remaining), calendar.Capacity(1, today, deadline), rate)))
             .ToList();
 
-        var worst = windows
-            .OrderByDescending(w => w.Figures.OvertimeHours)
-            .ThenByDescending(w => w.Figures.RequiredRate ?? decimal.MaxValue)
+        // No capacity left with work due reads as an unbounded required rate, so such a window always binds.
+        static decimal RequiredOrder(ForecastFigures f) => f.RequiredRate ?? (f.Remaining > 0 ? decimal.MaxValue : 0m);
+        var binding = windows
+            .OrderByDescending(w => RequiredOrder(w.Figures))
+            .ThenByDescending(w => w.Figures.OvertimeHours)
             .ThenBy(w => w.Deadline)
             .First();
-        var required = windows.Any(w => w.Figures.RequiredRate is null && w.Figures.Remaining > 0)
-            ? null
-            : windows.Max(w => w.Figures.RequiredRate);
         var status = rate is null
             ? ForecastStatuses.NoHistory
             : windows.Select(w => w.Figures.Status).OrderByDescending(ForecastStatuses.Severity).First();
-        return new EmployeeWindowForecast(worst.Deadline, worst.Figures, required, status);
+        return new EmployeeWindowForecast(binding.Deadline, binding.Figures, binding.Figures.RequiredRate, status);
     }
 }

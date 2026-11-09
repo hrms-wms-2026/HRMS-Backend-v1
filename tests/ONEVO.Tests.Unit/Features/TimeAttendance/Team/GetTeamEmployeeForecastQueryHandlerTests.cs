@@ -94,7 +94,7 @@ public class GetTeamEmployeeForecastQueryHandlerTests
         => Assert.Equal(422, (await Handler().Handle(new GetTeamEmployeeForecastQuery(Status: "late"), default)).StatusCode);
 
     [Fact]
-    public async Task Forecasts_each_covered_employees_worst_window_at_their_rate()
+    public async Task Forecasts_each_covered_employees_binding_window_at_their_rate()
     {
         // Arun: 30h due Fri 13 (5 days x 8h = 40h x 50% = 20h) + a 24h task shared with one other (12h share) due Fri 20.
         _open =
@@ -110,8 +110,9 @@ public class GetTeamEmployeeForecastQueryHandlerTests
         Assert.Equal(3, r.Total);   // the actor is stripped from the population
         var arun = r.Items[0];
         Assert.Equal("Arun", arun.Name);
-        // Fri 20 window: 42h due vs 80h x 50% = 40h -> overtime (42-40)/0.5 = 4; Fri 13 window: (30-20)/0.5 = 20 -> worst.
-        Assert.Equal((Fri13, 30m, 40m, 20m, 20m), (arun.Deadline, arun.RemainingHours, arun.CapacityHours, arun.PredictedHours, arun.OvertimeHours));
+        // Fri 13 window: 30h due vs 40h -> required 0.75, overtime 30 - 20 = 10 (binding: highest required rate).
+        // Fri 20 window: 42h due vs 80h -> required 0.525, overtime 42 - 40 = 2. Every figure comes from Fri 13.
+        Assert.Equal((Fri13, 30m, 40m, 20m, 10m), (arun.Deadline, arun.RemainingHours, arun.CapacityHours, arun.PredictedHours, arun.OvertimeHours));
         Assert.Equal(0.75m, arun.RequiredRate);
         Assert.Equal(ForecastStatuses.RaiseRate, arun.Status);
         Assert.Equal((0.5m, 600, 300), (arun.ConversionRate!.Value, arun.WorkedMinutes, arun.TaskMinutes));
@@ -127,7 +128,8 @@ public class GetTeamEmployeeForecastQueryHandlerTests
         Assert.Equal(ForecastStatuses.OnTrack, r.Items.Single(i => i.Name == "Chitra").Status);
 
         Assert.Equal((3, 2, 1, 0, 0), (r.Totals.People, r.Totals.OnTrack, r.Totals.RaiseRate, r.Totals.Overtime, r.Totals.NoHistory));
-        Assert.Equal((30m, 40m, 20m, 20m), (r.Totals.RemainingHours, r.Totals.CapacityHours, r.Totals.PredictedHours, r.Totals.OvertimeHours));
+        Assert.Equal((30m, 40m, 20m, 10m), (r.Totals.RemainingHours, r.Totals.CapacityHours, r.Totals.PredictedHours, r.Totals.OvertimeHours));
+        Assert.Equal(0.75m, r.Totals.RequiredRate);   // 30 / 40, from the same binding windows as the rows
         Assert.Equal(Math.Round(900m / 1230m, 4), r.Totals.TeamRate);
         Assert.Equal(4, r.RateTrend.Count);
     }
