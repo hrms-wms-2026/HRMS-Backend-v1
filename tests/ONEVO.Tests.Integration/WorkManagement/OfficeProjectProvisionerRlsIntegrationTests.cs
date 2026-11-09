@@ -47,6 +47,52 @@ public sealed class OfficeProjectProvisionerRlsIntegrationTests
     }
 
     [Fact]
+    public async Task EnsureAsync_WithALaterTargetDate_ExtendsTheProjectAndItsRootObjective()
+    {
+        await using var harness = await OfficeProjectDb.CreateAsync();
+        var hr = await harness.SeedEmployeeAsync(harness.LegalEntityId);
+        var scopes = harness.BuildAppScopeFactory();
+        var later = DateOnly.FromDateTime(DateTime.UtcNow).AddYears(3);
+
+        Guid projectId;
+        await using (var scope = scopes.CreateAsyncScope())
+            projectId = (await scope.ServiceProvider.GetRequiredService<IOfficeProjectProvisioner>()
+                .EnsureAsync(harness.TenantId, harness.LegalEntityId, hr.UserId, hr.Id, DateOnly.FromDateTime(DateTime.UtcNow))).ProjectId;
+        await using (var scope = scopes.CreateAsyncScope())
+            await scope.ServiceProvider.GetRequiredService<IOfficeProjectProvisioner>()
+                .EnsureAsync(harness.TenantId, harness.LegalEntityId, hr.UserId, hr.Id, later);
+
+        await using var admin = harness.AdminContext();
+        Assert.Equal(later, (await admin.Projects.SingleAsync(p => p.Id == projectId)).TargetDate);
+        Assert.Contains(await admin.Objectives.Where(o => o.ProjectId == projectId).Select(o => o.EndDate).ToListAsync(),
+            end => end >= later);
+    }
+
+    [Fact]
+    public async Task EnsureAsync_ConcurrentFirstCalls_CreateOneOfficeProject()
+    {
+        await using var harness = await OfficeProjectDb.CreateAsync();
+        var hr = await harness.SeedEmployeeAsync(harness.LegalEntityId);
+        var scopes = harness.BuildAppScopeFactory();
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        using var gate = new SemaphoreSlim(0);
+
+        var calls = Enumerable.Range(0, 4).Select(_ => Task.Run(async () =>
+        {
+            await gate.WaitAsync();
+            await using var scope = scopes.CreateAsyncScope();
+            return (await scope.ServiceProvider.GetRequiredService<IOfficeProjectProvisioner>()
+                .EnsureAsync(harness.TenantId, harness.LegalEntityId, hr.UserId, hr.Id, today)).ProjectId;
+        })).ToList();
+        gate.Release(calls.Count);
+        var ids = await Task.WhenAll(calls);
+
+        Assert.Single(ids.Distinct());
+        await using var admin = harness.AdminContext();
+        Assert.Equal(1, await admin.Projects.CountAsync(p => p.TenantId == harness.TenantId && p.SystemPurpose == ProjectSystemPurposes.Office));
+    }
+
+    [Fact]
     public async Task EnsureAsync_NewOfficeProject_HasTheSystemMeetingCategory()
     {
         await using var harness = await OfficeProjectDb.CreateAsync();
