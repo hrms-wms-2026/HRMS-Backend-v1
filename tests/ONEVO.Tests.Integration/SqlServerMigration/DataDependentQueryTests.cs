@@ -128,6 +128,28 @@ public sealed class DataDependentQueryTests
         Assert.NotEmpty(await db.Notifications.AsNoTracking().ToListAsync());
     }
 
+    [Fact]
+    public async Task ForecastOpenTasks_CountAssigneesPerTask()
+    {
+        var h = await MyTeamDb.CreateAsync();
+        await using var db = h.NewContext();
+        var lead = h.AddEmployee(db);
+        var assignee = h.AddEmployee(db);
+        var (projectId, moduleId) = h.AddProject(db, lead.Id);
+        var openStatus = h.AddStatus(db, projectId, marksComplete: false);
+        var done = h.AddStatus(db, projectId, marksComplete: true);
+        var open = h.AddTask(db, projectId, moduleId, openStatus, 0, null, assigneeEmployeeId: assignee.Id, estimatedHours: 4);
+        h.AddTask(db, projectId, moduleId, done, 100, null, assigneeEmployeeId: assignee.Id, estimatedHours: 2);
+        await db.SaveChangesAsync();
+
+        var tasks = await new ONEVO.Infrastructure.Persistence.Repositories.TimeAttendance.EfForecastTaskReader(db)
+            .ListOpenAssignedAsync(h.TenantId, h.LegalEntityId, [assignee.Id]);
+
+        var task = Assert.Single(tasks);
+        Assert.Equal(open.Id, task.TaskId);
+        Assert.Equal(1, task.AssigneeCount);
+    }
+
     private static ConversationMessage Message(MyTeamDb h, Guid conversationId, Guid author) => new()
     {
         Id = Guid.NewGuid(), TenantId = h.TenantId, ConversationId = conversationId, AuthorEmployeeId = author,
