@@ -60,7 +60,7 @@ public sealed class CalendarEventReminderServiceTests
     [Fact]
     public async Task An_event_starting_within_the_lead_time_reminds_each_participant_who_did_not_decline_once()
     {
-        var evt = new CalendarEvent { Id = Guid.NewGuid(), TenantId = TenantId, Title = "Standup", StartDate = Now.AddMinutes(10), EndDate = Now.AddMinutes(25) };
+        var evt = new CalendarEvent { Id = Guid.NewGuid(), TenantId = TenantId, Title = "Standup", Timezone = "Asia/Colombo", StartDate = Now.AddMinutes(10), EndDate = Now.AddMinutes(25) };
         _events.Setup(e => e.ListWithParticipantsStartingBetweenAsync(TenantId, Now, Now.AddMinutes(15), It.IsAny<CancellationToken>())).ReturnsAsync([evt]);
         Participants(evt.Id, (_ada, CalendarEventParticipantStatuses.Accepted), (_bob, CalendarEventParticipantStatuses.Rejected));
 
@@ -68,8 +68,8 @@ public sealed class CalendarEventReminderServiceTests
         var second = await Sut().SendDueAsync(TenantId, Now, default);
 
         (first, second).Should().Be((1, 0));
-        _notifications.Verify(n => n.NotifyEventReminderAsync(TenantId, _ada.UserId, "Standup", evt.StartDate, It.IsAny<CancellationToken>()), Times.Once);
-        _notifications.Verify(n => n.NotifyEventReminderAsync(TenantId, _bob.UserId, It.IsAny<string>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()), Times.Never);
+        _notifications.Verify(n => n.NotifyEventReminderAsync(TenantId, _ada.UserId, "Standup", evt.StartDate, "Asia/Colombo", It.IsAny<CancellationToken>()), Times.Once);
+        _notifications.Verify(n => n.NotifyEventReminderAsync(TenantId, _bob.UserId, It.IsAny<string>(), It.IsAny<DateTimeOffset>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
         _logged.Should().ContainSingle(l => l.EventId == evt.Id && l.OccurrenceStart == evt.StartDate && l.EmployeeId == _ada.Id);
         _unitOfWork.Verify(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
@@ -79,7 +79,7 @@ public sealed class CalendarEventReminderServiceTests
     {
         var master = new CalendarEvent
         {
-            Id = Guid.NewGuid(), TenantId = TenantId, Title = "Weekly sync", StartDate = Now.AddDays(-7).AddMinutes(5),
+            Id = Guid.NewGuid(), TenantId = TenantId, Title = "Weekly sync", Timezone = "Europe/London", StartDate = Now.AddDays(-7).AddMinutes(5),
             EndDate = Now.AddDays(-7).AddMinutes(35), Recurrence = CalendarRecurrences.Weekly, RecurrenceRule = "FREQ=WEEKLY",
         };
         var occurrence = Now.AddMinutes(5);
@@ -88,7 +88,7 @@ public sealed class CalendarEventReminderServiceTests
         Participants(master.Id, (_ada, CalendarEventParticipantStatuses.Pending));
 
         (await Sut().SendDueAsync(TenantId, Now, default)).Should().Be(1);
-        _notifications.Verify(n => n.NotifyEventReminderAsync(TenantId, _ada.UserId, "Weekly sync", occurrence, It.IsAny<CancellationToken>()), Times.Once);
+        _notifications.Verify(n => n.NotifyEventReminderAsync(TenantId, _ada.UserId, "Weekly sync", occurrence, "Europe/London", It.IsAny<CancellationToken>()), Times.Once);
 
         _sent.Clear();
         _events.Setup(e => e.GetChildrenForMasterAsync(TenantId, master.Id, It.IsAny<CancellationToken>())).ReturnsAsync(
@@ -118,7 +118,7 @@ public sealed class CalendarEventReminderServiceTests
         var organizer = new Employee { Id = Guid.NewGuid(), TenantId = TenantId, UserId = Guid.NewGuid(), FirstName = "Org" };
         _employees.Setup(e => e.ListByIdsAsync(TenantId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Dictionary<Guid, Employee> { [_ada.Id] = _ada, [_bob.Id] = _bob, [organizer.Id] = organizer });
-        var series = new MeetingSeries { Id = Guid.NewGuid(), TenantId = TenantId, OrganizerEmployeeId = organizer.Id, Title = "Sync" };
+        var series = new MeetingSeries { Id = Guid.NewGuid(), TenantId = TenantId, OrganizerEmployeeId = organizer.Id, Title = "Sync", Timezone = "Asia/Tokyo" };
         var occurrence = new MeetingDetails
         {
             TaskId = Guid.NewGuid(), TenantId = TenantId, SeriesId = series.Id, OriginalStart = Now.AddMinutes(10),
@@ -141,10 +141,11 @@ public sealed class CalendarEventReminderServiceTests
         var second = await sut().SendDueAsync(TenantId, Now, default);
 
         (first, second).Should().Be((2, 0));
+        _notifications.Verify(n => n.NotifyEventReminderAsync(TenantId, _ada.UserId, "Sync", occurrence.StartAt, "Asia/Tokyo", It.IsAny<CancellationToken>()), Times.Once);
         _logged.Select(l => (l.EventId, l.OccurrenceStart, l.EmployeeId)).Should().BeEquivalentTo(new[]
         {
             (occurrence.TaskId, occurrence.StartAt, _ada.Id), (occurrence.TaskId, occurrence.StartAt, organizer.Id),
         });
-        _notifications.Verify(n => n.NotifyEventReminderAsync(TenantId, _bob.UserId, It.IsAny<string>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()), Times.Never);
+        _notifications.Verify(n => n.NotifyEventReminderAsync(TenantId, _bob.UserId, It.IsAny<string>(), It.IsAny<DateTimeOffset>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 }

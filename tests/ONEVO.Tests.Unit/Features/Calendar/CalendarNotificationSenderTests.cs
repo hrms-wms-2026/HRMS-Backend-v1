@@ -239,4 +239,22 @@ public sealed class CalendarNotificationSenderTests
         _outbox.Verify(x => x.EnqueueAsync(OutboxMessageTypes.CalendarEventInviteEmail, It.IsAny<CalendarEventInviteEmailPayload>(),
             It.IsAny<Guid?>(), It.IsAny<CancellationToken>()), Times.Never);
     }
+
+    [Theory]
+    [InlineData("Asia/Colombo", "4:15 PM (Asia/Colombo)")]
+    [InlineData(null, "10:45 AM UTC")]
+    [InlineData("", "10:45 AM UTC")]
+    [InlineData("Not/AZone", "10:45 AM UTC")]
+    public async Task NotifyEventReminderAsync_ShowsTheStartAsAReadableTimeInTheEventsZone(string? timeZoneId, string expected)
+    {
+        var start = new DateTimeOffset(2026, 11, 9, 10, 45, 0, TimeSpan.Zero);
+
+        await BuildSut().NotifyEventReminderAsync(TenantId, UserId, "test meeting", start, timeZoneId, CancellationToken.None);
+
+        _outbox.Verify(x => x.EnqueueAsync(
+            OutboxMessageTypes.WorkNotification,
+            It.Is<WorkNotificationPayload>(p => p.RecipientUserId == UserId && p.TemplateCode == "calendar_event_reminder"
+                && p.Placeholders["eventTitle"] == "test meeting" && p.Placeholders["eventTime"] == expected),
+            TenantId, It.IsAny<CancellationToken>()), Times.Once);
+    }
 }

@@ -66,7 +66,7 @@ public sealed class CalendarEventReminderJobTests
         var sent = await new CalendarEventReminderJob(services.BuildServiceProvider(), NullLogger<CalendarEventReminderJob>.Instance).RunOnceAsync(default);
 
         sent.Should().Be(1);
-        notifications.Verify(n => n.NotifyEventReminderAsync(healthy, person.UserId, "Standup", evt.StartDate, It.IsAny<CancellationToken>()), Times.Once);
+        notifications.Verify(n => n.NotifyEventReminderAsync(healthy, person.UserId, "Standup", evt.StartDate, It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Once);
         uow.Verify(u => u.ClearTracking(), Times.Once);
     }
 }

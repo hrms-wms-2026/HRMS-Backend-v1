@@ -25,7 +25,7 @@ public sealed class CalendarEventReminderService(
 {
     public const int LeadMinutes = 15;
 
-    private sealed record Occurrence(Guid SeriesId, string Title, DateTimeOffset Start);
+    private sealed record Occurrence(Guid SeriesId, string Title, DateTimeOffset Start, string? TimeZoneId);
 
     /// <summary>A task-meeting occurrence's reminder recipients: effective attendees who have not declined, and its organizer.</summary>
     private async Task<IReadOnlyList<(Occurrence Occurrence, Guid EmployeeId)>> TaskMeetingRecipientsAsync(Guid tenantId, DateTimeOffset from,
@@ -48,7 +48,7 @@ public sealed class CalendarEventReminderService(
         {
             if (!series.TryGetValue(row.Details.SeriesId, out var s) || s.CancelledAt is not null)
                 continue;
-            var occurrence = new Occurrence(row.Details.TaskId, row.Title, row.Details.StartAt);
+            var occurrence = new Occurrence(row.Details.TaskId, row.Title, row.Details.StartAt, s.Timezone);
             var attendees = EffectiveAttendees.Compute(participants.GetValueOrDefault(s.Id) ?? [], [], overrides.GetValueOrDefault(row.Details.TaskId) ?? []);
             foreach (var employeeId in attendees
                          .Where(a => a.EmployeeId is not null && a.Response != CalendarEventParticipantStatuses.Rejected)
@@ -62,7 +62,7 @@ public sealed class CalendarEventReminderService(
     {
         var to = now.AddMinutes(LeadMinutes);
         var occurrences = (await events.ListWithParticipantsStartingBetweenAsync(tenantId, now, to, ct))
-            .Select(e => new Occurrence(e.RecurrenceParentId ?? e.Id, e.Title, e.StartDate))
+            .Select(e => new Occurrence(e.RecurrenceParentId ?? e.Id, e.Title, e.StartDate, e.Timezone))
             .ToList();
         foreach (var master in await events.ListRecurringMastersWithParticipantsAsync(tenantId, to, ct))
         {
@@ -71,7 +71,7 @@ public sealed class CalendarEventReminderService(
                 continue;
             var overridden = (await events.GetChildrenForMasterAsync(tenantId, master.Id, ct))
                 .Where(c => c.RecurrenceOriginalStart is not null).Select(c => c.RecurrenceOriginalStart!.Value).ToHashSet();
-            occurrences.AddRange(starts.Where(s => !overridden.Contains(s)).Select(s => new Occurrence(master.Id, master.Title, s)));
+            occurrences.AddRange(starts.Where(s => !overridden.Contains(s)).Select(s => new Occurrence(master.Id, master.Title, s, master.Timezone)));
         }
         var taskMeetingRecipients = await TaskMeetingRecipientsAsync(tenantId, now, to, ct);
         if (occurrences.Count == 0 && taskMeetingRecipients.Count == 0)
@@ -97,7 +97,7 @@ public sealed class CalendarEventReminderService(
         {
             if (!people.TryGetValue(employeeId, out var person) || person.UserId == Guid.Empty)
                 continue;
-            await notifications.NotifyEventReminderAsync(tenantId, person.UserId, occurrence.Title, occurrence.Start, ct);
+            await notifications.NotifyEventReminderAsync(tenantId, person.UserId, occurrence.Title, occurrence.Start, occurrence.TimeZoneId, ct);
             logs.Add(new CalendarEventReminderLog
             {
                 Id = Guid.NewGuid(), TenantId = tenantId, EventId = occurrence.SeriesId, OccurrenceStart = occurrence.Start,

@@ -1,3 +1,4 @@
+using System.Globalization;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Calendar.OutboxHandlers;
 using ONEVO.Application.Features.Calendar.RepositoryInterfaces;
@@ -207,9 +208,18 @@ public sealed class CalendarNotificationSender(
             _ => "calendar_connection_failed",
         }, new Dictionary<string, string> { ["provider"] = providerLabel }, ct);
 
-    public async Task NotifyEventReminderAsync(Guid tenantId, Guid userId, string eventTitle, DateTimeOffset startDate, CancellationToken ct = default)
+    public async Task NotifyEventReminderAsync(Guid tenantId, Guid userId, string eventTitle, DateTimeOffset startDate, string? timeZoneId, CancellationToken ct = default)
         => await InAppAsync(tenantId, userId, "calendar_event_reminder",
-            new Dictionary<string, string> { ["eventTitle"] = eventTitle, ["eventTime"] = startDate.ToString("u") }, ct);
+            new Dictionary<string, string> { ["eventTitle"] = eventTitle, ["eventTime"] = FormatReminderTime(startDate, timeZoneId) }, ct);
+
+    /// <summary>The start as people read it, in the event's own zone and named so; UTC when the zone is missing or unknown.</summary>
+    private static string FormatReminderTime(DateTimeOffset start, string? timeZoneId)
+    {
+        if (string.IsNullOrWhiteSpace(timeZoneId) || !TimeZoneInfo.TryFindSystemTimeZoneById(timeZoneId, out var zone))
+            return string.Create(CultureInfo.InvariantCulture, $"{start.UtcDateTime:h:mm tt} UTC");
+        var local = TimeZoneInfo.ConvertTime(start, zone);
+        return string.Create(CultureInfo.InvariantCulture, $"{local:h:mm tt} ({timeZoneId})");
+    }
 
     public async Task QueueIncidentEvaluationAsync(Guid tenantId, IReadOnlyCollection<Guid> employeeIds, CancellationToken ct = default)
     {

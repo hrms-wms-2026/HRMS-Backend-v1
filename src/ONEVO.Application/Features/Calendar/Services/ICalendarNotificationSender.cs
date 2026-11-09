@@ -97,7 +97,7 @@ public interface ICalendarNotificationSender
     Task NotifyConnectionProblemAsync(Guid tenantId, Guid userId, string providerLabel, string problem, CancellationToken ct = default);
 
     /// <summary>In-app reminder that an event starts soon (P2-2).</summary>
-    Task NotifyEventReminderAsync(Guid tenantId, Guid userId, string eventTitle, DateTimeOffset startDate, CancellationToken ct = default);
+    Task NotifyEventReminderAsync(Guid tenantId, Guid userId, string eventTitle, DateTimeOffset startDate, string? timeZoneId, CancellationToken ct = default);
 
     /// <summary>Queues a re-run of the meeting-exception rules for these employees after the current change commits (plan C2).</summary>
     Task QueueIncidentEvaluationAsync(Guid tenantId, IReadOnlyCollection<Guid> employeeIds, CancellationToken ct = default);
