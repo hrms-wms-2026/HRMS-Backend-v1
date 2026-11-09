@@ -12,9 +12,9 @@ public class ModuleHourSummaryConfiguration : IEntityTypeConfiguration<ModuleHou
         builder.HasKey(s => s.Id);
         // Id is the Module id, supplied by the trigger - never generated.
         builder.Property(s => s.Id).ValueGeneratedNever();
-        builder.Property(s => s.NotStartedHours).HasColumnType("numeric(18,2)");
-        builder.Property(s => s.InProgressHours).HasColumnType("numeric(18,2)");
-        builder.Property(s => s.CompletedHours).HasColumnType("numeric(18,2)");
+        builder.Property(s => s.NotStartedHours).HasColumnType("decimal(18,2)");
+        builder.Property(s => s.InProgressHours).HasColumnType("decimal(18,2)");
+        builder.Property(s => s.CompletedHours).HasColumnType("decimal(18,2)");
 
         builder.HasIndex(s => new { s.TenantId, s.ProjectId })
             .HasDatabaseName("ix_wm_module_hour_summaries_tenant_id_project_id");

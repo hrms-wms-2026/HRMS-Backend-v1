@@ -29,7 +29,7 @@ public sealed class EfTenantStorageStatsRepository : ITenantStorageStatsReposito
     {
         // A brand-new tenant has no tenant_storage_stats row yet. Guard the
         // pure-insert path here; the WHERE clause below guards the
-        // already-has-usage path taken by the ON CONFLICT DO UPDATE branch.
+        // already-has-usage path taken by the MERGE update branch.
         if (bytes > limitBytes)
         {
             return false;
@@ -38,12 +38,14 @@ public sealed class EfTenantStorageStatsRepository : ITenantStorageStatsReposito
         var now = DateTimeOffset.UtcNow;
 
         var rowsAffected = await _db.Database.ExecuteSqlInterpolatedAsync($@"
-            INSERT INTO tenant_storage_stats (tenant_id, used_r2_bytes, used_db_bytes, reserved_r2_bytes, last_calculated_at, updated_at)
-            VALUES ({tenantId}, 0, 0, {bytes}, {now}, {now})
-            ON CONFLICT (tenant_id) DO UPDATE
-            SET reserved_r2_bytes = tenant_storage_stats.reserved_r2_bytes + {bytes},
-                updated_at = {now}
-            WHERE (tenant_storage_stats.used_r2_bytes + tenant_storage_stats.reserved_r2_bytes + {bytes}) <= {limitBytes}
+            MERGE tenant_storage_stats WITH (HOLDLOCK) AS target
+            USING (SELECT {tenantId} AS tenant_id) AS source
+                ON target.tenant_id = source.tenant_id
+            WHEN MATCHED AND (target.used_r2_bytes + target.reserved_r2_bytes + {bytes}) <= {limitBytes} THEN
+                UPDATE SET reserved_r2_bytes = target.reserved_r2_bytes + {bytes}, updated_at = {now}
+            WHEN NOT MATCHED THEN
+                INSERT (tenant_id, used_r2_bytes, used_db_bytes, reserved_r2_bytes, last_calculated_at, updated_at)
+                VALUES ({tenantId}, 0, 0, {bytes}, {now}, {now});
         ", ct);
 
         return rowsAffected > 0;
@@ -55,7 +57,7 @@ public sealed class EfTenantStorageStatsRepository : ITenantStorageStatsReposito
 
         await _db.Database.ExecuteSqlInterpolatedAsync($@"
             UPDATE tenant_storage_stats
-            SET reserved_r2_bytes = GREATEST(0, reserved_r2_bytes - {bytes}),
+            SET reserved_r2_bytes = CASE WHEN reserved_r2_bytes > {bytes} THEN reserved_r2_bytes - {bytes} ELSE 0 END,
                 updated_at = {now}
             WHERE tenant_id = {tenantId}
         ", ct);
@@ -67,7 +69,7 @@ public sealed class EfTenantStorageStatsRepository : ITenantStorageStatsReposito
 
         await _db.Database.ExecuteSqlInterpolatedAsync($@"
             UPDATE tenant_storage_stats
-            SET reserved_r2_bytes = GREATEST(0, reserved_r2_bytes - {bytes}),
+            SET reserved_r2_bytes = CASE WHEN reserved_r2_bytes > {bytes} THEN reserved_r2_bytes - {bytes} ELSE 0 END,
                 used_r2_bytes = used_r2_bytes + {bytes},
                 updated_at = {now}
             WHERE tenant_id = {tenantId}
@@ -80,7 +82,7 @@ public sealed class EfTenantStorageStatsRepository : ITenantStorageStatsReposito
 
         await _db.Database.ExecuteSqlInterpolatedAsync($@"
             UPDATE tenant_storage_stats
-            SET used_r2_bytes = GREATEST(0, used_r2_bytes - {bytes}),
+            SET used_r2_bytes = CASE WHEN used_r2_bytes > {bytes} THEN used_r2_bytes - {bytes} ELSE 0 END,
                 updated_at = {now}
             WHERE tenant_id = {tenantId}
         ", ct);

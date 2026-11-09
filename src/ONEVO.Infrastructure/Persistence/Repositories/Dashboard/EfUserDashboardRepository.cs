@@ -1,5 +1,5 @@
 using Microsoft.EntityFrameworkCore;
-using Npgsql;
+using ONEVO.Infrastructure.Persistence.SqlServer;
 using ONEVO.Application.Features.Dashboard.Layout.RepositoryInterfaces;
 using ONEVO.Domain.Features.Dashboard.Entities;
 
@@ -36,7 +36,7 @@ public class EfUserDashboardRepository : IUserDashboardRepository
             await _db.SaveChangesAsync(ct);
             return true;
         }
-        catch (DbUpdateException ex) when (ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
+        catch (DbUpdateException ex) when (SqlServerErrors.IsUniqueViolation(ex))
         {
             // Lost the seeding race on (tenant, user, dashboard_key): the winner's row exists.
             _db.Entry(dashboard).State = EntityState.Detached;

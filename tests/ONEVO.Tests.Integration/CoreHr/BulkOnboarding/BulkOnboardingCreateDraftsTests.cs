@@ -48,7 +48,7 @@ public sealed class BulkOnboardingCreateDraftsTests : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        _connectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
+        _connectionString = await SharedSqlServerTemplate.CreateDatabaseAsync();
 
         await using var db = CreateContext();
         var tenant = new Tenant
@@ -197,6 +197,7 @@ public sealed class BulkOnboardingCreateDraftsTests : IAsyncLifetime
         services.AddScoped(_ => CreateContext(tenantContext));
         services.AddScoped<IBulkOnboardingBatchRepository, EfBulkOnboardingBatchRepository>();
         services.AddScoped<ITenantRepository, EfTenantRepository>();
+        services.AddScoped(_ => new TenantRlsInterceptor(tenantContext));
         services.AddScoped<ITenantContextSwitcher, TenantContextSwitcher>();
         services.AddScoped<IOnboardingDraftRepository, EfOnboardingDraftRepository>();
         services.AddScoped<IEmployeeRepository, EfEmployeeRepository>();
@@ -291,9 +292,9 @@ public sealed class BulkOnboardingCreateDraftsTests : IAsyncLifetime
     {
         tenantContext ??= new TenantContextAccessor();
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
-            .UseNpgsql(_connectionString)
+            .UseTestSqlServer(_connectionString)
             .UseSnakeCaseNamingConvention()
-            .AddInterceptors(new TenantRlsInterceptor(tenantContext))
+            .AddTestRls(new TenantRlsInterceptor(tenantContext))
             .Options;
 
         return new ApplicationDbContext(

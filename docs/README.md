@@ -33,7 +33,7 @@ Start here. Every document about this repo lives under `docs/`, except the three
 
 - [`../README.md`](../README.md) and [`../CLAUDE.md`](../CLAUDE.md) at the repo root (entry point and agent instructions).
 - [`../schema-snapshots/`](../schema-snapshots/README.md): generated per-domain schema snapshots. They stay at the repo root because the generator resolves `.env` relative to that folder.
-- [`../ops/postgres/README.md`](../ops/postgres/README.md): Postgres operations notes, next to the scripts they describe.
+- [`../ops/sqlserver/README.md`](../ops/sqlserver/README.md): SQL Server operations notes, next to the scripts they describe.
 
 ## Conventions
 

@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Domain.Features.SharedPlatform.Entities;
 using ONEVO.Infrastructure.Persistence;
+using ONEVO.Infrastructure.Persistence.SqlServer;
 
 namespace ONEVO.Infrastructure.Services.SharedPlatform.Outbox;
 
@@ -57,13 +58,23 @@ public sealed class OutboxWriter : IOutboxWriter
 
         var now = _clock.UtcNow;
         var encryptedPayload = _encryption.Encrypt(JsonSerializer.Serialize(payload));
-        var inserted = await _db.Database.ExecuteSqlInterpolatedAsync($"""
-            INSERT INTO outbox_messages
-                (id, type, encrypted_payload, tenant_id, status, attempt_count, created_at, next_attempt_at, deduplication_key)
-            VALUES
-                ({Guid.NewGuid()}, {type}, {encryptedPayload}, {tenantId}, {OutboxMessageStatus.Pending}, 0, {now}, {now}, {deduplicationKey})
-            ON CONFLICT (deduplication_key) WHERE deduplication_key IS NOT NULL DO NOTHING
-            """, ct);
-        return inserted == 1;
+        // RLS can hide a row holding this key (another tenant's, or an unowned one) from the check
+        // below, so the unique index has the last word. Either way the message is already queued.
+        try
+        {
+            var inserted = await _db.Database.ExecuteSqlInterpolatedAsync($"""
+                INSERT INTO outbox_messages
+                    (id, type, encrypted_payload, tenant_id, status, attempt_count, created_at, next_attempt_at, deduplication_key)
+                SELECT
+                    {Guid.NewGuid()}, {type}, {encryptedPayload}, {tenantId}, {OutboxMessageStatus.Pending}, 0, {now}, {now}, {deduplicationKey}
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM outbox_messages WITH (UPDLOCK, HOLDLOCK) WHERE deduplication_key = {deduplicationKey})
+                """, ct);
+            return inserted == 1;
+        }
+        catch (Microsoft.Data.SqlClient.SqlException ex) when (SqlServerErrors.IsUniqueViolation(ex))
+        {
+            return false;
+        }
     }
 }

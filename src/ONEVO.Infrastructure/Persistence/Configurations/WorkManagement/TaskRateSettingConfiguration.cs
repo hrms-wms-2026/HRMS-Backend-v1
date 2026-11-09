@@ -10,7 +10,7 @@ public class TaskRateSettingConfiguration : IEntityTypeConfiguration<TaskRateSet
     {
         builder.ToTable("wm_task_rate_settings");
         builder.HasKey(s => s.Id);
-        builder.Property(s => s.MaxTaskRate).HasColumnType("numeric(5,4)").IsRequired();
+        builder.Property(s => s.MaxTaskRate).HasColumnType("decimal(5,4)").IsRequired();
 
         // One row per Legal Entity.
         builder.HasIndex(s => new { s.TenantId, s.LegalEntityId })

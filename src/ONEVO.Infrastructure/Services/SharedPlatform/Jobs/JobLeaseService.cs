@@ -6,7 +6,7 @@ using ONEVO.Infrastructure.Persistence;
 namespace ONEVO.Infrastructure.Services.SharedPlatform.Jobs;
 
 /// <summary>
-/// <see cref="IJobLeaseService"/> over job_leases. Every time comparison uses the database clock (now()), so instances
+/// <see cref="IJobLeaseService"/> over job_leases. Every time comparison uses the database clock (SYSDATETIMEOFFSET()), so instances
 /// with skewed clocks agree on expiry. job_leases has no RLS, so no tenant context is needed. Singleton: each call opens
 /// its own scope and short transaction.
 /// </summary>
@@ -32,13 +32,13 @@ public sealed class JobLeaseService : IJobLeaseService
 
         await using var scope = _scopes.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-        var renewed = await db.Database.SqlQuery<int>($"""
+        var renewed = await db.Database.ExecuteSqlInterpolatedAsync($"""
             UPDATE job_leases
-            SET lease_until = now() + make_interval(secs => {ttl.TotalSeconds}), heartbeat_at = now()
-            WHERE job_name = {jobName} AND owner_instance_id = {InstanceId} AND lease_until >= now()
-            RETURNING 1 AS "Value"
-            """).ToListAsync(ct);
-        return renewed.Count == 1;
+            SET lease_until = DATEADD(millisecond, {(int)ttl.TotalMilliseconds}, SYSDATETIMEOFFSET()),
+                heartbeat_at = SYSDATETIMEOFFSET()
+            WHERE job_name = {jobName} AND owner_instance_id = {InstanceId} AND lease_until >= SYSDATETIMEOFFSET()
+            """, ct);
+        return renewed == 1;
     }
 
     public string InstanceId { get; }
@@ -55,19 +55,19 @@ public sealed class JobLeaseService : IJobLeaseService
         // The row exists once per job; a new row starts expired so the UPDATE below decides ownership in one place.
         await db.Database.ExecuteSqlInterpolatedAsync($"""
             INSERT INTO job_leases (job_name, owner_instance_id, lease_until, heartbeat_at)
-            VALUES ({jobName}, '', '-infinity'::timestamptz, now())
-            ON CONFLICT (job_name) DO NOTHING
+            SELECT {jobName}, N'', '0001-01-01T00:00:00+00:00', SYSDATETIMEOFFSET()
+            WHERE NOT EXISTS (SELECT 1 FROM job_leases WITH (UPDLOCK, HOLDLOCK) WHERE job_name = {jobName})
             """, ct);
-        var acquired = await db.Database.SqlQuery<int>($"""
+        var acquired = await db.Database.ExecuteSqlInterpolatedAsync($"""
             UPDATE job_leases
-            SET owner_instance_id = {InstanceId}, lease_until = now() + make_interval(secs => {ttl.TotalSeconds}),
-                heartbeat_at = now()
-            WHERE job_name = {jobName} AND (lease_until < now() OR owner_instance_id = {InstanceId})
-            RETURNING 1 AS "Value"
-            """).ToListAsync(ct);
+            SET owner_instance_id = {InstanceId},
+                lease_until = DATEADD(millisecond, {(int)ttl.TotalMilliseconds}, SYSDATETIMEOFFSET()),
+                heartbeat_at = SYSDATETIMEOFFSET()
+            WHERE job_name = {jobName} AND (lease_until < SYSDATETIMEOFFSET() OR owner_instance_id = {InstanceId})
+            """, ct);
 
         await tx.CommitAsync(ct);
-        return acquired.Count == 1;
+        return acquired == 1;
     }
 
     public async Task ReleaseAsync(string jobName, CancellationToken ct)
@@ -75,7 +75,7 @@ public sealed class JobLeaseService : IJobLeaseService
         await using var scope = _scopes.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         await db.Database.ExecuteSqlInterpolatedAsync($"""
-            UPDATE job_leases SET lease_until = '-infinity'::timestamptz, heartbeat_at = now()
+            UPDATE job_leases SET lease_until = '0001-01-01T00:00:00+00:00', heartbeat_at = SYSDATETIMEOFFSET()
             WHERE job_name = {jobName} AND owner_instance_id = {InstanceId}
             """, ct);
     }

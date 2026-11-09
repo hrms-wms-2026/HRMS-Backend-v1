@@ -51,7 +51,7 @@ public sealed class BulkOnboardingBatchProcessorTests : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        _connectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
+        _connectionString = await SharedSqlServerTemplate.CreateDatabaseAsync();
 
         await using var db = CreateContext(new TenantContextAccessor());
         db.EmploymentTypes.Add(new EmploymentType { Id = 1, Code = "full_time", Label = "Full-Time" });
@@ -288,6 +288,7 @@ public sealed class BulkOnboardingBatchProcessorTests : IAsyncLifetime
         services.AddScoped(sp => CreateContext(sp.GetRequiredService<TenantContextAccessor>()));
         services.AddScoped<IBulkOnboardingBatchRepository, EfBulkOnboardingBatchRepository>();
         services.AddScoped<ITenantRepository, EfTenantRepository>();
+        services.AddScoped(sp => new TenantRlsInterceptor(sp.GetRequiredService<TenantContextAccessor>()));
         services.AddScoped<ITenantContextSwitcher, TenantContextSwitcher>();
         services.AddScoped<IOnboardingDraftRepository, EfOnboardingDraftRepository>();
         services.AddScoped<IEmployeeRepository, EfEmployeeRepository>();
@@ -325,9 +326,9 @@ public sealed class BulkOnboardingBatchProcessorTests : IAsyncLifetime
     private ApplicationDbContext CreateContext(TenantContextAccessor tenantContext)
     {
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
-            .UseNpgsql(_connectionString)
+            .UseTestSqlServer(_connectionString)
             .UseSnakeCaseNamingConvention()
-            .AddInterceptors(new TenantRlsInterceptor(tenantContext))
+            .AddTestRls(new TenantRlsInterceptor(tenantContext))
             .Options;
 
         return new ApplicationDbContext(

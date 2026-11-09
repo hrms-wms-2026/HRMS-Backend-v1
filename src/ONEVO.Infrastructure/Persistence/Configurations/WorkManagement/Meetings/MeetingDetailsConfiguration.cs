@@ -10,7 +10,7 @@ public class MeetingDetailsConfiguration : IEntityTypeConfiguration<MeetingDetai
 {
     public void Configure(EntityTypeBuilder<MeetingDetails> builder)
     {
-        builder.ToTable("meeting_details");
+        builder.ToTable("meeting_details", table => table.HasTrigger("trg_meeting_details_key_immutable"));
         builder.HasKey(d => d.TaskId);
         builder.Property(d => d.TaskId).ValueGeneratedNever();
         builder.Property(d => d.Location).HasMaxLength(500);

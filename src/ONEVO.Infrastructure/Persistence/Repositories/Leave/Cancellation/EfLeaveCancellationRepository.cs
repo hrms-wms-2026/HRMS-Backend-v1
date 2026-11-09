@@ -4,6 +4,7 @@ using ONEVO.Application.Features.Leave.Cancellation.RepositoryInterfaces;
 using ONEVO.Application.Features.Leave.Entitlement.Mappers;
 using ONEVO.Domain.Features.Leave.BalanceAudit.Entities;
 using ONEVO.Domain.Features.Leave.Request.Entities;
+using ONEVO.Infrastructure.Persistence.SqlServer;
 
 namespace ONEVO.Infrastructure.Persistence.Repositories.Leave.Cancellation;
 
@@ -95,7 +96,7 @@ public class EfLeaveCancellationRepository : ILeaveCancellationRepository
     public void SetExpectedVersion(LeaveRequest request, string? expectedVersion)
     {
         if (string.IsNullOrWhiteSpace(expectedVersion)
-            || !uint.TryParse(expectedVersion, out var expectedXmin))
+            || !RowVersionToken.TryParse(expectedVersion, out var expectedXmin))
         {
             return;
         }

@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
+using ONEVO.Infrastructure.Persistence.SqlServer;
 
 namespace ONEVO.Infrastructure.Persistence.Configurations.WorkManagement;
 
@@ -11,7 +12,7 @@ public sealed class TaskDraftConfiguration : IEntityTypeConfiguration<TaskDraft>
         builder.ToTable("task_drafts");
         builder.HasKey(d => d.Id);
         builder.Property(d => d.Title).HasMaxLength(500).IsRequired();
-        builder.Property(d => d.PayloadJson).HasColumnType("jsonb").IsRequired();
+        builder.Property(d => d.PayloadJson).IsJsonColumn().IsRequired();
         builder.HasIndex(d => new { d.TenantId, d.OwnerUserId }).HasDatabaseName("ix_task_drafts_tenant_id_owner_user_id");
     }
 }

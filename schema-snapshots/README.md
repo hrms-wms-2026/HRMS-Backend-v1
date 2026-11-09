@@ -1,5 +1,8 @@
 # Schema Snapshots
 
+> **PostgreSQL-era.** The database is now SQL Server. These snapshots and their generator still
+> describe the old PostgreSQL schema and have not been ported.
+
 Point-in-time, per-domain documentation of the PostgreSQL schema, built from
 `information_schema` + `pg_catalog`. This is a **static snapshot**, not a live
 diagram &mdash; see [`SPEC.md`](./SPEC.md) for the full rules, and

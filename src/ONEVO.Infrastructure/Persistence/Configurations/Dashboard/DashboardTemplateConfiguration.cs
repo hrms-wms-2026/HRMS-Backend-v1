@@ -14,7 +14,7 @@ public class DashboardTemplateConfiguration : IEntityTypeConfiguration<Dashboard
             // A row is either the tenant's No-role fallback (no role) or a role's template (spec 4.1/4.2).
             t.HasCheckConstraint(
                 "ck_dashboard_templates_no_role_flag",
-                "(is_no_role_template AND role_id IS NULL) OR (NOT is_no_role_template AND role_id IS NOT NULL)");
+                "(is_no_role_template = 1 AND role_id IS NULL) OR (is_no_role_template = 0 AND role_id IS NOT NULL)");
         });
         builder.HasKey(t => t.Id);
         builder.Property(t => t.Id).ValueGeneratedNever();
@@ -28,13 +28,13 @@ public class DashboardTemplateConfiguration : IEntityTypeConfiguration<Dashboard
         // alone would not stop two null-role rows, so the filter is on the flag.
         builder.HasIndex(t => new { t.TenantId, t.DashboardKey })
             .IsUnique()
-            .HasFilter("is_no_role_template = true AND is_deleted = false")
+            .HasFilter("is_no_role_template = 1 AND is_deleted = 0")
             .HasDatabaseName("ux_dashboard_templates_tenant_id_dashboard_key_no_role");
 
         // One template per role per dashboard.
         builder.HasIndex(t => new { t.TenantId, t.RoleId, t.DashboardKey })
             .IsUnique()
-            .HasFilter("role_id IS NOT NULL AND is_deleted = false")
+            .HasFilter("role_id IS NOT NULL AND is_deleted = 0")
             .HasDatabaseName("ux_dashboard_templates_tenant_id_role_id_dashboard_key");
 
         builder.HasOne<Role>()

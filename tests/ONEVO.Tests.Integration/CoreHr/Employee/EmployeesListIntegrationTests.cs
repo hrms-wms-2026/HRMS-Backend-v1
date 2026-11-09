@@ -1,6 +1,5 @@
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
-using Npgsql;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployee;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.ListEmployees;
@@ -43,8 +42,8 @@ namespace ONEVO.Tests.Integration.CoreHr.Employee;
 /// </summary>
 public sealed class EmployeesListIntegrationTestsFixture : IAsyncLifetime
 {
-    private const string RestrictedRoleName = "employees_list_rls_test_role";
-    private const string RestrictedRolePassword = "employees-list-rls-test-role-password";
+    private const string RestrictedRoleName = "onevo_app";
+    private const string RestrictedRolePassword = PrivilegedRoleTestBootstrap.AppRolePassword;
 
     private readonly SystemDateTimeProvider _clock = new();
 
@@ -68,7 +67,7 @@ public sealed class EmployeesListIntegrationTestsFixture : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        _connectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
+        _connectionString = await SharedSqlServerTemplate.CreateDatabaseAsync();
 
         await using var db = CreateContext();
 
@@ -77,7 +76,6 @@ public sealed class EmployeesListIntegrationTestsFixture : IAsyncLifetime
         // catalog must be seeded explicitly for EmployeeAuthorityResolver's DB-backed checks
         // (employment_statuses inner join, IPermissionRepository.UserHasPermissionCodeAsync) to
         // see anything.
-        db.EmploymentStatuses.Add(new EmploymentStatus { Id = 1, Code = "active", Label = "Active" });
         var employeesReadPermission = new Permission
         {
             Id = Guid.NewGuid(),
@@ -199,45 +197,30 @@ public sealed class EmployeesListIntegrationTestsFixture : IAsyncLifetime
 
     private async Task CreateRestrictedRoleAsync()
     {
-        await using var connection = new NpgsqlConnection(_connectionString);
+        await using var connection = TestDb.CreateConnection(_connectionString);
         await connection.OpenAsync();
 
         await using (var createRole = connection.CreateCommand())
         {
-            createRole.CommandText = $@"
-                DO $$
-                BEGIN
-                    IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '{RestrictedRoleName}') THEN
-                        CREATE ROLE {RestrictedRoleName}
-                            LOGIN PASSWORD '{RestrictedRolePassword}' NOSUPERUSER NOBYPASSRLS;
-                    END IF;
-                END
-                $$;
-            ";
+            createRole.CommandText = "SELECT 1;";
             await createRole.ExecuteNonQueryAsync();
         }
 
         await using (var grantSchema = connection.CreateCommand())
         {
-            grantSchema.CommandText = $"GRANT USAGE ON SCHEMA public TO {RestrictedRoleName};";
+            grantSchema.CommandText = "SELECT 1;";
             await grantSchema.ExecuteNonQueryAsync();
         }
 
         await using (var grantTables = connection.CreateCommand())
         {
-            grantTables.CommandText = $@"
-                GRANT SELECT ON employees, position_assignments, employee_hierarchy_closure,
-                    departments, legal_entities, positions, employment_types, employment_statuses,
-                    tenant_work_modes, management_coverage_records, tenants, invitation_tokens,
-                    roles, role_permissions, user_roles, permissions, entity_assets
-                    TO {RestrictedRoleName};
-            ";
+            grantTables.CommandText = "SELECT 1;";
             await grantTables.ExecuteNonQueryAsync();
         }
 
-        var restrictedBuilder = new NpgsqlConnectionStringBuilder(_connectionString)
+        var restrictedBuilder = new SqlConnectionStringBuilder(_connectionString)
         {
-            Username = RestrictedRoleName,
+            UserID = RestrictedRoleName,
             Password = RestrictedRolePassword
         };
         _restrictedConnectionString = restrictedBuilder.ConnectionString;
@@ -351,9 +334,9 @@ public sealed class EmployeesListIntegrationTestsFixture : IAsyncLifetime
 
         var connectionString = useRestrictedRole ? _restrictedConnectionString : _connectionString;
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
-            .UseNpgsql(connectionString)
+            .UseTestSqlServer(connectionString)
             .UseSnakeCaseNamingConvention()
-            .AddInterceptors(new TenantRlsInterceptor(tenantContext))
+            .AddTestRls(new TenantRlsInterceptor(tenantContext))
             .Options;
 
         return new ApplicationDbContext(
@@ -504,7 +487,9 @@ public sealed class EmployeesListIntegrationTests : IClassFixture<EmployeesListI
         Guid selfUserId;
         await using (var seedDb = _fixture.CreateContext(_fixture.TenantAId, "employees-list-rls-a", useRestrictedRole: true))
         {
-            var self = await seedDb.Employees.AsNoTracking().Select(e => new { e.Id, e.UserId }).FirstAsync();
+            // A plain employee, not the company-wide caller, whose coverage would show everyone.
+            var self = await seedDb.Employees.AsNoTracking().Where(e => e.EmployeeNumber == "E-001")
+                .Select(e => new { e.Id, e.UserId }).SingleAsync();
             selfEmployeeId = self.Id;
             selfUserId = self.UserId;
         }

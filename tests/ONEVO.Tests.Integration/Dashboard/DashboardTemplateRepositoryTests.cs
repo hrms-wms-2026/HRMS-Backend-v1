@@ -17,13 +17,13 @@ using Xunit;
 
 namespace ONEVO.Tests.Integration.Dashboard;
 
-/// <summary>One cloned, fully migrated Postgres database shared by the facts of the class.</summary>
+/// <summary>One cloned, fully migrated SQL Server database shared by the facts of the class.</summary>
 public sealed class DashboardTemplateRepositoryTestsFixture : IAsyncLifetime
 {
     private readonly SystemDateTimeProvider _clock = new();
     private string _connectionString = string.Empty;
 
-    public async Task InitializeAsync() => _connectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
+    public async Task InitializeAsync() => _connectionString = await SharedSqlServerTemplate.CreateDatabaseAsync();
 
     public Task DisposeAsync() => Task.CompletedTask;
 
@@ -35,9 +35,9 @@ public sealed class DashboardTemplateRepositoryTestsFixture : IAsyncLifetime
             tenantContext.Resolve(new TenantRegistryEntry(tenantId.Value, $"t-{tenantId:N}", TenantStatus.Active, null));
 
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
-            .UseNpgsql(_connectionString)
+            .UseTestSqlServer(_connectionString)
             .UseSnakeCaseNamingConvention()
-            .AddInterceptors(new TenantRlsInterceptor(tenantContext))
+            .AddTestRls(new TenantRlsInterceptor(tenantContext))
             .Options;
 
         return new ApplicationDbContext(
@@ -50,7 +50,7 @@ public sealed class DashboardTemplateRepositoryTestsFixture : IAsyncLifetime
 }
 
 /// <summary>
-/// EfDashboardTemplateRepository and the template table constraints against real PostgreSQL (Docker): the
+/// EfDashboardTemplateRepository and the template table constraints against real SQL Server (Docker): the
 /// is_no_role_template CHECK, the one-No-role-per-tenant partial unique index, and tenant scoping.
 /// </summary>
 public sealed class DashboardTemplateRepositoryTests : IClassFixture<DashboardTemplateRepositoryTestsFixture>

@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using ONEVO.Domain.Features.Auth.Entities;
+using ONEVO.Infrastructure.Persistence.SqlServer;
 
 namespace ONEVO.Infrastructure.Persistence.Configurations.Auth.Invite;
 
@@ -17,8 +18,8 @@ public class InvitationTokenConfiguration : IEntityTypeConfiguration<InvitationT
         builder.Property(i => i.TokenHash).HasMaxLength(128).IsRequired();
 
         builder.Property(i => i.CompletedWith).HasMaxLength(20);
-        builder.Property(i => i.CompletionMethodsJson).HasColumnType("jsonb");
-        builder.Property(i => i.AllowedEmailDomainsJson).HasColumnType("jsonb");
+        builder.Property(i => i.CompletionMethodsJson).IsJsonColumn();
+        builder.Property(i => i.AllowedEmailDomainsJson).IsJsonColumn();
         builder.Property(i => i.PositionId);
         builder.Property(i => i.Purpose).HasColumnName("purpose").HasMaxLength(50).IsRequired();
         builder.Property(i => i.LegalEntityId).HasColumnName("legal_entity_id");

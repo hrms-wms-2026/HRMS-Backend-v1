@@ -4,6 +4,7 @@ using ONEVO.Domain.Features.Monitoring.ActivityMonitoring.Entities;
 using ONEVO.Domain.Features.Monitoring.Screenshots.Entities;
 using ONEVO.Domain.Features.Monitoring.TrayActivation.Entities;
 using ONEVO.Domain.Features.Storage.File.Entities;
+using ONEVO.Infrastructure.Persistence.SqlServer;
 
 namespace ONEVO.Infrastructure.Persistence.Configurations.Monitoring.Screenshots;
 
@@ -17,7 +18,7 @@ public class MonitoringEvidenceAssetConfiguration : IEntityTypeConfiguration<Mon
         builder.Property(e => e.EvidenceType).HasMaxLength(50).IsRequired();
         builder.Property(e => e.Source).HasMaxLength(50).IsRequired();
         builder.Property(e => e.TriggerType).HasMaxLength(50).IsRequired();
-        builder.Property(e => e.MetadataJson).HasColumnType("jsonb").HasDefaultValue("{}");
+        builder.Property(e => e.MetadataJson).IsJsonColumn().HasDefaultValue("{}");
 
         // HR-side list by employee descending on capture time
         builder.HasIndex(e => new { e.TenantId, e.EmployeeId, e.CapturedAt })
@@ -46,6 +47,6 @@ public class MonitoringEvidenceAssetConfiguration : IEntityTypeConfiguration<Mon
         builder.HasOne<AgentCommand>()
             .WithMany()
             .HasForeignKey(e => e.AgentCommandId)
-            .OnDelete(DeleteBehavior.SetNull);
+            .OnDelete(DeleteBehavior.NoAction);
     }
 }

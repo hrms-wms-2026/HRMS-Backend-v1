@@ -67,10 +67,10 @@ public class EfTenantRepository : ITenantRepository
 
         if (!string.IsNullOrWhiteSpace(search))
         {
-            var pattern = $"%{search.Trim()}%";
+            var pattern = $"%{search.Trim().Replace("[", "[[]")}%";
             query = query.Where(t =>
-                EF.Functions.ILike(t.Name, pattern) ||
-                EF.Functions.ILike(t.Slug, pattern));
+                EF.Functions.Like(EF.Functions.Collate(t.Name, "Latin1_General_100_CI_AS_SC"), pattern) ||
+                EF.Functions.Like(EF.Functions.Collate(t.Slug, "Latin1_General_100_CI_AS_SC"), pattern));
         }
 
         return query;

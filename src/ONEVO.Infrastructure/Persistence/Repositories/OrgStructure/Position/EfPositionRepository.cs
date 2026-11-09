@@ -1,5 +1,5 @@
 using Microsoft.EntityFrameworkCore;
-using Npgsql;
+using ONEVO.Infrastructure.Persistence.SqlServer;
 using ONEVO.Application.Common.Exceptions;
 using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
 using ONEVO.Domain.Features.OrgStructure.Entities;
@@ -14,7 +14,7 @@ public class EfPositionRepository : IPositionRepository
     // Names of the partial unique indexes declared in ManagementCoverageRecordConfiguration that
     // enforce "one active record per covered target per responsibility order". A violation of any
     // of these under concurrent writes is translated into a CoverageOrderConflictException instead
-    // of surfacing the raw Postgres unique-violation as an unhandled 500.
+    // of surfacing the raw unique violation as an unhandled 500.
     private static readonly string[] CoverageOrderUniqueConstraintNames =
     [
         "ix_management_coverage_records_active_position_order",
@@ -168,7 +168,7 @@ public class EfPositionRepository : IPositionRepository
         Guid tenantId, Guid legalEntityId, Guid positionId, Guid possibleDescendantId, CancellationToken ct = default)
     {
         var descendantIds = _db.Database.SqlQuery<Guid>($@"
-            WITH RECURSIVE descendants AS (
+            WITH descendants AS (
                 SELECT id FROM positions
                 WHERE tenant_id = {tenantId} AND legal_entity_id = {legalEntityId}
                     AND reports_to_position_id = {positionId}
@@ -177,11 +177,12 @@ public class EfPositionRepository : IPositionRepository
                 INNER JOIN descendants ON p.reports_to_position_id = descendants.id
                 WHERE p.tenant_id = {tenantId} AND p.legal_entity_id = {legalEntityId}
             )
-            SELECT id AS ""Value"" FROM descendants
+            SELECT id AS [Value] FROM descendants
         ");
 
-        var isDescendant = await descendantIds.AnyAsync(id => id == possibleDescendantId, ct);
-        return isDescendant;
+        // Not composed: SQL Server cannot wrap a WITH query in a subquery.
+        var ids = await descendantIds.ToListAsync(ct);
+        return ids.Contains(possibleDescendantId);
     }
 
     public async Task<int> CountActiveByDepartmentAsync(
@@ -281,21 +282,36 @@ public class EfPositionRepository : IPositionRepository
         return new PositionPage(items, totalCount, page, pageSize, totalPages);
     }
 
-    private static IQueryable<Position> ApplySort(IQueryable<Position> query, string sortBy, string sortDirection)
+    // Department and reports-to sort by the name shown in the list, not by the referenced id.
+    private IQueryable<Position> ApplySort(IQueryable<Position> query, string sortBy, string sortDirection)
     {
         var ascending = sortDirection == "asc";
+        var departments = _db.Departments;
+        var positions = _db.Positions;
 
         return sortBy switch
         {
             "code" => ascending
-                ? query.OrderBy(position => position.Code).ThenBy(position => position.Id)
-                : query.OrderByDescending(position => position.Code).ThenBy(position => position.Id),
+                ? query.OrderByNullsLast(position => position.Code).ThenBy(position => position.Id)
+                : query.OrderByDescendingNullsFirst(position => position.Code).ThenBy(position => position.Id),
             "department" => ascending
-                ? query.OrderBy(position => position.DepartmentId).ThenBy(position => position.Id)
-                : query.OrderByDescending(position => position.DepartmentId).ThenBy(position => position.Id),
+                ? query.OrderByNullsLast(position => departments
+                        .Where(department => department.Id == position.DepartmentId)
+                        .Select(department => department.Name).FirstOrDefault())
+                    .ThenBy(position => position.Id)
+                : query.OrderByDescendingNullsFirst(position => departments
+                        .Where(department => department.Id == position.DepartmentId)
+                        .Select(department => department.Name).FirstOrDefault())
+                    .ThenBy(position => position.Id),
             "reportsto" => ascending
-                ? query.OrderBy(position => position.ReportsToPositionId).ThenBy(position => position.Id)
-                : query.OrderByDescending(position => position.ReportsToPositionId).ThenBy(position => position.Id),
+                ? query.OrderByNullsLast(position => positions
+                        .Where(manager => manager.Id == position.ReportsToPositionId)
+                        .Select(manager => manager.Name).FirstOrDefault())
+                    .ThenBy(position => position.Id)
+                : query.OrderByDescendingNullsFirst(position => positions
+                        .Where(manager => manager.Id == position.ReportsToPositionId)
+                        .Select(manager => manager.Name).FirstOrDefault())
+                    .ThenBy(position => position.Id),
             "type" => ascending
                 ? query.OrderBy(position => position.PositionType).ThenBy(position => position.Id)
                 : query.OrderByDescending(position => position.PositionType).ThenBy(position => position.Id),
@@ -309,8 +325,8 @@ public class EfPositionRepository : IPositionRepository
                 ? query.OrderBy(position => position.CreatedAt).ThenBy(position => position.Id)
                 : query.OrderByDescending(position => position.CreatedAt).ThenBy(position => position.Id),
             "updatedat" => ascending
-                ? query.OrderBy(position => position.UpdatedAt).ThenBy(position => position.Id)
-                : query.OrderByDescending(position => position.UpdatedAt).ThenBy(position => position.Id),
+                ? query.OrderByNullsLast(position => position.UpdatedAt).ThenBy(position => position.Id)
+                : query.OrderByDescendingNullsFirst(position => position.UpdatedAt).ThenBy(position => position.Id),
             _ => ascending
                 ? query.OrderBy(position => position.Name).ThenBy(position => position.Id)
                 : query.OrderByDescending(position => position.Name).ThenBy(position => position.Id),
@@ -560,10 +576,8 @@ public class EfPositionRepository : IPositionRepository
             var affectedRows = await _db.SaveChangesAsync(ct);
             return affectedRows;
         }
-        catch (DbUpdateException ex) when (ex.InnerException is PostgresException
-        {
-            SqlState: PostgresErrorCodes.UniqueViolation
-        } pgEx && CoverageOrderUniqueConstraintNames.Contains(pgEx.ConstraintName))
+        catch (DbUpdateException ex) when (SqlServerErrors.IsUniqueViolation(ex)
+            && CoverageOrderUniqueConstraintNames.Contains(SqlServerErrors.ConstraintName(ex)))
         {
             throw new CoverageOrderConflictException(
                 "An active coverage record already exists for this covered target at this responsibility level.",

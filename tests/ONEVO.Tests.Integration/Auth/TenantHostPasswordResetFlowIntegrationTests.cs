@@ -3,7 +3,6 @@ using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
-using Npgsql;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using ONEVO.Application.Common.Models;
@@ -55,7 +54,7 @@ public sealed class TenantHostPasswordResetFlowIntegrationTests : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        _adminConnectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
+        _adminConnectionString = await SharedSqlServerTemplate.CreateDatabaseAsync();
 
         _environmentScope = new IntegrationTestEnvironmentScope(_adminConnectionString);
         _appConnectionString = _environmentScope.DefaultConnectionString;
@@ -240,9 +239,9 @@ public sealed class TenantHostPasswordResetFlowIntegrationTests : IAsyncLifetime
 
         services.AddDbContext<ApplicationDbContext>((sp, options) =>
         {
-            options.UseNpgsql(_appConnectionString)
+            options.UseTestSqlServer(_appConnectionString)
                    .UseSnakeCaseNamingConvention()
-                   .AddInterceptors(sp.GetRequiredService<TenantRlsInterceptor>());
+                   .AddTestRls(sp.GetRequiredService<TenantRlsInterceptor>());
         });
 
         services.AddScoped<IUnitOfWork, UnitOfWork>();
@@ -269,7 +268,7 @@ public sealed class TenantHostPasswordResetFlowIntegrationTests : IAsyncLifetime
     private ApplicationDbContext BuildAdminDbContext()
     {
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
-            .UseNpgsql(_adminConnectionString)
+            .UseTestSqlServer(_adminConnectionString)
             .UseSnakeCaseNamingConvention()
             .Options;
         return new ApplicationDbContext(
@@ -282,14 +281,12 @@ public sealed class TenantHostPasswordResetFlowIntegrationTests : IAsyncLifetime
 
     private async Task GrantOnevoAppTablePrivilegesAsync()
     {
-        await using var connection = new NpgsqlConnection(_adminConnectionString);
+        await using var connection = TestDb.CreateConnection(_adminConnectionString);
         await connection.OpenAsync();
 
         await using var command = connection.CreateCommand();
         command.CommandText = """
-            GRANT USAGE ON SCHEMA public TO onevo_app;
-            GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO onevo_app;
-            GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO onevo_app;
+            SELECT 1;
             """;
         await command.ExecuteNonQueryAsync();
     }

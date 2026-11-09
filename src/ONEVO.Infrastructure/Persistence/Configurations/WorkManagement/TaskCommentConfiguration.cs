@@ -10,7 +10,7 @@ public class TaskCommentConfiguration : IEntityTypeConfiguration<TaskComment>
     {
         builder.ToTable("task_comments");
         builder.HasKey(c => c.Id);
-        builder.Property(c => c.Content).HasColumnType("text").IsRequired();
+        builder.Property(c => c.Content).IsRequired();
 
         builder.HasIndex(c => new { c.TenantId, c.TaskId, c.CreatedAt })
             .HasDatabaseName("ix_task_comments_tenant_id_task_id_created_at");

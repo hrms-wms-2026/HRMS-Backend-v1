@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using ONEVO.Domain.Features.Dashboard.Entities;
+using ONEVO.Infrastructure.Persistence.SqlServer;
 
 namespace ONEVO.Infrastructure.Persistence.Configurations.Dashboard;
 
@@ -14,13 +15,13 @@ public class DashboardTemplateWidgetConfiguration : IEntityTypeConfiguration<Das
         builder.Property(w => w.WidgetKey).HasMaxLength(100).IsRequired();
         builder.Property(w => w.SettingsJson)
             .HasColumnName("settings")
-            .HasColumnType("jsonb")
+            .IsJsonColumn()
             .HasDefaultValue("{}")
             .IsRequired();
 
         builder.HasIndex(w => new { w.TemplateId, w.WidgetKey })
             .IsUnique()
-            .HasFilter("is_deleted = false")
+            .HasFilter("is_deleted = 0")
             .HasDatabaseName("ux_dashboard_template_widgets_template_id_widget_key");
 
         builder.HasMany(w => w.Layouts)

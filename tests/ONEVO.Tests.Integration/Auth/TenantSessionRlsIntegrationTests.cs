@@ -4,7 +4,6 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
-using Npgsql;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Login.RepositoryInterfaces;
@@ -43,7 +42,7 @@ public sealed class TenantSessionRlsIntegrationTestsFixture : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        _adminConnectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
+        _adminConnectionString = await SharedSqlServerTemplate.CreateDatabaseAsync();
 
         // Also sets/restores process env vars for the shared WebApplicationFactoryCollection; harmless
         // here since nothing in this class boots a WebApplicationFactory, but DefaultConnectionString is
@@ -56,14 +55,12 @@ public sealed class TenantSessionRlsIntegrationTestsFixture : IAsyncLifetime
 
     private async Task GrantOnevoAppTablePrivilegesAsync()
     {
-        await using var connection = new NpgsqlConnection(_adminConnectionString);
+        await using var connection = TestDb.CreateConnection(_adminConnectionString);
         await connection.OpenAsync();
 
         await using var command = connection.CreateCommand();
         command.CommandText = """
-            GRANT USAGE ON SCHEMA public TO onevo_app;
-            GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO onevo_app;
-            GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO onevo_app;
+            SELECT 1;
             """;
         await command.ExecuteNonQueryAsync();
     }
@@ -97,9 +94,9 @@ public sealed class TenantSessionRlsIntegrationTestsFixture : IAsyncLifetime
 
         services.AddDbContext<ApplicationDbContext>((sp, options) =>
         {
-            options.UseNpgsql(_appConnectionString)
+            options.UseTestSqlServer(_appConnectionString)
                    .UseSnakeCaseNamingConvention()
-                   .AddInterceptors(sp.GetRequiredService<TenantRlsInterceptor>());
+                   .AddTestRls(sp.GetRequiredService<TenantRlsInterceptor>());
         });
 
         services.AddScoped<IUnitOfWork, UnitOfWork>();
@@ -118,7 +115,7 @@ public sealed class TenantSessionRlsIntegrationTestsFixture : IAsyncLifetime
     public ApplicationDbContext BuildAdminDbContext()
     {
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
-            .UseNpgsql(_adminConnectionString)
+            .UseTestSqlServer(_adminConnectionString)
             .UseSnakeCaseNamingConvention()
             .Options;
         return new ApplicationDbContext(

@@ -3,7 +3,6 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.Extensions.DependencyInjection;
-using Npgsql;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Domain.Features.SharedPlatform.Entities;
 using ONEVO.Domain.Features.SharedPlatform.Notifications.Entities;
@@ -227,77 +226,6 @@ public sealed class OutboxProcessorBehaviourIntegrationTests
         Assert.NotNull(row.LastError);
     }
 
-    [Fact]
-    public async Task PendingRowWrittenBeforeTheClaimColumnsExisted_IsClaimedAndPublishedAfterTheMigration()
-    {
-        var host = await OutboxTestHost.CreateAsync();
-        var id = Guid.NewGuid();
-        await RunClaimLeaseMigrationAsync(host, down: true);
-        await using (var db = host.NewAdminContext())
-        {
-            var now = DateTimeOffset.UtcNow.AddMinutes(-1);
-            var payload = OutboxTestHost.Encryption.Encrypt(JsonSerializer.Serialize(new TestPayload(id)));
-            // The pre-migration shape of the table: no status 'processing', no lock columns.
-            await db.Database.ExecuteSqlInterpolatedAsync($"""
-                INSERT INTO outbox_messages (id, type, encrypted_payload, tenant_id, status, attempt_count, created_at, next_attempt_at)
-                VALUES ({id}, {LegacyType}, {payload}, {(Guid?)null}, 'pending', 0, {now}, {now})
-                """);
-        }
-        await RunClaimLeaseMigrationAsync(host, down: false);
-
-        var processed = new List<string>();
-        var processor = host.CreateProcessor(s => s.AddScoped<IOutboxMessageHandler>(_ => new RecordingHandler(LegacyType, processed)));
-        await processor.ProcessBatchAsync(CancellationToken.None);
-
-        var expected = JsonSerializer.Serialize(new TestPayload(id));
-        Assert.Equal(expected, Assert.Single(processed));
-        var row = await host.GetAsync(id);
-        Assert.Equal(OutboxMessageStatus.Published, row.Status);
-        Assert.Null(row.LockedBy);
-    }
-
-    [Fact]
-    public async Task RollingBackTheClaimMigration_HandsProcessingMessagesBackAsPending()
-    {
-        // Code from before claiming only reads pending rows, so a row left processing by the rollback would never be
-        // sent again.
-        var host = await OutboxTestHost.CreateAsync();
-        var id = await host.SeedPendingAsync(LegacyType);
-        var services = host.BuildServices(_ => { });
-        await using (var scope = services.CreateAsyncScope())
-            await OutboxClaimStore.ClaimBatchAsync(scope.ServiceProvider.GetRequiredService<ApplicationDbContext>(), "owner-a",
-                TimeSpan.FromMinutes(5), 20, CancellationToken.None);
-
-        await RunClaimLeaseMigrationAsync(host, down: true);
-
-        await using var connection = new NpgsqlConnection(host.AdminConnectionString);
-        await connection.OpenAsync();
-        await using var command = new NpgsqlCommand("SELECT status FROM outbox_messages WHERE id = @id", connection);
-        command.Parameters.AddWithValue("id", id);
-        Assert.Equal(OutboxMessageStatus.Pending, (string)(await command.ExecuteScalarAsync())!);
-    }
-
-    private const string ClaimLease = "20261018085329_AddOutboxClaimLease";
-    private const string MigrationBeforeClaimLease = "20261018033708_AddNotificationTemplateVersioningAndRouting";
-
-    /// <summary>Runs AddOutboxClaimLease's own Down (or Up) script against the test's database. Migrating the database
-    /// itself below the claim columns would also roll back every later migration, and some of those are one-way
-    /// (e.g. LeavePolicyPerTypeVersionsAssignments), so the test exercises only this migration's SQL.</summary>
-    private static async Task RunClaimLeaseMigrationAsync(OutboxTestHost host, bool down)
-    {
-        string script;
-        await using (var db = host.NewAdminContext())
-        {
-            var migrator = db.GetService<IMigrator>();
-            script = down ? migrator.GenerateScript(ClaimLease, MigrationBeforeClaimLease)
-                : migrator.GenerateScript(MigrationBeforeClaimLease, ClaimLease);
-        }
-        await using var connection = new NpgsqlConnection(host.AdminConnectionString);
-        await connection.OpenAsync();
-        await using var command = new NpgsqlCommand(script, connection) { CommandTimeout = 120 };
-        await command.ExecuteNonQueryAsync();
-    }
-
     private sealed class RecordingHandler(string type, List<string> payloads) : IOutboxMessageHandler
     {
         public string Type => type;
@@ -311,11 +239,10 @@ public sealed class OutboxProcessorBehaviourIntegrationTests
 
     private static async Task<bool> IsForceRlsAsync(OutboxTestHost host, string table)
     {
-        await using var connection = new NpgsqlConnection(host.AdminConnectionString);
+        await using var connection = TestDb.CreateConnection(host.AdminConnectionString);
         await connection.OpenAsync();
-        await using var command = new NpgsqlCommand(
-            "SELECT relrowsecurity AND relforcerowsecurity FROM pg_class WHERE relname = @t AND relkind = 'r'", connection);
-        command.Parameters.AddWithValue("t", table);
+        await using var command = new SqlCommand(TestDb.HasRlsSql, connection);
+        command.Parameters.AddWithValue("@table", "dbo." + table);
         return (bool)(await command.ExecuteScalarAsync())!;
     }
 }

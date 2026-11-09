@@ -1,5 +1,7 @@
 # Meetings as Tasks — Phase 2 release runbook (Release A)
 
+> **PostgreSQL-era.** This runbook describes a release on the old PostgreSQL database. Its preflight script, `ops/meetings/phase2-preflight.sql`, was removed with the move to SQL Server.
+
 Spec: [`docs/superpowers/specs/2026-10-18-meeting-task-phase2-design.md`](../superpowers/specs/2026-10-18-meeting-task-phase2-design.md) §8, §9.
 Plan: [`docs/superpowers/plans/2026-10-18-meeting-task-phase2-A-foundation.md`](../superpowers/plans/2026-10-18-meeting-task-phase2-A-foundation.md).
 

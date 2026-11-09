@@ -36,20 +36,30 @@ public sealed class EfSessionRepository : ISessionRepository
 
     public async Task<Session?> GetByKeyHashForTenantResolutionAsync(string keyHash, CancellationToken ct = default)
     {
-        // set_config(..., is_local: true) reverts automatically at transaction end, so this never
-        // leaks onto the pooled physical connection for a later, unrelated caller to see.
-        // CreateExecutionStrategy() wrapping is required because the runtime connection has
-        // EnableRetryOnFailure configured - EF Core forbids a user-initiated BeginTransactionAsync
-        // under a retrying execution strategy unless it runs inside ExecuteAsync.
+        // SESSION_CONTEXT lasts for the session, so the key is cleared in finally: it must never stay
+        // on a connection for a later query to see. The transaction pins one connection, and
+        // CreateExecutionStrategy() is required because EF Core forbids a user-initiated
+        // BeginTransactionAsync under a retrying strategy unless it runs inside ExecuteAsync.
         var executionStrategy = _db.Database.CreateExecutionStrategy();
         return await executionStrategy.ExecuteAsync(async () =>
         {
             await using var transaction = await _db.Database.BeginTransactionAsync(ct);
-            await _db.Database.ExecuteSqlInterpolatedAsync(
-                $"SELECT set_config('app.session_lookup_key_hash', {keyHash}, true)", ct);
-            var session = await _db.Sessions.FirstOrDefaultAsync(s => s.KeyHash == keyHash, ct);
-            await transaction.CommitAsync(ct);
-            return session;
+            try
+            {
+                await _db.Database.ExecuteSqlInterpolatedAsync(
+                    $"EXEC sp_set_session_context N'app.session_lookup_key_hash', {keyHash}", ct);
+                var session = await _db.Sessions.FirstOrDefaultAsync(s => s.KeyHash == keyHash, ct);
+                await transaction.CommitAsync(ct);
+                return session;
+            }
+            finally
+            {
+                if (_db.Database.GetDbConnection().State == System.Data.ConnectionState.Open)
+                {
+                    await _db.Database.ExecuteSqlRawAsync(
+                        "EXEC sp_set_session_context N'app.session_lookup_key_hash', NULL", CancellationToken.None);
+                }
+            }
         });
     }
 

@@ -11,7 +11,7 @@ public class TaskPercentageLogConfiguration : IEntityTypeConfiguration<TaskPerce
         builder.ToTable("task_percentage_logs");
         builder.HasKey(log => log.Id);
         builder.Property(log => log.Source).HasMaxLength(20).IsRequired();
-        builder.Property(log => log.Reason).HasColumnType("text");
+        builder.Property(log => log.Reason);
 
         builder.HasIndex(log => new { log.TenantId, log.TaskId, log.ChangedAt })
             .HasDatabaseName("ix_task_percentage_logs_tenant_id_task_id_changed_at");

@@ -1,6 +1,5 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
-using Npgsql;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.Onboarding.Services;
@@ -37,18 +36,16 @@ public sealed class OfficeProjectDb : IAsyncDisposable
     public static async Task<OfficeProjectDb> CreateAsync()
     {
         var harness = new OfficeProjectDb();
-        harness._adminConnectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
+        harness._adminConnectionString = await SharedSqlServerTemplate.CreateDatabaseAsync();
         harness._environmentScope = new IntegrationTestEnvironmentScope(harness._adminConnectionString);
         harness._appConnectionString = harness._environmentScope.DefaultConnectionString;
 
-        await using (var connection = new NpgsqlConnection(harness._adminConnectionString))
+        await using (var connection = TestDb.CreateConnection(harness._adminConnectionString))
         {
             await connection.OpenAsync();
             await using var grant = connection.CreateCommand();
             grant.CommandText = """
-                GRANT USAGE ON SCHEMA public TO onevo_app;
-                GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO onevo_app;
-                GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO onevo_app;
+                SELECT 1;
                 """;
             await grant.ExecuteNonQueryAsync();
         }
@@ -84,7 +81,7 @@ public sealed class OfficeProjectDb : IAsyncDisposable
     public ApplicationDbContext AdminContext()
     {
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
-            .UseNpgsql(_adminConnectionString)
+            .UseTestSqlServer(_adminConnectionString)
             .UseSnakeCaseNamingConvention()
             .Options;
         return new ApplicationDbContext(
@@ -113,9 +110,9 @@ public sealed class OfficeProjectDb : IAsyncDisposable
         services.AddScoped(_ => new SoftDeleteInterceptor(_clock));
         services.AddScoped(_ => new DomainEventDispatchInterceptor(new NoOpPublisher()));
         services.AddDbContext<ApplicationDbContext>((sp, options) =>
-            options.UseNpgsql(_appConnectionString)
+            options.UseTestSqlServer(_appConnectionString)
                    .UseSnakeCaseNamingConvention()
-                   .AddInterceptors(sp.GetRequiredService<TenantRlsInterceptor>()));
+                   .AddTestRls(sp.GetRequiredService<TenantRlsInterceptor>()));
         services.AddScoped<IUnitOfWork, UnitOfWork>();
         services.AddScoped<ITenantRepository, EfTenantRepository>();
         services.AddScoped<ITenantContextSwitcher, TenantContextSwitcher>();

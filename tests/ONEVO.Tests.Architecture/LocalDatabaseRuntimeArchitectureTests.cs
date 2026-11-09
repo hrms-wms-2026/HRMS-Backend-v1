@@ -36,102 +36,6 @@ public sealed class LocalDatabaseRuntimeArchitectureTests
     }
 
     [Fact]
-    public void LocalSetupFiles_DoNotContainCommittedDatabasePasswordsOrFullEnvConnectionStrings()
-    {
-        var envTemplate = File.ReadAllText(FindRepositoryPath(".env.example"));
-        var setupScript = File.ReadAllText(FindRepositoryPath("ops", "postgres", "setup-local-db.ps1"));
-        var bootstrapSql = File.ReadAllText(FindRepositoryPath("ops", "postgres", "local-bootstrap-roles.sql"));
-
-        Assert.DoesNotMatch(new Regex("^ConnectionStrings__.*=", RegexOptions.Multiline), envTemplate);
-        Assert.DoesNotContain("onevo_app_dev_only", setupScript, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("onevo_migrator_dev_only", setupScript, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("onevo_app_dev_only", bootstrapSql, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("onevo_migrator_dev_only", bootstrapSql, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("ONEVO_DB_ADMIN_PASSWORD=<local-postgres-admin-password>", envTemplate, StringComparison.Ordinal);
-        Assert.Contains("ONEVO_DB_APP_PASSWORD=<local-runtime-password>", envTemplate, StringComparison.Ordinal);
-        Assert.Contains("ONEVO_DB_MIGRATOR_PASSWORD=<local-migration-password>", envTemplate, StringComparison.Ordinal);
-        Assert.Contains("Encryption__MasterKey=<local-32-plus-character-random-secret>", envTemplate, StringComparison.Ordinal);
-        Assert.Contains("ONEVO_DB_ADMIN_PASSWORD", setupScript, StringComparison.Ordinal);
-        Assert.Contains("ONEVO_DB_APP_PASSWORD", setupScript, StringComparison.Ordinal);
-        Assert.Contains("ONEVO_DB_MIGRATOR_PASSWORD", setupScript, StringComparison.Ordinal);
-        Assert.Contains("ConnectionStrings__MigrationConnection", setupScript, StringComparison.Ordinal);
-        Assert.Contains("$previousPgPassword", setupScript, StringComparison.Ordinal);
-        Assert.Contains("finally", setupScript, StringComparison.Ordinal);
-        Assert.DoesNotMatch(
-            new Regex("Write-(Host|Output).*Password", RegexOptions.IgnoreCase),
-            setupScript);
-
-        var envBytes = File.ReadAllBytes(FindRepositoryPath(".env.example"));
-        Assert.All(envBytes, value => Assert.InRange(value, (byte)0, (byte)127));
-    }
-
-    [Fact]
-    public void LocalSetupScript_ExecutesCreateDatabaseBlockFromTemporarySqlFile()
-    {
-        var setupScript = File.ReadAllText(
-            FindRepositoryPath("ops", "postgres", "setup-local-db.ps1"));
-        var argumentsStart = setupScript.IndexOf("$createDatabaseArguments", StringComparison.Ordinal);
-        var invocationStart = setupScript.IndexOf(
-            "Invoke-PsqlChecked -Executable $psqlExecutable -Arguments $createDatabaseArguments",
-            argumentsStart,
-            StringComparison.Ordinal);
-        var createDatabaseArgumentsBlock = setupScript[argumentsStart..invocationStart];
-
-        Assert.DoesNotContain("'--command'", createDatabaseArgumentsBlock, StringComparison.Ordinal);
-        Assert.Contains("'--set', \"db_name=$databaseName\"", setupScript, StringComparison.Ordinal);
-        Assert.Contains("'--file', $createDatabaseSqlPath", setupScript, StringComparison.Ordinal);
-        Assert.Contains(
-            "Remove-Item -LiteralPath $createDatabaseSqlPath",
-            setupScript,
-            StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void LocalSetupScript_RestoresPackagesBeforeEfMigrationCommand()
-    {
-        var setupScript = File.ReadAllText(
-            FindRepositoryPath("ops", "postgres", "setup-local-db.ps1"));
-
-        var restoreIndex = setupScript.IndexOf(
-            "restore 'src\\ONEVO.Api\\ONEVO.Api.csproj'",
-            StringComparison.Ordinal);
-        var efMigrationIndex = setupScript.IndexOf("ef database update", StringComparison.Ordinal);
-
-        Assert.True(restoreIndex >= 0, "expected the script to restore the API project before EF tooling");
-        Assert.True(efMigrationIndex >= 0, "expected the script to run 'dotnet ef database update'");
-        Assert.True(
-            restoreIndex < efMigrationIndex,
-            "NuGet restore must run before EF migrations, because EF metadata requires project.assets.json");
-    }
-
-    [Fact]
-    public void LocalSetupScript_RunsPostMigrationGrantsOnlyAfterEfMigrationCommand()
-    {
-        var setupScript = File.ReadAllText(
-            FindRepositoryPath("ops", "postgres", "setup-local-db.ps1"));
-
-        var efMigrationIndex = setupScript.IndexOf("ef database update", StringComparison.Ordinal);
-        var postMigrationGrantsIndex = setupScript.IndexOf(
-            "$postMigrationGrantsArguments", StringComparison.Ordinal);
-
-        Assert.True(efMigrationIndex >= 0, "expected the script to run 'dotnet ef database update'");
-        Assert.True(postMigrationGrantsIndex >= 0, "expected the script to build arguments for local-post-migration-grants.sql");
-        Assert.True(postMigrationGrantsIndex > efMigrationIndex,
-            "post-migration object grants must run after the EF migration command block, since they " +
-            "depend on tables/functions the migrations create");
-    }
-
-    [Fact]
-    public void LocalBootstrapRolesSql_DoesNotReferenceUsersOrTenantsTables()
-    {
-        var bootstrapSql = File.ReadAllText(
-            FindRepositoryPath("ops", "postgres", "local-bootstrap-roles.sql"));
-
-        Assert.DoesNotContain("public.users", bootstrapSql, StringComparison.Ordinal);
-        Assert.DoesNotContain("public.tenants", bootstrapSql, StringComparison.Ordinal);
-    }
-
-    [Fact]
     public void EnvironmentTemplate_ContainsOnlyEmptyOrPlaceholderSecretValues()
     {
         var templateLines = File.ReadAllLines(FindRepositoryPath(".env.example"));
@@ -279,7 +183,7 @@ public sealed class LocalDatabaseRuntimeArchitectureTests
         Assert.DoesNotContain(".env.example", gitignore);
 
         var template = File.ReadAllText(Path.Combine(root, ".env.example"));
-        Assert.Contains("ONEVO_DB_ADMIN_PASSWORD=<local-postgres-admin-password>", template, StringComparison.Ordinal);
+        Assert.Contains("ONEVO_DB_ADMIN_PASSWORD=<local-sqlserver-admin-password>", template, StringComparison.Ordinal);
         Assert.Contains("ONEVO_DB_APP_PASSWORD=<local-runtime-password>", template, StringComparison.Ordinal);
         Assert.Contains("ONEVO_DB_MIGRATOR_PASSWORD=<local-migration-password>", template, StringComparison.Ordinal);
         Assert.DoesNotMatch(new Regex("^ConnectionStrings__.*=", RegexOptions.Multiline), template);

@@ -84,67 +84,6 @@ public class StorageQuotaArchitectureTests
         Assert.Empty(offenders);
     }
 
-    [Fact]
-    public void StorageQuotaMigration_CreatesOnly_TenantStorageStats()
-    {
-        var migrationsDir = FindMigrationsDirectory();
-        var migrationFiles = Directory.GetFiles(migrationsDir, "*AddTenantStorageStats.cs")
-            .Where(f => !f.EndsWith(".Designer.cs", StringComparison.OrdinalIgnoreCase))
-            .ToList();
-
-        Assert.Single(migrationFiles);
-
-        var source = File.ReadAllText(migrationFiles[0]);
-        var createdTables = Regex.Matches(source, "CreateTable\\s*\\(\\s*name:\\s*\"([^\"]+)\"")
-            .Select(m => m.Groups[1].Value)
-            .Distinct()
-            .ToList();
-
-        Assert.Equal(["tenant_storage_stats"], createdTables);
-    }
-
-    [Fact]
-    public void StorageQuotaMigration_AddsForeignKey_ToTenants()
-    {
-        // Inventory: tenant_storage_stats.tenant_id = uuid, PK, FK -> tenants.
-        var source = ReadStorageQuotaMigrationSource();
-
-        var foreignKey = Regex.Match(
-            source,
-            "ForeignKey\\s*\\((?<body>[^;]*?)\\)",
-            RegexOptions.Singleline);
-
-        Assert.True(foreignKey.Success, "the migration must declare a foreign key");
-        Assert.Contains("column: x => x.tenant_id", foreignKey.Groups["body"].Value);
-        Assert.Contains("principalTable: \"tenants\"", foreignKey.Groups["body"].Value);
-        Assert.Contains("principalColumn: \"id\"", foreignKey.Groups["body"].Value);
-
-        Assert.Contains("PrimaryKey(\"pk_tenant_storage_stats\", x => x.tenant_id)", source);
-    }
-
-    [Fact]
-    public void TenantStorageStats_HasExactlyTheInventoryColumns()
-    {
-        var source = ReadStorageQuotaMigrationSource();
-
-        var columns = Regex.Matches(source, "(?<name>\\w+) = table\\.Column<")
-            .Select(m => m.Groups["name"].Value)
-            .OrderBy(c => c, StringComparer.Ordinal)
-            .ToList();
-
-        var expected = new[]
-        {
-            "last_calculated_at",
-            "reserved_r2_bytes",
-            "tenant_id",
-            "updated_at",
-            "used_db_bytes",
-            "used_r2_bytes"
-        };
-
-        Assert.Equal(expected, columns);
-    }
-
     private static string ReadStorageQuotaMigrationSource()
     {
         var migrationsDir = FindMigrationsDirectory();
@@ -185,8 +124,8 @@ public class StorageQuotaArchitectureTests
         var source = ReadTenantStorageStatsRepositorySource();
 
         Assert.Contains("ExecuteSqlInterpolatedAsync", source);
-        Assert.Contains("ON CONFLICT", source);
-        Assert.Contains("GREATEST(0", source);
+        Assert.Contains("MERGE tenant_storage_stats WITH (HOLDLOCK)", source);
+        Assert.Contains("ELSE 0 END", source);
         Assert.Contains("tenant_storage_stats", source);
         Assert.Contains("reserved_r2_bytes", source);
         Assert.Contains("used_r2_bytes", source);

@@ -6,12 +6,14 @@ using Microsoft.Extensions.FileProviders;
 using ONEVO.Application.Features.CoreHr.Onboarding.Services;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
 using ONEVO.Infrastructure.Services.CoreHr;
+using ONEVO.Tests.Integration.Support;
 using Xunit;
 
 namespace ONEVO.Tests.Integration.WorkManagement;
 
 /// <summary>The startup run pages the real tenants table. Paging must visit every tenant that
 /// existed when the run started exactly once, even when tenants are created during the run.</summary>
+[Collection(WebApplicationFactoryCollection.Name)]
 public sealed class OfficeProjectReconciliationStartupPagingIntegrationTests
 {
     /// <summary>Records reconciled tenants; on the first call it creates a brand-new tenant, the

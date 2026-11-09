@@ -20,7 +20,7 @@ public class MeetingOccurrenceAttendeeConfiguration : IEntityTypeConfiguration<M
         // index EF cannot model, created in AddMeetingWorkItemsFoundation (spec 4.1).
         builder.HasIndex(a => new { a.OccurrenceTaskId, a.EmployeeId })
             .IsUnique()
-            .HasFilter("attendee_kind = 'employee'")
+            .HasFilter("attendee_kind = 'employee' AND employee_id IS NOT NULL")
             .HasDatabaseName("ux_meeting_occurrence_attendees_employee");
         builder.HasIndex(a => new { a.TenantId, a.EmployeeId })
             .HasDatabaseName("ix_meeting_occurrence_attendees_tenant_id_employee_id");

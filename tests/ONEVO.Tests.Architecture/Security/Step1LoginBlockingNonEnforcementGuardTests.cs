@@ -6,36 +6,6 @@ namespace ONEVO.Tests.Architecture.Security;
 public class Step1LoginBlockingNonEnforcementGuardTests
 {
     [Fact]
-    public void Migration_ReconcilesGdprConsentToLegalAcceptanceAndCreatesLegalDocumentVersions()
-    {
-        var migrationsDir = FindMigrationsDirectory();
-        var migrationFile = Path.Combine(
-            migrationsDir,
-            "20260724120000_AddLegalDocumentVersionsAndLegalAcceptanceRecords.cs");
-
-        File.Exists(migrationFile).Should().BeTrue("Migration file must exist");
-
-        var code = File.ReadAllText(migrationFile);
-
-        // Verify legal_document_versions table creation
-        code.Should().Contain("legal_document_versions");
-        code.Should().Contain("ix_legal_document_versions_document_type_published");
-        code.Should().Contain("WHERE status = 'published'");
-
-        // Verify gdpr_consent_records rename and reconciliation
-        code.Should().Contain("gdpr_consent_records");
-        code.Should().Contain("legal_acceptance_records");
-        code.Should().Contain("legacy_v0");
-        code.Should().Contain("legacy_migration");
-
-        // Verify RLS policy re-application on legal_acceptance_records
-        code.Should().Contain("TenantTables");
-        code.Should().Contain("legal_acceptance_records");
-        code.Should().Contain("ENABLE ROW LEVEL SECURITY");
-        code.Should().Contain("CREATE POLICY tenant_isolation ON");
-    }
-
-    [Fact]
     public void Step2_LoginHandlersRouteThroughLoginContinuationServiceForLegalBlocking()
     {
         // Supersedes the former Step1_LoginHandlersDoNotEnforceSessionBlockingYet guard, then later

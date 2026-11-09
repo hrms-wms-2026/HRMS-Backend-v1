@@ -18,7 +18,7 @@ public class ReleaseCalendarEntryConfiguration : IEntityTypeConfiguration<Releas
             .HasDatabaseName("ix_release_calendar_tenant_recipient_scheduled_active");
         builder.HasIndex(r => new { r.VersionId, r.RecipientUserId })
             .IsUnique()
-            .HasFilter("is_active = true AND reminder_type = 'project_release'")
+            .HasFilter("is_active = 1 AND reminder_type = 'project_release'")
             .HasDatabaseName("ix_release_calendar_one_active_project_release");
 
         builder.HasOne<Project>().WithMany().HasForeignKey(r => r.ProjectId).OnDelete(DeleteBehavior.Restrict);

@@ -1,7 +1,6 @@
 using FluentAssertions;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
-using Npgsql;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces;
@@ -40,8 +39,8 @@ public sealed class ExpectedWorkAreaResolverIntegrationTestsFixture : IAsyncLife
         }
         else
         {
-            // Cloned from the shared, already-migrated template - see SharedPostgresTemplate.
-            _connectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
+            // Cloned from the shared, already-migrated template - see SharedSqlServerTemplate.
+            _connectionString = await SharedSqlServerTemplate.CreateDatabaseAsync();
         }
     }
 
@@ -58,12 +57,21 @@ public sealed class ExpectedWorkAreaResolverIntegrationTestsFixture : IAsyncLife
     public static (Guid TenantId, Guid LegalEntityId, Guid EmployeeId, DateOnly Date) NewScope() =>
         (Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), DateOnly.FromDateTime(DateTime.UtcNow));
 
-    public EfWorkAreaChangeRequestRepository Repository() => new(BuildDbContext());
+    /// <summary>A strict tenant table is visible only inside its own tenant, so the session runs as
+    /// <paramref name="sessionTenantId"/>; the repository's own filters are what the tests check.</summary>
+    public EfWorkAreaChangeRequestRepository Repository(Guid sessionTenantId)
+    {
+        var db = BuildDbContext();
+        db.Database.OpenConnection();
+        using var tenantMode = TenantRlsInterceptor.SetTenantCommand(db.Database.GetDbConnection(), sessionTenantId.ToString(), "tenant");
+        tenantMode.ExecuteNonQuery();
+        return new EfWorkAreaChangeRequestRepository(db);
+    }
 
     private ApplicationDbContext BuildDbContext()
     {
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
-            .UseNpgsql(_connectionString)
+            .UseTestSqlServer(_connectionString)
             .UseSnakeCaseNamingConvention()
             .Options;
         return new ApplicationDbContext(options,
@@ -102,12 +110,18 @@ public sealed class ExpectedWorkAreaResolverIntegrationTestsFixture : IAsyncLife
         // (matching WorkAreaChangeRequestsIntegrationTests' established technique). This does not
         // suspend the resolver's own tenant/legal-entity/employee/date/status filtering, which is
         // exactly what these tests exercise.
-        await using var connection = new NpgsqlConnection(_connectionString);
+        await using var connection = TestDb.CreateConnection(_connectionString);
         await connection.OpenAsync();
         await using (var setReplica = connection.CreateCommand())
         {
-            setReplica.CommandText = "SET session_replication_role = replica;";
+            setReplica.CommandText = TestDb.DisableForeignKeysSql("work_area_change_requests");
             await setReplica.ExecuteNonQueryAsync();
+        }
+
+        // A strict tenant table: even an admin session cannot write it, only its own tenant.
+        await using (var tenantMode = TenantRlsInterceptor.SetTenantCommand(connection, tenantId.ToString(), "tenant"))
+        {
+            await tenantMode.ExecuteNonQueryAsync();
         }
 
         await using var command = connection.CreateCommand();
@@ -116,21 +130,21 @@ public sealed class ExpectedWorkAreaResolverIntegrationTestsFixture : IAsyncLife
                 (id, tenant_id, employee_id, legal_entity_id, date,
                  current_work_mode_id, current_work_mode_name, requested_work_mode_id, requested_work_mode_name,
                  reason, status, requested_at)
-            VALUES ($1, $2, $3, $4, $5, $6, 'onsite', $7, $8, 'fixture', $9, now());
+            VALUES (@p1, @p2, @p3, @p4, @p5, @p6, 'onsite', @p7, @p8, 'fixture', @p9, SYSDATETIMEOFFSET());
             """;
-        command.Parameters.AddWithValue(Guid.NewGuid());
-        command.Parameters.AddWithValue(tenantId);
-        command.Parameters.AddWithValue(employeeId);
-        command.Parameters.AddWithValue(legalEntityId);
-        command.Parameters.AddWithValue(date);
-        command.Parameters.AddWithValue(Guid.NewGuid());
-        command.Parameters.AddWithValue(Guid.NewGuid());
-        command.Parameters.AddWithValue(requestedWorkArea);
-        command.Parameters.AddWithValue(status);
+        command.Parameters.AddPositional(Guid.NewGuid());
+        command.Parameters.AddPositional(tenantId);
+        command.Parameters.AddPositional(employeeId);
+        command.Parameters.AddPositional(legalEntityId);
+        command.Parameters.AddPositional(date);
+        command.Parameters.AddPositional(Guid.NewGuid());
+        command.Parameters.AddPositional(Guid.NewGuid());
+        command.Parameters.AddPositional(requestedWorkArea);
+        command.Parameters.AddPositional(status);
         await command.ExecuteNonQueryAsync();
 
         await using var resetReplica = connection.CreateCommand();
-        resetReplica.CommandText = "RESET session_replication_role;";
+        resetReplica.CommandText = TestDb.EnableForeignKeysSql("work_area_change_requests");
         await resetReplica.ExecuteNonQueryAsync();
     }
 
@@ -166,7 +180,7 @@ public sealed class ExpectedWorkAreaResolverIntegrationTests : IClassFixture<Exp
         var (tenantId, legalEntityId, employeeId, date) = ExpectedWorkAreaResolverIntegrationTestsFixture.NewScope();
         await _fixture.SeedAsync(tenantId, legalEntityId, employeeId, date, WorkAreaChangeRequest.StatusApproved, "remote");
 
-        var result = await _fixture.Repository().GetApprovedForDateAsync(tenantId, legalEntityId, employeeId, date);
+        var result = await _fixture.Repository(tenantId).GetApprovedForDateAsync(tenantId, legalEntityId, employeeId, date);
 
         result.Should().NotBeNull();
         result!.RequestedWorkModeName.Should().Be("remote");
@@ -181,7 +195,7 @@ public sealed class ExpectedWorkAreaResolverIntegrationTests : IClassFixture<Exp
         var (tenantId, legalEntityId, employeeId, date) = ExpectedWorkAreaResolverIntegrationTestsFixture.NewScope();
         await _fixture.SeedAsync(tenantId, legalEntityId, employeeId, date, status, "remote");
 
-        var result = await _fixture.Repository().GetApprovedForDateAsync(tenantId, legalEntityId, employeeId, date);
+        var result = await _fixture.Repository(tenantId).GetApprovedForDateAsync(tenantId, legalEntityId, employeeId, date);
 
         result.Should().BeNull();
     }
@@ -192,7 +206,7 @@ public sealed class ExpectedWorkAreaResolverIntegrationTests : IClassFixture<Exp
         var (tenantId, legalEntityId, employeeId, date) = ExpectedWorkAreaResolverIntegrationTestsFixture.NewScope();
         await _fixture.SeedAsync(tenantId, legalEntityId, employeeId, date.AddDays(1), WorkAreaChangeRequest.StatusApproved, "remote");
 
-        var result = await _fixture.Repository().GetApprovedForDateAsync(tenantId, legalEntityId, employeeId, date);
+        var result = await _fixture.Repository(tenantId).GetApprovedForDateAsync(tenantId, legalEntityId, employeeId, date);
 
         result.Should().BeNull();
     }
@@ -204,7 +218,7 @@ public sealed class ExpectedWorkAreaResolverIntegrationTests : IClassFixture<Exp
         var otherEmployeeId = Guid.NewGuid();
         await _fixture.SeedAsync(tenantId, legalEntityId, otherEmployeeId, date, WorkAreaChangeRequest.StatusApproved, "remote");
 
-        var result = await _fixture.Repository().GetApprovedForDateAsync(tenantId, legalEntityId, employeeId, date);
+        var result = await _fixture.Repository(tenantId).GetApprovedForDateAsync(tenantId, legalEntityId, employeeId, date);
 
         result.Should().BeNull();
     }
@@ -216,7 +230,7 @@ public sealed class ExpectedWorkAreaResolverIntegrationTests : IClassFixture<Exp
         var otherLegalEntityId = Guid.NewGuid();
         await _fixture.SeedAsync(tenantId, otherLegalEntityId, employeeId, date, WorkAreaChangeRequest.StatusApproved, "remote");
 
-        var result = await _fixture.Repository().GetApprovedForDateAsync(tenantId, legalEntityId, employeeId, date);
+        var result = await _fixture.Repository(tenantId).GetApprovedForDateAsync(tenantId, legalEntityId, employeeId, date);
 
         result.Should().BeNull();
     }
@@ -228,7 +242,8 @@ public sealed class ExpectedWorkAreaResolverIntegrationTests : IClassFixture<Exp
         var otherTenantId = Guid.NewGuid();
         await _fixture.SeedAsync(otherTenantId, legalEntityId, employeeId, date, WorkAreaChangeRequest.StatusApproved, "remote");
 
-        var result = await _fixture.Repository().GetApprovedForDateAsync(tenantId, legalEntityId, employeeId, date);
+        // Sessioned in the row's tenant so RLS cannot hide it: only the repository's filter can.
+        var result = await _fixture.Repository(otherTenantId).GetApprovedForDateAsync(tenantId, legalEntityId, employeeId, date);
 
         result.Should().BeNull();
     }

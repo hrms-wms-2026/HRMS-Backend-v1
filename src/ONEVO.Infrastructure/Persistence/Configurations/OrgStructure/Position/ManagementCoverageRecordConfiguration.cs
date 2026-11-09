@@ -58,12 +58,12 @@ public class ManagementCoverageRecordConfiguration : IEntityTypeConfiguration<Ma
         builder.HasIndex(m => new { m.TenantId, m.LegalEntityId, m.CoveredPositionId, m.OwnerOrder })
             .IsUnique()
             .HasDatabaseName("ix_management_coverage_records_active_position_order")
-            .HasFilter("covered_target_type = 'Position' AND status = 'active'");
+            .HasFilter("covered_target_type = 'Position' AND status = 'active' AND covered_position_id IS NOT NULL");
 
         builder.HasIndex(m => new { m.TenantId, m.LegalEntityId, m.CoveredDepartmentId, m.OwnerOrder })
             .IsUnique()
             .HasDatabaseName("ix_management_coverage_records_active_department_order")
-            .HasFilter("covered_target_type = 'Department' AND status = 'active'");
+            .HasFilter("covered_target_type = 'Department' AND status = 'active' AND covered_department_id IS NOT NULL");
 
         builder.HasIndex(m => new { m.TenantId, m.LegalEntityId, m.OwnerOrder })
             .IsUnique()

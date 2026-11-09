@@ -1,7 +1,6 @@
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
-using Npgsql;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.SharedPlatform.TenantIntegrations.Commands.UpsertOwnUserIntegrationConnection;
 using ONEVO.Infrastructure.Persistence;
@@ -22,7 +21,7 @@ public sealed class UserIntegrationConnectionPersistenceTests : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        _connectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
+        _connectionString = await SharedSqlServerTemplate.CreateDatabaseAsync();
         _environmentScope = new IntegrationTestEnvironmentScope(_connectionString);
         _factory = new AdminTestFactory(_connectionString);
         _client = _factory.CreateClient(new WebApplicationFactoryClientOptions
@@ -47,8 +46,8 @@ public sealed class UserIntegrationConnectionPersistenceTests : IAsyncLifetime
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         await db.Database.OpenConnectionAsync();
         await db.Database.ExecuteSqlRawAsync(
-            "SET session_replication_role = replica; " +
-            "SELECT set_config('app.tenant_context_mode', 'admin', false);");
+            "EXEC sp_MSforeachtable 'ALTER TABLE ? NOCHECK CONSTRAINT ALL'; " +
+            "EXEC sp_set_session_context N'app.tenant_context_mode', N'admin';");
 
         var handler = new UpsertOwnUserIntegrationConnectionCommandHandler(
             new FixedCurrentUser(tenantId, userId),
@@ -99,49 +98,45 @@ public sealed class UserIntegrationConnectionPersistenceTests : IAsyncLifetime
     {
         var tenantA = Guid.NewGuid();
         var tenantB = Guid.NewGuid();
-        await using var connection = new NpgsqlConnection(_connectionString);
+        await using var connection = TestDb.CreateConnection(_connectionString);
         await connection.OpenAsync();
 
-        await ExecuteAsync(connection, "SET session_replication_role = replica");
-        await ExecuteAsync(connection, "SELECT set_config('app.tenant_context_mode', 'admin', false)");
+        await ExecuteAsync(connection, TestDb.DisableForeignKeysSql("user_integration_connections"));
+        await ExecuteAsync(connection, "EXEC sp_set_session_context N'app.tenant_context_mode', N'admin'");
         await InsertConnectionAsync(connection, tenantA, "connected");
         await InsertConnectionAsync(connection, tenantB, "connected");
 
-        var invalid = await Assert.ThrowsAsync<PostgresException>(
+        var invalid = await Assert.ThrowsAsync<SqlException>(
             () => InsertConnectionAsync(connection, Guid.NewGuid(), "invalid"));
-        Assert.Equal(PostgresErrorCodes.CheckViolation, invalid.SqlState);
+        Assert.Equal(547, invalid.Number);
 
-        await ExecuteAsync(connection, "SET session_replication_role = origin");
-        await ExecuteAsync(connection, "CREATE ROLE onevo_tenant_runtime NOLOGIN");
+        await ExecuteAsync(connection, TestDb.EnableForeignKeysSql("user_integration_connections"));
+        await ExecuteAsync(connection, "EXECUTE AS USER = 'onevo_app'");
+        await ExecuteAsync(connection, "EXEC sp_set_session_context N'app.tenant_context_mode', N'tenant'");
         await ExecuteAsync(
             connection,
-            "GRANT SELECT, INSERT, UPDATE, DELETE ON user_integration_connections TO onevo_tenant_runtime");
-        await ExecuteAsync(connection, "SET ROLE onevo_tenant_runtime");
-        await ExecuteAsync(connection, "SELECT set_config('app.tenant_context_mode', 'tenant', false)");
-        await ExecuteAsync(
-            connection,
-            $"SELECT set_config('app.current_tenant_id', '{tenantA}', false)");
+            $"EXEC sp_set_session_context N'app.current_tenant_id', N'{tenantA}'");
 
-        await using var countCommand = new NpgsqlCommand(
-            "SELECT count(*) FROM user_integration_connections",
+        await using var countCommand = new SqlCommand(
+            "SELECT COUNT_BIG(*) FROM user_integration_connections",
             connection);
         var visibleCount = (long)(await countCommand.ExecuteScalarAsync())!;
         Assert.Equal(1, visibleCount);
 
-        await ExecuteAsync(connection, "RESET ROLE");
+        await ExecuteAsync(connection, "REVERT");
     }
 
     private static async Task InsertConnectionAsync(
-        NpgsqlConnection connection,
+        SqlConnection connection,
         Guid tenantId,
         string status)
     {
-        await using var command = new NpgsqlCommand(
+        await using var command = new SqlCommand(
             """
             INSERT INTO user_integration_connections
                 (id, tenant_id, user_id, integration_key, status, connected_at, created_at)
             VALUES
-                (@id, @tenant_id, @user_id, 'github', @status, now(), now())
+                (@id, @tenant_id, @user_id, 'github', @status, SYSDATETIMEOFFSET(), SYSDATETIMEOFFSET())
             """,
             connection);
         command.Parameters.AddWithValue("id", Guid.NewGuid());
@@ -151,9 +146,9 @@ public sealed class UserIntegrationConnectionPersistenceTests : IAsyncLifetime
         await command.ExecuteNonQueryAsync();
     }
 
-    private static async Task ExecuteAsync(NpgsqlConnection connection, string sql)
+    private static async Task ExecuteAsync(SqlConnection connection, string sql)
     {
-        await using var command = new NpgsqlCommand(sql, connection);
+        await using var command = new SqlCommand(sql, connection);
         await command.ExecuteNonQueryAsync();
     }
 

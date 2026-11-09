@@ -48,7 +48,7 @@ public sealed class MonitoringPolicyOverrideIntegrationTestsFixture : IAsyncLife
 
     public async Task InitializeAsync()
     {
-        _connectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
+        _connectionString = await SharedSqlServerTemplate.CreateDatabaseAsync();
         _environmentScope = new IntegrationTestEnvironmentScope(_connectionString);
 
         _factory = new E2ETestFactory(_connectionString, new CapturingEmailService());
@@ -149,9 +149,9 @@ public sealed class MonitoringPolicyOverrideIntegrationTestsFixture : IAsyncLife
             tenantId, slug, TenantStatus.Active, null));
 
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
-            .UseNpgsql(_connectionString)
+            .UseTestSqlServer(_connectionString)
             .UseSnakeCaseNamingConvention()
-            .AddInterceptors(new TenantRlsInterceptor(tenantContext))
+            .AddTestRls(new TenantRlsInterceptor(tenantContext))
             .Options;
 
         return new ApplicationDbContext(

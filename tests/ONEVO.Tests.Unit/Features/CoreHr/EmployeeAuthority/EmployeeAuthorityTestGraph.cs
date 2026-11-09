@@ -313,7 +313,7 @@ internal sealed class EmployeeAuthorityTestGraph
             => throw new NotImplementedException();
         public Task<DomainEmployee?> GetTrackedByIdAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default)
             => throw new NotImplementedException();
-        public Task<uint?> GetVersionTokenAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default)
+        public Task<ulong?> GetVersionTokenAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default)
             => throw new NotImplementedException();
         public void SetExpectedVersion(DomainEmployee employee, string expectedVersion)
             => throw new NotImplementedException();

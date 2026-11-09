@@ -93,8 +93,8 @@ public class EfProjectRepository : IProjectRepository
         var values = await _db.Database.SqlQuery<long>($@"
             UPDATE projects
             SET next_task_number = next_task_number + 1
+            OUTPUT inserted.next_task_number - 1 AS [Value]
             WHERE tenant_id = {tenantId} AND id = {projectId}
-            RETURNING (next_task_number - 1) AS ""Value""
         ").ToListAsync(ct);
 
         if (values.Count == 0)
@@ -112,8 +112,8 @@ public class EfProjectRepository : IProjectRepository
         var values = await _db.Database.SqlQuery<long>($@"
             UPDATE projects
             SET next_meeting_number = next_meeting_number + 1
+            OUTPUT inserted.next_meeting_number - 1 AS [Value]
             WHERE tenant_id = {tenantId} AND id = {projectId}
-            RETURNING (next_meeting_number - 1) AS ""Value""
         ").ToListAsync(ct);
 
         if (values.Count == 0)

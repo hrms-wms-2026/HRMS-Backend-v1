@@ -31,7 +31,7 @@ public sealed class AdminPasswordResetTokenRepositoryConcurrencyTestsFixture : I
 
     public async Task InitializeAsync()
     {
-        _connectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
+        _connectionString = await SharedSqlServerTemplate.CreateDatabaseAsync();
     }
 
     public Task DisposeAsync() => Task.CompletedTask;
@@ -71,7 +71,7 @@ public sealed class AdminPasswordResetTokenRepositoryConcurrencyTestsFixture : I
     public ApplicationDbContext CreateContext()
     {
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
-            .UseNpgsql(_connectionString)
+            .UseTestSqlServer(_connectionString)
             .UseSnakeCaseNamingConvention()
             .Options;
 

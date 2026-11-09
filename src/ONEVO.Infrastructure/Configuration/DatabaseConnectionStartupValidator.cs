@@ -1,5 +1,5 @@
 using Microsoft.Extensions.Configuration;
-using Npgsql;
+using Microsoft.Data.SqlClient;
 using System.Diagnostics.CodeAnalysis;
 
 namespace ONEVO.Infrastructure.Configuration;
@@ -9,7 +9,7 @@ public static class DatabaseConnectionStartupValidator
     private const string SetupGuidance =
         "The local .env file is intentionally not committed. Copy .env.example to .env " +
         "and replace the database password placeholders. If the database, roles, or " +
-        "migrations are not prepared, run ops/postgres/setup-local-db.ps1 -RunMigrations " +
+        "migrations are not prepared, run ops/sqlserver/setup-local-db.ps1 -RunMigrations " +
         "from the repository root. After .env exists, dotnet run loads it directly.";
 
     public static void Validate(
@@ -31,8 +31,8 @@ public static class DatabaseConnectionStartupValidator
             "MigrationConnection",
             processDefaultConnectionOverrideActive);
 
-        var runtimeUsername = runtimeConnection.Username!;
-        var migrationUsername = migrationConnection.Username!;
+        var runtimeUsername = runtimeConnection.UserID;
+        var migrationUsername = migrationConnection.UserID;
 
         if (!runtimeUsername.Equals("onevo_app", StringComparison.OrdinalIgnoreCase))
         {
@@ -46,7 +46,7 @@ public static class DatabaseConnectionStartupValidator
         {
             ThrowInvalid(
                 "MigrationConnection",
-                "the migration username must be onevo_migrator and must not be postgres/admin",
+                "the migration username must be onevo_migrator and must not be sa/admin",
                 processDefaultConnectionOverrideActive);
         }
 
@@ -81,7 +81,7 @@ public static class DatabaseConnectionStartupValidator
                 return;
             }
 
-            await using var connection = new NpgsqlConnection(runtimeConnection);
+            await using var connection = new SqlConnection(runtimeConnection);
             await connection.OpenAsync(cancellationToken);
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
@@ -91,7 +91,7 @@ public static class DatabaseConnectionStartupValidator
                 : string.Empty;
             throw new InvalidOperationException(
                 "The restricted onevo_app DefaultConnection could not authenticate and open. " +
-                "Check the local role/password with ops/postgres/setup-local-db.ps1 -RunMigrations." +
+                "Check the local role/password with ops/sqlserver/setup-local-db.ps1 -RunMigrations." +
                 overrideGuidance,
                 exception);
         }
@@ -104,7 +104,7 @@ public static class DatabaseConnectionStartupValidator
             || environmentName.Equals("Testing", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static NpgsqlConnectionStringBuilder ValidateConnection(
+    private static SqlConnectionStringBuilder ValidateConnection(
         string? connectionString,
         string connectionName,
         bool processDefaultConnectionOverrideActive)
@@ -114,21 +114,21 @@ public static class DatabaseConnectionStartupValidator
             ThrowInvalid(connectionName, "it is missing", processDefaultConnectionOverrideActive);
         }
 
-        NpgsqlConnectionStringBuilder parsed;
+        SqlConnectionStringBuilder parsed;
         try
         {
-            parsed = new NpgsqlConnectionStringBuilder(connectionString);
+            parsed = new SqlConnectionStringBuilder(connectionString);
         }
         catch (ArgumentException)
         {
             ThrowInvalid(
                 connectionName,
-                "it is not a valid PostgreSQL connection string",
+                "it is not a valid SQL Server connection string",
                 processDefaultConnectionOverrideActive);
             throw;
         }
 
-        if (string.IsNullOrWhiteSpace(parsed.Username))
+        if (string.IsNullOrWhiteSpace(parsed.UserID))
         {
             ThrowInvalid(connectionName, "the username is missing", processDefaultConnectionOverrideActive);
         }
@@ -160,7 +160,7 @@ public static class DatabaseConnectionStartupValidator
             ? " A process-level ConnectionStrings__* override is active and overrides the repo-root .env."
             : string.Empty;
         throw new InvalidOperationException(
-            $"Local PostgreSQL connection '{connectionName}' is invalid because {reason}. " +
+            $"Local SQL Server connection '{connectionName}' is invalid because {reason}. " +
             SetupGuidance + overrideGuidance);
     }
 }

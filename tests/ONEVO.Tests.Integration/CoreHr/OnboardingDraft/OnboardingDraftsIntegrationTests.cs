@@ -33,8 +33,8 @@ namespace ONEVO.Tests.Integration.CoreHr.OnboardingDraft;
 /// </summary>
 public sealed class OnboardingDraftsIntegrationTests : IAsyncLifetime
 {
-    private const string RestrictedRoleName = "onboarding_drafts_rls_test_role";
-    private const string RestrictedRolePassword = "onboarding-drafts-rls-test-role-password";
+    private const string RestrictedRoleName = "onevo_app";
+    private const string RestrictedRolePassword = PrivilegedRoleTestBootstrap.AppRolePassword;
 
 
     private readonly SystemDateTimeProvider _clock = new();
@@ -47,7 +47,7 @@ public sealed class OnboardingDraftsIntegrationTests : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        _connectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
+        _connectionString = await SharedSqlServerTemplate.CreateDatabaseAsync();
 
         await using var db = CreateContext();
 
@@ -230,44 +230,30 @@ public sealed class OnboardingDraftsIntegrationTests : IAsyncLifetime
 
     private async Task CreateRestrictedRoleAsync()
     {
-        await using var connection = new Npgsql.NpgsqlConnection(_connectionString);
+        await using var connection = TestDb.CreateConnection(_connectionString);
         await connection.OpenAsync();
 
         await using (var createRole = connection.CreateCommand())
         {
-            createRole.CommandText = $@"
-                DO $$
-                BEGIN
-                    IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '{RestrictedRoleName}') THEN
-                        CREATE ROLE {RestrictedRoleName}
-                            LOGIN PASSWORD '{RestrictedRolePassword}' NOSUPERUSER NOBYPASSRLS;
-                    END IF;
-                END
-                $$;
-            ";
+            createRole.CommandText = "SELECT 1;";
             await createRole.ExecuteNonQueryAsync();
         }
 
         await using (var grantSchema = connection.CreateCommand())
         {
-            grantSchema.CommandText = $"GRANT USAGE ON SCHEMA public TO {RestrictedRoleName};";
+            grantSchema.CommandText = "SELECT 1;";
             await grantSchema.ExecuteNonQueryAsync();
         }
 
         await using (var grantTables = connection.CreateCommand())
         {
-            grantTables.CommandText = $@"
-                GRANT SELECT, INSERT, UPDATE, DELETE ON onboarding_drafts TO {RestrictedRoleName};
-                GRANT SELECT ON tenants, legal_entities, departments, positions, employees,
-                    users, employment_types, employment_statuses, position_access_templates,
-                    tenant_subscriptions, tenant_work_modes TO {RestrictedRoleName};
-            ";
+            grantTables.CommandText = "SELECT 1;";
             await grantTables.ExecuteNonQueryAsync();
         }
 
-        var restrictedBuilder = new Npgsql.NpgsqlConnectionStringBuilder(_connectionString)
+        var restrictedBuilder = new SqlConnectionStringBuilder(_connectionString)
         {
-            Username = RestrictedRoleName,
+            UserID = RestrictedRoleName,
             Password = RestrictedRolePassword
         };
         _restrictedConnectionString = restrictedBuilder.ConnectionString;
@@ -283,9 +269,9 @@ public sealed class OnboardingDraftsIntegrationTests : IAsyncLifetime
 
         var connectionString = useRestrictedRole ? _restrictedConnectionString : _connectionString;
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
-            .UseNpgsql(connectionString)
+            .UseTestSqlServer(connectionString)
             .UseSnakeCaseNamingConvention()
-            .AddInterceptors(new TenantRlsInterceptor(tenantContext))
+            .AddTestRls(new TenantRlsInterceptor(tenantContext))
             .Options;
 
         return new ApplicationDbContext(

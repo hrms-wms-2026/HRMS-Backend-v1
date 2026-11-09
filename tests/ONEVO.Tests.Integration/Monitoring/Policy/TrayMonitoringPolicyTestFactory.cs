@@ -51,7 +51,7 @@ public sealed class TrayMonitoringPolicyTestFactory : WebApplicationFactory<Prog
 
             services.AddDbContext<ApplicationDbContext>((_, options) =>
             {
-                options.UseNpgsql(_connectionString)
+                options.UseTestSqlServer(_connectionString)
                        .UseSnakeCaseNamingConvention();
             });
 

@@ -37,14 +37,14 @@ public sealed class BaseDomainLoginIntegrationTestsFixture : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        // Cloned from the shared, already-migrated template (see SharedPostgresTemplate) - roles
+        // Cloned from the shared, already-migrated template (see SharedSqlServerTemplate) - roles
         // and migrations already exist before the environment scope's onevo_app connection string
         // is opened by Program.cs's pre-Build() DatabaseConnectionStartupValidator, and the
         // environment scope must be in place before BaseDomainLoginTestFactory is constructed -
         // accessing _factory.Services/CreateClient() is what first triggers Program.cs's top-level
         // startup code, including hosted services like PermissionSeeder that assume migrations have
         // already applied.
-        var connectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
+        var connectionString = await SharedSqlServerTemplate.CreateDatabaseAsync();
         _environmentScope = new IntegrationTestEnvironmentScope(connectionString);
 
         _factory = new BaseDomainLoginTestFactory(connectionString);
@@ -678,7 +678,8 @@ public sealed class BaseDomainLoginIntegrationTests : IClassFixture<BaseDomainLo
         var act = async () => await db.SaveChangesAsync();
 
         await act.Should().ThrowAsync<DbUpdateException>(
-            "ix_users_tenant_id_normalized_email must reject a second user whose normalized email collides within the same tenant");
+            "ix_users_tenant_id_normalized_email must reject a second user whose normalized email collides within the same tenant")
+            .Where(e => ((SqlException)e.InnerException!).Number == 2601 || ((SqlException)e.InnerException!).Number == 2627);
     }
 
     [Fact]

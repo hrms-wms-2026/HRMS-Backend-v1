@@ -150,32 +150,62 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
             return;
         }
 
-        try
+        // In tests a missing tenant must fail loudly at startup, not as an unrelated test failure
+        // later. A timeout (a stalled Docker host) gets one more attempt first.
+        var isTest = _environment.IsEnvironment("Test");
+        for (var attempt = 1; ; attempt++)
         {
-            await using var scope = _services.CreateAsyncScope();
-            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-            var tenantContext = scope.ServiceProvider.GetRequiredService<IWritableTenantContext>();
-            var passwordHasher = scope.ServiceProvider.GetRequiredService<IPasswordHasher>();
-            var encryption = scope.ServiceProvider.GetRequiredService<IEncryptionService>();
-            var workModeSeeder = scope.ServiceProvider.GetRequiredService<IWorkModeSeeder>();
+            try
+            {
+                await SeedOnceAsync(cancellationToken);
+                return;
+            }
+            catch (Exception ex) when (isTest && attempt == 1 && IsTimeout(ex))
+            {
+                _logger.LogWarning(ex, "Smoke-test tenant seeding timed out. Retrying once.");
+            }
+            catch (Exception ex) when (!isTest)
+            {
+                _logger.LogError(ex, "Development smoke-test tenant seeder failed. Continuing startup.");
+                return;
+            }
+        }
+    }
 
-            tenantContext.SetAdminMode();
-            await SeedAsync(
-                db,
-                tenantContext,
-                passwordHasher,
-                encryption,
-                _configuration,
-                workModeSeeder,
-                cancellationToken);
-            _logger.LogInformation(
-                "Development smoke-test tenants seeded: {Slugs}",
-                string.Join(", ", new[] { AcmeSlug, DapiSlug }));
-        }
-        catch (Exception ex)
+    private static bool IsTimeout(Exception ex)
+    {
+        for (var current = ex; current is not null; current = current.InnerException)
         {
-            _logger.LogError(ex, "Development smoke-test tenant seeder failed. Continuing startup.");
+            if (current is TimeoutException or Microsoft.Data.SqlClient.SqlException { Number: -2 })
+            {
+                return true;
+            }
         }
+
+        return false;
+    }
+
+    private async Task SeedOnceAsync(CancellationToken cancellationToken)
+    {
+        await using var scope = _services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var tenantContext = scope.ServiceProvider.GetRequiredService<IWritableTenantContext>();
+        var passwordHasher = scope.ServiceProvider.GetRequiredService<IPasswordHasher>();
+        var encryption = scope.ServiceProvider.GetRequiredService<IEncryptionService>();
+        var workModeSeeder = scope.ServiceProvider.GetRequiredService<IWorkModeSeeder>();
+
+        tenantContext.SetAdminMode();
+        await SeedAsync(
+            db,
+            tenantContext,
+            passwordHasher,
+            encryption,
+            _configuration,
+            workModeSeeder,
+            cancellationToken);
+        _logger.LogInformation(
+            "Development smoke-test tenants seeded: {Slugs}",
+            string.Join(", ", new[] { AcmeSlug, DapiSlug }));
     }
 
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
@@ -470,8 +500,10 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
             await db.Database.ExecuteSqlInterpolatedAsync(
                 $"""
                 INSERT INTO global_email_directory (email, tenant_id)
-                VALUES ({email}, {tenantId})
-                ON CONFLICT (email, tenant_id) DO NOTHING
+                SELECT {email}, {tenantId}
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM global_email_directory
+                    WHERE email = {email} AND tenant_id = {tenantId})
                 """,
                 ct);
         }

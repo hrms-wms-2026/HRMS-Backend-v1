@@ -25,7 +25,7 @@ public class DashboardTemplateWidgetLayoutConfiguration : IEntityTypeConfigurati
 
         builder.HasIndex(l => new { l.TemplateWidgetId, l.Breakpoint })
             .IsUnique()
-            .HasFilter("is_deleted = false")
+            .HasFilter("is_deleted = 0")
             .HasDatabaseName("ux_dashboard_template_widget_layouts_template_widget_id_breakpoint");
     }
 }

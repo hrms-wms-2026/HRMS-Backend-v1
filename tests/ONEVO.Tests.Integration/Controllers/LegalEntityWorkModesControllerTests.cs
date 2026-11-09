@@ -46,7 +46,7 @@ public sealed class LegalEntityWorkModesControllerTestsFixture : IAsyncLifetime
         var connectionString = Environment.GetEnvironmentVariable("ONEVO_TEST_DB");
         if (string.IsNullOrWhiteSpace(connectionString))
         {
-            connectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
+            connectionString = await SharedSqlServerTemplate.CreateDatabaseAsync();
         }
         else
         {

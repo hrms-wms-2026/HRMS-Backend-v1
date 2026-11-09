@@ -13,8 +13,8 @@ public sealed class DatabaseConnectionStartupValidatorTests
     {
         var values = ValidConnectionValues();
         values[$"ConnectionStrings:{connectionName}"] = connectionName == "DefaultConnection"
-            ? "Host=localhost;Database=OnevoDb;Username=onevo_app;Password=SET_VIA_ENV"
-            : "Host=localhost;Database=OnevoDb;Username=onevo_migrator;Password=SET_VIA_ENV";
+            ? "Server=localhost;Database=OnevoDb;User ID=onevo_app;Password=SET_VIA_ENV"
+            : "Server=localhost;Database=OnevoDb;User ID=onevo_migrator;Password=SET_VIA_ENV";
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(values).Build();
 
         var exception = Assert.Throws<InvalidOperationException>(() =>
@@ -22,7 +22,7 @@ public sealed class DatabaseConnectionStartupValidatorTests
 
         Assert.Contains(connectionName, exception.Message, StringComparison.Ordinal);
         Assert.Contains(".env.example", exception.Message, StringComparison.Ordinal);
-        Assert.Contains("ops/postgres/setup-local-db.ps1 -RunMigrations", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("ops/sqlserver/setup-local-db.ps1 -RunMigrations", exception.Message, StringComparison.Ordinal);
         Assert.Contains("dotnet run loads it directly", exception.Message, StringComparison.Ordinal);
         Assert.DoesNotContain("Password=", exception.Message, StringComparison.OrdinalIgnoreCase);
     }
@@ -48,11 +48,11 @@ public sealed class DatabaseConnectionStartupValidatorTests
     }
 
     [Theory]
-    [InlineData("Host=localhost;Database=OnevoDb;Username=onevo_app;Password=<local-app-password>")]
-    [InlineData("Host=localhost;Database=OnevoDb;Username=onevo_app;Password=")]
-    [InlineData("Host=localhost;Database=OnevoDb;Password=unit-test-value")]
-    [InlineData("Host=localhost;Database=OnevoDb;Username=postgres;Password=unit-test-value")]
-    [InlineData("Host=localhost;Database=OnevoDb;Username=onevo_migrator;Password=unit-test-value")]
+    [InlineData("Server=localhost;Database=OnevoDb;User ID=onevo_app;Password=<local-app-password>")]
+    [InlineData("Server=localhost;Database=OnevoDb;User ID=onevo_app;Password=")]
+    [InlineData("Server=localhost;Database=OnevoDb;Password=unit-test-value")]
+    [InlineData("Server=localhost;Database=OnevoDb;User ID=sa;Password=unit-test-value")]
+    [InlineData("Server=localhost;Database=OnevoDb;User ID=onevo_migrator;Password=unit-test-value")]
     public void Validate_RejectsUnsafeRuntimeConnection(string runtimeConnection)
     {
         var values = ValidConnectionValues();
@@ -68,7 +68,7 @@ public sealed class DatabaseConnectionStartupValidatorTests
     {
         var values = ValidConnectionValues();
         values["ConnectionStrings:MigrationConnection"] =
-            "Host=localhost;Database=OnevoDb;Username=onevo_app;Password=unit-test-migration";
+            "Server=localhost;Database=OnevoDb;User ID=onevo_app;Password=unit-test-migration";
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(values).Build();
 
         Assert.Throws<InvalidOperationException>(() =>
@@ -80,7 +80,7 @@ public sealed class DatabaseConnectionStartupValidatorTests
     {
         var values = ValidConnectionValues();
         values["ConnectionStrings:MigrationConnection"] =
-            "Host=localhost;Database=OnevoDb;Username=postgres;Password=unit-test-migration";
+            "Server=localhost;Database=OnevoDb;User ID=sa;Password=unit-test-migration";
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(values).Build();
 
         Assert.Throws<InvalidOperationException>(() =>
@@ -98,7 +98,7 @@ public sealed class DatabaseConnectionStartupValidatorTests
             DatabaseConnectionStartupValidator.ValidateAndOpenAsync(
                 configuration,
                 "Development",
-                openConnection: (_, _) => throw new Npgsql.NpgsqlException("unit-test auth failure")));
+                openConnection: (_, _) => throw new TimeoutException("unit-test auth failure")));
 
         Assert.Contains("onevo_app", exception.Message, StringComparison.Ordinal);
         Assert.DoesNotContain("Password=", exception.Message, StringComparison.OrdinalIgnoreCase);
@@ -109,7 +109,7 @@ public sealed class DatabaseConnectionStartupValidatorTests
     {
         var values = ValidConnectionValues();
         values["ConnectionStrings:DefaultConnection"] =
-            "Host=localhost;Database=OnevoDb;Username=postgres;Password=unit-test-runtime";
+            "Server=localhost;Database=OnevoDb;User ID=sa;Password=unit-test-runtime";
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(values).Build();
         var openWasCalled = false;
 
@@ -131,7 +131,7 @@ public sealed class DatabaseConnectionStartupValidatorTests
     {
         var values = ValidConnectionValues();
         values["ConnectionStrings:DefaultConnection"] =
-            "Host=localhost;Database=OnevoDb;Username=postgres;Password=unit-test-secret";
+            "Server=localhost;Database=OnevoDb;User ID=sa;Password=unit-test-secret";
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(values).Build();
 
         var exception = Assert.Throws<InvalidOperationException>(() =>
@@ -147,9 +147,9 @@ public sealed class DatabaseConnectionStartupValidatorTests
         return new Dictionary<string, string?>
         {
             ["ConnectionStrings:DefaultConnection"] =
-                "Host=localhost;Database=OnevoDb;Username=onevo_app;Password=unit-test-runtime",
+                "Server=localhost;Database=OnevoDb;User ID=onevo_app;Password=unit-test-runtime",
             ["ConnectionStrings:MigrationConnection"] =
-                "Host=localhost;Database=OnevoDb;Username=onevo_migrator;Password=unit-test-migration"
+                "Server=localhost;Database=OnevoDb;User ID=onevo_migrator;Password=unit-test-migration"
         };
     }
 }

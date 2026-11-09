@@ -73,6 +73,11 @@ public class ApplicationDbContext : DbContext
     private readonly DomainEventDispatchInterceptor _domainEventInterceptor;
     private readonly ITenantContext _tenantContext;
 
+    /// <summary>Meeting rows to check at commit. See MeetingIntegrityInterceptor.</summary>
+    public HashSet<Guid> PendingMeetingTaskIds { get; } = [];
+
+    public HashSet<Guid> PendingMeetingSeriesIds { get; } = [];
+
     public ApplicationDbContext(
         DbContextOptions<ApplicationDbContext> options,
         AuditableEntityInterceptor auditInterceptor,
@@ -400,12 +405,25 @@ public class ApplicationDbContext : DbContext
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
         optionsBuilder
-            .AddInterceptors(_auditInterceptor, _softDeleteInterceptor, _domainEventInterceptor);
+            .AddInterceptors(_auditInterceptor, _softDeleteInterceptor, _domainEventInterceptor, MeetingIntegrityInterceptor.Instance);
+    }
+
+    protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
+    {
+        configurationBuilder.Properties<DateTimeOffset>()
+            .HaveConversion<ONEVO.Infrastructure.Persistence.SqlServer.UtcDateTimeOffsetConverter>();
     }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(ApplicationDbContext).Assembly);
+
+        // Case-sensitive so = keeps PostgreSQL behaviour on hashes, tokens and unique indexes.
+        modelBuilder.UseCollation("Latin1_General_100_CS_AS_SC");
+        if (Database.IsSqlServer())
+        {
+            ONEVO.Infrastructure.Persistence.SqlServer.JsonColumnConvention.Apply(modelBuilder);
+        }
 
         var dbContextConst = Expression.Constant(this, typeof(ApplicationDbContext));
         var isTenantFilterActiveProperty = typeof(ApplicationDbContext).GetProperty(nameof(IsTenantFilterActive))!;

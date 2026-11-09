@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using ONEVO.Application.Features.WorkManagement.Meetings.RepositoryInterfaces;
 using ONEVO.Domain.Features.Calendar.Entities;
 using ONEVO.Domain.Features.WorkManagement.Meetings.Entities;
+using ONEVO.Infrastructure.Persistence.SqlServer;
 
 namespace ONEVO.Infrastructure.Persistence.Repositories.WorkManagement.Meetings;
 
@@ -126,9 +127,6 @@ public sealed class EfMeetingAttendanceRepository : IMeetingAttendanceRepository
     {
         if (_db.Database.CurrentTransaction is null)
             throw new InvalidOperationException($"{nameof(TryLockLinkSyncAsync)} needs a transaction.");
-        var acquired = await _db.Database.SqlQuery<bool>(
-            $"SELECT pg_try_advisory_xact_lock(hashtextextended({tenantId.ToString()}::text || ':link:' || {linkId.ToString()}::text, 0)) AS \"Value\"")
-            .ToListAsync(ct);
-        return acquired.Count == 1 && acquired[0];
+        return await SqlAppLock.TryAcquireAsync(_db, $"meeting-link:{tenantId}:{linkId}", SqlAppLock.NoWait, ct);
     }
 }

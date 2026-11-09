@@ -117,43 +117,4 @@ public sealed class TimeTrackingMutationArchitectureTests
         Assert.Contains(constructor.GetParameters(), parameter => parameter.ParameterType == typeof(IAttendanceReadRepository));
     }
 
-    [Fact]
-    public void BreakMigration_AddsOnlyTheFilteredUniqueOpenBreakIndex()
-    {
-        var migrationsDir = Path.GetFullPath(Path.Combine(
-            AppContext.BaseDirectory, "..", "..", "..", "..", "..",
-            "src", "ONEVO.Infrastructure", "Migrations"));
-        var migrationPath = Directory.GetFiles(migrationsDir, "*AddBreakRecordOpenUniqueness.cs")
-            .Single(file => !file.EndsWith(".Designer.cs", StringComparison.OrdinalIgnoreCase));
-        var migration = File.ReadAllText(migrationPath);
-        var designer = File.ReadAllText(Path.ChangeExtension(migrationPath, ".Designer.cs"));
-        var snapshot = File.ReadAllText(Path.Combine(migrationsDir, "ApplicationDbContextModelSnapshot.cs"));
-
-        Assert.Contains("CreateIndex", migration);
-        Assert.Contains("ux_break_records_one_open_per_employee", migration);
-        Assert.Contains("unique: true", migration);
-        Assert.Contains("filter: \"break_end IS NULL\"", migration);
-        Assert.DoesNotContain("CreateTable", migration);
-        Assert.Contains("ux_break_records_one_open_per_employee", designer);
-        Assert.Contains("Property<uint>(\"xmin\")", designer);
-        Assert.Contains("ux_break_records_one_open_per_employee", snapshot);
-        Assert.Contains("Property<uint>(\"xmin\")", snapshot);
-    }
-
-    [Fact]
-    public void AttendanceMigration_StillEnablesForcedTenantRls()
-    {
-        var migrationsDir = Path.GetFullPath(Path.Combine(
-            AppContext.BaseDirectory, "..", "..", "..", "..", "..",
-            "src", "ONEVO.Infrastructure", "Migrations"));
-        var migration = Directory.GetFiles(migrationsDir, "*AddAttendanceReadModel.cs")
-            .Single(file => !file.EndsWith(".Designer.cs", StringComparison.OrdinalIgnoreCase));
-        var source = File.ReadAllText(migration);
-
-        Assert.Contains("ENABLE ROW LEVEL SECURITY", source);
-        Assert.Contains("FORCE ROW LEVEL SECURITY", source);
-        Assert.Contains("tenant_isolation", source);
-        Assert.Contains("attendance_records", source);
-        Assert.Contains("break_records", source);
-    }
 }
