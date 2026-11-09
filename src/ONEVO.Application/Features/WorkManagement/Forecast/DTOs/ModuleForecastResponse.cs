@@ -21,7 +21,7 @@ public sealed record ModuleForecastTotals(
 
 public sealed record ModuleForecastProject(
     Guid ProjectId, string Name, decimal AllocatedHours, decimal RemainingHours, decimal PredictedHours, decimal CapacityHours,
-    decimal OvertimeHours, int ModulesAtRisk);
+    decimal OvertimeHours, int ModulesAtRisk, int ModulesOverload);
 
 public sealed record ModuleForecastItem(
     Guid ModuleId, Guid ProjectId, string ProjectName, string Title, string Path,

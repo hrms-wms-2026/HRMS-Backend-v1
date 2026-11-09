@@ -53,6 +53,9 @@ No migration and no new table.
   - An earlier per-tenant pair (`20261109042105_…`, `20261109042221_…`) existed briefly in commit `f172043f`. It
     was never applied anywhere and is replaced by the pair above.
 
+- **`projects[].modulesOverload`** (int, 2026-11-09): listed modules of that project with status `overload`. It is
+  counted like `modulesAtRisk`, over the whole population (not narrowed by paging, `status`, `search` or `projectId`).
+
 ## Deviations from the spec contract (frontend, please align)
 
 1. **Who sees the module forecast.** The spec's call said "the modules the viewer can read". The table shows every
@@ -119,7 +122,7 @@ Individual task rates are performance data, so:
   "rateTrend": [ { "weekStart": "2026-10-12", "rate": 0.5 }, { "weekStart": "2026-10-19", "rate": null },
                  { "weekStart": "2026-10-26", "rate": null }, { "weekStart": "2026-11-02", "rate": 0.5 } ],
   "projects": [ { "projectId": "…", "name": "Payments", "allocatedHours": 200, "remainingHours": 200,
-                  "predictedHours": 80, "capacityHours": 160, "overtimeHours": 120, "modulesAtRisk": 2 } ],
+                  "predictedHours": 80, "capacityHours": 160, "overtimeHours": 120, "modulesAtRisk": 2, "modulesOverload": 2 } ],
   "items": [
     { "moduleId": "…", "projectId": "…", "projectName": "Payments", "title": "Checkout", "path": "Checkout",
       "startDate": "2026-10-26", "endDate": "2026-11-20", "workingDaysLeft": 10,

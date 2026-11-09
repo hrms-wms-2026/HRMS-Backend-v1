@@ -148,7 +148,8 @@ public sealed class GetModuleForecastQueryHandler(
                     ForecastRounding.Hours(heads.Sum(r => r.Figures.Predicted)),
                     ForecastRounding.Hours(heads.Sum(r => r.Figures.Capacity)),
                     ForecastRounding.Hours(heads.Sum(r => r.Figures.OvertimeHours)),
-                    g.Count(r => r.Figures.Status is ForecastStatuses.RaiseRate or ForecastStatuses.Overload));
+                    g.Count(r => r.Figures.Status is ForecastStatuses.RaiseRate or ForecastStatuses.Overload),
+                    g.Count(r => r.Figures.Status == ForecastStatuses.Overload));
             })
             .OrderByDescending(p => p.OvertimeHours).ThenBy(p => p.Name, StringComparer.OrdinalIgnoreCase)
             .ToList();

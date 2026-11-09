@@ -149,7 +149,7 @@ public class GetModuleForecastQueryHandlerTests
         Assert.Equal(1.25m, r.Totals.RequiredRate);
 
         var bar = Assert.Single(r.Projects);
-        Assert.Equal(("Payments", 200m, 2), (bar.Name, bar.AllocatedHours, bar.ModulesAtRisk));
+        Assert.Equal(("Payments", 200m, 2, 2), (bar.Name, bar.AllocatedHours, bar.ModulesAtRisk, bar.ModulesOverload));
 
         Assert.Equal(4, r.RateTrend.Count);
         Assert.Equal(0.5m, r.RateTrend[0].Rate);
@@ -209,6 +209,10 @@ public class GetModuleForecastQueryHandlerTests
         Assert.Empty(otherProject.Items);
         Assert.Equal((2, 200m), (otherProject.Totals.Modules, otherProject.Totals.AllocatedHours));
         Assert.Single(otherProject.Projects);
+        // The project badges count every listed module, whatever the page or the filters show.
+        Assert.Equal(2, Assert.Single(none.Projects).ModulesOverload);
+        var onePerPage = (await Handler().Handle(new GetModuleForecastQuery(PageSize: 1), default)).Value!;
+        Assert.Equal(2, Assert.Single(onePerPage.Projects).ModulesOverload);
 
         var all = (await Handler().Handle(new GetModuleForecastQuery(PageSize: 500), default)).Value!;
         Assert.Equal(500, all.PageSize);
