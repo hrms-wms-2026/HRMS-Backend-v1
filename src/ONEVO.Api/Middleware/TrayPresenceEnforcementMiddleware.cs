@@ -12,7 +12,7 @@ namespace ONEVO.Api.Middleware;
 public sealed class TrayPresenceEnforcementMiddleware
 {
     private const string TrayDeviceTokenType = "tray_device";
-    private const string ActiveTrayRequiredType = "https://onevo.com/errors/active-tray-required";
+    private const string ActiveTrayRequiredType = "urn:crownus:error:active-tray-required";
     private readonly RequestDelegate _next;
 
     public TrayPresenceEnforcementMiddleware(RequestDelegate next) => _next = next;

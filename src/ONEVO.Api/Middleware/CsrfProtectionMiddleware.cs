@@ -77,7 +77,7 @@ public class CsrfProtectionMiddleware
             context.Response.StatusCode = StatusCodes.Status403Forbidden;
             await context.Response.WriteAsJsonAsync(new
             {
-                type = "https://onevo.com/errors/csrf",
+                type = ONEVO.Api.Errors.ProblemTypes.For("csrf"),
                 title = "Forbidden",
                 status = 403,
                 detail = "A valid CSRF token is required for this request."

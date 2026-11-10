@@ -120,6 +120,30 @@ public class CsrfProtectionMiddlewareTests
     }
 
     [Fact]
+    public async Task CsrfFailure_ProblemTypeIsCrownusUrn()
+    {
+        // The web app recognises a CSRF failure by this exact type (error.interceptor.ts).
+        var ctx = MakeContext("POST", "/api/v1/employees");
+        ctx.Request.Headers["Cookie"] = "crownus_session=sess-1";
+        ctx.Response.Body = new MemoryStream();
+
+        await CreateSut().InvokeAsync(ctx, _tokenService);
+
+        ctx.Response.Body.Position = 0;
+        using var body = await System.Text.Json.JsonDocument.ParseAsync(ctx.Response.Body);
+        Assert.Equal("urn:crownus:error:csrf", body.RootElement.GetProperty("type").GetString());
+    }
+
+    [Theory]
+    [InlineData("csrf", "urn:crownus:error:csrf")]
+    [InlineData("forbidden", "urn:crownus:error:forbidden")]
+    [InlineData("rate-limit", "urn:crownus:error:rate-limit")]
+    public void ProblemTypes_For_BuildsCrownusUrn(string name, string expected)
+    {
+        Assert.Equal(expected, ONEVO.Api.Errors.ProblemTypes.For(name));
+    }
+
+    [Fact]
     public async Task UnsafeMethod_NotAuthenticated_Rejects403()
     {
         var ctx = MakeContext("POST", "/api/v1/employees");

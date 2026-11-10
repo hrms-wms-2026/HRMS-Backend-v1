@@ -41,7 +41,7 @@ internal static class AuthenticationExtensions
                     context.Response.StatusCode = StatusCodes.Status401Unauthorized;
                     return context.Response.WriteAsJsonAsync(new
                     {
-                        type = "https://onevo.com/errors/unauthorized",
+                        type = ONEVO.Api.Errors.ProblemTypes.For("unauthorized"),
                         title = "Unauthorized",
                         status = 401,
                         detail = "Authentication is required to access this resource.",
@@ -53,7 +53,7 @@ internal static class AuthenticationExtensions
                     context.Response.StatusCode = StatusCodes.Status403Forbidden;
                     return context.Response.WriteAsJsonAsync(new
                     {
-                        type = "https://onevo.com/errors/forbidden",
+                        type = ONEVO.Api.Errors.ProblemTypes.For("forbidden"),
                         title = "Forbidden",
                         status = 403,
                         detail = "You do not have permission to access this resource.",
@@ -87,7 +87,7 @@ internal static class AuthenticationExtensions
                     context.Response.StatusCode = StatusCodes.Status401Unauthorized;
                     return context.Response.WriteAsJsonAsync(new
                     {
-                        type = "https://onevo.com/errors/unauthorized",
+                        type = ONEVO.Api.Errors.ProblemTypes.For("unauthorized"),
                         title = "Unauthorized",
                         status = 401,
                         detail = "Authentication is required to access this resource.",
@@ -99,7 +99,7 @@ internal static class AuthenticationExtensions
                     context.Response.StatusCode = StatusCodes.Status403Forbidden;
                     return context.Response.WriteAsJsonAsync(new
                     {
-                        type = "https://onevo.com/errors/forbidden",
+                        type = ONEVO.Api.Errors.ProblemTypes.For("forbidden"),
                         title = "Forbidden",
                         status = 403,
                         detail = "You do not have permission to access this resource.",
@@ -150,7 +150,7 @@ internal static class AuthenticationExtensions
                         context.Response.ContentType = "application/json";
                         return context.Response.WriteAsJsonAsync(new
                         {
-                            type = "https://onevo.com/errors/unauthorized",
+                            type = ONEVO.Api.Errors.ProblemTypes.For("unauthorized"),
                             title = "Unauthorized",
                             status = 401,
                             detail = "A valid tray device token is required to access this resource.",

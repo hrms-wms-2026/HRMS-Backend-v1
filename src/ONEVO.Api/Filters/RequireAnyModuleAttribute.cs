@@ -46,7 +46,7 @@ public sealed class RequireAnyModuleAttribute : Attribute, IAsyncAuthorizationFi
 
     private static ObjectResult Forbidden(string detail) => new(new
     {
-        type = "https://onevo.com/errors/forbidden",
+        type = ONEVO.Api.Errors.ProblemTypes.For("forbidden"),
         title = "Forbidden",
         status = 403,
         detail
