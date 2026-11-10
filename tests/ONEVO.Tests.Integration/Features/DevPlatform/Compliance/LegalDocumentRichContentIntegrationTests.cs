@@ -17,7 +17,7 @@ namespace ONEVO.Tests.Integration.Features.DevPlatform.Compliance;
 /// pending-legal response carries content_endpoint/content_hash, and publishing a new
 /// version forces re-acceptance on the next login.
 ///
-/// Database resolution: set ONEVO_TEST_DB to a PostgreSQL connection string to run
+/// Database resolution: set CROWNUS_TEST_DB to a PostgreSQL connection string to run
 /// against a local server (no Docker needed); otherwise a Testcontainers instance is
 /// started. Mirrors the harness in E2E/TenantProvisioningE2ETests.cs.
 /// </summary>
@@ -44,7 +44,7 @@ public class LegalDocumentRichContentIntegrationTests : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        var connectionString = Environment.GetEnvironmentVariable("ONEVO_TEST_DB");
+        var connectionString = Environment.GetEnvironmentVariable("CROWNUS_TEST_DB");
         if (string.IsNullOrWhiteSpace(connectionString))
         {
             connectionString = await SharedSqlServerTemplate.CreateDatabaseAsync();

@@ -108,7 +108,7 @@ public sealed class WorkAreaChangeRequestRuntimeHttpIntegrationTestsFixture : IA
 
     public async Task InitializeAsync()
     {
-        _connectionString = Environment.GetEnvironmentVariable("ONEVO_TEST_DB") ?? string.Empty;
+        _connectionString = Environment.GetEnvironmentVariable("CROWNUS_TEST_DB") ?? string.Empty;
         if (string.IsNullOrWhiteSpace(_connectionString))
         {
             // Cloned from the shared, already-migrated template - see SharedSqlServerTemplate.

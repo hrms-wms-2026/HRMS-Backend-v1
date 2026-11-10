@@ -37,8 +37,8 @@ public sealed class SqlServerOpsArchitectureTests
         Assert.Contains("$(APP_PASSWORD)", bootstrap, StringComparison.Ordinal);
         Assert.Contains("$(MIGRATOR_PASSWORD)", bootstrap, StringComparison.Ordinal);
         Assert.DoesNotMatch(new Regex(@"PASSWORD\s*=\s*N?'[^$]", RegexOptions.IgnoreCase), bootstrap);
-        Assert.Contains("ONEVO_DB_APP_PASSWORD", setup, StringComparison.Ordinal);
-        Assert.Contains("ONEVO_DB_MIGRATOR_PASSWORD", setup, StringComparison.Ordinal);
+        Assert.Contains("CROWNUS_DB_APP_PASSWORD", setup, StringComparison.Ordinal);
+        Assert.Contains("CROWNUS_DB_MIGRATOR_PASSWORD", setup, StringComparison.Ordinal);
     }
 
     [Fact]

@@ -70,7 +70,7 @@ public sealed class AttendanceCorrectionsIntegrationTestsFixture : IAsyncLifetim
 
     public async Task InitializeAsync()
     {
-        _connectionString = Environment.GetEnvironmentVariable("ONEVO_TEST_DB") ?? string.Empty;
+        _connectionString = Environment.GetEnvironmentVariable("CROWNUS_TEST_DB") ?? string.Empty;
         if (string.IsNullOrWhiteSpace(_connectionString))
         {
             // Cloned from the shared, already-migrated template - see SharedSqlServerTemplate.
@@ -525,7 +525,7 @@ public sealed class AttendanceCorrectionsIntegrationTestsFixture : IAsyncLifetim
 /// round-trips correctly, whether the API response layer reads the stored value rather than
 /// deriving it, and whether RLS actually blocks cross-tenant access - that is this class's job.
 ///
-/// Database resolution mirrors every other class in this suite: set ONEVO_TEST_DB to run against
+/// Database resolution mirrors every other class in this suite: set CROWNUS_TEST_DB to run against
 /// a local PostgreSQL server with no Docker; otherwise a Testcontainers instance is started.
 /// </summary>
 [Collection(WebApplicationFactoryCollection.Name)]

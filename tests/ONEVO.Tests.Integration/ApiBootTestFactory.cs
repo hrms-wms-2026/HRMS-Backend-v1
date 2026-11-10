@@ -9,7 +9,7 @@ namespace ONEVO.Tests.Integration;
 
 /// <summary>
 /// WebApplicationFactory used by ApiBootTests. Wires the app to a Testcontainers Postgres
-/// instance instead of the developer's persistent local OnevoDb, matching the pattern used
+/// instance instead of the developer's persistent local CrownusDb, matching the pattern used
 /// by AdminTestFactory/AuthTestFactory/BaseDomainLoginTestFactory.
 /// </summary>
 public sealed class ApiBootTestFactory : WebApplicationFactory<Program>

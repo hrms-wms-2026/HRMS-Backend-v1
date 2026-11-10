@@ -20,7 +20,7 @@ namespace ONEVO.Tests.Integration.E2E;
 /// logs in with the resulting session cookie, and uses tenant APIs under CSRF
 /// and host-isolation rules.
 ///
-/// Database resolution: set ONEVO_TEST_DB to a PostgreSQL connection string to
+/// Database resolution: set CROWNUS_TEST_DB to a PostgreSQL connection string to
 /// run against a local server (no Docker needed); otherwise a Testcontainers
 /// instance is started.
 /// </summary>
@@ -46,7 +46,7 @@ public class TenantProvisioningE2ETests : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        var connectionString = Environment.GetEnvironmentVariable("ONEVO_TEST_DB");
+        var connectionString = Environment.GetEnvironmentVariable("CROWNUS_TEST_DB");
         if (string.IsNullOrWhiteSpace(connectionString))
         {
             connectionString = await SharedSqlServerTemplate.CreateDatabaseAsync();

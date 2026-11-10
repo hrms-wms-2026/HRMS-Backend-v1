@@ -49,7 +49,7 @@ public sealed class TaskAttachmentsIntegrationTestsFixture : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        var connectionString = Environment.GetEnvironmentVariable("ONEVO_TEST_DB");
+        var connectionString = Environment.GetEnvironmentVariable("CROWNUS_TEST_DB");
         if (string.IsNullOrWhiteSpace(connectionString))
         {
             connectionString = await SharedSqlServerTemplate.CreateDatabaseAsync();

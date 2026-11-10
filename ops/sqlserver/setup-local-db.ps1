@@ -6,12 +6,12 @@ database changes there is a separate, agreed deployment step.
 
   ./ops/sqlserver/setup-local-db.ps1 -Server "localhost,1433" -RunMigrations
 
-Passwords come from ONEVO_DB_APP_PASSWORD and ONEVO_DB_MIGRATOR_PASSWORD in the repo-root .env.
+Passwords come from CROWNUS_DB_APP_PASSWORD and CROWNUS_DB_MIGRATOR_PASSWORD in the repo-root .env.
 #>
 param(
     [string]$Server = "localhost,1433",
     [string]$AdminUser = "sa",
-    [string]$Database = "OnevoDb",
+    [string]$Database = "CrownusDb",
     [switch]$RunMigrations
 )
 
@@ -26,10 +26,10 @@ if (Test-Path $envFile) {
     }
 }
 
-$appPassword = $values["ONEVO_DB_APP_PASSWORD"]
-$migratorPassword = $values["ONEVO_DB_MIGRATOR_PASSWORD"]
+$appPassword = $values["CROWNUS_DB_APP_PASSWORD"]
+$migratorPassword = $values["CROWNUS_DB_MIGRATOR_PASSWORD"]
 if (-not $appPassword -or -not $migratorPassword) {
-    throw "Set ONEVO_DB_APP_PASSWORD and ONEVO_DB_MIGRATOR_PASSWORD in .env first."
+    throw "Set CROWNUS_DB_APP_PASSWORD and CROWNUS_DB_MIGRATOR_PASSWORD in .env first."
 }
 
 $adminPassword = Read-Host "Password for $AdminUser" -AsSecureString

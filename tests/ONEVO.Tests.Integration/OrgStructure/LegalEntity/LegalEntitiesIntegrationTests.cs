@@ -56,7 +56,7 @@ public sealed class LegalEntitiesIntegrationTestsFixture : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        var connectionString = Environment.GetEnvironmentVariable("ONEVO_TEST_DB");
+        var connectionString = Environment.GetEnvironmentVariable("CROWNUS_TEST_DB");
         if (string.IsNullOrWhiteSpace(connectionString))
         {
             connectionString = await SharedSqlServerTemplate.CreateDatabaseAsync();
@@ -498,7 +498,7 @@ public sealed class LegalEntitiesIntegrationTestsFixture : IAsyncLifetime
 /// have real data to work against without any direct DB seeding of this
 /// feature's own rows.
 ///
-/// Database resolution mirrors TenantProvisioningE2ETests: set ONEVO_TEST_DB
+/// Database resolution mirrors TenantProvisioningE2ETests: set CROWNUS_TEST_DB
 /// to run against a local PostgreSQL server with no Docker; otherwise a
 /// Testcontainers instance is started.
 /// </summary>

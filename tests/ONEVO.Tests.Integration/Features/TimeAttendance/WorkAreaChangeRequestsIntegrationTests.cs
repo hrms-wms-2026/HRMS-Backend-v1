@@ -21,7 +21,7 @@ public sealed class WorkAreaChangeRequestsIntegrationTestsFixture : IAsyncLifeti
 
     public async Task InitializeAsync()
     {
-        var configured = Environment.GetEnvironmentVariable("ONEVO_TEST_DB");
+        var configured = Environment.GetEnvironmentVariable("CROWNUS_TEST_DB");
         if (!string.IsNullOrWhiteSpace(configured))
         {
             ConnectionString = configured;
