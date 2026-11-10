@@ -74,9 +74,8 @@ public sealed class CreateMeetingCommandHandler : IRequestHandler<CreateMeetingC
         try
         {
             if (at.Direct)
-                return await _unitOfWork.ExecuteInTransactionAsync(innerCt => _factory.CreateDirectAsync(
-                    tenantId, caller, _currentUser.UserId, at, request,
-                    at.IsOffice ? MeetingCreationPaths.CalendarOffice : MeetingCreationPaths.Direct, approvalRequestId: null, innerCt), ct);
+                return await _unitOfWork.ExecuteInTransactionAsync(innerCt => CreateAndSaveAsync(
+                    tenantId, caller, at, request, at.IsOffice ? MeetingCreationPaths.CalendarOffice : MeetingCreationPaths.Direct, innerCt), ct);
 
             var payload = JsonSerializer.Serialize(new MeetingCreatePayload(request, await _snapshots.ForCreateAsync(tenantId, caller, at, request, ct)), Json);
             return await _unitOfWork.ExecuteInTransactionAsync(async innerCt =>
@@ -87,8 +86,7 @@ public sealed class CreateMeetingCommandHandler : IRequestHandler<CreateMeetingC
                 if (!decision.IsSuccess)
                     return Result<MeetingCreatedResponse>.Failure(decision.Error!, decision.StatusCode ?? 400, decision.ErrorCode);
                 if (decision.Value!.IsDirect)   // the engine found the caller above the module after all
-                    return await _factory.CreateDirectAsync(tenantId, caller, _currentUser.UserId, at with { Direct = true }, request,
-                        MeetingCreationPaths.Direct, approvalRequestId: null, innerCt);
+                    return await CreateAndSaveAsync(tenantId, caller, at with { Direct = true }, request, MeetingCreationPaths.Direct, innerCt);
 
                 await _unitOfWork.SaveChangesAsync(innerCt);
                 return Result<MeetingCreatedResponse>.Success(
@@ -99,6 +97,20 @@ public sealed class CreateMeetingCommandHandler : IRequestHandler<CreateMeetingC
         {
             return MeetingGuard.Busy<MeetingCreatedResponse>();
         }
+    }
+
+    /// <summary>
+    /// The factory sends the invites last, and their in-app notices are tracked outbox rows. Saving here keeps them in the
+    /// transaction; without it only the invite emails, written with raw SQL, would be committed.
+    /// </summary>
+    private async Task<Result<MeetingCreatedResponse>> CreateAndSaveAsync(Guid tenantId, Guid caller, MeetingPlacement at,
+        CreateMeetingRequest request, string creationPath, CancellationToken ct)
+    {
+        var created = await _factory.CreateDirectAsync(tenantId, caller, _currentUser.UserId, at, request, creationPath,
+            approvalRequestId: null, ct);
+        if (created.IsSuccess)
+            await _unitOfWork.SaveChangesAsync(ct);
+        return created;
     }
 
 }

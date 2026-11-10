@@ -148,4 +148,45 @@ public sealed class CreateMeetingCommandHandlerTests
 
         Assert.Equal((409, MeetingErrorCodes.ApprovalNotEditable), (result.StatusCode, result.ErrorCode));
     }
+
+    /// <summary>The factory sends the invites last. Their in-app notices are tracked outbox rows, so a direct create must save
+    /// after the factory returns, or the transaction commits without them (only the raw-SQL invite emails survive).</summary>
+    private List<string> TrackCreateThenSave()
+    {
+        var steps = new List<string>();
+        _factory.Setup(f => f.CreateDirectAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<MeetingPlacement>(),
+                It.IsAny<CreateMeetingRequest>(), It.IsAny<string>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
+            .Callback(() => steps.Add("create"))
+            .ReturnsAsync(Result<MeetingCreatedResponse>.Success(new MeetingCreatedResponse("created", Guid.NewGuid(), Guid.NewGuid(), null, [])));
+        _unitOfWork.Setup(u => u.SaveChangesAsync(It.IsAny<CancellationToken>())).Callback(() => steps.Add("save")).ReturnsAsync(1);
+        return steps;
+    }
+
+    [Fact]
+    public async Task ADirectCreate_SavesAfterTheFactorySentTheInvites()
+    {
+        _placements.Setup(p => p.ResolveAsync(Tenant, Caller, Project, Module.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<MeetingPlacement>.Success(new MeetingPlacement(Project, Module.Id, false, Direct: true)));
+        var steps = TrackCreateThenSave();
+
+        var result = await Handler().Handle(new CreateMeetingCommand(Form()), CancellationToken.None);
+
+        Assert.True(result.IsSuccess, result.Error);
+        Assert.Equal(["create", "save"], steps);
+    }
+
+    [Fact]
+    public async Task ACreateTheApprovalEngineMakesDirect_SavesAfterTheFactorySentTheInvites()
+    {
+        _placements.Setup(p => p.ResolveAsync(Tenant, Caller, Project, Module.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<MeetingPlacement>.Success(new MeetingPlacement(Project, Module.Id, false, Direct: false)));
+        _approvals.Setup(a => a.SubmitAsync(It.IsAny<WorkAction>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<ApprovalDecision>.Success(ApprovalDecision.Direct));
+        var steps = TrackCreateThenSave();
+
+        var result = await Handler().Handle(new CreateMeetingCommand(Form()), CancellationToken.None);
+
+        Assert.True(result.IsSuccess, result.Error);
+        Assert.Equal(["create", "save"], steps);
+    }
 }
