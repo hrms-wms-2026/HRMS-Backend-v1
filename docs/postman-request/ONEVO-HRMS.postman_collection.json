@@ -2,7 +2,7 @@
   "info": {
     "name": "ONEVO HRMS API",
     "_postman_id": "onevo-hrms-api-v1-collection",
-    "description": "ONEVO HRMS Backend API Collection\n\n**Base URL:** http://localhost:5139\n\n**Authentication:**\n- Admin routes (/admin/v1/...): Cookie auth via `admin_session` + `admin_csrf` cookies\n- Tenant routes (/api/v1/...): Cookie auth via `onevo_session` + `onevo_csrf` cookies\n- Enable Postman cookie jar (Cookies > Manage Cookies) for automatic cookie handling\n- After each login, copy the csrf cookie value into the matching collection variable:\n  - Admin login → copy `admin_csrf` cookie → set `adminCsrfToken`\n  - Tenant login → copy `onevo_csrf` cookie → set `tenantCsrfToken`\n\n**CSRF:** All POST/PUT/PATCH/DELETE on authenticated routes require `X-CSRF-Token` header.\nThe collection pre-request script auto-extracts these from the Postman cookie jar.",
+    "description": "ONEVO HRMS Backend API Collection\n\n**Base URL:** http://localhost:5139\n\n**Authentication:**\n- Admin routes (/admin/v1/...): Cookie auth via `admin_session` + `admin_csrf` cookies\n- Tenant routes (/api/v1/...): Cookie auth via `crownus_session` + `crownus_csrf` cookies\n- Enable Postman cookie jar (Cookies > Manage Cookies) for automatic cookie handling\n- After each login, copy the csrf cookie value into the matching collection variable:\n  - Admin login → copy `admin_csrf` cookie → set `adminCsrfToken`\n  - Tenant login → copy `crownus_csrf` cookie → set `tenantCsrfToken`\n\n**CSRF:** All POST/PUT/PATCH/DELETE on authenticated routes require `X-CSRF-Token` header.\nThe collection pre-request script auto-extracts these from the Postman cookie jar.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "event": [
@@ -15,7 +15,7 @@
           "jar.getAll('localhost', (err, cookies) => {",
           "  if (!err && cookies) {",
           "    const adminCsrf = cookies.find(c => c.name === 'admin_csrf');",
-          "    const tenantCsrf = cookies.find(c => c.name === 'onevo_csrf');",
+          "    const tenantCsrf = cookies.find(c => c.name === 'crownus_csrf');",
           "    if (adminCsrf) pm.collectionVariables.set('adminCsrfToken', adminCsrf.value);",
           "    if (tenantCsrf) pm.collectionVariables.set('tenantCsrfToken', tenantCsrf.value);",
           "  }",
@@ -2858,7 +2858,7 @@
                       "const jar = pm.cookies.jar();",
                       "jar.getAll('localhost', (err, cookies) => {",
                       "  if (!err && cookies) {",
-                      "    const csrf = cookies.find(c => c.name === 'onevo_csrf');",
+                      "    const csrf = cookies.find(c => c.name === 'crownus_csrf');",
                       "    if (csrf) pm.collectionVariables.set('tenantCsrfToken', csrf.value);",
                       "  }",
                       "});"

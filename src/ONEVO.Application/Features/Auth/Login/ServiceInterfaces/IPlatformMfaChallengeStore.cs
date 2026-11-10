@@ -15,7 +15,7 @@ public sealed record PlatformMfaChallengeState(
 /// Admin/platform equivalent of <see cref="IMfaChallengeStore"/>. Kept as a separate interface
 /// rather than reusing the tenant-scoped one because platform users are not tenant-owned — there
 /// is no TenantId to carry, and admin/tenant auth concerns are kept structurally separate
-/// throughout this codebase (AdminScheme vs TenantScheme, admin_session vs onevo_session, etc).
+/// throughout this codebase (AdminScheme vs TenantScheme, admin_session vs crownus_session, etc).
 /// </summary>
 public interface IPlatformMfaChallengeStore
 {

@@ -33,8 +33,8 @@ public sealed class ApiBootTestFactory : WebApplicationFactory<Program>
             {
                 ["ConnectionStrings:DefaultConnection"] = _connectionString,
                 ["Jwt:Secret"] = "test_secret_at_least_32_chars_long_!!",
-                ["Jwt:TenantIssuer"] = "onevo-api",
-                ["Jwt:TenantAudience"] = "onevo-api",
+                ["Jwt:TenantIssuer"] = "crownus-api",
+                ["Jwt:TenantAudience"] = "crownus-api",
                 ["Tenancy:RootDomain"] = "localhost",
                 ["Encryption:MasterKey"] = "api-boot-test-encryption-master-key!",
                 ["DevAdmin:Email"] = "test_admin@onevo.dev",

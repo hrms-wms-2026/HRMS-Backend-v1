@@ -64,8 +64,8 @@ public sealed class IntegrationTestEnvironmentScope : IDisposable, IAsyncDisposa
         Set("ConnectionStrings__MigrationConnection", MigrationConnectionString);
         Set("Encryption__MasterKey", "integration-test-env-scope-master-key-32-chars!!");
         Set("Jwt__Secret", "integration-test-env-scope-jwt-secret-32-chars!!");
-        Set("Jwt__TenantIssuer", "onevo-api");
-        Set("Jwt__TenantAudience", "onevo-api");
+        Set("Jwt__TenantIssuer", "crownus-api");
+        Set("Jwt__TenantAudience", "crownus-api");
         Set("DevAdmin__Email", "test_admin@onevo.dev");
         Set("DevAdmin__Password", "test_password_123");
         Set("PlatformBootstrap__SuperAdminEmail", "test_admin@onevo.dev");

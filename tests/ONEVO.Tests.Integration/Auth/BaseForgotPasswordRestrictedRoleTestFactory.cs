@@ -43,8 +43,8 @@ public sealed class BaseForgotPasswordRestrictedRoleTestFactory : WebApplication
             {
                 ["ConnectionStrings:DefaultConnection"] = _appConnectionString,
                 ["Jwt:Secret"] = "forgot-password-restricted-role-test-jwt-secret-32c!!",
-                ["Jwt:TenantIssuer"] = "onevo-api",
-                ["Jwt:TenantAudience"] = "onevo-api",
+                ["Jwt:TenantIssuer"] = "crownus-api",
+                ["Jwt:TenantAudience"] = "crownus-api",
                 ["Tenancy:RootDomain"] = "localhost",
                 ["Encryption:MasterKey"] = "forgot-password-restricted-role-test-master-key!!",
                 ["DevAdmin:Email"] = "test_admin@onevo.dev",

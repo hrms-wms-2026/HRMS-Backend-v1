@@ -4,7 +4,7 @@ namespace ONEVO.Domain.Features.Auth.Entities;
 
 /// <summary>
 /// Durable server-side authority for the pre-session Legal &amp; Privacy completion flow. The
-/// browser holds only the raw opaque handle in the HttpOnly onevo_legal_pending cookie; the
+/// browser holds only the raw opaque handle in the HttpOnly crownus_legal_pending cookie; the
 /// database stores its SHA-256 hash. Bound to the verified tenant/user from the completed
 /// login/MFA/Google-SSO attempt that produced it; authorizes only pending-document retrieval and
 /// login-completion acceptance, never a normal session by itself.

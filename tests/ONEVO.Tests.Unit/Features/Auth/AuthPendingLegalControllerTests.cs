@@ -26,7 +26,7 @@ public sealed class AuthPendingLegalControllerTests
 
         var httpContext = new DefaultHttpContext();
         if (legalPendingCookie is not null)
-            httpContext.Request.Headers.Append("Cookie", $"onevo_legal_pending={legalPendingCookie}");
+            httpContext.Request.Headers.Append("Cookie", $"crownus_legal_pending={legalPendingCookie}");
         if (csrfHeader is not null)
             httpContext.Request.Headers["X-CSRF-Token"] = new StringValues(csrfHeader);
 

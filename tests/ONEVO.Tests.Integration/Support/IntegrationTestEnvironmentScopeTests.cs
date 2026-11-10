@@ -28,8 +28,8 @@ public sealed class IntegrationTestEnvironmentScopeTests
         Environment.GetEnvironmentVariable("Encryption__MasterKey")!.Length.Should().BeGreaterThanOrEqualTo(32,
             "ConfigurationStartupValidator requires at least a 32 character master key");
         Environment.GetEnvironmentVariable("Jwt__Secret").Should().NotBeNullOrWhiteSpace();
-        Environment.GetEnvironmentVariable("Jwt__TenantIssuer").Should().Be("onevo-api");
-        Environment.GetEnvironmentVariable("Jwt__TenantAudience").Should().Be("onevo-api");
+        Environment.GetEnvironmentVariable("Jwt__TenantIssuer").Should().Be("crownus-api");
+        Environment.GetEnvironmentVariable("Jwt__TenantAudience").Should().Be("crownus-api");
         Environment.GetEnvironmentVariable("DevAdmin__Email").Should().Be("test_admin@onevo.dev");
         Environment.GetEnvironmentVariable("DevAdmin__Password").Should().Be("test_password_123");
         Environment.GetEnvironmentVariable("PlatformBootstrap__SuperAdminEmail").Should().Be("test_admin@onevo.dev");
@@ -82,7 +82,7 @@ public sealed class IntegrationTestEnvironmentScopeTests
         try
         {
             var scope = new IntegrationTestEnvironmentScope(AdminConnectionString);
-            Environment.GetEnvironmentVariable(key).Should().Be("onevo-api");
+            Environment.GetEnvironmentVariable(key).Should().Be("crownus-api");
 
             scope.Dispose();
 

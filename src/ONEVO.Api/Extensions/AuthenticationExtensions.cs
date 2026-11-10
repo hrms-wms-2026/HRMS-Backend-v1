@@ -21,12 +21,12 @@ internal static class AuthenticationExtensions
         services.AddSingleton<AdminDatabaseTicketStore>();
 
         // Tenant session exchange (see TenantSessionExchangeService) always completes the real
-        // sign-in on the tenant host itself, so onevo_session stays host-scoped (no Domain) -
+        // sign-in on the tenant host itself, so crownus_session stays host-scoped (no Domain) -
         // there is no cross-subdomain cookie sharing to support.
         services.AddAuthentication("TenantScheme")
             .AddCookie("TenantScheme", options =>
             {
-                options.Cookie.Name = "onevo_session";
+                options.Cookie.Name = ONEVO.Api.Auth.AuthCookieNames.Session;
                 options.Cookie.HttpOnly = true;
                 options.Cookie.SecurePolicy = env.IsDevelopment()
                     ? CookieSecurePolicy.SameAsRequest
@@ -112,8 +112,8 @@ internal static class AuthenticationExtensions
                 var trayJwt = configuration.GetSection("TrayApp:Jwt");
                 var secret = ConfigurationStartupValidator.RequireTrayJwtSecret(configuration);
 
-                var issuer = trayJwt["Issuer"] ?? "onevo-tray";
-                var audience = trayJwt["Audience"] ?? "onevo-tray-app";
+                var issuer = trayJwt["Issuer"] ?? "crownus-tray";
+                var audience = trayJwt["Audience"] ?? "crownus-tray-app";
 
                 options.TokenValidationParameters = new TokenValidationParameters
                 {

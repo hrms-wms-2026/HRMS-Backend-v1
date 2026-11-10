@@ -33,7 +33,7 @@ public sealed class AuthRateLimitingMiddlewareTests
         context.Response.Body = new MemoryStream();
 
         if (mfaCookie is not null)
-            context.Request.Headers.Cookie = $"onevo_mfa={mfaCookie}";
+            context.Request.Headers.Cookie = $"crownus_mfa={mfaCookie}";
 
         if (jsonBody is not null)
         {
@@ -205,7 +205,7 @@ public sealed class AuthRateLimitingMiddlewareTests
     [Fact]
     public async Task AdminMfaVerify_UsesAdminMfaCookie_NotTenantOnevoMfaCookie()
     {
-        // The admin login flow sets an "admin_mfa" challenge cookie, not "onevo_mfa" - the
+        // The admin login flow sets an "admin_mfa" challenge cookie, not "crownus_mfa" - the
         // per-challenge limit must key off the cookie admin actually sends.
         var sut = Build();
         for (var i = 0; i < 5; i++)

@@ -215,9 +215,9 @@ public class LegalDocumentRichContentIntegrationTests : IAsyncLifetime
         pendingTerms.GetProperty("content_hash").GetString().Should().Be(newContentHash);
 
         var cookies = ParseSetCookies(secondLoginResponse);
-        cookies.Should().ContainKey("onevo_legal_pending");
-        cookies.Should().ContainKey("onevo_legal_csrf");
-        var legalCsrfHeader = Uri.UnescapeDataString(cookies["onevo_legal_csrf"]);
+        cookies.Should().ContainKey("crownus_legal_pending");
+        cookies.Should().ContainKey("crownus_legal_csrf");
+        var legalCsrfHeader = Uri.UnescapeDataString(cookies["crownus_legal_csrf"]);
 
         // -- Read the exact pending content via the endpoint the pending response points to,
         //    before ever accepting it. --
@@ -236,7 +236,7 @@ public class LegalDocumentRichContentIntegrationTests : IAsyncLifetime
                     new { document_type = "terms", version = "2.0-it", decision = "accepted" }
                 }
             },
-            cookie: $"onevo_legal_pending={cookies["onevo_legal_pending"]}",
+            cookie: $"crownus_legal_pending={cookies["crownus_legal_pending"]}",
             csrfToken: legalCsrfHeader);
         var completeLoginBody = await ReadJsonAsync(completeLoginResponse);
         completeLoginResponse.StatusCode.Should().Be(HttpStatusCode.Accepted, completeLoginBody.ToString());

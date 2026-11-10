@@ -8,7 +8,7 @@ namespace ONEVO.Api.Middleware;
 /// <summary>
 /// CSRF is bound to the server-side session, not just cookie/header equality: the header token is
 /// hashed and compared against the csrf_token_hash stored on the authenticated session row (tenant
-/// onevo_session or admin_session cookie). Copying a CSRF
+/// crownus_session or admin_session cookie). Copying a CSRF
 /// cookie value alone, without a valid session cookie for that same session, cannot pass.
 /// </summary>
 public class CsrfProtectionMiddleware
@@ -141,7 +141,7 @@ public class CsrfProtectionMiddleware
             if (context.Request.Path.StartsWithSegments("/api/v1/auth/invitations"))
                 return null;
 
-            return context.Request.Cookies.ContainsKey("onevo_session") ? CsrfScope.Tenant : null;
+            return context.Request.Cookies.ContainsKey("crownus_session") ? CsrfScope.Tenant : null;
         }
 
         return context.Request.Cookies.ContainsKey("admin_session") ? CsrfScope.Admin : null;

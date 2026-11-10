@@ -22,8 +22,8 @@ public class TrayTokenService : ITrayTokenService
     {
         var section = configuration.GetSection("TrayApp:Jwt");
         _secret = ConfigurationStartupValidator.RequireTrayJwtSecret(configuration);
-        _issuer = section["Issuer"] ?? "onevo-tray";
-        _audience = section["Audience"] ?? "onevo-tray-app";
+        _issuer = section["Issuer"] ?? "crownus-tray";
+        _audience = section["Audience"] ?? "crownus-tray-app";
     }
 
     public string GenerateAccessToken(

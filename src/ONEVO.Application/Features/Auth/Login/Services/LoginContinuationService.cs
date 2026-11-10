@@ -108,7 +108,7 @@ public sealed class LoginContinuationService : ILoginContinuationService
     /// change). <paramref name="finalizationMode"/> is required and caller-supplied - this method
     /// never infers it from ITenantContext/a host string itself. BaseDomainExchange hands off to
     /// the tenant host via TenantSessionExchangeService instead of signing in (the base host must
-    /// never set onevo_session/onevo_csrf); TenantHostDirect signs in immediately via
+    /// never set crownus_session/crownus_csrf); TenantHostDirect signs in immediately via
     /// ILoginSessionMaterialFactory, the same as every login did before the exchange flow existed.
     /// </summary>
     public async Task<Result<LoginResponseDto>> FinishAuthenticatedLoginAsync(

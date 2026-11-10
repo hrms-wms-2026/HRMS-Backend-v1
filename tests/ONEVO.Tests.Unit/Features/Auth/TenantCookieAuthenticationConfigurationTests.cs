@@ -19,7 +19,7 @@ public sealed class TenantCookieAuthenticationConfigurationTests
     {
         var options = InvokeAddApiAuthentication();
 
-        Assert.Equal("onevo_session", options.Cookie.Name);
+        Assert.Equal("crownus_session", options.Cookie.Name);
         Assert.True(options.Cookie.HttpOnly);
         Assert.True(options.SlidingExpiration);
         Assert.Equal(SessionPolicy.SlidingWindow, options.ExpireTimeSpan);
@@ -30,7 +30,7 @@ public sealed class TenantCookieAuthenticationConfigurationTests
     public void TenantScheme_CookieDomain_IsHostScopedOnly()
     {
         // Tenant session exchange (TenantSessionExchangeService) always completes the real sign-in
-        // on the tenant host itself, so onevo_session must never carry a shared parent-domain
+        // on the tenant host itself, so crownus_session must never carry a shared parent-domain
         // Domain attribute - there is no cross-subdomain cookie sharing to support.
         var options = InvokeAddApiAuthentication();
 
@@ -51,8 +51,8 @@ public sealed class TenantCookieAuthenticationConfigurationTests
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["TrayApp:Jwt:Secret"] = "unit-test-tray-jwt-secret-min-32-chars!!",
-                ["TrayApp:Jwt:Issuer"] = "onevo-tray",
-                ["TrayApp:Jwt:Audience"] = "onevo-tray-app"
+                ["TrayApp:Jwt:Issuer"] = "crownus-tray",
+                ["TrayApp:Jwt:Audience"] = "crownus-tray-app"
             })
             .Build();
 

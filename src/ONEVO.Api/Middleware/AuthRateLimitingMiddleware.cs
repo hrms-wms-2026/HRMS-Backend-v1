@@ -11,7 +11,7 @@ namespace ONEVO.Api.Middleware;
 /// </summary>
 public sealed class AuthRateLimitingMiddleware
 {
-    private const string MfaCookieName = "onevo_mfa";
+    private const string MfaCookieName = "crownus_mfa";
     private const string AdminMfaCookieName = "admin_mfa";
 
     private static readonly JsonSerializerOptions JsonOptions = new()
