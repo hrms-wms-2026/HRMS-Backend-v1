@@ -120,7 +120,7 @@ public sealed record MeetingOccurrenceResponse(
     DateTimeOffset EndAt, bool IsAllDay, string Timezone, string Title, string? Description, string? Location,
     bool IsPrivate, string Status, bool IsDetached, int Revision, int SeriesRevision, string? RecurrenceRule,
     MeetingPlacementView Placement, MeetingPersonRef Organizer, string MyRole, string? MyResponse,
-    IReadOnlyList<MeetingAttendeeView> Attendees, bool CanEdit);
+    IReadOnlyList<MeetingAttendeeView> Attendees, bool CanEdit, string? ScheduledByName = null);
 
 public sealed record MeetingListItem(
     Guid TaskId, string ShortId, Guid SeriesId, DateTimeOffset OriginalStart, DateTimeOffset StartAt,

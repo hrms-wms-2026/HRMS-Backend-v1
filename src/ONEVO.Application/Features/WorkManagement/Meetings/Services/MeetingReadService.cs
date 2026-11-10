@@ -134,7 +134,21 @@ public sealed class MeetingReadService
             details.IsPrivate, status, details.IsDetached, details.Revision, s.Revision, s.RecurrenceRule,
             await PlacementAsync(tenantId, row?.ProjectId ?? s.ProjectId, row?.ObjectiveId ?? s.ObjectiveId, ct),
             await PersonAsync(tenantId, s.OrganizerEmployeeId, ct), access.Role, mine?.Response, attendees,
-            CanEdit: access.Role == MeetingRoles.Organizer && status is MeetingStatuses.Scheduled or MeetingStatuses.InProgress);
+            CanEdit: access.Role == MeetingRoles.Organizer && status is MeetingStatuses.Scheduled or MeetingStatuses.InProgress,
+            ScheduledByName: access.Role == MeetingRoles.Organizer ? await ScheduledByAsync(tenantId, s, ct) : null);
+    }
+
+    /// <summary>The creator's name when someone other than the organizer (a delegate) created the series; else null.
+    /// Shown to the organizer role only, never to attendees (spec "Frontend").</summary>
+    private async Task<string?> ScheduledByAsync(Guid tenantId, MeetingSeries s, CancellationToken ct)
+    {
+        if (s.CreatedById == Guid.Empty)
+            return null;
+        var organizer = await _employees.GetByIdAsync(tenantId, s.OrganizerEmployeeId, ct);
+        if (organizer is null || organizer.UserId == s.CreatedById)
+            return null;
+        var creator = await _employees.GetByUserIdAsync(tenantId, s.CreatedById, ct);
+        return creator is null ? null : $"{creator.FirstName} {creator.LastName}".Trim();
     }
 
     private async Task<IReadOnlyList<MeetingAttendeeView>> AttendeeViewsAsync(Guid tenantId, MeetingSeries s,
