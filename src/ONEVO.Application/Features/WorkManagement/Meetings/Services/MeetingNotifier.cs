@@ -73,10 +73,13 @@ public sealed class MeetingNotifier : IMeetingNotifier
     private readonly IMeetingLinkRepository _links;
     private readonly IEmployeeRepository _employees;
     private readonly IDateTimeProvider _clock;
+    private readonly IMeetingDelegateRepository? _delegates;
 
+    /// <param name="delegates">Meeting delegates also get the organizer's notices (spec decision 6); without it only the organizer does.</param>
     public MeetingNotifier(ICalendarNotificationSender sender, IMeetingRepository meetings, IMeetingLinkRepository links,
-        IEmployeeRepository employees, IDateTimeProvider clock)
+        IEmployeeRepository employees, IDateTimeProvider clock, IMeetingDelegateRepository? delegates = null)
     {
+        _delegates = delegates;
         _sender = sender;
         _meetings = meetings;
         _links = links;
@@ -195,11 +198,11 @@ public sealed class MeetingNotifier : IMeetingNotifier
     {
         if (responderEmployeeId == series.OrganizerEmployeeId)
             return;
-        var people = await _employees.ListByIdsAsync(series.TenantId, [series.OrganizerEmployeeId, responderEmployeeId], ct);
-        if (!people.TryGetValue(series.OrganizerEmployeeId, out var organizer) || organizer.UserId == Guid.Empty)
-            return;
+        var people = await _employees.ListByIdsAsync(series.TenantId, [responderEmployeeId], ct);
         var responder = people.TryGetValue(responderEmployeeId, out var r) ? $"{r.FirstName} {r.LastName}".Trim() : "Someone";
-        await _sender.NotifyRsvpAnsweredAsync(series.TenantId, organizer.UserId, title, responder, accepted, ct);
+        // A delegate answering their own invite is not told about it.
+        foreach (var userId in await OrganizerAndDelegateUserIdsAsync(series, except: responderEmployeeId, ct))
+            await _sender.NotifyRsvpAnsweredAsync(series.TenantId, userId, title, responder, accepted, ct);
     }
 
     public async Task LinkReadyAsync(MeetingSeries series, CalendarEventMeeting link, CancellationToken ct)
@@ -222,10 +225,21 @@ public sealed class MeetingNotifier : IMeetingNotifier
 
     public async Task NotifyOrganizerAsync(MeetingSeries series, string noticeCode, string provider, CancellationToken ct)
     {
-        var people = await _employees.ListByIdsAsync(series.TenantId, [series.OrganizerEmployeeId], ct);
-        if (people.TryGetValue(series.OrganizerEmployeeId, out var organizer) && organizer.UserId != Guid.Empty)
-            await _sender.NotifyOrganizerAboutMeetingAsync(series.TenantId, organizer.UserId, noticeCode, series.Title,
+        foreach (var userId in await OrganizerAndDelegateUserIdsAsync(series, except: null, ct))
+            await _sender.NotifyOrganizerAboutMeetingAsync(series.TenantId, userId, noticeCode, series.Title,
                 CalendarMeetingProviderNames.Display(provider), ct);
+    }
+
+    /// <summary>The organizer's user, then each active delegate's, once each; people without a user are skipped.</summary>
+    private async Task<IReadOnlyList<Guid>> OrganizerAndDelegateUserIdsAsync(MeetingSeries series, Guid? except, CancellationToken ct)
+    {
+        var ids = new List<Guid> { series.OrganizerEmployeeId };
+        if (_delegates is not null)
+            ids.AddRange(await _delegates.ListActiveDelegateIdsAsync(series.TenantId, series.OrganizerEmployeeId, _clock.UtcNow, ct));
+        ids = ids.Where(id => id != except).Distinct().ToList();
+        var people = await _employees.ListByIdsAsync(series.TenantId, ids, ct);
+        return ids.Select(id => people.TryGetValue(id, out var e) ? e.UserId : Guid.Empty)
+            .Where(userId => userId != Guid.Empty).Distinct().ToList();
     }
 
     private static string? JoinUrl(CalendarEventMeeting? link)
