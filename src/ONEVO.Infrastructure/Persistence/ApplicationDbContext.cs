@@ -400,6 +400,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<ONEVO.Domain.Features.WorkManagement.Meetings.Entities.MeetingSeriesLink> MeetingSeriesLinks => Set<ONEVO.Domain.Features.WorkManagement.Meetings.Entities.MeetingSeriesLink>();
     public DbSet<ONEVO.Domain.Features.WorkManagement.Meetings.Entities.MeetingAttendanceSession> MeetingAttendanceSessions => Set<ONEVO.Domain.Features.WorkManagement.Meetings.Entities.MeetingAttendanceSession>();
     public DbSet<ONEVO.Domain.Features.WorkManagement.Meetings.Entities.MeetingActionItem> MeetingActionItems => Set<ONEVO.Domain.Features.WorkManagement.Meetings.Entities.MeetingActionItem>();
+    public DbSet<ONEVO.Domain.Features.WorkManagement.Meetings.Entities.MeetingDelegate> MeetingDelegates => Set<ONEVO.Domain.Features.WorkManagement.Meetings.Entities.MeetingDelegate>();
     public DbSet<ONEVO.Domain.Features.SharedPlatform.Jobs.Entities.JobLease> JobLeases => Set<ONEVO.Domain.Features.SharedPlatform.Jobs.Entities.JobLease>();
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)

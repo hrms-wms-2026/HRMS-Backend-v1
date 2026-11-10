@@ -13996,6 +13996,61 @@ namespace ONEVO.Infrastructure.Migrations
                     b.ToTable("meeting_attendance_sessions", (string)null);
                 });
 
+            modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Meetings.Entities.MeetingDelegate", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("CreatedByUserId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("created_by_user_id");
+
+                    b.Property<Guid>("DelegateEmployeeId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("delegate_employee_id");
+
+                    b.Property<DateTimeOffset?>("ExpiresAt")
+                        .HasColumnType("datetimeoffset")
+                        .HasColumnName("expires_at");
+
+                    b.Property<Guid>("PrincipalEmployeeId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("principal_employee_id");
+
+                    b.Property<DateTimeOffset?>("RevokedAt")
+                        .HasColumnType("datetimeoffset")
+                        .HasColumnName("revoked_at");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("tenant_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_meeting_delegates");
+
+                    b.HasIndex("DelegateEmployeeId")
+                        .HasDatabaseName("ix_meeting_delegates_delegate_employee_id");
+
+                    b.HasIndex("PrincipalEmployeeId")
+                        .HasDatabaseName("ix_meeting_delegates_principal_employee_id");
+
+                    b.HasIndex("TenantId", "DelegateEmployeeId")
+                        .HasDatabaseName("ix_meeting_delegates_delegate");
+
+                    b.HasIndex("TenantId", "PrincipalEmployeeId", "DelegateEmployeeId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_meeting_delegates_pair_unrevoked")
+                        .HasFilter("revoked_at IS NULL");
+
+                    b.ToTable("meeting_delegates", (string)null);
+                });
+
             modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Meetings.Entities.MeetingDetails", b =>
                 {
                     b.Property<Guid>("TaskId")
@@ -18459,6 +18514,23 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasForeignKey("OccurrenceTaskId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("fk_meeting_attendance_sessions_meeting_details_occurrence_task_id");
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Meetings.Entities.MeetingDelegate", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.CoreHr.Entities.Employee", null)
+                        .WithMany()
+                        .HasForeignKey("DelegateEmployeeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_meeting_delegates_employees_delegate_employee_id");
+
+                    b.HasOne("ONEVO.Domain.Features.CoreHr.Entities.Employee", null)
+                        .WithMany()
+                        .HasForeignKey("PrincipalEmployeeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_meeting_delegates_employees_principal_employee_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Meetings.Entities.MeetingDetails", b =>

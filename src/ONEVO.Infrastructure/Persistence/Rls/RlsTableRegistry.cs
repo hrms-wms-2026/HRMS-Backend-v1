@@ -104,6 +104,7 @@ public static class RlsTableRegistry
             ["location_change_requests"] = RlsPredicate.Tenant,
             ["management_coverage_records"] = RlsPredicate.Tenant,
             ["meeting_action_items"] = RlsPredicate.Tenant,
+            ["meeting_delegates"] = RlsPredicate.Tenant,
             ["meeting_attendance_sessions"] = RlsPredicate.Tenant,
             ["meeting_details"] = RlsPredicate.Tenant,
             ["meeting_occurrence_attendees"] = RlsPredicate.Tenant,

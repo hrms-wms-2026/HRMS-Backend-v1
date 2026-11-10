@@ -489,6 +489,9 @@ public static class DependencyInjection
         // Action items (Plan D, spec 5.4): the link between a meeting occurrence and the ordinary task raised from it.
         services.AddScoped<ONEVO.Application.Features.WorkManagement.Meetings.RepositoryInterfaces.IMeetingActionItemRepository,
             ONEVO.Infrastructure.Persistence.Repositories.WorkManagement.Meetings.EfMeetingActionItemRepository>();
+        // Meeting delegates: who may run whose meetings as the organizer.
+        services.AddScoped<ONEVO.Application.Features.WorkManagement.Meetings.RepositoryInterfaces.IMeetingDelegateRepository,
+            ONEVO.Infrastructure.Persistence.Repositories.WorkManagement.Meetings.EfMeetingDelegateRepository>();
         services.AddScoped<ONEVO.Application.Features.WorkManagement.Meetings.Services.MeetingActionItemService>();
         // Bulk invite preview (Plan D, spec 5.2 / D8): a department or a manager's direct reports expanded into a snapshot.
         services.AddScoped<ONEVO.Application.Features.WorkManagement.Meetings.Services.MeetingBulkInviteService>();
