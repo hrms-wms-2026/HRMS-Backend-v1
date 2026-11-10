@@ -12,7 +12,7 @@ public sealed class BaseLoginFixedWorkVerifier : IBaseLoginFixedWorkVerifier
     // padding check costs the same as a real one. The input string is fixed and never a real
     // credential; only IPasswordHasher.Verify's timing profile against this hash matters.
     private static readonly string DummyPasswordHash =
-        BCrypt.Net.BCrypt.HashPassword("onevo-fixed-dummy-hash-input-do-not-use", workFactor: 12);
+        BCrypt.Net.BCrypt.HashPassword("crownus-fixed-dummy-hash-input-do-not-use", workFactor: 12);
 
     private readonly IPasswordHasher _passwordHasher;
 
