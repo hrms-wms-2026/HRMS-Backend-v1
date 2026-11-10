@@ -66,7 +66,7 @@ public sealed class UpdateCalendarEventCommandHandler(
                     await notifications.NotifyEventUpdatedAsync(tenantId, existing.Title, participantEmployeeIds, organizerName, innerCt);
                 // Participants and guests also get the updated invite by email, with its .ics (plan C1 P1-3 / P2-1).
                 await notifications.EmailEventChangedAsync(tenantId, CalendarEventEmailKinds.Updated,
-                    CalendarEventIcs.For(existing.Id, existing.EndDate, existing.RecurrenceRule, DateTimeOffset.UtcNow),
+                    CalendarEventIcs.For(existing.Id, existing.EndDate, existing.RecurrenceRule, DateTimeOffset.UtcNow, existing.Timezone),
                     existing.Title, existing.StartDate, existing.Location, existing.MeetingLink, participantEmployeeIds, guestEmails, organizerName, innerCt);
             }
             await notifications.QueueIncidentEvaluationAsync(tenantId, participantEmployeeIds, innerCt);

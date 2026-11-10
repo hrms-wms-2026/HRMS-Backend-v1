@@ -19,7 +19,7 @@ public class RefreshTokenConfiguration : IEntityTypeConfiguration<RefreshToken>
         builder.HasOne<RefreshToken>()
                .WithMany()
                .HasForeignKey(t => t.ReplacedById)
-               .OnDelete(DeleteBehavior.SetNull);
+               .OnDelete(DeleteBehavior.NoAction);
 
         builder.Ignore(t => t.IsActive);
         builder.Ignore(t => t.IsRevoked);

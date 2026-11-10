@@ -6,9 +6,11 @@ using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.ServiceInterfaces;
 using ONEVO.Application.Features.Monitoring.CheckIn.ServiceInterfaces;
+using ONEVO.Application.Features.Monitoring.PermissionConsent.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.Screenshots.RepositoryInterfaces;
 using ONEVO.Application.Features.Storage.File.Helpers;
 using ONEVO.Application.Features.Storage.File.ServiceInterfaces;
+using ONEVO.Domain.Errors;
 using ONEVO.Domain.Features.Monitoring.Screenshots.Entities;
 
 namespace ONEVO.Application.Features.Monitoring.Screenshots.Commands.SubmitInactivityCaptureAttempt;
@@ -24,6 +26,7 @@ public class SubmitInactivityCaptureAttemptCommandHandler
     private readonly ITenantContextSwitcher _tenantSwitcher;
     private readonly IMonitoringToggleResolver _toggles;
     private readonly ITrayEmployeeIdentityResolver _employeeIdentity;
+    private readonly IMonitoringPermissionConsentRepository _consents;
     private readonly IDateTimeProvider _clock;
     private readonly IUnitOfWork _unitOfWork;
     private readonly ILogger<SubmitInactivityCaptureAttemptCommandHandler> _logger;
@@ -37,6 +40,7 @@ public class SubmitInactivityCaptureAttemptCommandHandler
         ITenantContextSwitcher tenantSwitcher,
         IMonitoringToggleResolver toggles,
         ITrayEmployeeIdentityResolver employeeIdentity,
+        IMonitoringPermissionConsentRepository consents,
         IDateTimeProvider clock,
         IUnitOfWork unitOfWork,
         ILogger<SubmitInactivityCaptureAttemptCommandHandler> logger)
@@ -49,6 +53,7 @@ public class SubmitInactivityCaptureAttemptCommandHandler
         _tenantSwitcher = tenantSwitcher;
         _toggles = toggles;
         _employeeIdentity = employeeIdentity;
+        _consents = consents;
         _clock = clock;
         _unitOfWork = unitOfWork;
         _logger = logger;
@@ -118,6 +123,21 @@ public class SubmitInactivityCaptureAttemptCommandHandler
                     "Inactivity capture rejected — policy disabled. AttemptId={AttemptId} TenantId={TenantId}",
                     request.AttemptId, tenantId);
                 return Result<Guid>.Forbidden("policy_rejected");
+            }
+
+            // Consent gate: an uploaded screenshot needs the employee's screen-monitoring
+            // consent from the tray's Privacy & Transparency screen, keyed by the same resolved
+            // Employee.Id it was recorded under. Only the Captured branch carries an image, so
+            // declined/failed outcomes are still recorded without consent. The tray quarantines
+            // any 403, so this does not cause a retry loop.
+            var consent = await _consents.GetLatestAsync(tenantId, employeeId, ct);
+            if (consent is null || !consent.ScreenMonitoring)
+            {
+                _logger.LogWarning(
+                    "Inactivity capture rejected - no screen-monitoring consent. AttemptId={AttemptId} TenantId={TenantId}",
+                    request.AttemptId, tenantId);
+                return Result<Guid>.Failure(
+                    MonitoringErrors.ScreenshotConsentMissing, 403, MonitoringErrors.ScreenshotConsentMissingCode);
             }
 
             var idleThresholdMinutes = await _toggles.GetIdleThresholdMinutesAsync(tenantId, userId, ct);

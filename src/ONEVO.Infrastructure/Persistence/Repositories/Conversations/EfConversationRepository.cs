@@ -517,10 +517,10 @@ public class EfConversationRepository : IConversationRepository
         var hiddenIds = _db.ConversationMessageHides
             .Where(h => h.TenantId == tenantId && h.EmployeeId == employeeId)
             .Select(h => h.MessageId);
-        var pattern = "%" + text.Replace("\\", "\\\\").Replace("%", "\\%").Replace("_", "\\_") + "%";
+        var pattern = "%" + text.Replace("\\", "\\\\").Replace("%", "\\%").Replace("_", "\\_").Replace("[", "\\[") + "%";
         return await _db.ConversationMessages.AsNoTracking()
             .Where(m => m.TenantId == tenantId && m.ConversationId == conversationId && m.Kind == ConversationMessageKinds.Text
-                && m.DeletedAt == null && !hiddenIds.Contains(m.Id) && EF.Functions.ILike(m.BodyHtml, pattern, "\\"))
+                && m.DeletedAt == null && !hiddenIds.Contains(m.Id) && EF.Functions.Like(EF.Functions.Collate(m.BodyHtml, "Latin1_General_100_CI_AS_SC"), pattern, "\\"))
             .OrderByDescending(m => m.CreatedAt).ThenByDescending(m => m.Id)
             .Take(take)
             .ToListAsync(ct);

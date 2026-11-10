@@ -33,7 +33,7 @@ public class IntegrationCatalogEntryConfiguration : IEntityTypeConfiguration<Int
             .IsRequired();
 
         builder.Property(e => e.OnevoAppProvider)
-            .HasMaxLength(30)
+            .HasMaxLength(50)
             .IsRequired();
 
         builder.Property(e => e.LogoUrl)

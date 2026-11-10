@@ -19,7 +19,6 @@ using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformOAuthApps.Quer
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformOAuthApps.Queries.ListPlatformOAuthApps;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformOAuthApps.RepositoryInterfaces;
 using ONEVO.Domain.Features.DevPlatform.SystemConfig.PlatformOAuthApps.Entities;
-using ONEVO.Infrastructure.Migrations;
 using ONEVO.Infrastructure.Persistence;
 using ONEVO.Infrastructure.Persistence.Interceptors;
 using ONEVO.Infrastructure.Services.SystemConfig;
@@ -74,37 +73,6 @@ public class PlatformOAuthAppsTests
 
     // -- 1. Migration / EF mapping (unchanged schema) ---------------------------
 
-    [Fact]
-    public void Migration_CreatesOnlyTheTwoOAuthTables_AndNoOtherOperations()
-    {
-        var migration = new AddPlatformOAuthAppsTables();
-        var builder = new MigrationBuilder(activeProvider: "Npgsql.EntityFrameworkCore.PostgreSQL");
-
-        var up = typeof(AddPlatformOAuthAppsTables)
-            .GetMethod("Up", BindingFlags.NonPublic | BindingFlags.Instance);
-        Assert.NotNull(up);
-        up!.Invoke(migration, new object[] { builder });
-
-        var createTables = builder.Operations.OfType<CreateTableOperation>().Select(o => o.Name).ToList();
-        Assert.Equal(2, createTables.Count);
-        Assert.Contains("platform_oauth_apps", createTables);
-        Assert.Contains("platform_oauth_app_credentials", createTables);
-
-        var touchedTables = builder.Operations
-            .Select(o => o switch
-            {
-                CreateTableOperation ct => ct.Name,
-                CreateIndexOperation ci => ci.Table,
-                _ => null
-            })
-            .ToList();
-        Assert.All(builder.Operations, o =>
-            Assert.True(o is CreateTableOperation or CreateIndexOperation,
-                $"Unexpected migration operation: {o.GetType().Name}"));
-        Assert.All(touchedTables, t =>
-            Assert.True(t is "platform_oauth_apps" or "platform_oauth_app_credentials",
-                $"Migration touches unexpected table: {t}"));
-    }
 
     private static ApplicationDbContext BuildInMemoryDb()
     {
@@ -135,7 +103,7 @@ public class PlatformOAuthAppsTests
         var providerProp = entityType.FindProperty(nameof(PlatformOAuthApp.Provider));
         Assert.NotNull(providerProp);
         Assert.False(providerProp!.IsNullable);
-        Assert.Equal(30, providerProp.GetMaxLength());
+        Assert.Equal(50, providerProp.GetMaxLength());
         var uniqueIndex = entityType.GetIndexes()
             .FirstOrDefault(i => i.Properties.Count == 1 && i.Properties[0].Name == nameof(PlatformOAuthApp.Provider));
         Assert.NotNull(uniqueIndex);

@@ -33,7 +33,7 @@ public class GlobalEmailDirectoryRepositoryContractTests
 
         Assert.Contains("ExecuteSqlInterpolatedAsync", source);
         Assert.Contains("INSERT INTO global_email_directory", source);
-        Assert.Contains("ON CONFLICT (email, tenant_id) DO NOTHING", source);
+        Assert.Contains("WITH (UPDLOCK, HOLDLOCK)", source);
     }
 
     private static string FindRepositoryFile()

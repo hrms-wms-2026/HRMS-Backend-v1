@@ -24,7 +24,7 @@ public static class IntegrationDatabaseBootstrap
         await PrivilegedRoleTestBootstrap.EnsureRolesExistAsync(adminConnectionString, ct);
 
         var migrationOptions = new DbContextOptionsBuilder<ApplicationDbContext>()
-            .UseNpgsql(adminConnectionString)
+            .UseTestSqlServer(adminConnectionString)
             .UseSnakeCaseNamingConvention()
             .Options;
         var dateTimeProvider = new SystemDateTimeProvider();

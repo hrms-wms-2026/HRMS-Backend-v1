@@ -8,6 +8,7 @@ using ONEVO.Application.Features.Monitoring.ActivityMonitoring.ServiceInterfaces
 using ONEVO.Application.Features.Monitoring.CheckIn.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.Notifications.RepositoryInterfaces;
 using ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces;
+using ONEVO.Infrastructure.Persistence.SqlServer;
 
 using ONEVO.Application.Features.TimeAttendance.Services;
 using ONEVO.Domain.Features.TimeAttendance.Alerts;
@@ -195,17 +196,17 @@ public class EfEmployeeRepository : IEmployeeRepository
                 ? joined.OrderByDescending(row => row.e.EmployeeNumber).ThenBy(row => row.e.Id)
                 : joined.OrderBy(row => row.e.EmployeeNumber).ThenBy(row => row.e.Id),
             "position" => descending
-                ? joined.OrderByDescending(row => row.position != null ? row.position.Name : null).ThenBy(row => row.e.LastName).ThenBy(row => row.e.Id)
-                : joined.OrderBy(row => row.position != null ? row.position.Name : null).ThenBy(row => row.e.LastName).ThenBy(row => row.e.Id),
+                ? joined.OrderByDescendingNullsFirst(row => row.position != null ? row.position.Name : null).ThenBy(row => row.e.LastName).ThenBy(row => row.e.Id)
+                : joined.OrderByNullsLast(row => row.position != null ? row.position.Name : null).ThenBy(row => row.e.LastName).ThenBy(row => row.e.Id),
             "department" => descending
-                ? joined.OrderByDescending(row => row.dept != null ? row.dept.Name : null).ThenBy(row => row.e.LastName).ThenBy(row => row.e.Id)
-                : joined.OrderBy(row => row.dept != null ? row.dept.Name : null).ThenBy(row => row.e.LastName).ThenBy(row => row.e.Id),
+                ? joined.OrderByDescendingNullsFirst(row => row.dept != null ? row.dept.Name : null).ThenBy(row => row.e.LastName).ThenBy(row => row.e.Id)
+                : joined.OrderByNullsLast(row => row.dept != null ? row.dept.Name : null).ThenBy(row => row.e.LastName).ThenBy(row => row.e.Id),
             "employmentType" => descending
-                ? joined.OrderByDescending(row => row.empType != null ? row.empType.Label : null).ThenBy(row => row.e.LastName).ThenBy(row => row.e.Id)
-                : joined.OrderBy(row => row.empType != null ? row.empType.Label : null).ThenBy(row => row.e.LastName).ThenBy(row => row.e.Id),
+                ? joined.OrderByDescendingNullsFirst(row => row.empType != null ? row.empType.Label : null).ThenBy(row => row.e.LastName).ThenBy(row => row.e.Id)
+                : joined.OrderByNullsLast(row => row.empType != null ? row.empType.Label : null).ThenBy(row => row.e.LastName).ThenBy(row => row.e.Id),
             "manager" => descending
-                ? joined.OrderByDescending(row => row.manager != null ? row.manager.LastName : null).ThenBy(row => row.e.LastName).ThenBy(row => row.e.Id)
-                : joined.OrderBy(row => row.manager != null ? row.manager.LastName : null).ThenBy(row => row.e.LastName).ThenBy(row => row.e.Id),
+                ? joined.OrderByDescendingNullsFirst(row => row.manager != null ? row.manager.LastName : null).ThenBy(row => row.e.LastName).ThenBy(row => row.e.Id)
+                : joined.OrderByNullsLast(row => row.manager != null ? row.manager.LastName : null).ThenBy(row => row.e.LastName).ThenBy(row => row.e.Id),
             _ => joined.OrderBy(row => row.e.LastName).ThenBy(row => row.e.Id),
         };
 
@@ -879,15 +880,15 @@ public class EfEmployeeRepository : IEmployeeRepository
     public async Task<EmployeeEntity?> GetTrackedByIdAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default)
         => await _db.Employees.FirstOrDefaultAsync(e => e.TenantId == tenantId && e.Id == employeeId, ct);
 
-    public async Task<uint?> GetVersionTokenAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default)
+    public async Task<ulong?> GetVersionTokenAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default)
         => await _db.Employees.AsNoTracking()
             .Where(e => e.TenantId == tenantId && e.Id == employeeId)
-            .Select(e => EF.Property<uint?>(e, "xmin"))
+            .Select(e => EF.Property<ulong?>(e, "xmin"))
             .FirstOrDefaultAsync(ct);
 
     public void SetExpectedVersion(EmployeeEntity employee, string expectedVersion)
     {
-        if (!uint.TryParse(expectedVersion, out var expectedXmin))
+        if (!RowVersionToken.TryParse(expectedVersion, out var expectedXmin))
         {
             return;
         }

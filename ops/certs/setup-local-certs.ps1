@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$RootDomain = 'onexso.com',
+    [string]$RootDomain = 'crownus.test',
     [string[]]$TenantSubdomains = @('acme', 'dapi', 'admin')
 )
 

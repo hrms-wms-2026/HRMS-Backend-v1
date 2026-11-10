@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
+using ONEVO.Infrastructure.Persistence.SqlServer;
 
 namespace ONEVO.Infrastructure.Persistence.Configurations.DevPlatform.Tenancy;
 
@@ -18,7 +19,7 @@ public class TenantConfiguration : IEntityTypeConfiguration<Tenant>
             .HasConversion<string>()
             .HasMaxLength(20)
             .IsRequired();
-        builder.Property(t => t.SettingsJson).HasColumnType("jsonb");
+        builder.Property(t => t.SettingsJson).IsJsonColumn();
         builder.HasIndex(t => t.Slug).IsUnique();
     }
 }

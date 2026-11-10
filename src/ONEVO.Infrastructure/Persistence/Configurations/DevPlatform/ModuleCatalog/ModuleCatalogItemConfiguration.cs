@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using ONEVO.Domain.Features.SharedPlatform.Entities;
+using ONEVO.Infrastructure.Persistence.SqlServer;
 
 namespace ONEVO.Infrastructure.Persistence.Configurations.DevPlatform.ModuleCatalog;
 
@@ -16,9 +17,9 @@ public class ModuleCatalogItemConfiguration : IEntityTypeConfiguration<ModuleCat
         builder.Property(m => m.Pillar).HasMaxLength(50).IsRequired();
         builder.Property(m => m.Phase).HasMaxLength(30).IsRequired();
         builder.Property(m => m.PricingUnit).HasMaxLength(30).IsRequired();
-        builder.Property(m => m.PricingReference).HasColumnName("pricing_reference").HasColumnType("jsonb");
-        builder.Property(m => m.StorageReference).HasColumnName("storage_reference").HasColumnType("jsonb");
-        builder.Property(m => m.AiTokenReference).HasColumnName("ai_token_reference").HasColumnType("jsonb");
+        builder.Property(m => m.PricingReference).HasColumnName("pricing_reference").IsJsonColumn();
+        builder.Property(m => m.StorageReference).HasColumnName("storage_reference").IsJsonColumn();
+        builder.Property(m => m.AiTokenReference).HasColumnName("ai_token_reference").IsJsonColumn();
         
         builder.HasMany(m => m.Features)
             .WithOne(f => f.Module)

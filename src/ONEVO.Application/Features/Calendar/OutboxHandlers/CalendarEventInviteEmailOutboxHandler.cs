@@ -63,6 +63,6 @@ public sealed class CalendarEventInviteEmailOutboxHandler : IOutboxMessageHandle
 
         await _emailService.SendCalendarEventEmailAsync(new CalendarEventEmailMessage(
             payload.ToEmail, payload.RecipientName, payload.Kind, payload.EventTitle, payload.StartDateUtc, payload.Location,
-            payload.OrganizerName, payload.MeetingLink, ics, method), ct);
+            payload.OrganizerName, payload.MeetingLink, ics, method, payload.TimeZoneId), ct);
     }
 }

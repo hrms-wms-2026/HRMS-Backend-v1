@@ -133,7 +133,7 @@ public sealed class CredentialOwnershipCompletionArchitectureTests
         Assert.Contains(".IsUnique()", configMapping, StringComparison.Ordinal);
 
         Assert.Contains("ToTable(\"payment_gateway_credentials\")", credentialMapping, StringComparison.Ordinal);
-        Assert.Equal(2, CountOccurrences(credentialMapping, ".HasColumnType(\"bytea\")"));
+        Assert.DoesNotContain("HasColumnType", credentialMapping, StringComparison.Ordinal);
         Assert.Contains(
             "new { c.PaymentGatewayConfigId, c.IsActive }",
             credentialMapping,
@@ -166,6 +166,8 @@ public sealed class CredentialOwnershipCompletionArchitectureTests
         Assert.Contains("distinctCountryCodes.Add(code)", create, StringComparison.Ordinal);
         Assert.Contains("HasConflictingCountryRouteAsync", create, StringComparison.Ordinal);
 
+        // The schema only carries the tables and the provider catalog key: no trigger or
+        // hand-written migration enforces these rules.
         var migrationsDirectory = FindRepositoryPath(
             "src", "ONEVO.Infrastructure", "Migrations");
         var paymentGatewayMigrations = Directory
@@ -178,27 +180,13 @@ public sealed class CredentialOwnershipCompletionArchitectureTests
                 File.ReadAllText(path).Contains(
                     "payment_gateway",
                     StringComparison.Ordinal))
-            .Select(path => Path.GetFileName(path)!)
-            .OrderBy(name => name, StringComparer.Ordinal)
             .ToArray();
 
-        Assert.Equal(
-            [
-                "20260709122838_AddPaymentGatewaySystemConfigTables.cs",
-                "20260724130000_AddPlatformProviderCatalog.cs"
-            ],
-            paymentGatewayMigrations);
-
-        var providerCatalogMigration = File.ReadAllText(FindRepositoryPath(
-            "src", "ONEVO.Infrastructure", "Migrations",
-            "20260724130000_AddPlatformProviderCatalog.cs"));
+        var baseline = Assert.Single(paymentGatewayMigrations);
+        Assert.EndsWith("_InitialSqlServer.cs", baseline, StringComparison.Ordinal);
         Assert.Contains(
             "fk_payment_gateway_configs_platform_providers_provider",
-            providerCatalogMigration,
-            StringComparison.Ordinal);
-        Assert.DoesNotContain(
-            "CreateTable(\n                name: \"payment_gateway",
-            providerCatalogMigration,
+            File.ReadAllText(baseline),
             StringComparison.Ordinal);
     }
 

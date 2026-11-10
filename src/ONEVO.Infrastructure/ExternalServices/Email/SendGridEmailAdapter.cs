@@ -72,7 +72,7 @@ public sealed class SendGridEmailAdapter : IEmailProviderAdapter
             subject = request.Subject,
             content,
             attachments = request.Attachments is { Count: > 0 } files
-                ? files.Select(a => new { content = Convert.ToBase64String(a.Content), filename = a.FileName, type = a.ContentType, disposition = "attachment" }).ToArray()
+                ? files.Select(a => new { content = Convert.ToBase64String(a.Content), filename = a.FileName, type = MediaType(a.ContentType), disposition = "attachment" }).ToArray()
                 : null
         };
 
@@ -117,4 +117,8 @@ public sealed class SendGridEmailAdapter : IEmailProviderAdapter
             return TransactionalEmailResult.Sent(Provider, providerMessageId, _clock.UtcNow);
         }
     }
+
+    /// <summary>SendGrid rejects an attachment type holding ';' with a 400, so parameters such as an .ics
+    /// "method=REQUEST" are dropped. The calendar file itself still carries its METHOD.</summary>
+    private static string MediaType(string contentType) => contentType.Split(';', 2)[0].Trim();
 }

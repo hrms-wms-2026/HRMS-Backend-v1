@@ -9,6 +9,7 @@ using ONEVO.Infrastructure.Identity.CurrentUser;
 using ONEVO.Infrastructure.Identity.Tenancy;
 using ONEVO.Infrastructure.Identity.Time;
 using ONEVO.Infrastructure.Persistence;
+using ONEVO.Infrastructure.Persistence.Rls;
 using ONEVO.Infrastructure.Persistence.Interceptors;
 using Xunit;
 
@@ -176,6 +177,7 @@ public class TenantIsolationArchitectureTests
 
             var username = ExtractUsername(connectionString);
             var looksLikeSuperuser = username is not null && (
+                username.Equals("sa", StringComparison.OrdinalIgnoreCase) ||
                 username.Contains("postgres", StringComparison.OrdinalIgnoreCase) ||
                 username.Contains("superuser", StringComparison.OrdinalIgnoreCase));
 
@@ -183,208 +185,6 @@ public class TenantIsolationArchitectureTests
                 $"{Path.GetFileName(file)}: ConnectionStrings:DefaultConnection username '{username}' " +
                 "must not be a superuser-looking role. Use ConnectionStrings:MigrationConnection for schema migrations instead.");
         }
-    }
-
-    [Fact]
-    public void NonMigrationSourceCode_NeverDisablesRowLevelSecurity()
-    {
-        // Deliberately does not scan for the word "BYPASSRLS" here --
-        // ConfigurationStartupValidator legitimately mentions it in an
-        // operator-facing log message (explaining why a role must not have
-        // the attribute), which is documentation, not a grant. The migration
-        // Up()-body check below is where BYPASSRLS as an actual SQL keyword
-        // matters.
-        var srcDirectory = FindSrcDirectory();
-
-        var offenders = Directory.GetFiles(srcDirectory, "*.cs", SearchOption.AllDirectories)
-            .Where(f => !f.Contains($"{Path.DirectorySeparatorChar}Migrations{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase))
-            .Where(f => !f.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase))
-            .Where(f => !f.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase))
-            .Where(f => File.ReadAllText(f).Contains("DISABLE ROW LEVEL SECURITY", StringComparison.OrdinalIgnoreCase))
-            .Select(Path.GetFileName)
-            .ToList();
-
-        Assert.Empty(offenders);
-    }
-
-    [Fact]
-    public void Migrations_NeverDisableRowLevelSecurity_InTheUpDirection()
-    {
-        // Allowlisted exception: AddAuthLookupBaseLoginCandidatesFunction grants BYPASSRLS only to
-        // a NOLOGIN role (onevo_auth_base_login_fn_owner) that no session can ever authenticate as
-        // directly. The bypass only takes effect inside the single, narrowly-scoped SECURITY
-        // DEFINER function that role owns (auth_lookup_base_login_candidates), which is the sole
-        // approved pre-tenant candidate lookup for base-domain credential-first login and returns
-        // no sensitive columns beyond what that flow requires. This is not a runtime-connecting
-        // role gaining cross-tenant visibility; add further entries here only with equivalent
-        // justification. Rather than skipping this file outright, the block below asserts its
-        // exact approved SQL shape, so any drift (a second BYPASSRLS grant, a broadened EXECUTE
-        // grant, an extra owned function, etc.) still fails this test.
-        const string allowlistedFileName = "20260724174557_AddAuthLookupBaseLoginCandidatesFunction.cs";
-
-        var migrationsDir = FindMigrationsDirectory();
-        var allowlistedFilePath = Path.Combine(migrationsDir, allowlistedFileName);
-        Assert.True(File.Exists(allowlistedFilePath), $"Expected allowlisted migration {allowlistedFileName} to exist.");
-
-        AssertAllowlistedBypassRlsMigrationIsExactlyApproved(allowlistedFilePath);
-
-        var offenders = new List<string>();
-        foreach (var file in Directory.GetFiles(migrationsDir, "*.cs")
-            .Where(f => !f.EndsWith(".Designer.cs", StringComparison.OrdinalIgnoreCase))
-            .Where(f => !string.Equals(Path.GetFileName(f), allowlistedFileName, StringComparison.OrdinalIgnoreCase)))
-        {
-            var source = File.ReadAllText(file);
-            var upStart = source.IndexOf("protected override void Up(", StringComparison.Ordinal);
-            var downStart = source.IndexOf("protected override void Down(", StringComparison.Ordinal);
-            if (upStart < 0 || downStart < 0 || downStart < upStart)
-                continue;
-
-            var upBody = source[upStart..downStart];
-            if (upBody.Contains("DISABLE ROW LEVEL SECURITY", StringComparison.OrdinalIgnoreCase) ||
-                ContainsActualBypassRlsGrant(upBody))
-            {
-                offenders.Add(Path.GetFileName(file));
-            }
-        }
-
-        Assert.Empty(offenders);
-    }
-
-    [Fact]
-    public void Migrations_NeverCreateRoles()
-    {
-        // Privileged Postgres roles (onevo_migrator, onevo_app, onevo_auth_base_login_fn_owner,
-        // and any future equivalent) must be provisioned by an explicit deploy-time bootstrap step
-        // owned by whoever runs the deployment (ops/postgres/local-bootstrap-roles.sql locally; an
-        // equivalent DB/deployment-owned bootstrap in staging/production) - never by an ordinary EF
-        // migration running as the restricted onevo_migrator connection. This is a blanket rule
-        // over every migration, not just the one BYPASSRLS-adjacent migration
-        // (Migrations_NeverDisableRowLevelSecurity_InTheUpDirection) already pins in detail.
-        var migrationsDir = FindMigrationsDirectory();
-
-        var offenders = Directory.GetFiles(migrationsDir, "*.cs")
-            .Where(f => !f.EndsWith(".Designer.cs", StringComparison.OrdinalIgnoreCase))
-            .Where(file =>
-            {
-                var source = File.ReadAllText(file);
-                var upStart = source.IndexOf("protected override void Up(", StringComparison.Ordinal);
-                var downStart = source.IndexOf("protected override void Down(", StringComparison.Ordinal);
-                if (upStart < 0 || downStart < 0 || downStart < upStart)
-                    return false;
-
-                var upBody = Regex.Replace(source[upStart..downStart], "//[^\n]*", string.Empty);
-                return Regex.IsMatch(upBody, @"CREATE\s+ROLE", RegexOptions.IgnoreCase);
-            })
-            .Select(Path.GetFileName)
-            .ToList();
-
-        Assert.Empty(offenders);
-    }
-
-    [Fact]
-    public void Migrations_NeverPinACustomSettingOnAFunction()
-    {
-        // `CREATE FUNCTION ... SET app.x = ...` stores a placeholder setting on the function, which PostgreSQL
-        // (15+) refuses to a non-superuser: the restricted onevo_migrator fails with 42501 "permission denied to
-        // set parameter". Set it inside the body with set_config(..., true) and put the previous value back.
-        var migrationsDir = FindMigrationsDirectory();
-
-        var offenders = Directory.GetFiles(migrationsDir, "*.cs")
-            .Where(f => !f.EndsWith(".Designer.cs", StringComparison.OrdinalIgnoreCase))
-            .Where(file =>
-            {
-                var source = File.ReadAllText(file);
-                var upStart = source.IndexOf("protected override void Up(", StringComparison.Ordinal);
-                var downStart = source.IndexOf("protected override void Down(", StringComparison.Ordinal);
-                if (upStart < 0 || downStart < 0 || downStart < upStart)
-                    return false;
-
-                var upBody = Regex.Replace(source[upStart..downStart], "//[^\n]*", string.Empty);
-                // The function header ends where its body starts ($$ or $tag$), so [^$]* stays inside the header.
-                return Regex.IsMatch(upBody, @"CREATE\s+(OR\s+REPLACE\s+)?FUNCTION[^$]*?\bSET\s+app\.\w+\s*(=|TO\b)",
-                    RegexOptions.IgnoreCase);
-            })
-            .Select(Path.GetFileName)
-            .ToList();
-
-        Assert.Empty(offenders);
-    }
-
-    /// <summary>
-    /// BYPASSRLS as an actual grant, not as a substring of NOBYPASSRLS (the explicit
-    /// non-bypass attribute this same migration also sets on onevo_app).
-    /// </summary>
-    private static bool ContainsActualBypassRlsGrant(string sql)
-    {
-        return Regex.IsMatch(sql, "(?<!NO)BYPASSRLS", RegexOptions.IgnoreCase);
-    }
-
-    private static void AssertAllowlistedBypassRlsMigrationIsExactlyApproved(string filePath)
-    {
-        const string approvedRole = "onevo_auth_base_login_fn_owner";
-        const string runtimeAppRole = "onevo_app";
-        const string migratorRole = "onevo_migrator";
-        const string functionName = "auth_internal.auth_lookup_base_login_candidates";
-
-        var source = File.ReadAllText(filePath);
-        var upStart = source.IndexOf("protected override void Up(", StringComparison.Ordinal);
-        var downStart = source.IndexOf("protected override void Down(", StringComparison.Ordinal);
-        Assert.True(upStart >= 0 && downStart > upStart, "Allowlisted migration must have a well-formed Up()/Down() pair.");
-        var upBody = source[upStart..downStart];
-
-        // Strip // line comments first: this method's own doc comments legitimately discuss
-        // BYPASSRLS in prose (e.g. "role's privileges (BYPASSRLS, granted only via ...)"), which
-        // is not a SQL grant and must not be counted as one below. Postgres SQL comments use --,
-        // never //, and none of this migration's SQL contains the literal "//", so this is safe.
-        upBody = Regex.Replace(upBody, "//[^\n]*", string.Empty);
-
-        // The Up() body builds its SQL via C# string interpolation over private consts
-        // (FunctionOwnerRole/RuntimeAppRole). Resolve those placeholders against the file's own
-        // const declarations so assertions below check the SQL PostgreSQL actually receives, not
-        // the literal C# source text.
-        foreach (Match constMatch in Regex.Matches(source, "private const string (\\w+) = \"([^\"]*)\";"))
-        {
-            upBody = upBody.Replace("{" + constMatch.Groups[1].Value + "}", constMatch.Groups[2].Value);
-        }
-
-        Assert.DoesNotContain("DISABLE ROW LEVEL SECURITY", upBody, StringComparison.OrdinalIgnoreCase);
-
-        // Production-safety pin: this migration must never grant BYPASSRLS or create any role
-        // itself. It assumes onevo_auth_base_login_fn_owner/onevo_app already exist (provisioned
-        // by a separate, explicit deploy-time bootstrap step) and only alters/grants against them
-        // - if either role is missing, the ALTER FUNCTION/GRANT statements fail loudly instead of
-        // silently self-provisioning a BYPASSRLS-capable role.
-        var bypassGrantCount = Regex.Matches(upBody, "(?<!NO)BYPASSRLS", RegexOptions.IgnoreCase).Count;
-        Assert.True(bypassGrantCount == 0,
-            $"Expected zero BYPASSRLS grants in the migration itself (provisioning is a deploy-time step, not a migration), found {bypassGrantCount}.");
-
-        Assert.False(
-            Regex.IsMatch(upBody, @"CREATE\s+ROLE", RegexOptions.IgnoreCase),
-            "This migration must never create a role - role provisioning is a separate, explicit deploy-time step.");
-
-        Assert.DoesNotContain(migratorRole, upBody, StringComparison.OrdinalIgnoreCase);
-
-        // The role owns exactly one function: the allowlisted pre-tenant lookup.
-        var ownerMatches = Regex.Matches(
-            upBody, @"ALTER\s+FUNCTION\s+([\w.]+)\([^)]*\)\s+OWNER\s+TO\s+(\w+)", RegexOptions.IgnoreCase);
-        Assert.True(ownerMatches.Count == 1,
-            $"Expected exactly one ALTER FUNCTION ... OWNER TO statement, found {ownerMatches.Count}.");
-        Assert.Equal(functionName, ownerMatches[0].Groups[1].Value);
-        Assert.Equal(approvedRole, ownerMatches[0].Groups[2].Value, ignoreCase: true);
-
-        // PUBLIC execute is revoked on the allowlisted function.
-        var revokePattern = new Regex(
-            $@"REVOKE\s+ALL\s+ON\s+FUNCTION\s+{Regex.Escape(functionName)}\([^)]*\)\s+FROM\s+PUBLIC",
-            RegexOptions.IgnoreCase);
-        Assert.True(revokePattern.IsMatch(upBody), "Expected PUBLIC execute to be revoked on the allowlisted function.");
-
-        // EXECUTE is granted to exactly one role: the runtime app role.
-        var grantExecuteMatches = Regex.Matches(
-            upBody, @"GRANT\s+EXECUTE\s+ON\s+FUNCTION\s+([\w.]+)\([^)]*\)\s+TO\s+(\w+)", RegexOptions.IgnoreCase);
-        Assert.True(grantExecuteMatches.Count == 1,
-            $"Expected exactly one GRANT EXECUTE statement, found {grantExecuteMatches.Count}.");
-        Assert.Equal(functionName, grantExecuteMatches[0].Groups[1].Value);
-        Assert.Equal(runtimeAppRole, grantExecuteMatches[0].Groups[2].Value, ignoreCase: true);
     }
 
     [Fact]
@@ -453,6 +253,100 @@ public class TenantIsolationArchitectureTests
         Assert.Empty(offenders);
     }
 
+    private static readonly Regex DisablesRls = new(
+        @"STATE\s*=\s*OFF|DROP\s+SECURITY\s+POLICY|ALTER\s+SECURITY\s+POLICY",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    private static readonly Regex CreatesPrincipal = new(
+        @"CREATE\s+(LOGIN|USER|ROLE)\b|ALTER\s+(ROLE|AUTHORIZATION)\b|\bGRANT\s",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    private const string LookupMigration = "20261108000100_AddAuthLookupAndTriggers.cs";
+
+    private static IEnumerable<(string Name, string Up)> MigrationUpBodies()
+    {
+        foreach (var file in Directory.GetFiles(FindMigrationsDirectory(), "*.cs")
+            .Where(f => !f.EndsWith(".Designer.cs", StringComparison.OrdinalIgnoreCase)
+                && !f.EndsWith("ApplicationDbContextModelSnapshot.cs", StringComparison.OrdinalIgnoreCase)))
+        {
+            var source = File.ReadAllText(file);
+            var upStart = source.IndexOf("protected override void Up(", StringComparison.Ordinal);
+            var downStart = source.IndexOf("protected override void Down(", StringComparison.Ordinal);
+            var body = source[upStart..(downStart > upStart ? downStart : source.Length)];
+            yield return (Path.GetFileName(file), Regex.Replace(body, "//[^\n]*", string.Empty));
+        }
+    }
+
+    [Fact]
+    public void NonMigrationSourceCode_NeverDisablesRowLevelSecurity()
+    {
+        var offenders = Directory.GetFiles(FindSrcDirectory(), "*.cs", SearchOption.AllDirectories)
+            .Where(f => !f.Contains($"{Path.DirectorySeparatorChar}Migrations{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
+            .Where(f => !f.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
+            .Where(f => !f.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
+            // RlsSql holds the one approved drop, for a migration that must recreate a policy.
+            .Where(f => !string.Equals(Path.GetFileName(f), "RlsSql.cs", StringComparison.Ordinal))
+            .Where(f => DisablesRls.IsMatch(File.ReadAllText(f)))
+            .Select(Path.GetFileName)
+            .ToList();
+
+        Assert.Empty(offenders);
+    }
+
+    [Fact]
+    public void Migrations_NeverDisableRowLevelSecurity_InTheUpDirection()
+    {
+        var offenders = MigrationUpBodies().Where(m => DisablesRls.IsMatch(m.Up)).Select(m => m.Name).ToList();
+
+        Assert.Empty(offenders);
+    }
+
+    [Fact]
+    public void Migrations_NeverCreateLoginsUsersRolesOrGrants()
+    {
+        var offenders = MigrationUpBodies().Where(m => CreatesPrincipal.IsMatch(m.Up)).Select(m => m.Name).ToList();
+
+        Assert.Empty(offenders);
+    }
+
+    // Replaces the BYPASSRLS allowlist: the login lookup is the one module that runs as someone else.
+    [Fact]
+    public void Migrations_UseExecuteAsOnlyForTheLoginLookup()
+    {
+        var uses = MigrationUpBodies()
+            .SelectMany(m => Regex.Matches(m.Up, @"EXECUTE\s+AS\s+(N?'[^']*'|\w+)", RegexOptions.IgnoreCase)
+                .Select(match => (m.Name, match.Value)))
+            .ToList();
+
+        var use = Assert.Single(uses);
+        Assert.Equal(LookupMigration, use.Name);
+        Assert.Contains(RlsSql.LookupUser, use.Value, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void RlsPredicates_AreOnlyLoosenedForTheLookupUser()
+    {
+        var statements = RlsSql.CreateFunctions();
+
+        Assert.Single(statements, s => s.Contains("USER_NAME()", StringComparison.Ordinal));
+        Assert.Single(statements, s => s.Contains("fn_users_read", StringComparison.Ordinal)
+            && s.Contains($"USER_NAME() = N'{RlsSql.LookupUser}'", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void MigrationsCreatingATenantTable_CreateItsPolicy()
+    {
+        // The baseline's tables are covered by AddRowLevelSecurity, which loops over the registry.
+        var offenders = MigrationUpBodies()
+            .Where(m => !m.Name.EndsWith("_InitialSqlServer.cs", StringComparison.Ordinal))
+            .Where(m => Regex.IsMatch(m.Up, @"CreateTable\([\s\S]*?tenant_id\s*=\s*table\.Column"))
+            .Where(m => !m.Up.Contains("RlsSql.CreatePolicy", StringComparison.Ordinal))
+            .Select(m => m.Name)
+            .ToList();
+
+        Assert.Empty(offenders);
+    }
+
     [Fact]
     public void EveryTenantOwnedEntityTable_HasRlsPolicyCoverage()
     {
@@ -467,48 +361,11 @@ public class TenantIsolationArchitectureTests
             .OrderBy(name => name, StringComparer.Ordinal)
             .ToList();
 
-        var tablesWithRlsPolicy = FindTablesWithRlsPolicy();
+        var tablesWithRlsPolicy = RlsTableRegistry.Tables.Keys.ToHashSet();
 
         var uncovered = tenantOwnedTableNames.Where(t => !tablesWithRlsPolicy.Contains(t)).ToList();
 
         Assert.Empty(uncovered);
-    }
-
-    private static HashSet<string> FindTablesWithRlsPolicy()
-    {
-        // Every RLS migration in this codebase (AddRlsPolicies,
-        // UpdateRlsTenantContextMode, AddFileStorageRlsPolicies,
-        // AddMissingRlsPolicies) issues its CREATE POLICY statement through
-        // string interpolation inside a `foreach (var table in TenantTables)`
-        // loop, so the literal migration source never contains
-        // "CREATE POLICY tenant_isolation ON <real_table_name>" -- only the
-        // interpolation placeholder. The actual covered table names live in
-        // each file's `TenantTables` string array, so that's what gets
-        // parsed here (restricted to files that also contain the
-        // "CREATE POLICY tenant_isolation" pattern, so an unrelated
-        // string[] array elsewhere can't be mistaken for RLS coverage).
-        var migrationsDir = FindMigrationsDirectory();
-        var tablesWithRlsPolicy = new HashSet<string>(StringComparer.Ordinal);
-
-        foreach (var file in Directory.GetFiles(migrationsDir, "*.cs")
-            .Where(f => !f.EndsWith(".Designer.cs", StringComparison.OrdinalIgnoreCase)))
-        {
-            var source = File.ReadAllText(file);
-            if (!source.Contains("CREATE POLICY tenant_isolation", StringComparison.Ordinal))
-                continue;
-
-            var arrayMatch = Regex.Match(
-                source,
-                "TenantTables\\s*=\\s*\\[(?<body>[\\s\\S]*?)\\];",
-                RegexOptions.None);
-            if (!arrayMatch.Success)
-                continue;
-
-            foreach (Match tableNameMatch in Regex.Matches(arrayMatch.Groups["body"].Value, "\"(?<name>[a-z0-9_]+)\""))
-                tablesWithRlsPolicy.Add(tableNameMatch.Groups["name"].Value);
-        }
-
-        return tablesWithRlsPolicy;
     }
 
     private static ApplicationDbContext CreateModelInspectionContext()
@@ -535,7 +392,9 @@ public class TenantIsolationArchitectureTests
                 continue;
 
             var key = part[..separatorIndex].Trim();
-            if (key.Equals("Username", StringComparison.OrdinalIgnoreCase))
+            if (key.Equals("Username", StringComparison.OrdinalIgnoreCase)
+                || key.Equals("User ID", StringComparison.OrdinalIgnoreCase)
+                || key.Equals("UID", StringComparison.OrdinalIgnoreCase))
                 return part[(separatorIndex + 1)..].Trim();
         }
 

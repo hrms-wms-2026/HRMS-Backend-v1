@@ -1,7 +1,10 @@
 using Moq;
+using ONEVO.Application.Common.Constants;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.Storage.EntityAssets.ServiceInterfaces;
+using ONEVO.Application.Features.Storage.File.Helpers;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Projects.Commands.EditProject;
@@ -21,6 +24,7 @@ public class EditProjectCommandHandlerTests
     private static readonly Guid ProjectId = Guid.NewGuid();
     private static readonly Guid ObjectiveId = Guid.NewGuid();
     private static readonly Guid CategoryId = Guid.NewGuid();
+    private readonly Mock<IPrimaryEntityAssetLinker> _linker = new();
 
     private static EditProjectCommand ValidCommand(string? identifier = "WEB") => new(
         ProjectId, "Website Revamp v2", "updated desc", CategoryId,
@@ -64,7 +68,7 @@ public class EditProjectCommandHandlerTests
         var unitOfWork = new Mock<IUnitOfWork>();
         unitOfWork.Setup(x => x.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
 
-        var handler = new EditProjectCommandHandler(currentUser.Object, identity.Object, projects.Object, objectives.Object, categories.Object, unitOfWork.Object);
+        var handler = new EditProjectCommandHandler(currentUser.Object, identity.Object, projects.Object, objectives.Object, categories.Object, _linker.Object, unitOfWork.Object);
         return (handler, projects, objectives);
     }
 
@@ -179,5 +183,36 @@ public class EditProjectCommandHandlerTests
         Assert.True(result.IsSuccess);
         Assert.Equal(80m, project.AllocatedHours);
         Assert.Equal(80m, defaultObjective.AllocatedHours);
+    }
+
+    [Fact]
+    public async Task Handle_NewIconPicked_RemovesTheLogo()
+    {
+        _linker.Setup(x => x.RemoveAsync(TenantId, UserId, EntityAssetOwnerTypes.Project, ProjectId, UploadPurposeCatalog.ProjectCover, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result.Success());
+        var project = ExistingProject();
+        var (handler, _, _) = BuildHandler(project, ExistingDefaultObjective());
+
+        var result = await handler.Handle(ValidCommand() with { Icon = "lucide:rocket" }, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("lucide:rocket", project.Icon);
+        _linker.Verify(x => x.RemoveAsync(TenantId, UserId, EntityAssetOwnerTypes.Project, ProjectId, UploadPurposeCatalog.ProjectCover, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Theory]
+    [InlineData("lucide:rocket")] // the same icon re-saved
+    [InlineData("")]              // icon cleared
+    [InlineData(null)]            // icon omitted
+    public async Task Handle_NoNewIcon_KeepsTheLogo(string? icon)
+    {
+        var project = ExistingProject();
+        project.Icon = "lucide:rocket";
+        var (handler, _, _) = BuildHandler(project, ExistingDefaultObjective());
+
+        var result = await handler.Handle(ValidCommand() with { Icon = icon }, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        _linker.VerifyNoOtherCalls();
     }
 }

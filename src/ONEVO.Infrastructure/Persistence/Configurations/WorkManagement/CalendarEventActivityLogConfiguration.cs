@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using ONEVO.Domain.Features.WorkManagement.CalendarEvents.Entities;
+using ONEVO.Infrastructure.Persistence.SqlServer;
 
 namespace ONEVO.Infrastructure.Persistence.Configurations.WorkManagement;
 
@@ -11,7 +12,7 @@ public sealed class CalendarEventActivityLogConfiguration : IEntityTypeConfigura
         builder.ToTable("calendar_event_activity_logs");
         builder.HasKey(e => e.Id);
         builder.Property(e => e.Action).HasMaxLength(20).IsRequired();
-        builder.Property(e => e.DetailsJson).HasColumnType("jsonb").IsRequired();
+        builder.Property(e => e.DetailsJson).IsJsonColumn().IsRequired();
         builder.HasIndex(e => new { e.TenantId, e.CalendarEventId, e.PerformedAt })
             .HasDatabaseName("ix_calendar_event_activity_logs_tenant_event_performed_at");
         builder.HasOne<CalendarEvent>()

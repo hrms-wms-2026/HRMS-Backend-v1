@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using ONEVO.Domain.Features.WorkManagement.Approvals.Entities;
+using ONEVO.Infrastructure.Persistence.SqlServer;
 
 namespace ONEVO.Infrastructure.Persistence.Configurations.WorkManagement;
 
@@ -15,10 +16,10 @@ public class WorkApprovalRequestConfiguration : IEntityTypeConfiguration<WorkApp
         builder.Property(r => r.TargetTitle).HasMaxLength(500).IsRequired();
         builder.Property(r => r.ApproverSource).HasMaxLength(20).IsRequired();
         builder.Property(r => r.Status).HasMaxLength(20).IsRequired();
-        builder.Property(r => r.PayloadJson).HasColumnType("jsonb");
-        builder.Property(r => r.AppliedPayloadJson).HasColumnType("jsonb");
-        builder.Property(r => r.UndoStateJson).HasColumnType("jsonb");
-        builder.Property(r => r.DecisionComment).HasColumnType("text");
+        builder.Property(r => r.PayloadJson).IsJsonColumn();
+        builder.Property(r => r.AppliedPayloadJson).IsJsonColumn();
+        builder.Property(r => r.UndoStateJson).IsJsonColumn();
+        builder.Property(r => r.DecisionComment);
 
         builder.HasIndex(r => new { r.TenantId, r.ProjectId, r.Status })
             .HasDatabaseName("ix_wm_approval_requests_tenant_id_project_id_status");

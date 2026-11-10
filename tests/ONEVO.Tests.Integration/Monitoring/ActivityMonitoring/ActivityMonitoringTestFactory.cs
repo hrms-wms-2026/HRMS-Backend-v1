@@ -51,7 +51,7 @@ public sealed class ActivityMonitoringTestFactory : WebApplicationFactory<Progra
 
             services.AddDbContext<ApplicationDbContext>((sp, options) =>
             {
-                options.UseNpgsql(_connectionString)
+                options.UseTestSqlServer(_connectionString)
                        .UseSnakeCaseNamingConvention();
             });
 

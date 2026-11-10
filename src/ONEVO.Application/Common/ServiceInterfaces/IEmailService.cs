@@ -21,7 +21,8 @@ public interface IEmailService
 }
 
 /// <summary>One calendar email. <see cref="Kind"/> is invite / updated / cancelled / removed; <see cref="IcsContent"/> is the
-/// iCalendar text to attach (null = no attachment) and <see cref="IcsMethod"/> its METHOD (REQUEST or CANCEL).</summary>
+/// iCalendar text to attach (null = no attachment) and <see cref="IcsMethod"/> its METHOD (REQUEST or CANCEL).
+/// <see cref="TimeZoneId"/> is the IANA zone the email shows the start in (null or unknown = UTC).</summary>
 public sealed record CalendarEventEmailMessage(
     string To, string RecipientName, string Kind, string EventTitle, DateTimeOffset StartDateUtc, string? Location, string OrganizerName,
-    string? MeetingLink, string? IcsContent = null, string? IcsMethod = null);
+    string? MeetingLink, string? IcsContent = null, string? IcsMethod = null, string? TimeZoneId = null);

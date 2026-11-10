@@ -41,7 +41,7 @@ public sealed class MonitoringLegalEntityScopingIntegrationTestsFixture : IAsync
 
     public async Task InitializeAsync()
     {
-        var connectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
+        var connectionString = await SharedSqlServerTemplate.CreateDatabaseAsync();
         _environmentScope = new IntegrationTestEnvironmentScope(connectionString);
 
         _factory = new E2ETestFactory(connectionString, new CapturingEmailService());
@@ -453,7 +453,8 @@ public sealed class MonitoringLegalEntityScopingIntegrationTests : IClassFixture
 
         db.MonitoringFeatureToggles.Add(MonitoringLegalEntityScopingIntegrationTestsFixture.Toggle(tenantId, legalEntityA, activityMonitoring: false));
         var saveDuplicate = () => db.SaveChangesAsync();
-        await saveDuplicate.Should().ThrowAsync<DbUpdateException>();
+        await saveDuplicate.Should().ThrowAsync<DbUpdateException>()
+            .Where(e => ((SqlException)e.InnerException!).Number == 2601 || ((SqlException)e.InnerException!).Number == 2627);
     }
 
     // ---------------------------------------------------------------------

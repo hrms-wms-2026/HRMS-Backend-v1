@@ -1,6 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
-using Npgsql;
+using ONEVO.Infrastructure.Persistence.SqlServer;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.Onboarding.Services;
 using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
@@ -108,7 +108,7 @@ public sealed class OfficeProjectProvisioner(IServiceScopeFactory scopeFactory) 
                 project.Id, objective.Id, statuses[0].Id,
                 categories.ToDictionary(item => item.Name.ToLowerInvariant(), item => item.Id));
         }
-        catch (DbUpdateException ex) when (ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
+        catch (DbUpdateException ex) when (SqlServerErrors.IsUniqueViolation(ex))
         {
             db.ChangeTracker.Clear();
             var winner = await db.Projects.AsNoTracking().FirstOrDefaultAsync(

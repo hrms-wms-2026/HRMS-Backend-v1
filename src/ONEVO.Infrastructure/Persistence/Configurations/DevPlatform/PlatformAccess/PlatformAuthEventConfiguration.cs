@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using ONEVO.Domain.Features.DevPlatform.PlatformAccess.Entities;
+using ONEVO.Infrastructure.Persistence.SqlServer;
 
 namespace ONEVO.Infrastructure.Persistence.Configurations.DevPlatform.PlatformAccess;
 
@@ -13,7 +14,7 @@ public class PlatformAuthEventConfiguration : IEntityTypeConfiguration<PlatformA
 
         builder.Property(e => e.EventType).HasMaxLength(80).IsRequired();
         builder.Property(e => e.SourceIp).HasMaxLength(45);
-        builder.Property(e => e.MetadataJson).HasColumnType("jsonb");
+        builder.Property(e => e.MetadataJson).IsJsonColumn();
 
         builder.HasIndex(e => e.UserId);
         builder.HasIndex(e => e.CreatedAt);

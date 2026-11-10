@@ -1,4 +1,3 @@
-using Npgsql;
 using ONEVO.Domain.Features.WorkManagement.Planner.Entities;
 using ONEVO.Tests.Integration.MyTeam;
 using ONEVO.Tests.Integration.WorkManagement.Meetings;
@@ -34,17 +33,17 @@ public sealed class PlannerSchemaIntegrationTests
         var mine = await AddBlockAsync(a);
         await AddBlockAsync(b);
 
-        await using var connection = new NpgsqlConnection(a.ConnectionString);
+        await using var connection = TestDb.CreateConnection(a.ConnectionString);
         await connection.OpenAsync();
-        await using (var role = new NpgsqlCommand("SET ROLE onevo_app", connection))
+        await using (var role = new SqlCommand("EXECUTE AS USER = 'onevo_app'", connection))
             await role.ExecuteNonQueryAsync();
-        await using (var mode = new NpgsqlCommand(
-            $"SELECT set_config('app.tenant_context_mode', 'tenant', false), set_config('app.current_tenant_id', '{a.TenantId}', false)",
+        await using (var mode = new SqlCommand(
+            $"EXEC sp_set_session_context N'app.tenant_context_mode', N'tenant'; EXEC sp_set_session_context N'app.current_tenant_id', N'{a.TenantId}'",
             connection))
             await mode.ExecuteNonQueryAsync();
 
         var visible = new List<Guid>();
-        await using (var select = new NpgsqlCommand("SELECT id FROM planned_task_blocks", connection))
+        await using (var select = new SqlCommand("SELECT id FROM planned_task_blocks", connection))
         await using (var reader = await select.ExecuteReaderAsync())
             while (await reader.ReadAsync())
                 visible.Add(reader.GetGuid(0));

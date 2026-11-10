@@ -4,7 +4,6 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
-using Npgsql;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
@@ -49,10 +48,10 @@ public sealed class OutboxTestHost
 
     public static async Task<OutboxTestHost> CreateAsync()
     {
-        var admin = await SharedPostgresTemplate.CreateDatabaseAsync();
-        var app = new NpgsqlConnectionStringBuilder(admin)
+        var admin = await SharedSqlServerTemplate.CreateDatabaseAsync();
+        var app = new SqlConnectionStringBuilder(admin)
         {
-            Username = "onevo_app",
+            UserID = "onevo_app",
             Password = PrivilegedRoleTestBootstrap.AppRolePassword,
         }.ConnectionString;
 
@@ -72,7 +71,7 @@ public sealed class OutboxTestHost
     public ApplicationDbContext NewAdminContext()
     {
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
-            .UseNpgsql(AdminConnectionString)
+            .UseTestSqlServer(AdminConnectionString)
             .UseSnakeCaseNamingConvention()
             .Options;
         return new ApplicationDbContext(
@@ -150,9 +149,9 @@ public sealed class OutboxTestHost
         {
             // The retrying execution strategy, as production registers it (DependencyInjection): it forbids a
             // transaction the processor starts outside the strategy, so leaving it out would hide that bug.
-            options.UseNpgsql(AppConnectionString, npgsql => npgsql.EnableRetryOnFailure(3))
+            options.UseTestSqlServer(AppConnectionString, npgsql => npgsql.EnableRetryOnFailure(3))
                    .UseSnakeCaseNamingConvention()
-                   .AddInterceptors(sp.GetRequiredService<TenantRlsInterceptor>());
+                   .AddTestRls(sp.GetRequiredService<TenantRlsInterceptor>());
         });
         services.AddScoped<ITenantRepository, EfTenantRepository>();
         services.AddScoped<ITenantContextSwitcher, TenantContextSwitcher>();

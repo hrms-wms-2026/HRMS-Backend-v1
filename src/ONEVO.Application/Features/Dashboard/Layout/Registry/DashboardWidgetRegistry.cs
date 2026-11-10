@@ -21,7 +21,7 @@ public static class DashboardWidgetRegistry
         new("action-center", DashboardKeys.MyWork, "Action center", "Items waiting for your action.", 4, 3, 12, 6, false),
         new("quick-actions", DashboardKeys.MyWork, "Quick actions", "Shortcuts to common tasks.", 3, 3, 6, 4, false),
         new("todays-schedule", DashboardKeys.MyWork, "Today's schedule", "Your shifts and events for today.", 3, 3, 12, 6, false),
-        new("today-total-time", DashboardKeys.MyWork, "Weekly work progress", "Your week's worked hours against expected and planned time.", 2, 2, 12, 8, true),
+        new("today-total-time", DashboardKeys.MyWork, "My weekly progress", "Your week's worked hours against expected and planned time.", 2, 2, 12, 8, true),
         new("active-projects", DashboardKeys.MyWork, "Active projects", "Projects you are currently working on.", 3, 3, 6, 6, true),
         new("my-tasks", DashboardKeys.MyWork, "My tasks", "Tasks assigned to you.", 3, 3, 12, 6, true, ShownOnWeb: false),
         new("work-pattern", DashboardKeys.MyWork, "Work pattern", "Your recent working pattern.", 6, 3, 12, 5, false, ShownOnWeb: false),
@@ -34,7 +34,16 @@ public static class DashboardWidgetRegistry
         new("team-schedule", DashboardKeys.MyTeam, "Today's team schedule", "What your team planned for today and how far they are.", 2, 2, 12, 8, true),
         new("team-plan-today", DashboardKeys.MyTeam, "Team plan today", "Today's planned load for each direct report.", 2, 2, 12, 8, false),
         new("team-work-vs-task", DashboardKeys.MyTeam, "Work vs task hours", "Your team's working hours against the hours of tasks they completed, by day, week or month.", 2, 2, 12, 8, false),
+        new("team-module-forecast", DashboardKeys.MyTeam, "Module overtime forecast", "Whether each module will finish before its deadline at the team's task rate of the last 4 weeks, or needs a higher rate or overtime.", 2, 2, 12, 8, false),
+        new("team-employee-forecast", DashboardKeys.MyTeam, "Employee overtime forecast", "Whether each person can finish the work due before their deadlines at their task rate of the last 4 weeks, or needs a higher rate or overtime.", 2, 2, 12, 8, false),
     ];
+
+    // Catalog-only widgets are added at their min size unless listed here (the widget store reads DefaultSize).
+    private static readonly Dictionary<string, (int W, int H)> CatalogDefaultSizes = new(StringComparer.Ordinal)
+    {
+        ["team-module-forecast"] = (4, 4),
+        ["team-employee-forecast"] = (4, 4),
+    };
 
     private const string TeamPlanToday = "team-plan-today";
     private static readonly GridRect TeamPlanTodaySize = new(0, 0, 8, 6);
@@ -165,7 +174,7 @@ public static class DashboardWidgetRegistry
             }
         }
 
-        return (def.MinW, def.MinH);
+        return CatalogDefaultSizes.TryGetValue(key, out var size) ? size : (def.MinW, def.MinH);
     }
 
     /// <summary>Derives a tablet/mobile layout from a desktop layout. Desktop is returned unchanged.</summary>

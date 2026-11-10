@@ -15,7 +15,7 @@ public class EmailOptions
     public const string SectionName = "Email";
 
     public string FromAddress { get; set; } = string.Empty;
-    public string FromName { get; set; } = "ONEVO";
+    public string FromName { get; set; } = "CROWNUS";
 
     /// <summary>Optional Reply-To address; omitted from provider requests when empty.</summary>
     public string ReplyToEmail { get; set; } = string.Empty;

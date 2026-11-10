@@ -26,7 +26,7 @@ public sealed class NormalizedEmailArchitectureTests
             "InfrastructureModule", "User", "UserConfiguration.cs");
 
         source.Should().Contain("normalized_email");
-        source.Should().Contain("lower(trim(email))");
+        source.Should().Contain("LOWER(LTRIM(RTRIM([email])))");
         source.Should().Contain("stored: true");
     }
 
@@ -38,40 +38,6 @@ public sealed class NormalizedEmailArchitectureTests
             "InfrastructureModule", "User", "UserConfiguration.cs");
 
         source.Should().Contain("ix_users_tenant_id_normalized_email");
-    }
-
-    [Fact]
-    public void AuthLookupFunction_ComparesNormalizedEmail_NotEmail()
-    {
-        var migrationPath = FindLatestNormalizedEmailMigration();
-        var text = File.ReadAllText(migrationPath);
-        var upBody = text.Substring(0, text.IndexOf("protected override void Down", StringComparison.Ordinal));
-
-        upBody.Should().Contain("u.normalized_email = p_normalized_email");
-        upBody.Should().NotContain("u.email = p_normalized_email",
-            "the forward (Up) function definition must compare normalized_email, not email - " +
-            "Down() legitimately reverts to the email comparison and is intentionally excluded here");
-    }
-
-    [Fact]
-    public void AuthLookupFunctionOwnerGrant_IncludesNormalizedEmail_NotBroadSelect()
-    {
-        var migrationPath = FindLatestNormalizedEmailMigration();
-        var text = File.ReadAllText(migrationPath);
-
-        text.Should().Contain(
-            "GRANT SELECT (tenant_id, id, normalized_email, is_active, is_deleted, password_hash) ON public.users");
-        text.Should().NotContain("GRANT SELECT ON public.users");
-    }
-
-    [Fact]
-    public void MigrationContainsDuplicateEmailPrecheck()
-    {
-        var migrationPath = FindLatestNormalizedEmailMigration();
-        var text = File.ReadAllText(migrationPath);
-
-        text.Should().Contain("HAVING count(*) > 1");
-        text.Should().Contain("RAISE EXCEPTION");
     }
 
     private static string FindLatestNormalizedEmailMigration()

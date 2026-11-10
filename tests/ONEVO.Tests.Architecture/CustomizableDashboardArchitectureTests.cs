@@ -13,23 +13,23 @@ public class CustomizableDashboardArchitectureTests
         ["user_dashboards", "dashboard_widgets", "dashboard_widget_layouts"];
 
     [Fact]
-    public void Dashboard_tables_have_tenant_isolation_rls()
+    public void No_role_template_constraints_exist()
     {
-        var source = ReadMigrationSource("AddCustomizableDashboards");
+        // The SQL Server baseline holds the model's schema; the PostgreSQL migration this test read
+        // was replaced by it. RLS for the template tables is enforced through RlsTableRegistry.
+        var source = ReadMigrationSource("InitialSqlServer");
 
-        Assert.Contains("CREATE POLICY tenant_isolation ON {table}", source);
-        Assert.Contains("ALTER TABLE {table} ENABLE ROW LEVEL SECURITY", source);
-        Assert.Contains("ALTER TABLE {table} FORCE ROW LEVEL SECURITY", source);
+        // CHECK ties the flag to a null role_id (spec 4.1/4.2).
+        Assert.Contains(Regex.Matches(source, @"CheckConstraint\(\s*""[a-z0-9_]+""\s*,\s*""(?<sql>[^""]*)""")
+            .Select(m => m.Groups["sql"].Value),
+            sql => sql.Contains("is_no_role_template", StringComparison.Ordinal)
+                && sql.Contains("role_id IS NULL", StringComparison.Ordinal));
 
-        var arrayMatch = Regex.Match(source, @"TenantTables\s*=\s*\[(?<body>[\s\S]*?)\];");
-        Assert.True(arrayMatch.Success, "Migration must declare a TenantTables array.");
-
-        var covered = Regex.Matches(arrayMatch.Groups["body"].Value, "\"(?<name>[a-z0-9_]+)\"")
-            .Select(m => m.Groups["name"].Value)
-            .ToHashSet(StringComparer.Ordinal);
-
-        foreach (var table in DashboardTables)
-            Assert.Contains(table, covered);
+        // A filtered unique index on the flag enforces exactly one No-role template per tenant per dashboard.
+        var filters = Regex.Matches(source, @"unique:\s*true,\s*filter:\s*""(?<filter>[^""]*)""")
+            .Select(m => m.Groups["filter"].Value)
+            .ToList();
+        Assert.Contains(filters, f => f.Contains("is_no_role_template", StringComparison.Ordinal));
     }
 
     [Fact]

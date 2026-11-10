@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using ONEVO.Domain.Features.Auth.Entities;
+using ONEVO.Infrastructure.Persistence.SqlServer;
 
 namespace ONEVO.Infrastructure.Persistence.Configurations.Auth.Audit;
 
@@ -14,8 +15,8 @@ public class AuditLogConfiguration : IEntityTypeConfiguration<AuditLog>
         builder.Property(a => a.Action).HasMaxLength(100).IsRequired();
         builder.Property(a => a.ResourceType).HasMaxLength(50);
         builder.Property(a => a.IpAddress).HasMaxLength(45);
-        builder.Property(a => a.OldValuesJson).HasColumnType("jsonb");
-        builder.Property(a => a.NewValuesJson).HasColumnType("jsonb");
+        builder.Property(a => a.OldValuesJson).IsJsonColumn();
+        builder.Property(a => a.NewValuesJson).IsJsonColumn();
 
         builder.HasIndex(a => new { a.TenantId, a.CreatedAt });
         builder.HasIndex(a => new { a.UserId, a.CreatedAt });

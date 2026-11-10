@@ -11,7 +11,7 @@ public class MonitoringFaceScanConfiguration : IEntityTypeConfiguration<Monitori
         builder.ToTable("monitoring_face_scans");
         builder.HasKey(f => f.Id);
 
-        builder.Property(f => f.StorageKey).HasMaxLength(1000).IsRequired();
+        builder.Property(f => f.StorageKey).HasMaxLength(850).IsRequired();
         builder.Property(f => f.ContentType).HasMaxLength(100).IsRequired();
         builder.Property(f => f.Status).HasMaxLength(50).IsRequired();
 

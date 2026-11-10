@@ -22,7 +22,7 @@ public class CalendarEventMeetingAttendanceConfiguration : IEntityTypeConfigurat
         // Phase 2 per-occurrence attendance: a record is upserted on (session, participant, joined_at) (spec 5.8).
         builder.HasIndex(a => new { a.AttendanceSessionId, a.ParticipantKey, a.JoinedAt })
             .IsUnique()
-            .HasFilter("attendance_session_id IS NOT NULL")
+            .HasFilter("attendance_session_id IS NOT NULL AND participant_key IS NOT NULL")
             .HasDatabaseName("ux_calendar_event_meeting_attendances_session_participant_joined");
         builder.HasIndex(a => new { a.TenantId, a.OccurrenceTaskId })
             .HasDatabaseName("ix_calendar_event_meeting_attendances_occurrence");

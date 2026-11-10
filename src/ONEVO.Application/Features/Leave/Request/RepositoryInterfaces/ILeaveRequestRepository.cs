@@ -59,8 +59,11 @@ public interface ILeaveRequestRepository
 
     Task AddPendingRequestAsync(LeaveRequestWriteSet writeSet, CancellationToken ct = default);
 
+    /// <summary>True when every file exists, is not deleted or quarantined, and was uploaded by this user. Unscanned
+    /// files count: nothing scans uploads yet (SEC-13), so none ever reaches FileRecordStatus.Available.</summary>
     Task<bool> AreAvailableFileRecordsAsync(
         Guid tenantId,
+        Guid uploadedByUserId,
         IReadOnlyCollection<Guid> fileRecordIds,
         CancellationToken ct = default);
 }

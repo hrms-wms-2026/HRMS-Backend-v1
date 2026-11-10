@@ -14,9 +14,9 @@ public sealed class WorkAreaChangeRequestConfiguration : IEntityTypeConfiguratio
         builder.Property(x => x.CurrentWorkModeName).HasMaxLength(120).IsRequired();
         builder.Property(x => x.RequestedWorkModeName).HasMaxLength(120).IsRequired();
         builder.Property(x => x.LegacyWorkAreaLabel).HasMaxLength(10);
-        builder.Property(x => x.Reason).HasColumnType("text").IsRequired();
+        builder.Property(x => x.Reason).IsRequired();
         builder.Property(x => x.Status).HasMaxLength(20).IsRequired().IsConcurrencyToken();
-        builder.Property(x => x.ReviewComment).HasColumnType("text");
+        builder.Property(x => x.ReviewComment);
 
         builder.HasIndex(x => new { x.TenantId, x.Status })
             .HasDatabaseName("ix_work_area_change_requests_tenant_status");

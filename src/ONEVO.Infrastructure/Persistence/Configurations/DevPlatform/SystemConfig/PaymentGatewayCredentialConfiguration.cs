@@ -6,7 +6,7 @@ namespace ONEVO.Infrastructure.Persistence.Configurations.DevPlatform.SystemConf
 
 /// <summary>
 /// EF configuration for payment_gateway_credentials.
-/// Phase 1 canonical table. Secrets stored as bytea (AES-256 via IEncryptionService).
+/// Phase 1 canonical table. Secrets stored as varbinary (AES-256 via IEncryptionService).
 /// Only one active row per payment_gateway_config_id - enforced at service layer.
 /// </summary>
 public class PaymentGatewayCredentialConfiguration : IEntityTypeConfiguration<PaymentGatewayCredential>
@@ -20,13 +20,11 @@ public class PaymentGatewayCredentialConfiguration : IEntityTypeConfiguration<Pa
         builder.Property(c => c.PaymentGatewayConfigId)
             .IsRequired();
 
-        // Encrypted bytea columns - never returned by API
+        // Encrypted binary columns - never returned by API
         builder.Property(c => c.SecretEncrypted)
-            .HasColumnType("bytea")
             .IsRequired();
 
-        builder.Property(c => c.WebhookSecretEncrypted)
-            .HasColumnType("bytea");
+        builder.Property(c => c.WebhookSecretEncrypted);
 
         builder.Property(c => c.EncryptionKeyVersion)
             .HasMaxLength(50)

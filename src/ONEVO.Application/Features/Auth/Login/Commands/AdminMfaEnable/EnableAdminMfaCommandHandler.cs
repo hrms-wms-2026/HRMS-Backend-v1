@@ -50,7 +50,7 @@ public sealed class EnableAdminMfaCommandHandler : IRequestHandler<EnableAdminMf
         if (user.MfaStatus == PlatformUser.MfaEnrolled)
             return Result<MfaSetupDto>.Conflict("MFA is already enabled.");
 
-        var (secret, qrCodeUri) = TotpSecretGenerator.Generate(user.Email, "ONEVO Admin");
+        var (secret, qrCodeUri) = TotpSecretGenerator.Generate(user.Email, "CROWNUS Admin");
 
         user.MfaSecret = _encryption.Encrypt(secret);
         user.MfaStatus = PlatformUser.MfaNotEnrolled;

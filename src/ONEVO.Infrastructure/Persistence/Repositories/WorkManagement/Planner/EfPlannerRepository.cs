@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using ONEVO.Application.Features.WorkManagement.Planner.RepositoryInterfaces;
 using ONEVO.Domain.Features.OrgStructure.Entities;
 using ONEVO.Domain.Features.WorkManagement.Planner.Entities;
+using ONEVO.Infrastructure.Persistence.SqlServer;
 
 namespace ONEVO.Infrastructure.Persistence.Repositories.WorkManagement.Planner;
 
@@ -13,15 +14,14 @@ public sealed class EfPlannerRepository : IPlannerRepository
 
     public EfPlannerRepository(ApplicationDbContext db) => _db = db;
 
-    /// <summary>The advisory-lock key of one employee's plan.</summary>
+    /// <summary>The app lock key of one employee's plan.</summary>
     public static string PlanLockKey(Guid tenantId, Guid employeeId) => $"planner:{tenantId}:{employeeId}";
 
     public async Task LockPlanAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default)
     {
         if (_db.Database.CurrentTransaction is null)
             throw new InvalidOperationException($"{nameof(LockPlanAsync)} needs a transaction.");
-        await _db.Database.ExecuteSqlInterpolatedAsync(
-            $"SELECT pg_advisory_xact_lock(hashtextextended({PlanLockKey(tenantId, employeeId)}, 0))", ct);
+        await SqlAppLock.TryAcquireAsync(_db, PlanLockKey(tenantId, employeeId), SqlAppLock.WaitForever, ct);
     }
 
     public async Task<IReadOnlyList<PlannedTaskBlock>> ListBlocksAsync(Guid tenantId, Guid employeeId, DateTimeOffset from,
@@ -63,12 +63,13 @@ public sealed class EfPlannerRepository : IPlannerRepository
             {
                 t.Id, t.Title, t.DueDate, t.EstimatedHours, t.ProjectId, ProjectName = p.Name,
                 CategoryName = c == null ? "" : c.Name, CategoryKind = c == null ? TaskCategoryKinds.Task : c.Kind,
+                CategoryIcon = c == null ? null : c.Icon,
                 Assigned = _db.TaskAssignments.Any(a => a.TaskId == t.Id && a.EmployeeId == employeeId),
             })
             .ToListAsync(ct);
         return rows.ToDictionary(r => r.Id,
             r => new PlannerTaskInfo(r.Id, r.Title, r.DueDate, r.EstimatedHours, IsMeeting: false, r.Assigned, r.ProjectId, r.ProjectName,
-                r.CategoryName, r.CategoryKind));
+                r.CategoryName, r.CategoryKind, r.CategoryIcon));
     }
 
     public async Task<IReadOnlyList<PlannerTaskInfo>> ListDueAssignedTasksAsync(Guid tenantId, Guid employeeId, DateOnly date,
@@ -112,6 +113,7 @@ public sealed class EfPlannerRepository : IPlannerRepository
             {
                 t.Id, t.ProjectId, ProjectName = p.Name, t.Title, t.Priority, t.DueDate, t.EstimatedHours, t.CreatedAt,
                 CategoryName = c == null ? "" : c.Name, CategoryKind = c == null ? TaskCategoryKinds.Task : c.Kind,
+                CategoryIcon = c == null ? null : c.Icon,
             })
             .ToListAsync(ct);
         if (tasks.Count == 0)
@@ -127,7 +129,7 @@ public sealed class EfPlannerRepository : IPlannerRepository
             g => g.Sum(s => Math.Max(0, (int)((s.ClockOutAt ?? now) - s.ClockInAt).TotalMinutes)));
 
         return tasks.Select(t => new PlannerFocusTaskRow(t.Id, t.ProjectId, t.ProjectName, t.Title, t.Priority, t.DueDate,
-            t.EstimatedHours, logged.GetValueOrDefault(t.Id), t.CategoryName, t.CategoryKind, t.CreatedAt)).ToList();
+            t.EstimatedHours, logged.GetValueOrDefault(t.Id), t.CategoryName, t.CategoryKind, t.CreatedAt, t.CategoryIcon)).ToList();
     }
 
     public async Task<LegalEntity?> GetEmployeeLegalEntityAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default)

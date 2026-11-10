@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using ONEVO.Domain.Features.DevPlatform.Compliance.Entities;
 using ONEVO.Domain.Features.DevPlatform.PlatformAccess.Entities;
+using ONEVO.Infrastructure.Persistence.SqlServer;
 
 namespace ONEVO.Infrastructure.Persistence.Configurations.DevPlatform.Compliance;
 
@@ -21,9 +22,9 @@ public class LegalDocumentVersionConfiguration : IEntityTypeConfiguration<LegalD
         builder.Property(x => x.Status).HasMaxLength(20).IsRequired();
         builder.Property(x => x.PublishReason);
 
-        builder.Property(x => x.ContentJson).HasColumnType("jsonb").IsRequired();
-        builder.Property(x => x.ContentHtml).HasColumnType("text").IsRequired();
-        builder.Property(x => x.ContentText).HasColumnType("text").IsRequired();
+        builder.Property(x => x.ContentJson).IsJsonColumn().IsRequired();
+        builder.Property(x => x.ContentHtml).IsRequired();
+        builder.Property(x => x.ContentText).IsRequired();
         builder.Property(x => x.ContentHash).HasMaxLength(128).IsRequired();
 
         builder.HasIndex(x => new { x.DocumentType, x.Version }).IsUnique();

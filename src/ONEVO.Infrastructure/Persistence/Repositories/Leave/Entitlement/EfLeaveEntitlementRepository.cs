@@ -1,5 +1,5 @@
 using Microsoft.EntityFrameworkCore;
-using Npgsql;
+using ONEVO.Infrastructure.Persistence.SqlServer;
 using ONEVO.Application.Common.Exceptions;
 using ONEVO.Application.Features.Leave.Entitlement.Mappers;
 using ONEVO.Application.Features.Leave.Entitlement.RepositoryInterfaces;
@@ -241,7 +241,7 @@ public class EfLeaveEntitlementRepository : ILeaveEntitlementRepository
             _db.ChangeTracker.Clear();
             throw new ConcurrencyConflictException(ex);
         }
-        catch (DbUpdateException ex) when (ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
+        catch (DbUpdateException ex) when (SqlServerErrors.IsUniqueViolation(ex))
         {
             _db.ChangeTracker.Clear();
             throw new ConcurrencyConflictException(ex);
@@ -269,7 +269,7 @@ public class EfLeaveEntitlementRepository : ILeaveEntitlementRepository
                     await transaction.CommitAsync(ct);
             });
         }
-        catch (DbUpdateException ex) when (ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
+        catch (DbUpdateException ex) when (SqlServerErrors.IsUniqueViolation(ex))
         {
             throw new UniqueConstraintConflictException(ex);
         }

@@ -46,49 +46,6 @@ public class TenantStatusHistoryArchitectureTests
     }
 
     [Fact]
-    public void FkCorrectionMigration_AddsNoTables()
-    {
-        var source = ReadFkCorrectionMigrationSource();
-
-        Assert.DoesNotContain("CreateTable", source);
-        Assert.DoesNotContain("DropTable", source);
-    }
-
-    [Fact]
-    public void FkCorrectionMigration_AddsForeignKey_ToTenants_WithRestrict()
-    {
-        var source = ReadFkCorrectionMigrationSource();
-
-        var match = Regex.Match(
-            source,
-            "AddForeignKey\\s*\\((?<body>[^;]*?column:\\s*\"tenant_id\"[^;]*?)\\);",
-            RegexOptions.Singleline);
-
-        Assert.True(match.Success, "expected an AddForeignKey call on tenant_status_histories.tenant_id");
-        var body = match.Groups["body"].Value;
-        Assert.Contains("principalTable: \"tenants\"", body);
-        Assert.Contains("principalColumn: \"id\"", body);
-        Assert.Contains("ReferentialAction.Restrict", body);
-    }
-
-    [Fact]
-    public void FkCorrectionMigration_AddsForeignKey_ToPlatformUsers_WithSetNull()
-    {
-        var source = ReadFkCorrectionMigrationSource();
-
-        var match = Regex.Match(
-            source,
-            "AddForeignKey\\s*\\((?<body>[^;]*?column:\\s*\"changed_by_id\"[^;]*?)\\);",
-            RegexOptions.Singleline);
-
-        Assert.True(match.Success, "expected an AddForeignKey call on tenant_status_histories.changed_by_id");
-        var body = match.Groups["body"].Value;
-        Assert.Contains("principalTable: \"platform_users\"", body);
-        Assert.Contains("principalColumn: \"id\"", body);
-        Assert.Contains("ReferentialAction.SetNull", body);
-    }
-
-    [Fact]
     public void NoMigration_Creates_TenantResourceLimits()
     {
         var migrationsDir = FindMigrationsDirectory();

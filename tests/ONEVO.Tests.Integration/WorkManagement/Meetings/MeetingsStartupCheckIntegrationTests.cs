@@ -1,6 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
-using Npgsql;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Meetings;
 using ONEVO.Infrastructure.Identity.Tenancy;
@@ -30,9 +29,9 @@ public sealed class MeetingsStartupCheckIntegrationTests
     /// column; dropping it gives a database P-1 has not reached.</summary>
     private static async Task WithoutP1Async(MyTeamDb h)
     {
-        await using var connection = new NpgsqlConnection(h.ConnectionString);
+        await using var connection = TestDb.CreateConnection(h.ConnectionString);
         await connection.OpenAsync();
-        await using var command = new NpgsqlCommand("ALTER TABLE outbox_messages DROP COLUMN locked_by", connection);
+        await using var command = new SqlCommand("ALTER TABLE outbox_messages DROP COLUMN locked_by", connection);
         await command.ExecuteNonQueryAsync();
     }
 

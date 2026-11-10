@@ -1,5 +1,5 @@
 using Microsoft.EntityFrameworkCore;
-using Npgsql;
+using ONEVO.Infrastructure.Persistence.SqlServer;
 using ONEVO.Application.Common.Exceptions;
 using ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces;
 using ONEVO.Domain.Features.TimeAttendance.Entities;
@@ -134,7 +134,7 @@ public sealed class EfWorkAreaChangeRequestRepository(ApplicationDbContext db)
             throw new ConcurrencyConflictException(ex);
         }
         catch (DbUpdateException ex) when (
-            ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
+            SqlServerErrors.IsUniqueViolation(ex))
         {
             throw new UniqueConstraintConflictException(ex);
         }

@@ -17,7 +17,7 @@ public sealed class GlobalApplicationConfiguration : IEntityTypeConfiguration<Gl
         builder.Property(x => x.Category).HasMaxLength(50);
         builder.Property(x => x.Publisher).HasMaxLength(200);
         builder.Property(x => x.LogoContentType).HasMaxLength(100);
-        builder.Property(x => x.Logo).HasColumnType("bytea");
+        builder.Property(x => x.Logo);
 
         builder.HasIndex(x => x.ProcessName)
             .IsUnique()

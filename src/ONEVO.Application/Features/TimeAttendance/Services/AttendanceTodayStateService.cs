@@ -54,11 +54,31 @@ public sealed class AttendanceTodayStateService(
 
         var utcNow = dateTime.UtcNow;
         var scheduleResolution = AttendanceScheduleResolver.Resolve(legalEntity, utcNow);
+        var calendarWorkDate = scheduleResolution.WorkDate;
+
+        // A session clocked in on an earlier day stays the active work day across midnight
+        // until it reaches the missing-clock-out threshold. Without this, every read and write
+        // below is keyed on the new calendar date, so at 00:00 the open session looked as if it
+        // had been clocked out (and could not be clocked out). Past the threshold it is left to
+        // the stale prior-day "missing clock-out" attention in GetTodayAsync.
+        var carriedOver = await attendance.GetAnyOpenRecordAsync(tenantId, employee.Id, ct);
+        var carryOverDate = IsCarriedOverSession(carriedOver, calendarWorkDate, utcNow)
+            ? carriedOver!.Date
+            : (DateOnly?)null;
+        if (carryOverDate is DateOnly sessionDate)
+            scheduleResolution = AttendanceScheduleResolver.ResolveForDate(legalEntity, sessionDate, utcNow);
+
         var timezone = scheduleResolution.Timezone;
         var zone = scheduleResolution.TimeZone;
         var workDate = scheduleResolution.WorkDate;
         var localNow = scheduleResolution.LocalNow;
         var schedule = scheduleResolution.Schedule;
+        // Breaks taken after midnight still belong to the carried-over session.
+        var localDayWindow = carryOverDate is not null
+            ? new AttendanceLocalDayWindow(
+                GetLocalDayWindow(workDate, zone).Start,
+                GetLocalDayWindow(calendarWorkDate, zone).End)
+            : GetLocalDayWindow(workDate, zone);
 
         var expectedAreaResult = await expectedWorkAreas.ResolveAsync(employee, legalEntity, workDate, ct);
         if (!expectedAreaResult.IsSuccess || expectedAreaResult.Value is null)
@@ -87,8 +107,16 @@ public sealed class AttendanceTodayStateService(
             policy.Policy,
             policy.Status,
             policy.AllowedMethods,
-            GetLocalDayWindow(workDate, zone)));
+            localDayWindow));
     }
+
+    /// <summary>True when <paramref name="openRecord"/> is a still-open session from an earlier
+    /// calendar day that has not yet reached the missing-clock-out threshold.</summary>
+    public static bool IsCarriedOverSession(
+        AttendanceRecord? openRecord, DateOnly calendarWorkDate, DateTimeOffset utcNow)
+        => openRecord is { ActualStart: DateTimeOffset start, ActualEnd: null }
+            && openRecord.Date < calendarWorkDate
+            && utcNow - start < AttendanceDayStatusResolver.MissingClockOutThreshold;
 
     public Task<Result<AttendanceTodayResponse>> GetTodayAsync(CancellationToken ct = default)
     {
