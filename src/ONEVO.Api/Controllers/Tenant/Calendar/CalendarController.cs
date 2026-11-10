@@ -45,9 +45,10 @@ public class CalendarController : ControllerBase
 
     [HttpGet]
     [RequirePermission("calendar:read")]
-    public async Task<IActionResult> GetEvents([FromQuery] DateTimeOffset from, [FromQuery] DateTimeOffset to, CancellationToken ct)
+    public async Task<IActionResult> GetEvents([FromQuery] DateTimeOffset from, [FromQuery] DateTimeOffset to,
+        [FromQuery] Guid? forEmployeeId, CancellationToken ct)
     {
-        var result = await _mediator.Send(new GetCalendarEventsQuery(from, to), ct);
+        var result = await _mediator.Send(new GetCalendarEventsQuery(from, to, forEmployeeId), ct);
         return result.IsSuccess
             ? Ok(result.Value!.ToViewModel())
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);

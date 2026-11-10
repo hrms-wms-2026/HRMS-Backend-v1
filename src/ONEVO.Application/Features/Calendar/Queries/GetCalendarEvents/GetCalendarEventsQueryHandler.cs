@@ -6,6 +6,8 @@ using ONEVO.Application.Features.Calendar.DTOs.Responses;
 using ONEVO.Application.Features.Calendar.RepositoryInterfaces;
 using ONEVO.Application.Features.Calendar.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Meetings.Contracts;
+using ONEVO.Application.Features.WorkManagement.Meetings.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Meetings.Services;
 using ONEVO.Domain.Features.Calendar.Entities;
 
@@ -16,7 +18,9 @@ public sealed class GetCalendarEventsQueryHandler(
     IEmployeeRepository employees,
     ICalendarEventRepository events,
     ICalendarRecurrenceExpander expander,
-    MeetingCalendarProjection? meetings = null)
+    MeetingCalendarProjection? meetings = null,
+    IMeetingDelegateRepository? delegates = null,
+    IDateTimeProvider? clock = null)
     : IRequestHandler<GetCalendarEventsQuery, Result<CalendarEventsResponse>>
 {
     private static readonly Guid OccurrenceIdNamespace = Guid.Parse("6f1f9b2a-6c1e-4b7a-9c2e-8f6a1d2b3c4d");
@@ -28,9 +32,22 @@ public sealed class GetCalendarEventsQueryHandler(
 
         var tenantId = currentUser.TenantId;
         var employee = await employees.GetDefaultForUserAsync(tenantId, currentUser.UserId, ct);
+        // Whose calendar this is: the caller's, or a principal's for their active delegate.
+        var subjectUserId = currentUser.UserId;
+        if (request.ForEmployeeId is Guid forId && forId != employee?.Id)
+        {
+            var principal = employee is not null && delegates is not null && clock is not null
+                && await delegates.IsActiveDelegateAsync(tenantId, forId, employee.Id, clock.UtcNow, ct)
+                    ? await employees.GetByIdAsync(tenantId, forId, ct)
+                    : null;
+            if (principal is null)
+                return Result<CalendarEventsResponse>.Failure("You cannot see this person's calendar.", 403, MeetingErrorCodes.DelegateRequired);
+            employee = principal;
+            subjectUserId = principal.UserId;
+        }
 
         var realRows = await events.GetInDateRangeForCallerAsync(
-            tenantId, currentUser.UserId, employee?.Id, request.From, request.To, ct);
+            tenantId, subjectUserId, employee?.Id, request.From, request.To, ct);
 
         var participantsByEvent = await events.GetParticipantsForEventsAsync(tenantId, realRows.Select(e => e.Id).ToList(), ct);
         var guestsByEvent = await events.GetGuestsForEventsAsync(tenantId, realRows.Select(e => e.Id).ToList(), ct);
@@ -48,7 +65,7 @@ public sealed class GetCalendarEventsQueryHandler(
                 Guests: GuestSummaries(guestsByEvent, e.Id)));
         }
 
-        var masters = await events.GetRecurringMastersForCallerAsync(tenantId, currentUser.UserId, employee?.Id, request.To, ct);
+        var masters = await events.GetRecurringMastersForCallerAsync(tenantId, subjectUserId, employee?.Id, request.To, ct);
 
         foreach (var master in masters)
         {
@@ -86,14 +103,14 @@ public sealed class GetCalendarEventsQueryHandler(
         var organizerNames = new Dictionary<Guid, string?>();
         foreach (var creatorId in items.Select(i => i.CreatedById).Distinct())
         {
-            var organizer = creatorId == currentUser.UserId ? employee : await employees.GetDefaultForUserAsync(tenantId, creatorId, ct);
+            var organizer = creatorId == subjectUserId ? employee : await employees.GetDefaultForUserAsync(tenantId, creatorId, ct);
             organizerNames[creatorId] = organizer is null ? null : $"{organizer.FirstName} {organizer.LastName}";
         }
 
         var withConflictFlags = items.Select(item => item with
         {
             HasConflict = items.Any(other => other.Id != item.Id && other.StartDate < item.EndDate && item.StartDate < other.EndDate),
-            IsOrganizer = item.CreatedById == currentUser.UserId,
+            IsOrganizer = item.CreatedById == subjectUserId,
             OrganizerName = organizerNames[item.CreatedById]
         }).ToList();
 

@@ -2,6 +2,8 @@ using MediatR;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
+using ONEVO.Application.Features.WorkManagement.Meetings.Contracts;
+using ONEVO.Application.Features.WorkManagement.Meetings.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Planner.Contracts;
 using ONEVO.Application.Features.WorkManagement.Planner.Services;
 
@@ -14,7 +16,8 @@ public sealed record GetMyPlannerDayQuery(DateOnly? Date) : IRequest<Result<Plan
 public sealed record GetEmployeePlannerDayQuery(Guid EmployeeId, DateOnly? Date) : IRequest<Result<PlannerDayResponse>>;
 
 /// <summary>GET /planner/me/range?from=&amp;to=: the caller's days for the calendar grid.</summary>
-public sealed record GetMyPlannerRangeQuery(DateOnly From, DateOnly To) : IRequest<Result<PlannerRangeResponse>>;
+/// <param name="ForEmployeeId">A principal's days, for their active meeting delegate; null or the caller means the caller's own.</param>
+public sealed record GetMyPlannerRangeQuery(DateOnly From, DateOnly To, Guid? ForEmployeeId = null) : IRequest<Result<PlannerRangeResponse>>;
 
 /// <summary>GET /planner/me/focus: what the caller should work on.</summary>
 public sealed record GetMyPlannerFocusQuery : IRequest<Result<PlannerFocusResponse>>;
@@ -91,12 +94,17 @@ public sealed class PlannerRequestHandler :
     private readonly ICurrentUser _currentUser;
     private readonly ICallerIdentityResolver _identity;
     private readonly PlannerService _planner;
+    private readonly IMeetingDelegateRepository? _delegates;
+    private readonly IDateTimeProvider? _clock;
 
-    public PlannerRequestHandler(ICurrentUser currentUser, ICallerIdentityResolver identity, PlannerService planner)
+    public PlannerRequestHandler(ICurrentUser currentUser, ICallerIdentityResolver identity, PlannerService planner,
+        IMeetingDelegateRepository? delegates = null, IDateTimeProvider? clock = null)
     {
         _currentUser = currentUser;
         _identity = identity;
         _planner = planner;
+        _delegates = delegates;
+        _clock = clock;
     }
 
     public Task<Result<PlannerDayResponse>> Handle(GetMyPlannerDayQuery query, CancellationToken ct)
@@ -106,7 +114,16 @@ public sealed class PlannerRequestHandler :
         => AsCaller((tenant, me) => _planner.GetDayAsync(tenant, me, query.EmployeeId, query.Date, ct), ct);
 
     public Task<Result<PlannerRangeResponse>> Handle(GetMyPlannerRangeQuery query, CancellationToken ct)
-        => AsCaller((tenant, me) => _planner.GetRangeAsync(tenant, me, query.From, query.To, ct), ct);
+        => AsCaller(async (tenant, me) =>
+        {
+            if (query.ForEmployeeId is not Guid forId || forId == me)
+                return await _planner.GetRangeAsync(tenant, me, query.From, query.To, ct);
+            // A principal's days, read-only, for their active meeting delegate (spec "Seeing the principal's calendar").
+            return _delegates is not null && _clock is not null
+                && await _delegates.IsActiveDelegateAsync(tenant, forId, me, _clock.UtcNow, ct)
+                    ? await _planner.GetRangeAsync(tenant, forId, query.From, query.To, ct)
+                    : Result<PlannerRangeResponse>.Failure("You cannot see this person's planner.", 403, MeetingErrorCodes.DelegateRequired);
+        }, ct);
 
     public Task<Result<PlannerFocusResponse>> Handle(GetMyPlannerFocusQuery query, CancellationToken ct)
         => AsCaller((tenant, me) => _planner.GetFocusAsync(tenant, me, ct), ct);

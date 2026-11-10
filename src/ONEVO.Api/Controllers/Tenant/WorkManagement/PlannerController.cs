@@ -41,8 +41,9 @@ public sealed class PlannerController : ControllerBase
         => Respond(await _mediator.Send(new GetTeamPlannerRangeQuery(from, to, managerId), ct));
 
     [HttpGet("me/range")]
-    public async Task<IActionResult> MyRange([FromQuery] DateOnly from, [FromQuery] DateOnly to, CancellationToken ct)
-        => Respond(await _mediator.Send(new GetMyPlannerRangeQuery(from, to), ct));
+    public async Task<IActionResult> MyRange([FromQuery] DateOnly from, [FromQuery] DateOnly to, [FromQuery] Guid? forEmployeeId,
+        CancellationToken ct)
+        => Respond(await _mediator.Send(new GetMyPlannerRangeQuery(from, to, forEmployeeId), ct));
 
     [HttpGet("me/focus")]
     public async Task<IActionResult> MyFocus(CancellationToken ct)
