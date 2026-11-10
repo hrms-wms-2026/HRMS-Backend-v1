@@ -33,7 +33,7 @@ namespace ONEVO.Tests.Integration.CoreHr.OnboardingDraft;
 /// </summary>
 public sealed class OnboardingDraftsIntegrationTests : IAsyncLifetime
 {
-    private const string RestrictedRoleName = "onevo_app";
+    private const string RestrictedRoleName = "crownus_app";
     private const string RestrictedRolePassword = PrivilegedRoleTestBootstrap.AppRolePassword;
 
 

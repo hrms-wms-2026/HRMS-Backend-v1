@@ -45,9 +45,9 @@ public sealed class DotEnvLoaderTests
                 "CROWNUS_DB_NAME=CrownusDb",
                 "CROWNUS_DB_ADMIN_USER=postgres",
                 "CROWNUS_DB_ADMIN_PASSWORD=unit-test-admin-value",
-                "CROWNUS_DB_APP_USER=onevo_app",
+                "CROWNUS_DB_APP_USER=crownus_app",
                 "CROWNUS_DB_APP_PASSWORD=unit-test-app-value",
-                "CROWNUS_DB_MIGRATOR_USER=onevo_migrator",
+                "CROWNUS_DB_MIGRATOR_USER=crownus_migrator",
                 "CROWNUS_DB_MIGRATOR_PASSWORD=unit-test-migrator-value",
                 "ConnectionStrings__DefaultConnection=Host=ignored;Username=ignored;Password=ignored",
                 "ConnectionStrings__MigrationConnection=Host=ignored;Username=ignored;Password=ignored"
@@ -63,9 +63,9 @@ public sealed class DotEnvLoaderTests
                 Environment.GetEnvironmentVariable("ConnectionStrings__MigrationConnection"));
 
             Assert.Equal("CrownusDb", Environment.GetEnvironmentVariable("CROWNUS_DB_NAME"));
-            Assert.Equal("onevo_app", runtime.UserID);
+            Assert.Equal("crownus_app", runtime.UserID);
             Assert.Equal("unit-test-app-value", runtime.Password);
-            Assert.Equal("onevo_migrator", migration.UserID);
+            Assert.Equal("crownus_migrator", migration.UserID);
             Assert.Equal("unit-test-migrator-value", migration.Password);
             Assert.NotEqual("unit-test-admin-value", runtime.Password);
             Assert.NotEqual("unit-test-admin-value", migration.Password);
@@ -104,9 +104,9 @@ public sealed class DotEnvLoaderTests
                 "CROWNUS_DB_HOST=localhost",
                 "CROWNUS_DB_PORT=5432",
                 "CROWNUS_DB_NAME=CrownusDb",
-                "CROWNUS_DB_APP_USER=onevo_app",
+                "CROWNUS_DB_APP_USER=crownus_app",
                 "CROWNUS_DB_APP_PASSWORD=unit-test-app-value",
-                "CROWNUS_DB_MIGRATOR_USER=onevo_migrator",
+                "CROWNUS_DB_MIGRATOR_USER=crownus_migrator",
                 "CROWNUS_DB_MIGRATOR_PASSWORD=unit-test-migrator-value"
             ]);
 
@@ -139,9 +139,9 @@ public sealed class DotEnvLoaderTests
                 "CROWNUS_DB_HOST=localhost",
                 "CROWNUS_DB_PORT=5432",
                 "CROWNUS_DB_NAME=CrownusDb",
-                "CROWNUS_DB_APP_USER=onevo_app",
+                "CROWNUS_DB_APP_USER=crownus_app",
                 "CROWNUS_DB_APP_PASSWORD=<local-app-password>",
-                "CROWNUS_DB_MIGRATOR_USER=onevo_migrator",
+                "CROWNUS_DB_MIGRATOR_USER=crownus_migrator",
                 "CROWNUS_DB_MIGRATOR_PASSWORD=<local-migrator-password>"
             ]);
 
@@ -187,9 +187,9 @@ public sealed class DotEnvLoaderTests
                 Environment.GetEnvironmentVariable("ConnectionStrings__MigrationConnection"));
 
             Assert.StartsWith("root-host,", runtime.DataSource);
-            Assert.Equal("onevo_app", runtime.UserID);
+            Assert.Equal("crownus_app", runtime.UserID);
             Assert.StartsWith("root-host,", migration.DataSource);
-            Assert.Equal("onevo_migrator", migration.UserID);
+            Assert.Equal("crownus_migrator", migration.UserID);
         }
         finally
         {
@@ -251,9 +251,9 @@ public sealed class DotEnvLoaderTests
             "CROWNUS_DB_NAME=CrownusDb",
             "CROWNUS_DB_ADMIN_USER=postgres",
             "CROWNUS_DB_ADMIN_PASSWORD=unit-test-admin-value",
-            "CROWNUS_DB_APP_USER=onevo_app",
+            "CROWNUS_DB_APP_USER=crownus_app",
             "CROWNUS_DB_APP_PASSWORD=unit-test-app-value",
-            "CROWNUS_DB_MIGRATOR_USER=onevo_migrator",
+            "CROWNUS_DB_MIGRATOR_USER=crownus_migrator",
             "CROWNUS_DB_MIGRATOR_PASSWORD=unit-test-migrator-value",
             "ConnectionStrings__DefaultConnection=Host=ignored;Username=ignored;Password=ignored",
             "ConnectionStrings__MigrationConnection=Host=ignored;Username=ignored;Password=ignored"

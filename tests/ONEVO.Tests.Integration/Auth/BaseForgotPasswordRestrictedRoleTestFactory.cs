@@ -5,7 +5,7 @@ using Microsoft.Extensions.Configuration;
 namespace ONEVO.Tests.Integration.Auth;
 
 /// <summary>
-/// WebApplicationFactory for forgot-password HTTP tests that must prove the real onevo_app
+/// WebApplicationFactory for forgot-password HTTP tests that must prove the real crownus_app
 /// runtime role + TenantRlsInterceptor combination end to end. Deliberately does NOT override
 /// ApplicationDbContext's registration in ConfigureServices - unlike BaseDomainLoginTestFactory
 /// and E2ETestFactory (which strip out AddInfrastructure's DbContext registration and rebind
@@ -13,16 +13,16 @@ namespace ONEVO.Tests.Integration.Auth;
 /// TenantRlsInterceptor - see the identical warning on BaseForgotPasswordRlsIntegrationTests and
 /// TenantSessionRlsIntegrationTests), this factory lets Program.cs's own
 /// ONEVO.Infrastructure.DependencyInjection.AddInfrastructure(...) wire ApplicationDbContext
-/// exactly like production does: the onevo_app connection string, with TenantRlsInterceptor.
+/// exactly like production does: the crownus_app connection string, with TenantRlsInterceptor.
 ///
 /// AddInfrastructure reads configuration.GetConnectionString("DefaultConnection") eagerly, as part
 /// of Program.cs's top-level statements, before WebApplicationFactory.ConfigureWebHost is ever
 /// applied - so the ConfigureAppConfiguration override below only reaches post-Build() config
 /// consumers (e.g. the /health/ready postgres check), never AddInfrastructure's own DbContext
 /// wiring. The caller MUST therefore set the ConnectionStrings__DefaultConnection process
-/// environment variable to the onevo_app connection string (IntegrationTestEnvironmentScope,
+/// environment variable to the crownus_app connection string (IntegrationTestEnvironmentScope,
 /// constructed with the admin connection string, derives this automatically) BEFORE constructing
-/// this factory, and pass that same onevo_app connection string into this constructor.
+/// this factory, and pass that same crownus_app connection string into this constructor.
 ///
 /// Requires Docker.
 /// </summary>
@@ -56,7 +56,7 @@ public sealed class BaseForgotPasswordRestrictedRoleTestFactory : WebApplication
 
         // Deliberately no service overrides here. ApplicationDbContext must remain exactly what
         // Program.cs's AddInfrastructure(builder.Configuration) registers in production: the
-        // onevo_app connection string (supplied via the process environment variable set before
+        // crownus_app connection string (supplied via the process environment variable set before
         // this factory was constructed) with TenantRlsInterceptor wired.
     }
 }

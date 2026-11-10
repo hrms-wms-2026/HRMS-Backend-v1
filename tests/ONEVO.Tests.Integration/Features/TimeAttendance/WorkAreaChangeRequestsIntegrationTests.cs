@@ -85,7 +85,7 @@ public sealed class WorkAreaChangeRequestsIntegrationTestsFixture : IAsyncLifeti
     public SqlConnection OpenAppRoleConnection()
         => new(new SqlConnectionStringBuilder(ConnectionString)
         {
-            UserID = "onevo_app",
+            UserID = "crownus_app",
             Password = PrivilegedRoleTestBootstrap.AppRolePassword
         }.ConnectionString);
 
@@ -103,7 +103,7 @@ public sealed class WorkAreaChangeRequestsIntegrationTestsFixture : IAsyncLifeti
 /// <summary>
 /// Focused PostgreSQL coverage for the Work Area persistence contract. The tests intentionally use
 /// an administrator connection only to migrate and seed synthetic rows, then use the restricted
-/// onevo_app role for every RLS assertion. No superuser-only query is treated as proof of tenant
+/// crownus_app role for every RLS assertion. No superuser-only query is treated as proof of tenant
 /// isolation.
 /// </summary>
 public sealed class WorkAreaChangeRequestsIntegrationTests : IClassFixture<WorkAreaChangeRequestsIntegrationTestsFixture>

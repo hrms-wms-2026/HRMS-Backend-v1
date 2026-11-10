@@ -42,7 +42,7 @@ namespace ONEVO.Tests.Integration.CoreHr.Employee;
 /// </summary>
 public sealed class EmployeesListIntegrationTestsFixture : IAsyncLifetime
 {
-    private const string RestrictedRoleName = "onevo_app";
+    private const string RestrictedRoleName = "crownus_app";
     private const string RestrictedRolePassword = PrivilegedRoleTestBootstrap.AppRolePassword;
 
     private readonly SystemDateTimeProvider _clock = new();

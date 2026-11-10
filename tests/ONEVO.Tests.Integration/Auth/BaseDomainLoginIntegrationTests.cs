@@ -38,7 +38,7 @@ public sealed class BaseDomainLoginIntegrationTestsFixture : IAsyncLifetime
     public async Task InitializeAsync()
     {
         // Cloned from the shared, already-migrated template (see SharedSqlServerTemplate) - roles
-        // and migrations already exist before the environment scope's onevo_app connection string
+        // and migrations already exist before the environment scope's crownus_app connection string
         // is opened by Program.cs's pre-Build() DatabaseConnectionStartupValidator, and the
         // environment scope must be in place before BaseDomainLoginTestFactory is constructed -
         // accessing _factory.Services/CreateClient() is what first triggers Program.cs's top-level

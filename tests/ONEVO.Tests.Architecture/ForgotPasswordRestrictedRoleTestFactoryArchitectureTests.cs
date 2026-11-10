@@ -5,7 +5,7 @@ namespace ONEVO.Tests.Architecture;
 /// <summary>
 /// Guards BaseForgotPasswordRestrictedRoleTestFactory, the WebApplicationFactory
 /// BaseForgotPasswordRestrictedRoleHttpIntegrationTests uses to prove
-/// POST /api/v1/auth/forgot-password enforces RLS over real HTTP under the restricted onevo_app
+/// POST /api/v1/auth/forgot-password enforces RLS over real HTTP under the restricted crownus_app
 /// runtime role. Every other WebApplicationFactory in this suite (BaseDomainLoginTestFactory,
 /// E2ETestFactory) strips out AddInfrastructure's ApplicationDbContext registration in
 /// ConfigureServices and rebinds it directly to whatever connection string the test passes in -
@@ -13,7 +13,7 @@ namespace ONEVO.Tests.Architecture;
 /// BaseForgotPasswordRlsIntegrationTests' own doc comment and
 /// FORGOT_PASSWORD_DELIVERY_HARDENING_REPORT.md's correction). This factory is deliberately built
 /// differently: it must leave Program.cs's own AddInfrastructure(...) wiring completely untouched
-/// (real TenantRlsInterceptor, real onevo_app connection string supplied via process environment
+/// (real TenantRlsInterceptor, real crownus_app connection string supplied via process environment
 /// variables) so the HTTP path is an actual proof of RLS enforcement, not just of routing.
 /// </summary>
 public sealed class ForgotPasswordRestrictedRoleTestFactoryArchitectureTests
@@ -58,8 +58,8 @@ public sealed class ForgotPasswordRestrictedRoleTestFactoryArchitectureTests
     {
         var source = ReadSource("BaseForgotPasswordRestrictedRoleTestFactory.cs");
 
-        source.Should().Contain("onevo_app",
-            "the factory's doc comment must make explicit that callers must supply the onevo_app " +
+        source.Should().Contain("crownus_app",
+            "the factory's doc comment must make explicit that callers must supply the crownus_app " +
             "connection string (e.g. IntegrationTestEnvironmentScope.DefaultConnectionString), never " +
             "the Testcontainers superuser one");
     }

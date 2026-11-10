@@ -29,7 +29,7 @@ using Xunit;
 
 namespace ONEVO.Tests.Integration.SqlServerMigration;
 
-/// <summary>Every rewritten statement, run as onevo_app under RLS against real SQL Server.</summary>
+/// <summary>Every rewritten statement, run as crownus_app under RLS against real SQL Server.</summary>
 [Collection(SqlServerCollection.Name)]
 public sealed class RawSqlBehaviourTests(SqlServerFixture fixture) : IAsyncLifetime
 {

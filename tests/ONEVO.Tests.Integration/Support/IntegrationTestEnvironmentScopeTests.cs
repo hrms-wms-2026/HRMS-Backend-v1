@@ -46,8 +46,8 @@ public sealed class IntegrationTestEnvironmentScopeTests
     {
         using var scope = new IntegrationTestEnvironmentScope(AdminConnectionString);
 
-        new SqlConnectionStringBuilder(scope.DefaultConnectionString).UserID.Should().Be("onevo_app");
-        new SqlConnectionStringBuilder(scope.MigrationConnectionString).UserID.Should().Be("onevo_migrator");
+        new SqlConnectionStringBuilder(scope.DefaultConnectionString).UserID.Should().Be("crownus_app");
+        new SqlConnectionStringBuilder(scope.MigrationConnectionString).UserID.Should().Be("crownus_migrator");
     }
 
     [Fact]

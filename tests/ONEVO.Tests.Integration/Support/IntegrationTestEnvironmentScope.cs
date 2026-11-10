@@ -50,9 +50,9 @@ public sealed class IntegrationTestEnvironmentScope : IDisposable, IAsyncDisposa
     public IntegrationTestEnvironmentScope(string adminConnectionString)
     {
         DefaultConnectionString = BuildConnectionString(
-            adminConnectionString, "onevo_app", PrivilegedRoleTestBootstrap.AppRolePassword);
+            adminConnectionString, "crownus_app", PrivilegedRoleTestBootstrap.AppRolePassword);
         MigrationConnectionString = BuildConnectionString(
-            adminConnectionString, "onevo_migrator", PrivilegedRoleTestBootstrap.MigratorRolePassword);
+            adminConnectionString, "crownus_migrator", PrivilegedRoleTestBootstrap.MigratorRolePassword);
 
         foreach (var key in ManagedKeys)
         {

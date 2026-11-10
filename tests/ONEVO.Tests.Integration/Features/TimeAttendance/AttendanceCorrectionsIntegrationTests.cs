@@ -82,10 +82,10 @@ public sealed class AttendanceCorrectionsIntegrationTestsFixture : IAsyncLifetim
         }
 
         // AdminTestFactory/IntegrationDatabaseBootstrap migrates as the Testcontainers superuser
-        // (see E2ETestFactory.ConfigureWebHost), not as onevo_migrator, so the production
-        // ALTER DEFAULT PRIVILEGES ... TO onevo_app mechanism (ops/postgres/local-bootstrap-roles.sql)
-        // never fires here and onevo_app has no grants on any table by default in this suite. The
-        // CrossTenant_* tests below are the only tests in this class that connect as onevo_app
+        // (see E2ETestFactory.ConfigureWebHost), not as crownus_migrator, so the production
+        // ALTER DEFAULT PRIVILEGES ... TO crownus_app mechanism (ops/postgres/local-bootstrap-roles.sql)
+        // never fires here and crownus_app has no grants on any table by default in this suite. The
+        // CrossTenant_* tests below are the only tests in this class that connect as crownus_app
         // (to exercise real RLS), so they need this table's privileges granted explicitly.
         await using (var adminConnection = TestDb.CreateConnection(_connectionString))
         {
@@ -200,7 +200,7 @@ public sealed class AttendanceCorrectionsIntegrationTestsFixture : IAsyncLifetim
     }
 
     /// <summary>
-    /// Opens an independent connection as the restricted onevo_app role, with the same
+    /// Opens an independent connection as the restricted crownus_app role, with the same
     /// TenantRlsInterceptor production uses, scoped to the given tenant - unlike every other
     /// DbContext in this file (which comes from the WebApplicationFactory's DI container and
     /// therefore connects as the Testcontainers superuser, bypassing RLS entirely; see
@@ -211,7 +211,7 @@ public sealed class AttendanceCorrectionsIntegrationTestsFixture : IAsyncLifetim
     {
         var appRoleConnectionString = new SqlConnectionStringBuilder(_connectionString)
         {
-            UserID = "onevo_app",
+            UserID = "crownus_app",
             Password = PrivilegedRoleTestBootstrap.AppRolePassword
         }.ConnectionString;
 

@@ -8,7 +8,7 @@ namespace ONEVO.Infrastructure.Migrations
 {
     /// <summary>
     /// The pre-tenant login lookup and the database triggers. Grants on these objects are in
-    /// ops/sqlserver/post-migration-grants.sql, because onevo_migrator cannot grant them.
+    /// ops/sqlserver/post-migration-grants.sql, because crownus_migrator cannot grant them.
     /// </summary>
     [DbContext(typeof(ApplicationDbContext))]
     [Migration("20261108000100_AddAuthLookupAndTriggers")]
@@ -23,7 +23,7 @@ namespace ONEVO.Infrastructure.Migrations
             migrationBuilder.Sql("""
                 CREATE PROCEDURE auth_internal.auth_lookup_base_login_candidates
                     @normalized_email nvarchar(255)
-                WITH EXECUTE AS N'onevo_auth_base_login_fn_owner'
+                WITH EXECUTE AS N'crownus_auth_base_login_fn_owner'
                 AS
                 BEGIN
                     SET NOCOUNT ON;

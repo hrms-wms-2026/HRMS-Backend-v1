@@ -79,7 +79,7 @@ public class ConfigurationStartupValidatorTests
 
     [Theory]
     [InlineData("Server=localhost;Database=CrownusDb;User ID=sa;Password=x", true)]
-    [InlineData("Server=localhost;Database=CrownusDb;User ID=onevo_app;Password=x", false)]
+    [InlineData("Server=localhost;Database=CrownusDb;User ID=crownus_app;Password=x", false)]
     [InlineData("Host=localhost;Database=CrownusDb;Username=sa;Password=x", false)]
     public async Task StartAsync_WarnsOnlyWhenDefaultConnectionUsesTheAdminLogin(
         string connectionString, bool expectWarning)

@@ -111,7 +111,7 @@ public sealed class UserIntegrationConnectionPersistenceTests : IAsyncLifetime
         Assert.Equal(547, invalid.Number);
 
         await ExecuteAsync(connection, TestDb.EnableForeignKeysSql("user_integration_connections"));
-        await ExecuteAsync(connection, "EXECUTE AS USER = 'onevo_app'");
+        await ExecuteAsync(connection, "EXECUTE AS USER = 'crownus_app'");
         await ExecuteAsync(connection, "EXEC sp_set_session_context N'app.tenant_context_mode', N'tenant'");
         await ExecuteAsync(
             connection,

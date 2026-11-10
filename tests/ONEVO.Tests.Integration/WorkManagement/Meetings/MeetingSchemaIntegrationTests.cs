@@ -79,7 +79,7 @@ public sealed class MeetingSchemaIntegrationTests
 
         await using var connection = TestDb.CreateConnection(a.ConnectionString);
         await connection.OpenAsync();
-        await RunAsync(connection, "EXECUTE AS USER = 'onevo_app'");
+        await RunAsync(connection, "EXECUTE AS USER = 'crownus_app'");
         try
         {
             await RunAsync(connection, "EXEC sp_set_session_context N'app.tenant_context_mode', N'tenant'");
@@ -184,7 +184,7 @@ public sealed class MeetingSchemaIntegrationTests
 
         await using var connection = TestDb.CreateConnection(h.ConnectionString);
         await connection.OpenAsync();
-        await RunAsync(connection, "EXECUTE AS USER = 'onevo_app'");
+        await RunAsync(connection, "EXECUTE AS USER = 'crownus_app'");
         try
         {
             await UseTenantAsync(connection, h.TenantId);

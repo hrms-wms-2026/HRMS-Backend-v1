@@ -44,7 +44,7 @@ function Invoke-Script([string]$file) {
 try {
     Invoke-Script "bootstrap-logins.sql"
     if ($RunMigrations) {
-        $builder = "Server=$Server;Database=$Database;User ID=onevo_migrator;Password=$migratorPassword;TrustServerCertificate=True"
+        $builder = "Server=$Server;Database=$Database;User ID=crownus_migrator;Password=$migratorPassword;TrustServerCertificate=True"
         $env:ConnectionStrings__MigrationConnection = $builder
         dotnet ef database update -p (Join-Path $root "src/ONEVO.Infrastructure") -s (Join-Path $root "src/ONEVO.Api")
         if ($LASTEXITCODE -ne 0) { throw "Migrations failed." }

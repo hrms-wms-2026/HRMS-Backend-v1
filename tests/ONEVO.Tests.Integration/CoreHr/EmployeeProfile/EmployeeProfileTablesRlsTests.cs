@@ -25,7 +25,7 @@ namespace ONEVO.Tests.Integration.CoreHr.EmployeeProfile;
 /// </summary>
 public sealed class EmployeeProfileTablesRlsTests : IAsyncLifetime
 {
-    private const string RestrictedRoleName = "onevo_app";
+    private const string RestrictedRoleName = "crownus_app";
     private const string RestrictedRolePassword = PrivilegedRoleTestBootstrap.AppRolePassword;
 
 

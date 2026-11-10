@@ -108,8 +108,8 @@ public sealed class TestDatabase(string masterConnection, string name)
     public string Name { get; } = name;
 
     public string Admin => Connection(null, null);
-    public string App => Connection("onevo_app", SqlServerFixture.AppPassword);
-    public string Migrator => Connection("onevo_migrator", SqlServerFixture.MigratorPassword);
+    public string App => Connection("crownus_app", SqlServerFixture.AppPassword);
+    public string Migrator => Connection("crownus_migrator", SqlServerFixture.MigratorPassword);
 
     public ApplicationDbContext CreateMigratorContext() => CreateContext(Migrator);
 
