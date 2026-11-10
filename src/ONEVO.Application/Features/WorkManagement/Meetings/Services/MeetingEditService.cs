@@ -33,11 +33,15 @@ public sealed class MeetingEditService
     private readonly IMeetingNotifier _notifier;
     private readonly IMeetingRecurrence _recurrence;
 
+    /// <summary>Audits what a meeting delegate does (spec "Audit log"); null writes nothing.</summary>
+    private readonly IMeetingDelegateAudit? _audit;
+
     public MeetingEditService(IOptions<MeetingsOptions> options, IMeetingRepository meetings, IMeetingOccurrenceWriter writer,
         IMeetingOccurrenceMaterializer materializer, IMeetingAccessResolver access, IUnitOfWork unitOfWork, IDateTimeProvider clock,
         IMeetingSeriesSplitter splitter, IMeetingRecurrence recurrence,
-        IMeetingNotifier notifier)
+        IMeetingNotifier notifier, IMeetingDelegateAudit? audit = null)
     {
+        _audit = audit;
         _splitter = splitter;
         _notifier = notifier;
         _recurrence = recurrence;
@@ -70,11 +74,22 @@ public sealed class MeetingEditService
                 var series = await _meetings.GetSeriesTrackedAsync(tenantId, seriesId, innerCt);
                 if (series is null)
                     return MeetingReadService.NotFound<MeetingEditResponse>();
+                var before = SeriesValues(series);
                 var result = edit.Scope == MeetingScopes.This
                     ? await EditOccurrenceAsync(tenantId, callerEmployeeId, callerUserId, series, originalStart, edit, innerCt)
                     : await EditSeriesAsync(tenantId, callerEmployeeId, callerUserId, series, originalStart, edit, innerCt);
                 if (result.IsSuccess)
+                {
+                    var changed = ChangedValues(edit);
+                    await AuditIfDelegatedAsync(series, callerEmployeeId, MeetingAuditActions.Edited,
+                        new Dictionary<string, object?>(changed)
+                        {
+                            ["scope"] = edit.Scope, ["originalStart"] = originalStart, ["changedFields"] = changed.Keys.Append(
+                                edit.Description is null ? null : "description").OfType<string>().ToList(),
+                        },
+                        before.Where(b => changed.ContainsKey(b.Key)).ToDictionary(b => b.Key, b => b.Value), innerCt);
                     await _unitOfWork.SaveChangesAsync(innerCt);
+                }
                 return result;
             }, ct);
         }
@@ -255,4 +270,30 @@ public sealed class MeetingEditService
 
     private static Result<MeetingEditResponse> Changed()
         => Result<MeetingEditResponse>.Failure("Someone else changed this meeting. Reload and try again.", 409, MeetingErrorCodes.Changed);
+
+    private Task AuditIfDelegatedAsync(MeetingSeries series, Guid callerEmployeeId, string action, object newValues, object? oldValues,
+        CancellationToken ct)
+        => _audit is null ? Task.CompletedTask : _audit.RecordIfDelegatedAsync(series, callerEmployeeId, action, newValues, oldValues, ct);
+
+    /// <summary>The fields an edit sets, by their audit names. The description is never copied (spec "Audit log": privacy).</summary>
+    private static Dictionary<string, object?> ChangedValues(EditMeetingRequest edit)
+    {
+        var changed = new Dictionary<string, object?>();
+        if (edit.Title is not null) changed["title"] = edit.Title;
+        if (edit.Location is not null) changed["location"] = edit.Location;
+        if (edit.IsPrivate is not null) changed["isPrivate"] = edit.IsPrivate;
+        if (edit.Start is not null) changed["start"] = edit.Start;
+        if (edit.DurationMinutes is not null) changed["durationMinutes"] = edit.DurationMinutes;
+        if (edit.IsAllDay is not null) changed["isAllDay"] = edit.IsAllDay;
+        if (edit.Timezone is not null) changed["timezone"] = edit.Timezone;
+        if (edit.RecurrenceRule is not null) changed["recurrenceRule"] = edit.RecurrenceRule;
+        return changed;
+    }
+
+    /// <summary>The series' values before an edit, under the same names.</summary>
+    private static Dictionary<string, object?> SeriesValues(MeetingSeries s) => new()
+    {
+        ["title"] = s.Title, ["location"] = s.Location, ["isPrivate"] = s.IsPrivate, ["start"] = s.DtStart,
+        ["durationMinutes"] = s.DurationMinutes, ["isAllDay"] = s.IsAllDay, ["timezone"] = s.Timezone, ["recurrenceRule"] = s.RecurrenceRule,
+    };
 }

@@ -21,8 +21,12 @@ public sealed class MeetingTestClock(DateTimeOffset now) : IDateTimeProvider
 /// <summary>The real meeting services over one context (Meetings:Create on), for service-level integration tests.</summary>
 public sealed class MeetingTestServices
 {
-    public MeetingTestServices(ApplicationDbContext db, IDateTimeProvider clock)
+    /// <param name="audit">Meeting delegate audit, for delegate tests; without it nothing is audited.</param>
+    /// <param name="delegates">Meeting delegates, for delegate tests; without it nobody acts for an organizer.</param>
+    public MeetingTestServices(ApplicationDbContext db, IDateTimeProvider clock,
+        IMeetingDelegateAudit? audit = null, ONEVO.Application.Features.WorkManagement.Meetings.RepositoryInterfaces.IMeetingDelegateRepository? delegates = null)
     {
+        Audit = audit;
         Db = db;
         Clock = clock;
         Meetings = new EfMeetingRepository(db);
@@ -30,7 +34,7 @@ public sealed class MeetingTestServices
         UnitOfWork = new UnitOfWork(db);
         Recurrence = new IcalNetMeetingRecurrence();
         Projects = new EfProjectRepository(db);
-        Access = new MeetingAccessResolver(Meetings);
+        Access = new MeetingAccessResolver(Meetings, delegates, delegates is null ? null : clock);
         Links = new EfMeetingLinkRepository(db);
         Options = Microsoft.Extensions.Options.Options.Create(new MeetingsOptions { Create = true });
         Materializer = new MeetingOccurrenceMaterializer(Meetings, Writer,
@@ -41,9 +45,11 @@ public sealed class MeetingTestServices
                 new ONEVO.Infrastructure.Persistence.Repositories.CoreHr.EfEmployeeRepository(db)),
             Meetings, Links, new EfEmployeeRepository(db), clock);
         Splitter = new MeetingSeriesSplitter(Meetings, Writer, Materializer, Recurrence, UnitOfWork, clock, Links);
-        Edits = new MeetingEditService(Options, Meetings, Writer, Materializer, Access, UnitOfWork, clock, Splitter, Recurrence, Notifier);
-        Cancels = new MeetingCancelService(Options, Meetings, Writer, Materializer, Access, UnitOfWork, clock, Notifier, LinkService(new NoProvisioner()));
-        Attendees = new MeetingAttendeeService(Options, Meetings, Writer, Materializer, Access, new EfEmployeeRepository(db), UnitOfWork, clock, Notifier);
+        Edits = new MeetingEditService(Options, Meetings, Writer, Materializer, Access, UnitOfWork, clock, Splitter, Recurrence, Notifier, audit);
+        Cancels = new MeetingCancelService(Options, Meetings, Writer, Materializer, Access, UnitOfWork, clock, Notifier, LinkService(new NoProvisioner()),
+            audit);
+        Attendees = new MeetingAttendeeService(Options, Meetings, Writer, Materializer, Access, new EfEmployeeRepository(db), UnitOfWork, clock, Notifier,
+            audit);
         Factory = new MeetingSeriesFactory(Meetings, Writer, new MeetingTaskDefaults(new EfTaskCategoryRepository(db), new EfTaskStatusRepository(db)),
             Projects, new EfEmployeeRepository(db), Recurrence, UnitOfWork, clock, Materializer, Notifier,
             new ONEVO.Infrastructure.Persistence.Repositories.Calendar.EfExternalCalendarConnectionRepository(db), Links, LinkService(new NoProvisioner()));
@@ -54,7 +60,7 @@ public sealed class MeetingTestServices
         MeetingsOptions? options = null)
         => new(Links, Meetings, Writer, new ONEVO.Infrastructure.Persistence.Repositories.Calendar.EfExternalCalendarConnectionRepository(Db),
             provisioner, Notifier, Recurrence, new EfEmployeeRepository(Db), Outbox, UnitOfWork, Clock, Access,
-            options is null ? Options : Microsoft.Extensions.Options.Options.Create(options));
+            options is null ? Options : Microsoft.Extensions.Options.Options.Create(options), Audit);
 
     /// <summary>The per-occurrence attendance sync over these services, with the given provider session client.</summary>
     public MeetingAttendanceSyncService AttendanceSync(ONEVO.Application.Features.Calendar.ServiceInterfaces.IMeetingAttendanceSessionClient client,
@@ -94,6 +100,7 @@ public sealed class MeetingTestServices
     }
 
     public ApplicationDbContext Db { get; }
+    public IMeetingDelegateAudit? Audit { get; }
     public IDateTimeProvider Clock { get; }
     public EfMeetingRepository Meetings { get; }
     public EfMeetingOccurrenceWriter Writer { get; }

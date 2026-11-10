@@ -45,11 +45,15 @@ public sealed class MeetingMoveService
     private readonly IMeetingLinkRepository _links;
     private readonly IMeetingApprovalSnapshotBuilder _snapshots;
 
+    /// <summary>Audits what a meeting delegate does (spec "Audit log"); null writes nothing.</summary>
+    private readonly IMeetingDelegateAudit? _audit;
+
     public MeetingMoveService(IOptions<MeetingsOptions> options, IMeetingRepository meetings, IMeetingOccurrenceWriter writer,
         IMeetingOccurrenceMaterializer materializer, IMeetingAccessResolver access, IMeetingPlacementResolver placements,
         IWorkApprovalEngine approvals, IMeetingSeriesSplitter splitter, IMeetingRecurrence recurrence, IUnitOfWork unitOfWork,
-        IDateTimeProvider clock, IMeetingLinkRepository links, IMeetingApprovalSnapshotBuilder snapshots)
+        IDateTimeProvider clock, IMeetingLinkRepository links, IMeetingApprovalSnapshotBuilder snapshots, IMeetingDelegateAudit? audit = null)
     {
+        _audit = audit;
         _links = links;
         _snapshots = snapshots;
         _options = options;
@@ -78,7 +82,8 @@ public sealed class MeetingMoveService
         if (move.ProjectId == series.ProjectId && move.ObjectiveId == series.ObjectiveId)
             return Result<MeetingMoveResponse>.Failure("The meeting is already in this module.", 400, MeetingErrorCodes.SameModule);
 
-        var destination = await _placements.ResolveAsync(tenantId, caller, move.ProjectId, move.ObjectiveId, ct);
+        // The destination and any approval are the organizer's, also when a delegate moves the meeting for them.
+        var destination = await _placements.ResolveAsync(tenantId, series.OrganizerEmployeeId, move.ProjectId, move.ObjectiveId, ct);
         if (!destination.IsSuccess)
             return Result<MeetingMoveResponse>.Failure(destination.Error!, destination.StatusCode ?? 400, destination.ErrorCode);
         var payload = new MeetingMovePayload(seriesId, originalStart.ToUniversalTime(), move.Scope, move.ProjectId, move.ObjectiveId);
@@ -91,18 +96,27 @@ public sealed class MeetingMoveService
                 {
                     var snapshot = await _snapshots.ForMoveAsync(tenantId, series, payload.OriginalStart, move.Scope, move.ProjectId,
                         move.ObjectiveId, innerCt);
-                    var decision = await _approvals.SubmitAsync(new WorkAction(tenantId, move.ProjectId, caller, WorkActionTypes.MeetingMove,
+                    var decision = await _approvals.SubmitAsync(new WorkAction(tenantId, move.ProjectId, series.OrganizerEmployeeId,
+                        WorkActionTypes.MeetingMove,
                         WorkTargetTypes.Meeting, seriesId, series.Title, move.ObjectiveId, PositionModuleId: null,
                         JsonSerializer.Serialize(payload with { Snapshot = snapshot }, Json), TargetUpdatedAt: series.UpdatedAt), innerCt);
                     if (!decision.IsSuccess)
                         return Result<MeetingMoveResponse>.Failure(decision.Error!, decision.StatusCode ?? 400, decision.ErrorCode);
                     if (!decision.Value!.IsDirect)
                     {
+                        await AuditIfDelegatedAsync(series, caller, MeetingAuditActions.Moved, MoveValues(payload, "requested"),
+                            new { projectId = series.ProjectId, objectiveId = series.ObjectiveId }, innerCt);
                         await _unitOfWork.SaveChangesAsync(innerCt);
                         return Result<MeetingMoveResponse>.Success(new MeetingMoveResponse("requested", null, decision.Value.ApprovalRequestId));
                     }
                 }
                 var applied = await ApplyAsync(tenantId, caller, callerUserId, payload, innerCt);
+                if (applied.IsSuccess && _audit is not null && caller != series.OrganizerEmployeeId)
+                {
+                    await AuditIfDelegatedAsync(series, caller, MeetingAuditActions.Moved, MoveValues(payload, "moved"),
+                        new { projectId = series.ProjectId, objectiveId = series.ObjectiveId }, innerCt);
+                    await _unitOfWork.SaveChangesAsync(innerCt);
+                }
                 return applied.IsSuccess
                     ? Result<MeetingMoveResponse>.Success(new MeetingMoveResponse("moved", applied.Value, null))
                     : Result<MeetingMoveResponse>.Failure(applied.Error!, applied.StatusCode ?? 409, applied.ErrorCode);
@@ -219,4 +233,13 @@ public sealed class MeetingMoveService
 
     private static Result<Guid> NothingToMove()
         => Result<Guid>.Failure("No upcoming occurrence is left to move.", 409, MeetingErrorCodes.NothingToMove);
+
+    private Task AuditIfDelegatedAsync(MeetingSeries series, Guid callerEmployeeId, string action, object newValues, object? oldValues,
+        CancellationToken ct)
+        => _audit is null ? Task.CompletedTask : _audit.RecordIfDelegatedAsync(series, callerEmployeeId, action, newValues, oldValues, ct);
+
+    private static object MoveValues(MeetingMovePayload payload, string outcome) => new
+    {
+        scope = payload.Scope, originalStart = payload.OriginalStart, projectId = payload.ProjectId, objectiveId = payload.ObjectiveId, outcome,
+    };
 }

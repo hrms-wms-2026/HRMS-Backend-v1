@@ -40,6 +40,14 @@ public interface IMeetingDelegateAudit
     /// approval: <paramref name="seriesId"/> is null).</summary>
     Task RecordForPrincipalAsync(Guid tenantId, Guid? seriesId, bool isPrivate, Guid actingForEmployeeId, string action, object newValues,
         object? oldValues, CancellationToken ct);
+
+    /// <summary>
+    /// For an organizer-only write that has already passed its organizer check: a caller other than the series' organizer
+    /// can only be one of the organizer's delegates, so the action is recorded for the organizer. The organizer's own
+    /// action writes nothing.
+    /// </summary>
+    Task RecordIfDelegatedAsync(MeetingSeries series, Guid callerEmployeeId, string action, object newValues, object? oldValues,
+        CancellationToken ct);
 }
 
 public sealed class MeetingDelegateAudit : IMeetingDelegateAudit
@@ -84,6 +92,12 @@ public sealed class MeetingDelegateAudit : IMeetingDelegateAudit
             next[key] = value?.DeepClone();
         return AddAsync(tenantId, action, "MeetingSeries", seriesId, next, Clean(oldValues, isPrivate), ct);
     }
+
+    public Task RecordIfDelegatedAsync(MeetingSeries series, Guid callerEmployeeId, string action, object newValues, object? oldValues,
+        CancellationToken ct)
+        => callerEmployeeId == series.OrganizerEmployeeId
+            ? Task.CompletedTask
+            : RecordForPrincipalAsync(series, series.OrganizerEmployeeId, action, newValues, oldValues, ct);
 
     private static JsonObject? Clean(object? values, bool isPrivate)
     {

@@ -123,4 +123,28 @@ public sealed class MeetingDelegateAuditTests
         Assert.DoesNotContain("x@client.com", text);
         Assert.Equal("Board review", Json(row.NewValuesJson)["title"]!.GetValue<string>());
     }
+
+    [Fact]
+    public async Task RecordIfDelegated_ByTheOrganizer_WritesNothing()
+    {
+        var series = Series(isPrivate: false);
+
+        await Sut().RecordIfDelegatedAsync(series, series.OrganizerEmployeeId, MeetingAuditActions.Cancelled, new { scope = "all" }, null,
+            CancellationToken.None);
+
+        Assert.Empty(_rows);
+    }
+
+    [Fact]
+    public async Task RecordIfDelegated_ByADelegate_WritesOneRow_ForThePrincipal()
+    {
+        var series = Series(isPrivate: false);
+
+        await Sut().RecordIfDelegatedAsync(series, Guid.NewGuid(), MeetingAuditActions.Cancelled, new { scope = "all" }, null,
+            CancellationToken.None);
+
+        var row = Assert.Single(_rows);
+        Assert.Equal((DelegateUser, "meeting.cancelled_for_principal"), (row.UserId, row.Action));
+        Assert.Equal(series.OrganizerEmployeeId, Json(row.NewValuesJson)["actingForEmployeeId"]!.GetValue<Guid>());
+    }
 }

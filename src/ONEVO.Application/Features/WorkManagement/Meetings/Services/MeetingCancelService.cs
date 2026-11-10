@@ -5,6 +5,8 @@ using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Meetings.Contracts;
 using ONEVO.Application.Features.WorkManagement.Meetings.RepositoryInterfaces;
 
+using ONEVO.Domain.Features.WorkManagement.Meetings.Entities;
+
 namespace ONEVO.Application.Features.WorkManagement.Meetings.Services;
 
 /// <summary>
@@ -26,10 +28,14 @@ public sealed class MeetingCancelService
     private readonly IMeetingNotifier _notifier;
     private readonly SeriesMeetingLinkService _links;
 
+    /// <summary>Audits what a meeting delegate does (spec "Audit log"); null writes nothing.</summary>
+    private readonly IMeetingDelegateAudit? _audit;
+
     public MeetingCancelService(IOptions<MeetingsOptions> options, IMeetingRepository meetings, IMeetingOccurrenceWriter writer,
         IMeetingOccurrenceMaterializer materializer, IMeetingAccessResolver access, IUnitOfWork unitOfWork, IDateTimeProvider clock,
-        IMeetingNotifier notifier, SeriesMeetingLinkService links)
+        IMeetingNotifier notifier, SeriesMeetingLinkService links, IMeetingDelegateAudit? audit = null)
     {
+        _audit = audit;
         _links = links;
         _options = options;
         _meetings = meetings;
@@ -128,6 +134,8 @@ public sealed class MeetingCancelService
                     }
                 }
 
+                await AuditIfDelegatedAsync(series, callerEmployeeId, MeetingAuditActions.Cancelled,
+                    new { scope, originalStart }, null, innerCt);
                 await _unitOfWork.SaveChangesAsync(innerCt);
                 return Result<bool>.Success(true);
             }, ct);
@@ -137,4 +145,8 @@ public sealed class MeetingCancelService
             return MeetingGuard.Busy<bool>();
         }
     }
+
+    private Task AuditIfDelegatedAsync(MeetingSeries series, Guid callerEmployeeId, string action, object newValues, object? oldValues,
+        CancellationToken ct)
+        => _audit is null ? Task.CompletedTask : _audit.RecordIfDelegatedAsync(series, callerEmployeeId, action, newValues, oldValues, ct);
 }

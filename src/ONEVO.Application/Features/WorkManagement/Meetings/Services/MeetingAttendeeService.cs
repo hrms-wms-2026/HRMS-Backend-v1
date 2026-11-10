@@ -31,10 +31,14 @@ public sealed class MeetingAttendeeService
     private readonly IDateTimeProvider _clock;
     private readonly IMeetingNotifier _notifier;
 
+    /// <summary>Audits what a meeting delegate does (spec "Audit log"); null writes nothing.</summary>
+    private readonly IMeetingDelegateAudit? _audit;
+
     public MeetingAttendeeService(IOptions<MeetingsOptions> options, IMeetingRepository meetings, IMeetingOccurrenceWriter writer,
         IMeetingOccurrenceMaterializer materializer, IMeetingAccessResolver access, IEmployeeRepository employees, IUnitOfWork unitOfWork,
-        IDateTimeProvider clock, IMeetingNotifier notifier)
+        IDateTimeProvider clock, IMeetingNotifier notifier, IMeetingDelegateAudit? audit = null)
     {
+        _audit = audit;
         _notifier = notifier;
         _options = options;
         _meetings = meetings;
@@ -48,7 +52,11 @@ public sealed class MeetingAttendeeService
 
     public Task<Result<MeetingAttendeesResponse>> AddSeriesAttendeesAsync(Guid tenantId, Guid caller, Guid seriesId,
         MeetingAttendeesRequest request, CancellationToken ct)
-        => SeriesWriteAsync(tenantId, caller, seriesId, async (series, now) =>
+        => SeriesWriteAsync(tenantId, caller, seriesId, new
+        {
+            scope = MeetingScopes.All, addedEmployeeIds = request.EmployeeIds,
+            addedGuestCount = MeetingCreateValidator.NormalizeGuests(request.GuestEmails).Count(),
+        }, async (series, now) =>
         {
             var (active, skipped) = await SplitActiveAsync(tenantId, request.EmployeeIds, ct);
             var added = 0;
@@ -97,7 +105,8 @@ public sealed class MeetingAttendeeService
         }, ct);
 
     public Task<Result<bool>> RemoveSeriesEmployeeAsync(Guid tenantId, Guid caller, Guid seriesId, Guid employeeId, CancellationToken ct)
-        => SeriesWriteAsync(tenantId, caller, seriesId, async (series, now) =>
+        => SeriesWriteAsync(tenantId, caller, seriesId, new { scope = MeetingScopes.All, removedEmployeeIds = new[] { employeeId } },
+            async (series, now) =>
         {
             if (employeeId == series.OrganizerEmployeeId)
                 return Result<bool>.Failure("The organizer cannot be removed from their meeting.", 400, MeetingErrorCodes.OrganizerCannotBeRemoved);
@@ -112,7 +121,7 @@ public sealed class MeetingAttendeeService
         }, ct);
 
     public Task<Result<bool>> RemoveSeriesGuestAsync(Guid tenantId, Guid caller, Guid seriesId, string email, CancellationToken ct)
-        => SeriesWriteAsync(tenantId, caller, seriesId, async (series, now) =>
+        => SeriesWriteAsync(tenantId, caller, seriesId, new { scope = MeetingScopes.All, removedGuestCount = 1 }, async (series, now) =>
         {
             if (await _meetings.GetSeriesGuestTrackedAsync(tenantId, series.Id, email, ct) is { } guest)
             {
@@ -125,7 +134,11 @@ public sealed class MeetingAttendeeService
 
     public Task<Result<MeetingAttendeesResponse>> AddOccurrenceAttendeesAsync(Guid tenantId, Guid caller, Guid callerUserId, Guid seriesId,
         DateTimeOffset originalStart, MeetingAttendeesRequest request, CancellationToken ct)
-        => OccurrenceWriteAsync(tenantId, caller, callerUserId, seriesId, originalStart, async (series, taskId, now) =>
+        => OccurrenceWriteAsync(tenantId, caller, callerUserId, seriesId, originalStart, new
+        {
+            scope = MeetingScopes.This, originalStart, addedEmployeeIds = request.EmployeeIds,
+            addedGuestCount = MeetingCreateValidator.NormalizeGuests(request.GuestEmails).Count(),
+        }, async (series, taskId, now) =>
         {
             var (active, skipped) = await SplitActiveAsync(tenantId, request.EmployeeIds, ct);
             var seriesPeople = (await _meetings.ListSeriesParticipantsAsync(tenantId, series.Id, ct)).Where(p => !p.IsDeleted)
@@ -155,7 +168,8 @@ public sealed class MeetingAttendeeService
 
     public Task<Result<bool>> RemoveOccurrenceEmployeeAsync(Guid tenantId, Guid caller, Guid callerUserId, Guid seriesId,
         DateTimeOffset originalStart, Guid employeeId, CancellationToken ct)
-        => OccurrenceWriteAsync(tenantId, caller, callerUserId, seriesId, originalStart, async (series, taskId, _) =>
+        => OccurrenceWriteAsync(tenantId, caller, callerUserId, seriesId, originalStart,
+            new { scope = MeetingScopes.This, originalStart, removedEmployeeIds = new[] { employeeId } }, async (series, taskId, _) =>
         {
             if (employeeId == series.OrganizerEmployeeId)
                 return Result<bool>.Failure("The organizer cannot be removed from their meeting.", 400, MeetingErrorCodes.OrganizerCannotBeRemoved);
@@ -170,7 +184,8 @@ public sealed class MeetingAttendeeService
 
     public Task<Result<bool>> RemoveOccurrenceGuestAsync(Guid tenantId, Guid caller, Guid callerUserId, Guid seriesId,
         DateTimeOffset originalStart, string email, CancellationToken ct)
-        => OccurrenceWriteAsync(tenantId, caller, callerUserId, seriesId, originalStart, async (series, taskId, _) =>
+        => OccurrenceWriteAsync(tenantId, caller, callerUserId, seriesId, originalStart,
+            new { scope = MeetingScopes.This, originalStart, removedGuestCount = 1 }, async (series, taskId, _) =>
         {
             var seriesGuest = await _meetings.GetSeriesGuestTrackedAsync(tenantId, series.Id, email, ct);
             if (await SetOverrideAsync(tenantId, taskId, null, email.Trim(), seriesGuest is not null, add: false, ct) is { } row)
@@ -288,7 +303,7 @@ public sealed class MeetingAttendeeService
     }
 
     /// <summary>Organizer-only series write under the series lock, the series re-read after locking.</summary>
-    private async Task<Result<T>> SeriesWriteAsync<T>(Guid tenantId, Guid caller, Guid seriesId,
+    private async Task<Result<T>> SeriesWriteAsync<T>(Guid tenantId, Guid caller, Guid seriesId, object change,
         Func<MeetingSeries, DateTimeOffset, Task<Result<T>>> write, CancellationToken ct)
     {
         if (MeetingGuard.CheckWritable<T>(_options.Value) is { } blocked)
@@ -308,7 +323,10 @@ public sealed class MeetingAttendeeService
                     return MeetingReadService.NotFound<T>();
                 var result = await write(series, _clock.UtcNow);
                 if (result.IsSuccess)
+                {
+                    await AuditIfDelegatedAsync(series, caller, MeetingAuditActions.AttendeesChanged, change, null, innerCt);
                     await _unitOfWork.SaveChangesAsync(innerCt);
+                }
                 return result;
             }, ct);
         }
@@ -320,7 +338,7 @@ public sealed class MeetingAttendeeService
 
     /// <summary>Organizer-only write to one not-started occurrence, materialized if needed, under the series lock.</summary>
     private async Task<Result<T>> OccurrenceWriteAsync<T>(Guid tenantId, Guid caller, Guid callerUserId, Guid seriesId, DateTimeOffset originalStart,
-        Func<MeetingSeries, Guid, DateTimeOffset, Task<Result<T>>> write, CancellationToken ct)
+        object change, Func<MeetingSeries, Guid, DateTimeOffset, Task<Result<T>>> write, CancellationToken ct)
     {
         if (MeetingGuard.CheckWritable<T>(_options.Value) is { } blocked)
             return blocked;
@@ -344,7 +362,10 @@ public sealed class MeetingAttendeeService
                     return Result<T>.Failure(ensured.Error!, ensured.StatusCode ?? 404, ensured.ErrorCode);
                 var result = await write(series, ensured.Value, now);
                 if (result.IsSuccess)
+                {
+                    await AuditIfDelegatedAsync(series, caller, MeetingAuditActions.AttendeesChanged, change, null, innerCt);
                     await _unitOfWork.SaveChangesAsync(innerCt);
+                }
                 return result;
             }, ct);
         }
@@ -353,4 +374,8 @@ public sealed class MeetingAttendeeService
             return MeetingGuard.Busy<T>();
         }
     }
+
+    private Task AuditIfDelegatedAsync(MeetingSeries series, Guid callerEmployeeId, string action, object newValues, object? oldValues,
+        CancellationToken ct)
+        => _audit is null ? Task.CompletedTask : _audit.RecordIfDelegatedAsync(series, callerEmployeeId, action, newValues, oldValues, ct);
 }

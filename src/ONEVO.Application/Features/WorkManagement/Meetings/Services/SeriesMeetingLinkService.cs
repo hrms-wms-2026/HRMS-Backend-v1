@@ -38,11 +38,15 @@ public sealed class SeriesMeetingLinkService
     private readonly IMeetingAccessResolver _access;
     private readonly IOptions<MeetingsOptions> _options;
 
+    /// <summary>Audits what a meeting delegate does (spec "Audit log"); null writes nothing.</summary>
+    private readonly IMeetingDelegateAudit? _audit;
+
     public SeriesMeetingLinkService(IMeetingLinkRepository links, IMeetingRepository meetings, IMeetingOccurrenceWriter writer,
         IExternalCalendarConnectionRepository connections, IMeetingProvisioner provisioner, IMeetingNotifier notifier,
         IMeetingRecurrence recurrence, IEmployeeRepository employees, IOutboxWriter outbox, IUnitOfWork unitOfWork, IDateTimeProvider clock,
-        IMeetingAccessResolver access, IOptions<MeetingsOptions> options)
+        IMeetingAccessResolver access, IOptions<MeetingsOptions> options, IMeetingDelegateAudit? audit = null)
     {
+        _audit = audit;
         _access = access;
         _options = options;
         _links = links;
@@ -214,6 +218,8 @@ public sealed class SeriesMeetingLinkService
                 await _unitOfWork.SaveChangesAsync(innerCt);
                 await _links.SetOccurrenceLinkAsync(tenantId, seriesId, linkId, now, _options.Value.Attendance.Checkpoints[0], innerCt);
                 await QueueProvisioningAsync(tenantId, linkId, seriesId, generation: 1, innerCt);
+                await AuditIfDelegatedAsync(series, callerEmployeeId, MeetingAuditActions.LinkChanged,
+                    new { change = existing is null ? "added" : "regenerated", provider = request.Platform }, null, innerCt);
                 await _unitOfWork.SaveChangesAsync(innerCt);
                 return Result<MeetingLinkResponse>.Success(
                     new MeetingLinkResponse(linkId, request.Platform, CalendarEventMeetingStatuses.Provisioning, null, null, null, 1));
@@ -251,6 +257,12 @@ public sealed class SeriesMeetingLinkService
                 MeetingErrorCodes.ProviderNotConnected);
         if (!await _links.TryClaimRetryAsync(tenantId, link.Id, _clock.UtcNow, ct))
             return Unsettled<MeetingLinkResponse>(CalendarEventMeetingStatuses.Provisioning)!;
+        if (series is not null && _audit is not null && series.OrganizerEmployeeId != callerEmployeeId)
+        {
+            await AuditIfDelegatedAsync(series, callerEmployeeId, MeetingAuditActions.LinkChanged,
+                new { change = "retried", provider = link.Provider }, null, ct);
+            await _unitOfWork.SaveChangesAsync(ct);
+        }
         return await ProvisionAsync(tenantId, link.Id, seriesId, recovery: link.Status == CalendarEventMeetingStatuses.ProvisioningUnknown, ct);
     }
 
@@ -285,6 +297,8 @@ public sealed class SeriesMeetingLinkService
                 // P1-4: nobody keeps a join link that no longer works for this meeting.
                 if (existing.Status == CalendarEventMeetingStatuses.Active)
                     await _notifier.LinkRemovedAsync(series, link, innerCt);
+                await AuditIfDelegatedAsync(series, callerEmployeeId, MeetingAuditActions.LinkChanged,
+                    new { change = "removed", provider = existing.Provider }, null, innerCt);
                 await _unitOfWork.SaveChangesAsync(innerCt);
                 return Result<MeetingLinkResponse?>.Success(Describe(link, parked));
             }, ct);
@@ -490,4 +504,8 @@ public sealed class SeriesMeetingLinkService
             .Concat((await _meetings.ListSeriesGuestsAsync(series.TenantId, series.Id, ct)).Select(g => g.Email))
             .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
     }
+
+    private Task AuditIfDelegatedAsync(MeetingSeries series, Guid callerEmployeeId, string action, object newValues, object? oldValues,
+        CancellationToken ct)
+        => _audit is null ? Task.CompletedTask : _audit.RecordIfDelegatedAsync(series, callerEmployeeId, action, newValues, oldValues, ct);
 }
