@@ -45,7 +45,7 @@ New table `meeting_delegates`: `id`, `tenant_id`, `principal_employee_id`, `dele
 
 ## Who manages delegates
 
-Every employee manages their own delegates from their profile settings, the same way leave approval delegates work (decision 5). The API acts only on the caller's own list: there is no endpoint to grant or revoke for someone else.
+Every employee manages their own delegates from a "Meeting delegates" dialog on the Calendar page (decision 5). It follows the Inbox's "Delegate my approvals" dialog, because the app has no profile settings page. The API acts only on the caller's own list: there is no endpoint to grant or revoke for someone else.
 
 ## Access
 
@@ -86,14 +86,14 @@ Today, adding a link uses the caller's own calendar connection (`SeriesMeetingLi
 
 ## Frontend
 
-- **Profile settings, "Meeting delegates":** add a delegate (an employee picker), see the list, and remove one.
+- **Calendar page, "Meeting delegates" dialog:** add a delegate (the shared people picker), see the list, and remove one.
 - **Calendar page:** shown only to someone who is a delegate. A selector beside the title reads "My calendar" or "<Principal>'s calendar". Viewing a principal's calendar:
   - Everything shown is the principal's.
   - Dragging a time creates a meeting for the principal. Only the meeting tab is offered in the create popover, because time off and tasks are out of scope.
   - The meeting drawer works as it does for an organizer.
 - **Meeting form:** for someone who is a delegate, an "Organizer" field (Me or a principal), defaulting to Me.
-- **Meeting drawer:** shows "Organized by <Principal>". The delegate also sees "Scheduled by <Delegate>". Invitees never see that line.
-- The create popover form is otherwise frozen (team planner decision). Only the organizer choice is added, and that needs the user's yes.
+- **Meeting drawer:** shows "Organized by <Principal>". The principal and the delegates also see "Scheduled by <Delegate>". Invitees never see that line. The occurrence response gains `scheduledByName`, filled only for the organizer role and only when the creator is not the organizer.
+- **The create popover is not changed** (its form is frozen by the team planner decision). On a principal's calendar it opens with the meeting tab only, and the meeting goes to the principal because of which calendar is open. The organizer choice exists only in the full meeting form.
 
 ## Edge cases
 
