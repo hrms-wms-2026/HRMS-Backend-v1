@@ -127,6 +127,25 @@ public sealed class MeetingsController : ControllerBase
     public async Task<IActionResult> BulkPreview([FromBody] MeetingBulkPreviewRequest request, CancellationToken ct)
         => Respond(await _mediator.Send(new MeetingBulkPreviewQuery(request), ct), Ok);
 
+    /// <summary>The caller's own meeting delegates: people allowed to run the caller's meetings.</summary>
+    [HttpGet("delegates")]
+    public async Task<IActionResult> ListDelegates(CancellationToken ct)
+        => Respond(await _mediator.Send(new ListMyMeetingDelegatesQuery(), ct), Ok);
+
+    [HttpPost("delegates")]
+    public async Task<IActionResult> AddDelegate([FromBody] AddMeetingDelegateRequest request, CancellationToken ct)
+        => Respond(await _mediator.Send(new AddMeetingDelegateCommand(request.DelegateEmployeeId, request.ExpiresAt), ct),
+            value => StatusCode(201, value));
+
+    [HttpDelete("delegates/{id:guid}")]
+    public async Task<IActionResult> RevokeDelegate(Guid id, CancellationToken ct)
+        => Respond(await _mediator.Send(new RevokeMeetingDelegateCommand(id), ct), _ => NoContent());
+
+    /// <summary>The people whose meetings the caller may run.</summary>
+    [HttpGet("delegates/principals")]
+    public async Task<IActionResult> ListPrincipals(CancellationToken ct)
+        => Respond(await _mediator.Send(new ListMyMeetingPrincipalsQuery(), ct), Ok);
+
     private IActionResult Respond<T>(Result<T> result, Func<T, IActionResult> onSuccess)
     {
         if (result.IsSuccess)

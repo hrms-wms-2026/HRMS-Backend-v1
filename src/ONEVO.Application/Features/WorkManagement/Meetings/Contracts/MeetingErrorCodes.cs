@@ -59,4 +59,13 @@ public static class MeetingErrorCodes
 
     // Read
     public const string NotFound = "meeting_not_found";                            // 404
+
+    // Delegates (spec "Meeting delegates")
+    public const string DelegateSelf = "meeting_delegate_self";                         // 400
+    public const string DelegateExpiryInvalid = "meeting_delegate_expiry_invalid";     // 400: the end date is not in the future
+    public const string DelegateEmployeeNotFound = "meeting_delegate_employee_not_found"; // 404: unknown or not an active employee
+    public const string DelegateNotFound = "meeting_delegate_not_found";               // 404: not one of my unrevoked grants
+    public const string DelegateExists = "meeting_delegate_exists";                    // 409: an active grant for this person exists
+    public const string DelegateRequired = "meeting_delegate_required";                // 403: acting for someone who did not delegate
+    public const string PrincipalOnly = "meeting_principal_only";                      // 403: reserved for actions a delegate may not take
 }
