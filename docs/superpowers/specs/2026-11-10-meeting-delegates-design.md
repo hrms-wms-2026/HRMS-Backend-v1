@@ -32,12 +32,16 @@ Any employee (the **principal**) can give another employee (a **delegate**) perm
 | 4 | A meeting made by a delegate is the principal's own: it is on the principal's calendar and planner, and the principal gets its reminders. |
 | 5 | Any employee can give the permission to any other employee, for their own meetings only. No role or admin approval is needed, and nobody can grant it for someone else. |
 | 6 | Notices addressed to the organizer also go to each active delegate. |
+| 7 | A delegation can have an optional end date. Without one it lasts until it is revoked. (Review, 2026-11-10) |
+| 8 | Every action a delegate takes on the principal's meetings, and every grant and revoke, is written to the audit log with both the delegate and the principal. (Review, 2026-11-10) |
 
 ## Model
 
-New table `meeting_delegates`: `id`, `tenant_id`, `principal_employee_id`, `delegate_employee_id`, `created_by_user_id`, `created_at`, `revoked_at`.
+New table `meeting_delegates`: `id`, `tenant_id`, `principal_employee_id`, `delegate_employee_id`, `created_by_user_id`, `created_at`, `expires_at` (nullable), `revoked_at`.
 
-- One active row per principal and delegate pair. Revoking sets `revoked_at`, and the row is kept for audit.
+- A row is **active** when `revoked_at` is null, `expires_at` is null or later than now, and both employees are active.
+- One unrevoked row per principal and delegate pair. Revoking sets `revoked_at`, and the row is kept for audit.
+- `expires_at`, when given, must be in the future. An expired row stays in the list as "Expired" until it is revoked or a new grant replaces it.
 - A person cannot be their own delegate.
 - Both people must be active employees of the tenant. When either one stops being active, the delegation stops working, and the row does not need to change.
 - The table is tenant-owned and gets an RLS policy like every other tenant table (`RlsTableRegistry`).
@@ -53,7 +57,22 @@ Every employee manages their own delegates from a "Meeting delegates" dialog on 
 
 - A caller who is an active delegate of the series' organizer gets the **Organizer** role, with a new `ActingForEmployeeId` set to the principal.
 
-Every check that already asks for the Organizer role (edit, cancel, move, attendees, bulk invite, link, attendance view) then works for the delegate without its own change. D6 is otherwise unchanged: no role or HR check is added.
+Every check that already asks for the Organizer role then works for the delegate without its own change. D6 is otherwise unchanged: no role or HR check is added.
+
+**What the Organizer role gives a delegate today,** which matches decision 2:
+- edit, including notes;
+- cancel and move;
+- add and remove attendees, and bulk invite;
+- add, regenerate, retry and remove the online link;
+- the organizer's attendance view;
+- unlinking action items.
+
+**Review concern: future organizer-only actions.** Inheriting the role is on purpose, because the user asked for everything. The risk is that a later organizer-only action reaches delegates without anyone deciding it. The rule for that is:
+
+- `MeetingAccess.ActingForEmployeeId` is set whenever a delegate acts.
+- An action that must stay with the principal personally checks that it is null and returns 403 `meeting_principal_only`.
+- No action needs this today.
+- A test pins the list above: `OrganizerOnlyActions_AreTheReviewedList` fails when a new `MeetingRoles.Organizer` check appears, so its author has to decide.
 
 ## Creating a meeting for the principal
 
@@ -78,6 +97,40 @@ Today, adding a link uses the caller's own calendar connection (`SeriesMeetingLi
 - Invitees already see the organizer's name (`OrganizerNameAsync` reads the series organizer), so they see the principal without change.
 - Notices addressed to the organizer (RSVP accepted or declined, link failed or unknown, meeting unresolved, replacement nominated) go to the principal today. They also go to each active delegate (decision 6), because the delegate is the one who acts on them.
 
+## Audit log
+
+The existing `audit_logs` table is used (`AuditLog`: `UserId`, `Action`, `ResourceType`, `ResourceId`, `OldValuesJson`, `NewValuesJson`, `IpAddress`, `CreatedAt`). Rows are written the same way `CreateProjectCommandHandler` and `UpdateNotificationSettingCommandHandler` already write them.
+
+- **Same transaction:** a row is added before the write's `SaveChangesAsync`, so an action and its audit row commit or fail together.
+- **The actor is the user:** `UserId` is the delegate's user. The principal is in the JSON.
+- **Only delegated actions:** a meeting action is logged when `ActingForEmployeeId` is set. The organizer's own actions are not logged, as today. Grants and revokes are always logged.
+
+| Action | When | ResourceType / ResourceId | NewValuesJson | OldValuesJson |
+|---|---|---|---|---|
+| `meeting_delegate.granted` | A grant | `MeetingDelegate` / row id | `principalEmployeeId`, `delegateEmployeeId`, `expiresAt` | none |
+| `meeting_delegate.revoked` | A revoke | `MeetingDelegate` / row id | `principalEmployeeId`, `delegateEmployeeId` | `expiresAt` |
+| `meeting.created_for_principal` | A delegate creates | `MeetingSeries` / series id | `actingForEmployeeId`, `title`, `start`, `durationMinutes`, `recurrenceRule`, `isPrivate`, `participantCount`, `guestCount`, `platform`, `outcome` (created or requested) | none |
+| `meeting.edited_for_principal` | Edit, including notes | `MeetingSeries` / series id | `actingForEmployeeId`, `scope`, `originalStart`, the changed fields | The same fields before the change |
+| `meeting.moved_for_principal` | Move or reschedule | `MeetingSeries` / series id | `actingForEmployeeId`, `scope`, `originalStart`, `newStart`, `newDurationMinutes` | `start`, `durationMinutes` |
+| `meeting.cancelled_for_principal` | Cancel | `MeetingSeries` / series id | `actingForEmployeeId`, `scope`, `originalStart` | none |
+| `meeting.attendees_changed_for_principal` | Add or remove an attendee, bulk invite | `MeetingSeries` / series id | `actingForEmployeeId`, `scope`, `originalStart`, `addedEmployeeIds`, `removedEmployeeIds`, `addedGuestCount`, `removedGuestCount` | none |
+| `meeting.link_changed_for_principal` | Add, regenerate, retry or remove the link | `MeetingSeries` / series id | `actingForEmployeeId`, `change` (added, regenerated, retried or removed), `provider` | none |
+
+**Privacy:**
+- Guest emails, descriptions and notes are never copied into the log. Only counts, and the names of changed fields, are written.
+- A private meeting's title is logged as `"(private)"`.
+
+**Reading:** the rows appear in the existing tenant audit log listing (`IAuditLogRepository.ListByTenantIdAsync`). No new screen is added.
+
+**One writer:** a small `IMeetingDelegateAudit` service builds every row, so the JSON shape stays the same everywhere. Each meeting write service calls it once after the change, with the `MeetingAccess` it already holds.
+
+## Revocation during a request
+
+**Review concern: a revoke that lands while a write is running.**
+- Every meeting write checks access once, at the start of the request, and commits in well under a second, so there is no long-running operation to stop. A revoke that lands during a write is treated like one that lands a moment later.
+- The background link provisioning that follows a create runs for the organizer, not the delegate, so it is unaffected by a revoke.
+- No extra check is added inside the write transaction. A row lock on the delegation for every meeting write would cost more than this edge case is worth (my call 6).
+
 ## Seeing the principal's calendar
 
 - `GET /calendar` and `GET /planner/me/range` gain an optional `forEmployeeId`. It is allowed only for the caller themselves or a principal they are an active delegate of, and anything else gets 403.
@@ -86,7 +139,7 @@ Today, adding a link uses the caller's own calendar connection (`SeriesMeetingLi
 
 ## Frontend
 
-- **Calendar page, "Meeting delegates" dialog:** add a delegate (the shared people picker), see the list, and remove one.
+- **Calendar page, "Meeting delegates" dialog:** add a delegate (the shared people picker, with an optional "Until" date), see the list with each one's state (Active, or Expired), and remove one.
 - **Calendar page:** shown only to someone who is a delegate. A selector beside the title reads "My calendar" or "<Principal>'s calendar". Viewing a principal's calendar:
   - Everything shown is the principal's.
   - Dragging a time creates a meeting for the principal. Only the meeting tab is offered in the create popover, because time off and tasks are out of scope.
@@ -115,6 +168,10 @@ Backend:
 - Organizer notices reach the principal and each active delegate, and not a revoked one.
 - `forEmployeeId` on calendar and planner: allowed for the principal's delegates, 403 for anyone else.
 - RLS covers the new table.
+- An expired grant gives no access and no notices, and a past `expiresAt` is rejected.
+- Each audited action writes one row, with the delegate as `UserId` and the principal in the JSON. A private meeting's title is masked, and guest emails and notes never appear.
+- The organizer's own actions write no meeting audit row.
+- `OrganizerOnlyActions_AreTheReviewedList` pins the organizer-only checks.
 
 Frontend:
 - The settings list, add and remove.
@@ -136,5 +193,7 @@ Each can be changed on review.
 1. **Meetings only.** Legacy calendar events are out, because new meetings are created as meetings.
 2. **Office meetings** check the delegate's `calendar:write`, not the principal's.
 3. **A delegate cannot connect an account for the principal.** No Teams or Zoom link is possible until the principal connects one.
-4. **Delegation has no end date,** unlike leave approval delegates. It stays until it is revoked.
+4. **The end date is optional** (decision 7). An expired grant is kept and shown as Expired, not deleted.
 5. **No limit** on how many delegates a principal can have, or how many principals a delegate can serve.
+6. **No extra in-transaction delegation check;** see "Revocation during a request".
+7. **Only delegated meeting actions are audited,** not the organizer's own. Auditing every organizer action is a wider change for the audit log work.
