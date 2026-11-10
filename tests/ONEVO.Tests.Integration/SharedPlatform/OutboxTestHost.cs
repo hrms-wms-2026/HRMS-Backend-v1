@@ -25,7 +25,7 @@ namespace ONEVO.Tests.Integration.SharedPlatform;
 /// <summary>
 /// One cloned PostgreSQL database for outbox processor tests. Processors are wired the way
 /// ONEVO.Infrastructure.DependencyInjection wires them in production: ApplicationDbContext connects
-/// as the real onevo_app role (NOBYPASSRLS) with TenantRlsInterceptor, and the processor switches
+/// as the real crownus_app role (NOBYPASSRLS) with TenantRlsInterceptor, and the processor switches
 /// tenant context per message through the real TenantContextSwitcher. Rows are seeded and verified
 /// through a separate superuser context so assertions never depend on the processor's own session.
 /// </summary>
@@ -51,7 +51,7 @@ public sealed class OutboxTestHost
         var admin = await SharedSqlServerTemplate.CreateDatabaseAsync();
         var app = new SqlConnectionStringBuilder(admin)
         {
-            UserID = "onevo_app",
+            UserID = "crownus_app",
             Password = PrivilegedRoleTestBootstrap.AppRolePassword,
         }.ConnectionString;
 
@@ -116,7 +116,7 @@ public sealed class OutboxTestHost
         return await db.Set<OutboxMessage>().AsNoTracking().ToListAsync();
     }
 
-    /// <summary>A processor wired like production against the onevo_app connection.
+    /// <summary>A processor wired like production against the crownus_app connection.
     /// <paramref name="configure"/> registers the handlers (and any fakes) under test.</summary>
     public OutboxProcessor CreateProcessor(Action<IServiceCollection> configure, int? leaseSeconds = null)
         => CreateProcessor(BuildServices(configure), leaseSeconds);

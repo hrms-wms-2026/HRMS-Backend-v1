@@ -34,19 +34,19 @@ public static class DatabaseConnectionStartupValidator
         var runtimeUsername = runtimeConnection.UserID;
         var migrationUsername = migrationConnection.UserID;
 
-        if (!runtimeUsername.Equals("onevo_app", StringComparison.OrdinalIgnoreCase))
+        if (!runtimeUsername.Equals("crownus_app", StringComparison.OrdinalIgnoreCase))
         {
             ThrowInvalid(
                 "DefaultConnection",
-                "the runtime username must be the restricted onevo_app role",
+                "the runtime username must be the restricted crownus_app role",
                 processDefaultConnectionOverrideActive);
         }
 
-        if (!migrationUsername.Equals("onevo_migrator", StringComparison.OrdinalIgnoreCase))
+        if (!migrationUsername.Equals("crownus_migrator", StringComparison.OrdinalIgnoreCase))
         {
             ThrowInvalid(
                 "MigrationConnection",
-                "the migration username must be onevo_migrator and must not be sa/admin",
+                "the migration username must be crownus_migrator and must not be sa/admin",
                 processDefaultConnectionOverrideActive);
         }
 
@@ -90,7 +90,7 @@ public static class DatabaseConnectionStartupValidator
                 ? " A process-level ConnectionStrings__* override is active and overrides the repo-root .env."
                 : string.Empty;
             throw new InvalidOperationException(
-                "The restricted onevo_app DefaultConnection could not authenticate and open. " +
+                "The restricted crownus_app DefaultConnection could not authenticate and open. " +
                 "Check the local role/password with ops/sqlserver/setup-local-db.ps1 -RunMigrations." +
                 overrideGuidance,
                 exception);

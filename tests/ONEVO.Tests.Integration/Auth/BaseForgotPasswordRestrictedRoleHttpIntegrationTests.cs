@@ -20,7 +20,7 @@ namespace ONEVO.Tests.Integration.Auth;
 
 /// <summary>
 /// Full-stack proof that POST /api/v1/auth/forgot-password enforces RLS over real HTTP: the host
-/// under test runs Program.cs's own AddInfrastructure(...) wiring (real onevo_app connection +
+/// under test runs Program.cs's own AddInfrastructure(...) wiring (real crownus_app connection +
 /// real TenantRlsInterceptor - see BaseForgotPasswordRestrictedRoleTestFactory's doc comment for
 /// why this is NOT the same guarantee as BaseDomainForgotPasswordIntegrationTests, which runs on
 /// BaseDomainLoginTestFactory's superuser-bound, interceptor-less ApplicationDbContext).
@@ -43,7 +43,7 @@ public sealed class BaseForgotPasswordRestrictedRoleHttpIntegrationTests : IAsyn
 
         _environmentScope = new IntegrationTestEnvironmentScope(_adminConnectionString);
 
-        await GrantOnevoAppTablePrivilegesAsync();
+        await GrantCrownusAppTablePrivilegesAsync();
 
         _factory = new BaseForgotPasswordRestrictedRoleTestFactory(_environmentScope.DefaultConnectionString);
         _client = _factory.CreateClient(new Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactoryClientOptions
@@ -69,7 +69,7 @@ public sealed class BaseForgotPasswordRestrictedRoleHttpIntegrationTests : IAsyn
         var body = await response.Content.ReadAsStringAsync();
 
         response.StatusCode.Should().Be(HttpStatusCode.OK,
-            "a 42501 RLS violation under onevo_app would surface as a 500, not a 200");
+            "a 42501 RLS violation under crownus_app would surface as a 500, not a 200");
         body.Should().NotContain("42501");
         body.Should().NotContainEquivalentOf("row-level security");
         body.Should().Contain("If the email exists, a reset link has been sent.");
@@ -138,13 +138,13 @@ public sealed class BaseForgotPasswordRestrictedRoleHttpIntegrationTests : IAsyn
 
     /// <summary>
     /// IntegrationDatabaseBootstrap runs EF migrations over the Testcontainers superuser connection
-    /// (never onevo_migrator), so the production ALTER DEFAULT PRIVILEGES step in
-    /// ops/postgres/local-bootstrap-roles.sql never fires here and onevo_app ends up with no grants
+    /// (never crownus_migrator), so the production ALTER DEFAULT PRIVILEGES step in
+    /// ops/postgres/local-bootstrap-roles.sql never fires here and crownus_app ends up with no grants
     /// at all on the tables migrations created. This reproduces only the blanket fallback grant
-    /// from that same script - onevo_app remains NOBYPASSRLS; this is an object-level ACL grant,
-    /// not an RLS change. Identical to BaseForgotPasswordRlsIntegrationTests.GrantOnevoAppTablePrivilegesAsync.
+    /// from that same script - crownus_app remains NOBYPASSRLS; this is an object-level ACL grant,
+    /// not an RLS change. Identical to BaseForgotPasswordRlsIntegrationTests.GrantCrownusAppTablePrivilegesAsync.
     /// </summary>
-    private async Task GrantOnevoAppTablePrivilegesAsync()
+    private async Task GrantCrownusAppTablePrivilegesAsync()
     {
         await using var connection = TestDb.CreateConnection(_adminConnectionString);
         await connection.OpenAsync();

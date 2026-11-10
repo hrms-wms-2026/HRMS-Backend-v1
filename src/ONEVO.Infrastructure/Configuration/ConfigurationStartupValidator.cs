@@ -179,7 +179,7 @@ public class ConfigurationStartupValidator : IHostedService
         {
             _logger.LogWarning(
                 "[CONFIG] ConnectionStrings:DefaultConnection uses the sa login. The runtime app " +
-                "connection must use the restricted onevo_app login, because sa can drop the " +
+                "connection must use the restricted crownus_app login, because sa can drop the " +
                 "security policies. Use ConnectionStrings:MigrationConnection for schema migrations.");
         }
     }

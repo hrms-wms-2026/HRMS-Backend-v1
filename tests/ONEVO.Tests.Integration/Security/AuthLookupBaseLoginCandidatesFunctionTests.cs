@@ -18,7 +18,7 @@ namespace ONEVO.Tests.Integration.Security;
 /// </summary>
 public sealed class AuthLookupBaseLoginCandidatesFunctionTests : IAsyncLifetime
 {
-    private const string RestrictedRoleName = "onevo_app";
+    private const string RestrictedRoleName = "crownus_app";
     private const string RestrictedRolePassword = PrivilegedRoleTestBootstrap.AppRolePassword;
 
 
@@ -141,7 +141,7 @@ public sealed class AuthLookupBaseLoginCandidatesFunctionTests : IAsyncLifetime
         await connection.OpenAsync();
         await using (var impersonate = connection.CreateCommand())
         {
-            impersonate.CommandText = "EXECUTE AS USER = 'onevo_auth_base_login_fn_owner'";
+            impersonate.CommandText = "EXECUTE AS USER = 'crownus_auth_base_login_fn_owner'";
             await impersonate.ExecuteNonQueryAsync();
         }
 

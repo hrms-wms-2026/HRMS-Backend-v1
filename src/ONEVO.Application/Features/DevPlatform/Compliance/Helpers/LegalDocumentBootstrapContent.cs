@@ -8,22 +8,22 @@ namespace ONEVO.Application.Features.DevPlatform.Compliance.Helpers;
 public static class LegalDocumentBootstrapContent
 {
     public const string TermsHtml =
-        "<h1>ONEVO Terms and Conditions</h1><p>These are the ONEVO Terms and Conditions (Bootstrap Dev). By using ONEVO, you agree to the terms described in this document. This placeholder content represents the Phase 1 legal baseline and will be replaced with finalized legal text before general availability.</p>";
+        "<h1>Crownus Terms and Conditions</h1><p>These are the Crownus Terms and Conditions (Bootstrap Dev). By using Crownus, you agree to the terms described in this document. This placeholder content represents the Phase 1 legal baseline and will be replaced with finalized legal text before general availability.</p>";
 
     public const string TermsText =
-        "ONEVO Terms and Conditions\n\nThese are the ONEVO Terms and Conditions (Bootstrap Dev). By using ONEVO, you agree to the terms described in this document. This placeholder content represents the Phase 1 legal baseline and will be replaced with finalized legal text before general availability.";
+        "Crownus Terms and Conditions\n\nThese are the Crownus Terms and Conditions (Bootstrap Dev). By using Crownus, you agree to the terms described in this document. This placeholder content represents the Phase 1 legal baseline and will be replaced with finalized legal text before general availability.";
 
     public const string TermsJson =
-        "{\"type\":\"doc\",\"content\":[{\"type\":\"heading\",\"attrs\":{\"level\":1},\"content\":[{\"type\":\"text\",\"text\":\"ONEVO Terms and Conditions\"}]},{\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"These are the ONEVO Terms and Conditions (Bootstrap Dev). By using ONEVO, you agree to the terms described in this document. This placeholder content represents the Phase 1 legal baseline and will be replaced with finalized legal text before general availability.\"}]}]}";
+        "{\"type\":\"doc\",\"content\":[{\"type\":\"heading\",\"attrs\":{\"level\":1},\"content\":[{\"type\":\"text\",\"text\":\"Crownus Terms and Conditions\"}]},{\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"These are the Crownus Terms and Conditions (Bootstrap Dev). By using Crownus, you agree to the terms described in this document. This placeholder content represents the Phase 1 legal baseline and will be replaced with finalized legal text before general availability.\"}]}]}";
 
     public const string PrivacyHtml =
-        "<h1>ONEVO Privacy Notice</h1><p>This is the ONEVO Privacy Notice (Bootstrap Dev). It describes, at a placeholder level, how ONEVO collects, uses, and protects personal data. This placeholder content represents the Phase 1 legal baseline and will be replaced with finalized legal text before general availability.</p>";
+        "<h1>Crownus Privacy Notice</h1><p>This is the Crownus Privacy Notice (Bootstrap Dev). It describes, at a placeholder level, how Crownus collects, uses, and protects personal data. This placeholder content represents the Phase 1 legal baseline and will be replaced with finalized legal text before general availability.</p>";
 
     public const string PrivacyText =
-        "ONEVO Privacy Notice\n\nThis is the ONEVO Privacy Notice (Bootstrap Dev). It describes, at a placeholder level, how ONEVO collects, uses, and protects personal data. This placeholder content represents the Phase 1 legal baseline and will be replaced with finalized legal text before general availability.";
+        "Crownus Privacy Notice\n\nThis is the Crownus Privacy Notice (Bootstrap Dev). It describes, at a placeholder level, how Crownus collects, uses, and protects personal data. This placeholder content represents the Phase 1 legal baseline and will be replaced with finalized legal text before general availability.";
 
     public const string PrivacyJson =
-        "{\"type\":\"doc\",\"content\":[{\"type\":\"heading\",\"attrs\":{\"level\":1},\"content\":[{\"type\":\"text\",\"text\":\"ONEVO Privacy Notice\"}]},{\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"This is the ONEVO Privacy Notice (Bootstrap Dev). It describes, at a placeholder level, how ONEVO collects, uses, and protects personal data. This placeholder content represents the Phase 1 legal baseline and will be replaced with finalized legal text before general availability.\"}]}]}";
+        "{\"type\":\"doc\",\"content\":[{\"type\":\"heading\",\"attrs\":{\"level\":1},\"content\":[{\"type\":\"text\",\"text\":\"Crownus Privacy Notice\"}]},{\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"This is the Crownus Privacy Notice (Bootstrap Dev). It describes, at a placeholder level, how Crownus collects, uses, and protects personal data. This placeholder content represents the Phase 1 legal baseline and will be replaced with finalized legal text before general availability.\"}]}]}";
 
     /// <summary>Defensive fallback for any row that is neither the terms nor privacy_notice bootstrap row.</summary>
     public const string GenericFallbackHtml =

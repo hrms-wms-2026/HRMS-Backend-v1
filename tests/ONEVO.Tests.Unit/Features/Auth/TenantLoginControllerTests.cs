@@ -35,8 +35,8 @@ public sealed class TenantLoginControllerTests
             "tenant-host password login must not reach MediatR at all - no command, no session, no side effect");
 
         var setCookie = controller.Response.Headers.SetCookie.ToString();
-        setCookie.Should().NotContain("onevo_session=");
-        setCookie.Should().NotContain("onevo_mfa=");
+        setCookie.Should().NotContain("crownus_session=");
+        setCookie.Should().NotContain("crownus_mfa=");
     }
 
     private static AuthLoginController CreateController(IMediator mediator)

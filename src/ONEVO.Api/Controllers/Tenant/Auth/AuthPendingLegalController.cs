@@ -27,7 +27,7 @@ public class AuthPendingLegalController : ControllerBase
         [FromBody] AcceptPendingLegalDocumentsRequest request,
         CancellationToken ct)
     {
-        if (!Request.Cookies.TryGetValue("onevo_legal_pending", out var legalChallenge)
+        if (!Request.Cookies.TryGetValue("crownus_legal_pending", out var legalChallenge)
             || string.IsNullOrWhiteSpace(legalChallenge))
         {
             return Problem("Legal acceptance session is missing or expired.", statusCode: 401);
@@ -52,8 +52,8 @@ public class AuthPendingLegalController : ControllerBase
         if (result.IsSuccess && result.Value?.RequiresLegalAcceptance == false)
         {
             this.DeleteTenantCookie(
-                "onevo_legal_pending", httpOnly: true, _env, path: "/api/v1/legal/acceptances/complete-login");
-            this.DeleteTenantCookie("onevo_legal_csrf", httpOnly: false, _env);
+                "crownus_legal_pending", httpOnly: true, _env, path: "/api/v1/legal/acceptances/complete-login");
+            this.DeleteTenantCookie("crownus_legal_csrf", httpOnly: false, _env);
         }
 
         return await this.HandleSessionResultAsync(result, _env);

@@ -12,8 +12,8 @@ public sealed record TenantSessionExchangeMaterial(string ContinueUrl, DateTimeO
 /// <summary>
 /// Internal handler-to-controller result. CsrfToken/CsrfTokenHash are the raw/hashed CSRF values the
 /// controller stashes on AuthenticationProperties.Items before calling HttpContext.SignInAsync;
-/// LegalChallenge/LegalCsrfToken are the raw values the controller sets as the onevo_legal_pending
-/// (HttpOnly) and onevo_legal_csrf (readable) cookies - none of the four are ever serialized to the
+/// LegalChallenge/LegalCsrfToken are the raw values the controller sets as the crownus_legal_pending
+/// (HttpOnly) and crownus_legal_csrf (readable) cookies - none of the four are ever serialized to the
 /// client. Only ToSessionResponse()/ToTenantSessionExchangeResponse() are ever returned as JSON.
 /// </summary>
 public record LoginResponseDto(

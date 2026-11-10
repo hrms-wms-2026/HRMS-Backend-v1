@@ -475,7 +475,7 @@ public sealed class GitHubUserOAuthTests
                 IntegrationKey = "github",
                 IsActive = isActive,
                 ConnectionScope = connectionScope,
-                OnevoAppProvider = "github"
+                CrownusAppProvider = "github"
             });
         catalog.GetLinkedModuleKeysAsync("github", Arg.Any<CancellationToken>())
             .Returns(new[] { "integrations" });

@@ -22,8 +22,8 @@ public class JwtTokenService : IJwtTokenService
     {
         var jwt = configuration.GetSection("Jwt");
         _secret = jwt["Secret"];
-        _tenantIssuer = jwt["TenantIssuer"] ?? "onevo-api";
-        _tenantAudience = jwt["TenantAudience"] ?? "onevo-api";
+        _tenantIssuer = jwt["TenantIssuer"] ?? "crownus-api";
+        _tenantAudience = jwt["TenantAudience"] ?? "crownus-api";
     }
 
     private string GetRequiredSecret()
@@ -47,7 +47,7 @@ public class JwtTokenService : IJwtTokenService
 
         var token = new JwtSecurityToken(
             issuer: _tenantIssuer,
-            audience: "onevo-agent",
+            audience: "crownus-agent",
             claims: claims,
             expires: DateTime.UtcNow.AddHours(24),
             signingCredentials: creds);

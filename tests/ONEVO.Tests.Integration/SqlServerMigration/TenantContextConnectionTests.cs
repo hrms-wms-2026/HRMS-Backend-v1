@@ -218,10 +218,10 @@ public sealed class TenantContextConnectionTests(SqlServerFixture fixture) : IAs
     [Fact]
     public async Task Validator_RefusesDbOwnerAppLogin()
     {
-        await ExecuteAsAdminAsync("ALTER ROLE db_owner ADD MEMBER onevo_app");
+        await ExecuteAsAdminAsync("ALTER ROLE db_owner ADD MEMBER crownus_app");
         var error = await Assert.ThrowsAsync<InvalidOperationException>(
             () => DatabaseSettingsStartupValidator.ValidateAsync(_database.App, CancellationToken.None));
-        await ExecuteAsAdminAsync("ALTER ROLE db_owner DROP MEMBER onevo_app");
+        await ExecuteAsAdminAsync("ALTER ROLE db_owner DROP MEMBER crownus_app");
 
         Assert.Contains("db_owner", error.Message, StringComparison.Ordinal);
     }

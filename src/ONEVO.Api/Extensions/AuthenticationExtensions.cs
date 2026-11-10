@@ -21,12 +21,12 @@ internal static class AuthenticationExtensions
         services.AddSingleton<AdminDatabaseTicketStore>();
 
         // Tenant session exchange (see TenantSessionExchangeService) always completes the real
-        // sign-in on the tenant host itself, so onevo_session stays host-scoped (no Domain) -
+        // sign-in on the tenant host itself, so crownus_session stays host-scoped (no Domain) -
         // there is no cross-subdomain cookie sharing to support.
         services.AddAuthentication("TenantScheme")
             .AddCookie("TenantScheme", options =>
             {
-                options.Cookie.Name = "onevo_session";
+                options.Cookie.Name = ONEVO.Api.Auth.AuthCookieNames.Session;
                 options.Cookie.HttpOnly = true;
                 options.Cookie.SecurePolicy = env.IsDevelopment()
                     ? CookieSecurePolicy.SameAsRequest
@@ -41,7 +41,7 @@ internal static class AuthenticationExtensions
                     context.Response.StatusCode = StatusCodes.Status401Unauthorized;
                     return context.Response.WriteAsJsonAsync(new
                     {
-                        type = "https://onevo.com/errors/unauthorized",
+                        type = ONEVO.Api.Errors.ProblemTypes.For("unauthorized"),
                         title = "Unauthorized",
                         status = 401,
                         detail = "Authentication is required to access this resource.",
@@ -53,7 +53,7 @@ internal static class AuthenticationExtensions
                     context.Response.StatusCode = StatusCodes.Status403Forbidden;
                     return context.Response.WriteAsJsonAsync(new
                     {
-                        type = "https://onevo.com/errors/forbidden",
+                        type = ONEVO.Api.Errors.ProblemTypes.For("forbidden"),
                         title = "Forbidden",
                         status = 403,
                         detail = "You do not have permission to access this resource.",
@@ -87,7 +87,7 @@ internal static class AuthenticationExtensions
                     context.Response.StatusCode = StatusCodes.Status401Unauthorized;
                     return context.Response.WriteAsJsonAsync(new
                     {
-                        type = "https://onevo.com/errors/unauthorized",
+                        type = ONEVO.Api.Errors.ProblemTypes.For("unauthorized"),
                         title = "Unauthorized",
                         status = 401,
                         detail = "Authentication is required to access this resource.",
@@ -99,7 +99,7 @@ internal static class AuthenticationExtensions
                     context.Response.StatusCode = StatusCodes.Status403Forbidden;
                     return context.Response.WriteAsJsonAsync(new
                     {
-                        type = "https://onevo.com/errors/forbidden",
+                        type = ONEVO.Api.Errors.ProblemTypes.For("forbidden"),
                         title = "Forbidden",
                         status = 403,
                         detail = "You do not have permission to access this resource.",
@@ -112,8 +112,8 @@ internal static class AuthenticationExtensions
                 var trayJwt = configuration.GetSection("TrayApp:Jwt");
                 var secret = ConfigurationStartupValidator.RequireTrayJwtSecret(configuration);
 
-                var issuer = trayJwt["Issuer"] ?? "onevo-tray";
-                var audience = trayJwt["Audience"] ?? "onevo-tray-app";
+                var issuer = trayJwt["Issuer"] ?? "crownus-tray";
+                var audience = trayJwt["Audience"] ?? "crownus-tray-app";
 
                 options.TokenValidationParameters = new TokenValidationParameters
                 {
@@ -150,7 +150,7 @@ internal static class AuthenticationExtensions
                         context.Response.ContentType = "application/json";
                         return context.Response.WriteAsJsonAsync(new
                         {
-                            type = "https://onevo.com/errors/unauthorized",
+                            type = ONEVO.Api.Errors.ProblemTypes.For("unauthorized"),
                             title = "Unauthorized",
                             status = 401,
                             detail = "A valid tray device token is required to access this resource.",

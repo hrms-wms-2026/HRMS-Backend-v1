@@ -254,11 +254,11 @@ public static class DotEnvLoader
                 || key.Equals("ConnectionStrings__MigrationConnection", StringComparison.Ordinal))
             {
                 // Full database connection strings are intentionally ignored.
-                // Atomic ONEVO_DB_* values are the single local source and the
+                // Atomic CROWNUS_DB_* values are the single local source and the
                 // loader builds both connection strings after reading the file.
                 Console.Error.WriteLine(
                     "[CONFIG] Ignoring full ConnectionStrings__* entry from .env. " +
-                    "Use atomic ONEVO_DB_* values for local development.");
+                    "Use atomic CROWNUS_DB_* values for local development.");
                 continue;
             }
 
@@ -280,12 +280,12 @@ public static class DotEnvLoader
     {
         SetConnectionIfMissing(
             "ConnectionStrings__DefaultConnection",
-            "ONEVO_DB_APP_USER",
-            "ONEVO_DB_APP_PASSWORD");
+            "CROWNUS_DB_APP_USER",
+            "CROWNUS_DB_APP_PASSWORD");
         SetConnectionIfMissing(
             "ConnectionStrings__MigrationConnection",
-            "ONEVO_DB_MIGRATOR_USER",
-            "ONEVO_DB_MIGRATOR_PASSWORD");
+            "CROWNUS_DB_MIGRATOR_USER",
+            "CROWNUS_DB_MIGRATOR_PASSWORD");
     }
 
     private static void SetConnectionIfMissing(
@@ -298,9 +298,9 @@ public static class DotEnvLoader
             return;
         }
 
-        var host = Environment.GetEnvironmentVariable("ONEVO_DB_HOST");
-        var portText = Environment.GetEnvironmentVariable("ONEVO_DB_PORT");
-        var database = Environment.GetEnvironmentVariable("ONEVO_DB_NAME");
+        var host = Environment.GetEnvironmentVariable("CROWNUS_DB_HOST");
+        var portText = Environment.GetEnvironmentVariable("CROWNUS_DB_PORT");
+        var database = Environment.GetEnvironmentVariable("CROWNUS_DB_NAME");
         var username = Environment.GetEnvironmentVariable(usernameEnvironmentKey);
         var password = Environment.GetEnvironmentVariable(passwordEnvironmentKey);
 

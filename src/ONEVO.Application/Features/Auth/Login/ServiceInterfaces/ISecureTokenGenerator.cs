@@ -13,7 +13,7 @@ public interface ISecureTokenGenerator
     string GenerateUrlSafeOpaqueToken();
 
     /// <summary>Generates a cryptographically random opaque CSRF token (raw bytes, base64-encoded).
-    /// The raw value is set in the readable onevo_csrf cookie; only HashToken(raw) is persisted
+    /// The raw value is set in the readable crownus_csrf cookie; only HashToken(raw) is persisted
     /// server-side on the session.</summary>
     string GenerateCsrfToken();
 

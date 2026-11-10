@@ -30,7 +30,7 @@ public sealed class LegalContentHasherTests
     {
         var hash = LegalContentHasher.ComputeHash(LegalDocumentBootstrapContent.TermsHtml);
 
-        hash.Should().Be("20eafc33d68ca09f6c921b2ed37a67c9dfcaefb01af419f7cfd0a961d46ea696");
+        hash.Should().Be("ea4e1301bdb1a2e72aa01776adf4631d9e1c7493d32199486ec9ff2921f19be8");
     }
 
     [Fact]
@@ -38,7 +38,7 @@ public sealed class LegalContentHasherTests
     {
         var hash = LegalContentHasher.ComputeHash(LegalDocumentBootstrapContent.PrivacyHtml);
 
-        hash.Should().Be("175134229efb70c740267a878bf0f2ae2954d9829fd6890f09c47801c3a6e1d7");
+        hash.Should().Be("f857164793343fc719e7a2879ba596d35ad42a110748d67d093f2df0464e6ca8");
     }
 
     [Fact]

@@ -60,7 +60,7 @@ public class CsrfProtectionMiddlewareTests
     public async Task SafeMethod_IsNeverBlocked()
     {
         var ctx = MakeContext("GET", "/api/v1/employees");
-        ctx.Request.Headers["Cookie"] = "onevo_session=sess-1";
+        ctx.Request.Headers["Cookie"] = "crownus_session=sess-1";
 
         var sut = CreateSut();
         await sut.InvokeAsync(ctx, _tokenService);
@@ -82,11 +82,11 @@ public class CsrfProtectionMiddlewareTests
     [Fact]
     public async Task UnsafeMethod_ExemptSessionExchangePath_IsNotBlocked()
     {
-        // session-exchange is the call that creates onevo_session; it must never be blocked by
-        // CSRF validation, including when the browser carries a stale/invalid onevo_session cookie
+        // session-exchange is the call that creates crownus_session; it must never be blocked by
+        // CSRF validation, including when the browser carries a stale/invalid crownus_session cookie
         // from an unrelated prior session - the exchange code itself is what proves authorization.
         var ctx = MakeContext("POST", "/api/v1/auth/session-exchange");
-        ctx.Request.Headers["Cookie"] = "onevo_session=stale-unrelated-session";
+        ctx.Request.Headers["Cookie"] = "crownus_session=stale-unrelated-session";
 
         var sut = CreateSut();
         await sut.InvokeAsync(ctx, _tokenService);
@@ -109,7 +109,7 @@ public class CsrfProtectionMiddlewareTests
     public async Task UnsafeMethod_MissingCsrfHeader_Rejects403()
     {
         var ctx = MakeContext("POST", "/api/v1/employees");
-        ctx.Request.Headers["Cookie"] = "onevo_session=sess-1";
+        ctx.Request.Headers["Cookie"] = "crownus_session=sess-1";
         ctx.Response.Body = new MemoryStream();
 
         var sut = CreateSut();
@@ -120,10 +120,34 @@ public class CsrfProtectionMiddlewareTests
     }
 
     [Fact]
+    public async Task CsrfFailure_ProblemTypeIsCrownusUrn()
+    {
+        // The web app recognises a CSRF failure by this exact type (error.interceptor.ts).
+        var ctx = MakeContext("POST", "/api/v1/employees");
+        ctx.Request.Headers["Cookie"] = "crownus_session=sess-1";
+        ctx.Response.Body = new MemoryStream();
+
+        await CreateSut().InvokeAsync(ctx, _tokenService);
+
+        ctx.Response.Body.Position = 0;
+        using var body = await System.Text.Json.JsonDocument.ParseAsync(ctx.Response.Body);
+        Assert.Equal("urn:crownus:error:csrf", body.RootElement.GetProperty("type").GetString());
+    }
+
+    [Theory]
+    [InlineData("csrf", "urn:crownus:error:csrf")]
+    [InlineData("forbidden", "urn:crownus:error:forbidden")]
+    [InlineData("rate-limit", "urn:crownus:error:rate-limit")]
+    public void ProblemTypes_For_BuildsCrownusUrn(string name, string expected)
+    {
+        Assert.Equal(expected, ONEVO.Api.Errors.ProblemTypes.For(name));
+    }
+
+    [Fact]
     public async Task UnsafeMethod_NotAuthenticated_Rejects403()
     {
         var ctx = MakeContext("POST", "/api/v1/employees");
-        ctx.Request.Headers["Cookie"] = "onevo_session=sess-1";
+        ctx.Request.Headers["Cookie"] = "crownus_session=sess-1";
         ctx.Request.Headers["X-CSRF-Token"] = "raw-token";
         ctx.Response.Body = new MemoryStream();
 
@@ -140,7 +164,7 @@ public class CsrfProtectionMiddlewareTests
     public async Task UnsafeMethod_HeaderHashMismatch_Rejects403()
     {
         var ctx = MakeContext("POST", "/api/v1/employees");
-        ctx.Request.Headers["Cookie"] = "onevo_session=sess-1";
+        ctx.Request.Headers["Cookie"] = "crownus_session=sess-1";
         ctx.Request.Headers["X-CSRF-Token"] = "wrong-raw-token";
         AuthenticateUser(ctx, "TenantScheme", "aabbccdd");
         ctx.Response.Body = new MemoryStream();
@@ -158,7 +182,7 @@ public class CsrfProtectionMiddlewareTests
     public async Task UnsafeMethod_HeaderHashMatchesSession_Allows()
     {
         var ctx = MakeContext("POST", "/api/v1/employees");
-        ctx.Request.Headers["Cookie"] = "onevo_session=sess-1";
+        ctx.Request.Headers["Cookie"] = "crownus_session=sess-1";
         ctx.Request.Headers["X-CSRF-Token"] = "correct-raw-token";
         AuthenticateUser(ctx, "TenantScheme", "aabbccdd");
 

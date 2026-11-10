@@ -50,7 +50,7 @@ public static class IntegrationCatalogRules
 
         if (string.IsNullOrWhiteSpace(provider))
         {
-            return "onevoAppProvider is required.";
+            return "crownusAppProvider is required.";
         }
 
         if (IsForbidden(provider))

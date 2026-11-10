@@ -26,8 +26,8 @@ public sealed class TrayActivationTestFactory : WebApplicationFactory<Program>
             {
                 ["ConnectionStrings:DefaultConnection"] = _connectionString,
                 ["Jwt:Secret"] = "tray-test-jwt-secret-min-32-chars-long!!",
-                ["Jwt:TenantIssuer"] = "onevo-api",
-                ["Jwt:TenantAudience"] = "onevo-api",
+                ["Jwt:TenantIssuer"] = "crownus-api",
+                ["Jwt:TenantAudience"] = "crownus-api",
                 ["TrayApp:Jwt:Secret"] = "tray-test-tray-jwt-secret-min-32chars!!",
                 ["Tenancy:RootDomain"] = "localhost",
                 ["Urls:AppBaseUrl"] = "https://localhost",

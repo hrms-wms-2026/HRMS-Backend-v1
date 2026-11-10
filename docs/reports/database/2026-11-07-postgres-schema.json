@@ -1022,9 +1022,9 @@
   },
   {
    "table": "integration_catalog",
-   "name": "fk_integration_catalog_platform_o_auth_apps_onevo_app_provider",
+   "name": "fk_integration_catalog_platform_o_auth_apps_crownus_app_provider",
    "type": "f",
-   "def": "FOREIGN KEY (onevo_app_provider) REFERENCES platform_oauth_apps(provider) ON DELETE RESTRICT"
+   "def": "FOREIGN KEY (crownus_app_provider) REFERENCES platform_oauth_apps(provider) ON DELETE RESTRICT"
   },
   {
    "table": "integration_catalog",
@@ -4607,8 +4607,8 @@
   },
   {
    "table": "integration_catalog",
-   "name": "ix_integration_catalog_onevo_app_provider",
-   "def": "CREATE INDEX ix_integration_catalog_onevo_app_provider ON public.integration_catalog USING btree (onevo_app_provider)"
+   "name": "ix_integration_catalog_crownus_app_provider",
+   "def": "CREATE INDEX ix_integration_catalog_crownus_app_provider ON public.integration_catalog USING btree (crownus_app_provider)"
   },
   {
    "table": "integration_catalog",
@@ -14239,7 +14239,7 @@
   },
   {
    "table": "integration_catalog",
-   "name": "onevo_app_provider",
+   "name": "crownus_app_provider",
    "type": "character varying",
    "is_nullable": "NO",
    "column_default": null

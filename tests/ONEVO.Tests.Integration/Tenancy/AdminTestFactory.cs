@@ -15,8 +15,8 @@ namespace ONEVO.Tests.Integration.Tenancy;
 public class AdminTestFactory : WebApplicationFactory<Program>
 {
     public const string TenantSecret = "test_secret_at_least_32_chars_long_!!";
-    public const string TenantIssuer = "onevo-api";
-    public const string TenantAudience = "onevo-api";
+    public const string TenantIssuer = "crownus-api";
+    public const string TenantAudience = "crownus-api";
 
     private readonly string _connectionString;
 

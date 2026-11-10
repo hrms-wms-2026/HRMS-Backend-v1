@@ -18,8 +18,8 @@ public sealed class PrivilegedRoleTestBootstrapTests
 
         foreach (var (login, password) in new[]
         {
-            ("onevo_app", PrivilegedRoleTestBootstrap.AppRolePassword),
-            ("onevo_migrator", PrivilegedRoleTestBootstrap.MigratorRolePassword),
+            ("crownus_app", PrivilegedRoleTestBootstrap.AppRolePassword),
+            ("crownus_migrator", PrivilegedRoleTestBootstrap.MigratorRolePassword),
         })
         {
             await using var connection = new SqlConnection(As(admin, login, password));
@@ -35,7 +35,7 @@ public sealed class PrivilegedRoleTestBootstrapTests
     public async Task AppLogin_HasNoAdminContextFromTheHarness()
     {
         var admin = await SharedSqlServerTemplate.CreateDatabaseAsync();
-        await using var connection = TestDb.CreateConnection(As(admin, "onevo_app", PrivilegedRoleTestBootstrap.AppRolePassword));
+        await using var connection = TestDb.CreateConnection(As(admin, "crownus_app", PrivilegedRoleTestBootstrap.AppRolePassword));
         await connection.OpenAsync();
         await using var command = connection.CreateCommand();
         command.CommandText = "SELECT CAST(SESSION_CONTEXT(N'app.tenant_context_mode') AS nvarchar(16))";
@@ -60,7 +60,7 @@ public sealed class PrivilegedRoleTestBootstrapTests
     {
         var admin = await SharedSqlServerTemplate.CreateDatabaseAsync();
         await ONEVO.Infrastructure.Configuration.DatabaseSettingsStartupValidator.ValidateAsync(
-            As(admin, "onevo_app", PrivilegedRoleTestBootstrap.AppRolePassword), default);
+            As(admin, "crownus_app", PrivilegedRoleTestBootstrap.AppRolePassword), default);
     }
 
     [Fact]

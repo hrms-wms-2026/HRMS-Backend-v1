@@ -39,7 +39,7 @@ public class AuthMfaController : ControllerBase
     [AllowAnonymous]
     public async Task<IActionResult> VerifyMfa([FromBody] VerifyMfaRequest request, CancellationToken ct)
     {
-        if (!Request.Cookies.TryGetValue("onevo_mfa", out var mfaChallenge)
+        if (!Request.Cookies.TryGetValue("crownus_mfa", out var mfaChallenge)
             || string.IsNullOrWhiteSpace(mfaChallenge))
         {
             return Problem("MFA challenge is missing or expired.", statusCode: 401);
@@ -54,7 +54,7 @@ public class AuthMfaController : ControllerBase
         if (!result.IsSuccess)
             return Problem(result.Error, statusCode: result.StatusCode ?? 401);
 
-        this.DeleteTenantCookie("onevo_mfa", httpOnly: true, _env, path: "/api/v1/auth/mfa/verify");
+        this.DeleteTenantCookie("crownus_mfa", httpOnly: true, _env, path: "/api/v1/auth/mfa/verify");
         return await this.HandleSessionResultAsync(result, _env);
     }
 

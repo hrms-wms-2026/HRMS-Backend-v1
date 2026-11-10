@@ -31,7 +31,7 @@ public sealed class RequireAnyPermissionAttribute : Attribute, IAuthorizationFil
 
         context.Result = new ObjectResult(new
         {
-            type = "https://onevo.com/errors/forbidden",
+            type = ONEVO.Api.Errors.ProblemTypes.For("forbidden"),
             title = "Forbidden",
             status = 403,
             detail = $"One of these permissions is required: {string.Join(", ", _permissions)}."

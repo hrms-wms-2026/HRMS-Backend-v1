@@ -54,7 +54,7 @@ public class PermissionVersionMiddleware
                 context.Response.StatusCode = StatusCodes.Status401Unauthorized;
                 await context.Response.WriteAsJsonAsync(new
                 {
-                    type = "https://onevo.com/errors/permission-version-stale",
+                    type = ONEVO.Api.Errors.ProblemTypes.For("permission-version-stale"),
                     title = "Unauthorized",
                     status = 401,
                     detail = "Session permissions are stale. Refresh the session."
@@ -93,7 +93,7 @@ public class PermissionVersionMiddleware
         context.Response.StatusCode = StatusCodes.Status401Unauthorized;
         await context.Response.WriteAsJsonAsync(new
         {
-            type = "https://onevo.com/errors/invalid-session",
+            type = ONEVO.Api.Errors.ProblemTypes.For("invalid-session"),
             title = "Unauthorized",
             status = 401,
             detail

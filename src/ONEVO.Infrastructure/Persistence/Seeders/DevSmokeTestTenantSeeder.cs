@@ -960,7 +960,7 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
                 DisplayName = "GitHub",
                 Description = "Connect GitHub accounts for work management activity.",
                 ConnectionScope = "both",
-                OnevoAppProvider = GitHubProvider,
+                CrownusAppProvider = GitHubProvider,
                 IsActive = true,
                 CreatedById = platformUserId,
                 CreatedAt = now
@@ -971,7 +971,7 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
         entry.DisplayName = "GitHub";
         entry.Description = "Connect GitHub accounts for work management activity.";
         entry.ConnectionScope = "both";
-        entry.OnevoAppProvider = GitHubProvider;
+        entry.CrownusAppProvider = GitHubProvider;
         entry.IsActive = true;
     }
 
@@ -1047,7 +1047,7 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
                 Id = Guid.NewGuid(),
                 DocumentType = "terms",
                 Version = "1.0",
-                Title = "ONEVO Terms & Conditions (Bootstrap Dev)",
+                Title = "Crownus Terms & Conditions (Bootstrap Dev)",
                 IsRequired = true,
                 BlockScope = "dashboard",
                 Status = "published",
@@ -1071,7 +1071,7 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
                 Id = Guid.NewGuid(),
                 DocumentType = "privacy_notice",
                 Version = "1.0",
-                Title = "ONEVO Privacy Notice (Bootstrap Dev)",
+                Title = "Crownus Privacy Notice (Bootstrap Dev)",
                 IsRequired = true,
                 BlockScope = "dashboard",
                 Status = "published",

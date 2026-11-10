@@ -29,7 +29,7 @@ namespace ONEVO.Tests.Integration.CoreHr.ChecklistTemplate;
 /// </summary>
 public sealed class ChecklistTemplatesIntegrationTests : IAsyncLifetime
 {
-    private const string RestrictedRoleName = "onevo_app";
+    private const string RestrictedRoleName = "crownus_app";
     private const string RestrictedRolePassword = PrivilegedRoleTestBootstrap.AppRolePassword;
 
 

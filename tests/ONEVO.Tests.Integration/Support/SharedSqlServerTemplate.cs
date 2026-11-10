@@ -12,7 +12,7 @@ namespace ONEVO.Tests.Integration.Support;
 
 /// <summary>
 /// Starts ONE SQL Server container and migrates a template database once, lazily, exactly as a real
-/// server is set up: ops/sqlserver bootstrap, migrations as onevo_migrator, then grants. Each test
+/// server is set up: ops/sqlserver bootstrap, migrations as crownus_migrator, then grants. Each test
 /// class gets its own database by restoring a backup of that template, so classes never see each
 /// other's data, and migrations run once per test run instead of once per class.
 ///
@@ -90,7 +90,7 @@ public static class SharedSqlServerTemplate
         var migrator = new SqlConnectionStringBuilder(master)
         {
             InitialCatalog = TemplateDatabaseName,
-            UserID = "onevo_migrator",
+            UserID = "crownus_migrator",
             Password = PrivilegedRoleTestBootstrap.MigratorRolePassword,
         }.ConnectionString;
         var clock = new SystemDateTimeProvider();

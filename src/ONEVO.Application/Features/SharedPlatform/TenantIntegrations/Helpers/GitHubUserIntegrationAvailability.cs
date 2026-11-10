@@ -59,7 +59,7 @@ public sealed class GitHubUserIntegrationAvailability
         }
 
         if (!string.Equals(
-                integration.OnevoAppProvider,
+                integration.CrownusAppProvider,
                 GitHubUserOAuthRules.Provider,
                 StringComparison.Ordinal))
         {

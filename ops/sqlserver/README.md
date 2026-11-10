@@ -3,8 +3,8 @@
 The order matters:
 
 1. `bootstrap-logins.sql`, as a privileged login: creates the database with its required settings, logins and users.
-2. EF migrations, as `onevo_migrator`. Migrations never create logins.
-3. `post-migration-grants.sql`, as a privileged login: gives `onevo_app` its data access.
+2. EF migrations, as `crownus_migrator`. Migrations never create logins.
+3. `post-migration-grants.sql`, as a privileged login: gives `crownus_app` its data access.
 
 `setup-local-db.ps1 -RunMigrations` runs all three on a local server. Never run it against a shared server.
 
@@ -12,9 +12,9 @@ The order matters:
 
 | Login or user | Rights |
 |---|---|
-| `onevo_app` | Read and write data, execute named procedures. Never `db_owner`, no policy or schema rights. |
-| `onevo_migrator` | DDL, `ALTER ANY SECURITY POLICY`, `REFERENCES`, and rights on the schemas it creates. Not `sysadmin`. |
-| `onevo_auth_base_login_fn_owner` | No login. The login lookup procedure runs as this user. |
+| `crownus_app` | Read and write data, execute named procedures. Never `db_owner`, no policy or schema rights. |
+| `crownus_migrator` | DDL, `ALTER ANY SECURITY POLICY`, `REFERENCES`, and rights on the schemas it creates. Not `sysadmin`. |
+| `crownus_auth_base_login_fn_owner` | No login. The login lookup procedure runs as this user. |
 
 ## Required database settings
 

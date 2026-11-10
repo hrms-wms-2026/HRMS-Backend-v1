@@ -96,9 +96,9 @@ public class TrayJwtSecretConfigurationTests
         TokenValidationParameters Params(string key) => new()
         {
             ValidateIssuer = true,
-            ValidIssuer = "onevo-tray",
+            ValidIssuer = "crownus-tray",
             ValidateAudience = true,
-            ValidAudience = "onevo-tray-app",
+            ValidAudience = "crownus-tray-app",
             ValidateIssuerSigningKey = true,
             IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(key)),
             ValidateLifetime = true
