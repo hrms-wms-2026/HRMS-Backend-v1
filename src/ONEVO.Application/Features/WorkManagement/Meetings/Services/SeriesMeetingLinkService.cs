@@ -172,10 +172,16 @@ public sealed class SeriesMeetingLinkService
             return Result<MeetingLinkResponse>.Failure("Choose Microsoft Teams or Zoom.", 400, MeetingErrorCodes.PlatformInvalid);
         if (await OrganizerOnlyAsync<MeetingLinkResponse>(tenantId, callerEmployeeId, seriesId, ct) is { } denied)
             return denied;
-        var connection = await _connections.GetByTenantUserProviderAsync(tenantId, callerUserId,
+        // The link always comes from the organizer's own account, also when a delegate adds it (spec "The online link").
+        var owner = await _meetings.GetSeriesAsync(tenantId, seriesId, ct) is { } current && current.OrganizerEmployeeId != callerEmployeeId
+            ? await _employees.GetByIdAsync(tenantId, current.OrganizerEmployeeId, ct)
+            : null;
+        var connection = await _connections.GetByTenantUserProviderAsync(tenantId, owner?.UserId ?? callerUserId,
             CalendarMeetingConnections.SourceFor(request.Platform), ct);
         if (!CalendarMeetingConnections.CanCreateMeetings(connection, request.Platform))
-            return Result<MeetingLinkResponse>.Failure("Connect your calendar account to add an online meeting.", 409,
+            return Result<MeetingLinkResponse>.Failure(owner is null
+                    ? "Connect your calendar account to add an online meeting."
+                    : $"{$"{owner.FirstName} {owner.LastName}".Trim()} needs to connect their calendar account to add an online meeting.", 409,
                 MeetingErrorCodes.ProviderNotConnected);
         await SettleStaleAsync(tenantId, await _links.GetActiveForSeriesAsync(tenantId, seriesId, ct), ct);
 
