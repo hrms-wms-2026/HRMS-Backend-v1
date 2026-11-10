@@ -10,7 +10,7 @@ using ONEVO.Domain.Features.DevPlatform.SystemConfig.IntegrationCatalog.Entities
 namespace ONEVO.Application.Features.DevPlatform.SystemConfig.IntegrationCatalog.Commands.CreateIntegration;
 
 public sealed record CreateIntegrationCommand(string IntegrationKey, string DisplayName, string? Description,
-    string ConnectionScope, string OnevoAppProvider, string? LogoUrl, bool IsActive, Guid ActorPlatformUserId)
+    string ConnectionScope, string CrownusAppProvider, string? LogoUrl, bool IsActive, Guid ActorPlatformUserId)
     : IRequest<Result<IntegrationCatalogDto>>;
 
 public sealed class CreateIntegrationCommandHandler : IRequestHandler<CreateIntegrationCommand, Result<IntegrationCatalogDto>>
@@ -29,7 +29,7 @@ public sealed class CreateIntegrationCommandHandler : IRequestHandler<CreateInte
     public async Task<Result<IntegrationCatalogDto>> Handle(CreateIntegrationCommand request, CancellationToken ct)
     {
         var integrationKey = IntegrationCatalogRules.Normalize(request.IntegrationKey);
-        var provider = IntegrationCatalogRules.Normalize(request.OnevoAppProvider);
+        var provider = IntegrationCatalogRules.Normalize(request.CrownusAppProvider);
 
         if (!IntegrationCatalogRules.IsValidSlug(request.IntegrationKey)
             || request.IntegrationKey != integrationKey)
@@ -78,7 +78,7 @@ public sealed class CreateIntegrationCommandHandler : IRequestHandler<CreateInte
             DisplayName = request.DisplayName.Trim(),
             Description = request.Description?.Trim(),
             ConnectionScope = request.ConnectionScope,
-            OnevoAppProvider = provider,
+            CrownusAppProvider = provider,
             LogoUrl = request.LogoUrl?.Trim(),
             IsActive = request.IsActive,
             CreatedById = request.ActorPlatformUserId,

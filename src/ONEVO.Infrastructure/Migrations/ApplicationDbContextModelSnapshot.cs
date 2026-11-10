@@ -5862,6 +5862,12 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
+                    b.Property<string>("CrownusAppProvider")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)")
+                        .HasColumnName("crownus_app_provider");
+
                     b.Property<string>("Description")
                         .HasColumnType("nvarchar(max)")
                         .HasColumnName("description");
@@ -5881,20 +5887,14 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("nvarchar(500)")
                         .HasColumnName("logo_url");
 
-                    b.Property<string>("OnevoAppProvider")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("nvarchar(50)")
-                        .HasColumnName("onevo_app_provider");
-
                     b.HasKey("IntegrationKey")
                         .HasName("pk_integration_catalog");
 
                     b.HasIndex("CreatedById")
                         .HasDatabaseName("ix_integration_catalog_created_by_id");
 
-                    b.HasIndex("OnevoAppProvider")
-                        .HasDatabaseName("ix_integration_catalog_onevo_app_provider");
+                    b.HasIndex("CrownusAppProvider")
+                        .HasDatabaseName("ix_integration_catalog_crownus_app_provider");
 
                     b.ToTable("integration_catalog", (string)null);
                 });
@@ -17476,11 +17476,11 @@ namespace ONEVO.Infrastructure.Migrations
 
                     b.HasOne("ONEVO.Domain.Features.DevPlatform.SystemConfig.PlatformOAuthApps.Entities.PlatformOAuthApp", null)
                         .WithMany()
-                        .HasForeignKey("OnevoAppProvider")
+                        .HasForeignKey("CrownusAppProvider")
                         .HasPrincipalKey("Provider")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
-                        .HasConstraintName("fk_integration_catalog_platform_o_auth_apps_onevo_app_provider");
+                        .HasConstraintName("fk_integration_catalog_platform_o_auth_apps_crownus_app_provider");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.DevPlatform.SystemConfig.IntegrationCatalog.Entities.ModuleIntegrationLink", b =>

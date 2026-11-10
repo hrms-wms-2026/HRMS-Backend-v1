@@ -7,5 +7,5 @@ public static class IntegrationCatalogMapper
 {
     public static IntegrationCatalogDto ToDto(IntegrationCatalogEntry entry, IReadOnlyList<string> moduleKeys) =>
         new(entry.IntegrationKey, entry.DisplayName, entry.Description, entry.ConnectionScope,
-            entry.OnevoAppProvider, entry.LogoUrl, entry.IsActive, entry.CreatedAt, moduleKeys);
+            entry.CrownusAppProvider, entry.LogoUrl, entry.IsActive, entry.CreatedAt, moduleKeys);
 }

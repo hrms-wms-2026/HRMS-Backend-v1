@@ -3827,7 +3827,7 @@ namespace ONEVO.Infrastructure.Migrations
                     display_name = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: false),
                     description = table.Column<string>(type: "nvarchar(max)", nullable: true),
                     connection_scope = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: false),
-                    onevo_app_provider = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: false),
+                    crownus_app_provider = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: false),
                     logo_url = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: true),
                     is_active = table.Column<bool>(type: "bit", nullable: false),
                     created_by_id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
@@ -3837,8 +3837,8 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     table.PrimaryKey("pk_integration_catalog", x => x.integration_key);
                     table.ForeignKey(
-                        name: "fk_integration_catalog_platform_o_auth_apps_onevo_app_provider",
-                        column: x => x.onevo_app_provider,
+                        name: "fk_integration_catalog_platform_o_auth_apps_crownus_app_provider",
+                        column: x => x.crownus_app_provider,
                         principalTable: "platform_oauth_apps",
                         principalColumn: "provider",
                         onDelete: ReferentialAction.Restrict);
@@ -7570,9 +7570,9 @@ namespace ONEVO.Infrastructure.Migrations
                 column: "created_by_id");
 
             migrationBuilder.CreateIndex(
-                name: "ix_integration_catalog_onevo_app_provider",
+                name: "ix_integration_catalog_crownus_app_provider",
                 table: "integration_catalog",
-                column: "onevo_app_provider");
+                column: "crownus_app_provider");
 
             migrationBuilder.CreateIndex(
                 name: "ix_invitation_tokens_expires_at",

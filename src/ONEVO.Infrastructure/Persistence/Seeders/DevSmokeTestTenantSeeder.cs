@@ -960,7 +960,7 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
                 DisplayName = "GitHub",
                 Description = "Connect GitHub accounts for work management activity.",
                 ConnectionScope = "both",
-                OnevoAppProvider = GitHubProvider,
+                CrownusAppProvider = GitHubProvider,
                 IsActive = true,
                 CreatedById = platformUserId,
                 CreatedAt = now
@@ -971,7 +971,7 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
         entry.DisplayName = "GitHub";
         entry.Description = "Connect GitHub accounts for work management activity.";
         entry.ConnectionScope = "both";
-        entry.OnevoAppProvider = GitHubProvider;
+        entry.CrownusAppProvider = GitHubProvider;
         entry.IsActive = true;
     }
 
