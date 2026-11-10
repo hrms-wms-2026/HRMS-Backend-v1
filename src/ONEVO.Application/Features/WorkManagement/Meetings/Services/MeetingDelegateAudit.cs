@@ -35,6 +35,11 @@ public interface IMeetingDelegateAudit
     /// </summary>
     Task RecordForPrincipalAsync(MeetingSeries series, Guid actingForEmployeeId, string action, object newValues, object? oldValues,
         CancellationToken ct);
+
+    /// <summary>The same, by id, for a meeting that is not loaded (a create), or does not exist yet (a create that went for
+    /// approval: <paramref name="seriesId"/> is null).</summary>
+    Task RecordForPrincipalAsync(Guid tenantId, Guid? seriesId, bool isPrivate, Guid actingForEmployeeId, string action, object newValues,
+        object? oldValues, CancellationToken ct);
 }
 
 public sealed class MeetingDelegateAudit : IMeetingDelegateAudit
@@ -69,11 +74,15 @@ public sealed class MeetingDelegateAudit : IMeetingDelegateAudit
 
     public Task RecordForPrincipalAsync(MeetingSeries series, Guid actingForEmployeeId, string action, object newValues, object? oldValues,
         CancellationToken ct)
+        => RecordForPrincipalAsync(series.TenantId, series.Id, series.IsPrivate, actingForEmployeeId, action, newValues, oldValues, ct);
+
+    public Task RecordForPrincipalAsync(Guid tenantId, Guid? seriesId, bool isPrivate, Guid actingForEmployeeId, string action, object newValues,
+        object? oldValues, CancellationToken ct)
     {
         var next = new JsonObject { ["actingForEmployeeId"] = actingForEmployeeId };
-        foreach (var (key, value) in Clean(newValues, series.IsPrivate) ?? [])
+        foreach (var (key, value) in Clean(newValues, isPrivate) ?? [])
             next[key] = value?.DeepClone();
-        return AddAsync(series.TenantId, action, "MeetingSeries", series.Id, next, Clean(oldValues, series.IsPrivate), ct);
+        return AddAsync(tenantId, action, "MeetingSeries", seriesId, next, Clean(oldValues, isPrivate), ct);
     }
 
     private static JsonObject? Clean(object? values, bool isPrivate)
@@ -88,7 +97,7 @@ public sealed class MeetingDelegateAudit : IMeetingDelegateAudit
         return json;
     }
 
-    private Task AddAsync(Guid tenantId, string action, string resourceType, Guid resourceId, JsonObject newValues, JsonObject? oldValues,
+    private Task AddAsync(Guid tenantId, string action, string resourceType, Guid? resourceId, JsonObject newValues, JsonObject? oldValues,
         CancellationToken ct)
         => _logs.AddAsync(new AuditLog
         {

@@ -19,8 +19,10 @@ public interface IMeetingSeriesFactory
     /// rest pending; inactive or unknown people skipped and reported), then - under the series lock - the first
     /// occurrence plus every occurrence in the next 7 days. Every check that can fail runs before the first write.
     /// </summary>
+    /// <param name="createdByUserId">Who really created it when a delegate schedules for the organizer; defaults to the organizer.</param>
     Task<Result<MeetingCreatedResponse>> CreateDirectAsync(Guid tenantId, Guid organizerEmployeeId, Guid organizerUserId,
-        MeetingPlacement placement, CreateMeetingRequest request, string creationPath, Guid? approvalRequestId, CancellationToken ct);
+        MeetingPlacement placement, CreateMeetingRequest request, string creationPath, Guid? approvalRequestId, CancellationToken ct,
+        Guid? createdByUserId = null);
 }
 
 public sealed class MeetingSeriesFactory : IMeetingSeriesFactory
@@ -65,7 +67,8 @@ public sealed class MeetingSeriesFactory : IMeetingSeriesFactory
     }
 
     public async Task<Result<MeetingCreatedResponse>> CreateDirectAsync(Guid tenantId, Guid organizerEmployeeId, Guid organizerUserId,
-        MeetingPlacement placement, CreateMeetingRequest request, string creationPath, Guid? approvalRequestId, CancellationToken ct)
+        MeetingPlacement placement, CreateMeetingRequest request, string creationPath, Guid? approvalRequestId, CancellationToken ct,
+        Guid? createdByUserId = null)
     {
         var project = await _projects.GetByIdForTenantAsync(tenantId, placement.ProjectId, ct);
         if (project is null)
@@ -96,7 +99,7 @@ public sealed class MeetingSeriesFactory : IMeetingSeriesFactory
             Location = request.Location?.Trim(), IsPrivate = request.IsPrivate, DtStart = request.Start.ToUniversalTime(),
             DurationMinutes = request.DurationMinutes, IsAllDay = request.IsAllDay, Timezone = request.Timezone,
             RecurrenceRule = request.RecurrenceRule, CreationPath = creationPath, ApprovalRequestId = approvalRequestId,
-            CreatedAt = now, CreatedById = organizerUserId,
+            CreatedAt = now, CreatedById = createdByUserId ?? organizerUserId,
         };
         _meetings.AddSeries(series);
         var participantRows = attendees.Prepend(organizerEmployeeId).Select(id => new CalendarEventParticipant

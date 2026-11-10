@@ -31,7 +31,8 @@ public static class MeetingRoles
 public sealed record CreateMeetingRequest(
     Guid? ProjectId, Guid? ObjectiveId, string Title, string? Description, string? Location, bool IsPrivate,
     DateTimeOffset Start, int DurationMinutes, bool IsAllDay, string Timezone, string? RecurrenceRule,
-    IReadOnlyList<Guid> ParticipantEmployeeIds, IReadOnlyList<string> GuestEmails, string? Platform)
+    IReadOnlyList<Guid> ParticipantEmployeeIds, IReadOnlyList<string> GuestEmails, string? Platform,
+    Guid? OrganizerEmployeeId = null)
 {
     // A client that leaves a list out sends null; it means "nobody", not a server error.
     public IReadOnlyList<Guid> ParticipantEmployeeIds { get; init; } = ParticipantEmployeeIds ?? [];

@@ -40,6 +40,8 @@ public sealed class CreateMeetingCommandHandlerTests
     private readonly Mock<IEmployeeRepository> _employees = new();
     private readonly Mock<IUnitOfWork> _unitOfWork = new();
     private readonly Mock<IDateTimeProvider> _clock = new();
+    private readonly Mock<IMeetingDelegateRepository> _delegates = new();
+    private readonly Mock<IMeetingDelegateAudit> _audit = new();
 
     public CreateMeetingCommandHandlerTests()
     {
@@ -60,7 +62,7 @@ public sealed class CreateMeetingCommandHandlerTests
         Options.Create(new MeetingsOptions { Create = createOn }), _user.Object, _identity.Object,
         new MeetingCreateValidator(new IcalNetMeetingRecurrence()), _placements.Object, _factory.Object, _approvals.Object,
         new MeetingApprovalSnapshotBuilder(_employees.Object, _hierarchy.Object, Mock.Of<IMeetingRepository>(), Mock.Of<IMeetingLinkRepository>()),
-        _unitOfWork.Object, _clock.Object);
+        _unitOfWork.Object, _clock.Object, _delegates.Object, _employees.Object, _audit.Object);
 
     private static CreateMeetingRequest Form() => new(Project, Module.Id, "Design review", "Agenda", null, false,
         new DateTimeOffset(2026, 11, 3, 9, 0, 0, TimeSpan.Zero), 45, false, "UTC", "FREQ=WEEKLY", [], ["client@example.com"], null);
@@ -103,7 +105,7 @@ public sealed class CreateMeetingCommandHandlerTests
         _placements.Setup(p => p.ResolveAsync(Tenant, Caller, Project, Module.Id, It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result<MeetingPlacement>.Success(new MeetingPlacement(Project, Module.Id, false, Direct: true)));
         _factory.Setup(f => f.CreateDirectAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<MeetingPlacement>(),
-                It.IsAny<CreateMeetingRequest>(), It.IsAny<string>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
+                It.IsAny<CreateMeetingRequest>(), It.IsAny<string>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>(), It.IsAny<Guid?>()))
             .ThrowsAsync(new MeetingBusyException(Guid.NewGuid(), new TimeoutException()));
 
         var result = await Handler().Handle(new CreateMeetingCommand(Form()), CancellationToken.None);
@@ -155,7 +157,7 @@ public sealed class CreateMeetingCommandHandlerTests
     {
         var steps = new List<string>();
         _factory.Setup(f => f.CreateDirectAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<MeetingPlacement>(),
-                It.IsAny<CreateMeetingRequest>(), It.IsAny<string>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
+                It.IsAny<CreateMeetingRequest>(), It.IsAny<string>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>(), It.IsAny<Guid?>()))
             .Callback(() => steps.Add("create"))
             .ReturnsAsync(Result<MeetingCreatedResponse>.Success(new MeetingCreatedResponse("created", Guid.NewGuid(), Guid.NewGuid(), null, [])));
         _unitOfWork.Setup(u => u.SaveChangesAsync(It.IsAny<CancellationToken>())).Callback(() => steps.Add("save")).ReturnsAsync(1);
@@ -188,5 +190,118 @@ public sealed class CreateMeetingCommandHandlerTests
 
         Assert.True(result.IsSuccess, result.Error);
         Assert.Equal(["create", "save"], steps);
+    }
+
+    // ---- Creating for a principal (spec "Creating a meeting for the principal") ----
+
+    private static readonly Employee Principal = new() { Id = Guid.NewGuid(), TenantId = Tenant, UserId = Guid.NewGuid(), FirstName = "Chief", LastName = "Executive" };
+
+    private sealed record FactoryCall(Guid Organizer, Guid OrganizerUser, Guid? CreatedBy);
+
+    private List<FactoryCall> CaptureFactory()
+    {
+        var calls = new List<FactoryCall>();
+        _factory.Setup(f => f.CreateDirectAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<MeetingPlacement>(),
+                It.IsAny<CreateMeetingRequest>(), It.IsAny<string>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>(), It.IsAny<Guid?>()))
+            .Callback((Guid _, Guid organizer, Guid organizerUser, MeetingPlacement _, CreateMeetingRequest _, string _, Guid? _,
+                CancellationToken _, Guid? createdBy) => calls.Add(new FactoryCall(organizer, organizerUser, createdBy)))
+            .ReturnsAsync(Result<MeetingCreatedResponse>.Success(new MeetingCreatedResponse("created", Guid.NewGuid(), Guid.NewGuid(), null, [])));
+        return calls;
+    }
+
+    private void PrincipalDelegatedToCaller()
+    {
+        _delegates.Setup(d => d.IsActiveDelegateAsync(Tenant, Principal.Id, Caller, It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+        _employees.Setup(e => e.GetByIdAsync(Tenant, Principal.Id, It.IsAny<CancellationToken>())).ReturnsAsync(Principal);
+    }
+
+    private void DirectFor(Guid organizer)
+        => _placements.Setup(p => p.ResolveAsync(Tenant, organizer, Project, Module.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<MeetingPlacement>.Success(new MeetingPlacement(Project, Module.Id, false, Direct: true)));
+
+    [Fact]
+    public async Task ACreateForAPrincipal_UsesThePrincipalAsOrganizer_AndTheCallerAsCreator()
+    {
+        PrincipalDelegatedToCaller();
+        DirectFor(Principal.Id);
+        var calls = CaptureFactory();
+
+        var result = await Handler().Handle(new CreateMeetingCommand(Form() with { OrganizerEmployeeId = Principal.Id }), CancellationToken.None);
+
+        Assert.True(result.IsSuccess, result.Error);
+        Assert.Equal(new FactoryCall(Principal.Id, Principal.UserId, _user.Object.UserId), Assert.Single(calls));
+    }
+
+    [Fact]
+    public async Task ACreateForSomeoneWhoDidNotDelegate_Is403MeetingDelegateRequired()
+    {
+        var result = await Handler().Handle(new CreateMeetingCommand(Form() with { OrganizerEmployeeId = Principal.Id }), CancellationToken.None);
+
+        Assert.Equal((403, MeetingErrorCodes.DelegateRequired), (result.StatusCode, result.ErrorCode));
+        _placements.VerifyNoOtherCalls();
+        _factory.VerifyNoOtherCalls();
+    }
+
+    [Fact]
+    public async Task ACreateForAPrincipal_ResolvesPlacementForThePrincipal()
+    {
+        PrincipalDelegatedToCaller();
+        DirectFor(Principal.Id);
+        CaptureFactory();
+
+        await Handler().Handle(new CreateMeetingCommand(Form() with { OrganizerEmployeeId = Principal.Id }), CancellationToken.None);
+
+        _placements.Verify(p => p.ResolveAsync(Tenant, Principal.Id, Project, Module.Id, It.IsAny<CancellationToken>()), Times.Once);
+        _placements.Verify(p => p.ResolveAsync(Tenant, Caller, It.IsAny<Guid?>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task AnApprovalRequestForAPrincipal_IsSubmittedInThePrincipalsName()
+    {
+        PrincipalDelegatedToCaller();
+        _placements.Setup(p => p.ResolveAsync(Tenant, Principal.Id, Project, Module.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<MeetingPlacement>.Success(new MeetingPlacement(Project, Module.Id, false, Direct: false)));
+        WorkAction? submitted = null;
+        _approvals.Setup(a => a.SubmitAsync(It.IsAny<WorkAction>(), It.IsAny<CancellationToken>()))
+            .Callback((WorkAction action, CancellationToken _) => submitted = action)
+            .ReturnsAsync(Result<ApprovalDecision>.Success(ApprovalDecision.Pending(Guid.NewGuid(), Guid.NewGuid())));
+
+        var result = await Handler().Handle(new CreateMeetingCommand(Form() with { OrganizerEmployeeId = Principal.Id }), CancellationToken.None);
+
+        Assert.True(result.IsSuccess, result.Error);
+        Assert.Equal(Principal.Id, submitted!.ActorEmployeeId);
+        _audit.Verify(a => a.RecordForPrincipalAsync(Tenant, null, false, Principal.Id, MeetingAuditActions.Created, It.IsAny<object>(),
+            null, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task ACreateForAPrincipal_RecordsOneAudit_AndACreateForYourselfRecordsNone()
+    {
+        PrincipalDelegatedToCaller();
+        DirectFor(Principal.Id);
+        DirectFor(Caller);
+        CaptureFactory();
+
+        await Handler().Handle(new CreateMeetingCommand(Form() with { OrganizerEmployeeId = Principal.Id }), CancellationToken.None);
+        _audit.Verify(a => a.RecordForPrincipalAsync(Tenant, It.IsAny<Guid?>(), false, Principal.Id, MeetingAuditActions.Created,
+            It.IsAny<object>(), null, It.IsAny<CancellationToken>()), Times.Once);
+
+        _audit.Invocations.Clear();
+        await Handler().Handle(new CreateMeetingCommand(Form()), CancellationToken.None);
+        _audit.VerifyNoOtherCalls();
+    }
+
+    [Fact]
+    public async Task NamingYourselfAsOrganizer_BehavesLikeToday()
+    {
+        DirectFor(Caller);
+        var calls = CaptureFactory();
+
+        var result = await Handler().Handle(new CreateMeetingCommand(Form() with { OrganizerEmployeeId = Caller }), CancellationToken.None);
+
+        Assert.True(result.IsSuccess, result.Error);
+        Assert.Equal(new FactoryCall(Caller, _user.Object.UserId, _user.Object.UserId), Assert.Single(calls));
+        _delegates.VerifyNoOtherCalls();
     }
 }
