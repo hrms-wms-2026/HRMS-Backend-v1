@@ -492,6 +492,11 @@ public static class DependencyInjection
         // Meeting delegates: who may run whose meetings as the organizer.
         services.AddScoped<ONEVO.Application.Features.WorkManagement.Meetings.RepositoryInterfaces.IMeetingDelegateRepository,
             ONEVO.Infrastructure.Persistence.Repositories.WorkManagement.Meetings.EfMeetingDelegateRepository>();
+        // Delegate task planning: what a planning delegate may read for the principal, and the one delegate check.
+        services.AddScoped<ONEVO.Application.Features.WorkManagement.Meetings.RepositoryInterfaces.IDelegateScopeRepository,
+            ONEVO.Infrastructure.Persistence.Repositories.WorkManagement.Meetings.EfDelegateScopeRepository>();
+        services.AddScoped<ONEVO.Application.Features.WorkManagement.Meetings.Services.IDelegateAccess,
+            ONEVO.Application.Features.WorkManagement.Meetings.Services.DelegateAccess>();
         services.AddScoped<ONEVO.Application.Features.WorkManagement.Meetings.Services.MeetingActionItemService>();
         services.AddScoped<ONEVO.Application.Features.WorkManagement.Meetings.Services.IMeetingDelegateAudit,
             ONEVO.Application.Features.WorkManagement.Meetings.Services.MeetingDelegateAudit>();
