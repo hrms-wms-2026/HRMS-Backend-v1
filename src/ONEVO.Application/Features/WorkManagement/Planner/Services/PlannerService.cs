@@ -179,6 +179,9 @@ public sealed class PlannerService : IPlannerBlockWriter
             var block = await _planner.GetBlockTrackedAsync(tenantId, callerEmployeeId, blockId, innerCt);
             if (block is null)
                 return NotFound<PlannerDayResponse>();
+            // Under the plan lock: of two writers holding the same version, only the first gets past this.
+            if (IsStale(block, request.ExpectedVersion))
+                return BlockChanged<PlannerDayResponse>();
             var check = await CheckWriteAsync(tenantId, callerEmployeeId, request.StartAt, request.EndAt, blockId, innerCt);
             if (check.Failure is { } failure && check.Zone == default)
                 return failure;
@@ -196,23 +199,46 @@ public sealed class PlannerService : IPlannerBlockWriter
         }, ct);
     }
 
-    public async Task<Result<PlannerDayResponse>> DeleteBlockAsync(Guid tenantId, Guid callerEmployeeId, Guid blockId, CancellationToken ct)
+    /// <param name="expectedVersion">The block's Version as the client last saw it; a different stored version is refused (409).</param>
+    public async Task<Result<PlannerDayResponse>> DeleteBlockAsync(Guid tenantId, Guid callerEmployeeId, Guid blockId, CancellationToken ct,
+        string? expectedVersion = null)
     {
         if (!_options.Value.Enabled)
             return Disabled<PlannerDayResponse>();
-        var block = await _planner.GetBlockTrackedAsync(tenantId, callerEmployeeId, blockId, ct);
-        if (block is null)
-            return NotFound<PlannerDayResponse>();
-        var zone = await ZoneOfAsync(tenantId, callerEmployeeId, ct);
-        if (zone is null)
-            return NotFound<PlannerDayResponse>();
-        if (DayCheck(DayOf(block.StartAt, zone.Value.Info), TodayIn(zone.Value.Info)) is { } locked)
-            return locked;
+        // Under the plan lock, like a move, so a remove and another writer's move cannot both pass the version check.
+        return await _unitOfWork.ExecuteInTransactionAsync(async innerCt =>
+        {
+            await _planner.LockPlanAsync(tenantId, callerEmployeeId, innerCt);
+            var block = await _planner.GetBlockTrackedAsync(tenantId, callerEmployeeId, blockId, innerCt);
+            if (block is null)
+                return NotFound<PlannerDayResponse>();
+            if (IsStale(block, expectedVersion))
+                return BlockChanged<PlannerDayResponse>();
+            var zone = await ZoneOfAsync(tenantId, callerEmployeeId, innerCt);
+            if (zone is null)
+                return NotFound<PlannerDayResponse>();
+            if (DayCheck(DayOf(block.StartAt, zone.Value.Info), TodayIn(zone.Value.Info)) is { } locked)
+                return locked;
 
-        _planner.RemoveBlock(block);
-        await _unitOfWork.SaveChangesAsync(ct);
-        return Result<PlannerDayResponse>.Success(await ComposeDayOfAsync(tenantId, callerEmployeeId, block.StartAt, zone.Value, ct));
+            _planner.RemoveBlock(block);
+            await _unitOfWork.SaveChangesAsync(innerCt);
+            return Result<PlannerDayResponse>.Success(await ComposeDayOfAsync(tenantId, callerEmployeeId, block.StartAt, zone.Value, innerCt));
+        }, ct);
     }
+
+    /// <summary>True when the client sent a version and the block has moved on since (or the version is not one).</summary>
+    private static bool IsStale(PlannedTaskBlock block, string? expectedVersion)
+    {
+        if (expectedVersion is null)
+            return false;
+        if (!DateTimeOffset.TryParse(expectedVersion, System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.RoundtripKind, out var expected))
+            return true;
+        return (block.UpdatedAt ?? block.CreatedAt).UtcTicks != expected.UtcTicks;
+    }
+
+    private static Result<T> BlockChanged<T>() => Result<T>.Failure(
+        "This block was changed by someone else. Refresh and try again.", 409, PlannerErrorCodes.BlockChanged);
 
     private readonly record struct WriteCheck(Zone Zone, Result<PlannerDayResponse>? Failure);
 

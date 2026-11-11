@@ -12,12 +12,16 @@ public static class PlannerErrorCodes
     public const string InvalidTime = "planner_invalid_time";
     public const string NotFound = "planner_not_found";
     public const string InvalidRange = "planner_invalid_range";
+    /// <summary>A move or remove sent an expectedVersion the block no longer has: someone else wrote it first.</summary>
+    public const string BlockChanged = "planner_block_changed";
 }
 
 /// <param name="TaskId">A task assigned to the caller that is not a meeting.</param>
 public sealed record CreatePlannedBlockRequest(Guid TaskId, DateTimeOffset StartAt, DateTimeOffset EndAt);
 
-public sealed record MovePlannedBlockRequest(DateTimeOffset StartAt, DateTimeOffset EndAt);
+/// <param name="ExpectedVersion">The block's Version as the client last saw it; a different stored version is refused (409).
+/// Optional, so an older client keeps working.</param>
+public sealed record MovePlannedBlockRequest(DateTimeOffset StartAt, DateTimeOffset EndAt, string? ExpectedVersion = null);
 
 /// <param name="ActualMinutes">The task's clocked minutes on that day (the same for every block of one task).</param>
 /// <param name="StillAssigned">False once the task is no longer assigned to the employee; the block stays.</param>

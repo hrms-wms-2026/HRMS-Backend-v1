@@ -24,11 +24,14 @@ public sealed record GetMyPlannerRangeQuery(DateOnly From, DateOnly To, Guid? Fo
 /// <param name="ForEmployeeId">A principal's Focus list, for their active planning delegate; null or the caller means the caller's own.</param>
 public sealed record GetMyPlannerFocusQuery(Guid? ForEmployeeId = null) : IRequest<Result<PlannerFocusResponse>>;
 
-public sealed record CreatePlannedBlockCommand(CreatePlannedBlockRequest Request) : IRequest<Result<PlannerDayResponse>>;
+/// <param name="ForEmployeeId">The principal, for their active planning delegate; null means the caller's own planner.</param>
+public sealed record CreatePlannedBlockCommand(CreatePlannedBlockRequest Request, Guid? ForEmployeeId = null) : IRequest<Result<PlannerDayResponse>>;
 
-public sealed record MovePlannedBlockCommand(Guid BlockId, MovePlannedBlockRequest Request) : IRequest<Result<PlannerDayResponse>>;
+public sealed record MovePlannedBlockCommand(Guid BlockId, MovePlannedBlockRequest Request, Guid? ForEmployeeId = null)
+    : IRequest<Result<PlannerDayResponse>>;
 
-public sealed record DeletePlannedBlockCommand(Guid BlockId) : IRequest<Result<PlannerDayResponse>>;
+public sealed record DeletePlannedBlockCommand(Guid BlockId, Guid? ForEmployeeId = null, string? ExpectedVersion = null)
+    : IRequest<Result<PlannerDayResponse>>;
 
 /// <summary>GET /planner/employees/{employeeId}/range?from=&amp;to=: one person's days, read-only (team planner, 2026-11-03).</summary>
 public sealed record GetEmployeePlannerRangeQuery(Guid EmployeeId, DateOnly From, DateOnly To)
@@ -150,13 +153,19 @@ public sealed class PlannerRequestHandler :
     }
 
     public Task<Result<PlannerDayResponse>> Handle(CreatePlannedBlockCommand command, CancellationToken ct)
-        => AsCaller((tenant, me) => _planner.CreateBlockAsync(tenant, me, command.Request, ct), ct);
+        => AsCaller(async (tenant, me) => await SubjectAsync(tenant, me, command.ForEmployeeId, ct) is Guid subject
+            ? await _planner.CreateBlockAsync(tenant, subject, command.Request, ct)
+            : PlannerService.NotFound<PlannerDayResponse>(), ct);
 
     public Task<Result<PlannerDayResponse>> Handle(MovePlannedBlockCommand command, CancellationToken ct)
-        => AsCaller((tenant, me) => _planner.MoveBlockAsync(tenant, me, command.BlockId, command.Request, ct), ct);
+        => AsCaller(async (tenant, me) => await SubjectAsync(tenant, me, command.ForEmployeeId, ct) is Guid subject
+            ? await _planner.MoveBlockAsync(tenant, subject, command.BlockId, command.Request, ct)
+            : PlannerService.NotFound<PlannerDayResponse>(), ct);
 
     public Task<Result<PlannerDayResponse>> Handle(DeletePlannedBlockCommand command, CancellationToken ct)
-        => AsCaller((tenant, me) => _planner.DeleteBlockAsync(tenant, me, command.BlockId, ct), ct);
+        => AsCaller(async (tenant, me) => await SubjectAsync(tenant, me, command.ForEmployeeId, ct) is Guid subject
+            ? await _planner.DeleteBlockAsync(tenant, subject, command.BlockId, ct, command.ExpectedVersion)
+            : PlannerService.NotFound<PlannerDayResponse>(), ct);
 
     private async Task<Result<T>> AsCaller<T>(Func<Guid, Guid, Task<Result<T>>> run, CancellationToken ct)
     {

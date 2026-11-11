@@ -63,16 +63,19 @@ public sealed class PlannerController : ControllerBase
         => Respond(await _mediator.Send(new GetTeamScheduleWeekQuery(weekStart), ct));
 
     [HttpPost("me/blocks")]
-    public async Task<IActionResult> CreateBlock([FromBody] CreatePlannedBlockRequest request, CancellationToken ct)
-        => Respond(await _mediator.Send(new CreatePlannedBlockCommand(request), ct));
+    public async Task<IActionResult> CreateBlock([FromBody] CreatePlannedBlockRequest request, [FromQuery] Guid? forEmployeeId,
+        CancellationToken ct)
+        => Respond(await _mediator.Send(new CreatePlannedBlockCommand(request, forEmployeeId), ct));
 
     [HttpPatch("me/blocks/{blockId:guid}")]
-    public async Task<IActionResult> MoveBlock(Guid blockId, [FromBody] MovePlannedBlockRequest request, CancellationToken ct)
-        => Respond(await _mediator.Send(new MovePlannedBlockCommand(blockId, request), ct));
+    public async Task<IActionResult> MoveBlock(Guid blockId, [FromBody] MovePlannedBlockRequest request, [FromQuery] Guid? forEmployeeId,
+        CancellationToken ct)
+        => Respond(await _mediator.Send(new MovePlannedBlockCommand(blockId, request, forEmployeeId), ct));
 
     [HttpDelete("me/blocks/{blockId:guid}")]
-    public async Task<IActionResult> DeleteBlock(Guid blockId, CancellationToken ct)
-        => Respond(await _mediator.Send(new DeletePlannedBlockCommand(blockId), ct));
+    public async Task<IActionResult> DeleteBlock(Guid blockId, [FromQuery] Guid? forEmployeeId, [FromQuery] string? expectedVersion,
+        CancellationToken ct)
+        => Respond(await _mediator.Send(new DeletePlannedBlockCommand(blockId, forEmployeeId, expectedVersion), ct));
 
     private IActionResult Respond<T>(Result<T> result)
     {
