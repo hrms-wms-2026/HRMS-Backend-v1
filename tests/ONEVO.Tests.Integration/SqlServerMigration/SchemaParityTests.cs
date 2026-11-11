@@ -67,6 +67,9 @@ public sealed class SchemaParityTests(SqlServerFixture fixture)
     private static readonly string[] AddedColumns =
         ["xmin", "code_lower", "email_lower", "MigrationId", "ProductVersion"];
 
+    // Tables a migration created after the move from PostgreSQL: not in the PostgreSQL report, by design.
+    private static readonly string[] AddedTables = ["meeting_delegates"];
+
     [Fact]
     public async Task EveryPostgresColumn_ExistsOnSqlServer_AndNothingExtra()
     {
@@ -84,7 +87,8 @@ public sealed class SchemaParityTests(SqlServerFixture fixture)
             """);
 
         Assert.Empty(expected.Except(actual).Except(DroppedColumns));
-        Assert.Empty(actual.Except(expected).Where(c => !AddedColumns.Contains(c.Split('.')[1])));
+        Assert.Empty(actual.Except(expected)
+            .Where(c => !AddedColumns.Contains(c.Split('.')[1]) && !AddedTables.Contains(c.Split('.')[0])));
     }
 
     /// <summary>
@@ -209,7 +213,8 @@ public sealed class SchemaParityTests(SqlServerFixture fixture)
     private static string ReportPath()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
-        while (directory is not null && !Directory.Exists(Path.Combine(directory.FullName, ".git")))
+        // A git worktree has a .git file, a clone a .git folder.
+        while (directory is not null && !Path.Exists(Path.Combine(directory.FullName, ".git")))
         {
             directory = directory.Parent;
         }

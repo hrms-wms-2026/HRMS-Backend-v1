@@ -187,4 +187,15 @@ public static class RlsTableRegistry
             ["wm_task_rate_settings"] = RlsPredicate.Tenant,
             ["work_area_change_requests"] = RlsPredicate.TenantStrict,
         };
+
+    /// <summary>
+    /// Tables added after 20261108000000_AddRowLevelSecurity: the migration that creates each one also creates its
+    /// policy. Add a new table here and to <see cref="Tables"/>, and call RlsSql.CreatePolicy in its migration.
+    /// </summary>
+    public static IReadOnlySet<string> PolicyCreatedByOwnMigration { get; } =
+        new HashSet<string>(StringComparer.Ordinal) { "meeting_delegates" };
+
+    /// <summary>The tables the baseline migration covers: every table that existed when it was written.</summary>
+    public static IEnumerable<KeyValuePair<string, RlsPredicate>> BaselineTables =>
+        Tables.Where(t => !PolicyCreatedByOwnMigration.Contains(t.Key));
 }

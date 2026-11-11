@@ -238,7 +238,8 @@ public sealed class ReferenceDataParityTests(SqlServerFixture fixture, ITestOutp
     private static string FindRepoRoot()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
-        while (directory is not null && !Directory.Exists(Path.Combine(directory.FullName, ".git")))
+        // A git worktree has a .git file, a clone a .git folder.
+        while (directory is not null && !Path.Exists(Path.Combine(directory.FullName, ".git")))
         {
             directory = directory.Parent;
         }
