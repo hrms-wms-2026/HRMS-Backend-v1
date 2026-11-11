@@ -13,7 +13,8 @@ with no Task list, so they cannot do that.
 
 1. **A separate permission.** "Can also plan my tasks" is a checkbox on a delegate grant, off by default. Meeting
    delegation alone does not show the principal's tasks.
-2. **Task detail.** Clicking one of the principal's tasks opens a read-only drawer with its details.
+2. **Task detail.** Clicking one of the principal's tasks opens the existing task form, read-only, with its details
+   (the user chose the existing form over a new small drawer, accepting the extra backend reads below).
 3. **Notice to the principal.** When a delegate plans, moves or removes a block on the principal's planner, the
    principal gets a notification.
 
@@ -32,14 +33,15 @@ with no Task list, so they cannot do that.
 - Creating, editing or deleting tasks for the principal, or changing any task field (status, estimate, due date,
   assignee, description). The delegate writes planner blocks only.
 - The popover's Work item tab on the principal's calendar (it creates a task): still Meeting only.
-- Comments, attachments, time logs in the read-only drawer.
+- In the read-only task form: comments, attachment upload/download, the monitor load check, and every edit control.
 - The principal's Day view totals, leave layer and My team on the principal's calendar: unchanged (hidden).
 - Batching or digesting the notices.
 
 ## Anti-goals
 
 - A meeting-only delegate must not see one task title of the principal through any endpoint.
-- The task read for a delegate must not loosen the normal task detail endpoint (`GET /tasks/{id}`) for anyone.
+- Without `forEmployeeId`, the eight task/project reads below behave exactly as today for everyone.
+- `forEmployeeId` opens no write anywhere except the three planner block writes; no task or project write accepts it.
 
 ## Model
 
@@ -63,10 +65,23 @@ with no Task list, so they cannot do that.
 - `GET /planner/me/range?forEmployeeId=` (exists): `Editable` is the principal's editable flag for a planning delegate,
   and **false on every day** for a meeting-only delegate (today it is computed for the principal regardless).
 - `GET /planner/me/focus?forEmployeeId=`: the principal's Focus list.
-- New `GET /planner/me/tasks/{taskId}?forEmployeeId=`: a read-only view of one task currently assigned to the
-  principal: id, short id, title, project name, module title, category (name, kind, icon), status name, priority, due
-  date, estimate minutes, logged minutes, description (HTML as stored), assignee names. A task not assigned to the
-  principal is 404. Without `forEmployeeId` it is 404 (the caller uses the normal task endpoint for their own).
+- **Read as the principal** — the existing task form's eight reads accept `forEmployeeId`:
+
+  | Endpoint | Extra scope with `forEmployeeId` |
+  |---|---|
+  | `GET /projects/{id}` | the principal can read the project |
+  | `GET /projects/{id}/objectives/mine` | "mine" = the principal's |
+  | `GET /projects/{id}/task-statuses` | the principal can read the project |
+  | `GET /projects/{id}/task-categories` | the principal can read the project |
+  | `GET /projects/{id}/sprints` | the principal can read the project |
+  | `GET /tasks/{id}` | the task is assigned to the principal |
+  | `GET /tasks/{id}/history` | the task is assigned to the principal |
+  | `GET /tasks/{id}/subtasks` | the parent task is assigned to the principal |
+
+  With `forEmployeeId` set to someone other than the caller: the caller must be an active planning delegate of that
+  employee, and the request is then evaluated exactly as if the principal had made it (the principal's employee id and
+  user id in every existing access check), plus the extra scope in the table. Otherwise 404, as for a task or project the
+  caller cannot see. One shared check (`IDelegateReadAccess`) decides this for all eight, so the rule lives in one place.
 - `PlannerRangeBlockView` gains `PlannedByName?`: the writer's name when `created_by_id` differs from the block's
   employee; null otherwise. Shown to the principal and to a planning delegate.
 
@@ -113,7 +128,10 @@ principal):
   - the Task list (Focus panel) loads the principal's focus;
   - the principal's editable days are editable (drag from the Task list, block picker, move/resize/remove a block), every
     write sends `forEmployeeId`;
-  - a click on a principal's task (Focus card or block) opens the new read-only task drawer, not the task form;
+  - a click on a principal's task (Focus card or block) opens the existing task form with a new `readOnly` input and an
+    `actingFor` input: every read it makes (project, milestones, statuses, categories, sprints, task, history, subtasks)
+    sends `forEmployeeId`; all edit controls, Save/Request changes, delete, duplicate, convert, assign, status move,
+    upload, drafts and the unsaved-changes guard are off; the comments tab and the monitor check are hidden;
   - the create popover stays Meeting only; Day totals, leave, My team stay hidden.
 - **Meeting-only delegate:** unchanged from 2026-11-10 (read-only, no Task list).
 - **Blocks:** "Planned by <name>" on a block whose `plannedByName` is set, for the principal and the delegate.
@@ -128,14 +146,18 @@ principal):
 - Turning the permission off makes the next write 404.
 - The principal gets exactly one notice per delegated write, with `when` in their zone; none for their own writes.
 - The audit rows above, with old values on move.
-- `GET /tasks/{id}` behaviour is unchanged.
+- Each of the eight reads: unchanged without `forEmployeeId`; with it, 404 for a meeting-only delegate, a stranger and a
+  task not assigned to the principal; the principal's view for a planning delegate.
+- The read-only task form makes no write call and shows no edit control (a spec that clicks every control).
 - Parity tests: `SchemaParityTests` already allows `meeting_delegates`; `ReferenceDataParityTests` must allow the three
   new notification templates as added after the PostgreSQL move (same idea as `AddedTables`).
 
 ## My calls (check these)
 
-- The read-only drawer is a new small component on a new endpoint, not the task form in a view mode: the task form is
-  tied to project access and edit flows, and loosening its endpoint would break the anti-goal.
+- "Read as the principal" is the access rule for the eight reads: the delegate sees what the principal would see there,
+  narrowed for task reads to tasks assigned to the principal.
+- The `forEmployeeId` query parameter (as on the calendar and planner reads), not a header, so each call says whom it
+  reads for.
 - One notice per write (no batching). If a secretary plans ten blocks, the CEO gets ten notices.
 - A planning delegate may move or remove blocks the principal made, not only their own.
-- The drawer shows only fields listed above (no comments, attachments, history).
+- The read-only form hides comments and attachments (each would be another endpoint to open).
