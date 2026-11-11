@@ -140,6 +140,9 @@ public sealed class PlannerRequestHandler :
             ? await _planner.GetFocusAsync(tenant, subject, ct)
             : PlannerService.NotFound<PlannerFocusResponse>(), ct);
 
+    /// <summary>The caller, when they write on someone else's planner (as that person's planning delegate).</summary>
+    private static Guid? Acting(Guid subject, Guid me) => subject == me ? null : me;
+
     /// <summary>The employee whose planner this request acts on: the caller, or the principal for their active planning
     /// delegate (read from the database every time). Null when <paramref name="forEmployeeId"/> is someone the caller may
     /// not plan for.</summary>
@@ -154,17 +157,17 @@ public sealed class PlannerRequestHandler :
 
     public Task<Result<PlannerDayResponse>> Handle(CreatePlannedBlockCommand command, CancellationToken ct)
         => AsCaller(async (tenant, me) => await SubjectAsync(tenant, me, command.ForEmployeeId, ct) is Guid subject
-            ? await _planner.CreateBlockAsync(tenant, subject, command.Request, ct)
+            ? await _planner.CreateBlockAsync(tenant, subject, command.Request, ct, Acting(subject, me))
             : PlannerService.NotFound<PlannerDayResponse>(), ct);
 
     public Task<Result<PlannerDayResponse>> Handle(MovePlannedBlockCommand command, CancellationToken ct)
         => AsCaller(async (tenant, me) => await SubjectAsync(tenant, me, command.ForEmployeeId, ct) is Guid subject
-            ? await _planner.MoveBlockAsync(tenant, subject, command.BlockId, command.Request, ct)
+            ? await _planner.MoveBlockAsync(tenant, subject, command.BlockId, command.Request, ct, Acting(subject, me))
             : PlannerService.NotFound<PlannerDayResponse>(), ct);
 
     public Task<Result<PlannerDayResponse>> Handle(DeletePlannedBlockCommand command, CancellationToken ct)
         => AsCaller(async (tenant, me) => await SubjectAsync(tenant, me, command.ForEmployeeId, ct) is Guid subject
-            ? await _planner.DeleteBlockAsync(tenant, subject, command.BlockId, ct, command.ExpectedVersion)
+            ? await _planner.DeleteBlockAsync(tenant, subject, command.BlockId, ct, command.ExpectedVersion, Acting(subject, me))
             : PlannerService.NotFound<PlannerDayResponse>(), ct);
 
     private async Task<Result<T>> AsCaller<T>(Func<Guid, Guid, Task<Result<T>>> run, CancellationToken ct)

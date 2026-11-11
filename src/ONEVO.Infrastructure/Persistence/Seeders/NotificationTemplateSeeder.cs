@@ -60,6 +60,24 @@ public class NotificationTemplateSeeder : IHostedService
             },
             new()
             {
+                Id = Guid.NewGuid(), Code = "planner_block_planned_for_you",
+                InAppTitleTemplate = "Time planned for you",
+                InAppBodyTemplate = "{{delegateName}} planned \"{{taskTitle}}\" for {{when}}."
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "planner_block_moved_for_you",
+                InAppTitleTemplate = "Planned time moved",
+                InAppBodyTemplate = "{{delegateName}} moved \"{{taskTitle}}\" to {{when}}."
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "planner_block_removed_for_you",
+                InAppTitleTemplate = "Planned time removed",
+                InAppBodyTemplate = "{{delegateName}} removed \"{{taskTitle}}\" from {{when}}."
+            },
+            new()
+            {
                 Id = Guid.NewGuid(), Code = "work_task_edit_request_decided",
                 InAppTitleTemplate = "Task edit request {{decision}}",
                 InAppBodyTemplate = "Your edit request for \"{{taskTitle}}\" on {{objectiveName}} was {{decision}}."

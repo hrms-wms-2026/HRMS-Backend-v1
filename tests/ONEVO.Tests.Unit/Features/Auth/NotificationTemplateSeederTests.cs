@@ -86,9 +86,16 @@ public sealed class NotificationTemplateSeederTests : IDisposable
         Assert.Contains("exception_alert_escalated", codes);
         Assert.Contains("conversation_member_added", codes);
         Assert.Contains("conversation_mentioned", codes);
-        Assert.Equal(59, codes.Count);
+        // Delegate task planning (2026-11-11): the principal's notices about their delegate's planner writes.
+        Assert.Contains("planner_block_planned_for_you", codes);
+        Assert.Contains("planner_block_moved_for_you", codes);
+        Assert.Contains("planner_block_removed_for_you", codes);
+        Assert.Equal(62, codes.Count);
         var expectedCodes = new[]
         {
+            "planner_block_planned_for_you",
+            "planner_block_moved_for_you",
+            "planner_block_removed_for_you",
             "work_task_creation_request_created",
             "work_task_creation_request_decided",
             "work_task_edit_request_decided",

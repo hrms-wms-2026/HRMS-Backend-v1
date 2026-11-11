@@ -41,6 +41,8 @@ public static class NotificationEventCatalog
         "calendar_event_meeting_cancel_failed", "calendar_connection_reauth_required", "calendar_connection_failed",
         "calendar_connection_sync_conflict", "calendar_event_reminder",
         "calendar_exception_detected", "calendar_exception_raised_for_you", "calendar_exception_escalated",
+        // Planner (delegate task planning, 2026-11-11)
+        "planner_block_planned_for_you", "planner_block_moved_for_you", "planner_block_removed_for_you",
         // Monitoring (in-app reviewer notices; not the tray alerts)
         "face_verification_override", "exception_alert_detected", "exception_alert_escalated",
     };
@@ -63,6 +65,12 @@ public static class NotificationEventCatalog
     [
         Shared("work_task_creation_request_created", "work_management", "Work task creation request created", [V("requesterName"), V("taskTitle"), V("objectiveName")]),
         Shared("work_task_creation_request_decided", "work_management", "Work task creation request decided", [V("decision"), V("taskTitle"), V("objectiveName")]),
+        Shared("planner_block_planned_for_you", "work_management", "Planner time planned by your delegate",
+            [V("delegateName"), V("taskTitle"), V("when")]),
+        Shared("planner_block_moved_for_you", "work_management", "Planner time moved by your delegate",
+            [V("delegateName"), V("taskTitle"), V("when")]),
+        Shared("planner_block_removed_for_you", "work_management", "Planner time removed by your delegate",
+            [V("delegateName"), V("taskTitle"), V("when")]),
         Shared("work_task_edit_request_decided", "work_management", "Work task edit request decided", [V("decision"), V("taskTitle"), V("objectiveName")]),
         Shared("work_task_status_change_request_created", "work_management", "Work task status change request created", [V("requesterName"), V("projectName")]),
         Shared("work_task_status_change_request_decided", "work_management", "Work task status change request decided", [V("decision"), V("projectName")]),

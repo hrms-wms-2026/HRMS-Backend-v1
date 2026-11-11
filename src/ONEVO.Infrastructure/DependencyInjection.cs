@@ -458,6 +458,8 @@ public static class DependencyInjection
             ONEVO.Infrastructure.Persistence.Repositories.WorkManagement.Planner.EfPlannerRepository>();
         services.AddScoped<ONEVO.Application.Features.WorkManagement.Planner.RepositoryInterfaces.ITeamTimeReadRepository,
             ONEVO.Infrastructure.Persistence.Repositories.WorkManagement.Planner.EfTeamTimeReadRepository>();
+        services.AddScoped<ONEVO.Application.Features.WorkManagement.Planner.Services.IPlannerDelegateNotifier,
+            ONEVO.Application.Features.WorkManagement.Planner.Services.PlannerDelegateNotifier>();
         services.AddScoped<ONEVO.Application.Features.WorkManagement.Planner.Services.PlannerService>();
         services.AddScoped<ONEVO.Application.Features.WorkManagement.Planner.Services.TeamPlannerService>();
         services.AddScoped<ONEVO.Application.Features.WorkManagement.Planner.Services.IPlannerBlockWriter>(

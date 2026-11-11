@@ -41,6 +41,7 @@ public sealed class PlannerDelegateWriteTests
     private readonly Mock<IMeetingRepository> _meetings = new() { DefaultValue = DefaultValue.Empty };
     private readonly Mock<IUnitOfWork> _unitOfWork = new();
     private readonly Mock<IDateTimeProvider> _clock = new();
+    private readonly Mock<IPlannerDelegateNotifier> _notifier = new();
     private readonly List<PlannedTaskBlock> _added = [];
     private readonly List<PlannedTaskBlock> _removed = [];
 
@@ -88,7 +89,7 @@ public sealed class PlannerDelegateWriteTests
     private PlannerRequestHandler Sut()
     {
         var planner = new PlannerService(_repo.Object, _meetings.Object, _timezones.Object, _employees.Object,
-            _unitOfWork.Object, _clock.Object, Options.Create(new PlannerOptions { Enabled = true }));
+            _unitOfWork.Object, _clock.Object, Options.Create(new PlannerOptions { Enabled = true }), _notifier.Object);
         return new PlannerRequestHandler(_user.Object, _identity.Object, planner, Mock.Of<IMeetingDelegateRepository>(), _clock.Object,
             _access.Object);
     }
@@ -232,5 +233,51 @@ public sealed class PlannerDelegateWriteTests
         Assert.Equal(409, refused.StatusCode);
         Assert.True(moved.IsSuccess, moved.Error);
         Assert.Equal(SlotStart.AddHours(2), block.StartAt);
+    }
+
+    // "Notifications": one notice to the principal per delegated write; none for their own.
+
+    private void VerifyNotice(string action, DateTimeOffset start, DateTimeOffset end)
+        => _notifier.Verify(n => n.BlockWrittenAsync(Tenant, _ceo.Id, _secretary.Id, action, It.IsAny<Guid>(), "Board pack", start, end,
+            It.IsAny<CancellationToken>()), Times.Once);
+
+    [Fact]
+    public async Task ADelegatedCreate_NotifiesThePrincipalOnce()
+    {
+        await Sut().Handle(new CreatePlannedBlockCommand(new CreatePlannedBlockRequest(_task, SlotStart, SlotEnd), _ceo.Id), CancellationToken.None);
+
+        VerifyNotice(PlannerDelegateActions.Planned, SlotStart, SlotEnd);
+        _notifier.VerifyNoOtherCalls();
+    }
+
+    [Fact]
+    public async Task ADelegatedMove_NotifiesWithTheNewTime()
+    {
+        var block = ExistingBlock(_ceo.Id, _ceo.UserId);
+
+        await Sut().Handle(new MovePlannedBlockCommand(block.Id, new MovePlannedBlockRequest(SlotStart.AddHours(2), SlotEnd.AddHours(3)), _ceo.Id),
+            CancellationToken.None);
+
+        VerifyNotice(PlannerDelegateActions.Moved, SlotStart.AddHours(2), SlotEnd.AddHours(3));
+    }
+
+    [Fact]
+    public async Task ADelegatedRemove_NotifiesWithTheRemovedTime()
+    {
+        var block = ExistingBlock(_ceo.Id, _ceo.UserId);
+
+        await Sut().Handle(new DeletePlannedBlockCommand(block.Id, _ceo.Id), CancellationToken.None);
+
+        VerifyNotice(PlannerDelegateActions.Removed, SlotStart, SlotEnd);
+    }
+
+    [Fact]
+    public async Task AnOwnWrite_OrARefusedDelegatedWrite_SendsNoNotice()
+    {
+        TaskAssignedTo(_secretary.Id);
+        await Sut().Handle(new CreatePlannedBlockCommand(new CreatePlannedBlockRequest(_task, SlotStart, SlotEnd)), CancellationToken.None);
+        await Sut().Handle(new CreatePlannedBlockCommand(new CreatePlannedBlockRequest(_task, SlotStart, SlotEnd), _ceo.Id), CancellationToken.None);
+
+        _notifier.VerifyNoOtherCalls();
     }
 }

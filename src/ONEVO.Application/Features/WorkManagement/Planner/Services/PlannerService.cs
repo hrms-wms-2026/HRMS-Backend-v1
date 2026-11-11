@@ -36,10 +36,13 @@ public sealed class PlannerService : IPlannerBlockWriter
     private readonly IUnitOfWork _unitOfWork;
     private readonly IDateTimeProvider _clock;
     private readonly IOptions<PlannerOptions> _options;
+    private readonly IPlannerDelegateNotifier? _delegateNotifier;
 
     public PlannerService(IPlannerRepository planner, IMeetingRepository meetings, ICalendarTimezoneResolver timezones,
-        IEmployeeRepository employees, IUnitOfWork unitOfWork, IDateTimeProvider clock, IOptions<PlannerOptions> options)
+        IEmployeeRepository employees, IUnitOfWork unitOfWork, IDateTimeProvider clock, IOptions<PlannerOptions> options,
+        IPlannerDelegateNotifier? delegateNotifier = null)
     {
+        _delegateNotifier = delegateNotifier;
         _planner = planner;
         _meetings = meetings;
         _timezones = timezones;
@@ -133,8 +136,10 @@ public sealed class PlannerService : IPlannerBlockWriter
         return Result<PlannerFocusResponse>.Success(PlannerFocus.Build(rows, blocks, today, zone.Value.Info));
     }
 
+    /// <param name="actingDelegateEmployeeId">The principal's planning delegate writing this, when it is not the employee
+    /// themselves: the principal is notified.</param>
     public Task<Result<PlannerDayResponse>> CreateBlockAsync(Guid tenantId, Guid callerEmployeeId, CreatePlannedBlockRequest request,
-        CancellationToken ct)
+        CancellationToken ct, Guid? actingDelegateEmployeeId = null)
         => _unitOfWork.ExecuteInTransactionAsync(async innerCt =>
         {
             // Under the plan lock, so a second device's write checks for overlap only after this one is in.
@@ -146,11 +151,14 @@ public sealed class PlannerService : IPlannerBlockWriter
             if (task is null || task.IsMeeting || !task.AssignedToEmployee)
                 return Result<PlannerDayResponse>.Failure("Only a task assigned to you can be planned.", 400, PlannerErrorCodes.TaskNotPlannable);
 
-            _planner.AddBlock(new PlannedTaskBlock
+            var created = new PlannedTaskBlock
             {
                 Id = Guid.NewGuid(), TenantId = tenantId, EmployeeId = callerEmployeeId, TaskId = request.TaskId,
                 StartAt = request.StartAt.ToUniversalTime(), EndAt = request.EndAt.ToUniversalTime(), CreatedById = callerEmployeeId,
-            });
+            };
+            _planner.AddBlock(created);
+            await DelegatedWriteAsync(tenantId, callerEmployeeId, actingDelegateEmployeeId, PlannerDelegateActions.Planned, created,
+                task.Title, created.StartAt, created.EndAt, innerCt);
             await _unitOfWork.SaveChangesAsync(innerCt);
             return Result<PlannerDayResponse>.Success(await ComposeDayOfAsync(tenantId, callerEmployeeId, request.StartAt, check.Zone, innerCt));
         }, ct);
@@ -169,7 +177,7 @@ public sealed class PlannerService : IPlannerBlockWriter
     }
 
     public async Task<Result<PlannerDayResponse>> MoveBlockAsync(Guid tenantId, Guid callerEmployeeId, Guid blockId,
-        MovePlannedBlockRequest request, CancellationToken ct)
+        MovePlannedBlockRequest request, CancellationToken ct, Guid? actingDelegateEmployeeId = null)
     {
         if (!_options.Value.Enabled)
             return Disabled<PlannerDayResponse>();
@@ -194,6 +202,8 @@ public sealed class PlannerService : IPlannerBlockWriter
             block.StartAt = request.StartAt.ToUniversalTime();
             block.EndAt = request.EndAt.ToUniversalTime();
             block.UpdatedAt = _clock.UtcNow;
+            await DelegatedWriteAsync(tenantId, callerEmployeeId, actingDelegateEmployeeId, PlannerDelegateActions.Moved, block,
+                null, block.StartAt, block.EndAt, innerCt);
             await _unitOfWork.SaveChangesAsync(innerCt);
             return Result<PlannerDayResponse>.Success(await ComposeDayOfAsync(tenantId, callerEmployeeId, request.StartAt, check.Zone, innerCt));
         }, ct);
@@ -201,7 +211,7 @@ public sealed class PlannerService : IPlannerBlockWriter
 
     /// <param name="expectedVersion">The block's Version as the client last saw it; a different stored version is refused (409).</param>
     public async Task<Result<PlannerDayResponse>> DeleteBlockAsync(Guid tenantId, Guid callerEmployeeId, Guid blockId, CancellationToken ct,
-        string? expectedVersion = null)
+        string? expectedVersion = null, Guid? actingDelegateEmployeeId = null)
     {
         if (!_options.Value.Enabled)
             return Disabled<PlannerDayResponse>();
@@ -221,9 +231,23 @@ public sealed class PlannerService : IPlannerBlockWriter
                 return locked;
 
             _planner.RemoveBlock(block);
+            await DelegatedWriteAsync(tenantId, callerEmployeeId, actingDelegateEmployeeId, PlannerDelegateActions.Removed, block,
+                null, block.StartAt, block.EndAt, innerCt);
             await _unitOfWork.SaveChangesAsync(innerCt);
             return Result<PlannerDayResponse>.Success(await ComposeDayOfAsync(tenantId, callerEmployeeId, block.StartAt, zone.Value, innerCt));
         }, ct);
+    }
+
+    /// <summary>A write a planning delegate made on the principal's planner: the principal is told (queued in this unit of
+    /// work, so only a committed write is announced). Nothing for the employee's own writes.</summary>
+    private async Task DelegatedWriteAsync(Guid tenantId, Guid employeeId, Guid? actingDelegateEmployeeId, string action,
+        PlannedTaskBlock block, string? taskTitle, DateTimeOffset start, DateTimeOffset end, CancellationToken ct)
+    {
+        if (actingDelegateEmployeeId is not Guid delegateId || delegateId == employeeId || _delegateNotifier is null)
+            return;
+        taskTitle ??= (await _planner.GetTasksAsync(tenantId, employeeId, [block.TaskId], ct)).GetValueOrDefault(block.TaskId)?.Title
+            ?? string.Empty;
+        await _delegateNotifier.BlockWrittenAsync(tenantId, employeeId, delegateId, action, block.Id, taskTitle, start, end, ct);
     }
 
     /// <summary>True when the client sent a version and the block has moved on since (or the version is not one).</summary>

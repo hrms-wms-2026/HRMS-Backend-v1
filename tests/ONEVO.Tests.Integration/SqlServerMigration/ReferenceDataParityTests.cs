@@ -36,6 +36,10 @@ public sealed class ReferenceDataParityTests(SqlServerFixture fixture, ITestOutp
             || column.EndsWith("_at", StringComparison.Ordinal)
             || column.EndsWith("_id", StringComparison.Ordinal);
 
+    // Notification templates a release added after the move from PostgreSQL: not in the PostgreSQL report, by design.
+    private static readonly string[] AddedTemplateCodes =
+        ["planner_block_planned_for_you", "planner_block_moved_for_you", "planner_block_removed_for_you"];
+
     [Fact]
     public async Task ProductionBoot_MatchesPostgresReferenceData()
     {
@@ -155,9 +159,15 @@ public sealed class ReferenceDataParityTests(SqlServerFixture fixture, ITestOutp
             FindRepoRoot(), "docs", "reports", "database", "2026-11-07-postgres-reference-data.json")))!.AsObject();
         var differences = new List<string>();
         await using var connection = await OpenAdminAsync(database);
+        var addedTemplateIds = (await ReadRowsAsync(connection, "notification_templates"))
+            .Where(row => AddedTemplateCodes.Contains(row["code"]?.GetValue<string>()))
+            .Select(row => row["id"]!.GetValue<string>())
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
         foreach (var table in await ListTablesAsync(connection))
         {
-            var actual = await ReadRowsAsync(connection, table);
+            var actual = (await ReadRowsAsync(connection, table))
+                .Where(row => !AddedAfterTheMove(table, row, addedTemplateIds))
+                .ToList();
             var wanted = expected[table]?["rows"]?.AsArray().Select(row => row!.AsObject()).ToList() ?? [];
             if (actual.Count != wanted.Count)
             {
@@ -178,6 +188,13 @@ public sealed class ReferenceDataParityTests(SqlServerFixture fixture, ITestOutp
 
         return differences;
     }
+
+    private static bool AddedAfterTheMove(string table, JsonObject row, HashSet<string> addedTemplateIds) => table switch
+    {
+        "notification_templates" => addedTemplateIds.Contains(row["id"]!.GetValue<string>()),
+        "notification_template_versions" => addedTemplateIds.Contains(row["template_id"]!.GetValue<string>()),
+        _ => false,
+    };
 
     private static string Cut(string value) => value.Length > 600 ? value[..600] : value;
 
