@@ -19,6 +19,10 @@ public static class MeetingAuditActions
     public const string Cancelled = "meeting.cancelled_for_principal";
     public const string AttendeesChanged = "meeting.attendees_changed_for_principal";
     public const string LinkChanged = "meeting.link_changed_for_principal";
+    // Delegate task planning (2026-11-11): a planning delegate's writes on the principal's planner. A resize is a move.
+    public const string BlockPlanned = "planner.block_planned_for_principal";
+    public const string BlockMoved = "planner.block_moved_for_principal";
+    public const string BlockRemoved = "planner.block_removed_for_principal";
 }
 
 /// <summary>
@@ -29,6 +33,10 @@ public interface IMeetingDelegateAudit
 {
     /// <summary>A grant or a revoke of <paramref name="row"/>.</summary>
     Task RecordDelegationAsync(MeetingDelegate row, string action, CancellationToken ct);
+
+    /// <summary>A planning delegate's write on the principal's planner (resource PlannedTaskBlock).</summary>
+    Task RecordBlockForPrincipalAsync(Guid tenantId, Guid principalEmployeeId, Guid blockId, string action, object newValues,
+        object? oldValues, CancellationToken ct);
 
     /// <summary>"Can also plan my tasks" turned on or off: old and new value.</summary>
     Task RecordDelegationChangeAsync(MeetingDelegate row, bool oldCanPlanTasks, CancellationToken ct);
@@ -85,6 +93,15 @@ public sealed class MeetingDelegateAudit : IMeetingDelegateAudit
         }
         var oldValues = revoked ? new JsonObject { ["expiresAt"] = row.ExpiresAt } : null;
         return AddAsync(row.TenantId, action, "MeetingDelegate", row.Id, newValues, oldValues, ct);
+    }
+
+    public Task RecordBlockForPrincipalAsync(Guid tenantId, Guid principalEmployeeId, Guid blockId, string action, object newValues,
+        object? oldValues, CancellationToken ct)
+    {
+        var next = new JsonObject { ["actingForEmployeeId"] = principalEmployeeId };
+        foreach (var (key, value) in Clean(newValues, isPrivate: false) ?? [])
+            next[key] = value?.DeepClone();
+        return AddAsync(tenantId, action, "PlannedTaskBlock", blockId, next, Clean(oldValues, isPrivate: false), ct);
     }
 
     public Task RecordDelegationChangeAsync(MeetingDelegate row, bool oldCanPlanTasks, CancellationToken ct)

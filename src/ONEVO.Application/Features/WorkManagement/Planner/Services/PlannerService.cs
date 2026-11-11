@@ -37,12 +37,14 @@ public sealed class PlannerService : IPlannerBlockWriter
     private readonly IDateTimeProvider _clock;
     private readonly IOptions<PlannerOptions> _options;
     private readonly IPlannerDelegateNotifier? _delegateNotifier;
+    private readonly IMeetingDelegateAudit? _delegateAudit;
 
     public PlannerService(IPlannerRepository planner, IMeetingRepository meetings, ICalendarTimezoneResolver timezones,
         IEmployeeRepository employees, IUnitOfWork unitOfWork, IDateTimeProvider clock, IOptions<PlannerOptions> options,
-        IPlannerDelegateNotifier? delegateNotifier = null)
+        IPlannerDelegateNotifier? delegateNotifier = null, IMeetingDelegateAudit? delegateAudit = null)
     {
         _delegateNotifier = delegateNotifier;
+        _delegateAudit = delegateAudit;
         _planner = planner;
         _meetings = meetings;
         _timezones = timezones;
@@ -158,7 +160,7 @@ public sealed class PlannerService : IPlannerBlockWriter
             };
             _planner.AddBlock(created);
             await DelegatedWriteAsync(tenantId, callerEmployeeId, actingDelegateEmployeeId, PlannerDelegateActions.Planned, created,
-                task.Title, created.StartAt, created.EndAt, innerCt);
+                task.Title, null, null, innerCt);
             await _unitOfWork.SaveChangesAsync(innerCt);
             return Result<PlannerDayResponse>.Success(await ComposeDayOfAsync(tenantId, callerEmployeeId, request.StartAt, check.Zone, innerCt));
         }, ct);
@@ -199,11 +201,12 @@ public sealed class PlannerService : IPlannerBlockWriter
             if (check.Failure is { } writeFailure)
                 return writeFailure;
 
+            var (oldStart, oldEnd) = (block.StartAt, block.EndAt);
             block.StartAt = request.StartAt.ToUniversalTime();
             block.EndAt = request.EndAt.ToUniversalTime();
             block.UpdatedAt = _clock.UtcNow;
             await DelegatedWriteAsync(tenantId, callerEmployeeId, actingDelegateEmployeeId, PlannerDelegateActions.Moved, block,
-                null, block.StartAt, block.EndAt, innerCt);
+                null, oldStart, oldEnd, innerCt);
             await _unitOfWork.SaveChangesAsync(innerCt);
             return Result<PlannerDayResponse>.Success(await ComposeDayOfAsync(tenantId, callerEmployeeId, request.StartAt, check.Zone, innerCt));
         }, ct);
@@ -232,22 +235,40 @@ public sealed class PlannerService : IPlannerBlockWriter
 
             _planner.RemoveBlock(block);
             await DelegatedWriteAsync(tenantId, callerEmployeeId, actingDelegateEmployeeId, PlannerDelegateActions.Removed, block,
-                null, block.StartAt, block.EndAt, innerCt);
+                null, null, null, innerCt);
             await _unitOfWork.SaveChangesAsync(innerCt);
             return Result<PlannerDayResponse>.Success(await ComposeDayOfAsync(tenantId, callerEmployeeId, block.StartAt, zone.Value, innerCt));
         }, ct);
     }
 
-    /// <summary>A write a planning delegate made on the principal's planner: the principal is told (queued in this unit of
-    /// work, so only a committed write is announced). Nothing for the employee's own writes.</summary>
+    /// <summary>A write a planning delegate made on the principal's planner: one audit row and one notice to the principal,
+    /// both added to this unit of work, so they exist only if the write commits. Nothing for the employee's own writes.
+    /// <paramref name="oldStart"/>/<paramref name="oldEnd"/> are the times before a move.</summary>
     private async Task DelegatedWriteAsync(Guid tenantId, Guid employeeId, Guid? actingDelegateEmployeeId, string action,
-        PlannedTaskBlock block, string? taskTitle, DateTimeOffset start, DateTimeOffset end, CancellationToken ct)
+        PlannedTaskBlock block, string? taskTitle, DateTimeOffset? oldStart, DateTimeOffset? oldEnd, CancellationToken ct)
     {
-        if (actingDelegateEmployeeId is not Guid delegateId || delegateId == employeeId || _delegateNotifier is null)
+        if (actingDelegateEmployeeId is not Guid delegateId || delegateId == employeeId)
             return;
-        taskTitle ??= (await _planner.GetTasksAsync(tenantId, employeeId, [block.TaskId], ct)).GetValueOrDefault(block.TaskId)?.Title
-            ?? string.Empty;
-        await _delegateNotifier.BlockWrittenAsync(tenantId, employeeId, delegateId, action, block.Id, taskTitle, start, end, ct);
+        if (_delegateAudit is not null)
+        {
+            var (auditAction, next, old) = action switch
+            {
+                PlannerDelegateActions.Planned => (MeetingAuditActions.BlockPlanned,
+                    (object)new { taskId = block.TaskId, startAt = block.StartAt, endAt = block.EndAt }, (object?)null),
+                PlannerDelegateActions.Moved => (MeetingAuditActions.BlockMoved,
+                    new { startAt = block.StartAt, endAt = block.EndAt }, new { startAt = oldStart, endAt = oldEnd }),
+                _ => (MeetingAuditActions.BlockRemoved,
+                    new { }, new { taskId = block.TaskId, startAt = block.StartAt, endAt = block.EndAt }),
+            };
+            await _delegateAudit.RecordBlockForPrincipalAsync(tenantId, employeeId, block.Id, auditAction, next, old, ct);
+        }
+        if (_delegateNotifier is not null)
+        {
+            taskTitle ??= (await _planner.GetTasksAsync(tenantId, employeeId, [block.TaskId], ct)).GetValueOrDefault(block.TaskId)?.Title
+                ?? string.Empty;
+            await _delegateNotifier.BlockWrittenAsync(tenantId, employeeId, delegateId, action, block.Id, taskTitle, block.StartAt,
+                block.EndAt, ct);
+        }
     }
 
     /// <summary>True when the client sent a version and the block has moved on since (or the version is not one).</summary>

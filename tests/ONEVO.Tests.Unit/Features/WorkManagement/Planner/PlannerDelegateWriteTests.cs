@@ -42,6 +42,7 @@ public sealed class PlannerDelegateWriteTests
     private readonly Mock<IUnitOfWork> _unitOfWork = new();
     private readonly Mock<IDateTimeProvider> _clock = new();
     private readonly Mock<IPlannerDelegateNotifier> _notifier = new();
+    private readonly Mock<IMeetingDelegateAudit> _audit = new();
     private readonly List<PlannedTaskBlock> _added = [];
     private readonly List<PlannedTaskBlock> _removed = [];
 
@@ -89,7 +90,8 @@ public sealed class PlannerDelegateWriteTests
     private PlannerRequestHandler Sut()
     {
         var planner = new PlannerService(_repo.Object, _meetings.Object, _timezones.Object, _employees.Object,
-            _unitOfWork.Object, _clock.Object, Options.Create(new PlannerOptions { Enabled = true }), _notifier.Object);
+            _unitOfWork.Object, _clock.Object, Options.Create(new PlannerOptions { Enabled = true }), _notifier.Object,
+            _audit.Object);
         return new PlannerRequestHandler(_user.Object, _identity.Object, planner, Mock.Of<IMeetingDelegateRepository>(), _clock.Object,
             _access.Object);
     }
@@ -279,5 +281,62 @@ public sealed class PlannerDelegateWriteTests
         await Sut().Handle(new CreatePlannedBlockCommand(new CreatePlannedBlockRequest(_task, SlotStart, SlotEnd), _ceo.Id), CancellationToken.None);
 
         _notifier.VerifyNoOtherCalls();
+    }
+
+    // "Audit": each delegated write is one audit row; the principal's own writes none.
+
+    [Fact]
+    public async Task ADelegatedCreate_IsAudited_WithTheTaskAndTime()
+    {
+        object? newValues = null;
+        _audit.Setup(a => a.RecordBlockForPrincipalAsync(Tenant, _ceo.Id, It.IsAny<Guid>(), MeetingAuditActions.BlockPlanned, It.IsAny<object>(),
+                null, It.IsAny<CancellationToken>()))
+            .Callback((Guid _, Guid _, Guid _, string _, object next, object? _, CancellationToken _) => newValues = next)
+            .Returns(Task.CompletedTask);
+
+        await Sut().Handle(new CreatePlannedBlockCommand(new CreatePlannedBlockRequest(_task, SlotStart, SlotEnd), _ceo.Id), CancellationToken.None);
+
+        Assert.Equal(new { taskId = _task, startAt = SlotStart, endAt = SlotEnd }.ToString(), newValues?.ToString());
+        Assert.Equal(Assert.Single(_added).Id, _audit.Invocations.Single().Arguments[2]);
+    }
+
+    [Fact]
+    public async Task ADelegatedMove_AuditsTheOldAndNewTimes()
+    {
+        var block = ExistingBlock(_ceo.Id, _ceo.UserId);
+        (object? next, object? old) values = default;
+        _audit.Setup(a => a.RecordBlockForPrincipalAsync(Tenant, _ceo.Id, block.Id, MeetingAuditActions.BlockMoved, It.IsAny<object>(),
+                It.IsAny<object>(), It.IsAny<CancellationToken>()))
+            .Callback((Guid _, Guid _, Guid _, string _, object next, object? old, CancellationToken _) => values = (next, old))
+            .Returns(Task.CompletedTask);
+
+        await Sut().Handle(new MovePlannedBlockCommand(block.Id, new MovePlannedBlockRequest(SlotStart.AddHours(2), SlotEnd.AddHours(3)), _ceo.Id),
+            CancellationToken.None);
+
+        Assert.Equal(new { startAt = SlotStart.AddHours(2), endAt = SlotEnd.AddHours(3) }.ToString(), values.next?.ToString());
+        Assert.Equal(new { startAt = SlotStart, endAt = SlotEnd }.ToString(), values.old?.ToString());
+    }
+
+    [Fact]
+    public async Task ADelegatedRemove_AuditsTheRemovedTime()
+    {
+        var block = ExistingBlock(_ceo.Id, _ceo.UserId);
+
+        await Sut().Handle(new DeletePlannedBlockCommand(block.Id, _ceo.Id), CancellationToken.None);
+
+        _audit.Verify(a => a.RecordBlockForPrincipalAsync(Tenant, _ceo.Id, block.Id, MeetingAuditActions.BlockRemoved, It.IsAny<object>(),
+            It.Is<object>(old => old.ToString() == new { taskId = _task, startAt = SlotStart, endAt = SlotEnd }.ToString()),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task AnOwnWrite_IsNotAudited()
+    {
+        TaskAssignedTo(_secretary.Id);
+
+        await Sut().Handle(new CreatePlannedBlockCommand(new CreatePlannedBlockRequest(_task, SlotStart, SlotEnd)), CancellationToken.None);
+
+        Assert.Single(_added);
+        _audit.VerifyNoOtherCalls();
     }
 }

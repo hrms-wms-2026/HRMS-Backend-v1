@@ -178,4 +178,24 @@ public sealed class MeetingDelegateAuditTests
         Assert.True(Json(row.NewValuesJson)["canPlanTasks"]!.GetValue<bool>());
         Assert.False(Json(row.OldValuesJson)["canPlanTasks"]!.GetValue<bool>());
     }
+
+    [Fact]
+    public async Task RecordBlockForPrincipal_RecordsTheDelegateAsActor_OnBehalfOfThePrincipal()
+    {
+        var principal = Guid.NewGuid();
+        var block = Guid.NewGuid();
+        var start = Now.AddDays(1);
+
+        await Sut().RecordBlockForPrincipalAsync(Tenant, principal, block, MeetingAuditActions.BlockMoved,
+            new { startAt = start.AddHours(2), endAt = start.AddHours(3) }, new { startAt = start, endAt = start.AddHours(1) },
+            CancellationToken.None);
+
+        var row = Assert.Single(_rows);
+        Assert.Equal((Tenant, DelegateUser, "planner.block_moved_for_principal", "PlannedTaskBlock", (Guid?)block),
+            (row.TenantId, row.UserId, row.Action, row.ResourceType, row.ResourceId));
+        var next = Json(row.NewValuesJson);
+        Assert.Equal(principal, next["actingForEmployeeId"]!.GetValue<Guid>());
+        Assert.Equal(start.AddHours(2), next["startAt"]!.GetValue<DateTimeOffset>());
+        Assert.Equal(start, Json(row.OldValuesJson)["startAt"]!.GetValue<DateTimeOffset>());
+    }
 }
