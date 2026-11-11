@@ -116,4 +116,31 @@ public sealed class MeetingDelegateRepositoryIntegrationTests
         Assert.Empty(await otherDb.Set<MeetingDelegate>().IgnoreQueryFilters().ToListAsync());
         Assert.False(await new EfMeetingDelegateRepository(otherDb).IsActiveDelegateAsync(w.H.TenantId, w.Principal.Id, w.Delegate.Id, Now));
     }
+
+    [Fact]
+    public async Task IsActivePlanningDelegate_RequiresTheFlag_OnAnActiveGrant()
+    {
+        var w = await SeedAsync();
+        var row = Grant(w);
+        await AddAsync(w.H, row);
+
+        async Task<bool> PlanningAsync(DateTimeOffset now)
+        {
+            await using var db = w.H.NewTenantContext();
+            return await new EfMeetingDelegateRepository(db).IsActivePlanningDelegateAsync(w.H.TenantId, w.Principal.Id, w.Delegate.Id, now);
+        }
+
+        Assert.False(await PlanningAsync(Now));
+
+        await using (var db = w.H.NewContext())
+        {
+            var tracked = await new EfMeetingDelegateRepository(db).GetUnrevokedTrackedAsync(w.H.TenantId, row.Id);
+            tracked!.CanPlanTasks = true;
+            tracked.ExpiresAt = Now.AddHours(1);
+            await db.SaveChangesAsync();
+        }
+
+        Assert.True(await PlanningAsync(Now));
+        Assert.False(await PlanningAsync(Now.AddHours(1)));
+    }
 }

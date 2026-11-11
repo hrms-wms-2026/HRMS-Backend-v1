@@ -134,8 +134,13 @@ public sealed class MeetingsController : ControllerBase
 
     [HttpPost("delegates")]
     public async Task<IActionResult> AddDelegate([FromBody] AddMeetingDelegateRequest request, CancellationToken ct)
-        => Respond(await _mediator.Send(new AddMeetingDelegateCommand(request.DelegateEmployeeId, request.ExpiresAt), ct),
+        => Respond(await _mediator.Send(new AddMeetingDelegateCommand(request.DelegateEmployeeId, request.ExpiresAt, request.CanPlanTasks), ct),
             value => StatusCode(201, value));
+
+    /// <summary>Turns "Can also plan my tasks" on or off on one of the caller's active delegates.</summary>
+    [HttpPatch("delegates/{id:guid}")]
+    public async Task<IActionResult> UpdateDelegate(Guid id, [FromBody] UpdateMeetingDelegateRequest request, CancellationToken ct)
+        => Respond(await _mediator.Send(new UpdateMeetingDelegateCommand(id, request.CanPlanTasks), ct), Ok);
 
     [HttpDelete("delegates/{id:guid}")]
     public async Task<IActionResult> RevokeDelegate(Guid id, CancellationToken ct)

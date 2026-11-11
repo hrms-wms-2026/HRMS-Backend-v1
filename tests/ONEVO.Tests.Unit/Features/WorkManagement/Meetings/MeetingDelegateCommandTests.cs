@@ -183,7 +183,8 @@ public sealed class MeetingDelegateCommandTests
     public async Task ListPrincipals_ReturnsOnlyActivePrincipals()
     {
         var boss = Person("Chief", "Executive");
-        _delegates.Setup(d => d.ListActivePrincipalIdsAsync(Tenant, _me.Id, Now, It.IsAny<CancellationToken>())).ReturnsAsync([boss.Id]);
+        _delegates.Setup(d => d.ListActivePrincipalsAsync(Tenant, _me.Id, Now, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([new ActivePrincipal(boss.Id, false)]);
         _employees.Setup(e => e.ListByIdsAsync(Tenant, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Dictionary<Guid, Employee> { [boss.Id] = boss });
 
@@ -205,5 +206,80 @@ public sealed class MeetingDelegateCommandTests
         _audit.Verify(a => a.RecordDelegationAsync(It.Is<MeetingDelegate>(r => r == _added[0]), MeetingAuditActions.DelegateGranted,
             It.IsAny<CancellationToken>()), Times.Once);
         _audit.Verify(a => a.RecordDelegationAsync(mine, MeetingAuditActions.DelegateRevoked, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    // Delegate task planning (2026-11-11): "Can also plan my tasks", off by default, set by the principal.
+
+    [Fact]
+    public async Task AddDelegate_StoresCanPlanTasks()
+    {
+        var result = await Sut().Handle(new AddMeetingDelegateCommand(_secretary.Id, null, CanPlanTasks: true), CancellationToken.None);
+
+        Assert.True(result.IsSuccess, result.Error);
+        Assert.True(Assert.Single(_added).CanPlanTasks);
+        Assert.True(result.Value!.CanPlanTasks);
+    }
+
+    [Fact]
+    public async Task AddDelegate_WithoutCanPlanTasks_IsFalse()
+    {
+        var result = await Sut().Handle(new AddMeetingDelegateCommand(_secretary.Id, null), CancellationToken.None);
+
+        Assert.False(Assert.Single(_added).CanPlanTasks);
+        Assert.False(result.Value!.CanPlanTasks);
+    }
+
+    [Fact]
+    public async Task UpdateDelegate_ByThePrincipal_ChangesIt_AndAuditsTheOldValue()
+    {
+        var row = Grant();
+        _delegates.Setup(d => d.GetUnrevokedTrackedAsync(Tenant, row.Id, It.IsAny<CancellationToken>())).ReturnsAsync(row);
+
+        var result = await Sut().Handle(new UpdateMeetingDelegateCommand(row.Id, true), CancellationToken.None);
+
+        Assert.True(result.IsSuccess, result.Error);
+        Assert.True(row.CanPlanTasks);
+        Assert.Equal((_secretary.Id, "Sara Fernando", true), (result.Value!.EmployeeId, result.Value.Name, result.Value.CanPlanTasks));
+        _audit.Verify(a => a.RecordDelegationChangeAsync(row, false, It.IsAny<CancellationToken>()), Times.Once);
+        _unitOfWork.Verify(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task UpdateDelegate_SomeoneElsesGrant_IsNotFound()
+    {
+        var row = Grant();
+        row.PrincipalEmployeeId = Guid.NewGuid();
+        _delegates.Setup(d => d.GetUnrevokedTrackedAsync(Tenant, row.Id, It.IsAny<CancellationToken>())).ReturnsAsync(row);
+
+        var result = await Sut().Handle(new UpdateMeetingDelegateCommand(row.Id, true), CancellationToken.None);
+
+        Assert.Equal((404, MeetingErrorCodes.DelegateNotFound), (result.StatusCode, result.ErrorCode));
+        Assert.False(row.CanPlanTasks);
+        _unitOfWork.Verify(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task UpdateDelegate_RevokedOrExpired_IsNotFound()
+    {
+        var expired = Grant(expiresAt: Now.AddMinutes(-1));
+        _delegates.Setup(d => d.GetUnrevokedTrackedAsync(Tenant, expired.Id, It.IsAny<CancellationToken>())).ReturnsAsync(expired);
+
+        var revokedResult = await Sut().Handle(new UpdateMeetingDelegateCommand(Guid.NewGuid(), true), CancellationToken.None);
+        var expiredResult = await Sut().Handle(new UpdateMeetingDelegateCommand(expired.Id, true), CancellationToken.None);
+
+        Assert.Equal(404, revokedResult.StatusCode);
+        Assert.Equal(404, expiredResult.StatusCode);
+        Assert.False(expired.CanPlanTasks);
+    }
+
+    [Fact]
+    public async Task ListPrincipals_CarriesCanPlanTasks()
+    {
+        _delegates.Setup(d => d.ListActivePrincipalsAsync(Tenant, _me.Id, Now, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([new ActivePrincipal(_secretary.Id, true)]);
+
+        var result = await Sut().Handle(new ListMyMeetingPrincipalsQuery(), CancellationToken.None);
+
+        Assert.Equal([new MeetingPrincipalView(_secretary.Id, "Sara Fernando", true)], result.Value!);
     }
 }

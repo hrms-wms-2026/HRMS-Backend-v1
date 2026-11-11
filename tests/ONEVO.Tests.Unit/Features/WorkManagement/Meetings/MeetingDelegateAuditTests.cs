@@ -147,4 +147,35 @@ public sealed class MeetingDelegateAuditTests
         Assert.Equal((DelegateUser, "meeting.cancelled_for_principal"), (row.UserId, row.Action));
         Assert.Equal(series.OrganizerEmployeeId, Json(row.NewValuesJson)["actingForEmployeeId"]!.GetValue<Guid>());
     }
+
+    [Fact]
+    public async Task RecordDelegation_Granted_RecordsCanPlanTasks()
+    {
+        var grant = new MeetingDelegate
+        {
+            Id = Guid.NewGuid(), TenantId = Tenant, PrincipalEmployeeId = Guid.NewGuid(), DelegateEmployeeId = Guid.NewGuid(),
+            CanPlanTasks = true,
+        };
+
+        await Sut().RecordDelegationAsync(grant, MeetingAuditActions.DelegateGranted, CancellationToken.None);
+
+        Assert.True(Json(Assert.Single(_rows).NewValuesJson)["canPlanTasks"]!.GetValue<bool>());
+    }
+
+    [Fact]
+    public async Task RecordDelegationChange_RecordsTheOldAndNewCanPlanTasks()
+    {
+        var grant = new MeetingDelegate
+        {
+            Id = Guid.NewGuid(), TenantId = Tenant, PrincipalEmployeeId = Guid.NewGuid(), DelegateEmployeeId = Guid.NewGuid(),
+            CanPlanTasks = true,
+        };
+
+        await Sut().RecordDelegationChangeAsync(grant, oldCanPlanTasks: false, CancellationToken.None);
+
+        var row = Assert.Single(_rows);
+        Assert.Equal(("meeting_delegate.updated", "MeetingDelegate", grant.Id), (row.Action, row.ResourceType, row.ResourceId));
+        Assert.True(Json(row.NewValuesJson)["canPlanTasks"]!.GetValue<bool>());
+        Assert.False(Json(row.OldValuesJson)["canPlanTasks"]!.GetValue<bool>());
+    }
 }

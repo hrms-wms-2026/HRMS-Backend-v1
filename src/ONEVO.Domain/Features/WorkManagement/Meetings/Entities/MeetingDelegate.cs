@@ -20,4 +20,8 @@ public class MeetingDelegate : ITenantOwnedEntity
     public DateTimeOffset? ExpiresAt { get; set; }
 
     public DateTimeOffset? RevokedAt { get; set; }
+
+    /// <summary>"Can also plan my tasks" (2026-11-11): the delegate may also see the principal's tasks and plan them on the
+    /// principal's planner. Off by default; only the principal sets it.</summary>
+    public bool CanPlanTasks { get; set; }
 }

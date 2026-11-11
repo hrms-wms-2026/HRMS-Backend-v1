@@ -14,7 +14,11 @@ namespace ONEVO.Application.Features.WorkManagement.Meetings.Commands;
 
 public sealed record ListMyMeetingDelegatesQuery : IRequest<Result<IReadOnlyList<MeetingDelegateView>>>;
 
-public sealed record AddMeetingDelegateCommand(Guid DelegateEmployeeId, DateTimeOffset? ExpiresAt) : IRequest<Result<MeetingDelegateView>>;
+public sealed record AddMeetingDelegateCommand(Guid DelegateEmployeeId, DateTimeOffset? ExpiresAt, bool CanPlanTasks = false)
+    : IRequest<Result<MeetingDelegateView>>;
+
+/// <summary>The principal turns "Can also plan my tasks" on or off on one of their active grants.</summary>
+public sealed record UpdateMeetingDelegateCommand(Guid Id, bool CanPlanTasks) : IRequest<Result<MeetingDelegateView>>;
 
 public sealed record RevokeMeetingDelegateCommand(Guid Id) : IRequest<Result<bool>>;
 
@@ -28,6 +32,7 @@ public sealed class MeetingDelegateCommandHandlers :
     IRequestHandler<ListMyMeetingDelegatesQuery, Result<IReadOnlyList<MeetingDelegateView>>>,
     IRequestHandler<AddMeetingDelegateCommand, Result<MeetingDelegateView>>,
     IRequestHandler<RevokeMeetingDelegateCommand, Result<bool>>,
+    IRequestHandler<UpdateMeetingDelegateCommand, Result<MeetingDelegateView>>,
     IRequestHandler<ListMyMeetingPrincipalsQuery, Result<IReadOnlyList<MeetingPrincipalView>>>
 {
     private static readonly HashSet<int> ActiveStatuses = [EmploymentStatusIds.Active, EmploymentStatusIds.OnLeave];
@@ -95,6 +100,7 @@ public sealed class MeetingDelegateCommandHandlers :
             {
                 Id = Guid.NewGuid(), TenantId = tenantId, PrincipalEmployeeId = caller, DelegateEmployeeId = person.Id,
                 CreatedByUserId = _currentUser.UserId, CreatedAt = now, ExpiresAt = command.ExpiresAt,
+                CanPlanTasks = command.CanPlanTasks,
             };
             _delegates.Add(row);
             await _audit.RecordDelegationAsync(row, MeetingAuditActions.DelegateGranted, innerCt);
@@ -116,21 +122,39 @@ public sealed class MeetingDelegateCommandHandlers :
         return Result<bool>.Success(true);
     }
 
+    public async Task<Result<MeetingDelegateView>> Handle(UpdateMeetingDelegateCommand command, CancellationToken ct)
+    {
+        if (await CallerAsync(ct) is not Guid caller)
+            return Result<MeetingDelegateView>.Forbidden("No employee record for the current user.");
+        var now = _clock.UtcNow;
+        var row = await _delegates.GetUnrevokedTrackedAsync(_currentUser.TenantId, command.Id, ct);
+        // Only the principal, and only while the grant is active: an expired one is replaced by adding the person again.
+        if (row is null || row.PrincipalEmployeeId != caller || (row.ExpiresAt is { } expires && expires <= now))
+            return Result<MeetingDelegateView>.Failure("That delegate was not found.", 404, MeetingErrorCodes.DelegateNotFound);
+        var old = row.CanPlanTasks;
+        row.CanPlanTasks = command.CanPlanTasks;
+        await _audit.RecordDelegationChangeAsync(row, old, ct);
+        await _unitOfWork.SaveChangesAsync(ct);
+        var names = await NamesAsync([row.DelegateEmployeeId], ct);
+        return Result<MeetingDelegateView>.Success(View(row, names.GetValueOrDefault(row.DelegateEmployeeId) ?? string.Empty, now));
+    }
+
     public async Task<Result<IReadOnlyList<MeetingPrincipalView>>> Handle(ListMyMeetingPrincipalsQuery query, CancellationToken ct)
     {
         if (await CallerAsync(ct) is not Guid caller)
             return Result<IReadOnlyList<MeetingPrincipalView>>.Forbidden("No employee record for the current user.");
-        var ids = await _delegates.ListActivePrincipalIdsAsync(_currentUser.TenantId, caller, _clock.UtcNow, ct);
-        var names = await NamesAsync(ids, ct);
-        return Result<IReadOnlyList<MeetingPrincipalView>>.Success(ids
-            .Select(id => new MeetingPrincipalView(id, names.GetValueOrDefault(id) ?? string.Empty))
+        var principals = await _delegates.ListActivePrincipalsAsync(_currentUser.TenantId, caller, _clock.UtcNow, ct);
+        var names = await NamesAsync(principals.Select(p => p.PrincipalEmployeeId), ct);
+        return Result<IReadOnlyList<MeetingPrincipalView>>.Success(principals
+            .Select(p => new MeetingPrincipalView(p.PrincipalEmployeeId, names.GetValueOrDefault(p.PrincipalEmployeeId) ?? string.Empty,
+                p.CanPlanTasks))
             .OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase)
             .ToList());
     }
 
     private static MeetingDelegateView View(MeetingDelegate row, string name, DateTimeOffset now)
         => new(row.Id, row.DelegateEmployeeId, name, row.CreatedAt, row.ExpiresAt,
-            row.ExpiresAt is { } expires && expires <= now ? MeetingDelegateStates.Expired : MeetingDelegateStates.Active);
+            row.ExpiresAt is { } expires && expires <= now ? MeetingDelegateStates.Expired : MeetingDelegateStates.Active, row.CanPlanTasks);
 
     private static string Name(Employee e) => $"{e.FirstName} {e.LastName}".Trim();
 

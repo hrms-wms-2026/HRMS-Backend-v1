@@ -45,6 +45,16 @@ public sealed class EfMeetingDelegateRepository : IMeetingDelegateRepository
         CancellationToken ct = default)
         => Active(tenantId, now).AnyAsync(d => d.PrincipalEmployeeId == principalEmployeeId && d.DelegateEmployeeId == delegateEmployeeId, ct);
 
+    public async Task<IReadOnlyList<ActivePrincipal>> ListActivePrincipalsAsync(Guid tenantId, Guid delegateEmployeeId, DateTimeOffset now,
+        CancellationToken ct = default)
+        => await Active(tenantId, now).Where(d => d.DelegateEmployeeId == delegateEmployeeId)
+            .Select(d => new ActivePrincipal(d.PrincipalEmployeeId, d.CanPlanTasks)).ToListAsync(ct);
+
+    public Task<bool> IsActivePlanningDelegateAsync(Guid tenantId, Guid principalEmployeeId, Guid delegateEmployeeId, DateTimeOffset now,
+        CancellationToken ct = default)
+        => Active(tenantId, now).AnyAsync(d => d.PrincipalEmployeeId == principalEmployeeId
+            && d.DelegateEmployeeId == delegateEmployeeId && d.CanPlanTasks, ct);
+
     private IQueryable<MeetingDelegate> Active(Guid tenantId, DateTimeOffset now)
         => _db.MeetingDelegates.AsNoTracking()
             .Where(d => d.TenantId == tenantId && d.RevokedAt == null && (d.ExpiresAt == null || d.ExpiresAt > now)

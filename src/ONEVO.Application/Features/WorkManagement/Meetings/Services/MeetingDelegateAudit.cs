@@ -12,6 +12,7 @@ public static class MeetingAuditActions
 {
     public const string DelegateGranted = "meeting_delegate.granted";
     public const string DelegateRevoked = "meeting_delegate.revoked";
+    public const string DelegateUpdated = "meeting_delegate.updated";
     public const string Created = "meeting.created_for_principal";
     public const string Edited = "meeting.edited_for_principal";
     public const string Moved = "meeting.moved_for_principal";
@@ -28,6 +29,9 @@ public interface IMeetingDelegateAudit
 {
     /// <summary>A grant or a revoke of <paramref name="row"/>.</summary>
     Task RecordDelegationAsync(MeetingDelegate row, string action, CancellationToken ct);
+
+    /// <summary>"Can also plan my tasks" turned on or off: old and new value.</summary>
+    Task RecordDelegationChangeAsync(MeetingDelegate row, bool oldCanPlanTasks, CancellationToken ct);
 
     /// <summary>
     /// An action a delegate took on <paramref name="series"/> for <paramref name="actingForEmployeeId"/>. A private
@@ -75,10 +79,23 @@ public sealed class MeetingDelegateAudit : IMeetingDelegateAudit
             ["delegateEmployeeId"] = row.DelegateEmployeeId,
         };
         if (!revoked)
+        {
             newValues["expiresAt"] = row.ExpiresAt;
+            newValues["canPlanTasks"] = row.CanPlanTasks;
+        }
         var oldValues = revoked ? new JsonObject { ["expiresAt"] = row.ExpiresAt } : null;
         return AddAsync(row.TenantId, action, "MeetingDelegate", row.Id, newValues, oldValues, ct);
     }
+
+    public Task RecordDelegationChangeAsync(MeetingDelegate row, bool oldCanPlanTasks, CancellationToken ct)
+        => AddAsync(row.TenantId, MeetingAuditActions.DelegateUpdated, "MeetingDelegate", row.Id,
+            new JsonObject
+            {
+                ["principalEmployeeId"] = row.PrincipalEmployeeId,
+                ["delegateEmployeeId"] = row.DelegateEmployeeId,
+                ["canPlanTasks"] = row.CanPlanTasks,
+            },
+            new JsonObject { ["canPlanTasks"] = oldCanPlanTasks }, ct);
 
     public Task RecordForPrincipalAsync(MeetingSeries series, Guid actingForEmployeeId, string action, object newValues, object? oldValues,
         CancellationToken ct)
