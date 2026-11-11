@@ -72,8 +72,9 @@ public sealed class PlannerService : IPlannerBlockWriter
 
     /// <summary>The caller's own days from <paramref name="from"/> to <paramref name="to"/> for the calendar grid: blocks, the
     /// work window and whether each day can still change. One read per concern for the whole range.</summary>
+    /// <param name="readOnly">A meeting-only delegate's view of the principal's days: no day is editable.</param>
     public async Task<Result<PlannerRangeResponse>> GetRangeAsync(Guid tenantId, Guid callerEmployeeId, DateOnly from, DateOnly to,
-        CancellationToken ct)
+        CancellationToken ct, bool readOnly = false)
     {
         if (!_options.Value.Enabled)
             return Disabled<PlannerRangeResponse>();
@@ -92,6 +93,7 @@ public sealed class PlannerService : IPlannerBlockWriter
         var sessions = await _planner.ListSessionsAsync(tenantId, callerEmployeeId, start, end, ct);
         var legalEntity = await _planner.GetEmployeeLegalEntityAsync(tenantId, callerEmployeeId, ct);
         var blocksByDay = blocks.ToLookup(b => DayOf(b.StartAt, zone.Value.Info));
+        var plannedBy = await PlannedByNamesAsync(tenantId, callerEmployeeId, blocks, ct);
 
         var days = new List<PlannerRangeDay>(to.DayNumber - from.DayNumber + 1);
         for (var day = from; day <= to; day = day.AddDays(1))
@@ -104,10 +106,11 @@ public sealed class PlannerService : IPlannerBlockWriter
                     dayStart, dayEnd, now);
                 return new PlannerRangeBlockView(b.Id, b.TaskId, task?.ProjectId ?? Guid.Empty, task?.ProjectName ?? string.Empty, task?.Title ?? string.Empty,
                     b.StartAt, b.EndAt, (int)(b.EndAt - b.StartAt).TotalMinutes, actual, task?.AssignedToEmployee ?? false,
-                    task?.CategoryName ?? string.Empty, task?.CategoryKind ?? TaskCategoryKinds.Task, task?.CategoryIcon);
+                    task?.CategoryName ?? string.Empty, task?.CategoryKind ?? TaskCategoryKinds.Task, task?.CategoryIcon,
+                    plannedBy.GetValueOrDefault(b.CreatedById), VersionOf(b));
             }).ToList();
             var window = PlannerWorkWindows.For(legalEntity, day);
-            days.Add(new PlannerRangeDay(day, DayCheck(day, today) is null, window, views, views.Sum(v => v.PlannedMinutes),
+            days.Add(new PlannerRangeDay(day, !readOnly && DayCheck(day, today) is null, window, views, views.Sum(v => v.PlannedMinutes),
                 window?.WorkingMinutes ?? 0));
         }
         return Result<PlannerRangeResponse>.Success(new PlannerRangeResponse(zone.Value.Id, today, days));
@@ -292,6 +295,25 @@ public sealed class PlannerService : IPlannerBlockWriter
             due.Select(t => new PlannerDueTaskView(t.TaskId, t.Title, t.DueDate, t.EstimatedHours)).ToList(),
             new PlannerTotals(planned, actual), attendance is null ? 0
                 : PlannerActuals.AttendanceMinutes(attendance.ActualStart, attendance.ActualEnd, attendance.WorkedMinutes, attendance.BreakMinutes, now));
+    }
+
+    /// <summary>A block's version: its last write as ISO-8601 "O". A move or remove may send it back as expectedVersion.</summary>
+    internal static string VersionOf(PlannedTaskBlock block)
+        => (block.UpdatedAt ?? block.CreatedAt).ToString("O", System.Globalization.CultureInfo.InvariantCulture);
+
+    /// <summary>Writer name by user id, for blocks someone other than the employee wrote (CreatedById is the writer's user id).</summary>
+    private async Task<IReadOnlyDictionary<Guid, string>> PlannedByNamesAsync(Guid tenantId, Guid employeeId,
+        IReadOnlyList<PlannedTaskBlock> blocks, CancellationToken ct)
+    {
+        if (blocks.Count == 0)
+            return new Dictionary<Guid, string>();
+        var owner = (await _employees.ListByIdsAsync(tenantId, [employeeId], ct)).GetValueOrDefault(employeeId);
+        var writers = blocks.Select(b => b.CreatedById).Where(id => id != Guid.Empty && id != owner?.UserId).Distinct().ToList();
+        if (writers.Count == 0)
+            return new Dictionary<Guid, string>();
+        return (await _employees.GetByUserIdsAsync(tenantId, writers, ct))
+            .GroupBy(e => e.UserId)
+            .ToDictionary(g => g.Key, g => $"{g.First().FirstName} {g.First().LastName}".Trim());
     }
 
     private Task<Zone?> ZoneOfAsync(Guid tenantId, Guid employeeId, CancellationToken ct)

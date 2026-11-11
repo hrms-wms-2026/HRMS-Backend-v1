@@ -51,8 +51,11 @@ public sealed record PlannerWorkWindow(TimeOnly WorkStart, TimeOnly WorkEnd, int
 /// <param name="ProjectId">For opening the task on its project board.</param>
 /// <param name="ProjectName">Shown under the block's title.</param>
 /// <param name="ActualMinutes">The employee's clocked minutes on that task inside that day (as in v1).</param>
+/// <param name="PlannedByName">Who wrote the block, when it was not the employee whose block it is (their meeting delegate).</param>
+/// <param name="Version">The block's last write (UpdatedAt, else CreatedAt) as ISO-8601 "O": sent back as expectedVersion.</param>
 public sealed record PlannerRangeBlockView(Guid Id, Guid TaskId, Guid ProjectId, string ProjectName, string TaskTitle, DateTimeOffset StartAt,
-    DateTimeOffset EndAt, int PlannedMinutes, int ActualMinutes, bool StillAssigned, string CategoryName, string CategoryKind, string? CategoryIcon = null);
+    DateTimeOffset EndAt, int PlannedMinutes, int ActualMinutes, bool StillAssigned, string CategoryName, string CategoryKind, string? CategoryIcon = null,
+    string? PlannedByName = null, string Version = "");
 
 /// <param name="Editable">The caller's own day from today up to the planning horizon.</param>
 /// <param name="WorkWindow">Null when the legal entity has no usable schedule.</param>

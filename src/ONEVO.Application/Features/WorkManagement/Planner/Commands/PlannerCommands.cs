@@ -4,6 +4,7 @@ using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Meetings.Contracts;
 using ONEVO.Application.Features.WorkManagement.Meetings.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Meetings.Services;
 using ONEVO.Application.Features.WorkManagement.Planner.Contracts;
 using ONEVO.Application.Features.WorkManagement.Planner.Services;
 
@@ -20,7 +21,8 @@ public sealed record GetEmployeePlannerDayQuery(Guid EmployeeId, DateOnly? Date)
 public sealed record GetMyPlannerRangeQuery(DateOnly From, DateOnly To, Guid? ForEmployeeId = null) : IRequest<Result<PlannerRangeResponse>>;
 
 /// <summary>GET /planner/me/focus: what the caller should work on.</summary>
-public sealed record GetMyPlannerFocusQuery : IRequest<Result<PlannerFocusResponse>>;
+/// <param name="ForEmployeeId">A principal's Focus list, for their active planning delegate; null or the caller means the caller's own.</param>
+public sealed record GetMyPlannerFocusQuery(Guid? ForEmployeeId = null) : IRequest<Result<PlannerFocusResponse>>;
 
 public sealed record CreatePlannedBlockCommand(CreatePlannedBlockRequest Request) : IRequest<Result<PlannerDayResponse>>;
 
@@ -96,10 +98,12 @@ public sealed class PlannerRequestHandler :
     private readonly PlannerService _planner;
     private readonly IMeetingDelegateRepository? _delegates;
     private readonly IDateTimeProvider? _clock;
+    private readonly IDelegateAccess? _delegateAccess;
 
     public PlannerRequestHandler(ICurrentUser currentUser, ICallerIdentityResolver identity, PlannerService planner,
-        IMeetingDelegateRepository? delegates = null, IDateTimeProvider? clock = null)
+        IMeetingDelegateRepository? delegates = null, IDateTimeProvider? clock = null, IDelegateAccess? delegateAccess = null)
     {
+        _delegateAccess = delegateAccess;
         _currentUser = currentUser;
         _identity = identity;
         _planner = planner;
@@ -118,15 +122,32 @@ public sealed class PlannerRequestHandler :
         {
             if (query.ForEmployeeId is not Guid forId || forId == me)
                 return await _planner.GetRangeAsync(tenant, me, query.From, query.To, ct);
-            // A principal's days, read-only, for their active meeting delegate (spec "Seeing the principal's calendar").
+            // A planning delegate (2026-11-11) gets the principal's editable days; a meeting-only delegate the same days
+            // read-only (spec "Seeing the principal's calendar").
+            if (_delegateAccess is not null && await _delegateAccess.PlanningSubjectAsync(tenant, me, forId, ct) is not null)
+                return await _planner.GetRangeAsync(tenant, forId, query.From, query.To, ct);
             return _delegates is not null && _clock is not null
                 && await _delegates.IsActiveDelegateAsync(tenant, forId, me, _clock.UtcNow, ct)
-                    ? await _planner.GetRangeAsync(tenant, forId, query.From, query.To, ct)
+                    ? await _planner.GetRangeAsync(tenant, forId, query.From, query.To, ct, readOnly: true)
                     : Result<PlannerRangeResponse>.Failure("You cannot see this person's planner.", 403, MeetingErrorCodes.DelegateRequired);
         }, ct);
 
     public Task<Result<PlannerFocusResponse>> Handle(GetMyPlannerFocusQuery query, CancellationToken ct)
-        => AsCaller((tenant, me) => _planner.GetFocusAsync(tenant, me, ct), ct);
+        => AsCaller(async (tenant, me) => await SubjectAsync(tenant, me, query.ForEmployeeId, ct) is Guid subject
+            ? await _planner.GetFocusAsync(tenant, subject, ct)
+            : PlannerService.NotFound<PlannerFocusResponse>(), ct);
+
+    /// <summary>The employee whose planner this request acts on: the caller, or the principal for their active planning
+    /// delegate (read from the database every time). Null when <paramref name="forEmployeeId"/> is someone the caller may
+    /// not plan for.</summary>
+    private async Task<Guid?> SubjectAsync(Guid tenant, Guid me, Guid? forEmployeeId, CancellationToken ct)
+    {
+        if (forEmployeeId is not Guid forId || forId == me)
+            return me;
+        return _delegateAccess is not null && await _delegateAccess.PlanningSubjectAsync(tenant, me, forId, ct) is { } subject
+            ? subject.EmployeeId
+            : null;
+    }
 
     public Task<Result<PlannerDayResponse>> Handle(CreatePlannedBlockCommand command, CancellationToken ct)
         => AsCaller((tenant, me) => _planner.CreateBlockAsync(tenant, me, command.Request, ct), ct);

@@ -46,8 +46,8 @@ public sealed class PlannerController : ControllerBase
         => Respond(await _mediator.Send(new GetMyPlannerRangeQuery(from, to, forEmployeeId), ct));
 
     [HttpGet("me/focus")]
-    public async Task<IActionResult> MyFocus(CancellationToken ct)
-        => Respond(await _mediator.Send(new GetMyPlannerFocusQuery(), ct));
+    public async Task<IActionResult> MyFocus([FromQuery] Guid? forEmployeeId, CancellationToken ct)
+        => Respond(await _mediator.Send(new GetMyPlannerFocusQuery(forEmployeeId), ct));
 
     /// <summary>Today's Team Schedule (My Team widgets, 2026-10-29): the caller's reports' day (moved off "team" 2026-11-04, which the team planner owns). Answers with
     /// plannerEnabled = false instead of 503 while the Planner is off.</summary>
