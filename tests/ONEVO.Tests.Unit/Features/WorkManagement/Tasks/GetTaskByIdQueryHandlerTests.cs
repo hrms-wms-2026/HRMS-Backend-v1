@@ -6,6 +6,7 @@ using ONEVO.Application.Features.Auth.Permission.ServiceInterfaces;
 using ONEVO.Application.Features.Storage.File.Helpers;
 using ONEVO.Application.Features.WorkManagement.Approvals.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
+using ONEVO.Application.Features.WorkManagement.Meetings.Services;
 using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetTaskById;
@@ -24,6 +25,8 @@ public sealed class GetTaskByIdQueryHandlerTests
     private static readonly Guid ProjectId = Guid.NewGuid();
     private static readonly Guid ObjectiveId = Guid.NewGuid();
     private static readonly Guid TaskId = Guid.NewGuid();
+    private static readonly Guid PrincipalId = Guid.NewGuid();
+    private static readonly Guid PrincipalUserId = Guid.NewGuid();
 
     private static Project ActiveProject() => new()
     {
@@ -43,7 +46,7 @@ public sealed class GetTaskByIdQueryHandlerTests
         IReadOnlyList<Guid>? accessibleObjectiveIds = null, bool authenticated = true, bool employeeExists = true,
         Mock<IEntityAssetRepository>? entityAssets = null,
         ONEVO.Domain.Features.WorkManagement.Objectives.Entities.Objective[]? modules = null,
-        bool pendingApproval = false)
+        bool pendingApproval = false, Mock<IDelegateAccess>? access = null, IReadOnlyList<Guid>? principalObjectiveIds = null)
     {
         var currentUser = new Mock<ICurrentUser>();
         currentUser.SetupGet(x => x.IsAuthenticated).Returns(authenticated);
@@ -63,10 +66,13 @@ public sealed class GetTaskByIdQueryHandlerTests
         var members = new Mock<IProjectMemberRepository>();
         members.Setup(x => x.GetActiveObjectiveIdsForEmployeeInProjectAsync(TenantId, ProjectId, EmployeeId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(accessibleObjectiveIds ?? Array.Empty<Guid>());
+        members.Setup(x => x.GetActiveObjectiveIdsForEmployeeInProjectAsync(TenantId, ProjectId, PrincipalId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(principalObjectiveIds ?? Array.Empty<Guid>());
 
         var permissions = new Mock<IPermissionResolver>();
         permissions.Setup(x => x.ResolveAsync(UserId, TenantId, null, It.IsAny<CancellationToken>()))
             .ReturnsAsync(hasReadPermission ? new List<string> { "*" } : new List<string>());
+        permissions.Setup(x => x.ResolveAsync(PrincipalUserId, TenantId, null, It.IsAny<CancellationToken>())).ReturnsAsync(new List<string>());
 
         var assignments = new Mock<ITaskAssignmentRepository>();
         assignments.Setup(x => x.GetByTaskIdsAsync(It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
@@ -100,7 +106,7 @@ public sealed class GetTaskByIdQueryHandlerTests
             members.Object, permissions.Object, assignments.Object, sessions.Object,
             CalendarEventRepositoryMocks.Empty().Object, assets.Object,
             WorkHierarchyServiceMocks.WithModules(modules ?? Array.Empty<ONEVO.Domain.Features.WorkManagement.Objectives.Entities.Objective>()).Object,
-            approvalRequests.Object);
+            approvalRequests.Object, delegateAccess: access?.Object);
     }
 
     [Fact]
@@ -190,5 +196,63 @@ public sealed class GetTaskByIdQueryHandlerTests
         Assert.True(result.IsSuccess);
         Assert.Single(result.Value!.Attachments!);
         Assert.Equal("spec.pdf", result.Value.Attachments![0].FileName);
+    }
+
+    // Delegate task planning (2026-11-11), "Task form reads — least privilege".
+
+    private static Mock<IDelegateAccess> Delegate(bool planning, bool canReadTask)
+    {
+        var access = new Mock<IDelegateAccess>();
+        access.Setup(a => a.PlanningSubjectAsync(TenantId, EmployeeId, PrincipalId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(planning ? new DelegateSubject(PrincipalId, PrincipalUserId) : null);
+        access.Setup(a => a.CanReadTaskAsync(TenantId, PrincipalId, TaskId, It.IsAny<CancellationToken>())).ReturnsAsync(canReadTask);
+        return access;
+    }
+
+    [Fact]
+    public async Task ForAPlanningDelegate_ThePrincipalsTask_IsReadAsThePrincipal()
+    {
+        var handler = BuildHandler(Task(), ActiveProject(), hasReadPermission: false, accessibleObjectiveIds: [],
+            access: Delegate(planning: true, canReadTask: true), principalObjectiveIds: [ObjectiveId]);
+
+        var result = await handler.Handle(new GetTaskByIdQuery(TaskId, PrincipalId), CancellationToken.None);
+
+        Assert.True(result.IsSuccess, result.Error);
+        Assert.Equal(TaskId, result.Value!.Id);
+    }
+
+    [Fact]
+    public async Task ForAStrangerOrMeetingOnlyDelegate_IsNotFound()
+    {
+        var handler = BuildHandler(Task(), ActiveProject(), hasReadPermission: true,
+            access: Delegate(planning: false, canReadTask: true), principalObjectiveIds: [ObjectiveId]);
+
+        var result = await handler.Handle(new GetTaskByIdQuery(TaskId, PrincipalId), CancellationToken.None);
+
+        Assert.Equal(404, result.StatusCode);
+    }
+
+    [Fact]
+    public async Task ForAPlanningDelegate_ATaskNotAssignedToThePrincipal_IsNotFound()
+    {
+        var handler = BuildHandler(Task(), ActiveProject(), hasReadPermission: false,
+            access: Delegate(planning: true, canReadTask: false), principalObjectiveIds: [ObjectiveId]);
+
+        var result = await handler.Handle(new GetTaskByIdQuery(TaskId, PrincipalId), CancellationToken.None);
+
+        Assert.Equal(404, result.StatusCode);
+    }
+
+    [Fact]
+    public async Task WithoutForEmployeeId_ANonMemberIsStillRefused_AndTheDelegateCheckIsNotAsked()
+    {
+        var access = Delegate(planning: true, canReadTask: true);
+        var handler = BuildHandler(Task(), ActiveProject(), hasReadPermission: false, accessibleObjectiveIds: [],
+            access: access, principalObjectiveIds: [ObjectiveId]);
+
+        var result = await handler.Handle(new GetTaskByIdQuery(TaskId), CancellationToken.None);
+
+        Assert.Equal(404, result.StatusCode);
+        access.VerifyNoOtherCalls();
     }
 }

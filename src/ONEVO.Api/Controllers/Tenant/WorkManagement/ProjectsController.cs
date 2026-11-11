@@ -145,10 +145,11 @@ public class ProjectsController : ControllerBase
     }
 
     /// <summary>Gets a single Project by id. The handler requires an active project relationship.</summary>
+    /// <param name="forEmployeeId">A principal's project, read by their planning delegate (delegate task planning).</param>
     [HttpGet("{id:guid}")]
-    public async Task<IActionResult> GetById(Guid id, CancellationToken ct)
+    public async Task<IActionResult> GetById(Guid id, [FromQuery] Guid? forEmployeeId, CancellationToken ct)
     {
-        var result = await _mediator.Send(new GetProjectByIdQuery(id), ct);
+        var result = await _mediator.Send(new GetProjectByIdQuery(id, forEmployeeId), ct);
 
         return result.IsSuccess
             ? Ok(result.Value!.ToViewModel())

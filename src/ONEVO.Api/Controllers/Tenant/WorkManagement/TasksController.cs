@@ -197,10 +197,11 @@ public class TasksController : ControllerBase
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
+    /// <param name="forEmployeeId">A principal's task, read by their planning delegate (delegate task planning).</param>
     [HttpGet("tasks/{id:guid}")]
-    public async Task<IActionResult> GetById(Guid id, CancellationToken ct)
+    public async Task<IActionResult> GetById(Guid id, [FromQuery] Guid? forEmployeeId, CancellationToken ct)
     {
-        var result = await _mediator.Send(new GetTaskByIdQuery(id), ct);
+        var result = await _mediator.Send(new GetTaskByIdQuery(id, forEmployeeId), ct);
 
         return result.IsSuccess
             ? Ok(result.Value!.ToViewModel())

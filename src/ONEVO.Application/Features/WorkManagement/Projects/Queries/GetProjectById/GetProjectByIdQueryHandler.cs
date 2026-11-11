@@ -12,6 +12,7 @@ using ONEVO.Application.Features.WorkManagement.Projects.Helpers;
 using ONEVO.Application.Features.WorkManagement.Projects.Mappers;
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Meetings.Services;
 
 namespace ONEVO.Application.Features.WorkManagement.Projects.Queries.GetProjectById;
 
@@ -28,6 +29,9 @@ public class GetProjectByIdQueryHandler : IRequestHandler<GetProjectByIdQuery, R
     private readonly IEntityAssetRepository _entityAssets;
     private readonly ILabelRepository _labels;
 
+    private const string NotFoundForDelegate = "Project not found.";
+    private readonly IDelegateAccess? _delegateAccess;
+
     public GetProjectByIdQueryHandler(
         ICurrentUser currentUser,
         ICallerIdentityResolver identity,
@@ -35,7 +39,8 @@ public class GetProjectByIdQueryHandler : IRequestHandler<GetProjectByIdQuery, R
         IProjectMemberRepository members,
         IPermissionResolver permissionResolver,
         IEntityAssetRepository entityAssets,
-        ILabelRepository labels)
+        ILabelRepository labels,
+        IDelegateAccess? delegateAccess = null)
     {
         _currentUser = currentUser;
         _identity = identity;
@@ -44,6 +49,7 @@ public class GetProjectByIdQueryHandler : IRequestHandler<GetProjectByIdQuery, R
         _permissionResolver = permissionResolver;
         _entityAssets = entityAssets;
         _labels = labels;
+        _delegateAccess = delegateAccess;
     }
 
     public async Task<Result<ProjectDetailResponse>> Handle(GetProjectByIdQuery request, CancellationToken ct)
@@ -60,16 +66,29 @@ public class GetProjectByIdQueryHandler : IRequestHandler<GetProjectByIdQuery, R
         if (callerEmployeeId is null)
             return Result<ProjectDetailResponse>.Forbidden("No employee record for the current user.");
 
+        // Delegate task planning (2026-11-11): a planning delegate reads as the principal (their ids go into the access
+        // checks below; the signed-in user is unchanged), and only within the principal's assigned work.
+        var subjectEmployeeId = callerEmployeeId.Value;
+        var subjectUserId = userId;
+        if (request.ForEmployeeId is Guid forEmployeeId && forEmployeeId != callerEmployeeId.Value)
+        {
+            if (_delegateAccess is null
+                || await _delegateAccess.PlanningSubjectAsync(tenantId, callerEmployeeId.Value, forEmployeeId, ct) is not { } principal
+                || !await _delegateAccess.CanReadProjectAsync(tenantId, principal.EmployeeId, request.ProjectId, ct))
+                return Result<ProjectDetailResponse>.NotFound(NotFoundForDelegate);
+            (subjectEmployeeId, subjectUserId) = (principal.EmployeeId, principal.UserId);
+        }
+
         var project = await _projects.GetByIdForTenantAsync(tenantId, request.ProjectId, ct);
         if (project is null || !project.IsActive)
             return Result<ProjectDetailResponse>.NotFound("Project not found.");
 
-        var permissions = await _permissionResolver.ResolveAsync(userId, tenantId, null, ct);
+        var permissions = await _permissionResolver.ResolveAsync(subjectUserId, tenantId, null, ct);
         var hasReadPermission = permissions.Contains("*");
 
         if (!hasReadPermission)
         {
-            var isMember = await _members.HasActiveMembershipAsync(tenantId, project.Id, callerEmployeeId.Value, ct);
+            var isMember = await _members.HasActiveMembershipAsync(tenantId, project.Id, subjectEmployeeId, ct);
             if (!isMember)
                 return Result<ProjectDetailResponse>.Forbidden("You do not have access to this project.");
         }
@@ -88,7 +107,7 @@ public class GetProjectByIdQueryHandler : IRequestHandler<GetProjectByIdQuery, R
         var members = ProjectMemberAvatarResolver.BuildAvatars(project.Id, memberEmployeeIdsByProject, displayNames, avatarFileIds);
         var memberCount = memberCounts.TryGetValue(project.Id, out var count) ? count : 0;
 
-        var isLead = project.LeadId == callerEmployeeId.Value;
+        var isLead = project.LeadId == subjectEmployeeId;
         return Result<ProjectDetailResponse>.Success(ProjectMapper.ToDetail(project, isLead, logoFileId, projectLabels, members, memberCount));
     }
 }

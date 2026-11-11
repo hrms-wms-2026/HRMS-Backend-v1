@@ -4,6 +4,7 @@ using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Permission.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Labels.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Meetings.Services;
 using ONEVO.Application.Features.WorkManagement.Projects.Queries.GetProjectById;
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
@@ -21,6 +22,8 @@ public class GetProjectByIdQueryHandlerTests
     private static readonly Guid ProjectId = Guid.NewGuid();
     private static readonly Guid LeadUserId = Guid.NewGuid();
     private static readonly Guid LeadEmployeeId = Guid.NewGuid();
+    private static readonly Guid PrincipalId = Guid.NewGuid();
+    private static readonly Guid PrincipalUserId = Guid.NewGuid();
 
     private static Project Project(bool isActive = true) => new()
     {
@@ -67,7 +70,7 @@ public class GetProjectByIdQueryHandlerTests
     }
 
     private (GetProjectByIdQueryHandler Handler, Mock<IProjectMemberRepository> Members, Mock<IEntityAssetRepository> EntityAssets, Mock<ILabelRepository> Labels, Mock<ICallerIdentityResolver> Identity) BuildHandler(
-        Project? project, List<string> permissions, bool isActiveMember)
+        Project? project, List<string> permissions, bool isActiveMember, Mock<IDelegateAccess>? access = null, bool principalIsMember = false)
     {
         var currentUser = new Mock<ICurrentUser>();
         currentUser.SetupGet(x => x.IsAuthenticated).Returns(true);
@@ -81,16 +84,20 @@ public class GetProjectByIdQueryHandlerTests
 
         var members = new Mock<IProjectMemberRepository>();
         members.Setup(x => x.HasActiveMembershipAsync(TenantId, ProjectId, EmployeeId, It.IsAny<CancellationToken>())).ReturnsAsync(isActiveMember);
+        members.Setup(x => x.HasActiveMembershipAsync(TenantId, ProjectId, PrincipalId, It.IsAny<CancellationToken>())).ReturnsAsync(principalIsMember);
         SetupEmptyMemberLists(members);
 
         var permissionResolver = new Mock<IPermissionResolver>();
         permissionResolver.Setup(x => x.ResolveAsync(UserId, TenantId, It.IsAny<Guid?>(), It.IsAny<CancellationToken>())).ReturnsAsync(permissions);
+        permissionResolver.Setup(x => x.ResolveAsync(PrincipalUserId, TenantId, It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<string>());
 
         var entityAssets = BuildEmptyEntityAssets();
         var labels = BuildEmptyLabels();
 
         var handler = new GetProjectByIdQueryHandler(
-            currentUser.Object, identity.Object, projects.Object, members.Object, permissionResolver.Object, entityAssets.Object, labels.Object);
+            currentUser.Object, identity.Object, projects.Object, members.Object, permissionResolver.Object, entityAssets.Object, labels.Object,
+            delegateAccess: access?.Object);
         return (handler, members, entityAssets, labels, identity);
     }
 
@@ -254,5 +261,51 @@ public class GetProjectByIdQueryHandlerTests
 
         Assert.Empty(result.Value!.Members);
         Assert.Equal(0, result.Value.MemberCount);
+    }
+
+    // Delegate task planning (2026-11-11), "Task form reads — least privilege".
+
+    private static Mock<IDelegateAccess> Delegate(bool planning, bool canReadProject)
+    {
+        var access = new Mock<IDelegateAccess>();
+        access.Setup(a => a.PlanningSubjectAsync(TenantId, EmployeeId, PrincipalId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(planning ? new DelegateSubject(PrincipalId, PrincipalUserId) : null);
+        access.Setup(a => a.CanReadProjectAsync(TenantId, PrincipalId, ProjectId, It.IsAny<CancellationToken>())).ReturnsAsync(canReadProject);
+        return access;
+    }
+
+    [Fact]
+    public async Task ForAPlanningDelegate_ThePrincipalsProject_IsReadAsThePrincipal()
+    {
+        var (handler, _, _, _, _) = BuildHandler(Project(), [], isActiveMember: false, Delegate(planning: true, canReadProject: true),
+            principalIsMember: true);
+
+        var result = await handler.Handle(new GetProjectByIdQuery(ProjectId, PrincipalId), CancellationToken.None);
+
+        Assert.True(result.IsSuccess, result.Error);
+    }
+
+    [Fact]
+    public async Task ForAMeetingOnlyDelegate_OrAProjectWithoutThePrincipalsTask_IsNotFound()
+    {
+        var (meetingOnly, _, _, _, _) = BuildHandler(Project(), [], isActiveMember: false, Delegate(planning: false, canReadProject: true),
+            principalIsMember: true);
+        var (outOfScope, _, _, _, _) = BuildHandler(Project(), [], isActiveMember: false, Delegate(planning: true, canReadProject: false),
+            principalIsMember: true);
+
+        Assert.Equal(404, (await meetingOnly.Handle(new GetProjectByIdQuery(ProjectId, PrincipalId), CancellationToken.None)).StatusCode);
+        Assert.Equal(404, (await outOfScope.Handle(new GetProjectByIdQuery(ProjectId, PrincipalId), CancellationToken.None)).StatusCode);
+    }
+
+    [Fact]
+    public async Task WithoutForEmployeeId_ANonMemberIsStillRefused()
+    {
+        var access = Delegate(planning: true, canReadProject: true);
+        var (handler, _, _, _, _) = BuildHandler(Project(), [], isActiveMember: false, access, principalIsMember: true);
+
+        var result = await handler.Handle(new GetProjectByIdQuery(ProjectId), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        access.VerifyNoOtherCalls();
     }
 }

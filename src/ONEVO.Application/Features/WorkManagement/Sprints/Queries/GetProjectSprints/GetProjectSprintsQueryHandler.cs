@@ -7,6 +7,7 @@ using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfa
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Sprints.DTOs.Responses;
 using ONEVO.Application.Features.WorkManagement.Sprints.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Meetings.Services;
 
 namespace ONEVO.Application.Features.WorkManagement.Sprints.Queries.GetProjectSprints;
 
@@ -19,13 +20,17 @@ public sealed class GetProjectSprintsQueryHandler : IRequestHandler<GetProjectSp
     private readonly IPermissionResolver _permissionResolver;
     private readonly ISprintRepository _sprints;
 
+    private const string NotFoundForDelegate = "Project not found.";
+    private readonly IDelegateAccess? _delegateAccess;
+
     public GetProjectSprintsQueryHandler(
         ICurrentUser currentUser,
         ICallerIdentityResolver identity,
         IProjectRepository projects,
         IProjectMemberRepository members,
         IPermissionResolver permissionResolver,
-        ISprintRepository sprints)
+        ISprintRepository sprints,
+        IDelegateAccess? delegateAccess = null)
     {
         _currentUser = currentUser;
         _identity = identity;
@@ -33,6 +38,7 @@ public sealed class GetProjectSprintsQueryHandler : IRequestHandler<GetProjectSp
         _members = members;
         _permissionResolver = permissionResolver;
         _sprints = sprints;
+        _delegateAccess = delegateAccess;
     }
 
     public async Task<Result<IReadOnlyList<SprintResponse>>> Handle(GetProjectSprintsQuery request, CancellationToken ct)
@@ -49,18 +55,31 @@ public sealed class GetProjectSprintsQueryHandler : IRequestHandler<GetProjectSp
         if (callerEmployeeId is null)
             return Result<IReadOnlyList<SprintResponse>>.Forbidden("No employee record for the current user.");
 
+        // Delegate task planning (2026-11-11): a planning delegate reads as the principal (their ids go into the access
+        // checks below; the signed-in user is unchanged), and only within the principal's assigned work.
+        var subjectEmployeeId = callerEmployeeId.Value;
+        var subjectUserId = userId;
+        if (request.ForEmployeeId is Guid forEmployeeId && forEmployeeId != callerEmployeeId.Value)
+        {
+            if (_delegateAccess is null
+                || await _delegateAccess.PlanningSubjectAsync(tenantId, callerEmployeeId.Value, forEmployeeId, ct) is not { } principal
+                || !await _delegateAccess.CanReadProjectAsync(tenantId, principal.EmployeeId, request.ProjectId, ct))
+                return Result<IReadOnlyList<SprintResponse>>.NotFound(NotFoundForDelegate);
+            (subjectEmployeeId, subjectUserId) = (principal.EmployeeId, principal.UserId);
+        }
+
         var project = await _projects.GetByIdForTenantAsync(tenantId, request.ProjectId, ct);
         if (project is null || !project.IsActive)
             return Result<IReadOnlyList<SprintResponse>>.NotFound("Project not found.");
 
-        var permissions = await _permissionResolver.ResolveAsync(userId, tenantId, null, ct);
+        var permissions = await _permissionResolver.ResolveAsync(subjectUserId, tenantId, null, ct);
         var hasReadPermission = permissions.Contains("*");
-        if (!hasReadPermission && !await _members.HasActiveMembershipAsync(tenantId, project.Id, callerEmployeeId.Value, ct))
+        if (!hasReadPermission && !await _members.HasActiveMembershipAsync(tenantId, project.Id, subjectEmployeeId, ct))
             return Result<IReadOnlyList<SprintResponse>>.Forbidden("You do not have access to this project.");
 
         var sprints = await _sprints.GetByProjectAsync(tenantId, project.Id, ct);
         // Any project member may act on a sprint - directly or by request; the approval engine decides which.
-        var isMember = await _members.HasActiveMembershipAsync(tenantId, project.Id, callerEmployeeId.Value, ct);
+        var isMember = await _members.HasActiveMembershipAsync(tenantId, project.Id, subjectEmployeeId, ct);
 
         return Result<IReadOnlyList<SprintResponse>>.Success(
             sprints.Select(s => SprintResponse.From(s, isMember)).ToList());

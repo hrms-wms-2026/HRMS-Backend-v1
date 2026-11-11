@@ -16,6 +16,7 @@ using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.Services;
 using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
 using ONEVO.Domain.Features.WorkManagement.Approvals.Entities;
+using ONEVO.Application.Features.WorkManagement.Meetings.Services;
 
 namespace ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetTaskById;
 
@@ -35,6 +36,9 @@ public sealed class GetTaskByIdQueryHandler : IRequestHandler<GetTaskByIdQuery, 
     private readonly IWorkApprovalRequestRepository _approvalRequests;
     private readonly ITaskAccessResolver? _taskAccess;
 
+    private const string NotFoundForDelegate = "Task not found.";
+    private readonly IDelegateAccess? _delegateAccess;
+
     public GetTaskByIdQueryHandler(
         ICurrentUser currentUser,
         ICallerIdentityResolver identity,
@@ -48,7 +52,8 @@ public sealed class GetTaskByIdQueryHandler : IRequestHandler<GetTaskByIdQuery, 
         IEntityAssetRepository entityAssets,
         IWorkHierarchyService hierarchy,
         IWorkApprovalRequestRepository approvalRequests,
-        ITaskAccessResolver? taskAccess = null)
+        ITaskAccessResolver? taskAccess = null,
+        IDelegateAccess? delegateAccess = null)
     {
         _currentUser = currentUser;
         _identity = identity;
@@ -63,6 +68,7 @@ public sealed class GetTaskByIdQueryHandler : IRequestHandler<GetTaskByIdQuery, 
         _entityAssets = entityAssets;
         _approvalRequests = approvalRequests;
         _taskAccess = taskAccess;
+        _delegateAccess = delegateAccess;
     }
 
     public async Task<Result<WorkTaskResponse>> Handle(GetTaskByIdQuery request, CancellationToken ct)
@@ -79,6 +85,19 @@ public sealed class GetTaskByIdQueryHandler : IRequestHandler<GetTaskByIdQuery, 
         if (callerEmployeeId is null)
             return Result<WorkTaskResponse>.Forbidden("No employee record for the current user.");
 
+        // Delegate task planning (2026-11-11): a planning delegate reads as the principal (their ids go into the access
+        // checks below; the signed-in user is unchanged), and only within the principal's assigned work.
+        var subjectEmployeeId = callerEmployeeId.Value;
+        var subjectUserId = userId;
+        if (request.ForEmployeeId is Guid forEmployeeId && forEmployeeId != callerEmployeeId.Value)
+        {
+            if (_delegateAccess is null
+                || await _delegateAccess.PlanningSubjectAsync(tenantId, callerEmployeeId.Value, forEmployeeId, ct) is not { } principal
+                || !await _delegateAccess.CanReadTaskAsync(tenantId, principal.EmployeeId, request.TaskId, ct))
+                return Result<WorkTaskResponse>.NotFound(NotFoundForDelegate);
+            (subjectEmployeeId, subjectUserId) = (principal.EmployeeId, principal.UserId);
+        }
+
         var task = await _tasks.GetByIdForTenantAsync(tenantId, request.TaskId, ct);
         if (task is null)
             return Result<WorkTaskResponse>.NotFound("Task not found.");
@@ -87,20 +106,20 @@ public sealed class GetTaskByIdQueryHandler : IRequestHandler<GetTaskByIdQuery, 
         if (project is null || !project.IsActive)
             return Result<WorkTaskResponse>.NotFound("Task not found.");
 
-        var permissions = await _permissionResolver.ResolveAsync(userId, tenantId, null, ct);
+        var permissions = await _permissionResolver.ResolveAsync(subjectUserId, tenantId, null, ct);
         var hasReadPermission = permissions.Contains("*");
         if (!hasReadPermission)
         {
             var accessibleObjectiveIds =
                 (await _hierarchy.LoadTreeAsync(tenantId, project.Id, ct)).AtOrBelow(
-                    await _members.GetActiveObjectiveIdsForEmployeeInProjectAsync(tenantId, project.Id, callerEmployeeId.Value, ct));
+                    await _members.GetActiveObjectiveIdsForEmployeeInProjectAsync(tenantId, project.Id, subjectEmployeeId, ct));
             if (!accessibleObjectiveIds.Contains(task.ObjectiveId))
                 return Result<WorkTaskResponse>.NotFound("Task not found.");
         }
 
         if (_taskAccess is not null && task.VisibilityScope == WorkTaskVisibilityScopes.Assignees)
         {
-            var access = await _taskAccess.ResolveViewableTaskAsync(tenantId, userId, task.Id, ct);
+            var access = await _taskAccess.ResolveViewableTaskAsync(tenantId, subjectUserId, task.Id, ct);
             if (!access.IsSuccess)
                 return Result<WorkTaskResponse>.Failure(access.Error!, access.StatusCode ?? 404);
         }
