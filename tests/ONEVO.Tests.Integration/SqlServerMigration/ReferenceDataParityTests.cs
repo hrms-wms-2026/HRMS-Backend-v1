@@ -157,7 +157,7 @@ public sealed class ReferenceDataParityTests(SqlServerFixture fixture, ITestOutp
         await using var connection = await OpenAdminAsync(database);
         foreach (var table in await ListTablesAsync(connection))
         {
-            var actual = await ReadRowsAsync(connection, table);
+            var actual = (await ReadRowsAsync(connection, table)).Where(row => !IsAddedAfterBaseline(table, row)).ToList();
             var wanted = expected[table]?["rows"]?.AsArray().Select(row => row!.AsObject()).ToList() ?? [];
             if (actual.Count != wanted.Count)
             {
@@ -178,6 +178,20 @@ public sealed class ReferenceDataParityTests(SqlServerFixture fixture, ITestOutp
 
         return differences;
     }
+
+    // Reference rows seeded for features built after the SQL Server baseline. They are not on PostgreSQL by
+    // design. Add a permission code here in the same change that seeds it.
+    private static readonly string[] PermissionCodesAddedAfterBaseline =
+    [
+        "support:manage", // 20261112063423_AddPlatformSupport
+    ];
+
+    private static bool IsAddedAfterBaseline(string table, JsonObject row) => table switch
+    {
+        "permissions" => PermissionCodesAddedAfterBaseline.Contains((string?)row["code"]),
+        "module_permission_ownership" => PermissionCodesAddedAfterBaseline.Contains((string?)row["permission_code"]),
+        _ => false,
+    };
 
     private static string Cut(string value) => value.Length > 600 ? value[..600] : value;
 
@@ -238,7 +252,8 @@ public sealed class ReferenceDataParityTests(SqlServerFixture fixture, ITestOutp
     private static string FindRepoRoot()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
-        while (directory is not null && !Directory.Exists(Path.Combine(directory.FullName, ".git")))
+        // A git worktree has a .git file instead of a .git directory.
+        while (directory is not null && !Path.Exists(Path.Combine(directory.FullName, ".git")))
         {
             directory = directory.Parent;
         }

@@ -8,7 +8,26 @@ namespace ONEVO.Infrastructure.Persistence.Rls;
 /// </summary>
 public static class RlsTableRegistry
 {
-    public static IReadOnlyDictionary<string, RlsPredicate> Tables { get; } =
+    /// <summary>
+    /// Tables created after the SQL Server baseline. Their own migration calls RlsSql.CreatePolicy,
+    /// because on a fresh database the baseline AddRowLevelSecurity migration runs before they exist.
+    /// </summary>
+    public static IReadOnlyDictionary<string, RlsPredicate> AddedAfterBaseline { get; } =
+        new Dictionary<string, RlsPredicate>(StringComparer.Ordinal)
+        {
+            // 20261112063423_AddPlatformSupport
+            ["support_tickets"] = RlsPredicate.Tenant,
+            ["support_ticket_comments"] = RlsPredicate.Tenant,
+            ["support_ticket_attachments"] = RlsPredicate.Tenant,
+        };
+
+    /// <summary>Every table under tenant isolation: the baseline plus everything added after it.</summary>
+    public static IReadOnlyDictionary<string, RlsPredicate> Tables => AllTables;
+
+    /// <summary>The tables the baseline AddRowLevelSecurity migration covers. Never add to this list.</summary>
+    public static IReadOnlyDictionary<string, RlsPredicate> Baseline => BaselineTables;
+
+    private static readonly IReadOnlyDictionary<string, RlsPredicate> BaselineTables =
         new Dictionary<string, RlsPredicate>(StringComparer.Ordinal)
         {
             ["billing_audit_logs"] = RlsPredicate.PlatformShared,
@@ -186,4 +205,8 @@ public static class RlsTableRegistry
             ["wm_task_rate_settings"] = RlsPredicate.Tenant,
             ["work_area_change_requests"] = RlsPredicate.TenantStrict,
         };
+
+    // Declared after BaselineTables and AddedAfterBaseline: static initializers run in textual order.
+    private static readonly IReadOnlyDictionary<string, RlsPredicate> AllTables =
+        BaselineTables.Concat(AddedAfterBaseline).ToDictionary(x => x.Key, x => x.Value, StringComparer.Ordinal);
 }

@@ -1027,6 +1027,17 @@ public static class DependencyInjection
         services.AddScoped<ITenantSessionExchangeChallengeRepository, EfTenantSessionExchangeChallengeRepository>();
         services.AddScoped<ITenantSessionExchangeService, TenantSessionExchangeService>();
 
+        // Platform support: tickets, attachments, announcements
+        services.AddScoped<
+            ONEVO.Application.Features.DevPlatform.Support.RepositoryInterfaces.ISupportTicketRepository,
+            ONEVO.Infrastructure.Persistence.Repositories.DevPlatform.Support.EfSupportTicketRepository>();
+        services.AddScoped<
+            ONEVO.Application.Features.DevPlatform.Support.RepositoryInterfaces.IPlatformAnnouncementRepository,
+            ONEVO.Infrastructure.Persistence.Repositories.DevPlatform.Support.EfPlatformAnnouncementRepository>();
+        services.AddScoped<
+            ONEVO.Application.Features.DevPlatform.Support.Services.ISupportAttachmentService,
+            ONEVO.Application.Features.DevPlatform.Support.Services.SupportAttachmentService>();
+
         // Legal acceptance and versioning
         services.AddScoped<ILegalDocumentVersionRepository, EfLegalDocumentVersionRepository>();
         services.AddScoped<ILegalAcceptanceRepository, EfLegalAcceptanceRepository>();

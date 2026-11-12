@@ -231,6 +231,7 @@ public class ModuleCatalogSeeder : IHostedService
             // configuration
             new { Module = "configuration", Perm = "billing:read" },
             new { Module = "configuration", Perm = "billing:manage" },
+            new { Module = "configuration", Perm = "support:manage" },
 
             // roles
             new { Module = "roles", Perm = "roles:manage" },

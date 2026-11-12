@@ -202,6 +202,9 @@ public class PermissionSeeder : IHostedService
         Perm("billing:read", "View billing history and invoices.", "configuration"),
         Perm("billing:manage", "Manage billing and subscription changes.", "configuration"),
 
+        // Support (Crownus support tickets raised by the tenant)
+        Perm("support:manage", "Raise and follow up support tickets with Crownus support.", "configuration"),
+
         // Integrations
         Perm(
             "integrations:manage",
