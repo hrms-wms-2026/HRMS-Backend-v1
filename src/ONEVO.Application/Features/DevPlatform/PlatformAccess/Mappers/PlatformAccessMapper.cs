@@ -29,7 +29,8 @@ public static class PlatformAccessMapper
             user.Status,
             user.CreatedAt,
             user.LastLoginAt,
-            mappedRoles);
+            mappedRoles,
+            user.MfaStatus);
     }
 
     public static PlatformRoleResponse Map(PlatformRole role)
