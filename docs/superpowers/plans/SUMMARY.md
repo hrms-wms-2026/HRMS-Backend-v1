@@ -58,6 +58,7 @@
 | `2026-09-30-employee-work-activity-tasks-backend.md` (Plan 4A, 4 tasks) | `next/` | pending (not started). Work & Activity task cards: `work-activity/needs-attention`, `recent-tasks`, `delivery-trend`. Requires Plan 3A |
 | `2026-09-30-employee-work-activity-monitoring-backend.md` (Plan 4B, 6 tasks) | `next/` | pending (not started). Work & Activity agent cards: `work-activity/activity-by-hour`, `app-usage`, `work-pattern`; classifier focus-block count; `overview/activity` includes today. Requires Plan 3B |
 | `2026-09-30-employee-overview-signals-backend/` (part-1 expected working days, 4 tasks; part-2 signals endpoint, 3 tasks) | `next/` | pending — spec `specs/next/2026-09-30-employee-overview-signals-and-period-correctness-design.md` |
+| `2026-11-09-crownus-vm-deployment.md` (team-test deployment on vm-tic-incubato; Phases A-D) | `next/` | in progress. Phase A (2 code PRs) and Phase B (release package) done; on the server, the database, IIS, add-ons, API and both sites are set up; blocked on Azure ports 80/443 before HTTPS (Task 10). |
 
 See `finished/SUMMARY.md` for the full file-by-file list, grouped by date folder, of all files in that folder (kept short here to avoid duplicating the same list twice).
 
