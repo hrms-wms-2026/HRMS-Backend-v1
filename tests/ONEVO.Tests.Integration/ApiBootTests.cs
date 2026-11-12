@@ -10,7 +10,7 @@ namespace ONEVO.Tests.Integration;
 /// Boots the real API host end-to-end (including hosted services like DevSmokeTestTenantSeeder)
 /// against an ephemeral Testcontainers PostgreSQL instance, the same bootstrap approach used by
 /// AdminTestFactory/BaseDomainLoginTestFactory, instead of the developer's persistent local
-/// OnevoDb. Requires Docker.
+/// CrownusDb. Requires Docker.
 /// </summary>
 [Collection(WebApplicationFactoryCollection.Name)]
 public sealed class ApiBootTests : IAsyncLifetime

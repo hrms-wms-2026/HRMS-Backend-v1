@@ -37,8 +37,8 @@ public sealed class SqlServerOpsArchitectureTests
         Assert.Contains("$(APP_PASSWORD)", bootstrap, StringComparison.Ordinal);
         Assert.Contains("$(MIGRATOR_PASSWORD)", bootstrap, StringComparison.Ordinal);
         Assert.DoesNotMatch(new Regex(@"PASSWORD\s*=\s*N?'[^$]", RegexOptions.IgnoreCase), bootstrap);
-        Assert.Contains("ONEVO_DB_APP_PASSWORD", setup, StringComparison.Ordinal);
-        Assert.Contains("ONEVO_DB_MIGRATOR_PASSWORD", setup, StringComparison.Ordinal);
+        Assert.Contains("CROWNUS_DB_APP_PASSWORD", setup, StringComparison.Ordinal);
+        Assert.Contains("CROWNUS_DB_MIGRATOR_PASSWORD", setup, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -77,9 +77,9 @@ public sealed class SqlServerOpsArchitectureTests
         var scripts = Read("ops", "sqlserver", "bootstrap-logins.sql")
             + Read("ops", "sqlserver", "post-migration-grants.sql");
 
-        Assert.DoesNotMatch(new Regex(@"ALTER ROLE \w+ ADD MEMBER onevo_app", RegexOptions.IgnoreCase), scripts);
-        Assert.DoesNotMatch(new Regex(@"GRANT [^;]*SECURITY POLICY[^;]* TO onevo_app", RegexOptions.IgnoreCase), scripts);
-        Assert.DoesNotMatch(new Regex(@"GRANT [^;]* ON SCHEMA::rls TO onevo_app", RegexOptions.IgnoreCase), scripts);
+        Assert.DoesNotMatch(new Regex(@"ALTER ROLE \w+ ADD MEMBER crownus_app", RegexOptions.IgnoreCase), scripts);
+        Assert.DoesNotMatch(new Regex(@"GRANT [^;]*SECURITY POLICY[^;]* TO crownus_app", RegexOptions.IgnoreCase), scripts);
+        Assert.DoesNotMatch(new Regex(@"GRANT [^;]* ON SCHEMA::rls TO crownus_app", RegexOptions.IgnoreCase), scripts);
     }
 
     [Fact]
@@ -90,7 +90,7 @@ public sealed class SqlServerOpsArchitectureTests
         Assert.Contains("GRANT SELECT (tenant_id, id, normalized_email, is_active, is_deleted, password_hash)", grants,
             StringComparison.Ordinal);
         Assert.Contains("GRANT SELECT (id, slug, name, status) ON dbo.tenants", grants, StringComparison.Ordinal);
-        Assert.DoesNotMatch(new Regex(@"GRANT SELECT ON [^\n]*onevo_auth_base_login_fn_owner", RegexOptions.IgnoreCase), grants);
+        Assert.DoesNotMatch(new Regex(@"GRANT SELECT ON [^\n]*crownus_auth_base_login_fn_owner", RegexOptions.IgnoreCase), grants);
     }
 
     [Fact]

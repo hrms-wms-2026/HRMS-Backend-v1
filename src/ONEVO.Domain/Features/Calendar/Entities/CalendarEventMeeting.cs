@@ -86,5 +86,5 @@ public class CalendarEventMeeting : ITenantOwnedEntity
 public static class CalendarMeetingCorrelation
 {
     public static string TeamsExternalId(Guid eventId, int generation) => $"{eventId}:{generation}";
-    public static string ZoomToken(Guid eventId, int generation) => $"onexso:{eventId}:{generation}";
+    public static string ZoomToken(Guid eventId, int generation) => $"crownus:{eventId}:{generation}";
 }

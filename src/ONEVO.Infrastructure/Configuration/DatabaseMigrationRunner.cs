@@ -13,8 +13,8 @@ namespace ONEVO.Infrastructure.Configuration;
 /// Applies any pending EF Core migrations at API startup so a freshly cloned/reset local
 /// database does not require a separate manual `dotnet ef database update` step. Builds its
 /// own short-lived ApplicationDbContext against MigrationConnection (the elevated
-/// onevo_migrator role) - never the app's DI-registered runtime context, which uses the
-/// restricted onevo_app role and intentionally lacks DDL rights. Mirrors
+/// crownus_migrator role) - never the app's DI-registered runtime context, which uses the
+/// restricted crownus_app role and intentionally lacks DDL rights. Mirrors
 /// ApplicationDbContextFactory and IntegrationDatabaseBootstrap's own migration context setup.
 ///
 /// Caller must gate this to Development only: Test/Testing bootstrap their own Testcontainers

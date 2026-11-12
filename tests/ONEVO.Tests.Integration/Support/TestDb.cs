@@ -11,7 +11,7 @@ namespace ONEVO.Tests.Integration.Support;
 /// Opens test databases. A PostgreSQL superuser bypassed RLS, so tests seed through one; on SQL
 /// Server every login is subject to RLS, including sa. An admin (sa) connection therefore gets
 /// admin session context as it opens, the mode the app's own admin paths use. The app logins
-/// (onevo_app, onevo_migrator) get nothing here and stay fully restricted.
+/// (crownus_app, crownus_migrator) get nothing here and stay fully restricted.
 /// </summary>
 public static class TestDb
 {

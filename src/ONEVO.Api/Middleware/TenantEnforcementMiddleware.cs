@@ -56,7 +56,7 @@ public sealed class TenantEnforcementMiddleware
         if (!Guid.TryParse(jwtTenantClaim, out var jwtTenantId) ||
             jwtTenantId != tenantCtx.TenantId)
         {
-            context.Response.Cookies.Delete("onevo_session", new CookieOptions { Path = "/" });
+            context.Response.Cookies.Delete("crownus_session", new CookieOptions { Path = "/" });
             await WriteProblem(context, 403, "Token tenant does not match request host tenant.");
             return;
         }
@@ -86,7 +86,7 @@ public sealed class TenantEnforcementMiddleware
         HttpContext context,
         ITenantContext tenantContext)
     {
-        if (!context.Request.Cookies.ContainsKey("onevo_session"))
+        if (!context.Request.Cookies.ContainsKey("crownus_session"))
             return;
 
         var sessionTenantClaim = context.User.FindFirstValue("tenant_id");
@@ -97,8 +97,8 @@ public sealed class TenantEnforcementMiddleware
         if (sessionMatchesHost)
             return;
 
-        context.Response.Cookies.Delete("onevo_session", new CookieOptions { Path = "/" });
-        context.Response.Cookies.Delete("onevo_csrf", new CookieOptions { Path = "/" });
+        context.Response.Cookies.Delete("crownus_session", new CookieOptions { Path = "/" });
+        context.Response.Cookies.Delete("crownus_csrf", new CookieOptions { Path = "/" });
         context.User = new ClaimsPrincipal(new ClaimsIdentity());
     }
 

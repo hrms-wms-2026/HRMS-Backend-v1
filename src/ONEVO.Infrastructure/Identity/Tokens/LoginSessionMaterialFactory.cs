@@ -12,7 +12,7 @@ namespace ONEVO.Infrastructure.Identity.Tokens;
 
 /// <summary>
 /// Single chokepoint for preparing a tenant web session. Fixed architecture decision: one opaque
-/// HttpOnly onevo_session cookie with sliding expiry, no access/refresh/JWT tokens returned to the
+/// HttpOnly crownus_session cookie with sliding expiry, no access/refresh/JWT tokens returned to the
 /// browser. This class no longer persists the session directly — TenantDatabaseTicketStore.StoreAsync
 /// does that when the controller calls HttpContext.SignInAsync("TenantScheme", ...). This class only
 /// resolves permissions/entitlements and mints the raw CSRF token + its hash for the controller to

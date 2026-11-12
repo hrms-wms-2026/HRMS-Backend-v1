@@ -232,7 +232,7 @@ public sealed class LoginContinuationServiceTests
     public async Task ContinueAsync_OnlyUnverifiedTotpSetupExists_DoesNotRequireMfa_SoLoginNeverCompletesFirstTimeSetup()
     {
         // LoginContinuationService only ever checks GetTotpAsync(userId, isVerified: true, ...) to decide
-        // whether to create an onevo_mfa challenge. A pending (unverified) TOTP setup from mfa/enable is
+        // whether to create an crownus_mfa challenge. A pending (unverified) TOTP setup from mfa/enable is
         // invisible here, so no challenge is issued and mfa/verify is never reached for first-time setup -
         // confirming setup is only possible through mfa/confirm-setup.
         var fixture = new Fixture();

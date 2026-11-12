@@ -5,7 +5,7 @@ namespace ONEVO.Domain.Features.Auth.Entities;
 /// <summary>
 /// Short-lived, server-side MFA login challenge state created after password verification and
 /// before MFA verification completes. Stores only the SHA-256 hash of the opaque challenge token;
-/// the raw value exists only in the browser's HttpOnly onevo_mfa cookie and is never persisted.
+/// the raw value exists only in the browser's HttpOnly crownus_mfa cookie and is never persisted.
 /// </summary>
 public class MfaChallenge : ITenantOwnedEntity
 {

@@ -23,8 +23,8 @@ public class AuthTestFactory : WebApplicationFactory<Program>
             {
                 ["ConnectionStrings:DefaultConnection"] = _connectionString,
                 ["Jwt:Secret"] = "test_secret_at_least_32_chars_long_!!",
-                ["Jwt:TenantIssuer"] = "onevo-api",
-                ["Jwt:TenantAudience"] = "onevo-api"
+                ["Jwt:TenantIssuer"] = "crownus-api",
+                ["Jwt:TenantAudience"] = "crownus-api"
             });
         });
 

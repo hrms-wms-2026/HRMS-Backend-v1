@@ -99,16 +99,16 @@ public sealed class TenantSessionExchangeEndpointTests
             Times.Once);
 
         var setCookieHeader = controller.Response.Headers.SetCookie.ToString();
-        setCookieHeader.Should().Contain("onevo_csrf=");
+        setCookieHeader.Should().Contain("crownus_csrf=");
     }
 
     [Fact]
     public async Task SessionExchange_BrowserAlreadyHasValidSessionCookie_SignsOutOldSessionBeforeSigningInFresh()
     {
-        // Regression test: a browser that still holds a valid onevo_session cookie (e.g. logging
+        // Regression test: a browser that still holds a valid crownus_session cookie (e.g. logging
         // in again without logging out first) must have that old ticket cleared before the new
-        // one is issued. Without this, SignInAsync always issues a fresh onevo_csrf cookie but the
-        // old onevo_session cookie/session survives untouched, so the new CSRF cookie can never
+        // one is issued. Without this, SignInAsync always issues a fresh crownus_csrf cookie but the
+        // old crownus_session cookie/session survives untouched, so the new CSRF cookie can never
         // match the still-active old session's stored csrf_token_hash - permanently failing CSRF
         // validation (including on the app's own logout button) until that stale cookie expires.
         var tenantId = Guid.NewGuid();
@@ -218,7 +218,7 @@ public sealed class TenantSessionExchangeEndpointTests
         if (remoteIp is not null)
             httpContext.Connection.RemoteIpAddress = System.Net.IPAddress.Parse(remoteIp);
 
-        // Simulates a browser that still carries a valid (but stale) onevo_session cookie from an
+        // Simulates a browser that still carries a valid (but stale) crownus_session cookie from an
         // earlier login: automatic authentication middleware would have already populated
         // HttpContext.User from that old ticket by the time the controller action runs.
         if (alreadyAuthenticated)

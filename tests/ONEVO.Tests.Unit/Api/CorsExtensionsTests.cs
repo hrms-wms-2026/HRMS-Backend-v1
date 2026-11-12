@@ -60,9 +60,9 @@ public sealed class CorsExtensionsTests
     [Fact]
     public void NoRootDomain_OnlyExplicitOriginsAreAllowed()
     {
-        var policy = BuildPolicy(new() { ["AllowedOrigins:0"] = "https://app.onevo.com" });
+        var policy = BuildPolicy(new() { ["AllowedOrigins:0"] = "https://app.example.com" });
 
-        policy.IsOriginAllowed("https://app.onevo.com").Should().BeTrue();
+        policy.IsOriginAllowed("https://app.example.com").Should().BeTrue();
         policy.IsOriginAllowed("https://acme.onevo.com").Should().BeFalse();
     }
 }

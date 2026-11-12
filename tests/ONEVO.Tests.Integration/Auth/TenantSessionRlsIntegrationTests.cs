@@ -23,7 +23,7 @@ using ONEVO.Tests.Integration.Support;
 
 /// <summary>
 /// Shared, one-time-per-class setup for TenantSessionRlsIntegrationTests: clones the database and
-/// grants onevo_app its table privileges ONCE. xUnit's IClassFixture constructs this ONCE and
+/// grants crownus_app its table privileges ONCE. xUnit's IClassFixture constructs this ONCE and
 /// disposes it once after every fact in the class has run, instead of IAsyncLifetime's default of
 /// once PER fact - previously this class's own InitializeAsync ran 6 times, once per [Fact]. Every
 /// fact seeds its own fresh Guid.NewGuid()-keyed tenant/user via SeedActiveTenantAndUserAsync
@@ -46,14 +46,14 @@ public sealed class TenantSessionRlsIntegrationTestsFixture : IAsyncLifetime
 
         // Also sets/restores process env vars for the shared WebApplicationFactoryCollection; harmless
         // here since nothing in this class boots a WebApplicationFactory, but DefaultConnectionString is
-        // exactly the onevo_app-authenticated connection string this test needs.
+        // exactly the crownus_app-authenticated connection string this test needs.
         _environmentScope = new IntegrationTestEnvironmentScope(_adminConnectionString);
         _appConnectionString = _environmentScope.DefaultConnectionString;
 
-        await GrantOnevoAppTablePrivilegesAsync();
+        await GrantCrownusAppTablePrivilegesAsync();
     }
 
-    private async Task GrantOnevoAppTablePrivilegesAsync()
+    private async Task GrantCrownusAppTablePrivilegesAsync()
     {
         await using var connection = TestDb.CreateConnection(_adminConnectionString);
         await connection.OpenAsync();
@@ -179,7 +179,7 @@ public sealed class TenantSessionRlsIntegrationTestsFixture : IAsyncLifetime
 
 /// <summary>
 /// Proves TenantDatabaseTicketStore.StoreAsync can insert into "sessions" while the ApplicationDbContext
-/// connects as the real onevo_app role (NOBYPASSRLS, subject to the tenant_isolation RLS policy) with
+/// connects as the real crownus_app role (NOBYPASSRLS, subject to the tenant_isolation RLS policy) with
 /// TenantRlsInterceptor wired. This is deliberately NOT built on BaseDomainLoginTestFactory/E2ETestFactory:
 /// both of those bind ApplicationDbContext to the Testcontainers superuser connection and omit
 /// AddInterceptors(TenantRlsInterceptor), so RLS is invisible there - a session insert succeeds or fails

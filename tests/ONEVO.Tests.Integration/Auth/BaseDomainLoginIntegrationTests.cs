@@ -38,7 +38,7 @@ public sealed class BaseDomainLoginIntegrationTestsFixture : IAsyncLifetime
     public async Task InitializeAsync()
     {
         // Cloned from the shared, already-migrated template (see SharedSqlServerTemplate) - roles
-        // and migrations already exist before the environment scope's onevo_app connection string
+        // and migrations already exist before the environment scope's crownus_app connection string
         // is opened by Program.cs's pre-Build() DatabaseConnectionStartupValidator, and the
         // environment scope must be in place before BaseDomainLoginTestFactory is constructed -
         // accessing _factory.Services/CreateClient() is what first triggers Program.cs's top-level
@@ -154,9 +154,9 @@ public sealed class BaseDomainLoginIntegrationTestsFixture : IAsyncLifetime
     }
 
     /// <summary>
-    /// Confirms onevo_session/onevo_csrf are absent, without over-asserting "no Set-Cookie header
-    /// at all" - a legal-acceptance response legitimately deletes onevo_legal_pending/
-    /// onevo_legal_csrf via Set-Cookie even on the exchange-required path.
+    /// Confirms crownus_session/crownus_csrf are absent, without over-asserting "no Set-Cookie header
+    /// at all" - a legal-acceptance response legitimately deletes crownus_legal_pending/
+    /// crownus_legal_csrf via Set-Cookie even on the exchange-required path.
     /// </summary>
     public void AssertNoTenantSessionCookies(HttpResponseMessage response)
     {
@@ -164,25 +164,25 @@ public sealed class BaseDomainLoginIntegrationTestsFixture : IAsyncLifetime
             ? values.ToList()
             : new List<string>();
         cookies.Should().NotContain(
-            c => c.StartsWith("onevo_session=", StringComparison.Ordinal),
-            "the base host must never set onevo_session");
+            c => c.StartsWith("crownus_session=", StringComparison.Ordinal),
+            "the base host must never set crownus_session");
         cookies.Should().NotContain(
-            c => c.StartsWith("onevo_csrf=", StringComparison.Ordinal),
-            "the base host must never set onevo_csrf");
+            c => c.StartsWith("crownus_csrf=", StringComparison.Ordinal),
+            "the base host must never set crownus_csrf");
         cookies.Should().NotContain(
-            c => c.StartsWith("onevo_last_tenant=", StringComparison.Ordinal),
+            c => c.StartsWith("crownus_last_tenant=", StringComparison.Ordinal),
             "the last-tenant hint must only be set on a completed sign-in, never a pending gate");
     }
 
     /// <summary>
-    /// Completes the pre-session Legal &amp; Privacy flow using the onevo_legal_pending/
-    /// onevo_legal_csrf cookies from a legal_acceptance_required response, accepting the bootstrap
+    /// Completes the pre-session Legal &amp; Privacy flow using the crownus_legal_pending/
+    /// crownus_legal_csrf cookies from a legal_acceptance_required response, accepting the bootstrap
     /// dev terms/privacy_notice versions.
     /// </summary>
     public async Task<HttpResponseMessage> CompleteLegalAcceptanceAsync(HttpResponseMessage priorResponse)
     {
-        var legalPending = ExtractCookieValue(priorResponse, "onevo_legal_pending");
-        var legalCsrf = ExtractCookieValue(priorResponse, "onevo_legal_csrf");
+        var legalPending = ExtractCookieValue(priorResponse, "crownus_legal_pending");
+        var legalCsrf = ExtractCookieValue(priorResponse, "crownus_legal_csrf");
         var priorBody = await priorResponse.Content.ReadAsStringAsync();
         using var priorDocument = JsonDocument.Parse(priorBody);
         var continueUrl = new Uri(
@@ -193,7 +193,7 @@ public sealed class BaseDomainLoginIntegrationTestsFixture : IAsyncLifetime
             HttpMethod.Post,
             continueUrl.PathAndQuery);
         request.Headers.Host = continueUrl.Host;
-        request.Headers.Add("Cookie", $"onevo_legal_pending={legalPending}; onevo_legal_csrf={legalCsrf}");
+        request.Headers.Add("Cookie", $"crownus_legal_pending={legalPending}; crownus_legal_csrf={legalCsrf}");
         request.Headers.Add("X-CSRF-Token", legalCsrf);
         request.Content = JsonContent.Create(new
         {
@@ -286,7 +286,7 @@ public sealed class BaseDomainLoginIntegrationTests : IClassFixture<BaseDomainLo
         var legalCompleted = await _fixture.CompleteLegalAcceptanceAsync(response);
 
         // Every gate cleared, but this response is still on the base host: it must hand off to the
-        // tenant host via a one-time exchange code instead of setting onevo_session/onevo_csrf here.
+        // tenant host via a one-time exchange code instead of setting crownus_session/crownus_csrf here.
         legalCompleted.StatusCode.Should().Be(
             HttpStatusCode.Accepted,
             await legalCompleted.Content.ReadAsStringAsync());
@@ -301,10 +301,10 @@ public sealed class BaseDomainLoginIntegrationTests : IClassFixture<BaseDomainLo
         var setCookies = exchanged.Headers.TryGetValues("Set-Cookie", out var cookieValues)
             ? cookieValues.ToList()
             : new List<string>();
-        setCookies.Should().Contain(c => c.StartsWith("onevo_session=", StringComparison.Ordinal));
-        setCookies.Should().Contain(c => c.StartsWith("onevo_csrf=", StringComparison.Ordinal));
+        setCookies.Should().Contain(c => c.StartsWith("crownus_session=", StringComparison.Ordinal));
+        setCookies.Should().Contain(c => c.StartsWith("crownus_csrf=", StringComparison.Ordinal));
         setCookies.Should().Contain(c =>
-            c.StartsWith("onevo_last_tenant=one-match-tenant", StringComparison.Ordinal) &&
+            c.StartsWith("crownus_last_tenant=one-match-tenant", StringComparison.Ordinal) &&
             c.Contains("domain=.localhost", StringComparison.OrdinalIgnoreCase));
         var exchangedBody = await exchanged.Content.ReadAsStringAsync();
         exchangedBody.Should().Contain("\"authenticated\":true");
@@ -327,15 +327,15 @@ public sealed class BaseDomainLoginIntegrationTests : IClassFixture<BaseDomainLo
             ? exchangeCookieValues.ToList()
             : new List<string>();
         exchangeCookies.Should().Contain(c =>
-            c.StartsWith("onevo_last_tenant=logout-hint-tenant", StringComparison.Ordinal) &&
+            c.StartsWith("crownus_last_tenant=logout-hint-tenant", StringComparison.Ordinal) &&
             c.Contains("domain=.localhost", StringComparison.OrdinalIgnoreCase));
 
-        var sessionCookie = _fixture.ExtractCookieValue(exchanged, "onevo_session");
-        var csrfCookie = _fixture.ExtractCookieValue(exchanged, "onevo_csrf");
+        var sessionCookie = _fixture.ExtractCookieValue(exchanged, "crownus_session");
+        var csrfCookie = _fixture.ExtractCookieValue(exchanged, "crownus_csrf");
 
         using var logoutRequest = new HttpRequestMessage(HttpMethod.Post, "/api/v1/auth/logout");
         logoutRequest.Headers.Host = "logout-hint-tenant.localhost";
-        logoutRequest.Headers.Add("Cookie", $"onevo_session={sessionCookie}; onevo_csrf={csrfCookie}");
+        logoutRequest.Headers.Add("Cookie", $"crownus_session={sessionCookie}; crownus_csrf={csrfCookie}");
         logoutRequest.Headers.Add("X-CSRF-Token", csrfCookie);
         var logout = await _fixture.Client.SendAsync(logoutRequest);
 
@@ -344,9 +344,9 @@ public sealed class BaseDomainLoginIntegrationTests : IClassFixture<BaseDomainLo
             ? logoutCookieValues.ToList()
             : new List<string>();
         logoutCookies.Should().Contain(c =>
-            c.StartsWith("onevo_last_tenant=", StringComparison.Ordinal) &&
+            c.StartsWith("crownus_last_tenant=", StringComparison.Ordinal) &&
             c.Contains("domain=.localhost", StringComparison.OrdinalIgnoreCase));
-        _fixture.ExtractCookieValue(logout, "onevo_last_tenant").Should().BeEmpty();
+        _fixture.ExtractCookieValue(logout, "crownus_last_tenant").Should().BeEmpty();
     }
 
     [Fact]
@@ -403,10 +403,10 @@ public sealed class BaseDomainLoginIntegrationTests : IClassFixture<BaseDomainLo
         loginBody.Should().NotContain("\"tenant_id\"");
         loginBody.Should().NotContain("\"user_id\"");
 
-        var mfaCookie = _fixture.ExtractCookieValue(login, "onevo_mfa");
+        var mfaCookie = _fixture.ExtractCookieValue(login, "crownus_mfa");
         using var verifyRequest = new HttpRequestMessage(HttpMethod.Post, mfaContinue.PathAndQuery);
         verifyRequest.Headers.Host = mfaContinue.Host;
-        verifyRequest.Headers.Add("Cookie", $"onevo_mfa={mfaCookie}");
+        verifyRequest.Headers.Add("Cookie", $"crownus_mfa={mfaCookie}");
         verifyRequest.Content = JsonContent.Create(new { code = "123456" });
         var verified = await _fixture.Client.SendAsync(verifyRequest);
 
@@ -431,8 +431,8 @@ public sealed class BaseDomainLoginIntegrationTests : IClassFixture<BaseDomainLo
         var setCookies = exchanged.Headers.TryGetValues("Set-Cookie", out var cookieValues)
             ? cookieValues.ToList()
             : new List<string>();
-        setCookies.Should().Contain(c => c.StartsWith("onevo_session=", StringComparison.Ordinal));
-        setCookies.Should().Contain(c => c.StartsWith("onevo_csrf=", StringComparison.Ordinal));
+        setCookies.Should().Contain(c => c.StartsWith("crownus_session=", StringComparison.Ordinal));
+        setCookies.Should().Contain(c => c.StartsWith("crownus_csrf=", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -459,10 +459,10 @@ public sealed class BaseDomainLoginIntegrationTests : IClassFixture<BaseDomainLo
         loginBody.Should().NotContain("\"tenant_id\"");
         loginBody.Should().NotContain("\"user_id\"");
 
-        var mfaCookie = _fixture.ExtractCookieValue(login, "onevo_mfa");
+        var mfaCookie = _fixture.ExtractCookieValue(login, "crownus_mfa");
         using var verifyRequest = new HttpRequestMessage(HttpMethod.Post, mfaContinue.PathAndQuery);
         verifyRequest.Headers.Host = mfaContinue.Host;
-        verifyRequest.Headers.Add("Cookie", $"onevo_mfa={mfaCookie}");
+        verifyRequest.Headers.Add("Cookie", $"crownus_mfa={mfaCookie}");
         verifyRequest.Content = JsonContent.Create(new { code = "123456" });
         var verified = await _fixture.Client.SendAsync(verifyRequest);
 
@@ -478,7 +478,7 @@ public sealed class BaseDomainLoginIntegrationTests : IClassFixture<BaseDomainLo
         var setCookies = exchanged.Headers.TryGetValues("Set-Cookie", out var cookieValues)
             ? cookieValues.ToList()
             : new List<string>();
-        setCookies.Should().Contain(c => c.StartsWith("onevo_session=", StringComparison.Ordinal));
+        setCookies.Should().Contain(c => c.StartsWith("crownus_session=", StringComparison.Ordinal));
 
         using var scope = _fixture.Factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
@@ -514,7 +514,7 @@ public sealed class BaseDomainLoginIntegrationTests : IClassFixture<BaseDomainLo
         body.Should().NotContain("main login page");
 
         response.Headers.TryGetValues("Set-Cookie", out _).Should().BeFalse(
-            "a rejected tenant-host password login must not set onevo_session, onevo_csrf, or onevo_mfa");
+            "a rejected tenant-host password login must not set crownus_session, crownus_csrf, or crownus_mfa");
 
         using var scope = _fixture.Factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
@@ -573,7 +573,7 @@ public sealed class BaseDomainLoginIntegrationTests : IClassFixture<BaseDomainLo
         var setCookies = exchanged.Headers.TryGetValues("Set-Cookie", out var cookieValues)
             ? cookieValues.ToList()
             : new List<string>();
-        setCookies.Should().Contain(c => c.StartsWith("onevo_session=", StringComparison.Ordinal));
+        setCookies.Should().Contain(c => c.StartsWith("crownus_session=", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -755,8 +755,8 @@ public sealed class BaseDomainLoginIntegrationTests : IClassFixture<BaseDomainLo
         var user = await _fixture.SeedActiveUserAsync(
             "legal-body-fallback-tenant", "legalbodyfallback@test.onevo.dev", "CorrectPass1!");
         var login = await _fixture.PostLoginAsync(user.Email, "CorrectPass1!");
-        var legalPending = _fixture.ExtractCookieValue(login, "onevo_legal_pending");
-        var legalCsrf = _fixture.ExtractCookieValue(login, "onevo_legal_csrf");
+        var legalPending = _fixture.ExtractCookieValue(login, "crownus_legal_pending");
+        var legalCsrf = _fixture.ExtractCookieValue(login, "crownus_legal_csrf");
         var priorBody = await login.Content.ReadAsStringAsync();
         using var priorDocument = JsonDocument.Parse(priorBody);
         var continueUrl = new Uri(
@@ -765,7 +765,7 @@ public sealed class BaseDomainLoginIntegrationTests : IClassFixture<BaseDomainLo
 
         using var request = new HttpRequestMessage(HttpMethod.Post, continueUrl.PathAndQuery);
         request.Headers.Host = continueUrl.Host;
-        request.Headers.Add("Cookie", $"onevo_legal_pending={legalPending}; onevo_legal_csrf={legalCsrf}");
+        request.Headers.Add("Cookie", $"crownus_legal_pending={legalPending}; crownus_legal_csrf={legalCsrf}");
         // Deliberately no X-CSRF-Token header - the (correct) token is only in the body, where the
         // deserializer for AcceptPendingLegalDocumentsRequest has no property to bind it to.
         request.Content = JsonContent.Create(new
@@ -789,8 +789,8 @@ public sealed class BaseDomainLoginIntegrationTests : IClassFixture<BaseDomainLo
         var user = await _fixture.SeedActiveUserAsync(
             "legal-no-leak-tenant", "legalnoleak@test.onevo.dev", "CorrectPass1!");
         var login = await _fixture.PostLoginAsync(user.Email, "CorrectPass1!");
-        var legalPending = _fixture.ExtractCookieValue(login, "onevo_legal_pending");
-        var legalCsrf = _fixture.ExtractCookieValue(login, "onevo_legal_csrf");
+        var legalPending = _fixture.ExtractCookieValue(login, "crownus_legal_pending");
+        var legalCsrf = _fixture.ExtractCookieValue(login, "crownus_legal_csrf");
 
         var completed = await _fixture.CompleteLegalAcceptanceAsync(login);
 
@@ -799,7 +799,7 @@ public sealed class BaseDomainLoginIntegrationTests : IClassFixture<BaseDomainLo
         var completedBody = await completed.Content.ReadAsStringAsync();
         completedBody.Should().NotContain(legalPending);
         completedBody.Should().NotContain(legalCsrf);
-        completedBody.Should().NotContain("onevo_legal_pending");
+        completedBody.Should().NotContain("crownus_legal_pending");
     }
 
     [Fact]
@@ -808,8 +808,8 @@ public sealed class BaseDomainLoginIntegrationTests : IClassFixture<BaseDomainLo
         var user = await _fixture.SeedActiveUserAsync(
             "legal-missing-csrf-tenant", "legalmissingcsrf@test.onevo.dev", "CorrectPass1!");
         var login = await _fixture.PostLoginAsync(user.Email, "CorrectPass1!");
-        var legalPending = _fixture.ExtractCookieValue(login, "onevo_legal_pending");
-        var legalCsrf = _fixture.ExtractCookieValue(login, "onevo_legal_csrf");
+        var legalPending = _fixture.ExtractCookieValue(login, "crownus_legal_pending");
+        var legalCsrf = _fixture.ExtractCookieValue(login, "crownus_legal_csrf");
         var priorBody = await login.Content.ReadAsStringAsync();
         using var priorDocument = JsonDocument.Parse(priorBody);
         var continueUrl = new Uri(
@@ -818,7 +818,7 @@ public sealed class BaseDomainLoginIntegrationTests : IClassFixture<BaseDomainLo
 
         using var request = new HttpRequestMessage(HttpMethod.Post, continueUrl.PathAndQuery);
         request.Headers.Host = continueUrl.Host;
-        request.Headers.Add("Cookie", $"onevo_legal_pending={legalPending}; onevo_legal_csrf={legalCsrf}");
+        request.Headers.Add("Cookie", $"crownus_legal_pending={legalPending}; crownus_legal_csrf={legalCsrf}");
         request.Content = JsonContent.Create(new
         {
             acceptances = new[]
@@ -869,13 +869,13 @@ public sealed class BaseDomainLoginIntegrationTests : IClassFixture<BaseDomainLo
         var setCookies = exchanged.Headers.TryGetValues("Set-Cookie", out var cookieValues)
             ? cookieValues.ToList()
             : new List<string>();
-        setCookies.Should().Contain(c => c.StartsWith("onevo_session=", StringComparison.Ordinal));
-        setCookies.Should().Contain(c => c.StartsWith("onevo_csrf=", StringComparison.Ordinal));
-        var sessionCookie = _fixture.ExtractCookieValue(exchanged, "onevo_session");
+        setCookies.Should().Contain(c => c.StartsWith("crownus_session=", StringComparison.Ordinal));
+        setCookies.Should().Contain(c => c.StartsWith("crownus_csrf=", StringComparison.Ordinal));
+        var sessionCookie = _fixture.ExtractCookieValue(exchanged, "crownus_session");
 
         using var meRequest = new HttpRequestMessage(HttpMethod.Get, "/api/v1/auth/me");
         meRequest.Headers.Host = continueUrl.Host;
-        meRequest.Headers.Add("Cookie", $"onevo_session={sessionCookie}");
+        meRequest.Headers.Add("Cookie", $"crownus_session={sessionCookie}");
         var me = await _fixture.Client.SendAsync(meRequest);
 
         me.StatusCode.Should().Be(HttpStatusCode.OK, await me.Content.ReadAsStringAsync());

@@ -29,7 +29,7 @@ public sealed class CreateLegalDocumentVersionCommandHandlerTests
         var handler = new CreateLegalDocumentVersionCommandHandler(repo.Object, uow.Object, clock.Object);
 
         var command = new CreateLegalDocumentVersionCommand(
-            "terms", "1.1", "ONEVO Terms and Conditions",
+            "terms", "1.1", "Crownus Terms and Conditions",
             "{\"type\":\"doc\"}", "<h1>Terms</h1><p>Body</p>", "Terms\nBody",
             true, "dashboard", Guid.NewGuid());
 

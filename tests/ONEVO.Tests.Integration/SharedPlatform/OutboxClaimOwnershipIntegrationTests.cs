@@ -7,7 +7,7 @@ using Xunit;
 namespace ONEVO.Tests.Integration.SharedPlatform;
 
 /// <summary>
-/// Owner guards of OutboxClaimStore, executed as onevo_app (NOBYPASSRLS): only the instance that
+/// Owner guards of OutboxClaimStore, executed as crownus_app (NOBYPASSRLS): only the instance that
 /// currently holds a message's claim can renew, complete, fail or release it, and a still-valid
 /// lease is never taken by another instance. Requires Docker.
 /// </summary>

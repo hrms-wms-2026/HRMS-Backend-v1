@@ -39,6 +39,23 @@ public class PlatformAccessSeeder : IHostedService
         _logger = logger;
     }
 
+    /// <summary>
+    /// Whether the first super admin may get a password credential from DevAdmin:Password.
+    /// Always in Development/Test. Elsewhere only when PlatformBootstrap:AllowPasswordBootstrap
+    /// is exactly "true" (case-insensitive), as a one-time opt-in for a fresh server.
+    /// </summary>
+    public static bool IsCredentialBootstrapAllowed(IHostEnvironment environment, IConfiguration configuration)
+    {
+        if (IsLocalEnvironment(environment))
+            return true;
+
+        return bool.TryParse(configuration["PlatformBootstrap:AllowPasswordBootstrap"], out var allowed)
+            && allowed;
+    }
+
+    private static bool IsLocalEnvironment(IHostEnvironment environment) =>
+        environment.IsDevelopment() || environment.IsEnvironment("Test");
+
     public async Task StartAsync(CancellationToken cancellationToken)
     {
         try
@@ -50,8 +67,13 @@ public class PlatformAccessSeeder : IHostedService
             var bootstrapFullName = _config["PlatformBootstrap:SuperAdminFullName"];
             var bootstrapPassword = _config["DevAdmin:Password"];
             var passwordHasher = scope.ServiceProvider.GetRequiredService<IPasswordHasher>();
-            var allowCredentialBootstrap =
-                _environment.IsDevelopment() || _environment.IsEnvironment("Test");
+            var allowCredentialBootstrap = IsCredentialBootstrapAllowed(_environment, _config);
+            if (allowCredentialBootstrap && !IsLocalEnvironment(_environment))
+            {
+                _logger.LogWarning(
+                    "[BOOTSTRAP] Production password bootstrap is enabled. Remove " +
+                    "PlatformBootstrap__AllowPasswordBootstrap and DevAdmin__Password after the first admin login.");
+            }
 
             await SeedAsync(
                 db,
@@ -323,8 +345,9 @@ public class PlatformAccessSeeder : IHostedService
         {
             throw new InvalidOperationException(
                 "Developer Platform bootstrap user has no active password credential. " +
-                "Set DevAdmin__Password once in the local Development/Test environment, " +
-                "then remove it after platform_user_credentials contains the password hash.");
+                "Set DevAdmin__Password once (outside Development/Test also set " +
+                "PlatformBootstrap__AllowPasswordBootstrap=true), then remove both after " +
+                "platform_user_credentials contains the password hash.");
         }
 
         var now = DateTimeOffset.UtcNow;

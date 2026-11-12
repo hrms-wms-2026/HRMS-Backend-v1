@@ -30,7 +30,7 @@ namespace ONEVO.Tests.Integration.Auth;
 
 /// <summary>
 /// Proves BaseForgotPasswordCommandHandler can insert into password_reset_tokens (RLS-protected,
-/// tenant-owned) while ApplicationDbContext connects as the real onevo_app role (NOBYPASSRLS,
+/// tenant-owned) while ApplicationDbContext connects as the real crownus_app role (NOBYPASSRLS,
 /// subject to the tenant_isolation policy) with TenantRlsInterceptor wired. This is deliberately
 /// NOT built on BaseDomainLoginTestFactory, the factory BaseDomainForgotPasswordIntegrationTests
 /// uses: that factory binds ApplicationDbContext straight to the Testcontainers superuser
@@ -64,7 +64,7 @@ public sealed class BaseForgotPasswordRlsIntegrationTests : IAsyncLifetime
         _environmentScope = new IntegrationTestEnvironmentScope(_adminConnectionString);
         _appConnectionString = _environmentScope.DefaultConnectionString;
 
-        await GrantOnevoAppTablePrivilegesAsync();
+        await GrantCrownusAppTablePrivilegesAsync();
     }
 
     public async Task DisposeAsync()
@@ -153,7 +153,7 @@ public sealed class BaseForgotPasswordRlsIntegrationTests : IAsyncLifetime
 
     /// <summary>
     /// Mirrors ONEVO.Infrastructure.DependencyInjection's registration of exactly the services
-    /// BaseForgotPasswordCommandHandler resolves, pointed at the onevo_app connection string
+    /// BaseForgotPasswordCommandHandler resolves, pointed at the crownus_app connection string
     /// instead of the admin one - i.e. what the running API actually wires up in production.
     /// </summary>
     private IServiceScopeFactory BuildProductionLikeScopeFactory()
@@ -207,14 +207,14 @@ public sealed class BaseForgotPasswordRlsIntegrationTests : IAsyncLifetime
 
     /// <summary>
     /// IntegrationDatabaseBootstrap runs EF migrations over the Testcontainers superuser connection
-    /// (never onevo_migrator), so the production ALTER DEFAULT PRIVILEGES step in
-    /// ops/postgres/local-bootstrap-roles.sql never fires here and onevo_app ends up with no grants
+    /// (never crownus_migrator), so the production ALTER DEFAULT PRIVILEGES step in
+    /// ops/postgres/local-bootstrap-roles.sql never fires here and crownus_app ends up with no grants
     /// at all on the tables migrations created. This reproduces only the blanket fallback grant
-    /// from that same script - onevo_app remains NOBYPASSRLS; this is an object-level ACL grant,
-    /// not an RLS change, and mirrors what production already grants onevo_app via default
-    /// privileges. Identical to TenantSessionRlsIntegrationTests.GrantOnevoAppTablePrivilegesAsync.
+    /// from that same script - crownus_app remains NOBYPASSRLS; this is an object-level ACL grant,
+    /// not an RLS change, and mirrors what production already grants crownus_app via default
+    /// privileges. Identical to TenantSessionRlsIntegrationTests.GrantCrownusAppTablePrivilegesAsync.
     /// </summary>
-    private async Task GrantOnevoAppTablePrivilegesAsync()
+    private async Task GrantCrownusAppTablePrivilegesAsync()
     {
         await using var connection = TestDb.CreateConnection(_adminConnectionString);
         await connection.OpenAsync();

@@ -35,7 +35,7 @@ namespace ONEVO.Tests.Integration.Auth;
 
 /// <summary>
 /// End-to-end proof of the tenant-host password reset flow (forgot-password -> outbox -> raw token
-/// -> reset-password) against a real PostgreSQL server under the restricted onevo_app role (NOBYPASSRLS,
+/// -> reset-password) against a real PostgreSQL server under the restricted crownus_app role (NOBYPASSRLS,
 /// real TenantRlsInterceptor) - mirrors BaseForgotPasswordRlsIntegrationTests' technique of invoking
 /// handlers directly against a production-like DI container rather than mocks. No prior test in this
 /// suite exercised ResetPasswordCommandHandler against a real database at all. Requires Docker.
@@ -59,7 +59,7 @@ public sealed class TenantHostPasswordResetFlowIntegrationTests : IAsyncLifetime
         _environmentScope = new IntegrationTestEnvironmentScope(_adminConnectionString);
         _appConnectionString = _environmentScope.DefaultConnectionString;
 
-        await GrantOnevoAppTablePrivilegesAsync();
+        await GrantCrownusAppTablePrivilegesAsync();
     }
 
     public async Task DisposeAsync()
@@ -279,7 +279,7 @@ public sealed class TenantHostPasswordResetFlowIntegrationTests : IAsyncLifetime
             new TenantContextAccessor());
     }
 
-    private async Task GrantOnevoAppTablePrivilegesAsync()
+    private async Task GrantCrownusAppTablePrivilegesAsync()
     {
         await using var connection = TestDb.CreateConnection(_adminConnectionString);
         await connection.OpenAsync();

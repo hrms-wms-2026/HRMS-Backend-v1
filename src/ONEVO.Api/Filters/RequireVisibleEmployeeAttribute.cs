@@ -43,7 +43,7 @@ public sealed class RequireVisibleEmployeeAttribute : Attribute, IAsyncAuthoriza
 
     private static ObjectResult Forbidden() => new(new
     {
-        type = "https://onevo.com/errors/forbidden",
+        type = ONEVO.Api.Errors.ProblemTypes.For("forbidden"),
         title = "Forbidden",
         status = 403,
         detail = "You do not have access to this employee."

@@ -1,6 +1,8 @@
 using FluentAssertions;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Hosting;
 using Moq;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.DevPlatform.PlatformAccess.Helpers;
@@ -252,5 +254,77 @@ public class PlatformAccessSeederTests
 
         (await db.PlatformUserCredentials.SingleAsync()).PasswordHash.Should().Be(originalHash);
         hasher.Verify(value => value.Hash(It.IsAny<string>()), Times.Never);
+    }
+
+    private static IHostEnvironment Environment(string name)
+    {
+        var environment = new Mock<IHostEnvironment>();
+        environment.SetupGet(value => value.EnvironmentName).Returns(name);
+        return environment.Object;
+    }
+
+    private static IConfiguration Configuration(string? allowPasswordBootstrap)
+    {
+        var values = new Dictionary<string, string?>();
+        if (allowPasswordBootstrap is not null)
+            values["PlatformBootstrap:AllowPasswordBootstrap"] = allowPasswordBootstrap;
+        return new ConfigurationBuilder().AddInMemoryCollection(values).Build();
+    }
+
+    [Fact]
+    public void IsCredentialBootstrapAllowed_Production_WithoutFlag_ReturnsFalse()
+    {
+        PlatformAccessSeeder
+            .IsCredentialBootstrapAllowed(Environment("Production"), Configuration(null))
+            .Should().BeFalse();
+    }
+
+    [Fact]
+    public void IsCredentialBootstrapAllowed_Production_FlagTrue_ReturnsTrue()
+    {
+        PlatformAccessSeeder
+            .IsCredentialBootstrapAllowed(Environment("Production"), Configuration("true"))
+            .Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData("yes")]
+    [InlineData("1")]
+    [InlineData("")]
+    [InlineData("false")]
+    public void IsCredentialBootstrapAllowed_Production_FlagNotStrictlyTrue_ReturnsFalse(string value)
+    {
+        PlatformAccessSeeder
+            .IsCredentialBootstrapAllowed(Environment("Production"), Configuration(value))
+            .Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData("Development")]
+    [InlineData("Test")]
+    public void IsCredentialBootstrapAllowed_LocalEnvironments_ReturnTrueWithoutFlag(string name)
+    {
+        PlatformAccessSeeder
+            .IsCredentialBootstrapAllowed(Environment(name), Configuration(null))
+            .Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task SeedAsync_WithoutPasswordOrCredential_ErrorNamesProductionFlag()
+    {
+        using var db = BuildInMemoryDb();
+
+        var action = () => PlatformAccessSeeder.SeedAsync(
+            db,
+            "boot@onevo.io",
+            "Boot Admin",
+            null,
+            true,
+            new Mock<IPasswordHasher>().Object,
+            CancellationToken.None);
+
+        await action.Should()
+            .ThrowAsync<InvalidOperationException>()
+            .WithMessage("*PlatformBootstrap__AllowPasswordBootstrap*");
     }
 }

@@ -15,7 +15,7 @@ public enum LoginFinalizationMode
 {
     /// <summary>
     /// Caller runs on the base host (or a pre-tenant challenge continuation of one). The base host
-    /// must never set onevo_session/onevo_csrf, so this issues a one-time tenant session exchange
+    /// must never set crownus_session/crownus_csrf, so this issues a one-time tenant session exchange
     /// code/continue_url instead (TenantSessionExchangeService.CreateAsync).
     /// </summary>
     BaseDomainExchange,

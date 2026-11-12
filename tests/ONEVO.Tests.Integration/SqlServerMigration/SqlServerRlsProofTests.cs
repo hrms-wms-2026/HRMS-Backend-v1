@@ -226,10 +226,10 @@ public sealed class SqlServerAppLoginRightsTests(SqlServerFixture fixture) : IAs
     [InlineData("ALTER TABLE tasks ADD extra int NULL")]
     [InlineData("CREATE TABLE evil (id int)")]
     [InlineData("DROP TABLE tasks")]
-    [InlineData("EXECUTE AS USER = 'onevo_auth_base_login_fn_owner'")]
+    [InlineData("EXECUTE AS USER = 'crownus_auth_base_login_fn_owner'")]
     [InlineData("EXECUTE AS USER = 'dbo'")]
     [InlineData("SELECT * FROM rls.fn_tenant(NEWID())")]
-    [InlineData("ALTER ROLE db_owner ADD MEMBER onevo_app")]
+    [InlineData("ALTER ROLE db_owner ADD MEMBER crownus_app")]
     public async Task AppLogin_CannotDo(string sql)
     {
         await using var connection = new SqlConnection(_database.App);
