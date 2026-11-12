@@ -7,6 +7,7 @@ using ONEVO.Application.Features.DevPlatform.PlatformAccess.Commands.RevokePlatf
 using ONEVO.Application.Features.DevPlatform.PlatformAccess.Commands.RevokePlatformUserSessions;
 using ONEVO.Application.Features.DevPlatform.PlatformAccess.Commands.InvitePlatformManager;
 using ONEVO.Application.Features.DevPlatform.PlatformAccess.Commands.RevokePlatformUserInvite;
+using ONEVO.Application.Features.DevPlatform.PlatformAccess.Commands.ResetPlatformUserMfa;
 using ONEVO.Application.Features.DevPlatform.PlatformAccess.Queries.ListPlatformUsers;
 using ONEVO.Application.Features.DevPlatform.PlatformAccess.Queries.GetPlatformUserDetail;
 using ONEVO.Application.Features.DevPlatform.PlatformAccess.Queries.ListPlatformRoles;
@@ -104,6 +105,20 @@ public class PlatformAccessController : ControllerBase
     {
         var result = await _mediator.Send(new RevokePlatformUserInviteCommand(platformUserId), ct);
         return result.IsSuccess ? NoContent() : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>
+    /// Resets another admin's lost authenticator (F-02, decision D2): clears their MFA enrollment
+    /// and revokes their sessions. Refuses the caller's own account.
+    /// </summary>
+    [HttpPost("users/{platformUserId}/mfa/reset")]
+    [RequirePlatformPermission(PlatformPermissionCatalog.AccountsManage)]
+    public async Task<IActionResult> ResetUserMfa(Guid platformUserId, CancellationToken ct)
+    {
+        var result = await _mediator.Send(new ResetPlatformUserMfaCommand(platformUserId), ct);
+        return result.IsSuccess
+            ? NoContent()
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
     [HttpGet("users/{platformUserId}/sessions")]

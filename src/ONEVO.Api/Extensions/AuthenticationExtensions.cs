@@ -97,12 +97,17 @@ internal static class AuthenticationExtensions
                 options.Events.OnRedirectToAccessDenied = context =>
                 {
                     context.Response.StatusCode = StatusCodes.Status403Forbidden;
+                    // F-02: an admin without confirmed MFA is refused by AdminPolicy. Say so, so the
+                    // admin console can send them to MFA setup instead of a generic "no permission".
+                    var awaitingMfa = ONEVO.Api.Auth.AdminAuthorizationPolicies.IsAwaitingMfaEnrollment(context.HttpContext.User);
                     return context.Response.WriteAsJsonAsync(new
                     {
-                        type = ONEVO.Api.Errors.ProblemTypes.For("forbidden"),
+                        type = ONEVO.Api.Errors.ProblemTypes.For(awaitingMfa ? "mfa_enrollment_required" : "forbidden"),
                         title = "Forbidden",
                         status = 403,
-                        detail = "You do not have permission to access this resource.",
+                        detail = awaitingMfa
+                            ? "Set up two-factor authentication to use the admin console."
+                            : "You do not have permission to access this resource.",
                         correlationId = context.HttpContext.Items["X-Correlation-Id"]?.ToString() ?? Guid.NewGuid().ToString()
                     });
                 };

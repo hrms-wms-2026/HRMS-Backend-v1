@@ -195,6 +195,45 @@ public sealed class AdminLoginCommandHandlerTests
         sessionResponse.Email.Should().BeEmpty();
     }
 
+    [Fact]
+    public async Task Handle_NotEnrolledAdmin_ReturnsSessionThatRequiresMfaEnrollment()
+    {
+        var setup = SetupActiveUserAndCredential();
+        setup.User.MfaStatus = PlatformUser.MfaNotEnrolled;
+        _passwordHasher.Setup(value => value.Verify("correct", "stored-hash")).Returns(true);
+
+        var result = await Handler().Handle(
+            new AdminLoginCommand(setup.User.Email, "correct"),
+            CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.RequiresMfa.Should().BeFalse();
+        result.Value!.PlatformUserId.Should().Be(setup.User.Id);
+        result.Value!.MfaEnrollmentRequired.Should().BeTrue();
+        var sessionResponse = result.Value!.ToSessionResponse();
+        sessionResponse.MfaEnrollmentRequired.Should().BeTrue();
+        sessionResponse.MfaRequired.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Handle_MfaEnrolledUser_ChallengeDoesNotReportEnrollmentRequired()
+    {
+        var setup = SetupActiveUserAndCredential();
+        setup.User.MfaStatus = PlatformUser.MfaEnrolled;
+        _passwordHasher.Setup(value => value.Verify("correct", "stored-hash")).Returns(true);
+        _mfaChallenges
+            .Setup(value => value.CreateAsync(setup.User.Id, It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync("raw-mfa-challenge");
+
+        var result = await Handler().Handle(
+            new AdminLoginCommand(setup.User.Email, "correct"),
+            CancellationToken.None);
+
+        result.Value!.RequiresMfa.Should().BeTrue();
+        result.Value!.CsrfToken.Should().BeEmpty();
+        result.Value!.ToSessionResponse().MfaEnrollmentRequired.Should().BeFalse();
+    }
+
     private AdminLoginCommandHandler Handler()
     {
         return new AdminLoginCommandHandler(

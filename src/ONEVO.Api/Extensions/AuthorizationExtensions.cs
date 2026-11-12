@@ -10,14 +10,9 @@ internal static class AuthorizationExtensions
                 policy.AddAuthenticationSchemes("TenantScheme")
                       .RequireAuthenticatedUser());
 
-            // AdminPolicy authenticates the admin cookie session. Endpoint-level
-            // authorization is permission-based via [RequirePlatformPermission]
-            // (platform permission codes resolved from the database); role names
-            // are never authorization rules per the access-control contract.
-            options.AddPolicy("AdminPolicy", policy =>
-                policy.AddAuthenticationSchemes("AdminScheme")
-                      .RequireAuthenticatedUser()
-                      .RequireClaim("platform_role"));
+            // AdminPolicy (every admin/v1 route) and the narrow MFA-enrollment policy.
+            // See AdminAuthorizationPolicies for the F-02 mandatory-MFA rule.
+            ONEVO.Api.Auth.AdminAuthorizationPolicies.Register(options);
 
             options.AddPolicy("TrayDevicePolicy", policy =>
                 policy.AddAuthenticationSchemes("TrayDeviceScheme")

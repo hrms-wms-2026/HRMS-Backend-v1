@@ -56,6 +56,39 @@ public sealed class GetAdminSessionContextQueryHandlerTests
             new[] { "platform.accounts.read", "platform.accounts.manage" });
     }
 
+    [Theory]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    public async Task Handle_ReportsMfaEnrollmentRequired_FromCurrentEnrollmentState(bool enrolled, bool expectedRequired)
+    {
+        var user = new PlatformUser
+        {
+            Id = Guid.NewGuid(),
+            Email = "admin@onevo.io",
+            FullName = "Platform Admin",
+            Status = PlatformUser.StatusActive,
+            MfaStatus = enrolled ? PlatformUser.MfaEnrolled : PlatformUser.MfaNotEnrolled
+        };
+        _currentUser.Setup(value => value.UserId).Returns(user.Id);
+        _users.Setup(value => value.GetByIdAsync(user.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(user);
+        _resolver.Setup(value => value.ResolveActiveUserAsync(user.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PlatformAccessProfile
+            {
+                UserId = user.Id,
+                Email = user.Email,
+                Status = user.Status,
+                MfaEnrolled = enrolled,
+                RoleNames = { "Platform Super Admin" }
+            });
+
+        var result = await Handler().Handle(new GetAdminSessionContextQuery(), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.MfaEnrollmentRequired.Should().Be(expectedRequired);
+        result.Value!.MfaRequired.Should().BeFalse();
+    }
+
     [Fact]
     public async Task Handle_NoCurrentUserId_ReturnsUnauthorized()
     {

@@ -177,7 +177,9 @@ public sealed class AdminLoginCommandHandler
             PlatformUserId: user.Id,
             Email: user.Email,
             PlatformRole: profile.RoleNames.Count > 0 ? profile.RoleNames[0] : string.Empty,
-            Permissions: profile.PermissionCodes.ToList()));
+            Permissions: profile.PermissionCodes.ToList(),
+            // Reaching here means MFA is not enrolled: this is an enrollment-only session (F-02).
+            MfaEnrollmentRequired: true));
     }
 
     private static Result<AdminLoginResultDto> InvalidCredentials()

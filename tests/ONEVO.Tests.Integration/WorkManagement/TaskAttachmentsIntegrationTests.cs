@@ -70,11 +70,11 @@ public sealed class TaskAttachmentsIntegrationTestsFixture : IAsyncLifetime
         await WaitForSeedersAsync();
         await GrantCoreHrStorageAllowanceAsync();
 
-        var loginResponse = await SendJsonAsync(HttpMethod.Post, AdminHost, "/admin/v1/auth/login",
-            new { email = "test_admin@onevo.dev", password = "test_password_123" });
-        var adminCookies = ParseSetCookies(loginResponse);
-        _adminCsrfToken = adminCookies["admin_csrf"];
-        _adminCookie = $"admin_session={adminCookies["admin_session"]}";
+        // F-02: sign-in completes mandatory MFA enrollment; no gate bypass.
+        var adminSession = await PlatformAdminTestSignIn.SignInAsync(
+            _client, "test_admin@onevo.dev", "test_password_123", AdminHost);
+        _adminCsrfToken = adminSession.CsrfToken;
+        _adminCookie = adminSession.SessionCookie;
 
         TenantA = await ProvisionAndLoginOwnerAsync("ta-int-a", "Task Attach Int A Co", "owner-a@ta-int.test");
         TenantB = await ProvisionAndLoginOwnerAsync("ta-int-b", "Task Attach Int B Co", "owner-b@ta-int.test");

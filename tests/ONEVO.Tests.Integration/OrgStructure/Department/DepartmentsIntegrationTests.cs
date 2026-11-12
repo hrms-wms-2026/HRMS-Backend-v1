@@ -77,11 +77,11 @@ public sealed class DepartmentsIntegrationTestsFixture : IAsyncLifetime
 
         await WaitForSeedersAsync();
 
-        var loginResponse = await SendAsync(HttpMethod.Post, AdminHost, "/admin/v1/auth/login",
-            new { email = "test_admin@onevo.dev", password = "test_password_123" });
-        var adminCookies = ParseSetCookies(loginResponse);
-        _adminCsrfToken = adminCookies["admin_csrf"];
-        _adminCookie = $"admin_session={adminCookies["admin_session"]}";
+        // F-02: sign-in completes mandatory MFA enrollment; no gate bypass.
+        var adminSession = await PlatformAdminTestSignIn.SignInAsync(
+            _client, "test_admin@onevo.dev", "test_password_123", AdminHost);
+        _adminCsrfToken = adminSession.CsrfToken;
+        _adminCookie = adminSession.SessionCookie;
 
         TenantAOwner = await ProvisionAndLoginOwnerAsync("dept-a", "Dept A Co", "owner-a@dept.test");
         TenantBOwner = await ProvisionAndLoginOwnerAsync("dept-b", "Dept B Co", "owner-b@dept.test");

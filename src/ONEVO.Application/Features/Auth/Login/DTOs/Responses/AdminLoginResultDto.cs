@@ -14,7 +14,8 @@ public record AdminLoginResultDto(
     string PlatformRole,
     bool RequiresMfa = false,
     string? MfaSessionToken = null,
-    IReadOnlyList<string>? Permissions = null)
+    IReadOnlyList<string>? Permissions = null,
+    bool MfaEnrollmentRequired = false)
 {
     public AdminSessionResponseDto ToSessionResponse() =>
         new(
@@ -23,7 +24,8 @@ public record AdminLoginResultDto(
             PlatformRole: RequiresMfa ? string.Empty : PlatformRole,
             ExpiresAt: RequiresMfa ? DateTimeOffset.MinValue : (ExpiresAt ?? DateTimeOffset.MinValue),
             MfaRequired: RequiresMfa,
-            Permissions: RequiresMfa ? Array.Empty<string>() : (Permissions ?? Array.Empty<string>()));
+            Permissions: RequiresMfa ? Array.Empty<string>() : (Permissions ?? Array.Empty<string>()),
+            MfaEnrollmentRequired: !RequiresMfa && MfaEnrollmentRequired);
 }
 
 public sealed record AdminSessionResponseDto(
@@ -32,4 +34,8 @@ public sealed record AdminSessionResponseDto(
     [property: JsonPropertyName("platform_role")] string PlatformRole,
     [property: JsonPropertyName("expires_at")] DateTimeOffset ExpiresAt,
     [property: JsonPropertyName("mfa_required")] bool MfaRequired = false,
-    [property: JsonPropertyName("permissions")] IReadOnlyList<string>? Permissions = null);
+    [property: JsonPropertyName("permissions")] IReadOnlyList<string>? Permissions = null,
+    // F-02: true while the admin has not enrolled MFA. The session then reaches only mfa/enable,
+    // mfa/confirm-setup, me and logout; every other admin/v1 route returns 403 until enrollment.
+    // Distinct from mfa_required, which means a TOTP challenge is pending (login returned 202).
+    [property: JsonPropertyName("mfa_enrollment_required")] bool MfaEnrollmentRequired = false);

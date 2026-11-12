@@ -79,7 +79,8 @@ public sealed class AdminGoogleLoginSecurityTests
     [Fact]
     public async Task NotEnrolledAdmin_BoundGoogleAccount_GetsSession()
     {
-        // Parity with password login while MFA stays optional (F-02 tracks making it mandatory).
+        // Parity with password login: the session is issued, but it is an enrollment-only
+        // session until the admin enrolls MFA (F-02). AdminPolicy enforces the restriction.
         var user = ActiveUser(googleSub: GoogleSub, mfaStatus: PlatformUser.MfaNotEnrolled);
         GoogleReturns(emailVerified: true);
         _users.Setup(value => value.GetByGoogleSubAsync(GoogleSub, It.IsAny<CancellationToken>()))
@@ -92,6 +93,8 @@ public sealed class AdminGoogleLoginSecurityTests
         result.Value!.RequiresMfa.Should().BeFalse();
         result.Value.PlatformUserId.Should().Be(user.Id);
         result.Value.CsrfToken.Should().Be("raw-csrf");
+        result.Value.MfaEnrollmentRequired.Should().BeTrue();
+        result.Value.ToSessionResponse().MfaEnrollmentRequired.Should().BeTrue();
     }
 
     [Fact]

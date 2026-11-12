@@ -61,11 +61,11 @@ public class LeaveBalanceAuditEndpointTests : IAsyncLifetime
 
         await WaitForSeedersAsync();
 
-        var loginResponse = await SendAsync(HttpMethod.Post, AdminHost, "/admin/v1/auth/login",
-            new { email = "test_admin@onevo.dev", password = "test_password_123" });
-        var adminCookies = ParseSetCookies(loginResponse);
-        _adminCsrfToken = adminCookies["admin_csrf"];
-        _adminCookie = $"admin_session={adminCookies["admin_session"]}";
+        // F-02: sign-in completes mandatory MFA enrollment; no gate bypass.
+        var adminSession = await PlatformAdminTestSignIn.SignInAsync(
+            _client, "test_admin@onevo.dev", "test_password_123", AdminHost);
+        _adminCsrfToken = adminSession.CsrfToken;
+        _adminCookie = adminSession.SessionCookie;
 
         _owner = await ProvisionAndLoginOwnerAsync("leave-audit", "Leave Audit Co", "owner-a@leave-audit.test");
         _tenantId = await GetTenantIdAsync(_owner.Host);

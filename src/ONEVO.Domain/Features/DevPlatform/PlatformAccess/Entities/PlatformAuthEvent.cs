@@ -15,6 +15,7 @@ public class PlatformAuthEvent
     public const string AdminPasswordResetCompleted = "admin_password_reset_completed";
     public const string PlatformManagerInvited = "platform_manager_invited";
     public const string PlatformManagerInviteAccepted = "platform_manager_invite_accepted";
+    public const string MfaReset = "mfa_reset";
 
     public Guid Id { get; set; }
     public Guid? UserId { get; set; }
