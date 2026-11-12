@@ -195,6 +195,8 @@ public class ApplicationDbContext : DbContext
     public DbSet<PlatformUserRole> PlatformUserRoles => Set<PlatformUserRole>();
     public DbSet<PlatformUserSession> PlatformUserSessions => Set<PlatformUserSession>();
     public DbSet<PlatformAuthEvent> PlatformAuthEvents => Set<PlatformAuthEvent>();
+    public DbSet<ONEVO.Domain.Features.DevPlatform.Audit.Entities.PlatformAuditLog> PlatformAuditLogs
+        => Set<ONEVO.Domain.Features.DevPlatform.Audit.Entities.PlatformAuditLog>();
 
     // Developer Platform
     public DbSet<Tenant> Tenants => Set<Tenant>();
