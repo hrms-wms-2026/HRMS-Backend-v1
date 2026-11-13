@@ -76,12 +76,15 @@ public sealed class UpdateSupportTicketStatusCommandHandler
     : IRequestHandler<UpdateSupportTicketStatusCommand, Result<SupportTicketDto>>
 {
     private readonly ISupportTicketRepository _repository;
+    private readonly ISupportNotifier _notifier;
     private readonly IUnitOfWork _unitOfWork;
     private readonly IDateTimeProvider _clock;
 
-    public UpdateSupportTicketStatusCommandHandler(ISupportTicketRepository repository, IUnitOfWork unitOfWork, IDateTimeProvider clock)
+    public UpdateSupportTicketStatusCommandHandler(
+        ISupportTicketRepository repository, ISupportNotifier notifier, IUnitOfWork unitOfWork, IDateTimeProvider clock)
     {
         _repository = repository;
+        _notifier = notifier;
         _unitOfWork = unitOfWork;
         _clock = clock;
     }
@@ -99,6 +102,13 @@ public sealed class UpdateSupportTicketStatusCommandHandler
         if (ticket.Status != request.Status)
         {
             SupportTicketRules.ApplyStatus(ticket, request.Status, _clock.UtcNow);
+
+            // "open" is only reached by reopening; the tenant hears about progress, resolution and closure.
+            if (request.Status != SupportTicket.StatusOpen)
+            {
+                await _notifier.QueueTenantStatusChangeAsync(ticket, cancellationToken);
+            }
+
             await _unitOfWork.SaveChangesAsync(cancellationToken);
         }
 
@@ -151,12 +161,15 @@ public sealed class AddSupportTicketCommentCommandHandler
     : IRequestHandler<AddSupportTicketCommentCommand, Result<SupportTicketCommentDto>>
 {
     private readonly ISupportTicketRepository _repository;
+    private readonly ISupportNotifier _notifier;
     private readonly IUnitOfWork _unitOfWork;
     private readonly IDateTimeProvider _clock;
 
-    public AddSupportTicketCommentCommandHandler(ISupportTicketRepository repository, IUnitOfWork unitOfWork, IDateTimeProvider clock)
+    public AddSupportTicketCommentCommandHandler(
+        ISupportTicketRepository repository, ISupportNotifier notifier, IUnitOfWork unitOfWork, IDateTimeProvider clock)
     {
         _repository = repository;
+        _notifier = notifier;
         _unitOfWork = unitOfWork;
         _clock = clock;
     }
@@ -187,9 +200,52 @@ public sealed class AddSupportTicketCommentCommandHandler
 
         await _repository.AddCommentAsync(comment, cancellationToken);
         ticket.UpdatedAt = now;
+        if (!comment.IsInternal)
+        {
+            // A reply the tenant can see answers them; an internal note does not.
+            ticket.AwaitingSupport = false;
+            await _notifier.QueueTenantReplyAsync(ticket, comment, cancellationToken);
+        }
+
         await _unitOfWork.SaveChangesAsync(cancellationToken);
 
         return Result<SupportTicketCommentDto>.Success(SupportMapper.ToDto(comment));
+    }
+}
+
+/// <summary>Platform staff correct a ticket's subject, description, priority or category.</summary>
+public sealed record UpdateSupportTicketCommand(
+    Guid TicketId,
+    string? Subject,
+    string? Description,
+    string? Priority,
+    string? Category) : IRequest<Result<SupportTicketDto>>;
+
+public sealed class UpdateSupportTicketCommandHandler : IRequestHandler<UpdateSupportTicketCommand, Result<SupportTicketDto>>
+{
+    private readonly ISupportTicketRepository _repository;
+    private readonly IUnitOfWork _unitOfWork;
+    private readonly IDateTimeProvider _clock;
+
+    public UpdateSupportTicketCommandHandler(ISupportTicketRepository repository, IUnitOfWork unitOfWork, IDateTimeProvider clock)
+    {
+        _repository = repository;
+        _unitOfWork = unitOfWork;
+        _clock = clock;
+    }
+
+    public async Task<Result<SupportTicketDto>> Handle(UpdateSupportTicketCommand request, CancellationToken cancellationToken)
+    {
+        var error = SupportTicketRules.ValidateTicket(request.Subject, request.Description, request.Priority, request.Category);
+        if (error is not null) return Result<SupportTicketDto>.Failure(error);
+
+        var ticket = await _repository.GetAsync(request.TicketId, null, cancellationToken);
+        if (ticket is null) return Result<SupportTicketDto>.NotFound($"Support ticket '{request.TicketId}' was not found.");
+
+        SupportTicketRules.ApplyEdit(ticket, request.Subject!, request.Description!, request.Priority!, request.Category, _clock.UtcNow);
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        return Result<SupportTicketDto>.Success(await SupportTicketLabels.ToDtoAsync(_repository, ticket, cancellationToken));
     }
 }
 

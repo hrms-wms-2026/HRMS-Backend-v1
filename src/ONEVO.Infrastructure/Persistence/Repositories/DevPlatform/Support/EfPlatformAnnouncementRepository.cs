@@ -27,10 +27,12 @@ public sealed class EfPlatformAnnouncementRepository : IPlatformAnnouncementRepo
     }
 
     public async Task<IReadOnlyList<PlatformAnnouncement>> ListActiveAsync(
-        string audience, int take, CancellationToken ct = default) =>
+        string audience, DateTimeOffset now, int take, CancellationToken ct = default) =>
         await _db.PlatformAnnouncements.AsNoTracking()
             .Where(a => a.IsPublished)
             .Where(a => a.Audience == PlatformAnnouncement.AudienceAll || a.Audience == audience)
+            .Where(a => a.StartsAt == null || a.StartsAt <= now)
+            .Where(a => a.EndsAt == null || a.EndsAt > now)
             .OrderByDescending(a => a.PublishedAt)
             .Take(take)
             .ToListAsync(ct);
@@ -40,4 +42,6 @@ public sealed class EfPlatformAnnouncementRepository : IPlatformAnnouncementRepo
 
     public async Task AddAsync(PlatformAnnouncement announcement, CancellationToken ct = default) =>
         await _db.PlatformAnnouncements.AddAsync(announcement, ct);
+
+    public void Remove(PlatformAnnouncement announcement) => _db.PlatformAnnouncements.Remove(announcement);
 }

@@ -19,6 +19,7 @@ public sealed class TenantSupportTicketHandlerTests
     private static readonly Guid UserId = Guid.NewGuid();
 
     private readonly Mock<ISupportTicketRepository> _repo = new();
+    private readonly Mock<ISupportNotifier> _notifier = new();
     private readonly Mock<ICurrentUser> _currentUser = new();
     private readonly Mock<IUnitOfWork> _uow = new();
     private readonly Mock<IDateTimeProvider> _clock = new();
@@ -38,7 +39,7 @@ public sealed class TenantSupportTicketHandlerTests
         SupportTicket? added = null;
         _repo.Setup(r => r.AddAsync(It.IsAny<SupportTicket>(), It.IsAny<CancellationToken>()))
             .Callback<SupportTicket, CancellationToken>((t, _) => added = t);
-        var handler = new CreateTenantSupportTicketCommandHandler(_repo.Object, _currentUser.Object, _uow.Object, _clock.Object);
+        var handler = new CreateTenantSupportTicketCommandHandler(_repo.Object, _notifier.Object, _currentUser.Object, _uow.Object, _clock.Object);
 
         var result = await handler.Handle(
             new CreateTenantSupportTicketCommand("Payroll export", "Export is empty", "medium", null), CancellationToken.None);
@@ -84,7 +85,7 @@ public sealed class TenantSupportTicketHandlerTests
     {
         var ticket = new SupportTicket { Id = Guid.NewGuid(), TenantId = TenantId, Status = SupportTicket.StatusClosed };
         _repo.Setup(r => r.GetAsync(ticket.Id, TenantId, It.IsAny<CancellationToken>())).ReturnsAsync(ticket);
-        var handler = new AddTenantSupportTicketCommentCommandHandler(_repo.Object, _currentUser.Object, _uow.Object, _clock.Object);
+        var handler = new AddTenantSupportTicketCommentCommandHandler(_repo.Object, _notifier.Object, _currentUser.Object, _uow.Object, _clock.Object);
 
         var result = await handler.Handle(new AddTenantSupportTicketCommentCommand(ticket.Id, "Still broken"), CancellationToken.None);
 
@@ -103,7 +104,7 @@ public sealed class TenantSupportTicketHandlerTests
         SupportTicketComment? added = null;
         _repo.Setup(r => r.AddCommentAsync(It.IsAny<SupportTicketComment>(), It.IsAny<CancellationToken>()))
             .Callback<SupportTicketComment, CancellationToken>((c, _) => added = c);
-        var handler = new AddTenantSupportTicketCommentCommandHandler(_repo.Object, _currentUser.Object, _uow.Object, _clock.Object);
+        var handler = new AddTenantSupportTicketCommentCommandHandler(_repo.Object, _notifier.Object, _currentUser.Object, _uow.Object, _clock.Object);
 
         var result = await handler.Handle(new AddTenantSupportTicketCommentCommand(ticket.Id, "Still broken"), CancellationToken.None);
 

@@ -80,14 +80,20 @@ public sealed class CreateTenantSupportTicketCommandHandler
     : IRequestHandler<CreateTenantSupportTicketCommand, Result<TenantSupportTicketDto>>
 {
     private readonly ISupportTicketRepository _repository;
+    private readonly ISupportNotifier _notifier;
     private readonly ICurrentUser _currentUser;
     private readonly IUnitOfWork _unitOfWork;
     private readonly IDateTimeProvider _clock;
 
     public CreateTenantSupportTicketCommandHandler(
-        ISupportTicketRepository repository, ICurrentUser currentUser, IUnitOfWork unitOfWork, IDateTimeProvider clock)
+        ISupportTicketRepository repository,
+        ISupportNotifier notifier,
+        ICurrentUser currentUser,
+        IUnitOfWork unitOfWork,
+        IDateTimeProvider clock)
     {
         _repository = repository;
+        _notifier = notifier;
         _currentUser = currentUser;
         _unitOfWork = unitOfWork;
         _clock = clock;
@@ -112,10 +118,56 @@ public sealed class CreateTenantSupportTicketCommandHandler
             Category = SupportTicketRules.NormalizeCategory(request.Category),
             CreatedByUserId = _currentUser.UserId,
             CreatedByName = name,
+            AwaitingSupport = true,
             CreatedAt = _clock.UtcNow,
         };
 
         await _repository.AddAsync(ticket, cancellationToken);
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+        await _notifier.AlertSupportAsync(ticket, SupportAlertKind.TicketRaised, name, ticket.Description, cancellationToken);
+        return Result<TenantSupportTicketDto>.Success(SupportMapper.ToTenantDto(ticket));
+    }
+}
+
+/// <summary>
+/// The tenant corrects their own ticket while support is still working on it (open or in progress). Priority can
+/// change too: a ticket that became urgent should say so.
+/// </summary>
+public sealed record UpdateTenantSupportTicketCommand(
+    Guid TicketId, string? Subject, string? Description, string? Priority, string? Category)
+    : IRequest<Result<TenantSupportTicketDto>>;
+
+public sealed class UpdateTenantSupportTicketCommandHandler
+    : IRequestHandler<UpdateTenantSupportTicketCommand, Result<TenantSupportTicketDto>>
+{
+    private readonly ISupportTicketRepository _repository;
+    private readonly ICurrentUser _currentUser;
+    private readonly IUnitOfWork _unitOfWork;
+    private readonly IDateTimeProvider _clock;
+
+    public UpdateTenantSupportTicketCommandHandler(
+        ISupportTicketRepository repository, ICurrentUser currentUser, IUnitOfWork unitOfWork, IDateTimeProvider clock)
+    {
+        _repository = repository;
+        _currentUser = currentUser;
+        _unitOfWork = unitOfWork;
+        _clock = clock;
+    }
+
+    public async Task<Result<TenantSupportTicketDto>> Handle(
+        UpdateTenantSupportTicketCommand request, CancellationToken cancellationToken)
+    {
+        var error = SupportTicketRules.ValidateTicket(request.Subject, request.Description, request.Priority, request.Category);
+        if (error is not null) return Result<TenantSupportTicketDto>.Failure(error);
+
+        var ticket = await _repository.GetAsync(request.TicketId, _currentUser.TenantId, cancellationToken);
+        if (ticket is null) return Result<TenantSupportTicketDto>.NotFound($"Support ticket '{request.TicketId}' was not found.");
+        if (SupportTicketRules.IsFinished(ticket.Status))
+        {
+            return Result<TenantSupportTicketDto>.Conflict("A resolved or closed ticket can no longer be edited.");
+        }
+
+        SupportTicketRules.ApplyEdit(ticket, request.Subject!, request.Description!, request.Priority!, request.Category, _clock.UtcNow);
         await _unitOfWork.SaveChangesAsync(cancellationToken);
         return Result<TenantSupportTicketDto>.Success(SupportMapper.ToTenantDto(ticket));
     }
@@ -132,14 +184,20 @@ public sealed class AddTenantSupportTicketCommentCommandHandler
     : IRequestHandler<AddTenantSupportTicketCommentCommand, Result<TenantSupportTicketCommentDto>>
 {
     private readonly ISupportTicketRepository _repository;
+    private readonly ISupportNotifier _notifier;
     private readonly ICurrentUser _currentUser;
     private readonly IUnitOfWork _unitOfWork;
     private readonly IDateTimeProvider _clock;
 
     public AddTenantSupportTicketCommentCommandHandler(
-        ISupportTicketRepository repository, ICurrentUser currentUser, IUnitOfWork unitOfWork, IDateTimeProvider clock)
+        ISupportTicketRepository repository,
+        ISupportNotifier notifier,
+        ICurrentUser currentUser,
+        IUnitOfWork unitOfWork,
+        IDateTimeProvider clock)
     {
         _repository = repository;
+        _notifier = notifier;
         _currentUser = currentUser;
         _unitOfWork = unitOfWork;
         _clock = clock;
@@ -178,7 +236,9 @@ public sealed class AddTenantSupportTicketCommentCommandHandler
         }
 
         ticket.UpdatedAt = now;
+        ticket.AwaitingSupport = true;
         await _unitOfWork.SaveChangesAsync(cancellationToken);
+        await _notifier.AlertSupportAsync(ticket, SupportAlertKind.TenantReplied, comment.AuthorName, comment.Body, cancellationToken);
         return Result<TenantSupportTicketCommentDto>.Success(SupportMapper.ToTenantDto(comment));
     }
 }

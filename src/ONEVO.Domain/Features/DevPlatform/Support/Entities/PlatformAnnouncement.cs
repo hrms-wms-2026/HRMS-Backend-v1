@@ -26,6 +26,11 @@ public class PlatformAnnouncement
     public bool IsPublished { get; set; }
     public DateTimeOffset? PublishedAt { get; set; }
     public Guid? PublishedByPlatformUserId { get; set; }
+
+    /// <summary>Optional display window. A published announcement shows only from StartsAt (inclusive) until EndsAt (exclusive).</summary>
+    public DateTimeOffset? StartsAt { get; set; }
+    public DateTimeOffset? EndsAt { get; set; }
+
     public Guid? CreatedByPlatformUserId { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset? UpdatedAt { get; set; }

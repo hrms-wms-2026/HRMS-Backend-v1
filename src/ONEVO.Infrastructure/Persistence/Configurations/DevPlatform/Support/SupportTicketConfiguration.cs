@@ -25,7 +25,11 @@ public sealed class SupportTicketConfiguration : IEntityTypeConfiguration<Suppor
         builder.Property(x => x.Category).HasMaxLength(80);
         builder.Property(x => x.CreatedByName).HasMaxLength(200).IsRequired();
         builder.Property(x => x.CreatedAt).IsRequired();
+        builder.Property(x => x.AwaitingSupport).IsRequired();
 
+        builder.HasIndex(x => x.AwaitingSupport)
+            .HasDatabaseName("ix_support_tickets_awaiting_support")
+            .HasFilter("[awaiting_support] = 1");
         builder.HasIndex(x => new { x.TenantId, x.Status, x.CreatedAt })
             .HasDatabaseName("ix_support_tickets_tenant_status_created");
         builder.HasIndex(x => new { x.Status, x.Priority, x.CreatedAt })

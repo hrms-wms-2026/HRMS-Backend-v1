@@ -18,7 +18,8 @@ public sealed record ListSupportTicketsQuery(
     bool UnassignedOnly,
     string? Search,
     int? Page,
-    int? PageSize) : IRequest<Result<SupportPageDto<SupportTicketDto>>>;
+    int? PageSize,
+    bool AwaitingSupportOnly = false) : IRequest<Result<SupportPageDto<SupportTicketDto>>>;
 
 public sealed class ListSupportTicketsQueryHandler
     : IRequestHandler<ListSupportTicketsQuery, Result<SupportPageDto<SupportTicketDto>>>
@@ -46,11 +47,28 @@ public sealed class ListSupportTicketsQueryHandler
         var (items, total) = await _repository.ListAsync(
             new SupportTicketFilter(
                 request.TenantId, request.Status, request.Priority, request.AssignedToPlatformUserId,
-                request.UnassignedOnly, request.Search, page, pageSize),
+                request.UnassignedOnly, request.Search, page, pageSize, request.AwaitingSupportOnly),
             cancellationToken);
 
         var dtos = items.Select(r => SupportMapper.ToDto(r.Ticket, r.TenantName, r.AssignedToName)).ToList();
         return Result<SupportPageDto<SupportTicketDto>>.Success(new SupportPageDto<SupportTicketDto>(dtos, total, page, pageSize));
+    }
+}
+
+/// <summary>Counts for the admin console's support bell, from the caller's point of view.</summary>
+public sealed record GetSupportSummaryQuery(Guid ActorPlatformUserId) : IRequest<Result<SupportSummaryDto>>;
+
+public sealed class GetSupportSummaryQueryHandler : IRequestHandler<GetSupportSummaryQuery, Result<SupportSummaryDto>>
+{
+    private readonly ISupportTicketRepository _repository;
+
+    public GetSupportSummaryQueryHandler(ISupportTicketRepository repository) => _repository = repository;
+
+    public async Task<Result<SupportSummaryDto>> Handle(GetSupportSummaryQuery request, CancellationToken cancellationToken)
+    {
+        var counts = await _repository.CountAsync(request.ActorPlatformUserId, cancellationToken);
+        return Result<SupportSummaryDto>.Success(
+            new SupportSummaryDto(counts.AwaitingSupport, counts.AwaitingSupportAssignedTo, counts.OpenUnassigned));
     }
 }
 

@@ -91,7 +91,7 @@ public sealed class SupportAttachmentAndAnnouncementTests
     [Fact]
     public async Task ActiveAnnouncements_RejectsAudienceOtherThanTenantsOrAdmins()
     {
-        var handler = new GetActiveAnnouncementsQueryHandler(new Mock<IPlatformAnnouncementRepository>().Object);
+        var handler = new GetActiveAnnouncementsQueryHandler(new Mock<IPlatformAnnouncementRepository>().Object, Clock().Object);
 
         var result = await handler.Handle(new GetActiveAnnouncementsQuery(PlatformAnnouncement.AudienceAll), CancellationToken.None);
 
@@ -124,9 +124,30 @@ public sealed class SupportAttachmentAndAnnouncementTests
             new Mock<IPlatformAnnouncementRepository>().Object, new Mock<IUnitOfWork>().Object, Clock().Object);
 
         var result = await handler.Handle(
-            new CreatePlatformAnnouncementCommand("Title", "Body", "info", "everyone", Guid.NewGuid()), CancellationToken.None);
+            new CreatePlatformAnnouncementCommand("Title", "Body", "info", "everyone", null, null, Guid.NewGuid()), CancellationToken.None);
 
         result.StatusCode.Should().Be(400);
         result.Error.Should().Contain("audience");
+    }
+
+    [Fact]
+    public async Task GetAnnouncement_ReturnsTheRow_AndNotFoundForAnUnknownId()
+    {
+        var announcement = new PlatformAnnouncement
+        {
+            Id = Guid.NewGuid(), Title = "Maintenance", Body = "Sunday", Severity = "warning", Audience = "tenants",
+            StartsAt = Now, EndsAt = Now.AddHours(4)
+        };
+        var repo = new Mock<IPlatformAnnouncementRepository>();
+        repo.Setup(r => r.GetAsync(announcement.Id, It.IsAny<CancellationToken>())).ReturnsAsync(announcement);
+        var handler = new GetPlatformAnnouncementQueryHandler(repo.Object);
+
+        var found = await handler.Handle(new GetPlatformAnnouncementQuery(announcement.Id), CancellationToken.None);
+        var missing = await handler.Handle(new GetPlatformAnnouncementQuery(Guid.NewGuid()), CancellationToken.None);
+
+        found.IsSuccess.Should().BeTrue();
+        found.Value!.Title.Should().Be("Maintenance");
+        found.Value.EndsAt.Should().Be(Now.AddHours(4));
+        missing.StatusCode.Should().Be(404);
     }
 }

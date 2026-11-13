@@ -42,6 +42,12 @@ public sealed class SupportTicketsController : ControllerBase
         => ToResponse(await _mediator.Send(new CreateTenantSupportTicketCommand(
             request.Subject, request.Description, request.Priority, request.Category), ct));
 
+    /// <summary>Edit while the ticket is open or in progress. Same body as create.</summary>
+    [HttpPut("{id:guid}")]
+    public async Task<IActionResult> Update(Guid id, [FromBody] CreateTenantSupportTicketRequest request, CancellationToken ct)
+        => ToResponse(await _mediator.Send(new UpdateTenantSupportTicketCommand(
+            id, request.Subject, request.Description, request.Priority, request.Category), ct));
+
     [HttpPost("{id:guid}/comments")]
     public async Task<IActionResult> AddComment(
         Guid id, [FromBody] AddTenantSupportTicketCommentRequest request, CancellationToken ct)

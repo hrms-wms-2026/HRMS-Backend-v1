@@ -42,6 +42,7 @@ public sealed class AdminSupportTicketsController : ControllerBase
         [FromQuery(Name = "search")] string? search,
         [FromQuery(Name = "page")] int? page,
         [FromQuery(Name = "page_size")] int? pageSize,
+        [FromQuery(Name = "awaiting_support")] bool? awaitingSupport,
         CancellationToken ct)
     {
         var unassigned = string.Equals(assignee, "unassigned", StringComparison.OrdinalIgnoreCase);
@@ -57,13 +58,29 @@ public sealed class AdminSupportTicketsController : ControllerBase
         }
 
         return ToResponse(await _mediator.Send(
-            new ListSupportTicketsQuery(status, priority, tenantId, assigneeId, unassigned, search, page, pageSize), ct));
+            new ListSupportTicketsQuery(
+                status, priority, tenantId, assigneeId, unassigned, search, page, pageSize, awaitingSupport == true), ct));
+    }
+
+    /// <summary>Counts behind the support bell: tickets waiting on support, those assigned to the caller, open unassigned.</summary>
+    [HttpGet("summary")]
+    [RequirePlatformPermission(PlatformPermissionCatalog.SupportRead)]
+    public async Task<IActionResult> Summary(CancellationToken ct)
+    {
+        if (_currentUser.UserId is not { } actorId) return Forbid();
+        return ToResponse(await _mediator.Send(new GetSupportSummaryQuery(actorId), ct));
     }
 
     [HttpGet("tickets/{id:guid}")]
     [RequirePlatformPermission(PlatformPermissionCatalog.SupportRead)]
     public async Task<IActionResult> Get(Guid id, CancellationToken ct)
         => ToResponse(await _mediator.Send(new GetSupportTicketQuery(id), ct));
+
+    [HttpPut("tickets/{id:guid}")]
+    [RequirePlatformPermission(PlatformPermissionCatalog.SupportManage)]
+    public async Task<IActionResult> Update(Guid id, [FromBody] UpdateSupportTicketRequest request, CancellationToken ct)
+        => ToResponse(await _mediator.Send(new UpdateSupportTicketCommand(
+            id, request.Subject, request.Description, request.Priority, request.Category), ct));
 
     [HttpPost("tickets")]
     [RequirePlatformPermission(PlatformPermissionCatalog.SupportManage)]

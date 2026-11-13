@@ -43,6 +43,8 @@ public static class NotificationEventCatalog
         "calendar_exception_detected", "calendar_exception_raised_for_you", "calendar_exception_escalated",
         // Monitoring (in-app reviewer notices; not the tray alerts)
         "face_verification_override", "exception_alert_detected", "exception_alert_escalated",
+        // Support (replies and status changes from Crownus support)
+        "support_ticket_replied", "support_ticket_status_changed",
     };
 
     /// <summary>
@@ -120,6 +122,8 @@ public static class NotificationEventCatalog
         Shared("calendar_exception_escalated", "calendar", "Calendar exception escalated", [V("title"), V("description")]),
         Shared("work_monitor_alert_escalated", "work_management", "Work monitor alert escalated", [V("title"), V("message")]),
         Shared("leave_request_decision_undone", "leave", "Leave request decision undone", [V("decision"), V("leaveType"), V("startDate")]),
+        Shared("support_ticket_replied", "support", "Support replied to a ticket", [V("subject", required: true), V("authorName", required: true)]),
+        Shared("support_ticket_status_changed", "support", "Support ticket status changed", [V("subject", required: true), V("status", required: true)]),
         Monitoring(MonitoringNotificationType.BreakReminder, "Break reminder"),
         Monitoring(MonitoringNotificationType.LongIdleAlert, "Long idle alert"),
         Monitoring(MonitoringNotificationType.LowActivityAlert, "Low activity alert"),

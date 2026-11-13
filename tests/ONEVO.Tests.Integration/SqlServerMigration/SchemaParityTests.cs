@@ -71,7 +71,7 @@ public sealed class SchemaParityTests(SqlServerFixture fixture)
     // Add a table here in the same change as the migration that creates it.
     private static readonly string[] TablesAddedAfterBaseline =
     [
-        // 20261112063423_AddPlatformSupport
+        // 20261112072239_AddPlatformSupport
         "platform_announcements", "support_tickets", "support_ticket_comments", "support_ticket_attachments",
     ];
 

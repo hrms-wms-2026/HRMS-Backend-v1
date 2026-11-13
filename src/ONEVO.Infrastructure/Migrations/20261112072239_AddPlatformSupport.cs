@@ -28,6 +28,8 @@ namespace ONEVO.Infrastructure.Migrations
                     is_published = table.Column<bool>(type: "bit", nullable: false),
                     published_at = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true),
                     published_by_platform_user_id = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
+                    starts_at = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true),
+                    ends_at = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true),
                     created_by_platform_user_id = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
                     created_at = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
                     updated_at = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true)
@@ -35,6 +37,7 @@ namespace ONEVO.Infrastructure.Migrations
                 constraints: table =>
                 {
                     table.PrimaryKey("pk_platform_announcements", x => x.id);
+                    table.CheckConstraint("ck_platform_announcements_window", "starts_at IS NULL OR ends_at IS NULL OR ends_at > starts_at");
                     table.ForeignKey(
                         name: "fk_platform_announcements_platform_users_created_by_platform_user_id",
                         column: x => x.created_by_platform_user_id,
@@ -64,6 +67,7 @@ namespace ONEVO.Infrastructure.Migrations
                     created_by_user_id = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
                     created_by_name = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: false),
                     assigned_to_platform_user_id = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
+                    awaiting_support = table.Column<bool>(type: "bit", nullable: false),
                     created_at = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
                     updated_at = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true),
                     resolved_at = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true)
@@ -250,6 +254,12 @@ namespace ONEVO.Infrastructure.Migrations
                 name: "ix_support_tickets_assignee_status",
                 table: "support_tickets",
                 columns: new[] { "assigned_to_platform_user_id", "status" });
+
+            migrationBuilder.CreateIndex(
+                name: "ix_support_tickets_awaiting_support",
+                table: "support_tickets",
+                column: "awaiting_support",
+                filter: "[awaiting_support] = 1");
 
             migrationBuilder.CreateIndex(
                 name: "ix_support_tickets_created_by_platform_user_id",

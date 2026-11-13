@@ -41,6 +41,13 @@ public class SupportTicket : ITenantOwnedEntity
     public string CreatedByName { get; set; } = string.Empty;
 
     public Guid? AssignedToPlatformUserId { get; set; }
+
+    /// <summary>
+    /// True while the tenant is waiting on support: set when the tenant raises the ticket or replies, cleared when
+    /// support replies (not an internal note) or resolves/closes the ticket. Drives the admin console's attention count.
+    /// </summary>
+    public bool AwaitingSupport { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset? UpdatedAt { get; set; }
     public DateTimeOffset? ResolvedAt { get; set; }

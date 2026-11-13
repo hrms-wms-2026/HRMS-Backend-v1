@@ -11,12 +11,15 @@ public sealed record SupportTicketFilter(
     bool UnassignedOnly,
     string? Search,
     int Page,
-    int PageSize);
+    int PageSize,
+    bool AwaitingSupportOnly = false);
 
 /// <summary>A ticket plus the display names a list or detail screen needs.</summary>
 public sealed record SupportTicketRow(SupportTicket Ticket, string TenantName, string? AssignedToName);
 
 public sealed record SupportAssigneeRow(Guid Id, string FullName, string Email);
+
+public sealed record SupportCounts(int AwaitingSupport, int AwaitingSupportAssignedTo, int OpenUnassigned);
 
 /// <summary>
 /// Support tickets are tenant-owned (RLS Tenant predicate). Platform staff reach every tenant's rows in
@@ -37,10 +40,19 @@ public interface ISupportTicketRepository
 
     Task<int> CountAttachmentsAsync(Guid ticketId, CancellationToken ct = default);
 
+    /// <summary>Counts across every tenant for the admin console bell. <paramref name="platformUserId"/> scopes "assigned to".</summary>
+    Task<SupportCounts> CountAsync(Guid platformUserId, CancellationToken ct = default);
+
+    /// <summary>Tenant users who wrote a comment on the ticket (not platform staff).</summary>
+    Task<IReadOnlyList<Guid>> ListTenantCommenterIdsAsync(Guid ticketId, CancellationToken ct = default);
+
     Task<string?> GetTenantNameAsync(Guid tenantId, CancellationToken ct = default);
 
     /// <summary>Full name of an active platform user, or null when missing or not active.</summary>
     Task<string?> GetActivePlatformUserNameAsync(Guid platformUserId, CancellationToken ct = default);
+
+    /// <summary>Email of an active platform user, or null when missing or not active.</summary>
+    Task<string?> GetActivePlatformUserEmailAsync(Guid platformUserId, CancellationToken ct = default);
 
     /// <summary>Display name of a platform user regardless of status (for labels on existing rows).</summary>
     Task<string?> GetPlatformUserNameAsync(Guid platformUserId, CancellationToken ct = default);

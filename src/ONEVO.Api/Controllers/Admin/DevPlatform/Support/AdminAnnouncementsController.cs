@@ -38,13 +38,32 @@ public sealed class AdminAnnouncementsController : ControllerBase
         CancellationToken ct)
         => ToResponse(await _mediator.Send(new ListPlatformAnnouncementsQuery(isPublished, severity, page, pageSize), ct));
 
+    [HttpGet("admin/v1/support/announcements/{id:guid}")]
+    [RequirePlatformPermission(PlatformPermissionCatalog.SupportRead)]
+    public async Task<IActionResult> Get(Guid id, CancellationToken ct)
+        => ToResponse(await _mediator.Send(new GetPlatformAnnouncementQuery(id), ct));
+
     [HttpPost("admin/v1/support/announcements")]
     [RequirePlatformPermission(PlatformPermissionCatalog.SupportManage)]
-    public async Task<IActionResult> Create([FromBody] CreatePlatformAnnouncementRequest request, CancellationToken ct)
+    public async Task<IActionResult> Create([FromBody] PlatformAnnouncementRequest request, CancellationToken ct)
     {
         if (_currentUser.UserId is not { } actorId) return Forbid();
         return ToResponse(await _mediator.Send(new CreatePlatformAnnouncementCommand(
-            request.Title, request.Body, request.Severity, request.Audience, actorId), ct));
+            request.Title, request.Body, request.Severity, request.Audience, request.StartsAt, request.EndsAt, actorId), ct));
+    }
+
+    [HttpPut("admin/v1/support/announcements/{id:guid}")]
+    [RequirePlatformPermission(PlatformPermissionCatalog.SupportManage)]
+    public async Task<IActionResult> Update(Guid id, [FromBody] PlatformAnnouncementRequest request, CancellationToken ct)
+        => ToResponse(await _mediator.Send(new UpdatePlatformAnnouncementCommand(
+            id, request.Title, request.Body, request.Severity, request.Audience, request.StartsAt, request.EndsAt), ct));
+
+    [HttpDelete("admin/v1/support/announcements/{id:guid}")]
+    [RequirePlatformPermission(PlatformPermissionCatalog.SupportManage)]
+    public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
+    {
+        var result = await _mediator.Send(new DeletePlatformAnnouncementCommand(id), ct);
+        return result.IsSuccess ? NoContent() : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
     [HttpPatch("admin/v1/support/announcements/{id:guid}/publish")]

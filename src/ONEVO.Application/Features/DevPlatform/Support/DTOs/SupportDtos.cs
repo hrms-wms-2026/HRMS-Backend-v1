@@ -24,9 +24,16 @@ public sealed record SupportTicketDto(
     [property: JsonPropertyName("created_by_name")] string CreatedByName,
     [property: JsonPropertyName("assigned_to_platform_user_id")] Guid? AssignedToPlatformUserId,
     [property: JsonPropertyName("assigned_to_name")] string? AssignedToName,
+    [property: JsonPropertyName("awaiting_support")] bool AwaitingSupport,
     [property: JsonPropertyName("created_at")] DateTimeOffset CreatedAt,
     [property: JsonPropertyName("updated_at")] DateTimeOffset? UpdatedAt,
     [property: JsonPropertyName("resolved_at")] DateTimeOffset? ResolvedAt);
+
+/// <summary>Counts behind the admin console's support bell.</summary>
+public sealed record SupportSummaryDto(
+    [property: JsonPropertyName("awaiting_support")] int AwaitingSupport,
+    [property: JsonPropertyName("awaiting_support_assigned_to_me")] int AwaitingSupportAssignedToMe,
+    [property: JsonPropertyName("open_unassigned")] int OpenUnassigned);
 
 public sealed record SupportTicketCommentDto(
     [property: JsonPropertyName("id")] Guid Id,
@@ -72,6 +79,8 @@ public sealed record PlatformAnnouncementDto(
     [property: JsonPropertyName("audience")] string Audience,
     [property: JsonPropertyName("is_published")] bool IsPublished,
     [property: JsonPropertyName("published_at")] DateTimeOffset? PublishedAt,
+    [property: JsonPropertyName("starts_at")] DateTimeOffset? StartsAt,
+    [property: JsonPropertyName("ends_at")] DateTimeOffset? EndsAt,
     [property: JsonPropertyName("created_at")] DateTimeOffset CreatedAt,
     [property: JsonPropertyName("updated_at")] DateTimeOffset? UpdatedAt);
 

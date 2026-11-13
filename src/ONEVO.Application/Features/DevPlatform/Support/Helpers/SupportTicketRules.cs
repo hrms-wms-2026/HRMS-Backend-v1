@@ -57,12 +57,24 @@ public static class SupportTicketRules
     public static bool IsFinished(string status) =>
         status is SupportTicket.StatusResolved or SupportTicket.StatusClosed;
 
-    /// <summary>Moves a ticket to a status, keeping resolved_at in step.</summary>
+    /// <summary>Applies an already-validated edit of the ticket's own fields.</summary>
+    public static void ApplyEdit(
+        SupportTicket ticket, string subject, string description, string priority, string? category, DateTimeOffset now)
+    {
+        ticket.Subject = subject.Trim();
+        ticket.Description = description.Trim();
+        ticket.Priority = priority;
+        ticket.Category = NormalizeCategory(category);
+        ticket.UpdatedAt = now;
+    }
+
+    /// <summary>Moves a ticket to a status, keeping resolved_at in step. A finished ticket waits on nobody.</summary>
     public static void ApplyStatus(SupportTicket ticket, string status, DateTimeOffset now)
     {
         if (IsFinished(status))
         {
             ticket.ResolvedAt ??= now;
+            ticket.AwaitingSupport = false;
         }
         else
         {

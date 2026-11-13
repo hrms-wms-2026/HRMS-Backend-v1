@@ -1037,6 +1037,9 @@ public static class DependencyInjection
         services.AddScoped<
             ONEVO.Application.Features.DevPlatform.Support.Services.ISupportAttachmentService,
             ONEVO.Application.Features.DevPlatform.Support.Services.SupportAttachmentService>();
+        services.AddScoped<
+            ONEVO.Application.Features.DevPlatform.Support.Services.ISupportNotifier,
+            ONEVO.Infrastructure.Services.DevPlatform.Support.SupportNotifier>();
 
         // Legal acceptance and versioning
         services.AddScoped<ILegalDocumentVersionRepository, EfLegalDocumentVersionRepository>();
@@ -1060,6 +1063,8 @@ public static class DependencyInjection
 
         // -- Platform options binding ------------------------------------------
         services.Configure<EmailOptions>(configuration.GetSection(EmailOptions.SectionName));
+        services.Configure<ONEVO.Infrastructure.Services.DevPlatform.Support.SupportAlertOptions>(
+            configuration.GetSection(ONEVO.Infrastructure.Services.DevPlatform.Support.SupportAlertOptions.SectionName));
         services.Configure<PlatformUrlsOptions>(configuration.GetSection(PlatformUrlsOptions.SectionName));
         services.Configure<EncryptionOptions>(configuration.GetSection(EncryptionOptions.SectionName));
         services.Configure<ONEVO.Infrastructure.Configuration.StorageQuotaOptions>(

@@ -15,7 +15,7 @@ public static class RlsTableRegistry
     public static IReadOnlyDictionary<string, RlsPredicate> AddedAfterBaseline { get; } =
         new Dictionary<string, RlsPredicate>(StringComparer.Ordinal)
         {
-            // 20261112063423_AddPlatformSupport
+            // 20261112072239_AddPlatformSupport
             ["support_tickets"] = RlsPredicate.Tenant,
             ["support_ticket_comments"] = RlsPredicate.Tenant,
             ["support_ticket_attachments"] = RlsPredicate.Tenant,

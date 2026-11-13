@@ -38,6 +38,8 @@ public sealed class EfSupportTicketRepository : ISupportTicketRepository
             query = query.Where(t => t.Subject.Contains(term));
         }
 
+        if (filter.AwaitingSupportOnly) query = query.Where(t => t.AwaitingSupport);
+
         var total = await query.CountAsync(ct);
 
         var rows = await query
@@ -82,6 +84,37 @@ public sealed class EfSupportTicketRepository : ISupportTicketRepository
 
     public Task<int> CountAttachmentsAsync(Guid ticketId, CancellationToken ct = default) =>
         _db.SupportTicketAttachments.CountAsync(a => a.TicketId == ticketId, ct);
+
+    public async Task<SupportCounts> CountAsync(Guid platformUserId, CancellationToken ct = default)
+    {
+        var counts = await _db.SupportTickets.AsNoTracking()
+            .GroupBy(_ => 1)
+            .Select(g => new
+            {
+                Awaiting = g.Count(t => t.AwaitingSupport),
+                AwaitingMine = g.Count(t => t.AwaitingSupport && t.AssignedToPlatformUserId == platformUserId),
+                OpenUnassigned = g.Count(t => t.AssignedToPlatformUserId == null
+                    && (t.Status == SupportTicket.StatusOpen || t.Status == SupportTicket.StatusInProgress)),
+            })
+            .FirstOrDefaultAsync(ct);
+
+        return counts is null
+            ? new SupportCounts(0, 0, 0)
+            : new SupportCounts(counts.Awaiting, counts.AwaitingMine, counts.OpenUnassigned);
+    }
+
+    public async Task<IReadOnlyList<Guid>> ListTenantCommenterIdsAsync(Guid ticketId, CancellationToken ct = default) =>
+        await _db.SupportTicketComments.AsNoTracking()
+            .Where(c => c.TicketId == ticketId && c.AuthorUserId != null)
+            .Select(c => c.AuthorUserId!.Value)
+            .Distinct()
+            .ToListAsync(ct);
+
+    public Task<string?> GetActivePlatformUserEmailAsync(Guid platformUserId, CancellationToken ct = default) =>
+        _db.PlatformUsers.AsNoTracking()
+            .Where(p => p.Id == platformUserId && p.Status == PlatformUser.StatusActive)
+            .Select(p => p.Email)
+            .FirstOrDefaultAsync(ct);
 
     public Task<string?> GetTenantNameAsync(Guid tenantId, CancellationToken ct = default) =>
         _db.Tenants.AsNoTracking().Where(t => t.Id == tenantId).Select(t => t.Name).FirstOrDefaultAsync(ct);

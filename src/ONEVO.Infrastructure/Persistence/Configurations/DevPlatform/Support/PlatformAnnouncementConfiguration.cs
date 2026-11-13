@@ -9,7 +9,10 @@ public sealed class PlatformAnnouncementConfiguration : IEntityTypeConfiguration
 {
     public void Configure(EntityTypeBuilder<PlatformAnnouncement> builder)
     {
-        builder.ToTable("platform_announcements");
+        builder.ToTable("platform_announcements", table =>
+            table.HasCheckConstraint(
+                "ck_platform_announcements_window",
+                "starts_at IS NULL OR ends_at IS NULL OR ends_at > starts_at"));
         builder.HasKey(x => x.Id);
 
         builder.Property(x => x.Title).HasMaxLength(200).IsRequired();

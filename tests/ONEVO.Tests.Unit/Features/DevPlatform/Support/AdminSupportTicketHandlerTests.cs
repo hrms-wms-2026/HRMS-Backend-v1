@@ -4,6 +4,7 @@ using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.DevPlatform.Support.Admin;
 using ONEVO.Application.Features.DevPlatform.Support.RepositoryInterfaces;
+using ONEVO.Application.Features.DevPlatform.Support.Services;
 using ONEVO.Domain.Features.DevPlatform.Support.Entities;
 using Xunit;
 
@@ -16,6 +17,7 @@ public sealed class AdminSupportTicketHandlerTests
     private static readonly Guid ActorId = Guid.NewGuid();
 
     private readonly Mock<ISupportTicketRepository> _repo = new();
+    private readonly Mock<ISupportNotifier> _notifier = new();
     private readonly Mock<IUnitOfWork> _uow = new();
     private readonly Mock<IDateTimeProvider> _clock = new();
 
@@ -89,7 +91,7 @@ public sealed class AdminSupportTicketHandlerTests
     {
         var ticket = new SupportTicket { Id = Guid.NewGuid(), TenantId = TenantId, Status = SupportTicket.StatusOpen };
         _repo.Setup(r => r.GetAsync(ticket.Id, null, It.IsAny<CancellationToken>())).ReturnsAsync(ticket);
-        var handler = new UpdateSupportTicketStatusCommandHandler(_repo.Object, _uow.Object, _clock.Object);
+        var handler = new UpdateSupportTicketStatusCommandHandler(_repo.Object, _notifier.Object, _uow.Object, _clock.Object);
 
         (await handler.Handle(new UpdateSupportTicketStatusCommand(ticket.Id, "resolved"), CancellationToken.None))
             .IsSuccess.Should().BeTrue();
@@ -104,7 +106,7 @@ public sealed class AdminSupportTicketHandlerTests
     [Fact]
     public async Task UpdateStatus_RejectsUnknownStatus()
     {
-        var handler = new UpdateSupportTicketStatusCommandHandler(_repo.Object, _uow.Object, _clock.Object);
+        var handler = new UpdateSupportTicketStatusCommandHandler(_repo.Object, _notifier.Object, _uow.Object, _clock.Object);
 
         var result = await handler.Handle(new UpdateSupportTicketStatusCommand(Guid.NewGuid(), "pending"), CancellationToken.None);
 
@@ -151,7 +153,7 @@ public sealed class AdminSupportTicketHandlerTests
         SupportTicketComment? added = null;
         _repo.Setup(r => r.AddCommentAsync(It.IsAny<SupportTicketComment>(), It.IsAny<CancellationToken>()))
             .Callback<SupportTicketComment, CancellationToken>((c, _) => added = c);
-        var handler = new AddSupportTicketCommentCommandHandler(_repo.Object, _uow.Object, _clock.Object);
+        var handler = new AddSupportTicketCommentCommandHandler(_repo.Object, _notifier.Object, _uow.Object, _clock.Object);
 
         var result = await handler.Handle(
             new AddSupportTicketCommentCommand(ticket.Id, "Checked logs", true, ActorId), CancellationToken.None);

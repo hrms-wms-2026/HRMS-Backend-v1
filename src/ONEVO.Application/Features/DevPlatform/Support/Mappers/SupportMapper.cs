@@ -8,7 +8,7 @@ public static class SupportMapper
     public static SupportTicketDto ToDto(SupportTicket t, string tenantName, string? assignedToName) => new(
         t.Id, t.TenantId, tenantName, t.Subject, t.Description, t.Status, t.Priority, t.Category,
         t.CreatedByPlatformUserId, t.CreatedByUserId, t.CreatedByName,
-        t.AssignedToPlatformUserId, assignedToName, t.CreatedAt, t.UpdatedAt, t.ResolvedAt);
+        t.AssignedToPlatformUserId, assignedToName, t.AwaitingSupport, t.CreatedAt, t.UpdatedAt, t.ResolvedAt);
 
     public static SupportTicketCommentDto ToDto(SupportTicketComment c) => new(
         c.Id, c.TicketId, c.AuthorPlatformUserId, c.AuthorUserId, c.AuthorName, c.Body, c.IsInternal, c.CreatedAt);
@@ -40,7 +40,8 @@ public static class SupportMapper
         t.Attachments.Where(a => !a.IsInternal).OrderBy(a => a.CreatedAt).Select(ToTenantDto).ToList());
 
     public static PlatformAnnouncementDto ToDto(PlatformAnnouncement a) => new(
-        a.Id, a.Title, a.Body, a.Severity, a.Audience, a.IsPublished, a.PublishedAt, a.CreatedAt, a.UpdatedAt);
+        a.Id, a.Title, a.Body, a.Severity, a.Audience, a.IsPublished, a.PublishedAt, a.StartsAt, a.EndsAt,
+        a.CreatedAt, a.UpdatedAt);
 
     public static ActiveAnnouncementDto ToActiveDto(PlatformAnnouncement a) => new(
         a.Id, a.Title, a.Body, a.Severity, a.PublishedAt);

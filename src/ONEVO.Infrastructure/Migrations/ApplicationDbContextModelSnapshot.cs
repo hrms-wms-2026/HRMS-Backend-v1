@@ -5868,6 +5868,10 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_platform_user_id");
 
+                    b.Property<DateTimeOffset?>("EndsAt")
+                        .HasColumnType("datetimeoffset")
+                        .HasColumnName("ends_at");
+
                     b.Property<bool>("IsPublished")
                         .HasColumnType("bit")
                         .HasColumnName("is_published");
@@ -5885,6 +5889,10 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)")
                         .HasColumnName("severity");
+
+                    b.Property<DateTimeOffset?>("StartsAt")
+                        .HasColumnType("datetimeoffset")
+                        .HasColumnName("starts_at");
 
                     b.Property<string>("Title")
                         .IsRequired()
@@ -5911,7 +5919,10 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasIndex("IsPublished", "Audience", "PublishedAt")
                         .HasDatabaseName("ix_platform_announcements_published_audience");
 
-                    b.ToTable("platform_announcements", (string)null);
+                    b.ToTable("platform_announcements", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_platform_announcements_window", "starts_at IS NULL OR ends_at IS NULL OR ends_at > starts_at");
+                        });
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.DevPlatform.Support.Entities.SupportTicket", b =>
@@ -5924,6 +5935,10 @@ namespace ONEVO.Infrastructure.Migrations
                     b.Property<Guid?>("AssignedToPlatformUserId")
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("assigned_to_platform_user_id");
+
+                    b.Property<bool>("AwaitingSupport")
+                        .HasColumnType("bit")
+                        .HasColumnName("awaiting_support");
 
                     b.Property<string>("Category")
                         .HasMaxLength(80)
@@ -5986,6 +6001,10 @@ namespace ONEVO.Infrastructure.Migrations
 
                     b.HasKey("Id")
                         .HasName("pk_support_tickets");
+
+                    b.HasIndex("AwaitingSupport")
+                        .HasDatabaseName("ix_support_tickets_awaiting_support")
+                        .HasFilter("[awaiting_support] = 1");
 
                     b.HasIndex("CreatedByPlatformUserId")
                         .HasDatabaseName("ix_support_tickets_created_by_platform_user_id");

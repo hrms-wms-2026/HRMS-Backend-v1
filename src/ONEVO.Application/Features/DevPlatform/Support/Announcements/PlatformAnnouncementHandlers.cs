@@ -36,12 +36,34 @@ public sealed class ListPlatformAnnouncementsQueryHandler
     }
 }
 
+/// <summary>One announcement, for the admin edit screen.</summary>
+public sealed record GetPlatformAnnouncementQuery(Guid Id) : IRequest<Result<PlatformAnnouncementDto>>;
+
+public sealed class GetPlatformAnnouncementQueryHandler
+    : IRequestHandler<GetPlatformAnnouncementQuery, Result<PlatformAnnouncementDto>>
+{
+    private readonly IPlatformAnnouncementRepository _repository;
+
+    public GetPlatformAnnouncementQueryHandler(IPlatformAnnouncementRepository repository) => _repository = repository;
+
+    public async Task<Result<PlatformAnnouncementDto>> Handle(
+        GetPlatformAnnouncementQuery request, CancellationToken cancellationToken)
+    {
+        var announcement = await _repository.GetAsync(request.Id, cancellationToken);
+        return announcement is null
+            ? Result<PlatformAnnouncementDto>.NotFound($"Announcement '{request.Id}' was not found.")
+            : Result<PlatformAnnouncementDto>.Success(SupportMapper.ToDto(announcement));
+    }
+}
+
 /// <summary>Creates a draft announcement. Publishing is a separate step.</summary>
 public sealed record CreatePlatformAnnouncementCommand(
     string? Title,
     string? Body,
     string? Severity,
     string? Audience,
+    DateTimeOffset? StartsAt,
+    DateTimeOffset? EndsAt,
     Guid ActorPlatformUserId) : IRequest<Result<PlatformAnnouncementDto>>;
 
 public sealed class CreatePlatformAnnouncementCommandHandler
@@ -62,42 +84,19 @@ public sealed class CreatePlatformAnnouncementCommandHandler
     public async Task<Result<PlatformAnnouncementDto>> Handle(
         CreatePlatformAnnouncementCommand request, CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(request.Title)) return Result<PlatformAnnouncementDto>.Failure("title is required.");
-        if (request.Title.Trim().Length > SupportTicketRules.AnnouncementTitleMaxLength)
-        {
-            return Result<PlatformAnnouncementDto>.Failure(
-                $"title must be at most {SupportTicketRules.AnnouncementTitleMaxLength} characters.");
-        }
-
-        if (string.IsNullOrWhiteSpace(request.Body)) return Result<PlatformAnnouncementDto>.Failure("body is required.");
-        if (request.Body.Trim().Length > SupportTicketRules.AnnouncementBodyMaxLength)
-        {
-            return Result<PlatformAnnouncementDto>.Failure(
-                $"body must be at most {SupportTicketRules.AnnouncementBodyMaxLength} characters.");
-        }
-
-        var activeContent = SupportTicketRules.ValidateAnnouncementText(request.Title, request.Body);
-        if (activeContent is not null) return Result<PlatformAnnouncementDto>.Failure(activeContent);
-
-        if (!PlatformAnnouncement.Severities.Contains(request.Severity ?? string.Empty))
-        {
-            return Result<PlatformAnnouncementDto>.Failure(
-                $"severity must be one of: {string.Join(", ", PlatformAnnouncement.Severities)}.");
-        }
-
-        if (!PlatformAnnouncement.Audiences.Contains(request.Audience ?? string.Empty))
-        {
-            return Result<PlatformAnnouncementDto>.Failure(
-                $"audience must be one of: {string.Join(", ", PlatformAnnouncement.Audiences)}.");
-        }
+        var error = AnnouncementRules.Validate(
+            request.Title, request.Body, request.Severity, request.Audience, request.StartsAt, request.EndsAt);
+        if (error is not null) return Result<PlatformAnnouncementDto>.Failure(error);
 
         var announcement = new PlatformAnnouncement
         {
             Id = Guid.NewGuid(),
-            Title = request.Title.Trim(),
-            Body = request.Body.Trim(),
+            Title = request.Title!.Trim(),
+            Body = request.Body!.Trim(),
             Severity = request.Severity!,
             Audience = request.Audience!,
+            StartsAt = request.StartsAt,
+            EndsAt = request.EndsAt,
             IsPublished = false,
             CreatedByPlatformUserId = request.ActorPlatformUserId,
             CreatedAt = _clock.UtcNow,
@@ -106,6 +105,82 @@ public sealed class CreatePlatformAnnouncementCommandHandler
         await _repository.AddAsync(announcement, cancellationToken);
         await _unitOfWork.SaveChangesAsync(cancellationToken);
         return Result<PlatformAnnouncementDto>.Success(SupportMapper.ToDto(announcement));
+    }
+}
+
+/// <summary>
+/// Replaces an announcement's text, severity, audience and display window. Allowed whether or not it is
+/// published: a published edit shows on the next banner load.
+/// </summary>
+public sealed record UpdatePlatformAnnouncementCommand(
+    Guid Id,
+    string? Title,
+    string? Body,
+    string? Severity,
+    string? Audience,
+    DateTimeOffset? StartsAt,
+    DateTimeOffset? EndsAt) : IRequest<Result<PlatformAnnouncementDto>>;
+
+public sealed class UpdatePlatformAnnouncementCommandHandler
+    : IRequestHandler<UpdatePlatformAnnouncementCommand, Result<PlatformAnnouncementDto>>
+{
+    private readonly IPlatformAnnouncementRepository _repository;
+    private readonly IUnitOfWork _unitOfWork;
+    private readonly IDateTimeProvider _clock;
+
+    public UpdatePlatformAnnouncementCommandHandler(
+        IPlatformAnnouncementRepository repository, IUnitOfWork unitOfWork, IDateTimeProvider clock)
+    {
+        _repository = repository;
+        _unitOfWork = unitOfWork;
+        _clock = clock;
+    }
+
+    public async Task<Result<PlatformAnnouncementDto>> Handle(
+        UpdatePlatformAnnouncementCommand request, CancellationToken cancellationToken)
+    {
+        var error = AnnouncementRules.Validate(
+            request.Title, request.Body, request.Severity, request.Audience, request.StartsAt, request.EndsAt);
+        if (error is not null) return Result<PlatformAnnouncementDto>.Failure(error);
+
+        var announcement = await _repository.GetAsync(request.Id, cancellationToken);
+        if (announcement is null) return Result<PlatformAnnouncementDto>.NotFound($"Announcement '{request.Id}' was not found.");
+
+        announcement.Title = request.Title!.Trim();
+        announcement.Body = request.Body!.Trim();
+        announcement.Severity = request.Severity!;
+        announcement.Audience = request.Audience!;
+        announcement.StartsAt = request.StartsAt;
+        announcement.EndsAt = request.EndsAt;
+        announcement.UpdatedAt = _clock.UtcNow;
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        return Result<PlatformAnnouncementDto>.Success(SupportMapper.ToDto(announcement));
+    }
+}
+
+/// <summary>Permanently deletes an announcement. Unpublish instead to keep it for later.</summary>
+public sealed record DeletePlatformAnnouncementCommand(Guid Id) : IRequest<Result<bool>>;
+
+public sealed class DeletePlatformAnnouncementCommandHandler : IRequestHandler<DeletePlatformAnnouncementCommand, Result<bool>>
+{
+    private readonly IPlatformAnnouncementRepository _repository;
+    private readonly IUnitOfWork _unitOfWork;
+
+    public DeletePlatformAnnouncementCommandHandler(IPlatformAnnouncementRepository repository, IUnitOfWork unitOfWork)
+    {
+        _repository = repository;
+        _unitOfWork = unitOfWork;
+    }
+
+    public async Task<Result<bool>> Handle(DeletePlatformAnnouncementCommand request, CancellationToken cancellationToken)
+    {
+        var announcement = await _repository.GetAsync(request.Id, cancellationToken);
+        if (announcement is null) return Result<bool>.NotFound($"Announcement '{request.Id}' was not found.");
+
+        _repository.Remove(announcement);
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+        return Result<bool>.Success(true);
     }
 }
 
@@ -153,7 +228,7 @@ public sealed class SetPlatformAnnouncementPublishedCommandHandler
 
 /// <summary>
 /// Banner feed. The audience is fixed by the calling controller (admin console or tenant app), never taken
-/// from the client.
+/// from the client. Only announcements inside their display window are returned.
 /// </summary>
 public sealed record GetActiveAnnouncementsQuery(string Audience) : IRequest<Result<IReadOnlyList<ActiveAnnouncementDto>>>;
 
@@ -162,8 +237,13 @@ public sealed class GetActiveAnnouncementsQueryHandler
 {
     private const int MaxBanners = 5;
     private readonly IPlatformAnnouncementRepository _repository;
+    private readonly IDateTimeProvider _clock;
 
-    public GetActiveAnnouncementsQueryHandler(IPlatformAnnouncementRepository repository) => _repository = repository;
+    public GetActiveAnnouncementsQueryHandler(IPlatformAnnouncementRepository repository, IDateTimeProvider clock)
+    {
+        _repository = repository;
+        _clock = clock;
+    }
 
     public async Task<Result<IReadOnlyList<ActiveAnnouncementDto>>> Handle(
         GetActiveAnnouncementsQuery request, CancellationToken cancellationToken)
@@ -173,8 +253,33 @@ public sealed class GetActiveAnnouncementsQueryHandler
             return Result<IReadOnlyList<ActiveAnnouncementDto>>.Failure("Unknown announcement audience.");
         }
 
-        var items = await _repository.ListActiveAsync(request.Audience, MaxBanners, cancellationToken);
+        var items = await _repository.ListActiveAsync(request.Audience, _clock.UtcNow, MaxBanners, cancellationToken);
         IReadOnlyList<ActiveAnnouncementDto> dtos = items.Select(SupportMapper.ToActiveDto).ToList();
         return Result<IReadOnlyList<ActiveAnnouncementDto>>.Success(dtos);
+    }
+}
+
+internal static class AnnouncementRules
+{
+    public static string? Validate(
+        string? title, string? body, string? severity, string? audience, DateTimeOffset? startsAt, DateTimeOffset? endsAt)
+    {
+        if (string.IsNullOrWhiteSpace(title)) return "title is required.";
+        if (title.Trim().Length > SupportTicketRules.AnnouncementTitleMaxLength)
+            return $"title must be at most {SupportTicketRules.AnnouncementTitleMaxLength} characters.";
+        if (string.IsNullOrWhiteSpace(body)) return "body is required.";
+        if (body.Trim().Length > SupportTicketRules.AnnouncementBodyMaxLength)
+            return $"body must be at most {SupportTicketRules.AnnouncementBodyMaxLength} characters.";
+
+        var activeContent = SupportTicketRules.ValidateAnnouncementText(title, body);
+        if (activeContent is not null) return activeContent;
+
+        if (!PlatformAnnouncement.Severities.Contains(severity ?? string.Empty))
+            return $"severity must be one of: {string.Join(", ", PlatformAnnouncement.Severities)}.";
+        if (!PlatformAnnouncement.Audiences.Contains(audience ?? string.Empty))
+            return $"audience must be one of: {string.Join(", ", PlatformAnnouncement.Audiences)}.";
+        if (startsAt is { } start && endsAt is { } end && end <= start)
+            return "ends_at must be after starts_at.";
+        return null;
     }
 }
