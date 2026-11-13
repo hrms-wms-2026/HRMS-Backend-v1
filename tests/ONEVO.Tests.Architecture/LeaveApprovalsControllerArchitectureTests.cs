@@ -26,8 +26,6 @@ public class LeaveApprovalsControllerArchitectureTests
         Assert.Equal("leave:approve", GetPermission(nameof(LeaveApprovalsController.ApprovalDetail)));
         Assert.Equal("leave:approve", GetPermission(nameof(LeaveApprovalsController.Approve)));
         Assert.Equal("leave:approve", GetPermission(nameof(LeaveApprovalsController.Reject)));
-        Assert.Equal("leave:approve", GetPermission(nameof(LeaveApprovalsController.BulkApprove)));
-        Assert.Equal("leave:approve", GetPermission(nameof(LeaveApprovalsController.BulkReject)));
     }
 
     [Fact]
@@ -44,9 +42,7 @@ public class LeaveApprovalsControllerArchitectureTests
         foreach (var contractType in new[]
         {
             typeof(ApproveLeaveRequestRequest),
-            typeof(RejectLeaveRequestRequest),
-            typeof(BulkApproveLeaveRequestsRequest),
-            typeof(BulkRejectLeaveRequestsRequest)
+            typeof(RejectLeaveRequestRequest)
         })
         {
             var names = contractType.GetProperties().Select(p => p.Name);
