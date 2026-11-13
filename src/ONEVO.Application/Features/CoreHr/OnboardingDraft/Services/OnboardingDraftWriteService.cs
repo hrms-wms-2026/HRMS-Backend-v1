@@ -10,7 +10,6 @@ using ONEVO.Application.Features.Auth.Login.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Permission.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.Onboarding.OutboxHandlers;
-using ONEVO.Application.Features.CoreHr.OnboardingDraft.OutboxHandlers;
 using ONEVO.Application.Features.CoreHr.OnboardingDrafts.DTOs.Responses;
 using ONEVO.Application.Features.CoreHr.OnboardingDrafts.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.Onboarding.RepositoryInterfaces;
@@ -19,12 +18,8 @@ using ONEVO.Application.Features.CoreHr.PositionAssignment.RepositoryInterfaces;
 using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
 using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
 using ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces;
-using ONEVO.Domain.Features.Auth.Entities;
 using ONEVO.Domain.Features.CoreHr.Entities;
-using ONEVO.Domain.Features.InfrastructureModule.Entities;
-using ONEVO.Domain.Features.Monitoring.Settings.Entities;
 using ONEVO.Domain.Features.OrgStructure.Entities;
-using EmployeeEntity = ONEVO.Domain.Features.CoreHr.Entities.Employee;
 using OnboardingDraftEntity = ONEVO.Domain.Features.CoreHr.Entities.OnboardingDraft;
 
 namespace ONEVO.Application.Features.CoreHr.OnboardingDraft.Services;
@@ -43,8 +38,6 @@ namespace ONEVO.Application.Features.CoreHr.OnboardingDraft.Services;
 /// </summary>
 public class OnboardingDraftWriteService : IOnboardingDraftWriteService
 {
-    private const int InvitationValidityHours = 24;
-
     private readonly IOnboardingDraftRepository _draftRepository;
     private readonly IEmployeeRepository _employeeRepository;
     private readonly IUserRepository _userRepository;
@@ -572,19 +565,7 @@ public class OnboardingDraftWriteService : IOnboardingDraftWriteService
         var user = await _userRepository.GetByTenantAndEmailAsync(draft.TenantId, normalizedEmail, ct);
         if (user is null)
         {
-            user = new User
-            {
-                Id = Guid.NewGuid(),
-                TenantId = draft.TenantId,
-                Email = draft.WorkEmail.Trim(),
-                FirstName = draft.FirstName.Trim(),
-                LastName = draft.LastName.Trim(),
-                PasswordHash = string.Empty,
-                IsActive = false,
-                EmailVerified = false,
-                MustChangePassword = true,
-                PasswordSetByAdmin = false,
-            };
+            user = OnboardingFinalizeFactory.NewPendingUser(draft);
             await _userRepository.AddAsync(user, ct);
         }
 
@@ -598,7 +579,7 @@ public class OnboardingDraftWriteService : IOnboardingDraftWriteService
                 draft.TenantId, draft.SelectedTemplateId.Value, draft.LegalEntityId, draft.DepartmentId, draft.PositionId, ct);
             if (template is null)
                 return Result<FinalizeOnboardingDraftResponse>.UnprocessableEntity(
-                    "The selected onboarding checklist template does not exist, is inactive, or no longer applies to this company/department/position.");
+                    OnboardingFinalizeFactory.TemplateNoLongerAppliesMessage);
         }
 
         var employeeId = Guid.NewGuid();
@@ -614,31 +595,12 @@ public class OnboardingDraftWriteService : IOnboardingDraftWriteService
             catch (ArgumentException)
             {
                 return Result<FinalizeOnboardingDraftResponse>.UnprocessableEntity(
-                    "Checklist task data is invalid: every task requires a title, a known owner type, a resolvable assignee, a due rule, and an explicit required flag.");
+                    OnboardingFinalizeFactory.InvalidChecklistTasksMessage);
             }
         }
 
-        var employee = new EmployeeEntity
-        {
-            Id = employeeId,
-            TenantId = draft.TenantId,
-            UserId = user.Id,
-            EmployeeNumber = draft.EmployeeNumber!,
-            FirstName = draft.FirstName.Trim(),
-            LastName = draft.LastName.Trim(),
-            Email = draft.WorkEmail.Trim(),
-            DepartmentId = draft.DepartmentId,
-            LegalEntityId = draft.LegalEntityId,
-            // No "onboarding" row exists in the tenant-wide employment_statuses lookup (it is
-            // read app-wide, e.g. the employee list falls back to "active"), so pending-ness is
-            // carried by User.IsActive = false, InvitationToken.Status = "pending", and this
-            // draft's own Status/FinalizedAt instead of an employee-level status value.
-            EmploymentStatusId = 1,
-            EmploymentTypeId = employmentTypeId,
-            WorkModeId = draft.WorkModeId,
-            HireDate = draft.StartDate.Value,
-            CreatedById = actingUserId,
-        };
+        var employee = OnboardingFinalizeFactory.NewEmployee(
+            draft, employeeId, user.Id, employmentTypeId, draft.StartDate.Value, actingUserId);
         await _employeeRepository.AddAsync(employee, ct);
 
         OfficeProjectContext? officeProject = null;
@@ -673,20 +635,9 @@ public class OnboardingDraftWriteService : IOnboardingDraftWriteService
                 // employee row is flushed above (employee_monitoring_overrides references it)
                 // and committed by the final save below.
                 if (_wizardLookups is not null
-                    && (draft.PhotoRequiredOverride.HasValue || draft.LocationCaptureOverride.HasValue))
+                    && OnboardingFinalizeFactory.NewMonitoringOverride(draft, employeeId, actingUserId, _clock.UtcNow) is { } monitoringOverride)
                 {
-                    await _wizardLookups.AddEmployeeOverrideAsync(new EmployeeMonitoringOverride
-                    {
-                        Id = Guid.NewGuid(),
-                        TenantId = draft.TenantId,
-                        EmployeeId = employeeId,
-                        PhotoRequired = draft.PhotoRequiredOverride,
-                        WorkLocationVerification = draft.LocationCaptureOverride,
-                        OverrideReason = "Set during onboarding (Add Employee wizard).",
-                        SetById = actingUserId,
-                        CreatedAt = _clock.UtcNow,
-                        UpdatedAt = _clock.UtcNow,
-                    }, txnCt);
+                    await _wizardLookups.AddEmployeeOverrideAsync(monitoringOverride, txnCt);
                 }
 
                 if (position is not null)
@@ -737,59 +688,27 @@ public class OnboardingDraftWriteService : IOnboardingDraftWriteService
                 // is self-authorizing a bypass past a template that does require approval.
                 if (accessTemplate is { IsActive: true } && (!accessTemplate.RequiresApproval || selfAuthorizedBypass))
                 {
-                    var userRole = new UserRole
-                    {
-                        TenantId = draft.TenantId,
-                        UserId = user.Id,
-                        RoleId = accessTemplate.RoleId,
-                        AssignedAt = _clock.UtcNow,
-                        AssignedBy = actingUserId,
-                        SourcePositionId = draft.PositionId,
-                        SourcePositionAccessTemplateId = accessTemplate.Id,
-                    };
+                    var userRole = OnboardingFinalizeFactory.NewPositionUserRole(
+                        draft, user.Id, accessTemplate.RoleId, accessTemplate.Id, actingUserId, _clock.UtcNow);
                     await _userRoleRepository.AddAsync(userRole, txnCt);
                 }
 
                 var rawToken = _tokenGenerator.GenerateUrlSafeOpaqueToken();
                 var tokenHash = InvitationTokenHasher.Hash(rawToken);
-                var expiresAt = _clock.UtcNow.AddHours(InvitationValidityHours);
-                var fullName = $"{draft.FirstName.Trim()} {draft.LastName.Trim()}".Trim();
+                var expiresAt = _clock.UtcNow.AddHours(OnboardingFinalizeFactory.InvitationValidityHours);
 
-                var invitation = new InvitationToken
-                {
-                    Id = Guid.NewGuid(),
-                    TenantId = draft.TenantId,
-                    UserId = user.Id,
-                    RoleId = null,
-                    PositionId = draft.PositionId,
-                    PositionAssignmentId = reservedAssignmentId,
-                    Purpose = InvitationToken.EmployeeOnboardingPurpose,
-                    LegalEntityId = draft.LegalEntityId,
-                    EmployeeId = employeeId,
-                    OnboardingDraftId = draft.Id,
-                    InvitedEmail = draft.WorkEmail.Trim(),
-                    InvitedFullName = fullName,
-                    TokenHash = tokenHash,
-                    ExpiresAt = expiresAt,
-                    CreatedAt = _clock.UtcNow,
-                    CreatedById = actingUserId,
-                };
+                var invitation = OnboardingFinalizeFactory.NewInvitation(
+                    draft, user.Id, employeeId, reservedAssignmentId, tokenHash, expiresAt, actingUserId, _clock.UtcNow);
                 await _invitationTokenRepository.AddAsync(invitation, txnCt);
 
                 var tenant = await _tenantRepository.GetByIdAsync(draft.TenantId, txnCt);
                 await _outboxWriter.EnqueueAsync(
                     OutboxMessageTypes.EmployeeOnboardingInviteEmail,
-                    new EmployeeOnboardingInviteEmailPayload(
-                        draft.TenantId, draft.LegalEntityId, employeeId, invitation.Id,
-                        draft.WorkEmail.Trim(), draft.FirstName.Trim(), draft.LastName.Trim(), rawToken, expiresAt,
-                        tenant?.Slug),
+                    OnboardingFinalizeFactory.NewInviteEmailPayload(draft, employeeId, invitation.Id, rawToken, expiresAt, tenant?.Slug),
                     draft.TenantId,
                     txnCt);
 
-                draft.Status = OnboardingDraftStatus.Finalized;
-                draft.DraftReason = OnboardingDraftReason.InvitationSent;
-                draft.FinalizedAt = _clock.UtcNow;
-                draft.UpdatedAt = _clock.UtcNow;
+                OnboardingFinalizeFactory.MarkFinalized(draft, _clock.UtcNow);
 
                 await _draftRepository.SaveChangesAsync(txnCt);
                 return true;
