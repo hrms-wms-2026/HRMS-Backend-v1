@@ -6,6 +6,7 @@ using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformOAuthApps.Help
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformOAuthApps.Mappers;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformOAuthApps.RepositoryInterfaces;
 using ONEVO.Domain.Features.DevPlatform.SystemConfig.PlatformOAuthApps.Entities;
+using ONEVO.Application.Common.Auditing;
 
 namespace ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformOAuthApps.Commands.RotatePlatformOAuthAppSecret;
 
@@ -21,7 +22,11 @@ public sealed record RotatePlatformOAuthAppSecretCommand(
     string Provider,
     string ClientSecret,
     string? PrivateKey,
-    Guid ActorPlatformUserId) : IRequest<Result<PlatformOAuthAppDto>>;
+    Guid ActorPlatformUserId) : IRequest<Result<PlatformOAuthAppDto>>, IAuditedCommand<Result<PlatformOAuthAppDto>>
+{
+    public AuditEntry DescribeAudit(Result<PlatformOAuthAppDto>? response)
+        => new("oauth_app.secret_rotated", "oauth_app", Provider, null, new { ClientSecretRotated = true, PrivateKeyRotated = PrivateKey != null });
+}
 
 public sealed class RotatePlatformOAuthAppSecretCommandHandler
     : IRequestHandler<RotatePlatformOAuthAppSecretCommand, Result<PlatformOAuthAppDto>>

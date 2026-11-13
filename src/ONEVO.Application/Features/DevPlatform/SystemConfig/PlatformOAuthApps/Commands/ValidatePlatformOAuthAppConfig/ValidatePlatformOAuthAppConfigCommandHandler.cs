@@ -3,6 +3,7 @@ using ONEVO.Application.Common.Models;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformOAuthApps.DTOs.Responses;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformOAuthApps.Helpers;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformOAuthApps.RepositoryInterfaces;
+using ONEVO.Application.Common.Auditing;
 
 namespace ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformOAuthApps.Commands.ValidatePlatformOAuthAppConfig;
 
@@ -17,7 +18,11 @@ namespace ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformOAuthApps.
 /// </summary>
 public sealed record ValidatePlatformOAuthAppConfigCommand(
     string Provider,
-    Guid ActorPlatformUserId) : IRequest<Result<OAuthAppValidateConfigResultDto>>;
+    Guid ActorPlatformUserId) : IRequest<Result<OAuthAppValidateConfigResultDto>>, IAuditedCommand<Result<OAuthAppValidateConfigResultDto>>
+{
+    public AuditEntry DescribeAudit(Result<OAuthAppValidateConfigResultDto>? response)
+        => new("oauth_app.config_validated", "oauth_app", Provider, null, new { Status = response?.Value?.Status });
+}
 
 public sealed class ValidatePlatformOAuthAppConfigCommandHandler
     : IRequestHandler<ValidatePlatformOAuthAppConfigCommand, Result<OAuthAppValidateConfigResultDto>>

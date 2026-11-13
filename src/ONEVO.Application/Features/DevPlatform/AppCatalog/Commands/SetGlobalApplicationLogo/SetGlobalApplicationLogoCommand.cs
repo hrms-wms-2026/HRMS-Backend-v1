@@ -3,6 +3,7 @@ using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Features.DevPlatform.AppCatalog.DTOs;
 using ONEVO.Application.Features.DevPlatform.AppCatalog.RepositoryInterfaces;
+using ONEVO.Application.Common.Auditing;
 
 namespace ONEVO.Application.Features.DevPlatform.AppCatalog.Commands.SetGlobalApplicationLogo;
 
@@ -10,7 +11,11 @@ public sealed record SetGlobalApplicationLogoCommand(
     Guid Id,
     byte[] Content,
     string ContentType,
-    Guid ActorId) : IRequest<Result<GlobalApplicationDto>>;
+    Guid ActorId) : IRequest<Result<GlobalApplicationDto>>, IAuditedCommand<Result<GlobalApplicationDto>>
+{
+    public AuditEntry DescribeAudit(Result<GlobalApplicationDto>? response)
+        => AuditEntry.For("global_application.logo_set", "global_application", Id, null, new { ContentType, SizeBytes = Content?.Length });
+}
 
 public sealed class SetGlobalApplicationLogoCommandHandler(
     IGlobalApplicationRepository applications,

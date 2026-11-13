@@ -7,6 +7,7 @@ using ONEVO.Application.Features.DevPlatform.Compliance.Helpers;
 using ONEVO.Application.Features.DevPlatform.Compliance.Mappers;
 using ONEVO.Application.Features.DevPlatform.Compliance.RepositoryInterfaces;
 using ONEVO.Domain.Features.DevPlatform.Compliance.Entities;
+using ONEVO.Application.Common.Auditing;
 
 namespace ONEVO.Application.Features.DevPlatform.Compliance.Commands.CreateLegalDocumentVersion;
 
@@ -23,7 +24,11 @@ public sealed record CreateLegalDocumentVersionCommand(
     string ContentText,
     bool IsRequired,
     string BlockScope,
-    Guid ActorPlatformUserId) : IRequest<Result<LegalDocumentVersionDetailDto>>;
+    Guid ActorPlatformUserId) : IRequest<Result<LegalDocumentVersionDetailDto>>, IAuditedCommand<Result<LegalDocumentVersionDetailDto>>
+{
+    public AuditEntry DescribeAudit(Result<LegalDocumentVersionDetailDto>? response)
+        => AuditEntry.For("legal_document_version.created", "legal_document_version", response?.Value?.Id, null, new { DocumentType, Version, Title, IsRequired, BlockScope, ContentHtmlLength = ContentHtml?.Length });
+}
 
 public sealed class CreateLegalDocumentVersionCommandHandler
     : IRequestHandler<CreateLegalDocumentVersionCommand, Result<LegalDocumentVersionDetailDto>>

@@ -2,9 +2,14 @@ using MediatR;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.IntegrationCatalog.Helpers;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.IntegrationCatalog.RepositoryInterfaces;
+using ONEVO.Application.Common.Auditing;
 
 namespace ONEVO.Application.Features.DevPlatform.SystemConfig.IntegrationCatalog.Commands.UnlinkIntegrationModule;
-public sealed record UnlinkIntegrationModuleCommand(string IntegrationKey, string ModuleKey) : IRequest<Result>;
+public sealed record UnlinkIntegrationModuleCommand(string IntegrationKey, string ModuleKey) : IRequest<Result>, IAuditedCommand<Result>
+{
+    public AuditEntry DescribeAudit(Result? response)
+        => new("integration.module_unlinked", "integration", IntegrationKey, null, new { ModuleKey });
+}
 public sealed class UnlinkIntegrationModuleCommandHandler : IRequestHandler<UnlinkIntegrationModuleCommand, Result>
 {
     private readonly IIntegrationCatalogRepository _repo;

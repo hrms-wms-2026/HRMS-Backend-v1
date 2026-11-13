@@ -3,6 +3,9 @@
 USE [$(DB_NAME)];
 GRANT SELECT, INSERT, UPDATE, DELETE ON SCHEMA::dbo TO crownus_app;
 GRANT EXECUTE ON auth_internal.auth_lookup_base_login_candidates TO crownus_app;
+-- platform_audit_logs is append-only (security finding F-07): the app may insert and read audit rows,
+-- never change or remove them. DENY overrides the schema-wide GRANT above.
+DENY UPDATE, DELETE ON dbo.platform_audit_logs TO crownus_app;
 GRANT SELECT (tenant_id, id, normalized_email, is_active, is_deleted, password_hash)
     ON dbo.users TO crownus_auth_base_login_fn_owner;
 GRANT SELECT (id, slug, name, status) ON dbo.tenants TO crownus_auth_base_login_fn_owner;

@@ -5,6 +5,7 @@ using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformServiceKeys.DT
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformServiceKeys.Mappers;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformServiceKeys.RepositoryInterfaces;
 using ONEVO.Domain.Features.DevPlatform.SystemConfig.PlatformProviders.Entities;
+using ONEVO.Application.Common.Auditing;
 
 namespace ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformServiceKeys.Commands.SetPlatformServiceKeyActivation;
 
@@ -15,7 +16,11 @@ namespace ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformServiceKey
 public sealed record SetPlatformServiceKeyActivationCommand(
     string ServiceKey,
     bool IsActive,
-    Guid ActorPlatformUserId) : IRequest<Result<PlatformServiceKeyDto>>;
+    Guid ActorPlatformUserId) : IRequest<Result<PlatformServiceKeyDto>>, IAuditedCommand<Result<PlatformServiceKeyDto>>
+{
+    public AuditEntry DescribeAudit(Result<PlatformServiceKeyDto>? response)
+        => new(IsActive ? "service_key.activated" : "service_key.deactivated", "service_key", ServiceKey);
+}
 
 public sealed class SetPlatformServiceKeyActivationCommandHandler
     : IRequestHandler<SetPlatformServiceKeyActivationCommand, Result<PlatformServiceKeyDto>>

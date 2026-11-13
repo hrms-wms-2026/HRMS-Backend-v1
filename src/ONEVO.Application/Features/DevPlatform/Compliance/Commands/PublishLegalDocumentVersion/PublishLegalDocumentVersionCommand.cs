@@ -5,6 +5,7 @@ using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.DevPlatform.Compliance.DTOs.Responses;
 using ONEVO.Application.Features.DevPlatform.Compliance.Mappers;
 using ONEVO.Application.Features.DevPlatform.Compliance.RepositoryInterfaces;
+using ONEVO.Application.Common.Auditing;
 
 namespace ONEVO.Application.Features.DevPlatform.Compliance.Commands.PublishLegalDocumentVersion;
 
@@ -19,7 +20,11 @@ namespace ONEVO.Application.Features.DevPlatform.Compliance.Commands.PublishLega
 public sealed record PublishLegalDocumentVersionCommand(
     Guid Id,
     string? PublishReason,
-    Guid ActorPlatformUserId) : IRequest<Result<LegalDocumentVersionDetailDto>>;
+    Guid ActorPlatformUserId) : IRequest<Result<LegalDocumentVersionDetailDto>>, IAuditedCommand<Result<LegalDocumentVersionDetailDto>>
+{
+    public AuditEntry DescribeAudit(Result<LegalDocumentVersionDetailDto>? response)
+        => AuditEntry.For("legal_document_version.published", "legal_document_version", Id, null, new { PublishReason });
+}
 
 public sealed class PublishLegalDocumentVersionCommandHandler
     : IRequestHandler<PublishLegalDocumentVersionCommand, Result<LegalDocumentVersionDetailDto>>

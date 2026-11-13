@@ -3,6 +3,7 @@ using ONEVO.Application.Common.Models;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PaymentGateway.DTOs;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PaymentGateway.RepositoryInterfaces;
 using ONEVO.Domain.Features.SharedPlatform.PaymentGateway.Entities;
+using ONEVO.Application.Common.Auditing;
 
 namespace ONEVO.Application.Features.DevPlatform.SystemConfig.PaymentGateway.Commands.UpdatePaymentGatewayMetadata;
 
@@ -20,7 +21,11 @@ public sealed record UpdatePaymentGatewayMetadataCommand(
     bool? IsActive,
     IReadOnlyList<string>? CountryCodes,
     IReadOnlyList<string?>? CountryNameSnapshots,
-    Guid ActorPlatformUserId) : IRequest<Result<PaymentGatewayConfigDto>>;
+    Guid ActorPlatformUserId) : IRequest<Result<PaymentGatewayConfigDto>>, IAuditedCommand<Result<PaymentGatewayConfigDto>>
+{
+    public AuditEntry DescribeAudit(Result<PaymentGatewayConfigDto>? response)
+        => AuditEntry.For("payment_gateway.updated", "payment_gateway", GatewayConfigId, null, new { DisplayName, LogoUrl, MerchantId, WebhookUrl, IsActive, CountryCodes, PublicKeyChanged = PublicKey != null });
+}
 
 public sealed class UpdatePaymentGatewayMetadataCommandHandler
     : IRequestHandler<UpdatePaymentGatewayMetadataCommand, Result<PaymentGatewayConfigDto>>

@@ -3,11 +3,16 @@ using ONEVO.Application.Common.Models;
 using ONEVO.Application.Features.SharedPlatform.TenantIntegrations.DTOs.Responses;
 using ONEVO.Application.Features.SharedPlatform.TenantIntegrations.Mappers;
 using ONEVO.Application.Features.SharedPlatform.TenantIntegrations.RepositoryInterfaces;
+using ONEVO.Application.Common.Auditing;
 
 namespace ONEVO.Application.Features.SharedPlatform.TenantIntegrations.Commands.DisconnectTenantIntegrationCredential;
 
 public sealed record DisconnectTenantIntegrationCredentialCommand(Guid Id)
-    : IRequest<Result<TenantIntegrationCredentialDto>>;
+    : IRequest<Result<TenantIntegrationCredentialDto>>, IAuditedCommand<Result<TenantIntegrationCredentialDto>>
+{
+    public AuditEntry DescribeAudit(Result<TenantIntegrationCredentialDto>? response)
+        => AuditEntry.For("tenant_integration.disconnected", "tenant_integration_credential", Id, response?.Value?.TenantId, new { IntegrationKey = response?.Value?.IntegrationKey });
+}
 
 public sealed class DisconnectTenantIntegrationCredentialCommandHandler
     : IRequestHandler<DisconnectTenantIntegrationCredentialCommand, Result<TenantIntegrationCredentialDto>>

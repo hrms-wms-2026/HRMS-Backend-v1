@@ -1,10 +1,15 @@
 using MediatR;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Features.SharedPlatform.Notifications.Management.DTOs;
+using ONEVO.Application.Common.Auditing;
 
 namespace ONEVO.Application.Features.SharedPlatform.Notifications.Management.Commands.SaveNotificationTemplateDraft;
 
 /// <summary>Saves the template's draft, creating one when none exists. <see cref="ExpectedRevision"/> must
 /// match the draft being edited; drafts never affect live sends.</summary>
 public sealed record SaveNotificationTemplateDraftCommand(Guid TemplateId, NotificationTemplateContentRequest Content, int? ExpectedRevision)
-    : IRequest<Result<NotificationTemplateDetailResponse>>;
+    : IRequest<Result<NotificationTemplateDetailResponse>>, IAuditedCommand<Result<NotificationTemplateDetailResponse>>
+{
+    public AuditEntry DescribeAudit(Result<NotificationTemplateDetailResponse>? response)
+        => AuditEntry.For("notification_template.draft_saved", "notification_template", TemplateId, null, new { ExpectedRevision, InAppTitle = Content?.InAppTitle, EmailSubject = Content?.EmailSubject });
+}
