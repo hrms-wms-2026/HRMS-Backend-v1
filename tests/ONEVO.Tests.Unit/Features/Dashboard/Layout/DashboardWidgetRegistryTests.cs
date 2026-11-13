@@ -33,10 +33,10 @@ public sealed class DashboardWidgetRegistryTests
         var placed = DashboardWidgetRegistry.DefaultLayout(DashboardKeys.MyTeam, Breakpoints.Desktop)
             .Single(p => p.Key == "team-schedule");
 
-        Assert.Equal(("Today's team schedule", DashboardKeys.MyTeam, true), (def.Title, def.DashboardKey, def.HasProvider));
+        Assert.Equal(("My team schedule today", DashboardKeys.MyTeam, true), (def.Title, def.DashboardKey, def.HasProvider));
         Assert.Equal((2, 2, 12, 8), (def.MinW, def.MinH, def.MaxW, def.MaxH));
         Assert.Equal(new GridRect(0, 18, 8, 6), placed.Rect); // below team-plan-today (0, 12) since the 2026-11-04 merge
-        Assert.Equal("Working / Break / Leave", DashboardWidgetRegistry.Get("team-status")!.Title);
+        Assert.Equal("My team working / break / leave", DashboardWidgetRegistry.Get("team-status")!.Title);
     }
 
     [Fact]

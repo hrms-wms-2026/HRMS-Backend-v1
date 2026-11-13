@@ -91,7 +91,7 @@ public sealed partial class DapiHistorySeeder
                 .ToListAsync(ct);
             var doneIds = new HashSet<Guid> { statuses[Done] };
             GiveTasksALifecycle(ctx, tasks, doneIds);
-            PlaceInSprints(ctx, tasks, sprints, doneIds);
+            PlaceInSprints(tasks, sprints, doneIds);
             await db.SaveChangesAsync(ct);
 
             var assignees = await AssigneesAsync(db, tasks.Select(t => t.Id).ToList(), ct);
@@ -273,7 +273,7 @@ public sealed partial class DapiHistorySeeder
 
     /// <summary>Finished tasks sit in the sprint they were finished in; open ones were carried into the active sprint,
     /// apart from a few fresh to-dos left in the backlog or planned for the next sprint.</summary>
-    private static void PlaceInSprints(SeedContext ctx, List<WorkTask> tasks, List<SprintSlot> sprints, HashSet<Guid> doneIds)
+    private static void PlaceInSprints(List<WorkTask> tasks, List<SprintSlot> sprints, HashSet<Guid> doneIds)
     {
         if (sprints.Count == 0)
             return;
