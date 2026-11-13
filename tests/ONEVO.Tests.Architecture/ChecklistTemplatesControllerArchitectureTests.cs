@@ -68,10 +68,10 @@ public class ChecklistTemplatesControllerArchitectureTests
         Assert.Equal("matches", matchesMethod!.GetCustomAttribute<HttpGetAttribute>()!.Template);
     }
 
-    /// <summary>Choosing and assigning a checklist is open to whoever manages the employee, so reading
-    /// templates carries no permission code - the class-level TenantPolicy still requires sign-in.</summary>
+    /// <summary>Templates (and their attachments) are readable only by the screens that pick or build
+    /// checklists: Add Employee, offboarding and the template builder - not by every signed-in user.</summary>
     [Fact]
-    public void ReadActions_RequireNoPermissionCode()
+    public void ReadActions_RequireAChecklistWorkflowPermission()
     {
         var readActions = new[]
         {
@@ -82,8 +82,10 @@ public class ChecklistTemplatesControllerArchitectureTests
         };
         foreach (var method in readActions)
         {
-            Assert.Null(method.GetCustomAttribute<RequirePermissionAttribute>());
             Assert.Null(method.GetCustomAttribute<AllowAnonymousAttribute>());
+            var permission = method.GetCustomAttribute<RequireAnyPermissionAttribute>();
+            Assert.NotNull(permission);
+            Assert.Equal(new[] { "employees:write", "employees:offboard", "checklists:manage" }, permission!.Permissions);
         }
     }
 

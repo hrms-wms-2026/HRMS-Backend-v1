@@ -25,10 +25,12 @@ public class ChecklistTemplatesController : ControllerBase
     }
 
     /// <summary>List checklist templates for a company, optionally filtered by templateType,
-    /// department, position, and inactive-inclusion. Reading templates needs no permission code:
-    /// choosing and assigning a checklist is open to anyone who manages the employee; only
-    /// creating, editing and archiving templates needs checklists:manage.</summary>
+    /// department, position, and inactive-inclusion. Readable by the screens that pick or build
+    /// checklists: Add Employee (employees:write), offboarding (employees:offboard) and the
+    /// template builder (checklists:manage). Templates can carry attachments, so reads are not
+    /// open to every signed-in user.</summary>
     [HttpGet]
+    [RequireAnyPermission("employees:write", "employees:offboard", "checklists:manage")]
     public async Task<IActionResult> List(
         [FromQuery] string? templateType, [FromQuery] Guid legalEntityId, [FromQuery] Guid? departmentId, [FromQuery] Guid? positionId,
         [FromQuery] bool includeInactive = false, [FromQuery] int page = 1, [FromQuery] int pageSize = 25, CancellationToken ct = default)
@@ -39,6 +41,7 @@ public class ChecklistTemplatesController : ControllerBase
     }
 
     [HttpGet("{id:guid}")]
+    [RequireAnyPermission("employees:write", "employees:offboard", "checklists:manage")]
     public async Task<IActionResult> GetById(Guid id, CancellationToken ct = default)
     {
         var result = await _mediator.Send(new GetChecklistTemplateByIdQuery(id), ct);
@@ -47,6 +50,7 @@ public class ChecklistTemplatesController : ControllerBase
 
     /// <summary>Downloads an attachment saved on one of this template's tasks.</summary>
     [HttpGet("{id:guid}/files/{fileId:guid}")]
+    [RequireAnyPermission("employees:write", "employees:offboard", "checklists:manage")]
     public async Task<IActionResult> GetFile(Guid id, Guid fileId, CancellationToken ct = default)
     {
         var result = await _mediator.Send(new GetChecklistTemplateFileQuery(id, fileId), ct);
