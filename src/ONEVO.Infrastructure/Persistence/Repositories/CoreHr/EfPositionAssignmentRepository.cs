@@ -7,7 +7,6 @@ using ONEVO.Application.Features.CoreHr.EmployeeHierarchyClosure.RepositoryInter
 using ONEVO.Application.Features.CoreHr.PositionAssignment.Models;
 using ONEVO.Application.Features.CoreHr.PositionAssignment.RepositoryInterfaces;
 using ONEVO.Domain.Features.CoreHr.Entities;
-using ONEVO.Domain.Features.OrgStructure.Entities;
 using ONEVO.Domain.Lookups;
 
 namespace ONEVO.Infrastructure.Persistence.Repositories.CoreHr;
