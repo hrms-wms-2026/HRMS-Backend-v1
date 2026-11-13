@@ -4,7 +4,6 @@ using ONEVO.Application.Features.Leave.Entitlement.Helpers;
 using ONEVO.Application.Features.Leave.Entitlement.Mappers;
 using ONEVO.Application.Features.Leave.Entitlement.RepositoryInterfaces;
 using ONEVO.Application.Features.Leave.Policy.Services;
-using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.Leave.BalanceAudit.Entities;
 using ONEVO.Domain.Features.Leave.Common;
 using ONEVO.Domain.Features.Leave.Entitlement.Entities;

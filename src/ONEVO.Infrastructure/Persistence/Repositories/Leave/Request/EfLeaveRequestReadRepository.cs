@@ -2,7 +2,6 @@ using ONEVO.Application.Features.Leave.Request.RepositoryInterfaces;
 using Microsoft.EntityFrameworkCore;
 using ONEVO.Domain.Features.Leave.Common;
 using ONEVO.Domain.Features.Leave.Request.Entities;
-using ONEVO.Infrastructure.Persistence;
 
 namespace ONEVO.Infrastructure.Persistence.Repositories.Leave.Request;
 
