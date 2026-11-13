@@ -68,21 +68,32 @@ public class ChecklistTemplatesControllerArchitectureTests
         Assert.Equal("matches", matchesMethod!.GetCustomAttribute<HttpGetAttribute>()!.Template);
     }
 
+    /// <summary>Choosing and assigning a checklist is open to whoever manages the employee, so reading
+    /// templates carries no permission code - the class-level TenantPolicy still requires sign-in.</summary>
     [Fact]
-    public void ReadActions_RequireEmployeesWritePermission()
+    public void ReadActions_RequireNoPermissionCode()
     {
-        Assert.Equal("employees:write", GetPermission(TemplatesControllerType.GetMethod(nameof(ChecklistTemplatesController.List))!));
-        Assert.Equal("employees:write", GetPermission(TemplatesControllerType.GetMethod(nameof(ChecklistTemplatesController.GetById))!));
-        Assert.Equal("employees:write", GetPermission(MatchesControllerType.GetMethod(nameof(OnboardingChecklistTemplatesController.Matches))!));
+        var readActions = new[]
+        {
+            TemplatesControllerType.GetMethod(nameof(ChecklistTemplatesController.List))!,
+            TemplatesControllerType.GetMethod(nameof(ChecklistTemplatesController.GetById))!,
+            TemplatesControllerType.GetMethod(nameof(ChecklistTemplatesController.GetFile))!,
+            MatchesControllerType.GetMethod(nameof(OnboardingChecklistTemplatesController.Matches))!,
+        };
+        foreach (var method in readActions)
+        {
+            Assert.Null(method.GetCustomAttribute<RequirePermissionAttribute>());
+            Assert.Null(method.GetCustomAttribute<AllowAnonymousAttribute>());
+        }
     }
 
     [Theory]
     [InlineData(nameof(ChecklistTemplatesController.Create))]
     [InlineData(nameof(ChecklistTemplatesController.Update))]
     [InlineData(nameof(ChecklistTemplatesController.Archive))]
-    public void MutatingActions_RequireEmployeesWritePermission(string methodName)
+    public void MutatingActions_RequireChecklistsManagePermission(string methodName)
     {
-        Assert.Equal("employees:write", GetPermission(TemplatesControllerType.GetMethod(methodName)!));
+        Assert.Equal("checklists:manage", GetPermission(TemplatesControllerType.GetMethod(methodName)!));
     }
 
     [Fact]

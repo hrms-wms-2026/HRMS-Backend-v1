@@ -30,28 +30,20 @@ public sealed class PeopleChecklistAssigneesControllerArchitectureTests
         Assert.Equal("api/v1/people", ControllerType.GetCustomAttribute<RouteAttribute>()?.Template);
     }
 
-    [Fact]
-    public void List_RequiresEmployeesWrite_AndUsesChecklistAssigneesRoute()
+    /// <summary>The pickers list people by name, so they stay limited to the two screens that use
+    /// them: Add Employee (employees:write) and the checklist template builder (checklists:manage).</summary>
+    [Theory]
+    [InlineData(nameof(PeopleChecklistAssigneesController.List), "checklist-assignees")]
+    [InlineData(nameof(PeopleChecklistAssigneesController.ListPositions), "checklist-assignee-positions")]
+    public void Pickers_RequireEmployeesWriteOrChecklistsManage(string methodName, string route)
     {
-        var method = ControllerType.GetMethod(nameof(PeopleChecklistAssigneesController.List));
-        Assert.Equal("checklist-assignees", method!.GetCustomAttribute<HttpGetAttribute>()!.Template);
+        var method = ControllerType.GetMethod(methodName);
+        Assert.Equal(route, method!.GetCustomAttribute<HttpGetAttribute>()!.Template);
 
-        var permission = method.GetCustomAttribute<RequirePermissionAttribute>();
+        Assert.Null(method.GetCustomAttribute<RequirePermissionAttribute>());
+        var permission = method.GetCustomAttribute<RequireAnyPermissionAttribute>();
         Assert.NotNull(permission);
-        var field = typeof(RequirePermissionAttribute).GetField("_permission", BindingFlags.Instance | BindingFlags.NonPublic);
-        Assert.Equal("employees:write", field!.GetValue(permission));
-    }
-
-    [Fact]
-    public void ListPositions_RequiresEmployeesWrite_AndUsesChecklistAssigneePositionsRoute()
-    {
-        var method = ControllerType.GetMethod(nameof(PeopleChecklistAssigneesController.ListPositions));
-        Assert.Equal("checklist-assignee-positions", method!.GetCustomAttribute<HttpGetAttribute>()!.Template);
-
-        var permission = method.GetCustomAttribute<RequirePermissionAttribute>();
-        Assert.NotNull(permission);
-        var field = typeof(RequirePermissionAttribute).GetField("_permission", BindingFlags.Instance | BindingFlags.NonPublic);
-        Assert.Equal("employees:write", field!.GetValue(permission));
+        Assert.Equal(new[] { "employees:write", "checklists:manage" }, permission!.Permissions);
     }
 
     [Fact]

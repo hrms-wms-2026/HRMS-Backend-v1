@@ -122,6 +122,7 @@ public class PermissionSeeder : IHostedService
         Perm("employees:offboard", "Start, cancel, or complete an employee's offboarding.", "core_hr"),
         Perm("employees:read:sensitive", "View sensitive employee data (bank details) on the employee detail screen.", "core_hr"),
         Perm("employees:delete", "Delete employee records.", "core_hr"),
+        Perm("checklists:manage", "Create, edit, and archive onboarding and offboarding checklist templates.", "core_hr"),
 
         // Organization
         Perm("org:read", "View org structure, departments, hierarchy.", "org_structure"),

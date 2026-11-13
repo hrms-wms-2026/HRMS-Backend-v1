@@ -1,7 +1,6 @@
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using ONEVO.Api.Filters;
 using ONEVO.Application.Features.CoreHr.Onboarding.Queries.GetOnboardingChecklistTemplateMatches;
 
 namespace ONEVO.Api.Controllers.Tenant.CoreHr;
@@ -19,9 +18,9 @@ public class OnboardingChecklistTemplatesController : ControllerBase
     }
 
     /// <summary>Active onboarding-only checklist template matches for the Add Employee wizard,
-    /// ordered position match, then department match, then company/default.</summary>
+    /// ordered position match, then department match, then company/default. Reading templates
+    /// needs no permission code (see ChecklistTemplatesController.List).</summary>
     [HttpGet("matches")]
-    [RequirePermission("employees:write")]
     public async Task<IActionResult> Matches(
         [FromQuery] Guid legalEntityId, [FromQuery] Guid? departmentId, [FromQuery] Guid? positionId, CancellationToken ct = default)
     {

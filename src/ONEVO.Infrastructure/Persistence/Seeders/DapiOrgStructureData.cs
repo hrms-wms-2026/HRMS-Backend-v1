@@ -110,7 +110,7 @@ public static class DapiOrgStructureData
 
     public static readonly IReadOnlyList<string> HrManagerPermissionCodes =
     [
-        "org:read", "org:manage", "employees:write",
+        "org:read", "org:manage", "employees:write", "checklists:manage",
         "roles:read", "calendar:read", "leave:read", "leave:manage", "leave:approve"
     ];
 
