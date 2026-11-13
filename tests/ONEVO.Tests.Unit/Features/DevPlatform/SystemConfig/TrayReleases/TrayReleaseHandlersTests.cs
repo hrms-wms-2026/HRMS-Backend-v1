@@ -15,14 +15,14 @@ public sealed class TrayReleaseHandlersTests
         Version: version, Channel: "beta",
         DownloadUrl: "https://dl.example.com/onevo.msix",
         Sha256: new string('a', 64), FileSizeBytes: 100,
-        Publisher: "CN=ONEVO", MinimumWindowsVersion: "10.0.19041.0",
+        Publisher: "CN=Crownus", MinimumWindowsVersion: "10.0.19041.0",
         MinSupportedVersion: null, ReleaseNotes: "notes", IsActive: false);
 
     private static TrayAppRelease Row(string version, string? min = null, bool active = true) => new()
     {
         Id = Guid.NewGuid(), Version = version, Channel = "stable",
         DownloadUrl = "https://dl.example.com/x.msix", Sha256 = new string('b', 64),
-        FileSizeBytes = 5, Publisher = "CN=ONEVO", MinimumWindowsVersion = "10.0.19041.0",
+        FileSizeBytes = 5, Publisher = "CN=Crownus", MinimumWindowsVersion = "10.0.19041.0",
         MinSupportedVersion = min, IsActive = active, Source = "admin"
     };
 

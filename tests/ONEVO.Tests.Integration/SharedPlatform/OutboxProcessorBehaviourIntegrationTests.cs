@@ -15,7 +15,7 @@ namespace ONEVO.Tests.Integration.SharedPlatform;
 /// <summary>
 /// The claim-based processor keeps the outbox's existing behaviour: retry with backoff and park
 /// after MaxAttempts, persist what handlers stage on the shared DbContext (under the message's
-/// tenant, through RLS, as onevo_app), and process rows written before the claim columns existed.
+/// tenant, through RLS, as crownus_app), and process rows written before the claim columns existed.
 /// It adds a handler time budget inside the lease and hands claims back on shutdown.
 /// Requires Docker.
 /// </summary>

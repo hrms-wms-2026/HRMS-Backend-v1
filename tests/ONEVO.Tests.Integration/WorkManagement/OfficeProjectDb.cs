@@ -22,7 +22,7 @@ using ONEVO.Tests.Integration.Support;
 namespace ONEVO.Tests.Integration.WorkManagement;
 
 /// <summary>One cloned database per test. Seeds through a superuser context (RLS bypassed) and
-/// runs the code under test as onevo_app (NOBYPASSRLS), so RLS defects surface.</summary>
+/// runs the code under test as crownus_app (NOBYPASSRLS), so RLS defects surface.</summary>
 public sealed class OfficeProjectDb : IAsyncDisposable
 {
     private readonly SystemDateTimeProvider _clock = new();
@@ -92,7 +92,7 @@ public sealed class OfficeProjectDb : IAsyncDisposable
             new TenantContextAccessor());
     }
 
-    /// <summary>Production-like wiring under onevo_app: scoped tenant context, RLS interceptor,
+    /// <summary>Production-like wiring under crownus_app: scoped tenant context, RLS interceptor,
     /// tenant switcher, the real provisioner and reconciler.</summary>
     public IServiceScopeFactory BuildAppScopeFactory(Action<IServiceCollection>? configure = null) =>
         BuildAppServices(configure).GetRequiredService<IServiceScopeFactory>();

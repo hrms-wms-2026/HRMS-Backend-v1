@@ -73,7 +73,7 @@ These were rewritten, not retired: `RestrictedRole_CannotSelectUsersTableDirectl
 
 ## What the server owner must decide or do
 
-- Where Crownus's database lives. It must not use the `MSSQLSERVER01` instance on `vm-tic-incubato`, which is treated as Oneverz's. Nothing here connected to that server.
+- Where Crownus's database lives. **Decided 2026-11-10:** database `CrownusDB_test` inside the existing `MSSQLSERVER01` instance on `vm-tic-incubato` (SQL Server 2025, Standard Developer Edition, licensed for dev/test only). Oneverz's own databases, instance-wide settings and instance restarts stay off limits. When this report was written, nothing here had connected to that server.
 - The SQL Server version and collation on the target. The database needs `Latin1_General_100_CS_AS_SC`; the test image is 2022 CU27-GDR (16.0.4305.5). Pin the CI image once this is known.
 - Whether to enable trace flag 11042. It is instance-wide, so it is the owner's call. `MAXDOP = 1` covers the same issue at database level.
 - Run `bootstrap-logins.sql`, migrations as `onevo_migrator`, then `post-migration-grants.sql`, as `ops/sqlserver/README.md` describes.

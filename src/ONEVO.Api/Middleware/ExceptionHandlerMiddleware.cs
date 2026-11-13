@@ -82,7 +82,7 @@ public class ExceptionHandlerMiddleware
 
         var problemDetails = new
         {
-            type = $"https://onevo.com/errors/{title.ToLowerInvariant().Replace(" ", "-")}",
+            type = ONEVO.Api.Errors.ProblemTypes.For(title.ToLowerInvariant().Replace(" ", "-")),
             title,
             status = statusCode,
             detail,

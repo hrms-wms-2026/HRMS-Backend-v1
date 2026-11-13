@@ -138,7 +138,7 @@ public sealed class MeetingProvisionerTests
     [Fact]
     public async Task ZoomCreate_CarriesTheGenerationsToken()
     {
-        _zoom.Setup(z => z.CreateMeetingAsync("t1", "Review", Start, Start.AddHours(1), $"onexso:{EventId}:3", It.IsAny<CancellationToken>()))
+        _zoom.Setup(z => z.CreateMeetingAsync("t1", "Review", Start, Start.AddHours(1), $"crownus:{EventId}:3", It.IsAny<CancellationToken>()))
             .ReturnsAsync(Zoom);
 
         var outcome = await BuildSut().ProvisionAsync(Request(CalendarEventMeetingProviders.Zoom, generation: 3), CancellationToken.None);
@@ -149,7 +149,7 @@ public sealed class MeetingProvisionerTests
     [Fact]
     public async Task ZoomRecovery_TokenMatch_AdoptsWithoutCreating()
     {
-        _zoom.Setup(z => z.FindMeetingByCorrelationTokenAsync("t1", $"onexso:{EventId}:1", Start, It.IsAny<CancellationToken>())).ReturnsAsync(Zoom);
+        _zoom.Setup(z => z.FindMeetingByCorrelationTokenAsync("t1", $"crownus:{EventId}:1", Start, It.IsAny<CancellationToken>())).ReturnsAsync(Zoom);
 
         var outcome = await BuildSut().ProvisionAsync(Request(CalendarEventMeetingProviders.Zoom, recovery: true), CancellationToken.None);
 
@@ -161,8 +161,8 @@ public sealed class MeetingProvisionerTests
     [Fact]
     public async Task ZoomRecovery_NoMatch_CreatesWithTheSameToken()
     {
-        _zoom.Setup(z => z.FindMeetingByCorrelationTokenAsync("t1", $"onexso:{EventId}:1", Start, It.IsAny<CancellationToken>())).ReturnsAsync((ZoomMeetingDto?)null);
-        _zoom.Setup(z => z.CreateMeetingAsync("t1", "Review", Start, Start.AddHours(1), $"onexso:{EventId}:1", It.IsAny<CancellationToken>())).ReturnsAsync(Zoom);
+        _zoom.Setup(z => z.FindMeetingByCorrelationTokenAsync("t1", $"crownus:{EventId}:1", Start, It.IsAny<CancellationToken>())).ReturnsAsync((ZoomMeetingDto?)null);
+        _zoom.Setup(z => z.CreateMeetingAsync("t1", "Review", Start, Start.AddHours(1), $"crownus:{EventId}:1", It.IsAny<CancellationToken>())).ReturnsAsync(Zoom);
 
         var outcome = await BuildSut().ProvisionAsync(Request(CalendarEventMeetingProviders.Zoom, recovery: true), CancellationToken.None);
 

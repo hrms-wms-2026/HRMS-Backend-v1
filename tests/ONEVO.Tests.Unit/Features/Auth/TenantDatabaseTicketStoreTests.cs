@@ -352,7 +352,7 @@ public class TenantDatabaseTicketStoreTests
         var mockSp = Substitute.For<IServiceProvider>();
         mockSp.GetService(typeof(Microsoft.AspNetCore.Hosting.IWebHostEnvironment)).Returns(env);
         httpContext.RequestServices = mockSp;
-        httpContext.Request.Headers["Cookie"] = "onevo_csrf=existing_csrf_val";
+        httpContext.Request.Headers["Cookie"] = "crownus_csrf=existing_csrf_val";
 
         var sut = CreateSut();
         var properties = new AuthenticationProperties();
@@ -367,7 +367,7 @@ public class TenantDatabaseTicketStoreTests
             Arg.Is<TenantRegistryEntry>(t => t.TenantId == tenantId), Arg.Any<CancellationToken>());
 
         var setCookieHeader = httpContext.Response.Headers["Set-Cookie"].ToString();
-        Assert.Contains("onevo_csrf=existing_csrf_val", setCookieHeader);
+        Assert.Contains("crownus_csrf=existing_csrf_val", setCookieHeader);
         Assert.Contains("expires=", setCookieHeader, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("path=/", setCookieHeader, StringComparison.OrdinalIgnoreCase);
     }

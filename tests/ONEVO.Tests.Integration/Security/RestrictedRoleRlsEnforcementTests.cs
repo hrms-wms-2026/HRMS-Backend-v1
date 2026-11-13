@@ -32,7 +32,7 @@ namespace ONEVO.Tests.Integration.Security;
 /// </summary>
 public sealed class RestrictedRoleRlsEnforcementTestsFixture : IAsyncLifetime
 {
-    private const string RestrictedRoleName = "onevo_app";
+    private const string RestrictedRoleName = "crownus_app";
     private const string RestrictedRolePassword = PrivilegedRoleTestBootstrap.AppRolePassword;
 
     private readonly SystemDateTimeProvider _clock = new();

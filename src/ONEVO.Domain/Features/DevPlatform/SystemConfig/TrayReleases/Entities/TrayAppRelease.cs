@@ -22,7 +22,7 @@ public class TrayAppRelease
 
     public long FileSizeBytes { get; set; }
 
-    /// <summary>Certificate subject shown to the user, e.g. "CN=ONEVO".</summary>
+    /// <summary>Certificate subject shown to the user, e.g. "CN=Crownus".</summary>
     public string Publisher { get; set; } = string.Empty;
 
     /// <summary>e.g. "10.0.19041.0".</summary>

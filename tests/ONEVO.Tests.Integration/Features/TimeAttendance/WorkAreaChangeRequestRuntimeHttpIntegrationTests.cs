@@ -108,7 +108,7 @@ public sealed class WorkAreaChangeRequestRuntimeHttpIntegrationTestsFixture : IA
 
     public async Task InitializeAsync()
     {
-        _connectionString = Environment.GetEnvironmentVariable("ONEVO_TEST_DB") ?? string.Empty;
+        _connectionString = Environment.GetEnvironmentVariable("CROWNUS_TEST_DB") ?? string.Empty;
         if (string.IsNullOrWhiteSpace(_connectionString))
         {
             // Cloned from the shared, already-migrated template - see SharedSqlServerTemplate.
@@ -415,8 +415,8 @@ public sealed class WorkAreaChangeRequestRuntimeHttpIntegrationTestsFixture : IA
         exchangeResponse.StatusCode.Should().Be(HttpStatusCode.OK, exchangeJson.ToString());
         var cookies = ParseSetCookies(exchangeResponse);
 
-        var sessionCookie = $"onevo_session={cookies["onevo_session"]}; onevo_csrf={cookies["onevo_csrf"]}";
-        var csrfHeader = Uri.UnescapeDataString(cookies["onevo_csrf"]);
+        var sessionCookie = $"crownus_session={cookies["crownus_session"]}; crownus_csrf={cookies["crownus_csrf"]}";
+        var csrfHeader = Uri.UnescapeDataString(cookies["crownus_csrf"]);
         return new TenantSession(host, sessionCookie, csrfHeader);
     }
 

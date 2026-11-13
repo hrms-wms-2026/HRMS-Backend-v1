@@ -13,8 +13,8 @@ public sealed class DatabaseConnectionStartupValidatorTests
     {
         var values = ValidConnectionValues();
         values[$"ConnectionStrings:{connectionName}"] = connectionName == "DefaultConnection"
-            ? "Server=localhost;Database=OnevoDb;User ID=onevo_app;Password=SET_VIA_ENV"
-            : "Server=localhost;Database=OnevoDb;User ID=onevo_migrator;Password=SET_VIA_ENV";
+            ? "Server=localhost;Database=CrownusDb;User ID=crownus_app;Password=SET_VIA_ENV"
+            : "Server=localhost;Database=CrownusDb;User ID=crownus_migrator;Password=SET_VIA_ENV";
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(values).Build();
 
         var exception = Assert.Throws<InvalidOperationException>(() =>
@@ -48,11 +48,11 @@ public sealed class DatabaseConnectionStartupValidatorTests
     }
 
     [Theory]
-    [InlineData("Server=localhost;Database=OnevoDb;User ID=onevo_app;Password=<local-app-password>")]
-    [InlineData("Server=localhost;Database=OnevoDb;User ID=onevo_app;Password=")]
-    [InlineData("Server=localhost;Database=OnevoDb;Password=unit-test-value")]
-    [InlineData("Server=localhost;Database=OnevoDb;User ID=sa;Password=unit-test-value")]
-    [InlineData("Server=localhost;Database=OnevoDb;User ID=onevo_migrator;Password=unit-test-value")]
+    [InlineData("Server=localhost;Database=CrownusDb;User ID=crownus_app;Password=<local-app-password>")]
+    [InlineData("Server=localhost;Database=CrownusDb;User ID=crownus_app;Password=")]
+    [InlineData("Server=localhost;Database=CrownusDb;Password=unit-test-value")]
+    [InlineData("Server=localhost;Database=CrownusDb;User ID=sa;Password=unit-test-value")]
+    [InlineData("Server=localhost;Database=CrownusDb;User ID=crownus_migrator;Password=unit-test-value")]
     public void Validate_RejectsUnsafeRuntimeConnection(string runtimeConnection)
     {
         var values = ValidConnectionValues();
@@ -68,7 +68,7 @@ public sealed class DatabaseConnectionStartupValidatorTests
     {
         var values = ValidConnectionValues();
         values["ConnectionStrings:MigrationConnection"] =
-            "Server=localhost;Database=OnevoDb;User ID=onevo_app;Password=unit-test-migration";
+            "Server=localhost;Database=CrownusDb;User ID=crownus_app;Password=unit-test-migration";
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(values).Build();
 
         Assert.Throws<InvalidOperationException>(() =>
@@ -80,7 +80,7 @@ public sealed class DatabaseConnectionStartupValidatorTests
     {
         var values = ValidConnectionValues();
         values["ConnectionStrings:MigrationConnection"] =
-            "Server=localhost;Database=OnevoDb;User ID=sa;Password=unit-test-migration";
+            "Server=localhost;Database=CrownusDb;User ID=sa;Password=unit-test-migration";
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(values).Build();
 
         Assert.Throws<InvalidOperationException>(() =>
@@ -100,7 +100,7 @@ public sealed class DatabaseConnectionStartupValidatorTests
                 "Development",
                 openConnection: (_, _) => throw new TimeoutException("unit-test auth failure")));
 
-        Assert.Contains("onevo_app", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("crownus_app", exception.Message, StringComparison.Ordinal);
         Assert.DoesNotContain("Password=", exception.Message, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -109,7 +109,7 @@ public sealed class DatabaseConnectionStartupValidatorTests
     {
         var values = ValidConnectionValues();
         values["ConnectionStrings:DefaultConnection"] =
-            "Server=localhost;Database=OnevoDb;User ID=sa;Password=unit-test-runtime";
+            "Server=localhost;Database=CrownusDb;User ID=sa;Password=unit-test-runtime";
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(values).Build();
         var openWasCalled = false;
 
@@ -131,7 +131,7 @@ public sealed class DatabaseConnectionStartupValidatorTests
     {
         var values = ValidConnectionValues();
         values["ConnectionStrings:DefaultConnection"] =
-            "Server=localhost;Database=OnevoDb;User ID=sa;Password=unit-test-secret";
+            "Server=localhost;Database=CrownusDb;User ID=sa;Password=unit-test-secret";
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(values).Build();
 
         var exception = Assert.Throws<InvalidOperationException>(() =>
@@ -147,9 +147,9 @@ public sealed class DatabaseConnectionStartupValidatorTests
         return new Dictionary<string, string?>
         {
             ["ConnectionStrings:DefaultConnection"] =
-                "Server=localhost;Database=OnevoDb;User ID=onevo_app;Password=unit-test-runtime",
+                "Server=localhost;Database=CrownusDb;User ID=crownus_app;Password=unit-test-runtime",
             ["ConnectionStrings:MigrationConnection"] =
-                "Server=localhost;Database=OnevoDb;User ID=onevo_migrator;Password=unit-test-migration"
+                "Server=localhost;Database=CrownusDb;User ID=crownus_migrator;Password=unit-test-migration"
         };
     }
 }

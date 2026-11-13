@@ -24,7 +24,7 @@ namespace ONEVO.Infrastructure.Identity.Sessions;
 /// <summary>
 /// ITicketStore backing TenantScheme's AddCookie. Persists only a SHA-256 hash of the random ticket
 /// key (never the raw key) in sessions.key_hash; the raw key is what AddCookie encrypts inside the
-/// onevo_session cookie. Registered as a singleton (CookieAuthenticationOptions requirement), so it
+/// crownus_session cookie. Registered as a singleton (CookieAuthenticationOptions requirement), so it
 /// resolves scoped DB/permission dependencies per call via IServiceScopeFactory instead of holding
 /// them directly.
 /// </summary>
@@ -162,7 +162,7 @@ public sealed class TenantDatabaseTicketStore : ITicketStore
         session.LastActivityAt = now;
         await uow.SaveChangesAsync(cancellationToken);
 
-        ReissueCsrfCookie(httpContext, "onevo_csrf", newExpiry);
+        ReissueCsrfCookie(httpContext, "crownus_csrf", newExpiry);
     }
 
     public async Task<AuthenticationTicket?> RetrieveAsync(

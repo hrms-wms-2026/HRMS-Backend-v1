@@ -98,15 +98,15 @@ public class TenantEnforcementMiddlewareTests
         var sut = Build(_next);
         var ctx = MakeTenantContext(hostTenantId, TenantStatus.Active,
             authenticated: true, jwtTenantId: Guid.NewGuid(), path: "/api/v1/auth/login");
-        ctx.Request.Headers.Cookie = "onevo_session=other-tenant-ticket; onevo_csrf=stale";
+        ctx.Request.Headers.Cookie = "crownus_session=other-tenant-ticket; crownus_csrf=stale";
         AllowAnonymous(ctx);
 
         await sut.InvokeAsync(ctx);
 
         _nextCalled.Should().BeTrue();
         ctx.User.Identity?.IsAuthenticated.Should().BeFalse();
-        ctx.Response.Headers.SetCookie.ToString().Should().Contain("onevo_session=");
-        ctx.Response.Headers.SetCookie.ToString().Should().Contain("onevo_csrf=");
+        ctx.Response.Headers.SetCookie.ToString().Should().Contain("crownus_session=");
+        ctx.Response.Headers.SetCookie.ToString().Should().Contain("crownus_csrf=");
     }
 
     [Fact]
@@ -115,7 +115,7 @@ public class TenantEnforcementMiddlewareTests
         var sut = Build(_next);
         var ctx = MakeTenantContext(Guid.NewGuid(), TenantStatus.Active,
             authenticated: false, path: "/api/v1/resources");
-        ctx.Request.Headers.Cookie = "onevo_session=stale-invalid-ticket";
+        ctx.Request.Headers.Cookie = "crownus_session=stale-invalid-ticket";
         ctx.Response.Body = new MemoryStream();
 
         await sut.InvokeAsync(ctx);
@@ -148,7 +148,7 @@ public class TenantEnforcementMiddlewareTests
 
         ctx.Response.StatusCode.Should().Be(403);
         _nextCalled.Should().BeFalse();
-        ctx.Response.Headers["Set-Cookie"].ToString().Should().Contain("onevo_session");
+        ctx.Response.Headers["Set-Cookie"].ToString().Should().Contain("crownus_session");
     }
 
     [Theory]

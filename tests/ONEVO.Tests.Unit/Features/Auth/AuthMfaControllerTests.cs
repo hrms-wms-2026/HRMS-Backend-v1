@@ -44,16 +44,16 @@ public sealed class AuthMfaControllerTests
                 HttpContext = new DefaultHttpContext()
             }
         };
-        controller.Request.Headers.Cookie = "onevo_mfa=opaque-challenge";
+        controller.Request.Headers.Cookie = "crownus_mfa=opaque-challenge";
 
         await controller.VerifyMfa(new VerifyMfaRequest("123456"), CancellationToken.None);
 
         var setCookie = controller.Response.Headers.SetCookie.ToString();
-        setCookie.Should().Contain("onevo_mfa=");
+        setCookie.Should().Contain("crownus_mfa=");
         setCookie.Should().Contain("path=/api/v1/auth/mfa/verify");
-        setCookie.Should().Contain("onevo_legal_pending=");
+        setCookie.Should().Contain("crownus_legal_pending=");
         setCookie.Should().Contain("path=/api/v1/legal/acceptances/complete-login");
-        setCookie.Should().Contain("onevo_legal_csrf=");
+        setCookie.Should().Contain("crownus_legal_csrf=");
     }
 
     [Fact]
@@ -99,7 +99,7 @@ public sealed class AuthMfaControllerTests
             }
         };
 
-        // No onevo_mfa cookie set — confirm-setup must not require it.
+        // No crownus_mfa cookie set — confirm-setup must not require it.
         var result = await controller.ConfirmMfaSetup(new ConfirmMfaSetupRequest("123456"), CancellationToken.None);
 
         var okResult = result.Should().BeOfType<OkObjectResult>().Subject;

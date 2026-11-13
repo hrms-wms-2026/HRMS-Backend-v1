@@ -56,7 +56,7 @@
 
 .EXAMPLE
     # Docs/report/Postman-only change -> skip integration entirely.
-    .\select-integration-filter.ps1 -ChangedFiles @('EMPLOYEE_ONBOARDING_APPROVE_SEND_INVITE_REPORT.md', 'ONEVO-HRMS.postman_collection.json')
+    .\select-integration-filter.ps1 -ChangedFiles @('EMPLOYEE_ONBOARDING_APPROVE_SEND_INVITE_REPORT.md', 'CROWNUS-HRMS.postman_collection.json')
     # -> Skip=$true
 
 .EXAMPLE
@@ -496,7 +496,7 @@ function Invoke-SelfTest {
         -Check { param($d) $d.Filter -eq 'FullyQualifiedName~Department|FullyQualifiedName~Position' }
 
     Assert-Decision -Name 'Docs/report/Postman-only change skips integration' `
-        -Files @('EMPLOYEE_ONBOARDING_APPROVE_SEND_INVITE_REPORT.md', 'ONEVO-HRMS.postman_collection.json') `
+        -Files @('EMPLOYEE_ONBOARDING_APPROVE_SEND_INVITE_REPORT.md', 'CROWNUS-HRMS.postman_collection.json') `
         -Check { param($d) $d.Skip -eq $true }
 
     Assert-Decision -Name 'Migration alone (no corroborating area) escalates to full integration' `

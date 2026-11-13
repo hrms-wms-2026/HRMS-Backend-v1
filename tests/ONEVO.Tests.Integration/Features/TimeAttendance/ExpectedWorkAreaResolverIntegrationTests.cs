@@ -31,7 +31,7 @@ public sealed class ExpectedWorkAreaResolverIntegrationTestsFixture : IAsyncLife
 
     public async Task InitializeAsync()
     {
-        var configured = Environment.GetEnvironmentVariable("ONEVO_TEST_DB");
+        var configured = Environment.GetEnvironmentVariable("CROWNUS_TEST_DB");
         if (!string.IsNullOrWhiteSpace(configured))
         {
             _connectionString = configured;

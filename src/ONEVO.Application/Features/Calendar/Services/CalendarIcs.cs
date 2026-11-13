@@ -41,7 +41,7 @@ public static class CalendarIcs
     /// resent invite is byte-identical (a provider idempotency key only matches the same body).</summary>
     public static DateTimeOffset VersionTime(int sequence) => SequenceEpoch.AddSeconds(sequence);
 
-    public static string Uid(Guid eventId) => $"{eventId:N}@onevo";
+    public static string Uid(Guid eventId) => $"{eventId:N}@crownus";
 
     public static string Build(
         string kind, CalendarEventIcs ics, string title, DateTimeOffset startUtc, string? location, string organizerName,
@@ -70,7 +70,7 @@ public static class CalendarIcs
             $"DTSTART{At(startUtc, ics.TimeZoneId, zone)}",
             $"DTEND{At(end, ics.TimeZoneId, zone)}",
             $"SUMMARY:{Escape(title)}",
-            $"ORGANIZER;CN={Escape(organizerName)}:mailto:noreply@onevo.app",
+            $"ORGANIZER;CN={Escape(organizerName)}:mailto:noreply@crownus.test",
             $"ATTENDEE;ROLE=REQ-PARTICIPANT;RSVP=TRUE:mailto:{Raw(attendeeEmail)}",
             $"STATUS:{(cancel ? "CANCELLED" : "CONFIRMED")}",
         ]);

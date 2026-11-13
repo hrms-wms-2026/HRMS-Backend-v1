@@ -31,7 +31,7 @@ public enum RlsPredicate
 /// </summary>
 public static class RlsSql
 {
-    public const string LookupUser = "onevo_auth_base_login_fn_owner";
+    public const string LookupUser = "crownus_auth_base_login_fn_owner";
 
     private const string Mode = "CAST(SESSION_CONTEXT(N'app.tenant_context_mode') AS nvarchar(16))";
     private const string TenantMatch =

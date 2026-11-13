@@ -70,7 +70,7 @@ public sealed class AttendanceCorrectionsIntegrationTestsFixture : IAsyncLifetim
 
     public async Task InitializeAsync()
     {
-        _connectionString = Environment.GetEnvironmentVariable("ONEVO_TEST_DB") ?? string.Empty;
+        _connectionString = Environment.GetEnvironmentVariable("CROWNUS_TEST_DB") ?? string.Empty;
         if (string.IsNullOrWhiteSpace(_connectionString))
         {
             // Cloned from the shared, already-migrated template - see SharedSqlServerTemplate.
@@ -82,10 +82,10 @@ public sealed class AttendanceCorrectionsIntegrationTestsFixture : IAsyncLifetim
         }
 
         // AdminTestFactory/IntegrationDatabaseBootstrap migrates as the Testcontainers superuser
-        // (see E2ETestFactory.ConfigureWebHost), not as onevo_migrator, so the production
-        // ALTER DEFAULT PRIVILEGES ... TO onevo_app mechanism (ops/postgres/local-bootstrap-roles.sql)
-        // never fires here and onevo_app has no grants on any table by default in this suite. The
-        // CrossTenant_* tests below are the only tests in this class that connect as onevo_app
+        // (see E2ETestFactory.ConfigureWebHost), not as crownus_migrator, so the production
+        // ALTER DEFAULT PRIVILEGES ... TO crownus_app mechanism (ops/postgres/local-bootstrap-roles.sql)
+        // never fires here and crownus_app has no grants on any table by default in this suite. The
+        // CrossTenant_* tests below are the only tests in this class that connect as crownus_app
         // (to exercise real RLS), so they need this table's privileges granted explicitly.
         await using (var adminConnection = TestDb.CreateConnection(_connectionString))
         {
@@ -200,7 +200,7 @@ public sealed class AttendanceCorrectionsIntegrationTestsFixture : IAsyncLifetim
     }
 
     /// <summary>
-    /// Opens an independent connection as the restricted onevo_app role, with the same
+    /// Opens an independent connection as the restricted crownus_app role, with the same
     /// TenantRlsInterceptor production uses, scoped to the given tenant - unlike every other
     /// DbContext in this file (which comes from the WebApplicationFactory's DI container and
     /// therefore connects as the Testcontainers superuser, bypassing RLS entirely; see
@@ -211,7 +211,7 @@ public sealed class AttendanceCorrectionsIntegrationTestsFixture : IAsyncLifetim
     {
         var appRoleConnectionString = new SqlConnectionStringBuilder(_connectionString)
         {
-            UserID = "onevo_app",
+            UserID = "crownus_app",
             Password = PrivilegedRoleTestBootstrap.AppRolePassword
         }.ConnectionString;
 
@@ -320,8 +320,8 @@ public sealed class AttendanceCorrectionsIntegrationTestsFixture : IAsyncLifetim
         exchangeResponse.StatusCode.Should().Be(HttpStatusCode.OK, exchangeJson.ToString());
         var cookies = ParseSetCookies(exchangeResponse);
 
-        var sessionCookie = $"onevo_session={cookies["onevo_session"]}; onevo_csrf={cookies["onevo_csrf"]}";
-        var csrfHeader = Uri.UnescapeDataString(cookies["onevo_csrf"]);
+        var sessionCookie = $"crownus_session={cookies["crownus_session"]}; crownus_csrf={cookies["crownus_csrf"]}";
+        var csrfHeader = Uri.UnescapeDataString(cookies["crownus_csrf"]);
         return new TenantSession(host, sessionCookie, csrfHeader);
     }
 
@@ -525,7 +525,7 @@ public sealed class AttendanceCorrectionsIntegrationTestsFixture : IAsyncLifetim
 /// round-trips correctly, whether the API response layer reads the stored value rather than
 /// deriving it, and whether RLS actually blocks cross-tenant access - that is this class's job.
 ///
-/// Database resolution mirrors every other class in this suite: set ONEVO_TEST_DB to run against
+/// Database resolution mirrors every other class in this suite: set CROWNUS_TEST_DB to run against
 /// a local PostgreSQL server with no Docker; otherwise a Testcontainers instance is started.
 /// </summary>
 [Collection(WebApplicationFactoryCollection.Name)]

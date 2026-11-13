@@ -17,7 +17,7 @@ namespace ONEVO.Tests.Integration.Features.DevPlatform.Compliance;
 /// pending-legal response carries content_endpoint/content_hash, and publishing a new
 /// version forces re-acceptance on the next login.
 ///
-/// Database resolution: set ONEVO_TEST_DB to a PostgreSQL connection string to run
+/// Database resolution: set CROWNUS_TEST_DB to a PostgreSQL connection string to run
 /// against a local server (no Docker needed); otherwise a Testcontainers instance is
 /// started. Mirrors the harness in E2E/TenantProvisioningE2ETests.cs.
 /// </summary>
@@ -44,7 +44,7 @@ public class LegalDocumentRichContentIntegrationTests : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        var connectionString = Environment.GetEnvironmentVariable("ONEVO_TEST_DB");
+        var connectionString = Environment.GetEnvironmentVariable("CROWNUS_TEST_DB");
         if (string.IsNullOrWhiteSpace(connectionString))
         {
             connectionString = await SharedSqlServerTemplate.CreateDatabaseAsync();
@@ -215,9 +215,9 @@ public class LegalDocumentRichContentIntegrationTests : IAsyncLifetime
         pendingTerms.GetProperty("content_hash").GetString().Should().Be(newContentHash);
 
         var cookies = ParseSetCookies(secondLoginResponse);
-        cookies.Should().ContainKey("onevo_legal_pending");
-        cookies.Should().ContainKey("onevo_legal_csrf");
-        var legalCsrfHeader = Uri.UnescapeDataString(cookies["onevo_legal_csrf"]);
+        cookies.Should().ContainKey("crownus_legal_pending");
+        cookies.Should().ContainKey("crownus_legal_csrf");
+        var legalCsrfHeader = Uri.UnescapeDataString(cookies["crownus_legal_csrf"]);
 
         // -- Read the exact pending content via the endpoint the pending response points to,
         //    before ever accepting it. --
@@ -236,7 +236,7 @@ public class LegalDocumentRichContentIntegrationTests : IAsyncLifetime
                     new { document_type = "terms", version = "2.0-it", decision = "accepted" }
                 }
             },
-            cookie: $"onevo_legal_pending={cookies["onevo_legal_pending"]}",
+            cookie: $"crownus_legal_pending={cookies["crownus_legal_pending"]}",
             csrfToken: legalCsrfHeader);
         var completeLoginBody = await ReadJsonAsync(completeLoginResponse);
         completeLoginResponse.StatusCode.Should().Be(HttpStatusCode.Accepted, completeLoginBody.ToString());

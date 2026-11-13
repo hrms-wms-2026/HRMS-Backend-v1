@@ -20,7 +20,7 @@ namespace ONEVO.Tests.Integration.E2E;
 /// logs in with the resulting session cookie, and uses tenant APIs under CSRF
 /// and host-isolation rules.
 ///
-/// Database resolution: set ONEVO_TEST_DB to a PostgreSQL connection string to
+/// Database resolution: set CROWNUS_TEST_DB to a PostgreSQL connection string to
 /// run against a local server (no Docker needed); otherwise a Testcontainers
 /// instance is started.
 /// </summary>
@@ -46,7 +46,7 @@ public class TenantProvisioningE2ETests : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        var connectionString = Environment.GetEnvironmentVariable("ONEVO_TEST_DB");
+        var connectionString = Environment.GetEnvironmentVariable("CROWNUS_TEST_DB");
         if (string.IsNullOrWhiteSpace(connectionString))
         {
             connectionString = await SharedSqlServerTemplate.CreateDatabaseAsync();
@@ -147,8 +147,8 @@ public class TenantProvisioningE2ETests : IAsyncLifetime
             });
 
         acceptBody.GetProperty("authenticated").GetBoolean().Should().BeTrue();
-        acceptCookies.Should().ContainKey("onevo_session");
-        acceptCookies.Should().ContainKey("onevo_csrf");
+        acceptCookies.Should().ContainKey("crownus_session");
+        acceptCookies.Should().ContainKey("crownus_csrf");
 
         // ── 5. Provisioning confirm activates the tenant for real ──────────────
         // subscription / modules / settings / roles are all seeded by tenant
@@ -182,7 +182,7 @@ public class TenantProvisioningE2ETests : IAsyncLifetime
         var loginBody = await ReadJsonAsync(loginResponse);
         loginResponse.StatusCode.Should().Be(HttpStatusCode.Accepted, loginBody.ToString());
         loginResponse.Headers.TryGetValues("Set-Cookie", out _).Should().BeFalse(
-            "the base host must never set onevo_session/onevo_csrf");
+            "the base host must never set crownus_session/crownus_csrf");
 
         loginBody.GetProperty("authenticated").GetBoolean().Should().BeFalse();
         loginBody.GetProperty("redirect_required").GetBoolean().Should().BeTrue();
@@ -198,11 +198,11 @@ public class TenantProvisioningE2ETests : IAsyncLifetime
         var cookies = ParseSetCookies(exchangeResponse);
 
         exchangeBody.GetProperty("authenticated").GetBoolean().Should().BeTrue();
-        cookies.Should().ContainKey("onevo_session");
-        cookies.Should().ContainKey("onevo_csrf");
+        cookies.Should().ContainKey("crownus_session");
+        cookies.Should().ContainKey("crownus_csrf");
 
-        var sessionCookie = $"onevo_session={cookies["onevo_session"]}";
-        var csrfCookieValue = cookies["onevo_csrf"];
+        var sessionCookie = $"crownus_session={cookies["crownus_session"]}";
+        var csrfCookieValue = cookies["crownus_csrf"];
         var csrfHeader = Uri.UnescapeDataString(csrfCookieValue);
 
         var me = await SendAsync(HttpMethod.Get, TenantHost, "/api/v1/auth/me",
@@ -223,7 +223,7 @@ public class TenantProvisioningE2ETests : IAsyncLifetime
 
         var removedRefresh = await SendAsync(HttpMethod.Post, TenantHost, "/api/v1/auth/refresh",
             body: null,
-            cookie: $"{sessionCookie}; onevo_csrf={csrfCookieValue}",
+            cookie: $"{sessionCookie}; crownus_csrf={csrfCookieValue}",
             csrfToken: csrfHeader);
         removedRefresh.StatusCode.Should().BeOneOf(HttpStatusCode.NotFound, HttpStatusCode.MethodNotAllowed);
 
@@ -236,13 +236,13 @@ public class TenantProvisioningE2ETests : IAsyncLifetime
         // ── 8. CSRF: mutating call without the header is rejected ──────────────
         var noCsrf = await SendAsync(HttpMethod.Post, TenantHost, "/api/v1/roles",
             new { name = "Blocked Role" },
-            cookie: $"{sessionCookie}; onevo_csrf={csrfCookieValue}");
+            cookie: $"{sessionCookie}; crownus_csrf={csrfCookieValue}");
         noCsrf.StatusCode.Should().Be(HttpStatusCode.Forbidden);
 
         // ── 9. CSRF: with the matching header the write succeeds ───────────────
         var createRole = await SendAsync(HttpMethod.Post, TenantHost, "/api/v1/roles",
             new { name = "HR Manager", description = "created by E2E flow" },
-            cookie: $"{sessionCookie}; onevo_csrf={csrfCookieValue}",
+            cookie: $"{sessionCookie}; crownus_csrf={csrfCookieValue}",
             csrfToken: csrfHeader);
         createRole.StatusCode.Should().Be(HttpStatusCode.Created);
 
@@ -257,7 +257,7 @@ public class TenantProvisioningE2ETests : IAsyncLifetime
 
         var logout = await SendAsync(HttpMethod.Post, TenantHost, "/api/v1/auth/logout",
             body: null,
-            cookie: $"{sessionCookie}; onevo_csrf={csrfCookieValue}",
+            cookie: $"{sessionCookie}; crownus_csrf={csrfCookieValue}",
             csrfToken: csrfHeader);
         logout.StatusCode.Should().Be(HttpStatusCode.NoContent);
 
