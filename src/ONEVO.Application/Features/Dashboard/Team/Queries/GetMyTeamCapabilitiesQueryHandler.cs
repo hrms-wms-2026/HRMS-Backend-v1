@@ -8,7 +8,6 @@ using ONEVO.Application.Features.CoreHr.EmployeeAuthority.Models;
 using ONEVO.Application.Features.CoreHr.EmployeeAuthority.ServiceInterfaces;
 using ONEVO.Application.Features.Dashboard.Team.DTOs;
 using ONEVO.Application.Features.Monitoring.Exceptions.Services;
-using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Leadership.Services;
 
 namespace ONEVO.Application.Features.Dashboard.Team.Queries;

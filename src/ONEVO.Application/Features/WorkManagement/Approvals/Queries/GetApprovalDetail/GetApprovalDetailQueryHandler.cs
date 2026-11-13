@@ -13,7 +13,6 @@ using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Sprints.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
 using ONEVO.Domain.Features.WorkManagement.Approvals.Entities;
-using ONEVO.Domain.Features.WorkManagement.ProjectInvitations.Entities;
 
 namespace ONEVO.Application.Features.WorkManagement.Approvals.Queries.GetApprovalDetail;
 
