@@ -87,5 +87,6 @@ public class PermissionSeederTests
         codes.Should().Contain("users:manage");
         codes.Should().Contain("employees:read:sensitive");
         codes.Should().Contain("employees:offboard");
+        codes.Should().Contain("checklists:manage");
     }
 }

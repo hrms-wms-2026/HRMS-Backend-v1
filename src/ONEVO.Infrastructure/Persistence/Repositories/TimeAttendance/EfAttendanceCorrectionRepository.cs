@@ -3,7 +3,6 @@ using ONEVO.Infrastructure.Persistence.SqlServer;
 using ONEVO.Application.Common.Exceptions;
 using ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces;
 using ONEVO.Domain.Features.TimeAttendance.Entities;
-using ONEVO.Infrastructure.Persistence;
 
 namespace ONEVO.Infrastructure.Persistence.Repositories.TimeAttendance;
 

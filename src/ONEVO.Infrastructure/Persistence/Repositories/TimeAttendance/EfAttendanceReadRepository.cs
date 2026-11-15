@@ -7,7 +7,6 @@ using ONEVO.Application.Features.TimeAttendance.DTOs.Responses;
 using ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.TimeAttendance.Entities;
-using ONEVO.Infrastructure.Persistence;
 
 namespace ONEVO.Infrastructure.Persistence.Repositories.TimeAttendance;
 

@@ -62,19 +62,6 @@ public sealed record LeaveApprovalDetailResponse(
     bool CanDecide,
     bool CanChangeDecision);
 
-public sealed record LeaveApprovalHistoryItemResponse(
-    Guid RequestId,
-    Guid EmployeeId,
-    string EmployeeName,
-    string LeaveTypeName,
-    DateTimeOffset StartAt,
-    DateTimeOffset EndAt,
-    decimal TotalHours,
-    string MyAction,
-    DateTimeOffset ActedAt,
-    string? MyComment,
-    string RequestStatus);
-
 public sealed record LeaveApprovalApproverResponse(
     Guid ApproverEmployeeId,
     string ApproverName,
@@ -83,14 +70,3 @@ public sealed record LeaveApprovalApproverResponse(
     string? Comment,
     Guid? DelegatedFromApproverId,
     DateTimeOffset? DecidedAt);
-
-public sealed record LeaveApprovalBulkResultResponse(
-    IReadOnlyList<LeaveApprovalBulkItemResponse> Items,
-    int SuccessCount,
-    int FailureCount);
-
-public sealed record LeaveApprovalBulkItemResponse(
-    Guid RequestId,
-    bool Success,
-    string? Status,
-    string? Error);

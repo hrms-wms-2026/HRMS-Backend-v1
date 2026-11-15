@@ -2,7 +2,6 @@ using Microsoft.EntityFrameworkCore;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.EmployeeHierarchyClosure.RepositoryInterfaces;
 using ONEVO.Domain.Features.CoreHr.Entities;
-using ONEVO.Infrastructure.Persistence.Repositories;
 
 namespace ONEVO.Infrastructure.Persistence.Repositories.CoreHr;
 

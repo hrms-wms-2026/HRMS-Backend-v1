@@ -1,5 +1,4 @@
 using Microsoft.EntityFrameworkCore;
-using ONEVO.Domain.Features.CoreHr.Entities;
 
 namespace ONEVO.Infrastructure.Persistence.Repositories;
 

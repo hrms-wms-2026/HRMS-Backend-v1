@@ -19,9 +19,10 @@ public class OnboardingChecklistTemplatesController : ControllerBase
     }
 
     /// <summary>Active onboarding-only checklist template matches for the Add Employee wizard,
-    /// ordered position match, then department match, then company/default.</summary>
+    /// ordered position match, then department match, then company/default. Same read gate as
+    /// ChecklistTemplatesController.List.</summary>
     [HttpGet("matches")]
-    [RequirePermission("employees:write")]
+    [RequireAnyPermission("employees:write", "employees:offboard", "checklists:manage")]
     public async Task<IActionResult> Matches(
         [FromQuery] Guid legalEntityId, [FromQuery] Guid? departmentId, [FromQuery] Guid? positionId, CancellationToken ct = default)
     {

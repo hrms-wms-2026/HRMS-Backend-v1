@@ -4,8 +4,6 @@ using ONEVO.Application.Common.Exceptions;
 using ONEVO.Application.Features.CoreHr.OnboardingDrafts.DTOs.Responses;
 using ONEVO.Application.Features.CoreHr.OnboardingDrafts.RepositoryInterfaces;
 using ONEVO.Domain.Features.CoreHr.Entities;
-using ONEVO.Domain.Features.InfrastructureModule.Entities;
-using ONEVO.Domain.Features.OrgStructure.Entities;
 using OnboardingDraftEntity = ONEVO.Domain.Features.CoreHr.Entities.OnboardingDraft;
 
 namespace ONEVO.Infrastructure.Persistence.Repositories.CoreHr;
