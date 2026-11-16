@@ -247,6 +247,19 @@ public class NotificationTemplateSeeder : IHostedService
 
             new()
             {
+                Id = Guid.NewGuid(), Code = "support_ticket_replied",
+                InAppTitleTemplate = "Crownus support replied",
+                InAppBodyTemplate = "{{authorName}} replied to your ticket \"{{subject}}\"."
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "support_ticket_status_changed",
+                InAppTitleTemplate = "Support ticket {{status}}",
+                InAppBodyTemplate = "Your ticket \"{{subject}}\" is now {{status}}."
+            },
+
+            new()
+            {
                 Id = Guid.NewGuid(), Code = "work_project_member_invited",
                 InAppTitleTemplate = "You've been added to a project",
                 InAppBodyTemplate = "{{inviterName}} invited you to join {{projectName}}."

@@ -155,9 +155,12 @@ public sealed class ReferenceDataParityTests(SqlServerFixture fixture, ITestOutp
             FindRepoRoot(), "docs", "reports", "database", "2026-11-07-postgres-reference-data.json")))!.AsObject();
         var differences = new List<string>();
         await using var connection = await OpenAdminAsync(database);
+        var postBaselineTemplateIds = await ReadPostBaselineTemplateIdsAsync(connection);
         foreach (var table in await ListTablesAsync(connection))
         {
-            var actual = await ReadRowsAsync(connection, table);
+            var actual = (await ReadRowsAsync(connection, table))
+                .Where(row => !IsAddedAfterBaseline(table, row, postBaselineTemplateIds))
+                .ToList();
             var wanted = expected[table]?["rows"]?.AsArray().Select(row => row!.AsObject()).ToList() ?? [];
             if (actual.Count != wanted.Count)
             {
@@ -177,6 +180,45 @@ public sealed class ReferenceDataParityTests(SqlServerFixture fixture, ITestOutp
         }
 
         return differences;
+    }
+
+    // Reference rows seeded for features built after the SQL Server baseline. They are not on PostgreSQL by
+    // design. Add a permission code here in the same change that seeds it.
+    private static readonly string[] PermissionCodesAddedAfterBaseline =
+    [
+        "support:manage", // 20261112072239_AddPlatformSupport
+    ];
+
+    // Notification templates seeded at startup for features built after the baseline. Their first published
+    // version rows are excluded through template_id, which the versions table carries instead of the code.
+    private static readonly string[] NotificationTemplateCodesAddedAfterBaseline =
+    [
+        "support_ticket_replied", // 20261112072239_AddPlatformSupport
+        "support_ticket_status_changed", // 20261112072239_AddPlatformSupport
+    ];
+
+    private static bool IsAddedAfterBaseline(string table, JsonObject row, IReadOnlySet<string> postBaselineTemplateIds) =>
+        table switch
+        {
+            "permissions" => PermissionCodesAddedAfterBaseline.Contains((string?)row["code"]),
+            "module_permission_ownership" => PermissionCodesAddedAfterBaseline.Contains((string?)row["permission_code"]),
+            "notification_templates" => NotificationTemplateCodesAddedAfterBaseline.Contains((string?)row["code"]),
+            "notification_template_versions" => postBaselineTemplateIds.Contains(row["template_id"]?.ToString() ?? string.Empty),
+            _ => false,
+        };
+
+    private static async Task<IReadOnlySet<string>> ReadPostBaselineTemplateIdsAsync(SqlConnection connection)
+    {
+        var ids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var row in await ReadRowsAsync(connection, "notification_templates"))
+        {
+            if (NotificationTemplateCodesAddedAfterBaseline.Contains((string?)row["code"]))
+            {
+                ids.Add(row["id"]?.ToString() ?? string.Empty);
+            }
+        }
+
+        return ids;
     }
 
     private static string Cut(string value) => value.Length > 600 ? value[..600] : value;
@@ -238,7 +280,8 @@ public sealed class ReferenceDataParityTests(SqlServerFixture fixture, ITestOutp
     private static string FindRepoRoot()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
-        while (directory is not null && !Directory.Exists(Path.Combine(directory.FullName, ".git")))
+        // A git worktree has a .git file instead of a .git directory.
+        while (directory is not null && !Path.Exists(Path.Combine(directory.FullName, ".git")))
         {
             directory = directory.Parent;
         }

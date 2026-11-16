@@ -5841,6 +5841,346 @@ namespace ONEVO.Infrastructure.Migrations
                     b.ToTable("platform_user_sessions", (string)null);
                 });
 
+            modelBuilder.Entity("ONEVO.Domain.Features.DevPlatform.Support.Entities.PlatformAnnouncement", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Audience")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)")
+                        .HasColumnName("audience");
+
+                    b.Property<string>("Body")
+                        .IsRequired()
+                        .HasMaxLength(5000)
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("body");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedByPlatformUserId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("created_by_platform_user_id");
+
+                    b.Property<DateTimeOffset?>("EndsAt")
+                        .HasColumnType("datetimeoffset")
+                        .HasColumnName("ends_at");
+
+                    b.Property<bool>("IsPublished")
+                        .HasColumnType("bit")
+                        .HasColumnName("is_published");
+
+                    b.Property<DateTimeOffset?>("PublishedAt")
+                        .HasColumnType("datetimeoffset")
+                        .HasColumnName("published_at");
+
+                    b.Property<Guid?>("PublishedByPlatformUserId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("published_by_platform_user_id");
+
+                    b.Property<string>("Severity")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasColumnName("severity");
+
+                    b.Property<DateTimeOffset?>("StartsAt")
+                        .HasColumnType("datetimeoffset")
+                        .HasColumnName("starts_at");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)")
+                        .HasColumnName("title");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("datetimeoffset")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_platform_announcements");
+
+                    b.HasIndex("CreatedAt")
+                        .HasDatabaseName("ix_platform_announcements_created_at");
+
+                    b.HasIndex("CreatedByPlatformUserId")
+                        .HasDatabaseName("ix_platform_announcements_created_by_platform_user_id");
+
+                    b.HasIndex("PublishedByPlatformUserId")
+                        .HasDatabaseName("ix_platform_announcements_published_by_platform_user_id");
+
+                    b.HasIndex("IsPublished", "Audience", "PublishedAt")
+                        .HasDatabaseName("ix_platform_announcements_published_audience");
+
+                    b.ToTable("platform_announcements", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_platform_announcements_window", "starts_at IS NULL OR ends_at IS NULL OR ends_at > starts_at");
+                        });
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.DevPlatform.Support.Entities.SupportTicket", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("id");
+
+                    b.Property<Guid?>("AssignedToPlatformUserId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("assigned_to_platform_user_id");
+
+                    b.Property<bool>("AwaitingSupport")
+                        .HasColumnType("bit")
+                        .HasColumnName("awaiting_support");
+
+                    b.Property<string>("Category")
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)")
+                        .HasColumnName("category");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("CreatedByName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)")
+                        .HasColumnName("created_by_name");
+
+                    b.Property<Guid?>("CreatedByPlatformUserId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("created_by_platform_user_id");
+
+                    b.Property<Guid?>("CreatedByUserId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("created_by_user_id");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(10000)
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("description");
+
+                    b.Property<string>("Priority")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasColumnName("priority");
+
+                    b.Property<DateTimeOffset?>("ResolvedAt")
+                        .HasColumnType("datetimeoffset")
+                        .HasColumnName("resolved_at");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasColumnName("status");
+
+                    b.Property<string>("Subject")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)")
+                        .HasColumnName("subject");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("datetimeoffset")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_support_tickets");
+
+                    b.HasIndex("AwaitingSupport")
+                        .HasDatabaseName("ix_support_tickets_awaiting_support")
+                        .HasFilter("[awaiting_support] = 1");
+
+                    b.HasIndex("CreatedByPlatformUserId")
+                        .HasDatabaseName("ix_support_tickets_created_by_platform_user_id");
+
+                    b.HasIndex("CreatedByUserId")
+                        .HasDatabaseName("ix_support_tickets_created_by_user_id");
+
+                    b.HasIndex("AssignedToPlatformUserId", "Status")
+                        .HasDatabaseName("ix_support_tickets_assignee_status");
+
+                    b.HasIndex("Status", "Priority", "CreatedAt")
+                        .HasDatabaseName("ix_support_tickets_status_priority_created");
+
+                    b.HasIndex("TenantId", "Status", "CreatedAt")
+                        .HasDatabaseName("ix_support_tickets_tenant_status_created");
+
+                    b.ToTable("support_tickets", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_support_tickets_single_creator", "(created_by_platform_user_id IS NULL AND created_by_user_id IS NOT NULL) OR (created_by_platform_user_id IS NOT NULL AND created_by_user_id IS NULL)");
+                        });
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.DevPlatform.Support.Entities.SupportTicketAttachment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("id");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)")
+                        .HasColumnName("content_type");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)")
+                        .HasColumnName("file_name");
+
+                    b.Property<bool>("IsInternal")
+                        .HasColumnType("bit")
+                        .HasColumnName("is_internal");
+
+                    b.Property<string>("ObjectKey")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)")
+                        .HasColumnName("object_key");
+
+                    b.Property<long>("SizeBytes")
+                        .HasColumnType("bigint")
+                        .HasColumnName("size_bytes");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<Guid>("TicketId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("ticket_id");
+
+                    b.Property<string>("UploadedByName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)")
+                        .HasColumnName("uploaded_by_name");
+
+                    b.Property<Guid?>("UploadedByPlatformUserId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("uploaded_by_platform_user_id");
+
+                    b.Property<Guid?>("UploadedByUserId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("uploaded_by_user_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_support_ticket_attachments");
+
+                    b.HasIndex("ObjectKey")
+                        .IsUnique()
+                        .HasDatabaseName("ux_support_ticket_attachments_object_key");
+
+                    b.HasIndex("TicketId")
+                        .HasDatabaseName("ix_support_ticket_attachments_ticket_id");
+
+                    b.HasIndex("UploadedByPlatformUserId")
+                        .HasDatabaseName("ix_support_ticket_attachments_uploaded_by_platform_user_id");
+
+                    b.HasIndex("UploadedByUserId")
+                        .HasDatabaseName("ix_support_ticket_attachments_uploaded_by_user_id");
+
+                    b.HasIndex("TenantId", "TicketId", "CreatedAt")
+                        .HasDatabaseName("ix_support_ticket_attachments_tenant_ticket_created");
+
+                    b.ToTable("support_ticket_attachments", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_support_ticket_attachments_internal_is_platform", "is_internal = 0 OR uploaded_by_platform_user_id IS NOT NULL");
+
+                            t.HasCheckConstraint("ck_support_ticket_attachments_single_uploader", "(uploaded_by_platform_user_id IS NULL AND uploaded_by_user_id IS NOT NULL) OR (uploaded_by_platform_user_id IS NOT NULL AND uploaded_by_user_id IS NULL)");
+
+                            t.HasCheckConstraint("ck_support_ticket_attachments_size", "size_bytes > 0");
+                        });
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.DevPlatform.Support.Entities.SupportTicketComment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("id");
+
+                    b.Property<string>("AuthorName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)")
+                        .HasColumnName("author_name");
+
+                    b.Property<Guid?>("AuthorPlatformUserId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("author_platform_user_id");
+
+                    b.Property<Guid?>("AuthorUserId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("author_user_id");
+
+                    b.Property<string>("Body")
+                        .IsRequired()
+                        .HasMaxLength(10000)
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("body");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset")
+                        .HasColumnName("created_at");
+
+                    b.Property<bool>("IsInternal")
+                        .HasColumnType("bit")
+                        .HasColumnName("is_internal");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<Guid>("TicketId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("ticket_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_support_ticket_comments");
+
+                    b.HasIndex("AuthorPlatformUserId")
+                        .HasDatabaseName("ix_support_ticket_comments_author_platform_user_id");
+
+                    b.HasIndex("AuthorUserId")
+                        .HasDatabaseName("ix_support_ticket_comments_author_user_id");
+
+                    b.HasIndex("TicketId")
+                        .HasDatabaseName("ix_support_ticket_comments_ticket_id");
+
+                    b.HasIndex("TenantId", "TicketId", "CreatedAt")
+                        .HasDatabaseName("ix_support_ticket_comments_tenant_ticket_created");
+
+                    b.ToTable("support_ticket_comments", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_support_ticket_comments_internal_is_platform", "is_internal = 0 OR author_platform_user_id IS NOT NULL");
+
+                            t.HasCheckConstraint("ck_support_ticket_comments_single_author", "(author_platform_user_id IS NULL AND author_user_id IS NOT NULL) OR (author_platform_user_id IS NOT NULL AND author_user_id IS NULL)");
+                        });
+                });
+
             modelBuilder.Entity("ONEVO.Domain.Features.DevPlatform.SystemConfig.IntegrationCatalog.Entities.IntegrationCatalogEntry", b =>
                 {
                     b.Property<string>("IntegrationKey")
@@ -17465,6 +17805,97 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasConstraintName("fk_platform_user_sessions_platform_users_account_id");
                 });
 
+            modelBuilder.Entity("ONEVO.Domain.Features.DevPlatform.Support.Entities.PlatformAnnouncement", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.DevPlatform.PlatformAccess.Entities.PlatformUser", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedByPlatformUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_platform_announcements_platform_users_created_by_platform_user_id");
+
+                    b.HasOne("ONEVO.Domain.Features.DevPlatform.PlatformAccess.Entities.PlatformUser", null)
+                        .WithMany()
+                        .HasForeignKey("PublishedByPlatformUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_platform_announcements_platform_users_published_by_platform_user_id");
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.DevPlatform.Support.Entities.SupportTicket", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.DevPlatform.PlatformAccess.Entities.PlatformUser", null)
+                        .WithMany()
+                        .HasForeignKey("AssignedToPlatformUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_support_tickets_platform_users_assigned_to_platform_user_id");
+
+                    b.HasOne("ONEVO.Domain.Features.DevPlatform.PlatformAccess.Entities.PlatformUser", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedByPlatformUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_support_tickets_platform_users_created_by_platform_user_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_support_tickets_users_created_by_user_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_support_tickets_tenants_tenant_id");
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.DevPlatform.Support.Entities.SupportTicketAttachment", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.DevPlatform.Support.Entities.SupportTicket", "Ticket")
+                        .WithMany("Attachments")
+                        .HasForeignKey("TicketId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_support_ticket_attachments_support_tickets_ticket_id");
+
+                    b.HasOne("ONEVO.Domain.Features.DevPlatform.PlatformAccess.Entities.PlatformUser", null)
+                        .WithMany()
+                        .HasForeignKey("UploadedByPlatformUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_support_ticket_attachments_platform_users_uploaded_by_platform_user_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("UploadedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_support_ticket_attachments_users_uploaded_by_user_id");
+
+                    b.Navigation("Ticket");
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.DevPlatform.Support.Entities.SupportTicketComment", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.DevPlatform.PlatformAccess.Entities.PlatformUser", null)
+                        .WithMany()
+                        .HasForeignKey("AuthorPlatformUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_support_ticket_comments_platform_users_author_platform_user_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("AuthorUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_support_ticket_comments_users_author_user_id");
+
+                    b.HasOne("ONEVO.Domain.Features.DevPlatform.Support.Entities.SupportTicket", "Ticket")
+                        .WithMany("Comments")
+                        .HasForeignKey("TicketId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_support_ticket_comments_support_tickets_ticket_id");
+
+                    b.Navigation("Ticket");
+                });
+
             modelBuilder.Entity("ONEVO.Domain.Features.DevPlatform.SystemConfig.IntegrationCatalog.Entities.IntegrationCatalogEntry", b =>
                 {
                     b.HasOne("ONEVO.Domain.Features.DevPlatform.PlatformAccess.Entities.PlatformUser", null)
@@ -18852,6 +19283,13 @@ namespace ONEVO.Infrastructure.Migrations
             modelBuilder.Entity("ONEVO.Domain.Features.Dashboard.Entities.UserDashboard", b =>
                 {
                     b.Navigation("Widgets");
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.DevPlatform.Support.Entities.SupportTicket", b =>
+                {
+                    b.Navigation("Attachments");
+
+                    b.Navigation("Comments");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.SharedPlatform.Entities.ModuleCatalogItem", b =>

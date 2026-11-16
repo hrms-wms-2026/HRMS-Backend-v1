@@ -67,6 +67,14 @@ public sealed class SchemaParityTests(SqlServerFixture fixture)
     private static readonly string[] AddedColumns =
         ["xmin", "code_lower", "email_lower", "MigrationId", "ProductVersion"];
 
+    // Tables created by migrations after the SQL Server baseline. They are not on PostgreSQL by design.
+    // Add a table here in the same change as the migration that creates it.
+    private static readonly string[] TablesAddedAfterBaseline =
+    [
+        // 20261112072239_AddPlatformSupport
+        "platform_announcements", "support_tickets", "support_ticket_comments", "support_ticket_attachments",
+    ];
+
     [Fact]
     public async Task EveryPostgresColumn_ExistsOnSqlServer_AndNothingExtra()
     {
@@ -84,7 +92,9 @@ public sealed class SchemaParityTests(SqlServerFixture fixture)
             """);
 
         Assert.Empty(expected.Except(actual).Except(DroppedColumns));
-        Assert.Empty(actual.Except(expected).Where(c => !AddedColumns.Contains(c.Split('.')[1])));
+        Assert.Empty(actual.Except(expected)
+            .Where(c => !AddedColumns.Contains(c.Split('.')[1]))
+            .Where(c => !TablesAddedAfterBaseline.Contains(c.Split('.')[0])));
     }
 
     /// <summary>
@@ -209,7 +219,8 @@ public sealed class SchemaParityTests(SqlServerFixture fixture)
     private static string ReportPath()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
-        while (directory is not null && !Directory.Exists(Path.Combine(directory.FullName, ".git")))
+        // A git worktree has a .git file instead of a .git directory.
+        while (directory is not null && !Path.Exists(Path.Combine(directory.FullName, ".git")))
         {
             directory = directory.Parent;
         }

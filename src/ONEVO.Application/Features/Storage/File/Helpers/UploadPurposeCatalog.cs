@@ -24,6 +24,7 @@ public static class UploadPurposeCatalog
     public const string CommentDescriptionImage = "comment_description_image";
     public const string ConversationAttachment = "conversation_attachment";
     public const string ConversationAvatar = "conversation_avatar";
+    public const string SupportTicketAttachment = "support_ticket_attachment";
 
     private static readonly IReadOnlyList<string> ImageContentTypes = new[]
     {
@@ -120,7 +121,8 @@ public static class UploadPurposeCatalog
         [CommentAttachment] = new UploadPurposeRule(25 * 1024 * 1024, TaskAttachmentContentTypes, TaskAttachmentExtensions),
         [CommentDescriptionImage] = new UploadPurposeRule(5 * 1024 * 1024, ImageContentTypes, ImageExtensions),
         [ConversationAttachment] = new UploadPurposeRule(25 * 1024 * 1024, ConversationAttachmentContentTypes, ConversationAttachmentExtensions),
-        [ConversationAvatar] = new UploadPurposeRule(5 * 1024 * 1024, ImageContentTypes, ImageExtensions)
+        [ConversationAvatar] = new UploadPurposeRule(5 * 1024 * 1024, ImageContentTypes, ImageExtensions),
+        [SupportTicketAttachment] = new UploadPurposeRule(25 * 1024 * 1024, TaskAttachmentContentTypes, TaskAttachmentExtensions)
     };
 
     public static IReadOnlyList<string> SupportedPurposes => Rules.Keys.ToList();

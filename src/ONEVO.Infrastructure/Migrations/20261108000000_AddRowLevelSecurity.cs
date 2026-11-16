@@ -19,7 +19,8 @@ namespace ONEVO.Infrastructure.Migrations
                 migrationBuilder.Sql(statement);
             }
 
-            foreach (var (table, predicate) in RlsTableRegistry.Tables)
+            // Baseline only: later tables do not exist yet here and get their policy in their own migration.
+            foreach (var (table, predicate) in RlsTableRegistry.Baseline)
             {
                 migrationBuilder.Sql(RlsSql.CreatePolicy(table, predicate));
             }
