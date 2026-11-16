@@ -72,7 +72,7 @@ Order of importance (DEC-017, Dabi): 1) the team knows and coordinates, 2) affec
 | **Major** | A core feature down for some tenants (payroll, attendance, tray) | Owner and responders | Within 1 hour (shown as guidance, not enforced) |
 | **Minor** | Small problem with a workaround | Owner only | Only if the team chooses |
 
-No SLA timers. The incident stores `detected_at`, `acknowledged_at` (first time the owner opens or changes it, or set by hand), `first_update_sent_at`, `resolved_at`, `closed_at`, so SLA reporting can be computed later.
+No SLA timers. The incident stores `detected_at`, `acknowledged_at` (set only by an explicit **Acknowledge** action; opening or reading an incident never changes data), `first_update_sent_at`, `resolved_at`, `closed_at`, so SLA reporting can be computed later.
 
 ### 5.3 Lifecycle
 
@@ -82,11 +82,11 @@ Investigating → Identified → Monitoring → Resolved → Closed
 - **Investigating:** declared; cause unknown.
 - **Identified:** cause known. If no engineering bug is linked, the UI asks "Does this need an engineering task?" (DEC-019).
 - **Monitoring:** fix applied; watching.
-- **Resolved:** customers told it is fixed.
+- **Resolved:** the team confirms the problem is fixed. Telling customers is a separate Send (below).
 - **Closed:** postmortem completed (required for Critical, optional for others; DEC-021). Minor and Major can be closed straight from Resolved.
 - Moving backwards (e.g. Monitoring → Investigating) is allowed and recorded in the timeline. A Closed incident can be reopened only to Investigating.
 
-Each status change opens the customer-update composer with the template for the new status (5.5). Changing status does not send anything by itself.
+Each status change opens the customer-update composer with the template for the new status (5.5). **Changing status and sending a customer update are two separate commands, each audited.** Changing status never sends anything. Until an update has been sent for the current status, the incident shows **"Customer update pending"** (in the list and the header); the Critical badge stays red while it is pending.
 
 ### 5.4 How incidents start
 
@@ -102,6 +102,8 @@ Each status change opens the customer-update composer with the template for the 
 - **Email:** via the outbox to each affected tenant's **incident contact** (a new optional email field in the tenant's settings); if empty, to the tenant's admin users. (Dabi's call, recorded in the conversation, default accepted.)
 - Every sent update is a timeline event; the first one sets `first_update_sent_at`.
 - Adding an affected tenant later does not resend old updates; the next update includes it, and the composer reminds the sender that newly added tenants have not been told yet.
+- **Removing an affected tenant** removes it from the incident's active announcement target list in the same command, so its banner disappears at once. Emails already sent cannot be recalled; the timeline records the removal.
+- The announcement's target list is always kept equal to the incident's current affected tenants (add does not show the old message to new tenants until the next Send; remove takes effect immediately).
 
 ### 5.6 Escalation to engineering (DEC-019)
 
@@ -110,18 +112,26 @@ Each status change opens the customer-update composer with the template for the 
 - **One guarded writer.** A single application service performs every write into the internal tenant. It refuses any tenant that is not both flagged internal and configured, switches context with `ITenantContextSwitcher`, creates the task, and returns to admin mode. `ITenantContextSwitcher` has no switch-back today; adding a scoped switch that always restores admin mode (including on failure) is part of this work. Every write is audited.
 - **Direct creation, approvals bypassed on purpose (Dabi, 2026-11-16).** Work Management normally lets only an effective manager of the module create a task directly; others get a pending `task.create` approval request, and they may only assign themselves. Escalation is urgent and comes from an MFA-verified, permission-checked, audited platform admin, so the guarded writer creates the task directly through the task write service, skipping the approval engine and the module-manager check, and sets the chosen assignee in the same operation. Only this writer may do this. Postmortem action tasks use the same path.
 - **Creator (Dabi, 2026-11-16):** the internal-tenant employee whose email matches the escalating platform admin. If there is none, escalation stops with a clear message ("You have no employee record in the internal tenant with this email. Ask to be added first."). No service user is built. The creator does not need to own the configured objective.
-- **Work Management changes:** a nullable `SourceIncidentId` on the task (same pattern as `SourceMeetingOccurrenceId`); a task chip "From incident INC-12 · Critical" linking to the incident in Platform Admin; a board filter for incident-linked tasks.
+- **Incident work links (platform side).** One row per task the incident asks for: incident, kind (`engineering_bug` or `postmortem_action`), idempotency key, status (`pending`, `created`, `failed`), the created task id and short id, error text on failure, timestamps. Only `engineering_bug` links count for "Fix ready".
+- **Idempotent, retry-safe creation.**
+  1. The composer generates an idempotency key when the escalation form (or a postmortem action) is opened.
+  2. The command first writes the link row as `pending` with that key (unique per incident), on the platform side.
+  3. The guarded writer creates the task in the internal tenant, storing the same key on the task (unique per tenant). If a task with that key already exists, it returns that task instead of creating another.
+  4. The link row is marked `created` with the task id; on error it is marked `failed` with the reason, and the UI shows **Retry**, which reuses the same key.
+  5. A cleanup check finds `pending` links older than a few minutes and resolves them by looking up the task by key (created → mark `created`; none → mark `failed`).
+  Creation stays synchronous so the person sees the bug at once; the outbox is used only for the sync back (5.7).
+- **Work Management changes:** nullable `SourceIncidentId`, `SourceIncidentLinkKind` and `ExternalRequestKey` (unique per tenant when set) on the task, following the `SourceMeetingOccurrenceId` pattern; a task chip "From incident INC-12 · Critical" (or "Postmortem action · INC-12") linking to the incident in Platform Admin; a board filter for incident-linked tasks.
 
 ### 5.7 Sync back
 
-- Every path that changes a task's status (move, drag, approval completion, bulk) emits an outbox message when the task has a `SourceIncidentId`.
-- The incident handler records a timeline event. When **all** linked bugs are in a status whose category is done (`TaskStatus.Category = done`), the incident shows **"Fix ready"** and prompts "Move to Monitoring and post an update?". If a bug leaves done, "Fix ready" clears.
-- Postmortem action tasks (5.8) do not affect "Fix ready".
+- Every path that changes a task's status (move, drag, approval completion, bulk) emits an outbox message when the task has a `SourceIncidentId`, carrying the link kind. The handler is idempotent (outbox retries may deliver twice).
+- The incident handler records a timeline event. When **all** `engineering_bug` links are `created` and their tasks are in a status whose category is done (`TaskStatus.Category = done`), the incident shows **"Fix ready"** and prompts "Move to Monitoring and post an update?". If a bug leaves done, "Fix ready" clears.
+- `postmortem_action` links (5.8) never affect "Fix ready". A `pending` or `failed` engineering link keeps "Fix ready" off.
 
 ### 5.8 Postmortem (DEC-021)
 
 - Available from Resolved. Fields: summary, root cause, customer impact, what went well, what went badly, prevention actions (each with title and optional assignee).
-- Completing it creates each action as an internal-tenant task through the guarded writer (source = incident), records a timeline event and allows Closed.
+- Completing it creates each action as an internal-tenant task through the guarded writer, as a `postmortem_action` link with its own idempotency key, records a timeline event and allows Closed.
 - Required before Closed for Critical; optional for Major and Minor.
 
 ### 5.9 Permissions and audit
@@ -132,7 +142,7 @@ Each status change opens the customer-update composer with the template for the 
 | `platform.incidents.manage` | Declare, edit, change severity/status, manage affected tenants and links, send customer updates, escalate, write postmortems. |
 | `platform.incidents.configure` | Change the internal tenant configuration. Super Admin only. |
 
-All write commands are audited (F-07). Seed both permissions for Platform Super Admin.
+All write commands are audited (F-07). Seed all three permissions for Platform Super Admin; `configure` goes to no other role.
 
 ### 5.10 Screens
 
@@ -175,5 +185,4 @@ All write commands are audited (F-07). Seed both permissions for Platform Super 
 - Exact template wording (a first draft is fine; Dabi can edit it in Platform Admin).
 - How long the resolved banner stays (suggested 24 hours).
 - Exactly how "tenant admin users" are found for the email fallback, using the existing role model.
-- Whether acknowledged_at is set on first open by the owner or only by an explicit "Acknowledge" button (pick one and keep it consistent).
 - Page layout details, following the existing Platform Admin patterns.
