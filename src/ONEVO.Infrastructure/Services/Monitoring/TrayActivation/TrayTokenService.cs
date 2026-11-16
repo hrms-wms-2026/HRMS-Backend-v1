@@ -1,4 +1,3 @@
-using ONEVO.Infrastructure.Configuration;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Security.Cryptography;
@@ -14,14 +13,14 @@ public class TrayTokenService : ITrayTokenService
 {
     private const int AccessTokenExpiryHours = 1;
 
-    private readonly string _secret;
+    private readonly ITrayJwtKeyProvider _keys;
     private readonly string _issuer;
     private readonly string _audience;
 
-    public TrayTokenService(IConfiguration configuration)
+    public TrayTokenService(ITrayJwtKeyProvider keys, IConfiguration configuration)
     {
         var section = configuration.GetSection("TrayApp:Jwt");
-        _secret = ConfigurationStartupValidator.RequireTrayJwtSecret(configuration);
+        _keys = keys;
         _issuer = section["Issuer"] ?? "crownus-tray";
         _audience = section["Audience"] ?? "crownus-tray-app";
     }
@@ -40,15 +39,14 @@ public class TrayTokenService : ITrayTokenService
         if (legalEntityId.HasValue)
             claims.Add(new Claim("legal_entity_id", legalEntityId.Value.ToString()));
 
-        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_secret));
-        var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
-
+        // ES256 with the active key; its KeyId is written to the header as "kid" (SEC-15).
+        // The claims and the 1-hour lifetime are unchanged: the tray app reads them.
         var token = new JwtSecurityToken(
             issuer: _issuer,
             audience: _audience,
             claims: claims,
             expires: DateTime.UtcNow.AddHours(AccessTokenExpiryHours),
-            signingCredentials: creds);
+            signingCredentials: _keys.SigningCredentials);
 
         return new JwtSecurityTokenHandler().WriteToken(token);
     }

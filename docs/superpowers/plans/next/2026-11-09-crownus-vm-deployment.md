@@ -195,7 +195,8 @@ Every step has an expected result. If the output differs, stop and bring it back
   | `Urls__AppBaseUrl` | `https://9-223-115-62.sslip.io` |
   | `Urls__AdminConsoleBaseUrl` | `https://admin.9-223-115-62.sslip.io` |
   | `Encryption__MasterKey` | Freshly generated, and long enough to pass the length check in `ConfigurationStartupValidator` |
-  | `Jwt__Secret`, `Jwt__AdminSecret`, `TrayApp__Jwt__Secret` | Fresh random values (`TrayApp__Jwt__Secret` at least the minimum the validator states, and not starting with `dev-only`) |
+  | `Jwt__Secret`, `Jwt__AdminSecret` | Fresh random values |
+  | `TrayApp__Jwt__SigningKeys__0__Kid`, `TrayApp__Jwt__SigningKeys__0__PrivateKeyPem`, `TrayApp__Jwt__ActiveKid` | A fresh ECDSA P-256 key, generated on the server, with the PEM on one line and literal `\n` between lines. Use the same kid for both kid settings, for example `tray-2026-11`. The steps are in `docs/deployment/tray-device-jwt.md` (SEC-15). This is a first deploy, so no `TrayApp__Jwt__Secret` and no legacy window |
   | `Email__FromAddress` | The sending address |
   | `Email__FromName` | `CROWNUS` |
   | `PlatformBootstrap__SuperAdminEmail`, `PlatformBootstrap__SuperAdminFullName` | The first admin's details |
@@ -203,6 +204,8 @@ Every step has an expected result. If the output differs, stop and bring it back
   | `DevAdmin__Password` | A temporary password, typed on the server |
   | `TrayPresence__Mode` | `Observe` until the tray app points at this server. With `Enforce`, users in a tenant that has monitoring turned on get HTTP 428 on every web request when no tray app is connected. |
   | `ASPNETCORE__Swagger__Enabled` | `false` |
+
+  **Tray tokens in IIS logs (SEC-15):** the tray app sends its access token in the query string of `/hubs/agent-commands` (`?access_token=`), and IIS W3C logging records the query by default. On the `crownus-web` site, which ARR fronts, and on `crownus-api`, remove the **URI Query** (`cs-uri-query`) field from logging. The steps are in `docs/deployment/tray-device-jwt.md`.
 
   **Two warnings for this step:**
   - **Redeploys:** every `dotnet publish` writes a fresh `web.config`. Keep a copy of the `environmentVariables` block in `C:\crownus\api-env-backup.xml`, with Administrators-only access, and restore it after each redeploy.

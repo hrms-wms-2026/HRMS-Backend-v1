@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.AspNetCore.Hosting;
@@ -24,7 +25,8 @@ public sealed class ReferenceDataParityTests(SqlServerFixture fixture, ITestOutp
     private static readonly string[] Settings =
     [
         "ASPNETCORE_ENVIRONMENT", "ConnectionStrings__DefaultConnection", "ConnectionStrings__MigrationConnection",
-        "Encryption__MasterKey", "Jwt__Secret", "Jwt__TenantIssuer", "Jwt__TenantAudience", "TrayApp__Jwt__Secret",
+        "Encryption__MasterKey", "Jwt__Secret", "Jwt__TenantIssuer", "Jwt__TenantAudience",
+        "TrayApp__Jwt__SigningKeys__0__Kid", "TrayApp__Jwt__SigningKeys__0__PrivateKeyPem", "TrayApp__Jwt__ActiveKid",
         "DevAdmin__Email", "DevAdmin__Password", "PlatformBootstrap__SuperAdminEmail",
         "PlatformBootstrap__SuperAdminFullName", "Tenancy__RootDomain", "AwsRekognition__Region",
         "AwsRekognition__LivenessRoleArn",
@@ -79,7 +81,11 @@ public sealed class ReferenceDataParityTests(SqlServerFixture fixture, ITestOutp
             ["Jwt__Secret"] = "reference-parity-test-jwt-secret-32-chars!!",
             ["Jwt__TenantIssuer"] = "crownus-api",
             ["Jwt__TenantAudience"] = "crownus-api",
-            ["TrayApp__Jwt__Secret"] = "reference-parity-test-tray-secret-at-least-32-bytes",
+            // Production needs a real ES256 key (SEC-15). Generated per run, with newlines escaped
+            // the way an environment variable carries them.
+            ["TrayApp__Jwt__SigningKeys__0__Kid"] = "reference-parity",
+            ["TrayApp__Jwt__SigningKeys__0__PrivateKeyPem"] = NewEscapedP256Pem(),
+            ["TrayApp__Jwt__ActiveKid"] = "reference-parity",
             ["DevAdmin__Email"] = "test_admin@onevo.dev",
             ["DevAdmin__Password"] = "test_password_123",
             ["PlatformBootstrap__SuperAdminEmail"] = "test_admin@onevo.dev",
@@ -92,6 +98,12 @@ public sealed class ReferenceDataParityTests(SqlServerFixture fixture, ITestOutp
         {
             Environment.SetEnvironmentVariable(key, value);
         }
+    }
+
+    private static string NewEscapedP256Pem()
+    {
+        using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        return key.ExportPkcs8PrivateKeyPem().Replace("\r\n", "\n").Replace("\n", "\\n");
     }
 
     private static async Task<SqlConnection> OpenAdminAsync(TestDatabase database)

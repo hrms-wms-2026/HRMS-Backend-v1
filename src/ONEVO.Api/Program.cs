@@ -16,7 +16,7 @@ var builder = WebApplication.CreateBuilder(args);
 ConfigurationStartupValidator.ValidateRequiredLocalConfiguration(
     builder.Configuration,
     builder.Environment.EnvironmentName);
-ConfigurationStartupValidator.ValidateTrayJwtSecret(
+ConfigurationStartupValidator.ValidateTrayJwtSigningKeys(
     builder.Configuration,
     builder.Environment.EnvironmentName);
 

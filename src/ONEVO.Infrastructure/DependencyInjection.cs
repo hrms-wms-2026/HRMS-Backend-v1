@@ -895,7 +895,7 @@ public static class DependencyInjection
         // Monitoring - Tray App Activation
         services.AddScoped<ITrayActivationRepository, EfTrayActivationRepository>();
         services.AddScoped<IDeviceChangeRequestRepository, EfDeviceChangeRequestRepository>();
-        services.AddSingleton<ITrayTokenService, TrayTokenService>();
+        services.AddTrayJwtSigning();
         services.AddScoped<IEmployeeOnlineStatusReader, EmployeeOnlineStatusReader>();
 
         // Monitoring - Check-In
@@ -1004,7 +1004,6 @@ public static class DependencyInjection
         services.AddHostedService<Services.Calendar.ZoomAttendanceSyncJob>();
 
         // Auth services
-        services.AddSingleton<IJwtTokenService, JwtTokenService>();
         services.AddSingleton<ISecureTokenGenerator, SecureTokenGenerator>();
         // Runtime MFA challenge storage is always the PostgreSQL-backed mfa_challenges table.
         services.AddScoped<IMfaChallengeStore, PostgresMfaChallengeStore>();
