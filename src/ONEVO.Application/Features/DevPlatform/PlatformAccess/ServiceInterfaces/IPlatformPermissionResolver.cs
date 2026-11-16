@@ -10,6 +10,9 @@ public sealed class PlatformAccessProfile
     public string Email { get; init; } = string.Empty;
     public string FullName { get; init; } = string.Empty;
     public string Status { get; init; } = string.Empty;
+
+    /// <summary>True only when platform_users.mfa_status is "enrolled" (a confirmed TOTP secret).</summary>
+    public bool MfaEnrolled { get; init; }
     public List<string> RoleNames { get; init; } = new();
     public HashSet<string> PermissionCodes { get; init; } = new(StringComparer.Ordinal);
 }

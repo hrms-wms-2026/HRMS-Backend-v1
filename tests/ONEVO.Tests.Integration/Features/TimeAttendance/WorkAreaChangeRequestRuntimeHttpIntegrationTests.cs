@@ -131,11 +131,11 @@ public sealed class WorkAreaChangeRequestRuntimeHttpIntegrationTestsFixture : IA
 
         await WaitForSeedersAsync();
 
-        var loginResponse = await SendAsync(HttpMethod.Post, AdminHost, "/admin/v1/auth/login",
-            new { email = "test_admin@onevo.dev", password = "test_password_123" });
-        var adminCookies = ParseSetCookies(loginResponse);
-        _adminCsrfToken = adminCookies["admin_csrf"];
-        _adminCookie = $"admin_session={adminCookies["admin_session"]}";
+        // F-02: sign-in completes mandatory MFA enrollment; no gate bypass.
+        var adminSession = await PlatformAdminTestSignIn.SignInAsync(
+            _client, "test_admin@onevo.dev", "test_password_123", AdminHost);
+        _adminCsrfToken = adminSession.CsrfToken;
+        _adminCookie = adminSession.SessionCookie;
 
         var ownerA = await ProvisionAndLoginOwnerAsync("wa-run-a", "Work Area Runtime A Co", "owner-a@wa-run.test");
         var ownerB = await ProvisionAndLoginOwnerAsync("wa-run-b", "Work Area Runtime B Co", "owner-b@wa-run.test");

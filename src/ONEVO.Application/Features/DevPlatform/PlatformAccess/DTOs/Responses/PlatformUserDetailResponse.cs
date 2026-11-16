@@ -7,4 +7,7 @@ public record PlatformUserDetailResponse(
     string Status,
     DateTimeOffset CreatedAt,
     DateTimeOffset? LastLoginAt,
-    IReadOnlyList<PlatformRoleResponse> Roles);
+    IReadOnlyList<PlatformRoleResponse> Roles,
+    // F-02: "enrolled" / "not_enrolled" / "locked", so the console can offer an MFA reset (D2).
+    // The TOTP secret itself is never part of any response.
+    string MfaStatus);
