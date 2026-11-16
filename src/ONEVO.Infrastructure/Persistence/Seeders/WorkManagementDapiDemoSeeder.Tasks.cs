@@ -3,7 +3,6 @@ using Microsoft.EntityFrameworkCore;
 using ONEVO.Application.Features.WorkManagement.Objectives.DTOs;
 using ONEVO.Application.Features.WorkManagement.Tasks.DTOs;
 using ONEVO.Domain.Features.WorkManagement.Approvals.Entities;
-using ONEVO.Domain.Features.WorkManagement.Objectives.Entities;
 using ONEVO.Domain.Features.WorkManagement.Projects.Entities;
 using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
 using TaskStatusEntity = ONEVO.Domain.Features.WorkManagement.Tasks.Entities.TaskStatus;

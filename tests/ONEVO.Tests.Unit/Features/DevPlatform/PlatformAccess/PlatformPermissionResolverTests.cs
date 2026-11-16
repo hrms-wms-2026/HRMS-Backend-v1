@@ -38,6 +38,26 @@ public class PlatformPermissionResolverTests
         profile.Should().BeNull();
     }
 
+    [Theory]
+    [InlineData(PlatformUser.MfaEnrolled, true)]
+    [InlineData(PlatformUser.MfaNotEnrolled, false)]
+    [InlineData(PlatformUser.MfaLocked, false)]
+    public async Task ResolveActiveUser_ReportsMfaEnrollment_OnlyForEnrolledStatus(string mfaStatus, bool expected)
+    {
+        var user = new PlatformUser
+        {
+            Id = Guid.NewGuid(), Email = "a@b.c", Status = PlatformUser.StatusActive, MfaStatus = mfaStatus
+        };
+        _users.Setup(u => u.GetByIdAsync(user.Id, It.IsAny<CancellationToken>())).ReturnsAsync(user);
+        _access.Setup(a => a.GetUserRolesAsync(user.Id, It.IsAny<CancellationToken>()))
+               .ReturnsAsync(new List<PlatformUserRole>());
+
+        var profile = await BuildSut().ResolveActiveUserAsync(user.Id);
+
+        profile.Should().NotBeNull();
+        profile!.MfaEnrolled.Should().Be(expected);
+    }
+
     [Fact]
     public async Task ResolveActiveUser_UnionsPermissionsAcrossActiveRoles_AndSkipsInactiveRoles()
     {

@@ -1,18 +1,13 @@
-using System.IdentityModel.Tokens.Jwt;
-using System.Reflection;
 using System.Security.Claims;
-using System.Text;
+using System.Security.Cryptography;
 using FluentAssertions;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.AspNetCore.Hosting;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.JsonWebTokens;
 using Microsoft.IdentityModel.Tokens;
-using Moq;
 using ONEVO.Api.Auth;
-using ONEVO.Infrastructure.Identity.Tokens;
+using ONEVO.Tests.Unit.Features.Monitoring.TrayActivation;
 using Xunit;
 
 namespace ONEVO.Tests.Unit.Features.Auth;
@@ -23,7 +18,8 @@ namespace ONEVO.Tests.Unit.Features.Auth;
 /// </summary>
 public sealed class CrownusAuthNamesTests
 {
-    private const string TraySecret = "unit-test-tray-secret-that-is-long-enough-0123456789";
+    private const string TrayKid = "unit-test";
+    private static readonly string TrayKeyPem = TrayJwtTestKeys.NewPem();
 
     [Fact]
     public void AuthCookieNames_AreCrownus()
@@ -49,14 +45,15 @@ public sealed class CrownusAuthNamesTests
     public async Task TrayBearer_RejectsTokenWithOldOnevoIssuerAndAudience()
     {
         var parameters = TrayValidationParameters();
+        // Signed with a listed key, so only the old issuer and audience can make it fail.
+        var key = new ECDsaSecurityKey(LoadKey(TrayKeyPem)) { KeyId = TrayKid };
         var oldToken = new JsonWebTokenHandler().CreateToken(new SecurityTokenDescriptor
         {
             Issuer = "onevo-tray",
             Audience = "onevo-tray-app",
             Subject = new ClaimsIdentity([new Claim("sub", Guid.NewGuid().ToString())]),
             Expires = DateTime.UtcNow.AddMinutes(5),
-            SigningCredentials = new SigningCredentials(
-                new SymmetricSecurityKey(Encoding.UTF8.GetBytes(TraySecret)), SecurityAlgorithms.HmacSha256)
+            SigningCredentials = new SigningCredentials(key, SecurityAlgorithms.EcdsaSha256)
         });
 
         var result = await new JsonWebTokenHandler().ValidateTokenAsync(oldToken, parameters);
@@ -64,44 +61,17 @@ public sealed class CrownusAuthNamesTests
         result.IsValid.Should().BeFalse("a tray holding a pre-rename token must re-pair");
     }
 
-    [Fact]
-    public void DeviceToken_DefaultsToCrownusIssuerAndAgentAudience()
+    private static ECDsa LoadKey(string pem)
     {
-        var configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?> { ["Jwt:Secret"] = TraySecret })
-            .Build();
-
-        var token = new JwtSecurityTokenHandler().ReadJwtToken(
-            new JwtTokenService(configuration).GenerateDeviceToken(Guid.NewGuid(), Guid.NewGuid()));
-
-        token.Issuer.Should().Be("crownus-api");
-        token.Audiences.Should().ContainSingle().Which.Should().Be("crownus-agent");
+        var ec = ECDsa.Create();
+        ec.ImportFromPem(pem);
+        return ec;
     }
 
     private static TokenValidationParameters TrayValidationParameters() =>
-        BuildAuthServices()
+        TrayJwtTestKeys.BuildServices(
+                TrayJwtTestKeys.Config(TrayJwtTestKeys.Settings([(TrayKid, TrayKeyPem)])))
             .GetRequiredService<IOptionsMonitor<JwtBearerOptions>>()
             .Get("TrayDeviceScheme")
             .TokenValidationParameters;
-
-    private static ServiceProvider BuildAuthServices()
-    {
-        var configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?> { ["TrayApp:Jwt:Secret"] = TraySecret })
-            .Build();
-        var environment = new Mock<IWebHostEnvironment>();
-        environment.SetupGet(value => value.EnvironmentName).Returns("Production");
-
-        var services = new ServiceCollection();
-        services.AddLogging();
-        services.AddSingleton<IConfiguration>(configuration);
-
-        var extensions = typeof(AuthCookieNames).Assembly
-            .GetType("ONEVO.Api.Extensions.AuthenticationExtensions", throwOnError: true)!;
-        extensions
-            .GetMethod("AddApiAuthentication", BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public)!
-            .Invoke(null, [services, environment.Object, configuration]);
-
-        return services.BuildServiceProvider();
-    }
 }

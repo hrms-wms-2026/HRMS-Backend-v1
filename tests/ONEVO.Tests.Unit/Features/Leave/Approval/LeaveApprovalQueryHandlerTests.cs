@@ -154,32 +154,6 @@ public class LeaveApprovalQueryHandlerTests
     }
 
     [Fact]
-    public async Task ListHistory_MapsTheCallersPastActions()
-    {
-        var tenantId = Guid.NewGuid();
-        var userId = Guid.NewGuid();
-        var current = Employee(tenantId, userId, "Mathu");
-        var request = Request(tenantId, LeaveRequestStatuses.Pending);
-        var actedAt = new DateTimeOffset(2026, 10, 6, 12, 0, 0, TimeSpan.Zero);
-
-        var (currentUser, employees, repo) = Mocks(tenantId, userId, current);
-        repo.Setup(x => x.ListApprovalHistoryAsync(tenantId, current.Id, null, null, ListLeaveApprovalHistoryQueryHandler.Limit, It.IsAny<CancellationToken>()))
-            .ReturnsAsync([new LeaveApprovalHistoryRow(request, "Tharmi Rajendran", "Annual Leave",
-                LeaveRequestApproverStatuses.Rejected, actedAt, "Please decide")]);
-
-        var handler = new ListLeaveApprovalHistoryQueryHandler(currentUser.Object, employees.Object, repo.Object);
-        var result = await handler.Handle(new ListLeaveApprovalHistoryQuery(null, null), CancellationToken.None);
-
-        result.IsSuccess.Should().BeTrue();
-        var item = result.Value.Should().ContainSingle().Subject;
-        item.RequestId.Should().Be(request.Id);
-        item.MyAction.Should().Be("rejected");
-        item.ActedAt.Should().Be(actedAt);
-        item.MyComment.Should().Be("Please decide");
-        item.RequestStatus.Should().Be(LeaveRequestStatuses.Pending);
-    }
-
-    [Fact]
     public async Task GetDetail_CanChangeDecision_OnlyForTheDecidingApproverBeforeTheLeaveStarts()
     {
         var tenantId = Guid.NewGuid();

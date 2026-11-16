@@ -13,10 +13,11 @@ namespace ONEVO.Api.Controllers.Tenant.CoreHr;
 [Authorize(Policy = "TenantPolicy")]
 public sealed class PeopleChecklistAssigneesController(IMediator mediator) : ControllerBase
 {
-    /// <summary>Active positions for the onboarding checklist assignee picker. Uses employees:write
-    /// so Add Employee does not depend on org:read. Tenant is server-derived.</summary>
+    /// <summary>Active positions for the checklist assignee picker, used by Add Employee
+    /// (employees:write) and the checklist template builder (checklists:manage), so neither depends
+    /// on org:read. Tenant is server-derived.</summary>
     [HttpGet("checklist-assignee-positions")]
-    [RequirePermission("employees:write")]
+    [RequireAnyPermission("employees:write", "checklists:manage")]
     public async Task<IActionResult> ListPositions(
         [FromQuery] Guid legalEntityId,
         CancellationToken ct = default)
@@ -28,9 +29,10 @@ public sealed class PeopleChecklistAssigneesController(IMediator mediator) : Con
     }
 
     /// <summary>Active employees currently seated in a position, including the user id required
-    /// to assign an onboarding checklist task. Onboarding-only picker; tenant is server-derived.</summary>
+    /// to assign a checklist task. Used by Add Employee and the checklist template builder; tenant
+    /// is server-derived.</summary>
     [HttpGet("checklist-assignees")]
-    [RequirePermission("employees:write")]
+    [RequireAnyPermission("employees:write", "checklists:manage")]
     public async Task<IActionResult> List(
         [FromQuery] Guid legalEntityId,
         [FromQuery] Guid positionId,

@@ -77,6 +77,27 @@ public sealed class PlatformAccessMapperTests
         result.Status.Should().Be(PlatformUser.StatusPending);
     }
 
+    [Theory]
+    [InlineData(PlatformUser.MfaEnrolled)]
+    [InlineData(PlatformUser.MfaNotEnrolled)]
+    public void MapDetail_ReportsMfaStatus_ButNeverTheSecret(string mfaStatus)
+    {
+        var user = new PlatformUser
+        {
+            Id = Guid.NewGuid(),
+            Email = "manager@onevo.io",
+            FullName = "Arun Selvan",
+            Status = PlatformUser.StatusActive,
+            MfaStatus = mfaStatus,
+            MfaSecret = "encrypted-totp-secret",
+        };
+
+        var result = PlatformAccessMapper.MapDetail(user, Array.Empty<PlatformRole>());
+
+        result.MfaStatus.Should().Be(mfaStatus);
+        System.Text.Json.JsonSerializer.Serialize(result).Should().NotContain("encrypted-totp-secret");
+    }
+
     [Fact]
     public void MapDetail_ActiveUserWithRoles_ReturnsFullNameStatusAndRoles()
     {

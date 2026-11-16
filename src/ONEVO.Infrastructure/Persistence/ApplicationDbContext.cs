@@ -176,6 +176,14 @@ public class ApplicationDbContext : DbContext
     public DbSet<TenantSessionExchangeChallenge> TenantSessionExchangeChallenges => Set<TenantSessionExchangeChallenge>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
     public DbSet<LegalDocumentVersion> LegalDocumentVersions => Set<LegalDocumentVersion>();
+    public DbSet<ONEVO.Domain.Features.DevPlatform.Support.Entities.PlatformAnnouncement> PlatformAnnouncements
+        => Set<ONEVO.Domain.Features.DevPlatform.Support.Entities.PlatformAnnouncement>();
+    public DbSet<ONEVO.Domain.Features.DevPlatform.Support.Entities.SupportTicket> SupportTickets
+        => Set<ONEVO.Domain.Features.DevPlatform.Support.Entities.SupportTicket>();
+    public DbSet<ONEVO.Domain.Features.DevPlatform.Support.Entities.SupportTicketComment> SupportTicketComments
+        => Set<ONEVO.Domain.Features.DevPlatform.Support.Entities.SupportTicketComment>();
+    public DbSet<ONEVO.Domain.Features.DevPlatform.Support.Entities.SupportTicketAttachment> SupportTicketAttachments
+        => Set<ONEVO.Domain.Features.DevPlatform.Support.Entities.SupportTicketAttachment>();
     public DbSet<LegalAcceptanceRecord> LegalAcceptanceRecords => Set<LegalAcceptanceRecord>();
     public DbSet<UserExternalIdentity> UserExternalIdentities => Set<UserExternalIdentity>();
     public DbSet<TenantAuthPolicy> TenantAuthPolicies => Set<TenantAuthPolicy>();

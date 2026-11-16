@@ -1,7 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using ONEVO.Application.Features.CoreHr.BulkOnboarding.RepositoryInterfaces;
 using ONEVO.Domain.Features.CoreHr.Entities;
-using ONEVO.Infrastructure.Persistence;
 
 namespace ONEVO.Infrastructure.Persistence.Repositories.CoreHr.BulkOnboarding;
 

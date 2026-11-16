@@ -129,6 +129,40 @@ public class AdminDatabaseTicketStoreTests
         Assert.Contains(PlatformPermissionCatalog.TenantsManage, permissionClaims);
     }
 
+    [Theory]
+    [InlineData(true, "true")]
+    [InlineData(false, "false")]
+    public async Task RetrieveAsync_EmitsLiveMfaEnrollmentClaim_FromCurrentDatabaseState(bool enrolled, string expectedClaim)
+    {
+        var platformUserId = Guid.NewGuid();
+        _sessions.GetByTokenHashAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+                 .Returns(new PlatformUserSession
+                 {
+                     Id = Guid.NewGuid(),
+                     AccountId = platformUserId,
+                     TokenHash = "irrelevant",
+                     CreatedAt = FixedNow.AddMinutes(-10),
+                     ExpiresAt = FixedNow.AddMinutes(10),
+                     CsrfTokenHash = "csrf-hash"
+                 });
+        _resolver.ResolveActiveUserAsync(platformUserId, Arg.Any<CancellationToken>())
+                 .Returns(new PlatformAccessProfile
+                 {
+                     UserId = platformUserId,
+                     Email = "admin@onevo.com",
+                     Status = PlatformUser.StatusActive,
+                     MfaEnrolled = enrolled,
+                     RoleNames = { "Platform Super Admin" }
+                 });
+
+        var ticket = await CreateSut().RetrieveAsync("some-raw-key", null, CancellationToken.None);
+
+        Assert.NotNull(ticket);
+        var claims = ticket!.Principal.FindAll(PlatformMfaClaims.EnrolledClaimType).ToList();
+        Assert.Single(claims);
+        Assert.Equal(expectedClaim, claims[0].Value);
+    }
+
     [Fact]
     public async Task RetrieveAsync_ExpiredSession_ReturnsNull()
     {

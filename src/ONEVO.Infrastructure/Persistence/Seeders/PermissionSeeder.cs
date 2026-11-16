@@ -122,6 +122,7 @@ public class PermissionSeeder : IHostedService
         Perm("employees:offboard", "Start, cancel, or complete an employee's offboarding.", "core_hr"),
         Perm("employees:read:sensitive", "View sensitive employee data (bank details) on the employee detail screen.", "core_hr"),
         Perm("employees:delete", "Delete employee records.", "core_hr"),
+        Perm("checklists:manage", "Create, edit, and archive onboarding and offboarding checklist templates.", "core_hr"),
 
         // Organization
         Perm("org:read", "View org structure, departments, hierarchy.", "org_structure"),
@@ -201,6 +202,9 @@ public class PermissionSeeder : IHostedService
         // Billing
         Perm("billing:read", "View billing history and invoices.", "configuration"),
         Perm("billing:manage", "Manage billing and subscription changes.", "configuration"),
+
+        // Support (Crownus support tickets raised by the tenant)
+        Perm("support:manage", "Raise and follow up support tickets with Crownus support.", "configuration"),
 
         // Integrations
         Perm(

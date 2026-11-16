@@ -14,14 +14,12 @@ public class UploadBulkOnboardingBatchCommandHandler
 {
     private readonly IBulkOnboardingBatchRepository _batchRepository;
     private readonly ICurrentUser _currentUser;
-    private readonly IDateTimeProvider _clock;
 
     public UploadBulkOnboardingBatchCommandHandler(
-        IBulkOnboardingBatchRepository batchRepository, ICurrentUser currentUser, IDateTimeProvider clock)
+        IBulkOnboardingBatchRepository batchRepository, ICurrentUser currentUser)
     {
         _batchRepository = batchRepository;
         _currentUser = currentUser;
-        _clock = clock;
     }
 
     public async Task<Result<BulkOnboardingBatchResponse>> Handle(

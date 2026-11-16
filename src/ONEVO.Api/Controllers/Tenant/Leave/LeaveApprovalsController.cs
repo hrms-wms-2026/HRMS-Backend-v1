@@ -86,31 +86,4 @@ public sealed class LeaveApprovalsController : ControllerBase
         var result = await _mediator.Send(new ChangeLeaveDecisionCommand(requestId, request.Decision, request.Comment), ct);
         return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
-
-    [HttpGet("approval-history")]
-    [RequirePermission("leave:approve")]
-    public async Task<IActionResult> ApprovalHistory(
-        [FromQuery] DateOnly? fromDate,
-        [FromQuery] DateOnly? toDate,
-        CancellationToken ct = default)
-    {
-        var result = await _mediator.Send(new ListLeaveApprovalHistoryQuery(fromDate, toDate), ct);
-        return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
-    }
-
-    [HttpPost("bulk-approve")]
-    [RequirePermission("leave:approve")]
-    public async Task<IActionResult> BulkApprove([FromBody] BulkApproveLeaveRequestsRequest request, CancellationToken ct = default)
-    {
-        var result = await _mediator.Send(new BulkApproveLeaveRequestsCommand(request.RequestIds, request.Comment), ct);
-        return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
-    }
-
-    [HttpPost("bulk-reject")]
-    [RequirePermission("leave:approve")]
-    public async Task<IActionResult> BulkReject([FromBody] BulkRejectLeaveRequestsRequest request, CancellationToken ct = default)
-    {
-        var result = await _mediator.Send(new BulkRejectLeaveRequestsCommand(request.RequestIds, request.Reason), ct);
-        return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
-    }
 }

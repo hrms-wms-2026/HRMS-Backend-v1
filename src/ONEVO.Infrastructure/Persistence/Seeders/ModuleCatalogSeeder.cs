@@ -231,6 +231,7 @@ public class ModuleCatalogSeeder : IHostedService
             // configuration
             new { Module = "configuration", Perm = "billing:read" },
             new { Module = "configuration", Perm = "billing:manage" },
+            new { Module = "configuration", Perm = "support:manage" },
 
             // roles
             new { Module = "roles", Perm = "roles:manage" },
@@ -249,6 +250,7 @@ public class ModuleCatalogSeeder : IHostedService
             // core_hr
             new { Module = "core_hr", Perm = "employees:write" },
             new { Module = "core_hr", Perm = "employees:offboard" },
+            new { Module = "core_hr", Perm = "checklists:manage" },
             new { Module = "core_hr", Perm = "employees:delete" },
 
             // time_off

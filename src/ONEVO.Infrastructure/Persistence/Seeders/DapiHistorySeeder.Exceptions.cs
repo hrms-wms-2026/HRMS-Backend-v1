@@ -171,7 +171,7 @@ public sealed partial class DapiHistorySeeder
         AddCaseNotification(db, subject.Id, type, caseId, text.Title, detectedAt, read: outcome != CaseOutcome.Open);
 
         // The 1-on-1 chat between the person and their reviewer carries the case card.
-        var direct = await state.DirectChatAsync(db, subject.Id, reviewer.Id, detectedAt, ct);
+        var direct = await state.DirectChatAsync(db, subject.Id, reviewer.Id, detectedAt);
         AddMessage(db, state, CaseCards.CardId(direct.SubjectId, item), direct, null, ConversationMessageKinds.Case,
             WebUtility.HtmlEncode(text.Title), detectedAt.AddMinutes(1), CaseCards.CardJson(item, text.Title));
         if (outcome == CaseOutcome.Open)
@@ -209,7 +209,7 @@ public sealed partial class DapiHistorySeeder
                 break;
 
             default:
-                await EscalateAsync(ctx, state, item, text.Title, exception, subject, reviewer, escalatedTo!, top, direct, decidedAt, ct);
+                await EscalateAsync(ctx, state, item, text.Title, exception, subject, reviewer, escalatedTo!, top, direct, decidedAt);
                 break;
         }
     }
@@ -219,14 +219,14 @@ public sealed partial class DapiHistorySeeder
     /// InboxEscalationRecorder writes. EscalatedToTop goes one level further, to the next manager up (the owner).</summary>
     private static async Task EscalateAsync(
         SeedContext ctx, ChatState state, ItemRef item, string title, MonitoringException exception, Employee subject,
-        Employee reviewer, Employee target, Employee? top, Conversation direct, DateTimeOffset at, CancellationToken ct)
+        Employee reviewer, Employee target, Employee? top, Conversation direct, DateTimeOffset at)
     {
         var db = ctx.Db;
         var note = $"{subject.FirstName} has had this flagged before - escalating for a second opinion.";
         AddText(db, state, $"escalate-note:{item.Id:N}", direct, reviewer.Id,
             $"Thanks {subject.FirstName}. I'm escalating this to {target.FirstName} so we look at it together.", at.AddMinutes(-10));
 
-        var group = await state.CaseGroupAsync(db, item, at, ct);
+        var group = await state.CaseGroupAsync(db, item, at);
         state.AddParticipant(db, group.Id, subject.Id, ConversationJoinReasons.Base, null, at);
         state.AddParticipant(db, group.Id, reviewer.Id, ConversationJoinReasons.Base, null, at);
         AddMessage(db, state, PeopleChatNames.DeterministicId($"case-group:{group.Id:N}"), group, null, ConversationMessageKinds.System,
@@ -371,7 +371,7 @@ public sealed partial class DapiHistorySeeder
             return state;
         }
 
-        public async Task<Conversation> DirectChatAsync(ApplicationDbContext db, Guid a, Guid b, DateTimeOffset at, CancellationToken ct)
+        public async Task<Conversation> DirectChatAsync(ApplicationDbContext db, Guid a, Guid b, DateTimeOffset at)
         {
             var subjectId = PeopleChatNames.DirectSubjectId(a, b);
             var conversation = Get(db, ConversationSources.Direct, ConversationSources.Direct, subjectId, $"direct-chat:{subjectId:N}", at);
@@ -381,7 +381,7 @@ public sealed partial class DapiHistorySeeder
             return conversation;
         }
 
-        public Task<Conversation> CaseGroupAsync(ApplicationDbContext db, ItemRef item, DateTimeOffset at, CancellationToken ct) =>
+        public Task<Conversation> CaseGroupAsync(ApplicationDbContext db, ItemRef item, DateTimeOffset at) =>
             Task.FromResult(Get(db, item.Source, item.Kind, item.Id, $"case-group-chat:{item.Id:N}", at));
 
         private Conversation Get(ApplicationDbContext db, string source, string kind, Guid subjectId, string idKey, DateTimeOffset at)

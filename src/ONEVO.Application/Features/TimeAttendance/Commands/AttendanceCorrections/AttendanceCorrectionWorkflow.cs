@@ -3,7 +3,6 @@ using ONEVO.Application.Common.Exceptions;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
-using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.EmployeeAuthority.Models;
 using ONEVO.Application.Features.CoreHr.EmployeeAuthority.ServiceInterfaces;
 using ONEVO.Application.Features.Inbox.Services;
@@ -75,7 +74,7 @@ public sealed class AttendanceCorrectionWorkflow(
                     return Result<AttendanceCorrectionResponse>.Failure(prepared.Error!, prepared.StatusCode ?? 400);
 
                 var value = prepared.Value!;
-                var correction = BuildCorrection(value, request, transactionCt);
+                var correction = BuildCorrection(value, request);
                 await corrections.AddAsync(correction, transactionCt);
 
                 if (value.Policy.CorrectionRequiresApproval)
@@ -419,7 +418,7 @@ public sealed class AttendanceCorrectionWorkflow(
     }
 
     private AttendanceCorrection BuildCorrection(PreparedCorrection value,
-        RequestAttendanceCorrectionCommand request, CancellationToken ct)
+        RequestAttendanceCorrectionCommand request)
     {
         var requestedBreaks = request.RequestedBreaks?.Select(x => new AttendanceCorrectionBreak(
             x.BreakStart, x.BreakEnd, x.BreakType.Trim())).ToArray();
