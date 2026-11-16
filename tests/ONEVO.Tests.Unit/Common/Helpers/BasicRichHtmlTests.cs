@@ -50,6 +50,35 @@ public sealed class BasicRichHtmlTests
         check.Error.Should().NotBeNullOrWhiteSpace();
     }
 
+    // Review finding I2: tags the tag scanner cannot match, and entity- or whitespace-obfuscated schemes.
+    [Theory]
+    [InlineData("<img/src=x onerror=alert(1)>")]
+    [InlineData("<svg/onload=alert(1)>")]
+    [InlineData("<img src=\"x\" onerror=\"alert(1)\"<p>x</p>")]
+    [InlineData("<p>x</p><!--<script>-->")]
+    [InlineData("<a href=\"javascript&colon;alert(1)\">x</a>")]
+    [InlineData("<a href=\"javascript&#58;alert(1)\">x</a>")]
+    [InlineData("<a href=\"java\tscript:alert(1)\">x</a>")]
+    [InlineData("<a href=\"\\\\evil.example\">x</a>")]
+    [InlineData("<a href=\"/\\evil.example\">x</a>")]
+    [InlineData("<a href=\"https:evil.example\">x</a>")]
+    [InlineData("<a href=\"\">x</a>")]
+    public void Validate_rejects_markup_the_scanner_cannot_prove_safe(string html)
+    {
+        BasicRichHtml.Validate(html).IsValid.Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData("<a href=\"https://x.example/a?b=1\">x</a>")]
+    [InlineData("<a href=\"mailto:help@x.example\">x</a>")]
+    [InlineData("<a href=\"/relative/path\">x</a>")]
+    [InlineData("<a href=\"#section-2\">x</a>")]
+    [InlineData("<p>5 &lt; 6 and 7 > 3</p>")]
+    public void Validate_accepts_safe_links_and_text(string html)
+    {
+        BasicRichHtml.Validate(html).IsValid.Should().BeTrue();
+    }
+
     [Fact]
     public void Validate_accepts_the_editors_cleaned_output_of_a_word_paste()
     {

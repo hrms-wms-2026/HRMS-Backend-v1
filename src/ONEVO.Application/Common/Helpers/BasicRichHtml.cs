@@ -93,6 +93,11 @@ public static partial class BasicRichHtml
             }
         }
 
+        // Anything the tag scanner could not match ("<img/src=x>", a tag cut short by another "<",
+        // a comment) is markup we cannot prove safe, so it is rejected rather than ignored.
+        if (LeftoverMarkup().IsMatch(TagPattern().Replace(html, string.Empty)))
+            return new RichHtmlCheck(false, $"Malformed or unsupported markup is not permitted in {contentLabel}.");
+
         return new RichHtmlCheck(true, null);
     }
 
@@ -170,28 +175,13 @@ public static partial class BasicRichHtml
         return doubleQuoteCount % 2 != 0 || singleQuoteCount % 2 != 0 ? attributesText : beforeSlash;
     }
 
+    /// <summary>A positive rule on the decoded value (entities decoded, whitespace and control characters
+    /// removed, as browsers do): http(s) URLs, mailto, same-origin paths and fragments only.</summary>
     private static bool IsSafeHref(string href)
     {
-        var trimmed = href.Trim();
-        if (trimmed.Length == 0)
-            return false;
-
-        // Protocol-relative URLs inherit the page's scheme and can point off-origin like javascript:/data:.
-        if (trimmed.StartsWith("//", StringComparison.Ordinal))
-            return false;
-
-        if (trimmed.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
-            || trimmed.StartsWith("https://", StringComparison.OrdinalIgnoreCase)
-            || trimmed.StartsWith("mailto:", StringComparison.OrdinalIgnoreCase)
-            || trimmed.StartsWith('/')
-            || trimmed.StartsWith('#'))
-        {
-            return true;
-        }
-
-        var colonIndex = trimmed.IndexOf(':');
-        var slashIndex = trimmed.IndexOf('/');
-        return !(colonIndex >= 0 && (slashIndex < 0 || colonIndex < slashIndex));
+        var decoded = WebUtility.HtmlDecode(href);
+        var compact = new string(decoded.Where(c => c > ' ' && c != '\u007f').ToArray());
+        return compact.Length > 0 && SafeHref().IsMatch(compact);
     }
 
     [GeneratedRegex(@"<\s*(/)?\s*([a-zA-Z][a-zA-Z0-9]*)((?:\s+[^<>]*)?)/?\s*>")]
@@ -205,6 +195,13 @@ public static partial class BasicRichHtml
     // Attributes, when present, must be quoted name="value" pairs, so prose like "a <b and c> d" is not rich text.
     [GeneratedRegex(@"<\s*/?\s*(p|br|strong|b|em|i|u|s|h[1-4]|ul|ol|li|blockquote|a|code|pre|table|thead|tbody|tr|th|td)(\s+[a-zA-Z][a-zA-Z0-9\-]*\s*=\s*(""[^""]*""|'[^']*'))*\s*/?\s*>", RegexOptions.IgnoreCase)]
     private static partial Regex KnownTagPattern();
+
+    [GeneratedRegex(@"<[a-zA-Z/!?]")]
+    private static partial Regex LeftoverMarkup();
+
+    // Same rule as SAFE_URI in the frontend basic-rich-html.util.ts.
+    [GeneratedRegex(@"^(?:https?://|mailto:|/(?![/\\])|#)", RegexOptions.IgnoreCase)]
+    private static partial Regex SafeHref();
 
     [GeneratedRegex(@"<a\s[^>]*href\s*=\s*[""']([^""']*)[""'][^>]*>(.*?)</a\s*>", RegexOptions.IgnoreCase | RegexOptions.Singleline)]
     private static partial Regex AnchorPattern();
