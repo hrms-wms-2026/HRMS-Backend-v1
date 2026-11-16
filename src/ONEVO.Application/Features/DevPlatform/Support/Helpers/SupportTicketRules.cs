@@ -10,6 +10,8 @@ public static class SupportTicketRules
     public const int DescriptionMaxLength = 10000;
     public const int CategoryMaxLength = 80;
     public const int CommentMaxLength = 10000;
+    /// <summary>Cap on the stored HTML of a rich description or comment, whatever its visible length.</summary>
+    public const int RawHtmlMaxLength = 50000;
     public const int AnnouncementTitleMaxLength = 200;
     public const int AnnouncementBodyMaxLength = 5000;
     public const int MaxAttachmentsPerTicket = 20;
@@ -27,9 +29,9 @@ public static class SupportTicketRules
         if (string.IsNullOrWhiteSpace(subject)) return "subject is required.";
         if (subject.Trim().Length > SubjectMaxLength) return $"subject must be at most {SubjectMaxLength} characters.";
         if (string.IsNullOrWhiteSpace(description)) return "description is required.";
-        if (description.Trim().Length > DescriptionMaxLength)
-            return $"description must be at most {DescriptionMaxLength} characters.";
-        if (RichTextRules.HasActiveContent(subject) || RichTextRules.HasActiveContent(description))
+        var descriptionError = ValidateBody(description, "description", DescriptionMaxLength);
+        if (descriptionError is not null) return descriptionError;
+        if (RichTextRules.HasActiveContent(subject))
             return RichTextRules.ActiveContentError;
         if (!SupportTicket.Priorities.Contains(priority ?? string.Empty))
             return $"priority must be one of: {string.Join(", ", SupportTicket.Priorities)}.";
@@ -41,10 +43,29 @@ public static class SupportTicketRules
     public static string? ValidateComment(string? body)
     {
         if (string.IsNullOrWhiteSpace(body)) return "body is required.";
-        if (body.Trim().Length > CommentMaxLength) return $"body must be at most {CommentMaxLength} characters.";
-        if (RichTextRules.HasActiveContent(body)) return RichTextRules.ActiveContentError;
-        return null;
+        return ValidateBody(body, "body", CommentMaxLength);
     }
+
+    /// <summary>
+    /// A description or comment is either plain text (today's rules) or basic rich text from the shared
+    /// editor (DEC-035): checked against the shared allowlist, limited by visible text, and capped in raw size.
+    /// </summary>
+    private static string? ValidateBody(string value, string field, int maxVisible)
+    {
+        if (!BasicRichHtml.IsRichHtml(value))
+        {
+            if (value.Trim().Length > maxVisible) return $"{field} must be at most {maxVisible} characters.";
+            return RichTextRules.HasActiveContent(value) ? RichTextRules.ActiveContentError : null;
+        }
+
+        if (value.Length > RawHtmlMaxLength) return $"{field} formatting is too large (at most {RawHtmlMaxLength} characters of markup).";
+        if (BasicRichHtml.VisibleLength(value) > maxVisible) return $"{field} must be at most {maxVisible} characters.";
+        var check = BasicRichHtml.Validate(value, field);
+        return check.IsValid ? null : check.Error;
+    }
+
+    /// <summary>Plain text of a description or comment for emails; never user HTML.</summary>
+    public static string EmailExcerpt(string? text) => BasicRichHtml.ToPlainText(text);
 
     public static string? ValidateAnnouncementText(string title, string body) =>
         RichTextRules.HasActiveContent(title) || RichTextRules.HasActiveContent(body)

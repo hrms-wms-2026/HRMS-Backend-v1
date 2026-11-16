@@ -1,3 +1,4 @@
+using ONEVO.Application.Features.DevPlatform.Support.Helpers;
 using System.Net;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -106,7 +107,7 @@ public sealed class SupportNotifier : ISupportNotifier
             var subject = kind == SupportAlertKind.TicketRaised
                 ? $"New support ticket from {tenantName}: {ticket.Subject}"
                 : $"{tenantName} replied: {ticket.Subject}";
-            await _email.SendAsync(to, Truncate(subject, 200), BuildAlertHtml(ticket, kind, tenantName, actorName, text), ct);
+            await _email.SendAsync(to, Truncate(subject, 200), BuildAlertHtml(ticket, kind, tenantName, actorName, SupportTicketRules.EmailExcerpt(text)), ct);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
