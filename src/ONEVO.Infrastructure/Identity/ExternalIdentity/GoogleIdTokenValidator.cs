@@ -42,5 +42,13 @@ public class GoogleIdTokenValidator : IGoogleIdTokenValidator
             _logger.LogWarning(ex, "Google ID token validation failed.");
             return null;
         }
+        // A malformed (non-JWT) token fails while Google's library decodes it, before any
+        // signature check: bad base64 throws FormatException, a bad JSON segment throws a
+        // Newtonsoft JsonException. Both mean "invalid token" (401), not a server fault (500).
+        catch (Exception ex) when (ex is FormatException or Newtonsoft.Json.JsonException)
+        {
+            _logger.LogWarning("Google ID token was malformed ({ExceptionType}).", ex.GetType().Name);
+            return null;
+        }
     }
 }
