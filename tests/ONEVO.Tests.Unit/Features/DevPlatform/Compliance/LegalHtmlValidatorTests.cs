@@ -19,6 +19,8 @@ public sealed class LegalHtmlValidatorTests
     [InlineData("<a href=\"https://example.com\" title=\"Example\">link</a>")]
     [InlineData("<table><thead><tr><th colspan=\"2\">H</th></tr></thead><tbody><tr><td>1</td><td>2</td></tr></tbody></table>")]
     [InlineData("<td rowspan=\"3\" colspan=\"2\">Cell</td>")]
+    // The shared editor's basic toolset can produce code blocks (DEC-035 shared allowlist).
+    [InlineData("<pre><code>clause 4.2</code></pre>")]
     public void Validate_AllowsSafeFormatting(string html)
     {
         var result = LegalHtmlValidator.Validate(html);
