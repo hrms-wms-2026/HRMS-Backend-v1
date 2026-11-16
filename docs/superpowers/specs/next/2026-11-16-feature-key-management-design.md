@@ -1,9 +1,9 @@
 # Feature-Key Entitlement and Management: Two-Phase Design
 
 **Date:** 2026-11-16  
-**Status:** design complete; awaiting Dabi approval  
+**Status:** approved by Dabi on 2026-11-16 (DEC-038); implementation plan next  
 **Owner:** Dabi  
-**Decision:** DEC-032 in `onexso/todo/DECISIONS.md`
+**Decision:** DEC-032 (approach), DEC-037 (status rule), DEC-038 (approval) in `onexso/todo/DECISIONS.md`
 
 ## 1. Intent
 
