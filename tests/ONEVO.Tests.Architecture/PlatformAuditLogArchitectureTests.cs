@@ -157,6 +157,18 @@ public class PlatformAuditLogArchitectureTests
         Assert.Contains("DENY UPDATE, DELETE ON dbo.platform_audit_logs TO crownus_app;", grants, StringComparison.Ordinal);
     }
 
+    // PA-SEC-002: every audit table is append-only for the runtime login, not only the platform one.
+    [Theory]
+    [InlineData("audit_logs")]
+    [InlineData("platform_auth_events")]
+    [InlineData("billing_audit_logs")]
+    public void Other_audit_tables_are_append_only_for_the_runtime_login(string table)
+    {
+        var grants = File.ReadAllText(Path.Combine(Root(), "ops", "sqlserver", "post-migration-grants.sql"));
+
+        Assert.Contains($"DENY UPDATE, DELETE ON dbo.{table} TO crownus_app;", grants, StringComparison.Ordinal);
+    }
+
     private static string Root()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);

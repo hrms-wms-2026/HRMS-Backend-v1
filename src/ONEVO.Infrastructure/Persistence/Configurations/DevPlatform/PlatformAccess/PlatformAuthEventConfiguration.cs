@@ -19,9 +19,11 @@ public class PlatformAuthEventConfiguration : IEntityTypeConfiguration<PlatformA
         builder.HasIndex(e => e.UserId);
         builder.HasIndex(e => e.CreatedAt);
 
+        // Auth events are append-only: deleting a referenced platform user must fail, never null the
+        // column (a cascade is not permission-checked, so it would bypass the DENY).
         builder.HasOne<PlatformUser>()
             .WithMany()
             .HasForeignKey(e => e.UserId)
-            .OnDelete(DeleteBehavior.SetNull);
+            .OnDelete(DeleteBehavior.Restrict);
     }
 }

@@ -17801,7 +17801,7 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasOne("ONEVO.Domain.Features.DevPlatform.PlatformAccess.Entities.PlatformUser", null)
                         .WithMany()
                         .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.SetNull)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("fk_platform_auth_events_platform_users_user_id");
                 });
 
@@ -18513,19 +18513,19 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasOne("ONEVO.Domain.Features.DevPlatform.PlatformAccess.Entities.PlatformUser", null)
                         .WithMany()
                         .HasForeignKey("ActorAdminUserId")
-                        .OnDelete(DeleteBehavior.SetNull)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("fk_billing_audit_logs_platform_users_actor_admin_user_id");
 
                     b.HasOne("ONEVO.Domain.Features.SharedPlatform.Entities.SubscriptionInvoice", null)
                         .WithMany()
                         .HasForeignKey("InvoiceId")
-                        .OnDelete(DeleteBehavior.SetNull)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("fk_billing_audit_logs_subscription_invoices_invoice_id");
 
                     b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
                         .WithMany()
                         .HasForeignKey("TenantId")
-                        .OnDelete(DeleteBehavior.SetNull)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("fk_billing_audit_logs_tenants_tenant_id");
                 });
 

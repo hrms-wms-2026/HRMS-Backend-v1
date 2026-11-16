@@ -88,9 +88,9 @@ public sealed class PlatformSharedTableRlsTests(SqlServerFixture fixture) : IAsy
         Assert.Equal(1, await CountAsync(system, table, $"id = '{id}'"));
     }
 
+    // billing_audit_logs is not here: the runtime login may not update it at all (AuditTablesAppendOnlyTests).
     [Theory]
     [InlineData("outbox_messages")]
-    [InlineData("billing_audit_logs")]
     public async Task Tenant_CannotDisownItsOwnRow(string table)
     {
         var (id, owner) = (Guid.NewGuid(), Guid.NewGuid());
