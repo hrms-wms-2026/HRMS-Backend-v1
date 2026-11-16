@@ -1,7 +1,7 @@
 # Incident Management (Platform Admin): Design
 
 **Date:** 2026-11-16 · **Status:** design for review · **Owner:** Dabi
-**Decisions behind this design:** DEC-005, DEC-009, DEC-014, DEC-015, DEC-017, DEC-018, DEC-019, DEC-020, DEC-021, DEC-022 in Dabi's decisions log (`onexso\todo\DECISIONS.md`).
+**Decisions behind this design:** DEC-005, DEC-009, DEC-014, DEC-015, DEC-017, DEC-018, DEC-019, DEC-020, DEC-021, DEC-022, DEC-024, DEC-025, DEC-027, DEC-028, DEC-029 in Dabi's decisions log (`onexso\todo\DECISIONS.md`).
 
 ## 1. Intent
 
@@ -86,7 +86,7 @@ Investigating → Identified → Monitoring → Resolved → Closed
 - **Closed:** postmortem completed (required for Critical, optional for others; DEC-021). Minor and Major can be closed straight from Resolved.
 - Moving backwards (e.g. Monitoring → Investigating) is allowed and recorded in the timeline. A Closed incident can be reopened only to Investigating.
 
-Each status change opens the customer-update composer with the template for the new status (5.5). **Changing status and sending a customer update are two separate commands, each audited.** Changing status never sends anything. Until an update has been sent for the current status, the incident shows **"Customer update pending"** (in the list and the header); the Critical badge stays red while it is pending.
+Each status change opens the customer-update composer with the template for the new status (5.5). **Changing status and sending a customer update are two separate commands, each audited.** Changing status never sends anything. Until the current status is covered, the incident shows **"Customer update pending"** (in the list and the header); the Critical badge stays red while it is pending. For **Critical and Major**, only a Send covers a status. For **Minor**, either a Send or an explicit, audited **"No customer update required"** action covers it (customer updates are optional for Minor, DEC-020).
 
 ### 5.4 How incidents start
 
@@ -103,7 +103,7 @@ Each status change opens the customer-update composer with the template for the 
 - Every sent update is a timeline event; the first one sets `first_update_sent_at`.
 - Adding an affected tenant later does not resend old updates; the next update includes it, and the composer reminds the sender that newly added tenants have not been told yet.
 - **Removing an affected tenant** removes it from the incident's active announcement target list in the same command, so its banner disappears at once. Emails already sent cannot be recalled; the timeline records the removal.
-- The announcement's target list is always kept equal to the incident's current affected tenants (add does not show the old message to new tenants until the next Send; remove takes effect immediately).
+- **Banner target rule:** active banner targets = the tenants included in the last Send, minus any tenant removed since. A tenant added after that Send is not a target until the next Send. Each Send replaces the target list with the incident's current affected tenants.
 
 ### 5.6 Escalation to engineering (DEC-019)
 
@@ -114,10 +114,10 @@ Each status change opens the customer-update composer with the template for the 
 - **Creator (Dabi, 2026-11-16):** the internal-tenant employee whose email matches the escalating platform admin. If there is none, escalation stops with a clear message ("You have no employee record in the internal tenant with this email. Ask to be added first."). No service user is built. The creator does not need to own the configured objective.
 - **Incident work links (platform side).** One row per task the incident asks for: incident, kind (`engineering_bug` or `postmortem_action`), idempotency key, status (`pending`, `created`, `failed`), the created task id and short id, error text on failure, timestamps. Only `engineering_bug` links count for "Fix ready".
 - **Idempotent, retry-safe creation.**
-  1. The composer generates an idempotency key when the escalation form (or a postmortem action) is opened.
-  2. The command first writes the link row as `pending` with that key (unique per incident), on the platform side.
+  1. One escalation can request several bugs. The escalate command carries a client submission id (unique per incident), so a double-submitted form returns the links already made instead of making new ones.
+  2. For each requested bug (and each postmortem action) the server generates its own idempotency key and first writes a link row as `pending` with that key (unique), on the platform side.
   3. The guarded writer creates the task in the internal tenant, storing the same key on the task (unique per tenant). If a task with that key already exists, it returns that task instead of creating another.
-  4. The link row is marked `created` with the task id; on error it is marked `failed` with the reason, and the UI shows **Retry**, which reuses the same key.
+  4. The link row is marked `created` with the task id; on error it is marked `failed` with the reason, and the UI shows **Retry** on that link, which reuses that link's stored key.
   5. A cleanup check finds `pending` links older than a few minutes and resolves them by looking up the task by key (created → mark `created`; none → mark `failed`).
   Creation stays synchronous so the person sees the bug at once; the outbox is used only for the sync back (5.7).
 - **Work Management changes:** nullable `SourceIncidentId`, `SourceIncidentLinkKind` and `ExternalRequestKey` (unique per tenant when set) on the task, following the `SourceMeetingOccurrenceId` pattern; a task chip "From incident INC-12 · Critical" (or "Postmortem action · INC-12") linking to the incident in Platform Admin; a board filter for incident-linked tasks.
@@ -172,11 +172,11 @@ All write commands are audited (F-07). Seed all three permissions for Platform S
 |---|---|
 | Backend incident module (entities, migration, commands, queries, timeline, notifications, permissions, audit) | 6–8 |
 | Announcements targeting + tenant endpoint + incident contact + email templates | 2–3 |
-| Escalation writer, Work Management changes, sync, postmortem actions | 5–7 |
+| Escalation writer (incl. work links and idempotent retry), Work Management changes, sync, postmortem actions | 6–9 |
 | Platform Admin screens (list, detail, composer, postmortem, settings, ticket actions) | 6–8 |
 | Tenant app (banner targeting check, incident contact setting, task chip, filter) | 2–3 |
 | Tests (unit, architecture, integration incl. RLS of the cross-tenant writer) and UAT | 3–4 |
-| **Phase 1 total** | **24–33** |
+| **Phase 1 total** | **25–35** |
 | Phase 2 alert intake | 4–6 |
 
 ## 8. Left to the builder
