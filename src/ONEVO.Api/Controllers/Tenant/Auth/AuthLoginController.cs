@@ -9,6 +9,7 @@ using ONEVO.Application.Features.Auth.Login.Commands.BaseGoogleLogin;
 using ONEVO.Application.Features.Auth.Login.Commands.BaseLogin;
 using ONEVO.Application.Features.Auth.Login.Commands.SelectWorkspace;
 using ONEVO.Application.Features.Auth.Login.DTOs.Responses;
+using ONEVO.Application.Features.Auth.Login.Queries.GetAdminGoogleSsoConfig;
 
 namespace ONEVO.Api.Controllers.Tenant.Auth;
 
@@ -103,5 +104,32 @@ public class AuthLoginController : ControllerBase
 
         var sessionResult = Result<LoginResponseDto>.Success(baseDto.Session!);
         return await this.HandleSessionResultAsync(sessionResult, _env);
+    }
+
+    /// <summary>
+    /// Public Google SSO config for the root-host web login page: whether Google sign-in is usable
+    /// and its public clientId. Anonymous because the page needs it before anyone signs in.
+    /// Reuses the admin portal's query on purpose (same platform_oauth_apps row, same "never return
+    /// secret material" rule) so there is a single definition of "Google SSO is enabled".
+    /// Root-host only, like <see cref="LoginWithGoogle"/>.
+    /// </summary>
+    [HttpGet("google-config")]
+    [AllowAnonymous]
+    public async Task<IActionResult> GoogleConfig(CancellationToken ct)
+    {
+        if (_tenantContext.ContextMode == TenantContextMode.Tenant)
+            return Problem("Google sign-in is not available on this host.", statusCode: 400);
+
+        var result = await _mediator.Send(new GetAdminGoogleSsoConfigQuery(), ct);
+        var enabled = result.IsSuccess
+            && result.Value is { Enabled: true }
+            && !string.IsNullOrWhiteSpace(result.Value.ClientId);
+
+        // Explicit allowlist projection: only these two fields ever leave this endpoint.
+        return Ok(new AdminGoogleSsoConfigDto
+        {
+            Enabled = enabled,
+            ClientId = enabled ? result.Value!.ClientId : null
+        });
     }
 }
