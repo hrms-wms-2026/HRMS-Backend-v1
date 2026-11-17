@@ -102,6 +102,33 @@ public sealed class GetCurrentSessionQueryHandlerTests
         result.Value.ExpiresAt.Should().Be(expires);
     }
 
+    [Fact]
+    public async Task Me_ActiveModulesIncludeLegacyAliasesDuringTransition()
+    {
+        var tenantId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+        var current = MakeAuthenticatedCurrentUser(userId, tenantId, DateTimeOffset.UtcNow.AddMinutes(20));
+        var entitlements = new Mock<IModuleEntitlementService>();
+        entitlements
+            .Setup(instance => instance.GetActiveModuleKeysForTenantAsync(tenantId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[] { "org", "monitoring" });
+        var tenants = new Mock<ITenantRepository>();
+        tenants
+            .Setup(instance => instance.GetByIdAsync(tenantId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Tenant { Id = tenantId, Slug = "acme", Name = "Acme" });
+        var handler = new GetCurrentSessionQueryHandler(
+            current.Object,
+            MakeResolvedTenantContext(tenantId).Object,
+            entitlements.Object,
+            tenants.Object,
+            MakeEmployees(tenantId, userId, employee: null).Object,
+            Scope().Object);
+
+        var result = await handler.Handle(new GetCurrentSessionQuery(), default);
+
+        result.Value!.ActiveModules.Should().Contain(["org", "org_structure", "monitoring", "activity_monitoring"]);
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

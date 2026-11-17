@@ -52,11 +52,11 @@ public sealed class DefaultRoleSeederTests
     private static async Task SeedOrgPermissionsAsync(ApplicationDbContext db)
     {
         db.Permissions.AddRange(
-            new Permission { Id = Guid.NewGuid(), Code = "org:read", Module = "org_structure" },
-            new Permission { Id = Guid.NewGuid(), Code = "org:manage", Module = "org_structure" },
-            new Permission { Id = Guid.NewGuid(), Code = "legal_entity:create", Module = "org_structure" },
-            new Permission { Id = Guid.NewGuid(), Code = "legal_entity:update", Module = "org_structure" },
-            new Permission { Id = Guid.NewGuid(), Code = "legal_entity:delete", Module = "org_structure" },
+            new Permission { Id = Guid.NewGuid(), Code = "org:read", Module = "org" },
+            new Permission { Id = Guid.NewGuid(), Code = "org:manage", Module = "org" },
+            new Permission { Id = Guid.NewGuid(), Code = "legal_entity:create", Module = "org" },
+            new Permission { Id = Guid.NewGuid(), Code = "legal_entity:update", Module = "org" },
+            new Permission { Id = Guid.NewGuid(), Code = "legal_entity:delete", Module = "org" },
             new Permission { Id = Guid.NewGuid(), Code = "roles:read", Module = "roles" },
             new Permission { Id = Guid.NewGuid(), Code = "roles:manage", Module = "roles" },
             new Permission { Id = Guid.NewGuid(), Code = "billing:read", Module = "configuration" },
@@ -159,7 +159,7 @@ public sealed class DefaultRoleSeederTests
         // per PHASE1_SUBSCRIPTION_MODULE_SEED_RECONCILIATION_REPORT.md: only real Phase 1
         // product package modules, never platform capability keys ("auth"/"configuration"/
         // "roles"/"notifications" are absent). org:read/org:manage still reach Owner because
-        // "org_structure" is a genuine product module in this list. roles:read/roles:manage
+        // "org" is a genuine product module in this list. roles:read/roles:manage
         // reach Owner anyway, via DefaultRoleSeeder's unconditional baseline-permission grant
         // (PlatformBaselineModules) - not because "roles" is in this list, since it isn't.
         // This is the regression guard for the module-list drop that caused
@@ -169,7 +169,7 @@ public sealed class DefaultRoleSeederTests
         var seeder = new DefaultRoleSeeder(db, new ModuleEntitlementService(db));
         var tenantId = Guid.NewGuid();
         var seededStarterPlanModules = System.Text.Json.JsonSerializer.Deserialize<List<string>>(
-            """["org_structure","core_hr","leave","calendar","time_attendance","activity_monitoring","discrepancy_engine","identity_verification","exception_engine","productivity_analytics","desktop_agent_gateway","worksync_foundation","projects","objectives_milestones","tasks","boards","planning_sprints"]""")!;
+            """["org","core_hr","time_off","calendar","time_attendance","monitoring","verification","analytics","work_management"]""")!;
 
         seededStarterPlanModules.Should().NotContain(["auth", "configuration", "roles", "notifications"]);
 

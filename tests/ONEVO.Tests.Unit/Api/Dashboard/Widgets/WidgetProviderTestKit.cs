@@ -14,7 +14,7 @@ internal sealed class WidgetProviderTestKit
     public static readonly Guid TenantId = Guid.NewGuid();
 
     public static readonly string[] WorkModules =
-        ["worksync_foundation", "projects", "objectives_milestones", "tasks", "boards", "planning_sprints"];
+        ["work_management"];
 
     private static readonly JsonSerializerOptions Web = new(JsonSerializerDefaults.Web);
 

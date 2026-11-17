@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Permission;
+using ONEVO.Application.Features.SharedPlatform.ModuleCatalog.Helpers;
 using ONEVO.Domain.Features.Auth.Entities;
 using ONEVO.Infrastructure.Persistence;
 
@@ -26,17 +27,20 @@ public sealed class ModuleEntitlementService : IModuleEntitlementService
         if (string.IsNullOrWhiteSpace(moduleKey))
             return false;
 
+        // Callers may still pass keys read from not-yet-migrated JSON; canonicalize during the transition.
+        var requested = ModuleKeyAliases.Canonicalize(moduleKey.Trim());
         var activeModuleKeys = await GetActiveModuleKeysForTenantAsync(tenantId, ct);
-        return activeModuleKeys.Contains(moduleKey.Trim(), StringComparer.OrdinalIgnoreCase);
+        return activeModuleKeys.Contains(requested, StringComparer.OrdinalIgnoreCase);
     }
 
     public async Task<IReadOnlyList<Permission>> GetEntitledPermissionsAsync(
         IReadOnlyList<string> moduleKeys,
         CancellationToken ct = default)
     {
+        var canonicalKeys = ModuleKeyAliases.CanonicalizeAll(moduleKeys).ToList();
         return await _db.Permissions
             .AsNoTracking()
-            .Where(p => moduleKeys.Contains(p.Module))
+            .Where(p => canonicalKeys.Contains(p.Module))
             .ToListAsync(ct);
     }
 
@@ -55,14 +59,11 @@ public sealed class ModuleEntitlementService : IModuleEntitlementService
 
         try
         {
-            var modules = JsonSerializer.Deserialize<List<string>>(subscription.SelectedModulesJson);
+            var modules = JsonSerializer.Deserialize<List<string?>>(subscription.SelectedModulesJson);
             if (modules is null || modules.Count == 0)
                 return [];
 
-            return modules
-                .Where(k => !string.IsNullOrWhiteSpace(k))
-                .Select(k => k.Trim())
-                .ToList();
+            return ModuleKeyAliases.CanonicalizeAll(modules);
         }
         catch (JsonException)
         {

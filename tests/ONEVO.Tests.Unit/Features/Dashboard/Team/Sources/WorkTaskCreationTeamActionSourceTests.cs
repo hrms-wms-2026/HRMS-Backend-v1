@@ -25,7 +25,7 @@ public sealed class WorkTaskCreationTeamActionSourceTests
     };
 
     [Theory]
-    [InlineData(new[] { "tasks" }, true)]
+    [InlineData(new[] { "work_management" }, true)]
     [InlineData(new[] { "payroll" }, false)]
     public async Task IsGatedAsync_reflects_active_work_modules(string[] activeModules, bool expected)
     {

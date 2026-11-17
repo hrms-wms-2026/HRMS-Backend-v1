@@ -30,9 +30,9 @@ public sealed class ModuleAutoGrantsTests
     }
 
     [Fact]
-    public void GetForModules_LeaveAndAttendance_ReturnsCorrectCodes()
+    public void GetForModules_TimeOffAndTimeAttendance_ReturnsCorrectCodes()
     {
-        var codes = ModuleAutoGrants.GetForModules(["leave", "attendance"]).ToList();
+        var codes = ModuleAutoGrants.GetForModules(["time_off", "time_attendance"]).ToList();
 
         codes.Should().Contain("leave:read-own");
         codes.Should().Contain("attendance:read-own");
@@ -52,10 +52,19 @@ public sealed class ModuleAutoGrantsTests
     [Fact]
     public void AllSixModulesHaveAutoGrants()
     {
-        var modules = new[] { "core_hr", "leave", "attendance", "calendar", "activity_monitoring", "workforce" };
+        var modules = new[] { "core_hr", "time_off", "time_attendance", "calendar", "monitoring", "workforce" };
         foreach (var m in modules)
             ModuleAutoGrants.GetForModules([m]).Should().NotBeEmpty(because: $"module '{m}' must have auto-grants");
     }
+
+    [Fact]
+    public void AutoGrantKeys_AreNeverLegacyAliasKeys()
+        => ModuleAutoGrants.ByModule.Keys
+            .Should().NotIntersectWith(ONEVO.Application.Features.SharedPlatform.ModuleCatalog.Helpers.ModuleKeyAliases.LegacyToCanonical.Keys);
+
+    [Fact]
+    public void CoreHr_StillGrantsEmployeesReadOwn()
+        => ModuleAutoGrants.GetForModules(["core_hr"]).Should().Contain("employees:read-own");
 
     [Fact]
     public void WorkManagementModule_DoesNotCreateRolePermissionGrants()

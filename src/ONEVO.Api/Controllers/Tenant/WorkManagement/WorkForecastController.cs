@@ -1,3 +1,4 @@
+using ONEVO.Application.Features.WorkManagement;
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -13,7 +14,7 @@ namespace ONEVO.Api.Controllers.Tenant.WorkManagement;
 [ApiController]
 [Route("api/v1/work/forecast")]
 [Authorize(Policy = "TenantPolicy")]
-[RequireAnyModule("worksync_foundation", "projects", "objectives_milestones", "tasks", "boards", "planning_sprints")]
+[RequireAnyModule(WorkManagementModule.Key)]
 public sealed class WorkForecastController(IMediator mediator) : ControllerBase
 {
     /// <summary>Widget team-module-forecast: the readable, open Modules with their predicted hours and overtime.</summary>

@@ -13,8 +13,8 @@ namespace ONEVO.Tests.Unit.Features.Auth;
 
 /// <summary>
 /// Confirms org:read/org:manage exist as canonical permissions owned by the
-/// "org_structure" module (the Phase 1 HR product module - see
-/// PHASE1_SUBSCRIPTION_MODULE_SEED_RECONCILIATION_REPORT.md; renamed from "org" so
+/// "org" module (the canonical Phase 1 org module, DEC-040; the legacy "org_structure"
+/// key is migrated to it) so
 /// these permissions flow through normal per-module entitlement instead of a
 /// platform-capability key living in included_modules_json).
 /// See DefaultRoleSeederTests (Features.Tenancy) for how those permissions actually
@@ -56,25 +56,25 @@ public class OrgPermissionSeedTests
         var orgRead = await db.Permissions.SingleAsync(p => p.Code == "org:read");
         var orgManage = await db.Permissions.SingleAsync(p => p.Code == "org:manage");
 
-        orgRead.Module.Should().Be("org_structure");
-        orgManage.Module.Should().Be("org_structure");
+        orgRead.Module.Should().Be("org");
+        orgManage.Module.Should().Be("org");
     }
 
     [Fact]
-    public async Task ModuleCatalogSeeder_OwnsOrgReadAndOrgManage_UnderOrgStructureModule()
+    public async Task ModuleCatalogSeeder_OwnsOrgReadAndOrgManage_UnderOrgModule()
     {
         using var db = BuildInMemoryDb();
         db.Permissions.AddRange(
-            new ONEVO.Domain.Features.Auth.Entities.Permission { Id = Guid.NewGuid(), Code = "org:read", Module = "org_structure" },
-            new ONEVO.Domain.Features.Auth.Entities.Permission { Id = Guid.NewGuid(), Code = "org:manage", Module = "org_structure" });
+            new ONEVO.Domain.Features.Auth.Entities.Permission { Id = Guid.NewGuid(), Code = "org:read", Module = "org" },
+            new ONEVO.Domain.Features.Auth.Entities.Permission { Id = Guid.NewGuid(), Code = "org:manage", Module = "org" });
         await db.SaveChangesAsync();
 
         await ModuleCatalogSeeder.SeedAsync(db, CancellationToken.None);
 
         var ownerships = await db.ModulePermissionOwnerships.ToListAsync();
 
-        ownerships.Should().Contain(o => o.ModuleKey == "org_structure" && o.PermissionCode == "org:read");
-        ownerships.Should().Contain(o => o.ModuleKey == "org_structure" && o.PermissionCode == "org:manage");
+        ownerships.Should().Contain(o => o.ModuleKey == "org" && o.PermissionCode == "org:read");
+        ownerships.Should().Contain(o => o.ModuleKey == "org" && o.PermissionCode == "org:manage");
     }
 
     [Fact]
@@ -93,27 +93,27 @@ public class OrgPermissionSeedTests
         var update = await db.Permissions.SingleAsync(p => p.Code == "legal_entity:update");
         var delete = await db.Permissions.SingleAsync(p => p.Code == "legal_entity:delete");
 
-        create.Module.Should().Be("org_structure");
-        update.Module.Should().Be("org_structure");
-        delete.Module.Should().Be("org_structure");
+        create.Module.Should().Be("org");
+        update.Module.Should().Be("org");
+        delete.Module.Should().Be("org");
     }
 
     [Fact]
-    public async Task ModuleCatalogSeeder_OwnsLegalEntityPermissions_UnderOrgStructureModule()
+    public async Task ModuleCatalogSeeder_OwnsLegalEntityPermissions_UnderOrgModule()
     {
         using var db = BuildInMemoryDb();
         db.Permissions.AddRange(
-            new ONEVO.Domain.Features.Auth.Entities.Permission { Id = Guid.NewGuid(), Code = "legal_entity:create", Module = "org_structure" },
-            new ONEVO.Domain.Features.Auth.Entities.Permission { Id = Guid.NewGuid(), Code = "legal_entity:update", Module = "org_structure" },
-            new ONEVO.Domain.Features.Auth.Entities.Permission { Id = Guid.NewGuid(), Code = "legal_entity:delete", Module = "org_structure" });
+            new ONEVO.Domain.Features.Auth.Entities.Permission { Id = Guid.NewGuid(), Code = "legal_entity:create", Module = "org" },
+            new ONEVO.Domain.Features.Auth.Entities.Permission { Id = Guid.NewGuid(), Code = "legal_entity:update", Module = "org" },
+            new ONEVO.Domain.Features.Auth.Entities.Permission { Id = Guid.NewGuid(), Code = "legal_entity:delete", Module = "org" });
         await db.SaveChangesAsync();
 
         await ModuleCatalogSeeder.SeedAsync(db, CancellationToken.None);
 
         var ownerships = await db.ModulePermissionOwnerships.ToListAsync();
 
-        ownerships.Should().Contain(o => o.ModuleKey == "org_structure" && o.PermissionCode == "legal_entity:create");
-        ownerships.Should().Contain(o => o.ModuleKey == "org_structure" && o.PermissionCode == "legal_entity:update");
-        ownerships.Should().Contain(o => o.ModuleKey == "org_structure" && o.PermissionCode == "legal_entity:delete");
+        ownerships.Should().Contain(o => o.ModuleKey == "org" && o.PermissionCode == "legal_entity:create");
+        ownerships.Should().Contain(o => o.ModuleKey == "org" && o.PermissionCode == "legal_entity:update");
+        ownerships.Should().Contain(o => o.ModuleKey == "org" && o.PermissionCode == "legal_entity:delete");
     }
 }

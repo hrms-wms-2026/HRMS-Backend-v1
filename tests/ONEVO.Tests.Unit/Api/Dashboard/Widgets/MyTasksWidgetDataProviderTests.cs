@@ -17,7 +17,7 @@ public sealed class MyTasksWidgetDataProviderTests
     public async Task Missing_permission_is_forbidden()
     {
         // TasksController is gated by [RequireAnyModule(<Work Management modules>)].
-        var kit = new WidgetProviderTestKit(activeModules: ["attendance"]);
+        var kit = new WidgetProviderTestKit(activeModules: ["time_attendance"]);
 
         var result = await Create(kit).GetAsync(default);
 
@@ -28,7 +28,7 @@ public sealed class MyTasksWidgetDataProviderTests
     [Fact]
     public async Task Returns_same_view_model_as_endpoint()
     {
-        var kit = new WidgetProviderTestKit(activeModules: ["TASKS"]);
+        var kit = new WidgetProviderTestKit(activeModules: ["WORK_MANAGEMENT"]);
         var response = new MyTasksResponse([
             new MyTaskItem(Guid.NewGuid(), "WEB-12", "Ship it", new DateOnly(2026, 10, 19), true,
                 Guid.NewGuid(), "Website", Guid.NewGuid(), "high"),
@@ -48,7 +48,7 @@ public sealed class MyTasksWidgetDataProviderTests
     [Fact]
     public async Task Handler_failure_keeps_status()
     {
-        var kit = new WidgetProviderTestKit(activeModules: ["tasks"]);
+        var kit = new WidgetProviderTestKit(activeModules: ["work_management"]);
         kit.Mediator.Setup(m => m.Send(It.IsAny<GetMyActiveTasksQuery>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result<MyTasksResponse>.Forbidden("No employee record for the current user."));
 

@@ -1,3 +1,4 @@
+using ONEVO.Application.Features.WorkManagement;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Dashboard.Team.Abstractions;
 using ONEVO.Application.Features.Dashboard.Team.DTOs;
@@ -24,7 +25,7 @@ public sealed class WorkStatusTemplateChangeTeamActionSource(
     : ITeamActionSource
 {
     private static readonly string[] WorkModuleKeys =
-        ["worksync_foundation", "projects", "objectives_milestones", "tasks", "boards", "planning_sprints"];
+        [WorkManagementModule.Key];
     private static readonly IReadOnlySet<string> ActionTypes = new HashSet<string> { WorkActionTypes.ProjectStatusTemplateChange };
 
     public string Key => "work.status_template_change";

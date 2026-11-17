@@ -1,3 +1,4 @@
+using ONEVO.Application.Features.WorkManagement;
 using System.Text.Json;
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
@@ -28,7 +29,7 @@ namespace ONEVO.Api.Controllers.Tenant.WorkManagement;
 [ApiController]
 [Route("api/v1/work/projects")]
 [Authorize(Policy = "TenantPolicy")]
-[RequireAnyModule("worksync_foundation", "projects", "objectives_milestones", "tasks", "boards", "planning_sprints")]
+[RequireAnyModule(WorkManagementModule.Key)]
 public class ProjectsController : ControllerBase
 {
     private readonly IMediator _mediator;

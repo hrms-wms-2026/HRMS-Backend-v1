@@ -1,3 +1,4 @@
+using ONEVO.Application.Features.WorkManagement;
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -51,7 +52,7 @@ public class EmployeeOffboardingController(IMediator mediator) : ControllerBase
     /// <summary>Open work tasks still assigned to the employee (any due date), for the Track Exit Work step.</summary>
     [HttpGet("open-work-tasks")]
     [RequireVisibleEmployee("employeeId")]
-    [RequireAnyModule("worksync_foundation", "projects", "objectives_milestones", "tasks", "boards", "planning_sprints")]
+    [RequireAnyModule(WorkManagementModule.Key)]
     public async Task<IActionResult> GetOpenWorkTasks(Guid employeeId, CancellationToken ct = default)
     {
         var result = await mediator.Send(new GetEmployeeOpenWorkTasksQuery(employeeId), ct);

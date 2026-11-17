@@ -1,4 +1,5 @@
 using MediatR;
+using ONEVO.Application.Features.SharedPlatform.ModuleCatalog.Helpers;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
@@ -46,9 +47,10 @@ public sealed class GetCurrentSessionQueryHandler
             return Result<AuthSessionResponseDto>.Failure("Authentication required.", 401);
         }
 
-        var activeModules = await _entitlements.GetActiveModuleKeysForTenantAsync(
+        // Legacy aliases are added until every client checks canonical keys (feature-key plan Task 23).
+        var activeModules = ModuleKeyAliases.ExpandWithLegacyAliases(await _entitlements.GetActiveModuleKeysForTenantAsync(
             _tenantContext.TenantId,
-            ct);
+            ct));
 
         // ITenantContext exposes Slug but not a display name, so the tenant repository is the
         // source of truth for the human-readable name here.

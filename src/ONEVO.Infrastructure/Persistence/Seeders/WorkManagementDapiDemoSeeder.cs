@@ -210,8 +210,10 @@ public sealed partial class WorkManagementDapiDemoSeeder : IHostedService
             db.Roles.Add(role);
         }
 
+        // Ordinary work access is relationship based. projects:create is a local creation
+        // authority (canonical module work_management since DEC-041), never a team-member grant.
         var workManagementPermissions = await db.Permissions
-            .Where(p => p.Module == "work_management")
+            .Where(p => p.Module == "work_management" && p.Code != "projects:create")
             .ToListAsync(ct);
 
         foreach (var permission in workManagementPermissions)

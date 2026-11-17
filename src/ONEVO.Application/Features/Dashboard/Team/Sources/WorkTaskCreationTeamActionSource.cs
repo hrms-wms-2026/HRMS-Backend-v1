@@ -1,3 +1,4 @@
+using ONEVO.Application.Features.WorkManagement;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Dashboard.Team.Abstractions;
 using ONEVO.Application.Features.Dashboard.Team.DTOs;
@@ -28,7 +29,7 @@ public sealed class WorkTaskCreationTeamActionSource(
     : ITeamActionSource
 {
     private static readonly string[] WorkModuleKeys =
-        ["worksync_foundation", "projects", "objectives_milestones", "tasks", "boards", "planning_sprints"];
+        [WorkManagementModule.Key];
     private static readonly IReadOnlySet<string> ActionTypes = new HashSet<string> { WorkActionTypes.TaskCreate };
 
     public string Key => "work.task_creation";

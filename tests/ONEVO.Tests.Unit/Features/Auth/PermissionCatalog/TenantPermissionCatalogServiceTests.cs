@@ -54,7 +54,7 @@ public class TenantPermissionCatalogServiceTests
                 {
                     Id = leaveId,
                     Code = "leave:read",
-                    Module = "leave",
+                    Module = "time_off",
                     Description = "Read leave"
                 }
             ]);
@@ -98,7 +98,7 @@ public class TenantPermissionCatalogServiceTests
         {
             Id = autoGrantId,
             Code = "employees:read-own",
-            Module = "employees",
+            Module = "core_hr",
             Description = "From seed"
         });
         await db.SaveChangesAsync();
@@ -115,7 +115,7 @@ public class TenantPermissionCatalogServiceTests
         var autoGrant = catalog.UniversalPermissions.Single(u => u.Code == "employees:read-own");
         autoGrant.Id.Should().Be(autoGrantId);
         autoGrant.Description.Should().Be("From seed");
-        autoGrant.Module.Should().Be("employees");
+        autoGrant.Module.Should().Be("core_hr");
     }
 
     [Fact]
@@ -141,14 +141,14 @@ public class TenantPermissionCatalogServiceTests
         {
             Id = Guid.NewGuid(),
             Code = "leave:read",
-            Module = "leave",
+            Module = "time_off",
             Description = ""
         });
         db.Permissions.Add(new Permission
         {
             Id = Guid.NewGuid(),
             Code = "employees:read-own",
-            Module = "employees",
+            Module = "core_hr",
             Description = "universal row"
         });
         await db.SaveChangesAsync();

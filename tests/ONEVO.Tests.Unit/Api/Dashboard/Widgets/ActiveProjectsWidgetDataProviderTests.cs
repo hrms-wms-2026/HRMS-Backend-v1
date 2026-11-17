@@ -17,7 +17,7 @@ public sealed class ActiveProjectsWidgetDataProviderTests
     public async Task Missing_permission_is_forbidden()
     {
         // ProjectsController is gated by [RequireAnyModule(<Work Management modules>)].
-        var kit = new WidgetProviderTestKit(permissions: ["activity:read:self"], activeModules: ["leave"]);
+        var kit = new WidgetProviderTestKit(permissions: ["activity:read:self"], activeModules: ["time_off"]);
 
         var result = await Create(kit).GetAsync(default);
 
@@ -28,7 +28,7 @@ public sealed class ActiveProjectsWidgetDataProviderTests
     [Fact]
     public async Task Returns_same_view_model_as_endpoint()
     {
-        var kit = new WidgetProviderTestKit(activeModules: ["worksync_foundation"]);
+        var kit = new WidgetProviderTestKit(activeModules: ["work_management"]);
         var item = new ProjectListItemResponse(
             Guid.NewGuid(), "Website", "WEB", Guid.NewGuid(), "desc", Guid.NewGuid(),
             new DateOnly(2026, 1, 1), new DateOnly(2026, 12, 31), "#6366f1", true,

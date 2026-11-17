@@ -20,7 +20,7 @@ public sealed class WidgetDataPipelineTests
     [Fact]
     public async Task Registered_providers_load_through_the_orchestrator()
     {
-        var kit = new WidgetProviderTestKit(permissions: [], activeModules: ["tasks"]);
+        var kit = new WidgetProviderTestKit(permissions: [], activeModules: ["work_management"]);
         kit.Mediator.Setup(m => m.Send(It.IsAny<GetMyActiveTasksQuery>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result<MyTasksResponse>.Success(new MyTasksResponse([])));
 

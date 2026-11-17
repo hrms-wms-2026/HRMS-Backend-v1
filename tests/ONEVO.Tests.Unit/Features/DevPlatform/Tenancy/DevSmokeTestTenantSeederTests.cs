@@ -37,14 +37,11 @@ public sealed class DevSmokeTestTenantSeederTests : IDisposable
     private const string DapiOwnerEmail = "dapiyshanth1908@gmail.com";
 
     // Mirrors the canonical Phase 1 product module list seeded onto the "starter_51_200"
-    // plan by migration 20260804024502_UpdateStarterPlanToCanonicalPhase1Modules.
+    // plan (canonical keys since DEC-040; ReconcileModuleIdentities migration).
     private static readonly string[] CanonicalPhase1Modules =
     [
-        "org_structure", "core_hr", "leave", "calendar", "time_attendance",
-        "monitoring", "discrepancy_engine", "identity_verification",
-        "exception_engine", "productivity_analytics", "desktop_agent_gateway",
-        "worksync_foundation", "projects", "objectives_milestones", "tasks",
-        "boards", "planning_sprints"
+        "org", "core_hr", "time_off", "calendar", "time_attendance",
+        "monitoring", "verification", "analytics", "work_management"
     ];
 
     private readonly string _connectionString;
@@ -694,8 +691,8 @@ public sealed class DevSmokeTestTenantSeederTests : IDisposable
 
         acmeModules.Should().BeEquivalentTo(CanonicalPhase1Modules);
         dapiModules.Should().BeEquivalentTo(CanonicalPhase1Modules);
-        acmeModules.Should().Contain("org_structure");
-        dapiModules.Should().Contain("org_structure");
+        acmeModules.Should().Contain("org");
+        dapiModules.Should().Contain("org");
 
         // Platform baseline capabilities must never appear as subscribed product modules.
         acmeModules.Should().NotContain(["auth", "configuration", "roles", "notifications"]);
@@ -727,7 +724,7 @@ public sealed class DevSmokeTestTenantSeederTests : IDisposable
 
             // Simulates a dev database that still holds the pre-fix stale module list, e.g.
             // written by an old seeder build or a manual DB edit that did not persist.
-            subscription.SelectedModulesJson = """["integrations","work_management"]""";
+            subscription.SelectedModulesJson = """["integrations","org_structure"]""";
             await stale.SaveChangesAsync();
         }
 
@@ -741,9 +738,9 @@ public sealed class DevSmokeTestTenantSeederTests : IDisposable
         var modulesAfter = System.Text.Json.JsonSerializer.Deserialize<List<string>>(subscriptionAfter.SelectedModulesJson);
 
         modulesAfter.Should().BeEquivalentTo(CanonicalPhase1Modules);
-        modulesAfter.Should().Contain("org_structure");
+        modulesAfter.Should().Contain("org");
         modulesAfter.Should().NotContain("integrations");
-        modulesAfter.Should().NotContain("work_management");
+        modulesAfter.Should().NotContain("org_structure");
     }
 
     [Fact]

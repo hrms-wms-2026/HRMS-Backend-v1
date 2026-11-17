@@ -123,7 +123,7 @@ public sealed class GetMyTeamCapabilitiesQueryHandlerTests
     public async Task LeadsWork_and_HasWorkApprovals_true_when_module_active_and_service_says_so()
     {
         var currentUser = CurrentUser(permissions: []);
-        var handler = CreateHandler(currentUser, out _, out _, out var workLeadership, activeModules: ["tasks"]);
+        var handler = CreateHandler(currentUser, out _, out _, out var workLeadership, activeModules: ["work_management"]);
         workLeadership.Setup(x => x.LeadsAnyWorkAsync(TenantId, ActorId, LegalEntityId, It.IsAny<CancellationToken>())).ReturnsAsync(true);
         workLeadership.Setup(x => x.HasPendingWorkApprovalsAsync(TenantId, ActorId, LegalEntityId, It.IsAny<CancellationToken>())).ReturnsAsync(true);
 

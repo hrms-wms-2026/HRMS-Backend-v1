@@ -7,7 +7,7 @@ namespace ONEVO.Application.Features.Monitoring.TrayActivation.Services;
 public sealed class TrayPresenceRequirementEvaluator : ITrayPresenceRequirementEvaluator
 {
     /// <summary>Module catalog key of the monitoring module (see PermissionSeeder's monitoring:* permissions).</summary>
-    public const string MonitoringModuleKey = "activity_monitoring";
+    public const string MonitoringModuleKey = "monitoring";
 
     private readonly ICurrentUser _currentUser;
     private readonly IModuleEntitlementService _entitlements;

@@ -1,3 +1,4 @@
+using ONEVO.Application.Features.WorkManagement;
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -233,7 +234,7 @@ public class EmployeesController : ControllerBase
     /// completion + on-time rates for one employee over from..to (default: current month).</summary>
     [HttpGet("{id:guid}/overview/work")]
     [RequireVisibleEmployee]
-    [RequireAnyModule("worksync_foundation", "projects", "objectives_milestones", "tasks", "boards", "planning_sprints")]
+    [RequireAnyModule(WorkManagementModule.Key)]
     public async Task<IActionResult> GetOverviewWork(
         Guid id, [FromQuery] DateOnly? from = null, [FromQuery] DateOnly? to = null, CancellationToken ct = default)
     {
@@ -246,7 +247,7 @@ public class EmployeesController : ControllerBase
     /// in progress / completed and ordered by priority. Fetched only when the card is opened.</summary>
     [HttpGet("{id:guid}/overview/work/tasks")]
     [RequireVisibleEmployee]
-    [RequireAnyModule("worksync_foundation", "projects", "objectives_milestones", "tasks", "boards", "planning_sprints")]
+    [RequireAnyModule(WorkManagementModule.Key)]
     public async Task<IActionResult> GetOverviewWorkTasks(
         Guid id, [FromQuery] DateOnly? from = null, [FromQuery] DateOnly? to = null, CancellationToken ct = default)
     {
@@ -258,7 +259,7 @@ public class EmployeesController : ControllerBase
     /// compare=previous also the previous period's figures.</summary>
     [HttpGet("{id:guid}/overview/delivery")]
     [RequireVisibleEmployee]
-    [RequireAnyModule("worksync_foundation", "projects", "objectives_milestones", "tasks", "boards", "planning_sprints")]
+    [RequireAnyModule(WorkManagementModule.Key)]
     public async Task<IActionResult> GetOverviewDelivery(
         Guid id, [FromQuery] DateOnly? from = null, [FromQuery] DateOnly? to = null,
         [FromQuery] string? compare = null, CancellationToken ct = default)
@@ -295,7 +296,7 @@ public class EmployeesController : ControllerBase
     /// <summary>Work & Activity Needs attention card: open tasks overdue or due within 3 days (up to 50 + total).</summary>
     [HttpGet("{id:guid}/work-activity/needs-attention")]
     [RequireVisibleEmployee]
-    [RequireAnyModule("worksync_foundation", "projects", "objectives_milestones", "tasks", "boards", "planning_sprints")]
+    [RequireAnyModule(WorkManagementModule.Key)]
     public async Task<IActionResult> GetWorkActivityNeedsAttention(Guid id, CancellationToken ct = default)
     {
         var result = await _mediator.Send(new GetEmployeeNeedsAttentionQuery(id), ct);
@@ -305,7 +306,7 @@ public class EmployeesController : ControllerBase
     /// <summary>Work & Activity Recent tasks card: the 5 most recently changed assigned tasks.</summary>
     [HttpGet("{id:guid}/work-activity/recent-tasks")]
     [RequireVisibleEmployee]
-    [RequireAnyModule("worksync_foundation", "projects", "objectives_milestones", "tasks", "boards", "planning_sprints")]
+    [RequireAnyModule(WorkManagementModule.Key)]
     public async Task<IActionResult> GetWorkActivityRecentTasks(Guid id, CancellationToken ct = default)
     {
         var result = await _mediator.Send(new GetEmployeeRecentTasksQuery(id), ct);
@@ -315,7 +316,7 @@ public class EmployeesController : ControllerBase
     /// <summary>Work & Activity delivery chart: completed tasks per month for the 6 months ending at `to`'s month.</summary>
     [HttpGet("{id:guid}/work-activity/delivery-trend")]
     [RequireVisibleEmployee]
-    [RequireAnyModule("worksync_foundation", "projects", "objectives_milestones", "tasks", "boards", "planning_sprints")]
+    [RequireAnyModule(WorkManagementModule.Key)]
     public async Task<IActionResult> GetWorkActivityDeliveryTrend(Guid id, [FromQuery] DateOnly? to = null, CancellationToken ct = default)
     {
         var result = await _mediator.Send(new GetEmployeeDeliveryTrendQuery(id, to), ct);

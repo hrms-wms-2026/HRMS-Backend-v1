@@ -62,7 +62,7 @@ public sealed class EndpointGateTests
         var gate = EndpointGate.For<GatedTestController>(nameof(GatedTestController.Combined));
         async Task<bool> Allows(params string[] permissions)
         {
-            var kit = new WidgetProviderTestKit(permissions, ["tasks"]);
+            var kit = new WidgetProviderTestKit(permissions, ["work_management"]);
             return await gate.AllowsAsync(kit.User.Object, kit.Entitlements.Object, default);
         }
 
@@ -76,7 +76,7 @@ public sealed class EndpointGateTests
     public async Task Unauthenticated_user_is_not_allowed()
     {
         var gate = EndpointGate.For<TasksController>(nameof(TasksController.MyTasks));
-        var kit = new WidgetProviderTestKit(activeModules: ["tasks"]);
+        var kit = new WidgetProviderTestKit(activeModules: ["work_management"]);
         kit.User.SetupGet(u => u.IsAuthenticated).Returns(false);
 
         Assert.False(await gate.AllowsAsync(kit.User.Object, kit.Entitlements.Object, default));
@@ -86,7 +86,7 @@ public sealed class EndpointGateTests
     public async Task Module_match_is_case_insensitive_like_the_filter()
     {
         var gate = EndpointGate.For<TasksController>(nameof(TasksController.MyTasks));
-        var kit = new WidgetProviderTestKit(activeModules: ["Boards"]);
+        var kit = new WidgetProviderTestKit(activeModules: ["Work_Management"]);
 
         Assert.True(await gate.AllowsAsync(kit.User.Object, kit.Entitlements.Object, default));
     }

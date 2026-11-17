@@ -1,3 +1,4 @@
+using ONEVO.Application.Features.WorkManagement;
 using ONEVO.Application.Common.ServiceInterfaces;
 
 namespace ONEVO.Application.Features.CoreHr.Employee.Helpers;
@@ -7,7 +8,7 @@ namespace ONEVO.Application.Features.CoreHr.Employee.Helpers;
 public static class EmployeeOverviewWorkModules
 {
     private static readonly string[] Keys =
-        ["worksync_foundation", "projects", "objectives_milestones", "tasks", "boards", "planning_sprints"];
+        [WorkManagementModule.Key];
 
     public static async Task<bool> IsEnabledAsync(IModuleEntitlementService modules, Guid tenantId, CancellationToken ct)
     {

@@ -125,19 +125,19 @@ public class PermissionSeeder : IHostedService
         Perm("checklists:manage", "Create, edit, and archive onboarding and offboarding checklist templates.", "core_hr"),
 
         // Organization
-        Perm("org:read", "View org structure, departments, hierarchy.", "org_structure"),
-        Perm("org:manage", "Create and edit org structure, departments.", "org_structure"),
-        Perm("legal_entity:create", "Create a legal entity (company) inside the tenant.", "org_structure"),
-        Perm("legal_entity:read", "View a legal entity's general settings (read-only).", "org_structure"),
-        Perm("legal_entity:update", "Edit a legal entity's general settings.", "org_structure"),
-        Perm("legal_entity:delete", "Deactivate (soft-delete) a legal entity.", "org_structure"),
+        Perm("org:read", "View org structure, departments, hierarchy.", "org"),
+        Perm("org:manage", "Create and edit org structure, departments.", "org"),
+        Perm("legal_entity:create", "Create a legal entity (company) inside the tenant.", "org"),
+        Perm("legal_entity:read", "View a legal entity's general settings (read-only).", "org"),
+        Perm("legal_entity:update", "Edit a legal entity's general settings.", "org"),
+        Perm("legal_entity:delete", "Deactivate (soft-delete) a legal entity.", "org"),
 
-        // Leave (Legacy compatibility alias - to be migrated to time_off. Not used for Module Catalog ownership)
-        Perm("leave:read", "View leave records for all employees in scope.", "leave"),
-        Perm("leave:read-team", "View leave records for direct reports only.", "leave"),
-        Perm("leave:create", "Apply for leave on behalf of others.", "leave"),
-        Perm("leave:approve", "Approve or reject leave requests.", "leave"),
-        Perm("leave:manage", "Manage leave types, policies, balances.", "leave"),
+        // Leave permission codes (legacy codes kept; module is the canonical time_off, DEC-042)
+        Perm("leave:read", "View leave records for all employees in scope.", "time_off"),
+        Perm("leave:read-team", "View leave records for direct reports only.", "time_off"),
+        Perm("leave:create", "Apply for leave on behalf of others.", "time_off"),
+        Perm("leave:approve", "Approve or reject leave requests.", "time_off"),
+        Perm("leave:manage", "Manage leave types, policies, balances.", "time_off"),
 
         // Time Off (Canonical Developer Platform keys)
         Perm("time_off:read", "View time off records for all employees in scope.", "time_off"),
@@ -149,13 +149,13 @@ public class PermissionSeeder : IHostedService
         Perm("calendar:read", "View company and team calendars.", "calendar"),
 
         // Monitoring
-        Perm("monitoring:read", "View monitoring data.", "activity_monitoring"),
-        Perm("activity:read:self", "View your own activity timeline.", "activity_monitoring"),
+        Perm("monitoring:read", "View monitoring data.", "monitoring"),
+        Perm("activity:read:self", "View your own activity timeline.", "monitoring"),
 
         // Attendance
-        Perm("attendance:read", "View attendance records for all employees in scope.", "core_hr"),
-        Perm("attendance:approve", "Approve requests and alerts for your team and escalated records: attendance corrections, location, work mode and device changes, identity verification alerts.", "core_hr"),
-        Perm("attendance:write", "Configure clock-in policy and work modes.", "core_hr"),
+        Perm("attendance:read", "View attendance records for all employees in scope.", "time_attendance"),
+        Perm("attendance:approve", "Approve requests and alerts for your team and escalated records: attendance corrections, location, work mode and device changes, identity verification alerts.", "time_attendance"),
+        Perm("attendance:write", "Configure clock-in policy and work modes.", "time_attendance"),
 
         // Payroll
         Perm("payroll:read", "View payroll records and salary data.", "payroll"),
@@ -219,8 +219,8 @@ public class PermissionSeeder : IHostedService
         Perm("analytics:write", "Create and save custom analytics views.", "analytics"),
 
         // Monitoring
-        Perm("monitoring:configure", "Enable/disable monitoring features, set employee overrides.", "activity_monitoring"),
-        Perm("monitoring:screenshots:request", "Request an on-demand screenshot from an active monitored device.", "activity_monitoring"),
+        Perm("monitoring:configure", "Enable/disable monitoring features, set employee overrides.", "monitoring"),
+        Perm("monitoring:screenshots:request", "Request an on-demand screenshot from an active monitored device.", "monitoring"),
 
         // Exceptions
         Perm("exceptions:view", "View exception alerts.", "exceptions"),
@@ -259,7 +259,7 @@ public class PermissionSeeder : IHostedService
 
         // Work Management uses module entitlement plus contextual relationships for ordinary
         // access. Project creation remains an explicitly delegable elevated operation.
-        Perm("projects:create", "Create projects where the caller has local creation authority.", "projects"),
+        Perm("projects:create", "Create projects where the caller has local creation authority.", "work_management"),
     ];
 
     private static Permission Perm(string code, string description, string module) => new()

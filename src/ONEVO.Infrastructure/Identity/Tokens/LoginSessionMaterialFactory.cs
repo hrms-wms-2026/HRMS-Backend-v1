@@ -1,4 +1,5 @@
 using ONEVO.Application.Common.RepositoryInterfaces;
+using ONEVO.Application.Features.SharedPlatform.ModuleCatalog.Helpers;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Common.Models.Auth;
 using ONEVO.Application.Features.Auth.Login.ServiceInterfaces;
@@ -48,7 +49,9 @@ public class LoginSessionMaterialFactory : ILoginSessionMaterialFactory
         CancellationToken ct = default)
     {
         var permissions = await _permissionResolver.ResolveAsync(user.Id, user.TenantId, null, ct);
-        var activeModules = await _entitlements.GetActiveModuleKeysForTenantAsync(user.TenantId, ct);
+        // Legacy aliases are added until every client checks canonical keys (feature-key plan Task 23).
+        var activeModules = ModuleKeyAliases.ExpandWithLegacyAliases(
+            await _entitlements.GetActiveModuleKeysForTenantAsync(user.TenantId, ct));
         var employee = await _employees.GetByUserIdAsync(user.TenantId, user.Id, ct);
 
         var rawCsrfToken = _tokenService.GenerateCsrfToken();

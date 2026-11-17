@@ -1,3 +1,4 @@
+using ONEVO.Application.Features.WorkManagement;
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -18,7 +19,7 @@ public sealed record RejectWorkApprovalRequestRequest(string? Comment);
 [ApiController]
 [Route("api/v1/work")]
 [Authorize(Policy = "TenantPolicy")]
-[RequireAnyModule("worksync_foundation", "projects", "objectives_milestones", "tasks", "boards", "planning_sprints")]
+[RequireAnyModule(WorkManagementModule.Key)]
 public class WorkApprovalsController : ControllerBase
 {
     private readonly IMediator _mediator;

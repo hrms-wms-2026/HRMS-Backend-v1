@@ -28,7 +28,7 @@ public sealed class TeamProgressWidgetDataProviderTests
     [Fact]
     public async Task Returns_same_view_model_as_endpoint()
     {
-        var kit = new WidgetProviderTestKit(activeModules: ["projects"]);
+        var kit = new WidgetProviderTestKit(activeModules: ["work_management"]);
         var hours = new LedHourTotals(10, 4, 3, 2, 1, 0, 5, 1);
         var projectId = Guid.NewGuid();
         var objectiveId = Guid.NewGuid();

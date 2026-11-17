@@ -59,14 +59,14 @@ public sealed class PermissionResolverBoundaryTests
         SetupNoWildcard();
         _entitlements
             .Setup(e => e.GetActiveModuleKeysForTenantAsync(TenantId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<string> { "employees" });
+            .ReturnsAsync(new List<string> { "core_hr" });
 
         _permissions
             .Setup(p => p.ListRolePermissionCodesWithModulesAsync(UserId, Now, It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(
             [
                 new PermissionCodeWithModule("payroll:read", "payroll"),
-                new PermissionCodeWithModule("employees:read", "employees")
+                new PermissionCodeWithModule("employees:read", "core_hr")
             ]);
 
         _overrides
@@ -87,7 +87,7 @@ public sealed class PermissionResolverBoundaryTests
         SetupNoWildcard();
         _entitlements
             .Setup(e => e.GetActiveModuleKeysForTenantAsync(TenantId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<string> { "employees" });
+            .ReturnsAsync(new List<string> { "core_hr" });
 
         _permissions
             .Setup(p => p.ListRolePermissionCodesWithModulesAsync(UserId, Now, It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
@@ -121,7 +121,7 @@ public sealed class PermissionResolverBoundaryTests
         SetupNoWildcard();
         _entitlements
             .Setup(e => e.GetActiveModuleKeysForTenantAsync(TenantId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<string> { "employees" });
+            .ReturnsAsync(new List<string> { "core_hr" });
 
         _permissions
             .Setup(p => p.ListRolePermissionCodesWithModulesAsync(UserId, Now, It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
@@ -147,7 +147,7 @@ public sealed class PermissionResolverBoundaryTests
 
         _permissions
             .Setup(p => p.ListRolePermissionCodesWithModulesAsync(UserId, Now, It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync([new PermissionCodeWithModule("employees:read", "employees")]);
+            .ReturnsAsync([new PermissionCodeWithModule("employees:read", "core_hr")]);
 
         _overrides
             .Setup(o => o.ListForUserAsync(TenantId, UserId, It.IsAny<CancellationToken>()))

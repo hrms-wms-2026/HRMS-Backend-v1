@@ -1,3 +1,4 @@
+using ONEVO.Application.Features.WorkManagement;
 using MediatR;
 using Microsoft.Extensions.Options;
 using ONEVO.Application.Features.WorkManagement.Planner;
@@ -32,7 +33,7 @@ public sealed class GetMyTeamCapabilitiesQueryHandler(
     private const string AttendanceReadPermission = "attendance:read";
 
     private static readonly string[] WorkModuleKeys =
-        ["worksync_foundation", "projects", "objectives_milestones", "tasks", "boards", "planning_sprints"];
+        [WorkManagementModule.Key];
 
     public async Task<Result<MyTeamCapabilitiesResponse>> Handle(GetMyTeamCapabilitiesQuery query, CancellationToken ct)
     {

@@ -63,9 +63,9 @@ public class ModuleEntitlementServiceTests
     {
         var db = BuildInMemoryDb();
         db.Permissions.AddRange(
-            new Permission { Id = Guid.NewGuid(), Code = "employees:read", Module = "employees", Description = "" },
-            new Permission { Id = Guid.NewGuid(), Code = "leave:read", Module = "leave", Description = "" },
-            new Permission { Id = Guid.NewGuid(), Code = "tasks:read", Module = "tasks", Description = "" }
+            new Permission { Id = Guid.NewGuid(), Code = "employees:read", Module = "core_hr", Description = "" },
+            new Permission { Id = Guid.NewGuid(), Code = "leave:read", Module = "time_off", Description = "" },
+            new Permission { Id = Guid.NewGuid(), Code = "tasks:read", Module = "work_management", Description = "" }
         );
         await db.SaveChangesAsync();
 
@@ -130,7 +130,7 @@ public class ModuleEntitlementServiceTests
         var sut = BuildSut(db);
         var keys = await sut.GetActiveModuleKeysForTenantAsync(tenantId);
 
-        keys.Should().Equal("employees", "leave");
+        keys.Should().Equal("core_hr", "time_off");
     }
 
     [Fact]
@@ -147,7 +147,7 @@ public class ModuleEntitlementServiceTests
         var sut = BuildSut(db);
         var keys = await sut.GetActiveModuleKeysForTenantAsync(tenantId);
 
-        keys.Should().Equal("newer", "leave");
+        keys.Should().Equal("newer", "time_off");
     }
 
     [Fact]
@@ -163,14 +163,14 @@ public class ModuleEntitlementServiceTests
         var wildcard = Guid.NewGuid();
         var universalId = Guid.NewGuid();
         db.Permissions.AddRange(
-            new Permission { Id = leaveRead, Code = "leave:read", Module = "leave", Description = "" },
+            new Permission { Id = leaveRead, Code = "leave:read", Module = "time_off", Description = "" },
             new Permission { Id = payrollRun, Code = "payroll:run", Module = "payroll", Description = "" },
             new Permission { Id = wildcard, Code = "*", Module = "system", Description = "" },
             new Permission
             {
                 Id = universalId,
                 Code = "employees:read-own",
-                Module = "employees",
+                Module = "core_hr",
                 Description = ""
             }
         );
@@ -189,7 +189,7 @@ public class ModuleEntitlementServiceTests
         var db = BuildInMemoryDb();
         var tenantId = Guid.NewGuid();
         db.Permissions.Add(
-            new Permission { Id = Guid.NewGuid(), Code = "leave:read", Module = "leave", Description = "" });
+            new Permission { Id = Guid.NewGuid(), Code = "leave:read", Module = "time_off", Description = "" });
         await db.SaveChangesAsync();
 
         var sut = BuildSut(db);
@@ -209,7 +209,7 @@ public class ModuleEntitlementServiceTests
         var leaveRead = Guid.NewGuid();
         var payrollRun = Guid.NewGuid();
         db.Permissions.AddRange(
-            new Permission { Id = leaveRead, Code = "leave:read", Module = "leave", Description = "" },
+            new Permission { Id = leaveRead, Code = "leave:read", Module = "time_off", Description = "" },
             new Permission { Id = payrollRun, Code = "payroll:run", Module = "payroll", Description = "" }
         );
         await db.SaveChangesAsync();
@@ -221,5 +221,47 @@ public class ModuleEntitlementServiceTests
 
         result.Should().ContainSingle();
         result[0].Id.Should().Be(leaveRead);
+    }
+
+    [Fact]
+    public async Task GetActiveModuleKeysForTenantAsync_ReturnsLegacySelectedModulesCanonical()
+    {
+        var db = BuildInMemoryDb();
+        var tenantId = Guid.NewGuid();
+        db.TenantSubscriptions.Add(BuildSubscription(
+            tenantId, "active", """["org_structure"," tasks","projects","leave","core_hr"]""", DateTimeOffset.UtcNow));
+        await db.SaveChangesAsync();
+
+        var result = await BuildSut(db).GetActiveModuleKeysForTenantAsync(tenantId);
+
+        result.Should().Equal("org", "work_management", "time_off", "core_hr");
+    }
+
+    [Fact]
+    public async Task GetEntitledPermissionsAsync_CanonicalizesLegacyPlanModuleKeys()
+    {
+        var db = BuildInMemoryDb();
+        db.Permissions.AddRange(
+            new Permission { Id = Guid.NewGuid(), Code = "leave:read", Module = "time_off", Description = "" },
+            new Permission { Id = Guid.NewGuid(), Code = "monitoring:read", Module = "monitoring", Description = "" },
+            new Permission { Id = Guid.NewGuid(), Code = "payroll:read", Module = "payroll", Description = "" });
+        await db.SaveChangesAsync();
+
+        var result = await BuildSut(db).GetEntitledPermissionsAsync(["leave", "activity_monitoring"]);
+
+        result.Select(p => p.Code).Should().BeEquivalentTo(["leave:read", "monitoring:read"]);
+    }
+
+    [Theory]
+    [InlineData("work_management")]
+    [InlineData("planning_sprints")]
+    public async Task IsModuleEnabledAsync_AcceptsCanonicalOrLegacyArgument(string moduleKey)
+    {
+        var db = BuildInMemoryDb();
+        var tenantId = Guid.NewGuid();
+        db.TenantSubscriptions.Add(BuildSubscription(tenantId, "active", """["tasks"]""", DateTimeOffset.UtcNow));
+        await db.SaveChangesAsync();
+
+        (await BuildSut(db).IsModuleEnabledAsync(tenantId, moduleKey)).Should().BeTrue();
     }
 }
