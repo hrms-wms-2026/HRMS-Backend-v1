@@ -64,7 +64,7 @@ public class TenantDatabaseTicketStoreTests
     };
 
     private TenantDatabaseTicketStore CreateSut() =>
-        new(_scopeFactory, _clock, NullLogger<TenantDatabaseTicketStore>.Instance);
+        new(_scopeFactory, _clock, DisabledTicketCache.Create(_clock), NullLogger<TenantDatabaseTicketStore>.Instance);
 
     [Fact]
     public async Task StoreAsync_PersistsSession_ReturnsRawKey()
