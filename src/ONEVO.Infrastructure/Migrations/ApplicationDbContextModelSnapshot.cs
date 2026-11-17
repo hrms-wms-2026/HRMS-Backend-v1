@@ -11155,7 +11155,7 @@ namespace ONEVO.Infrastructure.Migrations
                             CompanySizeRange = "51-200",
                             CreatedAt = new DateTimeOffset(new DateTime(2025, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
                             Currency = "USD",
-                            IncludedModulesJson = "[\"org_structure\",\"core_hr\",\"leave\",\"calendar\",\"time_attendance\",\"monitoring\",\"discrepancy_engine\",\"identity_verification\",\"exception_engine\",\"productivity_analytics\",\"desktop_agent_gateway\",\"worksync_foundation\",\"projects\",\"objectives_milestones\",\"tasks\",\"boards\",\"planning_sprints\"]",
+                            IncludedModulesJson = "[\"org\",\"core_hr\",\"time_off\",\"calendar\",\"time_attendance\",\"monitoring\",\"verification\",\"analytics\",\"work_management\"]",
                             IsActive = true,
                             Name = "Starter - 51-200",
                             PricingUnit = "per_employee",
