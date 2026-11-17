@@ -27,25 +27,30 @@ The admin frontend was read on branch `docs/organize-md-files` on 2026-11-17. Th
 ## What to do
 
 1. Data layer, in `modules/system-config/data/`:
-   - `rate-limit.model.ts`: `RateLimitPartition` (`'anonymous' | 'user' | 'tray' | 'tenant' | 'admin'`), `RateLimitSetting`, `RateLimitBounds`, `EffectiveRateLimit` (value plus `source: 'tenant' | 'plan' | 'global' | 'default'`), `RateLimitChange`.
+   - `rate-limit.model.ts`: `RateLimitName` (`'Anonymous' | 'SignedIn' | 'TrayDevice' | 'TenantCeiling' | 'AdminAnonymous' | 'AdminSignedIn'`, the backend's `RateLimitSettings` property names), `RateLimitSetting` (`perMinute`, `burst?`), `RateLimitBounds`, `EffectiveRateLimit` (values plus `source: 'tenant' | 'plan' | 'global' | 'appsettings'`), `RateLimitChange`.
    - `rate-limits.service.ts`: one method per route in task 47.
    - Add the paths to `API_ENDPOINTS.systemConfig.rateLimits`, `API_ENDPOINTS.subscriptionPlans.rateLimits(id)` and `API_ENDPOINTS.tenants.rateLimits(id)`.
 2. Global page `system-config/rate-limits`:
    - Add a route in `app.routes.ts` with `permission: 'platform.system_config.read'` and breadcrumb `{ section: 'Platform Configuration', page: 'Rate Limits' }`.
    - Add a sidebar item "Rate Limits" in the Platform Configuration group.
-   - Component `modules/system-config/feature/rate-limits-list/`: a table with one row per partition. Columns: partition (with a plain-English description from the guide, for example "Signed-in user, per session"), current value per minute, code default, allowed range.
-   - An Edit button (shown only with `platform.system_config.manage`) opens `edit-rate-limit-modal/`, which has a number input with `min` and `max` from the API bounds, a required reason field, and an inline error from the API's validation problem body.
+   - Component `modules/system-config/feature/rate-limits-list/`: a table with one row for each of the six limits. Columns:
+     - the limit, with a plain-English label from the guide (for example `SignedIn` is "Signed-in user, each user" and `TenantCeiling` is "Whole tenant, all users and devices together");
+     - per minute;
+     - burst (blank for `Anonymous` and `AdminAnonymous`, which have none);
+     - the `appsettings` value;
+     - the allowed range.
+   - An Edit button (shown only with `platform.system_config.manage`) opens `edit-rate-limit-modal/`, which has a "per minute" input, a "burst" input for token-bucket limits (with the hint "how many requests at once, for example one page load"), `min` and `max` from the API bounds, a required reason field, and an inline error from the API's validation problem body.
    - Show this warning on the modal: "Limits are counted per API server until shared counters are added (task 21). With two servers, users get up to twice this number."
    - A "Recent changes" section with the paginated history read, using `shared/ui/pagination`.
-3. Plan detail: add a "Rate limits" card to `subscription-plan-detail` with the plan's overrides for `user`, `tray` and `tenant`. For each one, show the override or "Inherits global: N". Edit and Remove use the same modal component. Show the buttons only with `platform.system_config.manage`, even if the user can manage plans.
-4. Tenant detail: add `modules/tenants/feature/tenant-rate-limits-panel/` and place it in `tenant-detail.html` next to the sessions and audit panels. It shows the effective value per partition and where it comes from, plus Override and Remove actions. Show it only with `platform.system_config.read`.
-5. Do not offer the login, MFA or password reset limits anywhere. They are not editable (guide, section 3).
+3. Plan detail: add a "Rate limits" card to `subscription-plan-detail` with the plan's overrides for `SignedIn`, `TrayDevice` and `TenantCeiling`. For each one, show the override or "Inherits global: N". Edit and Remove use the same modal component. Show the buttons only with `platform.system_config.manage`, even if the user can manage plans.
+4. Tenant detail: add `modules/tenants/feature/tenant-rate-limits-panel/` and place it in `tenant-detail.html` next to the sessions and audit panels. It shows the effective `SignedIn`, `TrayDevice` and `TenantCeiling` values and where each one comes from, plus Override and Remove actions. Show it only with `platform.system_config.read`.
+5. Do not offer the login, MFA or password reset limits anywhere, or the `RateLimiting:Enabled` master switch. They are not editable (guide, section 3).
 6. After a save, reload the affected list. Do not patch the local state by hand. The backend is the source of truth for "effective" values.
 
 ## Tests
 
 - Jest: the service calls the right URLs with `withCredentials`. The modal blocks Save for an empty reason or a value outside the bounds. Edit buttons are hidden without `platform.system_config.manage`. The tenant panel shows the right source label for tenant, plan and global values.
-- Playwright (`e2e/system-config/`): sign in as a platform admin, change the global `user` limit, see the new value and a history row, then change it back.
+- Playwright (`e2e/system-config/`): sign in as a platform admin, change the global `SignedIn` limit, see the new value and a history row, then change it back.
 
 ## Done when
 

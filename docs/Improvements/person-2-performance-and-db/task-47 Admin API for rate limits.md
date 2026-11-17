@@ -25,26 +25,30 @@ All of them get `[Authorize(Policy = "AdminPolicy")]`. Reads need `SystemConfigR
 
 | Method and route | What it does |
 |---|---|
-| `GET admin/v1/system-config/rate-limits` | Global rows for all five partitions, plus the bounds and code defaults for each, so the screen can show the allowed range |
-| `PUT admin/v1/system-config/rate-limits/{partition}` | Set the global value for one partition. Body: `permitsPerMinute`, `reason`, `rowVersion` |
-| `GET admin/v1/subscription-plans/{id:guid}/rate-limits` | The plan's overrides for `user`, `tray`, `tenant`, and the value each one inherits from global |
-| `PUT admin/v1/subscription-plans/{id:guid}/rate-limits/{partition}` | Set a plan override |
-| `DELETE admin/v1/subscription-plans/{id:guid}/rate-limits/{partition}` | Remove a plan override (back to global). Body or query: `reason` |
-| `GET admin/v1/tenants/{tenantId:guid}/rate-limits` | The tenant's overrides and the effective value for each partition, with where it comes from (`tenant`, `plan`, `global`, `default`) |
-| `PUT admin/v1/tenants/{tenantId:guid}/rate-limits/{partition}` | Set a tenant override |
-| `DELETE admin/v1/tenants/{tenantId:guid}/rate-limits/{partition}` | Remove a tenant override |
+| `GET admin/v1/system-config/rate-limits` | All six limits (`Anonymous`, `SignedIn`, `TrayDevice`, `TenantCeiling`, `AdminAnonymous`, `AdminSignedIn`). For each: the global row if there is one, the `appsettings` value, the effective value, and the bounds, so the screen can show the allowed range |
+| `PUT admin/v1/system-config/rate-limits/{limitName}` | Set the global value for one limit. Body: `perMinute`, `burst` (token-bucket limits only), `reason`, `rowVersion` |
+| `DELETE admin/v1/system-config/rate-limits/{limitName}` | Remove the global row (back to `appsettings`). Body or query: `reason` |
+| `GET admin/v1/subscription-plans/{id:guid}/rate-limits` | The plan's overrides for `SignedIn`, `TrayDevice` and `TenantCeiling`, and the value each one inherits from global |
+| `PUT admin/v1/subscription-plans/{id:guid}/rate-limits/{limitName}` | Set a plan override |
+| `DELETE admin/v1/subscription-plans/{id:guid}/rate-limits/{limitName}` | Remove a plan override (back to global). Body or query: `reason` |
+| `GET admin/v1/tenants/{tenantId:guid}/rate-limits` | The tenant's overrides and the effective value of `SignedIn`, `TrayDevice` and `TenantCeiling`, with where each comes from (`tenant`, `plan`, `global`, `appsettings`) |
+| `PUT admin/v1/tenants/{tenantId:guid}/rate-limits/{limitName}` | Set a tenant override |
+| `DELETE admin/v1/tenants/{tenantId:guid}/rate-limits/{limitName}` | Remove a tenant override |
 
 - Put the plan routes in a new `SubscriptionPlanRateLimitsController` and the tenant routes in `AdminTenantRateLimitsController`, so `SubscriptionPlansController` keeps its current permissions. Also add a read-only `rateLimits` summary to the `GetSubscriptionPlan` response, so the plan detail page can show it without a second call.
 - Do not name a route parameter `{action}`. It is reserved (see `CLAUDE.md`).
-- `{partition}` must parse to the partition enum. Any other value returns 400. There is no partition for login, MFA or password reset. `AuthRateLimitingMiddleware` stays code-fixed and no endpoint can change it.
+- `{limitName}` must parse to a closed enum of the six `RateLimitSettings` limit names. Any other value returns 400.
+- There is no limit name for login, MFA or password reset. `AuthRateLimitingMiddleware` stays code-fixed and no endpoint can change it.
+- No endpoint reads or writes `RateLimiting:Enabled`. The master switch stays in `appsettings` only, so an admin cannot turn the limiter off.
 
 ### Commands, validation and audit
 
 1. One command per write: `SetGlobalRateLimitCommand`, `SetPlanRateLimitCommand`, `RemovePlanRateLimitCommand`, `SetTenantRateLimitCommand`, `RemoveTenantRateLimitCommand`, in `ONEVO.Application/Features/DevPlatform/SystemConfig/RateLimits/`.
 2. A FluentValidation validator for each command:
-   - `permitsPerMinute` is inside the per-partition bounds in the guide (section 4). Put the bounds in one static class, `RateLimitBounds`, which the validator, the provider clamp (task 46) and the GET response all use.
-   - The `tenant` ceiling must be at least the effective `user` limit for the same scope. One user must never be able to use up a whole tenant's ceiling alone.
-   - `anonymous` and `admin` cannot be set on a plan or a tenant.
+   - `perMinute` and `burst` are inside the per-limit bounds in the guide (section 4). Put the bounds in one static class, `RateLimitBounds`, which the validator, the provider clamp (task 46) and the GET response all use.
+   - For token-bucket limits, `burst` is required and `perMinute` must divide exactly into tokens per period. With the default `ReplenishmentPeriodSeconds = 1`, that means a multiple of 60. For `Anonymous` and `AdminAnonymous`, `burst` must be absent.
+   - `TenantCeiling` must be at least the effective `SignedIn` limit for the same scope, for both `perMinute` and `burst`. Otherwise the ceiling would cut off a single user before their own limit does. Check this both when the ceiling is saved and when `SignedIn` is saved.
+   - `Anonymous`, `AdminAnonymous` and `AdminSignedIn` cannot be set on a plan or a tenant. They are platform-wide, because the limiter reads them from `GetSettings(null)`.
    - `reason` is required, 10 to 500 characters, plain text. It is shown back in the admin app, so reject markup: run `RichTextRules.HasActiveContent` on it.
    - The plan or tenant exists and is not archived.
 3. Use `rowVersion` for optimistic concurrency. Two admins editing at once get 409 for the second save, not a silent overwrite.
@@ -58,8 +62,8 @@ All of them get `[Authorize(Policy = "AdminPolicy")]`. Reads need `SystemConfigR
 
 ## Tests
 
-- Unit: each validator rejects 0, a negative value, a value below the floor and a value above the ceiling, and accepts the floor and the ceiling.
-- Unit: `anonymous` or `admin` on a plan or tenant command is rejected. A tenant ceiling below the user limit is rejected.
+- Unit: each validator rejects 0, a negative value, a value below the floor and a value above the ceiling for `perMinute` and `burst`, and accepts the floor and the ceiling.
+- Unit: `Anonymous`, `AdminAnonymous` or `AdminSignedIn` on a plan or tenant command is rejected. A `TenantCeiling` below the `SignedIn` limit is rejected. A token-bucket limit without `burst`, or with a `perMinute` that does not divide exactly, is rejected. An unknown limit name, such as `login` or `Enabled`, returns 400.
 - Integration (`-Full`):
   - A platform user without `platform.system_config.read` gets 403 on every GET. A user with read but not `platform.system_config.manage` gets 403 on every PUT and DELETE.
   - An anonymous call gets 401 on every route.
@@ -70,7 +74,7 @@ All of them get `[Authorize(Policy = "AdminPolicy")]`. Reads need `SystemConfigR
 
 ## Done when
 
-- All eight routes and the history read work with the permissions above.
+- All nine routes and the history read work with the permissions above.
 - No request can store a limit outside the bounds, and auth limits cannot be changed through the API.
 - Every change has a history row.
 - Request docs are added in a new `docs/postman-request/Admin Rate Limits/` folder, following `docs/postman-request/README.md`. There is no admin folder there yet.
