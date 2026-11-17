@@ -7,6 +7,7 @@ using ONEVO.Application.Features.DevPlatform.Subscription.DTOs.Responses;
 using ONEVO.Application.Features.DevPlatform.Subscription.Helpers;
 using ONEVO.Application.Features.DevPlatform.Subscription.Mappers;
 using ONEVO.Application.Features.DevPlatform.Subscription.RepositoryInterfaces;
+using ONEVO.Domain.Features.SharedPlatform.Entities;
 
 namespace ONEVO.Application.Features.DevPlatform.Subscription.Commands.UpdateSubscriptionPlan;
 
@@ -41,6 +42,17 @@ public sealed class UpdateSubscriptionPlanCommandHandler
             return Result<SubscriptionPlanDetailDto>.NotFound(
                 $"Subscription plan '{request.PlanId}' not found.");
 
+        IReadOnlyList<string>? requestedModuleKeys = null;
+        IReadOnlyList<ModuleCatalogItem>? requestedItems = null;
+        if (request.ModuleKeys is not null)
+        {
+            requestedModuleKeys = PlanModuleKeyValidation.Normalize(request.ModuleKeys);
+            requestedItems = await _catalogService.GetByCatalogKeysAsync(requestedModuleKeys, ct);
+            var invalidKeys = PlanModuleKeyValidation.FindInvalid(requestedModuleKeys, requestedItems);
+            if (invalidKeys is not null)
+                return Result<SubscriptionPlanDetailDto>.Failure(invalidKeys, 400, PlanModuleKeyValidation.ErrorCode);
+        }
+
         if (request.Name is not null) plan.Name = request.Name;
         if (request.Tier is not null) plan.Tier = request.Tier;
         if (request.Currency is not null) plan.Currency = request.Currency;
@@ -49,8 +61,8 @@ public sealed class UpdateSubscriptionPlanCommandHandler
         if (request.AiTokenLimitPerMonth is not null) plan.AiTokenLimitPerMonth = request.AiTokenLimitPerMonth;
         if (request.TrialPeriodDays is not null) plan.TrialPeriodDays = request.TrialPeriodDays.Value;
         if (request.UnpaidGracePeriodDays is not null) plan.UnpaidGracePeriodDays = request.UnpaidGracePeriodDays.Value;
-        if (request.ModuleKeys is not null)
-            plan.IncludedModulesJson = JsonSerializer.Serialize(request.ModuleKeys);
+        if (requestedModuleKeys is not null)
+            plan.IncludedModulesJson = JsonSerializer.Serialize(requestedModuleKeys);
         if (request.CompanySizeRange is not null)
             plan.CompanySizeRange = request.CompanySizeRange;
 
@@ -58,7 +70,7 @@ public sealed class UpdateSubscriptionPlanCommandHandler
         if (needsRecalculation)
         {
             var moduleKeys = plan.GetIncludedModules();
-            var catalogItems = await _catalogService.GetByCatalogKeysAsync(moduleKeys, ct);
+            var catalogItems = requestedItems ?? await _catalogService.GetByCatalogKeysAsync(moduleKeys, ct);
 
             var missingKeys = moduleKeys
                 .Except(catalogItems.Select(m => m.ModuleKey), StringComparer.OrdinalIgnoreCase)

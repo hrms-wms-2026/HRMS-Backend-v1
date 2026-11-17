@@ -102,6 +102,65 @@ public class CreateSubscriptionPlanCommandHandlerTests
     }
 
     [Fact]
+    public async Task Handle_InactiveLegacyModuleKey_ReturnsModuleKeyInvalid()
+    {
+        _planRepo.ExistsByCodeAsync("starter", Arg.Any<CancellationToken>()).Returns(false);
+        var legacy = CoreHr();
+        legacy.ModuleKey = "tasks";
+        legacy.IsActive = false;
+        _catalogService.GetByCatalogKeysAsync(Arg.Any<IReadOnlyList<string>>(), Arg.Any<CancellationToken>())
+            .Returns(new List<ModuleCatalogItem> { CoreHr(), legacy });
+        var command = new CreateSubscriptionPlanCommand(
+            "Starter", "starter", "basic", "1-50", ["core_hr", "tasks"],
+            "USD", null, null, null, 30, 7);
+
+        var result = await _handler.Handle(command, CancellationToken.None);
+
+        result.IsSuccess.Should().BeFalse();
+        result.StatusCode.Should().Be(400);
+        result.ErrorCode.Should().Be("module_key_invalid");
+        result.Error.Should().Contain("tasks");
+        await _planRepo.DidNotReceive().AddAsync(Arg.Any<SubscriptionPlan>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Handle_BaselineModuleKey_ReturnsModuleKeyInvalid()
+    {
+        _planRepo.ExistsByCodeAsync("starter", Arg.Any<CancellationToken>()).Returns(false);
+        var auth = CoreHr();
+        auth.ModuleKey = "auth";
+        _catalogService.GetByCatalogKeysAsync(Arg.Any<IReadOnlyList<string>>(), Arg.Any<CancellationToken>())
+            .Returns(new List<ModuleCatalogItem> { CoreHr(), auth });
+        var command = new CreateSubscriptionPlanCommand(
+            "Starter", "starter", "basic", "1-50", ["core_hr", "auth"],
+            "USD", null, null, null, 30, 7);
+
+        var result = await _handler.Handle(command, CancellationToken.None);
+
+        result.IsSuccess.Should().BeFalse();
+        result.ErrorCode.Should().Be("module_key_invalid");
+        result.Error.Should().Contain("auth");
+    }
+
+    [Fact]
+    public async Task Handle_DuplicateAndPaddedKeys_StoresTrimmedDistinctKeys()
+    {
+        _planRepo.ExistsByCodeAsync("starter", Arg.Any<CancellationToken>()).Returns(false);
+        _catalogService.GetByCatalogKeysAsync(Arg.Any<IReadOnlyList<string>>(), Arg.Any<CancellationToken>())
+            .Returns(new List<ModuleCatalogItem> { CoreHr() });
+        SubscriptionPlan? saved = null;
+        await _planRepo.AddAsync(Arg.Do<SubscriptionPlan>(p => saved = p), Arg.Any<CancellationToken>());
+        var command = new CreateSubscriptionPlanCommand(
+            "Starter", "starter", "basic", "1-50", [" core_hr", "core_hr"],
+            "USD", null, null, null, 30, 7);
+
+        var result = await _handler.Handle(command, CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        saved!.IncludedModulesJson.Should().Be("""["core_hr"]""");
+    }
+
+    [Fact]
     public async Task Handle_NoBracketForSizeRange_ReturnsFailure()
     {
         _planRepo.ExistsByCodeAsync("starter", Arg.Any<CancellationToken>()).Returns(false);

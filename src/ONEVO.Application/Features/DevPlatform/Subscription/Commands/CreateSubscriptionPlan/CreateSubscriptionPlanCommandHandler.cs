@@ -41,19 +41,17 @@ public sealed class CreateSubscriptionPlanCommandHandler
             return Result<SubscriptionPlanDetailDto>.Conflict(
                 $"A subscription plan with code '{request.Code}' already exists.");
 
-        var catalogItems = await _catalogService.GetByCatalogKeysAsync(request.ModuleKeys, ct);
+        var moduleKeys = PlanModuleKeyValidation.Normalize(request.ModuleKeys);
+        var catalogItems = await _catalogService.GetByCatalogKeysAsync(moduleKeys, ct);
 
-        var missingKeys = request.ModuleKeys
-            .Except(catalogItems.Select(m => m.ModuleKey), StringComparer.OrdinalIgnoreCase)
-            .ToList();
-        if (missingKeys.Count > 0)
-            return Result<SubscriptionPlanDetailDto>.Failure(
-                $"Unknown module keys: {string.Join(", ", missingKeys)}.");
+        var invalidKeys = PlanModuleKeyValidation.FindInvalid(moduleKeys, catalogItems);
+        if (invalidKeys is not null)
+            return Result<SubscriptionPlanDetailDto>.Failure(invalidKeys, 400, PlanModuleKeyValidation.ErrorCode);
 
         ModulePricingResult pricing;
         try
         {
-            pricing = Calculator.Calculate(catalogItems, request.ModuleKeys, request.CompanySizeRange);
+            pricing = Calculator.Calculate(catalogItems, moduleKeys, request.CompanySizeRange);
         }
         catch (InvalidOperationException ex)
         {
@@ -68,7 +66,7 @@ public sealed class CreateSubscriptionPlanCommandHandler
             Tier = request.Tier,
             CompanySizeRange = request.CompanySizeRange,
             PricingUnit = catalogItems.First().PricingUnit,
-            IncludedModulesJson = JsonSerializer.Serialize(request.ModuleKeys),
+            IncludedModulesJson = JsonSerializer.Serialize(moduleKeys),
             CalculatedMonthlyPrice = pricing.CalculatedMonthlyPrice,
             CalculatedAnnualPrice = pricing.CalculatedAnnualPrice,
             OverrideMonthlyPrice = request.OverrideMonthlyPrice,

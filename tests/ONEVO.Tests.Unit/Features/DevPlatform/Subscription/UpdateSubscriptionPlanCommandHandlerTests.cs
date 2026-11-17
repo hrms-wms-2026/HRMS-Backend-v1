@@ -72,6 +72,61 @@ public class UpdateSubscriptionPlanCommandHandlerTests
     }
 
     [Fact]
+    public async Task Handle_ModuleKeysWithInactiveLegacyKey_ReturnsModuleKeyInvalid_AndKeepsModules()
+    {
+        var id = Guid.NewGuid();
+        var plan = ExistingPlan(id);
+        _planRepo.GetByIdAsync(id, Arg.Any<CancellationToken>()).Returns(plan);
+        var legacy = CoreHr();
+        legacy.ModuleKey = "leave";
+        legacy.IsActive = false;
+        _catalogService.GetByCatalogKeysAsync(Arg.Any<IReadOnlyList<string>>(), Arg.Any<CancellationToken>())
+            .Returns(new List<ModuleCatalogItem> { CoreHr(), legacy });
+        var command = new UpdateSubscriptionPlanCommand(id, ModuleKeys: ["core_hr", "leave"]);
+
+        var result = await _handler.Handle(command, CancellationToken.None);
+
+        result.IsSuccess.Should().BeFalse();
+        result.StatusCode.Should().Be(400);
+        result.ErrorCode.Should().Be("module_key_invalid");
+        plan.IncludedModulesJson.Should().Be("""["core_hr"]""");
+        await _unitOfWork.DidNotReceive().SaveChangesAsync(Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Handle_ModuleKeysWithBaselineKey_ReturnsModuleKeyInvalid()
+    {
+        var id = Guid.NewGuid();
+        _planRepo.GetByIdAsync(id, Arg.Any<CancellationToken>()).Returns(ExistingPlan(id));
+        var notifications = CoreHr();
+        notifications.ModuleKey = "notifications";
+        _catalogService.GetByCatalogKeysAsync(Arg.Any<IReadOnlyList<string>>(), Arg.Any<CancellationToken>())
+            .Returns(new List<ModuleCatalogItem> { CoreHr(), notifications });
+        var command = new UpdateSubscriptionPlanCommand(id, ModuleKeys: ["core_hr", "notifications"]);
+
+        var result = await _handler.Handle(command, CancellationToken.None);
+
+        result.ErrorCode.Should().Be("module_key_invalid");
+        result.Error.Should().Contain("notifications");
+    }
+
+    [Fact]
+    public async Task Handle_ModuleKeysPaddedAndDuplicated_StoresTrimmedDistinctKeys()
+    {
+        var id = Guid.NewGuid();
+        var plan = ExistingPlan(id);
+        _planRepo.GetByIdAsync(id, Arg.Any<CancellationToken>()).Returns(plan);
+        _catalogService.GetByCatalogKeysAsync(Arg.Any<IReadOnlyList<string>>(), Arg.Any<CancellationToken>())
+            .Returns(new List<ModuleCatalogItem> { CoreHr() });
+        var command = new UpdateSubscriptionPlanCommand(id, ModuleKeys: ["core_hr ", "core_hr"]);
+
+        var result = await _handler.Handle(command, CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        plan.IncludedModulesJson.Should().Be("""["core_hr"]""");
+    }
+
+    [Fact]
     public async Task Handle_SizeRangeChange_RecalculatesPrice()
     {
         var id = Guid.NewGuid();

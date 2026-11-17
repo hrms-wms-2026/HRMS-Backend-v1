@@ -82,16 +82,15 @@ public class TenantProvisioningE2ETests : IAsyncLifetime
     [Fact]
     public async Task Seeded_starter_plan_includes_exactly_the_canonical_phase1_product_modules()
     {
-        // Regression guard: see PHASE1_SUBSCRIPTION_MODULE_SEED_RECONCILIATION_REPORT.md.
-        // included_modules_json for this exact plan (SeededPlanId) must equal exactly the
-        // canonical Phase 1 HR / Workforce Intelligence / WorkSync product package module
-        // keys - never platform capability keys ("auth"/"configuration"/"roles"/
-        // "notifications") and never the old mixed/aliased keys ("org"/"monitoring"/
-        // "workforce"/"verification"/"exceptions"/"analytics"/"work_management"/"chat"/
-        // "chat_ai"/"integrations"/"workflow_engine"). roles:read/roles:manage still reach
+        // Regression guard: included_modules_json for this exact plan (SeededPlanId) must equal
+        // exactly the canonical Phase 1 product module keys (DEC-040: the feature-key prefixes;
+        // ReconcileModuleIdentities migrated the legacy keys) - never platform capability keys
+        // ("auth"/"configuration"/"roles"/"notifications"), never a legacy alias key, and never
+        // a key outside the catalog ("workforce"/"exceptions"/"chat"/"chat_ai"/"integrations"/
+        // "workflow_engine"). roles:read/roles:manage still reach
         // the tenant Owner - not via this list, but via DefaultRoleSeeder's unconditional
         // platform-baseline permission grant (see DefaultRoleSeederTests). org:read/
-        // org:manage reach the Owner because "org_structure" is a genuine product module
+        // org:manage reach the Owner because "org" is a genuine product module
         // in this list.
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
@@ -102,17 +101,15 @@ public class TenantProvisioningE2ETests : IAsyncLifetime
 
         modules.Should().BeEquivalentTo(
         [
-            "org_structure", "core_hr", "leave", "calendar", "time_attendance",
-            "activity_monitoring", "discrepancy_engine", "identity_verification",
-            "exception_engine", "productivity_analytics", "desktop_agent_gateway",
-            "worksync_foundation", "projects", "objectives_milestones", "tasks", "boards",
-            "planning_sprints"
+            "org", "core_hr", "time_off", "calendar", "time_attendance",
+            "monitoring", "verification", "analytics", "work_management"
         ]);
 
         modules.Should().NotContain(["auth", "configuration", "roles", "notifications"]);
+        modules.Should().NotContain(
+            ONEVO.Application.Features.SharedPlatform.ModuleCatalog.Helpers.ModuleKeyAliases.LegacyToCanonical.Keys);
         modules.Should().NotContain([
-            "org", "monitoring", "workforce", "verification", "exceptions", "analytics",
-            "work_management", "chat", "chat_ai", "integrations", "workflow_engine"
+            "workforce", "exceptions", "chat", "chat_ai", "integrations", "workflow_engine"
         ]);
     }
 
@@ -219,7 +216,7 @@ public class TenantProvisioningE2ETests : IAsyncLifetime
         // PHASE1_SUBSCRIPTION_MODULE_SEED_RECONCILIATION_REPORT.md.
         var activeModules = meBody.GetProperty("active_modules").EnumerateArray()
             .Select(m => m.GetString()).ToList();
-        activeModules.Should().Contain(["org_structure", "core_hr", "leave", "calendar"]);
+        activeModules.Should().Contain(["org", "core_hr", "time_off", "calendar"]);
         activeModules.Should().NotContain(["auth", "configuration", "roles", "notifications"]);
 
         var removedRefresh = await SendAsync(HttpMethod.Post, TenantHost, "/api/v1/auth/refresh",
