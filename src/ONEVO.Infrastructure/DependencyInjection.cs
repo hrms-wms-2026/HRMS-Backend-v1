@@ -157,6 +157,7 @@ public static class DependencyInjection
         services.AddScoped<SoftDeleteInterceptor>();
         services.AddScoped<DomainEventDispatchInterceptor>();
         services.AddScoped<TenantRlsInterceptor>();
+        services.AddSingleton<SessionTicketCacheInvalidationInterceptor>();
 
         services.AddDbContext<ApplicationDbContext>((sp, options) =>
         {
@@ -167,7 +168,8 @@ public static class DependencyInjection
                     sqlServer.CommandTimeout(30);
                 })
                 .UseSnakeCaseNamingConvention()
-                .AddInterceptors(sp.GetRequiredService<TenantRlsInterceptor>());
+                .AddInterceptors(sp.GetRequiredService<TenantRlsInterceptor>())
+                .AddInterceptors(sp.GetRequiredService<SessionTicketCacheInvalidationInterceptor>());
         });
 
         services.AddScoped<IUnitOfWork, UnitOfWork>();
@@ -1019,6 +1021,15 @@ public static class DependencyInjection
         services.AddScoped<IPasswordHasher, BCryptPasswordHasher>();
         services.AddScoped<IPermissionResolver, PermissionResolver>();
         services.AddSingleton<IPermissionVersionService, PermissionVersionService>();
+        // Improvement task 03: short-lived cache in front of the ticket stores' per-request lookups.
+        services.AddMemoryCache();
+        services.Configure<ONEVO.Infrastructure.Identity.Sessions.SessionTicketCacheOptions>(
+            configuration.GetSection(ONEVO.Infrastructure.Identity.Sessions.SessionTicketCacheOptions.SectionName));
+        services.AddSingleton<ONEVO.Infrastructure.Identity.Sessions.SessionTicketCache>();
+        services.AddSingleton<ONEVO.Infrastructure.Identity.Sessions.ISessionTicketStoreCache>(
+            sp => sp.GetRequiredService<ONEVO.Infrastructure.Identity.Sessions.SessionTicketCache>());
+        services.AddSingleton<ISessionTicketCache>(
+            sp => sp.GetRequiredService<ONEVO.Infrastructure.Identity.Sessions.SessionTicketCache>());
         services.AddScoped<ITotpService, OtpNetTotpService>();
         services.AddScoped<ILoginSessionMaterialFactory, LoginSessionMaterialFactory>();
         services.AddScoped<IGoogleIdTokenValidator, GoogleIdTokenValidator>();

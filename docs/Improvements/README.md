@@ -112,6 +112,18 @@ Both repositories were read for sensitive data reaching the browser. No secret, 
 |---|---|---|
 | 44 | [Sensitive data in API responses](<person-1-security-and-auth/task-44 Sensitive data in API responses.md>) | person-1-security-and-auth |
 
+## Admin-managed rate limits (added 2026-11-17)
+
+Task 07 moves the API to the built-in rate limiter with limits read from settings. These tasks let the platform admin app change those limits while the API runs: global defaults, per subscription plan and per tenant, with checks, audit and no restart. Login and MFA limits stay fixed in code. Start with the guide: [Admin-managed rate limits guide](<../superpowers/specs/next/2026-11-17-admin-managed-rate-limits-guide.md>). Build in order: 45, 46, 47, 48, then 49 if there is time. These tasks are not in the table below.
+
+| # | Task | Owner folder | Depends on |
+|---|---|---|---|
+| 45 | [Rate limit settings table](<person-2-performance-and-db/task-45 Rate limit settings table.md>) | person-2-performance-and-db | 07 |
+| 46 | [Rate limit settings from the database](<person-2-performance-and-db/task-46 Rate limit settings from the database.md>) | person-2-performance-and-db | 07, 45 |
+| 47 | [Admin API for rate limits](<person-2-performance-and-db/task-47 Admin API for rate limits.md>) | person-2-performance-and-db | 07, 45, 46 |
+| 48 | [Admin app screens for rate limits](<person-2-performance-and-db/task-48 Admin app screens for rate limits.md>) (admin frontend repo) | person-2-performance-and-db | 07, 47 |
+| 49 | [Rate limit rejection counts for admins](<person-2-performance-and-db/task-49 Rate limit rejection counts for admins.md>) (optional) | person-2-performance-and-db | 07, 47, 48 |
+
 ## Priority order (all tasks)
 
 Build in this order. Each person works through their own folder from the lowest number up.
@@ -172,6 +184,11 @@ Build in this order. Each person works through their own folder from the lowest 
 - 22: [Cache reference data](<person-2-performance-and-db/task-22 Cache reference data.md>)
 - 26: [Remove blocking calls and tune EF for hot paths](<person-2-performance-and-db/task-26 Remove blocking calls and tune EF for hot paths.md>)
 - 30: [Data growth, retention and clean-up](<person-2-performance-and-db/task-30 Data growth, retention and clean-up.md>)
+- 45: [Rate limit settings table](<person-2-performance-and-db/task-45 Rate limit settings table.md>)
+- 46: [Rate limit settings from the database](<person-2-performance-and-db/task-46 Rate limit settings from the database.md>)
+- 47: [Admin API for rate limits](<person-2-performance-and-db/task-47 Admin API for rate limits.md>)
+- 48: [Admin app screens for rate limits](<person-2-performance-and-db/task-48 Admin app screens for rate limits.md>)
+- 49: [Rate limit rejection counts for admins](<person-2-performance-and-db/task-49 Rate limit rejection counts for admins.md>) (optional)
 
 ### person-1-security-and-auth
 
