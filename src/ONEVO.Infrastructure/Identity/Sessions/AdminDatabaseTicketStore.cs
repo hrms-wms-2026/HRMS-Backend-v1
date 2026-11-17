@@ -136,6 +136,9 @@ public sealed class AdminDatabaseTicketStore : ITicketStore
             new(ClaimTypes.Email, profile.Email),
             new("platform_role", profile.RoleNames.Count > 0 ? profile.RoleNames[0] : string.Empty),
             new("csrf_token_hash", session.CsrfTokenHash ?? string.Empty),
+            // Live enrollment state (F-02). AdminPolicy requires "true"; a not-yet-enrolled admin's
+            // session is limited to the MFA enrollment endpoints until confirm-setup succeeds.
+            new(PlatformMfaClaims.EnrolledClaimType, profile.MfaEnrolled ? PlatformMfaClaims.True : PlatformMfaClaims.False),
         };
 
         foreach (var permissionCode in profile.PermissionCodes)

@@ -166,7 +166,9 @@ public sealed class AdminGoogleLoginCommandHandler
             ExpiresAt: _clock.UtcNow.Add(SessionPolicy.SlidingWindow),
             PlatformUserId: user.Id,
             Email: user.Email,
-            PlatformRole: profile.RoleNames.Count > 0 ? profile.RoleNames[0] : string.Empty));
+            PlatformRole: profile.RoleNames.Count > 0 ? profile.RoleNames[0] : string.Empty,
+            // Reaching here means MFA is not enrolled: this is an enrollment-only session (F-02).
+            MfaEnrollmentRequired: true));
     }
 
     private static Result<AdminLoginResultDto> NotAuthorizedForConsole() =>

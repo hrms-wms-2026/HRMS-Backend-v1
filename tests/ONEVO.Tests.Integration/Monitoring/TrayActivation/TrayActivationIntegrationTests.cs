@@ -663,4 +663,50 @@ public sealed class TrayActivationIntegrationTests : IClassFixture<TrayActivatio
             .Should().Be(1, "a rejected device-change attempt must not create a second active registration");
     }
 
+    // ── SEC-15: ES256 device tokens ────────────────────────────────────────────
+
+    [Fact]
+    public async Task DeviceToken_IsES256WithKid_AndWorksAsBearerAndAsHubQueryToken()
+    {
+        var user = await _fixture.SeedActiveUserWithEmployeeAsync(
+            "sec15-token-test", "sec15-token@test.dev", "Sec15Pass1!", "EMP-1501");
+        var session = await _fixture.LoginAndGetSessionAsync(user);
+        var code = await _fixture.GenerateCodeAsync(session);
+        var (accessToken, _) = await _fixture.ExchangeCodeAsync(code, "fp-sec15-token");
+
+        // Test environment, no key configured: the throwaway key signs, and the same key validates.
+        var headerJson = Microsoft.IdentityModel.Tokens.Base64UrlEncoder.Decode(accessToken.Split('.')[0]);
+        using (var header = JsonDocument.Parse(headerJson))
+        {
+            header.RootElement.GetProperty("alg").GetString().Should().Be("ES256");
+            header.RootElement.GetProperty("kid").GetString().Should().StartWith("dev-ephemeral-");
+        }
+
+        // Bearer header on a TrayDevicePolicy endpoint.
+        using (var heartbeat = new HttpRequestMessage(HttpMethod.Post, "/api/v1/monitoring/activation/heartbeat"))
+        {
+            heartbeat.Headers.Host = "localhost";
+            heartbeat.Headers.Authorization =
+                new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", accessToken);
+            (await _fixture.Client.SendAsync(heartbeat)).StatusCode.Should().Be(HttpStatusCode.NoContent);
+        }
+
+        // ?access_token= on the agent hub (SignalR negotiate runs the hub's [Authorize]).
+        (await NegotiateAgentHubAsync(accessToken)).Should().Be(HttpStatusCode.OK);
+        (await NegotiateAgentHubAsync(null)).Should().Be(HttpStatusCode.Unauthorized);
+
+        var parts = accessToken.Split('.');
+        var tampered = parts[0] + "." + parts[1] + "." + new string('A', parts[2].Length);
+        (await NegotiateAgentHubAsync(tampered)).Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    private async Task<HttpStatusCode> NegotiateAgentHubAsync(string? accessToken)
+    {
+        var url = "/hubs/agent-commands/negotiate?negotiateVersion=1"
+            + (accessToken is null ? string.Empty : "&access_token=" + Uri.EscapeDataString(accessToken));
+        using var request = new HttpRequestMessage(HttpMethod.Post, url);
+        request.Headers.Host = "localhost";
+        using var response = await _fixture.Client.SendAsync(request);
+        return response.StatusCode;
+    }
 }

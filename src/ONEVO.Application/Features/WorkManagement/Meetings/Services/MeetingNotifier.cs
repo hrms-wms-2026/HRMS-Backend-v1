@@ -55,9 +55,10 @@ public interface IMeetingNotifier
     /// <summary>The organizer's in-app notice that someone accepted or declined.</summary>
     Task RsvpAnsweredAsync(MeetingSeries series, string title, Guid responderEmployeeId, bool accepted, CancellationToken ct);
 
-    /// <summary>The series' new join link to every series attendee, keyed link:{linkId}:{generation}:{row}; while the
-    /// invites were held back this email is the invite (spec 5.7).</summary>
-    Task LinkReadyAsync(MeetingSeries series, CalendarEventMeeting link, CancellationToken ct);
+    /// <summary>The series' new join link to every series attendee, keyed link:{linkId}:{generation}:{row}. With
+    /// <paramref name="invitesHeldBack"/> this email is the invite (spec 5.7), so the in-app "added" notice held back with it
+    /// goes out too; a link that held nothing back (a regenerate, a retry) tells nobody they were added again.</summary>
+    Task LinkReadyAsync(MeetingSeries series, CalendarEventMeeting link, bool invitesHeldBack, CancellationToken ct);
 
     /// <summary>The link went away for this series: keyed link-removed:{linkId}:{generation}:{row} to its attendees.</summary>
     Task LinkRemovedAsync(MeetingSeries series, CalendarEventMeeting link, CancellationToken ct);
@@ -202,13 +203,17 @@ public sealed class MeetingNotifier : IMeetingNotifier
         await _sender.NotifyRsvpAnsweredAsync(series.TenantId, organizer.UserId, title, responder, accepted, ct);
     }
 
-    public async Task LinkReadyAsync(MeetingSeries series, CalendarEventMeeting link, CancellationToken ct)
+    public async Task LinkReadyAsync(MeetingSeries series, CalendarEventMeeting link, bool invitesHeldBack, CancellationToken ct)
     {
         var (participants, guests) = await SeriesRecipientsAsync(series, row => CalendarEmailKeys.Link(link.Id, link.LinkGeneration, row), ct);
         if (participants.Count == 0 && guests.Count == 0)
             return;
+        var organizer = await OrganizerNameAsync(series, ct);
+        if (invitesHeldBack && participants.Count > 0)
+            await _sender.NotifyParticipantsAddedAsync(series.TenantId, series.Title, series.DtStart, series.Location,
+                participants.Select(p => p.EmployeeId).ToList(), organizer, ct, link.JoinUrl, sendInviteEmail: false);
         await _sender.SendMeetingLinkAsync(series.TenantId, series.Title, series.DtStart, series.Location, participants, guests,
-            await OrganizerNameAsync(series, ct), link.JoinUrl, MeetingIcs.ForSeries(series, _clock.UtcNow), ct);
+            organizer, link.JoinUrl, MeetingIcs.ForSeries(series, _clock.UtcNow), ct);
     }
 
     public async Task LinkRemovedAsync(MeetingSeries series, CalendarEventMeeting link, CancellationToken ct)

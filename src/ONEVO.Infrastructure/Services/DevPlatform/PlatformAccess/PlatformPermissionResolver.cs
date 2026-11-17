@@ -69,6 +69,7 @@ public sealed class PlatformPermissionResolver : IPlatformPermissionResolver
             Email = user.Email,
             FullName = user.FullName,
             Status = user.Status,
+            MfaEnrolled = user.MfaStatus == PlatformUser.MfaEnrolled,
             RoleNames = roleNames,
             PermissionCodes = permissionCodes
         };

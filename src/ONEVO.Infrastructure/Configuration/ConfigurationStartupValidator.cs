@@ -3,6 +3,7 @@ using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using ONEVO.Infrastructure.Services.Monitoring.TrayActivation;
 
 namespace ONEVO.Infrastructure.Configuration;
 
@@ -62,13 +63,13 @@ public class ConfigurationStartupValidator : IHostedService
 
     public const string TrayJwtSecretKey = "TrayApp:Jwt:Secret";
 
-    /// <summary>HS256 (the tray token algorithm) needs a key of at least 256 bits.</summary>
+    /// <summary>HS256 (the legacy tray token algorithm) needs a key of at least 256 bits.</summary>
     public const int MinimumTrayJwtSecretBytes = 32;
 
     /// <summary>
-    /// The tray device-token signing/validation key, checked for presence and HS256 key size.
-    /// Used by both consumers (token issue + "TrayDeviceScheme" validation). Messages never
-    /// contain the value.
+    /// The legacy HS256 tray secret, checked for presence and key size. Since SEC-15 it is read only
+    /// while <c>TrayApp:Jwt:AcceptLegacyHs256Until</c> is set, to validate tokens issued before the
+    /// switch to ES256. Messages never contain the value.
     /// </summary>
     public static string RequireTrayJwtSecret(IConfiguration configuration)
     {
@@ -89,28 +90,22 @@ public class ConfigurationStartupValidator : IHostedService
     }
 
     /// <summary>
-    /// SEC-01 startup check. Outside Development/Test the API refuses to boot when the tray secret is
-    /// missing, too short for HS256, or a development placeholder — appsettings.Development.json ships a
-    /// self-labeled dev value anyone with the repo can sign tray tokens with. (Before this, a missing
-    /// secret only surfaced on the first tray request.) Development/Test keep the lazy per-consumer check.
+    /// SEC-15 startup check (replaces the SEC-01 HS256 secret check). Loads the tray device-token
+    /// signing keys once before the host is built, so a missing, unparseable or ambiguous key set
+    /// stops startup instead of surfacing on the first tray request. Outside Development/Test a key
+    /// set is required; locally, with none configured, a throwaway key is used (see
+    /// <see cref="TrayJwtKeyLoader"/>). Messages never contain key material.
     /// </summary>
-    public static void ValidateTrayJwtSecret(
+    public static void ValidateTrayJwtSigningKeys(
         IConfiguration configuration,
         string environmentName)
     {
-        if (IsLocalValidationEnvironment(environmentName))
-        {
-            return;
-        }
-
-        var secret = RequireTrayJwtSecret(configuration);
-        if (secret.StartsWith("dev-only", StringComparison.OrdinalIgnoreCase) || IsMissingOrPlaceholder(secret))
-        {
-            throw new InvalidOperationException(
-                $"TrayApp:Jwt:Secret is a development placeholder in the '{environmentName}' environment. " +
-                "Set TrayApp__Jwt__Secret to a real random value (32+ bytes) from your secret store.");
-        }
+        TrayJwtKeyLoader.Load(configuration, environmentName);
     }
+
+    /// <summary>A tray legacy secret may not be a development value outside Development/Test.</summary>
+    internal static bool IsDevelopmentTraySecret(string secret) =>
+        secret.StartsWith("dev-only", StringComparison.OrdinalIgnoreCase) || IsMissingOrPlaceholder(secret);
 
     public Task StartAsync(CancellationToken cancellationToken)
     {
@@ -197,7 +192,7 @@ public class ConfigurationStartupValidator : IHostedService
         }
     }
 
-    private static bool IsMissingOrPlaceholder(string? value)
+    internal static bool IsMissingOrPlaceholder(string? value)
     {
         if (string.IsNullOrWhiteSpace(value)) return true;
         if (value.Equals("SET_VIA_ENV", StringComparison.OrdinalIgnoreCase)) return true;
@@ -208,7 +203,7 @@ public class ConfigurationStartupValidator : IHostedService
         return false;
     }
 
-    private static bool IsLocalValidationEnvironment(string environmentName)
+    internal static bool IsLocalValidationEnvironment(string environmentName)
     {
         return environmentName.Equals("Development", StringComparison.OrdinalIgnoreCase)
             || environmentName.Equals("Test", StringComparison.OrdinalIgnoreCase)
