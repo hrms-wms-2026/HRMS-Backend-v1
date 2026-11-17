@@ -13,6 +13,13 @@ public sealed class RateLimitSettings
     /// <summary>Master switch. False lets every request through (the auth limiter still applies).</summary>
     public bool Enabled { get; set; } = true;
 
+    /// <summary>
+    /// Coarse per-IP flood guard checked before authentication on /api/v1 and /admin/v1, so a
+    /// flood of forged cookies or tokens is cut before any credential is validated. Every request
+    /// from the IP counts, signed in or not, so keep it well above an office's combined traffic.
+    /// </summary>
+    public SlidingWindowLimit PreAuthentication { get; set; } = new() { PermitLimit = 6000, WindowSeconds = 60, SegmentsPerWindow = 6 };
+
     /// <summary>/api/v1 requests with no signed-in user or tray device, by client IP.</summary>
     public SlidingWindowLimit Anonymous { get; set; } = new() { PermitLimit = 300, WindowSeconds = 60, SegmentsPerWindow = 6 };
 
@@ -38,6 +45,7 @@ public sealed class RateLimitSettings
     public IReadOnlyList<string> Validate()
     {
         var errors = new List<string>();
+        PreAuthentication.Validate(nameof(PreAuthentication), errors);
         Anonymous.Validate(nameof(Anonymous), errors);
         SignedIn.Validate(nameof(SignedIn), errors);
         TrayDevice.Validate(nameof(TrayDevice), errors);

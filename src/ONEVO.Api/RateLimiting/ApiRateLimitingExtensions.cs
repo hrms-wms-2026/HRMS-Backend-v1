@@ -37,6 +37,13 @@ public static class ApiRateLimitingExtensions
         return services;
     }
 
+    /// <summary>
+    /// Call before UseAuthentication: a coarse per-IP guard, so floods of forged credentials are
+    /// cut before any cookie or token is validated.
+    /// </summary>
+    public static IApplicationBuilder UseApiPreAuthenticationRateLimiting(this IApplicationBuilder app) =>
+        app.UseMiddleware<PreAuthenticationRateLimitingMiddleware>();
+
     /// <summary>Call after UseAuthentication so signed-in requests are partitioned by identity.</summary>
     public static IApplicationBuilder UseApiRateLimiting(this IApplicationBuilder app)
     {
@@ -108,9 +115,15 @@ public static class ApiRateLimitingExtensions
     /// <summary>Same 429 response as the hand-written limiter it replaces.</summary>
     private static async ValueTask WriteRejectionAsync(OnRejectedContext rejected, CancellationToken cancellationToken)
     {
-        var context = rejected.HttpContext;
-        var subject = RateLimitSubjectMiddleware.GetSubject(context);
-        var retryAfterSeconds = rejected.Lease.TryGetMetadata(MetadataName.RetryAfter, out var retryAfter)
+        var subject = RateLimitSubjectMiddleware.GetSubject(rejected.HttpContext);
+        await WriteTooManyRequestsAsync(
+            rejected.HttpContext, rejected.Lease, subject.Kind.ToString(), subject.TenantId, cancellationToken);
+    }
+
+    internal static async Task WriteTooManyRequestsAsync(
+        HttpContext context, RateLimitLease lease, string partition, Guid? tenantId, CancellationToken cancellationToken)
+    {
+        var retryAfterSeconds = lease.TryGetMetadata(MetadataName.RetryAfter, out var retryAfter)
             ? Math.Max(1, (int)Math.Ceiling(retryAfter.TotalSeconds))
             : FallbackRetryAfterSeconds;
 
@@ -118,8 +131,8 @@ public static class ApiRateLimitingExtensions
             .CreateLogger(LoggerCategory)
             .LogWarning(
                 "API rate limit exceeded. Partition={Partition}, TenantId={TenantId}, Path={Path}, RetryAfterSeconds={RetryAfterSeconds}",
-                subject.Kind,
-                subject.TenantId,
+                partition,
+                tenantId,
                 context.Request.Path.Value,
                 retryAfterSeconds);
 

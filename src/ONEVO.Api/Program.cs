@@ -137,6 +137,8 @@ if (!app.Environment.IsDevelopment())
     app.UseHttpsRedirection();
 app.UseCors("AllowFrontend");
 app.UseRouting();
+// Task 07: coarse per-IP flood guard before any credential is validated.
+app.UseApiPreAuthenticationRateLimiting();
 app.UseMiddleware<HostTenantResolutionMiddleware>();
 app.UseMiddleware<AuthRateLimitingMiddleware>();
 app.UseAuthentication();

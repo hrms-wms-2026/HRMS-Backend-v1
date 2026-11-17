@@ -1,13 +1,18 @@
 # API rate limits
 
-The API has two rate limiters.
+The API has three rate limiters, in this order.
 
-1. **Global limiter** (task 07): ASP.NET Core `AddRateLimiter`, set up in
+1. **Pre-authentication IP guard** (task 07): `PreAuthenticationRateLimitingMiddleware`, right
+   after `UseRouting`. It applies a coarse per-IP ceiling to all `/api/v1` and `/admin/v1` traffic
+   before any cookie or token is validated, so a flood of forged credentials is cut without
+   costing any authentication work. Its limit is a setting, `PreAuthentication`.
+2. **Global limiter** (task 07): ASP.NET Core `AddRateLimiter`, set up in
    `src/ONEVO.Api/RateLimiting/ApiRateLimitingExtensions.cs`. It runs right after
    `UseAuthentication`, so signed-in requests are counted per user, per tray device and per
    tenant, not per IP. All of its limits are settings and can be tuned without a release.
-2. **Auth endpoint limiter**: `AuthRateLimitingMiddleware`. It has strict, fixed limits on login, MFA,
-   password reset, invitations and a few tray endpoints. It runs before the global limiter. Its
+3. **Auth endpoint limiter**: `AuthRateLimitingMiddleware`. It has strict, fixed limits on login, MFA,
+   password reset, invitations and a few tray endpoints. It runs between the IP guard and the
+   global limiter. Its
    limits are in code, not in settings, and are listed at the end of this page.
 
 Both limiters keep counters in process memory. That is correct only while the API runs as one
@@ -39,6 +44,9 @@ an environment variable uses `__` for `:`, for example `RateLimiting__SignedIn__
 | Setting key | Default | Meaning |
 |---|---|---|
 | `RateLimiting:Enabled` | `true` | Master switch for the global limiter. `false` lets everything through. The auth endpoint limiter still applies. |
+| `RateLimiting:PreAuthentication:PermitLimit` | `6000` | All `/api/v1` and `/admin/v1` requests per IP in any rolling window, counted before authentication, signed in or not. Keep it well above an office's combined traffic. |
+| `RateLimiting:PreAuthentication:WindowSeconds` | `60` | |
+| `RateLimiting:PreAuthentication:SegmentsPerWindow` | `6` | |
 | `RateLimiting:Anonymous:PermitLimit` | `300` | Requests allowed per IP in any rolling window. |
 | `RateLimiting:Anonymous:WindowSeconds` | `60` | Window length. |
 | `RateLimiting:Anonymous:SegmentsPerWindow` | `6` | Window slices (10 s each by default). More slices make the window smoother. |
@@ -94,8 +102,8 @@ matches the earlier hand-written limiter:
 }
 ```
 
-The API also logs a warning, `API rate limit exceeded`, with the partition kind (`Anonymous`,
-`User`, `TrayDevice`, `AdminAnonymous`, `Admin`), the tenant id when there is one, the path and the
+The API also logs a warning, `API rate limit exceeded`, with the partition kind (`PreAuthentication`,
+`Anonymous`, `User`, `TrayDevice`, `AdminAnonymous`, `Admin`), the tenant id when there is one, the path and the
 retry delay. It does not log the client IP or the user id.
 
 ## Tuning for UAT
@@ -104,6 +112,8 @@ retry delay. It does not log the client IP or the user id.
   this needs no change. Only the login page and other anonymous calls share `Anonymous`.
 - **One user gets 429 on a heavy page:** raise `SignedIn:TokenLimit` (burst) first.
 - **A large tenant hits the ceiling:** raise `TenantCeiling:TokensPerPeriod`.
+- **A whole office gets 429 with partition `PreAuthentication` in the log:** the office IP sends
+  more than 6000 requests a minute in total. Raise `PreAuthentication:PermitLimit`.
 
 ## Auth endpoint limits (not configurable)
 

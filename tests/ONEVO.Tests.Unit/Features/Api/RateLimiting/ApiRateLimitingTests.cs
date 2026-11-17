@@ -242,6 +242,29 @@ public sealed class ApiRateLimitingTests
     }
 
     [Fact]
+    public async Task PreAuthenticationGuard_CutsCredentialFloodFromOneIp_BeforeAuthentication()
+    {
+        await using var app = await StartAsync(new()
+        {
+            ["RateLimiting:PreAuthentication:PermitLimit"] = "3",
+        });
+        var client = app.GetTestClient();
+        HeaderAuthHandler.ResetCount();
+
+        // Every request carries a different device token: per-device limits alone would never trip.
+        for (var i = 0; i < 3; i++)
+            (await SendAsync(client, "/api/v1/ping", OfficeIp, device: Guid.NewGuid())).StatusCode.Should().Be(HttpStatusCode.OK);
+        var authenticationsBefore = HeaderAuthHandler.TrayAuthentications;
+
+        var blocked = await SendAsync(client, "/api/v1/ping", OfficeIp, device: Guid.NewGuid());
+
+        blocked.StatusCode.Should().Be(HttpStatusCode.TooManyRequests);
+        blocked.Headers.Contains("Retry-After").Should().BeTrue();
+        HeaderAuthHandler.TrayAuthentications.Should().Be(authenticationsBefore, "the flood is cut before the token is validated");
+        (await SendAsync(client, "/api/v1/ping", "198.51.100.7", device: Guid.NewGuid())).StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    [Fact]
     public void PartitionKeys_CarryTheSettingsVersion()
     {
         var user = Guid.NewGuid();
@@ -276,6 +299,7 @@ public sealed class ApiRateLimitingTests
             return next(context);
         });
         app.UseRouting();
+        app.UseApiPreAuthenticationRateLimiting();
         app.UseAuthentication();
         app.UseApiRateLimiting();
         app.UseAuthorization();
@@ -312,8 +336,14 @@ public sealed class ApiRateLimitingTests
         IOptionsMonitor<AuthenticationSchemeOptions> options, ILoggerFactory logger, UrlEncoder encoder)
         : AuthenticationHandler<AuthenticationSchemeOptions>(options, logger, encoder)
     {
+        private static int _trayAuthentications;
+        public static int TrayAuthentications => Volatile.Read(ref _trayAuthentications);
+        public static void ResetCount() => Interlocked.Exchange(ref _trayAuthentications, 0);
+
         protected override Task<AuthenticateResult> HandleAuthenticateAsync()
         {
+            if (Scheme.Name == RateLimitAuthenticationSchemes.TrayDevice)
+                Interlocked.Increment(ref _trayAuthentications);
             var claims = Scheme.Name switch
             {
                 RateLimitAuthenticationSchemes.Tenant when Read("X-Test-User") is [var t, var u] =>
