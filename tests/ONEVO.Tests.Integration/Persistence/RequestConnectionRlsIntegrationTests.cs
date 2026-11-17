@@ -250,6 +250,45 @@ public sealed class RequestConnectionRlsIntegrationTests : IClassFixture<Request
         asTenant.Should().Equal(_f.UserB);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ExecuteUpdate_after_a_context_change_touches_only_the_new_tenant(bool keepOpen)
+    {
+        var updated = await InRequestAsync(keepOpen, async (sp, db) =>
+        {
+            Resolve(sp, _f.TenantA);
+            await VisibleUsersAsync(db);
+            Resolve(sp, _f.TenantB);
+            return await db.Users.IgnoreQueryFilters().Where(u => u.Id == _f.UserA || u.Id == _f.UserB)
+                .ExecuteUpdateAsync(set => set.SetProperty(u => u.LastName, "User"));
+        });
+
+        updated.Should().Be(1, "only tenant B's user passes RLS");
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task A_transaction_disposed_without_commit_after_a_switch_sees_what_it_sees_today(bool keepOpen)
+    {
+        var after = await InRequestAsync(keepOpen, async (sp, db) =>
+        {
+            Resolve(sp, _f.TenantA);
+            await db.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
+            {
+                await using var tx = await db.Database.BeginTransactionAsync();
+                await VisibleUsersAsync(db);
+                await sp.GetRequiredService<ITenantContextSwitcher>().SwitchToTenantAsync(_f.TenantB);
+                await VisibleUsersAsync(db);
+                // Disposed here without Commit or Rollback: no TransactionRolledBack event.
+            });
+            return await VisibleUsersAsync(db);
+        });
+
+        after.Should().Equal(_f.UserB);
+    }
+
     [Fact]
     public async Task A_pooled_connection_does_not_carry_one_request_s_tenant_into_the_next()
     {
@@ -289,7 +328,7 @@ public sealed class RequestConnectionRlsIntegrationTests : IClassFixture<Request
                 kill.CommandText = $"KILL {spid}";
                 await kill.ExecuteNonQueryAsync();
             }
-            SqlConnection.ClearAllPools();
+            SqlConnection.ClearPool((SqlConnection)db.Database.GetDbConnection());
             return (before, after: await VisibleUsersAsync(db));
         });
 

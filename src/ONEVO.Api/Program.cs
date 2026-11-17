@@ -136,14 +136,14 @@ if (!app.Environment.IsDevelopment())
 app.UseCors("AllowFrontend");
 app.UseRouting();
 app.UseMiddleware<PublicApiRateLimitingMiddleware>();
-// One connection per request; after the public rate limit so a rejected request does not take one.
-app.UseMiddleware<RequestDbConnectionMiddleware>();
 app.UseMiddleware<HostTenantResolutionMiddleware>();
 app.UseMiddleware<AuthRateLimitingMiddleware>();
 app.UseAuthentication();
 // Middleware removed as part of cookie auth migration
 app.UseMiddleware<CsrfProtectionMiddleware>();
 app.UseMiddleware<TenantEnforcementMiddleware>();
+// One connection per request, once the request is authenticated and its tenant enforced.
+app.UseMiddleware<RequestDbConnectionMiddleware>();
 app.UseMiddleware<ONEVO.Api.Middleware.WebActivityTrackingMiddleware>();
 app.UseMiddleware<TrayPresenceEnforcementMiddleware>();
 

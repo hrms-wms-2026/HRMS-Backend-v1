@@ -42,7 +42,13 @@ The invariant to keep: **every EF command runs with the session context that tod
 
 ### 3.1 Keep the request's connection open
 
-Add a small middleware, `RequestDbConnectionMiddleware`, placed right after `UseRouting`. It applies only to `/api/` and `/admin/` routes. Hubs and health checks are left out.
+Add a small middleware, `RequestDbConnectionMiddleware`. It applies only to `/api/` and `/admin/` routes; hubs and health checks are left out.
+
+Changes after review:
+
+- **Placement:** it runs after `TenantEnforcementMiddleware`, so requests rejected by rate limits, authentication or CSRF never take a connection.
+- **Uploads:** `multipart/*` and `application/octet-stream` requests are skipped, so a slow upload does not hold a connection while its body arrives.
+- **Failed open:** if the open fails (for example during a failover), the request goes on and EF opens per query with its retry, as it did before.
 
 - It calls `ApplicationDbContext.Database.OpenConnectionAsync()` once.
 - EF does not close a connection the caller opened. The DbContext closes it when the request scope is disposed, so no explicit close is needed.
@@ -87,10 +93,11 @@ Raw ADO commands (`GetDbConnection().CreateCommand()`) do not pass through EF in
 | # | Risk | Plan |
 |---|---|---|
 | R1 | A context change between commands is missed and a query runs under the wrong tenant | Reopen points mirror today's opens. Integration tests 2 to 6 below cover each writer in section 2 |
-| R2 | Connections are held for the whole request, including time spent off the database (external calendar calls, uploads), which can exhaust the pool under load | Pool default is 100. Measure in the task 29 load run. Exclude long upload or download routes if needed |
+| R2 | Connections are held for the whole request, including time spent off the database (external calendar calls, uploads), which can exhaust the pool under load | Opened only after authentication; uploads skipped. Pool default is 100. Measure in the task 29 load run |
 | R3 | Retry on failure (`EnableRetryOnFailure(3)`) with a caller-opened connection after a broken connection | Integration test 8 kills the session mid-request. **Found in implementation:** SqlClient's idle connection resiliency (`ConnectRetryCount`) silently reconnected to a new session with an empty context, so reads returned nothing (failed closed). Fixed: the app connection string sets `ConnectRetryCount = 0` (`TenantRlsInterceptor.WithoutSilentReconnect`), so EF's retry reopens through `ConnectionOpened`. The interceptor also records the SqlClient `ClientConnectionId` with the applied context and writes again if it changes |
-| R4 | A pooled connection keeps the context into the next request | `sp_reset_connection` clears it when the connection is reused. Test 7 checks this |
+| R4 | A pooled connection keeps the context into the next request | `ConnectionOpened` overwrites it on every open, and `sp_reset_connection` clears it on reuse. Test 7 checks the result, not which of the two did it. EF disposes the connection at scope end without `ConnectionClosing`, so the old clear-on-close no longer runs; it never ran on async closes either |
 | R5 | Synchronous command paths | Sync overloads are implemented the same way. Task 26 removes the sync callers later |
+| R6 | `ConnectRetryCount = 0` also applies to background jobs | Harmless: they run per query or inside transactions, where SqlClient never reconnected silently anyway. A broken connection now fails and EF's retry handles it |
 
 ## 5. Tests that must pass
 
