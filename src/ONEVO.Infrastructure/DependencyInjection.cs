@@ -161,7 +161,7 @@ public static class DependencyInjection
         services.AddDbContext<ApplicationDbContext>((sp, options) =>
         {
             options
-                .UseSqlServer(connectionString, sqlServer =>
+                .UseSqlServer(TenantRlsInterceptor.WithoutSilentReconnect(connectionString), sqlServer =>
                 {
                     sqlServer.EnableRetryOnFailure(3);
                     sqlServer.CommandTimeout(30);

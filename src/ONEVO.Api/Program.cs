@@ -136,6 +136,8 @@ if (!app.Environment.IsDevelopment())
 app.UseCors("AllowFrontend");
 app.UseRouting();
 app.UseMiddleware<PublicApiRateLimitingMiddleware>();
+// One connection per request; after the public rate limit so a rejected request does not take one.
+app.UseMiddleware<RequestDbConnectionMiddleware>();
 app.UseMiddleware<HostTenantResolutionMiddleware>();
 app.UseMiddleware<AuthRateLimitingMiddleware>();
 app.UseAuthentication();
