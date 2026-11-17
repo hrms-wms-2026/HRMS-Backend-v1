@@ -10,14 +10,17 @@ public static class MonitorAlertRecipients
     /// position, else the same defaults the approval engine uses (task → its Module, sprint → the root
     /// Module, Module → its parent, or itself at the root).</summary>
     public static Guid? CreatorPosition(string targetType, Guid targetId, ProjectMonitorSnapshot snapshot, ProjectModuleTree tree)
+        => CreatorPosition(targetType, targetId, MonitorTargets.From(snapshot), tree);
+
+    public static Guid? CreatorPosition(string targetType, Guid targetId, MonitorTargets targets, ProjectModuleTree tree)
         => targetType switch
         {
-            MonitorTargetTypes.Task => snapshot.Tasks.FirstOrDefault(t => t.Id == targetId) is { } task
+            MonitorTargetTypes.Task => targets.Tasks.FirstOrDefault(t => t.Id == targetId) is { } task
                 ? task.CreatorPositionModuleId ?? task.ModuleId
                 : null,
-            MonitorTargetTypes.Sprint => snapshot.Sprints.FirstOrDefault(s => s.Id == targetId)?.CreatorPositionModuleId
+            MonitorTargetTypes.Sprint => targets.Sprints.FirstOrDefault(s => s.Id == targetId)?.CreatorPositionModuleId
                 ?? tree.Root?.Id,
-            _ => snapshot.Modules.FirstOrDefault(m => m.Id == targetId) is { } module
+            _ => targets.Modules.FirstOrDefault(m => m.Id == targetId) is { } module
                 ? module.CreatorPositionModuleId ?? module.ParentId ?? module.Id
                 : null,
         };
@@ -36,10 +39,10 @@ public static class MonitorAlertRecipients
 
     /// <summary>ResolveHolderAsync for many targets of one project, with one employee read for all of them.</summary>
     public static async Task<IReadOnlyDictionary<(string TargetType, Guid TargetId), Guid?>> ResolveHoldersAsync(
-        IWorkHierarchyService hierarchy, Guid tenantId, ProjectMonitorSnapshot snapshot, ProjectModuleTree tree,
+        IWorkHierarchyService hierarchy, Guid tenantId, MonitorTargets monitorTargets, ProjectModuleTree tree,
         Guid? projectLeadId, IEnumerable<(string TargetType, Guid TargetId)> targets, CancellationToken ct)
     {
-        var positions = targets.Distinct().ToDictionary(t => t, t => CreatorPosition(t.TargetType, t.TargetId, snapshot, tree));
+        var positions = targets.Distinct().ToDictionary(t => t, t => CreatorPosition(t.TargetType, t.TargetId, monitorTargets, tree));
         var holders = await hierarchy.FindActiveHoldersAsync(
             tenantId, tree, positions.Values.OfType<Guid>().Distinct().ToList(), ct);
         return positions.ToDictionary(p => p.Key, p => (p.Value is { } positionId ? holders.GetValueOrDefault(positionId) : null) ?? projectLeadId);

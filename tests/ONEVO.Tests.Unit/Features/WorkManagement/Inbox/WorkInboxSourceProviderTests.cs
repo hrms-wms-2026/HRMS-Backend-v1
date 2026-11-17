@@ -81,6 +81,8 @@ public class WorkInboxSourceProviderTests
             _snapshots.Setup(s => s.LoadAsync(TenantId, p.Id, It.IsAny<CancellationToken>())).ReturnsAsync(new ProjectMonitorSnapshot(
                 p.Id, WorkCalendar.Default,
                 [new MonitorModule(module, root, null, "Payments", new DateOnly(2026, 10, 1), new DateOnly(2026, 10, 30), 10m, 0m, false, 1)], [], []));
+            _snapshots.Setup(s => s.LoadTargetsAsync(TenantId, p.Id, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new MonitorTargets([new MonitorTargetModule(module, root, null)], [], []));
             _projects.Setup(r => r.GetByIdForTenantAsync(TenantId, p.Id, It.IsAny<CancellationToken>())).ReturnsAsync(p);
             _requests.Setup(r => r.ListByProjectAsync(TenantId, p.Id, null, null, It.IsAny<CancellationToken>()))
                 .ReturnsAsync(() => _rows.Where(r => r.ProjectId == p.Id).ToList());
@@ -159,6 +161,8 @@ public class WorkInboxSourceProviderTests
             It.IsAny<CancellationToken>()), Times.Once);
         _hierarchy.Verify(h => h.FindActiveHolderAsync(TenantId, It.IsAny<ProjectModuleTree>(), It.IsAny<Guid>(), It.IsAny<Guid>(),
             It.IsAny<CancellationToken>()), Times.Never);
+        // Only the creator fields are read, not the full monitor snapshot (rates, clocking, assignments).
+        _snapshots.Verify(s => s.LoadAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     private Task<IReadOnlyList<InboxItem>> List() => Provider().ListAsync(TenantId, new InboxQuery(), Me, default);
