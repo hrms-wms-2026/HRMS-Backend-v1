@@ -30,6 +30,7 @@ Every file here says `**Status:** Approved...` at the top — that field is the 
 | `finished/2026-08-16/2026-08-16-employee-detail-screen-backend-design.md` | pending | `plans/finished/2026-08-16/2026-08-16-employee-detail-screen-backend.md` (plan written, not yet implemented) |
 | `next/2026-09-22-centralized-file-upload-design.md` | pending | none written yet — approved 2026-09-22, companion to the frontend repo's same-named design doc |
 | `next/2026-09-30-employee-overview-signals-and-period-correctness-design.md` | pending | `plans/next/2026-09-30-employee-overview-signals-backend/` (2 parts) + frontend repo `plans/next/2026-09-30-employee-overview-signals-frontend/` (3 parts), written 2026-09-30 |
+| `next/2026-11-17-admin-managed-rate-limits-guide.md` | pending | no plan file; the work is tasks 45 to 49 in `docs/Improvements/person-2-performance-and-db/` (proposed 2026-11-17, builds on improvement task 07) |
 
 ## Open items
 
