@@ -91,6 +91,9 @@ public class WorkInboxSourceProviderTests
         }
         _hierarchy.Setup(h => h.FindActiveHolderAsync(TenantId, It.IsAny<ProjectModuleTree>(), It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((Guid _, ProjectModuleTree tree, Guid position, Guid _, CancellationToken _) => tree.Get(position)?.OwnerId);
+        _hierarchy.Setup(h => h.FindActiveHoldersAsync(TenantId, It.IsAny<ProjectModuleTree>(), It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Guid _, ProjectModuleTree tree, IReadOnlyCollection<Guid> positions, CancellationToken _)
+                => positions.Distinct().ToDictionary(p => p, p => tree.Get(p)?.OwnerId));
         _projects.Setup(r => r.ListForMemberAsync(TenantId, Me, 0, int.MaxValue, null, "asc", It.IsAny<CancellationToken>()))
             .ReturnsAsync(() => (_memberOf.ToList(), _memberOf.Count));
         _projects.Setup(r => r.ListByIdsAsync(TenantId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
@@ -140,6 +143,22 @@ public class WorkInboxSourceProviderTests
         _alertRows.Add(a);
         _alerts.Setup(x => x.GetByIdAsync(TenantId, a.Id, It.IsAny<CancellationToken>())).ReturnsAsync(a);
         return a;
+    }
+
+    [Fact]
+    public async Task A_project_s_alerts_look_up_their_holders_in_one_batch()
+    {
+        // A holder lookup per alert read an employee per ancestor module: ~600 queries per inbox call.
+        var alerts = new[] { Alert(_a), Alert(_a, subject: Me), Alert(_a) };
+
+        var audience = await Audience().ResolveAsync(TenantId, _a.Id, alerts, default);
+
+        audience.Values.Should().AllSatisfy(recipients => recipients.Should().Contain(_trees[_a.Id].RootOwner));
+        audience[alerts[1].Id].Should().Contain(Me);
+        _hierarchy.Verify(h => h.FindActiveHoldersAsync(TenantId, It.IsAny<ProjectModuleTree>(), It.IsAny<IReadOnlyCollection<Guid>>(),
+            It.IsAny<CancellationToken>()), Times.Once);
+        _hierarchy.Verify(h => h.FindActiveHolderAsync(TenantId, It.IsAny<ProjectModuleTree>(), It.IsAny<Guid>(), It.IsAny<Guid>(),
+            It.IsAny<CancellationToken>()), Times.Never);
     }
 
     private Task<IReadOnlyList<InboxItem>> List() => Provider().ListAsync(TenantId, new InboxQuery(), Me, default);

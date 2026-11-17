@@ -31,10 +31,11 @@ public sealed class MonitorAlertAudience
         var snapshot = await _snapshots.LoadAsync(tenantId, projectId, ct);
         var tree = await _hierarchy.LoadTreeAsync(tenantId, projectId, ct);
         var leadId = (await _projects.GetByIdForTenantAsync(tenantId, projectId, ct))?.LeadId;
+        var holders = await MonitorAlertRecipients.ResolveHoldersAsync(
+            _hierarchy, tenantId, snapshot, tree, leadId, alerts.Select(a => (a.TargetType, a.TargetId)), ct);
         foreach (var alert in alerts)
         {
-            var holder = await MonitorAlertRecipients.ResolveHolderAsync(
-                _hierarchy, tenantId, snapshot, tree, leadId, alert.TargetType, alert.TargetId, ct);
+            var holder = holders[(alert.TargetType, alert.TargetId)];
             result[alert.Id] = new[] { holder, alert.SubjectEmployeeId }
                 .Where(id => id is { } v && v != Guid.Empty).Select(id => id!.Value).Distinct().ToList();
         }

@@ -33,4 +33,15 @@ public static class MonitorAlertRecipients
             : null;
         return holder ?? projectLeadId;
     }
+
+    /// <summary>ResolveHolderAsync for many targets of one project, with one employee read for all of them.</summary>
+    public static async Task<IReadOnlyDictionary<(string TargetType, Guid TargetId), Guid?>> ResolveHoldersAsync(
+        IWorkHierarchyService hierarchy, Guid tenantId, ProjectMonitorSnapshot snapshot, ProjectModuleTree tree,
+        Guid? projectLeadId, IEnumerable<(string TargetType, Guid TargetId)> targets, CancellationToken ct)
+    {
+        var positions = targets.Distinct().ToDictionary(t => t, t => CreatorPosition(t.TargetType, t.TargetId, snapshot, tree));
+        var holders = await hierarchy.FindActiveHoldersAsync(
+            tenantId, tree, positions.Values.OfType<Guid>().Distinct().ToList(), ct);
+        return positions.ToDictionary(p => p.Key, p => (p.Value is { } positionId ? holders.GetValueOrDefault(positionId) : null) ?? projectLeadId);
+    }
 }
