@@ -3,7 +3,7 @@
 **Date:** 2026-11-16
 **Source:** `origin/development` at `21f7d18e` (read-only), tenant frontend `origin/development`
 **Spec:** `docs/superpowers/specs/next/2026-11-16-feature-key-management-design.md` (DEC-038)
-**Plan:** `docs/superpowers/plans/next/2026-11-16-feature-key-phase1-plan.md`
+**Plan:** `docs/superpowers/plans/next/2026-11-17-feature-key-phase1-plan.md`
 
 Nothing in this report was run against a database. The SQL in §5 is for an operator to run read-only per environment.
 
@@ -257,4 +257,4 @@ A `tenant_subscriptions` row whose JSON fails `ISJSON` is a corrupt legacy row (
 9. **Q8 GitHub:** `integrations.github` gates the connection, `work_management.github_integration` gates task/PR linking?
 10. **Q9 New keys:** add `work_management.meetings` and `integrations.zoom` (default-included)?
 
-Pending row: DEC-039 in `onexso/todo/DECISIONS.md`.
+**Answered 2026-11-17** (all recommendations accepted): DEC-040 to DEC-044 and DEC-046 to DEC-050 in `onexso/todo/DECISIONS.md`; DEC-039 records the set.
