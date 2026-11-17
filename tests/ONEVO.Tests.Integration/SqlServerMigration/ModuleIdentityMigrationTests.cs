@@ -30,9 +30,17 @@ public sealed class ModuleIdentityMigrationTests(SqlServerFixture fixture) : IAs
 
     private async Task ReconcileAsync()
     {
-        await using var command = _admin.CreateCommand();
-        command.CommandText = ReconcileModuleIdentities.UpSql;
-        await command.ExecuteNonQueryAsync();
+        await using (var command = _admin.CreateCommand())
+        {
+            command.CommandText = ReconcileModuleIdentities.UpSql;
+            await command.ExecuteNonQueryAsync();
+        }
+
+        // The script clears the RLS context it set; tenant tables are hidden again until the
+        // test re-enters admin mode for its reads.
+        Assert.Null(await ScalarAsync("SELECT CAST(SESSION_CONTEXT(N'app.tenant_context_mode') AS nvarchar(16))") as string);
+        await using var admin = TenantRlsInterceptor.SetTenantCommand(_admin, "", "admin");
+        await admin.ExecuteNonQueryAsync();
     }
 
     private async Task<object?> ScalarAsync(string sql)

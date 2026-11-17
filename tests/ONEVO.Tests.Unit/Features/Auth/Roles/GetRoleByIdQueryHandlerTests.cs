@@ -73,6 +73,27 @@ public class GetRoleByIdQueryHandlerTests
     }
 
     [Fact]
+    public async Task Handle_CountsPermissionStoredUnderLegacyModule()
+    {
+        var roleId = Guid.NewGuid();
+        var role = new Role { Id = roleId, TenantId = TenantId, Name = "Owner", Description = "x", IsSystem = true };
+        var legacy = new Permission { Id = Guid.NewGuid(), Code = "leave:read", Description = "View leave", Module = "leave" };
+        _roles.Setup(r => r.GetByIdForTenantAsync(TenantId, roleId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(role);
+        _rolePermissions.Setup(r => r.ListByRoleAsync(roleId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[] { new RolePermission { RoleId = roleId, PermissionId = legacy.Id } });
+        _permissions.Setup(p => p.GetByIdsAsync(It.IsAny<IEnumerable<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[] { legacy });
+        var sut = BuildSut();
+        _entitlements.Setup(e => e.GetActiveModuleKeysForTenantAsync(TenantId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(["time_off"]);
+
+        var result = await sut.Handle(new GetRoleByIdQuery(roleId), CancellationToken.None);
+
+        result.Value!.Permissions.Select(p => p.Code).Should().Equal("leave:read");
+    }
+
+    [Fact]
     public async Task Handle_OmitsPermissionsFromUnsubscribedModules_KeepsBaselineModules()
     {
         var roleId = Guid.NewGuid();

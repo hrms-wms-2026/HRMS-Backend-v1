@@ -112,6 +112,41 @@ public sealed class PermissionResolverModuleAutoGrantTests
     }
 
     [Fact]
+    public async Task ResolveAsync_RoleRowStoredUnderLegacyModule_IsStillGranted()
+    {
+        // During a rolling deploy an old instance's PermissionSeeder can put legacy module
+        // values back into permissions.module; canonical entitlement must still match them.
+        _entitlements
+            .Setup(e => e.GetActiveModuleKeysForTenantAsync(TenantId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(["org"]);
+        _permissions
+            .Setup(p => p.ListRolePermissionCodesWithModulesAsync(UserId, Now, It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([new PermissionCodeWithModule("org:read", "org_structure")]);
+
+        var result = await Sut.ResolveAsync(UserId, TenantId, null, CancellationToken.None);
+
+        result.Should().Contain("org:read");
+    }
+
+    [Fact]
+    public async Task ResolveAsync_OverrideGrantStoredUnderLegacyModule_IsStillGranted()
+    {
+        _entitlements
+            .Setup(e => e.GetActiveModuleKeysForTenantAsync(TenantId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(["monitoring"]);
+        _overrides
+            .Setup(o => o.ListForUserAsync(TenantId, UserId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([new UserPermissionOverrideGrant("monitoring:read", "grant")]);
+        _permissions
+            .Setup(p => p.GetByCodesAsync(It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([new Permission { Id = Guid.NewGuid(), Code = "monitoring:read", Module = "activity_monitoring", Description = "" }]);
+
+        var result = await Sut.ResolveAsync(UserId, TenantId, null, CancellationToken.None);
+
+        result.Should().Contain("monitoring:read");
+    }
+
+    [Fact]
     public async Task ResolveAsync_OverrideRevoke_CannotRemoveModuleAutoGrant()
     {
         _entitlements

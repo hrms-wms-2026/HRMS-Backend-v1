@@ -252,6 +252,32 @@ public class ModuleEntitlementServiceTests
         result.Select(p => p.Code).Should().BeEquivalentTo(["leave:read", "monitoring:read"]);
     }
 
+    [Fact]
+    public async Task GetEntitledPermissionsAsync_IncludesPermissionStillStoredUnderLegacyModule()
+    {
+        var db = BuildInMemoryDb();
+        db.Permissions.Add(new Permission { Id = Guid.NewGuid(), Code = "leave:read", Module = "leave", Description = "" });
+        await db.SaveChangesAsync();
+
+        var result = await BuildSut(db).GetEntitledPermissionsAsync(["time_off"]);
+
+        result.Select(p => p.Code).Should().Equal("leave:read");
+    }
+
+    [Fact]
+    public async Task GetAssignablePermissionsForTenantAsync_IncludesPermissionStillStoredUnderLegacyModule()
+    {
+        var db = BuildInMemoryDb();
+        var tenantId = Guid.NewGuid();
+        db.TenantSubscriptions.Add(BuildSubscription(tenantId, "active", """["time_off"]""", DateTimeOffset.UtcNow));
+        db.Permissions.Add(new Permission { Id = Guid.NewGuid(), Code = "leave:read", Module = "leave", Description = "" });
+        await db.SaveChangesAsync();
+
+        var result = await BuildSut(db).GetAssignablePermissionsForTenantAsync(tenantId);
+
+        result.Select(p => p.Code).Should().Equal("leave:read");
+    }
+
     [Theory]
     [InlineData("work_management")]
     [InlineData("planning_sprints")]

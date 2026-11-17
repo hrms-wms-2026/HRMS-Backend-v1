@@ -1,4 +1,5 @@
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.SharedPlatform.ModuleCatalog.Helpers;
 using ONEVO.Application.Features.Auth.Permission;
 using ONEVO.Application.Features.Auth.Permission.RepositoryInterfaces;
 using ONEVO.Application.Features.Auth.Permission.ServiceInterfaces;
@@ -32,7 +33,9 @@ public class PermissionResolver : IPermissionResolver
             return ["*"];
 
         var activeModuleKeys = await _entitlements.GetActiveModuleKeysForTenantAsync(tenantId, ct);
-        var activeModules = activeModuleKeys.ToHashSet(StringComparer.Ordinal);
+        // Stored permission modules are compared canonically: during a rolling deploy an old
+        // instance can write legacy module values back (feature-key plan Task 23 removes this).
+        var activeModules = ModuleKeyAliases.CanonicalizeAll(activeModuleKeys).ToHashSet(StringComparer.Ordinal);
 
         // Platform/system capability modules (roles administration, tenant configuration
         // bootstrap, user administration, notifications administration) are never
@@ -65,7 +68,7 @@ public class PermissionResolver : IPermissionResolver
         foreach (var row in roleRows)
         {
             if (row.Code == "*") continue;
-            if (activeModules.Contains(row.Module))
+            if (activeModules.Contains(ModuleKeyAliases.Canonicalize(row.Module)))
                 effective.Add(row.Code);
         }
 
@@ -76,7 +79,7 @@ public class PermissionResolver : IPermissionResolver
             var byCode = resolvedGrants.ToDictionary(p => p.Code, StringComparer.Ordinal);
             foreach (var code in grantCodes)
             {
-                if (byCode.TryGetValue(code, out var perm) && activeModules.Contains(perm.Module))
+                if (byCode.TryGetValue(code, out var perm) && activeModules.Contains(ModuleKeyAliases.Canonicalize(perm.Module)))
                     effective.Add(code);
             }
         }

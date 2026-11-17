@@ -37,10 +37,12 @@ public sealed class ModuleEntitlementService : IModuleEntitlementService
         IReadOnlyList<string> moduleKeys,
         CancellationToken ct = default)
     {
-        var canonicalKeys = ModuleKeyAliases.CanonicalizeAll(moduleKeys).ToList();
+        // Legacy aliases are included because, during a rolling deploy, an old instance's
+        // PermissionSeeder can write legacy module values back to permissions.module.
+        var storedModuleKeys = ModuleKeyAliases.ExpandWithLegacyAliases(ModuleKeyAliases.CanonicalizeAll(moduleKeys)).ToList();
         return await _db.Permissions
             .AsNoTracking()
-            .Where(p => canonicalKeys.Contains(p.Module))
+            .Where(p => storedModuleKeys.Contains(p.Module))
             .ToListAsync(ct);
     }
 
@@ -79,7 +81,8 @@ public sealed class ModuleEntitlementService : IModuleEntitlementService
         if (moduleKeys.Count == 0)
             return [];
 
-        var keys = moduleKeys.ToList();
+        // Stored permission modules may still be legacy during a rolling deploy (see above).
+        var keys = ModuleKeyAliases.ExpandWithLegacyAliases(moduleKeys).ToList();
 
         // EF cannot translate ModuleAutoGrants.Contains; materialize the codes so the
         // filter becomes a SQL NOT IN.

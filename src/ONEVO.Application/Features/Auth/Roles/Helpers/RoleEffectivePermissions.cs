@@ -1,5 +1,6 @@
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Permission;
+using ONEVO.Application.Features.SharedPlatform.ModuleCatalog.Helpers;
 using AuthPermission = ONEVO.Domain.Features.Auth.Entities.Permission;
 
 namespace ONEVO.Application.Features.Auth.Roles;
@@ -18,7 +19,7 @@ internal static class RoleEffectivePermissions
         Guid tenantId,
         CancellationToken ct)
     {
-        var modules = (await entitlements.GetActiveModuleKeysForTenantAsync(tenantId, ct))
+        var modules = ModuleKeyAliases.CanonicalizeAll(await entitlements.GetActiveModuleKeysForTenantAsync(tenantId, ct))
             .ToHashSet(StringComparer.Ordinal);
         modules.UnionWith(PlatformBaselineModules.Keys);
         return modules;
@@ -29,7 +30,7 @@ internal static class RoleEffectivePermissions
     public static bool Grants(AuthPermission permission, IReadOnlySet<string> grantingModules) =>
         permission.Code != "*"
         && !ModuleAutoGrants.Contains(permission.Code)
-        && grantingModules.Contains(permission.Module);
+        && grantingModules.Contains(ModuleKeyAliases.Canonicalize(permission.Module));
 
     public static IReadOnlyList<AuthPermission> Filter(
         IEnumerable<AuthPermission> permissions,
