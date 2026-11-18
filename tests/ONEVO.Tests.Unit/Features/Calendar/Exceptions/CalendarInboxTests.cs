@@ -96,6 +96,22 @@ public sealed class CalendarInboxTests
     }
 
     [Fact]
+    public async Task Count_matches_the_open_calendar_cases_visible_to_the_caller()
+    {
+        ReviewerScope();
+
+        var counts = await Provider().CountAsync(TenantId, _manager, default);
+
+        counts.Should().BeEquivalentTo(new InboxSourceCounts(0, 1, new Dictionary<string, int>
+        {
+            [CalendarInboxKinds.MeetingException] = 1,
+        }));
+        _incidents.Verify(x => x.ListForExceptionAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+        _events.Verify(x => x.ListRsvpHistoryAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<IReadOnlyCollection<Guid>>(),
+            It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
     public async Task Outside_the_exception_scope_there_is_nothing_to_see()
     {
         (await Provider().ListAsync(TenantId, new InboxQuery(), Guid.NewGuid(), default)).Should().BeEmpty();

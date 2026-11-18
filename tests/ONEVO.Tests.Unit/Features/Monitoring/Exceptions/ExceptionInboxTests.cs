@@ -116,6 +116,21 @@ public class ExceptionInboxTests
     }
 
     [Fact]
+    public async Task Count_matches_the_open_cases_visible_to_the_caller_without_mapping_inbox_items()
+    {
+        Case();
+        ScopeIs(isHr: false, Subject);
+        ApproverOf(Subject);
+
+        var counts = await Provider().CountAsync(TenantId, Reviewer, default);
+
+        counts.Should().BeEquivalentTo(new InboxSourceCounts(0, 1, new Dictionary<string, int>
+        {
+            [ExceptionInboxKinds.Case] = 1,
+        }));
+    }
+
+    [Fact]
     public async Task Coverage_alone_does_not_put_a_case_in_the_inbox_of_someone_above()
     {
         Case();
