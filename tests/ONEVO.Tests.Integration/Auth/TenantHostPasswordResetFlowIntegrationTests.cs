@@ -226,6 +226,15 @@ public sealed class TenantHostPasswordResetFlowIntegrationTests : IAsyncLifetime
         services.AddSingleton<ISecureTokenGenerator, SecureTokenGenerator>();
         services.AddSingleton<IPasswordHasher, BCryptPasswordHasher>();
         services.AddSingleton<IPermissionVersionService, PermissionVersionService>();
+        // Same registration as production (task 03 session ticket cache), so the reset flow
+        // also exercises the real cache eviction.
+        services.AddMemoryCache();
+        services.Configure<ONEVO.Infrastructure.Identity.Sessions.SessionTicketCacheOptions>(_ => { });
+        services.AddSingleton<ONEVO.Infrastructure.Identity.Sessions.SessionTicketCache>();
+        services.AddSingleton<ONEVO.Infrastructure.Identity.Sessions.ISessionTicketStoreCache>(
+            sp => sp.GetRequiredService<ONEVO.Infrastructure.Identity.Sessions.SessionTicketCache>());
+        services.AddSingleton<ISessionTicketCache>(
+            sp => sp.GetRequiredService<ONEVO.Infrastructure.Identity.Sessions.SessionTicketCache>());
         services.AddSingleton<ILogger<BaseForgotPasswordCommandHandler>>(
             NullLogger<BaseForgotPasswordCommandHandler>.Instance);
 

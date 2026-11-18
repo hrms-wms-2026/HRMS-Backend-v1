@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Login.RepositoryInterfaces;
 using ONEVO.Domain.Features.Auth.Entities;
 
@@ -7,10 +8,14 @@ namespace ONEVO.Infrastructure.Persistence.Repositories.Auth.Login;
 public sealed class EfSessionRepository : ISessionRepository
 {
     private readonly ApplicationDbContext _db;
+    private readonly ISessionTicketCache? _ticketCache;
 
-    public EfSessionRepository(ApplicationDbContext db)
+    // The cache is optional only so standalone test contexts can build the repository; the API
+    // always registers it. Bulk updates bypass the EF eviction interceptor, so they evict here.
+    public EfSessionRepository(ApplicationDbContext db, ISessionTicketCache? ticketCache = null)
     {
         _db = db;
+        _ticketCache = ticketCache;
     }
 
     public async Task<Session?> GetLatestActiveByUserIdAsync(Guid userId, CancellationToken ct = default)
@@ -84,15 +89,35 @@ public sealed class EfSessionRepository : ISessionRepository
     }
 
     public async Task<int> RevokeAllActiveByUserIdAsync(Guid userId, CancellationToken ct = default)
-        => await _db.Sessions
-            .Where(s => s.UserId == userId && !s.IsRevoked)
-            .ExecuteUpdateAsync(setters => setters.SetProperty(s => s.IsRevoked, true), ct);
+    {
+        _ticketCache?.EvictUser(userId);
+        try
+        {
+            return await _db.Sessions
+                .Where(s => s.UserId == userId && !s.IsRevoked)
+                .ExecuteUpdateAsync(setters => setters.SetProperty(s => s.IsRevoked, true), ct);
+        }
+        finally
+        {
+            _ticketCache?.EvictUser(userId);
+        }
+    }
 
     public async Task<int> RevokeAllActiveByUserIdExceptAsync(
         Guid userId, Guid keepSessionId, CancellationToken ct = default)
-        => await _db.Sessions
-            .Where(s => s.UserId == userId && !s.IsRevoked && s.Id != keepSessionId)
-            .ExecuteUpdateAsync(setters => setters.SetProperty(s => s.IsRevoked, true), ct);
+    {
+        _ticketCache?.EvictUser(userId);
+        try
+        {
+            return await _db.Sessions
+                .Where(s => s.UserId == userId && !s.IsRevoked && s.Id != keepSessionId)
+                .ExecuteUpdateAsync(setters => setters.SetProperty(s => s.IsRevoked, true), ct);
+        }
+        finally
+        {
+            _ticketCache?.EvictUser(userId);
+        }
+    }
 
     public Task AddAsync(Session session, CancellationToken ct = default)
     {
