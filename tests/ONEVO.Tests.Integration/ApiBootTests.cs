@@ -48,6 +48,47 @@ public sealed class ApiBootTests : IAsyncLifetime
             $"Health endpoint returned {response.StatusCode}");
     }
 
+    // Task 15 (deny by default): the fallback policy must not catch the probes, must protect the
+    // hubs, and must refuse anonymous callers on routes nobody declared.
+
+    [Fact]
+    public async Task ReadinessEndpoint_IsAnonymous()
+    {
+        var client = _factory.CreateClient();
+        var response = await client.GetAsync("/health/ready");
+        Assert.Equal(System.Net.HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [Theory]
+    [InlineData("/hubs/inbox/negotiate?negotiateVersion=1")]
+    [InlineData("/hubs/agent-commands/negotiate?negotiateVersion=1")]
+    public async Task Hubs_RefuseAnonymousNegotiate(string path)
+    {
+        var client = _factory.CreateClient();
+        var response = await client.PostAsync(path, content: null);
+        Assert.Equal(System.Net.HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task UnmappedRoute_IsRefusedForAnonymousCaller()
+    {
+        var client = _factory.CreateClient();
+        var response = await client.GetAsync("/api/v1/task-15-no-such-route");
+        Assert.Equal(System.Net.HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task UnmappedAdminRoute_IsChallengedOnceAsJson()
+    {
+        var client = _factory.CreateClient();
+        var response = await client.GetAsync("/admin/v1/task-15-no-such-route");
+        Assert.Equal(System.Net.HttpStatusCode.Unauthorized, response.StatusCode);
+
+        // One scheme challenges, so the body is a single JSON problem object.
+        using var body = System.Text.Json.JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal(401, body.RootElement.GetProperty("status").GetInt32());
+    }
+
     [Fact]
     public async Task SwaggerEndpoint_ReturnsOk_InDevelopment()
     {

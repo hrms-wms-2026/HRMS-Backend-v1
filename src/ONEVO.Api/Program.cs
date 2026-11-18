@@ -157,19 +157,26 @@ app.UseAuthorization();
 
 app.MapControllers();
 // Close a tray connection when its device JWT expires — the live connection counts as presence.
+// Task 15: both hubs state their policy on the endpoint as well as on the hub class, so the
+// fallback policy never decides who may connect.
 app.MapHub<ONEVO.Api.Hubs.AgentCommandsHub>("/hubs/agent-commands",
-    options => options.CloseOnAuthenticationExpiration = true);
-app.MapHub<ONEVO.Api.Hubs.InboxHub>("/hubs/inbox");
+    options => options.CloseOnAuthenticationExpiration = true)
+    .RequireAuthorization("TrayDevicePolicy");
+app.MapHub<ONEVO.Api.Hubs.InboxHub>("/hubs/inbox")
+    .RequireAuthorization("TenantPolicy");
 // Liveness: process-only checks. Must NOT include dependency checks — a brief
 // DB outage should fail readiness, not liveness.
 app.MapHealthChecks("/health", new HealthCheckOptions
 {
     Predicate = check => !check.Tags.Contains("ready")
-});
+})
+    // Task 15: probes for the load balancer / orchestrator; they return only Healthy/Unhealthy.
+    .AllowAnonymous();
 app.MapHealthChecks("/health/ready", new HealthCheckOptions
 {
     Predicate = check => check.Tags.Contains("ready")
-});
+})
+    .AllowAnonymous();
 
 app.Run();
 
