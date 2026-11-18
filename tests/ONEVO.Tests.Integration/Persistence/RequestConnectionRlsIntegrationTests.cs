@@ -13,6 +13,7 @@ using ONEVO.Infrastructure.Identity.Tenancy;
 using ONEVO.Infrastructure.Identity.Time;
 using ONEVO.Infrastructure.Persistence;
 using ONEVO.Infrastructure.Persistence.Interceptors;
+using ONEVO.Infrastructure.Persistence.SqlServer;
 using ONEVO.Tests.Integration.Support;
 
 namespace ONEVO.Tests.Integration.Persistence;
@@ -52,7 +53,7 @@ public sealed class RequestConnectionRlsFixture : IAsyncLifetime
         services.AddScoped(_ => new SoftDeleteInterceptor(_clock));
         services.AddScoped(_ => new DomainEventDispatchInterceptor(new NoOpPublisher()));
         services.AddDbContext<ApplicationDbContext>((sp, options) =>
-            options.UseTestSqlServer(TenantRlsInterceptor.WithoutSilentReconnect(AppConnectionString), sql => sql.EnableRetryOnFailure(3))
+            options.UseTestSqlServer(TenantRlsInterceptor.WithoutSilentReconnect(AppConnectionString), sql => sql.ExecutionStrategy(d => new BrokenConnectionRetryingExecutionStrategy(d)))
                 .UseSnakeCaseNamingConvention()
                 .AddTestRls(sp.GetRequiredService<TenantRlsInterceptor>()));
         services.AddScoped<ITenantContextSwitcher, TenantContextSwitcher>();

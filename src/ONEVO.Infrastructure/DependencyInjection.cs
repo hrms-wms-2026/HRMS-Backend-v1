@@ -12,6 +12,7 @@ using ONEVO.Application.Features.Calendar.RepositoryInterfaces;
 using ONEVO.Application.Features.Calendar.ServiceInterfaces;
 using ONEVO.Application.Features.Calendar.Services;
 using ONEVO.Infrastructure.Persistence.Repositories.Calendar;
+using ONEVO.Infrastructure.Persistence.SqlServer;
 using ONEVO.Infrastructure.Services.Calendar;
 using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.ServiceInterfaces;
@@ -164,7 +165,9 @@ public static class DependencyInjection
             options
                 .UseSqlServer(TenantRlsInterceptor.WithoutSilentReconnect(connectionString), sqlServer =>
                 {
-                    sqlServer.EnableRetryOnFailure(3);
+                    // EF's retry plus broken connections (Linux reports them as number 0): the request
+                    // connection has no silent reconnect, so this retry is what reopens it.
+                    sqlServer.ExecutionStrategy(d => new BrokenConnectionRetryingExecutionStrategy(d));
                     sqlServer.CommandTimeout(30);
                 })
                 .UseSnakeCaseNamingConvention()
