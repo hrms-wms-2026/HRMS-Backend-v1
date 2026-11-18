@@ -14,6 +14,12 @@ public class MfaChallenge : ITenantOwnedEntity
     public Guid UserId { get; set; }
     public string ChallengeHash { get; set; } = string.Empty;
     public string Origin { get; set; } = "password";
+
+    /// <summary>
+    /// Server-only JSON of a verified external identity (Google subject and email) to link if this
+    /// login completes after MFA. Null for every other login. Never contains a token.
+    /// </summary>
+    public string? PendingExternalIdentityJson { get; set; }
     public int FailedAttemptCount { get; set; }
     public DateTimeOffset ExpiresAt { get; set; }
     public DateTimeOffset? ConsumedAt { get; set; }

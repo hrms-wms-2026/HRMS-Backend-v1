@@ -10,5 +10,11 @@ public interface IUserExternalIdentityRepository
         string providerSubject,
         CancellationToken ct = default);
 
+    Task<UserExternalIdentity?> GetByTenantUserAndProviderAsync(
+        Guid tenantId,
+        Guid userId,
+        string provider,
+        CancellationToken ct = default);
+
     Task AddAsync(UserExternalIdentity identity, CancellationToken ct = default);
 }

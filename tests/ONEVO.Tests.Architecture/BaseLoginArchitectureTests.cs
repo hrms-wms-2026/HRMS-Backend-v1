@@ -21,6 +21,52 @@ public sealed class BaseLoginArchitectureTests
             "base-login candidate lookup must not bypass tenant filters directly; it must use the function instead");
     }
 
+    [Fact]
+    public void EfGoogleLoginCandidateRepository_QueriesOnlyTheAllowlistedProcedure()
+    {
+        var text = File.ReadAllText(FindSourceFile(
+            "ONEVO.Infrastructure",
+            "Persistence", "Repositories", "Auth", "Login", "EfGoogleLoginCandidateRepository.cs"));
+
+        text.Should().Contain("auth_internal.auth_lookup_google_login_candidates",
+            "the Google candidate lookup must call the allowlisted procedure");
+        text.Should().NotContain("_db.Users");
+        text.Should().NotContain("_db.Tenants");
+        text.Should().NotContain("_db.UserExternalIdentities");
+        text.Should().NotContain("_db.TenantAuthPolicies");
+        text.Should().NotContain("IgnoreQueryFilters");
+    }
+
+    [Fact]
+    public void GoogleLookupProcedure_NeverOffersAnEmailMatchLinkedToAnotherGoogleAccount()
+    {
+        var migration = File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(), "src", "ONEVO.Infrastructure", "Migrations",
+            "20261118095952_AddGoogleLoginSubjectLookup.cs"));
+
+        migration.Should().Contain("WITH EXECUTE AS N'crownus_auth_base_login_fn_owner'");
+        migration.Should().Contain("SELECT TOP (9)");
+        migration.Should().Contain("x.provider_subject = @provider_subject");
+        migration.Should().Contain("u.normalized_email = @normalized_email");
+        migration.Should().Contain("AND NOT EXISTS (",
+            "an email match must be dropped when the user is already linked to a Google account");
+        migration.Should().Contain("p.google_completion_allowed IS NULL OR p.google_completion_allowed = 1");
+        migration.Should().Contain("t.status IN (N'Active', N'Trial')");
+        migration.Should().Contain("OR NOT EXISTS (SELECT 1 FROM eligible s WHERE s.matched_by_subject = 1)",
+            "email matches are a fallback only when no eligible user is linked to the subject");
+    }
+
+    [Fact]
+    public void GoogleLookupGrants_AreColumnLevelOnly()
+    {
+        var grants = File.ReadAllText(Path.Combine(FindRepositoryRoot(), "ops", "sqlserver", "post-migration-grants.sql"));
+
+        grants.Should().Contain("GRANT EXECUTE ON auth_internal.auth_lookup_google_login_candidates TO crownus_app;");
+        grants.Should().Contain("GRANT SELECT (tenant_id, user_id, provider, provider_subject)");
+        grants.Should().Contain("GRANT SELECT (tenant_id, google_completion_allowed, allowed_login_domains_json)");
+        grants.Should().NotContain("provider_email) ON dbo.user_external_identities TO crownus_auth_base_login_fn_owner");
+    }
+
     private static string FindLatestNormalizedEmailMigration()
     {
         var migrationsDir = Path.Combine(FindRepositoryRoot(), "src", "ONEVO.Infrastructure", "Migrations");

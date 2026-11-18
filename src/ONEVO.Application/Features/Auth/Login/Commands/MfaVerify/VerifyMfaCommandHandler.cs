@@ -107,12 +107,31 @@ public class VerifyMfaCommandHandler : IRequestHandler<VerifyMfaCommand, Result<
             return Result<LoginResponseDto>.Failure("Invalid or expired MFA session.", 401);
         }
 
+        var finalizationMode = isTenantContext
+            ? LoginFinalizationMode.TenantHostDirect
+            : LoginFinalizationMode.BaseDomainExchange;
+
+        // A Google login that stopped at MFA carries its pending identity in the challenge; MFA is
+        // now verified, so the continuation links it once the remaining gates pass.
+        if (consumedChallenge.ExternalIdentity is not null)
+        {
+            return await _continuation.FinishAuthenticatedLoginAsync(
+                user,
+                consumedChallenge.Origin,
+                request.IpAddress,
+                request.UserAgent,
+                finalizationMode,
+                consumedChallenge.ExternalIdentity,
+                cancellationToken,
+                tenant);
+        }
+
         return await _continuation.FinishAuthenticatedLoginAsync(
             user,
             consumedChallenge.Origin,
             request.IpAddress,
             request.UserAgent,
-            isTenantContext ? LoginFinalizationMode.TenantHostDirect : LoginFinalizationMode.BaseDomainExchange,
+            finalizationMode,
             cancellationToken,
             tenant);
     }

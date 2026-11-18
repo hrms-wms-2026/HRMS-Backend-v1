@@ -8,6 +8,7 @@ using ONEVO.Application.Features.Auth.Login.Mappers;
 using ONEVO.Application.Features.Auth.Login.RepositoryInterfaces;
 using ONEVO.Application.Features.Auth.Login.ServiceInterfaces;
 using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
+using ONEVO.Domain.Features.Auth.Entities;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
 
 namespace ONEVO.Application.Features.Auth.Login.Services;
@@ -28,6 +29,7 @@ public sealed class LoginContinuationService : ILoginContinuationService
     private readonly ILoginSessionMaterialFactory _sessionMaterialFactory;
     private readonly IUnitOfWork _unitOfWork;
     private readonly IDateTimeProvider _clock;
+    private readonly IUserExternalIdentityRepository _externalIdentities;
 
     public LoginContinuationService(
         ITenantRepository tenants,
@@ -40,7 +42,8 @@ public sealed class LoginContinuationService : ILoginContinuationService
         ITenantSessionExchangeService tenantSessionExchange,
         ILoginSessionMaterialFactory sessionMaterialFactory,
         IUnitOfWork unitOfWork,
-        IDateTimeProvider clock)
+        IDateTimeProvider clock,
+        IUserExternalIdentityRepository externalIdentities)
     {
         _tenants = tenants;
         _users = users;
@@ -53,6 +56,7 @@ public sealed class LoginContinuationService : ILoginContinuationService
         _sessionMaterialFactory = sessionMaterialFactory;
         _unitOfWork = unitOfWork;
         _clock = clock;
+        _externalIdentities = externalIdentities;
     }
 
     public async Task<Result<LoginResponseDto>> ContinueAsync(
@@ -88,18 +92,28 @@ public sealed class LoginContinuationService : ILoginContinuationService
         var mfaRecord = await _userMfas.GetTotpAsync(user.Id, isVerified: true, ct);
         if (mfaRecord is not null)
         {
-            var mfaChallenge = await _mfaChallenges.CreateAsync(
-                user.Id,
-                user.TenantId,
-                request.LegalChallengeOrigin,
-                MfaChallengeLifetime,
-                ct);
+            // A pending external identity rides along in the MFA challenge and is linked only after
+            // MFA verification completes the login, never here.
+            var mfaChallenge = request.ExternalIdentity is null
+                ? await _mfaChallenges.CreateAsync(
+                    user.Id,
+                    user.TenantId,
+                    request.LegalChallengeOrigin,
+                    MfaChallengeLifetime,
+                    ct)
+                : await _mfaChallenges.CreateAsync(
+                    user.Id,
+                    user.TenantId,
+                    request.LegalChallengeOrigin,
+                    request.ExternalIdentity,
+                    MfaChallengeLifetime,
+                    ct);
             return Result<LoginResponseDto>.Success(LoginMapper.ToMfaRequired(user, tenant, mfaChallenge));
         }
 
         return await FinishAuthenticatedLoginAsync(
             user, request.LegalChallengeOrigin, request.IpAddress, request.UserAgent,
-            request.FinalizationMode, ct, tenant);
+            request.FinalizationMode, request.ExternalIdentity, ct, tenant);
     }
 
     /// <summary>
@@ -111,12 +125,24 @@ public sealed class LoginContinuationService : ILoginContinuationService
     /// never set crownus_session/crownus_csrf); TenantHostDirect signs in immediately via
     /// ILoginSessionMaterialFactory, the same as every login did before the exchange flow existed.
     /// </summary>
+    public Task<Result<LoginResponseDto>> FinishAuthenticatedLoginAsync(
+        User user,
+        string legalChallengeOrigin,
+        string? ipAddress,
+        string? userAgent,
+        LoginFinalizationMode finalizationMode,
+        CancellationToken ct = default,
+        Tenant? tenant = null) =>
+        FinishAuthenticatedLoginAsync(
+            user, legalChallengeOrigin, ipAddress, userAgent, finalizationMode, null, ct, tenant);
+
     public async Task<Result<LoginResponseDto>> FinishAuthenticatedLoginAsync(
         User user,
         string legalChallengeOrigin,
         string? ipAddress,
         string? userAgent,
         LoginFinalizationMode finalizationMode,
+        PendingExternalIdentity? externalIdentity,
         CancellationToken ct = default,
         Tenant? tenant = null)
     {
@@ -135,6 +161,11 @@ public sealed class LoginContinuationService : ILoginContinuationService
                     user, resolvedTenant, rawChallenge, rawCsrf, legalCheck.PendingDocuments));
         }
 
+        // Every gate is cleared: this is the one point where a login "fully completes" for the
+        // Google link. Both finalization paths below call SaveChangesAsync, which commits it.
+        if (externalIdentity is not null)
+            await LinkOrTouchExternalIdentityAsync(user, externalIdentity, ct);
+
         if (finalizationMode == LoginFinalizationMode.BaseDomainExchange)
         {
             return await _tenantSessionExchange.CreateAsync(
@@ -149,5 +180,46 @@ public sealed class LoginContinuationService : ILoginContinuationService
         await _unitOfWork.SaveChangesAsync(ct);
 
         return sessionResult;
+    }
+
+    /// <summary>
+    /// Runs inside the user's tenant context. Subject already linked to this user: update
+    /// LastUsedAt. Subject unlinked and the user has no Google link yet: add the link. Anything
+    /// else (subject linked to someone else, user linked to another subject) changes nothing.
+    /// The unique (tenant_id, provider, provider_subject) index stops a racing duplicate insert.
+    /// </summary>
+    private async Task LinkOrTouchExternalIdentityAsync(
+        User user,
+        PendingExternalIdentity externalIdentity,
+        CancellationToken ct)
+    {
+        var now = _clock.UtcNow;
+
+        var bySubject = await _externalIdentities.GetByTenantProviderAndSubjectAsync(
+            user.TenantId, externalIdentity.Provider, externalIdentity.Subject, ct);
+        if (bySubject is not null)
+        {
+            if (bySubject.UserId == user.Id)
+                bySubject.LastUsedAt = now;
+            return;
+        }
+
+        var existingForUser = await _externalIdentities.GetByTenantUserAndProviderAsync(
+            user.TenantId, user.Id, externalIdentity.Provider, ct);
+        if (existingForUser is not null)
+            return;
+
+        await _externalIdentities.AddAsync(new UserExternalIdentity
+        {
+            Id = Guid.NewGuid(),
+            TenantId = user.TenantId,
+            UserId = user.Id,
+            Provider = externalIdentity.Provider,
+            ProviderSubject = externalIdentity.Subject,
+            ProviderEmail = externalIdentity.Email,
+            EmailVerified = true,
+            LinkedAt = now,
+            LastUsedAt = now
+        }, ct);
     }
 }

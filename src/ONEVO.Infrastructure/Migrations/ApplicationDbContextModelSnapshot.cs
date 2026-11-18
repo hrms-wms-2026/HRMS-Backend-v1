@@ -547,6 +547,11 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasDefaultValue("password")
                         .HasColumnName("origin");
 
+                    b.Property<string>("PendingExternalIdentityJson")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)")
+                        .HasColumnName("pending_external_identity_json");
+
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");

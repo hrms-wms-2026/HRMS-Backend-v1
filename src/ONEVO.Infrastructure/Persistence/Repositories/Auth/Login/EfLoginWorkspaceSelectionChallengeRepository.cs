@@ -53,6 +53,19 @@ public sealed class EfLoginWorkspaceSelectionChallengeRepository : ILoginWorkspa
         TimeSpan lifetime,
         CancellationToken ct = default)
     {
+        return await CreateAsync(normalizedEmail, origin, candidates, null, ipAddress, userAgent, lifetime, ct);
+    }
+
+    public async Task<string> CreateAsync(
+        string normalizedEmail,
+        string origin,
+        IReadOnlyList<WorkspaceCandidateSnapshot> candidates,
+        PendingExternalIdentity? externalIdentity,
+        string? ipAddress,
+        string? userAgent,
+        TimeSpan lifetime,
+        CancellationToken ct = default)
+    {
         var now = _clock.UtcNow;
 
         var staleChallenges = await _db.LoginWorkspaceSelectionChallenges
@@ -66,7 +79,7 @@ public sealed class EfLoginWorkspaceSelectionChallengeRepository : ILoginWorkspa
 
         var rawChallenge = _tokens.GenerateOpaqueToken();
         var payloadJson = JsonSerializer.Serialize(
-            new WorkspaceSelectionPayload(origin, candidates));
+            new WorkspaceSelectionPayload(origin, candidates, externalIdentity));
 
         var challenge = new LoginWorkspaceSelectionChallenge
         {
@@ -217,7 +230,10 @@ public sealed class EfLoginWorkspaceSelectionChallengeRepository : ILoginWorkspa
                 payload.Origin,
                 payload.Candidates,
                 row.ExpiresAt,
-                row.FailedAttemptCount);
+                row.FailedAttemptCount)
+            {
+                ExternalIdentity = payload.ExternalIdentity
+            };
         }
 
         // Backward compatibility for challenge rows created before origin was added to the
@@ -234,5 +250,6 @@ public sealed class EfLoginWorkspaceSelectionChallengeRepository : ILoginWorkspa
 
     private sealed record WorkspaceSelectionPayload(
         string Origin,
-        IReadOnlyList<WorkspaceCandidateSnapshot> Candidates);
+        IReadOnlyList<WorkspaceCandidateSnapshot> Candidates,
+        PendingExternalIdentity? ExternalIdentity = null);
 }

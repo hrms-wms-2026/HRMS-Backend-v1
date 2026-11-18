@@ -318,10 +318,15 @@ public class TenantIsolationArchitectureTests
                 .Select(match => (m.Name, match.Value)))
             .ToList();
 
-        var use = Assert.Single(uses);
-        Assert.Equal(LookupMigration, use.Name);
-        Assert.Contains(RlsSql.LookupUser, use.Value, StringComparison.Ordinal);
+        // Exactly two pre-tenant login lookups exist: password/forgot-password by email, and Google by
+        // subject + email (DEC-062). Each runs as the lookup user, once.
+        Assert.Equal(
+            new[] { LookupMigration, GoogleLookupMigration },
+            uses.Select(u => u.Name).OrderBy(n => n, StringComparer.Ordinal).ToArray());
+        Assert.All(uses, u => Assert.Contains(RlsSql.LookupUser, u.Value, StringComparison.Ordinal));
     }
+
+    private const string GoogleLookupMigration = "20261118095952_AddGoogleLoginSubjectLookup.cs";
 
     [Fact]
     public void RlsPredicates_AreOnlyLoosenedForTheLookupUser()

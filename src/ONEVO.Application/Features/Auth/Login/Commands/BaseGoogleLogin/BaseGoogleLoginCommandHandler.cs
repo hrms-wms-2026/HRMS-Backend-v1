@@ -1,3 +1,4 @@
+using System.Text.Json;
 using MediatR;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
@@ -8,17 +9,24 @@ using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformOAuthApps.Serv
 
 namespace ONEVO.Application.Features.Auth.Login.Commands.BaseGoogleLogin;
 
+/// <summary>
+/// Base-domain Google login. Identity is the Google subject ("sub"): users already linked to it are
+/// found first; only when none are, users with the verified email who are not linked to another
+/// Google subject are offered, and the link is saved when that login fully completes. Tenant policy
+/// (Google allowed, allowed email domains) filters candidates. Failures are only ever
+/// <see cref="GoogleLoginErrors"/>: 401 for Google, one 403 for every application reason.
+/// No user is ever created here.
+/// </summary>
 public class BaseGoogleLoginCommandHandler : IRequestHandler<BaseGoogleLoginCommand, Result<BaseLoginResultDto>>
 {
     private const string GoogleProvider = "google";
-    private const string GenericFailureMessage = "Invalid email or password.";
     private const string LegalChallengeOrigin = "google_sso";
     private const int MaximumEligibleCandidates = 8;
     private static readonly TimeSpan WorkspaceChallengeLifetime = TimeSpan.FromMinutes(5);
 
     private readonly IGoogleIdTokenValidator _google;
     private readonly IPlatformOAuthAppResolver _oauthApps;
-    private readonly IBaseLoginCandidateRepository _candidates;
+    private readonly IGoogleLoginCandidateRepository _candidates;
     private readonly ILoginWorkspaceSelectionChallengeRepository _workspaceChallenges;
     private readonly ILoginContinuationService _continuation;
     private readonly IDateTimeProvider _clock;
@@ -26,7 +34,7 @@ public class BaseGoogleLoginCommandHandler : IRequestHandler<BaseGoogleLoginComm
     public BaseGoogleLoginCommandHandler(
         IGoogleIdTokenValidator google,
         IPlatformOAuthAppResolver oauthApps,
-        IBaseLoginCandidateRepository candidates,
+        IGoogleLoginCandidateRepository candidates,
         ILoginWorkspaceSelectionChallengeRepository workspaceChallenges,
         ILoginContinuationService continuation,
         IDateTimeProvider clock)
@@ -46,57 +54,75 @@ public class BaseGoogleLoginCommandHandler : IRequestHandler<BaseGoogleLoginComm
             return Result<BaseLoginResultDto>.Failure("Google sign-in is not configured.", 500);
 
         var payload = await _google.ValidateAsync(request.GoogleIdToken, googleApp.ClientId, ct);
-        if (payload is null || string.IsNullOrWhiteSpace(payload.Email) || !payload.EmailVerified)
-            return Result<BaseLoginResultDto>.Failure(GenericFailureMessage, 401);
+        if (payload is null
+            || string.IsNullOrWhiteSpace(payload.Subject)
+            || string.IsNullOrWhiteSpace(payload.Email)
+            || !payload.EmailVerified)
+        {
+            return GoogleAuthFailed();
+        }
 
         var normalizedEmail = payload.Email.Trim().ToLowerInvariant();
 
-        // Same allowlisted pre-tenant candidate lookup the password path uses (eligibility:
-        // tenant Active/Trial + user IsActive only - no tenant_auth_policies gate). The
-        // password_hash column is present on the row but never read here: Google already proved
-        // identity, so no credential is verified for these candidates.
-        var candidateRows = await _candidates.GetCandidatesAsync(normalizedEmail, ct);
+        var rows = await _candidates.GetCandidatesAsync(payload.Subject, normalizedEmail, ct);
 
-        if (candidateRows.Count == 0 || candidateRows.Count > MaximumEligibleCandidates)
-            return Result<BaseLoginResultDto>.Failure(GenericFailureMessage, 401);
+        // Overflow is judged on the procedure's own TOP (9) probe, before the C# domain filter, so a
+        // filter cannot hide that more than eight workspaces matched.
+        if (rows.Count > MaximumEligibleCandidates)
+            return NoAccess();
 
-        if (candidateRows.Count == 1)
+        var emailDomain = ExtractDomain(normalizedEmail);
+        var candidates = rows.Where(r => IsDomainAllowed(r.AllowedLoginDomainsJson, emailDomain)).ToList();
+        if (candidates.Count == 0)
+            return NoAccess();
+
+        if (candidates.Count == 1)
         {
-            var candidate = candidateRows[0];
+            var candidate = candidates[0];
             var continuationRequest = new LoginContinuationRequest(
                 candidate.TenantId,
                 candidate.UserId,
                 SwitchTenantContext: true,
-                GenericFailureMessage: GenericFailureMessage,
+                GenericFailureMessage: GoogleLoginErrors.NoAccessMessage,
                 LegalChallengeOrigin: LegalChallengeOrigin,
                 IpAddress: request.IpAddress,
                 UserAgent: request.UserAgent,
-                FinalizationMode: LoginFinalizationMode.BaseDomainExchange);
+                FinalizationMode: LoginFinalizationMode.BaseDomainExchange)
+            {
+                ExternalIdentity = PendingIdentity(payload.Subject, normalizedEmail, candidate.MatchedBySubject)
+            };
 
             var result = await _continuation.ContinueAsync(continuationRequest, ct);
             if (!result.IsSuccess)
-                return Result<BaseLoginResultDto>.Failure(result.Error ?? GenericFailureMessage, result.StatusCode ?? 401);
+            {
+                // The continuation re-validates tenant and user and answers 401 when either is no
+                // longer active. For Google that is "no access", never a credential error.
+                return result.StatusCode is null or 401 or 403
+                    ? NoAccess()
+                    : Result<BaseLoginResultDto>.Failure(result.Error ?? GoogleLoginErrors.NoAccessMessage, result.StatusCode.Value);
+            }
 
             return Result<BaseLoginResultDto>.Success(new BaseLoginResultDto(result.Value, null));
         }
 
-        // 2-8 eligible candidates: reuse the same durable workspace-selection challenge the
-        // password path uses. By the time a workspace is selected, identity is already proven
-        // (Google here, password there); SelectWorkspaceCommandHandler does not re-verify either.
-        var snapshots = candidateRows
+        // 2-8 eligible candidates: the same durable workspace-selection challenge the password path
+        // uses, carrying the pending Google link so the selected workspace can be linked on success.
+        var snapshots = candidates
             .Select(c => new WorkspaceCandidateSnapshot(c.TenantId, c.UserId, c.Slug, c.DisplayName))
             .ToList();
+        var matchedBySubject = candidates.All(c => c.MatchedBySubject);
 
         var rawChallenge = await _workspaceChallenges.CreateAsync(
             normalizedEmail,
             LegalChallengeOrigin,
             snapshots,
+            PendingIdentity(payload.Subject, normalizedEmail, matchedBySubject),
             request.IpAddress,
             request.UserAgent,
             WorkspaceChallengeLifetime,
             ct);
 
-        var workspaceOptions = candidateRows
+        var workspaceOptions = candidates
             .Select(c => new BaseLoginWorkspaceOptionDto(c.Slug, c.DisplayName))
             .ToList();
 
@@ -105,4 +131,48 @@ public class BaseGoogleLoginCommandHandler : IRequestHandler<BaseGoogleLoginComm
 
         return Result<BaseLoginResultDto>.Success(new BaseLoginResultDto(null, workspaceSelectionDto));
     }
+
+    private static PendingExternalIdentity PendingIdentity(string subject, string email, bool matchedBySubject) =>
+        new(GoogleProvider, subject, email, matchedBySubject);
+
+    /// <summary>
+    /// Same rule as invitation acceptance: the email's domain must equal one listed domain
+    /// (case-insensitive). No list or an empty list means any domain. A list that cannot be read
+    /// fails closed: a corrupted restriction must not turn into "any domain".
+    /// </summary>
+    private static bool IsDomainAllowed(string? allowedDomainsJson, string? emailDomain)
+    {
+        if (string.IsNullOrWhiteSpace(allowedDomainsJson))
+            return true;
+
+        List<string>? domains;
+        try
+        {
+            domains = JsonSerializer.Deserialize<List<string>>(allowedDomainsJson);
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+
+        var allowed = domains?
+            .Where(d => !string.IsNullOrWhiteSpace(d))
+            .Select(d => d.Trim().ToLowerInvariant())
+            .ToHashSet() ?? [];
+
+        return allowed.Count == 0 || (emailDomain is not null && allowed.Contains(emailDomain));
+    }
+
+    private static string? ExtractDomain(string normalizedEmail)
+    {
+        var at = normalizedEmail.LastIndexOf('@');
+        return at < 0 || at == normalizedEmail.Length - 1 ? null : normalizedEmail[(at + 1)..];
+    }
+
+    private static Result<BaseLoginResultDto> GoogleAuthFailed() =>
+        Result<BaseLoginResultDto>.Failure(
+            GoogleLoginErrors.GoogleAuthFailedMessage, 401, GoogleLoginErrors.GoogleAuthFailedCode);
+
+    private static Result<BaseLoginResultDto> NoAccess() =>
+        Result<BaseLoginResultDto>.Failure(GoogleLoginErrors.NoAccessMessage, 403, GoogleLoginErrors.NoAccessCode);
 }

@@ -1014,6 +1014,7 @@ public static class DependencyInjection
         // multiple API instances behind a load balancer.
         services.AddScoped<IPlatformMfaChallengeStore, MemoryPlatformMfaChallengeStore>();
         services.AddScoped<IBaseLoginCandidateRepository, EfBaseLoginCandidateRepository>();
+        services.AddScoped<IGoogleLoginCandidateRepository, EfGoogleLoginCandidateRepository>();
         services.AddScoped<ILoginWorkspaceSelectionChallengeRepository, EfLoginWorkspaceSelectionChallengeRepository>();
         services.AddScoped<IBaseLoginFixedWorkVerifier, BaseLoginFixedWorkVerifier>();
         services.AddScoped<ITenantContextSwitcher, TenantContextSwitcher>();

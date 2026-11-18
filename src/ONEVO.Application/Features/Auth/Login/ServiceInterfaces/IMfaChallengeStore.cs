@@ -15,6 +15,9 @@ public sealed record MfaChallengeState(
         : this(userId, tenantId, "password", expiresAt, failedAttempts)
     {
     }
+
+    /// <summary>Verified external identity to link if the login completes (Google flow only).</summary>
+    public PendingExternalIdentity? ExternalIdentity { get; init; }
 }
 
 public interface IMfaChallengeStore
@@ -29,6 +32,14 @@ public interface IMfaChallengeStore
         Guid userId,
         Guid tenantId,
         string origin,
+        TimeSpan lifetime,
+        CancellationToken ct = default);
+
+    Task<string> CreateAsync(
+        Guid userId,
+        Guid tenantId,
+        string origin,
+        PendingExternalIdentity? externalIdentity,
         TimeSpan lifetime,
         CancellationToken ct = default);
 

@@ -15,6 +15,7 @@ public class MfaChallengeConfiguration : IEntityTypeConfiguration<MfaChallenge>
         builder.Property(c => c.ChallengeHash).HasMaxLength(128).IsRequired();
         builder.Property(c => c.Origin).HasMaxLength(30).IsRequired().HasDefaultValue("password");
         builder.Property(c => c.FailedAttemptCount).HasDefaultValue(0);
+        builder.Property(c => c.PendingExternalIdentityJson).HasMaxLength(1000);
 
         // Concurrency token makes consumption single-use: a competing UPDATE that already set
         // consumed_at causes DbUpdateConcurrencyException instead of a silent double-consume.

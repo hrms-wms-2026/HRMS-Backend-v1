@@ -80,7 +80,11 @@ public class SelectWorkspaceCommandHandler : IRequestHandler<SelectWorkspaceComm
             LegalChallengeOrigin: consumedState.Origin,
             IpAddress: request.IpAddress,
             UserAgent: request.UserAgent,
-            FinalizationMode: LoginFinalizationMode.BaseDomainExchange);
+            FinalizationMode: LoginFinalizationMode.BaseDomainExchange)
+        {
+            // Google flow only: linked by the continuation once this login fully completes.
+            ExternalIdentity = consumedState.ExternalIdentity
+        };
 
         return await _continuation.ContinueAsync(continuationRequest, cancellationToken);
     }

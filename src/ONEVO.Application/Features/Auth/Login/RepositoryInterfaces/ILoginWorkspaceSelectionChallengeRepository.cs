@@ -1,3 +1,5 @@
+using ONEVO.Application.Features.Auth.Login.ServiceInterfaces;
+
 namespace ONEVO.Application.Features.Auth.Login.RepositoryInterfaces;
 
 public sealed record WorkspaceCandidateSnapshot(
@@ -21,6 +23,9 @@ public sealed record LoginWorkspaceSelectionChallengeState(
         : this(normalizedEmail, "password", candidates, expiresAt, failedAttemptCount)
     {
     }
+
+    /// <summary>Verified external identity to link if the login completes (Google flow only).</summary>
+    public PendingExternalIdentity? ExternalIdentity { get; init; }
 }
 
 /// <summary>
@@ -43,6 +48,16 @@ public interface ILoginWorkspaceSelectionChallengeRepository
         string normalizedEmail,
         string origin,
         IReadOnlyList<WorkspaceCandidateSnapshot> candidates,
+        string? ipAddress,
+        string? userAgent,
+        TimeSpan lifetime,
+        CancellationToken ct = default);
+
+    Task<string> CreateAsync(
+        string normalizedEmail,
+        string origin,
+        IReadOnlyList<WorkspaceCandidateSnapshot> candidates,
+        PendingExternalIdentity? externalIdentity,
         string? ipAddress,
         string? userAgent,
         TimeSpan lifetime,

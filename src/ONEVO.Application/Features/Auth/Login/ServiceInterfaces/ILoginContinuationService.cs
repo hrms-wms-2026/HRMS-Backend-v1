@@ -42,7 +42,14 @@ public sealed record LoginContinuationRequest(
     string LegalChallengeOrigin,
     string? IpAddress,
     string? UserAgent,
-    LoginFinalizationMode FinalizationMode);
+    LoginFinalizationMode FinalizationMode)
+{
+    /// <summary>
+    /// Verified external identity that started this login (Google flow only). Carried into the MFA
+    /// challenge, and linked or touched only when the login fully completes.
+    /// </summary>
+    public PendingExternalIdentity? ExternalIdentity { get; init; }
+}
 
 /// <summary>
 /// Owns the post-resolution login continuation pipeline shared by every login entry point:
@@ -70,6 +77,21 @@ public interface ILoginContinuationService
         string? ipAddress,
         string? userAgent,
         LoginFinalizationMode finalizationMode,
+        CancellationToken ct = default,
+        Tenant? tenant = null);
+
+    /// <summary>
+    /// Same as the overload above, and when the legal check passes, links
+    /// <paramref name="externalIdentity"/> to the user (or updates its LastUsedAt) before the
+    /// session or exchange code is issued. Passing null behaves exactly like the overload above.
+    /// </summary>
+    Task<Result<LoginResponseDto>> FinishAuthenticatedLoginAsync(
+        User user,
+        string legalChallengeOrigin,
+        string? ipAddress,
+        string? userAgent,
+        LoginFinalizationMode finalizationMode,
+        PendingExternalIdentity? externalIdentity,
         CancellationToken ct = default,
         Tenant? tenant = null);
 }

@@ -89,7 +89,18 @@ public class AuthLoginController : ControllerBase
         var baseResult = await _mediator.Send(new BaseGoogleLoginCommand(request.GoogleIdToken, ip, ua), ct);
 
         if (!baseResult.IsSuccess)
-            return Problem(baseResult.Error, statusCode: baseResult.StatusCode ?? 400);
+        {
+            // google_auth_failed (401) or no_access (403): the web login page switches on "code".
+            var problem = new ProblemDetails
+            {
+                Status = baseResult.StatusCode ?? StatusCodes.Status400BadRequest,
+                Title = "Google sign-in failed.",
+                Detail = baseResult.Error,
+            };
+            if (!string.IsNullOrWhiteSpace(baseResult.ErrorCode))
+                problem.Extensions["code"] = baseResult.ErrorCode;
+            return new ObjectResult(problem) { StatusCode = problem.Status };
+        }
 
         var baseDto = baseResult.Value!;
         if (baseDto.WorkspaceSelection is not null)

@@ -30,6 +30,7 @@ public sealed class LoginContinuationServiceTests
         public Mock<ILoginSessionMaterialFactory> SessionMaterialFactory { get; } = new();
         public Mock<IUnitOfWork> UnitOfWork { get; } = new();
         public Mock<IDateTimeProvider> Clock { get; } = new();
+        public Mock<IUserExternalIdentityRepository> ExternalIdentities { get; } = new();
 
         public Fixture()
         {
@@ -42,7 +43,7 @@ public sealed class LoginContinuationServiceTests
         public LoginContinuationService Build() => new(
             Tenants.Object, Users.Object, UserMfas.Object, MfaChallenges.Object, TenantSwitcher.Object,
             LegalChecker.Object, LegalChallenges.Object, TenantSessionExchange.Object,
-            SessionMaterialFactory.Object, UnitOfWork.Object, Clock.Object);
+            SessionMaterialFactory.Object, UnitOfWork.Object, Clock.Object, ExternalIdentities.Object);
     }
 
     private static Tenant ActiveTenant(Guid id) => new()
@@ -430,5 +431,191 @@ public sealed class LoginContinuationServiceTests
                 It.IsAny<User>(), It.IsAny<Tenant>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>(),
                 It.IsAny<CancellationToken>()),
             Times.Never);
+    }
+
+    // ---- Google identity linking (DEC-062 R1.3-R1.6) ----
+
+    private static readonly DateTimeOffset Now = DateTimeOffset.Parse("2026-07-25T12:00:00Z");
+
+    private static PendingExternalIdentity Pending(bool bySubject = false) =>
+        new("google", "google-sub-1", "user@example.com", bySubject);
+
+    private static (Fixture Fixture, Tenant Tenant, User User) ExchangeReady()
+    {
+        var fixture = new Fixture();
+        var tenant = ActiveTenant(Guid.NewGuid());
+        var user = ActiveUser(tenant.Id, Guid.NewGuid());
+        fixture.TenantSessionExchange
+            .Setup(f => f.CreateAsync(user, tenant, "google_sso", "ip", "ua", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<LoginResponseDto>.Success(ExchangeResponse(user, tenant)));
+        return (fixture, tenant, user);
+    }
+
+    [Fact]
+    public async Task Finish_WithPendingEmailMatch_AndNoLink_AddsLink()
+    {
+        var (fixture, tenant, user) = ExchangeReady();
+        UserExternalIdentity? added = null;
+        fixture.ExternalIdentities
+            .Setup(r => r.AddAsync(It.IsAny<UserExternalIdentity>(), It.IsAny<CancellationToken>()))
+            .Callback<UserExternalIdentity, CancellationToken>((i, _) => added = i)
+            .Returns(Task.CompletedTask);
+
+        var result = await fixture.Build().FinishAuthenticatedLoginAsync(
+            user, "google_sso", "ip", "ua", LoginFinalizationMode.BaseDomainExchange, Pending(), default, tenant);
+
+        result.IsSuccess.Should().BeTrue();
+        added.Should().NotBeNull();
+        added!.TenantId.Should().Be(tenant.Id);
+        added.UserId.Should().Be(user.Id);
+        added.Provider.Should().Be("google");
+        added.ProviderSubject.Should().Be("google-sub-1");
+        added.ProviderEmail.Should().Be("user@example.com");
+        added.EmailVerified.Should().BeTrue();
+        added.LinkedAt.Should().Be(Now);
+        added.LastUsedAt.Should().Be(Now);
+    }
+
+    [Fact]
+    public async Task Finish_WithPendingSubjectMatch_UpdatesLastUsedAt_AndAddsNothing()
+    {
+        var (fixture, tenant, user) = ExchangeReady();
+        var existing = new UserExternalIdentity
+        {
+            Id = Guid.NewGuid(), TenantId = tenant.Id, UserId = user.Id, Provider = "google",
+            ProviderSubject = "google-sub-1", ProviderEmail = "old@example.com", EmailVerified = true,
+            LinkedAt = Now.AddDays(-30)
+        };
+        fixture.ExternalIdentities
+            .Setup(r => r.GetByTenantProviderAndSubjectAsync(tenant.Id, "google", "google-sub-1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(existing);
+
+        var result = await fixture.Build().FinishAuthenticatedLoginAsync(
+            user, "google_sso", "ip", "ua", LoginFinalizationMode.BaseDomainExchange, Pending(bySubject: true), default, tenant);
+
+        result.IsSuccess.Should().BeTrue();
+        existing.LastUsedAt.Should().Be(Now);
+        fixture.ExternalIdentities.Verify(
+            r => r.AddAsync(It.IsAny<UserExternalIdentity>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Finish_SubjectLinkedToAnotherUser_NeitherTouchesNorAdds()
+    {
+        var (fixture, tenant, user) = ExchangeReady();
+        var otherUsersLink = new UserExternalIdentity
+        {
+            Id = Guid.NewGuid(), TenantId = tenant.Id, UserId = Guid.NewGuid(), Provider = "google",
+            ProviderSubject = "google-sub-1", ProviderEmail = "x@example.com", EmailVerified = true
+        };
+        fixture.ExternalIdentities
+            .Setup(r => r.GetByTenantProviderAndSubjectAsync(tenant.Id, "google", "google-sub-1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(otherUsersLink);
+
+        await fixture.Build().FinishAuthenticatedLoginAsync(
+            user, "google_sso", "ip", "ua", LoginFinalizationMode.BaseDomainExchange, Pending(), default, tenant);
+
+        otherUsersLink.LastUsedAt.Should().BeNull();
+        fixture.ExternalIdentities.Verify(
+            r => r.AddAsync(It.IsAny<UserExternalIdentity>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Finish_UserAlreadyLinkedToADifferentSubject_DoesNotAddASecondLink()
+    {
+        var (fixture, tenant, user) = ExchangeReady();
+        fixture.ExternalIdentities
+            .Setup(r => r.GetByTenantUserAndProviderAsync(tenant.Id, user.Id, "google", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new UserExternalIdentity
+            {
+                Id = Guid.NewGuid(), TenantId = tenant.Id, UserId = user.Id, Provider = "google",
+                ProviderSubject = "another-sub", ProviderEmail = "user@example.com", EmailVerified = true
+            });
+
+        await fixture.Build().FinishAuthenticatedLoginAsync(
+            user, "google_sso", "ip", "ua", LoginFinalizationMode.BaseDomainExchange, Pending(), default, tenant);
+
+        fixture.ExternalIdentities.Verify(
+            r => r.AddAsync(It.IsAny<UserExternalIdentity>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Finish_StoppingAtLegalChallenge_DoesNotLink()
+    {
+        var (fixture, tenant, user) = ExchangeReady();
+        fixture.LegalChecker
+            .Setup(c => c.CheckAsync(tenant.Id, user.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new LegalAcceptanceCheckResult(LegalAcceptanceStatus.Pending, false, []));
+        fixture.LegalChallenges
+            .Setup(c => c.CreateAsync(tenant.Id, user.Id, "google_sso", It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(("raw-legal", "raw-csrf"));
+
+        await fixture.Build().FinishAuthenticatedLoginAsync(
+            user, "google_sso", "ip", "ua", LoginFinalizationMode.BaseDomainExchange, Pending(), default, tenant);
+
+        fixture.ExternalIdentities.VerifyNoOtherCalls();
+    }
+
+    [Fact]
+    public async Task Finish_WithoutPendingIdentity_NeverTouchesExternalIdentities()
+    {
+        var (fixture, tenant, user) = ExchangeReady();
+
+        await fixture.Build().FinishAuthenticatedLoginAsync(
+            user, "google_sso", "ip", "ua", LoginFinalizationMode.BaseDomainExchange, ct: default, tenant: tenant);
+
+        fixture.ExternalIdentities.VerifyNoOtherCalls();
+    }
+
+    [Fact]
+    public async Task Continue_StoppingAtMfa_CarriesPendingIdentityIntoChallenge_AndDoesNotLink()
+    {
+        var fixture = new Fixture();
+        var tenant = ActiveTenant(Guid.NewGuid());
+        var user = ActiveUser(tenant.Id, Guid.NewGuid());
+        fixture.Tenants.Setup(t => t.GetByIdAsync(tenant.Id, It.IsAny<CancellationToken>())).ReturnsAsync(tenant);
+        fixture.Users.Setup(u => u.GetByIdAsync(user.Id, It.IsAny<CancellationToken>())).ReturnsAsync(user);
+        fixture.UserMfas
+            .Setup(m => m.GetTotpAsync(user.Id, true, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new UserMfa { Id = Guid.NewGuid(), UserId = user.Id, MethodType = "totp", IsVerified = true });
+        var pending = Pending();
+        fixture.MfaChallenges
+            .Setup(m => m.CreateAsync(user.Id, tenant.Id, "google_sso", pending, It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync("raw-mfa");
+
+        var request = new LoginContinuationRequest(
+            tenant.Id, user.Id, true, "generic", "google_sso", "ip", "ua", LoginFinalizationMode.BaseDomainExchange)
+        {
+            ExternalIdentity = pending
+        };
+        var result = await fixture.Build().ContinueAsync(request);
+
+        result.IsSuccess.Should().BeTrue();
+        fixture.MfaChallenges.Verify(
+            m => m.CreateAsync(user.Id, tenant.Id, "google_sso", pending, It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()),
+            Times.Once);
+        fixture.ExternalIdentities.VerifyNoOtherCalls();
+    }
+
+    [Fact]
+    public async Task Continue_WithoutMfa_LinksPendingIdentity()
+    {
+        var (fixture, tenant, user) = ExchangeReady();
+        fixture.Tenants.Setup(t => t.GetByIdAsync(tenant.Id, It.IsAny<CancellationToken>())).ReturnsAsync(tenant);
+        fixture.Users.Setup(u => u.GetByIdAsync(user.Id, It.IsAny<CancellationToken>())).ReturnsAsync(user);
+
+        var request = new LoginContinuationRequest(
+            tenant.Id, user.Id, true, "generic", "google_sso", "ip", "ua", LoginFinalizationMode.BaseDomainExchange)
+        {
+            ExternalIdentity = Pending()
+        };
+        var result = await fixture.Build().ContinueAsync(request);
+
+        result.IsSuccess.Should().BeTrue();
+        fixture.ExternalIdentities.Verify(
+            r => r.AddAsync(
+                It.Is<UserExternalIdentity>(i => i.UserId == user.Id && i.ProviderSubject == "google-sub-1"),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
     }
 }

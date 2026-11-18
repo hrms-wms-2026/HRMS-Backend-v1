@@ -22,6 +22,15 @@ public sealed class EfUserExternalIdentityRepository : IUserExternalIdentityRepo
             x => x.TenantId == tenantId && x.Provider == provider && x.ProviderSubject == providerSubject,
             ct);
 
+    public Task<UserExternalIdentity?> GetByTenantUserAndProviderAsync(
+        Guid tenantId,
+        Guid userId,
+        string provider,
+        CancellationToken ct = default) =>
+        _db.UserExternalIdentities.FirstOrDefaultAsync(
+            x => x.TenantId == tenantId && x.UserId == userId && x.Provider == provider,
+            ct);
+
     public Task AddAsync(UserExternalIdentity identity, CancellationToken ct = default) =>
         _db.UserExternalIdentities.AddAsync(identity, ct).AsTask();
 }

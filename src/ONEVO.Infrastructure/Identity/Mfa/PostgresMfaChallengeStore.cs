@@ -1,4 +1,5 @@
 using System.Data;
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Login.ServiceInterfaces;
@@ -42,10 +43,19 @@ public sealed class PostgresMfaChallengeStore : IMfaChallengeStore
         CancellationToken ct = default) =>
         await CreateAsync(userId, tenantId, "password", lifetime, ct);
 
+    public Task<string> CreateAsync(
+        Guid userId,
+        Guid tenantId,
+        string origin,
+        TimeSpan lifetime,
+        CancellationToken ct = default) =>
+        CreateAsync(userId, tenantId, origin, null, lifetime, ct);
+
     public async Task<string> CreateAsync(
         Guid userId,
         Guid tenantId,
         string origin,
+        PendingExternalIdentity? externalIdentity,
         TimeSpan lifetime,
         CancellationToken ct = default)
     {
@@ -72,6 +82,7 @@ public sealed class PostgresMfaChallengeStore : IMfaChallengeStore
             UserId = userId,
             ChallengeHash = _tokens.HashToken(rawChallenge),
             Origin = origin,
+            PendingExternalIdentityJson = externalIdentity is null ? null : JsonSerializer.Serialize(externalIdentity),
             FailedAttemptCount = 0,
             ExpiresAt = now.Add(lifetime),
             ConsumedAt = null,
@@ -251,6 +262,11 @@ public sealed class PostgresMfaChallengeStore : IMfaChallengeStore
             row.TenantId,
             row.Origin,
             row.ExpiresAt,
-            row.FailedAttemptCount);
+            row.FailedAttemptCount)
+        {
+            ExternalIdentity = string.IsNullOrEmpty(row.PendingExternalIdentityJson)
+                ? null
+                : JsonSerializer.Deserialize<PendingExternalIdentity>(row.PendingExternalIdentityJson)
+        };
     }
 }

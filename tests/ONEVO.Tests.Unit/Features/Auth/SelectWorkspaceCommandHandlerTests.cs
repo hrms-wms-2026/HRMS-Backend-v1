@@ -171,6 +171,50 @@ public sealed class SelectWorkspaceCommandHandlerTests
     }
 
     [Fact]
+    public async Task Handle_GoogleChallengeWithPendingIdentity_PassesItToContinuation()
+    {
+        var fixture = new SelectWorkspaceHandlerFixture();
+        var tenant = new ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant
+        {
+            Id = Guid.NewGuid(), Name = "Acme Test", Slug = "acme", CompanySizeRange = "51-200",
+            Status = ONEVO.Domain.Features.InfrastructureModule.Entities.TenantStatus.Active
+        };
+        var user = new ONEVO.Domain.Features.InfrastructureModule.Entities.User
+        {
+            Id = Guid.NewGuid(), TenantId = tenant.Id, Email = "user@example.com",
+            PasswordHash = "irrelevant", FirstName = "Jane", LastName = "Doe", IsActive = true
+        };
+        var pending = new PendingExternalIdentity("google", "google-sub-1", "user@example.com", false);
+        var challengeState = new LoginWorkspaceSelectionChallengeState(
+            "user@example.com",
+            "google_sso",
+            new[] { new WorkspaceCandidateSnapshot(tenant.Id, user.Id, "acme", "Acme Test") },
+            DateTimeOffset.Parse("2026-07-24T12:05:00Z"),
+            0)
+        {
+            ExternalIdentity = pending
+        };
+        fixture.WorkspaceChallenges.Setup(r => r.GetActiveAsync("raw-challenge", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(challengeState);
+        fixture.Tenants.Setup(t => t.GetByIdAsync(tenant.Id, It.IsAny<CancellationToken>())).ReturnsAsync(tenant);
+        fixture.Users.Setup(u => u.GetByIdAsync(user.Id, It.IsAny<CancellationToken>())).ReturnsAsync(user);
+        fixture.WorkspaceChallenges.Setup(r => r.TryConsumeAsync("raw-challenge", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(challengeState);
+        fixture.Continuation
+            .Setup(c => c.ContinueAsync(It.IsAny<LoginContinuationRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<LoginResponseDto>.Success(new LoginResponseDto("csrf", "hash", null)));
+
+        await fixture.Build().Handle(
+            new SelectWorkspaceCommand("raw-challenge", "acme", "127.0.0.1", "test-agent"), CancellationToken.None);
+
+        fixture.Continuation.Verify(
+            c => c.ContinueAsync(
+                It.Is<LoginContinuationRequest>(r => r.ExternalIdentity == pending && r.LegalChallengeOrigin == "google_sso"),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
     public async Task Handle_WithValidSlug_ConsumesChallenge_AndDelegatesToContinuationWithoutRepeatingTheSwitch()
     {
         var fixture = new SelectWorkspaceHandlerFixture();

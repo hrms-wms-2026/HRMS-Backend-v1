@@ -74,6 +74,33 @@ public sealed class VerifyMfaCommandHandlerTests
     }
 
     [Fact]
+    public async Task ValidCode_WithPendingGoogleIdentity_PassesItToFinish_SoTheLinkIsMadeAfterMfa()
+    {
+        var pending = new PendingExternalIdentity("google", "google-sub-1", "owner@acme.test", false);
+        var state = new MfaChallengeState(_user.Id, _tenantId, "google_sso", DateTimeOffset.UtcNow.AddMinutes(5), 0)
+        {
+            ExternalIdentity = pending
+        };
+        _challenges.Setup(x => x.GetAsync("opaque", It.IsAny<CancellationToken>())).ReturnsAsync(state);
+        _challenges.Setup(x => x.TryConsumeAsync("opaque", It.IsAny<CancellationToken>())).ReturnsAsync(state);
+        _totp.Setup(x => x.Verify("secret", "123456")).Returns(true);
+        _continuation
+            .Setup(c => c.FinishAuthenticatedLoginAsync(
+                _user, "google_sso", "ip", "ua", LoginFinalizationMode.TenantHostDirect, pending,
+                It.IsAny<CancellationToken>(), It.IsAny<Tenant>()))
+            .ReturnsAsync(Result<LoginResponseDto>.Success(new LoginResponseDto("csrf", "hash", null)));
+
+        var result = await Handler(_tenantId).Handle(new VerifyMfaCommand("opaque", "123456", "ip", "ua"), default);
+
+        result.IsSuccess.Should().BeTrue();
+        _continuation.Verify(
+            c => c.FinishAuthenticatedLoginAsync(
+                _user, "google_sso", "ip", "ua", LoginFinalizationMode.TenantHostDirect, pending,
+                It.IsAny<CancellationToken>(), It.IsAny<Tenant>()),
+            Times.Once);
+    }
+
+    [Fact]
     public async Task ChallengeForDifferentTenant_IsRejectedWithoutUserLookup()
     {
         _challenges.Setup(x => x.GetAsync("opaque", It.IsAny<CancellationToken>()))
