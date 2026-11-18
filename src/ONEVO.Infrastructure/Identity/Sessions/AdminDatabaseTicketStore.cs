@@ -23,7 +23,12 @@ namespace ONEVO.Infrastructure.Identity.Sessions;
 /// platform_user_sessions table. Only the SHA-256 hash of the opaque session key is stored.
 /// On every retrieve the principal is rebuilt from the database: platform user (status check)
 /// -> platform_user_roles -> platform_role_permissions -> permission claims. Revoked or
-/// expired sessions (idle or absolute) never authenticate.
+/// expired sessions never authenticate.
+///
+/// Lifetime is <see cref="AdminSessionPolicy"/> (security audit F-03): a session ends 30 minutes after its
+/// last renewal and 12 hours after sign-in, whatever it is used for. The ticket's IssuedUtc is the last
+/// activity, so the cookie handler's sliding refresh (now + ExpiresUtc - IssuedUtc) stays the idle window,
+/// and every renewal sets the expiry itself rather than trusting the ticket.
 /// </summary>
 public sealed class AdminDatabaseTicketStore : ITicketStore
 {
@@ -68,7 +73,7 @@ public sealed class AdminDatabaseTicketStore : ITicketStore
 
         var rawKey = GenerateRawKey();
         var now = _clock.UtcNow;
-        var expiresAt = ticket.Properties.ExpiresUtc ?? now.Add(SessionPolicy.SlidingWindow);
+        var expiresAt = Earliest(ticket.Properties.ExpiresUtc ?? DateTimeOffset.MaxValue, now.Add(AdminSessionPolicy.IdleTimeout));
 
         var session = new PlatformUserSession
         {
@@ -97,8 +102,7 @@ public sealed class AdminDatabaseTicketStore : ITicketStore
         if (!_cache.ShouldWriteRenewal(keyHash))
         {
             if (_cache.TryGet<CachedAdminSession>(keyHash, out var throttled, out var throttledBuiltAt) && throttled is not null)
-                SlideCachedExpiry(keyHash, throttled, throttledBuiltAt,
-                    ticket.Properties.ExpiresUtc ?? _clock.UtcNow.Add(SessionPolicy.SlidingWindow));
+                SlideCachedExpiry(keyHash, throttled, throttledBuiltAt, _clock.UtcNow);
             return;
         }
 
@@ -111,13 +115,11 @@ public sealed class AdminDatabaseTicketStore : ITicketStore
             return;
 
         var now = _clock.UtcNow;
-        var absoluteCap = session.CreatedAt.Add(SessionPolicy.AbsoluteLifetime);
-        if (now >= absoluteCap)
+        if (!IsLive(session.ExpiresAt, session.CreatedAt, session.LastActivityAt))
             return;
 
-        var newExpiry = ticket.Properties.ExpiresUtc ?? now.Add(SessionPolicy.SlidingWindow);
-        if (newExpiry > absoluteCap)
-            newExpiry = absoluteCap;
+        // The ticket's expiry is ignored: the handler derives it from IssuedUtc, so it is not the idle window.
+        var newExpiry = SlidingExpiry(session.CreatedAt, now);
 
         // Taken before the save, which makes the EF eviction interceptor drop the entry; see
         // TenantDatabaseTicketStore.RenewAsync.
@@ -129,7 +131,7 @@ public sealed class AdminDatabaseTicketStore : ITicketStore
         _cache.RecordRenewalWrite(keyHash);
 
         if (hasCached && cached is not null)
-            SlideCachedExpiry(keyHash, cached, cachedBuiltAt, newExpiry);
+            SlideCachedExpiry(keyHash, cached, cachedBuiltAt, now);
         else
             _cache.DropSession(keyHash);
 
@@ -137,16 +139,32 @@ public sealed class AdminDatabaseTicketStore : ITicketStore
     }
 
     private void SlideCachedExpiry(
-        string keyHash, CachedAdminSession cached, DateTimeOffset builtAt, DateTimeOffset newExpiry)
+        string keyHash, CachedAdminSession cached, DateTimeOffset builtAt, DateTimeOffset now)
     {
-        var absoluteCap = cached.CreatedAt.Add(SessionPolicy.AbsoluteLifetime);
-        if (newExpiry > absoluteCap)
-            newExpiry = absoluteCap;
-        if (newExpiry <= cached.ExpiresAt)
+        // The renewal decides the expiry (it may be shorter than a stored pre-F-03 expiry); only activity
+        // must never move backwards, or the idle window would count from a stale time.
+        if (now <= cached.LastActivityAt)
             return;
 
-        _cache.Set(keyHash, cached with { ExpiresAt = newExpiry }, cached.UserId, SessionTicketCacheScopes.Platform, builtAt);
+        _cache.Set(keyHash, cached with { ExpiresAt = SlidingExpiry(cached.CreatedAt, now), LastActivityAt = now },
+            cached.UserId, SessionTicketCacheScopes.Platform, builtAt);
     }
+
+    /// <summary>now + the idle timeout, never past 12 hours from sign-in.</summary>
+    private static DateTimeOffset SlidingExpiry(DateTimeOffset createdAt, DateTimeOffset now) =>
+        Earliest(now.Add(AdminSessionPolicy.IdleTimeout), createdAt.Add(AdminSessionPolicy.AbsoluteLifetime));
+
+    private static DateTimeOffset Earliest(DateTimeOffset a, DateTimeOffset b) => a < b ? a : b;
+
+    /// <summary>Activity cannot predate the session; a missing value counts from sign-in.</summary>
+    private static DateTimeOffset LastActive(DateTimeOffset createdAt, DateTimeOffset lastActivityAt) =>
+        lastActivityAt > createdAt ? lastActivityAt : createdAt;
+
+    /// <summary>When the session really ends: its stored expiry, the idle window and the absolute cap.</summary>
+    private static DateTimeOffset EffectiveExpiry(
+        DateTimeOffset expiresAt, DateTimeOffset createdAt, DateTimeOffset lastActivityAt) =>
+        Earliest(Earliest(expiresAt, LastActive(createdAt, lastActivityAt).Add(AdminSessionPolicy.IdleTimeout)),
+            createdAt.Add(AdminSessionPolicy.AbsoluteLifetime));
 
     public async Task<AuthenticationTicket?> RetrieveAsync(
         string key, HttpContext? httpContext, CancellationToken cancellationToken)
@@ -156,7 +174,7 @@ public sealed class AdminDatabaseTicketStore : ITicketStore
         var keyHash = HashKey(key);
         if (_cache.TryGet<CachedAdminSession>(keyHash, out var cached) && cached is not null)
         {
-            if (IsLive(cached.ExpiresAt, cached.CreatedAt))
+            if (IsLive(cached.ExpiresAt, cached.CreatedAt, cached.LastActivityAt))
                 return BuildTicket(cached);
 
             _cache.DropSession(keyHash);
@@ -172,11 +190,8 @@ public sealed class AdminDatabaseTicketStore : ITicketStore
         return BuildTicket(snapshot);
     }
 
-    private bool IsLive(DateTimeOffset expiresAt, DateTimeOffset createdAt)
-    {
-        var now = _clock.UtcNow;
-        return expiresAt > now && now < createdAt.Add(SessionPolicy.AbsoluteLifetime);
-    }
+    private bool IsLive(DateTimeOffset expiresAt, DateTimeOffset createdAt, DateTimeOffset lastActivityAt) =>
+        _clock.UtcNow < EffectiveExpiry(expiresAt, createdAt, lastActivityAt);
 
     private async Task<CachedAdminSession?> LoadAsync(string keyHash, CancellationToken cancellationToken)
     {
@@ -185,7 +200,8 @@ public sealed class AdminDatabaseTicketStore : ITicketStore
         var resolver = scope.ServiceProvider.GetRequiredService<IPlatformPermissionResolver>();
 
         var session = await sessions.GetByTokenHashAsync(keyHash, cancellationToken);
-        if (session is null || session.RevokedAt is not null || !IsLive(session.ExpiresAt, session.CreatedAt))
+        if (session is null || session.RevokedAt is not null
+            || !IsLive(session.ExpiresAt, session.CreatedAt, session.LastActivityAt))
             return null;
 
         var profile = await resolver.ResolveActiveUserAsync(session.AccountId, cancellationToken);
@@ -199,6 +215,7 @@ public sealed class AdminDatabaseTicketStore : ITicketStore
             session.CsrfTokenHash ?? string.Empty,
             profile.MfaEnrolled,
             session.CreatedAt,
+            session.LastActivityAt,
             session.ExpiresAt,
             [.. profile.PermissionCodes]);
     }
@@ -222,10 +239,11 @@ public sealed class AdminDatabaseTicketStore : ITicketStore
         }
 
         var principal = new ClaimsPrincipal(new ClaimsIdentity(claims, "AdminScheme"));
+        // IssuedUtc is the last activity, not sign-in: the handler's sliding refresh then stays the idle window.
         var properties = new AuthenticationProperties
         {
-            IssuedUtc = session.CreatedAt,
-            ExpiresUtc = session.ExpiresAt,
+            IssuedUtc = LastActive(session.CreatedAt, session.LastActivityAt),
+            ExpiresUtc = EffectiveExpiry(session.ExpiresAt, session.CreatedAt, session.LastActivityAt),
         };
         properties.Items[PlatformRoleItemKey] = session.RoleName;
         properties.Items[CsrfTokenHashItemKey] = session.CsrfTokenHash;
@@ -241,6 +259,7 @@ public sealed class AdminDatabaseTicketStore : ITicketStore
         string CsrfTokenHash,
         bool MfaEnrolled,
         DateTimeOffset CreatedAt,
+        DateTimeOffset LastActivityAt,
         DateTimeOffset ExpiresAt,
         string[] PermissionCodes);
 

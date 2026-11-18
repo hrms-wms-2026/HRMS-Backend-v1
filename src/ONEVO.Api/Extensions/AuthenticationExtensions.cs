@@ -78,7 +78,7 @@ internal static class AuthenticationExtensions
                 if (!string.IsNullOrWhiteSpace(adminCookieDomain))
                     options.Cookie.Domain = adminCookieDomain;
                 options.SlidingExpiration = true;
-                options.ExpireTimeSpan = ONEVO.Application.Common.Models.Auth.SessionPolicy.SlidingWindow;
+                options.ExpireTimeSpan = ONEVO.Application.Common.Models.Auth.AdminSessionPolicy.IdleTimeout;
                 // SessionStore is set via Options configuration below
 
                 options.Events.OnRedirectToLogin = context =>

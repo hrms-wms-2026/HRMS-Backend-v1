@@ -206,7 +206,8 @@ public class AdminDatabaseTicketStoreTests
         var session = new PlatformUserSession
         {
             AccountId = Guid.NewGuid(),
-            CreatedAt = FixedNow.Subtract(SessionPolicy.AbsoluteLifetime).AddMinutes(-1),
+            CreatedAt = FixedNow.Subtract(AdminSessionPolicy.AbsoluteLifetime).AddMinutes(-1),
+            LastActivityAt = FixedNow.AddMinutes(-1),
             ExpiresAt = FixedNow.AddMinutes(10)
         };
         _sessions.GetByTokenHashAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
@@ -216,6 +217,113 @@ public class AdminDatabaseTicketStoreTests
         var ticket = await sut.RetrieveAsync("some-raw-key", null, CancellationToken.None);
 
         Assert.Null(ticket);
+    }
+
+    // ---- Security audit F-03 (admin half): 30-minute idle timeout, 12-hour absolute cap ----
+
+    private void ReturnsSession(PlatformUserSession session)
+    {
+        _sessions.GetByTokenHashAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(session);
+        _resolver.ResolveActiveUserAsync(session.AccountId, Arg.Any<CancellationToken>())
+                 .Returns(new PlatformAccessProfile
+                 {
+                     UserId = session.AccountId,
+                     Email = "admin@onevo.com",
+                     Status = PlatformUser.StatusActive,
+                     MfaEnrolled = true,
+                     RoleNames = { "Platform Super Admin" }
+                 });
+    }
+
+    private static PlatformUserSession Session(TimeSpan createdAgo, TimeSpan lastActiveAgo, TimeSpan expiresIn) => new()
+    {
+        Id = Guid.NewGuid(),
+        AccountId = Guid.NewGuid(),
+        TokenHash = "irrelevant",
+        CreatedAt = FixedNow - createdAgo,
+        LastActivityAt = FixedNow - lastActiveAgo,
+        ExpiresAt = FixedNow + expiresIn,
+        CsrfTokenHash = "csrf-hash"
+    };
+
+    [Fact]
+    public void Admin_sessions_idle_out_after_30_minutes_and_end_after_12_hours()
+    {
+        Assert.Equal(TimeSpan.FromMinutes(30), AdminSessionPolicy.IdleTimeout);
+        Assert.Equal(TimeSpan.FromHours(12), AdminSessionPolicy.AbsoluteLifetime);
+    }
+
+    [Fact]
+    public async Task RetrieveAsync_IdlePastTheIdleTimeout_ReturnsNull_EvenWithALongStoredExpiry()
+    {
+        // A session written before this change kept a 30-day expiry; the idle rule still ends it.
+        ReturnsSession(Session(TimeSpan.FromHours(2), TimeSpan.FromMinutes(31), TimeSpan.FromDays(29)));
+
+        Assert.Null(await CreateSut().RetrieveAsync("some-raw-key", null, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task RetrieveAsync_AtTwelveHours_ReturnsNull_EvenIfRecentlyActive()
+    {
+        ReturnsSession(Session(TimeSpan.FromHours(12), TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(29)));
+
+        Assert.Null(await CreateSut().RetrieveAsync("some-raw-key", null, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task RetrieveAsync_TicketWindowIsTheIdleWindow_FromLastActivity()
+    {
+        // The cookie handler slides to now + (ExpiresUtc - IssuedUtc). With IssuedUtc at session creation
+        // that span grew on every renewal; it must stay the idle window.
+        var session = Session(TimeSpan.FromHours(3), TimeSpan.FromMinutes(5), TimeSpan.FromMinutes(25));
+        ReturnsSession(session);
+
+        var ticket = await CreateSut().RetrieveAsync("some-raw-key", null, CancellationToken.None);
+
+        Assert.NotNull(ticket);
+        Assert.Equal(session.LastActivityAt, ticket!.Properties.IssuedUtc);
+        Assert.Equal(session.ExpiresAt, ticket.Properties.ExpiresUtc);
+        Assert.Equal(AdminSessionPolicy.IdleTimeout, ticket.Properties.ExpiresUtc - ticket.Properties.IssuedUtc);
+    }
+
+    [Fact]
+    public async Task RenewAsync_AtMinute20_SetsExpiryToExactlyNowPlusTheIdleTimeout_WhateverTheTicketSays()
+    {
+        var session = Session(TimeSpan.FromMinutes(20), TimeSpan.FromMinutes(20), TimeSpan.FromMinutes(10));
+        ReturnsSession(session);
+        // What a sliding refresh computes when IssuedUtc is the session start: a longer window each time.
+        var ticket = new AuthenticationTicket(new ClaimsPrincipal(),
+            new AuthenticationProperties { ExpiresUtc = FixedNow.AddMinutes(40) }, "AdminScheme");
+
+        await CreateSut().RenewAsync("some-raw-key", ticket, null, CancellationToken.None);
+
+        Assert.Equal(FixedNow.Add(AdminSessionPolicy.IdleTimeout), session.ExpiresAt);
+        Assert.Equal(FixedNow, session.LastActivityAt);
+    }
+
+    [Fact]
+    public async Task RenewAsync_NearTheAbsoluteCap_NeverExtendsPastTwelveHoursFromCreation()
+    {
+        var session = Session(TimeSpan.FromHours(11) + TimeSpan.FromMinutes(50), TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(5));
+        ReturnsSession(session);
+        var ticket = new AuthenticationTicket(new ClaimsPrincipal(), new AuthenticationProperties(), "AdminScheme");
+
+        await CreateSut().RenewAsync("some-raw-key", ticket, null, CancellationToken.None);
+
+        Assert.Equal(session.CreatedAt.Add(AdminSessionPolicy.AbsoluteLifetime), session.ExpiresAt);
+        Assert.Equal(FixedNow.AddMinutes(10), session.ExpiresAt);
+    }
+
+    [Fact]
+    public async Task StoreAsync_WithoutAnExpiryOnTheTicket_UsesTheIdleTimeout()
+    {
+        PlatformUserSession? captured = null;
+        _sessions.AddAsync(Arg.Do<PlatformUserSession>(s => captured = s), Arg.Any<CancellationToken>())
+                 .Returns(Task.CompletedTask);
+
+        await CreateSut().StoreAsync(CreateTicket(Guid.NewGuid(), "csrf-hash"), null, CancellationToken.None);
+
+        Assert.Equal(FixedNow.Add(AdminSessionPolicy.IdleTimeout), captured!.ExpiresAt);
     }
 
     [Fact]
@@ -266,7 +374,7 @@ public class AdminDatabaseTicketStoreTests
 
         await sut.RenewAsync("some-raw-key", ticket, httpContext, CancellationToken.None);
 
-        Assert.Equal(FixedNow.Add(SessionPolicy.SlidingWindow), session.ExpiresAt);
+        Assert.Equal(FixedNow.Add(AdminSessionPolicy.IdleTimeout), session.ExpiresAt);
         Assert.Equal(FixedNow, session.LastActivityAt);
         await _uow.Received(1).SaveChangesAsync(Arg.Any<CancellationToken>());
 

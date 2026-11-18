@@ -1,4 +1,5 @@
 using FluentAssertions;
+using ONEVO.Application.Common.Models.Auth;
 using Moq;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Login.Queries.GetAdminSessionContext;
@@ -51,7 +52,7 @@ public sealed class GetAdminSessionContextQueryHandlerTests
         result.Value!.Email.Should().Be(user.Email);
         result.Value!.PlatformRole.Should().Be("Platform Super Admin");
         result.Value!.MfaRequired.Should().BeFalse();
-        result.Value!.ExpiresAt.Should().BeAfter(_now);
+        result.Value!.ExpiresAt.Should().Be(_now.Add(AdminSessionPolicy.IdleTimeout));
         result.Value!.Permissions.Should().BeEquivalentTo(
             new[] { "platform.accounts.read", "platform.accounts.manage" });
     }

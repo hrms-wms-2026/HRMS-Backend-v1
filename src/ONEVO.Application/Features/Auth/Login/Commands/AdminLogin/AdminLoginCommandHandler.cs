@@ -173,7 +173,7 @@ public sealed class AdminLoginCommandHandler
         return Result<AdminLoginResultDto>.Success(new AdminLoginResultDto(
             CsrfToken: rawCsrfToken,
             CsrfTokenHash: csrfHash,
-            ExpiresAt: now.Add(SessionPolicy.SlidingWindow),
+            ExpiresAt: now.Add(AdminSessionPolicy.IdleTimeout),
             PlatformUserId: user.Id,
             Email: user.Email,
             PlatformRole: profile.RoleNames.Count > 0 ? profile.RoleNames[0] : string.Empty,

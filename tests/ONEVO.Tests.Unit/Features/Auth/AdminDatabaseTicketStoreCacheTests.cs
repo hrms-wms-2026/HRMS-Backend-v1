@@ -183,7 +183,7 @@ public sealed class AdminDatabaseTicketStoreCacheTests : IDisposable
     [Fact]
     public async Task AbsoluteLifetimeReached_IsRejectedEvenWhileCached()
     {
-        _session.CreatedAt = _now - SessionPolicy.AbsoluteLifetime + TimeSpan.FromSeconds(5);
+        _session.CreatedAt = _now - AdminSessionPolicy.AbsoluteLifetime + TimeSpan.FromSeconds(5);
         var sut = CreateSut(CreateCache());
         Assert.NotNull(await RetrieveAsync(sut));
 
@@ -214,8 +214,9 @@ public sealed class AdminDatabaseTicketStoreCacheTests : IDisposable
         var sut = CreateSut(CreateCache());
         var ticket = (await RetrieveAsync(sut))!;
 
-        var renewedExpiry = _now.AddDays(30);
-        ticket.Properties.ExpiresUtc = renewedExpiry;
+        // The ticket's own expiry is ignored (F-03): a renewal sets now + the idle timeout.
+        ticket.Properties.ExpiresUtc = _now.AddDays(30);
+        var renewedExpiry = _now.Add(AdminSessionPolicy.IdleTimeout);
         await sut.RenewAsync(RawKey, ticket, null, CancellationToken.None);
 
         _now = _now.AddSeconds(20);
@@ -235,8 +236,8 @@ public sealed class AdminDatabaseTicketStoreCacheTests : IDisposable
         await sut.RenewAsync(RawKey, ticket, null, CancellationToken.None);
 
         _now = _now.AddSeconds(10);
-        var slid = _now.AddDays(30);
-        ticket.Properties.ExpiresUtc = slid;
+        var slid = _now.Add(AdminSessionPolicy.IdleTimeout);
+        ticket.Properties.ExpiresUtc = _now.AddDays(30);
         await sut.RenewAsync(RawKey, ticket, null, CancellationToken.None);
 
         var after = await RetrieveAsync(sut);
@@ -248,7 +249,7 @@ public sealed class AdminDatabaseTicketStoreCacheTests : IDisposable
     public async Task RenewedSession_PastTheAbsoluteLifetime_IsRejectedFromCache()
     {
         var absoluteCap = _now.AddSeconds(15);
-        _session.CreatedAt = absoluteCap - SessionPolicy.AbsoluteLifetime;
+        _session.CreatedAt = absoluteCap - AdminSessionPolicy.AbsoluteLifetime;
         _session.ExpiresAt = _now.AddSeconds(10);
         var sut = CreateSut(CreateCache());
         var ticket = (await RetrieveAsync(sut))!;

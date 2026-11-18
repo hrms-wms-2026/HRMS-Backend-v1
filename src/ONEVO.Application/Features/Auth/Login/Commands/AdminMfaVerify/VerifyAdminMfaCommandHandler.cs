@@ -90,7 +90,7 @@ public sealed class VerifyAdminMfaCommandHandler : IRequestHandler<VerifyAdminMf
         return Result<AdminLoginResultDto>.Success(new AdminLoginResultDto(
             CsrfToken: rawCsrfToken,
             CsrfTokenHash: csrfHash,
-            ExpiresAt: _clock.UtcNow.Add(SessionPolicy.SlidingWindow),
+            ExpiresAt: _clock.UtcNow.Add(AdminSessionPolicy.IdleTimeout),
             PlatformUserId: user.Id,
             Email: user.Email,
             PlatformRole: profile.RoleNames.Count > 0 ? profile.RoleNames[0] : string.Empty,

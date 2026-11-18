@@ -1,4 +1,5 @@
 using FluentAssertions;
+using ONEVO.Application.Common.Models.Auth;
 using Moq;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
@@ -49,6 +50,7 @@ public sealed class AdminLoginCommandHandlerTests
 
         result.IsSuccess.Should().BeTrue();
         result.Value!.PlatformUserId.Should().Be(setup.User.Id);
+        result.Value!.ExpiresAt.Should().Be(_now.Add(AdminSessionPolicy.IdleTimeout));
         setup.Credential.FailedLoginCount.Should().Be(0);
         setup.Credential.LockedUntil.Should().BeNull();
         setup.Credential.LastUsedAt.Should().Be(_now);

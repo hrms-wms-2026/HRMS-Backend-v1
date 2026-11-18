@@ -1,4 +1,5 @@
 using FluentAssertions;
+using ONEVO.Application.Common.Models.Auth;
 using Moq;
 
 using ONEVO.Application.Common.RepositoryInterfaces;
@@ -76,6 +77,7 @@ public sealed class VerifyAdminMfaCommandHandlerTests
             new VerifyAdminMfaCommand("challenge", "123456"), CancellationToken.None);
 
         result.IsSuccess.Should().BeTrue();
+        result.Value!.ExpiresAt.Should().Be(_now.Add(AdminSessionPolicy.IdleTimeout));
         result.Value!.Permissions.Should().BeEquivalentTo(
             new[] { "platform.accounts.read", "platform.accounts.manage" });
     }
