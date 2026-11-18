@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.DependencyInjection;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Domain.Features.Auth.Entities;
@@ -34,6 +35,19 @@ public sealed class BaseDomainLoginIntegrationTestsFixture : IAsyncLifetime
 
     public HttpClient Client => _client;
     public BaseDomainLoginTestFactory Factory => _factory;
+
+    /// <summary>
+    /// Empties the host's in-memory cache, which holds AuthRateLimitingMiddleware's per-IP counters
+    /// (every request here comes from the same test client). Before this class moved to a shared
+    /// fixture, each fact booted its own host and so started with fresh counters. Calling this per
+    /// fact keeps that isolation, so the ~25 legal complete-login calls across all facts don't trip
+    /// the 20-per-5-minutes per-IP limit that a single real login flow never reaches.
+    /// </summary>
+    public void ResetInMemoryRateLimits()
+    {
+        if (_factory.Services.GetRequiredService<IMemoryCache>() is MemoryCache cache)
+            cache.Compact(1.0);
+    }
 
     public async Task InitializeAsync()
     {
@@ -243,6 +257,7 @@ public sealed class BaseDomainLoginIntegrationTests : IClassFixture<BaseDomainLo
     public BaseDomainLoginIntegrationTests(BaseDomainLoginIntegrationTestsFixture fixture)
     {
         _fixture = fixture;
+        _fixture.ResetInMemoryRateLimits();
     }
 
     [Fact]
