@@ -225,4 +225,15 @@ public sealed class TenantContextConnectionTests(SqlServerFixture fixture) : IAs
 
         Assert.Contains("db_owner", error.Message, StringComparison.Ordinal);
     }
+
+    // Security audit SEC-00: the API runs this check at startup in every environment, so a DefaultConnection
+    // on sa (or any sysadmin, which can drop the security policies) stops the API, not just a warning.
+    [Fact]
+    public async Task Validator_RefusesTheSaLogin()
+    {
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => DatabaseSettingsStartupValidator.ValidateAsync(_database.Admin, CancellationToken.None));
+
+        Assert.Contains("db_owner", error.Message, StringComparison.Ordinal);
+    }
 }
