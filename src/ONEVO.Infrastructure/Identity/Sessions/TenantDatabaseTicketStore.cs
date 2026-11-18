@@ -35,13 +35,18 @@ public sealed class TenantDatabaseTicketStore : ITicketStore
 
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly IDateTimeProvider _clock;
+    private readonly ISessionTicketStoreCache _cache;
     private readonly ILogger<TenantDatabaseTicketStore> _logger;
 
     public TenantDatabaseTicketStore(
-        IServiceScopeFactory scopeFactory, IDateTimeProvider clock, ILogger<TenantDatabaseTicketStore> logger)
+        IServiceScopeFactory scopeFactory,
+        IDateTimeProvider clock,
+        ISessionTicketStoreCache cache,
+        ILogger<TenantDatabaseTicketStore> logger)
     {
         _scopeFactory = scopeFactory;
         _clock = clock;
+        _cache = cache;
         _logger = logger;
     }
 
@@ -125,6 +130,19 @@ public sealed class TenantDatabaseTicketStore : ITicketStore
     public async Task RenewAsync(
         string key, AuthenticationTicket ticket, HttpContext? httpContext, CancellationToken cancellationToken)
     {
+        // Old sessions are renewed on almost every request (IssuedUtc stays at StartedAt), so the
+        // ExpiresAt/LastActivityAt write is throttled per session. Skipping it costs at most one
+        // interval of sliding expiry on a 30-day window. The cached entry still slides, so its
+        // expiry re-check and session_expires_at claim follow the cookie, not the stale value.
+        var keyHash = HashKey(key);
+        if (!_cache.ShouldWriteRenewal(keyHash))
+        {
+            if (_cache.TryGet<CachedTenantSession>(keyHash, out var throttled, out var throttledBuiltAt) && throttled is not null)
+                SlideCachedExpiry(keyHash, throttled, throttledBuiltAt,
+                    ticket.Properties.ExpiresUtc ?? _clock.UtcNow.Add(SessionPolicy.SlidingWindow));
+            return;
+        }
+
         using var scope = _scopeFactory.CreateScope();
         var sessions = scope.ServiceProvider.GetRequiredService<ISessionRepository>();
         var uow = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
@@ -145,7 +163,7 @@ public sealed class TenantDatabaseTicketStore : ITicketStore
 
         await SwitchToTenantAsync(tenantSwitcher, tenant, cancellationToken);
 
-        var session = await sessions.GetByKeyHashAsync(HashKey(key), cancellationToken);
+        var session = await sessions.GetByKeyHashAsync(keyHash, cancellationToken);
         if (session is null || session.IsRevoked)
             return;
 
@@ -158,11 +176,34 @@ public sealed class TenantDatabaseTicketStore : ITicketStore
         if (newExpiry > absoluteCap)
             newExpiry = absoluteCap;
 
+        // Taken before the save: the EF eviction interceptor drops the entry when the renewal is
+        // saved, and it is put back below with the new expiry and its original build time, so an
+        // eviction that raced this renewal still wins.
+        var hasCached = _cache.TryGet<CachedTenantSession>(keyHash, out var cached, out var cachedBuiltAt);
+
         session.ExpiresAt = newExpiry;
         session.LastActivityAt = now;
         await uow.SaveChangesAsync(cancellationToken);
+        _cache.RecordRenewalWrite(keyHash);
+
+        if (hasCached && cached is not null)
+            SlideCachedExpiry(keyHash, cached, cachedBuiltAt, newExpiry);
+        else
+            _cache.DropSession(keyHash);
 
         ReissueCsrfCookie(httpContext, "crownus_csrf", newExpiry);
+    }
+
+    private void SlideCachedExpiry(
+        string keyHash, CachedTenantSession cached, DateTimeOffset builtAt, DateTimeOffset newExpiry)
+    {
+        var absoluteCap = cached.StartedAt.Add(SessionPolicy.AbsoluteLifetime);
+        if (newExpiry > absoluteCap)
+            newExpiry = absoluteCap;
+        if (newExpiry <= cached.ExpiresAt)
+            return;
+
+        _cache.Set(keyHash, cached with { ExpiresAt = newExpiry }, cached.UserId, cached.TenantId, builtAt);
     }
 
     public async Task<AuthenticationTicket?> RetrieveAsync(
@@ -189,6 +230,39 @@ public sealed class TenantDatabaseTicketStore : ITicketStore
 
     private async Task<AuthenticationTicket?> RetrieveCoreAsync(string key, CancellationToken cancellationToken)
     {
+        // PERF-01 / improvement task 03: a page fires many requests per second with the same
+        // cookie, so the built ticket data is reused for a short window. Expiry and the absolute
+        // lifetime are always re-checked against the cached values; revocation, password, role,
+        // permission and legal-entity changes evict the entry (ISessionTicketCache, fed by
+        // SessionTicketCacheInvalidationInterceptor, the session repositories and
+        // PermissionVersionService).
+        var keyHash = HashKey(key);
+        if (_cache.TryGet<CachedTenantSession>(keyHash, out var cached) && cached is not null)
+        {
+            if (IsLive(cached.ExpiresAt, cached.StartedAt))
+                return BuildTicket(cached);
+
+            _cache.DropSession(keyHash);
+            return null;
+        }
+
+        var buildStartedAt = _cache.BeginBuild();
+        var snapshot = await LoadAsync(keyHash, cancellationToken);
+        if (snapshot is null)
+            return null;
+
+        _cache.Set(keyHash, snapshot, snapshot.UserId, snapshot.TenantId, buildStartedAt);
+        return BuildTicket(snapshot);
+    }
+
+    private bool IsLive(DateTimeOffset expiresAt, DateTimeOffset startedAt)
+    {
+        var now = _clock.UtcNow;
+        return expiresAt > now && now < startedAt.Add(SessionPolicy.AbsoluteLifetime);
+    }
+
+    private async Task<CachedTenantSession?> LoadAsync(string keyHash, CancellationToken cancellationToken)
+    {
         using var scope = _scopeFactory.CreateScope();
         var sessions = scope.ServiceProvider.GetRequiredService<ISessionRepository>();
         var users = scope.ServiceProvider.GetRequiredService<IUserRepository>();
@@ -200,11 +274,8 @@ public sealed class TenantDatabaseTicketStore : ITicketStore
         // This scope has no tenant id yet - only the cookie's session key - so the only row this
         // scope is allowed to see before switching context is the one satisfying the
         // session_key_lookup RLS policy (matches on this session's own key_hash).
-        var session = await sessions.GetByKeyHashForTenantResolutionAsync(HashKey(key), cancellationToken);
-        if (session is null || session.IsRevoked || session.ExpiresAt <= _clock.UtcNow)
-            return null;
-
-        if (_clock.UtcNow >= session.StartedAt.Add(SessionPolicy.AbsoluteLifetime))
+        var session = await sessions.GetByKeyHashForTenantResolutionAsync(keyHash, cancellationToken);
+        if (session is null || session.IsRevoked || !IsLive(session.ExpiresAt, session.StartedAt))
             return null;
 
         var tenant = await tenants.GetByIdAsync(session.TenantId, cancellationToken);
@@ -226,18 +297,32 @@ public sealed class TenantDatabaseTicketStore : ITicketStore
         var permissions = await permissionResolver.ResolveAsync(
             session.UserId, session.TenantId, activeLegalEntityId, cancellationToken);
 
+        return new CachedTenantSession(
+            session.Id,
+            session.UserId,
+            session.TenantId,
+            user.Email,
+            session.CsrfTokenHash ?? string.Empty,
+            session.StartedAt,
+            session.ExpiresAt,
+            activeLegalEntityId,
+            [.. permissions]);
+    }
+
+    private static AuthenticationTicket BuildTicket(CachedTenantSession session)
+    {
         var claims = new List<Claim>
         {
             new(ClaimTypes.NameIdentifier, session.UserId.ToString()),
             new("tenant_id", session.TenantId.ToString()),
-            new(ClaimTypes.Email, user.Email),
-            new("csrf_token_hash", session.CsrfTokenHash ?? string.Empty),
+            new(ClaimTypes.Email, session.Email),
+            new("csrf_token_hash", session.CsrfTokenHash),
             new("session_expires_at", session.ExpiresAt.ToString("O")),
-            new("session_id", session.Id.ToString()),
+            new("session_id", session.SessionId.ToString()),
         };
-        if (activeLegalEntityId is Guid legalEntityId)
+        if (session.LegalEntityId is Guid legalEntityId)
             claims.Add(new Claim("legal_entity_id", legalEntityId.ToString()));
-        claims.AddRange(permissions.Select(p => new Claim("permission", p)));
+        claims.AddRange(session.Permissions.Select(p => new Claim("permission", p)));
 
         var principal = new ClaimsPrincipal(new ClaimsIdentity(claims, "TenantScheme"));
         var properties = new AuthenticationProperties
@@ -251,7 +336,36 @@ public sealed class TenantDatabaseTicketStore : ITicketStore
         return new AuthenticationTicket(principal, properties, "TenantScheme");
     }
 
+    /// <summary>Immutable ticket data kept in the cache. A new ticket is built from it on every
+    /// request, because the cookie handler mutates the ticket it is given.</summary>
+    private sealed record CachedTenantSession(
+        Guid SessionId,
+        Guid UserId,
+        Guid TenantId,
+        string Email,
+        string CsrfTokenHash,
+        DateTimeOffset StartedAt,
+        DateTimeOffset ExpiresAt,
+        Guid? LegalEntityId,
+        string[] Permissions);
+
     public async Task RemoveAsync(string key, HttpContext? httpContext, CancellationToken cancellationToken)
+    {
+        var keyHash = HashKey(key);
+        _cache.EvictSession(keyHash);
+        try
+        {
+            await RevokeAsync(keyHash, cancellationToken);
+        }
+        finally
+        {
+            // Again once the revoke is committed, so a request that rebuilt the ticket while the
+            // revoke was in flight cannot leave it cached.
+            _cache.EvictSession(keyHash);
+        }
+    }
+
+    private async Task RevokeAsync(string keyHash, CancellationToken cancellationToken)
     {
         using var scope = _scopeFactory.CreateScope();
         var sessions = scope.ServiceProvider.GetRequiredService<ISessionRepository>();
@@ -263,7 +377,7 @@ public sealed class TenantDatabaseTicketStore : ITicketStore
         // session_key_lookup RLS policy is what lets this scope find the row at all. Revoking it
         // (an UPDATE) still requires the correct tenant context - tenant_isolation, not
         // session_key_lookup, governs UPDATE/DELETE.
-        var session = await sessions.GetByKeyHashForTenantResolutionAsync(HashKey(key), cancellationToken);
+        var session = await sessions.GetByKeyHashForTenantResolutionAsync(keyHash, cancellationToken);
         if (session is null)
             return;
 
@@ -307,7 +421,8 @@ public sealed class TenantDatabaseTicketStore : ITicketStore
         return Convert.ToBase64String(bytes);
     }
 
-    private static string HashKey(string rawKey)
+    /// <summary>SHA-256 hex of the raw cookie key: the value stored in sessions.key_hash.</summary>
+    public static string HashKey(string rawKey)
     {
         var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(rawKey));
         return Convert.ToHexString(bytes).ToLowerInvariant();

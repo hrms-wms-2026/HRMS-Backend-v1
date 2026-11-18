@@ -44,7 +44,7 @@ public class AdminDatabaseTicketStoreTests
     }
 
     private AdminDatabaseTicketStore CreateSut() =>
-        new(_scopeFactory, _clock);
+        new(_scopeFactory, _clock, DisabledTicketCache.Create(_clock));
 
     private static AuthenticationTicket CreateTicket(Guid platformUserId, string csrfHash)
     {
