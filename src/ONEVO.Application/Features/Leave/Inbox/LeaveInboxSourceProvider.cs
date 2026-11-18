@@ -84,6 +84,17 @@ public sealed class LeaveInboxSourceProvider : IInboxSourceProvider, IInboxPerso
     public string Source => LeaveInboxKinds.Source;
     public string Label => "Leave";
 
+    public async Task<InboxSourceCounts> CountAsync(Guid tenantId, Guid callerEmployeeId, CancellationToken ct)
+    {
+        if (!_currentUser.HasPermission(LeaveApprovePermission))
+            return new InboxSourceCounts(0, 0, new Dictionary<string, int>());
+
+        var count = await _approvals.CountActionableAsync(tenantId, callerEmployeeId, ct);
+        return new InboxSourceCounts(count, 0, count == 0
+            ? new Dictionary<string, int>()
+            : new Dictionary<string, int> { [LeaveInboxKinds.Request] = count });
+    }
+
     // ---- list -----------------------------------------------------------------------------------
 
     public async Task<IReadOnlyList<InboxItem>> ListAsync(Guid tenantId, InboxQuery query, Guid callerEmployeeId, CancellationToken ct)

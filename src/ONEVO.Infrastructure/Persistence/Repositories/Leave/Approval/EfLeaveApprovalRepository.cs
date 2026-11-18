@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using ONEVO.Application.Features.Leave.Approval.RepositoryInterfaces;
+using ONEVO.Application.Features.Leave.Approval.Services;
 using ONEVO.Application.Features.Leave.Entitlement.Mappers;
 using ONEVO.Application.Features.Leave.Policy.Services;
 using ONEVO.Domain.Features.Leave.BalanceAudit.Entities;
@@ -18,6 +19,48 @@ public class EfLeaveApprovalRepository : ILeaveApprovalRepository
     {
         _db = db;
         _policies = policies;
+    }
+
+    public async Task<int> CountActionableAsync(Guid tenantId, Guid approverEmployeeId, CancellationToken ct = default)
+    {
+        var versioned =
+            from current in _db.LeaveRequestApprovers.AsNoTracking()
+            join request in _db.LeaveRequests.AsNoTracking() on current.LeaveRequestId equals request.Id
+            join version in _db.LeavePolicyVersions.AsNoTracking() on request.LeavePolicyVersionId equals version.Id
+            where current.TenantId == tenantId
+                && request.TenantId == tenantId
+                && version.TenantId == tenantId
+                && current.ApproverEmployeeId == approverEmployeeId
+                && current.Status == LeaveRequestApproverStatuses.Pending
+                && request.Status == LeaveRequestStatuses.Pending
+                && (version.ApprovalMode != LeaveApprovalModes.InOrder
+                    || !_db.LeaveRequestApprovers.AsNoTracking().Any(other =>
+                        other.TenantId == tenantId
+                        && other.LeaveRequestId == request.Id
+                        && other.Status == LeaveRequestApproverStatuses.Pending
+                        && other.SequenceOrder < current.SequenceOrder))
+            select request.Id;
+
+        var count = await versioned.Distinct().CountAsync(ct);
+
+        // Old requests created before policy-version pinning still need the resolver used by the decision path.
+        var legacyIds = await (
+            from current in _db.LeaveRequestApprovers.AsNoTracking()
+            join request in _db.LeaveRequests.AsNoTracking() on current.LeaveRequestId equals request.Id
+            where current.TenantId == tenantId
+                && request.TenantId == tenantId
+                && request.LeavePolicyVersionId == null
+                && current.ApproverEmployeeId == approverEmployeeId
+                && current.Status == LeaveRequestApproverStatuses.Pending
+                && request.Status == LeaveRequestStatuses.Pending
+            select request.Id).Distinct().ToListAsync(ct);
+        foreach (var requestId in legacyIds)
+        {
+            var state = await GetStateAsync(tenantId, requestId, ct);
+            if (state is not null && LeavePendingApprovals.IsActionable(state, approverEmployeeId))
+                count++;
+        }
+        return count;
     }
 
     public async Task<LeaveApprovalState?> GetStateAsync(Guid tenantId, Guid requestId, CancellationToken ct = default)
