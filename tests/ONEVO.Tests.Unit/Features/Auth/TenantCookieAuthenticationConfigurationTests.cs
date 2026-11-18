@@ -42,6 +42,9 @@ public sealed class TenantCookieAuthenticationConfigurationTests
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddSingleton(Mock.Of<IDateTimeProvider>());
+        // Registered by AddInfrastructure in the real host; the ticket stores depend on it.
+        services.AddSingleton<ONEVO.Infrastructure.Identity.Sessions.ISessionTicketStoreCache>(
+            DisabledTicketCache.Create(Mock.Of<IDateTimeProvider>()));
 
         var environment = new Mock<IWebHostEnvironment>();
         environment.SetupGet(instance => instance.EnvironmentName).Returns(Environments.Development);

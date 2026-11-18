@@ -38,7 +38,7 @@ public sealed class MeetingLinkProvisioningIntegrationTests
     private static MeetingProvisioningOutcome Created() => new(MeetingProvisioningOutcomeKind.Created,
         new ProvisionedMeeting("ext-1", "https://teams.example/join/1", "https://teams.example/org/1", null), null);
 
-    private sealed record World(MyTeamDb H, MeetingPlacement At, Guid Organizer, Guid OrganizerUser, Guid Attendee);
+    private sealed record World(MyTeamDb H, MeetingPlacement At, Guid Organizer, Guid OrganizerUser, Guid Attendee, Guid AttendeeUser);
 
     private static async Task<World> SeedAsync(bool connected = true)
     {
@@ -55,7 +55,7 @@ public sealed class MeetingLinkProvisioningIntegrationTests
                 Status = ExternalCalendarConnectionStatuses.Active, CreatedAt = Now,
             });
         await db.SaveChangesAsync();
-        return new World(h, at with { OrganizerEmployeeId = organizer.Id }, organizer.Id, organizer.UserId, attendee.Id);
+        return new World(h, at with { OrganizerEmployeeId = organizer.Id }, organizer.Id, organizer.UserId, attendee.Id, attendee.UserId);
     }
 
     private static async Task<MeetingCreatedResponse> CreateAsync(World w, string? platform = CalendarEventMeetingProviders.MicrosoftTeams,
@@ -89,6 +89,18 @@ public sealed class MeetingLinkProvisioningIntegrationTests
 
     private static IReadOnlyList<string?> Keys(IEnumerable<(string Type, string? Key)> rows, string prefix)
         => rows.Where(r => r.Key?.StartsWith(prefix) == true).Select(r => r.Key).Order().ToList();
+
+    /// <summary>Who has an "added to an event" in-app notice queued, one entry per notice.</summary>
+    private static async Task<IReadOnlyList<Guid>> AddedNoticeRecipientsAsync(MyTeamDb h)
+    {
+        await using var db = h.NewContext();
+        return (await db.Set<OutboxMessage>().AsNoTracking()
+                .Where(m => m.TenantId == h.TenantId && m.Type == OutboxMessageTypes.WorkNotification).ToListAsync())
+            .Select(m => JsonDocument.Parse(CalendarNotificationDb.Encryption.Decrypt(m.EncryptedPayload)).RootElement)
+            .Where(p => p.GetProperty("TemplateCode").GetString() == "calendar_event_participant_added")
+            .Select(p => p.GetProperty("RecipientUserId").GetGuid())
+            .ToList();
+    }
 
     [Fact]
     public async Task CreateWithTeams_ClaimsALink_HoldsTheInvites_AndQueuesOneProvisionMessage()
@@ -126,6 +138,53 @@ public sealed class MeetingLinkProvisioningIntegrationTests
             Keys(outbox, "link:"));
         Assert.Empty(Keys(outbox, "invite:"));
         Assert.False((await check.CalendarEventMeetings.SingleAsync()).InvitesPending);
+        Assert.Equal([w.AttendeeUser], await AddedNoticeRecipientsAsync(w.H));
+    }
+
+    [Fact]
+    public async Task ARegeneratedLink_EmailsTheNewLink_WithoutASecondAddedNotice()
+    {
+        var w = await SeedAsync();
+        var created = await CreateAsync(w);
+        var seriesId = created.SeriesId!.Value;
+        await ProvisionAsync(w, created.Link!.LinkId!.Value, seriesId, new ProvisionerStub(Created()));
+
+        Guid newLink;
+        await using (var db = w.H.NewContext())
+        {
+            var regenerated = await new MeetingTestServices(db, new MeetingTestClock(Now)).LinkService(new ProvisionerStub(Created()))
+                .RegenerateAsync(w.H.TenantId, w.Organizer, w.OrganizerUser, seriesId,
+                    new MeetingLinkRequest(CalendarEventMeetingProviders.MicrosoftTeams, Regenerate: true), CancellationToken.None);
+            Assert.True(regenerated.IsSuccess, regenerated.Error);
+            newLink = regenerated.Value!.LinkId!.Value;
+        }
+        var result = await ProvisionAsync(w, newLink, seriesId, new ProvisionerStub(Created()));
+
+        Assert.Equal(CalendarEventMeetingStatuses.Active, result.Value!.Status);
+        Assert.Equal(2, Keys(await OutboxAsync(w.H), $"link:{newLink}:").Count);
+        Assert.Equal([w.AttendeeUser], await AddedNoticeRecipientsAsync(w.H));
+    }
+
+    [Fact]
+    public async Task ARetryAfterTheFallbackInvites_EmailsTheLink_WithoutASecondAddedNotice()
+    {
+        var w = await SeedAsync();
+        var created = await CreateAsync(w);
+        var seriesId = created.SeriesId!.Value;
+        await ProvisionAsync(w, created.Link!.LinkId!.Value, seriesId,
+            new ProvisionerStub(new MeetingProvisioningOutcome(MeetingProvisioningOutcomeKind.Permanent, null, "rejected")));
+
+        await using (var db = w.H.NewContext())
+        {
+            var retried = await new MeetingTestServices(db, new MeetingTestClock(Now)).LinkService(new ProvisionerStub(Created()))
+                .RetryAsync(w.H.TenantId, w.Organizer, seriesId, CancellationToken.None);
+            Assert.Equal(CalendarEventMeetingStatuses.Active, retried.Value!.Status);
+        }
+
+        var outbox = await OutboxAsync(w.H);
+        Assert.Equal(2, Keys(outbox, "invite:").Count);
+        Assert.Equal(2, Keys(outbox, "link:").Count);
+        Assert.Equal([w.AttendeeUser], await AddedNoticeRecipientsAsync(w.H));
     }
 
     [Fact]
@@ -143,6 +202,7 @@ public sealed class MeetingLinkProvisioningIntegrationTests
         var outbox = await OutboxAsync(w.H);
         Assert.Equal(2, Keys(outbox, "invite:").Count);
         Assert.Empty(Keys(outbox, "link:"));
+        Assert.Equal([w.AttendeeUser], await AddedNoticeRecipientsAsync(w.H));
         await using var check = w.H.NewContext();
         var notices = await check.Set<OutboxMessage>().AsNoTracking().Where(m => m.Type == OutboxMessageTypes.WorkNotification).ToListAsync();
         Assert.Contains(notices, m => CalendarNotificationDb.Encryption.Decrypt(m.EncryptedPayload).Contains(CalendarMeetingNoticeCodes.LinkFailed));
