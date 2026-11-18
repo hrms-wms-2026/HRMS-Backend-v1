@@ -94,6 +94,20 @@ trivial merge.
 
 ## Verification
 
-- `verify.ps1 backend -Full`: see below.
+Run on 2026-11-18 at `fae8714c0`, which is up to date with `origin/development` (`846b92028`,
+including task 07's PR #237).
+
+- `verify.ps1 backend -Full`, all steps pass:
+
+  | Step | Result |
+  |---|---|
+  | Build (Release) | Build succeeded |
+  | Unit | 8031 passed, 0 failed, 0 skipped |
+  | Architecture | 718 passed, 0 failed, 0 skipped |
+  | Integration (Testcontainers, SQL Server) | 1256 passed, 0 failed, 1 skipped |
+
 - `find-unauthorized-endpoints.ps1`: 0 actions without an authorization attribute, 32 explicit
   `[AllowAnonymous]`.
+- `security-scan.ps1 backend -Baseline origin/development`: Semgrep reports 0 new findings. The
+  gitleaks (git history), DevSkim, NuGet and workflow findings are repo-wide and already on
+  `development`. None of them is in a file this branch changes.
