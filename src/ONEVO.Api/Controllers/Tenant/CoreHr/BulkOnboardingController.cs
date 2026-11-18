@@ -30,8 +30,14 @@ public class BulkOnboardingController : ControllerBase
 
     [HttpPost]
     [RequirePermission("employees:write")]
+    [RequestSizeLimit(ONEVO.Api.Configuration.RequestBodyLimits.BulkOnboardingFile)]
     public async Task<IActionResult> Upload([FromForm] UploadBulkOnboardingBatchRequest request, CancellationToken ct = default)
     {
+        if (request.File is null || request.File.Length == 0)
+            return Problem("A .csv or .xlsx file is required.", statusCode: 400);
+        if (request.File.Length > ONEVO.Api.Configuration.RequestBodyLimits.BulkOnboardingFileMaxBytes)
+            return Problem("The file must be 5 MB or smaller.", statusCode: 400);
+
         using var memoryStream = new MemoryStream();
         await request.File.CopyToAsync(memoryStream, ct);
         var fileContent = memoryStream.ToArray();

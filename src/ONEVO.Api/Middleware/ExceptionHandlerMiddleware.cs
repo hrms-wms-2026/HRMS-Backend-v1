@@ -61,6 +61,13 @@ public class ExceptionHandlerMiddleware
                 fe.Message,
                 (object?)null),
 
+            // Task 23: a chunked body that runs past the endpoint's limit (RequestBodySizeLimitMiddleware).
+            Microsoft.AspNetCore.Http.BadHttpRequestException { StatusCode: StatusCodes.Status413PayloadTooLarge } => (
+                StatusCodes.Status413PayloadTooLarge,
+                "Payload Too Large",
+                "The request body is larger than this endpoint accepts.",
+                (object?)null),
+
             ServiceUnavailableException se => (
                 (int)HttpStatusCode.ServiceUnavailable,
                 "Service Unavailable",

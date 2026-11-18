@@ -145,6 +145,7 @@ public class ObjectivesController : ControllerBase
     /// <summary>Attaches one file (multipart field "File") to a module: documents, images or ZIP, up to 25 MB.
     /// Any member of the module or an ancestor (or a full admin) may attach; access is checked in-handler.</summary>
     [HttpPost("{id:guid}/assets")]
+    [RequestSizeLimit(ONEVO.Api.Configuration.RequestBodyLimits.DocumentUpload)]
     public async Task<IActionResult> UploadAsset(Guid id, [FromForm] UploadObjectiveAssetFormRequest request, CancellationToken ct)
     {
         if (request.File is null || request.File.Length == 0)
