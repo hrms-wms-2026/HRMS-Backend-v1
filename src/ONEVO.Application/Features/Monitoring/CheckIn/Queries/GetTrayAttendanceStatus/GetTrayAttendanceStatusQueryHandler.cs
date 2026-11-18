@@ -43,9 +43,12 @@ public sealed class GetTrayAttendanceStatusQueryHandler(
 
         var isClockedIn = record?.ActualStart is not null && record.ActualEnd is null;
 
+        // Today's window only, matching EndBreak: a break left open on an earlier day must not
+        // put the tray on break, because End Break cannot act on it from today.
         var openBreak = isClockedIn
-            ? await attendance.GetAnyOpenBreakTrackedAsync(
-                context.Employee.TenantId, context.Employee.Id, ct)
+            ? await attendance.GetOpenBreakTrackedAsync(
+                context.Employee.TenantId, context.Employee.Id,
+                context.LocalDayWindow.Start, context.LocalDayWindow.End, ct)
             : null;
 
         var allowance = await new BreakAllowanceMonitor(attendance, notifications).ObserveAsync(context, ct);

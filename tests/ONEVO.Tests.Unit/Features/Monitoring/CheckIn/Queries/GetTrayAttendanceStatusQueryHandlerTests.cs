@@ -65,6 +65,67 @@ public class GetTrayAttendanceStatusQueryHandlerTests
     }
 
     [Fact]
+    public async Task Handle_OnlyStaleOpenBreakFromEarlierDay_ReturnsNotOnBreak()
+    {
+        var device = new Mock<ITrayCurrentDevice>();
+        device.Setup(d => d.IsAuthenticated).Returns(true);
+        device.Setup(d => d.TenantId).Returns(TenantId);
+        device.Setup(d => d.UserId).Returns(UserId);
+
+        var context = BuildContext();
+        var todayState = new Mock<IAttendanceTodayStateService>();
+        todayState.Setup(t => t.ResolveContextAsync(TenantId, UserId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<AttendanceTodayContext>.Success(context));
+
+        var attendance = new Mock<IAttendanceReadRepository>();
+        attendance.Setup(a => a.GetRecordAsync(TenantId, EmployeeId, WorkDate, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AttendanceRecord { ActualStart = DateTimeOffset.UtcNow.AddHours(-1), ActualEnd = null });
+        attendance.Setup(a => a.GetAnyOpenBreakTrackedAsync(TenantId, EmployeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new BreakRecord { BreakStart = context.LocalDayWindow.Start.AddDays(-4) });
+
+        var (tenants, switcher) = CreateTenantMocks();
+        var sut = new GetTrayAttendanceStatusQueryHandler(device.Object, todayState.Object, attendance.Object, tenants.Object, switcher.Object);
+
+        var result = await sut.Handle(new GetTrayAttendanceStatusQuery(), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.True(result.Value!.IsClockedIn);
+        Assert.False(result.Value.IsOnBreak);
+        Assert.Null(result.Value.BreakStartedAtUtc);
+    }
+
+    [Fact]
+    public async Task Handle_OpenBreakToday_ReturnsOnBreak()
+    {
+        var device = new Mock<ITrayCurrentDevice>();
+        device.Setup(d => d.IsAuthenticated).Returns(true);
+        device.Setup(d => d.TenantId).Returns(TenantId);
+        device.Setup(d => d.UserId).Returns(UserId);
+
+        var context = BuildContext();
+        var todayState = new Mock<IAttendanceTodayStateService>();
+        todayState.Setup(t => t.ResolveContextAsync(TenantId, UserId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<AttendanceTodayContext>.Success(context));
+
+        var breakStart = DateTimeOffset.UtcNow.AddMinutes(-5);
+        var attendance = new Mock<IAttendanceReadRepository>();
+        attendance.Setup(a => a.GetRecordAsync(TenantId, EmployeeId, WorkDate, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AttendanceRecord { ActualStart = DateTimeOffset.UtcNow.AddHours(-1), ActualEnd = null });
+        attendance.Setup(a => a.GetOpenBreakTrackedAsync(
+                TenantId, EmployeeId, context.LocalDayWindow.Start, context.LocalDayWindow.End, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new BreakRecord { BreakStart = breakStart });
+
+        var (tenants, switcher) = CreateTenantMocks();
+        var sut = new GetTrayAttendanceStatusQueryHandler(device.Object, todayState.Object, attendance.Object, tenants.Object, switcher.Object);
+
+        var result = await sut.Handle(new GetTrayAttendanceStatusQuery(), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.True(result.Value!.IsOnBreak);
+        Assert.Equal(breakStart, result.Value.BreakStartedAtUtc);
+    }
+
+    [Fact]
     public async Task Handle_ClockedOutToday_ReturnsDayTimesButNotClockedIn()
     {
         var device = new Mock<ITrayCurrentDevice>();

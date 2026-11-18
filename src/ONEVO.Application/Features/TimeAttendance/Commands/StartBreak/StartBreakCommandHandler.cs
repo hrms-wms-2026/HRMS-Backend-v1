@@ -116,7 +116,12 @@ public sealed class StartBreakCommandHandler(
             context.Employee.Id,
             ct);
         if (historicalOpenBreak is not null)
-            return Result<bool>.Conflict("break_already_active");
+        {
+            if (historicalOpenBreak.BreakStart >= context.LocalDayWindow.Start)
+                return Result<bool>.Conflict("break_already_active");
+
+            AttendanceTodayStateService.CloseStaleBreak(historicalOpenBreak, context.TimeZone, context.UtcNow);
+        }
 
         var breakRecord = new BreakRecord
         {

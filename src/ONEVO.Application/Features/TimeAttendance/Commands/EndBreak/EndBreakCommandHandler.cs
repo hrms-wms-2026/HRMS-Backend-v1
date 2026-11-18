@@ -91,9 +91,12 @@ public sealed class EndBreakCommandHandler(
                 context.Employee.TenantId,
                 context.Employee.Id,
                 ct);
-            return historicalOpenBreak is null
-                ? Result<bool>.Conflict("no_active_break")
-                : Result<bool>.Conflict("no_active_break");
+            if (historicalOpenBreak is null || historicalOpenBreak.BreakStart >= context.LocalDayWindow.Start)
+                return Result<bool>.Conflict("no_active_break");
+
+            AttendanceTodayStateService.CloseStaleBreak(historicalOpenBreak, context.TimeZone, context.UtcNow);
+            await attendance.SaveChangesAsync(ct);
+            return Result<bool>.Success(true);
         }
 
         if (context.UtcNow < openBreak.BreakStart)

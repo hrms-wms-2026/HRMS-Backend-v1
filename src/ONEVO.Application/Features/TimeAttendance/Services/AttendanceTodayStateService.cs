@@ -398,6 +398,17 @@ public sealed class AttendanceTodayStateService(
         return new AttendanceLocalDayWindow(new DateTimeOffset(startUtc), new DateTimeOffset(endUtc));
     }
 
+    /// <summary>
+    /// Closes a break left open on an earlier local day (for example the app was closed mid-break)
+    /// at the end of the day it started, so it neither blocks today's breaks nor counts as days of break.
+    /// </summary>
+    public static void CloseStaleBreak(BreakRecord staleBreak, TimeZoneInfo zone, DateTimeOffset now)
+    {
+        var breakDate = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(staleBreak.BreakStart, zone).DateTime);
+        var dayEnd = GetLocalDayWindow(breakDate, zone).End;
+        staleBreak.BreakEnd = dayEnd < now ? dayEnd : now;
+    }
+
     private sealed record PolicyResolution(
         string Status,
         ClockInPolicy? Policy,

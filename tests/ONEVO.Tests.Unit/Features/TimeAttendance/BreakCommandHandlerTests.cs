@@ -208,7 +208,7 @@ public sealed class BreakCommandHandlerTests
     }
 
     [Fact]
-    public async Task StartBreak_RejectsWhenAnOpenBreakExistsInCurrentOrHistoricalDay()
+    public async Task StartBreak_RejectsWhenAnOpenBreakExistsInCurrentDay()
     {
         var currentFixture = CreateFixture();
         currentFixture.Attendance
@@ -219,15 +219,34 @@ public sealed class BreakCommandHandlerTests
 
         Assert.False(currentResult.IsSuccess);
         Assert.Equal("break_already_active", currentResult.Error);
+    }
 
-        var historicalFixture = CreateFixture();
-        historicalFixture.Attendance
+    [Fact]
+    public async Task StartBreak_ClosesStaleOpenBreakFromEarlierDayAtThatDaysEndAndStartsNewBreak()
+    {
+        var fixture = CreateFixture();
+        var stale = new BreakRecord
+        {
+            Id = Guid.NewGuid(), TenantId = TenantId, EmployeeId = EmployeeId,
+            BreakStart = LocalDayWindow.Start.AddDays(-1).AddHours(10)
+        };
+        BreakRecord? added = null;
+        fixture.Attendance
             .Setup(x => x.GetAnyOpenBreakTrackedAsync(TenantId, EmployeeId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new BreakRecord { Id = Guid.NewGuid(), TenantId = TenantId, EmployeeId = EmployeeId, BreakStart = LocalDayWindow.Start.AddDays(-1) });
-        var historicalResult = await historicalFixture.StartBreak.Handle(new StartBreakCommand(), CancellationToken.None);
+            .ReturnsAsync(stale);
+        fixture.Attendance
+            .Setup(x => x.AddBreakAsync(It.IsAny<BreakRecord>(), It.IsAny<CancellationToken>()))
+            .Callback<BreakRecord, CancellationToken>((value, _) => added = value)
+            .Returns(Task.CompletedTask);
 
-        Assert.False(historicalResult.IsSuccess);
-        Assert.Equal("break_already_active", historicalResult.Error);
+        var result = await fixture.StartBreak.Handle(new StartBreakCommand(), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        // The stale break started on the previous local day, so it is capped at that day's end.
+        Assert.Equal(LocalDayWindow.Start, stale.BreakEnd);
+        Assert.NotNull(added);
+        Assert.Equal(UtcNow, added!.BreakStart);
+        fixture.Attendance.Verify(x => x.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -343,16 +362,9 @@ public sealed class BreakCommandHandlerTests
     }
 
     [Fact]
-    public async Task EndBreak_RejectsWhenNoCurrentBreakExistsIncludingHistoricalOpenBreak()
+    public async Task EndBreak_RejectsWhenNoOpenBreakExists()
     {
         var fixture = CreateFixture();
-        fixture.Attendance
-            .Setup(x => x.GetAnyOpenBreakTrackedAsync(TenantId, EmployeeId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new BreakRecord
-            {
-                Id = Guid.NewGuid(), TenantId = TenantId, EmployeeId = EmployeeId,
-                BreakStart = LocalDayWindow.Start.AddDays(-1)
-            });
 
         var result = await fixture.EndBreak.Handle(new EndBreakCommand(), CancellationToken.None);
 
@@ -360,6 +372,32 @@ public sealed class BreakCommandHandlerTests
         Assert.Equal(409, result.StatusCode);
         Assert.Equal("no_active_break", result.Error);
         fixture.Attendance.Verify(x => x.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task EndBreak_ClosesStaleOpenBreakFromEarlierDayAtThatDaysEnd()
+    {
+        var fixture = CreateFixture();
+        var record = ActiveAttendance();
+        var stale = new BreakRecord
+        {
+            Id = Guid.NewGuid(), TenantId = TenantId, EmployeeId = EmployeeId,
+            BreakStart = LocalDayWindow.Start.AddDays(-3).AddHours(10)
+        };
+        fixture.Attendance
+            .Setup(x => x.GetTrackedRecordAsync(TenantId, EmployeeId, WorkDate, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(record);
+        fixture.Attendance
+            .Setup(x => x.GetAnyOpenBreakTrackedAsync(TenantId, EmployeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(stale);
+
+        var result = await fixture.EndBreak.Handle(new EndBreakCommand(), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(LocalDayWindow.Start.AddDays(-2), stale.BreakEnd);
+        // Today's break minutes are not charged for a break from another day.
+        Assert.Equal(0, record.BreakMinutes);
+        fixture.Attendance.Verify(x => x.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
