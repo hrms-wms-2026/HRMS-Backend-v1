@@ -130,4 +130,39 @@ public sealed class GetMyTaskProgressQueryHandlerTests
         Assert.True(result.IsSuccess);
         Assert.Equal(0, result.Value!.Total);
     }
+
+    [Fact]
+    public async Task Handle_WithRange_CountsOnlyTasksDueInsideIt()
+    {
+        var sut = BuildSut();
+        _tasks.Setup(x => x.GetMyTaskProgressRowsAsync(TenantId, EmployeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([
+                new TaskProgressRow(MarksTaskComplete: true, DueDate: new DateOnly(2026, 8, 24), ProgressPercent: 100), // in range, completed
+                new TaskProgressRow(MarksTaskComplete: false, DueDate: new DateOnly(2026, 8, 25), ProgressPercent: 10), // in range, overdue
+                new TaskProgressRow(MarksTaskComplete: false, DueDate: new DateOnly(2026, 8, 30), ProgressPercent: 0), // in range (last day), not started
+                new TaskProgressRow(MarksTaskComplete: false, DueDate: new DateOnly(2026, 8, 31), ProgressPercent: 50), // after range
+                new TaskProgressRow(MarksTaskComplete: false, DueDate: new DateOnly(2026, 8, 23), ProgressPercent: 50), // before range
+                new TaskProgressRow(MarksTaskComplete: false, DueDate: null, ProgressPercent: 0) // no due date - left out
+            ]);
+
+        var result = await sut.Handle(new GetMyTaskProgressQuery(new DateOnly(2026, 8, 24), new DateOnly(2026, 8, 30)), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(3, result.Value!.Total);
+        Assert.Equal(1, result.Value.Completed);
+        Assert.Equal(1, result.Value.Overdue);
+        Assert.Equal(1, result.Value.NotStarted);
+        Assert.Equal(0, result.Value.InProgress);
+    }
+
+    [Fact]
+    public async Task Handle_FromAfterTo_ReturnsBadRequest()
+    {
+        var sut = BuildSut();
+
+        var result = await sut.Handle(new GetMyTaskProgressQuery(new DateOnly(2026, 9, 1), new DateOnly(2026, 8, 1)), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(400, result.StatusCode);
+    }
 }

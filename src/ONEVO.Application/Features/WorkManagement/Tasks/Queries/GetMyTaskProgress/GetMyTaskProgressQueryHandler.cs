@@ -19,6 +19,8 @@ public sealed class GetMyTaskProgressQueryHandler(
     {
         if (!currentUser.IsAuthenticated)
             return Result<TaskProgressResponse>.Forbidden();
+        if (request.From is { } from && request.To is { } to && from > to)
+            return Result<TaskProgressResponse>.Failure("'from' must be on or before 'to'.");
 
         var tenantId = currentUser.TenantId;
         var employeeId = await identity.ResolveCallerEmployeeIdAsync(tenantId, currentUser.UserId, ct);
@@ -26,7 +28,13 @@ public sealed class GetMyTaskProgressQueryHandler(
             return Result<TaskProgressResponse>.Forbidden("No employee record for the current user.");
 
         var today = DateOnly.FromDateTime(dateTime.UtcNow.UtcDateTime);
-        var rows = await tasks.GetMyTaskProgressRowsAsync(tenantId, employeeId.Value, ct);
+        var allRows = await tasks.GetMyTaskProgressRowsAsync(tenantId, employeeId.Value, ct);
+        var ranged = request.From is not null || request.To is not null;
+        var rows = ranged
+            ? allRows.Where(r => r.DueDate is { } due
+                && (request.From is null || due >= request.From)
+                && (request.To is null || due <= request.To)).ToList()
+            : allRows;
 
         int completed = 0, overdue = 0, inProgress = 0, notStarted = 0;
         foreach (var row in rows)

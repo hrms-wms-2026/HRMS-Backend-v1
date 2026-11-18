@@ -127,11 +127,13 @@ public class TasksController : ControllerBase
     }
 
     /// <summary>Completed/In Progress/Not Started/Overdue breakdown across every task assigned
-    /// to the current employee, for the Task Progress dashboard donut widget.</summary>
+    /// to the current employee, for the Task Progress dashboard donut widget. Optional
+    /// <paramref name="from"/> / <paramref name="to"/> (yyyy-MM-dd, inclusive) count only tasks due
+    /// in that range.</summary>
     [HttpGet("my-task-progress")]
-    public async Task<IActionResult> MyTaskProgress(CancellationToken ct)
+    public async Task<IActionResult> MyTaskProgress([FromQuery] DateOnly? from, [FromQuery] DateOnly? to, CancellationToken ct)
     {
-        var result = await _mediator.Send(new GetMyTaskProgressQuery(), ct);
+        var result = await _mediator.Send(new GetMyTaskProgressQuery(from, to), ct);
 
         return result.IsSuccess
             ? Ok(result.Value!.ToViewModel())
