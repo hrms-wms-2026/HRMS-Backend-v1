@@ -22,7 +22,9 @@ using ONEVO.Application.Features.WorkManagement.ProjectInvitations.RepositoryInt
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
 using ONEVO.Domain.Features.Inbox.Entities;
+using ONEVO.Domain.Features.WorkManagement.Approvals.Entities;
 using ONEVO.Domain.Features.WorkManagement.Monitoring.Entities;
+using ONEVO.Domain.Features.WorkManagement.ProjectInvitations.Entities;
 using ONEVO.Domain.Features.WorkManagement.Projects.Entities;
 
 namespace ONEVO.Application.Features.WorkManagement.Inbox;
@@ -78,6 +80,43 @@ public sealed class WorkInboxSourceProvider : IInboxSourceProvider
 
     public string Source => WorkInboxKinds.Source;
     public string Label => "Work";
+
+    public async Task<InboxSourceCounts> CountAsync(Guid tenantId, Guid callerEmployeeId, CancellationToken ct)
+    {
+        var byKind = new Dictionary<string, int>();
+        var projects = await VisibleProjectsAsync(tenantId, callerEmployeeId, ct);
+        foreach (var project in projects)
+        {
+            var tree = await _hierarchy.LoadTreeAsync(tenantId, project.Id, ct);
+            var approvals = (await _requests.ListByProjectAsync(
+                    tenantId, project.Id, null, WorkApprovalRequestStatuses.Pending, ct))
+                .Count(r => r.Status == WorkApprovalRequestStatuses.Pending
+                    && ApprovalFeedParticipants.IsReceiver(tree, r, callerEmployeeId));
+            if (approvals > 0)
+                byKind[WorkInboxKinds.Approval] = byKind.GetValueOrDefault(WorkInboxKinds.Approval) + approvals;
+
+            var invitations = (await _invitations.ListForProjectAndEmployeeAsync(tenantId, project.Id, callerEmployeeId, ct))
+                .Count(i => i.Status == ProjectInvitationStatuses.Pending && i.InvitedById != callerEmployeeId);
+            if (invitations > 0)
+                byKind[WorkInboxKinds.Invitation] = byKind.GetValueOrDefault(WorkInboxKinds.Invitation) + invitations;
+
+            var openAlerts = await _alerts.ListOpenForProjectAsync(tenantId, project.Id, ct);
+            if (openAlerts.Count == 0)
+                continue;
+            var audience = await _audience.ResolveAsync(tenantId, project.Id, openAlerts, ct);
+            var mine = openAlerts.Where(a => audience.GetValueOrDefault(a.Id)?.Contains(callerEmployeeId) == true).ToList();
+            if (mine.Count == 0)
+                continue;
+            var contexts = await AlertContextsAsync(tenantId, project, mine, ct);
+            var alertCount = mine.Count(a => !contexts[a.Id].Context.InAchievedModule);
+            if (alertCount > 0)
+                byKind[WorkInboxKinds.MonitorAlert] = byKind.GetValueOrDefault(WorkInboxKinds.MonitorAlert) + alertCount;
+        }
+
+        var pendingReceived = byKind.GetValueOrDefault(WorkInboxKinds.Approval)
+            + byKind.GetValueOrDefault(WorkInboxKinds.Invitation);
+        return new InboxSourceCounts(pendingReceived, byKind.GetValueOrDefault(WorkInboxKinds.MonitorAlert), byKind);
+    }
 
     public async Task<IReadOnlyList<InboxItem>> ListAsync(Guid tenantId, InboxQuery query, Guid callerEmployeeId, CancellationToken ct)
         => (await CollectAsync(tenantId, callerEmployeeId, query, ct)).Items;
