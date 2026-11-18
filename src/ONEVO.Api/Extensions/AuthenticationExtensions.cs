@@ -1,14 +1,13 @@
-using ONEVO.Infrastructure.Configuration;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.Extensions.Configuration;
 using Microsoft.IdentityModel.Tokens;
 using ONEVO.Infrastructure.Identity.Sessions;
+using ONEVO.Infrastructure.Services.Monitoring.TrayActivation;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.DependencyInjection;
-using System.Text;
 
 namespace ONEVO.Api.Extensions;
 
@@ -115,11 +114,12 @@ internal static class AuthenticationExtensions
             .AddJwtBearer("TrayDeviceScheme", options =>
             {
                 var trayJwt = configuration.GetSection("TrayApp:Jwt");
-                var secret = ConfigurationStartupValidator.RequireTrayJwtSecret(configuration);
 
                 var issuer = trayJwt["Issuer"] ?? "crownus-tray";
                 var audience = trayJwt["Audience"] ?? "crownus-tray-app";
 
+                // Keys, algorithms and kid matching are set from ITrayJwtKeyProvider below
+                // (SEC-15), so the issuer and this validator share one key set.
                 options.TokenValidationParameters = new TokenValidationParameters
                 {
                     ValidateIssuer = true,
@@ -127,7 +127,6 @@ internal static class AuthenticationExtensions
                     ValidateAudience = true,
                     ValidAudience = audience,
                     ValidateIssuerSigningKey = true,
-                    IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secret)),
                     ValidateLifetime = true,
                     ClockSkew = TimeSpan.FromSeconds(30)
                     // MapInboundClaims is intentionally left at its default (true) so that
@@ -163,6 +162,18 @@ internal static class AuthenticationExtensions
                         });
                     }
                 };
+            });
+
+        // SEC-15: ES256 only (HS256 too while a legacy window is configured), and a token's kid must
+        // name a listed key. TryAllIssuerSigningKeys stays off: with it on, a token signed by a listed
+        // key would validate under any made-up kid.
+        services.AddOptions<JwtBearerOptions>("TrayDeviceScheme")
+            .Configure<ITrayJwtKeyProvider>((options, keys) =>
+            {
+                var parameters = options.TokenValidationParameters;
+                parameters.ValidAlgorithms = keys.ValidAlgorithms;
+                parameters.TryAllIssuerSigningKeys = false;
+                parameters.IssuerSigningKeyResolver = (_, token, kid, _) => keys.ResolveValidationKeys(token, kid);
             });
 
         services.AddOptions<CookieAuthenticationOptions>("TenantScheme")

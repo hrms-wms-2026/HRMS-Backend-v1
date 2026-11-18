@@ -157,6 +157,7 @@ public static class DependencyInjection
         services.AddScoped<SoftDeleteInterceptor>();
         services.AddScoped<DomainEventDispatchInterceptor>();
         services.AddScoped<TenantRlsInterceptor>();
+        services.AddSingleton<SessionTicketCacheInvalidationInterceptor>();
 
         services.AddDbContext<ApplicationDbContext>((sp, options) =>
         {
@@ -167,7 +168,8 @@ public static class DependencyInjection
                     sqlServer.CommandTimeout(30);
                 })
                 .UseSnakeCaseNamingConvention()
-                .AddInterceptors(sp.GetRequiredService<TenantRlsInterceptor>());
+                .AddInterceptors(sp.GetRequiredService<TenantRlsInterceptor>())
+                .AddInterceptors(sp.GetRequiredService<SessionTicketCacheInvalidationInterceptor>());
         });
 
         services.AddScoped<IUnitOfWork, UnitOfWork>();
@@ -895,7 +897,7 @@ public static class DependencyInjection
         // Monitoring - Tray App Activation
         services.AddScoped<ITrayActivationRepository, EfTrayActivationRepository>();
         services.AddScoped<IDeviceChangeRequestRepository, EfDeviceChangeRequestRepository>();
-        services.AddSingleton<ITrayTokenService, TrayTokenService>();
+        services.AddTrayJwtSigning();
         services.AddScoped<IEmployeeOnlineStatusReader, EmployeeOnlineStatusReader>();
 
         // Monitoring - Check-In
@@ -1004,7 +1006,6 @@ public static class DependencyInjection
         services.AddHostedService<Services.Calendar.ZoomAttendanceSyncJob>();
 
         // Auth services
-        services.AddSingleton<IJwtTokenService, JwtTokenService>();
         services.AddSingleton<ISecureTokenGenerator, SecureTokenGenerator>();
         // Runtime MFA challenge storage is always the PostgreSQL-backed mfa_challenges table.
         services.AddScoped<IMfaChallengeStore, PostgresMfaChallengeStore>();
@@ -1020,12 +1021,35 @@ public static class DependencyInjection
         services.AddScoped<IPasswordHasher, BCryptPasswordHasher>();
         services.AddScoped<IPermissionResolver, PermissionResolver>();
         services.AddSingleton<IPermissionVersionService, PermissionVersionService>();
+        // Improvement task 03: short-lived cache in front of the ticket stores' per-request lookups.
+        services.AddMemoryCache();
+        services.Configure<ONEVO.Infrastructure.Identity.Sessions.SessionTicketCacheOptions>(
+            configuration.GetSection(ONEVO.Infrastructure.Identity.Sessions.SessionTicketCacheOptions.SectionName));
+        services.AddSingleton<ONEVO.Infrastructure.Identity.Sessions.SessionTicketCache>();
+        services.AddSingleton<ONEVO.Infrastructure.Identity.Sessions.ISessionTicketStoreCache>(
+            sp => sp.GetRequiredService<ONEVO.Infrastructure.Identity.Sessions.SessionTicketCache>());
+        services.AddSingleton<ISessionTicketCache>(
+            sp => sp.GetRequiredService<ONEVO.Infrastructure.Identity.Sessions.SessionTicketCache>());
         services.AddScoped<ITotpService, OtpNetTotpService>();
         services.AddScoped<ILoginSessionMaterialFactory, LoginSessionMaterialFactory>();
         services.AddScoped<IGoogleIdTokenValidator, GoogleIdTokenValidator>();
         services.AddScoped<ILoginContinuationService, LoginContinuationService>();
         services.AddScoped<ITenantSessionExchangeChallengeRepository, EfTenantSessionExchangeChallengeRepository>();
         services.AddScoped<ITenantSessionExchangeService, TenantSessionExchangeService>();
+
+        // Platform support: tickets, attachments, announcements
+        services.AddScoped<
+            ONEVO.Application.Features.DevPlatform.Support.RepositoryInterfaces.ISupportTicketRepository,
+            ONEVO.Infrastructure.Persistence.Repositories.DevPlatform.Support.EfSupportTicketRepository>();
+        services.AddScoped<
+            ONEVO.Application.Features.DevPlatform.Support.RepositoryInterfaces.IPlatformAnnouncementRepository,
+            ONEVO.Infrastructure.Persistence.Repositories.DevPlatform.Support.EfPlatformAnnouncementRepository>();
+        services.AddScoped<
+            ONEVO.Application.Features.DevPlatform.Support.Services.ISupportAttachmentService,
+            ONEVO.Application.Features.DevPlatform.Support.Services.SupportAttachmentService>();
+        services.AddScoped<
+            ONEVO.Application.Features.DevPlatform.Support.Services.ISupportNotifier,
+            ONEVO.Infrastructure.Services.DevPlatform.Support.SupportNotifier>();
 
         // Legal acceptance and versioning
         services.AddScoped<ILegalDocumentVersionRepository, EfLegalDocumentVersionRepository>();
@@ -1049,6 +1073,8 @@ public static class DependencyInjection
 
         // -- Platform options binding ------------------------------------------
         services.Configure<EmailOptions>(configuration.GetSection(EmailOptions.SectionName));
+        services.Configure<ONEVO.Infrastructure.Services.DevPlatform.Support.SupportAlertOptions>(
+            configuration.GetSection(ONEVO.Infrastructure.Services.DevPlatform.Support.SupportAlertOptions.SectionName));
         services.Configure<PlatformUrlsOptions>(configuration.GetSection(PlatformUrlsOptions.SectionName));
         services.Configure<EncryptionOptions>(configuration.GetSection(EncryptionOptions.SectionName));
         services.Configure<ONEVO.Infrastructure.Configuration.StorageQuotaOptions>(

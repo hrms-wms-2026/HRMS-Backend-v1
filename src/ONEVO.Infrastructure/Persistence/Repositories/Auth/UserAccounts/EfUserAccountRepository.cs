@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.UserAccounts.RepositoryInterfaces;
 using ONEVO.Domain.Lookups;
 
@@ -10,8 +11,15 @@ public sealed class EfUserAccountRepository : IUserAccountRepository
     private static readonly string[] OwnerRoleNames = ["Owner", "Tenant Owner"];
 
     private readonly ApplicationDbContext _db;
+    private readonly ISessionTicketCache? _ticketCache;
 
-    public EfUserAccountRepository(ApplicationDbContext db) => _db = db;
+    // Optional only for standalone test contexts; the API always registers it. The session revokes
+    // below are bulk updates that bypass the EF eviction interceptor, so they evict here.
+    public EfUserAccountRepository(ApplicationDbContext db, ISessionTicketCache? ticketCache = null)
+    {
+        _db = db;
+        _ticketCache = ticketCache;
+    }
 
     public Task<IReadOnlyList<UserAccountRow>> ListAsync(Guid tenantId, DateTimeOffset now, CancellationToken ct = default)
         => LoadAsync(tenantId, null, now, ct);
@@ -36,9 +44,19 @@ public sealed class EfUserAccountRepository : IUserAccountRepository
             .ToListAsync(ct);
 
     public async Task<bool> RevokeSessionAsync(Guid tenantId, Guid userId, Guid sessionId, CancellationToken ct = default)
-        => await _db.Sessions
-            .Where(s => s.TenantId == tenantId && s.UserId == userId && s.Id == sessionId && !s.IsRevoked)
-            .ExecuteUpdateAsync(s => s.SetProperty(x => x.IsRevoked, true), ct) > 0;
+    {
+        _ticketCache?.EvictUser(userId);
+        try
+        {
+            return await _db.Sessions
+                .Where(s => s.TenantId == tenantId && s.UserId == userId && s.Id == sessionId && !s.IsRevoked)
+                .ExecuteUpdateAsync(s => s.SetProperty(x => x.IsRevoked, true), ct) > 0;
+        }
+        finally
+        {
+            _ticketCache?.EvictUser(userId);
+        }
+    }
 
     public async Task<bool> RevokeDeviceAsync(
         Guid tenantId, Guid userId, Guid deviceId, DateTimeOffset now, string reason, CancellationToken ct = default)
@@ -63,9 +81,18 @@ public sealed class EfUserAccountRepository : IUserAccountRepository
     public async Task<int> RevokeAllAccessAsync(
         Guid tenantId, Guid userId, DateTimeOffset now, string reason, CancellationToken ct = default)
     {
-        var sessions = await _db.Sessions
-            .Where(s => s.TenantId == tenantId && s.UserId == userId && !s.IsRevoked)
-            .ExecuteUpdateAsync(s => s.SetProperty(x => x.IsRevoked, true), ct);
+        _ticketCache?.EvictUser(userId);
+        int sessions;
+        try
+        {
+            sessions = await _db.Sessions
+                .Where(s => s.TenantId == tenantId && s.UserId == userId && !s.IsRevoked)
+                .ExecuteUpdateAsync(s => s.SetProperty(x => x.IsRevoked, true), ct);
+        }
+        finally
+        {
+            _ticketCache?.EvictUser(userId);
+        }
 
         await _db.RefreshTokens
             .Where(t => t.TenantId == tenantId && t.UserId == userId && t.RevokedAt == null)

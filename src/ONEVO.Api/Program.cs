@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using ONEVO.Api.Configuration;
 using ONEVO.Api.Extensions;
 using ONEVO.Api.Middleware;
+using ONEVO.Api.RateLimiting;
 using ONEVO.Application;
 using ONEVO.Application.Common.Json;
 using ONEVO.Infrastructure;
@@ -16,7 +17,7 @@ var builder = WebApplication.CreateBuilder(args);
 ConfigurationStartupValidator.ValidateRequiredLocalConfiguration(
     builder.Configuration,
     builder.Environment.EnvironmentName);
-ConfigurationStartupValidator.ValidateTrayJwtSecret(
+ConfigurationStartupValidator.ValidateTrayJwtSigningKeys(
     builder.Configuration,
     builder.Environment.EnvironmentName);
 
@@ -92,6 +93,7 @@ builder.Services.AddSingleton<
     sp => sp.GetRequiredService<ONEVO.Api.Middleware.WebActivityTracker>());
 builder.Services.AddApiSwagger();
 builder.Services.AddApiCors(builder.Configuration);
+builder.Services.AddApiRateLimiting(builder.Configuration);
 builder.Services.AddHealthChecks()
     .AddCheck("api", () => Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckResult.Healthy("API is running"))
     .AddAsyncCheck("sqlserver", async () =>
@@ -135,10 +137,14 @@ if (!app.Environment.IsDevelopment())
     app.UseHttpsRedirection();
 app.UseCors("AllowFrontend");
 app.UseRouting();
-app.UseMiddleware<PublicApiRateLimitingMiddleware>();
+// Task 07: coarse per-IP flood guard before any credential is validated.
+app.UseApiPreAuthenticationRateLimiting();
 app.UseMiddleware<HostTenantResolutionMiddleware>();
 app.UseMiddleware<AuthRateLimitingMiddleware>();
 app.UseAuthentication();
+// Task 07: global limiter after authentication, so signed-in requests are partitioned by user,
+// tray device and tenant instead of by IP. Limits: docs/deployment/rate-limits.md.
+app.UseApiRateLimiting();
 // Middleware removed as part of cookie auth migration
 app.UseMiddleware<CsrfProtectionMiddleware>();
 app.UseMiddleware<TenantEnforcementMiddleware>();
