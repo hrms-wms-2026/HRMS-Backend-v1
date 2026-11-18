@@ -112,15 +112,33 @@ public sealed class InboxRouter : IInboxRouter
 
     public async Task<InboxCounts> GetCountsAsync(Guid tenantId, Guid callerEmployeeId, CancellationToken ct)
     {
-        var items = await CollectAsync(tenantId, callerEmployeeId, new InboxQuery(), ct);
-        var needsMe = items.Where(i => i.IsPending
-            && (i.Category == InboxCategories.Alert || (i.Category == InboxCategories.Request && i.Direction == InboxDirections.Received))).ToList();
+        var pendingReceived = 0;
+        var openAlerts = 0;
+        var bySource = new Dictionary<string, int>();
+        var byKind = new Dictionary<string, int>();
+        foreach (var provider in _providers)
+        {
+            var counts = await provider.CountAsync(tenantId, callerEmployeeId, ct);
+            pendingReceived += counts.PendingReceived;
+            openAlerts += counts.OpenAlerts;
+            var sourceTotal = counts.PendingReceived + counts.OpenAlerts;
+            if (sourceTotal > 0)
+                bySource[provider.Source] = bySource.GetValueOrDefault(provider.Source) + sourceTotal;
+            foreach (var (kind, count) in counts.ByKind)
+            {
+                if (count > 0)
+                {
+                    var key = $"{provider.Source}:{kind}";
+                    byKind[key] = byKind.GetValueOrDefault(key) + count;
+                }
+            }
+        }
         return new InboxCounts(
-            PendingReceived: items.Count(i => i.IsPending && i.Category == InboxCategories.Request && i.Direction == InboxDirections.Received),
+            PendingReceived: pendingReceived,
             UnreadMessages: await _unread.TotalInChatsAsync(tenantId, callerEmployeeId, ct),
-            OpenAlerts: items.Count(i => i.IsPending && i.Category == InboxCategories.Alert),
-            BySource: needsMe.GroupBy(i => i.Source).ToDictionary(g => g.Key, g => g.Count()),
-            ByKind: needsMe.GroupBy(i => $"{i.Source}:{i.Kind}").ToDictionary(g => g.Key, g => g.Count()));
+            OpenAlerts: openAlerts,
+            BySource: bySource,
+            ByKind: byKind);
     }
 
     public async Task<Result<InboxItemDetail>> GetDetailAsync(
