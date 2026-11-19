@@ -1,5 +1,6 @@
 using MediatR;
 using Microsoft.Extensions.Options;
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.Models;
@@ -55,7 +56,7 @@ public sealed class GetLeaveCalendarQueryHandler
         if (_currentUser.TenantId == Guid.Empty)
             return Result<LeaveCalendarMonthResponse>.Forbidden(LeaveCalendarMessages.TenantMissing);
 
-        if (!_currentUser.HasPermission("calendar:read"))
+        if (!_currentUser.HasPermission(PermissionCatalog.Calendar.Read))
             return Result<LeaveCalendarMonthResponse>.Forbidden(LeaveCalendarMessages.CalendarPermissionRequired);
 
         var rangeResult = LeaveCalendarMonthRange.From(query.Year, query.Month);
