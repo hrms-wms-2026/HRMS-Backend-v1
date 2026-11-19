@@ -645,6 +645,10 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("nvarchar(50)")
                         .HasColumnName("module");
 
+                    b.Property<DateTimeOffset?>("RetiredAt")
+                        .HasColumnType("datetimeoffset")
+                        .HasColumnName("retired_at");
+
                     b.HasKey("Id")
                         .HasName("pk_permissions");
 
@@ -653,6 +657,59 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasDatabaseName("ix_permissions_code");
 
                     b.ToTable("permissions", (string)null);
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.Auth.Entities.PermissionChange", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("AppliedAt")
+                        .HasColumnType("datetimeoffset")
+                        .HasColumnName("applied_at");
+
+                    b.Property<string>("ChangeKey")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)")
+                        .HasColumnName("change_key");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)")
+                        .HasColumnName("code");
+
+                    b.Property<string>("Detail")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("detail")
+                        .HasAnnotation("Crownus:JsonColumn", true);
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasColumnName("kind");
+
+                    b.Property<string>("PreviousCode")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)")
+                        .HasColumnName("previous_code");
+
+                    b.HasKey("Id")
+                        .HasName("pk_permission_changes");
+
+                    b.HasIndex("ChangeKey")
+                        .IsUnique()
+                        .HasDatabaseName("ix_permission_changes_change_key");
+
+                    b.ToTable("permission_changes", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_permission_changes_detail_json", "ISJSON([detail]) = 1");
+                        });
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.Auth.Entities.RefreshToken", b =>
