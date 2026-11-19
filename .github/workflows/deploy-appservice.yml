@@ -1,0 +1,161 @@
+# Builds backend + web app + admin console into one App Service package and deploys it to the App Service named by vars.APPSERVICE_NAME.
+# Setup (secrets, variables, portal switches): ops/appservice/deploy-pipeline-setup.md
+#
+# Runs on:
+#   - a merge to main in this repo
+#   - a merge to main in the web or admin repo (their trigger-appservice-deploy.yml sends repository_dispatch)
+#   - the "Run workflow" button (pick refs; optionally apply database migrations)
+# No tests here: ci.yml already tests pull requests.
+name: Deploy to App Service
+
+on:
+  push:
+    branches: [main]
+  repository_dispatch:
+    types: [deploy-appservice]
+  workflow_dispatch:
+    inputs:
+      backend_ref:
+        description: Backend branch, tag or SHA
+        type: string
+        default: main
+      web_ref:
+        description: Web app branch, tag or SHA
+        type: string
+        default: main
+      admin_ref:
+        description: Admin console branch, tag or SHA
+        type: string
+        default: main
+      apply_migrations:
+        description: Apply EF migrations + grants to the database before deploying
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-appservice
+  cancel-in-progress: false
+
+env:
+  APP_NAME: ${{ vars.APPSERVICE_NAME }}
+  ORG: hrms-wms-2026
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: appservice-test
+    timeout-minutes: 40
+    steps:
+      - name: Check required settings
+        env:
+          HAS_PROFILE: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE != '' }}
+          HAS_FRONTEND_TOKEN: ${{ secrets.FRONTEND_READ_TOKEN != '' }}
+          APPSERVICE_HOST: ${{ vars.APPSERVICE_HOST }}
+        run: |
+          missing=""
+          [ "$HAS_PROFILE" = "true" ] || missing="$missing secret:AZURE_WEBAPP_PUBLISH_PROFILE"
+          [ "$HAS_FRONTEND_TOKEN" = "true" ] || missing="$missing secret:FRONTEND_READ_TOKEN"
+          [ -n "$APPSERVICE_HOST" ] || missing="$missing variable:APPSERVICE_HOST"
+          [ -n "$APP_NAME" ] || missing="$missing variable:APPSERVICE_NAME"
+          if [ -n "$missing" ]; then
+            echo "::error::Missing settings:$missing. See ops/appservice/deploy-pipeline-setup.md"
+            exit 1
+          fi
+
+      - name: Checkout backend
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.backend_ref || (github.event_name == 'push' && github.sha) || 'main' }}
+          path: backend
+
+      - name: Checkout web app
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.ORG }}/Hrms--Web-application---front-end---v1
+          ref: ${{ inputs.web_ref || 'main' }}
+          token: ${{ secrets.FRONTEND_READ_TOKEN }}
+          path: web
+
+      - name: Checkout admin console
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.ORG }}/HRMS-Platform-Administration-Front-End-v1
+          ref: ${{ inputs.admin_ref || 'main' }}
+          token: ${{ secrets.FRONTEND_READ_TOKEN }}
+          path: admin
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: |
+            web/package-lock.json
+            admin/package-lock.json
+
+      - name: Install web app dependencies
+        working-directory: web
+        run: npm ci --no-audit --no-fund
+
+      - name: Install admin console dependencies
+        working-directory: admin
+        run: npm ci --no-audit --no-fund
+
+      # --- database migrations (manual runs only, when apply_migrations is ticked) ---
+
+      - name: Build package
+        id: package
+        shell: pwsh
+        run: >
+          ./backend/ops/appservice/build-appservice-package.ps1
+          -Mode '${{ vars.PACKAGE_MODE || 'SingleHost' }}'
+          -WebRepo "$PWD/web"
+          -AdminRepo "$PWD/admin"
+          -OutDir '${{ runner.temp }}'
+          -ZipName crownus-appservice.zip
+
+      - name: Deploy to App Service
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ env.APP_NAME }}
+          publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
+          package: ${{ steps.package.outputs.zip_path }}
+
+      - name: Wait for /health/ready
+        env:
+          APPSERVICE_HOST: ${{ vars.APPSERVICE_HOST }}
+        run: |
+          url="https://${APPSERVICE_HOST}/health/ready"
+          for i in $(seq 1 20); do
+            code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 "$url" || echo 000)
+            echo "Attempt $i: $url -> $code"
+            if [ "$code" = "200" ]; then exit 0; fi
+            sleep 15
+          done
+          echo "::error::$url did not return 200 within 5 minutes. Check App Service > Log stream and the app settings."
+          exit 1
+
+      - name: Run summary
+        if: always()
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          DISPATCH_SOURCE: ${{ github.event.client_payload.source }}
+          ZIP_SHA256: ${{ steps.package.outputs.zip_sha256 }}
+        run: |
+          {
+            echo "### Deploy to ${APP_NAME}: ${{ job.status }}"
+            echo ""
+            echo "- Trigger: \`${EVENT_NAME}\`${DISPATCH_SOURCE:+ from \`${DISPATCH_SOURCE}\`}"
+            for d in backend web admin; do
+              if [ -d "$d/.git" ]; then echo "- $d: \`$(git -C "$d" rev-parse HEAD)\`"; fi
+            done
+            echo "- Package SHA-256: \`${ZIP_SHA256:-not built}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
