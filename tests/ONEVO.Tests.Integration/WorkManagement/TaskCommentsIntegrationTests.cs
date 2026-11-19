@@ -629,6 +629,24 @@ public sealed class TaskCommentsIntegrationTests : IClassFixture<TaskCommentsInt
     }
 
     [Fact]
+    public async Task AddReaction_DifferentEmojiBySameEmployee_ReplacesPreviousReaction()
+    {
+        var taskId = await _fixture.SeedTaskAsync();
+        var commentId = await _fixture.PostCommentAsync(_fixture.TenantA, taskId, "only one reaction each");
+
+        (await _fixture.SendAddReactionAsync(_fixture.TenantA, commentId, "👍")).StatusCode.Should().Be(HttpStatusCode.NoContent);
+        (await _fixture.SendAddReactionAsync(_fixture.TenantA, commentId, "🎉")).StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        var getResponse = await _fixture.SendGetCommentsAsync(_fixture.TenantA, taskId);
+        var comments = await TaskCommentsIntegrationTestsFixture.ReadJsonAsync(getResponse);
+        var comment = comments.EnumerateArray().Single(c => c.GetProperty("id").GetGuid() == commentId);
+        var reactions = comment.GetProperty("reactions").EnumerateArray().ToList();
+        reactions.Should().ContainSingle();
+        reactions[0].GetProperty("emoji").GetString().Should().Be("🎉");
+        reactions[0].GetProperty("reactors").GetArrayLength().Should().Be(1);
+    }
+
+    [Fact]
     public async Task CommentAttachment_UploadedThenLinked_ServedThroughGetTaskFile()
     {
         var taskId = await _fixture.SeedTaskAsync();
