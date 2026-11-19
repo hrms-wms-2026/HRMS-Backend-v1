@@ -2,7 +2,6 @@ namespace ONEVO.Application.Features.TimeAttendance.DTOs.Responses;
 
 public sealed record AttendanceCorrectionApproverResponse(
     Guid EmployeeId,
-    Guid UserId,
     string DisplayName,
     string? PositionName);
 

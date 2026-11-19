@@ -81,7 +81,7 @@ public sealed class AttendanceCorrectionWorkflow(
                 {
                     await notifications.SendTemplatedAsync(
                         currentUser.TenantId,
-                        value.Approver!.UserId,
+                        value.Route!.ApproverUserId,
                         CreatedTemplate,
                         new Dictionary<string, string>
                         {
@@ -92,7 +92,7 @@ public sealed class AttendanceCorrectionWorkflow(
                         transactionCt);
                     // Approver and requester inboxes refresh after commit (outbox row in this transaction).
                     if (inbox is not null)
-                        await inbox.EnqueueAsync(currentUser.TenantId, [value.Approver.EmployeeId, value.Employee.Id],
+                        await inbox.EnqueueAsync(currentUser.TenantId, [value.Route.ApproverEmployeeId, value.Employee.Id],
                             InboxRefs.AttendanceCorrection(correction.Id), transactionCt);
                 }
                 else
@@ -378,7 +378,7 @@ public sealed class AttendanceCorrectionWorkflow(
                 route.ApproverEmployeeId, ct);
             var position = await positions.GetByIdAsync(currentUser.TenantId, route.ApproverPositionId, ct);
             approver = new AttendanceCorrectionApproverResponse(
-                route.ApproverEmployeeId, route.ApproverUserId,
+                route.ApproverEmployeeId,
                 approverEmployee is null ? "Approver" : DisplayName(approverEmployee),
                 position?.Name);
         }
