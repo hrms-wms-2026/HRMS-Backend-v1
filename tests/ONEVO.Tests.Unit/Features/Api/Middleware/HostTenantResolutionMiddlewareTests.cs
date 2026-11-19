@@ -171,6 +171,59 @@ public class HostTenantResolutionMiddlewareTests
     }
 
     [Fact]
+    public async Task SingleHost_TenantSubdomainHost_400()
+    {
+        SetupTenant("acme");
+        var ctx = MakeSingleHostContext("/api/v1/x", header: "acme", host: "acme.app.example.net");
+
+        await BuildSingleHost().InvokeAsync(ctx);
+
+        ctx.Response.StatusCode.Should().Be(400);
+        _nextCalled.Should().BeFalse();
+        _ctx.Verify(c => c.Resolve(It.IsAny<TenantRegistryEntry>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task DefaultMode_HeaderIgnored()
+    {
+        var id = Guid.NewGuid();
+        SetupTenant("acme", id);
+        SetupTenant("other");
+        var ctx = MakeSingleHostContext("/api/v1/x", header: "other", host: "acme.app.example.net");
+
+        await Build("app.example.net").InvokeAsync(ctx);
+
+        _ctx.Verify(c => c.Resolve(It.Is<TenantRegistryEntry>(e => e.TenantId == id && e.Slug == "acme")), Times.Once);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task SingleHost_BlankHeader_SystemMode(string header)
+    {
+        var ctx = MakeSingleHostContext("/api/v1/x", header: header);
+
+        await BuildSingleHost().InvokeAsync(ctx);
+
+        _ctx.Verify(c => c.SetSystemMode(), Times.Once);
+        _ctx.Verify(c => c.Resolve(It.IsAny<TenantRegistryEntry>()), Times.Never);
+        _nextCalled.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task SingleHost_HubHeaderWinsOverQuery()
+    {
+        var id = Guid.NewGuid();
+        SetupTenant("acme", id);
+        SetupTenant("other");
+        var ctx = MakeSingleHostContext("/hubs/inbox", header: "acme", query: "tenant=other");
+
+        await BuildSingleHost().InvokeAsync(ctx);
+
+        _ctx.Verify(c => c.Resolve(It.Is<TenantRegistryEntry>(e => e.TenantId == id && e.Slug == "acme")), Times.Once);
+    }
+
+    [Fact]
     public async Task Subdomain_HeaderIgnored()
     {
         var id = Guid.NewGuid();
