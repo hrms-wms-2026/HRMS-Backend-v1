@@ -110,7 +110,7 @@ Both limiters only cover `/api/v1` and `/admin/v1`. Paths outside them (health, 
 | `GET /health`, `GET /health/ready` | Explicitly `.AllowAnonymous()`. They return only `Healthy` / `Unhealthy`. |
 | `/hubs/inbox` | `.RequireAuthorization("TenantPolicy")` on the endpoint, and `[Authorize]` on the hub. Browsers connect with the tenant cookie. |
 | `/hubs/agent-commands` | `.RequireAuthorization("TrayDevicePolicy")` on the endpoint, and the same policy on the hub. The tray sends its JWT as `access_token`. |
-| `/swagger/...` | Swagger is middleware that answers before routing and authorization, so the fallback never sees it. It is only on in Development or when `Swagger:Enabled=true`. Keep it off in production. |
+| `/swagger/...`, `/openapi/...` | Removed in task 23, in every environment. Nothing is served, so these paths get 401 (fallback) or 404. The API description is a build-time file: `docs/api/openapi/*.json`. |
 
 ## Stripe webhook
 

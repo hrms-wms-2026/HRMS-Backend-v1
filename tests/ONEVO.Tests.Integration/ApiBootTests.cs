@@ -89,16 +89,34 @@ public sealed class ApiBootTests : IAsyncLifetime
         Assert.Equal(401, body.RootElement.GetProperty("status").GetInt32());
     }
 
-    [Fact]
-    public async Task SwaggerEndpoint_ReturnsOk_InDevelopment()
+    /// <summary>
+    /// Task 23: Swagger UI and every runtime OpenAPI endpoint are removed in every environment,
+    /// Development included. The API description is generated at build time (docs/api/openapi).
+    /// The answer may be 401 (deny-by-default fallback) or 404 (no route), but never a document.
+    /// </summary>
+    [Theory]
+    [InlineData("Test")]
+    [InlineData("Development")]
+    public async Task SwaggerAndOpenApiPaths_ServeNothing(string environment)
     {
         var factory = _factory.WithWebHostBuilder(builder =>
-            builder.UseEnvironment("Development"));
+        {
+            builder.UseEnvironment(environment);
+            // Even an old Swagger:Enabled setting left on a server must not bring anything back.
+            builder.UseSetting("Swagger:Enabled", "true");
+        });
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
 
-        var client = factory.CreateClient();
-        var response = await client.GetAsync("/swagger/v1/swagger.json");
-        Assert.True(
-            response.IsSuccessStatusCode,
-            $"Swagger endpoint returned {response.StatusCode}");
+        foreach (var path in new[]
+                 {
+                     "/swagger", "/swagger/index.html", "/swagger/v1/swagger.json", "/swagger/admin-v1/swagger.json",
+                     "/openapi/v1.json", "/openapi/admin-v1.json"
+                 })
+        {
+            var response = await client.GetAsync(path);
+            Assert.True(
+                response.StatusCode is System.Net.HttpStatusCode.NotFound or System.Net.HttpStatusCode.Unauthorized,
+                $"{environment}: {path} returned {(int)response.StatusCode}; expected 401 or 404");
+        }
     }
 }

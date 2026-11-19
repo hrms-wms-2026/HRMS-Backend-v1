@@ -53,6 +53,7 @@ public class ProjectsController : ControllerBase
     [HttpPost]
     [RequirePermission("projects:create")]
     [Idempotent]
+    [RequestSizeLimit(ONEVO.Api.Configuration.RequestBodyLimits.ProjectCreateWithImages)]
     public async Task<IActionResult> Create([FromForm] CreateProjectFormRequest request, CancellationToken ct)
     {
         var labels = string.IsNullOrWhiteSpace(request.LabelsJson)
