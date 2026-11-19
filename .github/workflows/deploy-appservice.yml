@@ -6,6 +6,9 @@
 #   - a merge to main in the web or admin repo (their trigger-appservice-deploy.yml sends repository_dispatch)
 #   - the "Run workflow" button (pick refs; optionally apply database migrations)
 # No tests here: ci.yml already tests pull requests.
+#
+# Two jobs on purpose: "build" runs npm install scripts and never sees the Azure publish profile or the
+# database secret; "deploy" only receives the finished zip.
 name: Deploy to App Service
 
 on:
@@ -28,7 +31,7 @@ on:
         type: string
         default: main
       apply_migrations:
-        description: Apply EF migrations + grants to the database before deploying
+        description: Apply EF migrations to the database before deploying
         type: boolean
         default: false
 
@@ -40,28 +43,24 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  APP_NAME: ${{ vars.APPSERVICE_NAME }}
   ORG: hrms-wms-2026
 
 jobs:
-  deploy:
+  build:
     runs-on: ubuntu-latest
-    environment: appservice-test
-    timeout-minutes: 40
+    timeout-minutes: 30
+    outputs:
+      backend_sha: ${{ steps.shas.outputs.backend }}
+      web_sha: ${{ steps.shas.outputs.web }}
+      admin_sha: ${{ steps.shas.outputs.admin }}
+      zip_sha256: ${{ steps.package.outputs.zip_sha256 }}
     steps:
       - name: Check required settings
         env:
-          HAS_PROFILE: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE != '' }}
           HAS_FRONTEND_TOKEN: ${{ secrets.FRONTEND_READ_TOKEN != '' }}
-          APPSERVICE_HOST: ${{ vars.APPSERVICE_HOST }}
         run: |
-          missing=""
-          [ "$HAS_PROFILE" = "true" ] || missing="$missing secret:AZURE_WEBAPP_PUBLISH_PROFILE"
-          [ "$HAS_FRONTEND_TOKEN" = "true" ] || missing="$missing secret:FRONTEND_READ_TOKEN"
-          [ -n "$APPSERVICE_HOST" ] || missing="$missing variable:APPSERVICE_HOST"
-          [ -n "$APP_NAME" ] || missing="$missing variable:APPSERVICE_NAME"
-          if [ -n "$missing" ]; then
-            echo "::error::Missing settings:$missing. See ops/appservice/deploy-pipeline-setup.md"
+          if [ "$HAS_FRONTEND_TOKEN" != "true" ]; then
+            echo "::error::Missing secret FRONTEND_READ_TOKEN. See ops/appservice/deploy-pipeline-setup.md"
             exit 1
           fi
 
@@ -70,6 +69,7 @@ jobs:
         with:
           ref: ${{ inputs.backend_ref || (github.event_name == 'push' && github.sha) || 'main' }}
           path: backend
+          persist-credentials: false
 
       - name: Checkout web app
         uses: actions/checkout@v4
@@ -78,6 +78,7 @@ jobs:
           ref: ${{ inputs.web_ref || 'main' }}
           token: ${{ secrets.FRONTEND_READ_TOKEN }}
           path: web
+          persist-credentials: false
 
       - name: Checkout admin console
         uses: actions/checkout@v4
@@ -86,6 +87,14 @@ jobs:
           ref: ${{ inputs.admin_ref || 'main' }}
           token: ${{ secrets.FRONTEND_READ_TOKEN }}
           path: admin
+          persist-credentials: false
+
+      - name: Record commits
+        id: shas
+        run: |
+          for d in backend web admin; do
+            echo "$d=$(git -C "$d" rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          done
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
@@ -109,8 +118,6 @@ jobs:
         working-directory: admin
         run: npm ci --no-audit --no-fund
 
-      # --- database migrations (manual runs only, when apply_migrations is ticked) ---
-
       - name: Build package
         id: package
         shell: pwsh
@@ -122,16 +129,103 @@ jobs:
           -OutDir '${{ runner.temp }}'
           -ZipName crownus-appservice.zip
 
+      - name: Upload package
+        uses: actions/upload-artifact@v4
+        with:
+          name: appservice-package
+          path: ${{ steps.package.outputs.zip_path }}
+          retention-days: 3
+          if-no-files-found: error
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: appservice-test
+    timeout-minutes: 30
+    env:
+      APP_NAME: ${{ vars.APPSERVICE_NAME }}
+      APPSERVICE_HOST: ${{ vars.APPSERVICE_HOST }}
+    steps:
+      - name: Check required settings
+        env:
+          HAS_PROFILE: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE != '' }}
+        run: |
+          missing=""
+          [ "$HAS_PROFILE" = "true" ] || missing="$missing secret:AZURE_WEBAPP_PUBLISH_PROFILE"
+          [ -n "$APPSERVICE_HOST" ] || missing="$missing variable:APPSERVICE_HOST"
+          [ -n "$APP_NAME" ] || missing="$missing variable:APPSERVICE_NAME"
+          if [ -n "$missing" ]; then
+            echo "::error::Missing settings:$missing. See ops/appservice/deploy-pipeline-setup.md"
+            exit 1
+          fi
+
+      # --- database migrations (manual runs only, when apply_migrations is ticked) ---
+      # Runs as crownus_migrator (db_ddladmin). It cannot GRANT, so ops/sqlserver/post-migration-grants.sql
+      # stays a manual step with an admin login; its grants are schema-wide, so new dbo tables are covered.
+      # Only backend code (no npm packages) runs in this job.
+
+      - name: Check migration settings
+        if: ${{ inputs.apply_migrations }}
+        env:
+          HAS_MIGRATION_CONNECTION: ${{ secrets.MIGRATION_CONNECTION_STRING != '' }}
+        run: |
+          if [ "$HAS_MIGRATION_CONNECTION" != "true" ]; then
+            echo "::error::apply_migrations is ticked but secret MIGRATION_CONNECTION_STRING is missing. See ops/appservice/deploy-pipeline-setup.md"
+            exit 1
+          fi
+
+      - name: Checkout backend (same commit as the package)
+        if: ${{ inputs.apply_migrations }}
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.build.outputs.backend_sha }}
+          path: backend
+          persist-credentials: false
+
+      - name: Setup .NET
+        if: ${{ inputs.apply_migrations }}
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Build EF migration bundle
+        if: ${{ inputs.apply_migrations }}
+        env:
+          # The design-time DbContext factory reads this at build time as well as at run time.
+          ConnectionStrings__MigrationConnection: ${{ secrets.MIGRATION_CONNECTION_STRING }}
+        run: |
+          dotnet tool install --global dotnet-ef --version 10.0.9
+          dotnet ef migrations bundle \
+            -p backend/src/ONEVO.Infrastructure \
+            -s backend/src/ONEVO.Api \
+            -r linux-x64 --self-contained \
+            -o "$RUNNER_TEMP/efbundle"
+
+      - name: Apply migrations
+        if: ${{ inputs.apply_migrations }}
+        # The bundle needs appsettings.json in the current folder.
+        working-directory: backend/src/ONEVO.Api
+        env:
+          ConnectionStrings__MigrationConnection: ${{ secrets.MIGRATION_CONNECTION_STRING }}
+        run: |
+          "$RUNNER_TEMP/efbundle" --connection "$ConnectionStrings__MigrationConnection"
+
+      # --- deploy ---
+
+      - name: Download package
+        uses: actions/download-artifact@v4
+        with:
+          name: appservice-package
+          path: ${{ runner.temp }}/package
+
       - name: Deploy to App Service
         uses: azure/webapps-deploy@v3
         with:
           app-name: ${{ env.APP_NAME }}
           publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
-          package: ${{ steps.package.outputs.zip_path }}
+          package: ${{ runner.temp }}/package/crownus-appservice.zip
 
       - name: Wait for /health/ready
-        env:
-          APPSERVICE_HOST: ${{ vars.APPSERVICE_HOST }}
         run: |
           url="https://${APPSERVICE_HOST}/health/ready"
           for i in $(seq 1 20); do
@@ -148,14 +242,20 @@ jobs:
         env:
           EVENT_NAME: ${{ github.event_name }}
           DISPATCH_SOURCE: ${{ github.event.client_payload.source }}
-          ZIP_SHA256: ${{ steps.package.outputs.zip_sha256 }}
+          BACKEND_SHA: ${{ needs.build.outputs.backend_sha }}
+          WEB_SHA: ${{ needs.build.outputs.web_sha }}
+          ADMIN_SHA: ${{ needs.build.outputs.admin_sha }}
+          ZIP_SHA256: ${{ needs.build.outputs.zip_sha256 }}
+          JOB_STATUS: ${{ job.status }}
+          MIGRATIONS: ${{ inputs.apply_migrations && 'applied' || 'not run' }}
         run: |
           {
-            echo "### Deploy to ${APP_NAME}: ${{ job.status }}"
+            echo "### Deploy to ${APP_NAME}: ${JOB_STATUS}"
             echo ""
             echo "- Trigger: \`${EVENT_NAME}\`${DISPATCH_SOURCE:+ from \`${DISPATCH_SOURCE}\`}"
-            for d in backend web admin; do
-              if [ -d "$d/.git" ]; then echo "- $d: \`$(git -C "$d" rev-parse HEAD)\`"; fi
-            done
-            echo "- Package SHA-256: \`${ZIP_SHA256:-not built}\`"
+            echo "- backend: \`${BACKEND_SHA}\`"
+            echo "- web: \`${WEB_SHA}\`"
+            echo "- admin: \`${ADMIN_SHA}\`"
+            echo "- Package SHA-256: \`${ZIP_SHA256}\`"
+            echo "- Database migrations: ${MIGRATIONS}"
           } >> "$GITHUB_STEP_SUMMARY"
