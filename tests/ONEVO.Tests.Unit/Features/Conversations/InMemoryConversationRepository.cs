@@ -250,6 +250,23 @@ internal sealed class InMemoryConversationRepository : IConversationRepository
 
     public List<ConversationMute> Mutes { get; } = new();
 
+    /// <summary>The listing-based rules the EF aggregate replaces (EfConversationRepositoryTests compares the two).</summary>
+    public async Task<int> CountUnreadInListedChatsAsync(Guid tenantId, Guid employeeId, string groupEventPrefix, CancellationToken ct = default)
+    {
+        var members = await ListMemberConversationsAsync(tenantId, employeeId, ct);
+        var caseIds = members.Where(m => !ConversationSources.IsPeopleChat(m.Conversation.SubjectSource)).Select(m => m.Conversation.Id).ToHashSet();
+        var groups = Messages.Where(m => m.TenantId == tenantId && caseIds.Contains(m.ConversationId) && m.Kind == ConversationMessageKinds.System
+                && m.SystemEventJson?.StartsWith(groupEventPrefix, StringComparison.Ordinal) == true)
+            .Select(m => m.ConversationId).ToHashSet();
+        var muted = await ListMutedConversationIdsAsync(tenantId, employeeId, ct);
+        var listed = members
+            .Where(m => ConversationSources.IsPeopleChat(m.Conversation.SubjectSource) || groups.Contains(m.Conversation.Id))
+            .Where(m => !muted.Contains(m.Conversation.Id))
+            .Select(m => m.Conversation.Id)
+            .ToList();
+        return (await CountUnreadByConversationAsync(tenantId, employeeId, listed, ct)).Values.Sum();
+    }
+
     public Task<IReadOnlySet<Guid>> ListMutedConversationIdsAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default)
         => Task.FromResult<IReadOnlySet<Guid>>(Mutes.Where(m => m.TenantId == tenantId && m.EmployeeId == employeeId)
             .Select(m => m.ConversationId).ToHashSet());
