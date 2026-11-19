@@ -134,6 +134,25 @@ their first call, including a new TLS connection and query shapes the first user
 affects only the first request after each deployment or restart; a start-up warm-up request would hide it, but that is
 outside the Task 00a target, which is about warm requests.
 
+### Capture 8 — browser runs (2026-11-19)
+
+The inbox page (`https://dapi.onexso.com:4200/inbox`, frontend `Development` dev server) loaded in headless Chromium
+(Playwright's bundled Chromium, the same browser engine as Chrome) against the Capture 7 backend, Release build, signed
+in with the seeded demo user's session cookie. Each value is the `/inbox/counts` request's duration from the browser's
+Resource Timing API, the data DevTools' Network panel shows. Desktop Chrome showed a certificate error for the local
+host through the browser extension, so it could not be used.
+
+The page sends `/inbox/counts` twice on every load; the second request starts while the first is still running.
+
+| Load | First counts request | Second counts request | API calls on the page |
+|---|---:|---:|---:|
+| First load (cold page) | 494 ms | 581 ms | 16 |
+| Reload 1 (clean run) | 105 ms | 186 ms | 15 |
+| Reload 2 (clean run) | 93 ms | 175 ms | 15 |
+
+Both clean runs are under 200 ms for both requests. The duplicate request is a frontend issue outside Task 00a; removing
+it would also stop the second request waiting on the first.
+
 ## Verification status
 
 - Capture 1–4 (before): the combined endpoint failed (1443 ms first run, warm provider stages at least 345 ms).
@@ -141,7 +160,9 @@ outside the Task 00a target, which is about warm requests.
 - Capture 6 (plus Leave batching): every warm run 117–163 ms, new connection or not.
 - Capture 7 (routing-only scope): warm 108–136 ms; the slowest provider is now Monitoring at about 26 ms.
 - Cold first call: about 1.2 s once per process start; a second user's first call is about 280 ms.
-- Not yet done: two clean browser runs (DevTools), and a run with production-level logging.
+- Capture 8 (browser): two clean inbox reloads, `/inbox/counts` 93–105 ms (and 175–186 ms for the duplicate
+  request the page sends at the same time) - the Task 00a target of two clean browser runs under 200 ms is met.
+- Not yet done: a run with production-level logging.
 - Remaining repeated reads: the exact-approver lookups in case routing, Attendance's scope, and Work alert audiences
   per project with open alerts.
 - Unit, architecture and SQL Server integration verification is recorded with the branch commits.
