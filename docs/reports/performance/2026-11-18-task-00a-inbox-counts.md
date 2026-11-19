@@ -66,10 +66,33 @@ exposes the application-level problem: Monitoring, Calendar and Work count provi
 (and Work loads hierarchy/audience data per project) instead of issuing only aggregate count queries. The router awaits all
 providers sequentially, then separately calculates unread conversations, so their durations accumulate.
 
+### Capture 5 — after the aggregate counts (2026-11-19)
+
+Branch `perf/task-00a-inbox-counts` at `345ff855` (Monitoring, Calendar, Work and conversation-unread counts replaced
+by aggregate reads), Release build, local SQL Server, seeded `dapi` tenant, Development logging (SQL logged), signed in
+as the seeded demo user `mathusanth.kumaran@dapi.test`. Measured with `curl` against
+`https://dapi.onexso.com:7229/api/v1/inbox/counts`, not in a browser.
+
+The response was 8 pending requests, 115 open alerts and 367 unread messages, so every provider had rows to count.
+
+| Run | Result |
+|---|---|
+| First call after start-up (cold) | 1337 ms |
+| 12 warm calls, new connection each | 168–219 ms (2 of 12 over 200 ms, including the TLS handshake) |
+| 10 warm calls, one reused connection | 167–191 ms after the first; server log 170–180 ms |
+
+Warm requests over a reused connection are under 200 ms, but only by 10–30 ms. One request still issued about 340 SQL
+commands. The log interleaves background jobs, so they cannot be attributed exactly, but the Leave provider visibly
+repeats one read pattern per pending leave request (requests, entitlements, approvers, policy, policy versions, blackout
+periods, assignments): 8 pending requests gave 8 repetitions. Authority lookups (employees, position assignments,
+coverage, hierarchy closure) also repeat.
+
 ## Verification status
 
-- The individual list-summary calls in Capture 1 pass, but the combined `/api/v1/inbox/counts` endpoint does not.
-- The first completed combined-count run took 1443 ms; the following warm provider stages totalled at least 345 ms.
-- Task 00a remains open until remaining list-based provider counts are replaced by aggregate count reads and two clean
-  completed browser runs are below 200 ms.
-- Unit and architecture verification remains recorded separately with the implementation branch evidence.
+- Capture 1–4 (before): the combined endpoint failed (1443 ms first run, warm provider stages at least 345 ms).
+- Capture 5 (after): warm combined counts are 167–191 ms over a reused connection; with a new connection per call 2 of 12
+  runs were over 200 ms. The cold first call is 1.3 s.
+- Not yet done: two clean browser runs (DevTools), and a run with production-level logging.
+- Next candidates if the margin is not enough: the Leave count's per-request evaluation, and the authority lookups
+  repeated per candidate employee.
+- Unit, architecture and SQL Server integration verification is recorded with the branch commits.
