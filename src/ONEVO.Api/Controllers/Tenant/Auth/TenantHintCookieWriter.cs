@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Hosting;
+using ONEVO.Application.Common.Tenancy;
 
 namespace ONEVO.Api.Controllers.Tenant.Auth;
 
@@ -14,28 +15,30 @@ namespace ONEVO.Api.Controllers.Tenant.Auth;
 internal static class TenantHintCookieWriter
 {
     public static void SetLastTenantHintCookie(
-        this ControllerBase controller, string tenantSlug, string rootDomain, IWebHostEnvironment env)
+        this ControllerBase controller, string tenantSlug, string rootDomain, IWebHostEnvironment env, TenancyMode mode)
     {
         controller.Response.Cookies.Append("crownus_last_tenant", tenantSlug, new CookieOptions
         {
             HttpOnly = false,
             Secure = !env.IsDevelopment(),
             SameSite = SameSiteMode.Lax,
-            Domain = "." + rootDomain,
+            // SingleHost: host-only (no Domain attribute) - there is no parent domain to share across.
+            Domain = mode == TenancyMode.SingleHost ? null : "." + rootDomain,
             Path = "/",
             Expires = DateTimeOffset.UtcNow.AddDays(180)
         });
     }
 
     public static void ClearLastTenantHintCookie(
-        this ControllerBase controller, string rootDomain, IWebHostEnvironment env)
+        this ControllerBase controller, string rootDomain, IWebHostEnvironment env, TenancyMode mode)
     {
         controller.Response.Cookies.Delete("crownus_last_tenant", new CookieOptions
         {
             HttpOnly = false,
             Secure = !env.IsDevelopment(),
             SameSite = SameSiteMode.Lax,
-            Domain = "." + rootDomain,
+            // SingleHost: host-only (no Domain attribute) - there is no parent domain to share across.
+            Domain = mode == TenancyMode.SingleHost ? null : "." + rootDomain,
             Path = "/"
         });
     }

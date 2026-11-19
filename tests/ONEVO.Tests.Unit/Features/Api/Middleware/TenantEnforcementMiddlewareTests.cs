@@ -187,6 +187,185 @@ public class TenantEnforcementMiddlewareTests
         _nextCalled.Should().BeFalse();
     }
 
+    // ---- System context (root host / SingleHost without tenant header) ----
+
+    private HttpContext MakeSystemContext(
+        string path,
+        string method = "GET",
+        bool authenticated = false,
+        bool withTenantClaim = true)
+    {
+        var mock = new Mock<ITenantContext>();
+        mock.Setup(c => c.ContextMode).Returns(TenantContextMode.System);
+        mock.Setup(c => c.IsResolved).Returns(true);
+        mock.Setup(c => c.TenantId).Returns(Guid.Empty);
+
+        var ctx = new DefaultHttpContext();
+        ctx.Request.Path = path;
+        ctx.Request.Method = method;
+        ctx.Response.Body = new MemoryStream();
+
+        if (authenticated)
+        {
+            var claims = new List<Claim> { new(ClaimTypes.NameIdentifier, Guid.NewGuid().ToString()) };
+            if (withTenantClaim)
+                claims.Add(new Claim("tenant_id", Guid.NewGuid().ToString()));
+            ctx.User = new ClaimsPrincipal(new ClaimsIdentity(claims, "Test"));
+        }
+
+        ctx.RequestServices = MockServices(mock.Object);
+        return ctx;
+    }
+
+    private static void ProtectedEndpoint(HttpContext context)
+    {
+        var metadata = new EndpointMetadataCollection(new AuthorizeAttribute("TenantPolicy"));
+        context.SetEndpoint(new Endpoint(_ => Task.CompletedTask, metadata, "protected-test-endpoint"));
+    }
+
+    private static async Task<string> ReadDetail(HttpContext ctx)
+    {
+        ctx.Response.Body.Position = 0;
+        using var json = await System.Text.Json.JsonDocument.ParseAsync(ctx.Response.Body);
+        return json.RootElement.GetProperty("detail").GetString()!;
+    }
+
+    [Fact]
+    public async Task SystemContext_AuthenticatedTenantPrincipal_TenantApi_Returns403()
+    {
+        var sut = Build(_next);
+        var ctx = MakeSystemContext("/api/v1/employees", authenticated: true);
+        ProtectedEndpoint(ctx);
+
+        await sut.InvokeAsync(ctx);
+
+        ctx.Response.StatusCode.Should().Be(403);
+        _nextCalled.Should().BeFalse();
+        (await ReadDetail(ctx)).Should().Be(TenantEnforcementMiddleware.TenantSessionWithoutTenantContextDetail);
+    }
+
+    [Fact]
+    public async Task SystemContext_TenantPrincipal_UnmatchedRoute_Returns403()
+    {
+        // No endpoint metadata means not [AllowAnonymous]: fail closed.
+        var sut = Build(_next);
+        var ctx = MakeSystemContext("/api/v1/employees", authenticated: true);
+
+        await sut.InvokeAsync(ctx);
+
+        ctx.Response.StatusCode.Should().Be(403);
+        _nextCalled.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task SystemContext_TenantPrincipal_DoesNotClearSessionCookie()
+    {
+        // In SingleHost mode the session is still valid for its own tenant; one request without
+        // the tenant header must not sign the user out.
+        var sut = Build(_next);
+        var ctx = MakeSystemContext("/api/v1/employees", authenticated: true);
+        ctx.Request.Headers.Cookie = "crownus_session=valid-ticket";
+        ProtectedEndpoint(ctx);
+
+        await sut.InvokeAsync(ctx);
+
+        ctx.Response.StatusCode.Should().Be(403);
+        ctx.Response.Headers.SetCookie.ToString().Should().NotContain("crownus_session");
+    }
+
+    [Fact]
+    public async Task SystemContext_AnonymousLogin_Passes()
+    {
+        var sut = Build(_next);
+        var ctx = MakeSystemContext("/api/v1/auth/login", method: "POST");
+        AllowAnonymous(ctx);
+
+        await sut.InvokeAsync(ctx);
+
+        _nextCalled.Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData("/api/v1/auth/login")]
+    [InlineData("/api/v1/auth/login/select-workspace")]
+    [InlineData("/api/v1/legal/acceptances/complete-login")]
+    [InlineData("/api/v1/auth/session-exchange")]
+    public async Task SystemContext_AllowAnonymousEndpoint_WithTenantPrincipal_Passes(string path)
+    {
+        // Re-login on the root host while an old session cookie is still present.
+        var sut = Build(_next);
+        var ctx = MakeSystemContext(path, method: "POST", authenticated: true);
+        AllowAnonymous(ctx);
+
+        await sut.InvokeAsync(ctx);
+
+        _nextCalled.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task SystemContext_TenantPrincipal_Logout_Passes()
+    {
+        var sut = Build(_next);
+        var ctx = MakeSystemContext("/api/v1/auth/logout", method: "POST", authenticated: true);
+        ProtectedEndpoint(ctx);
+
+        await sut.InvokeAsync(ctx);
+
+        _nextCalled.Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData("/api/v1/auth/logout/anything", "POST")]
+    [InlineData("/api/v1/auth/logout", "GET")]
+    public async Task SystemContext_TenantPrincipal_NotExactLogout_Returns403(string path, string method)
+    {
+        // The logout exemption is exact: POST /api/v1/auth/logout only.
+        var sut = Build(_next);
+        var ctx = MakeSystemContext(path, method: method, authenticated: true);
+        ProtectedEndpoint(ctx);
+
+        await sut.InvokeAsync(ctx);
+
+        ctx.Response.StatusCode.Should().Be(403);
+        _nextCalled.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task SystemContext_Unauthenticated_ProtectedEndpoint_PassesToAuthorization()
+    {
+        var sut = Build(_next);
+        var ctx = MakeSystemContext("/api/v1/employees");
+        ProtectedEndpoint(ctx);
+
+        await sut.InvokeAsync(ctx);
+
+        _nextCalled.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task SystemContext_AuthenticatedWithoutTenantClaim_Passes()
+    {
+        var sut = Build(_next);
+        var ctx = MakeSystemContext("/api/v1/employees", authenticated: true, withTenantClaim: false);
+        ProtectedEndpoint(ctx);
+
+        await sut.InvokeAsync(ctx);
+
+        _nextCalled.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task SystemContext_TenantPrincipal_NonTenantApiPath_Passes()
+    {
+        var sut = Build(_next);
+        var ctx = MakeSystemContext("/health/ready", authenticated: true);
+        ProtectedEndpoint(ctx);
+
+        await sut.InvokeAsync(ctx);
+
+        _nextCalled.Should().BeTrue();
+    }
+
     [Fact]
     public async Task TenantHost_AdminPath_Returns403()
     {

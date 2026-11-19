@@ -16250,9 +16250,9 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasKey("Id")
                         .HasName("pk_task_comment_reactions");
 
-                    b.HasIndex("CommentId", "EmployeeId", "Emoji")
+                    b.HasIndex("CommentId", "EmployeeId")
                         .IsUnique()
-                        .HasDatabaseName("ix_task_comment_reactions_comment_id_employee_id_emoji");
+                        .HasDatabaseName("ix_task_comment_reactions_comment_id_employee_id");
 
                     b.ToTable("task_comment_reactions", (string)null);
                 });
