@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ONEVO.Api.Contracts.CoreHr.Offboarding;
 using ONEVO.Api.Filters;
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Features.CoreHr.Offboarding.Commands.CompleteEmployeeChecklistTask;
 using ONEVO.Application.Features.CoreHr.Offboarding.Commands.CreateBypassRequest;
 using ONEVO.Application.Features.CoreHr.Offboarding.Commands.UpdateEmployeeChecklistTask;
@@ -33,7 +34,7 @@ public class EmployeeChecklistTasksController(IMediator mediator) : ControllerBa
     }
 
     [HttpPost("{taskId:guid}/complete")]
-    [RequirePermission("employees:write")]
+    [RequirePermission(PermissionCatalog.Employees.Write)]
     [Idempotent]
     public async Task<IActionResult> Complete(Guid employeeId, Guid taskId, CancellationToken ct = default)
     {
@@ -42,7 +43,7 @@ public class EmployeeChecklistTasksController(IMediator mediator) : ControllerBa
     }
 
     [HttpPost("{taskId:guid}/bypass-requests")]
-    [RequirePermission("employees:write")]
+    [RequirePermission(PermissionCatalog.Employees.Write)]
     [Idempotent]
     public async Task<IActionResult> CreateBypassRequest(Guid employeeId, Guid taskId, [FromBody] CreateBypassRequestRequest request, CancellationToken ct = default)
     {

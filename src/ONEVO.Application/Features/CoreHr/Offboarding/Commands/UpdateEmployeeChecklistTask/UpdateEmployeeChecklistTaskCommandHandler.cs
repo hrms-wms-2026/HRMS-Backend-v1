@@ -1,4 +1,5 @@
 using MediatR;
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
@@ -23,7 +24,7 @@ public class UpdateEmployeeChecklistTaskCommandHandler(
     IEmployeeRepository employeeRepository)
     : IRequestHandler<UpdateEmployeeChecklistTaskCommand, Result>
 {
-    private const string EmployeesWrite = "employees:write";
+    private const string EmployeesWrite = PermissionCatalog.Employees.Write;
 
     public async Task<Result> Handle(UpdateEmployeeChecklistTaskCommand request, CancellationToken ct)
     {

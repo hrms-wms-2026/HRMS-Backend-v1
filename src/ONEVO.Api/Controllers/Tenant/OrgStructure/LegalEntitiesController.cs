@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using ONEVO.Api.Contracts.OrgStructure.LegalEntities;
 using ONEVO.Api.Contracts.Storage;
 using ONEVO.Api.Filters;
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Features.OrgStructure.Commands.CreateLegalEntity;
 using ONEVO.Application.Features.OrgStructure.Commands.DeleteLegalEntity;
 using ONEVO.Application.Features.OrgStructure.Commands.LinkLegalEntityLogo;
@@ -25,7 +26,7 @@ public class LegalEntitiesController : ControllerBase
 
     /// <summary>Company selector/list for the current tenant. Active companies only unless includeInactive=true.</summary>
     [HttpGet]
-    [RequirePermission("org:read")]
+    [RequirePermission(PermissionCatalog.Org.Read)]
     public async Task<IActionResult> List([FromQuery] bool includeInactive, CancellationToken ct)
     {
         var result = await _mediator.Send(new ListLegalEntitiesQuery(includeInactive), ct);
@@ -36,7 +37,7 @@ public class LegalEntitiesController : ControllerBase
 
     /// <summary>General Settings for one company. 404 if missing or belongs to another tenant.</summary>
     [HttpGet("{id:guid}/general-settings")]
-    [RequireAnyPermission("legal_entity:read", "legal_entity:update")]
+    [RequireAnyPermission(PermissionCatalog.LegalEntity.Read, PermissionCatalog.LegalEntity.Update)]
     public async Task<IActionResult> GetGeneralSettings(Guid id, CancellationToken ct)
     {
         var result = await _mediator.Send(new GetLegalEntityGeneralSettingsQuery(id), ct);
@@ -47,7 +48,7 @@ public class LegalEntitiesController : ControllerBase
 
     /// <summary>Create a company/legal entity inside the current tenant.</summary>
     [HttpPost]
-    [RequirePermission("legal_entity:create")]
+    [RequirePermission(PermissionCatalog.LegalEntity.Create)]
     public async Task<IActionResult> Create([FromBody] CreateLegalEntityRequest request, CancellationToken ct)
     {
         var result = await _mediator.Send(
@@ -68,7 +69,7 @@ public class LegalEntitiesController : ControllerBase
 
     /// <summary>Update General Settings for one company. The route id is authoritative.</summary>
     [HttpPut("{id:guid}/general-settings")]
-    [RequirePermission("legal_entity:update")]
+    [RequirePermission(PermissionCatalog.LegalEntity.Update)]
     public async Task<IActionResult> UpdateGeneralSettings(
         Guid id,
         [FromBody] UpdateLegalEntityGeneralSettingsRequest request,
@@ -110,7 +111,7 @@ public class LegalEntitiesController : ControllerBase
 
     /// <summary>Links a pending company_logo upload as this company's current logo.</summary>
     [HttpPut("{id:guid}/logo")]
-    [RequirePermission("legal_entity:update")]
+    [RequirePermission(PermissionCatalog.LegalEntity.Update)]
     public async Task<IActionResult> LinkLogo(Guid id, [FromBody] LinkFileRequest request, CancellationToken ct)
     {
         var result = await _mediator.Send(new LinkLegalEntityLogoCommand(id, request.FileId), ct);
@@ -121,7 +122,7 @@ public class LegalEntitiesController : ControllerBase
 
     /// <summary>Unlinks and deletes this company's current logo.</summary>
     [HttpDelete("{id:guid}/logo")]
-    [RequirePermission("legal_entity:update")]
+    [RequirePermission(PermissionCatalog.LegalEntity.Update)]
     public async Task<IActionResult> RemoveLogo(Guid id, CancellationToken ct)
     {
         var result = await _mediator.Send(new RemoveLegalEntityLogoAssetCommand(id), ct);
@@ -132,7 +133,7 @@ public class LegalEntitiesController : ControllerBase
 
     /// <summary>Soft-deactivates a company. Requires exact confirmName match; never physically deletes the row.</summary>
     [HttpDelete("{id:guid}")]
-    [RequirePermission("legal_entity:delete")]
+    [RequirePermission(PermissionCatalog.LegalEntity.Delete)]
     public async Task<IActionResult> Delete(Guid id, [FromBody] DeleteLegalEntityRequest request, CancellationToken ct)
     {
         var result = await _mediator.Send(new DeleteLegalEntityCommand(id, request.ConfirmName), ct);

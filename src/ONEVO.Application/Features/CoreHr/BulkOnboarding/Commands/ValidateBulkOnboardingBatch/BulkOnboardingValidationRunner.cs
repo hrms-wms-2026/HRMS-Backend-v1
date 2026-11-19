@@ -1,4 +1,5 @@
 using System.Text.Json;
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.BulkOnboarding.Helpers;
 using ONEVO.Application.Features.CoreHr.BulkOnboarding.Models;
@@ -126,7 +127,7 @@ public sealed class BulkOnboardingValidationRunner : IBulkOnboardingValidationRu
                 positionBoundRows.Add((row, positionId, outcome.DepartmentId));
         }
 
-        var canManageOrg = _currentUser.HasPermission("org:manage");
+        var canManageOrg = _currentUser.HasPermission(PermissionCatalog.Org.Manage);
         var capacityIssues = await ApplyBatchPositionCapacityAsync(
             tenantId, batch.LegalEntityId, positionsById, positionBoundRows, results, errorPairs, canManageOrg, ct);
 
