@@ -53,14 +53,14 @@ deleted and the cascade never fires.
 
 ### Declarations (code, reviewed in a PR)
 
-`PermissionLifecycle` (Application, `Features/Auth/Permission/Lifecycle`) holds three lists next to
-the catalogue:
+The lifecycle lives in task 32's `PermissionCatalog` (`Application/Common/Authorization`), so a code and
+its history are edited in one file. `PermissionCatalog.Lifecycle` combines three parts:
 
-| List | Entry | Meaning |
+| Part | Entry | Meaning |
 |---|---|---|
-| `Renames` | `Rename(from, to, date, reason)` | Old code becomes new code. Chains (`a→b`, `b→c`) resolve to the last code |
-| `DefaultGrants` | `DefaultGrant(code, targets, date, reason)` | One-time backfill of a new code to matching roles of existing tenants. Targets: the `Owner` system role, roles made from a role template, or roles that already hold another code |
-| `Retirements` | `Retire(code, stage, reason, date, dropGrants)` | `SoftRetired`: row stays, `retired_at` is set, the code stops working and disappears from the role screen, grants stay so a revert brings them back. `Removed` (a later release): row and its grants are deleted |
+| `PermissionCatalog.Renames` | `PermissionRename(from, to, date, reason)` | Old code becomes new code. Chains (`a→b`, `b→c`) resolve to the last code |
+| `PermissionCatalog.DefaultGrants` | `PermissionDefaultGrant(code, targets, date, reason)` | One-time backfill of a new code to matching roles of existing tenants. Targets: the `Owner` system role, roles made from a role template, or roles that already hold another code |
+| Catalogue entries of kind `SoftRetired` / `Retired` | `PermissionDefinition(..., Kind, DropGrants)` | `SoftRetired`: row stays, `retired_at` is set, the code stops working and disappears from the role screen, grants stay so a revert brings them back. `Retired` (a later release): row and its grants are deleted. The description is the reason |
 
 `PermissionLifecycleValidator` checks the lists against the catalogue (rename target exists, source
 is not a live code, no cycles, a code is not both renamed and retired, a default grant names a live
@@ -104,4 +104,4 @@ switch off.
 ### Migration
 
 `retired_at` column on `permissions` and the `permission_changes` table. Created last, on the latest
-base, after tasks 32 and 39 are merged.
+base (task 32 and `origin/development` merged): `20261119155238_AddPermissionLifecycle`.
