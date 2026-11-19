@@ -22,7 +22,7 @@ param(
     [string]$AdminRepo,
 
     # Folder the zip is written to.
-    [string]$OutDir = (Split-Path (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path -Parent),
+    [string]$OutDir,
 
     # Output zip file name; default crownus-appservice-<yyyy-MM-dd>.zip
     [string]$ZipName = ("crownus-appservice-{0}.zip" -f (Get-Date -Format 'yyyy-MM-dd'))
@@ -31,6 +31,7 @@ param(
 $ErrorActionPreference = 'Stop'
 
 $BackendRepo = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
+if (-not $OutDir) { $OutDir = Split-Path $BackendRepo -Parent }
 $Parent = Split-Path $BackendRepo -Parent
 $Suffix = if ((Split-Path $BackendRepo -Leaf) -like '*-singlehost') { '-singlehost' } else { '' }
 if (-not $WebRepo)   { $WebRepo   = Join-Path $Parent "Hrms--Web-application---front-end---v1$Suffix" }
