@@ -14,6 +14,30 @@ namespace ONEVO.Infrastructure.Migrations
                 name: "fk_daily_work_location_confirmations_employees_employee_id",
                 table: "daily_work_location_confirmations");
 
+            migrationBuilder.DropForeignKey(
+                name: "fk_employee_addresses_employees_employee_id",
+                table: "employee_addresses");
+
+            migrationBuilder.DropForeignKey(
+                name: "fk_employee_bank_details_employees_employee_id",
+                table: "employee_bank_details");
+
+            migrationBuilder.DropForeignKey(
+                name: "fk_employee_dependents_employees_employee_id",
+                table: "employee_dependents");
+
+            migrationBuilder.DropForeignKey(
+                name: "fk_employee_emergency_contacts_employees_employee_id",
+                table: "employee_emergency_contacts");
+
+            migrationBuilder.DropForeignKey(
+                name: "fk_employee_work_locations_employees_employee_id",
+                table: "employee_work_locations");
+
+            migrationBuilder.DropForeignKey(
+                name: "fk_planned_task_blocks_employees_employee_id",
+                table: "planned_task_blocks");
+
             migrationBuilder.CreateIndex(
                 name: "ix_wm_task_rate_settings_legal_entity_id",
                 table: "wm_task_rate_settings",
@@ -528,6 +552,34 @@ namespace ONEVO.Infrastructure.Migrations
                 principalColumn: "id");
 
             migrationBuilder.AddForeignKey(
+                name: "fk_employee_addresses_employees_employee_id",
+                table: "employee_addresses",
+                column: "employee_id",
+                principalTable: "employees",
+                principalColumn: "id");
+
+            migrationBuilder.AddForeignKey(
+                name: "fk_employee_bank_details_employees_employee_id",
+                table: "employee_bank_details",
+                column: "employee_id",
+                principalTable: "employees",
+                principalColumn: "id");
+
+            migrationBuilder.AddForeignKey(
+                name: "fk_employee_dependents_employees_employee_id",
+                table: "employee_dependents",
+                column: "employee_id",
+                principalTable: "employees",
+                principalColumn: "id");
+
+            migrationBuilder.AddForeignKey(
+                name: "fk_employee_emergency_contacts_employees_employee_id",
+                table: "employee_emergency_contacts",
+                column: "employee_id",
+                principalTable: "employees",
+                principalColumn: "id");
+
+            migrationBuilder.AddForeignKey(
                 name: "fk_employee_hierarchy_closure_employees_ancestor_employee_id",
                 table: "employee_hierarchy_closure",
                 column: "ancestor_employee_id",
@@ -546,6 +598,13 @@ namespace ONEVO.Infrastructure.Migrations
                 table: "employee_hierarchy_closure",
                 column: "source_position_assignment_id",
                 principalTable: "position_assignments",
+                principalColumn: "id");
+
+            migrationBuilder.AddForeignKey(
+                name: "fk_employee_work_locations_employees_employee_id",
+                table: "employee_work_locations",
+                column: "employee_id",
+                principalTable: "employees",
                 principalColumn: "id");
 
             migrationBuilder.AddForeignKey(
@@ -615,6 +674,13 @@ namespace ONEVO.Infrastructure.Migrations
                 name: "fk_onboarding_drafts_employees_reports_to_employee_id",
                 table: "onboarding_drafts",
                 column: "reports_to_employee_id",
+                principalTable: "employees",
+                principalColumn: "id");
+
+            migrationBuilder.AddForeignKey(
+                name: "fk_planned_task_blocks_employees_employee_id",
+                table: "planned_task_blocks",
+                column: "employee_id",
                 principalTable: "employees",
                 principalColumn: "id");
 
@@ -938,6 +1004,22 @@ namespace ONEVO.Infrastructure.Migrations
                 table: "daily_work_location_confirmations");
 
             migrationBuilder.DropForeignKey(
+                name: "fk_employee_addresses_employees_employee_id",
+                table: "employee_addresses");
+
+            migrationBuilder.DropForeignKey(
+                name: "fk_employee_bank_details_employees_employee_id",
+                table: "employee_bank_details");
+
+            migrationBuilder.DropForeignKey(
+                name: "fk_employee_dependents_employees_employee_id",
+                table: "employee_dependents");
+
+            migrationBuilder.DropForeignKey(
+                name: "fk_employee_emergency_contacts_employees_employee_id",
+                table: "employee_emergency_contacts");
+
+            migrationBuilder.DropForeignKey(
                 name: "fk_employee_hierarchy_closure_employees_ancestor_employee_id",
                 table: "employee_hierarchy_closure");
 
@@ -948,6 +1030,10 @@ namespace ONEVO.Infrastructure.Migrations
             migrationBuilder.DropForeignKey(
                 name: "fk_employee_hierarchy_closure_position_assignments_source_position_assignment_id",
                 table: "employee_hierarchy_closure");
+
+            migrationBuilder.DropForeignKey(
+                name: "fk_employee_work_locations_employees_employee_id",
+                table: "employee_work_locations");
 
             migrationBuilder.DropForeignKey(
                 name: "fk_employees_departments_department_id",
@@ -988,6 +1074,10 @@ namespace ONEVO.Infrastructure.Migrations
             migrationBuilder.DropForeignKey(
                 name: "fk_onboarding_drafts_employees_reports_to_employee_id",
                 table: "onboarding_drafts");
+
+            migrationBuilder.DropForeignKey(
+                name: "fk_planned_task_blocks_employees_employee_id",
+                table: "planned_task_blocks");
 
             migrationBuilder.DropForeignKey(
                 name: "fk_position_assignments_employees_reports_to_employee_id",
@@ -1472,6 +1562,54 @@ namespace ONEVO.Infrastructure.Migrations
             migrationBuilder.AddForeignKey(
                 name: "fk_daily_work_location_confirmations_employees_employee_id",
                 table: "daily_work_location_confirmations",
+                column: "employee_id",
+                principalTable: "employees",
+                principalColumn: "id",
+                onDelete: ReferentialAction.Cascade);
+
+            migrationBuilder.AddForeignKey(
+                name: "fk_employee_addresses_employees_employee_id",
+                table: "employee_addresses",
+                column: "employee_id",
+                principalTable: "employees",
+                principalColumn: "id",
+                onDelete: ReferentialAction.Cascade);
+
+            migrationBuilder.AddForeignKey(
+                name: "fk_employee_bank_details_employees_employee_id",
+                table: "employee_bank_details",
+                column: "employee_id",
+                principalTable: "employees",
+                principalColumn: "id",
+                onDelete: ReferentialAction.Cascade);
+
+            migrationBuilder.AddForeignKey(
+                name: "fk_employee_dependents_employees_employee_id",
+                table: "employee_dependents",
+                column: "employee_id",
+                principalTable: "employees",
+                principalColumn: "id",
+                onDelete: ReferentialAction.Cascade);
+
+            migrationBuilder.AddForeignKey(
+                name: "fk_employee_emergency_contacts_employees_employee_id",
+                table: "employee_emergency_contacts",
+                column: "employee_id",
+                principalTable: "employees",
+                principalColumn: "id",
+                onDelete: ReferentialAction.Cascade);
+
+            migrationBuilder.AddForeignKey(
+                name: "fk_employee_work_locations_employees_employee_id",
+                table: "employee_work_locations",
+                column: "employee_id",
+                principalTable: "employees",
+                principalColumn: "id",
+                onDelete: ReferentialAction.Cascade);
+
+            migrationBuilder.AddForeignKey(
+                name: "fk_planned_task_blocks_employees_employee_id",
+                table: "planned_task_blocks",
                 column: "employee_id",
                 principalTable: "employees",
                 principalColumn: "id",

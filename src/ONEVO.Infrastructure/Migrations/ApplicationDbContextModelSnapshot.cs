@@ -17675,7 +17675,7 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasOne("ONEVO.Domain.Features.CoreHr.Entities.Employee", null)
                         .WithMany()
                         .HasForeignKey("EmployeeId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired()
                         .HasConstraintName("fk_employee_addresses_employees_employee_id");
                 });
@@ -17685,7 +17685,7 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasOne("ONEVO.Domain.Features.CoreHr.Entities.Employee", null)
                         .WithMany()
                         .HasForeignKey("EmployeeId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired()
                         .HasConstraintName("fk_employee_bank_details_employees_employee_id");
                 });
@@ -17730,7 +17730,7 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasOne("ONEVO.Domain.Features.CoreHr.Entities.Employee", null)
                         .WithMany()
                         .HasForeignKey("EmployeeId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired()
                         .HasConstraintName("fk_employee_dependents_employees_employee_id");
                 });
@@ -17740,7 +17740,7 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasOne("ONEVO.Domain.Features.CoreHr.Entities.Employee", null)
                         .WithMany()
                         .HasForeignKey("EmployeeId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired()
                         .HasConstraintName("fk_employee_emergency_contacts_employees_employee_id");
                 });
@@ -19137,7 +19137,7 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasOne("ONEVO.Domain.Features.CoreHr.Entities.Employee", null)
                         .WithMany()
                         .HasForeignKey("EmployeeId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired()
                         .HasConstraintName("fk_employee_work_locations_employees_employee_id");
                 });
@@ -19562,7 +19562,7 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasOne("ONEVO.Domain.Features.CoreHr.Entities.Employee", null)
                         .WithMany()
                         .HasForeignKey("EmployeeId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired()
                         .HasConstraintName("fk_planned_task_blocks_employees_employee_id");
 
