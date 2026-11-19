@@ -146,6 +146,88 @@ public sealed class TenantAndObjectAccessTests : IClassFixture<TenantAndObjectAc
     public async Task SameTenant_ObjectIdWithoutAccess_IsNotReachable(string probe)
         => await AssertRefusedAsync(ObjectProbes[probe], probe);
 
+    // ── 2b. Monitoring reads and screenshot commands by employee id ──────────
+    // The other-team manager holds monitoring:read and monitoring:screenshots:request but covers
+    // nobody, so the colleague's monitoring data and devices must stay out of reach - the same rule
+    // /employees/{id}/overview/activity already applies. Found by this task; fixed in the same change.
+
+    private static readonly Dictionary<string, Probe> MonitoringProbes = new()
+    {
+        ["Monitoring: other-team manager GET activity snapshots"] = new(f => f.OtherTeamManager, Get, f => $"/api/v1/monitoring/activity/snapshots?employeeId={f.ColleagueEmployeeId}&date={Today:yyyy-MM-dd}", Marker: ColleagueMarker),
+        ["Monitoring: other-team manager GET activity daily summary"] = new(f => f.OtherTeamManager, Get, f => $"/api/v1/monitoring/activity/daily-summary?employeeId={f.ColleagueEmployeeId}&date={Today:yyyy-MM-dd}", Marker: ColleagueMarker),
+        ["Monitoring: other-team manager GET activity daily range"] = new(f => f.OtherTeamManager, Get, f => $"/api/v1/monitoring/activity/daily-range?employeeId={f.ColleagueEmployeeId}&from={Today:yyyy-MM-dd}&to={Today:yyyy-MM-dd}", Marker: ColleagueMarker),
+        ["Monitoring: other-team manager GET app-usage snapshots"] = new(f => f.OtherTeamManager, Get, f => $"/api/v1/monitoring/app-usage/snapshots?employeeId={f.ColleagueEmployeeId}&date={Today:yyyy-MM-dd}", Marker: ColleagueMarker),
+        ["Monitoring: other-team manager GET daily report"] = new(f => f.OtherTeamManager, Get, f => $"/api/v1/monitoring/daily-report?employeeId={f.ColleagueEmployeeId}&date={Today:yyyy-MM-dd}", Marker: ColleagueMarker),
+        ["Monitoring: other-team manager GET daily report export"] = new(f => f.OtherTeamManager, Get, f => $"/api/v1/monitoring/daily-report/export?employeeId={f.ColleagueEmployeeId}&date={Today:yyyy-MM-dd}", Marker: ColleagueMarker),
+        ["Monitoring: other-team manager GET device-state snapshots"] = new(f => f.OtherTeamManager, Get, f => $"/api/v1/monitoring/device-state/snapshots?employeeId={f.ColleagueEmployeeId}&date={Today:yyyy-MM-dd}", Marker: ColleagueMarker),
+        ["Monitoring: other-team manager GET meeting signals"] = new(f => f.OtherTeamManager, Get, f => $"/api/v1/monitoring/meetings/signals?employeeId={f.ColleagueEmployeeId}&date={Today:yyyy-MM-dd}", Marker: ColleagueMarker),
+        ["Monitoring: other-team manager GET screenshots filtered to colleague"] = new(f => f.OtherTeamManager, Get, f => $"/api/v1/monitoring/screenshots?employeeId={f.ColleagueEmployeeId}", Marker: ColleagueMarker),
+        ["Monitoring: other-team manager GET colleague screenshot url"] = new(f => f.OtherTeamManager, Get, f => $"/api/v1/monitoring/screenshots/{f.ColleagueScreenshotId}/url", Marker: ColleagueMarker),
+    };
+
+    public static IEnumerable<object[]> MonitoringProbeNames => MonitoringProbes.Keys.Select(k => new object[] { k });
+
+    [Theory]
+    [MemberData(nameof(MonitoringProbeNames))]
+    public async Task SameTenant_MonitoringDataOutsideCoverage_IsNotReachable(string probe)
+        => await AssertRefusedAsync(MonitoringProbes[probe], probe);
+
+    [Fact]
+    public async Task Monitoring_ScreenshotListWithoutFilter_LeavesOutEmployeesOutsideCoverage()
+    {
+        using var response = await _f.SendAsync(_f.OtherTeamManager, Get, "/api/v1/monitoring/screenshots");
+        var text = await response.Content.ReadAsStringAsync();
+        _output.WriteLine($"PROBE|Monitoring: other-team manager GET screenshots without filter|GET /api/v1/monitoring/screenshots|{(int)response.StatusCode}|");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK, text);
+        text.Should().NotContain(_f.ColleagueScreenshotId.ToString(), "the list must leave out employees the caller does not cover");
+    }
+
+    [Fact]
+    public async Task Monitoring_ScreenshotRequestForUncoveredDevice_Returns404()
+    {
+        // 404, not the 403 of the toggle or consent check: the caller must not learn anything about
+        // a device whose employee they cannot view.
+        using var response = await _f.SendAsync(_f.OtherTeamManager, Post, "/api/v1/monitoring/screenshots/request",
+            JsonContent.Create(new { agentDeviceId = _f.ColleagueDeviceId, note = "probe" }));
+        var text = await response.Content.ReadAsStringAsync();
+        _output.WriteLine($"PROBE|Monitoring: other-team manager POST screenshot request|POST /api/v1/monitoring/screenshots/request|{(int)response.StatusCode}|{ProblemDetail(text)}");
+
+        response.StatusCode.Should().Be(HttpStatusCode.NotFound, text);
+        text.Should().NotBeNullOrWhiteSpace();
+    }
+
+    [Fact]
+    public async Task Monitoring_PositiveControls_CoveringManagerReadsTheColleague()
+    {
+        var failures = new List<string>();
+        foreach (var probe in MonitoringProbes.Values)
+        {
+            // 204 is a real answer here: daily-summary returns no content until the day is aggregated.
+            using var response = await _f.SendAsync(_f.CoveringManager, Get, probe.Path(_f));
+            if (response.StatusCode is not (HttpStatusCode.OK or HttpStatusCode.NoContent))
+                failures.Add($"{probe.Path(_f)} -> {(int)response.StatusCode} {await response.Content.ReadAsStringAsync()}");
+        }
+
+        using (var list = await _f.SendAsync(_f.CoveringManager, Get, "/api/v1/monitoring/screenshots"))
+        {
+            var text = await list.Content.ReadAsStringAsync();
+            if (list.StatusCode != HttpStatusCode.OK || !text.Contains(_f.ColleagueScreenshotId.ToString()))
+                failures.Add($"unfiltered screenshot list -> {(int)list.StatusCode}, colleague asset missing: {text}");
+        }
+
+        // The covering manager reaches the device, so the refusal (if any) comes from the toggle or
+        // consent check further on, never the 404 of an unreachable device.
+        using (var request = await _f.SendAsync(_f.CoveringManager, Post, "/api/v1/monitoring/screenshots/request",
+                   JsonContent.Create(new { agentDeviceId = _f.ColleagueDeviceId, note = "probe" })))
+        {
+            if (request.StatusCode == HttpStatusCode.NotFound)
+                failures.Add($"screenshot request -> 404 {await request.Content.ReadAsStringAsync()}");
+        }
+
+        failures.Should().BeEmpty();
+    }
+
     // ── 3. Positive controls: the same endpoints work for the rightful user ──
 
     [Fact]

@@ -17,6 +17,7 @@ public class MonitoringDeviceStateController : ControllerBase
 
     [HttpGet("snapshots")]
     [RequirePermission("monitoring:read")]
+    [RequireVisibleEmployee("employeeId")]
     public async Task<IActionResult> GetSnapshots(
         [FromQuery] Guid employeeId,
         [FromQuery] DateOnly date,

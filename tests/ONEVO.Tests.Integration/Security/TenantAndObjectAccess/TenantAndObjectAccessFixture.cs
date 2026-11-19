@@ -10,8 +10,12 @@ using Microsoft.Extensions.DependencyInjection;
 using ONEVO.Application.Features.Auth.Login.ServiceInterfaces;
 using ONEVO.Domain.Features.Auth.Entities;
 using ONEVO.Domain.Features.Conversations.Entities;
+using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
 using ONEVO.Domain.Features.Leave.Request.Entities;
+using ONEVO.Domain.Features.Monitoring.Screenshots.Entities;
+using ONEVO.Domain.Features.Monitoring.TrayActivation.Entities;
+using ONEVO.Domain.Features.OrgStructure.Entities;
 using ONEVO.Domain.Features.SharedPlatform.Entities;
 using ONEVO.Domain.Features.WorkManagement.Projects.Entities;
 using ONEVO.Infrastructure.Persistence;
@@ -64,6 +68,7 @@ public sealed class TenantAndObjectAccessFixture : IAsyncLifetime
     public TenantSession Colleague { get; private set; } = null!;
     public TenantSession OtherTeamManager { get; private set; } = null!;
     public TenantSession Hr { get; private set; } = null!;
+    public TenantSession CoveringManager { get; private set; } = null!;
 
     public TenantObjects A { get; private set; } = null!;
     public TenantObjects B { get; private set; } = null!;
@@ -74,6 +79,8 @@ public sealed class TenantAndObjectAccessFixture : IAsyncLifetime
     public Guid ColleaguePendingFileId { get; private set; }
     public Guid ColleagueDashboardId { get; private set; }
     public Guid ColleagueLeaveRequestId { get; private set; }
+    public Guid ColleagueScreenshotId { get; private set; }
+    public Guid ColleagueDeviceId { get; private set; }
 
     public IServiceProvider Services => _factory.Services;
 
@@ -114,14 +121,20 @@ public sealed class TenantAndObjectAccessFixture : IAsyncLifetime
         Employee = await SeedAndLoginUserAsync(OwnerA, "employee@xt-acc-a.test", [], "Plain Employee");
         Colleague = await SeedAndLoginUserAsync(OwnerA, "colleague@xt-acc-a.test", [], "Plain Colleague");
         OtherTeamManager = await SeedAndLoginUserAsync(OwnerA, "manager@xt-acc-a.test",
-            ["attendance:read", "leave:approve", "monitoring:read", "employees:write"], "Other Team Manager");
+            ["attendance:read", "leave:approve", "monitoring:read", "monitoring:screenshots:request", "employees:write"], "Other Team Manager");
         Hr = await SeedAndLoginUserAsync(OwnerA, "hr@xt-acc-a.test",
             ["leave:read", "leave:manage", "attendance:read"], "HR");
+        // Positive control for the monitoring probes: same monitoring permissions as the other-team
+        // manager, plus a position with company-wide coverage of tenant A's legal entity.
+        CoveringManager = await SeedAndLoginUserAsync(OwnerA, "covering@xt-acc-a.test",
+            ["monitoring:read", "monitoring:screenshots:request"], "Covering Manager");
 
         EmployeeEmployeeId = await AddEmployeeForUserAsync(OwnerA.TenantId, legalEntityA, "employee@xt-acc-a.test", "EMP-E", "Employee");
         ColleagueEmployeeId = await AddEmployeeForUserAsync(OwnerA.TenantId, legalEntityA, "colleague@xt-acc-a.test", "EMP-C", ColleagueMarker);
         ManagerEmployeeId = await AddEmployeeForUserAsync(OwnerA.TenantId, legalEntityA, "manager@xt-acc-a.test", "EMP-M", "Manager");
         await AddEmployeeForUserAsync(OwnerA.TenantId, legalEntityA, "hr@xt-acc-a.test", "EMP-H", "Hr");
+        var coveringEmployeeId = await AddEmployeeForUserAsync(OwnerA.TenantId, legalEntityA, "covering@xt-acc-a.test", "EMP-CM", "Covering");
+        await GrantCompanyCoverageAsync(OwnerA.TenantId, legalEntityA, coveringEmployeeId);
 
         A = await CreateObjectsAsync(OwnerA, legalEntityA, ownerEmployeeA, "Alpha", "XTA");
         B = await CreateObjectsAsync(OwnerB, legalEntityB, ownerEmployeeB, TenantBMarker, "XTB");
@@ -130,6 +143,7 @@ public sealed class TenantAndObjectAccessFixture : IAsyncLifetime
         ColleaguePendingFileId = await UploadFileAsync(Colleague, "generic_document", $"{ColleagueMarker}.pdf", "application/pdf", PdfBytes);
         ColleagueDashboardId = await GetMyDashboardIdAsync(Colleague);
         ColleagueLeaveRequestId = await SeedLeaveRequestAsync(OwnerA.TenantId, ColleagueEmployeeId, A.LeaveTypeId, ColleagueMarker);
+        (ColleagueScreenshotId, ColleagueDeviceId) = await SeedColleagueMonitoringAsync(OwnerA.TenantId, legalEntityA);
     }
 
     public async Task DisposeAsync()
@@ -419,6 +433,87 @@ public sealed class TenantAndObjectAccessFixture : IAsyncLifetime
         db.Employees.Add(employee);
         await db.SaveChangesAsync();
         return employee.Id;
+    }
+
+    /// <summary>A position for the employee with active company-wide coverage of the legal entity.</summary>
+    private async Task GrantCompanyCoverageAsync(Guid tenantId, Guid legalEntityId, Guid employeeId)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var position = new Position
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenantId,
+            LegalEntityId = legalEntityId,
+            Name = "Covering Manager",
+            PositionType = Position.TypeUnique,
+            MaxOccupancy = 1,
+            IsActive = true,
+        };
+        db.Positions.Add(position);
+        db.PositionAssignments.Add(new PositionAssignment
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenantId,
+            EmployeeId = employeeId,
+            PositionId = position.Id,
+            AssignmentKind = PositionAssignmentKind.PrimaryEmployment,
+            AssignmentStatus = PositionAssignmentStatus.Active,
+            EffectiveFrom = DateOnly.FromDateTime(DateTime.UtcNow),
+        });
+        db.ManagementCoverageRecords.Add(new ManagementCoverageRecord
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenantId,
+            LegalEntityId = legalEntityId,
+            OwnerPositionId = position.Id,
+            CoveredTargetType = ManagementCoverageRecord.TargetCompany,
+            OwnerOrder = 1,
+            Source = ManagementCoverageRecord.SourceManual,
+            IsLocked = false,
+            Status = ManagementCoverageRecord.StatusActive,
+        });
+        await db.SaveChangesAsync();
+    }
+
+    /// <summary>
+    /// The colleague's monitoring objects: one screenshot evidence asset (pointing at the colleague's
+    /// uploaded file, so a signed URL can be issued) and one active tray device.
+    /// </summary>
+    private async Task<(Guid ScreenshotId, Guid DeviceId)> SeedColleagueMonitoringAsync(Guid tenantId, Guid legalEntityId)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var now = DateTimeOffset.UtcNow;
+        var asset = new MonitoringEvidenceAsset
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenantId,
+            EmployeeId = ColleagueEmployeeId,
+            FileRecordId = ColleaguePendingFileId,
+            EvidenceType = "screenshot",
+            Source = "agent",
+            TriggerType = "periodic",
+            CapturedAt = now,
+            CreatedAt = now,
+        };
+        var device = new TrayDeviceRegistration
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenantId,
+            UserId = Colleague.UserId,
+            LegalEntityId = legalEntityId,
+            DeviceName = $"{ColleagueMarker}-laptop",
+            DeviceOs = "windows",
+            DeviceFingerprint = $"fp-{Guid.NewGuid():N}",
+            IsActive = true,
+            ActivatedAt = now,
+            CreatedAt = now,
+        };
+        db.Add(asset);
+        db.Add(device);
+        await db.SaveChangesAsync();
+        return (asset.Id, device.Id);
     }
 
     private async Task<Guid> GetPrimaryLegalEntityIdAsync(Guid tenantId)
