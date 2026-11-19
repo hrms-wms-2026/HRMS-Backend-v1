@@ -117,6 +117,12 @@ builder.Services.AddHealthChecks()
 
 var app = builder.Build();
 
+if (ONEVO.Application.Common.Tenancy.TenancyModeReader.Read(app.Configuration)
+    == ONEVO.Application.Common.Tenancy.TenancyMode.SingleHost)
+{
+    app.Logger.LogWarning("Tenancy:Mode is SingleHost - test mode only; tenant comes from the X-Crownus-Tenant header.");
+}
+
 // First, so scheme, host and client IP are the real client's for everything below
 // (HTTPS redirect, HSTS, logging, CORS, rate limiting, tenant resolution).
 app.UseForwardedHeaders();
