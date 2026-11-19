@@ -1,4 +1,5 @@
 using MediatR;
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
@@ -90,7 +91,7 @@ public sealed class EmployeeLeavePolicyCommandHandler
     /// <summary>leave:create lets a manager set other people's policies; only leave:manage may set
     /// one's own, so nobody can hand themselves a more generous policy.</summary>
     private async Task<bool> IsOwnRecordWithoutManageAsync(Guid tenantId, Guid employeeId, CancellationToken ct) =>
-        !_currentUser.HasPermission("leave:manage")
+        !_currentUser.HasPermission(PermissionCatalog.Leave.Manage)
         && await _policies.IsUsersOwnEmployeeAsync(tenantId, employeeId, _currentUser.UserId, ct);
 
     private async Task<Domain.Features.Leave.Policy.Entities.LeavePolicyAssignment?> CurrentOverrideAsync(

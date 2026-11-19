@@ -2,6 +2,7 @@ using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ONEVO.Api.Filters;
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Features.Monitoring.DeviceState.Queries.GetDeviceStateSnapshots;
 
 namespace ONEVO.Api.Controllers.Tenant.Monitoring.DeviceState;
@@ -16,7 +17,7 @@ public class MonitoringDeviceStateController : ControllerBase
     public MonitoringDeviceStateController(IMediator mediator) => _mediator = mediator;
 
     [HttpGet("snapshots")]
-    [RequirePermission("monitoring:read")]
+    [RequirePermission(PermissionCatalog.Monitoring.Read)]
     [RequireVisibleEmployee("employeeId")]
     public async Task<IActionResult> GetSnapshots(
         [FromQuery] Guid employeeId,

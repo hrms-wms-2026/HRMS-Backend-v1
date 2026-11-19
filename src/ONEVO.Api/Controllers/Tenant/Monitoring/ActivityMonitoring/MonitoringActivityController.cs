@@ -2,6 +2,7 @@ using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ONEVO.Api.Filters;
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.Queries.GetActivityDailyRange;
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.Queries.GetActivityDailySummary;
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.Queries.GetActivitySnapshots;
@@ -28,7 +29,7 @@ public class MonitoringActivityController : ControllerBase
     /// List normalized activity snapshots for an employee on a given date (UTC day).
     /// </summary>
     [HttpGet("snapshots")]
-    [RequirePermission("monitoring:read")]
+    [RequirePermission(PermissionCatalog.Monitoring.Read)]
     [RequireVisibleEmployee("employeeId")]
     public async Task<IActionResult> GetSnapshots(
         [FromQuery] Guid employeeId,
@@ -55,7 +56,7 @@ public class MonitoringActivityController : ControllerBase
     /// Get pre-aggregated daily activity summary for an employee (null if not yet aggregated).
     /// </summary>
     [HttpGet("daily-summary")]
-    [RequirePermission("monitoring:read")]
+    [RequirePermission(PermissionCatalog.Monitoring.Read)]
     [RequireVisibleEmployee("employeeId")]
     public async Task<IActionResult> GetDailySummary(
         [FromQuery] Guid employeeId,
@@ -78,7 +79,7 @@ public class MonitoringActivityController : ControllerBase
     /// Get daily activity summaries for a date range (max 31 days).
     /// </summary>
     [HttpGet("daily-range")]
-    [RequirePermission("monitoring:read")]
+    [RequirePermission(PermissionCatalog.Monitoring.Read)]
     [RequireVisibleEmployee("employeeId")]
     public async Task<IActionResult> GetDailyRange(
         [FromQuery] Guid employeeId,
@@ -104,7 +105,7 @@ public class MonitoringActivityController : ControllerBase
     /// date (defaults to today, UTC day bounds).
     /// </summary>
     [HttpGet("my-timeline")]
-    [RequirePermission("activity:read:self")]
+    [RequirePermission(PermissionCatalog.Activity.ReadSelf)]
     public async Task<IActionResult> GetMyTimeline(
         [FromQuery] DateOnly? date,
         CancellationToken ct = default)
@@ -122,7 +123,7 @@ public class MonitoringActivityController : ControllerBase
     /// [from, to]. Past days come from the daily aggregation job; today is computed live.
     /// </summary>
     [HttpGet("my-work-pattern")]
-    [RequirePermission("activity:read:self")]
+    [RequirePermission(PermissionCatalog.Activity.ReadSelf)]
     public async Task<IActionResult> GetMyWorkPattern(
         [FromQuery] DateOnly from,
         [FromQuery] DateOnly to,
@@ -142,7 +143,7 @@ public class MonitoringActivityController : ControllerBase
     /// via this same endpoint, the desktop tray app's own notification later).
     /// </summary>
     [HttpGet("my-focus-status")]
-    [RequirePermission("activity:read:self")]
+    [RequirePermission(PermissionCatalog.Activity.ReadSelf)]
     public async Task<IActionResult> GetMyFocusStatus(CancellationToken ct = default)
     {
         var result = await _mediator.Send(new GetMyFocusStatusQuery(), ct);

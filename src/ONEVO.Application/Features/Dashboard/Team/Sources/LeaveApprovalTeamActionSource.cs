@@ -1,3 +1,4 @@
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Dashboard.Team.Abstractions;
@@ -17,7 +18,7 @@ public sealed class LeaveApprovalTeamActionSource(
     ICurrentUser currentUser, IEmployeeRepository employees, ILeaveApprovalRepository repository)
     : ITeamActionSource
 {
-    private const string Permission = "leave:approve";
+    private const string Permission = PermissionCatalog.Leave.Approve;
 
     public string Key => "leave.approval";
     public string Domain => ActionSourceSummary.DomainPeople;

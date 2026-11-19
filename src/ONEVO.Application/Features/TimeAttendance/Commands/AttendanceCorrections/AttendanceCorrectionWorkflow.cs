@@ -1,4 +1,5 @@
 using System.Text.Json;
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Common.Exceptions;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
@@ -36,7 +37,7 @@ public sealed class AttendanceCorrectionWorkflow(
     IInboxChangeNotifier? inbox = null,
     IAttendanceAlertRepository? alerts = null)
 {
-    private const string ApprovalPermission = "attendance:approve";
+    private const string ApprovalPermission = PermissionCatalog.Attendance.Approve;
     // The bell opens the Inbox item (inbox plan S4.2).
     private static readonly string RelatedType = ONEVO.Application.Features.Inbox.Contracts.InboxNotificationNavigation.RelatedEntityType("attendance", "correction");
     private const string CreatedTemplate = "attendance_correction_request_created";

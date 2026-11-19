@@ -1,4 +1,5 @@
 using MediatR;
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Permission.ServiceInterfaces;
@@ -53,7 +54,7 @@ public sealed class GetSprintActivityQueryHandler : IRequestHandler<GetSprintAct
             return Result<IReadOnlyList<SprintActivityResponse>>.NotFound("Sprint not found.");
 
         var permissions = await _permissionResolver.ResolveAsync(userId, tenantId, null, ct);
-        var hasReadPermission = permissions.Contains("*");
+        var hasReadPermission = permissions.Contains(PermissionCatalog.SuperAdmin);
         if (!hasReadPermission && !await _members.HasActiveMembershipAsync(tenantId, sprint.ProjectId, callerEmployeeId.Value, ct))
             return Result<IReadOnlyList<SprintActivityResponse>>.Forbidden("You do not have access to this project.");
 

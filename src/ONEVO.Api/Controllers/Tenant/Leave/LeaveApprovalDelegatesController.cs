@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ONEVO.Api.Contracts.Leave.Approvals;
 using ONEVO.Api.Filters;
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Features.Leave.Approval.Commands;
 
 namespace ONEVO.Api.Controllers.Tenant.Leave;
@@ -17,7 +18,7 @@ public sealed class LeaveApprovalDelegatesController : ControllerBase
     public LeaveApprovalDelegatesController(IMediator mediator) => _mediator = mediator;
 
     [HttpGet]
-    [RequirePermission("leave:approve")]
+    [RequirePermission(PermissionCatalog.Leave.Approve)]
     public async Task<IActionResult> List(CancellationToken ct)
     {
         var result = await _mediator.Send(new ListMyLeaveApprovalDelegatesQuery(), ct);
@@ -25,7 +26,7 @@ public sealed class LeaveApprovalDelegatesController : ControllerBase
     }
 
     [HttpPost]
-    [RequirePermission("leave:approve")]
+    [RequirePermission(PermissionCatalog.Leave.Approve)]
     public async Task<IActionResult> Create([FromBody] CreateLeaveApprovalDelegateRequest request, CancellationToken ct)
     {
         var result = await _mediator.Send(
@@ -34,7 +35,7 @@ public sealed class LeaveApprovalDelegatesController : ControllerBase
     }
 
     [HttpDelete("{id:guid}")]
-    [RequirePermission("leave:approve")]
+    [RequirePermission(PermissionCatalog.Leave.Approve)]
     public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
     {
         var result = await _mediator.Send(new DeleteLeaveApprovalDelegateCommand(id), ct);

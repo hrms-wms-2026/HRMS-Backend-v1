@@ -1,3 +1,4 @@
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Permission;
 using AuthPermission = ONEVO.Domain.Features.Auth.Entities.Permission;
@@ -27,7 +28,7 @@ internal static class RoleEffectivePermissions
     // Module auto-grants (e.g. activity:read:self) go to every user of the module, not to the
     // role, and the catalog hides them too, so they are not counted against the role.
     public static bool Grants(AuthPermission permission, IReadOnlySet<string> grantingModules) =>
-        permission.Code != "*"
+        permission.Code != PermissionCatalog.SuperAdmin
         && !ModuleAutoGrants.Contains(permission.Code)
         && grantingModules.Contains(permission.Module);
 

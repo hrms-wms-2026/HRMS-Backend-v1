@@ -1,4 +1,5 @@
 using MediatR;
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Permission.ServiceInterfaces;
@@ -80,7 +81,7 @@ public sealed class GetSubtasksQueryHandler : IRequestHandler<GetSubtasksQuery, 
             return Result<IReadOnlyList<WorkTaskResponse>>.NotFound("Task not found.");
 
         var permissions = await _permissionResolver.ResolveAsync(userId, tenantId, null, ct);
-        if (!permissions.Contains("*"))
+        if (!permissions.Contains(PermissionCatalog.SuperAdmin))
         {
             var accessibleObjectiveIds =
                 (await _hierarchy.LoadTreeAsync(tenantId, project.Id, ct)).AtOrBelow(

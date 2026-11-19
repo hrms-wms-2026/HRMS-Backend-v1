@@ -1,3 +1,4 @@
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.Onboarding.Services;
@@ -22,7 +23,7 @@ public interface IMeetingPlacementResolver
 
 public sealed class MeetingPlacementResolver : IMeetingPlacementResolver
 {
-    public const string CalendarWritePermission = "calendar:write";
+    public const string CalendarWritePermission = PermissionCatalog.Calendar.Write;
 
     private readonly IWorkHierarchyService _hierarchy;
     private readonly IMilestoneMembershipCoordinator _membership;
