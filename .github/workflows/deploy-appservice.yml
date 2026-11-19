@@ -54,6 +54,7 @@ jobs:
       web_sha: ${{ steps.shas.outputs.web }}
       admin_sha: ${{ steps.shas.outputs.admin }}
       zip_sha256: ${{ steps.package.outputs.zip_sha256 }}
+      build_id: ${{ steps.package.outputs.build_id }}
     steps:
       - name: Check required settings
         env:
@@ -121,13 +122,17 @@ jobs:
       - name: Build package
         id: package
         shell: pwsh
+        env:
+          PACKAGE_MODE: ${{ vars.PACKAGE_MODE || 'SingleHost' }}
+          BUILD_ID: ${{ github.run_id }}-${{ github.run_attempt }}
         run: >
           ./backend/ops/appservice/build-appservice-package.ps1
-          -Mode '${{ vars.PACKAGE_MODE || 'SingleHost' }}'
+          -Mode $env:PACKAGE_MODE
           -WebRepo "$PWD/web"
           -AdminRepo "$PWD/admin"
-          -OutDir '${{ runner.temp }}'
+          -OutDir $env:RUNNER_TEMP
           -ZipName crownus-appservice.zip
+          -BuildId $env:BUILD_ID
 
       - name: Upload package
         uses: actions/upload-artifact@v4
@@ -195,6 +200,7 @@ jobs:
           ConnectionStrings__MigrationConnection: ${{ secrets.MIGRATION_CONNECTION_STRING }}
         run: |
           dotnet tool install --global dotnet-ef --version 10.0.9
+          export PATH="$PATH:$HOME/.dotnet/tools"
           dotnet ef migrations bundle \
             -p backend/src/ONEVO.Infrastructure \
             -s backend/src/ONEVO.Api \
@@ -202,6 +208,7 @@ jobs:
             -o "$RUNNER_TEMP/efbundle"
 
       - name: Apply migrations
+        id: migrate
         if: ${{ inputs.apply_migrations }}
         # The bundle needs appsettings.json in the current folder.
         working-directory: backend/src/ONEVO.Api
@@ -219,22 +226,44 @@ jobs:
           path: ${{ runner.temp }}/package
 
       - name: Deploy to App Service
-        uses: azure/webapps-deploy@v3
+        # Pinned to a commit: this step receives the publish profile. 02a81bea = v3.0.8 (what v3 pointed to on 2026-11-19).
+        uses: azure/webapps-deploy@02a81bead70021f5284939794bcec79c271ab383 # v3.0.8
         with:
           app-name: ${{ env.APP_NAME }}
           publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
           package: ${{ runner.temp }}/package/crownus-appservice.zip
 
-      - name: Wait for /health/ready
+      # webapps-deploy can return before the site restarts, while the OLD app still answers. So first wait
+      # until the site serves this run's build id, then require /health/ready = 200. Hard 10-minute deadline.
+      - name: Wait for the new build and /health/ready
+        env:
+          BUILD_ID: ${{ needs.build.outputs.build_id }}
         run: |
-          url="https://${APPSERVICE_HOST}/health/ready"
-          for i in $(seq 1 20); do
-            code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 "$url" || echo 000)
-            echo "Attempt $i: $url -> $code"
-            if [ "$code" = "200" ]; then exit 0; fi
+          base="https://${APPSERVICE_HOST}"
+          deadline=$((SECONDS + 600))
+          new_build=false
+          while [ "$SECONDS" -lt "$deadline" ]; do
+            if [ "$new_build" = "false" ]; then
+              served=$(curl -sS --max-time 15 "$base/build-id.txt" 2>/dev/null || true)
+              if [ "$served" = "$BUILD_ID" ]; then
+                new_build=true
+                echo "New build is live: $BUILD_ID"
+              else
+                echo "Waiting for build $BUILD_ID (site serves: ${served:-nothing})"
+              fi
+            fi
+            if [ "$new_build" = "true" ]; then
+              code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 15 "$base/health/ready" 2>/dev/null) || code=000
+              echo "/health/ready -> $code"
+              if [ "$code" = "200" ]; then exit 0; fi
+            fi
             sleep 15
           done
-          echo "::error::$url did not return 200 within 5 minutes. Check App Service > Log stream and the app settings."
+          if [ "$new_build" = "false" ]; then
+            echo "::error::The site never served build $BUILD_ID within 10 minutes; the new version did not start. Check App Service > Log stream."
+          else
+            echo "::error::$base/health/ready did not return 200 within 10 minutes. Check App Service > Log stream and the app settings."
+          fi
           exit 1
 
       - name: Run summary
@@ -247,7 +276,8 @@ jobs:
           ADMIN_SHA: ${{ needs.build.outputs.admin_sha }}
           ZIP_SHA256: ${{ needs.build.outputs.zip_sha256 }}
           JOB_STATUS: ${{ job.status }}
-          MIGRATIONS: ${{ inputs.apply_migrations && 'applied' || 'not run' }}
+          MIGRATIONS: ${{ inputs.apply_migrations && steps.migrate.outcome || 'not requested' }}
+          BUILD_ID: ${{ needs.build.outputs.build_id }}
         run: |
           {
             echo "### Deploy to ${APP_NAME}: ${JOB_STATUS}"
@@ -257,5 +287,6 @@ jobs:
             echo "- web: \`${WEB_SHA}\`"
             echo "- admin: \`${ADMIN_SHA}\`"
             echo "- Package SHA-256: \`${ZIP_SHA256}\`"
+            echo "- Build id: \`${BUILD_ID}\`"
             echo "- Database migrations: ${MIGRATIONS}"
           } >> "$GITHUB_STEP_SUMMARY"

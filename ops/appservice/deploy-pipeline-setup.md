@@ -18,6 +18,8 @@ Design: `docs/superpowers/specs/next/2026-11-19-appservice-deploy-pipeline-desig
    - Set **Web sockets** to On. Inbox live updates use SignalR.
    - Set **HTTPS Only** to On.
    - Click **Save**.
+   - **Stack settings → Startup command:** `dotnet ONEVO.Api.dll`. The package contains other `.dll` files, so App Service must be told which one to start.
+   - **Environment variables:** make sure `SCM_DO_BUILD_DURING_DEPLOYMENT` is absent or `false`. The package is already built, and App Service must not try to build it again.
 2. **Overview → Download publish profile.** Keep the file private: it works like a password for the app. If it leaks, use **Reset publish profile** and update the GitHub secret.
 3. **Environment variables:** enter the app settings from [`appservice-settings.md`](appservice-settings.md), once. The pipeline never changes settings.
 
@@ -73,4 +75,5 @@ The organisation's included Actions minutes ran out in November 2026. Runs fail 
      `sqlcmd -S 9.223.115.62,51433 -U <admin login> -C -b -i ops/sqlserver/post-migration-grants.sql -v DB_NAME=CrownusDB_test`
 
      New `dbo` tables are already covered by the existing schema-wide grant.
-- **A failed health check** means the app didn't answer `/health/ready` with 200 within 5 minutes. Check App Service → Log stream. The usual causes are a missing app setting or a pending migration.
+- **How a deploy is confirmed:** each package carries a build id, which the site serves at `/build-id.txt`. The deploy job waits until the site serves *this* run's id, so it never mistakes the old version for the new one. Then it requires `/health/ready` to return 200, all within 10 minutes. If it fails, check App Service → Log stream. The usual causes are a missing app setting or a pending migration.
+- **Queued deploys:** only one deploy runs at a time. While it runs, GitHub keeps just one more waiting and drops any older waiting run. For merges that's harmless, because the waiting run always builds the newest `main`. But a waiting **manual** run (custom branches or *apply migrations*) can be dropped by a later merge, and vice versa. Start manual deploys when nothing else is running, and check the Actions tab afterwards.
