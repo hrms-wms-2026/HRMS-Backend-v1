@@ -7,6 +7,7 @@ using ONEVO.Application.Features.DevPlatform.Compliance.Helpers;
 using ONEVO.Application.Features.DevPlatform.Compliance.Mappers;
 using ONEVO.Application.Features.DevPlatform.Compliance.RepositoryInterfaces;
 using ONEVO.Domain.Features.DevPlatform.Compliance.Entities;
+using ONEVO.Application.Features.DevPlatform.Compliance.Validation;
 
 namespace ONEVO.Application.Features.DevPlatform.Compliance.Commands.CreateLegalDocumentVersion;
 
@@ -23,7 +24,7 @@ public sealed record CreateLegalDocumentVersionCommand(
     string ContentText,
     bool IsRequired,
     string BlockScope,
-    Guid ActorPlatformUserId) : IRequest<Result<LegalDocumentVersionDetailDto>>;
+    Guid ActorPlatformUserId) : IRequest<Result<LegalDocumentVersionDetailDto>>, ILegalDocumentContentInput;
 
 public sealed class CreateLegalDocumentVersionCommandHandler
     : IRequestHandler<CreateLegalDocumentVersionCommand, Result<LegalDocumentVersionDetailDto>>
