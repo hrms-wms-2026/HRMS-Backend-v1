@@ -45,10 +45,10 @@ public sealed class DeviceApprovalAndChatValidatorTests
     }
 
     [Fact]
-    public void DeviceChangeReviews_CommentUpTo2000()
+    public void DeviceChangeReviews_CommentUpTo4000()
     {
-        new ApproveDeviceChangeRequestCommandValidator().TestValidate(new ApproveDeviceChangeRequestCommand(Guid.NewGuid(), S(2_000))).ShouldNotHaveAnyValidationErrors();
-        new RejectDeviceChangeRequestCommandValidator().TestValidate(new RejectDeviceChangeRequestCommand(Guid.NewGuid(), S(2_001)))
+        new ApproveDeviceChangeRequestCommandValidator().TestValidate(new ApproveDeviceChangeRequestCommand(Guid.NewGuid(), S(4_000))).ShouldNotHaveAnyValidationErrors();
+        new RejectDeviceChangeRequestCommandValidator().TestValidate(new RejectDeviceChangeRequestCommand(Guid.NewGuid(), S(4_001)))
             .ShouldHaveValidationErrorFor(x => x.ReviewComment);
     }
 
@@ -82,7 +82,7 @@ public sealed class DeviceApprovalAndChatValidatorTests
         new TraySubmitLocationChangeRequestCommandValidator().TestValidate(new TraySubmitLocationChangeRequestCommand(0, 0, 5, S(2_001)))
             .ShouldHaveValidationErrorFor(x => x.Reason);
         new ApproveLocationChangeRequestCommandValidator().TestValidate(new ApproveLocationChangeRequestCommand(Guid.NewGuid(), null)).ShouldNotHaveAnyValidationErrors();
-        new RejectLocationChangeRequestCommandValidator().TestValidate(new RejectLocationChangeRequestCommand(Guid.NewGuid(), S(2_001)))
+        new RejectLocationChangeRequestCommandValidator().TestValidate(new RejectLocationChangeRequestCommand(Guid.NewGuid(), S(4_001)))
             .ShouldHaveValidationErrorFor(x => x.ReviewComment);
     }
 
@@ -92,8 +92,8 @@ public sealed class DeviceApprovalAndChatValidatorTests
     public void WorkApprovalDecision_BoundsPayloadAndComment()
     {
         var validator = new DecideWorkApprovalRequestCommandValidator();
-        validator.TestValidate(new DecideWorkApprovalRequestCommand(Guid.NewGuid(), default, "{}", S(2_000))).ShouldNotHaveAnyValidationErrors();
-        var result = validator.TestValidate(new DecideWorkApprovalRequestCommand(Guid.NewGuid(), default, S(1_000_001), S(2_001)));
+        validator.TestValidate(new DecideWorkApprovalRequestCommand(Guid.NewGuid(), default, "{}", S(4_000))).ShouldNotHaveAnyValidationErrors();
+        var result = validator.TestValidate(new DecideWorkApprovalRequestCommand(Guid.NewGuid(), default, S(1_000_001), S(4_001)));
         result.ShouldHaveValidationErrorFor(x => x.EditedPayloadJson);
         result.ShouldHaveValidationErrorFor(x => x.Comment);
     }

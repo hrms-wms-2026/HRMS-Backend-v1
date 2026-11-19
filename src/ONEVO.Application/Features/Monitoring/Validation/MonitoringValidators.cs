@@ -20,7 +20,9 @@ namespace ONEVO.Application.Features.Monitoring.Validation;
 /// samples) is a request bound, not a sampling limit.</item>
 /// <item>daily_work_location_confirmations.location_type is nvarchar(20). Coordinates must be on the globe and
 /// accuracy not negative.</item>
-/// <item>Review comments and change reasons are nvarchar(max); 2,000 matches the other decision notes.</item>
+/// <item>Change reasons are nvarchar(max); 2,000 matches the other decision notes. Review comments are nvarchar(max)
+/// too, and the inbox approve and reject dialogs pass a note of up to 4,000 characters straight into them, so they
+/// get 4,000.</item>
 /// </list>
 /// The handlers keep the required checks, known location types and the state rules.
 /// </summary>
@@ -33,6 +35,7 @@ public static class MonitoringLimits
     public const int MaxSignalsPerBatch = 10_000;
     public const int LocationTypeMaxLength = 20;
     public const int NoteMaxLength = 2_000;
+    public const int ReviewCommentMaxLength = 4_000;
 }
 
 public sealed class PollDeviceAuthorizationCommandValidator : AbstractValidator<PollDeviceAuthorizationCommand>
@@ -56,7 +59,7 @@ public sealed class ApproveDeviceChangeRequestCommandValidator : AbstractValidat
 {
     public ApproveDeviceChangeRequestCommandValidator()
     {
-        RuleFor(x => x.ReviewComment).ValidName(MonitoringLimits.NoteMaxLength, required: false);
+        RuleFor(x => x.ReviewComment).ValidName(MonitoringLimits.ReviewCommentMaxLength, required: false);
     }
 }
 
@@ -64,7 +67,7 @@ public sealed class RejectDeviceChangeRequestCommandValidator : AbstractValidato
 {
     public RejectDeviceChangeRequestCommandValidator()
     {
-        RuleFor(x => x.ReviewComment).ValidName(MonitoringLimits.NoteMaxLength, required: false);
+        RuleFor(x => x.ReviewComment).ValidName(MonitoringLimits.ReviewCommentMaxLength, required: false);
     }
 }
 
@@ -126,7 +129,7 @@ public sealed class ApproveLocationChangeRequestCommandValidator : AbstractValid
 {
     public ApproveLocationChangeRequestCommandValidator()
     {
-        RuleFor(x => x.ReviewComment).ValidName(MonitoringLimits.NoteMaxLength, required: false);
+        RuleFor(x => x.ReviewComment).ValidName(MonitoringLimits.ReviewCommentMaxLength, required: false);
     }
 }
 
@@ -134,6 +137,6 @@ public sealed class RejectLocationChangeRequestCommandValidator : AbstractValida
 {
     public RejectLocationChangeRequestCommandValidator()
     {
-        RuleFor(x => x.ReviewComment).ValidName(MonitoringLimits.NoteMaxLength, required: false);
+        RuleFor(x => x.ReviewComment).ValidName(MonitoringLimits.ReviewCommentMaxLength, required: false);
     }
 }

@@ -16,7 +16,8 @@ namespace ONEVO.Application.Features.WorkManagement.Validation;
 /// <summary>
 /// Task 19b. Approvals, sprints, reasons, reactions and reporting-line moves.
 /// <list type="bullet">
-/// <item>Approval comments, sprint goals, clocking-session and percentage-log reasons and reporting-line move
+/// <item>Approval comments come from the inbox dialogs, which allow 4,000 characters, so they get 4,000.</item>
+/// <item>Sprint goals, clocking-session and percentage-log reasons and reporting-line move
 /// reasons are nvarchar(max); 2,000 matches the other decision notes.</item>
 /// <item>An edited approval payload is the full form as JSON (for a meeting it can carry a 50,000-character
 /// description and 1,000 guest emails), so its cap is 1,000,000 characters. The handler still parses and checks
@@ -29,6 +30,7 @@ namespace ONEVO.Application.Features.WorkManagement.Validation;
 public static class WorkManagementLimits
 {
     public const int NoteMaxLength = 2_000;
+    public const int ApprovalCommentMaxLength = 4_000;
     public const int EditedPayloadMaxLength = 1_000_000;
     public const int MaxSprintDays = 366;
     public const int EmojiMaxLength = ConversationRules.MaxEmojiLength;
@@ -40,7 +42,7 @@ public sealed class DecideWorkApprovalRequestCommandValidator : AbstractValidato
     public DecideWorkApprovalRequestCommandValidator()
     {
         RuleFor(x => x.EditedPayloadJson).ValidName(WorkManagementLimits.EditedPayloadMaxLength, required: false);
-        RuleFor(x => x.Comment).ValidName(WorkManagementLimits.NoteMaxLength, required: false);
+        RuleFor(x => x.Comment).ValidName(WorkManagementLimits.ApprovalCommentMaxLength, required: false);
     }
 }
 
