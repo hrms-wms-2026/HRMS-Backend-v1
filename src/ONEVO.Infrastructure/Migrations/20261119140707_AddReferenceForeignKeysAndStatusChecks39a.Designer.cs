@@ -12,7 +12,7 @@ using ONEVO.Infrastructure.Persistence;
 namespace ONEVO.Infrastructure.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    [Migration("20261119135816_AddReferenceForeignKeysAndStatusChecks39a")]
+    [Migration("20261119140707_AddReferenceForeignKeysAndStatusChecks39a")]
     partial class AddReferenceForeignKeysAndStatusChecks39a
     {
         /// <inheritdoc />
@@ -18678,7 +18678,7 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasOne("ONEVO.Domain.Features.CoreHr.Entities.Employee", null)
                         .WithMany()
                         .HasForeignKey("ResponsibleEmployeeId")
-                        .OnDelete(DeleteBehavior.NoAction)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("fk_management_coverage_records_employees_responsible_employee_id");
                 });
 

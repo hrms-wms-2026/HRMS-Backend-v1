@@ -51,7 +51,7 @@ Task 39a:
 - 63 foreign keys added (core HR, leave, attendance, work management), all NO ACTION, in `Persistence/Integrity/ReferenceForeignKeys.cs`. Each is `WITH CHECK` (trusted).
 - 21 check constraints added in `Persistence/Integrity/StatusCheckConstraints.cs`: the 8 enum-backed status columns, `leave_requests.status`, `attendance_records.status`, `outbox_messages.status`, and 10 more in core HR, leave, attendance and sprints. Values come from the C# enum or constants; `StatusCheckConstraintTests` fails if code gains a value the migrations do not allow. `tasks` has no status text column (it uses `status_id`, a key to `task_statuses`).
 - 7 cascades from `employees` changed to NO ACTION (`daily_work_location_confirmations`, `employee_addresses`, `employee_bank_details`, `employee_dependents`, `employee_emergency_contacts`, `employee_work_locations`, `planned_task_blocks`). Employees are never hard-deleted, so behaviour does not change. `ForeignKeyRulesTests` now rejects any cascade from `employees` or `users` (item 3) and any foreign key without an index that starts with it (item 8).
-- Migration: `20261119135816_AddReferenceForeignKeysAndStatusChecks39a`. Created, not applied to any shared database.
+- Migration: `20261119140707_AddReferenceForeignKeysAndStatusChecks39a`. Created, not applied to any shared database.
 - Counts: GUID id columns without a key 477 → 414 (163 of them `tenant_id`); status columns without a check 124 → 103.
 
 Not done yet (follow-up files in this folder): 39b remaining core keys that need a decision first, 39c `created_by_id`, 39d `tenant_id`, 39e other modules, 39f remaining check constraints (including the task 37 workflow tables), 39g cascade review.

@@ -647,7 +647,8 @@ namespace ONEVO.Infrastructure.Migrations
                 table: "management_coverage_records",
                 column: "responsible_employee_id",
                 principalTable: "employees",
-                principalColumn: "id");
+                principalColumn: "id",
+                onDelete: ReferentialAction.Restrict);
 
             migrationBuilder.AddForeignKey(
                 name: "fk_meeting_series_projects_project_id",

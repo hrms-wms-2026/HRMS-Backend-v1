@@ -25,7 +25,7 @@ namespace ONEVO.Infrastructure.Persistence.Integrity;
 
 /// <summary>
 /// Foreign keys for id columns that had none (task 39). They have no navigation properties, so the domain
-/// model stays as it is. Every key is NO ACTION: none of these parents is hard-deleted by the application,
+/// model stays as it is. Every key is NO ACTION (Restrict where the table already uses it; the same DDL on SQL Server): none of these parents is hard-deleted by the application,
 /// people are never deleted with their history, and NO ACTION cannot create multiple cascade paths.
 /// Columns still without a key are listed, with a reason, in
 /// tests/ONEVO.Tests.Architecture/Schema/missing-foreign-keys.txt.
@@ -50,7 +50,8 @@ public static class ReferenceForeignKeys
         Fk<EmployeeHierarchyClosure, Employee>(b, x => x.DescendantEmployeeId);
         Fk<EmployeeHierarchyClosure, PositionAssignment>(b, x => x.SourcePositionAssignmentId);
         Fk<PositionAssignment, Employee>(b, x => x.ReportsToEmployeeId);
-        Fk<ManagementCoverageRecord, Employee>(b, x => x.ResponsibleEmployeeId);
+        // Restrict, like the other keys of this table (EfPositionRepositoryTests).
+        Fk<ManagementCoverageRecord, Employee>(b, x => x.ResponsibleEmployeeId, DeleteBehavior.Restrict);
         Fk<ReportingManagerChange, LegalEntity>(b, x => x.LegalEntityId);
         Fk<AccessGrantRequest, PositionAssignment>(b, x => x.ReservedPositionAssignmentId);
         Fk<OnboardingDraft, Employee>(b, x => x.ReportsToEmployeeId);
@@ -126,12 +127,13 @@ public static class ReferenceForeignKeys
         Fk<MeetingSeries, Project>(b, x => x.ProjectId);
     }
 
-    private static void Fk<TChild, TParent>(ModelBuilder modelBuilder, Expression<Func<TChild, object?>> key)
+    private static void Fk<TChild, TParent>(
+        ModelBuilder modelBuilder, Expression<Func<TChild, object?>> key, DeleteBehavior onDelete = DeleteBehavior.NoAction)
         where TChild : class
         where TParent : class
         => modelBuilder.Entity<TChild>()
             .HasOne<TParent>()
             .WithMany()
             .HasForeignKey(key)
-            .OnDelete(DeleteBehavior.NoAction);
+            .OnDelete(onDelete);
 }
