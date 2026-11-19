@@ -56,7 +56,7 @@ public sealed class ExceptionInboxSourceProvider : IInboxSourceProvider, IInboxP
         var candidateEmployeeIds = await _exceptions.ListActiveInboxEmployeeIdsAsync(tenantId, calendar: false, ct);
         var scope = candidateEmployeeIds.Count == 0
             ? null
-            : await _scope.ResolveAsync(forAction: true, candidateEmployeeIds, ct);
+            : await _scope.ResolveRoutingAsync(forAction: true, ct);
         var route = scope is null
             ? ExceptionInboxCountRoute.Empty
             : await _routing.CountRouteAsync(tenantId, candidateEmployeeIds, scope, hrFallback: true, ct);

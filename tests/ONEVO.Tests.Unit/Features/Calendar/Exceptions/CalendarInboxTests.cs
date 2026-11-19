@@ -61,6 +61,9 @@ public sealed class CalendarInboxTests
         _employees.Setup(e => e.ListByIdsAsync(TenantId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Dictionary<Guid, Employee> { [_subject.Id] = _subject });
         _conversations.Setup(c => c.ListAddedSubjectsAsync(TenantId, It.IsAny<Guid>(), "calendar", It.IsAny<CancellationToken>())).ReturnsAsync([]);
+        // The badge count reads the routing-only scope; tests describe one scope through ResolveAsync.
+        _scope.Setup(s => s.ResolveRoutingAsync(It.IsAny<bool>(), It.IsAny<CancellationToken>()))
+            .Returns((bool forAction, CancellationToken token) => _scope.Object.ResolveAsync(forAction, Array.Empty<Guid>(), token));
         var eventId = Guid.NewGuid();
         _incidents.Setup(i => i.ListForExceptionAsync(TenantId, _case.Id, It.IsAny<CancellationToken>())).ReturnsAsync(
         [

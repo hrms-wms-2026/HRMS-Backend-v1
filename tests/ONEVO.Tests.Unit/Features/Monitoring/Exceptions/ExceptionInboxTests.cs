@@ -68,6 +68,9 @@ public class ExceptionInboxTests
             .ReturnsAsync(Result<EmployeeApprovalRoute>.Success(new EmployeeApprovalRoute(Stranger, Guid.NewGuid(), Guid.NewGuid(),
                 "attendance:approve", EmployeeAuthorityPurpose.ExceptionAlertReview, EmployeeApprovalRouteSource.ReportingLine, null)));
         _conversations.Setup(x => x.ListAddedSubjectsAsync(TenantId, It.IsAny<Guid>(), "monitoring", It.IsAny<CancellationToken>())).ReturnsAsync([]);
+        // The badge count reads the routing-only scope; tests describe one scope through ResolveAsync.
+        _scope.Setup(s => s.ResolveRoutingAsync(It.IsAny<bool>(), It.IsAny<CancellationToken>()))
+            .Returns((bool forAction, CancellationToken token) => _scope.Object.ResolveAsync(forAction, Array.Empty<Guid>(), token));
         _policy.Setup(p => p.AppliesTo("monitoring", It.IsAny<string>())).Returns(true);
     }
 

@@ -86,7 +86,7 @@ public sealed class CalendarInboxSourceProvider(
         var candidateEmployeeIds = await exceptions.ListActiveInboxEmployeeIdsAsync(tenantId, calendar: true, ct);
         var reviewScope = candidateEmployeeIds.Count == 0
             ? null
-            : await scope.ResolveAsync(forAction: true, candidateEmployeeIds, ct);
+            : await scope.ResolveRoutingAsync(forAction: true, ct);
         var route = reviewScope is null
             ? ExceptionInboxCountRoute.Empty
             : await caseRouting.CountRouteAsync(tenantId, candidateEmployeeIds, reviewScope, hrFallback: false, ct);
