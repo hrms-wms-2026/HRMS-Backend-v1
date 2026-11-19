@@ -16,6 +16,7 @@ Start here. Every document about this repo lives under `docs/`, except the three
 | [notifications/](notifications/) | Notification event inventory, decisions and rollout. |
 | [development/](development/) | Local dev setup — [ports.md](development/ports.md) (also mirrored in the platform-admin front-end repo). |
 | [deployment/](deployment/) | Deployment and secret-handling notes. |
+| [security/](security/) | Living security rules, e.g. [data-classification.md](security/data-classification.md) (what may appear in an API response). |
 
 ### Report areas
 

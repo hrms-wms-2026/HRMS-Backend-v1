@@ -343,7 +343,6 @@ public sealed class WorkAreaChangeRequestWorkflow(
                 await requests.SaveChangesAsync(transactionCt);
                 var receiver = new WorkAreaChangeApproverResponse(
                     route.Value.ApproverEmployeeId,
-                    route.Value.ApproverUserId,
                     "Approver",
                     null);
                 return Result<WorkAreaChangeRequestResponse>.Success(
@@ -398,7 +397,6 @@ public sealed class WorkAreaChangeRequestWorkflow(
         var position = await positions.GetByIdAsync(currentUser.TenantId, route.ApproverPositionId, ct);
         var receiver = new WorkAreaChangeApproverResponse(
             route.ApproverEmployeeId,
-            route.ApproverUserId,
             approverEmployee is null ? "Approver" : DisplayName(approverEmployee),
             position?.Name);
         return Result<PreparedRequest>.Success(new(
