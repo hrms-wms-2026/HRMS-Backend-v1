@@ -8,7 +8,6 @@ using ONEVO.Application.Common.Json;
 using ONEVO.Infrastructure;
 using ONEVO.Infrastructure.Configuration;
 using Serilog;
-using System.Security.Claims;
 
 DotEnvLoader.LoadIfPresent();
 
@@ -59,6 +58,8 @@ builder.Services.AddApiForwardedHeaders(builder.Configuration);
 builder.Services.AddApplication();
 builder.Services.Configure<ONEVO.Application.Features.Monitoring.TrayActivation.Options.TrayPresenceOptions>(
     builder.Configuration.GetSection("TrayPresence"));
+builder.Services.Configure<ONEVO.Application.Common.Configuration.PerformanceOptions>(
+    builder.Configuration.GetSection(ONEVO.Application.Common.Configuration.PerformanceOptions.SectionName));
 builder.Services.Configure<ONEVO.Api.Configuration.TrayReleasesOptions>(
     builder.Configuration.GetSection(ONEVO.Api.Configuration.TrayReleasesOptions.SectionName));
 
@@ -132,12 +133,9 @@ app.UseMiddleware<SecurityHeadersMiddleware>();
 if (!app.Environment.IsDevelopment())
     app.UseHsts();
 app.UseApiSwagger();
-app.UseSerilogRequestLogging(opts =>
-    opts.EnrichDiagnosticContext = (diag, ctx) =>
-    {
-        diag.Set("TenantId", ctx.User?.FindFirst("tenant_id")?.Value ?? "anon");
-        diag.Set("UserId", ctx.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "anon");
-    });
+// Task 06: one line per request with route template, tenant, user, correlation id, elapsed time
+// and SQL count/time; slower than Performance:SlowRequestThresholdMs logs as a warning.
+app.UseSerilogRequestLogging(ONEVO.Api.Logging.RequestLogging.Configure);
 
 if (!app.Environment.IsDevelopment())
     app.UseHttpsRedirection();
