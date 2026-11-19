@@ -29,6 +29,19 @@ The script currently lists the expected public endpoints: login, password reset,
 - The list of public endpoints is documented in `docs/api/public-endpoints.md` with the protection each one uses.
 - Full unit and architecture suites pass.
 
+## Status (2026-11-19)
+
+Built and verified, in review: PR #240 (`feature/testing` to `development`, together with tasks 19, 23 and 27), not merged yet. Report: `docs/reports/security/2026-11-17-task-15-deny-by-default.md` (arrives with PR #240).
+
+Swagger (step 3) no longer exists: task 23 removed it in every environment.
+
+Open findings, reported and not fixed (details in `docs/api/public-endpoints.md`, "Open findings"):
+
+1. Stripe webhook routes are not rate limited.
+2. Tray activation-code exchange has only the general per-IP limit. The right limit is a product decision.
+3. Admin login and force-change-password skip password hashing when the email is unknown, so response timing can show whether an account exists.
+4. The Stripe webhook error text tells "not configured" apart from "invalid signature".
+
 ## Follow-up results (2026-11-23)
 
 Branch `claude/improve-task-15b-stripe-admin-login`, from `origin/development` at `b6fabb74f` (after PR #240).

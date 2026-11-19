@@ -30,3 +30,7 @@
 - No secret value remains in tracked files, and git history cleaning has been discussed and decided.
 - A pull request that adds a fake secret fails CI.
 - The vulnerable package check runs on every pull request.
+
+## Status (2026-11-19)
+
+On hold. It needs the repository owner's agreement for the CI changes and the git history decision (step 7) before work starts.

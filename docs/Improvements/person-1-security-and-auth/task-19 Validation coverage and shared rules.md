@@ -28,3 +28,10 @@
 - The 30 highest-risk commands have validators with tests.
 - The architecture test exists, with an explicit allow-list for the commands still to do.
 - The remaining list is saved as a follow-up task file.
+
+## Status (2026-11-19)
+
+Built and verified, in review: PR #240 (`feature/testing` to `development`, together with tasks 15, 23 and 27), not merged yet. Report: `docs/reports/security/2026-11-18-task-19-validation-coverage.md` (arrives with PR #240).
+
+- 30 validators with tests, shared rules in `ValidationRuleExtensions.cs`, and an architecture test with an allow-list of the 108 commands still to do.
+- The remaining commands are follow-up task 19b, `task-19b Validation coverage for the remaining commands.md` in this folder (arrives with PR #240).

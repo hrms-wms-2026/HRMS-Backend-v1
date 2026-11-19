@@ -8,6 +8,26 @@ Written 2026-11-15 from a read-only scan of the whole backend on branch `feature
 - The task number is the priority across the whole backend. Task 01 is the most urgent, task 30 the least.
 - The first 12 tasks are the ones to finish before UAT opens. Tasks 13 to 21 should land during UAT. The rest can follow.
 - If a task turns out bigger than a day, split it and keep the same number with a suffix (for example `task-08b`).
+- When a task is finished, add a `## Status` section to its file and update the status table below.
+
+## Status (2026-11-19)
+
+Only tasks that have started are listed. Every other task is not started.
+
+| # | Task | Status | Where |
+|---|---|---|---|
+| 03 | Cut the per-request session lookups | Done | `development`, PR #235 |
+| 07 | Fix the global rate limiter | Done | `development`, PR #237 |
+| 11 | Secrets out of the repository and scans in CI | On hold, needs the repository owner's agreement | - |
+| 15 | Deny by default for every endpoint | In review | PR #240, not merged |
+| 19 | Validation coverage and shared rules | In review | PR #240, not merged |
+| 19b | Validation coverage for the remaining commands | Not started, follow-up of 19 | file arrives with PR #240 |
+| 23 | Security headers, upload checks and request limits (Swagger removed) | In review | PR #240, not merged |
+| 27 | Cross-tenant and object access tests for UAT | In review | PR #240, not merged |
+
+Next for person-1: 32, 33, 39, 44 (do step 1 of 44 before UAT opens).
+
+Since task 15, the "No fallback authorization policy" finding in the table below is fixed (once PR #240 is merged). Since task 23, the API has no Swagger in any environment; the API description is in `docs/api/openapi/`.
 
 ## Targets the team agreed
 
@@ -198,7 +218,12 @@ Build in this order. Each person works through their own folder from the lowest 
 - 15: [Deny by default for every endpoint](<person-1-security-and-auth/task-15 Deny by default for every endpoint.md>)
 - 19: [Validation coverage and shared rules](<person-1-security-and-auth/task-19 Validation coverage and shared rules.md>)
 - 23: [Security headers, upload checks and request limits](<person-1-security-and-auth/task-23 Security headers, upload checks and request limits.md>)
+- 19b: Validation coverage for the remaining commands (follow-up of 19, file arrives with PR #240)
 - 27: [Cross-tenant and object access tests for UAT](<person-1-security-and-auth/task-27 Cross-tenant and object access tests for UAT.md>)
+- 32: [One permission catalogue in code](<person-1-security-and-auth/task-32 One permission catalogue in code.md>)
+- 33: [Safe add, rename and retire of permissions](<person-1-security-and-auth/task-33 Safe add, rename and retire of permissions.md>)
+- 39: [Foreign keys and check constraints](<person-1-security-and-auth/task-39 Foreign keys and check constraints.md>)
+- 44: [Sensitive data in API responses](<person-1-security-and-auth/task-44 Sensitive data in API responses.md>)
 
 ### person-3-api-and-pagination
 
