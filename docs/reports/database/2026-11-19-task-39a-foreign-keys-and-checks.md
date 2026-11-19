@@ -49,7 +49,20 @@ Keys left out on purpose, because the code hard-deletes the parent (details in t
 
 ## Gate
 
-See the results section below.
+Final full gate (`verify.ps1 <worktree> -Full`) on commit 05f22978c: `dev-env/reports/improve-task-39-fk-check-constraints-b63e85/verify-20261120-001923`.
+
+| Step | Result |
+|---|---|
+| build | PASS |
+| unit | 8019 passed, 0 failed |
+| architecture | 784 passed, 0 failed |
+| integration | 1250 passed, 1 failed (flaky, see below), 1 skipped |
+
+Tests that failed once in a full run and passed when re-run on their own. None of them touches a key or check from this task:
+
+- `QueryTranslationSweepTests.EveryQueryMethod_RunsOnSqlServer` (gate 20261120-001923): passes alone in 2 m 17 s.
+- `AuthLookupBaseLoginCandidatesFunctionTests.RestrictedRole_CanCallFunctionAndSeesBothTenantsCandidates` and `DataDependentQueryTests.ReportingLineMove_ChangesTheManagerAndNotifies` (gate 20261119-220005): both classes pass alone, 9/9.
+- `WidgetDataOrchestratorTests.Slow_provider_times_out_into_error` (unit, gate 20261120-001557): passes alone 3/3. It is a timing test.
 
 ## Follow-ups
 
