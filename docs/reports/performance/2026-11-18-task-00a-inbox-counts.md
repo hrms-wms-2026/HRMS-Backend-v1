@@ -87,12 +87,27 @@ repeats one read pattern per pending leave request (requests, entitlements, appr
 periods, assignments): 8 pending requests gave 8 repetitions. Authority lookups (employees, position assignments,
 coverage, hierarchy closure) also repeat.
 
+### Capture 6 — after batching the Leave count (2026-11-19)
+
+Same setup as Capture 5, with the Leave actionable count for requests created before policy-version pinning batched
+(one request read, one approver read and one policy snapshot for all of them, instead of `GetStateAsync` plus a full
+policy resolution per request). The response was unchanged (8 pending leave requests, 115 open alerts).
+
+| Run | Result |
+|---|---|
+| First call after start-up (cold) | 1288 ms |
+| 12 warm calls, one reused connection | 117–163 ms |
+| 10 warm calls, new connection each | 125–157 ms (all under 200 ms) |
+| Server log, last 10 | 113–144 ms |
+
+SQL commands logged during one request fell from about 340 to about 120 (the log still interleaves background jobs).
+
 ## Verification status
 
 - Capture 1–4 (before): the combined endpoint failed (1443 ms first run, warm provider stages at least 345 ms).
-- Capture 5 (after): warm combined counts are 167–191 ms over a reused connection; with a new connection per call 2 of 12
-  runs were over 200 ms. The cold first call is 1.3 s.
+- Capture 5 (aggregate counts): warm 167–191 ms over a reused connection; 2 of 12 new-connection runs over 200 ms.
+- Capture 6 (plus Leave batching): every warm run 117–163 ms, new connection or not. The cold first call is about 1.3 s.
 - Not yet done: two clean browser runs (DevTools), and a run with production-level logging.
-- Next candidates if the margin is not enough: the Leave count's per-request evaluation, and the authority lookups
-  repeated per candidate employee.
+- Remaining repeated reads: authority lookups (employees, position assignments, coverage, hierarchy) per candidate
+  employee, and Work alert audiences per project with open alerts.
 - Unit, architecture and SQL Server integration verification is recorded with the branch commits.
