@@ -1,4 +1,5 @@
 using MediatR;
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
@@ -29,7 +30,7 @@ namespace ONEVO.Application.Features.Monitoring.Exceptions.Queries.GetExceptionE
 public class GetExceptionEvidenceQueryHandler : IRequestHandler<GetExceptionEvidenceQuery, Result<ExceptionEvidenceDto>>
 {
     public static readonly TimeSpan PhotoUrlExpiry = TimeSpan.FromMinutes(5);
-    public const string MonitoringReadPermission = "monitoring:read";
+    public const string MonitoringReadPermission = PermissionCatalog.Monitoring.Read;
 
     private readonly IExceptionRepository _exceptions;
     private readonly ICurrentUser _currentUser;
