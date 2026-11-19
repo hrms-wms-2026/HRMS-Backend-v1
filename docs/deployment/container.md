@@ -46,29 +46,15 @@ them into the deploy step.
 All settings come from environment variables (`Section__Key`). Nothing is read from a `.env` file in
 the container: the loader finds none, and `.dockerignore` keeps it out of the image.
 
-Required to start outside Development:
+The full list, with what is secret and what the start-up check enforces, is in
+[uat-configuration.md](uat-configuration.md). Outside Development/Test the API refuses to start without:
 
-| Variable | Secret | Notes |
-|---|---|---|
-| `ConnectionStrings__DefaultConnection` | yes | Runtime login (`crownus_app`). Or set the atomic values below and let the API build it |
-| `CROWNUS_DB_HOST`, `CROWNUS_DB_PORT`, `CROWNUS_DB_NAME`, `CROWNUS_DB_APP_USER`, `CROWNUS_DB_APP_PASSWORD` | password yes | Alternative to the full connection string. `TrustServerCertificate` is only set for `localhost`, so a server with a self-signed certificate needs the full connection string instead |
-| `Encryption__MasterKey` | yes | 32+ characters. Must be the same value the database was written with |
-| `TrayApp__Jwt__SigningKeys__0__Kid`, `TrayApp__Jwt__SigningKeys__0__PrivateKeyPem`, `TrayApp__Jwt__ActiveKid` | key yes | ES256 tray signing key, required outside Development/Test. See `docs/deployment/tray-device-jwt.md` |
-
-Needed for a working environment (the API starts without them and logs a `[CONFIG]` warning):
-
-| Variable | Secret | Notes |
-|---|---|---|
-| `Urls__AppBaseUrl`, `Urls__AdminConsoleBaseUrl`, `Urls__WebhookBaseUrl` | no | Links in emails, OAuth callbacks |
-| `Tenancy__RootDomain` | no | Tenant subdomains resolve under it |
-| `AllowedOrigins__0`, `AllowedOrigins__1`, … | no | Replace the placeholder origins in `appsettings.json` |
-| `ForwardedHeaders__KnownProxies__0` / `ForwardedHeaders__KnownNetworks__0` | no | The load balancer, so client IP and host come from `X-Forwarded-*` |
-| `Email__FromAddress`, `Email__FromName` | no | Provider keys are stored in the database, not here |
-| `Jwt__Secret`, `Jwt__TenantIssuer`, `Jwt__TenantAudience` | secret yes | MFA challenge and device tokens |
-| `ConnectionStrings__MigrationConnection` | yes | Only for the migration step, not the running API |
-| `ASPNETCORE__Swagger__Enabled` | no | Leave unset (off) in UAT |
-
-Task 05 turns this into the full UAT list and makes the API refuse to start on a placeholder.
+- `ConnectionStrings__DefaultConnection` (or the atomic `CROWNUS_DB_*` values; `TrustServerCertificate` is
+  only added for `localhost`, so a server with a self-signed certificate needs the full string)
+- `Encryption__MasterKey` (32+ characters, the value the database was written with)
+- `Tenancy__RootDomain`, `Urls__AppBaseUrl`, `Urls__AdminConsoleBaseUrl` (real https hosts)
+- `Email__FromAddress`
+- `TrayApp__Jwt__SigningKeys__0__Kid`, `TrayApp__Jwt__SigningKeys__0__PrivateKeyPem`, `TrayApp__Jwt__ActiveKid`
 
 ## Run locally against the dev database
 
@@ -83,10 +69,15 @@ docker run --rm -p 8080:8080 \
   -e TrayApp__Jwt__SigningKeys__0__Kid=local-container \
   -e "TrayApp__Jwt__SigningKeys__0__PrivateKeyPem=<one-line PEM with \n>" \
   -e TrayApp__Jwt__ActiveKid=local-container \
+  -e Tenancy__RootDomain=crownus-uat.com \
+  -e Urls__AppBaseUrl=https://crownus-uat.com \
+  -e Urls__AdminConsoleBaseUrl=https://admin.crownus-uat.com \
+  -e Email__FromAddress=no-reply@crownus-uat.com \
   crownus-api:<tag>
 ```
 
 Then `http://localhost:8080/health` and `http://localhost:8080/health/ready` should both return 200.
+`crownus-uat.com` is only a stand-in that passes the start-up check; it is never contacted.
 
 ## Known limits (other tasks)
 
