@@ -29,7 +29,7 @@ public sealed class CompleteCalendarConnectionCommandHandlerTests
     private readonly Mock<IEncryptionService> _encryption = new();
     private readonly Mock<IUnitOfWork> _unitOfWork = new();
     private readonly Mock<ILogger<CompleteCalendarConnectionCommandHandler>> _logger = new();
-    private readonly IConfiguration _configuration = new ConfigurationBuilder()
+    private IConfiguration _configuration = new ConfigurationBuilder()
         .AddInMemoryCollection(new Dictionary<string, string?>
         {
             ["Urls:CalendarOAuthCallbackBaseUrl"] = "https://localhost:7229",
@@ -256,6 +256,33 @@ public sealed class CompleteCalendarConnectionCommandHandlerTests
         _connections.Verify(x => x.AddAsync(It.Is<ExternalCalendarConnection>(c =>
             c.TenantId == TenantId && c.UserId == UserId && c.ExternalAccountEmail == "me@acme.com"), It.IsAny<CancellationToken>()), Times.Once);
         _tenantSwitcher.Verify(x => x.SwitchToTenantAsync(It.Is<TenantRegistryEntry>(t => t.TenantId == TenantId && t.Slug == "acme"), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task SingleHost_Redirect_UsesRootHostWithTenantQuery()
+    {
+        _configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Urls:CalendarOAuthCallbackBaseUrl"] = "https://app.example.net",
+                ["Urls:AppBaseUrl"] = "https://app.example.net",
+                ["Tenancy:RootDomain"] = "app.example.net",
+                ["Tenancy:Mode"] = "SingleHost"
+            })
+            .Build();
+        var sut = BuildSut();
+        var state = ValidState();
+        _stateProtector.Setup(x => x.TryUnprotect("state", out state)).Returns(true);
+        var tenant = new Tenant { Id = TenantId, Slug = "acme", Status = TenantStatus.Active };
+        _tenants.Setup(x => x.GetByIdAsync(TenantId, It.IsAny<CancellationToken>())).ReturnsAsync(tenant);
+
+        var result = await sut.Handle(new CompleteCalendarConnectionCommand("google", null, "state"), CancellationToken.None);
+
+        var uri = new Uri(result.Value!);
+        Assert.Equal("app.example.net", uri.Host);
+        Assert.Equal("/calendar", uri.AbsolutePath);
+        Assert.Contains("connectionError=1", uri.Query);
+        Assert.Contains("tenant=acme", uri.Query);
     }
 
     [Fact]
