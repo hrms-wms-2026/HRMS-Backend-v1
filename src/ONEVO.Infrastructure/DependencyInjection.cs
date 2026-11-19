@@ -185,6 +185,7 @@ public static class DependencyInjection
         services.AddScoped<IInvitationTokenRepository, EfInvitationTokenRepository>();
         services.AddScoped<IPositionRepository, EfPositionRepository>();
         services.AddScoped<IModuleCatalogRepository, ONEVO.Infrastructure.Persistence.Repositories.DevPlatform.ModuleCatalog.ModuleCatalogRepository>();
+        services.AddScoped<ONEVO.Application.Features.DevPlatform.SystemConfig.FeatureFlags.RepositoryInterfaces.IPlatformFeatureFlagRepository, ONEVO.Infrastructure.Persistence.Repositories.DevPlatform.SystemConfig.FeatureFlags.EfPlatformFeatureFlagRepository>();
 
         // Work Management - Foundation slice
         services.AddScoped<EfProjectCategoryRepository>();

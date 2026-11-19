@@ -2966,6 +2966,51 @@ namespace ONEVO.Infrastructure.Migrations
                     b.ToTable("platform_user_sessions", (string)null);
                 });
 
+            modelBuilder.Entity("ONEVO.Domain.Features.DevPlatform.SystemConfig.FeatureFlags.Entities.PlatformFeatureFlag", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("text")
+                        .HasColumnName("description");
+
+                    b.Property<bool>("IsEnabled")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_enabled");
+
+                    b.Property<string>("Key")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("key");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)")
+                        .HasColumnName("name");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_platform_feature_flags");
+
+                    b.HasIndex("Key")
+                        .IsUnique()
+                        .HasDatabaseName("ix_platform_feature_flags_key");
+
+                    b.ToTable("platform_feature_flags", (string)null);
+                });
+
             modelBuilder.Entity("ONEVO.Domain.Features.DevPlatform.SystemConfig.IntegrationCatalog.Entities.IntegrationCatalogEntry", b =>
                 {
                     b.Property<string>("IntegrationKey")

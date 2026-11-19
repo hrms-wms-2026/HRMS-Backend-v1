@@ -9,6 +9,7 @@ using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.DevPlatform.Compliance.Entities;
 using ONEVO.Domain.Features.DevPlatform.ConfigurationTemplates.Entities;
 using ONEVO.Domain.Features.DevPlatform.PlatformAccess.Entities;
+using ONEVO.Domain.Features.DevPlatform.SystemConfig.FeatureFlags.Entities;
 using ONEVO.Domain.Features.DevPlatform.SystemConfig.IntegrationCatalog.Entities;
 using ONEVO.Domain.Features.SharedPlatform.TenantIntegrations.Entities;
 using ONEVO.Domain.Features.DevPlatform.SystemConfig.PlatformOAuthApps.Entities;
@@ -161,6 +162,7 @@ public class ApplicationDbContext : DbContext
     // SharedPlatform
     public DbSet<SubscriptionPlan> SubscriptionPlans => Set<SubscriptionPlan>();
     public DbSet<ModuleCatalogItem> ModuleCatalog => Set<ModuleCatalogItem>();
+    public DbSet<PlatformFeatureFlag> PlatformFeatureFlags => Set<PlatformFeatureFlag>();
     public DbSet<ModuleFeature> ModuleFeatures => Set<ModuleFeature>();
     public DbSet<ModulePermissionOwnership> ModulePermissionOwnerships => Set<ModulePermissionOwnership>();
     public DbSet<ModuleCatalogPriceHistory> ModuleCatalogPriceHistories => Set<ModuleCatalogPriceHistory>();
