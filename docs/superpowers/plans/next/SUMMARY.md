@@ -10,6 +10,7 @@ This folder absorbed the former top-level `docs/superpowers/next-plan/` folder o
 
 ## Files
 
+- `2026-11-19-appservice-deploy-pipeline.md` — status: implemented on `feature/appservice-deploy-pipeline` (backend) and `feature/appservice-deploy-trigger` (web, admin); not yet run on GitHub. Deploy workflow, Linux-ready package script, opt-in migrations, frontend trigger workflows, setup guide. Design: `specs/next/2026-11-19-appservice-deploy-pipeline-design.md`.
 - `2026-11-19-single-host-tenancy-test-mode.md` — status: backend tasks implemented on `feature/single-host-tenancy` (tenancy mode setting, header tenant resolution, same-host login continue URL, optional SPA hosting, isolation test); web app and admin console tasks are in their own repos. Adds `Tenancy:Mode=SingleHost` so one host serves every tenant. Design: `specs/next/2026-11-19-single-host-tenancy-test-mode-design.md`.
 - `2026-11-07-sqlserver-migration/` — status: pending, not started. 5 files: index, capture and spike, provider and baseline and RLS, raw SQL, tests and gate. Moves the backend from PostgreSQL to SQL Server. Design: `specs/next/2026-11-07-sqlserver-migration-design.md`.
 - `2026-09-30-employee-detail-phase2-backend.md` — status: implemented 2/3 on `feature/employee-detail-phase2`. Adds `jobInformation.timezone` and relationship-scoped `projectMemberships` to `GET /employees/{id}/detail`. Task 3 (Postgres/RLS integration test for `ListSharedProjectMembershipsAsync`) is open and blocks merge. Companion: frontend `2026-09-30-employee-detail-tabs.md`.
