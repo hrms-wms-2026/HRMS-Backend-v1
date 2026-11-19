@@ -102,12 +102,46 @@ policy resolution per request). The response was unchanged (8 pending leave requ
 
 SQL commands logged during one request fell from about 340 to about 120 (the log still interleaves background jobs).
 
+### Capture 7 — routing-only exception scope (2026-11-19)
+
+Branch at `f7c823ef`: the Monitoring and Calendar counts read only the routing parts of the exception scope (HR flag,
+actor, held cases), remembered for the request, instead of resolving coverage visibility and the exact-approver set.
+Same setup as Capture 5, Release build, same demo user; the response was unchanged.
+
+Per-provider time inside one warm request (temporary local timing markers, not committed):
+
+| Provider | Capture 6 | Capture 7 |
+|---|---:|---:|
+| Monitoring | 46–48 ms | 26 ms |
+| Calendar | 40 ms | 19 ms |
+| Attendance | 20–22 ms | 20 ms |
+| Work | 14–20 ms | 14 ms |
+| Leave | 12 ms | 12 ms |
+| Conversation unread | 5–6 ms | 6 ms |
+| Onboarding | 0 ms | 0 ms |
+
+| Run | Result |
+|---|---|
+| First call after start-up (cold) | 1160 ms |
+| Second call | 215 ms |
+| 10 warm calls, one reused connection | 108–136 ms |
+
+### Cold first call
+
+The 1.1–1.3 s first call is a once-per-process cost (JIT and EF Core query compilation), not a per-user cost. With the
+process already warm, a second seeded user (`tharmi.rajendran@dapi.test`, 18 open alerts, 145 unread) got 282 ms on
+their first call, including a new TLS connection and query shapes the first user had not used, then 64–73 ms. It
+affects only the first request after each deployment or restart; a start-up warm-up request would hide it, but that is
+outside the Task 00a target, which is about warm requests.
+
 ## Verification status
 
 - Capture 1–4 (before): the combined endpoint failed (1443 ms first run, warm provider stages at least 345 ms).
 - Capture 5 (aggregate counts): warm 167–191 ms over a reused connection; 2 of 12 new-connection runs over 200 ms.
-- Capture 6 (plus Leave batching): every warm run 117–163 ms, new connection or not. The cold first call is about 1.3 s.
+- Capture 6 (plus Leave batching): every warm run 117–163 ms, new connection or not.
+- Capture 7 (routing-only scope): warm 108–136 ms; the slowest provider is now Monitoring at about 26 ms.
+- Cold first call: about 1.2 s once per process start; a second user's first call is about 280 ms.
 - Not yet done: two clean browser runs (DevTools), and a run with production-level logging.
-- Remaining repeated reads: authority lookups (employees, position assignments, coverage, hierarchy) per candidate
-  employee, and Work alert audiences per project with open alerts.
+- Remaining repeated reads: the exact-approver lookups in case routing, Attendance's scope, and Work alert audiences
+  per project with open alerts.
 - Unit, architecture and SQL Server integration verification is recorded with the branch commits.
