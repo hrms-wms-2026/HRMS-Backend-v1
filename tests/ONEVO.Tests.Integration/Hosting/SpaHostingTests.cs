@@ -44,6 +44,8 @@ public sealed class SpaHostingTests : IAsyncLifetime
         await File.WriteAllTextAsync(
             Path.Combine(_spaRoot, "admin-console", "index.html"),
             $"<!doctype html><html><body>{AdminMarker}</body></html>");
+        await File.WriteAllTextAsync(Path.Combine(_spaRoot, "web", "main.test.js"), "/* web */");
+        await File.WriteAllTextAsync(Path.Combine(_spaRoot, "admin-console", "main.test.js"), "/* admin */");
     }
 
     public async Task DisposeAsync()
@@ -187,6 +189,65 @@ public sealed class SpaHostingTests : IAsyncLifetime
 
         Assert.DoesNotContain(WebMarker, body);
         Assert.DoesNotContain(AdminMarker, body);
+    }
+
+    // ---- Security headers ----
+
+    private const string ApiCsp = "default-src 'none'; frame-ancestors 'none'";
+
+    [Theory]
+    [InlineData("SingleHost", "localhost", "/")]
+    [InlineData("SingleHost", "localhost", "/dashboard/team")]
+    [InlineData("SingleHost", "localhost", "/main.test.js")]
+    [InlineData("SingleHost", "localhost", "/admin-console/main.test.js")]
+    [InlineData("Subdomain", SubdomainRoot, "/")]
+    [InlineData("Subdomain", SubdomainRoot, "/main.test.js")]
+    [InlineData("Subdomain", "admin." + SubdomainRoot, "/main.test.js")]
+    public async Task ServeSpasOn_SpaResponses_GetSpaCspAndSecurityHeaders(string mode, string host, string path)
+    {
+        var factory = mode == "SingleHost" ? SingleHost() : Subdomain();
+
+        var response = await GetAsync(factory, host, path);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var csp = Assert.Single(response.Headers.GetValues("Content-Security-Policy"));
+        Assert.NotEqual(ApiCsp, csp);
+        Assert.Contains("default-src 'self'", csp);
+        Assert.Contains("script-src 'self'", csp);
+        Assert.Contains("object-src 'none'", csp);
+        Assert.Contains("frame-ancestors 'none'", csp);
+        Assert.DoesNotContain("'unsafe-eval'", csp);
+        Assert.DoesNotMatch(@"script-src[^;]*'unsafe-inline'", csp);
+        Assert.Equal("DENY", Assert.Single(response.Headers.GetValues("X-Frame-Options")));
+        Assert.Equal("nosniff", Assert.Single(response.Headers.GetValues("X-Content-Type-Options")));
+    }
+
+    [Theory]
+    [InlineData("SingleHost")]
+    [InlineData("Subdomain")]
+    public async Task ServeSpasOn_ApiPath_KeepsDenyAllCsp(string mode)
+    {
+        var (factory, host) = mode == "SingleHost"
+            ? (SingleHost(), "localhost")
+            : (Subdomain(), SubdomainRoot);
+
+        var response = await GetAsync(factory, host, "/api/v1/does-not-exist");
+
+        Assert.Equal(ApiCsp, Assert.Single(response.Headers.GetValues("Content-Security-Policy")));
+    }
+
+    [Theory]
+    [InlineData("SingleHost")]
+    [InlineData("Subdomain")]
+    public async Task ServeSpasOff_Root_GetsApiCsp(string mode)
+    {
+        var (factory, host) = mode == "SingleHost"
+            ? (Build("SingleHost", "localhost", serveSpas: false), "localhost")
+            : (Build("Subdomain", SubdomainRoot, serveSpas: false), SubdomainRoot);
+
+        var response = await GetAsync(factory, host, "/");
+
+        Assert.Equal(ApiCsp, Assert.Single(response.Headers.GetValues("Content-Security-Policy")));
     }
 
     // ---- helpers ----

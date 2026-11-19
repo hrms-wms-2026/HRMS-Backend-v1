@@ -126,9 +126,6 @@ if (ONEVO.Application.Common.Tenancy.TenancyModeReader.Read(app.Configuration)
 // First, so scheme, host and client IP are the real client's for everything below
 // (HTTPS redirect, HSTS, logging, CORS, rate limiting, tenant resolution).
 app.UseForwardedHeaders();
-// Optional (Hosting:ServeSpas): SPA static files short-circuit here, before tenant resolution,
-// auth and rate limiting. The index.html fallback is mapped below as an anonymous endpoint.
-app.UseSpaHosting();
 app.UseMiddleware<ExceptionHandlerMiddleware>();
 app.UseMiddleware<CorrelationIdMiddleware>();
 app.UseMiddleware<SecurityHeadersMiddleware>();
@@ -144,6 +141,10 @@ app.UseSerilogRequestLogging(opts =>
 
 if (!app.Environment.IsDevelopment())
     app.UseHttpsRedirection();
+// Optional (Hosting:ServeSpas): SPA static files are served here, after the security headers,
+// HSTS and HTTPS redirect, but before routing, tenant resolution, auth, rate limiting and CSRF.
+// The index.html fallback is mapped below as an anonymous endpoint.
+app.UseSpaHosting();
 app.UseCors("AllowFrontend");
 app.UseRouting();
 // Task 07: coarse per-IP flood guard before any credential is validated.

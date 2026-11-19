@@ -27,9 +27,9 @@ public static class SpaHostingExtensions
     };
 
     /// <summary>
-    /// Serves the static files of the chosen SPA. Call immediately after
-    /// <c>UseForwardedHeaders()</c>, so asset requests short-circuit before tenant resolution,
-    /// authentication and rate limiting. No-op unless <c>Hosting:ServeSpas</c> is true.
+    /// Serves the static files of the chosen SPA. Call after the security headers, HSTS and HTTPS
+    /// redirection, but before tenant resolution, authentication, rate limiting and CSRF, so asset
+    /// requests get the headers and then short-circuit. No-op unless <c>Hosting:ServeSpas</c> is true.
     /// </summary>
     public static WebApplication UseSpaHosting(this WebApplication app)
     {
@@ -87,13 +87,22 @@ public static class SpaHostingExtensions
         if (!HttpMethods.IsGet(request.Method) && !HttpMethods.IsHead(request.Method))
             return false;
 
+        return !IsApiPath(request.Path) && !Path.HasExtension(request.Path.Value);
+    }
+
+    /// <summary>
+    /// True for paths that belong to the API (<c>/api</c>, <c>/admin</c>, <c>/hubs</c>,
+    /// <c>/health</c>, segment-wise), never to an SPA. Shared with the security headers.
+    /// </summary>
+    internal static bool IsApiPath(PathString path)
+    {
         foreach (var prefix in NonSpaPrefixes)
         {
-            if (request.Path.StartsWithSegments(prefix, StringComparison.OrdinalIgnoreCase))
-                return false;
+            if (path.StartsWithSegments(prefix, StringComparison.OrdinalIgnoreCase))
+                return true;
         }
 
-        return !Path.HasExtension(request.Path.Value);
+        return false;
     }
 
     private sealed class SpaHostingSettings
